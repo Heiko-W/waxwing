@@ -1,0 +1,64 @@
+@import "./tokens.css";
+
+/* Minimal reset. Logical properties throughout for RTL-readiness (FR-I18N-02). */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-block-size: 100vh;
+  background-color: var(--waxwing-bg);
+  color: var(--waxwing-text);
+  font-family: var(--waxwing-font-sans);
+  font-size: var(--waxwing-text-base);
+  font-weight: var(--waxwing-weight-regular);
+  line-height: var(--waxwing-leading-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Visible keyboard focus everywhere (FR-A11Y-01). The outline follows each element's
+   own border-radius, so we must NOT force a radius here (that would snap pill controls
+   like the theme/language switches to a square-ish focus ring). */
+:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+img,
+svg {
+  max-inline-size: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* Respect reduced-motion (FR-UI-01, FR-A11Y-01). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion reset must defeat higher-specificity component styles */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion reset must defeat higher-specificity component styles */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion reset must defeat higher-specificity component styles */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: reduced-motion reset must defeat higher-specificity component styles */
+    scroll-behavior: auto !important;
+  }
+}

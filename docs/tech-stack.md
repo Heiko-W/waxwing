@@ -66,7 +66,7 @@ decision buys offline support, instant UI, crash-safety, and multi-tab consisten
 | Layer | Choice | Notes |
 |---|---|---|
 | Language | **TypeScript** (strict) | end to end |
-| UI framework | **React 19** + **Vite 7** | see §4.1 |
+| UI framework | **React 19** + **Vite 8** (see ADR-001) | see §4.1 |
 | JMAP client | **`@waxwing/jmap`** (own package) | see §4.2 — no existing lib suffices |
 | Local store / sync | **Dexie 4** (IndexedDB) + own sync engine | liveQuery → UI |
 | UI state | **Zustand** | ephemeral/view state only |

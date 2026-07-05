@@ -1,0 +1,27 @@
+/*
+ * theme.css — hoster white-label override point (FR-THEME-01).
+ *
+ * This file is the ONE place a deployment can restyle Waxwing without a rebuild.
+ * It ships next to index.html and config.json in the deployment directory and is
+ * loaded network-first at boot — it is deliberately NEVER precached by the service
+ * worker, so edits here take effect on the next load without a new release.
+ *
+ * Override any of the app's design tokens by re-declaring the corresponding
+ * --waxwing-* custom property on :root. The full token set lives in the app at
+ * src/ui/tokens.css. The default file is intentionally empty (all comments) so an
+ * untouched deployment uses the built-in tokens.
+ *
+ * Examples (uncomment and adjust):
+ *
+ * :root {
+ *   --waxwing-accent: #2563eb;
+ *   --waxwing-radius-md: 8px;
+ *   --waxwing-font-sans: 'Inter', system-ui, sans-serif;
+ * }
+ *
+ * Dark-mode-specific overrides follow the same theming hooks the app uses:
+ *
+ * :root[data-theme='dark'] {
+ *   --waxwing-accent: #60a5fa;
+ * }
+ */

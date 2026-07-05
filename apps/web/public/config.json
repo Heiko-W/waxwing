@@ -1,0 +1,28 @@
+{
+  "server": {
+    "sessionUrl": null,
+    "allowCustomServer": true,
+    "auth": ["oauth", "basic"]
+  },
+  "branding": {
+    "productName": "Waxwing",
+    "logo": "branding/logo.svg",
+    "accentColor": "#E8770E",
+    "defaultTheme": "auto",
+    "links": {
+      "imprint": null,
+      "support": null,
+      "privacy": null
+    }
+  },
+  "features": {
+    "sieveEditor": true,
+    "remoteContentDefault": "block",
+    "imageProxyUrl": null,
+    "undoSendSeconds": 15
+  },
+  "offline": {
+    "cacheDays": 30,
+    "maxStorageMB": 512
+  }
+}

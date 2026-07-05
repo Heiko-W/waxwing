@@ -87,7 +87,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
 | P0.1 | Repo bootstrap (git, workspaces, tooling) | S | — | done | git, pnpm workspace, TS 6 strict base, Biome 2.5, licenses, skeleton |
-| P0.2 | App scaffold (Vite/React, tokens, i18n, config boot) | M | P0.1 | todo | |
+| P0.2 | App scaffold (Vite/React, tokens, i18n, config boot) | M | P0.1 | done | Vite 8 + React 19; tokens (WCAG-AA, light/dark); runtime config.json+theme.css; i18n en/de lazy; strict CSP; 80.95 KB gz initial |
 | P0.3 | Test infrastructure (Vitest, RTL, Playwright) | S | P0.1 | todo | |
 | P0.4 | Stalwart dev/E2E fixture (Docker) | M | P0.1 | todo | |
 | P0.5 | CI pipeline + size budgets | S | P0.2–P0.4 | todo | |
@@ -210,23 +210,30 @@ Biome 2.5.2.
 
 Spec: FR-DEP-01/02/03/04, FR-THEME-01/02 (boot path only), FR-I18N-01, NFR-SEC-01. Size: M.
 
-- [ ] Vite 7 + React 19 app in `apps/web`; **`base: './'`** (relative asset paths — required
+- [x] Vite 8 + React 19 app in `apps/web` (see ADR-001); **`base: './'`** (relative asset paths — required
       for Stalwart `<base href>` rewriting, FR-DEP-02); verify built `index.html` uses only
       relative URLs.
-- [ ] CSS Modules wired; `src/ui/tokens.css` starter: `--waxwing-*` custom properties
+- [x] CSS Modules wired; `src/ui/tokens.css` starter: `--waxwing-*` custom properties
       (color, spacing 8-pt scale, radius, typography), light + dark sets behind
-      `prefers-color-scheme` plus a manual override class on `:root`.
-- [ ] Boot loader: fetch `config.json` and `theme.css` from the deployment directory at
+      `prefers-color-scheme` plus a manual override (`:root[data-theme=…]`).
+- [x] Boot loader: fetch `config.json` and `theme.css` from the deployment directory at
       startup (network-first, graceful defaults when absent); typed config schema matching
       spec §9; document that these files are **never** precached later.
-- [ ] i18next scaffold: lazy-loaded JSON locales `en`/`de`, `Intl`-based date/number
+- [x] i18next scaffold: lazy-loaded JSON locales `en`/`de`, `Intl`-based date/number
       helpers, a `t()` lint convention (no raw strings in JSX).
-- [ ] Strict CSP in dev (`vite` dev-server headers) and documented for deployment:
+- [x] Strict CSP in dev (`vite` dev-server headers) and documented for deployment:
       no inline script, no `eval`, `frame-src` for the mail iframe strategy.
-- [ ] Icons: Lucide installed, tree-shaking verified in a build.
+- [x] Icons: Lucide installed, tree-shaking verified in a build.
 
 Done when: `pnpm --filter web build` produces a static bundle that boots from a plain
 file server under an arbitrary path prefix, shows a placeholder shell in en/de, light/dark.
+✅ Verified 2026-07-05 (multi-agent workflow): typecheck/lint/build green; initial JS
+80.95 KB gz (budget 300 KB); Playwright boot under an arbitrary `/deploy/mail/` prefix —
+shell renders product name from `config.json`, en↔de (lazy locale chunks) and
+light↔dark (persisted) both work, **all 8 requests same-origin** (NFR-PRIV-01), 0 console
+errors; 18 token contrast pairs pass WCAG AA in both themes; ADR-001 records the Vite 8
+decision. Follow-ups tracked: SRI for own assets (release/M4.9) and radiogroup a11y
+polish for the switches (with P0.3 tests).
 
 ### P0.3 — Test infrastructure
 
@@ -1166,3 +1173,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 |---|---|
 | 2026-07-05 | v0.1 — initial plan created from spec v0.2 + tech-stack v0.2 |
 | 2026-07-05 | P0.1 **done** — repo bootstrap: git init, pnpm workspace (apps/web, 3 packages, e2e), TS 6 strict base config, Biome 2.5 (lint+format+assist), AGPL root + MIT package licenses, directory skeleton, README Development section. `install`/`typecheck`/`lint` green. |
+| 2026-07-05 | **ADR-001** — adopt Vite 8 (+ @vitejs/plugin-react 6, Rolldown) instead of Vite 7; tech-stack.md updated. |
+| 2026-07-05 | P0.2 **done** — app scaffold: Vite 8 + React 19 (`base: './'`), `--waxwing-*` design tokens (light/dark, WCAG AA), runtime `config.json`+`theme.css` boot loader (typed, network-first), i18next en/de lazy locales + Intl helpers, strict production CSP + documented dev delta, Lucide. Booted under a path prefix (Playwright); 80.95 KB gz initial JS. |

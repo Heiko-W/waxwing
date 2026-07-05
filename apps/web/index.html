@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      Production CSP (strict, NFR-SEC-01): no inline script, no eval.
+
+      Two deliberate, minimal relaxations (script-src stays fully strict — neither
+      applies to it):
+      - connect-src 'self' https: wss': the JMAP server origin comes from runtime
+        config.json and cannot be pinned in a static <meta> at build time, so the
+        wildcards are unavoidable here. Trade-off: an injected script could reach any
+        https/wss host. Narrow it at deploy time by sending an HTTP Content-Security-
+        Policy response header (which overrides <meta>) with connect-src pinned to the
+        specific JMAP origin — mandatory for same-origin (Stalwart) and reverse-proxy
+        deployments.
+      - style-src 'unsafe-inline': required because branding writes the accent token via
+        element.style (theme.ts) and React/CSS-Modules use inline styles. It is a
+        lower-severity vector than script injection and is intentionally NOT granted to
+        script-src.
+
+      Servers should ALSO send `frame-ancestors` via an HTTP response header
+      (cannot be expressed in a <meta> CSP) to control who may frame the app.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https: wss:; frame-src 'self'"
+    />
+    <link rel="icon" type="image/svg+xml" href="branding/favicon.svg" />
+    <!-- Placeholder title; replaced at runtime from config.json branding.productName. -->
+    <title>Waxwing</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

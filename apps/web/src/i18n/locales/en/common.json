@@ -1,0 +1,22 @@
+{
+  "shell": {
+    "tagline": "{{product}} — your mail, served straight from your server.",
+    "placeholder": "The app scaffold is ready. Mailboxes and messages arrive in the next milestones.",
+    "nav": "Primary navigation"
+  },
+  "theme": {
+    "label": "Theme",
+    "auto": "Match system theme",
+    "light": "Light theme",
+    "dark": "Dark theme"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "de": "German",
+    "short": {
+      "en": "EN",
+      "de": "DE"
+    }
+  }
+}

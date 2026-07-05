@@ -1,0 +1,124 @@
+/*
+ * Waxwing design tokens (FR-THEME-01, FR-UI-01).
+ *
+ * Every color, space, radius and type value the app uses is exposed here as a
+ * --waxwing-* custom property so a hoster can restyle without a rebuild (see
+ * public/theme.css). Color tokens have a light set (:root) and a dark set applied
+ * under both `prefers-color-scheme: dark` (respecting a forced light override) and
+ * `:root[data-theme='dark']`; light is re-asserted under `:root[data-theme='light']`.
+ *
+ * Contrast: color pairs are chosen to meet WCAG 2.2 AA (FR-A11Y-01) in both themes.
+ * The accent (config-overridable) is used only for fills/borders/focus, never as body
+ * text on a page background, because a custom accent cannot be contrast-guaranteed.
+ */
+
+:root {
+  /* ---- Color: light ---- */
+  --waxwing-accent: #e8770e;
+  --waxwing-accent-contrast: #1d1d1f;
+  --waxwing-bg: #f5f5f7;
+  --waxwing-surface: #ffffff;
+  --waxwing-surface-2: #ebebef;
+  --waxwing-text: #1d1d1f;
+  --waxwing-text-muted: #636366;
+  --waxwing-border: #d2d2d7;
+  --waxwing-focus-ring: #c0560a;
+  --waxwing-danger: #c10016;
+  --waxwing-success: #1e7b34;
+  --waxwing-warning: #8a5d00;
+
+  /* ---- Spacing: 8-pt grid ---- */
+  --waxwing-space-1: 0.25rem; /* 4px */
+  --waxwing-space-2: 0.5rem; /* 8px */
+  --waxwing-space-3: 0.75rem; /* 12px */
+  --waxwing-space-4: 1rem; /* 16px */
+  --waxwing-space-5: 1.5rem; /* 24px */
+  --waxwing-space-6: 2rem; /* 32px */
+  --waxwing-space-7: 3rem; /* 48px */
+  --waxwing-space-8: 4rem; /* 64px */
+
+  /* ---- Radius ---- */
+  --waxwing-radius-sm: 0.375rem;
+  --waxwing-radius-md: 0.625rem;
+  --waxwing-radius-lg: 1rem;
+  --waxwing-radius-full: 9999px;
+
+  /* ---- Typography ---- */
+  --waxwing-font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji", sans-serif;
+  --waxwing-font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --waxwing-text-xs: 0.75rem;
+  --waxwing-text-sm: 0.875rem;
+  --waxwing-text-base: 1rem;
+  --waxwing-text-lg: 1.125rem;
+  --waxwing-text-xl: 1.375rem;
+  --waxwing-text-2xl: 1.75rem;
+
+  --waxwing-leading-tight: 1.2;
+  --waxwing-leading-normal: 1.5;
+  --waxwing-leading-relaxed: 1.7;
+
+  --waxwing-weight-regular: 400;
+  --waxwing-weight-medium: 500;
+  --waxwing-weight-semibold: 600;
+  --waxwing-weight-bold: 700;
+
+  /* ---- Interaction ---- */
+  --waxwing-tap-target: 44px;
+
+  /* ---- Motion ---- */
+  --waxwing-duration-fast: 120ms;
+  --waxwing-duration-base: 200ms;
+  --waxwing-duration-slow: 320ms;
+  --waxwing-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---- Color: dark (system preference, unless a light override is forced) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --waxwing-accent-contrast: #1d1d1f;
+    --waxwing-bg: #1c1c1e;
+    --waxwing-surface: #2c2c2e;
+    --waxwing-surface-2: #3a3a3c;
+    --waxwing-text: #f5f5f7;
+    --waxwing-text-muted: #a5a5ad;
+    --waxwing-border: #48484a;
+    --waxwing-focus-ring: #ff9f45;
+    --waxwing-danger: #ff453a;
+    --waxwing-success: #30d158;
+    --waxwing-warning: #ffd60a;
+  }
+}
+
+/* ---- Color: dark (explicit user override) ---- */
+:root[data-theme="dark"] {
+  --waxwing-accent-contrast: #1d1d1f;
+  --waxwing-bg: #1c1c1e;
+  --waxwing-surface: #2c2c2e;
+  --waxwing-surface-2: #3a3a3c;
+  --waxwing-text: #f5f5f7;
+  --waxwing-text-muted: #a5a5ad;
+  --waxwing-border: #48484a;
+  --waxwing-focus-ring: #ff9f45;
+  --waxwing-danger: #ff453a;
+  --waxwing-success: #30d158;
+  --waxwing-warning: #ffd60a;
+}
+
+/* ---- Color: light re-asserted (explicit user override wins over OS dark) ---- */
+:root[data-theme="light"] {
+  --waxwing-accent-contrast: #1d1d1f;
+  --waxwing-bg: #f5f5f7;
+  --waxwing-surface: #ffffff;
+  --waxwing-surface-2: #ebebef;
+  --waxwing-text: #1d1d1f;
+  --waxwing-text-muted: #636366;
+  --waxwing-border: #d2d2d7;
+  --waxwing-focus-ring: #c0560a;
+  --waxwing-danger: #c10016;
+  --waxwing-success: #1e7b34;
+  --waxwing-warning: #8a5d00;
+}

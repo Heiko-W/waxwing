@@ -1,0 +1,22 @@
+{
+  "shell": {
+    "tagline": "{{product}} — Ihre E-Mails, direkt von Ihrem Server.",
+    "placeholder": "Das App-Grundgerüst steht. Postfächer und Nachrichten folgen in den nächsten Meilensteinen.",
+    "nav": "Hauptnavigation"
+  },
+  "theme": {
+    "label": "Darstellung",
+    "auto": "Systemdarstellung übernehmen",
+    "light": "Helle Darstellung",
+    "dark": "Dunkle Darstellung"
+  },
+  "language": {
+    "label": "Sprache",
+    "en": "Englisch",
+    "de": "Deutsch",
+    "short": {
+      "en": "EN",
+      "de": "DE"
+    }
+  }
+}
