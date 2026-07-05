@@ -1,0 +1,70 @@
+# Waxwing — Stalwart JMAP dev / E2E fixture (WP P0.4).
+#
+# A local-only, plain-HTTP JMAP server for development and Playwright E2E. NOT for
+# production: no TLS, a well-known recovery-admin password, and world-known test-account
+# passwords. See ./README.md for the full rationale (ports, accounts, TLS choice) and
+# docs/adr/002 for the design decisions.
+#
+# Drive everything through `pnpm e2e:server` / `pnpm e2e:server:down`, which call
+# ./fixture.mjs (compose up -> wait healthy -> provision accounts -> smoke check).
+#
+# Both variants sit behind compose *profiles*, so a bare `docker compose up` starts nothing
+# by accident — you must select `dev` (the pinned v0.16 baseline) or `main` (compat). They
+# share the host port, so exactly one runs at a time.
+
+name: waxwing-stalwart
+
+x-stalwart-common: &stalwart-common
+  environment:
+    # Emit the session (apiUrl / upload / download / eventSource) and all OAuth/OIDC
+    # endpoints as the host-visible URL instead of https://<hostname>, so a browser or curl
+    # on the host can actually reach them. MUST match the mapped host port below.
+    STALWART_PUBLIC_URL: http://localhost:18080
+    # Stable master admin over HTTP Basic (dev only). With a config.json pre-supplied,
+    # Stalwart prints no temporary admin, so this is how ./fixture.mjs authenticates to
+    # provision the domain + accounts. Password is intentionally well-known — dev only.
+    STALWART_RECOVERY_ADMIN: admin:waxwing-e2e-Pw1!
+  healthcheck:
+    # Plain-HTTP readiness: 200 once the datastore is up. Overrides the image's built-in
+    # check, which probes :443 first and logs harmless TLS errors on a certless dev box.
+    test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:8080/healthz/ready']
+    interval: 5s
+    timeout: 3s
+    retries: 24
+    start_period: 5s
+
+services:
+  # Pinned baseline — NFR-COMPAT-02 (Stalwart v0.16.x). What dev + CI test against.
+  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.11 (non-alpine)
+  # and note it in README.md; the fixture is otherwise identical.
+  stalwart:
+    <<: *stalwart-common
+    profiles: [dev]
+    image: stalwartlabs/stalwart:v0.16.11-alpine
+    container_name: waxwing-stalwart-dev
+    ports:
+      # host 18080 -> container 8080 (plain-HTTP JMAP / web / OAuth). No root, no :443.
+      # Bound to loopback only: this fixture is deliberately insecure (well-known admin +
+      # account passwords), so it must never be reachable off-host. See README §top.
+      - '127.0.0.1:18080:8080'
+    volumes:
+      - ./config:/etc/stalwart:ro # read-only, host-owned RocksDB store descriptor
+      - stalwart-data:/var/lib/stalwart # ephemeral named volume; `down -v` wipes it
+
+  # Non-blocking compatibility target for the scheduled compat job (wired in P0.5). Tracks
+  # the latest published Stalwart. Never runs by default — only with `--profile main`.
+  stalwart-main:
+    <<: *stalwart-common
+    profiles: [main]
+    image: stalwartlabs/stalwart:latest
+    container_name: waxwing-stalwart-main
+    ports:
+      # Loopback only — same rationale as the dev service above.
+      - '127.0.0.1:18080:8080'
+    volumes:
+      - ./config:/etc/stalwart:ro
+      - stalwart-main-data:/var/lib/stalwart
+
+volumes:
+  stalwart-data:
+  stalwart-main-data:

@@ -67,6 +67,13 @@ Common scripts, run from the repo root:
 | `pnpm format` | Biome format-write |
 | `pnpm test` | Unit/component tests (added in later work packages) |
 | `pnpm build` | Build all packages (added in later work packages) |
+| `pnpm e2e:server` | Start a local Stalwart JMAP server with test accounts (Docker) |
+| `pnpm e2e:server:down` | Stop it and wipe its ephemeral data |
+
+Need a real mail server to develop against? `pnpm e2e:server` brings up a pinned, local,
+plain-HTTP [Stalwart](https://stalw.art) instance with ready-made test accounts in one
+command. See [`e2e/stalwart/README.md`](e2e/stalwart/README.md) for accounts, ports, and
+the dev-only TLS choice. Requires Docker.
 
 This is a **pnpm workspace**:
 

@@ -7,6 +7,10 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "e2e": "playwright test",
+    "server:up": "node stalwart/fixture.mjs up",
+    "server:down": "node stalwart/fixture.mjs down",
+    "server:provision": "node stalwart/fixture.mjs provision",
+    "server:smoke": "node stalwart/fixture.mjs smoke",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

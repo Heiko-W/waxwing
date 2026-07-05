@@ -89,7 +89,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | P0.1 | Repo bootstrap (git, workspaces, tooling) | S | — | done | git, pnpm workspace, TS 6 strict base, Biome 2.5, licenses, skeleton |
 | P0.2 | App scaffold (Vite/React, tokens, i18n, config boot) | M | P0.1 | done | Vite 8 + React 19; tokens (WCAG-AA, light/dark); runtime config.json+theme.css; i18n en/de lazy; strict CSP; 80.95 KB gz initial |
 | P0.3 | Test infrastructure (Vitest, RTL, Playwright) | S | P0.1 | done | Vitest 4 projects (jsdom+node), RTL, fake-indexeddb, axe helper, Playwright skeleton; `test`+`e2e` green |
-| P0.4 | Stalwart dev/E2E fixture (Docker) | M | P0.1 | todo | |
+| P0.4 | Stalwart dev/E2E fixture (Docker) | M | P0.1 | done | ADR-002; unauth session = 200 anon, not 401 |
 | P0.5 | CI pipeline + size budgets | S | P0.2–P0.4 | todo | |
 
 ### Phase 1 — Spike (validate risky assumptions)
@@ -260,19 +260,27 @@ devDependencies only (bundle budget unaffected).
 
 Spec: NFR-COMPAT-02 (baseline v0.16), tech-stack §7. Size: M.
 
-- [ ] `e2e/stalwart/docker-compose.yml` with **pinned Stalwart v0.16.x** image; volumes
-      ephemeral; ports documented.
-- [ ] Provisioning script (idempotent): test domain, admin, 2–3 test accounts with known
-      passwords, OAuth/OIDC enabled; runs via Stalwart CLI or HTTP admin API.
-- [ ] TLS story for dev: mkcert or plain-HTTP localhost exception — document choice.
-- [ ] `pnpm e2e:server` (up + provision + healthcheck on `/.well-known/jmap`),
-      `pnpm e2e:server:down`.
-- [ ] Smoke test: unauthenticated session request returns 401; authenticated (Basic)
-      session document parses.
-- [ ] Second compose profile tracking `stalwart:main` for the scheduled compat job (used
-      by P0.5, non-blocking).
+- [x] `e2e/stalwart/docker-compose.yml` with **pinned Stalwart v0.16.11-alpine** image;
+      ephemeral named volumes; host port `18080` documented; healthcheck on `/healthz/ready`.
+- [x] Provisioning script (idempotent, `e2e/stalwart/fixture.mjs`): test domain
+      `waxwing.test` (Stalwart rejects `test.example`), recovery `admin`, users
+      alice/bob/carol with a shared known password; OAuth/OIDC on by default; runs over the
+      JMAP management API (`x:Domain/set`/`x:Account/set`, query-before-create). *v0.16 has
+      no static-account config, so accounts are provisioned after boot — ADR-002.*
+- [x] TLS story for dev: **plain-HTTP localhost exception** (no TLS, loopback only) — chosen
+      over mkcert; documented in the fixture README + ADR-002.
+- [x] `pnpm e2e:server` (up + provision + smoke + healthcheck poll on `/.well-known/jmap`),
+      `pnpm e2e:server:down` (`down -v`; profile-aware so it removes the running variant).
+- [x] Smoke test (ADR-002): unauthenticated session → **200 anonymous** (empty
+      `accounts`/`username`, i.e. no data leak — Stalwart does **not** 401 here); **invalid**
+      Basic credentials → **401**; **valid** Basic → **200** session with `capabilities` +
+      non-empty `accounts`.
+- [x] Second compose profile (`main`) tracking `stalwart:latest` for the scheduled compat
+      job (used by P0.5, non-blocking); never runs by default.
 
 Done when: one command gives any contributor a working JMAP server with test accounts.
+✅ `pnpm e2e:server` boots + provisions + smoke-checks; `pnpm e2e:server:down` leaves no
+containers/volumes/networks.
 
 ### P0.5 — CI pipeline + size budgets
 
@@ -282,8 +290,9 @@ Spec: NFR-PERF-01/03, NFR-QUAL-01, tech-stack §6. Size: S.
       build → `size-limit` gate → Playwright E2E against the P0.4 fixture.
 - [ ] `size-limit` config: **≤ 300 KB gzipped initial JS** for `apps/web` critical path;
       per-package budgets for `@waxwing/jmap` (target ≤ 15 KB gz) and `@waxwing/mail-html`.
-- [ ] Scheduled weekly job: E2E smoke against `stalwart:main` (non-blocking, opens an
-      issue on failure).
+- [ ] Scheduled weekly job: E2E smoke against the `main` compat profile
+      (`stalwart:latest` — there is no `stalwart:main` tag; the `dev` baseline is pinned to
+      `v0.16.11-alpine`), non-blocking, opens an issue on failure.
 - [ ] Badge/status wiring in README.
 
 Done when: a PR that violates the size budget or breaks a test cannot merge.
@@ -1184,3 +1193,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | **ADR-001** — adopt Vite 8 (+ @vitejs/plugin-react 6, Rolldown) instead of Vite 7; tech-stack.md updated. |
 | 2026-07-05 | P0.2 **done** — app scaffold: Vite 8 + React 19 (`base: './'`), `--waxwing-*` design tokens (light/dark, WCAG AA), runtime `config.json`+`theme.css` boot loader (typed, network-first), i18next en/de lazy locales + Intl helpers, strict production CSP + documented dev delta, Lucide. Booted under a path prefix (Playwright); 80.95 KB gz initial JS. |
 | 2026-07-05 | P0.3 **done** — test infra: Vitest 4 workspace (`unit` node + `fake-indexeddb`, `web` jsdom + Testing Library), `axe-core` a11y helper (WCAG A/AA), Playwright skeleton (self-contained placeholder spec), one example test per level. `pnpm test` + `pnpm e2e` green; devDeps only. |
+| 2026-07-05 | **ADR-002** — Stalwart dev/E2E fixture design: v0.16 has no static accounts (provision over JMAP mgmt API); unauth session is 200 anonymous (not 401); plain-HTTP localhost (no TLS); domain `waxwing.test`. Plan P0.4 smoke wording updated. |
+| 2026-07-05 | P0.4 **done** — Stalwart JMAP dev/E2E fixture: `e2e/stalwart` (compose `dev`+`main` profiles, pinned v0.16.11-alpine, port 18080, ephemeral volumes, healthcheck), idempotent `fixture.mjs` provisioner (domain `waxwing.test` + admin/alice/bob/carol, shared pw), self-verifying smoke check. `pnpm e2e:server` / `e2e:server:down` verified up→provision→smoke→clean teardown; lint + typecheck green. |

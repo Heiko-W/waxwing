@@ -17,6 +17,12 @@ blob-report/
 # Vite
 .vite/
 
+# Stalwart dev/E2E fixture runtime data. The fixture (e2e/stalwart) persists to ephemeral
+# Docker *named volumes* (wiped by `pnpm e2e:server:down`), so nothing normally lands here;
+# these entries only matter if someone switches the compose file to host bind-mounts.
+e2e/stalwart/data/
+e2e/stalwart/.data/
+
 # Logs
 *.log
 npm-debug.log*
