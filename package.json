@@ -19,13 +19,20 @@
     "test:watch": "vitest",
     "e2e": "pnpm --filter @waxwing/e2e run e2e",
     "e2e:server": "pnpm --filter @waxwing/e2e run server:up",
+    "e2e:server:main": "pnpm --filter @waxwing/e2e run server:up:main",
     "e2e:server:down": "pnpm --filter @waxwing/e2e run server:down",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "size": "pnpm --filter @waxwing/web build && size-limit",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm size",
+    "verify:e2e": "node scripts/verify-e2e.mjs",
+    "verify:all": "pnpm verify && pnpm verify:e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
+    "@size-limit/file": "12.1.0",
     "@types/node": "24.13.2",
     "fake-indexeddb": "6.2.5",
+    "size-limit": "12.1.0",
     "typescript": "6.0.3",
     "vitest": "4.1.9"
   }

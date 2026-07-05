@@ -65,10 +65,20 @@ Common scripts, run from the repo root:
 | `pnpm lint` | Biome lint + format + import-sort check |
 | `pnpm lint:fix` | Biome auto-fix (lint + format + import sort) |
 | `pnpm format` | Biome format-write |
-| `pnpm test` | Unit/component tests (added in later work packages) |
-| `pnpm build` | Build all packages (added in later work packages) |
+| `pnpm test` | Unit/component tests (Vitest) |
+| `pnpm build` | Build all packages |
+| `pnpm size` | Build `apps/web` and check it against the `size-limit` budget (≤ 300 KB gz initial JS) |
+| `pnpm verify` | **Run before committing** — the fast gate: `typecheck` → `lint` → `test` → `size` (no Docker/browser) |
+| `pnpm verify:e2e` | The E2E gate (needs Docker): install chromium, bring the Stalwart fixture up + smoke, run Playwright, always tear down |
+| `pnpm verify:all` | `pnpm verify` then `pnpm verify:e2e` |
 | `pnpm e2e:server` | Start a local Stalwart JMAP server with test accounts (Docker) |
 | `pnpm e2e:server:down` | Stop it and wipe its ephemeral data |
+
+**Before committing, run `pnpm verify`** (and `pnpm verify:e2e` when you have Docker). These
+scripts are the pre-merge gate: they run the same checks a CI would (typecheck, Biome, tests,
+build, `size-limit` budget, the Stalwart fixture smoke, and the Playwright suite). GitHub
+Actions CI is deliberately deferred while the project is local ([ADR-003](docs/adr/003-local-verify-first-ci-later.md));
+the future workflow will simply wrap these scripts.
 
 Need a real mail server to develop against? `pnpm e2e:server` brings up a pinned, local,
 plain-HTTP [Stalwart](https://stalw.art) instance with ready-made test accounts in one

@@ -90,7 +90,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | P0.2 | App scaffold (Vite/React, tokens, i18n, config boot) | M | P0.1 | done | Vite 8 + React 19; tokens (WCAG-AA, light/dark); runtime config.json+theme.css; i18n en/de lazy; strict CSP; 80.95 KB gz initial |
 | P0.3 | Test infrastructure (Vitest, RTL, Playwright) | S | P0.1 | done | Vitest 4 projects (jsdom+node), RTL, fake-indexeddb, axe helper, Playwright skeleton; `test`+`e2e` green |
 | P0.4 | Stalwart dev/E2E fixture (Docker) | M | P0.1 | done | ADR-002; unauth session = 200 anon, not 401 |
-| P0.5 | CI pipeline + size budgets | S | P0.2–P0.4 | todo | |
+| P0.5 | Local verify scripts + size budgets | S | P0.2–P0.4 | done | ADR-003: re-scoped to local `pnpm verify` (typecheck+lint+test+size) / `verify:e2e` (Docker+Playwright, try/finally teardown); 300 KB gz gate enforced; GitHub Actions CI deferred |
 
 ### Phase 1 — Spike (validate risky assumptions)
 
@@ -282,23 +282,38 @@ Done when: one command gives any contributor a working JMAP server with test acc
 ✅ `pnpm e2e:server` boots + provisions + smoke-checks; `pnpm e2e:server:down` leaves no
 containers/volumes/networks.
 
-### P0.5 — CI pipeline + size budgets
+### P0.5 — Local verify scripts + size budgets
 
 Spec: NFR-PERF-01/03, NFR-QUAL-01, tech-stack §6. Size: S.
 
-- [ ] GitHub Actions: install (pnpm cache) → typecheck → Biome → unit/component tests →
-      build → `size-limit` gate → Playwright E2E against the P0.4 fixture.
-- [ ] `size-limit` config: **≤ 300 KB gzipped initial JS** for `apps/web` critical path;
-      per-package budgets for `@waxwing/jmap` (target ≤ 15 KB gz) and `@waxwing/mail-html`.
-- [ ] Scheduled weekly job: E2E smoke against the `main` compat profile
-      (`stalwart:latest` — there is no `stalwart:main` tag; the `dev` baseline is pinned to
-      `v0.16.11-alpine`), non-blocking, opens an issue on failure.
-- [ ] Badge/status wiring in README.
+Re-scoped by **ADR-003** (local verify scripts now, GitHub Actions CI later): there is no
+repo/remote/branch protection to attach a pipeline to yet, so the same checks a CI would
+run are realized as two root scripts. The future GitHub Actions workflow is expected to be a
+thin wrapper over these scripts.
 
-Done when: a PR that violates the size budget or breaks a test cannot merge.
+- [x] `pnpm verify` — fast hermetic gate, fail-fast in sequence: `typecheck` → `lint`
+      (Biome) → `test` (Vitest) → `size` (`size-limit`; builds `apps/web` first, so the prod
+      build **and** the ≤ 300 KB gz budget are both exercised).
+- [x] `pnpm verify:e2e` — Docker + browser gate (`scripts/verify-e2e.mjs`, dependency-free):
+      install pinned Playwright chromium → bring the P0.4 Stalwart fixture up (`pnpm
+      e2e:server`, self-smokes per ADR-002) → Playwright suite (`pnpm e2e`) → **always** tear
+      down (`pnpm e2e:server:down`) via `try/finally` + signal handlers.
+- [x] `pnpm verify:all` = `pnpm verify && pnpm verify:e2e`.
+- [x] `size-limit` config (`.size-limit.js`): **≤ 300 KB gzipped initial JS** for `apps/web`
+      critical path (ENFORCED). Per-package budgets for `@waxwing/jmap` (target ≤ 15 KB gz)
+      and `@waxwing/mail-html` are documented but DEFERRED until those packages emit a lib
+      build (SP.1 / M1.7).
+- [~] _Deferred to the eventual GitHub Actions CI (per ADR-003):_ the pipeline itself and
+      its server-side "cannot merge" branch protection; the scheduled weekly compat job
+      against the `main` profile (`stalwart:latest`); README status badges.
 
-**Phase 0 exit criteria:** all P0 WPs done; a fresh clone reaches green CI locally in
-< 10 minutes; Stalwart fixture documented in README.
+Done when: ✅ `pnpm verify` fails non-zero on a size-budget overrun or broken test, and
+`pnpm verify:e2e` runs the fixture E2E with guaranteed teardown. GitHub Actions branch
+protection ("cannot merge") deferred per ADR-003.
+
+**Phase 0 exit criteria:** all P0 WPs done; a fresh clone reaches green via `pnpm verify:all`
+locally in < 10 minutes (GitHub Actions CI deferred per ADR-003); Stalwart fixture
+documented in README.
 
 ---
 
@@ -1195,3 +1210,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | P0.3 **done** — test infra: Vitest 4 workspace (`unit` node + `fake-indexeddb`, `web` jsdom + Testing Library), `axe-core` a11y helper (WCAG A/AA), Playwright skeleton (self-contained placeholder spec), one example test per level. `pnpm test` + `pnpm e2e` green; devDeps only. |
 | 2026-07-05 | **ADR-002** — Stalwart dev/E2E fixture design: v0.16 has no static accounts (provision over JMAP mgmt API); unauth session is 200 anonymous (not 401); plain-HTTP localhost (no TLS); domain `waxwing.test`. Plan P0.4 smoke wording updated. |
 | 2026-07-05 | P0.4 **done** — Stalwart JMAP dev/E2E fixture: `e2e/stalwart` (compose `dev`+`main` profiles, pinned v0.16.11-alpine, port 18080, ephemeral volumes, healthcheck), idempotent `fixture.mjs` provisioner (domain `waxwing.test` + admin/alice/bob/carol, shared pw), self-verifying smoke check. `pnpm e2e:server` / `e2e:server:down` verified up→provision→smoke→clean teardown; lint + typecheck green. |
+| 2026-07-05 | **ADR-003** — local verify scripts now, GitHub Actions CI later (owner decision): `pnpm verify` / `verify:e2e` / `verify:all` run the same checks a CI would; GitHub Actions + branch protection deferred until a repo exists. |
+| 2026-07-05 | P0.5 **done** (re-scoped, ADR-003) — local verification gate: `pnpm verify` (typecheck+lint+test+`size-limit` ≤ 300 KB gz, ~80.6 KB actual) and `pnpm verify:e2e` (`scripts/verify-e2e.mjs`: chromium + Stalwart fixture smoke + Playwright + guaranteed teardown). `pnpm verify:all` green. GitHub Actions CI / compat job / badges deferred. |

@@ -8,6 +8,7 @@
   "scripts": {
     "e2e": "playwright test",
     "server:up": "node stalwart/fixture.mjs up",
+    "server:up:main": "node stalwart/fixture.mjs up main",
     "server:down": "node stalwart/fixture.mjs down",
     "server:provision": "node stalwart/fixture.mjs provision",
     "server:smoke": "node stalwart/fixture.mjs smoke",
