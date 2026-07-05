@@ -96,7 +96,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
-| SP.1 | `@waxwing/jmap` core (session, calls, chunking) | L | P0.1, P0.4 | todo | |
+| SP.1 | `@waxwing/jmap` core (session, calls, chunking) | L | P0.1, P0.4 | done | zero-dep MIT client; session/back-refs/auto-chunk/blob/auth; 64 unit + 4 live-fixture tests; 9.32 KB gz |
 | SP.2 | Auth: OAuth PKCE + token storage + Basic scheme | M | SP.1, P0.4 | todo | |
 | SP.3 | Push transports: EventSource + WebSocket (RFC 8887) | M | SP.1 | todo | |
 | SP.4 | Raw end-to-end demo (login → list → message) | M | SP.1, SP.2, P0.2 | todo | |
@@ -327,29 +327,41 @@ not** — SP.4 is a throwaway dev page. Everything learned lands in SP.5's repor
 
 Spec: FR-SRV-01/02/03, tech-stack §4.2. Size: L.
 
-- [ ] Package scaffold: zero runtime deps, ESM, `exports` map, tsup or vite lib build.
-- [ ] Session: fetch + parse `/.well-known/jmap` (relative for same-origin, absolute for
+- [x] Package scaffold: zero runtime deps, ESM, `exports` map, tsup lib build (dist ESM +
+      d.ts); `sideEffects: false`.
+- [x] Session: fetch + parse `/.well-known/jmap` (relative for same-origin, absolute for
       manual connect); typed `Session`, `Account`, capability objects; re-fetch on
-      `sessionState` change.
-- [ ] Request layer: typed `Invocation`s, method-call builder with client-side ids,
+      `sessionState` change (`sessionStateChanged`).
+- [x] Request layer: typed `Invocation`s, method-call builder with client-side ids,
       **back-references** (`ResultReference`/`#`), request-level and method-level error
       types per RFC 8620 §3.5–3.6.
-- [ ] **Auto-chunking** against session limits: `maxCallsInRequest`, `maxObjectsInGet`,
+- [x] **Auto-chunking** against session limits: `maxCallsInRequest`, `maxObjectsInGet`,
       `maxObjectsInSet`, `maxSizeRequest` (FR-SRV-03); transparent re-assembly of results.
-- [ ] Types (spike scope): Core (`Core/echo`), `Mailbox/*`, `Email/*` (incl. `Email/query`,
-      `Email/changes`, `Email/queryChanges`, `Email/parse`), `Thread/*`. Reference
-      `jmap-rfc-types` / `jmap-jam` (MIT) for shape-checking, don't depend on them.
-      *(Submission, Identity, VacationResponse, SearchSnippet, PushSubscription follow in
-      M1/M2; Blob RFC 9404, Quota RFC 9425, Sieve RFC 9661, Contacts RFC 9610 follow when
-      first used — but reserve the module layout for all of them now.)*
-- [ ] Blob transfer: upload via session `uploadUrl`, download via `downloadUrl` URI
-      template ({accountId}, {blobId}, {type}, {name}); progress callbacks.
-- [ ] Auth-scheme abstraction (`Bearer` / `Basic`) injected into all transports (FR-AUTH-04
-      groundwork).
-- [ ] Unit tests: chunking edge cases, back-ref resolution, error mapping (mock fetch).
+      Reference-connected calls kept in one request; split `/set` merges partial failures
+      into per-object `SetError`s (non-atomic, documented). Limits from the core capability
+      with conservative fallbacks.
+- [x] Types (spike scope): Core (`Core/echo`), `Mailbox/*`, `Email/*` (incl. `Email/query`,
+      `Email/changes`, `Email/queryChanges`, `Email/parse`), `Thread/*`; typed method
+      registry (`Methods`). Reserved module slots for Submission/Identity/Vacation/
+      SearchSnippet/PushSubscription/Blob/Quota/Sieve/Contacts (`types/index.ts`,
+      `capabilities.ts`). Referenced `jmap-rfc-types`/`jmap-jam` (MIT); no dependency.
+- [x] Blob transfer: upload via session `uploadUrl`, download via `downloadUrl` URI
+      template ({accountId}, {blobId}, {type}, {name}); progress callbacks; RFC 6570 escaping.
+- [x] Auth-scheme abstraction (`bearer` / `basic`) injected into all transports (FR-AUTH-04
+      groundwork); injectable `fetch`.
+- [x] Unit tests: chunking edge cases, back-ref resolution, error mapping (mock fetch) —
+      64 hermetic unit tests.
 
 Done when: against the P0.4 fixture, an integration test lists mailboxes, queries and
 fetches emails, and round-trips a blob — all through the typed API.
+✅ Verified 2026-07-05: `pnpm verify` green (64 unit tests, hermetic); `@waxwing/jmap`
+builds via tsup to **9.32 KB gz** (SP.1 target ≤ 15 KB); integration test **4/4 against the
+live Stalwart fixture** — `getSession`+capabilities, role-mailbox listing, `Email/set`
+create → back-referenced `Email/query`→`Email/get`, blob upload/download byte-for-byte.
+Two real bugs fixed under review (creation-id-key chunk grouping; split-`/set` partial-
+failure data loss). Deferred: activate the `@waxwing/jmap` size-limit budget in the `size`
+pipeline; oversized *splittable* `/get` currently throws rather than size-splitting (locked
+by a test).
 
 ### SP.2 — Auth: OAuth PKCE + token storage + Basic
 
@@ -1212,3 +1224,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | P0.4 **done** — Stalwart JMAP dev/E2E fixture: `e2e/stalwart` (compose `dev`+`main` profiles, pinned v0.16.11-alpine, port 18080, ephemeral volumes, healthcheck), idempotent `fixture.mjs` provisioner (domain `waxwing.test` + admin/alice/bob/carol, shared pw), self-verifying smoke check. `pnpm e2e:server` / `e2e:server:down` verified up→provision→smoke→clean teardown; lint + typecheck green. |
 | 2026-07-05 | **ADR-003** — local verify scripts now, GitHub Actions CI later (owner decision): `pnpm verify` / `verify:e2e` / `verify:all` run the same checks a CI would; GitHub Actions + branch protection deferred until a repo exists. |
 | 2026-07-05 | P0.5 **done** (re-scoped, ADR-003) — local verification gate: `pnpm verify` (typecheck+lint+test+`size-limit` ≤ 300 KB gz, ~80.6 KB actual) and `pnpm verify:e2e` (`scripts/verify-e2e.mjs`: chromium + Stalwart fixture smoke + Playwright + guaranteed teardown). `pnpm verify:all` green. GitHub Actions CI / compat job / badges deferred. |
+| 2026-07-05 | SP.1 **done** — `@waxwing/jmap` core: zero-dep MIT client (session discovery, `bearer`/`basic` auth abstraction, batched requests + back-references, auto-chunking against session limits, RFC 8620/8621 types + typed method registry, blob upload/download). tsup build **9.32 KB gz**; 64 hermetic unit tests + a 4/4 live integration test against the Stalwart fixture (list mailboxes, `Email/set`→back-ref query→get, blob round-trip). Review caught + fixed a chunking blocker and a split-`/set` data-loss bug. Starts Phase 1 (Spike). |

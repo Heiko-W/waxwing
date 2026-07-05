@@ -1,0 +1,159 @@
+import type { Invocation, MethodErrorObject, ProblemDetails, SetError } from './types/core'
+
+/**
+ * Error hierarchy for the three JMAP failure layers (RFC 8620 §3.6):
+ *
+ *  - {@link JmapProblemError} / {@link JmapHttpError} — request-level (HTTP error body).
+ *  - {@link JmapMethodError} — method-level (an `["error", …]` response invocation).
+ *  - {@link SetError} — per-record failure inside a `/set` response (a value, not thrown).
+ */
+
+/** Base class for all errors thrown by `@waxwing/jmap`. */
+export class JmapError extends Error {
+  override name = 'JmapError'
+}
+
+/**
+ * A non-JMAP HTTP failure (401 auth, 404 wrong URL, 5xx, …) where the body is not an
+ * RFC 7807 problem document.
+ */
+export class JmapHttpError extends JmapError {
+  override name = 'JmapHttpError'
+  constructor(
+    /** HTTP status code. */
+    readonly status: number,
+    /** Raw response body (text), if any. */
+    readonly body: string,
+    message?: string,
+  ) {
+    super(message ?? `HTTP ${status}`)
+  }
+}
+
+/**
+ * A request-level JMAP error (RFC 8620 §3.6.1): HTTP 400 with
+ * `Content-Type: application/problem+json`. `type` is a URN such as
+ * `urn:ietf:params:jmap:error:limit`.
+ */
+export class JmapProblemError extends JmapError {
+  override name = 'JmapProblemError'
+  readonly type: string
+  readonly status: number | undefined
+  readonly detail: string | undefined
+  readonly limit: string | undefined
+  readonly problem: ProblemDetails
+  constructor(problem: ProblemDetails, httpStatus?: number) {
+    super(problem.detail ?? problem.type)
+    this.type = problem.type
+    this.status = problem.status ?? httpStatus
+    this.detail = problem.detail
+    this.limit = problem.limit
+    this.problem = problem
+  }
+}
+
+/**
+ * A method-level error (RFC 8620 §3.6.2): an `["error", { type, description }, callId]`
+ * invocation. HTTP stays 200 and later method calls still run, so this is thrown only
+ * when a caller unwraps a specific call's result.
+ */
+export class JmapMethodError extends JmapError {
+  override name = 'JmapMethodError'
+  readonly type: string
+  readonly description: string | undefined
+  constructor(
+    error: MethodErrorObject,
+    /** `methodCallId` this error was returned for. */
+    readonly callId: string,
+    /** The invoked method name, when known. */
+    readonly methodName?: string,
+  ) {
+    super(error.description ?? error.type)
+    this.type = error.type
+    this.description = error.description
+  }
+}
+
+/** Standard request-level problem URNs (RFC 8620 §3.6.1). */
+export const ProblemTypes = {
+  unknownCapability: 'urn:ietf:params:jmap:error:unknownCapability',
+  notJSON: 'urn:ietf:params:jmap:error:notJSON',
+  notRequest: 'urn:ietf:params:jmap:error:notRequest',
+  limit: 'urn:ietf:params:jmap:error:limit',
+} as const
+
+/**
+ * Standard method-level error `type` strings (RFC 8620 §3.6.2 + the per-method additions in
+ * §5). Unknown types MUST be treated as `serverFail`, so match against these but never switch
+ * exhaustively. Notably `cannotCalculateChanges` is what `Foo/changes` and `Foo/queryChanges`
+ * raise when a delta cannot be produced — the client must discard its cache and full-resync.
+ */
+export const MethodErrorTypes = {
+  serverUnavailable: 'serverUnavailable',
+  serverFail: 'serverFail',
+  serverPartialFail: 'serverPartialFail',
+  unknownMethod: 'unknownMethod',
+  invalidArguments: 'invalidArguments',
+  invalidResultReference: 'invalidResultReference',
+  forbidden: 'forbidden',
+  accountNotFound: 'accountNotFound',
+  accountNotSupportedByMethod: 'accountNotSupportedByMethod',
+  accountReadOnly: 'accountReadOnly',
+  requestTooLarge: 'requestTooLarge',
+  cannotCalculateChanges: 'cannotCalculateChanges',
+  stateMismatch: 'stateMismatch',
+  unsupportedFilter: 'unsupportedFilter',
+  unsupportedSort: 'unsupportedSort',
+  anchorNotFound: 'anchorNotFound',
+  tooManyChanges: 'tooManyChanges',
+} as const
+
+/** `true` if a thrown {@link JmapMethodError} (or any `{ type }`) has the given method-error type. */
+export function isMethodErrorType(error: { type: string }, type: string): boolean {
+  return error.type === type
+}
+
+/** `true` if an invocation is a method-level error response (`["error", …]`). */
+export function isMethodError(invocation: Invocation): invocation is Invocation<MethodErrorObject> {
+  return invocation[0] === 'error'
+}
+
+/** Narrows an unknown value to an RFC 7807 problem document (has a string `type`). */
+function isProblemDetails(value: unknown): value is ProblemDetails {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { type?: unknown }).type === 'string'
+  )
+}
+
+/**
+ * Maps a failed `fetch` Response to the appropriate error. An
+ * `application/problem+json` body becomes a {@link JmapProblemError}; anything else a
+ * {@link JmapHttpError}. Never throws on a malformed body.
+ */
+export async function errorFromResponse(response: Response): Promise<JmapError> {
+  const contentType = response.headers.get('content-type') ?? ''
+  const text = await response.text().catch(() => '')
+  if (
+    contentType.includes('application/problem+json') ||
+    contentType.includes('application/json')
+  ) {
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (isProblemDetails(parsed)) return new JmapProblemError(parsed, response.status)
+    } catch {
+      // fall through to a plain HTTP error
+    }
+  }
+  return new JmapHttpError(
+    response.status,
+    text,
+    `HTTP ${response.status} ${response.statusText}`.trim(),
+  )
+}
+
+/** `true` if a {@link SetError} represents the given standard type. */
+export function isSetErrorType(error: SetError, type: string): boolean {
+  return error.type === type
+}
