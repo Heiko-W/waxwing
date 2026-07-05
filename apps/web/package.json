@@ -1,0 +1,8 @@
+{
+  "name": "@waxwing/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Waxwing — the serverless webmail SPA (JMAP).",
+  "license": "AGPL-3.0-only"
+}

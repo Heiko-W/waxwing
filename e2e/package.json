@@ -1,0 +1,8 @@
+{
+  "name": "@waxwing/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright end-to-end suites and the Stalwart JMAP dev/test fixture.",
+  "license": "AGPL-3.0-only"
+}

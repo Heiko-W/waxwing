@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Waxwing logo mark">
+  <title>Waxwing</title>
+  <defs>
+    <mask id="waxwing-m">
+      <rect width="256" height="256" fill="black"/>
+      <!-- tail (back, down-left) -->
+      <polygon points="72,170 20,208 32,228 86,196" fill="white"/>
+      <!-- body -->
+      <circle cx="120" cy="150" r="62" fill="white"/>
+      <!-- head -->
+      <circle cx="170" cy="104" r="40" fill="white"/>
+      <!-- crest (swept back) -->
+      <polygon points="148,80 103,36 184,70" fill="white"/>
+      <!-- beak -->
+      <polygon points="204,92 238,106 204,120" fill="white"/>
+      <!-- legs -->
+      <line x1="108" y1="208" x2="103" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
+      <line x1="134" y1="206" x2="131" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
+      <!-- eye (punched out) -->
+      <circle cx="180" cy="98" r="6.5" fill="black"/>
+    </mask>
+  </defs>
+  <rect width="256" height="256" fill="#E8770E" mask="url(#waxwing-m)"/>
+  <!-- the sealing-wax drop on the wing -->
+  <circle cx="97" cy="164" r="10" fill="#C4331D"/>
+</svg>

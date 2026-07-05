@@ -1,0 +1,14 @@
+{
+  "name": "@waxwing/mail-html",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HTML-mail sanitizer pipeline + sandboxed iframe renderer.",
+  "license": "AGPL-3.0-only",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "waxwing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A serverless (static-only) webmail client for JMAP.",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@11.1.1",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "pnpm -r --if-present test",
+    "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.2",
+    "typescript": "6.0.3"
+  }
+}

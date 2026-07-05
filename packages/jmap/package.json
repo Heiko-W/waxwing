@@ -1,0 +1,14 @@
+{
+  "name": "@waxwing/jmap",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed JMAP client (RFC 8620/8621 and extensions) — the JMAP core for Waxwing.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
