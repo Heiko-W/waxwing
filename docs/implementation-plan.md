@@ -97,7 +97,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
 | SP.1 | `@waxwing/jmap` core (session, calls, chunking) | L | P0.1, P0.4 | done | zero-dep MIT client; session/back-refs/auto-chunk/blob/auth; 64 unit + 4 live-fixture tests; 9.32 KB gz |
-| SP.2 | Auth: OAuth PKCE + token storage + Basic scheme | M | SP.1, P0.4 | todo | |
+| SP.2 | Auth: OAuth PKCE + token storage + Basic scheme | M | SP.1, P0.4 | done | Auth module + 31 hermetic tests (green); `apps/web/src/auth/`; oauth4webapi 3.8.6. Done-when verified LIVE against Stalwart v0.16.11 (OAuth PKCE dance via real login page + Basic): login → Mailbox/get → forced refresh → logout. Review fixes applied (single-flight refresh, callback-param scrub on all paths, terminal-refresh purge, account-scoped store per ADR-004, dev-CSP Stalwart origin). Live-only interop fix: strip Stalwart's unsolicited ES256 id_token. No client registration / no revocation endpoint (SP.5 findings) |
 | SP.3 | Push transports: EventSource + WebSocket (RFC 8887) | M | SP.1 | todo | |
 | SP.4 | Raw end-to-end demo (login → list → message) | M | SP.1, SP.2, P0.2 | todo | |
 | SP.5 | Spike report, ADRs, validation checklist | S | SP.1–SP.4 | todo | |
@@ -367,21 +367,69 @@ by a test).
 
 Spec: FR-AUTH-01/02/03/04/05, NFR-SEC-02, tech-stack §4.7. Size: M.
 
-- [ ] RFC 8414 discovery against Stalwart's OIDC metadata; Authorization Code + PKCE via
+- [x] RFC 8414 discovery against Stalwart's OIDC metadata; Authorization Code + PKCE via
       `oauth4webapi`; redirect handling that works under any path prefix (FR-DEP-02).
-- [ ] Token lifecycle: access token in memory only; refresh token in IndexedDB wrapped by
+- [x] Token lifecycle: access token in memory only; refresh token in IndexedDB wrapped by
       a **non-extractable WebCrypto AES key** (also stored in IndexedDB as CryptoKey);
       silent refresh; offline start from persisted refresh token.
-- [ ] Clarify Stalwart client-registration behavior: default no pre-registration vs.
+- [x] Clarify Stalwart client-registration behavior: default no pre-registration vs.
       `requireClientRegistration` → client id from `config.json` (record in SP.5).
-- [ ] Basic-auth path behind the same auth-scheme abstraction; "stay signed in" opt-in.
-- [ ] Logout: token revocation where supported + full local wipe (IndexedDB, caches,
+- [x] Basic-auth path behind the same auth-scheme abstraction; "stay signed in" opt-in.
+- [x] Logout: token revocation where supported + full local wipe (IndexedDB, caches,
       registrations) — the FR-AUTH-05 primitive, UI comes in M1.4.
-- [ ] Unit tests for token store; integration test: full PKCE dance against the fixture
-      (Playwright, since it needs a real redirect).
+- [x] Unit tests for token store; integration test: full PKCE dance against the fixture
+      (Playwright, since it needs a real redirect). _31 hermetic tests; plus a live Playwright
+      driver exercised the real Stalwart login page end-to-end (throwaway, not committed —
+      the permanent fixture-backed suite lands with SP.4/M1.9's redirect UI)._
 
 Done when: login → API call → token refresh → logout works against local Stalwart with
-both OAuth and Basic.
+both OAuth and Basic. **✓ Verified live** against Stalwart v0.16.11-alpine: OAuth
+Authorization-Code + PKCE(S256) driven through Stalwart's real `/login` page as
+`alice@waxwing.test` → callback code exchange at `/auth/token` → `Mailbox/get` (5 mailboxes)
+→ forced silent refresh (access token rotated, JMAP re-verified) → logout (no revocation
+endpoint → local wipe; refresh token destroyed); and the Basic path (session + `Mailbox/get`).
+
+**SP.2 progress (auth module complete; hermetic + live verification green).**
+Implemented in `apps/web/src/auth/` (`AuthController` orchestrates OAuth + Basic; `SecretStore`
+wraps secrets under a non-extractable AES-GCM `CryptoKey` in IndexedDB — never
+`local`/`sessionStorage`, NFR-SEC-02; `TokenStore` keeps the access token in memory and
+persists only the refresh token; `oauth.ts` wraps `oauth4webapi@3.8.6`; `wipe.ts` is the
+FR-AUTH-05 remove-data primitive). Redirect URI is derived from `document.baseURI` at runtime
+(FR-DEP-02). `pnpm typecheck`/`lint`/`test` (93 tests: +31 auth) and
+`pnpm --filter @waxwing/web build` all green; bundle unchanged at 80.55 KB gz (auth is
+tree-shaken until SP.4/M1.4 import it; projected delta ≈ 10 KB gz, oauth4webapi ≈ 14 KB gz
+standalone).
+
+**Review fixes applied (post-implementation review):** silent refresh is now single-flighted
+(concurrent callers share one `refresh_token` grant, so a rotation cannot invalidate racing
+refreshes); OAuth callback params (`code`/`state`/`error`) are scrubbed from the URL on every
+exit path, not just success (NFR-SEC-04); a terminal refresh rejection (`invalid_grant`/
+`invalid_client`) now also purges the persisted refresh token so `restore()` cannot resurrect
+a phantom session; the secret store is account-scoped by database name from day one
+(FR-AUTH-07, **ADR-004**) so a second account is additive, not a migration; and the dev-server
+CSP (`vite.config.ts`, dev-only, never the prod `index.html`) names the `http://localhost:18080`
+Stalwart origin in `connect-src` so the browser OAuth flow is not blocked in dev/E2E.
+
+**Findings for SP.5 (updated; now live-verified against Stalwart v0.16.11-alpine):**
+(1) **No** OAuth client pre-registration — a fixed public `client_id` (`waxwing`) +
+`token_endpoint_auth_method=none` + PKCE(S256) completes the flow; Stalwart's `/login`
+authorization endpoint accepts the unregistered client with an arbitrary `http://localhost:PORT`
+redirect_uri (200 + login page). `e2e/stalwart/fixture.mjs` left unchanged.
+(2) **No** RFC 7009 revocation endpoint (nor `end_session_endpoint`) is advertised in either
+discovery doc, so logout = local wipe + natural expiry (confirmed live: `revokeToken` returns
+`false`). (3) Access tokens are **opaque** (`sw1.` prefix), not JWTs; the refresh token is
+reused (not rotated) on a fresh access token, so the store retains the prior refresh token when
+the response omits one. (4) **Interop gotcha (fixed):** Stalwart returns an **unsolicited
+ES256 `id_token`** from `/auth/token` on both the code exchange and refresh even though we
+never request `openid`; because the RFC 8414 metadata omits `id_token_signing_alg_values_supported`,
+oauth4webapi defaults the expected id_token alg to RS256 and aborts the exchange
+(`unexpected JWT "alg"`). `oauth.ts` now strips the unsolicited id_token before oauth4webapi
+validates it, keeping us on the pure-OAuth2 path (regression-locked by a hermetic test).
+(5) Refresh-token lifetime: `expires_in=3600` for the access token; refresh-token TTL not
+introspected here (open for SP.5 — introspection_endpoint IS advertised). Discovery defaults
+to `oauth2` (RFC 8414); default scopes `mail` + `offline_access` (no `openid`). Follow-ups:
+the browser WS/SSE bearer-auth question (EventSource cannot send `Authorization`) stays with
+SP.3/SP.5; the permanent fixture-backed Playwright login suite lands with SP.4/M1.9.
 
 ### SP.3 — Push transports
 
@@ -1225,3 +1273,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | **ADR-003** — local verify scripts now, GitHub Actions CI later (owner decision): `pnpm verify` / `verify:e2e` / `verify:all` run the same checks a CI would; GitHub Actions + branch protection deferred until a repo exists. |
 | 2026-07-05 | P0.5 **done** (re-scoped, ADR-003) — local verification gate: `pnpm verify` (typecheck+lint+test+`size-limit` ≤ 300 KB gz, ~80.6 KB actual) and `pnpm verify:e2e` (`scripts/verify-e2e.mjs`: chromium + Stalwart fixture smoke + Playwright + guaranteed teardown). `pnpm verify:all` green. GitHub Actions CI / compat job / badges deferred. |
 | 2026-07-05 | SP.1 **done** — `@waxwing/jmap` core: zero-dep MIT client (session discovery, `bearer`/`basic` auth abstraction, batched requests + back-references, auto-chunking against session limits, RFC 8620/8621 types + typed method registry, blob upload/download). tsup build **9.32 KB gz**; 64 hermetic unit tests + a 4/4 live integration test against the Stalwart fixture (list mailboxes, `Email/set`→back-ref query→get, blob round-trip). Review caught + fixed a chunking blocker and a split-`/set` data-loss bug. Starts Phase 1 (Spike). |
+| 2026-07-05 | **ADR-004** — account-scoped auth storage from day one (FR-AUTH-07 readiness): `SecretStore` scoped by IndexedDB database name; a second account is purely additive, no migration. |
+| 2026-07-05 | SP.2 **done** — auth module `apps/web/src/auth/` (oauth4webapi 3.8.6): `AuthController` (OAuth Auth-Code+PKCE + Basic behind `@waxwing/jmap` `bearer`/`basic`), `SecretStore` (secrets wrapped by a non-extractable AES-GCM `CryptoKey` in IndexedDB — never `local`/`sessionStorage`, NFR-SEC-02), memory-only access token, single-flight silent refresh, offline start, RFC 8414 discovery, `document.baseURI` redirect (FR-DEP-02), logout wipe (FR-AUTH-05). 31 hermetic auth tests (93 total) **+ live OAuth+Basic verification** against Stalwart v0.16.11 (login → `Mailbox/get` → forced refresh → logout). SP.5 findings: no client registration, no RFC 7009 revocation endpoint, opaque tokens (reused refresh), unsolicited ES256 `id_token` stripped. |

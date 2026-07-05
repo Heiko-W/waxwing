@@ -1,4 +1,4 @@
-import { defineConfig, mergeConfig } from 'vitest/config'
+import { configDefaults, defineConfig, mergeConfig } from 'vitest/config'
 import viteConfig from './vite.config'
 
 // The web unit/component project: jsdom + Testing Library. It reuses the app's Vite
@@ -15,6 +15,9 @@ export default mergeConfig(
       globals: false,
       setupFiles: ['./vitest.setup.ts', 'fake-indexeddb/auto'],
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
+      // The auth module (SP.2) runs in the root "unit" (node) project — see the note in
+      // ../../vitest.config.ts. Excluding it here keeps each file to a single project.
+      exclude: [...configDefaults.exclude, 'src/auth/**'],
       restoreMocks: true,
       // No passWithNoTests: the App example tests always exist, so a zero-test
       // collection here should fail loudly rather than report a false green.

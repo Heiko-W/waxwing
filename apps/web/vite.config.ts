@@ -1,6 +1,15 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+// The dev/E2E Stalwart fixture (e2e/stalwart/docker-compose.yml). Its OIDC issuer, token,
+// refresh and revocation endpoints — and every JMAP request — live at this cross-origin,
+// plain-HTTP loopback target, which matches none of 'self'/ws:/wss:/https:. It must be
+// named explicitly in the dev connect-src or the browser blocks oauth4webapi's discovery /
+// code exchange / refresh the moment the SP.4 login UI drives the flow (the auth module
+// already opts into insecure loopback via allowInsecureRequests). DEV-ONLY: this origin is
+// NEVER added to the production <meta> CSP in index.html, which stays same-origin/https.
+const DEV_STALWART_ORIGIN = 'http://localhost:18080'
+
 // Dev-server CSP.
 //
 // This is intentionally LOOSER than the production policy shipped in index.html.
@@ -19,7 +28,7 @@ const DEV_CSP = [
   "img-src 'self' data: blob:",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
-  "connect-src 'self' ws: wss: https:",
+  `connect-src 'self' ws: wss: https: ${DEV_STALWART_ORIGIN}`,
   "frame-src 'self'",
 ].join('; ')
 
