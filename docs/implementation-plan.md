@@ -88,7 +88,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 |---|---|---|---|---|---|
 | P0.1 | Repo bootstrap (git, workspaces, tooling) | S | — | done | git, pnpm workspace, TS 6 strict base, Biome 2.5, licenses, skeleton |
 | P0.2 | App scaffold (Vite/React, tokens, i18n, config boot) | M | P0.1 | done | Vite 8 + React 19; tokens (WCAG-AA, light/dark); runtime config.json+theme.css; i18n en/de lazy; strict CSP; 80.95 KB gz initial |
-| P0.3 | Test infrastructure (Vitest, RTL, Playwright) | S | P0.1 | todo | |
+| P0.3 | Test infrastructure (Vitest, RTL, Playwright) | S | P0.1 | done | Vitest 4 projects (jsdom+node), RTL, fake-indexeddb, axe helper, Playwright skeleton; `test`+`e2e` green |
 | P0.4 | Stalwart dev/E2E fixture (Docker) | M | P0.1 | todo | |
 | P0.5 | CI pipeline + size budgets | S | P0.2–P0.4 | todo | |
 
@@ -239,14 +239,22 @@ polish for the switches (with P0.3 tests).
 
 Spec: NFR-QUAL-01, tech-stack §7. Size: S.
 
-- [ ] Vitest workspace config (per-package projects); Testing Library + `jsdom` for
+- [x] Vitest workspace config (per-package projects); Testing Library + `jsdom` for
       `apps/web`; `fake-indexeddb` for Dexie-touching unit tests.
-- [ ] Playwright skeleton in `e2e/` (config, one placeholder spec, HTML reporter);
+- [x] Playwright skeleton in `e2e/` (config, one placeholder spec, HTML reporter);
       browsers pinned.
-- [ ] `axe-core` integration helper for component a11y assertions.
-- [ ] One example test per level proving the harness works.
+- [x] `axe-core` integration helper for component a11y assertions.
+- [x] One example test per level proving the harness works.
 
 Done when: `pnpm test` and `pnpm e2e` (against the P0.4 fixture) run green in one command each.
+✅ Verified 2026-07-05: `pnpm test` (Vitest 4.1.9, 4 tests / 2 projects) and `pnpm e2e`
+(Playwright 1.61.1, chromium) both green; `typecheck`/`lint` green (44 files). The P0.3
+Playwright placeholder spec is **self-contained** (drives the built `apps/web` via
+`webServer`, no JMAP server); Stalwart-fixture-backed E2E specs land with **P0.4** and the
+read suite in **M1.9**. Vitest projects: `unit` (node + `fake-indexeddb/auto`) and `web`
+(jsdom + Testing Library). axe helper wraps `axe-core` directly against WCAG 2.x A/AA tags
+(color-contrast is browser-only → covered by the M1.1 gallery scan). Test deps are
+devDependencies only (bundle budget unaffected).
 
 ### P0.4 — Stalwart dev/E2E fixture
 
@@ -1175,3 +1183,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | P0.1 **done** — repo bootstrap: git init, pnpm workspace (apps/web, 3 packages, e2e), TS 6 strict base config, Biome 2.5 (lint+format+assist), AGPL root + MIT package licenses, directory skeleton, README Development section. `install`/`typecheck`/`lint` green. |
 | 2026-07-05 | **ADR-001** — adopt Vite 8 (+ @vitejs/plugin-react 6, Rolldown) instead of Vite 7; tech-stack.md updated. |
 | 2026-07-05 | P0.2 **done** — app scaffold: Vite 8 + React 19 (`base: './'`), `--waxwing-*` design tokens (light/dark, WCAG AA), runtime `config.json`+`theme.css` boot loader (typed, network-first), i18next en/de lazy locales + Intl helpers, strict production CSP + documented dev delta, Lucide. Booted under a path prefix (Playwright); 80.95 KB gz initial JS. |
+| 2026-07-05 | P0.3 **done** — test infra: Vitest 4 workspace (`unit` node + `fake-indexeddb`, `web` jsdom + Testing Library), `axe-core` a11y helper (WCAG A/AA), Playwright skeleton (self-contained placeholder spec), one example test per level. `pnpm test` + `pnpm e2e` green; devDeps only. |

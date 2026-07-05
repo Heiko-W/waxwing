@@ -11,15 +11,20 @@
     "pnpm": ">=10"
   },
   "scripts": {
-    "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r --if-present typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "test": "pnpm -r --if-present test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "pnpm --filter @waxwing/e2e run e2e",
     "build": "pnpm -r --if-present build"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
-    "typescript": "6.0.3"
+    "@types/node": "24.13.2",
+    "fake-indexeddb": "6.2.5",
+    "typescript": "6.0.3",
+    "vitest": "4.1.9"
   }
 }

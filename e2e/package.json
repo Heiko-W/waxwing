@@ -4,5 +4,12 @@
   "private": true,
   "type": "module",
   "description": "Playwright end-to-end suites and the Stalwart JMAP dev/test fixture.",
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
 }
