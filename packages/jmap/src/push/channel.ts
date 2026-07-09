@@ -1,20 +1,26 @@
 /**
- * Transport auto-selection (FR-NOTIF-01): {@link createPushChannel} inspects the Session's
- * advertised capabilities and the available runtime primitives and returns the best
- * {@link PushChannel} — preferring **WebSocket → SSE → polling** by default. Callers who want
- * a specific transport construct {@link SseChannel} / {@link WebSocketChannel} directly, or
- * pass `prefer`.
+ * Transport auto-selection **with runtime failover** (FR-NOTIF-01): {@link createPushChannel}
+ * inspects the Session's advertised capabilities and the available runtime primitives and
+ * returns a {@link FailoverPushChannel} — a {@link PushChannel} facade that owns an ordered
+ * list of *eligible* transports (WebSocket → SSE → polling by default) and connects them in
+ * turn. A transport that never reaches `open` after {@link CreatePushChannelOptions.failoverAfterAttempts}
+ * consecutive failed attempts is torn down and the next eligible transport is tried; once a
+ * transport opens, its own {@link ReconnectLoop} owns every subsequent drop (it never downgrades).
  *
- * Against Stalwart specifically, WebSocket is not browser-viable (SP.3 probe — the handshake
- * needs an `Authorization` header a browser cannot set), so a browser build should pass
- * `prefer: 'sse'`. The default order honours FR-NOTIF-01's "WebSocket preferred"; WebSocket is
- * only *eligible* when the capability is advertised and a `WebSocket` implementation resolves.
+ * This makes the browser-vs-Stalwart footgun self-healing: WebSocket is *eligible* there
+ * (the capability advertises `supportsPush:true` and `globalThis.WebSocket` exists) but the
+ * handshake needs an `Authorization` header a browser cannot set, so it 401s and closes
+ * abnormally forever. The facade now discovers that at runtime and degrades to SSE on its own,
+ * so callers no longer have to pass `prefer:'sse'` to get push in a browser. Callers who want a
+ * specific transport still construct {@link SseChannel} / {@link WebSocketChannel} directly (no
+ * failover there), or pass {@link CreatePushChannelOptions.prefer}.
  */
 
 import type { AuthProvider } from '../auth'
 import { JmapError } from '../errors'
 import type { FetchLike } from '../transport'
 import type { Session } from '../types/core'
+import type { StateChange } from '../types/push'
 import type { BackoffOptions } from './backoff'
 import type { SseAuthMode } from './sse'
 import { SseChannel } from './sse'
@@ -52,14 +58,26 @@ export interface CreatePushChannelOptions {
   scheduler?: SchedulerLike
   /** Initial listeners. */
   events?: PushChannelEvents
+  /**
+   * How many consecutive failed connect attempts a *never-opened* transport is given before
+   * the facade tears it down and fails over to the next eligible transport. A transient blip
+   * at startup usually clears within a couple of attempts; a hard 401/handshake rejection
+   * never does. Defaults to {@link DEFAULT_FAILOVER_AFTER_ATTEMPTS}. Ignored once a transport
+   * has opened at least once (from then on its own reconnect loop owns every drop).
+   */
+  failoverAfterAttempts?: number
 }
 
 /** The default transport preference order (FR-NOTIF-01). */
 const DEFAULT_ORDER: readonly PushTransport[] = ['websocket', 'sse', 'polling']
 
+/** Default {@link CreatePushChannelOptions.failoverAfterAttempts}. */
+export const DEFAULT_FAILOVER_AFTER_ATTEMPTS = 2
+
 /**
  * Chooses a transport for `session`: the first entry of the preference order that is
- * *eligible* (its capability is advertised and its runtime primitive resolves).
+ * *eligible* (its capability is advertised and its runtime primitive resolves). Retained for
+ * callers and tests that only need the name of the first transport the facade would try.
  */
 export function pickTransport(session: Session, options: CreatePushChannelOptions): PushTransport {
   for (const transport of transportOrder(options.prefer)) {
@@ -69,57 +87,32 @@ export function pickTransport(session: Session, options: CreatePushChannelOption
 }
 
 /**
- * Builds a {@link PushChannel} for `session` with the auto-selected (or `prefer`red)
- * transport. Does not open it — call {@link PushChannel.open}.
+ * The ordered list of eligible transports the {@link FailoverPushChannel} will try, in order.
+ * This is the preference order ({@link CreatePushChannelOptions.prefer} first, then the default
+ * `websocket → sse → polling`) intersected with {@link isEligible}. `prefer` *reorders* the set
+ * (a soft preference, exactly as {@link pickTransport} and the option's contract describe); it
+ * never *restricts* it. So an ineligible preferred transport still falls through to the other
+ * eligible transports instead of collapsing to the polling stub — the facade and
+ * {@link pickTransport} therefore always agree on which transports are reachable.
+ */
+export function eligibleTransports(
+  session: Session,
+  options: CreatePushChannelOptions,
+): PushTransport[] {
+  return transportOrder(options.prefer).filter((transport) =>
+    isEligible(transport, session, options),
+  )
+}
+
+/**
+ * Builds a {@link PushChannel} for `session` that connects the eligible transports in
+ * preference order with runtime failover. Does not open it — call {@link PushChannel.open}.
  */
 export function createPushChannel(
   session: Session,
   options: CreatePushChannelOptions,
 ): PushChannel {
-  const transport = pickTransport(session, options)
-  const shared = pickShared(options)
-  switch (transport) {
-    case 'websocket': {
-      const wsOptions: ConstructorParameters<typeof WebSocketChannel>[0] = {
-        session,
-        auth: options.auth,
-        ...shared,
-      }
-      if (options.WebSocket !== undefined) wsOptions.WebSocket = options.WebSocket
-      if (options.dataTypes !== undefined) wsOptions.dataTypes = options.dataTypes
-      return new WebSocketChannel(wsOptions)
-    }
-    case 'sse': {
-      const sseOptions: ConstructorParameters<typeof SseChannel>[0] = {
-        session,
-        auth: options.auth,
-        ...shared,
-      }
-      if (options.fetch !== undefined) sseOptions.fetch = options.fetch
-      if (options.sseAuth !== undefined) sseOptions.sseAuth = options.sseAuth
-      if (options.dataTypes != null) sseOptions.types = options.dataTypes.join(',')
-      return new SseChannel(sseOptions)
-    }
-    default:
-      return new PollingChannel(shared.events)
-  }
-}
-
-/** The subset of options shared by every concrete channel constructor. */
-function pickShared(options: CreatePushChannelOptions): {
-  backoff?: BackoffOptions
-  scheduler?: SchedulerLike
-  events?: PushChannelEvents
-} {
-  const shared: {
-    backoff?: BackoffOptions
-    scheduler?: SchedulerLike
-    events?: PushChannelEvents
-  } = {}
-  if (options.backoff !== undefined) shared.backoff = options.backoff
-  if (options.scheduler !== undefined) shared.scheduler = options.scheduler
-  if (options.events !== undefined) shared.events = options.events
-  return shared
+  return new FailoverPushChannel(session, options, eligibleTransports(session, options))
 }
 
 function transportOrder(prefer: CreatePushChannelOptions['prefer']): PushTransport[] {
@@ -153,6 +146,266 @@ function isEligible(
 
 function hasGlobalWebSocket(): boolean {
   return typeof (globalThis as { WebSocket?: unknown }).WebSocket === 'function'
+}
+
+/**
+ * A {@link PushChannel} facade that connects an ordered list of eligible transports with
+ * runtime failover.
+ *
+ * ### Failover state machine
+ * Per transport the facade tracks whether it has ever reached `open` and how many consecutive
+ * connect attempts have failed since it was started:
+ *
+ *  - **trying** (never opened) — each connect *error* increments a counter. Reaching
+ *    `failoverAfterAttempts` tears the transport down and advances to the next eligible one,
+ *    restarting the counter — but only while a *real* transport remains to fail over to. The
+ *    LAST real transport (and the terminal polling stub excepted below) is never counted out:
+ *    it is left to its own {@link ReconnectLoop}, which retries forever, so a transient blip on
+ *    the one transport that works self-heals instead of permanently killing push. Observable
+ *    only as `connecting`/`reconnecting`, never a spurious `closed`.
+ *  - **open** — the transport reached `open`; failover is disabled for good. Its own
+ *    {@link ReconnectLoop} owns every subsequent drop and reconnect (the SP.3 "survives a
+ *    server restart" behaviour). The facade never downgrades from here.
+ *  - **exhausted** — only reachable when the current transport is the polling stub (it errors
+ *    once on open() and never retries) and no real transport is left: the last error has already
+ *    been surfaced, the facade settles in `closed` and never retries. Real transports never
+ *    reach this state on their own.
+ *
+ * Each eligible transport is tried at most once per channel lifetime. The facade owns the
+ * listener sets, so `subscribe`/`onStatus`/`onError` registrations survive a transport swap:
+ * every new inner channel is bridged into the same sets. {@link close} at any point — including
+ * mid-failover and from inside a status/error listener — stops everything with no leaked timer,
+ * socket or reader.
+ */
+export class FailoverPushChannel implements PushChannel {
+  private readonly stateListeners = new Set<StateChangeListener>()
+  private readonly statusListeners = new Set<StatusListener>()
+  private readonly errorListeners = new Set<PushErrorListener>()
+  private facadeStatus: PushStatus = 'closed'
+
+  private readonly transports: readonly PushTransport[]
+  private readonly budget: number
+  private index = 0
+
+  private inner: PushChannel | undefined
+  private innerUnsubs: Unsubscribe[] = []
+  /** Bumped on every transport swap; stale bridge callbacks compare against it and bail. */
+  private epoch = 0
+  /** Has the CURRENT transport ever reached `open`? Once true, failover is disabled for good. */
+  private opened = false
+  /** Consecutive failed connect attempts on the current, never-opened transport. */
+  private failedAttempts = 0
+  private started = false
+  private terminated = false
+
+  constructor(
+    private readonly session: Session,
+    private readonly options: CreatePushChannelOptions,
+    transports: readonly PushTransport[],
+  ) {
+    // eligibleTransports always yields at least ['polling'] (polling is always eligible).
+    this.transports = transports.length > 0 ? transports : ['polling']
+    this.budget = Math.max(1, options.failoverAfterAttempts ?? DEFAULT_FAILOVER_AFTER_ATTEMPTS)
+    const events = options.events
+    if (events?.onStateChange) this.stateListeners.add(events.onStateChange)
+    if (events?.onStatus) this.statusListeners.add(events.onStatus)
+    if (events?.onError) this.errorListeners.add(events.onError)
+  }
+
+  /** The transport currently active (or the first one that will be tried before {@link open}). */
+  get transport(): PushTransport {
+    return this.transports[this.index] ?? 'polling'
+  }
+
+  get status(): PushStatus {
+    return this.facadeStatus
+  }
+
+  open(): void {
+    if (this.started || this.terminated) return
+    this.started = true
+    this.startTransport()
+  }
+
+  close(): void {
+    if (this.terminated) return
+    this.terminated = true
+    this.started = true // a later open() must stay a no-op
+    this.teardownInner()
+    this.setStatus('closed')
+  }
+
+  subscribe(listener: StateChangeListener): Unsubscribe {
+    this.stateListeners.add(listener)
+    return () => {
+      this.stateListeners.delete(listener)
+    }
+  }
+
+  onStatus(listener: StatusListener): Unsubscribe {
+    this.statusListeners.add(listener)
+    return () => {
+      this.statusListeners.delete(listener)
+    }
+  }
+
+  onError(listener: PushErrorListener): Unsubscribe {
+    this.errorListeners.add(listener)
+    return () => {
+      this.errorListeners.delete(listener)
+    }
+  }
+
+  /** Builds, bridges and opens the transport at the current index. */
+  private startTransport(): void {
+    const transport = this.transports[this.index]
+    if (transport === undefined) {
+      this.settleExhausted()
+      return
+    }
+    this.epoch++
+    const epoch = this.epoch
+    this.opened = false
+    this.failedAttempts = 0
+    const inner = this.buildInner(transport)
+    this.inner = inner
+    // Bridge the inner channel into the facade's own listener sets. Each callback is
+    // generation-guarded so a late event from a superseded transport can never leak through.
+    this.innerUnsubs = [
+      inner.subscribe((change) => {
+        if (epoch === this.epoch && !this.terminated) this.emitStateChange(change)
+      }),
+      inner.onStatus((status) => {
+        if (epoch === this.epoch && !this.terminated) this.handleInnerStatus(status)
+      }),
+      inner.onError((error) => {
+        if (epoch === this.epoch && !this.terminated) this.handleInnerError(error)
+      }),
+    ]
+    inner.open()
+  }
+
+  private handleInnerStatus(status: PushStatus): void {
+    switch (status) {
+      case 'open':
+        this.opened = true
+        this.failedAttempts = 0
+        this.setStatus('open')
+        return
+      case 'closed':
+        // The facade owns its own terminal 'closed'; an inner 'closed' only ever comes from a
+        // teardown we initiated (bridge already unsubscribed) — never surface it.
+        return
+      case 'connecting':
+        // Only the very first transport's first attempt is 'connecting'; after any failover we
+        // are conceptually still reconnecting, so surface further fresh attempts as such.
+        this.setStatus(this.index === 0 ? 'connecting' : 'reconnecting')
+        return
+      case 'reconnecting':
+        this.setStatus('reconnecting')
+        return
+    }
+  }
+
+  private handleInnerError(error: Error): void {
+    this.emitError(error)
+    // An error listener may have synchronously closed us; and a transport that has opened owns
+    // its own reconnect loop — in either case do not fail over.
+    if (this.terminated || this.opened) return
+    // The polling stub errors once on open() and never retries, so a single error from it is
+    // terminal — advance immediately (which settles the channel closed once nothing real is left).
+    if (this.transports[this.index] === 'polling') {
+      this.advance()
+      return
+    }
+    // A *real* transport (websocket/sse) that has never opened. Only spend the failover budget
+    // if there is another real transport to fall over to; never tear a real transport down onto
+    // the non-functional polling stub. When this is the LAST real transport, leave it to its own
+    // ReconnectLoop, which retries forever (SP.3 "survives a server restart"): a transient
+    // startup blip then self-heals instead of permanently killing all push.
+    if (!this.hasRealFailoverTarget()) return
+    this.failedAttempts++
+    if (this.failedAttempts >= this.budget) this.advance()
+  }
+
+  /** Is there a real (non-polling-stub) transport left after the current index to fail over to? */
+  private hasRealFailoverTarget(): boolean {
+    for (let i = this.index + 1; i < this.transports.length; i++) {
+      if (this.transports[i] !== 'polling') return true
+    }
+    return false
+  }
+
+  /** Tears the current transport down and moves to the next eligible one (or settles). */
+  private advance(): void {
+    this.teardownInner()
+    if (this.terminated) return // a listener closed us during teardown
+    this.index++
+    if (this.index >= this.transports.length) {
+      this.settleExhausted()
+      return
+    }
+    this.startTransport()
+  }
+
+  private settleExhausted(): void {
+    this.terminated = true
+    // The last error was already surfaced by handleInnerError; only the status settles here.
+    this.setStatus('closed')
+  }
+
+  private teardownInner(): void {
+    for (const unsub of this.innerUnsubs) unsub()
+    this.innerUnsubs = []
+    const inner = this.inner
+    this.inner = undefined
+    inner?.close()
+  }
+
+  private buildInner(transport: PushTransport): PushChannel {
+    const shared: { backoff?: BackoffOptions; scheduler?: SchedulerLike } = {}
+    if (this.options.backoff !== undefined) shared.backoff = this.options.backoff
+    if (this.options.scheduler !== undefined) shared.scheduler = this.options.scheduler
+    switch (transport) {
+      case 'websocket': {
+        const wsOptions: ConstructorParameters<typeof WebSocketChannel>[0] = {
+          session: this.session,
+          auth: this.options.auth,
+          ...shared,
+        }
+        if (this.options.WebSocket !== undefined) wsOptions.WebSocket = this.options.WebSocket
+        if (this.options.dataTypes !== undefined) wsOptions.dataTypes = this.options.dataTypes
+        return new WebSocketChannel(wsOptions)
+      }
+      case 'sse': {
+        const sseOptions: ConstructorParameters<typeof SseChannel>[0] = {
+          session: this.session,
+          auth: this.options.auth,
+          ...shared,
+        }
+        if (this.options.fetch !== undefined) sseOptions.fetch = this.options.fetch
+        if (this.options.sseAuth !== undefined) sseOptions.sseAuth = this.options.sseAuth
+        if (this.options.dataTypes != null) sseOptions.types = this.options.dataTypes.join(',')
+        return new SseChannel(sseOptions)
+      }
+      default:
+        return new PollingChannel()
+    }
+  }
+
+  private setStatus(status: PushStatus): void {
+    if (status === this.facadeStatus) return
+    this.facadeStatus = status
+    for (const listener of [...this.statusListeners]) listener(status)
+  }
+
+  private emitStateChange(change: StateChange): void {
+    for (const listener of [...this.stateListeners]) listener(change)
+  }
+
+  private emitError(error: Error): void {
+    for (const listener of [...this.errorListeners]) listener(error)
+  }
 }
 
 /**

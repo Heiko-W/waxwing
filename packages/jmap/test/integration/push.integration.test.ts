@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process'
 import {
   basic,
   Capabilities,
+  createPushChannel,
   getSession,
   JmapClient,
   MailboxRoles,
@@ -30,6 +31,8 @@ import {
   SseChannel,
   type StateChange,
   WebSocketChannel,
+  type WebSocketFactory,
+  type WebSocketLike,
 } from '@waxwing/jmap'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -231,4 +234,39 @@ describe.skipIf(!AVAILABLE)('SP.3 · push transports ↔ live Stalwart fixture',
       }
     }, 90_000)
   }
+})
+
+describe.skipIf(!AVAILABLE)('SP.4 · runtime transport failover ↔ live Stalwart fixture', () => {
+  it('a browser-like WebSocket (no auth header) fails over to SSE and delivers StateChange', async () => {
+    // Mimic a browser: construct the WS WITHOUT the `Authorization` header (browsers cannot set
+    // it on a WebSocket), so Stalwart 401s the Upgrade and the socket closes abnormally. WS is
+    // still *eligible* (the capability advertises supportsPush), so this is exactly the footgun
+    // SP.4 fixes: with the default preference the facade must discover WS never opens and degrade
+    // to SSE on its own — no `prefer:'sse'` in sight.
+    const browserWebSocket: WebSocketFactory = (url) =>
+      new WebSocket(url, ['jmap']) as unknown as WebSocketLike
+
+    const channel = createPushChannel(client.session, {
+      auth,
+      WebSocket: browserWebSocket,
+      backoff: { initialDelay: 50, maxDelay: 250 }, // keep the WS attempt budget quick
+      // default `prefer` (WebSocket → SSE → polling) and default failoverAfterAttempts (2)
+    })
+    const errors: Error[] = []
+    channel.onError((error) => errors.push(error))
+    channel.open()
+    try {
+      await waitForStatus(channel, 'open', 30_000)
+      expect(channel.transport).toBe('sse') // degraded off the un-authable WebSocket
+      console.log(`[SP.4] failed over to ${channel.transport} after ${errors.length} WS error(s)`)
+
+      const change = nextStateChange(channel, (types) => 'Email' in types)
+      await deliverMail('failover')
+      const { types } = await change
+      expect(types.Email).toBeTruthy()
+      expect(types.Mailbox).toBeTruthy()
+    } finally {
+      channel.close()
+    }
+  }, 60_000)
 })

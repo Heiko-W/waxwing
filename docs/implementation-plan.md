@@ -493,6 +493,28 @@ stream-end/socket-close, which the Done-when requires); Stalwart supports **no**
 client must re-sync via `*/changes` after any reconnect (informs M1.3); WS `pushState`
 resumption is pass-through only.
 
+**Post-review follow-up — runtime transport failover (tagged SP.4 in the push suite,
+2026-07-09; SP.3 stays `done`).** A live-verified footgun surfaced after the SP.3 review: the
+original `createPushChannel` picked ONE transport *statically*, so in a browser against
+Stalwart it selected WebSocket (eligible — the capability advertises `supportsPush:true`) yet
+the WS handshake 401s forever (browsers cannot set the `Authorization` header), delivering
+**zero** push and never degrading to SSE unless the caller knew to pass `prefer:'sse'`. Fix:
+`createPushChannel` now returns a `FailoverPushChannel` facade that connects the *eligible*
+transports (`eligibleTransports`, WS→SSE→polling) in turn and, when one never reaches `open`
+within a small attempt budget (`failoverAfterAttempts`, default 2), tears it down and advances
+on its own — so the browser degrades to SSE with no caller involvement. Once a transport
+opens, its own `ReconnectLoop` owns every drop (never downgrades — the "survives a restart"
+invariant); the last real transport is never torn down onto the non-functional polling stub,
+so a transient startup blip self-heals instead of permanently killing push; and `prefer` is a
+soft *reorder* (consistent with `pickTransport`), never a restriction that could collapse the
+set to polling-only. Review findings on the failover itself were applied at root cause (last
+found: the terminal-transport budget regression, the `prefer` restrict-vs-reorder divergence,
+and a missing never-downgrade-after-open test lock). Tests: the hermetic push suite grew to
+cover the failover state machine (WS→SSE degrade, no-downgrade-after-open with a budget-1
+mutation lock, last-real-transport-retries-forever, `prefer` reorder, mid-swap `close()`) plus
+a new live case — a browser-like WebSocket built without the auth header 401s and the facade
+lands on SSE and delivers `StateChange`, using the default preference (no `prefer:'sse'`).
+
 ### SP.4 — Raw end-to-end demo
 
 Spec: validates FR-AUTH-01, FR-MBX/LST plumbing; tech-stack §9.1. Size: M.
@@ -1348,3 +1370,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | SP.2 **done** — auth module `apps/web/src/auth/` (oauth4webapi 3.8.6): `AuthController` (OAuth Auth-Code+PKCE + Basic behind `@waxwing/jmap` `bearer`/`basic`), `SecretStore` (secrets wrapped by a non-extractable AES-GCM `CryptoKey` in IndexedDB — never `local`/`sessionStorage`, NFR-SEC-02), memory-only access token, single-flight silent refresh, offline start, RFC 8414 discovery, `document.baseURI` redirect (FR-DEP-02), logout wipe (FR-AUTH-05). 31 hermetic auth tests (93 total) **+ live OAuth+Basic verification** against Stalwart v0.16.11 (login → `Mailbox/get` → forced refresh → logout). SP.5 findings: no client registration, no RFC 7009 revocation endpoint, opaque tokens (reused refresh), unsolicited ES256 `id_token` stripped. |
 | 2026-07-09 | **ADR-005** — SSE via a fetch-based reader, not the native `EventSource`: Stalwart's SSE (and WS) endpoints authenticate only via the `Authorization` header, which `EventSource`/browser `WebSocket` cannot send; SSE uses `fetch`+`ReadableStream` with `Authorization: Bearer` (+ optional `AuthProvider.token()`), and WS is server-side-only against Stalwart. tech-stack §4.2 + FR-NOTIF-01 note updated. |
 | 2026-07-09 | SP.3 **done** — push transports in `packages/jmap/src/push/`: fetch-based `SseChannel` (Stalwart SSE needs an `Authorization` header — native `EventSource` unusable, ADR-005), RFC 8887 `WebSocketChannel` (server-side-only vs. Stalwart), shared full-jitter `ReconnectLoop`, `createPushChannel` WS→SSE→polling-stub auto-select. Both deliver `StateChange` 2–5 ms and survive `docker restart`. 72+4 hermetic + 3 live tests (178 total green); push tree-shaken from `apps/web` (budget untouched at 80.55 KB gz; +5.59 KB gz in the `@waxwing/jmap` barrel → 14.91 KB gz). SP.5 answers recorded: SSE + EventSource auth mechanism, CORS default-off; WS-over-browser evidence left open for D2 at G1. |
+| 2026-07-09 | SP.3 **post-review fix** — runtime transport failover (tagged SP.4 in the push suite; SP.3 stays **done**). Live footgun: the static single-transport pick left a browser on the eligible-but-401ing WebSocket forever → zero push unless the caller passed `prefer:'sse'`. Fix: `createPushChannel` now returns a `FailoverPushChannel` that connects the eligible transports (`eligibleTransports`, WS→SSE→polling) in turn and auto-degrades when one never opens (`failoverAfterAttempts`, default 2); once a transport opens its own loop owns every drop (never downgrades), the last real transport is never torn down onto the polling stub (transient blips self-heal), and `prefer` is a soft reorder consistent with `pickTransport`. Four review findings applied at root cause + locked with regression tests (terminal-transport budget, `prefer` restrict→reorder, never-downgrade mutation lock, polling-only exhaustion). Tests: hermetic push suite 29 cases (**193 total green**); +1 live case — a browser-like WS (no auth header) fails over to SSE and delivers `StateChange` with the default preference. `apps/web` budget untouched (80.55 KB gz; push still tree-shaken); `@waxwing/jmap` barrel 14.91 → **15.95 KB gz** (+1.04, just over the deferred/unenforced 15 KB library note). ADR-005 Decision/Consequences + Deciders (owner ratification pending D2) reconciled. |

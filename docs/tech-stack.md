@@ -117,7 +117,9 @@ So Waxwing ships its own thin client as a separate package:
   `Authorization` header), **not** the native `EventSource` API — Stalwart authenticates its
   SSE endpoint only via the `Authorization` header, which `EventSource` cannot set (ADR-005).
   Against Stalwart v0.16.11 the browser `WebSocket` likewise cannot authenticate (no header),
-  so WS is a Node/server-side transport there and browsers use the SSE reader (decision D2).
+  so WS is a Node/server-side transport there and browsers reach the SSE reader through
+  `createPushChannel`'s **runtime failover** — the doomed WS attempt never opens and the
+  channel auto-degrades to SSE with no `prefer` needed (decision D2).
 - Session handling (`/.well-known/jmap`), upload/download URL templating, request
   chunking against session limits (FR-SRV-03).
 - Zero runtime deps; `jmap-rfc-types` and `jmap-jam` (MIT) serve as references.

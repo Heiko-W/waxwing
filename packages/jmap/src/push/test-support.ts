@@ -120,6 +120,30 @@ export function fakeWebSocketFactory(): {
   }
 }
 
+/**
+ * A WebSocket factory whose every socket fails the handshake — it fires `error` then an
+ * abnormal `close(1006)` on the next microtask, mimicking a browser that cannot send the
+ * `Authorization` header Stalwart requires. Used to drive the failover facade deterministically.
+ */
+export function failingWebSocketFactory(): {
+  factory: (url: string, info: WebSocketConnectInfo) => WebSocketLike
+  sockets: FakeWebSocket[]
+} {
+  const sockets: FakeWebSocket[] = []
+  return {
+    factory: (url, info) => {
+      const socket = new FakeWebSocket(url, info)
+      sockets.push(socket)
+      queueMicrotask(() => {
+        socket.simulateError()
+        socket.simulateClose(1006)
+      })
+      return socket
+    },
+    sockets,
+  }
+}
+
 /** One driveable SSE connection produced by {@link sseFetchMock}. */
 export interface SseConnection {
   url: string

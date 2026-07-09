@@ -9,10 +9,13 @@
 export { Backoff, type BackoffOptions, DEFAULT_BACKOFF } from './backoff'
 // Shared base (for anyone building a custom transport on the same lifecycle).
 export { type BaseChannelConfig, BasePushChannel } from './base'
-// Auto-selection + the polling stub.
+// Auto-selection + runtime failover facade + the polling stub.
 export {
   type CreatePushChannelOptions,
   createPushChannel,
+  DEFAULT_FAILOVER_AFTER_ATTEMPTS,
+  eligibleTransports,
+  FailoverPushChannel,
   PollingChannel,
   pickTransport,
 } from './channel'

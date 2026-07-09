@@ -2,7 +2,10 @@
 
 - **Status:** accepted
 - **Date:** 2026-07-09
-- **Deciders:** SP.3 implementer; ratified by project owner at Gate G1
+- **Deciders:** SP.3/SP.4 implementer — the technical decision is forced by the live evidence
+  below (native `EventSource` and browser `WebSocket` cannot authenticate against Stalwart
+  v0.16.11); **owner ratification is pending at Gate G1** (decision D2). This ADR records the
+  evidence and the interim engineering choice, it does not pre-empt D2.
 
 ## Context
 
@@ -47,10 +50,18 @@ browser against Stalwart: native `EventSource` cannot send the required header, 
   unaffected. `JmapRequestError` (RFC 8887 §4.2) is added to the error hierarchy for the WS
   Request/Response path.
 - Keep the RFC 8887 **WebSocket** client and the FR-NOTIF-01 WS→SSE→polling auto-select
-  order, but treat WS as a **Node/server-side** transport against Stalwart; browser callers
-  targeting Stalwart select SSE (`prefer:'sse'`) because WS cannot authenticate there. Whether
-  WS becomes a V1-core browser transport is **decision D2**, the owner's call at Gate G1 —
-  this ADR records the evidence, it does not decide D2.
+  order, but treat WS as a **Node/server-side** transport against Stalwart. Rather than making
+  browser callers know to pass `prefer:'sse'`, `createPushChannel` performs **runtime
+  failover** (SP.4): it builds the ordered list of *eligible* transports and connects them in
+  turn, and when a transport never reaches `open` after a small attempt budget it degrades to
+  the next one on its own. In a browser against Stalwart, WS is eligible (the capability
+  advertises `supportsPush:true`) but its handshake 401s and closes abnormally forever, so the
+  facade discovers this at runtime and falls over to the fetch-based SSE reader with **no
+  caller involvement**. `prefer:'sse'` remains available purely as an *optimisation* — it
+  reorders SSE ahead of WebSocket so a browser skips the (doomed) initial WS attempt entirely
+  — but it is no longer required for push to work. Whether WS becomes a V1-core browser
+  transport is **decision D2**, the owner's call at Gate G1 — this ADR records the evidence, it
+  does not decide D2.
 
 ## Consequences
 
@@ -63,8 +74,13 @@ browser against Stalwart: native `EventSource` cannot send the required header, 
   per-type states carried in `StateChange.changed`. This shapes M1.3's sync strategy.
 - **Browser WS is blocked against Stalwart today.** FR-NOTIF-01's "WebSocket preferred" is
   honored by the capability-based auto-select, but the effective browser transport against
-  Stalwart v0.16.11 is SSE. Reaching browser WS needs an upstream Stalwart change
-  (a browser-viable WS auth path) — tracked with D2.
+  Stalwart v0.16.11 is SSE. The auto-selector reaches it by **runtime failover** (SP.4): the
+  doomed WS attempt is detected (it 401s and never opens) and the channel degrades to SSE
+  without the caller passing `prefer`. Once a transport *does* open, its own reconnect loop
+  owns every subsequent drop and the facade never downgrades; and the last real transport
+  (SSE in the browser) is never torn down onto the non-functional polling stub, so a transient
+  startup blip self-heals rather than permanently killing push. Reaching *browser WS* still
+  needs an upstream Stalwart change (a browser-viable WS auth path) — tracked with D2.
 - tech-stack §4.2 and FR-NOTIF-01 are updated to note the fetch-based SSE reader and the
   Stalwart WS-auth limitation; the requirement itself (SSE fallback, WS-preferred
   auto-select, reconnect/backoff) is unchanged.
