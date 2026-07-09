@@ -98,7 +98,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 |---|---|---|---|---|---|
 | SP.1 | `@waxwing/jmap` core (session, calls, chunking) | L | P0.1, P0.4 | done | zero-dep MIT client; session/back-refs/auto-chunk/blob/auth; 64 unit + 4 live-fixture tests; 9.32 KB gz |
 | SP.2 | Auth: OAuth PKCE + token storage + Basic scheme | M | SP.1, P0.4 | done | Auth module + 31 hermetic tests (green); `apps/web/src/auth/`; oauth4webapi 3.8.6. Done-when verified LIVE against Stalwart v0.16.11 (OAuth PKCE dance via real login page + Basic): login → Mailbox/get → forced refresh → logout. Review fixes applied (single-flight refresh, callback-param scrub on all paths, terminal-refresh purge, account-scoped store per ADR-004, dev-CSP Stalwart origin). Live-only interop fix: strip Stalwart's unsolicited ES256 id_token. No client registration / no revocation endpoint (SP.5 findings) |
-| SP.3 | Push transports: EventSource + WebSocket (RFC 8887) | M | SP.1 | todo | |
+| SP.3 | Push transports: EventSource + WebSocket (RFC 8887) | M | SP.1 | done | Fetch-based SSE reader (native `EventSource` can't send the `Authorization` header Stalwart requires) + RFC 8887 WebSocket; shared full-jitter reconnect + WS→SSE→polling-stub auto-select. Both deliver `StateChange` (2–5 ms) and survive `docker restart`. **ADR-005**. WS works server-side only against Stalwart (browsers can't set the WS auth header) → D2 evidence in SP.5. 72+4 hermetic + 3 live tests; push tree-shaken (budget untouched, +5.59 KB gz in the `@waxwing/jmap` barrel) |
 | SP.4 | Raw end-to-end demo (login → list → message) | M | SP.1, SP.2, P0.2 | todo | |
 | SP.5 | Spike report, ADRs, validation checklist | S | SP.1–SP.4 | todo | |
 | **G1** | **Gate: owner reviews spike findings, plan adjusted** | — | SP.5 | todo | blocks M1 |
@@ -435,20 +435,63 @@ SP.3/SP.5; the permanent fixture-backed Playwright login suite lands with SP.4/M
 
 Spec: FR-NOTIF-01, tech-stack §4.2/§8. Size: M.
 
-- [ ] EventSource client for the session `eventSourceUrl` (URI template:
-      {types}, {closeafter}, {ping}). **Open question to answer here:** EventSource cannot
-      send an `Authorization` header — determine Stalwart's supported auth for SSE
-      (token query param? cookie? fetch-based SSE reader as fallback) and record it.
-- [ ] WebSocket RFC 8887 client: `capability:websocket` detection, subprotocol `jmap`,
+- [x] SSE client for the session `eventSourceUrl` (URI template: {types}, {closeafter},
+      {ping}). **Open question answered:** Stalwart's SSE endpoint authenticates **only** via
+      the HTTP `Authorization` header (Bearer/Basic) — `?access_token=`/`?token=` query params
+      → 401, no session cookie exists → cookie auth impossible. The native `EventSource` DOM
+      API cannot set headers and so can never authenticate, so SSE is implemented as a
+      **fetch-based reader** (`fetch` + `ReadableStream`) sending `Authorization: Bearer` —
+      **ADR-005**. (A `sseAuth:'query'` `?access_token=` mode exists behind an explicit option
+      for other servers; default is `header`.)
+- [x] WebSocket RFC 8887 client: `capability:websocket` detection, subprotocol `jmap`,
       request/response framing (`@type: Request/Response/WebSocketPushEnable/…`), push
-      enable/disable, `StateChange` delivery.
-- [ ] Shared reconnect/backoff with jitter; transport auto-selection: WebSocket →
-      EventSource → polling stub (interface only, implemented in M1.3).
-- [ ] Instrumented demo: deliver a mail via the fixture, log `StateChange` latency on both
-      transports.
+      enable/disable, `StateChange` delivery. Works fully server-side/Node (Bearer/Basic
+      header on the Upgrade → 101); **not browser-viable against Stalwart** (browsers cannot
+      set the WS `Authorization` header, and Stalwart accepts no query/subprotocol token) —
+      evidence for D2, recorded in SP.5.
+- [x] Shared reconnect/backoff with jitter (full-jitter, reset after a stable connection);
+      transport auto-selection: WebSocket → EventSource → polling stub (interface only — real
+      long-poll lands in M1.3; `PollingChannel.open()` reports "not implemented (M1.3)").
+- [x] Instrumented demo (`scripts/push-demo.mjs`): deliver a mail via the fixture, log
+      `StateChange` latency on both transports.
 
 Done when: both transports deliver `StateChange` events for incoming mail against the
 fixture and survive a server restart (reconnect).
+✅ Verified 2026-07-09 against Stalwart v0.16.11-alpine: `createPushChannel` auto-select
+opened both transports, delivered a `StateChange` (`changed`: Thread, Mailbox, Email), rode
+out a `docker compose restart` (WS reconnected after ~1.6 s via an abnormal-close code 1006;
+SSE reconnected after ~1.8 s via stream-end — both with the same opaque token), and delivered
+a subsequent `StateChange`. Measured StateChange latency **2–5 ms** on both transports (local
+`Email/set` ~1 ms; real MTA loopback delivery ~1 s of queue time).
+
+**SP.3 findings (push transports, live-verified against Stalwart v0.16.11-alpine).**
+Implemented as a zero-dep runtime module `packages/jmap/src/push/`: a fetch-based `SseChannel`
+(WHATWG SSE parser), an RFC 8887 `WebSocketChannel` (typed `Request`/`Response` round-trip +
+`WebSocketPushEnable`/`StateChange`), a shared `ReconnectLoop` (generation-guarded full-jitter
+backoff 1 s→30 s cap, reset after a 5 s-stable connection, `AbortSignal`/`close()` teardown)
+and `createPushChannel`/`pickTransport` auto-selection (WS→SSE→polling stub). Public
+`PushChannel` surface: `{ transport, status: connecting|open|reconnecting|closed, open(),
+close(), subscribe(cb), onStatus(cb), onError(cb) }`. **Latencies:** local `Email/set` →
+`StateChange` ~1 ms; observed end-to-end 2–5 ms on WS and SSE; full reconnect after a
+`docker restart` ≈ 2.1 s downtime, same token/creds reconnect automatically. **Bundle:** push
+is tree-shaken out of `apps/web` — the 300 KB gz budget is untouched (still 80.55 KB gz); the
+`@waxwing/jmap` full barrel grows **+5.59 KB gz** (9.32 → 14.91 KB gz) with push included,
+still under the ≤ 15 KB target. **Tests:** 72 hermetic push units (mocked
+fetch/WebSocket/timers) + 4 auth + 3 live SP.3 integration tests (WS + SSE scenarios +
+capability check; `describe.skipIf` auto-skips when the fixture is down); repo total 178
+tests green. **Review fixes applied:** re-entrant `close()` guard in the reconnect loop; WS
+eligibility gated on `supportsPush === true`; backoff reset moved to a 5 s-stable-connection
+signal (`DEFAULT_STABLE_AFTER_MS`) rather than resetting on the first open. **Auth surface:**
+`AuthProvider` gained an optional `token()` (implemented by `bearer()`, not `basic()`) to feed
+the SSE header/query auth — an additive extension of the SP.1 auth-scheme abstraction — and
+`JmapRequestError` (RFC 8887 §4.2) was added to the error hierarchy (ADR-005). **Deferred
+(scope-noted, not defects):** polling transport is interface-only (M1.3 owns long-poll);
+post-reconnect `Foo/changes` re-sync is M1.3's (the channel exposes the per-type states in
+`StateChange.changed`); no client-side SSE idle watchdog (drop is detected via
+stream-end/socket-close, which the Done-when requires); Stalwart supports **no** SSE
+`Last-Event-ID` resumption (never emits an `id:`, ignores a stale `Last-Event-ID`) so the
+client must re-sync via `*/changes` after any reconnect (informs M1.3); WS `pushState`
+resumption is pass-through only.
 
 ### SP.4 — Raw end-to-end demo
 
@@ -468,12 +511,40 @@ Done when: a human can log into the fixture and read a delivered test mail end-t
 Size: S. Deliverable: `docs/adr/` entries + a findings section appended to this plan (§13
 notes or new ADRs), answering **each** of:
 
-- [ ] CORS: exact behavior of cross-origin JMAP calls against Stalwart with/without
-      `usePermissiveCors` (FR-DEP-05 docs input).
+- [x] CORS: exact behavior of cross-origin JMAP calls against Stalwart with/without
+      `usePermissiveCors` (FR-DEP-05 docs input). **Answered (SP.3):** Stalwart v0.16.11 with
+      default config emits **no** `Access-Control-Allow-*` headers on any route (`/jmap/`,
+      `/jmap/eventsource/`, `/jmap/ws`, `/jmap/session`, `/auth/token`) — OPTIONS preflight →
+      204 with zero CORS headers; actual responses carry no ACAO. Cross-origin browser access
+      (including the fetch-based SSE reader) is therefore **blocked by default**; a
+      cross-origin static Waxwing needs Stalwart `usePermissiveCors`, a same-origin
+      Applications mount (FR-DEP-02), or a CORS-adding reverse proxy — matching the FR-DEP-05
+      trade-off. (Only the default `usePermissiveCors:false` case was probed; the permissive
+      case is not re-tested here.)
 - [ ] `Email/parse`: supported by Stalwart v0.16? (decides whether `postal-mime` fallback
       is needed for FR-RD-07).
 - [ ] WebSocket RFC 8887: works as specced? Push over WS reliable? (decides D2.)
-- [ ] EventSource auth mechanism (see SP.3).
+      **Evidence recorded (SP.3) — D2 stays open for Heiko at G1:** JMAP-over-WebSocket works
+      exactly as specced **server-side/Node** — `urn:ietf:params:jmap:websocket` advertised
+      (`{url: ws://…/jmap/ws, supportsPush:true}`), `Authorization` header (Bearer/Basic) on
+      the Upgrade → 101, full `Request`/`Response` round-trip (echoes `requestId` +
+      `sessionState`), `WebSocketPushEnable` + `StateChange` verified, ~2–5 ms latency,
+      `dataTypes` filtering honored, survives `docker restart`. **But not browser-viable
+      against Stalwart v0.16.11:** the only accepted auth is the `Authorization` header, which
+      browsers cannot set on a `WebSocket`; Stalwart accepts no `?access_token=`/`?token=`
+      (→401) and no token-in-subprotocol (→401), so a browser cannot open an authenticated WS
+      at all. Net: WS push is reliable as a Node/server-side transport but blocked in the
+      browser today — V1-core browser WS would require a Stalwart change adding a
+      browser-viable WS auth path. Decision D2 is Heiko's at G1 (not decided here).
+- [x] EventSource auth mechanism (see SP.3). **Answered (SP.3):** Stalwart's `eventSourceUrl`
+      authenticates **only** via the HTTP `Authorization` header (Bearer or Basic);
+      `?access_token=`/`?token=` query params → 401, no session cookie exists (`/login` and
+      `/api/auth` set none) → cookie auth impossible, no-auth → 401. The native `EventSource`
+      DOM API cannot set request headers, so it can **never** authenticate against Stalwart →
+      Waxwing implements SSE as a **fetch-based reader** (`fetch` + `ReadableStream`) sending
+      `Authorization: Bearer <token>` (**ADR-005**). Verified live: Bearer and Basic → 200
+      `text/event-stream`; `?access_token=` → 401. Resumption: Stalwart emits no SSE `id:` and
+      ignores `Last-Event-ID`, so reconnect must re-sync via `*/changes` (informs M1.3).
 - [ ] `Email/queryChanges`: supported/reliable, or `cannotCalculateChanges` common?
       (shapes M1.3's sync strategy.)
 - [ ] SearchSnippet support (shapes M3.1).
@@ -1275,3 +1346,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-05 | SP.1 **done** — `@waxwing/jmap` core: zero-dep MIT client (session discovery, `bearer`/`basic` auth abstraction, batched requests + back-references, auto-chunking against session limits, RFC 8620/8621 types + typed method registry, blob upload/download). tsup build **9.32 KB gz**; 64 hermetic unit tests + a 4/4 live integration test against the Stalwart fixture (list mailboxes, `Email/set`→back-ref query→get, blob round-trip). Review caught + fixed a chunking blocker and a split-`/set` data-loss bug. Starts Phase 1 (Spike). |
 | 2026-07-05 | **ADR-004** — account-scoped auth storage from day one (FR-AUTH-07 readiness): `SecretStore` scoped by IndexedDB database name; a second account is purely additive, no migration. |
 | 2026-07-05 | SP.2 **done** — auth module `apps/web/src/auth/` (oauth4webapi 3.8.6): `AuthController` (OAuth Auth-Code+PKCE + Basic behind `@waxwing/jmap` `bearer`/`basic`), `SecretStore` (secrets wrapped by a non-extractable AES-GCM `CryptoKey` in IndexedDB — never `local`/`sessionStorage`, NFR-SEC-02), memory-only access token, single-flight silent refresh, offline start, RFC 8414 discovery, `document.baseURI` redirect (FR-DEP-02), logout wipe (FR-AUTH-05). 31 hermetic auth tests (93 total) **+ live OAuth+Basic verification** against Stalwart v0.16.11 (login → `Mailbox/get` → forced refresh → logout). SP.5 findings: no client registration, no RFC 7009 revocation endpoint, opaque tokens (reused refresh), unsolicited ES256 `id_token` stripped. |
+| 2026-07-09 | **ADR-005** — SSE via a fetch-based reader, not the native `EventSource`: Stalwart's SSE (and WS) endpoints authenticate only via the `Authorization` header, which `EventSource`/browser `WebSocket` cannot send; SSE uses `fetch`+`ReadableStream` with `Authorization: Bearer` (+ optional `AuthProvider.token()`), and WS is server-side-only against Stalwart. tech-stack §4.2 + FR-NOTIF-01 note updated. |
+| 2026-07-09 | SP.3 **done** — push transports in `packages/jmap/src/push/`: fetch-based `SseChannel` (Stalwart SSE needs an `Authorization` header — native `EventSource` unusable, ADR-005), RFC 8887 `WebSocketChannel` (server-side-only vs. Stalwart), shared full-jitter `ReconnectLoop`, `createPushChannel` WS→SSE→polling-stub auto-select. Both deliver `StateChange` 2–5 ms and survive `docker restart`. 72+4 hermetic + 3 live tests (178 total green); push tree-shaken from `apps/web` (budget untouched at 80.55 KB gz; +5.59 KB gz in the `@waxwing/jmap` barrel → 14.91 KB gz). SP.5 answers recorded: SSE + EventSource auth mechanism, CORS default-off; WS-over-browser evidence left open for D2 at G1. |

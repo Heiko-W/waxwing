@@ -11,6 +11,13 @@ export interface AuthProvider {
   readonly scheme: string
   /** Returns the full `Authorization` header value, e.g. `"Bearer eyJ…"`. */
   authorization(): string | Promise<string>
+  /**
+   * The bare credential for transports that carry auth *outside* the `Authorization`
+   * header — e.g. an SSE `?access_token=` query param on servers that support one (SP.3).
+   * Optional and additive: {@link bearer} returns the raw token; {@link basic} has no query
+   * form and returns `undefined`. Header-based transports never call this.
+   */
+  token?(): string | undefined | Promise<string | undefined>
 }
 
 /**
@@ -18,11 +25,14 @@ export interface AuthProvider {
  * same provider can front a refreshing OAuth token store later (SP.2).
  */
 export function bearer(token: string | (() => string | Promise<string>)): AuthProvider {
+  const resolve = () => (typeof token === 'function' ? token() : token)
   return {
     scheme: 'bearer',
     async authorization() {
-      const value = typeof token === 'function' ? await token() : token
-      return `Bearer ${value}`
+      return `Bearer ${await resolve()}`
+    },
+    token() {
+      return resolve()
     },
   }
 }

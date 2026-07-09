@@ -31,7 +31,7 @@ export { planRequest, reassembleResponses } from './chunking'
 // Client + connection.
 export type { CallOptions, ConnectOptions, JmapClientOptions } from './client'
 export { connect, FALLBACK_LIMITS, JmapClient } from './client'
-// Error hierarchy (RFC 8620 §3.6).
+// Error hierarchy (RFC 8620 §3.6, RFC 8887 §4.2).
 export {
   errorFromResponse,
   isMethodError,
@@ -41,12 +41,15 @@ export {
   JmapHttpError,
   JmapMethodError,
   JmapProblemError,
+  JmapRequestError,
   MethodErrorTypes,
   ProblemTypes,
 } from './errors'
 // Typed method registry (RFC 8620/8621 methods bound to their arg/response types).
 export type { MethodName } from './methods'
 export { Methods } from './methods'
+// Push transports (SP.3, FR-NOTIF-01): WebSocket (RFC 8887) + fetch-based SSE, auto-selected.
+export * from './push'
 // Request builder + response view + back-reference helpers.
 export type { BackReferenceArgs, MethodDef, TypedCallHandle } from './request'
 export { CallHandle, creationRef, defineMethod, MethodResponses, RequestBuilder } from './request'

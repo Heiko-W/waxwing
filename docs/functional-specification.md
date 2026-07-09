@@ -273,7 +273,12 @@ webmail is an open gap.
 - **FR-NOTIF-01 (Must)** — Live UI updates via JMAP push: **WebSocket (RFC 8887)**
   preferred, **EventSource** fallback, polling as last resort — automatic selection by
   capability. Reconnect/backoff logic; `*changes` diffing keeps all open views current
-  (new mail appears without refresh, counts update everywhere).
+  (new mail appears without refresh, counts update everywhere). Implementation note
+  (SP.3/ADR-005): the SSE ("EventSource") fallback is realized as a **fetch-based reader**,
+  because Stalwart authenticates the SSE endpoint only via the `Authorization` header, which
+  the native `EventSource` API cannot send. Against Stalwart v0.16.11 the browser `WebSocket`
+  is likewise unauthenticable (no header), so the browser transport is SSE; whether WS becomes
+  V1 core is decision D2 (Gate G1).
 - **FR-NOTIF-02 (Must)** — **System notifications while the app is closed** via Web Push:
   JMAP `PushSubscription` with RFC 8291 encryption, handled in the service worker
   (Stalwart supports this natively — no relay server needed beyond the browser vendor's

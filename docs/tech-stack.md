@@ -112,8 +112,12 @@ So Waxwing ships its own thin client as a separate package:
 - Typed method calls + batching + back-references (`$ref`) for: Core, Mail, Submission,
   Identity, VacationResponse, Blob (RFC 9404), Quota (RFC 9425), Sieve (RFC 9661),
   Contacts (RFC 9610); capability-gated.
-- Transports: `fetch` + **WebSocket (RFC 8887, incl. push)** + EventSource fallback,
-  with reconnect/backoff.
+- Transports: `fetch` + **WebSocket (RFC 8887, incl. push)** + SSE fallback, with
+  reconnect/backoff. **SSE is a fetch-based reader** (`fetch` + `ReadableStream` sending the
+  `Authorization` header), **not** the native `EventSource` API — Stalwart authenticates its
+  SSE endpoint only via the `Authorization` header, which `EventSource` cannot set (ADR-005).
+  Against Stalwart v0.16.11 the browser `WebSocket` likewise cannot authenticate (no header),
+  so WS is a Node/server-side transport there and browsers use the SSE reader (decision D2).
 - Session handling (`/.well-known/jmap`), upload/download URL templating, request
   chunking against session limits (FR-SRV-03).
 - Zero runtime deps; `jmap-rfc-types` and `jmap-jam` (MIT) serve as references.

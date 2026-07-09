@@ -1,4 +1,5 @@
 import type { Invocation, MethodErrorObject, ProblemDetails, SetError } from './types/core'
+import type { WsRequestError } from './types/push'
 
 /**
  * Error hierarchy for the three JMAP failure layers (RFC 8620 §3.6):
@@ -71,6 +72,29 @@ export class JmapMethodError extends JmapError {
     super(error.description ?? error.type)
     this.type = error.type
     this.description = error.description
+  }
+}
+
+/**
+ * A WebSocket request-level error (RFC 8887 §4.2): a `{ "@type": "RequestError", … }` frame
+ * answering a malformed/rejected `Request`. The body is shaped like an RFC 8620 §3.6.1
+ * problem document (the HTTP transport surfaces the same failure as {@link JmapProblemError}),
+ * plus the `requestId` correlating it to the offending call.
+ */
+export class JmapRequestError extends JmapError {
+  override name = 'JmapRequestError'
+  readonly type: string
+  readonly status: number | undefined
+  readonly detail: string | undefined
+  readonly requestId: string | undefined
+  readonly problem: WsRequestError
+  constructor(problem: WsRequestError) {
+    super(problem.detail ?? problem.type)
+    this.type = problem.type
+    this.status = problem.status
+    this.detail = problem.detail
+    this.requestId = problem.requestId
+    this.problem = problem
   }
 }
 
