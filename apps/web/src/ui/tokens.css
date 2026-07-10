@@ -37,7 +37,9 @@
   --waxwing-danger: #c10016;
   --waxwing-danger-contrast: #ffffff;
   --waxwing-success: #1e7b34;
+  --waxwing-success-contrast: #ffffff;
   --waxwing-warning: #8a5d00;
+  --waxwing-warning-contrast: #ffffff;
 
   /* ---- Elevation: light ---- */
   --waxwing-overlay: rgba(0, 0, 0, 0.32);
@@ -108,7 +110,9 @@
     --waxwing-danger: #ff6b60;
     --waxwing-danger-contrast: #1d1d1f;
     --waxwing-success: #30d158;
+    --waxwing-success-contrast: #1d1d1f;
     --waxwing-warning: #ffd60a;
+    --waxwing-warning-contrast: #1d1d1f;
 
     --waxwing-overlay: rgba(0, 0, 0, 0.6);
     --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -130,7 +134,9 @@
   --waxwing-danger: #ff6b60;
   --waxwing-danger-contrast: #1d1d1f;
   --waxwing-success: #30d158;
+  --waxwing-success-contrast: #1d1d1f;
   --waxwing-warning: #ffd60a;
+  --waxwing-warning-contrast: #1d1d1f;
 
   --waxwing-overlay: rgba(0, 0, 0, 0.6);
   --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -151,7 +157,9 @@
   --waxwing-danger: #c10016;
   --waxwing-danger-contrast: #ffffff;
   --waxwing-success: #1e7b34;
+  --waxwing-success-contrast: #ffffff;
   --waxwing-warning: #8a5d00;
+  --waxwing-warning-contrast: #ffffff;
 
   --waxwing-overlay: rgba(0, 0, 0, 0.32);
   --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);

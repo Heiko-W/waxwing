@@ -1,0 +1,77 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--waxwing-space-1);
+  min-block-size: var(--waxwing-tap-target);
+  min-inline-size: var(--waxwing-tap-target);
+  padding-inline: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-sm);
+  cursor: pointer;
+}
+
+.menu {
+  z-index: 50;
+  min-inline-size: 12rem;
+  max-inline-size: min(20rem, 90vw);
+  padding: var(--waxwing-space-1);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+.alignEnd {
+  translate: -100% 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  inline-size: 100%;
+  min-block-size: var(--waxwing-tap-target);
+  padding-inline: var(--waxwing-space-3);
+  border: 0;
+  border-radius: var(--waxwing-radius-sm);
+  background-color: transparent;
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  background-color: var(--waxwing-surface-2);
+}
+
+.item:disabled {
+  color: var(--waxwing-text-muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.destructive {
+  color: var(--waxwing-danger);
+}
+
+.icon {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  flex: none;
+}
+
+.itemLabel {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

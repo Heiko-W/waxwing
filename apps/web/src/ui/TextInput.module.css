@@ -1,0 +1,25 @@
+.input {
+  inline-size: 100%;
+  min-block-size: var(--waxwing-tap-target);
+  padding-inline: var(--waxwing-space-3);
+  padding-block: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-sm);
+}
+
+.input::placeholder {
+  color: var(--waxwing-text-muted);
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.invalid {
+  border-color: var(--waxwing-danger);
+}

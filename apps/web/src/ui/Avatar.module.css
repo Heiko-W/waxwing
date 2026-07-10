@@ -1,0 +1,31 @@
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--waxwing-radius-full);
+  background-color: var(--waxwing-surface-2);
+  color: var(--waxwing-text);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: 1;
+  overflow: hidden;
+  user-select: none;
+}
+
+.sm {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  font-size: var(--waxwing-text-xs);
+}
+
+.md {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: var(--waxwing-text-sm);
+}
+
+.lg {
+  inline-size: 3rem;
+  block-size: 3rem;
+  font-size: var(--waxwing-text-lg);
+}

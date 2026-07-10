@@ -18,5 +18,17 @@
       "en": "EN",
       "de": "DE"
     }
+  },
+  "ui": {
+    "dialog": {
+      "close": "Schließen"
+    },
+    "toast": {
+      "region": "Benachrichtigungen",
+      "dismiss": "Verwerfen"
+    },
+    "spinner": {
+      "label": "Wird geladen"
+    }
   }
 }

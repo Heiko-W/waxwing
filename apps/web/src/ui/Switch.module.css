@@ -1,0 +1,61 @@
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  min-block-size: var(--waxwing-tap-target);
+}
+
+.label {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text);
+}
+
+/* The button is the 44px touch target; the visible pill sits centered inside it. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-inline-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-tap-target);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.track {
+  position: relative;
+  display: block;
+  inline-size: 2.75rem;
+  block-size: 1.65rem;
+  border-radius: var(--waxwing-radius-full);
+  background-color: var(--waxwing-border-strong);
+  transition: background-color var(--waxwing-duration-base) var(--waxwing-ease-standard);
+}
+
+.checked .track {
+  background-color: var(--waxwing-accent);
+}
+
+.thumb {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0.175rem;
+  inline-size: 1.3rem;
+  block-size: 1.3rem;
+  border-radius: var(--waxwing-radius-full);
+  background-color: #ffffff;
+  box-shadow: var(--waxwing-shadow-1);
+  translate: 0 -50%;
+  transition: inset-inline-start var(--waxwing-duration-base) var(--waxwing-ease-standard);
+}
+
+.checked .thumb {
+  inset-inline-start: calc(2.75rem - 1.3rem - 0.175rem);
+}

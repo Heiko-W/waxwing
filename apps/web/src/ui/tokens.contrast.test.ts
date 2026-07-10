@@ -28,9 +28,9 @@ function parseBlock(selectorSource: string): Record<string, string> {
   const match = css.match(new RegExp(`${selectorSource}\\s*\\{([^}]*)\\}`))
   if (!match) throw new Error(`token block not found: ${selectorSource}`)
   const tokens: Record<string, string> = {}
-  for (const line of match[1].split('\n')) {
+  for (const line of (match[1] ?? '').split('\n')) {
     const decl = line.match(/--waxwing-([\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/)
-    if (decl) tokens[decl[1]] = decl[2]
+    if (decl?.[1] && decl[2]) tokens[decl[1]] = decl[2]
   }
   return tokens
 }
@@ -63,8 +63,10 @@ const PAIRS: Pair[] = [
   { fg: 'danger-contrast', bg: 'danger', min: TEXT_AA, note: 'label on danger fill' },
   { fg: 'success', bg: 'bg', min: TEXT_AA, note: 'success text on page' },
   { fg: 'success', bg: 'surface', min: TEXT_AA, note: 'success text on card' },
+  { fg: 'success-contrast', bg: 'success', min: TEXT_AA, note: 'label on success fill' },
   { fg: 'warning', bg: 'bg', min: TEXT_AA, note: 'warning text on page' },
   { fg: 'warning', bg: 'surface', min: TEXT_AA, note: 'warning text on card' },
+  { fg: 'warning-contrast', bg: 'warning', min: TEXT_AA, note: 'label on warning fill' },
   { fg: 'border-strong', bg: 'bg', min: UI_AA, note: 'control boundary on page' },
   { fg: 'border-strong', bg: 'surface', min: UI_AA, note: 'control boundary on card' },
   { fg: 'border-strong', bg: 'surface-2', min: UI_AA, note: 'control boundary on raised' },
@@ -81,8 +83,9 @@ for (const [themeName, palette] of [
       it(`${pair.fg} on ${pair.bg} meets ${pair.min}:1 (${pair.note})`, () => {
         const fg = palette[pair.fg]
         const bg = palette[pair.bg]
-        expect(fg, `missing token --waxwing-${pair.fg}`).toBeDefined()
-        expect(bg, `missing token --waxwing-${pair.bg}`).toBeDefined()
+        if (fg === undefined || bg === undefined) {
+          throw new Error(`missing token: --waxwing-${pair.fg} or --waxwing-${pair.bg}`)
+        }
         const ratio = roundRatio(contrastRatio(fg, bg))
         expect(ratio, `${pair.fg} on ${pair.bg} = ${ratio}:1`).toBeGreaterThanOrEqual(pair.min)
       })

@@ -18,5 +18,17 @@
       "en": "EN",
       "de": "DE"
     }
+  },
+  "ui": {
+    "dialog": {
+      "close": "Close"
+    },
+    "toast": {
+      "region": "Notifications",
+      "dismiss": "Dismiss"
+    },
+    "spinner": {
+      "label": "Loading"
+    }
   }
 }

@@ -1,0 +1,30 @@
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-tap-target);
+  cursor: pointer;
+}
+
+/* Control-only (no visible label): still a 44px square target. */
+.bare {
+  justify-content: center;
+  min-inline-size: var(--waxwing-tap-target);
+}
+
+.input {
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+  accent-color: var(--waxwing-accent);
+  cursor: pointer;
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.label {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text);
+}

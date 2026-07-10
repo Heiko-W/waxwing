@@ -1,0 +1,69 @@
+.container {
+  display: flex;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.horizontal {
+  flex-direction: row;
+}
+
+.vertical {
+  flex-direction: column;
+}
+
+.primary {
+  flex: none;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.secondary {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.separator {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--waxwing-bg);
+  touch-action: none;
+}
+
+.horizontal > .separator {
+  inline-size: var(--waxwing-space-3);
+  cursor: col-resize;
+}
+
+.vertical > .separator {
+  block-size: var(--waxwing-space-3);
+  cursor: row-resize;
+}
+
+.grip {
+  display: block;
+  border-radius: var(--waxwing-radius-full);
+  background-color: var(--waxwing-border-strong);
+}
+
+.horizontal > .separator > .grip {
+  inline-size: 2px;
+  block-size: 2rem;
+}
+
+.vertical > .separator > .grip {
+  inline-size: 2rem;
+  block-size: 2px;
+}
+
+@media (hover: hover) {
+  .separator:hover > .grip {
+    background-color: var(--waxwing-accent);
+  }
+}

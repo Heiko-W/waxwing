@@ -1,0 +1,40 @@
+.wrapper {
+  position: relative;
+  display: inline-flex;
+  inline-size: 100%;
+}
+
+.select {
+  inline-size: 100%;
+  min-block-size: var(--waxwing-tap-target);
+  padding-inline: var(--waxwing-space-3) var(--waxwing-space-7);
+  padding-block: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-sm);
+  appearance: none;
+  cursor: pointer;
+}
+
+.select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.invalid {
+  border-color: var(--waxwing-danger);
+}
+
+.chevron {
+  position: absolute;
+  inset-inline-end: var(--waxwing-space-3);
+  inset-block-start: 50%;
+  translate: 0 -50%;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-text-muted);
+  pointer-events: none;
+}

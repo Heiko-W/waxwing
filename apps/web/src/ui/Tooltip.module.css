@@ -1,0 +1,24 @@
+.wrapper {
+  display: inline-flex;
+}
+
+.tooltip {
+  z-index: 60;
+  max-inline-size: 16rem;
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  background-color: var(--waxwing-text);
+  color: var(--waxwing-bg);
+  font-size: var(--waxwing-text-xs);
+  line-height: var(--waxwing-leading-normal);
+  box-shadow: var(--waxwing-shadow-2);
+  pointer-events: none;
+}
+
+.top {
+  translate: -50% -100%;
+}
+
+.bottom {
+  translate: -50% 0;
+}
