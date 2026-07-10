@@ -52,12 +52,18 @@ export function SplitPane({
 
   function onPointerMove(event: PointerEvent<HTMLDivElement>): void {
     if (!draggingRef.current || !containerRef.current) return
+    // If no button is held (a stray move, or we missed the pointerup), stop dragging so the
+    // divider does not follow a button-less cursor.
+    if (event.buttons === 0) {
+      draggingRef.current = false
+      return
+    }
     const rect = containerRef.current.getBoundingClientRect()
     const raw = isHorizontal ? event.clientX - rect.left : event.clientY - rect.top
     setSize(clamp(raw, minPrimarySize, maxPrimarySize))
   }
 
-  function onPointerUp(event: PointerEvent<HTMLDivElement>): void {
+  function endDrag(event: PointerEvent<HTMLDivElement>): void {
     draggingRef.current = false
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
@@ -108,7 +114,9 @@ export function SplitPane({
         className={styles.separator}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
         onKeyDown={onKeyDown}
       >
         <span className={styles.grip} aria-hidden="true" />

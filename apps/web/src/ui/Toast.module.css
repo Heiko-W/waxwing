@@ -10,6 +10,17 @@
   pointer-events: none;
 }
 
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+/* An empty (always-mounted) live region must not add stray spacing to the stack. */
+.stack:empty {
+  display: none;
+}
+
 .toast {
   display: flex;
   align-items: flex-start;

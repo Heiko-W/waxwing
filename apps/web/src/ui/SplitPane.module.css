@@ -36,13 +36,16 @@
   touch-action: none;
 }
 
+/* 24px hit band (WCAG 2.5.8 target size) around a thin visual grip. A splitter at the blanket
+   44px would waste a wide dead zone between panes; 24px meets AA and keyboard resize is the
+   primary a11y path (documented in docs/design-system.md §2.6). */
 .horizontal > .separator {
-  inline-size: var(--waxwing-space-3);
+  inline-size: 1.5rem;
   cursor: col-resize;
 }
 
 .vertical > .separator {
-  block-size: var(--waxwing-space-3);
+  block-size: 1.5rem;
   cursor: row-resize;
 }
 

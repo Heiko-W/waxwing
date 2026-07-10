@@ -61,6 +61,9 @@ export function Menu({ triggerLabel, trigger, items, align = 'start', className 
     (toIndex: number) => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (rect) {
+        // NOTE (FR-I18N-02): start/end here resolve to physical left/right, which is correct
+        // for the LTR locales V1 ships (en, de). When an RTL locale is added, mirror this
+        // against the trigger's writing direction.
         setCoords({ top: rect.bottom + 4, left: align === 'end' ? rect.right : rect.left })
       }
       setFocusedIndex(toIndex)
@@ -108,10 +111,17 @@ export function Menu({ triggerLabel, trigger, items, align = 'start', className 
 
   function onTypeahead(char: string): void {
     if (typeahead.current.timer) clearTimeout(typeahead.current.timer)
-    typeahead.current.buffer += char.toLowerCase()
+    const lower = char.toLowerCase()
+    // Repeating the same single character cycles through items starting with it (APG); any
+    // other key extends the search buffer to narrow within the timeout window.
+    const isRepeat = typeahead.current.buffer === lower
+    typeahead.current.buffer = isRepeat ? lower : typeahead.current.buffer + lower
     const { buffer } = typeahead.current
-    for (let offset = 1; offset <= items.length; offset++) {
-      const index = (Math.max(focusedIndex, 0) + offset) % items.length
+    // On a repeat, search strictly after the current item so focus advances; when narrowing,
+    // include the current item so a longer prefix can still match where focus already is.
+    const startOffset = isRepeat ? 1 : 0
+    for (let step = 0; step < items.length; step++) {
+      const index = (Math.max(focusedIndex, 0) + startOffset + step) % items.length
       const item = items[index]
       if (item && !item.disabled && item.label.toLowerCase().startsWith(buffer)) {
         setFocusedIndex(index)
@@ -204,7 +214,9 @@ export function Menu({ triggerLabel, trigger, items, align = 'start', className 
                   type="button"
                   role="menuitem"
                   tabIndex={-1}
-                  disabled={item.disabled}
+                  // aria-disabled (not native `disabled`) so the item stays perceivable to a
+                  // screen reader; activate() is a no-op for it and roving focus skips it.
+                  aria-disabled={item.disabled || undefined}
                   className={cx(styles.item, item.destructive && styles.destructive)}
                   onClick={() => activate(index)}
                 >

@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import { Tooltip } from './Tooltip'
 
@@ -30,6 +30,67 @@ describe('Tooltip', () => {
     await screen.findByRole('tooltip')
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+
+  it('opens on hover only after the delay', () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <Tooltip content="Hint" openDelay={300}>
+          <button type="button">Trigger</button>
+        </Tooltip>,
+      )
+      const trigger = screen.getByRole('button')
+      fireEvent.pointerEnter(trigger)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+      act(() => vi.advanceTimersByTime(299))
+      expect(screen.queryByRole('tooltip')).toBeNull()
+      act(() => vi.advanceTimersByTime(1))
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the pending open if the pointer leaves before the delay', () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <Tooltip content="Hint" openDelay={300}>
+          <button type="button">Trigger</button>
+        </Tooltip>,
+      )
+      const trigger = screen.getByRole('button')
+      fireEvent.pointerEnter(trigger)
+      fireEvent.pointerLeave(trigger)
+      act(() => vi.advanceTimersByTime(400))
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stays open while focused even after the pointer leaves', () => {
+    vi.useFakeTimers()
+    try {
+      render(
+        <Tooltip content="Hint">
+          <button type="button">Trigger</button>
+        </Tooltip>,
+      )
+      const trigger = screen.getByRole('button')
+      act(() => {
+        fireEvent.focus(trigger)
+      })
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+      act(() => {
+        fireEvent.pointerLeave(trigger)
+        vi.advanceTimersByTime(300)
+      })
+      expect(screen.getByRole('tooltip')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('has no accessibility violations while open', async () => {

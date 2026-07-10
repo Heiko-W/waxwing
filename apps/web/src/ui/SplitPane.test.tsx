@@ -44,6 +44,32 @@ describe('SplitPane', () => {
     expect(separator).toHaveAttribute('aria-valuenow', '480')
   })
 
+  it('maps the arrow keys and aria-orientation for a vertical split', async () => {
+    const user = userEvent.setup()
+    render(
+      <SplitPane
+        orientation="vertical"
+        label="Resize top pane"
+        defaultPrimarySize={200}
+        minPrimarySize={100}
+        maxPrimarySize={300}
+        step={25}
+      >
+        <div>Top</div>
+        <div>Bottom</div>
+      </SplitPane>,
+    )
+    const separator = screen.getByRole('separator', { name: 'Resize top pane' })
+    expect(separator).toHaveAttribute('aria-orientation', 'horizontal')
+    separator.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(separator).toHaveAttribute('aria-valuenow', '225')
+    await user.keyboard('{ArrowUp}')
+    expect(separator).toHaveAttribute('aria-valuenow', '200')
+    await user.keyboard('{End}')
+    expect(separator).toHaveAttribute('aria-valuenow', '300')
+  })
+
   it('has no accessibility violations', async () => {
     const { container } = render(<Fixture />)
     await expectNoA11yViolations(container)

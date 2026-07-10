@@ -50,7 +50,7 @@
   inline-size: 1.3rem;
   block-size: 1.3rem;
   border-radius: var(--waxwing-radius-full);
-  background-color: #ffffff;
+  background-color: var(--waxwing-switch-thumb);
   box-shadow: var(--waxwing-shadow-1);
   translate: 0 -50%;
   transition: inset-inline-start var(--waxwing-duration-base) var(--waxwing-ease-standard);

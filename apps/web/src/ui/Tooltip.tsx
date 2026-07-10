@@ -4,6 +4,7 @@ import {
   type ReactElement,
   type ReactNode,
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -25,17 +26,25 @@ export interface TooltipProps {
   openDelay?: number
 }
 
+// Brief grace period so the pointer can travel from the trigger across the gap onto the
+// tooltip without it vanishing (WCAG 2.1 SC 1.4.13 "Hoverable").
+const CLOSE_GRACE_MS = 120
+
 /**
- * Supplementary hint shown on hover and keyboard focus (APG tooltip pattern). The trigger
- * gets `aria-describedby` pointing at the bubble; the tooltip itself is not focusable and
- * does not trap. Escape dismisses it while the trigger keeps focus. Because a tooltip can be
- * missed, use it only for supplementary hints — an icon-only control still needs its own
- * `aria-label` (see IconButton), not just a Tooltip.
+ * Supplementary hint shown on hover and keyboard focus (APG tooltip pattern). Hover and focus
+ * are tracked independently and the tooltip stays open while EITHER is active — so a mouse
+ * drifting off the trigger never dismisses a tooltip the keyboard opened, and vice versa. The
+ * bubble is itself hoverable (1.4.13). The trigger gets `aria-describedby`; the tooltip does
+ * not trap focus. Escape dismisses while the trigger keeps focus. Use only for supplementary
+ * hints — an icon-only control still needs its own `aria-label` (see IconButton).
  */
 export function Tooltip({ content, children, placement = 'top', openDelay = 300 }: TooltipProps) {
   const id = useId()
   const wrapperRef = useRef<HTMLSpanElement>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const openTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const hovered = useRef(false)
+  const focused = useRef(false)
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState({ top: 0, left: 0 })
 
@@ -49,26 +58,58 @@ export function Tooltip({ content, children, placement = 'top', openDelay = 300 
     })
   }, [placement])
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
+  const clearTimers = useCallback(() => {
+    if (openTimer.current) clearTimeout(openTimer.current)
+    if (closeTimer.current) clearTimeout(closeTimer.current)
   }, [])
 
-  const show = useCallback(() => {
+  const openNow = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
     position()
     setOpen(true)
   }, [position])
 
-  const hide = useCallback(() => {
-    clearTimer()
+  const scheduleClose = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    closeTimer.current = setTimeout(() => {
+      if (!hovered.current && !focused.current) setOpen(false)
+    }, CLOSE_GRACE_MS)
+  }, [])
+
+  const onPointerEnter = useCallback(() => {
+    hovered.current = true
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    if (openTimer.current) clearTimeout(openTimer.current)
+    openTimer.current = setTimeout(openNow, openDelay)
+  }, [openNow, openDelay])
+
+  const onPointerLeave = useCallback(() => {
+    hovered.current = false
+    if (openTimer.current) clearTimeout(openTimer.current)
+    scheduleClose()
+  }, [scheduleClose])
+
+  const onFocus = useCallback(() => {
+    focused.current = true
+    openNow()
+  }, [openNow])
+
+  const onBlur = useCallback(() => {
+    focused.current = false
+    scheduleClose()
+  }, [scheduleClose])
+
+  const dismiss = useCallback(() => {
+    hovered.current = false
+    focused.current = false
+    clearTimers()
     setOpen(false)
-  }, [clearTimer])
+  }, [clearTimers])
 
-  const onEnter = useCallback(() => {
-    clearTimer()
-    timerRef.current = setTimeout(show, openDelay)
-  }, [clearTimer, show, openDelay])
+  useDismiss(open, wrapperRef, dismiss, { escape: true, outsidePointer: false })
 
-  useDismiss(open, wrapperRef, hide, { escape: true, outsidePointer: false })
+  // Cancel any pending open/close timer if the trigger unmounts mid-hover.
+  useEffect(() => clearTimers, [clearTimers])
 
   if (!isValidElement(children)) return children
 
@@ -77,10 +118,10 @@ export function Tooltip({ content, children, placement = 'top', openDelay = 300 
     <span
       ref={wrapperRef}
       className={styles.wrapper}
-      onPointerEnter={onEnter}
-      onPointerLeave={hide}
-      onFocus={show}
-      onBlur={hide}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      onFocus={onFocus}
+      onBlur={onBlur}
     >
       {open ? cloneElement(children, { 'aria-describedby': id }) : children}
       {open ? (
@@ -90,6 +131,11 @@ export function Tooltip({ content, children, placement = 'top', openDelay = 300 
             role="tooltip"
             className={cx(styles.tooltip, styles[placement])}
             style={{ position: 'fixed', top: coords.top, left: coords.left }}
+            onPointerEnter={() => {
+              hovered.current = true
+              if (closeTimer.current) clearTimeout(closeTimer.current)
+            }}
+            onPointerLeave={onPointerLeave}
           >
             {content}
           </div>

@@ -47,12 +47,12 @@
   cursor: pointer;
 }
 
-.item:hover:not(:disabled),
+.item:hover:not([aria-disabled="true"]),
 .item:focus-visible {
   background-color: var(--waxwing-surface-2);
 }
 
-.item:disabled {
+.item[aria-disabled="true"] {
   color: var(--waxwing-text-muted);
   cursor: not-allowed;
   opacity: 0.6;

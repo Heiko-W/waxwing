@@ -12,7 +12,6 @@
   font-size: var(--waxwing-text-xs);
   line-height: var(--waxwing-leading-normal);
   box-shadow: var(--waxwing-shadow-2);
-  pointer-events: none;
 }
 
 .top {

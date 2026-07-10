@@ -103,7 +103,10 @@ from this scale; no arbitrary pixel spacing.
 
 - `--waxwing-tap-target: 44px` — the minimum block size of every interactive base component
   (FR-A11Y-01). Density below 44 px is a *list-level* concern (M1.6, FR-LST-07 + the WCAG 2.5.8
-  spacing exception), not something base controls do.
+  spacing exception), not something base controls do. **One documented exception:** the
+  SplitPane resize separator uses a 24 px hit band (meeting WCAG 2.5.8 AA) rather than 44 px —
+  a 44 px divider would be a wide dead zone between panes, and keyboard resize (arrows/Home/End)
+  is the separator's primary operable path.
 - Durations: `fast` 120ms · `base` 200ms · `slow` 320ms. Easing: `--waxwing-ease-standard`
   `cubic-bezier(0.2, 0, 0, 1)`.
 - **Reduced motion:** `global.css` collapses all animation/transition/scroll for

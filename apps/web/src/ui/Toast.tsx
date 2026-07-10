@@ -46,11 +46,12 @@ export function useToast(): ToastApi {
 const DEFAULT_DURATION = 5000
 
 /**
- * App-wide toast host. Wrap the app once; children call `useToast().toast(...)`. Each toast
- * is its own live region — `role="status"` (polite) or, for a danger tone, `role="alert"`
- * (assertive) — so screen readers announce it without stealing focus. Auto-dismiss pauses
- * while the pointer is over or focus is within a toast (WCAG 2.2.1), and every toast has a
- * manual dismiss.
+ * App-wide toast host. Wrap the app once; children call `useToast().toast(...)`. The two live
+ * regions (polite for status tones, assertive for danger) are ALWAYS mounted — even with no
+ * toasts — because a screen reader only announces a live region whose contents change if the
+ * region already existed in the DOM; injecting the region and its text together leaves polite
+ * (status) toasts silent on NVDA/JAWS. Auto-dismiss pauses while the pointer is over or focus
+ * is within a toast (WCAG 2.2.1), and every toast has a manual dismiss.
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation()
@@ -70,18 +71,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<ToastApi>(() => ({ toast, dismiss }), [toast, dismiss])
 
+  const assertive = toasts.filter((toast) => toast.tone === 'danger')
+  const polite = toasts.filter((toast) => toast.tone !== 'danger')
+
   return (
     <ToastContext.Provider value={api}>
       {children}
-      {toasts.length > 0 ? (
-        <Portal>
-          <section className={styles.region} aria-label={t('ui.toast.region')}>
-            {toasts.map((record) => (
+      <Portal>
+        <section className={styles.region} aria-label={t('ui.toast.region')}>
+          <div className={styles.stack} aria-live="assertive">
+            {assertive.map((record) => (
               <ToastItem key={record.id} record={record} onDismiss={dismiss} />
             ))}
-          </section>
-        </Portal>
-      ) : null}
+          </div>
+          <div className={styles.stack} aria-live="polite">
+            {polite.map((record) => (
+              <ToastItem key={record.id} record={record} onDismiss={dismiss} />
+            ))}
+          </div>
+        </section>
+      </Portal>
     </ToastContext.Provider>
   )
 }
@@ -113,9 +122,8 @@ function ToastItem({
   }, [start, clear])
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus only pause the auto-dismiss timer (WCAG 2.2.1); the toast is a status/alert live region, not a control
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover/focus only pause the auto-dismiss timer (WCAG 2.2.1); announcement is owned by the parent live region
     <div
-      role={tone === 'danger' ? 'alert' : 'status'}
       className={cx(styles.toast, styles[tone])}
       onMouseEnter={clear}
       onMouseLeave={start}

@@ -14,9 +14,29 @@ describe('Checkbox', () => {
     expect(screen.getByLabelText('Remember me')).toBeChecked()
   })
 
-  it('reflects the indeterminate flag on the DOM node', () => {
-    render(<Checkbox label="Select all" indeterminate />)
-    expect((screen.getByLabelText('Select all') as HTMLInputElement).indeterminate).toBe(true)
+  it('reflects the indeterminate flag on the DOM node and clears it when it flips off', () => {
+    const { rerender } = render(<Checkbox label="Select all" indeterminate />)
+    const checkbox = screen.getByLabelText('Select all') as HTMLInputElement
+    expect(checkbox.indeterminate).toBe(true)
+    rerender(<Checkbox label="Select all" indeterminate={false} />)
+    expect(checkbox.indeterminate).toBe(false)
+  })
+
+  it('forwards both object and callback refs', () => {
+    const objectRef = { current: null as HTMLInputElement | null }
+    render(<Checkbox aria-label="one" ref={objectRef} />)
+    expect(objectRef.current).toBeInstanceOf(HTMLInputElement)
+
+    let fromCallback: HTMLInputElement | null = null
+    render(
+      <Checkbox
+        aria-label="two"
+        ref={(node) => {
+          fromCallback = node
+        }}
+      />,
+    )
+    expect(fromCallback).toBeInstanceOf(HTMLInputElement)
   })
 
   it('supports a control-only variant via aria-label', async () => {
