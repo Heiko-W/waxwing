@@ -1,0 +1,91 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+import { contrastRatio, roundRatio } from './contrast'
+
+// Runs in the Node "unit" project (see vitest.config.ts): pure color math over the shipped
+// CSS, no DOM. Vitest stubs `.css` imports to empty in the jsdom project, so the tokens are
+// read from disk here, where `import.meta.url` is a real file URL.
+const css = readFileSync(fileURLToPath(new URL('./tokens.css', import.meta.url)), 'utf8')
+
+/**
+ * Machine-verified WCAG 2.2 AA contrast for the design tokens (FR-A11Y-01, M1.1:
+ * "contrast-check every token pair (WCAG AA) and record results in the doc"). This test
+ * IS that check: it parses the shipped tokens.css, reconstructs the effective light and
+ * dark palettes, and asserts every color pair the app relies on. The verified numbers
+ * are transcribed into docs/design-system.md; this test is what keeps that table honest
+ * as tokens change.
+ *
+ * Not asserted (documented exemptions, see tokens.css):
+ *  - `--waxwing-border` is a subtle divider (< 3:1 by design); control boundaries use
+ *    `--waxwing-border-strong` (asserted below).
+ *  - the accent as a fill/graphic is config-overridable and never a sole state indicator,
+ *    so its background contrast is intentionally not guaranteed. Its LABEL legibility on
+ *    the default accent (`--waxwing-accent-contrast`) is asserted.
+ */
+
+function parseBlock(selectorSource: string): Record<string, string> {
+  const match = css.match(new RegExp(`${selectorSource}\\s*\\{([^}]*)\\}`))
+  if (!match) throw new Error(`token block not found: ${selectorSource}`)
+  const tokens: Record<string, string> = {}
+  for (const line of match[1].split('\n')) {
+    const decl = line.match(/--waxwing-([\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/)
+    if (decl) tokens[decl[1]] = decl[2]
+  }
+  return tokens
+}
+
+// Base :root carries the full light palette; the dark block overrides only colors.
+const light = parseBlock(':root')
+const dark = { ...light, ...parseBlock(':root\\[data-theme="dark"\\]') }
+
+const TEXT_AA = 4.5 // WCAG 1.4.3 normal text
+const UI_AA = 3.0 // WCAG 1.4.11 non-text UI components
+
+interface Pair {
+  fg: string
+  bg: string
+  min: number
+  note: string
+}
+
+// Every pair Waxwing controls and requires. fg/bg are token names.
+const PAIRS: Pair[] = [
+  { fg: 'text', bg: 'bg', min: TEXT_AA, note: 'body text on page' },
+  { fg: 'text', bg: 'surface', min: TEXT_AA, note: 'body text on card' },
+  { fg: 'text', bg: 'surface-2', min: TEXT_AA, note: 'body text on raised' },
+  { fg: 'text-muted', bg: 'bg', min: TEXT_AA, note: 'secondary text on page' },
+  { fg: 'text-muted', bg: 'surface', min: TEXT_AA, note: 'secondary text on card' },
+  { fg: 'text-muted', bg: 'surface-2', min: TEXT_AA, note: 'secondary text on raised' },
+  { fg: 'accent-contrast', bg: 'accent', min: TEXT_AA, note: 'label on default accent fill' },
+  { fg: 'danger', bg: 'bg', min: TEXT_AA, note: 'error text on page' },
+  { fg: 'danger', bg: 'surface', min: TEXT_AA, note: 'error text on card' },
+  { fg: 'danger-contrast', bg: 'danger', min: TEXT_AA, note: 'label on danger fill' },
+  { fg: 'success', bg: 'bg', min: TEXT_AA, note: 'success text on page' },
+  { fg: 'success', bg: 'surface', min: TEXT_AA, note: 'success text on card' },
+  { fg: 'warning', bg: 'bg', min: TEXT_AA, note: 'warning text on page' },
+  { fg: 'warning', bg: 'surface', min: TEXT_AA, note: 'warning text on card' },
+  { fg: 'border-strong', bg: 'bg', min: UI_AA, note: 'control boundary on page' },
+  { fg: 'border-strong', bg: 'surface', min: UI_AA, note: 'control boundary on card' },
+  { fg: 'border-strong', bg: 'surface-2', min: UI_AA, note: 'control boundary on raised' },
+  { fg: 'focus-ring', bg: 'bg', min: UI_AA, note: 'focus/selection ring on page' },
+  { fg: 'focus-ring', bg: 'surface', min: UI_AA, note: 'focus/selection ring on card' },
+]
+
+for (const [themeName, palette] of [
+  ['light', light],
+  ['dark', dark],
+] as const) {
+  describe(`token contrast — ${themeName} theme`, () => {
+    for (const pair of PAIRS) {
+      it(`${pair.fg} on ${pair.bg} meets ${pair.min}:1 (${pair.note})`, () => {
+        const fg = palette[pair.fg]
+        const bg = palette[pair.bg]
+        expect(fg, `missing token --waxwing-${pair.fg}`).toBeDefined()
+        expect(bg, `missing token --waxwing-${pair.bg}`).toBeDefined()
+        const ratio = roundRatio(contrastRatio(fg, bg))
+        expect(ratio, `${pair.fg} on ${pair.bg} = ${ratio}:1`).toBeGreaterThanOrEqual(pair.min)
+      })
+    }
+  })
+}

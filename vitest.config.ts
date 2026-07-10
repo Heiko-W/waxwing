@@ -19,7 +19,14 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['packages/*/src/**/*.{test,spec}.ts', 'apps/web/src/auth/**/*.{test,spec}.ts'],
+          include: [
+            'packages/*/src/**/*.{test,spec}.ts',
+            'apps/web/src/auth/**/*.{test,spec}.ts',
+            // Pure color math over the shipped tokens.css — no DOM. Lives here (not the
+            // jsdom "web" project) so it can read the CSS from disk; vitest stubs `.css`
+            // imports to empty under jsdom.
+            'apps/web/src/ui/**/*.contrast.test.ts',
+          ],
           setupFiles: ['fake-indexeddb/auto'],
           // No passWithNoTests: this project spans all packages/* and jmap always
           // supplies a test, so a zero-test collection should fail loudly (it would mean

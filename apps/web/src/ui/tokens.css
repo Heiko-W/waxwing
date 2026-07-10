@@ -1,15 +1,25 @@
 /*
  * Waxwing design tokens (FR-THEME-01, FR-UI-01).
  *
- * Every color, space, radius and type value the app uses is exposed here as a
+ * Every color, space, radius, elevation and type value the app uses is exposed here as a
  * --waxwing-* custom property so a hoster can restyle without a rebuild (see
- * public/theme.css). Color tokens have a light set (:root) and a dark set applied
- * under both `prefers-color-scheme: dark` (respecting a forced light override) and
- * `:root[data-theme='dark']`; light is re-asserted under `:root[data-theme='light']`.
+ * public/theme.css). Theme-varying tokens (colors, shadows, overlay) have a light set
+ * (:root) and a dark set applied under both `prefers-color-scheme: dark` (respecting a
+ * forced light override) and `:root[data-theme='dark']`; light is re-asserted under
+ * `:root[data-theme='light']`. Theme-invariant tokens (spacing, radius, type, motion,
+ * tap-target) live once on :root.
  *
- * Contrast: color pairs are chosen to meet WCAG 2.2 AA (FR-A11Y-01) in both themes.
- * The accent (config-overridable) is used only for fills/borders/focus, never as body
- * text on a page background, because a custom accent cannot be contrast-guaranteed.
+ * Contrast (FR-A11Y-01, machine-verified by tokens.contrast.test.ts):
+ *  - Text pairs meet WCAG 2.2 AA (>= 4.5:1) in both themes.
+ *  - `--waxwing-border-strong` and `--waxwing-focus-ring` meet non-text UI contrast
+ *    (>= 3:1) against page and surfaces; they — not the accent — are what bound
+ *    interactive controls and mark focus/selection.
+ *  - `--waxwing-border` is a SUBTLE divider/hairline (< 3:1 by design). It is decorative
+ *    (WCAG 1.4.11 exempts dividers); never use it as the sole boundary of a control.
+ *  - The accent (config-overridable) is used for fills, and only as a NON-sole,
+ *    redundant accent — never as the single indicator of a state, and never as body text
+ *    on a page background, because a custom accent cannot be contrast-guaranteed.
+ *    `--waxwing-accent-contrast` is a label color proven legible on the DEFAULT accent.
  */
 
 :root {
@@ -22,10 +32,17 @@
   --waxwing-text: #1d1d1f;
   --waxwing-text-muted: #636366;
   --waxwing-border: #d2d2d7;
+  --waxwing-border-strong: #86868b;
   --waxwing-focus-ring: #c0560a;
   --waxwing-danger: #c10016;
+  --waxwing-danger-contrast: #ffffff;
   --waxwing-success: #1e7b34;
   --waxwing-warning: #8a5d00;
+
+  /* ---- Elevation: light ---- */
+  --waxwing-overlay: rgba(0, 0, 0, 0.32);
+  --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
+  --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
 
   /* ---- Spacing: 8-pt grid ---- */
   --waxwing-space-1: 0.25rem; /* 4px */
@@ -76,7 +93,7 @@
   --waxwing-ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* ---- Color: dark (system preference, unless a light override is forced) ---- */
+/* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --waxwing-accent-contrast: #1d1d1f;
@@ -86,14 +103,20 @@
     --waxwing-text: #f5f5f7;
     --waxwing-text-muted: #a5a5ad;
     --waxwing-border: #48484a;
+    --waxwing-border-strong: #939398;
     --waxwing-focus-ring: #ff9f45;
-    --waxwing-danger: #ff453a;
+    --waxwing-danger: #ff6b60;
+    --waxwing-danger-contrast: #1d1d1f;
     --waxwing-success: #30d158;
     --waxwing-warning: #ffd60a;
+
+    --waxwing-overlay: rgba(0, 0, 0, 0.6);
+    --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
   }
 }
 
-/* ---- Color: dark (explicit user override) ---- */
+/* ---- Color + elevation: dark (explicit user override) ---- */
 :root[data-theme="dark"] {
   --waxwing-accent-contrast: #1d1d1f;
   --waxwing-bg: #1c1c1e;
@@ -102,13 +125,19 @@
   --waxwing-text: #f5f5f7;
   --waxwing-text-muted: #a5a5ad;
   --waxwing-border: #48484a;
+  --waxwing-border-strong: #939398;
   --waxwing-focus-ring: #ff9f45;
-  --waxwing-danger: #ff453a;
+  --waxwing-danger: #ff6b60;
+  --waxwing-danger-contrast: #1d1d1f;
   --waxwing-success: #30d158;
   --waxwing-warning: #ffd60a;
+
+  --waxwing-overlay: rgba(0, 0, 0, 0.6);
+  --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 
-/* ---- Color: light re-asserted (explicit user override wins over OS dark) ---- */
+/* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */
 :root[data-theme="light"] {
   --waxwing-accent-contrast: #1d1d1f;
   --waxwing-bg: #f5f5f7;
@@ -117,8 +146,14 @@
   --waxwing-text: #1d1d1f;
   --waxwing-text-muted: #636366;
   --waxwing-border: #d2d2d7;
+  --waxwing-border-strong: #86868b;
   --waxwing-focus-ring: #c0560a;
   --waxwing-danger: #c10016;
+  --waxwing-danger-contrast: #ffffff;
   --waxwing-success: #1e7b34;
   --waxwing-warning: #8a5d00;
+
+  --waxwing-overlay: rgba(0, 0, 0, 0.32);
+  --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
+  --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
 }
