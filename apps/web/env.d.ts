@@ -8,6 +8,8 @@
 interface ImportMetaEnv {
   /** `'1'` turns the raw demo on in the dev server. */
   readonly VITE_WAXWING_DEMO?: string
+  /** `'1'` mounts the M1.1 component gallery in the dev server (dead-code-eliminated in prod). */
+  readonly VITE_WAXWING_GALLERY?: string
   /** Pre-fills the demo Basic-login username (fixture account). Never a literal in src. */
   readonly VITE_WAXWING_DEMO_USER?: string
   /** Pre-fills the demo Basic-login password (fixture password). Never a literal in src. */

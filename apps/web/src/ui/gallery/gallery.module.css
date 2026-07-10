@@ -1,0 +1,89 @@
+.page {
+  min-block-size: 100vh;
+  padding: var(--waxwing-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-5);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--waxwing-space-4);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--waxwing-text-2xl);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.themeSwitch {
+  display: inline-flex;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-6);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--waxwing-text-muted);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  min-inline-size: 14rem;
+}
+
+.fieldLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.splitHost {
+  inline-size: 100%;
+  block-size: 12rem;
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-lg);
+  overflow: hidden;
+}
+
+.pane {
+  padding: var(--waxwing-space-4);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.dialogBody {
+  margin: 0;
+  color: var(--waxwing-text);
+}

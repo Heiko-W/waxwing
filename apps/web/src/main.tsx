@@ -31,6 +31,15 @@ async function boot(): Promise<void> {
   // It is NOT a URL route: the OAuth redirect_uri is computeRedirectUri(document.baseURI)
   // (= app root, no query/hash), so a query- or hash-based route would be lost across the
   // redirect back from Stalwart. A boot-time flag survives it.
+  // Dev-only component gallery (M1.1). Same dead-code-elimination guard as the demo below:
+  // `import.meta.env.DEV` is a build-time literal, so the branch and its dynamic import are
+  // stripped from production; VITE_WAXWING_GALLERY then just gates it in the dev server.
+  if (import.meta.env.DEV && import.meta.env.VITE_WAXWING_GALLERY === '1') {
+    const { mountGallery } = await import('./ui/gallery/main')
+    mountGallery(container)
+    return
+  }
+
   if (import.meta.env.DEV && import.meta.env.VITE_WAXWING_DEMO === '1') {
     const { mountDemo } = await import('./demo/main')
     mountDemo(container)
