@@ -1,8 +1,124 @@
 {
   "shell": {
-    "tagline": "{{product}} — your mail, served straight from your server.",
-    "placeholder": "The app scaffold is ready. Mailboxes and messages arrive in the next milestones.",
-    "nav": "Primary navigation"
+    "nav": "Primary navigation",
+    "skip": "Skip to content",
+    "brand": "{{product}} home",
+    "menu": {
+      "mail": "Mail",
+      "contacts": "Contacts",
+      "settings": "Settings"
+    },
+    "folders": {
+      "show": "Show folders",
+      "hide": "Hide folders",
+      "title": "Folders",
+      "empty": "Your folders will appear here."
+    },
+    "list": {
+      "title": "Messages",
+      "empty": "Messages appear here once syncing lands.",
+      "resize": "Resize message list"
+    },
+    "reading": {
+      "title": "Reading",
+      "empty": "Select a message to read it.",
+      "back": "Back to messages"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "body": "This page does not exist.",
+      "home": "Go to Mail"
+    }
+  },
+  "onboarding": {
+    "welcome": "Welcome to {{product}}",
+    "connect": {
+      "title": "Connect to your mailbox",
+      "label": "Email address or server",
+      "placeholder": "you@example.com",
+      "hint": "Enter your email address and {{product}} finds your server automatically.",
+      "submit": "Continue",
+      "discovering": "Finding your server…"
+    },
+    "error": {
+      "discovery": "No mail server was found for {{domain}}.",
+      "network": "Could not reach the server. Check your connection and try again.",
+      "noAccount": "This server has no mail account for you.",
+      "config": "This deployment has no server configured to connect to.",
+      "generic": "Something went wrong. Please try again."
+    }
+  },
+  "auth": {
+    "signInTitle": "Sign in to {{host}}",
+    "oauth": {
+      "button": "Sign in securely",
+      "unavailable": "Secure sign-in needs an HTTPS connection. Use your username and password below."
+    },
+    "basic": {
+      "username": "Username",
+      "password": "Password",
+      "staySignedIn": "Stay signed in",
+      "appPasswordHint": "With two-factor authentication, use an app-specific password.",
+      "submit": "Sign in"
+    },
+    "back": "Use a different server",
+    "error": {
+      "invalidCredentials": "Wrong username or password.",
+      "oauthUnavailable": "This server requires secure (HTTPS) sign-in, which is not available here.",
+      "generic": "Sign-in failed. Please try again."
+    },
+    "reauth": {
+      "title": "Session expired",
+      "body": "Your session has expired. Sign in again to continue — your place is kept.",
+      "submit": "Sign in",
+      "cancel": "Sign out"
+    }
+  },
+  "account": {
+    "menu": "Account",
+    "signedInAs": "Signed in as {{name}}",
+    "signOut": "Sign out",
+    "signOutRemove": "Sign out and remove data",
+    "confirmRemove": {
+      "title": "Remove all local data?",
+      "body": "This deletes {{product}}'s locally stored mail and settings on this device. Mail on the server is not affected.",
+      "confirm": "Remove data and sign out",
+      "cancel": "Cancel"
+    }
+  },
+  "status": {
+    "offline": "Offline",
+    "online": "Back online",
+    "sync": {
+      "idle": "Up to date",
+      "syncing": "Syncing…",
+      "offline": "Offline",
+      "error": "Sync problem"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": {
+      "title": "Appearance",
+      "readingPane": {
+        "label": "Reading pane",
+        "right": "Beside the list",
+        "bottom": "Below the list",
+        "off": "Full-width messages",
+        "hint": "Where an opened message appears."
+      }
+    },
+    "more": "More settings arrive in a later milestone."
+  },
+  "contacts": {
+    "title": "Contacts",
+    "placeholder": "Contacts arrive in a later milestone."
+  },
+  "footer": {
+    "label": "Legal and support",
+    "imprint": "Imprint",
+    "privacy": "Privacy",
+    "support": "Support"
   },
   "theme": {
     "label": "Theme",

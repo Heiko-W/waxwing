@@ -1,0 +1,19 @@
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.link {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-decoration: none;
+}
+
+.link:hover {
+  color: var(--waxwing-text);
+  text-decoration: underline;
+}

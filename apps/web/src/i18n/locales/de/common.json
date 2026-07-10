@@ -1,8 +1,124 @@
 {
   "shell": {
-    "tagline": "{{product}} — Ihre E-Mails, direkt von Ihrem Server.",
-    "placeholder": "Das App-Grundgerüst steht. Postfächer und Nachrichten folgen in den nächsten Meilensteinen.",
-    "nav": "Hauptnavigation"
+    "nav": "Hauptnavigation",
+    "skip": "Zum Inhalt springen",
+    "brand": "{{product}} Startseite",
+    "menu": {
+      "mail": "E-Mail",
+      "contacts": "Kontakte",
+      "settings": "Einstellungen"
+    },
+    "folders": {
+      "show": "Ordner anzeigen",
+      "hide": "Ordner ausblenden",
+      "title": "Ordner",
+      "empty": "Hier erscheinen Ihre Ordner."
+    },
+    "list": {
+      "title": "Nachrichten",
+      "empty": "Nachrichten erscheinen hier, sobald die Synchronisation folgt.",
+      "resize": "Nachrichtenliste anpassen"
+    },
+    "reading": {
+      "title": "Lesebereich",
+      "empty": "Wählen Sie eine Nachricht zum Lesen aus.",
+      "back": "Zurück zu den Nachrichten"
+    },
+    "notFound": {
+      "title": "Seite nicht gefunden",
+      "body": "Diese Seite existiert nicht.",
+      "home": "Zu E-Mail wechseln"
+    }
+  },
+  "onboarding": {
+    "welcome": "Willkommen bei {{product}}",
+    "connect": {
+      "title": "Mit Ihrem Postfach verbinden",
+      "label": "E-Mail-Adresse oder Server",
+      "placeholder": "sie@example.com",
+      "hint": "Geben Sie Ihre E-Mail-Adresse ein — {{product}} findet Ihren Server automatisch.",
+      "submit": "Weiter",
+      "discovering": "Server wird gesucht…"
+    },
+    "error": {
+      "discovery": "Für {{domain}} wurde kein Mailserver gefunden.",
+      "network": "Der Server ist nicht erreichbar. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
+      "noAccount": "Dieser Server hat kein Postfach für Sie.",
+      "config": "Für diese Installation ist kein Server zum Verbinden konfiguriert.",
+      "generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+    }
+  },
+  "auth": {
+    "signInTitle": "Bei {{host}} anmelden",
+    "oauth": {
+      "button": "Sicher anmelden",
+      "unavailable": "Die sichere Anmeldung benötigt eine HTTPS-Verbindung. Nutzen Sie unten Benutzername und Passwort."
+    },
+    "basic": {
+      "username": "Benutzername",
+      "password": "Passwort",
+      "staySignedIn": "Angemeldet bleiben",
+      "appPasswordHint": "Bei Zwei-Faktor-Authentifizierung ein App-spezifisches Passwort verwenden.",
+      "submit": "Anmelden"
+    },
+    "back": "Anderen Server verwenden",
+    "error": {
+      "invalidCredentials": "Falscher Benutzername oder falsches Passwort.",
+      "oauthUnavailable": "Dieser Server erfordert eine sichere (HTTPS-)Anmeldung, die hier nicht verfügbar ist.",
+      "generic": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut."
+    },
+    "reauth": {
+      "title": "Sitzung abgelaufen",
+      "body": "Ihre Sitzung ist abgelaufen. Melden Sie sich erneut an — Ihr Stand bleibt erhalten.",
+      "submit": "Anmelden",
+      "cancel": "Abmelden"
+    }
+  },
+  "account": {
+    "menu": "Konto",
+    "signedInAs": "Angemeldet als {{name}}",
+    "signOut": "Abmelden",
+    "signOutRemove": "Abmelden und Daten entfernen",
+    "confirmRemove": {
+      "title": "Alle lokalen Daten entfernen?",
+      "body": "Dies löscht die lokal gespeicherten E-Mails und Einstellungen von {{product}} auf diesem Gerät. E-Mails auf dem Server sind nicht betroffen.",
+      "confirm": "Daten entfernen und abmelden",
+      "cancel": "Abbrechen"
+    }
+  },
+  "status": {
+    "offline": "Offline",
+    "online": "Wieder online",
+    "sync": {
+      "idle": "Aktuell",
+      "syncing": "Wird synchronisiert…",
+      "offline": "Offline",
+      "error": "Synchronisationsproblem"
+    }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "appearance": {
+      "title": "Darstellung",
+      "readingPane": {
+        "label": "Lesebereich",
+        "right": "Neben der Liste",
+        "bottom": "Unter der Liste",
+        "off": "Nachrichten in voller Breite",
+        "hint": "Wo eine geöffnete Nachricht erscheint."
+      }
+    },
+    "more": "Weitere Einstellungen folgen in einem späteren Meilenstein."
+  },
+  "contacts": {
+    "title": "Kontakte",
+    "placeholder": "Kontakte folgen in einem späteren Meilenstein."
+  },
+  "footer": {
+    "label": "Rechtliches und Support",
+    "imprint": "Impressum",
+    "privacy": "Datenschutz",
+    "support": "Support"
   },
   "theme": {
     "label": "Darstellung",

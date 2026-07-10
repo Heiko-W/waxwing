@@ -1,0 +1,320 @@
+/*
+ * App shell layout (M1.4, FR-UI-03). Phone-first: the base rules are the single-pane phone
+ * layout; the two `min-width` breakpoints (40em tablet, 64em desktop) MIRROR BP in layout.ts —
+ * keep them in sync. Presentation (pane collapse, folder rail vs. drawer, bottom bar vs. rail)
+ * is entirely CSS; the one structural JS decision (SplitPane vs. single pane) lives in the TSX.
+ */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+}
+
+/* Skip link: off-screen until focused (WCAG 2.4.1). */
+.skip {
+  position: absolute;
+  inset-inline-start: var(--waxwing-space-2);
+  inset-block-start: -3rem;
+  z-index: 20;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-accent);
+  color: var(--waxwing-accent-contrast);
+  transition: inset-block-start var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.skip:focus {
+  inset-block-start: var(--waxwing-space-2);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  padding-inline: var(--waxwing-space-4);
+  padding-block: var(--waxwing-space-2);
+  border-block-end: 1px solid var(--waxwing-border);
+  background-color: var(--waxwing-surface);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.brandLogo {
+  block-size: 1.5rem;
+  inline-size: auto;
+}
+
+.brandName {
+  font-size: var(--waxwing-text-lg);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.headerControls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+/* Status region (offline + sync). */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.statusOffline {
+  color: var(--waxwing-warning);
+}
+
+.statusIcon {
+  inline-size: 1rem;
+  block-size: 1rem;
+}
+
+.accountName {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* Body: nav + main. Phone = column (bottom bar); tablet+ = row (left rail). */
+.body {
+  display: flex;
+  flex-direction: column-reverse;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.primaryNav {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-1);
+  padding-block-end: calc(var(--waxwing-space-1) + env(safe-area-inset-bottom, 0px));
+  border-block-start: 1px solid var(--waxwing-border);
+  background-color: var(--waxwing-surface);
+}
+
+.primaryNavItem {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-md);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  text-decoration: none;
+}
+
+.primaryNavItem[aria-current="page"] {
+  color: var(--waxwing-accent);
+}
+
+.primaryNavItem:hover {
+  background-color: var(--waxwing-surface-2);
+  color: var(--waxwing-text);
+}
+
+.primaryNavIcon {
+  inline-size: 1.35rem;
+  block-size: 1.35rem;
+}
+
+.main {
+  position: relative;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+/* ---- Mail screen: folders + panes ---- */
+
+.mailScreen {
+  display: flex;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.folderRegion {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(80vw, 18rem);
+  padding: var(--waxwing-space-3);
+  border-inline-end: 1px solid var(--waxwing-border);
+  background-color: var(--waxwing-surface);
+}
+
+/* Narrow screens: the folder region is an off-canvas drawer. */
+@media (max-width: 63.999em) {
+  /* Closed drawer: off-screen AND visibility:hidden, so it leaves the accessibility tree and
+     the tab order (a transform alone only hides it visually). The delayed visibility transition
+     keeps it visible until the slide-out finishes. */
+  .folderRegion {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 15;
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: var(--waxwing-shadow-2);
+    transition:
+      transform var(--waxwing-duration-base) var(--waxwing-ease-standard),
+      visibility 0s linear var(--waxwing-duration-base);
+  }
+
+  .folderRegionOpen {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--waxwing-duration-base) var(--waxwing-ease-standard);
+  }
+
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 14;
+    border: 0;
+    padding: 0;
+    background-color: var(--waxwing-overlay);
+  }
+}
+
+.paneArea {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.paneToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+.paneBody {
+  flex: 1;
+  overflow: auto;
+}
+
+.emptyPane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-align: center;
+}
+
+.screen {
+  padding: var(--waxwing-space-6);
+}
+
+.screenTitle {
+  margin: 0 0 var(--waxwing-space-2);
+  font-size: var(--waxwing-text-2xl);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.screenLead {
+  margin: 0;
+  max-inline-size: 60ch;
+  color: var(--waxwing-text-muted);
+}
+
+/* ---- Tablet (>= 40em): left icon rail. ---- */
+@media (min-width: 40em) {
+  .body {
+    flex-direction: row;
+  }
+
+  .primaryNav {
+    flex-direction: column;
+    justify-content: flex-start;
+    inline-size: 4.5rem;
+    padding: var(--waxwing-space-2);
+    border-block-start: none;
+    border-inline-end: 1px solid var(--waxwing-border);
+  }
+}
+
+/* ---- Desktop (>= 64em): persistent folder rail (no drawer). ---- */
+@media (min-width: 64em) {
+  .folderRegion {
+    position: static;
+    transform: none;
+    visibility: visible;
+    inline-size: 16rem;
+    box-shadow: none;
+    transition: none;
+  }
+}
+
+/* ---- Re-auth dialog (FR-AUTH-06) ---- */
+.reauthForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+  margin: 0;
+}
+
+.reauthField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.reauthLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.reauthActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-2);
+  margin-block-start: var(--waxwing-space-2);
+}
+
+.reauthError {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folderRegion,
+  .skip {
+    transition: none;
+  }
+}

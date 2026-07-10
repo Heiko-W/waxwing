@@ -107,10 +107,10 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
-| M1.1 | Design system foundation (doc, tokens, base components) | L | P0.2 | done | **2026-07-10.** `docs/design-system.md` written; tokens finalized with **machine-verified WCAG AA contrast** (`tokens.contrast.test.ts`, 42 assertions) — added `border-strong`, `danger/success/warning-contrast`, elevation tokens. 14 base components + shared primitives in `src/ui/` (barrel `index.ts`), each with keyboard/APG-ARIA/both-themes/44px and a co-located axe test (96 tests). Dev-only gallery (`VITE_WAXWING_GALLERY=1`, DCE'd from prod); **browser axe scan zero violations incl. color-contrast in light+dark**. Bundle 80.69 KB gz. **D5** sign-off pending owner review of the doc |
+| M1.1 | Design system foundation (doc, tokens, base components) | L | P0.2 | done | **2026-07-10.** `docs/design-system.md` written; tokens finalized with **machine-verified WCAG AA contrast** (`tokens.contrast.test.ts`, 42 assertions) — added `border-strong`, `danger/success/warning-contrast`, elevation tokens. 14 base components + shared primitives in `src/ui/` (barrel `index.ts`), each with keyboard/APG-ARIA/both-themes/44px and a co-located axe test (96 tests). Dev-only gallery (`VITE_WAXWING_GALLERY=1`, DCE'd from prod); **browser axe scan zero violations incl. color-contrast in light+dark**. Bundle 80.69 KB gz. **D5 signed off 2026-07-10** (after accent→blue + responsive-compact revisions). |
 | M1.2 | Local replica schema (Dexie, account-scoped) | M | SP.1, P0.3 | todo | |
 | M1.3 | Sync engine core + action queue skeleton | L | M1.2, SP.3, G1 | todo | |
-| M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | todo | |
+| M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | done | **2026-07-10.** Own base-path-safe router (**ADR-007**), responsive 3/2/1-pane shell + reading-pane modes, onboarding FSM (autoconnect/manual/OAuth/Basic), `SessionProvider` (holds the `JmapClient` for M1.5/M1.6) with FR-AUTH-06 re-auth overlay + FR-AUTH-05 sign-out, branding + `BrandLinks` from config. 401 tests; browser axe clean light+dark; 105.5 KB gz. Adversarial review fixed 6 defects. Follow-ups: engine status → M1.3, live shell E2E → M1.9. |
 | M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | todo | |
 | M1.6 | Message list: virtualization, threading, selection | L | M1.3, M1.4 | todo | |
 | M1.7 | `@waxwing/mail-html`: sanitizer + iframe renderer | L | P0.1, SP.1 | todo | |
@@ -840,21 +840,41 @@ replays on reconnect.
 
 Spec: FR-UI-03, FR-AUTH-01/02/05/06, FR-THEME-02, FR-DEP-04. Size: L.
 
-- [ ] Routing (hash-free, base-path-safe): `/mail/:mailboxId/:emailId?`, `/contacts`,
-      `/settings/*`; lazy route chunks (NFR-PERF-03).
-- [ ] Responsive layout: three-pane desktop / two-pane tablet / single-pane phone with
+- [x] Routing (hash-free, base-path-safe): `/mail/:mailboxId?/:emailId?`, `/contacts`,
+      `/settings/*`; lazy route chunks (NFR-PERF-03). **Own ~70-line History-API router**
+      (`app/route/`, **ADR-007**) — base from the `<base href>` element (not `document.baseURI`,
+      which without a `<base>` returns the current URL and would swallow a deep link). `/contacts`
+      + `/settings` are lazy chunks; `.size-limit.js` now measures the entry chunk.
+- [x] Responsive layout: three-pane desktop / two-pane tablet / single-pane phone with
       back navigation (FR-UI-03); reading-pane modes right/bottom/off (FR-LST-07 layout half).
-- [ ] Onboarding: same-origin autoconnect (FR-AUTH-01); manual connect flow with
-      email→domain `/.well-known/jmap` discovery and `config.json` pinning (FR-AUTH-02);
-      login via OAuth redirect or Basic form per config.
-- [ ] Session UX: re-auth prompt on expiry without losing state (FR-AUTH-06); "Sign out"
-      vs "Sign out & remove data" (FR-AUTH-05).
-- [ ] Branding applied from config: product name, logo, accent, links (FR-THEME-02 —
-      no user-visible "Waxwing" hardcoded anywhere).
-- [ ] Offline indicator + engine status in the chrome.
+      Hybrid CSS-media-query presentation + one JS `split` decision (`computePaneLayout`); folder
+      off-canvas drawer on narrow; SplitPane for the desktop divider; reading opens via history
+      PUSH so Back works. Reading-pane mode is a localStorage pref set in Settings.
+- [x] Onboarding: same-origin autoconnect (FR-AUTH-01, probe → login-only); manual connect flow
+      with email→domain `/.well-known/jmap` discovery and `config.json` pinning (FR-AUTH-02);
+      login via OAuth redirect or Basic form per `config.server.auth`. Explicit FSM in a tested
+      reducer; `ConnectTarget` reconciles connect-URL vs OAuth issuer.
+- [x] Session UX: re-auth prompt on expiry without losing state (FR-AUTH-06 — overlay Dialog
+      over the still-mounted shell; silent refresh handles the common case with no UI; Basic
+      reconnects in place, OAuth stashes route+target then redirects); "Sign out" vs "Sign out &
+      remove data" (FR-AUTH-05, destructive confirm). Hard boot-once guard for StrictMode + the
+      single-use PKCE transaction.
+- [x] Branding applied from config: product name, logo (resolved vs `<base>`), accent (M1.1
+      `applyBranding`), links imprint/privacy/support (FR-THEME-02 — `BrandLinks` on the
+      onboarding footer + Settings). No user-visible "Waxwing" hardcoded (guard test).
+- [x] Offline indicator + engine status in the chrome (`StatusRegion`, `role=status` live
+      region; surfaces `navigator.onLine` now — the M1.3 sync engine fills the sync-status seam).
 
 Done when: install → onboard → login → empty three-pane shell works on desktop and phone
 viewport, branded via a test `config.json`.
+✅ **2026-07-10.** Verified hermetically end-to-end: 401 web/unit/axe tests (onboarding
+autoconnect/manual/OAuth-unavailable, Basic login + connect-error, restore, OAuth callback,
+re-auth-without-unmount, sign-out variants, responsive single-pane back-nav, branding + no-brand
+guard, i18n en/de parity, router matcher/base-path, pure session reducer). Real-browser axe scan
+of the login surface **clean in light + dark** (0 violations, tokens verified). Build **105 KB gz**
+entry chunk (budget 300); `/contacts` + `/settings` split into on-demand chunks. Typecheck + Biome
+clean. Follow-ups: engine sync-status is a stub until M1.3; folder-drawer focus polish and the
+LIVE `connect()`→shell E2E land with **M1.9**; `<base href="/">` in `index.html` is **M4.9** (SP.5).
 
 ### M1.5 — Folder tree
 
@@ -1484,7 +1504,7 @@ explicit owner decision:
 | D2 | WebSocket in V1 core vs. post-SSE enhancement — decide on SP.3/SP.5 evidence | Heiko | Gate G1 | **decided 2026-07-10 (G1): SSE-first — WebSocket deferred to a post-SSE enhancement.** Browser WS cannot authenticate against Stalwart v0.16.11; V1 push runs on the fetch-based SSE reader (ADR-005), the WS transport stays as server-side/future-server code and auto-degrades. Revisit under D3 if a v1.0 baseline adds browser-viable WS auth. |
 | D3 | Raise server baseline to Stalwart v1.0 (expected ~Oct 2026)? | Heiko | Gate G2 | open |
 | D4 | Secure free namespaces early: GitHub org, npm `@waxwing` scope / package names (decision log #1 recommends) | Heiko | ASAP, independent of code | open |
-| D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **open** — `docs/design-system.md` + the component gallery delivered 2026-07-10; awaiting owner sign-off before broad UI build-out (M1.4+) |
+| D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **signed off 2026-07-10.** Owner approved after two revisions: calmer accent (orange → blue `#2f6fe0`/`#5e93f0`, warm colors reserved for signals) and responsive compact controls (34px pointer / 44px touch via `--waxwing-control-min`, tightened spacing) — both WCAG-AA-verified. Broad UI build-out (M1.4+) unblocked. |
 
 ## 14. Appendix — Requirements Coverage Matrix
 
@@ -1570,3 +1590,6 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-10 | **M1.1 density revised (D5 feedback)** — owner found the controls too bulky and the layout too airy for a phone. Clarified WCAG: the 44px minimum I had applied everywhere is AAA (SC 2.5.5); AA (SC 2.5.8) is 24px. Renamed `--waxwing-tap-target` → **`--waxwing-control-min`, now responsive**: 34px on pointer devices (compact, > AA floor), 44px on touch via `@media (pointer: coarse)` (AAA). Buttons slimmed (inline padding space-4→space-3, sm→space-2); gallery/layout whitespace tightened. Owner chose **responsive** over uniform-compact or a density switch, so a phone gains space from less whitespace, not smaller finger targets. Browser axe re-scan: `target-size` **PASS** and zero violations at 34px in both themes; 328 tests green. design-system.md §2.6 + principles updated. |
 | 2026-07-10 | **M1.1 accent revised (D5 feedback)** — owner found the orange accent read as a perpetual warning. Replaced with a **calm, theme-aware blue** (`--waxwing-accent` `#2f6fe0` light / `#5e93f0` dark, matching `--waxwing-accent-contrast` and `--waxwing-focus-ring`); warm signal colors (red/orange/amber) are now reserved for warnings/errors. `branding.accentColor` is now optional: `null` (the new default in `config.json` + `DEFAULT_CONFIG`) keeps the built-in theme-aware accent, and `applyBranding` only overrides when a hoster sets a value. Contrast test + browser axe re-scan green in both themes (accent-contrast 4.70/5.54, focus-ring ≥ 4.58); 328 tests pass, 80.69 KB gz. Design-system.md tokens/contrast tables updated. |
 | 2026-07-10 | **Gate G1 passed** — owner reviewed the SP.5 report and decided **D2: SSE-first, WebSocket deferred** to a post-SSE enhancement (browser WS cannot authenticate against Stalwart v0.16.11; V1 push runs on the fetch-based SSE reader). **ADR-005 ratified**; ADR-006 (token posture) noted. Phase 1 (Spike) complete → **M1 unblocked**; next `todo` is **M1.1** (design-system foundation). Also folded the SP.5-verified Stalwart-Application mount recipe (`x:Application/set` over `POST /jmap/`, recovery-admin Basic, `resourceUrl` accepts `http://`, `urlPrefix` is an object) into the M4.9 deployment-guide item. |
+| 2026-07-10 | **D5 signed off** — owner approved the design system after two revisions (calm blue accent; responsive compact controls). Broad UI build-out (M1.4+) unblocked. |
+| 2026-07-10 | **ADR-007** — own hash-free History-API router (base from the `<base href>` element, not `document.baseURI`) instead of react-router; React context + `useReducer` for app/session state instead of Zustand (deferred to M1.6's list view-state). Fills the router gap the tech-stack left open; neither dependency added. |
+| 2026-07-10 | **M1.4 done** — app shell. Own base-path-safe router (`app/route/`, lazy `/contacts`+`/settings` chunks, `.size-limit.js` now measures the entry chunk); responsive 3/2/1-pane shell (`computePaneLayout`, folder off-canvas drawer, SplitPane divider, reading opens via history PUSH, reading-pane mode right/bottom/off pref); onboarding FSM (same-origin autoconnect / manual email→domain connect / `config.json` pin, OAuth+Basic per config, secure-context gating) in a tested reducer + `SessionProvider` holding the connected `JmapClient` for M1.5/M1.6; FR-AUTH-06 re-auth as an overlay over the still-mounted shell (silent refresh handles the common case; Basic reconnects in place, OAuth stashes route+target); FR-AUTH-05 sign-out ± remove-data (confirm); branding product name/logo/accent/links all from config (`BrandLinks`, no hardcoded "Waxwing" — guard test). **401 web/unit/axe tests**, real-browser axe of the login **clean in light+dark**, **105.5 KB gz** entry chunk. Built via a design-panel workflow (5 lenses) + a 3-fork parallel implementation + an **adversarial review workflow** that confirmed **6 defects** (Basic-reauth wiping the "stay signed in" opt-in; a non-announced login error live region; a stale OAuth stash driving a wrong-server reconnect; the closed folder drawer left in the a11y tree; focus stranded on drawer-close and on the single-pane Back swap) — all fixed + regression-tested. Follow-ups: engine sync-status stub → M1.3; live `connect()`→shell E2E → M1.9; `<base href>` in `index.html` → M4.9. |
