@@ -100,7 +100,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | SP.2 | Auth: OAuth PKCE + token storage + Basic scheme | M | SP.1, P0.4 | done | Auth module + 31 hermetic tests (green); `apps/web/src/auth/`; oauth4webapi 3.8.6. Done-when verified LIVE against Stalwart v0.16.11 (OAuth PKCE dance via real login page + Basic): login → Mailbox/get → forced refresh → logout. Review fixes applied (single-flight refresh, callback-param scrub on all paths, terminal-refresh purge, account-scoped store per ADR-004, dev-CSP Stalwart origin). Live-only interop fix: strip Stalwart's unsolicited ES256 id_token. No client registration / no revocation endpoint (SP.5 findings) |
 | SP.3 | Push transports: EventSource + WebSocket (RFC 8887) | M | SP.1 | done | Fetch-based SSE reader (native `EventSource` can't send the `Authorization` header Stalwart requires) + RFC 8887 WebSocket; shared full-jitter reconnect + WS→SSE→polling-stub auto-select. Both deliver `StateChange` (2–5 ms) and survive `docker restart`. **ADR-005**. WS works server-side only against Stalwart (browsers can't set the WS auth header) → D2 evidence in SP.5. 72+4 hermetic + 3 live tests; push tree-shaken (budget untouched, +5.59 KB gz in the `@waxwing/jmap` barrel) |
 | SP.4 | Raw end-to-end demo (login → list → message) | M | SP.1, SP.2, P0.2 | done | Dev-only `apps/web/src/demo/`, gated on `import.meta.env.DEV && VITE_WAXWING_DEMO==='1'` → Rollup DCEs it (grep-proven absent from `dist/`, budget unchanged at 80.55 KB gz). One-command harness `pnpm demo [--lan]` (fixture + seeded mail + same-origin Vite proxy, guaranteed teardown). Live: Basic login → mailbox counts → paged `Email/query`+`Email/get` (`#ids` back-ref) → text/HTML body in a `sandbox=""` iframe → `Email/parse` of a `message/rfc822` attachment → blob download. 30 hermetic + axe tests (214 total green) + 2 live Playwright specs (Basic + OAuth). **`Email/parse` answered** (SP.5). LAN caveat: plain-http origin = insecure context, so OAuth/persistence are unavailable there by design |
-| SP.5 | Spike report, ADRs, validation checklist | S | SP.1–SP.4 | todo | |
+| SP.5 | Spike report, ADRs, validation checklist | S | SP.1–SP.4 | done | All five open items answered LIVE against v0.16.11 + **ADR-006** (OAuth token posture). **(a)** no client registration needed, opaque tokens, refresh not-rotated/not-`client_id`-bound/**not revocable** (no revocation or end_session endpoint). **(b)** core limits all positive (get/set 500, calls 16, req 10 MB, upload 50 MB) → fallbacks never engage; mail limits + 9 sort options in `accountCapabilities`. **(c)** Content-Type echoed not sniffed; oversize → **400** `error:limit` (not RFC 413) + hidden **429** per-user quota (1000 files/50 MB, unadvertised); download header-auth only. **(d)** FR-DEP-02 mount mechanism live-verified via Stalwart's own `/admin/` app (`<base href>` rewrite + relative assets + SPA fallback) — build gap: `dist/index.html` emits no `<base href="/">` (→ M4.9). **(e)** `principals` + `mail:share` advertised, `myRights.mayShare` present, but **no delegation seeded** (M4.4 fixture task); `principals:owner` absent. D2 (browser WS) left open for G1 |
 | **G1** | **Gate: owner reviews spike findings, plan adjusted** | — | SP.5 | todo | blocks M1 |
 
 ### Phase 2 — M1 "Read"
@@ -629,13 +629,120 @@ notes or new ADRs), answering **each** of:
 - [x] SearchSnippet support (shapes M3.1). **Answered (SP.4) — supported.** `SearchSnippet/get`
       returns per-email `subject`/`preview` with the matched terms wrapped in `<mark>` (so M3.1
       must treat the snippet as *server-produced markup* and sanitise it, not trust it).
-- [ ] OIDC: client registration needs, refresh-token lifetimes, revocation endpoint.
-- [ ] Session limits actually reported by Stalwart (informs chunking defaults).
-- [ ] Blob upload quirks (size caps, content-type handling).
-- [ ] Stalwart Applications mount: build a throwaway zip of the P0.2 shell, mount it,
+- [x] OIDC: client registration needs, refresh-token lifetimes, revocation endpoint.
+      **Answered (SP.5) — live against v0.16.11.** No pre-registration needed (the arbitrary
+      `client_id` `waxwing` is accepted). RFC 7591 `/auth/register` exists and is **open
+      (unauthenticated → 201)**, but it rejects `http://localhost:5173/` /
+      `http://127.0.0.1:5173/` redirect URIs (only bare-`127.0.0.1`/`[::1]`/https/custom-scheme
+      pass). Access token `expires_in=3600`, **opaque** (`sw1.` prefix, not a JWT); refresh
+      token 30 d, **not rotated on use, reusable, and `client_id` is not checked on refresh**;
+      **no `revocation_endpoint` and no `end_session_endpoint`** in either discovery doc, and
+      `/auth/revoke` → 404. → **ADR-006.** Confirms the existing client (`oauth.ts` `revokeToken`
+      already no-ops when unadvertised; logout wipes locally). See §SP.5 findings (a).
+- [x] Session limits actually reported by Stalwart (informs chunking defaults).
+      **Answered (SP.5).** core: `maxObjectsInGet/Set=500`, `maxCallsInRequest=16`,
+      `maxSizeRequest=10 MB`, `maxSizeUpload=50 MB`, `maxConcurrent{Requests,Upload}=4` — all
+      four chunking fields present as **positive** numbers, so `@waxwing/jmap`'s `FALLBACK_LIMITS`
+      (128/128/16/1 MB) never engage and the `maxObjectsInSet:0` split-loop is unreachable here.
+      Mail limits live in **`accountCapabilities`** (top-level `mail` is `{}`):
+      `emailQuerySortOptions` = 9 values (receivedAt/size/from/to/subject/sentAt + 3 keyword) →
+      shapes M3.1 sort UI; `maxMailboxDepth=10`. See §SP.5 findings (b).
+- [x] Blob upload quirks (size caps, content-type handling).
+      **Answered (SP.5).** Content-Type is **echoed verbatim, never sniffed**; `blobId` is
+      **content-addressed** (type is metadata on the reference). **Two** size gates: a single
+      upload > `maxSizeUpload` → **HTTP 400** `urn:ietf:params:jmap:error:limit`
+      (`application/problem+json`; **RFC 8620 §6.1 mandates 413 — Stalwart deviates**), *and* an
+      **undocumented per-user cumulative quota (1000 files / 50 MB)** → **HTTP 429** with
+      `Retry-After` (~1 h), advertised **nowhere** in the session. Download authenticates by the
+      `Authorization` header only (`?access_token=`→401), and `?accept=<type>` sets the response
+      Content-Type unvalidated (always `Content-Disposition: attachment`). RFC 9404 `Blob/upload`
+      is available. See §SP.5 findings (c).
+- [x] Stalwart Applications mount: build a throwaway zip of the P0.2 shell, mount it,
       verify `<base href>` rewriting + relative assets under `/mail` (FR-DEP-02).
-- [ ] Sharing capability (`urn:ietf:params:jmap:principals` / Stalwart sharing) present?
-      (feeds M4.4 planning.)
+      **Answered (SP.5) — mechanism live-verified, one build gap found.** Confirmed against the
+      real image using Stalwart's own bundled app at `/admin/`: it ships `<base href="/">` and
+      serves it **rewritten to `<base href="/admin/">`** on the index *and every deep route*,
+      with relative `./assets/*` resolving under the prefix (JS `application/javascript`, CSS
+      `text/css`, `immutable`), single-segment `/seg`→302→`/seg/`, and an unconditional SPA
+      fallback (deep route **and** missing asset → 200 `text/html`). **Gap:** Waxwing's built
+      `apps/web/dist/index.html` emits **no** `<base href="/">` tag (source has none either),
+      so the rewrite would not fire and deep-links would break — `base:'./'` is already set, so
+      the *only* missing piece is emitting the literal tag → **M4.9 checklist item.** See §SP.5
+      findings (d).
+- [x] Sharing capability (`urn:ietf:params:jmap:principals` / Stalwart sharing) present?
+      (feeds M4.4 planning.) **Answered (SP.5) — yes, but no delegation seeded.** The fixture
+      advertises `urn:ietf:params:jmap:principals` (+ `:availability`) and
+      `urn:ietf:params:jmap:mail:share` (draft-ietf-jmap-mail-sharing), and every mailbox's
+      `myRights` already carries `mayShare`. `principals:owner` (RFC 9670) is **absent**. But
+      alice's `session.accounts` holds only her own account → **M4.4 must provision a delegation
+      in the fixture first**. Consuming shared trees needs only RFC 8620 `accounts` + RFC 8621
+      `myRights` (both present); principals/`mail:share` matter only for in-app sharing *config*
+      (out of M4.4 scope). Note: `packages/jmap/src/capabilities.ts:26` mislabels the URN as
+      "RFC 8620 §8" — it is **RFC 9670** (fix during M4.4). See §SP.5 findings (e).
+
+**SP.5 findings** (live against Stalwart **v0.16.11-alpine**, fixture accounts; probes and
+their negatives recorded so a re-run can falsify them). D2 (browser WebSocket) evidence stays
+in SP.3/ADR-005 — **left open for Heiko at G1, not decided here.**
+
+**(a) OIDC / tokens → ADR-006.** Both `/.well-known/openid-configuration` and
+`/.well-known/oauth-authorization-server` are served. Advertised: `authorization_endpoint=/login`,
+`token_endpoint=/auth/token`, `registration_endpoint=/auth/register`,
+`introspection_endpoint=/auth/introspect`, `device_authorization_endpoint=/auth/device`;
+`grant_types` = code / refresh_token / device_code; `code_challenge_methods=["S256"]` only;
+`token_endpoint_auth_methods` includes `none`; `authorization_response_iss_parameter_supported=true`.
+**No `revocation_endpoint`, no `end_session_endpoint`** (adversarial `POST /auth/revoke`,
+`/auth/revocation`, `/oauth/revoke` → 404). Dynamic client registration is **open** (no auth →
+201) but restricts redirect URIs to https / custom-scheme / bare-loopback (`http://127.0.0.1/`,
+`http://[::1]/`) — a `:5173` loopback port is **rejected** (contrast RFC 8252 §7.3, which asks
+servers to allow any loopback port; Waxwing sidesteps this by not registering). A minted access
+token is **opaque** (`sw1.…`, tail is base64 of the username), `expires_in=3600`. Refresh:
+`client_id=waxwing` accepted; the refresh response carries **no** new `refresh_token` (source
+default: rotate only within 4 d of the 30 d expiry), the same refresh token **works repeatedly**,
+and a **wrong or missing `client_id` still succeeds** → a refresh token is a long-lived,
+non-rotating, server-**non-revocable** bearer-equivalent whose only protection is Waxwing's
+encrypted-at-rest store (NFR-SEC-02) + local-wipe logout. Stalwart also returns an unsolicited
+ES256 `id_token` (already stripped, `oauth.ts`).
+
+**(b) Session limits.** core = `{maxCallsInRequest:16, maxConcurrentRequests:4,
+maxConcurrentUpload:4, maxObjectsInGet:500, maxObjectsInSet:500, maxSizeRequest:10000000,
+maxSizeUpload:50000000, collationAlgorithms:[i;ascii-numeric, i;ascii-casemap,
+i;unicode-casemap]}`. All four chunking inputs are present positive numbers → resolveLimits uses
+the server values, not `FALLBACK_LIMITS`. Mail limits are only in `accountCapabilities`
+(`maxMailboxDepth:10`, `maxMailboxesPerEmail:null`, `maxSizeMailboxName:255`,
+`maxSizeAttachmentsPerEmail:50000000`, `mayCreateTopLevelMailbox:true`, the 9 `emailQuerySortOptions`).
+
+**(c) Blob.** Upload echoes the client Content-Type unmodified (PNG bytes sent as `text/plain`
+→ `type:"text/plain"`; `nonsense/not-a-type` echoed; none → `application/octet-stream`); the
+`blobId` is identical across types (content-addressed). Oversize single upload → **400**
+`urn:ietf:params:jmap:error:limit` (`limit:"maxSizeUpload"`, `application/problem+json` → surfaces
+as a typed `JmapProblemError`, **not** the RFC-mandated 413). Cumulative quota (1000 files / 50 MB
+per authenticated user, **not** in the session doc) → **429** `application/problem+json` +
+`Retry-After` + `RateLimit-Policy: "blob-upload-files";q=1000, "blob-upload-bytes";q=50000000` — a
+single 50 MB attachment exhausts it for ~1 h (compose/attachment UX must handle 429). The upload
+URL's `{accountId}` is **not** authorization-checked (alice can POST into bob's account, which she
+otherwise cannot read/act on — a server-side write gap, dev-fixture only, not Waxwing's to fix).
+Download: `Authorization` header only (`?access_token=`/`?oauth_token=`/no-auth → 401), always
+`Content-Disposition: attachment`, and `?accept=<type>` reflected unvalidated (`text/html`,
+`nonsense/x`) → **inline attachments must be fetched-with-header → `blob:` URL** (ratifies SP.4).
+RFC 9404 `Blob/upload` (`data:asText`) works and hits the same quota.
+
+**(d) Applications mount (FR-DEP-02).** Live-verified on the built image via Stalwart's Portal at
+`/admin/` (a real Application mount): `<base href="/">`→`<base href="/admin/">` rewrite fires on
+`GET /admin/` **and** on `GET /admin/some/deep/route` (so relative assets survive deep-link
+reloads); `GET /admin/assets/<hash>.js` → 200 `application/javascript` `immutable`, `.css` →
+`text/css`; bare `GET /admin` → 302 `/admin/`; SPA fallback returns index (`200 text/html`,
+`no-cache`) for both a router path and a genuinely missing asset. v0.16 has **no TOML** for this —
+an Application is a datastore/registry object (`{enabled, resourceUrl (zip URL), urlPrefix
+(single segment), autoUpdateFrequency, unpackDirectory}`); the MIME table is small
+(`.webmanifest`/`.woff2` → `application/octet-stream`, a FR-DEP-06/PWA note). **Build gap:**
+`apps/web/dist/index.html` has no `<base href="/">` → M4.9 must emit it (see §M4.9).
+
+**(e) Sharing.** Advertised (accountCapabilities): `urn:ietf:params:jmap:principals`
+(`currentUserPrincipalId`), `:availability`, `urn:ietf:params:jmap:mail:share`; every `Mailbox`
+`myRights` includes `mayShare`. **Absent:** `urn:ietf:params:jmap:principals:owner`. No delegation
+is seeded (alice sees only her own personal account) → a fixture delegation is prerequisite work
+for M4.4. JMAP Sharing is **RFC 9670** (Nov 2024, Updates RFC 8620), not "RFC 8620 §8" — fix the
+stale comment in `packages/jmap/src/capabilities.ts:26` during M4.4.
 
 **Gate G1:** owner reviews the report; decisions D2 (WebSocket in V1 core?) and any plan
 adjustments are recorded; M1 unblocks.
@@ -1289,6 +1396,13 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
 - [ ] Release workflow (tag-triggered): build → `waxwing-web-vX.Y.Z.tar.gz` (static
       files) + `waxwing-stalwart-vX.Y.Z.zip` (Stalwart Applications bundle, `index.html`
       at zip root, relative paths) → GitHub release with checksums (FR-DEP-01/02).
+      **SP.5 prerequisite for the Applications bundle:** the built `index.html` must emit a
+      literal `<base href="/">` (double quotes, root path) — Stalwart rewrites *that exact
+      token* to `<base href="/{prefix}/">`, and without it deep-link reloads under `/mail/…`
+      break (relative `./assets/*` would resolve against the route path). `base:'./'` is
+      already set; only the tag is missing today. Also: Stalwart serves `.webmanifest`/`.woff2`
+      as `application/octet-stream` (ship the PWA manifest as `.json`, FR-DEP-06), and it caps
+      the bundle at 100 MiB / fetches `resourceUrl` over 60 s.
 - [ ] SRI documentation for deployments where files/config could diverge (NFR-SEC-03).
 - [ ] Deployment guides in docs/: (1) Stalwart Application (recommended), (2) reverse
       proxy same-origin, (3) CDN cross-origin incl. the `usePermissiveCors` trade-off
@@ -1431,3 +1545,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-09 | SP.3 **done** — push transports in `packages/jmap/src/push/`: fetch-based `SseChannel` (Stalwart SSE needs an `Authorization` header — native `EventSource` unusable, ADR-005), RFC 8887 `WebSocketChannel` (server-side-only vs. Stalwart), shared full-jitter `ReconnectLoop`, `createPushChannel` WS→SSE→polling-stub auto-select. Both deliver `StateChange` 2–5 ms and survive `docker restart`. 72+4 hermetic + 3 live tests (178 total green); push tree-shaken from `apps/web` (budget untouched at 80.55 KB gz; +5.59 KB gz in the `@waxwing/jmap` barrel → 14.91 KB gz). SP.5 answers recorded: SSE + EventSource auth mechanism, CORS default-off; WS-over-browser evidence left open for D2 at G1. |
 | 2026-07-09 | SP.3 **post-review fix** — runtime transport failover (tagged SP.4 in the push suite; SP.3 stays **done**). Live footgun: the static single-transport pick left a browser on the eligible-but-401ing WebSocket forever → zero push unless the caller passed `prefer:'sse'`. Fix: `createPushChannel` now returns a `FailoverPushChannel` that connects the eligible transports (`eligibleTransports`, WS→SSE→polling) in turn and auto-degrades when one never opens (`failoverAfterAttempts`, default 2); once a transport opens its own loop owns every drop (never downgrades), the last real transport is never torn down onto the polling stub (transient blips self-heal), and `prefer` is a soft reorder consistent with `pickTransport`. Four review findings applied at root cause + locked with regression tests (terminal-transport budget, `prefer` restrict→reorder, never-downgrade mutation lock, polling-only exhaustion). Tests: hermetic push suite 29 cases (**193 total green**); +1 live case — a browser-like WS (no auth header) fails over to SSE and delivers `StateChange` with the default preference. `apps/web` budget untouched (80.55 KB gz; push still tree-shaken); `@waxwing/jmap` barrel 14.91 → **15.95 KB gz** (+1.04, just over the deferred/unenforced 15 KB library note). ADR-005 Decision/Consequences + Deciders (owner ratification pending D2) reconciled. |
 | 2026-07-10 | SP.4 **done** — raw end-to-end demo. Dev-only `apps/web/src/demo/` (login/mailboxes/paged list/raw message view/`Email/parse`), gated on `import.meta.env.DEV && VITE_WAXWING_DEMO==='1'` behind a dynamic import so Rollup DCEs it — grep-proven absent from `dist/`, budget unchanged (**80.55 KB gz**). New one-command harness `pnpm demo [--lan]` (`scripts/demo.mjs` + `e2e/stalwart/seed-demo.mjs`): resolves the browser origin, brings the fixture up advertising it via the now-overridable `STALWART_PUBLIC_URL`, seeds 25 deterministic mails (plain, hostile HTML, `message/rfc822` attachment), starts Vite behind a demo-only same-origin proxy, guarantees teardown. Live-verified from a real browser (2 Playwright specs: Basic + full OAuth PKCE via Stalwart's `/login`). **SP.5 answers:** `Email/parse` **supported** (no `postal-mime` for server-held blobs; `bodyValues` must be named in `properties`), `SearchSnippet/get` supported (returns `<mark>` markup — sanitise it), `Email/queryChanges` supported but did **not** raise `cannotCalculateChanges` for a bogus `sinceQueryState` (M1.3 must not read its absence as freshness). Further findings: Stalwart ignores `Host`/`X-Forwarded-*` when advertising session/OIDC URLs; blob download requires the `Authorization` header (no `<img src>`); a plain-http LAN origin is an insecure context, so `crypto.subtle` — hence OAuth PKCE and all `SecretStore` persistence — is unavailable there (Basic works). Review: 8 findings raised, 3 confirmed and fixed at root cause (`Email/parse` missing `bodyValues`; demo i18n leaking into the production locale chunks; `pnpm demo` teardown volume-wiping a fixture it never started), 5 adversarially refuted. 214 tests green. |
+| 2026-07-10 | **ADR-006** — OAuth token posture: Stalwart v0.16.11 exposes **no** RFC 7009 revocation and **no** RP-initiated logout; access tokens are opaque 1 h, refresh tokens are 30 d, **not rotated on use, reusable, and not `client_id`-bound**. Decision: Waxwing does not attempt server-side revocation; logout is a local encrypted-store wipe + natural expiry, and the AES-GCM `SecretStore` (NFR-SEC-02) is the security boundary for the refresh token. Ratifies existing `oauth.ts`/`controller.ts` behaviour; complements ADR-004/005. |
+| 2026-07-10 | SP.5 **done** — spike report: all five open checklist items answered **live** against Stalwart v0.16.11-alpine (fixture), with adversarial/negative probes recorded. **(a) OIDC:** no pre-registration (arbitrary `client_id` accepted); RFC 7591 `/auth/register` open→201 but rejects `:5173` loopback ports; opaque tokens (`sw1.`, not JWT), `expires_in=3600`; refresh 30 d **not rotated / reusable / `client_id` unchecked**; **no `revocation_endpoint`/`end_session_endpoint`** (probed → 404) → **ADR-006**. **(b) Limits:** core all positive (get/set 500, calls 16, req 10 MB, upload 50 MB) so `@waxwing/jmap` fallbacks never engage and the `maxObjectsInSet:0` split-loop is unreachable; mail limits + 9 `emailQuerySortOptions` in `accountCapabilities` (top-level `mail` is `{}`). **(c) Blob:** Content-Type echoed not sniffed, `blobId` content-addressed; oversize → **400** `urn:…:error:limit` (**not** RFC 8620 §6.1's mandated 413) **plus** an unadvertised **429** per-user quota (1000 files / 50 MB, `Retry-After` ~1 h); upload `{accountId}` not authz-checked; download header-auth only, `?accept=` reflected unvalidated → fetch→`blob:`; RFC 9404 `Blob/upload` available. **(d) FR-DEP-02:** Applications mount mechanism live-verified via Stalwart's own `/admin/` Portal app (`<base href="/">`→`/admin/` rewrite on index + deep routes, relative assets resolve, `immutable` asset cache, `/seg`→302, unconditional SPA fallback); **build gap** — `apps/web/dist/index.html` emits no `<base href="/">` (source has none), so M4.9 must add it. **(e) Sharing:** `principals` (+`:availability`) and `mail:share` advertised, `myRights.mayShare` present, `principals:owner` absent, **no delegation seeded** (M4.4 fixture prerequisite); `capabilities.ts:26` mislabels the URN (RFC 9670, not "RFC 8620 §8"). D2 (browser WebSocket) evidence stays in SP.3/ADR-005, **left open for Heiko at G1**. Docs-only WP: plan §SP.5 + M4.9 + status board updated; ADR-006 added; no code changed; 214 tests still green. |
