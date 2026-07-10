@@ -4,8 +4,8 @@
 - **Date:** 2026-07-09
 - **Deciders:** SP.3/SP.4 implementer — the technical decision is forced by the live evidence
   below (native `EventSource` and browser `WebSocket` cannot authenticate against Stalwart
-  v0.16.11); **owner ratification is pending at Gate G1** (decision D2). This ADR records the
-  evidence and the interim engineering choice, it does not pre-empt D2.
+  v0.16.11). **Ratified by the owner at Gate G1 (2026-07-10): D2 decided SSE-first** — WebSocket
+  is deferred to a post-SSE enhancement, so the fetch-based SSE reader is the V1 push transport.
 
 ## Context
 
