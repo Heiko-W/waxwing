@@ -17,7 +17,11 @@ let currentTheme: ThemeSetting = 'auto'
 export function applyBranding(config: WaxwingConfig): void {
   const root = document.documentElement
   document.title = config.branding.productName
-  root.style.setProperty('--waxwing-accent', config.branding.accentColor)
+  // Only a non-null hoster override touches the accent; otherwise the built-in theme-aware
+  // accent from tokens.css stands (darker in light, lighter in dark).
+  if (config.branding.accentColor) {
+    root.style.setProperty('--waxwing-accent', config.branding.accentColor)
+  }
 }
 
 /**

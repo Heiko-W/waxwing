@@ -7,7 +7,7 @@
   "branding": {
     "productName": "Waxwing",
     "logo": "branding/logo.svg",
-    "accentColor": "#E8770E",
+    "accentColor": null,
     "defaultTheme": "auto",
     "links": {
       "imprint": null,

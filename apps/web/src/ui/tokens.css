@@ -16,16 +16,17 @@
  *    interactive controls and mark focus/selection.
  *  - `--waxwing-border` is a SUBTLE divider/hairline (< 3:1 by design). It is decorative
  *    (WCAG 1.4.11 exempts dividers); never use it as the sole boundary of a control.
- *  - The accent (config-overridable) is used for fills, and only as a NON-sole,
- *    redundant accent — never as the single indicator of a state, and never as body text
- *    on a page background, because a custom accent cannot be contrast-guaranteed.
- *    `--waxwing-accent-contrast` is a label color proven legible on the DEFAULT accent.
+ *  - The accent (a calm blue) is theme-aware by default: darker in light, lighter in dark,
+ *    each paired with the legible `--waxwing-accent-contrast` label. It is used for fills and
+ *    only as a NON-sole, redundant accent — never the single indicator of a state, and never
+ *    body text on a page background. A hoster override (config.json `branding.accentColor`)
+ *    replaces it with a single value for both themes and is not contrast-guaranteed.
  */
 
 :root {
   /* ---- Color: light ---- */
-  --waxwing-accent: #e8770e;
-  --waxwing-accent-contrast: #1d1d1f;
+  --waxwing-accent: #2f6fe0;
+  --waxwing-accent-contrast: #ffffff;
   --waxwing-bg: #f5f5f7;
   --waxwing-surface: #ffffff;
   --waxwing-surface-2: #ebebef;
@@ -33,7 +34,7 @@
   --waxwing-text-muted: #636366;
   --waxwing-border: #d2d2d7;
   --waxwing-border-strong: #86868b;
-  --waxwing-focus-ring: #c0560a;
+  --waxwing-focus-ring: #2f6fe0;
   --waxwing-danger: #c10016;
   --waxwing-danger-contrast: #ffffff;
   --waxwing-success: #1e7b34;
@@ -99,6 +100,7 @@
 /* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --waxwing-accent: #5e93f0;
     --waxwing-accent-contrast: #1d1d1f;
     --waxwing-bg: #1c1c1e;
     --waxwing-surface: #2c2c2e;
@@ -107,7 +109,7 @@
     --waxwing-text-muted: #a5a5ad;
     --waxwing-border: #48484a;
     --waxwing-border-strong: #939398;
-    --waxwing-focus-ring: #ff9f45;
+    --waxwing-focus-ring: #5e93f0;
     --waxwing-danger: #ff6b60;
     --waxwing-danger-contrast: #1d1d1f;
     --waxwing-success: #30d158;
@@ -124,6 +126,7 @@
 
 /* ---- Color + elevation: dark (explicit user override) ---- */
 :root[data-theme="dark"] {
+  --waxwing-accent: #5e93f0;
   --waxwing-accent-contrast: #1d1d1f;
   --waxwing-bg: #1c1c1e;
   --waxwing-surface: #2c2c2e;
@@ -132,7 +135,7 @@
   --waxwing-text-muted: #a5a5ad;
   --waxwing-border: #48484a;
   --waxwing-border-strong: #939398;
-  --waxwing-focus-ring: #ff9f45;
+  --waxwing-focus-ring: #5e93f0;
   --waxwing-danger: #ff6b60;
   --waxwing-danger-contrast: #1d1d1f;
   --waxwing-success: #30d158;
@@ -148,7 +151,8 @@
 
 /* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */
 :root[data-theme="light"] {
-  --waxwing-accent-contrast: #1d1d1f;
+  --waxwing-accent: #2f6fe0;
+  --waxwing-accent-contrast: #ffffff;
   --waxwing-bg: #f5f5f7;
   --waxwing-surface: #ffffff;
   --waxwing-surface-2: #ebebef;
@@ -156,7 +160,7 @@
   --waxwing-text-muted: #636366;
   --waxwing-border: #d2d2d7;
   --waxwing-border-strong: #86868b;
-  --waxwing-focus-ring: #c0560a;
+  --waxwing-focus-ring: #2f6fe0;
   --waxwing-danger: #c10016;
   --waxwing-danger-contrast: #ffffff;
   --waxwing-success: #1e7b34;

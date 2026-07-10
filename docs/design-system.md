@@ -52,9 +52,9 @@ declared once.
 | `--waxwing-text-muted` | `#636366` | `#a5a5ad` | Secondary text (AA as text) |
 | `--waxwing-border` | `#d2d2d7` | `#48484a` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
 | `--waxwing-border-strong` | `#86868b` | `#939398` | **Interactive control boundary** (≥ 3:1) |
-| `--waxwing-focus-ring` | `#c0560a` | `#ff9f45` | Focus + selection ring (≥ 3:1) |
-| `--waxwing-accent` | `#e8770e` | `#e8770e` | Brand fill — config-overridable, **never a sole indicator** |
-| `--waxwing-accent-contrast` | `#1d1d1f` | `#1d1d1f` | Label on the default accent fill |
+| `--waxwing-focus-ring` | `#2f6fe0` | `#5e93f0` | Focus + selection ring (≥ 3:1) |
+| `--waxwing-accent` | `#2f6fe0` | `#5e93f0` | Brand fill — a calm blue, theme-aware; config-overridable, **never a sole indicator** |
+| `--waxwing-accent-contrast` | `#ffffff` | `#1d1d1f` | Label on the default accent fill |
 | `--waxwing-danger` | `#c10016` | `#ff6b60` | Error text/icon; destructive fill |
 | `--waxwing-danger-contrast` | `#ffffff` | `#1d1d1f` | Label on a danger fill |
 | `--waxwing-success` | `#1e7b34` | `#30d158` | Success text/icon; fill |
@@ -68,11 +68,16 @@ declared once.
 `--waxwing-border-strong`, which meets non-text contrast. Never use `--waxwing-border` as the
 only edge of an interactive element.
 
-**The accent is not contrast-guaranteed.** It is overridable per deployment
-(`config.json` → `--waxwing-accent`), so the design never makes accent color the *only* signal
-of a state. Selection/focus is carried by `--waxwing-focus-ring` (guaranteed ≥ 3:1) plus a
-surface change; "unread" is carried by weight/`--waxwing-text` as well as an accent dot; and so
-on. `--waxwing-accent-contrast` is only asserted legible against the *default* accent.
+**A calm accent, and never contrast-guaranteed.** The accent is a restrained blue — warm
+signal colors (red, orange, amber) are reserved for warnings and errors, so a warning reads as
+a warning. The default accent is theme-aware (darker in light, lighter in dark) and lives in
+`tokens.css`; a deployment can override it via `config.json` `branding.accentColor` (a single
+value for both themes, **not** contrast-guaranteed — `null`, the default, keeps the built-in
+theme-aware accent). Because the accent is overridable, the design never makes accent color the
+*only* signal of a state: selection/focus is carried by `--waxwing-focus-ring` (guaranteed ≥
+3:1) plus a surface change; "unread" is carried by weight/`--waxwing-text` as well as an accent
+dot; and so on. `--waxwing-accent-contrast` is only asserted legible against the *default*
+accent.
 
 ### 2.2 Elevation
 
@@ -128,14 +133,14 @@ tokens change. A representative slice (ratios in `x:1`):
 | text on surface | 4.5 | 16.83 | 12.80 |
 | text-muted on surface | 4.5 | 5.99 | 5.70 |
 | text-muted on surface-2 | 4.5 | 5.04 | 4.64 |
-| accent-contrast on accent | 4.5 | 5.67 | 5.67 |
+| accent-contrast on accent | 4.5 | 4.70 | 5.54 |
 | danger on surface | 4.5 | 6.40 | 4.99 |
 | danger-contrast on danger | 4.5 | 6.40 | 6.03 |
 | success-contrast on success | 4.5 | 5.33 | 8.32 |
 | warning-contrast on warning | 4.5 | 5.76 | 11.92 |
 | border-strong on surface | 3.0 | 3.62 | 4.56 |
 | border-strong on surface-2 | 3.0 | 3.05 | 3.71 |
-| focus-ring on surface | 3.0 | 4.59 | 6.83 |
+| focus-ring on surface | 3.0 | 4.70 | 4.58 |
 
 Rendered contrast (which token math cannot see — real fonts, opacity, layering) is verified
 separately by a **browser axe scan over the gallery in both themes**, including the
