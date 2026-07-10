@@ -49,5 +49,9 @@ account A's data is never touched, renamed, or migrated.
   in the controller. These are new code, not rewrites.
 - **V1 behavior is unchanged.** With no scope the store uses `waxwing-auth` exactly as
   before; `SecretName` values and the full-database logout wipe are untouched.
-- The Dexie mail replica (M1.2) will follow the same account-scoping principle for its own
-  databases; this ADR fixes the pattern for the auth layer specifically.
+- The Dexie mail replica (M1.2) will follow the same account-scoping *principle*; this ADR fixes
+  the pattern for the auth layer specifically. **Refined by ADR-008:** the replica uses one shared
+  database with compound `[accountId+id]` keys rather than a database-per-account, because it holds
+  no secrets (so the per-database crypto isolation that motivates this ADR does not transfer) and
+  wants a shared `accounts` registry. The account-scoping *guarantee* — additive, no migration — is
+  the same; only the mechanism differs.

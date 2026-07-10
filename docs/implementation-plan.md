@@ -108,7 +108,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
 | M1.1 | Design system foundation (doc, tokens, base components) | L | P0.2 | done | **2026-07-10.** `docs/design-system.md` written; tokens finalized with **machine-verified WCAG AA contrast** (`tokens.contrast.test.ts`, 42 assertions) — added `border-strong`, `danger/success/warning-contrast`, elevation tokens. 14 base components + shared primitives in `src/ui/` (barrel `index.ts`), each with keyboard/APG-ARIA/both-themes/44px and a co-located axe test (96 tests). Dev-only gallery (`VITE_WAXWING_GALLERY=1`, DCE'd from prod); **browser axe scan zero violations incl. color-contrast in light+dark**. Bundle 80.69 KB gz. **D5 signed off 2026-07-10** (after accent→blue + responsive-compact revisions). |
-| M1.2 | Local replica schema (Dexie, account-scoped) | M | SP.1, P0.3 | todo | |
+| M1.2 | Local replica schema (Dexie, account-scoped) | M | SP.1, P0.3 | done | **2026-07-10.** Dexie 4 shared `waxwing-replica` DB, 10 tables keyed `[accountId+id]` (**ADR-008**); account-scoped `amb`/`akw` membership indexes; canonical query-key; migration policy; `ReplicaProvider` + liveQuery hooks. 29 tests; 105.5 KB gz (Dexie tree-shaken until M1.5/M1.6, projected +31 KB gz). Follow-up: wire `wipeReplica` into sign-out → M1.3. |
 | M1.3 | Sync engine core + action queue skeleton | L | M1.2, SP.3, G1 | todo | |
 | M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | done | **2026-07-10.** Own base-path-safe router (**ADR-007**), responsive 3/2/1-pane shell + reading-pane modes, onboarding FSM (autoconnect/manual/OAuth/Basic), `SessionProvider` (holds the `JmapClient` for M1.5/M1.6) with FR-AUTH-06 re-auth overlay + FR-AUTH-05 sign-out, branding + `BrandLinks` from config. 401 tests; browser axe clean light+dark; 105.5 KB gz. Adversarial review fixed 6 defects. Follow-ups: engine status → M1.3, live shell E2E → M1.9. |
 | M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | todo | |
@@ -793,20 +793,41 @@ reported **zero violations in light and dark**, including the open Dialog/Menu/T
 
 Spec: FR-OFF-02 (basis), FR-AUTH-07 (account-scoping), tech-stack §4.3. Size: M.
 
-- [ ] Dexie 4 schema in `src/sync/db.ts`. Tables (all keyed `[accountId+id]` — account
+- [x] Dexie 4 schema in `src/sync/db.ts`. Tables (all keyed `[accountId+id]` — account
       scoping is non-negotiable from day one): `accounts`, `mailboxes`, `threads`,
       `emails` (index/envelope fields: mailboxIds, keywords, from/to, subject,
       receivedAt, preview, hasAttachment, size), `emailBodies` (fetched bodies + body
       structure, separate table so the index stays lean), `blobsMeta`, `syncState`
       (per account+objectType: JMAP state string), `queryCache` (canonical query key →
-      ids, queryState, upToId), `outbox`, `localPrefs`.
-- [ ] Canonical serialization for query keys (filter+sort normalized).
-- [ ] Migration strategy documented (Dexie `version()` chain; never destructive).
-- [ ] `dexie-react-hooks` `useLiveQuery` wrappers with account context.
-- [ ] Unit tests on `fake-indexeddb`: schema round-trips, index queries used by the list.
+      ids, queryState, upToId), `outbox`, `localPrefs`. — All ten shipped; `accounts` is
+      keyed by the bare id (it *is* the scope). Folder/keyword membership indexed via derived
+      account-scoped multiEntry arrays `amb`/`akw` (IndexedDB has no compound-multiEntry). **One
+      shared DB, not per-account — ADR-008** (the replica holds no secrets, so ADR-004's per-DB
+      crypto isolation does not transfer).
+- [x] Canonical serialization for query keys (filter+sort normalized). — `query-key.ts`:
+      order-independent filter keys + boolean-operator conditions; explicit `isAscending` default;
+      `collapseThreads` in the key; sort-comparator order preserved.
+- [x] Migration strategy documented (Dexie `version()` chain; never destructive). — Append-only
+      version chain policy in the `db.ts` header + ADR-008 (cache may bump the DB name as a last
+      resort).
+- [x] `dexie-react-hooks` `useLiveQuery` wrappers with account context. — `react.tsx`:
+      `ReplicaProvider` (fixes `accountId`) + `useMailboxes`/`useMailbox`/`useMailboxByRole`/
+      `useEmail`/`useEmailWindow`/`useQueryWindow`/`useLocalPref`.
+- [x] Unit tests on `fake-indexeddb`: schema round-trips, index queries used by the list. — 29
+      tests (jsdom "web" project): schema/round-trips, account isolation + `clearAccount`, the
+      M1.5/M1.6 query shapes, LRU touch-on-read, canonical-key equivalence/uniqueness, live hook
+      reactivity.
+- [ ] **(M1.3 follow-up)** Wire `wipeReplica` into the "Sign out & remove data" path (FR-AUTH-05)
+      once the sync engine populates the replica; derive a stable account id (issuer + username) for
+      the switcher when FR-AUTH-07 is scheduled.
 
 Done when: replica CRUD + the exact queries M1.5/M1.6 need are tested and fast (indexed,
-no full-table scans).
+no full-table scans). ✅ **2026-07-10.** All queries served by a declared index (role lookup,
+membership `amb`, threading `[accountId+threadId]`, window hydration by compound PK, mailbox counts
+straight off the mailbox row — no scans over `emails`). `pnpm verify` green: typecheck strict, Biome
+clean, **430 tests** (+29), size **105.5 KB gz** (Dexie is tree-shaken until M1.5/M1.6 import the
+replica; projected entry delta **≈ +31 KB gz** → ~136 KB, well under the 300 KB budget). **ADR-008**
+records the shared-DB account-scoping decision. Adversarial review applied.
 
 ### M1.3 — Sync engine core + action queue skeleton
 
@@ -1593,3 +1614,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-10 | **D5 signed off** — owner approved the design system after two revisions (calm blue accent; responsive compact controls). Broad UI build-out (M1.4+) unblocked. |
 | 2026-07-10 | **ADR-007** — own hash-free History-API router (base from the `<base href>` element, not `document.baseURI`) instead of react-router; React context + `useReducer` for app/session state instead of Zustand (deferred to M1.6's list view-state). Fills the router gap the tech-stack left open; neither dependency added. |
 | 2026-07-10 | **M1.4 done** — app shell. Own base-path-safe router (`app/route/`, lazy `/contacts`+`/settings` chunks, `.size-limit.js` now measures the entry chunk); responsive 3/2/1-pane shell (`computePaneLayout`, folder off-canvas drawer, SplitPane divider, reading opens via history PUSH, reading-pane mode right/bottom/off pref); onboarding FSM (same-origin autoconnect / manual email→domain connect / `config.json` pin, OAuth+Basic per config, secure-context gating) in a tested reducer + `SessionProvider` holding the connected `JmapClient` for M1.5/M1.6; FR-AUTH-06 re-auth as an overlay over the still-mounted shell (silent refresh handles the common case; Basic reconnects in place, OAuth stashes route+target); FR-AUTH-05 sign-out ± remove-data (confirm); branding product name/logo/accent/links all from config (`BrandLinks`, no hardcoded "Waxwing" — guard test). **401 web/unit/axe tests**, real-browser axe of the login **clean in light+dark**, **105.5 KB gz** entry chunk. Built via a design-panel workflow (5 lenses) + a 3-fork parallel implementation + an **adversarial review workflow** that confirmed **6 defects** (Basic-reauth wiping the "stay signed in" opt-in; a non-announced login error live region; a stale OAuth stash driving a wrong-server reconnect; the closed folder drawer left in the a11y tree; focus stranded on drawer-close and on the single-pane Back swap) — all fixed + regression-tested. Follow-ups: engine sync-status stub → M1.3; live `connect()`→shell E2E → M1.9; `<base href>` in `index.html` → M4.9. |
+| 2026-07-10 | **ADR-008** — replica account-scoping: **one shared `waxwing-replica` Dexie DB** with compound `[accountId+id]` keys (the plan's M1.2 spec), **not** a database-per-account (ADR-004's auth pattern). Deciding difference: the replica holds no secrets, so ADR-004's per-DB crypto-isolation rationale does not transfer, while a shared DB gives a natural `accounts` registry and keeps cross-account views (unified search/list) open. Per-account eviction = scoped bulk delete; full wipe = `db.delete()`. |
+| 2026-07-10 | **M1.2 done** — local replica schema (`apps/web/src/sync/`, Dexie 4.4). Ten account-scoped tables keyed `[accountId+id]` (`accounts`/`mailboxes`/`threads`/`emails`/`emailBodies`/`blobsMeta`/`syncState`/`queryCache`/`outbox`/`localPrefs`); folder/keyword membership via derived account-scoped multiEntry indexes `amb`/`akw` (IndexedDB has no compound-multiEntry) — the ordered list renders from `queryCache.ids` (server collation), not a local re-sort. `db.ts` (schema + JMAP→row mappers + `clearAccount`/`wipeReplica`), `query-key.ts` (canonical `{filter,sort,collapseThreads}` key — order-independent filter, explicit `isAscending` default, order-preserving sort), `repo.ts` (indexed CRUD + the M1.5/M1.6 read paths), `react.tsx` (`ReplicaProvider` + liveQuery hooks). Migration policy = append-only `version()` chain (`db.ts` header). **ADR-008** for the shared-DB scoping. 29 tests (**430 total green**); size **105.5 KB gz** (Dexie tree-shaken until M1.5/M1.6 import the replica; projected entry delta ≈ **+31 KB gz** → ~136 KB, well under 300). Built via a 3-way parallel research fan-out + an adversarial review workflow. Follow-up (M1.3): wire `wipeReplica` into "Sign out & remove data". |
