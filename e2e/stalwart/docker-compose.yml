@@ -18,8 +18,15 @@ x-stalwart-common: &stalwart-common
   environment:
     # Emit the session (apiUrl / upload / download / eventSource) and all OAuth/OIDC
     # endpoints as the host-visible URL instead of https://<hostname>, so a browser or curl
-    # on the host can actually reach them. MUST match the mapped host port below.
-    STALWART_PUBLIC_URL: http://localhost:18080
+    # on the host can actually reach them. Default matches the mapped host port below.
+    #
+    # Overridable so the SP.4 browser demo can advertise the BROWSER's origin instead: those
+    # URLs are absolute and Stalwart ignores Host/X-Forwarded-* (SP.4 probe Q1), so a browser
+    # reaching the app on http://<host>:5173 needs the session/OIDC docs to say the same
+    # origin (which a same-origin Vite proxy then forwards to this container). `scripts/demo.mjs`
+    # sets STALWART_PUBLIC_URL to that origin. `pnpm e2e:server` and the integration tests
+    # leave it unset → the default below → unchanged behaviour.
+    STALWART_PUBLIC_URL: ${STALWART_PUBLIC_URL:-http://localhost:18080}
     # Stable master admin over HTTP Basic (dev only). With a config.json pre-supplied,
     # Stalwart prints no temporary admin, so this is how ./fixture.mjs authenticates to
     # provision the domain + accounts. Password is intentionally well-known — dev only.

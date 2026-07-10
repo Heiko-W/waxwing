@@ -10,6 +10,10 @@ const BASE_URL = `http://localhost:${PORT}`
 // E2E suite); those will replace the webServer below with the provisioned Stalwart stack.
 export default defineConfig({
   testDir: './tests',
+  // The SP.4 demo spec has its own config (playwright.demo.config.ts): it needs `pnpm demo`
+  // running (fixture + demo dev server), which this self-contained `vite preview` webServer
+  // does not provide. Keep it out of the default suite.
+  testIgnore: ['**/demo.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

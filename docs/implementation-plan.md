@@ -99,7 +99,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | SP.1 | `@waxwing/jmap` core (session, calls, chunking) | L | P0.1, P0.4 | done | zero-dep MIT client; session/back-refs/auto-chunk/blob/auth; 64 unit + 4 live-fixture tests; 9.32 KB gz |
 | SP.2 | Auth: OAuth PKCE + token storage + Basic scheme | M | SP.1, P0.4 | done | Auth module + 31 hermetic tests (green); `apps/web/src/auth/`; oauth4webapi 3.8.6. Done-when verified LIVE against Stalwart v0.16.11 (OAuth PKCE dance via real login page + Basic): login → Mailbox/get → forced refresh → logout. Review fixes applied (single-flight refresh, callback-param scrub on all paths, terminal-refresh purge, account-scoped store per ADR-004, dev-CSP Stalwart origin). Live-only interop fix: strip Stalwart's unsolicited ES256 id_token. No client registration / no revocation endpoint (SP.5 findings) |
 | SP.3 | Push transports: EventSource + WebSocket (RFC 8887) | M | SP.1 | done | Fetch-based SSE reader (native `EventSource` can't send the `Authorization` header Stalwart requires) + RFC 8887 WebSocket; shared full-jitter reconnect + WS→SSE→polling-stub auto-select. Both deliver `StateChange` (2–5 ms) and survive `docker restart`. **ADR-005**. WS works server-side only against Stalwart (browsers can't set the WS auth header) → D2 evidence in SP.5. 72+4 hermetic + 3 live tests; push tree-shaken (budget untouched, +5.59 KB gz in the `@waxwing/jmap` barrel) |
-| SP.4 | Raw end-to-end demo (login → list → message) | M | SP.1, SP.2, P0.2 | todo | |
+| SP.4 | Raw end-to-end demo (login → list → message) | M | SP.1, SP.2, P0.2 | done | Dev-only `apps/web/src/demo/`, gated on `import.meta.env.DEV && VITE_WAXWING_DEMO==='1'` → Rollup DCEs it (grep-proven absent from `dist/`, budget unchanged at 80.55 KB gz). One-command harness `pnpm demo [--lan]` (fixture + seeded mail + same-origin Vite proxy, guaranteed teardown). Live: Basic login → mailbox counts → paged `Email/query`+`Email/get` (`#ids` back-ref) → text/HTML body in a `sandbox=""` iframe → `Email/parse` of a `message/rfc822` attachment → blob download. 30 hermetic + axe tests (214 total green) + 2 live Playwright specs (Basic + OAuth). **`Email/parse` answered** (SP.5). LAN caveat: plain-http origin = insecure context, so OAuth/persistence are unavailable there by design |
 | SP.5 | Spike report, ADRs, validation checklist | S | SP.1–SP.4 | todo | |
 | **G1** | **Gate: owner reviews spike findings, plan adjusted** | — | SP.5 | todo | blocks M1 |
 
@@ -519,14 +519,57 @@ lands on SSE and delivers `StateChange`, using the default preference (no `prefe
 
 Spec: validates FR-AUTH-01, FR-MBX/LST plumbing; tech-stack §9.1. Size: M.
 
-- [ ] Dev-only route in `apps/web` (excluded from production build): login form (OAuth +
+- [x] Dev-only route in `apps/web` (excluded from production build): login form (OAuth +
       Basic), mailbox list with counts, paged message list (`Email/query` +
       `Email/get`), raw message view (text body, naive HTML in sandboxed iframe —
       **not** the real sanitizer).
-- [ ] No replica, no virtualization, no design system — direct client calls only.
-- [ ] Exercise `Email/parse` on an attached `message/rfc822` to answer the SP.5 question.
+- [x] No replica, no virtualization, no design system — direct client calls only.
+- [x] Exercise `Email/parse` on an attached `message/rfc822` to answer the SP.5 question.
 
 Done when: a human can log into the fixture and read a delivered test mail end-to-end.
+✅ Verified 2026-07-10 against Stalwart v0.16.11-alpine, driven from a real browser
+(Playwright): Basic sign-in → `Mailbox/get` counts → paged list → open a seeded mail → its
+text body and its sandboxed HTML body render → `Email/parse` on the `message/rfc822`
+attachment renders the inner message's subject **and body** → attachment blob downloads.
+A second spec drives the full OAuth PKCE dance through Stalwart's `/login` SPA (localhost
+only — see the secure-context finding below).
+
+**SP.4 findings.**
+*Not a URL route.* The demo is gated on `import.meta.env.DEV && import.meta.env.VITE_WAXWING_DEMO
+=== '1'` and mounted through a dynamic `import('./demo/main')`. `import.meta.env.DEV` is a
+build-time literal, so Rollup dead-code-eliminates the whole demo tree — proven by grepping the
+emitted `dist/` for demo markers, component names and demo i18n strings (all absent; the
+`apps/web` budget is unchanged at **80.55 KB gz**, and the demo's `demo.*` strings live in
+`src/demo/locales/` and are registered at runtime, not in the shipped `common.json`). A route
+was rejected because the OAuth `redirect_uri` is `computeRedirectUri(document.baseURI)` — the
+app root, without query or hash — so a `?demo`/`#demo` route would not survive the redirect back.
+
+*Reaching the demo from another machine needs three things, not one.* Stalwart pins the session
+and OIDC URLs to the container's `STALWART_PUBLIC_URL` and **ignores** `Host` and
+`X-Forwarded-*`; it also emits no CORS headers. A same-origin proxy alone is therefore not
+enough — the advertised origin must match the browser's. `pnpm demo [--lan]`
+(`scripts/demo.mjs`) resolves the browser origin, brings the fixture up advertising exactly it,
+seeds alice's inbox, and starts Vite with a demo-only same-origin proxy
+(`/jmap`, `/.well-known`, `/auth`, `/login`, `/api`, `/logo`; none collide with Vite's dev
+paths). `STALWART_PUBLIC_URL` is now overridable in `docker-compose.yml` (default unchanged).
+
+*A plain-http LAN origin is an insecure context,* so `crypto.subtle` is undefined. That kills
+OAuth (oauth4webapi's `calculatePKCECodeChallenge` → `subtle.digest`) and every `SecretStore`
+persistence path (AES-GCM). Basic sign-in uses only `btoa` and works. The demo therefore
+disables the OAuth button with an accessible explanation and guards `AuthController.restore()`
+so an insecure origin cannot throw on boot; the `pnpm demo` banner says so plainly. Serving the
+LAN origin over HTTPS (mkcert) would restore OAuth — deliberately not built for a throwaway page.
+
+*Blob downloads need the `Authorization` header* (`?access_token=`/`?oauth_token=` → 401), so
+attachments and inline images must go through `client.download()` → `URL.createObjectURL` →
+`blob:` URL. `<img src=downloadUrl>` and `<a href=downloadUrl download>` cannot work. This
+constrains M1.7's inline-image handling.
+
+*Body values are per-part.* Stalwart lists a text-only mail's `text/plain` part in **both**
+`textBody` and `htmlBody` (the RFC 8621 fallback), so "does this mail have HTML?" must be
+decided from a genuine `text/html` part, not from `htmlBody` being non-empty — otherwise plain
+mail renders inside the iframe. `Email/parse` needs `bodyValues` listed in `properties`;
+`fetchTextBodyValues` alone only fills the values of a property you also asked for.
 
 ### SP.5 — Spike report, ADRs, validation checklist
 
@@ -543,8 +586,15 @@ notes or new ADRs), answering **each** of:
       Applications mount (FR-DEP-02), or a CORS-adding reverse proxy — matching the FR-DEP-05
       trade-off. (Only the default `usePermissiveCors:false` case was probed; the permissive
       case is not re-tested here.)
-- [ ] `Email/parse`: supported by Stalwart v0.16? (decides whether `postal-mime` fallback
-      is needed for FR-RD-07).
+- [x] `Email/parse`: supported by Stalwart v0.16? (decides whether `postal-mime` fallback
+      is needed for FR-RD-07). **Answered (SP.4) — yes.** Verified live end-to-end and from the
+      demo UI: upload an `.eml`, attach it via `Email/set`, read the sub-part `blobId`, call
+      `Email/parse` → `parsed[blobId]` carries `subject`/`from`/`textBody`/`bodyValues`/
+      `preview`; no `unknownMethod`, empty `notParsable`/`notFound`. So **no `postal-mime`
+      fallback is needed for server-held blobs** (FR-RD-07). It would still be required to parse
+      a `.eml` the user picks from their local disk, which never reaches the server. Caveat:
+      `bodyValues` must be named in `properties` — `fetchTextBodyValues:true` alone returns an
+      empty body (RFC 8620 §5.1 property filtering).
 - [ ] WebSocket RFC 8887: works as specced? Push over WS reliable? (decides D2.)
       **Evidence recorded (SP.3) — D2 stays open for Heiko at G1:** JMAP-over-WebSocket works
       exactly as specced **server-side/Node** — `urn:ietf:params:jmap:websocket` advertised
@@ -567,9 +617,18 @@ notes or new ADRs), answering **each** of:
       `Authorization: Bearer <token>` (**ADR-005**). Verified live: Bearer and Basic → 200
       `text/event-stream`; `?access_token=` → 401. Resumption: Stalwart emits no SSE `id:` and
       ignores `Last-Event-ID`, so reconnect must re-sync via `*/changes` (informs M1.3).
-- [ ] `Email/queryChanges`: supported/reliable, or `cannotCalculateChanges` common?
-      (shapes M1.3's sync strategy.)
-- [ ] SearchSnippet support (shapes M3.1).
+- [x] `Email/queryChanges`: supported/reliable, or `cannotCalculateChanges` common?
+      (shapes M1.3's sync strategy.) **Answered (SP.4) — supported, with a caveat worth
+      designing against.** `Email/query` reports `canCalculateChanges:true`, and
+      `Email/queryChanges` returns normally. In the one adversarial case probed, a **bogus
+      `sinceQueryState` did not produce `cannotCalculateChanges`** — the server answered "ok, no
+      changes". If that generalises, a client that trusts a stale or corrupted query state would
+      silently believe it is up to date. M1.3 must therefore not treat the absence of
+      `cannotCalculateChanges` as proof of freshness, and should re-probe this deliberately (it
+      was a single observation, not a systematic test).
+- [x] SearchSnippet support (shapes M3.1). **Answered (SP.4) — supported.** `SearchSnippet/get`
+      returns per-email `subject`/`preview` with the matched terms wrapped in `<mark>` (so M3.1
+      must treat the snippet as *server-produced markup* and sanitise it, not trust it).
 - [ ] OIDC: client registration needs, refresh-token lifetimes, revocation endpoint.
 - [ ] Session limits actually reported by Stalwart (informs chunking defaults).
 - [ ] Blob upload quirks (size caps, content-type handling).
@@ -1371,3 +1430,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-09 | **ADR-005** — SSE via a fetch-based reader, not the native `EventSource`: Stalwart's SSE (and WS) endpoints authenticate only via the `Authorization` header, which `EventSource`/browser `WebSocket` cannot send; SSE uses `fetch`+`ReadableStream` with `Authorization: Bearer` (+ optional `AuthProvider.token()`), and WS is server-side-only against Stalwart. tech-stack §4.2 + FR-NOTIF-01 note updated. |
 | 2026-07-09 | SP.3 **done** — push transports in `packages/jmap/src/push/`: fetch-based `SseChannel` (Stalwart SSE needs an `Authorization` header — native `EventSource` unusable, ADR-005), RFC 8887 `WebSocketChannel` (server-side-only vs. Stalwart), shared full-jitter `ReconnectLoop`, `createPushChannel` WS→SSE→polling-stub auto-select. Both deliver `StateChange` 2–5 ms and survive `docker restart`. 72+4 hermetic + 3 live tests (178 total green); push tree-shaken from `apps/web` (budget untouched at 80.55 KB gz; +5.59 KB gz in the `@waxwing/jmap` barrel → 14.91 KB gz). SP.5 answers recorded: SSE + EventSource auth mechanism, CORS default-off; WS-over-browser evidence left open for D2 at G1. |
 | 2026-07-09 | SP.3 **post-review fix** — runtime transport failover (tagged SP.4 in the push suite; SP.3 stays **done**). Live footgun: the static single-transport pick left a browser on the eligible-but-401ing WebSocket forever → zero push unless the caller passed `prefer:'sse'`. Fix: `createPushChannel` now returns a `FailoverPushChannel` that connects the eligible transports (`eligibleTransports`, WS→SSE→polling) in turn and auto-degrades when one never opens (`failoverAfterAttempts`, default 2); once a transport opens its own loop owns every drop (never downgrades), the last real transport is never torn down onto the polling stub (transient blips self-heal), and `prefer` is a soft reorder consistent with `pickTransport`. Four review findings applied at root cause + locked with regression tests (terminal-transport budget, `prefer` restrict→reorder, never-downgrade mutation lock, polling-only exhaustion). Tests: hermetic push suite 29 cases (**193 total green**); +1 live case — a browser-like WS (no auth header) fails over to SSE and delivers `StateChange` with the default preference. `apps/web` budget untouched (80.55 KB gz; push still tree-shaken); `@waxwing/jmap` barrel 14.91 → **15.95 KB gz** (+1.04, just over the deferred/unenforced 15 KB library note). ADR-005 Decision/Consequences + Deciders (owner ratification pending D2) reconciled. |
+| 2026-07-10 | SP.4 **done** — raw end-to-end demo. Dev-only `apps/web/src/demo/` (login/mailboxes/paged list/raw message view/`Email/parse`), gated on `import.meta.env.DEV && VITE_WAXWING_DEMO==='1'` behind a dynamic import so Rollup DCEs it — grep-proven absent from `dist/`, budget unchanged (**80.55 KB gz**). New one-command harness `pnpm demo [--lan]` (`scripts/demo.mjs` + `e2e/stalwart/seed-demo.mjs`): resolves the browser origin, brings the fixture up advertising it via the now-overridable `STALWART_PUBLIC_URL`, seeds 25 deterministic mails (plain, hostile HTML, `message/rfc822` attachment), starts Vite behind a demo-only same-origin proxy, guarantees teardown. Live-verified from a real browser (2 Playwright specs: Basic + full OAuth PKCE via Stalwart's `/login`). **SP.5 answers:** `Email/parse` **supported** (no `postal-mime` for server-held blobs; `bodyValues` must be named in `properties`), `SearchSnippet/get` supported (returns `<mark>` markup — sanitise it), `Email/queryChanges` supported but did **not** raise `cannotCalculateChanges` for a bogus `sinceQueryState` (M1.3 must not read its absence as freshness). Further findings: Stalwart ignores `Host`/`X-Forwarded-*` when advertising session/OIDC URLs; blob download requires the `Authorization` header (no `<img src>`); a plain-http LAN origin is an insecure context, so `crypto.subtle` — hence OAuth PKCE and all `SecretStore` persistence — is unavailable there (Basic works). Review: 8 findings raised, 3 confirmed and fixed at root cause (`Email/parse` missing `bodyValues`; demo i18n leaking into the production locale chunks; `pnpm demo` teardown volume-wiping a fixture it never started), 5 adversarially refuted. 214 tests green. |

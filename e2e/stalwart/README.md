@@ -91,6 +91,25 @@ A richer, fixture-backed Playwright suite (real login, mailbox listing, send/rec
 with **M1.9**; it will reuse `fixture.mjs` (its `up`/`provision`/constants are exported) as
 a global setup instead of the current self-contained placeholder `webServer`.
 
+## SP.4 raw demo (`pnpm demo`)
+
+`scripts/demo.mjs` reuses this fixture (its `up`/`down`/`ACCOUNTS` exports) to power the
+dev-only raw end-to-end demo — see the root README's "Raw end-to-end demo" section. Two
+fixture-side hooks make the browser demo work:
+
+- **`STALWART_PUBLIC_URL` is overridable** — `docker-compose.yml` now reads
+  `${STALWART_PUBLIC_URL:-http://localhost:18080}`. Stalwart bakes this exact origin into the
+  **absolute** session URLs (`apiUrl`, `download`/`upload`/`eventSource`) and every OAuth/OIDC
+  endpoint, and it ignores `Host`/`X-Forwarded-*`. `pnpm demo` sets it to the *browser's*
+  origin (e.g. `http://localhost:5173`) so a same-origin Vite proxy is all that's needed — no
+  CORS, no cross-origin loopback. `pnpm e2e:server` and the integration tests leave it unset,
+  so their behaviour is unchanged (default `http://localhost:18080`).
+- **`seed-demo.mjs`** idempotently seeds alice's inbox with 25 deterministic demo mails (a
+  plain-text mail, an HTML mail with a `<script>` + remote `<img>`, a `message/rfc822`
+  attachment for `Email/parse`, and filler for paging). Every seeded mail carries the `wdemo`
+  keyword; a reseed destroys the previous batch first. Run standalone against a running
+  fixture with `node e2e/stalwart/seed-demo.mjs`.
+
 ## Compatibility profile (`main`)
 
 `docker-compose.yml` defines two variants behind compose **profiles** so a bare

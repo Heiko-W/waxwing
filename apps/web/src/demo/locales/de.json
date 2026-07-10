@@ -1,0 +1,55 @@
+{
+  "demo": {
+    "title": "Waxwing-Rohdemo (JMAP)",
+    "account": "Angemeldet als {{name}}",
+    "logout": "Abmelden",
+    "loading": "Wird geladen …",
+    "login": {
+      "heading": "Anmelden",
+      "server": "Server",
+      "serverHint": "Standardmäßig dieser Ursprung, den der Entwicklungsserver an den JMAP-Server weiterleitet.",
+      "username": "Benutzername",
+      "password": "Passwort",
+      "signIn": "Anmelden (Basic)",
+      "oauth": "Mit OAuth anmelden",
+      "oauthUnavailable": "OAuth benötigt einen sicheren Kontext (HTTPS oder localhost); auf diesem Ursprung ist crypto.subtle nicht verfügbar, daher funktioniert nur die Basic-Anmeldung."
+    },
+    "mailboxes": {
+      "heading": "Postfächer",
+      "counts": "{{unread}} ungelesen / {{total}} gesamt"
+    },
+    "list": {
+      "heading": "Nachrichten",
+      "empty": "Dieses Postfach ist leer.",
+      "prev": "Zurück",
+      "next": "Weiter",
+      "range": "{{from}}–{{to}} von {{total}}",
+      "unread": "Ungelesen",
+      "hasAttachment": "Enthält Anhang",
+      "noSubject": "(kein Betreff)",
+      "noSender": "(unbekannter Absender)"
+    },
+    "message": {
+      "select": "Wählen Sie eine Nachricht zum Lesen aus.",
+      "from": "Von",
+      "to": "An",
+      "date": "Datum",
+      "bodyMode": "Format des Nachrichtentexts",
+      "showHtml": "HTML",
+      "showText": "Nur Text",
+      "htmlBody": "HTML-Nachrichtentext",
+      "noBody": "Kein Text dieses Typs.",
+      "attachments": "Anhänge",
+      "download": "Herunterladen",
+      "parse": "Parsen (Email/parse)",
+      "parsedHeading": "Geparste Nachricht",
+      "parsedSubject": "Betreff",
+      "raw": "Rohes Email-JSON"
+    },
+    "error": {
+      "noAccount": "Die Sitzung enthält kein E-Mail-Konto.",
+      "notFound": "Nachricht nicht gefunden.",
+      "notParsable": "Der Server konnte diesen Anhang nicht parsen."
+    }
+  }
+}

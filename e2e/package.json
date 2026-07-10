@@ -7,6 +7,7 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "e2e": "playwright test",
+    "e2e:demo": "playwright test -c playwright.demo.config.ts",
     "server:up": "node stalwart/fixture.mjs up",
     "server:up:main": "node stalwart/fixture.mjs up main",
     "server:down": "node stalwart/fixture.mjs down",

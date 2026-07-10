@@ -73,6 +73,8 @@ Common scripts, run from the repo root:
 | `pnpm verify:all` | `pnpm verify` then `pnpm verify:e2e` |
 | `pnpm e2e:server` | Start a local Stalwart JMAP server with test accounts (Docker) |
 | `pnpm e2e:server:down` | Stop it and wipe its ephemeral data |
+| `pnpm demo` | Dev-only raw end-to-end demo: Stalwart fixture + seeded mail + a throwaway login/read UI at `http://localhost:5173` (Docker) |
+| `pnpm demo --lan` | Same, served on your LAN IP so another machine can open it (Basic sign-in only — see below) |
 
 **Before committing, run `pnpm verify`** (and `pnpm verify:e2e` when you have Docker). These
 scripts are the pre-merge gate: they run the same checks a CI would (typecheck, Biome, tests,
@@ -84,6 +86,31 @@ Need a real mail server to develop against? `pnpm e2e:server` brings up a pinned
 plain-HTTP [Stalwart](https://stalw.art) instance with ready-made test accounts in one
 command. See [`e2e/stalwart/README.md`](e2e/stalwart/README.md) for accounts, ports, and
 the dev-only TLS choice. Requires Docker.
+
+### Raw end-to-end demo (`pnpm demo`)
+
+`pnpm demo` (work package SP.4) is a **dev-only, throwaway** UI that talks straight to the
+JMAP fixture — login (OAuth + Basic), a mailbox list with counts, a paged message list, a
+raw message view (text + naive HTML in a sandboxed iframe) and an `Email/parse` button for a
+`message/rfc822` attachment. It is **not** in the production bundle (it is gated on
+`import.meta.env.DEV && VITE_WAXWING_DEMO === '1'`, so every `vite build` dead-code-eliminates
+it). One command brings up the Stalwart fixture, advertises the browser's origin, seeds
+alice's inbox with demo mail, and starts a same-origin Vite proxy + dev server; Ctrl-C tears
+everything back down.
+
+```sh
+pnpm demo          # open http://localhost:5173 — Basic AND OAuth both work (secure context)
+pnpm demo --lan    # open http://<your-lan-ip>:5173 from another machine on your LAN
+```
+
+Sign in with the fixture account the banner prints (`alice@waxwing.test` /
+`waxwing-e2e-Pw1!`; the form is pre-filled). **LAN caveat:** a plain-`http` LAN IP is an
+*insecure context*, so `crypto.subtle` is unavailable — OAuth and "stay signed in" are
+disabled there and only **Basic** sign-in works (the demo says so and disables OAuth). Serve
+the demo over HTTPS at the LAN origin (or use `localhost`) if you need OAuth.
+
+The matching Playwright check is `pnpm e2e:demo` (run it in a second terminal while
+`pnpm demo` is up; it skips cleanly if the demo isn't running).
 
 This is a **pnpm workspace**:
 

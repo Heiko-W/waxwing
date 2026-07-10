@@ -1,0 +1,55 @@
+{
+  "demo": {
+    "title": "Waxwing raw demo (JMAP)",
+    "account": "Signed in as {{name}}",
+    "logout": "Sign out",
+    "loading": "Loading…",
+    "login": {
+      "heading": "Sign in",
+      "server": "Server",
+      "serverHint": "Defaults to this origin, which the dev server proxies to the JMAP server.",
+      "username": "Username",
+      "password": "Password",
+      "signIn": "Sign in (Basic)",
+      "oauth": "Sign in with OAuth",
+      "oauthUnavailable": "OAuth needs a secure context (HTTPS or localhost); on this origin crypto.subtle is unavailable, so only Basic sign-in works."
+    },
+    "mailboxes": {
+      "heading": "Mailboxes",
+      "counts": "{{unread}} unread / {{total}} total"
+    },
+    "list": {
+      "heading": "Messages",
+      "empty": "This mailbox is empty.",
+      "prev": "Previous",
+      "next": "Next",
+      "range": "{{from}}–{{to}} of {{total}}",
+      "unread": "Unread",
+      "hasAttachment": "Has attachment",
+      "noSubject": "(no subject)",
+      "noSender": "(unknown sender)"
+    },
+    "message": {
+      "select": "Select a message to read it.",
+      "from": "From",
+      "to": "To",
+      "date": "Date",
+      "bodyMode": "Message body format",
+      "showHtml": "HTML",
+      "showText": "Plain text",
+      "htmlBody": "HTML message body",
+      "noBody": "No body of this type.",
+      "attachments": "Attachments",
+      "download": "Download",
+      "parse": "Parse (Email/parse)",
+      "parsedHeading": "Parsed message",
+      "parsedSubject": "Subject",
+      "raw": "Raw Email JSON"
+    },
+    "error": {
+      "noAccount": "The session exposes no mail account.",
+      "notFound": "Message not found.",
+      "notParsable": "The server could not parse this attachment."
+    }
+  }
+}
