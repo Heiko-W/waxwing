@@ -12,6 +12,7 @@
 // Env overrides: WAXWING_DEMO_ORIGIN (wins), WAXWING_DEMO_PORT (default 5173).
 
 import { spawn } from 'node:child_process'
+import { createServer } from 'node:net'
 import { networkInterfaces } from 'node:os'
 import { ACCOUNTS, down, up } from '../e2e/stalwart/fixture.mjs'
 import { seedDemoMail } from '../e2e/stalwart/seed-demo.mjs'
@@ -56,6 +57,29 @@ function resolveOrigin() {
     return `http://${ip}:${PORT}`
   }
   return `http://localhost:${PORT}`
+}
+
+/**
+ * Refuse to start before touching Docker when the port is taken. Vite runs with `--strictPort`,
+ * so it would die on the conflict — but only AFTER `up()` has recreated the fixture with this
+ * run's STALWART_PUBLIC_URL, at which point teardown removes a container (and someone's live
+ * browser session) that this run had no business owning. Bind on 0.0.0.0: on Linux that also
+ * collides with a listener bound to 127.0.0.1 only.
+ */
+function assertPortFree(port) {
+  return new Promise((resolve, reject) => {
+    const probe = createServer()
+    probe.once('error', (error) => {
+      if (error.code !== 'EADDRINUSE') return reject(error)
+      reject(
+        new Error(
+          `port ${port} is already in use — another \`pnpm demo\` or dev server is running. ` +
+            `Stop it first, or choose another port with WAXWING_DEMO_PORT.`,
+        ),
+      )
+    })
+    probe.listen(port, '0.0.0.0', () => probe.close(() => resolve()))
+  })
 }
 
 function isInsecureOrigin(origin) {
@@ -126,6 +150,8 @@ async function main() {
   process.env.STALWART_PUBLIC_URL = origin
 
   console.log(`[demo] origin ${origin}`)
+  // Before Docker, so a port conflict cannot cost anyone their running fixture.
+  await assertPortFree(PORT)
   await up('dev')
   // From here on the demo owns the dev fixture and teardown() may remove it.
   broughtUp = true

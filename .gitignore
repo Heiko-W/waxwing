@@ -13,6 +13,8 @@ test-results/
 playwright-report/
 blob-report/
 .playwright/
+# Screenshots/traces dropped in the repo root by the Playwright MCP browser.
+.playwright-mcp/
 
 # Vite
 .vite/

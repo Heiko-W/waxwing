@@ -95,8 +95,13 @@
 
 /* ---- Login ---- */
 
+/*
+ * The sign-in card is the only view with nothing to fill the page beside it. `margin: auto`
+ * inside `.demo`'s flex column absorbs the free space on every side, centring it both ways.
+ */
 .card {
-  max-inline-size: 30rem;
+  inline-size: min(30rem, 100%);
+  margin: auto;
   padding: var(--waxwing-space-5);
   border: 1px solid var(--waxwing-border);
   border-radius: var(--waxwing-radius-lg);
