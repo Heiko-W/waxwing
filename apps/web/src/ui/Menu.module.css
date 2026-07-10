@@ -3,8 +3,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--waxwing-space-1);
-  min-block-size: var(--waxwing-tap-target);
-  min-inline-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
+  min-inline-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-3);
   border: 1px solid var(--waxwing-border-strong);
   border-radius: var(--waxwing-radius-md);
@@ -35,7 +35,7 @@
   align-items: center;
   gap: var(--waxwing-space-2);
   inline-size: 100%;
-  min-block-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-3);
   border: 0;
   border-radius: var(--waxwing-radius-sm);

@@ -2,7 +2,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--waxwing-space-3);
-  min-block-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
 }
 
 .label {
@@ -16,8 +16,8 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  min-inline-size: var(--waxwing-tap-target);
-  min-block-size: var(--waxwing-tap-target);
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
   padding: 0;
   border: 0;
   background: transparent;

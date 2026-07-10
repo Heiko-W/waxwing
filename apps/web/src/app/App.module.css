@@ -56,8 +56,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-inline-size: var(--waxwing-tap-target);
-  min-block-size: var(--waxwing-tap-target);
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-3);
   /* Transparent by default so the pressed-state border (below) adds no layout shift. */
   border: 1px solid transparent;

@@ -24,7 +24,8 @@ Source of truth for the values below:
    for light and dark from the start — dark is never an afterthought tint.
 4. **Accessible by construction (FR-A11Y-01).** WCAG 2.2 AA is the floor: full keyboard
    operability, visible focus, contrast-verified tokens, `prefers-reduced-motion` respected,
-   44-px minimum touch targets. Accessibility lives in the base components so features inherit
+   and target sizes that meet AA on pointer (≥ 24 px, SC 2.5.8) while staying finger-friendly
+   on touch (44 px, SC 2.5.5). Accessibility lives in the base components so features inherit
    it rather than re-implement it.
 5. **Restylable without a rebuild (FR-THEME-01/02).** Everything visual is a `--waxwing-*`
    custom property. A hoster ships one `theme.css` and a `config.json`; no build step.
@@ -106,12 +107,14 @@ from this scale; no arbitrary pixel spacing.
 
 ### 2.6 Interaction & motion
 
-- `--waxwing-tap-target: 44px` — the minimum block size of every interactive base component
-  (FR-A11Y-01). Density below 44 px is a *list-level* concern (M1.6, FR-LST-07 + the WCAG 2.5.8
-  spacing exception), not something base controls do. **One documented exception:** the
-  SplitPane resize separator uses a 24 px hit band (meeting WCAG 2.5.8 AA) rather than 44 px —
-  a 44 px divider would be a wide dead zone between panes, and keyboard resize (arrows/Home/End)
-  is the separator's primary operable path.
+- `--waxwing-control-min` — the minimum block size of every interactive base component
+  (FR-A11Y-01), **responsive**: `34px` on pointer devices (compact, and above WCAG 2.2 AA
+  SC 2.5.8's 24 px floor) and `44px` on touch (`@media (pointer: coarse)`, SC 2.5.5 AAA) so
+  fingers land easily where screen space is tight. Buttons pair this with slim horizontal
+  padding. Further density (comfortable/compact) is a *list-level* concern (M1.6, FR-LST-07).
+  **One documented exception:** the SplitPane resize separator uses a 24 px hit band (meeting
+  SC 2.5.8) rather than the control minimum — a wide divider is dead space between panes, and
+  keyboard resize (arrows/Home/End) is its primary operable path.
 - Durations: `fast` 120ms · `base` 200ms · `slow` 320ms. Easing: `--waxwing-ease-standard`
   `cubic-bezier(0.2, 0, 0, 1)`.
 - **Reduced motion:** `global.css` collapses all animation/transition/scroll for
@@ -154,7 +157,7 @@ background/graphic (config-overridable, never a sole indicator — see §2.1).
 ## 4. Component inventory
 
 Public API: `apps/web/src/ui/index.ts`. Every component ships keyboard support, ARIA per its
-WAI-ARIA APG pattern, both themes, a 44-px target where interactive, and a co-located test with
+WAI-ARIA APG pattern, both themes, a responsive `--waxwing-control-min` target where interactive, and a co-located test with
 a jsdom axe scan.
 
 ### 4.1 Primitives (internal — `src/ui/internal/`)
@@ -173,7 +176,7 @@ Not exported; the shared kernel the overlays build on.
 | Component | Pattern / notes |
 | --- | --- |
 | **Button** | Variants primary/secondary/ghost/destructive; `loading` (aria-busy, blocks activation); defaults `type="button"`. |
-| **IconButton** | Square 44×44; `label` required (accessible name); icon auto-hidden from AT. |
+| **IconButton** | Square, `control-min` sized (34 px pointer / 44 px touch); `label` required (accessible name); icon auto-hidden from AT. |
 | **TextInput** | Styled input; `invalid` → `aria-invalid` + danger boundary. Labelling is the caller's job (composable). |
 | **Select** | **Styled *native* `<select>`** — see §5. `invalid` supported. |
 | **Checkbox** | Native + `accent-color`; `indeterminate`; optional visible `label`, else `aria-label`. |
@@ -216,7 +219,7 @@ Not exported; the shared kernel the overlays build on.
    props and forward `ref` (React 19 ref-as-prop).
 4. **No hardcoded user-visible strings.** Intrinsic labels default to `ui.*` i18n keys
    (en + de), overridable via props; other copy is the caller's.
-5. Interactive → 44-px minimum target, ARIA per the APG pattern, visible focus via the global
+5. Interactive → `--waxwing-control-min` target (34/44 responsive), ARIA per the APG pattern, visible focus via the global
    `:focus-visible` ring (don't override it).
 6. Every component gets a test that includes an axe scan (assert portalled components against
    `document.body`). Contrast/theme rendering is covered by the browser gallery scan.

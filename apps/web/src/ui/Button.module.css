@@ -3,8 +3,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--waxwing-space-2);
-  min-block-size: var(--waxwing-tap-target);
-  padding-inline: var(--waxwing-space-4);
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-3);
   border: 1px solid transparent;
   border-radius: var(--waxwing-radius-md);
   font-family: inherit;
@@ -37,7 +37,7 @@
 }
 
 .sm {
-  padding-inline: var(--waxwing-space-3);
+  padding-inline: var(--waxwing-space-2);
   font-size: var(--waxwing-text-xs);
 }
 

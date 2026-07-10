@@ -88,13 +88,24 @@
   --waxwing-weight-bold: 700;
 
   /* ---- Interaction ---- */
-  --waxwing-tap-target: 44px;
+  /* Minimum size of interactive controls. 34px on pointer devices (compact, and well above
+     WCAG 2.2 AA SC 2.5.8's 24px minimum); raised to 44px on touch by the pointer:coarse rule
+     below (SC 2.5.5 AAA) so it stays finger-friendly where screen space is tight. */
+  --waxwing-control-min: 2.125rem;
 
   /* ---- Motion ---- */
   --waxwing-duration-fast: 120ms;
   --waxwing-duration-base: 200ms;
   --waxwing-duration-slow: 320ms;
   --waxwing-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Touch devices: raise the interactive-control minimum to a finger-friendly 44px (SC 2.5.5),
+   independent of theme. */
+@media (pointer: coarse) {
+  :root {
+    --waxwing-control-min: 2.75rem;
+  }
 }
 
 /* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */

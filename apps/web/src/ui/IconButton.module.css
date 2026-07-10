@@ -1,6 +1,6 @@
 /* Square icon control: override Button's inline padding and pin a 1:1 tap target. */
 .iconButton {
-  min-inline-size: var(--waxwing-tap-target);
+  min-inline-size: var(--waxwing-control-min);
   padding-inline: 0;
   aspect-ratio: 1;
 }

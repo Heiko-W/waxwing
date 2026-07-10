@@ -2,14 +2,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--waxwing-space-2);
-  min-block-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
   cursor: pointer;
 }
 
 /* Control-only (no visible label): still a 44px square target. */
 .bare {
   justify-content: center;
-  min-inline-size: var(--waxwing-tap-target);
+  min-inline-size: var(--waxwing-control-min);
 }
 
 .input {

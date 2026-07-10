@@ -41,7 +41,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-block-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-4);
   border: 1px solid var(--waxwing-border);
   border-radius: var(--waxwing-radius-md);
@@ -132,7 +132,7 @@
 }
 
 .field input {
-  min-block-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-3);
   border: 1px solid var(--waxwing-border);
   border-radius: var(--waxwing-radius-md);
@@ -198,7 +198,7 @@
 
 .mailboxButton {
   align-items: baseline;
-  min-block-size: var(--waxwing-tap-target);
+  min-block-size: var(--waxwing-control-min);
 }
 
 .mailboxButton:hover,
