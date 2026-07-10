@@ -1,0 +1,198 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+/* Toolbar + bulk bar share the header row. */
+.toolbar,
+.bulkBar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+  flex-wrap: wrap;
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
+.controlLabel {
+  white-space: nowrap;
+}
+
+.bulkCount {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+  margin-inline-end: auto;
+}
+
+/* Virtual scroll container. */
+.scroll {
+  position: relative;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.spacer {
+  position: relative;
+  inline-size: 100%;
+}
+
+.rowWrap {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--waxwing-space-4);
+}
+
+.empty {
+  padding: var(--waxwing-space-4);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* Row. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  block-size: 100%;
+  padding-inline: var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+  cursor: pointer;
+  color: var(--waxwing-text);
+}
+
+.row:hover {
+  background-color: var(--waxwing-surface-hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
+}
+
+.row[aria-current="page"] {
+  background-color: var(--waxwing-surface-selected);
+}
+
+.selected {
+  background-color: var(--waxwing-surface-selected);
+}
+
+.skeletonRow {
+  cursor: default;
+}
+
+.selectCell {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.avatarCell {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.unreadDot {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-start: -4px;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--waxwing-accent);
+}
+
+.mainCell {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowTop {
+  display: flex;
+  align-items: baseline;
+  gap: var(--waxwing-space-2);
+}
+
+.sender {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--waxwing-text-sm);
+}
+
+.meta {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+}
+
+.icon {
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+}
+
+.flag {
+  color: var(--waxwing-warning);
+}
+
+.time {
+  font-size: var(--waxwing-text-xs);
+  white-space: nowrap;
+}
+
+.subject,
+.preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--waxwing-text-sm);
+}
+
+.subject {
+  color: var(--waxwing-text);
+}
+
+.preview {
+  color: var(--waxwing-text-muted);
+}
+
+/* Unread emphasis. */
+.unread .sender,
+.unread .subject {
+  font-weight: 600;
+}
+
+/* Density: compact hides the preview line and tightens spacing. */
+.compact .preview {
+  display: none;
+}
+
+.compact {
+  gap: var(--waxwing-space-1);
+}

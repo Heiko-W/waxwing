@@ -5,13 +5,28 @@
  * it degrades gracefully — the UI still reads the replica, sync just does not run.
  */
 
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode, useEffect, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
 import { useSession } from '../../app/session/context'
 import { getReplica } from '../db'
 import { ReplicaProvider } from '../react'
-import { createSyncEngine, setActiveEngine } from './engine'
+import {
+  createSyncEngine,
+  getActiveEngine,
+  type SyncEngine,
+  setActiveEngine,
+  subscribeActiveEngine,
+} from './engine'
 import { createJmapPort } from './port'
+
+/**
+ * The running {@link SyncEngine} for this tab, or `null` before it starts (or where it cannot run).
+ * Reactive: components re-render the moment {@link setActiveEngine} sets it, so a watch registered on
+ * mount is not lost to the start-order race with {@link SyncEngineHost}.
+ */
+export function useActiveEngine(): SyncEngine | null {
+  return useSyncExternalStore(subscribeActiveEngine, getActiveEngine, () => null)
+}
 
 /** True when the runtime primitives the single-writer engine needs are present. */
 function canRunEngine(): boolean {

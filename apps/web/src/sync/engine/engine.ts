@@ -23,7 +23,7 @@ import {
 } from '@waxwing/jmap'
 import type { ReplicaDb } from '../db'
 import { getQueryCache, mailboxByRole, pendingOutbox } from '../repo'
-import { backfillMailbox, loadMore, windowQueryKey } from './backfill'
+import { backfillMailbox, loadMore, type WindowSpec, windowQueryKey } from './backfill'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { reconcileQuery, syncEmails, syncMailboxes, syncThreads } from './delta'
 import { type LockManagerLike, startLeaderElection } from './leader'
@@ -169,6 +169,39 @@ export class SyncEngine {
     await loadMore(this.port, this.db, this.accountId, key, { limit, now: this.clock.now() })
   }
 
+  /**
+   * Register a (mailbox + sort/threading) window to keep fresh (M1.6 list) and return its canonical
+   * key SYNCHRONOUSLY so the caller can subscribe to `queryCache[key]` immediately; the initial
+   * backfill (when the window is not already cached) runs in the background. Idempotent per key.
+   * NOTE (M1.9): a window opened on a FOLLOWER tab is backfilled but stays fresh only on the leader's
+   * own watched set — cross-tab watch propagation via the bus is a follow-up.
+   */
+  watchWindow(mailboxId: Id, opts: WindowSpec = {}): string {
+    const { key } = windowQueryKey(mailboxId, this.deps.config.cacheDays, this.clock.now(), opts)
+    if (this.watched.has(key)) return key
+    this.watched.add(key)
+    void this.backfillWindowIfAbsent(mailboxId, key, opts)
+    return key
+  }
+
+  private async backfillWindowIfAbsent(
+    mailboxId: Id,
+    key: string,
+    opts: WindowSpec,
+  ): Promise<void> {
+    if ((await getQueryCache(this.db, this.accountId, key)) !== undefined) {
+      // Already cached (adopted from a prior session/tab) — reconcile it on the next sweep.
+      if (this.isLeader) void this.sync()
+      return
+    }
+    await backfillMailbox(this.port, this.db, this.accountId, mailboxId, {
+      cacheDays: this.deps.config.cacheDays,
+      now: this.clock.now(),
+      ...(opts.sort ? { sort: opts.sort } : {}),
+      ...(opts.collapseThreads !== undefined ? { collapseThreads: opts.collapseThreads } : {}),
+    })
+  }
+
   getStatus(): EngineStatus {
     return this.status
   }
@@ -312,12 +345,23 @@ function isAuthExpiry(error: unknown): boolean {
 
 // The single running engine for this tab, so the out-of-React sign-out path can stop it (release
 // the Web Lock + close push) BEFORE wiping the replica — deleting IndexedDB blocks on open handles.
+// Observable so React consumers (the message list) re-run their watch effect the moment the engine
+// appears, rather than racing the SyncEngineHost effect that sets it (a null read = a stuck window).
 let activeEngine: SyncEngine | null = null
+const activeEngineListeners = new Set<() => void>()
+
 export function setActiveEngine(engine: SyncEngine | null): void {
   activeEngine = engine
+  for (const listener of activeEngineListeners) listener()
 }
 export function getActiveEngine(): SyncEngine | null {
   return activeEngine
+}
+export function subscribeActiveEngine(listener: () => void): () => void {
+  activeEngineListeners.add(listener)
+  return () => {
+    activeEngineListeners.delete(listener)
+  }
 }
 
 /** Browser-wired {@link SyncEngine}: real locks, BroadcastChannel, push, and `navigator.onLine`. */

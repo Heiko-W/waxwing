@@ -189,5 +189,50 @@
       "nameTaken": "A folder with this name already exists here."
     },
     "cancel": "Cancel"
+  },
+  "list": {
+    "noSender": "(No sender)",
+    "noSubject": "(No subject)",
+    "unread": "Unread",
+    "flagged": "Flagged",
+    "attachment": "Has attachment",
+    "answered": "Answered",
+    "select": "Select message",
+    "selectAll": "Select all",
+    "selected": "{{count}} selected",
+    "clearSelection": "Clear selection",
+    "actions": {
+      "read": "Mark as read",
+      "unread": "Mark as unread",
+      "flag": "Flag",
+      "unflag": "Unflag",
+      "archive": "Archive",
+      "junk": "Mark as junk",
+      "notJunk": "Not junk",
+      "trash": "Move to Trash",
+      "delete": "Delete",
+      "move": "Move to…"
+    },
+    "sort": {
+      "label": "Sort",
+      "date": "Date",
+      "from": "Sender",
+      "subject": "Subject",
+      "size": "Size",
+      "unreadFirst": "Unread first"
+    },
+    "density": {
+      "label": "Density",
+      "comfortable": "Comfortable",
+      "compact": "Compact"
+    },
+    "view": {
+      "threaded": "Conversations",
+      "flat": "Individual messages"
+    },
+    "loadMore": "Load more",
+    "loading": "Loading messages",
+    "empty": "No messages in this folder.",
+    "noMailbox": "Select a folder"
   }
 }

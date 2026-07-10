@@ -80,7 +80,8 @@ describe('App shell', () => {
     // Three empty panes + primary nav. The folder pane is now the live FolderTree, which shows
     // this empty-state text once its (empty) replica liveQuery resolves.
     expect(await screen.findByText('Your folders will appear here.')).toBeInTheDocument()
-    expect(screen.getByText('Messages appear here once syncing lands.')).toBeInTheDocument()
+    // No mailbox is selected on `/mail`, so the message list shows its no-folder prompt.
+    expect(screen.getByText('Select a folder')).toBeInTheDocument()
     expect(screen.getByText('Select a message to read it.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Mail' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument()
@@ -123,8 +124,8 @@ describe('App shell', () => {
     renderApp({ restore: fakeAuthSession('basic') })
 
     const back = await screen.findByRole('button', { name: /back to messages/i })
-    // The list pane is swapped out in single-pane mode.
-    expect(screen.queryByText('Messages appear here once syncing lands.')).not.toBeInTheDocument()
+    // The list pane (its message grid) is swapped out for the reading pane in single-pane mode.
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument()
 
     await user.click(back)
 

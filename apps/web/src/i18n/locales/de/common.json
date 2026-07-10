@@ -189,5 +189,50 @@
       "nameTaken": "Ein Ordner mit diesem Namen existiert hier bereits."
     },
     "cancel": "Abbrechen"
+  },
+  "list": {
+    "noSender": "(Kein Absender)",
+    "noSubject": "(Kein Betreff)",
+    "unread": "Ungelesen",
+    "flagged": "Markiert",
+    "attachment": "Hat Anhang",
+    "answered": "Beantwortet",
+    "select": "Nachricht auswählen",
+    "selectAll": "Alle auswählen",
+    "selected": "{{count}} ausgewählt",
+    "clearSelection": "Auswahl aufheben",
+    "actions": {
+      "read": "Als gelesen markieren",
+      "unread": "Als ungelesen markieren",
+      "flag": "Markieren",
+      "unflag": "Markierung entfernen",
+      "archive": "Archivieren",
+      "junk": "Als Spam markieren",
+      "notJunk": "Kein Spam",
+      "trash": "In den Papierkorb",
+      "delete": "Löschen",
+      "move": "Verschieben nach…"
+    },
+    "sort": {
+      "label": "Sortieren",
+      "date": "Datum",
+      "from": "Absender",
+      "subject": "Betreff",
+      "size": "Größe",
+      "unreadFirst": "Ungelesene zuerst"
+    },
+    "density": {
+      "label": "Dichte",
+      "comfortable": "Komfortabel",
+      "compact": "Kompakt"
+    },
+    "view": {
+      "threaded": "Konversationen",
+      "flat": "Einzelne Nachrichten"
+    },
+    "loadMore": "Mehr laden",
+    "loading": "Nachrichten werden geladen",
+    "empty": "Keine Nachrichten in diesem Ordner.",
+    "noMailbox": "Wählen Sie einen Ordner"
   }
 }

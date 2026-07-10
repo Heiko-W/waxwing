@@ -4,6 +4,7 @@
  * the connected shell; {@link useEngineStatus} feeds the chrome status region.
  */
 
+export { type WindowSpec, windowQueryKey } from './backfill'
 export { ENGINE_CHANNEL, EngineBus } from './bus'
 export {
   createSyncEngine,
@@ -11,11 +12,12 @@ export {
   SyncEngine,
   type SyncEngineDeps,
   setActiveEngine,
+  subscribeActiveEngine,
 } from './engine'
 export { SYNC_LOCK, startLeaderElection } from './leader'
 export type { OutboxIntent } from './outbox'
 export { createJmapPort } from './port'
-export { SyncEngineHost } from './react'
+export { SyncEngineHost, useActiveEngine } from './react'
 export { getEngineStatus, useEngineStatus } from './status'
 export {
   type EnginePhase,

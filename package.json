@@ -23,6 +23,7 @@
     "e2e:server": "pnpm --filter @waxwing/e2e run server:up",
     "e2e:server:main": "pnpm --filter @waxwing/e2e run server:up:main",
     "e2e:server:down": "pnpm --filter @waxwing/e2e run server:down",
+    "seed:large": "node e2e/stalwart/seed-large.mjs",
     "build": "pnpm -r --if-present build",
     "size": "pnpm --filter @waxwing/web build && size-limit",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm size",

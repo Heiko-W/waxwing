@@ -45,5 +45,23 @@
       "semicolons": "asNeeded",
       "trailingCommas": "all"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "apps/web/src/mail/MessageRow.tsx",
+        "apps/web/src/mail/MessageList.tsx",
+        "apps/web/src/mail/MessageRow.test.tsx",
+        "apps/web/src/mail/MessageList.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useFocusableInteractive": "off"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -36,16 +36,26 @@ export function windowFilter(mailboxId: Id, cacheDays: number, now: number): Ema
   return { operator: 'AND', conditions: [{ inMailbox: mailboxId }, { after }] }
 }
 
-/** The canonical key + spec for a mailbox's recent window — lets a leader ADOPT an existing window. */
+/** Sort + threading options that distinguish one watched window from another for the same mailbox. */
+export interface WindowSpec {
+  readonly sort?: EmailComparator[]
+  readonly collapseThreads?: boolean
+}
+
+/**
+ * The canonical key + spec for a mailbox's recent window — lets a leader ADOPT an existing window
+ * and lets the M1.6 list compute the SAME key the engine watches (per mailbox + sort + threading).
+ */
 export function windowQueryKey(
   mailboxId: Id,
   cacheDays: number,
   now: number,
+  opts: WindowSpec = {},
 ): { key: string; spec: QuerySpec } {
   const spec: QuerySpec = {
     filter: windowFilter(mailboxId, cacheDays, now),
-    sort: [...DEFAULT_SORT],
-    collapseThreads: true,
+    sort: opts.sort ?? [...DEFAULT_SORT],
+    collapseThreads: opts.collapseThreads ?? true,
   }
   return { key: canonicalQueryKey(spec), spec }
 }

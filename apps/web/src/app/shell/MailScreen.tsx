@@ -18,6 +18,7 @@ import { ChevronLeft, PanelLeft } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderTree } from '../../mail/FolderTree'
+import { MessageList } from '../../mail/MessageList'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { mailPath, useNavigate, useRoute } from '../route'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
@@ -92,7 +93,7 @@ export function MailScreen() {
         </div>
       )}
       <div className={styles.paneBody}>
-        <p className={styles.emptyPane}>{t('shell.list.empty')}</p>
+        <MessageList mailboxId={mailboxId} />
       </div>
     </section>
   )
