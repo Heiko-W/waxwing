@@ -77,8 +77,9 @@ describe('App shell', () => {
     expect(await screen.findByText('Postbote')).toBeInTheDocument()
     expect(screen.queryByText(/Waxwing/)).not.toBeInTheDocument()
 
-    // Three empty panes + primary nav.
-    expect(screen.getByText('Your folders will appear here.')).toBeInTheDocument()
+    // Three empty panes + primary nav. The folder pane is now the live FolderTree, which shows
+    // this empty-state text once its (empty) replica liveQuery resolves.
+    expect(await screen.findByText('Your folders will appear here.')).toBeInTheDocument()
     expect(screen.getByText('Messages appear here once syncing lands.')).toBeInTheDocument()
     expect(screen.getByText('Select a message to read it.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Mail' })).toBeInTheDocument()

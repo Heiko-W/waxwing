@@ -146,5 +146,48 @@
     "spinner": {
       "label": "Loading"
     }
+  },
+  "mailbox": {
+    "role": {
+      "inbox": "Inbox",
+      "drafts": "Drafts",
+      "sent": "Sent",
+      "archive": "Archive",
+      "junk": "Junk",
+      "trash": "Trash"
+    },
+    "unread": "{{count}} unread",
+    "expand": "Expand {{name}}",
+    "collapse": "Collapse {{name}}",
+    "actions": {
+      "menu": "Folder actions",
+      "newSubfolder": "New subfolder",
+      "newFolder": "New folder",
+      "rename": "Rename",
+      "delete": "Delete"
+    },
+    "create": {
+      "title": "New folder",
+      "titleChild": "New subfolder in {{parent}}",
+      "nameLabel": "Folder name",
+      "submit": "Create"
+    },
+    "rename": {
+      "title": "Rename folder",
+      "nameLabel": "Folder name",
+      "submit": "Rename"
+    },
+    "delete": {
+      "title": "Delete folder?",
+      "message": "Delete “{{name}}”? This cannot be undone.",
+      "messageNonEmpty": "“{{name}}” contains {{count}} messages. Delete it and its contents? This cannot be undone.",
+      "confirm": "Delete"
+    },
+    "error": {
+      "nameRequired": "Enter a folder name.",
+      "nameTooLong": "The name is too long.",
+      "nameTaken": "A folder with this name already exists here."
+    },
+    "cancel": "Cancel"
   }
 }

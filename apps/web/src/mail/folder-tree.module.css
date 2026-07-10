@@ -1,0 +1,143 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-2);
+  padding-block-end: var(--waxwing-space-2);
+}
+
+.headerTitle {
+  font-size: var(--waxwing-text-sm);
+  font-weight: 600;
+  color: var(--waxwing-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-block-size: 0;
+}
+
+.empty {
+  padding: var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: var(--waxwing-control-min);
+  padding-inline-end: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  color: var(--waxwing-text);
+  font-size: var(--waxwing-text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.item:hover {
+  background-color: var(--waxwing-surface-2);
+}
+
+.item[aria-selected="true"] {
+  background-color: var(--waxwing-surface-2);
+  color: var(--waxwing-accent);
+  font-weight: 600;
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
+}
+
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: 0 0 auto;
+  color: var(--waxwing-text-muted);
+}
+
+.chevron svg {
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+}
+
+.icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+  flex: 0 0 auto;
+}
+
+.label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex: 0 0 auto;
+}
+
+/* The per-folder action menu: present in the DOM (keyboard-reachable), shown on row hover/focus. */
+.rowMenu {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.item:hover .rowMenu,
+.item:focus-within .rowMenu,
+.item[aria-selected="true"] .rowMenu {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowMenu {
+    transition: none;
+  }
+}
+
+@media (pointer: coarse) {
+  /* Touch has no hover — keep the action affordance visible. */
+  .rowMenu {
+    opacity: 1;
+  }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.formLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: 500;
+  color: var(--waxwing-text);
+}
+
+.formError {
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}

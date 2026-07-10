@@ -17,6 +17,7 @@
 import { ChevronLeft, PanelLeft } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { FolderTree } from '../../mail/FolderTree'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { mailPath, useNavigate, useRoute } from '../route'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
@@ -124,7 +125,7 @@ export function MailScreen() {
         className={folderRegionClass}
         aria-label={t('shell.folders.title')}
       >
-        <p className={styles.emptyPane}>{t('shell.folders.empty')}</p>
+        <FolderTree />
       </nav>
       {drawerCapable && foldersOpen && (
         // A backdrop that closes the drawer on outside press. tabIndex=-1 keeps it out of the

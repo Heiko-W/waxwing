@@ -111,7 +111,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M1.2 | Local replica schema (Dexie, account-scoped) | M | SP.1, P0.3 | done | **2026-07-10.** Dexie 4 shared `waxwing-replica` DB, 10 tables keyed `[accountId+id]` (**ADR-008**); account-scoped `amb`/`akw` membership indexes; canonical query-key; migration policy; `ReplicaProvider` + liveQuery hooks. 29 tests; 105.5 KB gz (Dexie tree-shaken until M1.5/M1.6, projected +31 KB gz). Follow-up: wire `wipeReplica` into sign-out → M1.3. |
 | M1.3 | Sync engine core + action queue skeleton | L | M1.2, SP.3, G1 | done | **2026-07-10.** `sync/engine/`: leader election (Web Locks) + `EngineBus`; push-driven delta sync (`*/changes`, `queryChanges` reconcile w/ `upToId` window bound, `cannotCalculateChanges`→full-requery, SP.4 forceFull re-probe); windowed backfill (day-stable key); outbox (optimistic apply/rollback, FIFO replay, method-vs-transport errors, inflight recovery, create-id reconcile); real polling transport in `@waxwing/jmap`. Wired into the shell (`SyncEngineHost` + `StatusRegion` + sign-out `wipeReplica`). 69 engine/replica tests; adversarial review fixed 8 defects (2 high). 147 KB gz. Live two-tab/offline E2E → **M1.9**. |
 | M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | done | **2026-07-10.** Own base-path-safe router (**ADR-007**), responsive 3/2/1-pane shell + reading-pane modes, onboarding FSM (autoconnect/manual/OAuth/Basic), `SessionProvider` (holds the `JmapClient` for M1.5/M1.6) with FR-AUTH-06 re-auth overlay + FR-AUTH-05 sign-out, branding + `BrandLinks` from config. 401 tests; browser axe clean light+dark; 105.5 KB gz. Adversarial review fixed 6 defects. Follow-ups: engine status → M1.3, live shell E2E → M1.9. |
-| M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | todo | |
+| M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | done | **2026-07-10.** `mail/`: pure `buildFolderTree` (roles pinned, orphan/cycle-safe, aria pos/setsize) + `FolderTreeView` (APG `role="tree"`, roving focus, gated per-folder `Menu`) + `FolderTree` container (liveQuery, router selection, collapse pref, create/rename/delete `Dialog`s via `useFolderActions`→engine). Wired into `MailScreen`. 22 mail tests + axe; adversarial review fixed a keyboard-tab-stop `high` + 5 more. 151 KB gz. Live CRUD-round-trip/2nd-client E2E → M1.9; temp→server re-nav after create → M1.6. |
 | M1.6 | Message list: virtualization, threading, selection | L | M1.3, M1.4 | todo | |
 | M1.7 | `@waxwing/mail-html`: sanitizer + iframe renderer | L | P0.1, SP.1 | todo | |
 | M1.8 | Reading experience (conversation view, actions, attachments) | L | M1.6, M1.7 | todo | |
@@ -924,16 +924,28 @@ LIVE `connect()`→shell E2E land with **M1.9**; `<base href="/">` in `index.htm
 
 Spec: FR-MBX-01/02/04. Size: M.
 
-- [ ] Tree from replica via liveQuery; role mailboxes (`inbox`, `drafts`, `sent`, `junk`,
+- [x] Tree from replica via liveQuery; role mailboxes (`inbox`, `drafts`, `sent`, `junk`,
       `trash`, `archive`) pinned, localized, iconographic; custom folders below, sorted
-      per `sortOrder`/name.
-- [ ] Live unread/total badges (push-updated).
-- [ ] Manage: create, rename, move, delete with non-empty confirmation; honor `myRights`
-      (`mayCreateChild`, `mayRename`, `mayDelete`, …) per mailbox (FR-MBX-02).
-- [ ] Collapsible state + per-folder prefs persisted locally (FR-MBX-04).
+      per `sortOrder`/name. — `mail/folder-tree.ts` (`buildFolderTree`, roles pinned in
+      `PINNED_ROLES` order, children by `parentId`, orphan/cycle-safe) + `FolderTreeView`
+      (APG `role="tree"`, role icons, localized role names via `folderDisplayName`).
+- [x] Live unread badges (push-updated). — `unreadEmails` `Badge` + a `VisuallyHidden`
+      "{{count}} unread" SR label, live via liveQuery (engine push → replica → re-render).
+- [x] Manage: create, rename, move, delete with non-empty confirmation; honor `myRights`
+      (`mayCreateChild`, `mayRename`, `mayDelete`, …) per mailbox (FR-MBX-02). — per-folder
+      `Menu` gated by `myRights` (item omitted when not permitted, whole Menu omitted when no
+      action allowed); create/rename `Dialog`s (name required / ≤255 / no duplicate sibling);
+      delete confirm uses the non-empty message when `totalEmails > 0`. Actions dispatch
+      `createMailbox`/`renameMailbox`/`moveMailbox`/`deleteMailbox` intents through the engine
+      (`useFolderActions`, client ids via `crypto.randomUUID`).
+- [x] Collapsible state + per-folder prefs persisted locally (FR-MBX-04). — collapse set in
+      `localPrefs` (`folders.collapsed`) via `useLocalPref`/`setPref`.
 
 Done when: folder CRUD round-trips against the fixture; a second client's changes appear
-live; rights violations are prevented in UI, not just server-rejected.
+live; rights violations are prevented in UI, not just server-rejected. — **UI + local logic
+met hermetically** (rights-gating, validation, optimistic dispatch, live badges via liveQuery,
+tree a11y + keyboard). The **live** fixture round-trip + second-client E2E lands with **M1.9**
+(as M1.4's live shell E2E did).
 
 ### M1.6 — Message list
 
@@ -950,6 +962,10 @@ Spec: FR-LST-01/02/03/04/05/07, FR-ORG-01 (flows). Size: L.
       own watched query.
 - [ ] Density comfortable/compact (FR-LST-07).
 - [ ] Infinite scroll = backfill trigger ("load more" into the window).
+- [ ] **(M1.5 follow-up)** After an optimistic folder create, the route/selection points at the
+      temp mailbox id; when the engine swaps it for the server id (`reconcileCreate`), surface that
+      mapping and re-navigate off the temp id so the new folder stays selected (the a11y tab-stop
+      part is already handled in M1.5).
 
 Done when: the 100 k seeded mailbox scrolls smoothly (measured, recorded in WP notes),
 bulk-move of 500 messages works optimistically and syncs.
@@ -1640,3 +1656,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-10 | **ADR-008** — replica account-scoping: **one shared `waxwing-replica` Dexie DB** with compound `[accountId+id]` keys (the plan's M1.2 spec), **not** a database-per-account (ADR-004's auth pattern). Deciding difference: the replica holds no secrets, so ADR-004's per-DB crypto-isolation rationale does not transfer, while a shared DB gives a natural `accounts` registry and keeps cross-account views (unified search/list) open. Per-account eviction = scoped bulk delete; full wipe = `db.delete()`. |
 | 2026-07-10 | **M1.2 done** — local replica schema (`apps/web/src/sync/`, Dexie 4.4). Ten account-scoped tables keyed `[accountId+id]` (`accounts`/`mailboxes`/`threads`/`emails`/`emailBodies`/`blobsMeta`/`syncState`/`queryCache`/`outbox`/`localPrefs`); folder/keyword membership via derived account-scoped multiEntry indexes `amb`/`akw` (IndexedDB has no compound-multiEntry) — the ordered list renders from `queryCache.ids` (server collation), not a local re-sort. `db.ts` (schema + JMAP→row mappers + `clearAccount`/`wipeReplica`), `query-key.ts` (canonical `{filter,sort,collapseThreads}` key — order-independent filter, explicit `isAscending` default, order-preserving sort), `repo.ts` (indexed CRUD + the M1.5/M1.6 read paths), `react.tsx` (`ReplicaProvider` + liveQuery hooks). Migration policy = append-only `version()` chain (`db.ts` header). **ADR-008** for the shared-DB scoping. 29 tests (**430 total green**); size **105.5 KB gz** (Dexie tree-shaken until M1.5/M1.6 import the replica; projected entry delta ≈ **+31 KB gz** → ~136 KB, well under 300). Built via a 3-way parallel research fan-out + an adversarial review workflow. Follow-up (M1.3): wire `wipeReplica` into "Sign out & remove data". |
 | 2026-07-10 | **M1.3 done** — sync engine core + action-queue skeleton (`apps/web/src/sync/engine/`). Single-writer via `navigator.locks` leader election (`leader.ts`) + `EngineBus` (BroadcastChannel, leader status only). Push-driven delta sync (`delta.ts`): `Mailbox/Thread/Email changes` with the Mailbox `updatedProperties` patch, per-watched-query `Email/queryChanges` bounded by the window `upToId` (removed-then-index-splice-added, beyond-window adds clamped), `cannotCalculateChanges`→`fullRequery`, and a periodic forceFull re-probe (SP.4 "absence ≠ freshness"). Windowed backfill (`backfill.ts`, day-stable window key, `loadMore` paging). Optimistic action queue (`outbox.ts`): apply→replay→confirm/rollback, `ifInState`, method-level vs transport error handling, `inflight` recovery, mailbox-create id + dependent-ref reconcile; actions setKeywords/move/destroy/mailbox-CRUD. A narrow `JmapPort` (`port.ts`) is the only RFC-DSL adapter, so the logic is hermetically testable. **Real polling transport** added to `@waxwing/jmap` (`push/polling.ts`, session-state polling → resync `StateChange`) replacing the SP.3 stub. Wired live: `SyncEngineHost` (starts/stops on connect, `ReplicaProvider`), `StatusRegion` (offline/error live region + non-announced syncing spinner), `SessionProvider` exposes `getAuthProvider()` and `endSession` now stops the engine + `wipeReplica`s before the auth wipe (FR-AUTH-05 ordering). Built via 3-way parallel research + a 5-fork parallel implementation + an **adversarial review workflow that confirmed 8 defects** (2 high: windowed `queryChanges` order corruption from a missing `upToId`; a poison outbox intent wedging the FIFO tail + terminal-error re-replay) — all fixed + regression-tested. **473 tests** (60 files, incl. the jmap push suite); **147 KB gz** entry chunk (Dexie + push now shipped). Live two-tab consistency / leader hand-over / offline-replay E2E deferred to **M1.9**. |
+| 2026-07-10 | **M1.5 done** — folder tree (`apps/web/src/mail/`, FR-MBX-01/02/04). Pure `folder-tree.ts` (`buildFolderTree`: role mailboxes pinned in order, custom folders nested by `parentId`, orphan/cycle-safe, `aria-posinset`/`setsize`; `folderDisplayName`; `visibleRows`). `FolderTreeView` — a from-scratch APG `role="tree"` with roving `tabIndex`, keyboard nav (Up/Down/Left/Right/Home/End/Enter), localized role names + icons, live unread `Badge` + SR count, and a per-folder `Menu` gated by `myRights`. `FolderTree` container binds it to the replica (liveQuery), the router (selection + `aria-current`), persisted collapse state (`localPrefs` `folders.collapsed`), and the create/rename/delete `Dialog`s (name required / ≤255 / no-duplicate-sibling) that dispatch mailbox intents through the engine outbox (`useFolderActions`, client ids via `crypto.randomUUID`). Wired into `MailScreen`'s folder `<nav>`. Added `mailbox.*` i18n (en+de) + a `triggerTabIndex` prop on `ui/Menu` so the tree stays a single tab stop. Built via a 2-way research fan-out + a fork implementation + an adversarial review that confirmed 6 defects — a **high** WCAG 2.1.1 keyboard blocker (a stale selection could strand the tree's only roving tab stop) fixed by validating the tab stop against the visible rows (+ regression test), plus menu-button roving tabIndex, `aria-setsize/posinset`, a double-announced badge, and a non-localized dialog title. **491 tests** (63 files); 151 KB gz. Live folder-CRUD/2nd-client E2E → **M1.9**; re-nav off a temp mailbox id after the server-id swap → **M1.6**. |

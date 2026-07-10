@@ -31,6 +31,8 @@ export interface MenuProps {
   /** Which trigger edge the menu aligns to. Default 'start'. */
   align?: 'start' | 'end'
   className?: string
+  /** Trigger `tabIndex`, e.g. to make the button part of a parent roving-focus widget (APG tree). */
+  triggerTabIndex?: number
 }
 
 /**
@@ -39,7 +41,14 @@ export interface MenuProps {
  * open and move, Home/End to the ends, type-ahead to jump, Enter/Space to activate, Escape or
  * an outside press to close. Focus returns to the trigger on close, always.
  */
-export function Menu({ triggerLabel, trigger, items, align = 'start', className }: MenuProps) {
+export function Menu({
+  triggerLabel,
+  trigger,
+  items,
+  align = 'start',
+  className,
+  triggerTabIndex,
+}: MenuProps) {
   const triggerId = useId()
   const menuId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -186,6 +195,7 @@ export function Menu({ triggerLabel, trigger, items, align = 'start', className 
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
         className={cx(styles.trigger, className)}
         onClick={() => (open ? close() : openMenu(firstEnabled))}
         onKeyDown={onTriggerKeyDown}

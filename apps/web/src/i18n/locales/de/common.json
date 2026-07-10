@@ -146,5 +146,48 @@
     "spinner": {
       "label": "Wird geladen"
     }
+  },
+  "mailbox": {
+    "role": {
+      "inbox": "Posteingang",
+      "drafts": "Entwürfe",
+      "sent": "Gesendet",
+      "archive": "Archiv",
+      "junk": "Spam",
+      "trash": "Papierkorb"
+    },
+    "unread": "{{count}} ungelesen",
+    "expand": "{{name}} aufklappen",
+    "collapse": "{{name}} zuklappen",
+    "actions": {
+      "menu": "Ordneraktionen",
+      "newSubfolder": "Neuer Unterordner",
+      "newFolder": "Neuer Ordner",
+      "rename": "Umbenennen",
+      "delete": "Löschen"
+    },
+    "create": {
+      "title": "Neuer Ordner",
+      "titleChild": "Neuer Unterordner in {{parent}}",
+      "nameLabel": "Ordnername",
+      "submit": "Erstellen"
+    },
+    "rename": {
+      "title": "Ordner umbenennen",
+      "nameLabel": "Ordnername",
+      "submit": "Umbenennen"
+    },
+    "delete": {
+      "title": "Ordner löschen?",
+      "message": "„{{name}}“ löschen? Das kann nicht rückgängig gemacht werden.",
+      "messageNonEmpty": "„{{name}}“ enthält {{count}} Nachrichten. Ordner samt Inhalt löschen? Das kann nicht rückgängig gemacht werden.",
+      "confirm": "Löschen"
+    },
+    "error": {
+      "nameRequired": "Bitte einen Ordnernamen eingeben.",
+      "nameTooLong": "Der Name ist zu lang.",
+      "nameTaken": "Ein Ordner mit diesem Namen existiert hier bereits."
+    },
+    "cancel": "Abbrechen"
   }
 }
