@@ -113,7 +113,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | done | **2026-07-10.** Own base-path-safe router (**ADR-007**), responsive 3/2/1-pane shell + reading-pane modes, onboarding FSM (autoconnect/manual/OAuth/Basic), `SessionProvider` (holds the `JmapClient` for M1.5/M1.6) with FR-AUTH-06 re-auth overlay + FR-AUTH-05 sign-out, branding + `BrandLinks` from config. 401 tests; browser axe clean light+dark; 105.5 KB gz. Adversarial review fixed 6 defects. Follow-ups: engine status → M1.3, live shell E2E → M1.9. |
 | M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | done | **2026-07-10.** `mail/`: pure `buildFolderTree` (roles pinned, orphan/cycle-safe, aria pos/setsize) + `FolderTreeView` (APG `role="tree"`, roving focus, gated per-folder `Menu`) + `FolderTree` container (liveQuery, router selection, collapse pref, create/rename/delete `Dialog`s via `useFolderActions`→engine). Wired into `MailScreen`. 22 mail tests + axe; adversarial review fixed a keyboard-tab-stop `high` + 5 more. 151 KB gz. Live CRUD-round-trip/2nd-client E2E → M1.9; temp→server re-nav after create → M1.6. |
 | M1.6 | Message list: virtualization, threading, selection | L | M1.3, M1.4 | todo | |
-| M1.7 | `@waxwing/mail-html`: sanitizer + iframe renderer | L | P0.1, SP.1 | todo | |
+| M1.7 | `@waxwing/mail-html`: sanitizer + iframe renderer | L | P0.1, SP.1 | done | **2026-07-10.** AGPL package: hardened DOMPurify sanitizer (`{html, blockedRemote, hasRemoteContent}`) + remote-content firewall (cid via caller `resolveCid`), script-free sandboxed-iframe renderer (`sandbox="allow-same-origin"`, inner CSP, outer-page height + link interception), plain-text renderer (folding). dist **18.5 KB gz** (DOMPurify bundled). 38 tests incl. a 12-case XSS corpus. **Security review** confirmed 8 bypasses (1 high ReDoS + CSS-escape/image-set/malformed-url/`<area>`-link/height-loop/text-recursion/cid-revalidation) — all fixed **fail-closed** + regression-tested (CSS logic tested directly to dodge jsdom masking). Wiring into the reading view → M1.8. |
 | M1.8 | Reading experience (conversation view, actions, attachments) | L | M1.6, M1.7 | todo | |
 | M1.9 | Live updates end-to-end + E2E read suite | M | M1.5, M1.6, M1.8 | todo | |
 
@@ -974,27 +974,39 @@ bulk-move of 500 messages works optimistically and syncs.
 
 Spec: FR-RD-01/02/03, NFR-SEC-01, tech-stack §4.5. Size: L.
 
-- [ ] Sanitizer pipeline: DOMPurify with hooks that (a) strip script-bearing anything,
+- [x] Sanitizer pipeline: DOMPurify with hooks that (a) strip script-bearing anything,
       (b) rewrite/strip `src`/`srcset`/`style url()` for **remote-content blocking**
       with a collected manifest of blocked resources, (c) rewrite `cid:` to JMAP blob
       download URLs, (d) enable DOM-clobbering protections; returns
-      `{ html, blockedRemote: […], hasRemoteContent }`.
-- [ ] Iframe renderer: `srcdoc` + `sandbox` (no `allow-scripts`, no
-      `allow-top-navigation`), own minimal CSP via `<meta>` inside the document, `csp`
-      attribute where supported; auto-height via ResizeObserver + postMessage; dark-mode
-      strategy for mail content (conservative: light background, documented).
-- [ ] Link handling: clicks intercepted inside the frame, re-dispatched to the app,
-      opened `noopener noreferrer` with **visible target host** (FR-RD-08 groundwork).
-- [ ] Plain-text renderer: linkification + quoted-text folding (`>` levels) (FR-RD-01).
-- [ ] "Load remote content" mode: second sanitize pass allowing http(s) images —
-      per-message and per-sender-allowlist logic stays in the app, package just executes
-      policy.
-- [ ] Adversarial test suite: XSS corpus (script, event handlers, `javascript:`, svg,
-      CSS exfiltration, meta refresh, form action, DOM clobbering, `<base>` injection),
-      remote-content leak tests (nothing fetched until allowed — assert via test server).
+      `{ html, blockedRemote: […], hasRemoteContent }`. — `sanitize.ts`: hardened DOMPurify
+      (SVG/MathML excluded via `USE_PROFILES{html:true}`, `base/meta/object/embed/iframe/form/link/
+      style/noscript/template` forbidden, `SANITIZE_DOM`+`SANITIZE_NAMED_PROPS`) + a
+      `uponSanitizeAttribute` remote-firewall (per-call manifest, no global state). `cid:` is
+      resolved by a **caller-supplied `resolveCid`** (the app does `client.download`→`blob:`; the
+      package never imports jmap, per SP.4's Authorization-header constraint).
+- [x] Iframe renderer: `srcdoc` + `sandbox` … own minimal CSP via `<meta>` … auto-height via
+      ResizeObserver …; dark-mode strategy (conservative: light background, documented). —
+      `frame.ts`: `buildFrameDocument` (inner `default-src 'none'; script-src 'none'; img-src blob:
+      data:` CSP + light reset) + `mountMailFrame`. **Deliberate stricter posture (documented):**
+      `sandbox="allow-same-origin"` **without** `allow-scripts`, so the outer page measures height
+      (ResizeObserver) and intercepts links with **zero script executing in the frame** — safer than
+      the `postMessage` auto-height the plan sketched, which would require `allow-scripts`.
+- [x] Link handling: clicks intercepted inside the frame, re-dispatched to the app, opened
+      `noopener noreferrer` with **visible target host** (FR-RD-08 groundwork). — `mountMailFrame`
+      intercepts anchor clicks → `onLink(href)` callback (the app opens noopener + shows the host).
+- [x] Plain-text renderer: linkification + quoted-text folding (`>` levels) (FR-RD-01). — `text.ts`:
+      escape → `http(s)`-only linkify → native `<details>`/`<blockquote>` folding (script-free).
+- [x] "Load remote content" mode: second sanitize pass allowing http(s) images. — `sanitize`'s
+      `allowRemote` flag keeps remote images; per-message/per-sender allowlist policy stays in the app.
+- [x] Adversarial test suite: XSS corpus (script, event handlers, `javascript:`, svg, CSS
+      exfiltration, meta refresh, form action, DOM clobbering, `<base>` injection), remote-content
+      leak tests. — `sanitize.test.ts` (12-case corpus + a "no remote URL survives" zero-network
+      proxy). Hardened further by an adversarial **security review** (below).
 
-Done when: the corpus passes; **zero network requests** occur rendering a hostile mail
-with remote content blocked (verified by an integration test with a network spy).
+Done when: the corpus passes; **zero network requests** occur rendering a hostile mail with remote
+content blocked. — Corpus green; the zero-network guarantee is asserted hermetically (no `http(s)`
+URL survives a hostile mail with `allowRemote:false`). A real-browser network-spy E2E is folded into
+**M1.9/M4.7** (jsdom cannot fetch; the string-level guarantee is the unit-testable equivalent).
 
 ### M1.8 — Reading experience
 
@@ -1657,3 +1669,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-10 | **M1.2 done** — local replica schema (`apps/web/src/sync/`, Dexie 4.4). Ten account-scoped tables keyed `[accountId+id]` (`accounts`/`mailboxes`/`threads`/`emails`/`emailBodies`/`blobsMeta`/`syncState`/`queryCache`/`outbox`/`localPrefs`); folder/keyword membership via derived account-scoped multiEntry indexes `amb`/`akw` (IndexedDB has no compound-multiEntry) — the ordered list renders from `queryCache.ids` (server collation), not a local re-sort. `db.ts` (schema + JMAP→row mappers + `clearAccount`/`wipeReplica`), `query-key.ts` (canonical `{filter,sort,collapseThreads}` key — order-independent filter, explicit `isAscending` default, order-preserving sort), `repo.ts` (indexed CRUD + the M1.5/M1.6 read paths), `react.tsx` (`ReplicaProvider` + liveQuery hooks). Migration policy = append-only `version()` chain (`db.ts` header). **ADR-008** for the shared-DB scoping. 29 tests (**430 total green**); size **105.5 KB gz** (Dexie tree-shaken until M1.5/M1.6 import the replica; projected entry delta ≈ **+31 KB gz** → ~136 KB, well under 300). Built via a 3-way parallel research fan-out + an adversarial review workflow. Follow-up (M1.3): wire `wipeReplica` into "Sign out & remove data". |
 | 2026-07-10 | **M1.3 done** — sync engine core + action-queue skeleton (`apps/web/src/sync/engine/`). Single-writer via `navigator.locks` leader election (`leader.ts`) + `EngineBus` (BroadcastChannel, leader status only). Push-driven delta sync (`delta.ts`): `Mailbox/Thread/Email changes` with the Mailbox `updatedProperties` patch, per-watched-query `Email/queryChanges` bounded by the window `upToId` (removed-then-index-splice-added, beyond-window adds clamped), `cannotCalculateChanges`→`fullRequery`, and a periodic forceFull re-probe (SP.4 "absence ≠ freshness"). Windowed backfill (`backfill.ts`, day-stable window key, `loadMore` paging). Optimistic action queue (`outbox.ts`): apply→replay→confirm/rollback, `ifInState`, method-level vs transport error handling, `inflight` recovery, mailbox-create id + dependent-ref reconcile; actions setKeywords/move/destroy/mailbox-CRUD. A narrow `JmapPort` (`port.ts`) is the only RFC-DSL adapter, so the logic is hermetically testable. **Real polling transport** added to `@waxwing/jmap` (`push/polling.ts`, session-state polling → resync `StateChange`) replacing the SP.3 stub. Wired live: `SyncEngineHost` (starts/stops on connect, `ReplicaProvider`), `StatusRegion` (offline/error live region + non-announced syncing spinner), `SessionProvider` exposes `getAuthProvider()` and `endSession` now stops the engine + `wipeReplica`s before the auth wipe (FR-AUTH-05 ordering). Built via 3-way parallel research + a 5-fork parallel implementation + an **adversarial review workflow that confirmed 8 defects** (2 high: windowed `queryChanges` order corruption from a missing `upToId`; a poison outbox intent wedging the FIFO tail + terminal-error re-replay) — all fixed + regression-tested. **473 tests** (60 files, incl. the jmap push suite); **147 KB gz** entry chunk (Dexie + push now shipped). Live two-tab consistency / leader hand-over / offline-replay E2E deferred to **M1.9**. |
 | 2026-07-10 | **M1.5 done** — folder tree (`apps/web/src/mail/`, FR-MBX-01/02/04). Pure `folder-tree.ts` (`buildFolderTree`: role mailboxes pinned in order, custom folders nested by `parentId`, orphan/cycle-safe, `aria-posinset`/`setsize`; `folderDisplayName`; `visibleRows`). `FolderTreeView` — a from-scratch APG `role="tree"` with roving `tabIndex`, keyboard nav (Up/Down/Left/Right/Home/End/Enter), localized role names + icons, live unread `Badge` + SR count, and a per-folder `Menu` gated by `myRights`. `FolderTree` container binds it to the replica (liveQuery), the router (selection + `aria-current`), persisted collapse state (`localPrefs` `folders.collapsed`), and the create/rename/delete `Dialog`s (name required / ≤255 / no-duplicate-sibling) that dispatch mailbox intents through the engine outbox (`useFolderActions`, client ids via `crypto.randomUUID`). Wired into `MailScreen`'s folder `<nav>`. Added `mailbox.*` i18n (en+de) + a `triggerTabIndex` prop on `ui/Menu` so the tree stays a single tab stop. Built via a 2-way research fan-out + a fork implementation + an adversarial review that confirmed 6 defects — a **high** WCAG 2.1.1 keyboard blocker (a stale selection could strand the tree's only roving tab stop) fixed by validating the tab stop against the visible rows (+ regression test), plus menu-button roving tabIndex, `aria-setsize/posinset`, a double-announced badge, and a non-localized dialog title. **491 tests** (63 files); 151 KB gz. Live folder-CRUD/2nd-client E2E → **M1.9**; re-nav off a temp mailbox id after the server-id swap → **M1.6**. |
+| 2026-07-10 | **M1.7 done** — `@waxwing/mail-html` (AGPL): the HTML-mail security boundary (NFR-SEC-01, tech-stack §4.5). `sanitize.ts` — hardened **DOMPurify** (SVG/MathML excluded via `USE_PROFILES{html:true}`; `base/meta/object/embed/iframe/form/link/style/noscript/template` forbidden; `SANITIZE_DOM`+`SANITIZE_NAMED_PROPS`) + a per-call `uponSanitizeAttribute` remote-content firewall that blocks/records remote `src`/`srcset`/`style url()`, resolves `cid:` via a caller-supplied `resolveCid` (the sanitizer never imports jmap or fetches — SP.4 Authorization-header constraint), and permits only raster `data:image/*`. `frame.ts` — a **script-free** sandboxed-iframe renderer: `sandbox="allow-same-origin"` with NO `allow-scripts` (so a sanitizer miss cannot execute JS at all — a deliberate stricter posture than the plan's postMessage auto-height), inner `<meta>` CSP (`script-src 'none'`), conservative light theme, outer-page ResizeObserver height + anchor/`<area>` link interception. `text.ts` — plain-text renderer (escape → http(s)-only linkify → native `<details>` quote folding, script-free). Built via a 2-way research fan-out + a fork + an **adversarial XSS-bypass security review** (high-effort, per-payload verified) that confirmed **8 real bypasses** — a **high** ReDoS in the inline-style `url()` regex (cubic backtracking → main-thread freeze on mail open) plus CSS-hex-escape scheme hiding, `image-set()`/`cross-fade()` bare-string images, malformed-`url(` leaks, `<area href>` link escape, a `100vh` ResizeObserver height loop, unbounded quoted-text recursion, and an un-revalidated `cid` resolver output — **all fixed fail-closed** (inline styles drop wholesale on any residual danger; linear ReDoS-safe regex; depth/height/length caps) and regression-tested, with the CSS firewall tested DIRECTLY (jsdom normalizes `style` and masks these attacks). dist **18.5 KB gz** (DOMPurify bundled); **529 tests** (67 files, +38). apps/web budget untouched (mail-html enters the app bundle at M1.8). Wiring into the reading view → **M1.8**. |

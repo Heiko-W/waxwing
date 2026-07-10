@@ -5,10 +5,25 @@
   "type": "module",
   "description": "HTML-mail sanitizer pipeline + sandboxed iframe renderer.",
   "license": "AGPL-3.0-only",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.11"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "tsup": "8.5.1"
   }
 }

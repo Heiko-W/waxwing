@@ -12,11 +12,12 @@
 // add it to the exported array — when that package gains a build that emits dist/*.js:
 //
 //   { name: '@waxwing/jmap (gzip)',      path: 'packages/jmap/dist/**/*.js',      limit: '15 KB', gzip: true },
-//   { name: '@waxwing/mail-html (gzip)', path: 'packages/mail-html/dist/**/*.js', limit: '40 KB', gzip: true },
+//   { name: '@waxwing/mail-html (gzip)', path: 'packages/mail-html/dist/**/*.js', limit: '25 KB', gzip: true },
 //
-// (@waxwing/jmap targets <= 15 KB gz per the plan; @waxwing/mail-html bundles a
-// DOMPurify-class sanitizer, so its real budget is set in M1.7 — the number above is a
-// placeholder, not a decision.)
+// (@waxwing/jmap targets <= 15 KB gz per the plan; @waxwing/mail-html bundles DOMPurify — its M1.7
+// build measures 18.5 KB gz, so 25 KB is the real budget with headroom. Both stay DEFERRED here
+// because `pnpm size` builds only apps/web; DOMPurify's weight is instead covered by the enforced
+// apps/web 300 KB budget once M1.8 imports mail-html into the app bundle.)
 //
 // NOTE on the apps/web path: route-level code splitting landed in M1.4 (NFR-PERF-03) — the
 // /contacts and /settings screens are lazy `import()` chunks, and i18n locales are lazy too.

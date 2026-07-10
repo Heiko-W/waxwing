@@ -1,7 +1,23 @@
 /**
- * `@waxwing/mail-html` — HTML-mail sanitizer pipeline + sandboxed iframe renderer (AGPL-3.0).
+ * `@waxwing/mail-html` — HTML-mail sanitizer pipeline + sandboxed iframe renderer (AGPL-3.0, M1.7).
  *
- * Scaffold only; the implementation begins in work package M1.7
- * (see docs/implementation-plan.md).
+ * The security boundary for rendering untrusted mail (NFR-SEC-01, tech-stack §4.5): a DOMPurify
+ * pipeline that strips scripts, blocks remote content by default (FR-RD-02) and resolves `cid:`
+ * inline parts, plus a script-free sandboxed-iframe renderer and a safe plain-text renderer.
  */
-export const PACKAGE = '@waxwing/mail-html'
+
+export { escapeHtml } from './escape'
+export {
+  buildFrameDocument,
+  type FrameOptions,
+  type MailFrameCallbacks,
+  type MailFrameController,
+  mountMailFrame,
+} from './frame'
+export {
+  type BlockedResource,
+  type SanitizeOptions,
+  type SanitizeResult,
+  sanitize,
+} from './sanitize'
+export { type PlainTextOptions, renderPlainText } from './text'
