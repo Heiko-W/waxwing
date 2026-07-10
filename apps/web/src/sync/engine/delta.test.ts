@@ -49,6 +49,7 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
       notFound: [],
       state: 's',
     }),
+    getEmailBodies: async () => ({ list: [], notFound: [], state: 's' }),
     queryEmails: async (): Promise<QueryResult> => ({
       ids: [],
       queryState: 'q',

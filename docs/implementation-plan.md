@@ -114,7 +114,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | done | **2026-07-10.** `mail/`: pure `buildFolderTree` (roles pinned, orphan/cycle-safe, aria pos/setsize) + `FolderTreeView` (APG `role="tree"`, roving focus, gated per-folder `Menu`) + `FolderTree` container (liveQuery, router selection, collapse pref, create/rename/delete `Dialog`s via `useFolderActions`→engine). Wired into `MailScreen`. 22 mail tests + axe; adversarial review fixed a keyboard-tab-stop `high` + 5 more. 151 KB gz. Live CRUD-round-trip/2nd-client E2E → M1.9; temp→server re-nav after create → M1.6. |
 | M1.6 | Message list: virtualization, threading, selection | L | M1.3, M1.4 | done | **2026-07-11.** TanStack-Virtual list over the `queryCache` window (visible-slice hydration), APG grid via **aria-activedescendant**, initials avatar + indicators + relative time, pure selection reducer (click/shift/ctrl/select-all) + bulk bar (read/flag/archive/junk/trash/delete → outbox), sort/density/flat toggles (persisted), infinite scroll. New engine seam `watchWindow` + observable `useActiveEngine`. `mail/` + `MailScreen` wiring; `e2e/stalwart/seed-large.mjs` (`pnpm seed:large`). 46 mail tests; adversarial review fixed **16 defects (4 high** — broken roving focus, move-without-clear dual-membership, watchWindow/engine race). 163 KB gz. Live 100k-perf/500-bulk E2E → M1.9/M4.8. |
 | M1.7 | `@waxwing/mail-html`: sanitizer + iframe renderer | L | P0.1, SP.1 | done | **2026-07-10.** AGPL package: hardened DOMPurify sanitizer (`{html, blockedRemote, hasRemoteContent}`) + remote-content firewall (cid via caller `resolveCid`), script-free sandboxed-iframe renderer (`sandbox="allow-same-origin"`, inner CSP, outer-page height + link interception), plain-text renderer (folding). dist **18.5 KB gz** (DOMPurify bundled). 38 tests incl. a 12-case XSS corpus. **Security review** confirmed 8 bypasses (1 high ReDoS + CSS-escape/image-set/malformed-url/`<area>`-link/height-loop/text-recursion/cid-revalidation) — all fixed **fail-closed** + regression-tested (CSS logic tested directly to dodge jsdom masking). Wiring into the reading view → M1.8. |
-| M1.8 | Reading experience (conversation view, actions, attachments) | L | M1.6, M1.7 | todo | |
+| M1.8 | Reading experience (conversation view, actions, attachments) | L | M1.6, M1.7 | done | **2026-07-11.** `mail/`: `MessageView` (header/details, action bar → outbox, `mail-html` body in the sandboxed frame) + `Conversation` (thread in stored order, older collapsed, reversible expand, focus-managed) + `AttachmentList` (per-blob object-URL cache, image/PDF preview in a separate sandboxed surface, save-all) + `RemoteContentBanner` (load-once / per-sender allowlist) + `MoveDialog`. Data seams: `port.getEmailBodies`, `SyncEngine.fetchBody`/`fetchEnvelopes`, `useEmailBody`/`useThread`, async-cid→sync-`resolveCid` bridge. Wired into `MailScreen`. Auto-mark-read gated to the opened message; permanent delete confirmed; print strips app chrome. 40 mail tests; adversarial review fixed **13 defects (1 high** — unsynced thread-member envelopes rendered a permanent skeleton; auto-expanded-newest silently marked read; delete-without-confirm; expand focus-loss; print chrome). 180.6 KB gz. `role="toolbar"` roving-tabindex consciously deferred (axe-clean; `role="group"` collides with Biome `useSemanticElements`). Live newsletter/threaded/offline-reopen E2E → M1.9. |
 | M1.9 | Live updates end-to-end + E2E read suite | M | M1.5, M1.6, M1.8 | todo | |
 
 ### Phase 3 — M2 "Write"
@@ -1024,18 +1024,21 @@ URL survives a hostile mail with `allowRemote:false`). A real-browser network-sp
 
 Spec: FR-RD-03/04/05, FR-OFF-02 (opened bodies). Size: L.
 
-- [ ] Message view composing `mail-html` output; on-open body fetch → `emailBodies`
+- [x] Message view composing `mail-html` output; on-open body fetch → `emailBodies`
       (cached forever until LRU, FR-OFF-02).
-- [ ] Remote-content banner: load-once, per-sender "always allow" list in `localPrefs`
+- [x] Remote-content banner: load-once, per-sender "always allow" list in `localPrefs`
       (FR-RD-02) with privacy explanation.
-- [ ] Conversation view: thread messages, older collapsed, expand-on-demand, quoted-text
-      folding inside each (FR-RD-04).
-- [ ] Attachments: list with type icons + sizes; download; inline preview for images and
-      PDF (object/iframe, sandboxed); save-all (FR-RD-03).
-- [ ] Action bar + context menus: reply/reply-all/forward (stubs enabled in M2), archive,
-      delete, junk/not-junk, move (folder picker), flag, mark unread (FR-RD-05).
-- [ ] Print stylesheet: clean single-message print (FR-RD-05).
-- [ ] Unread handling: auto-mark-read on open (configurable delay later in settings).
+- [x] Conversation view: thread messages, older collapsed, expand-on-demand (reversible),
+      quoted-text folding inside each (FR-RD-04); missing thread-member envelopes hydrated
+      on demand.
+- [x] Attachments: list with type icons + sizes; download; inline preview for images and
+      PDF (`<img>` / sandboxed `<iframe>` outside the mail frame); save-all (FR-RD-03).
+- [x] Action bar + context menus: reply/reply-all/forward (stubs → toast until M2), archive,
+      delete (confirm before permanent purge), junk/not-junk, move (folder picker), flag,
+      mark unread (FR-RD-05).
+- [x] Print stylesheet: clean single-message print, app chrome stripped (FR-RD-05).
+- [x] Unread handling: auto-mark-read on open (only the opened message, not auto-expanded
+      siblings; configurable delay later in settings).
 
 Done when: an HTML newsletter, a plain-text mail, and a threaded conversation from the
 fixture all read correctly, offline-reopenable after first open.

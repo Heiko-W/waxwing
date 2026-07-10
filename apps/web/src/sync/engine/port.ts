@@ -16,9 +16,12 @@ import {
 } from '@waxwing/jmap'
 import type { EmailEnvelopeInput } from '../db'
 import {
+  BODY_PART_PROPERTIES,
   CannotCalculateChangesError,
   type ChangesResult,
+  EMAIL_BODY_PROPERTIES,
   EMAIL_ENVELOPE_PROPERTIES,
+  type EmailBodyInput,
   type EmailQueryChangesSpec,
   type EmailQuerySpec,
   type JmapPort,
@@ -125,6 +128,24 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       // A partial /get returns Partial<Email>; the requested properties guarantee the envelope shape.
       return {
         list: response.list as unknown as EmailEnvelopeInput[],
+        notFound: response.notFound,
+        state: response.state,
+      }
+    },
+
+    async getEmailBodies(ids) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.emailGet, {
+        accountId,
+        ids,
+        properties: [...EMAIL_BODY_PROPERTIES],
+        bodyProperties: [...BODY_PART_PROPERTIES],
+        fetchTextBodyValues: true,
+        fetchHTMLBodyValues: true,
+      })
+      const response = (await builder.send()).get(handle)
+      return {
+        list: response.list as unknown as EmailBodyInput[],
         notFound: response.notFound,
         state: response.state,
       }

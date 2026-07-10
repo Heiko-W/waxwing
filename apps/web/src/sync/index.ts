@@ -34,6 +34,7 @@ export {
   ReplicaProvider,
   type ReplicaProviderProps,
   useEmail,
+  useEmailBody,
   useEmailWindow,
   useLocalPref,
   useMailbox,
@@ -42,5 +43,6 @@ export {
   useQueryWindow,
   useReplica,
   useReplicaQuery,
+  useThread,
 } from './react'
 export * from './repo'

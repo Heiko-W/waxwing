@@ -8,6 +8,8 @@
 
 import type {
   Email,
+  EmailBodyPart,
+  EmailBodyValue,
   EmailComparator,
   EmailFilter,
   Id,
@@ -114,6 +116,8 @@ export interface JmapPort {
   getThreads(ids: Id[]): Promise<GetResult<Thread>>
   /** Fetches the envelope/index property set the list needs (never bodies). */
   getEmailEnvelopes(ids: Id[]): Promise<GetResult<EmailEnvelopeInput>>
+  /** Fetches the FULL body (values/structure/attachments) for opened messages (M1.8, FR-OFF-02). */
+  getEmailBodies(ids: Id[]): Promise<GetResult<EmailBodyInput>>
 
   queryEmails(spec: EmailQuerySpec): Promise<QueryResult>
   queryEmailChanges(spec: EmailQueryChangesSpec): Promise<QueryChangesResult>
@@ -147,6 +151,41 @@ export const EMAIL_ENVELOPE_PROPERTIES: readonly (keyof Email | string)[] = [
   'subject',
   'preview',
   'hasAttachment',
+]
+
+/** The full-body fields fetched for an opened message (mapped to an `EmailBodyRow` by the engine). */
+export interface EmailBodyInput {
+  readonly id: Id
+  readonly bodyValues: Record<string, EmailBodyValue>
+  readonly bodyStructure: EmailBodyPart
+  readonly textBody: EmailBodyPart[]
+  readonly htmlBody: EmailBodyPart[]
+  readonly attachments: EmailBodyPart[]
+  readonly hasAttachment: boolean
+}
+
+/** Email properties fetched for a full body. `bodyValues` MUST be named here (SP.4: the fetch flags
+ * alone do not populate it). */
+export const EMAIL_BODY_PROPERTIES: readonly string[] = [
+  'id',
+  'bodyValues',
+  'bodyStructure',
+  'textBody',
+  'htmlBody',
+  'attachments',
+  'hasAttachment',
+]
+
+/** Per-part properties for the body/attachment `EmailBodyPart`s (incl. `cid` for inline-image mapping). */
+export const BODY_PART_PROPERTIES: readonly string[] = [
+  'partId',
+  'blobId',
+  'type',
+  'size',
+  'name',
+  'disposition',
+  'cid',
+  'charset',
 ]
 
 /** Thrown by {@link JmapPort.queryEmailChanges} when the server returns `cannotCalculateChanges`. */

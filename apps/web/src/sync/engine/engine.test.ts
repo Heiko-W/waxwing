@@ -170,6 +170,9 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
         state: 'eml-1',
       }
     },
+    async getEmailBodies() {
+      return { list: [], notFound: [], state: 'eml-1' }
+    },
     async queryEmails() {
       return {
         ids: script.emails,
@@ -304,5 +307,80 @@ describe('SyncEngine', () => {
 
     expect(getEngineStatus().phase).not.toBe('error')
     await engine.stop()
+  })
+
+  it('fetchBody fetches a message body into the replica, then LRU-touches on re-open (M1.8)', async () => {
+    const structure = { partId: '1', blobId: 'b', size: 1 } as never
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    let calls = 0
+    const port: JmapPort = {
+      ...base,
+      getEmailBodies: async (ids) => {
+        calls += 1
+        return {
+          list: ids.map((id) => ({
+            id,
+            bodyValues: { t: { value: 'hi', isEncodingProblem: false, isTruncated: false } },
+            bodyStructure: structure,
+            textBody: [structure],
+            htmlBody: [],
+            attachments: [],
+            hasAttachment: false,
+          })),
+          notFound: [],
+          state: 'b1',
+        }
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    await engine.fetchBody('e1')
+    expect((await db.emailBodies.get([ACC, 'e1']))?.bodyValues.t?.value).toBe('hi')
+    expect(calls).toBe(1)
+
+    // Re-open: cached → no re-fetch, only an LRU touch.
+    await engine.fetchBody('e1')
+    expect(calls).toBe(1)
+  })
+
+  it('fetchEnvelopes hydrates only the thread members missing from the replica (M1.8)', async () => {
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const requested: string[][] = []
+    const port: JmapPort = {
+      ...base,
+      getEmailEnvelopes: async (ids) => {
+        requested.push([...ids])
+        return {
+          list: ids.map((id) => ({
+            id,
+            blobId: `b-${id}`,
+            threadId: 't1',
+            mailboxIds: { inbox: true },
+            keywords: {},
+            size: 1,
+            receivedAt: '2026-07-01T00:00:00Z',
+            sentAt: null,
+            from: null,
+            to: null,
+            cc: null,
+            subject: id,
+            preview: '',
+            hasAttachment: false,
+          })),
+          notFound: [],
+          state: 'eml-1',
+        }
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    await engine.fetchEnvelopes(['e1'])
+    expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
+    expect(requested).toEqual([['e1']])
+
+    // e1 is now cached → a second call fetches only the still-missing e2.
+    await engine.fetchEnvelopes(['e1', 'e2'])
+    expect(await db.emails.get([ACC, 'e2'])).toBeDefined()
+    expect(requested).toEqual([['e1'], ['e2']])
   })
 })

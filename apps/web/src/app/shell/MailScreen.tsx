@@ -17,6 +17,7 @@
 import { ChevronLeft, PanelLeft } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Conversation } from '../../mail/Conversation'
 import { FolderTree } from '../../mail/FolderTree'
 import { MessageList } from '../../mail/MessageList'
 import { Button, IconButton, SplitPane } from '../../ui'
@@ -114,7 +115,11 @@ export function MailScreen() {
         </div>
       )}
       <div className={styles.paneBody}>
-        <p className={styles.emptyPane}>{t('shell.reading.empty')}</p>
+        {emailId !== undefined ? (
+          <Conversation emailId={emailId} mailboxId={mailboxId} />
+        ) : (
+          <p className={styles.emptyPane}>{t('shell.reading.empty')}</p>
+        )}
       </div>
     </section>
   )

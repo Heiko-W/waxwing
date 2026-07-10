@@ -38,6 +38,9 @@ importers:
       '@waxwing/jmap':
         specifier: workspace:*
         version: link:../../packages/jmap
+      '@waxwing/mail-html':
+        specifier: workspace:*
+        version: link:../../packages/mail-html
       dexie:
         specifier: ^4.4.4
         version: 4.4.4

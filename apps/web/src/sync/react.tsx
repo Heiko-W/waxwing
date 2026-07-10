@@ -85,6 +85,16 @@ export function useEmail(id: Id) {
   return useReplicaQuery(({ db, accountId }) => db.emails.get([accountId, id]), [id])
 }
 
+/** A message's full body row (live; M1.8). `undefined` until the engine's `fetchBody` populates it. */
+export function useEmailBody(id: Id) {
+  return useReplicaQuery(({ db, accountId }) => db.emailBodies.get([accountId, id]), [id])
+}
+
+/** A thread row (live; ordered `emailIds` for the conversation view, M1.8). */
+export function useThread(id: Id) {
+  return useReplicaQuery(({ db, accountId }) => db.threads.get([accountId, id]), [id])
+}
+
 /** A local preference value (FR-MBX-04), typed by the caller. */
 export function useLocalPref<T>(key: string): T | undefined {
   const row = useReplicaQuery(({ db, accountId }) => db.localPrefs.get([accountId, key]), [key])

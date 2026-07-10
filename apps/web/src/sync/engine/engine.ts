@@ -22,7 +22,7 @@ import {
   type Session,
 } from '@waxwing/jmap'
 import type { ReplicaDb } from '../db'
-import { getQueryCache, mailboxByRole, pendingOutbox } from '../repo'
+import { getQueryCache, mailboxByRole, pendingOutbox, putEmailBody, putEmails } from '../repo'
 import { backfillMailbox, loadMore, type WindowSpec, windowQueryKey } from './backfill'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { reconcileQuery, syncEmails, syncMailboxes, syncThreads } from './delta'
@@ -200,6 +200,46 @@ export class SyncEngine {
       ...(opts.sort ? { sort: opts.sort } : {}),
       ...(opts.collapseThreads !== undefined ? { collapseThreads: opts.collapseThreads } : {}),
     })
+  }
+
+  /**
+   * Fetch a message's full body (values/structure/attachments) into the replica when the reading
+   * pane opens it (M1.8, FR-OFF-02: cached until LRU eviction). Already-cached bodies just get their
+   * `lastAccessedAt` bumped (LRU touch) rather than re-fetched, so re-opens are offline-instant.
+   */
+  async fetchBody(emailId: Id): Promise<void> {
+    const now = this.clock.now()
+    const existing = await this.db.emailBodies.get([this.accountId, emailId])
+    if (existing !== undefined) {
+      await this.db.emailBodies.update([this.accountId, emailId], { lastAccessedAt: now })
+      return
+    }
+    const { list } = await this.port.getEmailBodies([emailId])
+    for (const body of list) {
+      await putEmailBody(this.db, {
+        accountId: this.accountId,
+        ...body,
+        fetchedAt: now,
+        lastAccessedAt: now,
+      })
+    }
+  }
+
+  /**
+   * Ensure the given email envelope rows exist in the replica (M1.8): the conversation view needs
+   * every thread member's envelope, but the inbox is backfilled with `collapseThreads` so only each
+   * thread's anchor id is stored — older/other-folder members (e.g. the user's own Sent replies)
+   * have no envelope row and would otherwise render as a permanent skeleton. Fetches only the ids
+   * not already present, so it is a cheap no-op once a thread is fully hydrated.
+   */
+  async fetchEnvelopes(ids: Id[]): Promise<void> {
+    const missing: Id[] = []
+    for (const id of ids) {
+      if ((await this.db.emails.get([this.accountId, id])) === undefined) missing.push(id)
+    }
+    if (missing.length === 0) return
+    const { list } = await this.port.getEmailEnvelopes(missing)
+    await putEmails(this.db, this.accountId, list)
   }
 
   getStatus(): EngineStatus {

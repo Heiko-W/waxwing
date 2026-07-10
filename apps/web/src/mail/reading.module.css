@@ -1,0 +1,446 @@
+/*
+ * Reading experience (M1.8): the conversation, one message (header + sandboxed body frame +
+ * attachments + action bar), the remote-content banner, and the move picker. Layout uses the
+ * --waxwing-* tokens only; the @media print block strips app chrome for a clean single-message
+ * print (FR-RD-05), and motion respects prefers-reduced-motion.
+ */
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+  padding: var(--waxwing-space-4);
+  overflow-y: auto;
+  height: 100%;
+}
+
+.subject {
+  margin: 0;
+  font-size: var(--waxwing-text-2xl);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  color: var(--waxwing-text);
+  overflow-wrap: break-word;
+}
+
+.threadCount {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
+.thread {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.threadItem {
+  display: block;
+}
+
+/* Focus target when a message expands (WCAG 2.4.3). Programmatic -1 focus needs no visible ring —
+   the expanded message header is itself the visible cue — so suppress the container outline. */
+.expandedItem {
+  display: block;
+}
+
+.expandedItem:focus {
+  outline: none;
+}
+
+.emptyReading {
+  margin: 0;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-align: center;
+}
+
+/* ---- one expanded message ---- */
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+  padding: var(--waxwing-space-3);
+  background: var(--waxwing-surface);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-lg);
+}
+
+.header {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  align-items: flex-start;
+}
+
+.headerMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.headerTop {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--waxwing-space-3);
+  align-items: baseline;
+}
+
+.from {
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text);
+  overflow-wrap: anywhere;
+}
+
+.date {
+  flex-shrink: 0;
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
+.headerSub {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--waxwing-space-2);
+  align-items: center;
+}
+
+.recipients {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--waxwing-space-1) var(--waxwing-space-3);
+  margin: var(--waxwing-space-1) 0 0;
+  padding: var(--waxwing-space-2);
+  background: var(--waxwing-surface-2);
+  border-radius: var(--waxwing-radius-sm);
+  font-size: var(--waxwing-text-sm);
+}
+
+.details dt {
+  color: var(--waxwing-text-muted);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.details dd {
+  margin: 0;
+  color: var(--waxwing-text);
+  overflow-wrap: anywhere;
+}
+
+/* ---- action bar ---- */
+
+.actionBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-1);
+  align-items: center;
+  padding-bottom: var(--waxwing-space-2);
+  border-bottom: 1px solid var(--waxwing-border);
+}
+
+.actionSpacer {
+  flex: 1;
+}
+
+.flagOn {
+  color: var(--waxwing-warning);
+  fill: currentColor;
+}
+
+/* ---- body frame ---- */
+
+.bodyWrap {
+  min-height: 3rem;
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  min-height: 8rem;
+  border: 0;
+  background: #ffffff;
+  color-scheme: light;
+}
+
+.bodyLoading {
+  display: flex;
+  justify-content: center;
+  padding: var(--waxwing-space-6);
+}
+
+/* ---- remote content banner ---- */
+
+.remoteBanner {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  align-items: center;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  background: var(--waxwing-surface-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+.remoteIcon {
+  flex-shrink: 0;
+  color: var(--waxwing-text-muted);
+}
+
+.remoteText {
+  flex: 1;
+  min-width: 0;
+}
+
+.remoteTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+  color: var(--waxwing-text);
+}
+
+.remoteNote {
+  margin: 0;
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+}
+
+.remoteActions {
+  display: flex;
+  gap: var(--waxwing-space-1);
+  flex-shrink: 0;
+}
+
+/* ---- attachments ---- */
+
+.attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.attachmentsHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.attachmentsTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text);
+}
+
+.attachmentItems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.attachment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.attachmentMain {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  background: var(--waxwing-surface-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+.attachmentIcon {
+  flex-shrink: 0;
+  color: var(--waxwing-text-muted);
+}
+
+.attachmentName {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--waxwing-text);
+}
+
+.attachmentSize {
+  flex-shrink: 0;
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+}
+
+.attachmentPreview {
+  padding: var(--waxwing-space-2);
+  background: var(--waxwing-surface-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+.previewImage {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.previewFrame {
+  display: block;
+  width: 100%;
+  height: 24rem;
+  border: 0;
+  background: #ffffff;
+}
+
+/* ---- move dialog ---- */
+
+.moveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.moveItem {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--waxwing-radius-md);
+  color: var(--waxwing-text);
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.moveItem:hover {
+  background: var(--waxwing-surface-hover);
+}
+
+.moveItem:focus-visible {
+  outline: none;
+  box-shadow: var(--waxwing-focus-ring);
+}
+
+.moveEmpty {
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* ---- collapsed thread message ---- */
+
+.collapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  width: 100%;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  background: var(--waxwing-surface);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  text-align: start;
+  font: inherit;
+  color: var(--waxwing-text);
+  cursor: pointer;
+  transition: background var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.collapsed:hover {
+  background: var(--waxwing-surface-hover);
+}
+
+.collapsed:focus-visible {
+  outline: none;
+  box-shadow: var(--waxwing-focus-ring);
+}
+
+.collapsedUnread {
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.collapsedFrom {
+  flex-shrink: 0;
+  max-width: 12rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapsedPreview {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--waxwing-text-muted);
+  font-weight: 400;
+}
+
+.collapsedTime {
+  flex-shrink: 0;
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .moveItem,
+  .collapsed {
+    transition: none;
+  }
+}
+
+/*
+ * Print: one clean message. Hide app chrome and interactive controls; keep the header and body.
+ * The sandboxed body frame prints its own content. (FR-RD-05.)
+ */
+@media print {
+  .actionBar,
+  .remoteActions,
+  .attachmentPreview,
+  .threadCount {
+    display: none;
+  }
+
+  .conversation {
+    overflow: visible;
+    height: auto;
+    padding: 0;
+  }
+
+  .message {
+    border: 0;
+    padding: 0;
+    break-inside: avoid;
+  }
+
+  .frame {
+    min-height: 0;
+  }
+}

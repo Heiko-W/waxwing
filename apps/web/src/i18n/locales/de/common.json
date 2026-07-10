@@ -234,5 +234,41 @@
     "loading": "Nachrichten werden geladen",
     "empty": "Keine Nachrichten in diesem Ordner.",
     "noMailbox": "Wählen Sie einen Ordner"
+  },
+  "reading": {
+    "from": "Von",
+    "to": "An",
+    "cc": "Kopie",
+    "date": "Datum",
+    "details": "Details",
+    "noRecipients": "(Keine Empfänger)",
+    "actions": "Nachrichtenaktionen",
+    "markUnread": "Als ungelesen markieren",
+    "collapse": "Nachricht einklappen",
+    "reply": "Antworten",
+    "replyAll": "Allen antworten",
+    "forward": "Weiterleiten",
+    "comingSoon": "Das Verfassen von Nachrichten kommt in einem späteren Meilenstein.",
+    "quotedLabel": "Zitierter Text",
+    "frameTitle": "Nachricht: {{subject}}",
+    "threadCount": "{{count}} Nachrichten in dieser Konversation",
+    "notAvailable": "Diese Nachricht ist nicht verfügbar.",
+    "confirmDeleteBody": "Diese Nachricht wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
+    "moveTitle": "In Ordner verschieben",
+    "moveEmpty": "Keine anderen Ordner.",
+    "remote": {
+      "title": "Externe Inhalte blockiert",
+      "privacyNote": "Bilder und andere externe Inhalte können erfassen, wann Sie eine Nachricht öffnen.",
+      "load": "Bilder laden",
+      "alwaysAllow": "{{sender}} immer erlauben"
+    },
+    "attachments": {
+      "title": "Anhänge",
+      "saveAll": "Alle speichern",
+      "unnamed": "(Ohne Namen)",
+      "preview": "Vorschau",
+      "hidePreview": "Vorschau ausblenden",
+      "download": "{{name}} herunterladen"
+    }
   }
 }

@@ -338,3 +338,31 @@
     transition: none;
   }
 }
+
+/*
+ * Print: strip the app chrome so only the open message prints (the reading pane's own print rules
+ * live in reading.module.css; the list-vs-reading split is handled in SplitPane.module.css). Without
+ * this, on desktop the folder rail and the message-list pane print alongside the message.
+ */
+@media print {
+  .header,
+  .primaryNav,
+  .folderRegion,
+  .backdrop,
+  .paneToolbar {
+    display: none;
+  }
+
+  .app,
+  .body,
+  .main,
+  .mailScreen,
+  .paneArea,
+  .pane,
+  .paneBody {
+    display: block;
+    overflow: visible;
+    block-size: auto;
+    min-block-size: 0;
+  }
+}

@@ -234,5 +234,41 @@
     "loading": "Loading messages",
     "empty": "No messages in this folder.",
     "noMailbox": "Select a folder"
+  },
+  "reading": {
+    "from": "From",
+    "to": "To",
+    "cc": "Cc",
+    "date": "Date",
+    "details": "Details",
+    "noRecipients": "(No recipients)",
+    "actions": "Message actions",
+    "markUnread": "Mark as unread",
+    "collapse": "Collapse message",
+    "reply": "Reply",
+    "replyAll": "Reply all",
+    "forward": "Forward",
+    "comingSoon": "Composing messages arrives in a later milestone.",
+    "quotedLabel": "Quoted text",
+    "frameTitle": "Message: {{subject}}",
+    "threadCount": "{{count}} messages in this conversation",
+    "notAvailable": "This message is not available.",
+    "confirmDeleteBody": "This message will be permanently deleted. This can't be undone.",
+    "moveTitle": "Move to folder",
+    "moveEmpty": "No other folders.",
+    "remote": {
+      "title": "Remote content blocked",
+      "privacyNote": "Images and other remote content can track when you open a message.",
+      "load": "Load images",
+      "alwaysAllow": "Always allow {{sender}}"
+    },
+    "attachments": {
+      "title": "Attachments",
+      "saveAll": "Save all",
+      "unnamed": "(Unnamed)",
+      "preview": "Preview",
+      "hidePreview": "Hide preview",
+      "download": "Download {{name}}"
+    }
   }
 }

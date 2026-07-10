@@ -70,3 +70,21 @@
     background-color: var(--waxwing-accent);
   }
 }
+
+/* Print: the reading-pane split collapses to just the reading (secondary) pane — the list (primary)
+   and the resize grip are app chrome, not part of the printed message. */
+@media print {
+  .primary,
+  .separator {
+    display: none;
+  }
+
+  .container {
+    display: block;
+  }
+
+  .secondary {
+    overflow: visible;
+    block-size: auto;
+  }
+}
