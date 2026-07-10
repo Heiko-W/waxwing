@@ -4,6 +4,7 @@
  * published surface (only `index.ts` is bundled).
  */
 
+import { makeSession } from '../test-support'
 import type { FetchLike } from '../transport'
 import type { SchedulerLike, WebSocketConnectInfo, WebSocketLike } from './types'
 
@@ -194,6 +195,27 @@ export function sseFetchMock(status = 200): { fetch: FetchLike; connections: Sse
     )
   }
   return { fetch, connections }
+}
+
+/**
+ * A fetch mock returning JSON Session documents with a controllable `state` per call — drives the
+ * polling transport (which re-fetches the Session and watches `state`). `states[i]` is returned on
+ * the i-th call; the last entry repeats.
+ */
+export function sessionFetchMock(states: string[]): { fetch: FetchLike; calls: { count: number } } {
+  const calls = { count: 0 }
+  const fetch: FetchLike = () => {
+    const state = states[Math.min(calls.count, states.length - 1)] ?? 's0'
+    calls.count++
+    const session = { ...makeSession(), state }
+    return Promise.resolve(
+      new Response(JSON.stringify(session), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+  }
+  return { fetch, calls }
 }
 
 /** Resolves after pending microtasks (and a macrotask), letting async connectors settle. */

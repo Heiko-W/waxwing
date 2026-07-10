@@ -17,11 +17,11 @@
  */
 
 import type { AuthProvider } from '../auth'
-import { JmapError } from '../errors'
 import type { FetchLike } from '../transport'
 import type { Session } from '../types/core'
 import type { StateChange } from '../types/push'
 import type { BackoffOptions } from './backoff'
+import { PollingChannel } from './polling'
 import type { SseAuthMode } from './sse'
 import { SseChannel } from './sse'
 import type {
@@ -52,6 +52,8 @@ export interface CreatePushChannelOptions {
   dataTypes?: string[] | null
   /** SSE auth placement (`header` default; `query` for servers with `?access_token=`). */
   sseAuth?: SseAuthMode
+  /** Polling transport only: URL to re-fetch the Session from (default: origin of `session.apiUrl`). */
+  sessionUrl?: string
   /** Backoff tuning shared by whichever transport is selected. */
   backoff?: BackoffOptions
   /** Injectable timer source (tests). */
@@ -159,17 +161,18 @@ function hasGlobalWebSocket(): boolean {
  *  - **trying** (never opened) — each connect *error* increments a counter. Reaching
  *    `failoverAfterAttempts` tears the transport down and advances to the next eligible one,
  *    restarting the counter — but only while a *real* transport remains to fail over to. The
- *    LAST real transport (and the terminal polling stub excepted below) is never counted out:
- *    it is left to its own {@link ReconnectLoop}, which retries forever, so a transient blip on
- *    the one transport that works self-heals instead of permanently killing push. Observable
- *    only as `connecting`/`reconnecting`, never a spurious `closed`.
+ *    LAST transport (real or the always-last polling transport) is never counted out: it is left
+ *    to its own {@link ReconnectLoop}, which retries forever, so a transient blip on the one
+ *    transport that works self-heals instead of permanently killing push. Observable only as
+ *    `connecting`/`reconnecting`, never a spurious `closed`.
  *  - **open** — the transport reached `open`; failover is disabled for good. Its own
  *    {@link ReconnectLoop} owns every subsequent drop and reconnect (the SP.3 "survives a
- *    server restart" behaviour). The facade never downgrades from here.
- *  - **exhausted** — only reachable when the current transport is the polling stub (it errors
- *    once on open() and never retries) and no real transport is left: the last error has already
- *    been surfaced, the facade settles in `closed` and never retries. Real transports never
- *    reach this state on their own.
+ *    server restart" behaviour). The facade never downgrades from here. Polling is now a real
+ *    transport that reaches `open` too (M1.3), so it behaves like SSE/WS once selected.
+ *  - **exhausted** — a safety terminal reached only if the transport list runs out (every
+ *    eligible transport advanced past). In practice polling is always last and, being a real
+ *    transport, is left to its own reconnect loop rather than advancing — so this state is not
+ *    reached in normal operation.
  *
  * Each eligible transport is tried at most once per channel lifetime. The facade owns the
  * listener sets, so `subscribe`/`onStatus`/`onError` registrations survive a transport swap:
@@ -312,17 +315,13 @@ export class FailoverPushChannel implements PushChannel {
     // An error listener may have synchronously closed us; and a transport that has opened owns
     // its own reconnect loop — in either case do not fail over.
     if (this.terminated || this.opened) return
-    // The polling stub errors once on open() and never retries, so a single error from it is
-    // terminal — advance immediately (which settles the channel closed once nothing real is left).
-    if (this.transports[this.index] === 'polling') {
-      this.advance()
-      return
-    }
-    // A *real* transport (websocket/sse) that has never opened. Only spend the failover budget
-    // if there is another real transport to fall over to; never tear a real transport down onto
-    // the non-functional polling stub. When this is the LAST real transport, leave it to its own
-    // ReconnectLoop, which retries forever (SP.3 "survives a server restart"): a transient
-    // startup blip then self-heals instead of permanently killing all push.
+    // A transport (websocket/sse/polling) that has never opened. Polling is now a real transport
+    // (it reaches `open` and owns its own reconnect loop), so it is no longer special-cased as a
+    // one-shot terminal stub. Only spend the failover budget if there is another real transport to
+    // fall over to; never tear a transport down onto the terminal polling entry. When this is the
+    // LAST real transport (or polling itself, always last), leave it to its own ReconnectLoop,
+    // which retries forever (SP.3 "survives a server restart"): a transient startup blip then
+    // self-heals instead of permanently killing all push.
     if (!this.hasRealFailoverTarget()) return
     this.failedAttempts++
     if (this.failedAttempts >= this.budget) this.advance()
@@ -388,8 +387,17 @@ export class FailoverPushChannel implements PushChannel {
         if (this.options.dataTypes != null) sseOptions.types = this.options.dataTypes.join(',')
         return new SseChannel(sseOptions)
       }
-      default:
-        return new PollingChannel()
+      default: {
+        const pollingOptions: ConstructorParameters<typeof PollingChannel>[0] = {
+          session: this.session,
+          auth: this.options.auth,
+          ...shared,
+        }
+        if (this.options.fetch !== undefined) pollingOptions.fetch = this.options.fetch
+        if (this.options.sessionUrl !== undefined)
+          pollingOptions.sessionUrl = this.options.sessionUrl
+        return new PollingChannel(pollingOptions)
+      }
     }
   }
 
@@ -409,55 +417,8 @@ export class FailoverPushChannel implements PushChannel {
 }
 
 /**
- * Interface-only polling transport (the M1.3 long-poll fallback lands later). It satisfies
- * {@link PushChannel} so auto-selection always returns *something*, but {@link PollingChannel.open}
- * reports a "not implemented" error rather than pretending to deliver events.
+ * The real last-resort polling transport (M1.3). Re-exported here so `index.ts` and existing
+ * callers keep importing `PollingChannel` from `./channel`; its implementation lives in
+ * `./polling`. It reaches `open` and owns its own reconnect loop like SSE/WS — see {@link PollingChannel}.
  */
-export class PollingChannel implements PushChannel {
-  readonly transport: PushTransport = 'polling'
-  private currentStatus: PushStatus = 'closed'
-  private readonly stateListeners = new Set<StateChangeListener>()
-  private readonly statusListeners = new Set<StatusListener>()
-  private readonly errorListeners = new Set<PushErrorListener>()
-
-  constructor(events?: PushChannelEvents) {
-    if (events?.onStateChange) this.stateListeners.add(events.onStateChange)
-    if (events?.onStatus) this.statusListeners.add(events.onStatus)
-    if (events?.onError) this.errorListeners.add(events.onError)
-  }
-
-  get status(): PushStatus {
-    return this.currentStatus
-  }
-
-  open(): void {
-    for (const listener of [...this.errorListeners]) {
-      listener(new JmapError('Polling push transport is not implemented yet (M1.3)'))
-    }
-  }
-
-  close(): void {
-    this.currentStatus = 'closed'
-  }
-
-  subscribe(listener: StateChangeListener): Unsubscribe {
-    this.stateListeners.add(listener)
-    return () => {
-      this.stateListeners.delete(listener)
-    }
-  }
-
-  onStatus(listener: StatusListener): Unsubscribe {
-    this.statusListeners.add(listener)
-    return () => {
-      this.statusListeners.delete(listener)
-    }
-  }
-
-  onError(listener: PushErrorListener): Unsubscribe {
-    this.errorListeners.add(listener)
-    return () => {
-      this.errorListeners.delete(listener)
-    }
-  }
-}
+export { PollingChannel } from './polling'

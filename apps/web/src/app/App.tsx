@@ -13,6 +13,7 @@
  * callback. Branding (product name) always comes from config — never hardcoded (FR-THEME-02).
  */
 
+import { SyncEngineHost } from '../sync/engine'
 import type { WaxwingConfig } from './config'
 import { ConfigProvider } from './config-context'
 import { Onboarding } from './onboarding/Onboarding'
@@ -49,7 +50,9 @@ function AppBody({ config }: { config: WaxwingConfig }) {
 
   return (
     <RouterProvider>
-      <AppShell config={config} />
+      <SyncEngineHost>
+        <AppShell config={config} />
+      </SyncEngineHost>
     </RouterProvider>
   )
 }

@@ -79,9 +79,29 @@
   color: var(--waxwing-warning);
 }
 
+.statusError {
+  color: var(--waxwing-danger);
+}
+
 .statusIcon {
   inline-size: 1rem;
   block-size: 1rem;
+}
+
+.statusSpin {
+  animation: waxwing-status-spin 1s linear infinite;
+}
+
+@keyframes waxwing-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusSpin {
+    animation: none;
+  }
 }
 
 .accountName {

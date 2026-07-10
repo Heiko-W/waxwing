@@ -109,7 +109,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 |---|---|---|---|---|---|
 | M1.1 | Design system foundation (doc, tokens, base components) | L | P0.2 | done | **2026-07-10.** `docs/design-system.md` written; tokens finalized with **machine-verified WCAG AA contrast** (`tokens.contrast.test.ts`, 42 assertions) — added `border-strong`, `danger/success/warning-contrast`, elevation tokens. 14 base components + shared primitives in `src/ui/` (barrel `index.ts`), each with keyboard/APG-ARIA/both-themes/44px and a co-located axe test (96 tests). Dev-only gallery (`VITE_WAXWING_GALLERY=1`, DCE'd from prod); **browser axe scan zero violations incl. color-contrast in light+dark**. Bundle 80.69 KB gz. **D5 signed off 2026-07-10** (after accent→blue + responsive-compact revisions). |
 | M1.2 | Local replica schema (Dexie, account-scoped) | M | SP.1, P0.3 | done | **2026-07-10.** Dexie 4 shared `waxwing-replica` DB, 10 tables keyed `[accountId+id]` (**ADR-008**); account-scoped `amb`/`akw` membership indexes; canonical query-key; migration policy; `ReplicaProvider` + liveQuery hooks. 29 tests; 105.5 KB gz (Dexie tree-shaken until M1.5/M1.6, projected +31 KB gz). Follow-up: wire `wipeReplica` into sign-out → M1.3. |
-| M1.3 | Sync engine core + action queue skeleton | L | M1.2, SP.3, G1 | todo | |
+| M1.3 | Sync engine core + action queue skeleton | L | M1.2, SP.3, G1 | done | **2026-07-10.** `sync/engine/`: leader election (Web Locks) + `EngineBus`; push-driven delta sync (`*/changes`, `queryChanges` reconcile w/ `upToId` window bound, `cannotCalculateChanges`→full-requery, SP.4 forceFull re-probe); windowed backfill (day-stable key); outbox (optimistic apply/rollback, FIFO replay, method-vs-transport errors, inflight recovery, create-id reconcile); real polling transport in `@waxwing/jmap`. Wired into the shell (`SyncEngineHost` + `StatusRegion` + sign-out `wipeReplica`). 69 engine/replica tests; adversarial review fixed 8 defects (2 high). 147 KB gz. Live two-tab/offline E2E → **M1.9**. |
 | M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | done | **2026-07-10.** Own base-path-safe router (**ADR-007**), responsive 3/2/1-pane shell + reading-pane modes, onboarding FSM (autoconnect/manual/OAuth/Basic), `SessionProvider` (holds the `JmapClient` for M1.5/M1.6) with FR-AUTH-06 re-auth overlay + FR-AUTH-05 sign-out, branding + `BrandLinks` from config. 401 tests; browser axe clean light+dark; 105.5 KB gz. Adversarial review fixed 6 defects. Follow-ups: engine status → M1.3, live shell E2E → M1.9. |
 | M1.5 | Folder tree (roles, counts, manage) | M | M1.3, M1.4 | todo | |
 | M1.6 | Message list: virtualization, threading, selection | L | M1.3, M1.4 | todo | |
@@ -833,29 +833,52 @@ records the shared-DB account-scoping decision. Adversarial review applied.
 
 Spec: FR-NOTIF-01, FR-OFF-03 (skeleton), tech-stack §4.3. Size: L.
 
-- [ ] **Leader election** via `navigator.locks.request('waxwing-sync', …)`; followers
+- [x] **Leader election** via `navigator.locks.request('waxwing-sync', …)`; followers
       detect leader loss and re-elect; `BroadcastChannel` for engine status/events
-      (replica reactivity itself comes free via Dexie liveQuery cross-tab).
-- [ ] Push integration: transport auto-select from SP.3 (per G1/D2 decision), `StateChange`
-      → targeted delta fetch; **polling fallback** implementation.
-- [ ] Delta sync: `Mailbox/changes`, `Thread/changes`, `Email/changes` (with
+      (replica reactivity itself comes free via Dexie liveQuery cross-tab). — `engine/leader.ts`
+      (holds the exclusive lock for the tab's life; release = re-election) + `engine/bus.ts`
+      (`EngineBus` carries only the leader's status; followers mirror it).
+- [x] Push integration: transport auto-select from SP.3 (per G1/D2 decision), `StateChange`
+      → targeted delta fetch; **polling fallback** implementation. — engine subscribes
+      `createPushChannel` (SSE-first per D2); every `StateChange` runs a coalesced delta sweep.
+      **Real polling transport** now lands in `@waxwing/jmap` (`push/polling.ts`: session-state
+      polling → coarse resync `StateChange`), replacing the SP.3 stub; wired into the failover facade.
+- [x] Delta sync: `Mailbox/changes`, `Thread/changes`, `Email/changes` (with
       `updatedProperties` optimization); per-watched-query `Email/queryChanges`; recovery
-      path on `cannotCalculateChanges` → full re-query + reconciliation.
-- [ ] Windowed backfill: recent N days/messages per mailbox (default from `config.json`
-      `offline.cacheDays`), oldest-window bookkeeping for "load more".
-- [ ] **Action queue (outbox) skeleton** — even "mark read" is a write and must flow
-      through it: intents as idempotent JMAP `set` patches with client ids; optimistic
-      local apply → replay → confirm/rollback; `ifInState` where appropriate. M1 scope:
-      online replay + basic retry. (Offline replay hardening + conflict UX = M3.3.)
-- [ ] Actions implemented now: setKeywords (read/unread, flag), move (archive, junk,
-      trash, arbitrary), delete (trash → destroy), mailbox create/rename/move/delete.
-- [ ] Engine state surface for UI: syncing/offline/error, per-mailbox freshness.
-- [ ] Unit tests: state-string bookkeeping, queryChanges reconciliation,
-      cannotCalculateChanges recovery, optimistic apply/rollback, leader failover.
+      path on `cannotCalculateChanges` → full re-query + reconciliation. — `engine/delta.ts`
+      (multi-page `drainChanges`, Mailbox partial-prop patch, removed-then-index-splice-added
+      reconciliation, `CannotCalculateChangesError` → `fullRequery`). SP.4 "absence ≠ freshness":
+      the engine periodically forces a full re-query (`forceFull` every Nth safety sweep).
+- [x] Windowed backfill: recent N days/messages per mailbox (default from `config.json`
+      `offline.cacheDays`), oldest-window bookkeeping for "load more". — `engine/backfill.ts`
+      (`windowFilter` = `inMailbox AND after=now−cacheDays`; `backfillMailbox`/`loadMore` page by
+      `position`; the window key is stable — spec read back from the persisted `QueryCacheRow`).
+- [x] **Action queue (outbox) skeleton** … optimistic local apply → replay → confirm/rollback;
+      `ifInState`. M1 scope: online replay + basic retry. — `engine/outbox.ts`
+      (`applyOptimistic` returns a rollback closure; `replayOutbox` FIFO, per-object rejection →
+      rollback+`error`, transport error → `pending`+attempts, `maxAttempts` guard; mailbox-create
+      reconciles the server id). Offline hardening + conflict UX stay **M3.3**.
+- [x] Actions implemented now: setKeywords (read/unread, flag), move (archive, junk,
+      trash, arbitrary), delete (trash → destroy), mailbox create/rename/move/delete. — the
+      `OutboxIntent` union covers all of these.
+- [x] Engine state surface for UI: syncing/offline/error, per-mailbox freshness. — `engine/status.ts`
+      external store + `useEngineStatus`; `StatusRegion` now surfaces offline/error (live region) +
+      a non-announced syncing spinner. (Per-mailbox freshness derivable from `SyncStateRow.updatedAt`;
+      the list will surface it in M1.6.)
+- [x] Unit tests: state-string bookkeeping, queryChanges reconciliation,
+      cannotCalculateChanges recovery, optimistic apply/rollback, leader failover. — 35 hermetic
+      engine tests (leader failover via a fake lock queue; delta/queryChanges/recovery; outbox
+      apply/replay/rollback; port mapping; backfill; facade start→sync→dispatch→stop).
+- [ ] **(M1.9)** Live two-tab consistency + leader hand-over + offline-replay verification against
+      the fixture — deferred to M1.9's live E2E suite (as M1.4's live shell E2E was). The mechanics
+      are hermetically covered here.
 
 Done when: two open tabs stay consistent while mail is delivered to the fixture; killing
 the leader tab hands over within seconds; a flag toggled offline-simulated (devtools)
-replays on reconnect.
+replays on reconnect. — **Mechanics hermetically met** (fake lock/push/port/clock): leader
+failover, StateChange→sync, optimistic dispatch→replay, coalesced re-entrant sync, teardown.
+The **live browser** two-tab/offline verification runs with **M1.9** (needs the Stalwart fixture +
+Playwright, out of a jsdom unit's reach). `wipeReplica` is now wired into "Sign out & remove data".
 
 ### M1.4 — App shell
 
@@ -1616,3 +1639,4 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-10 | **M1.4 done** — app shell. Own base-path-safe router (`app/route/`, lazy `/contacts`+`/settings` chunks, `.size-limit.js` now measures the entry chunk); responsive 3/2/1-pane shell (`computePaneLayout`, folder off-canvas drawer, SplitPane divider, reading opens via history PUSH, reading-pane mode right/bottom/off pref); onboarding FSM (same-origin autoconnect / manual email→domain connect / `config.json` pin, OAuth+Basic per config, secure-context gating) in a tested reducer + `SessionProvider` holding the connected `JmapClient` for M1.5/M1.6; FR-AUTH-06 re-auth as an overlay over the still-mounted shell (silent refresh handles the common case; Basic reconnects in place, OAuth stashes route+target); FR-AUTH-05 sign-out ± remove-data (confirm); branding product name/logo/accent/links all from config (`BrandLinks`, no hardcoded "Waxwing" — guard test). **401 web/unit/axe tests**, real-browser axe of the login **clean in light+dark**, **105.5 KB gz** entry chunk. Built via a design-panel workflow (5 lenses) + a 3-fork parallel implementation + an **adversarial review workflow** that confirmed **6 defects** (Basic-reauth wiping the "stay signed in" opt-in; a non-announced login error live region; a stale OAuth stash driving a wrong-server reconnect; the closed folder drawer left in the a11y tree; focus stranded on drawer-close and on the single-pane Back swap) — all fixed + regression-tested. Follow-ups: engine sync-status stub → M1.3; live `connect()`→shell E2E → M1.9; `<base href>` in `index.html` → M4.9. |
 | 2026-07-10 | **ADR-008** — replica account-scoping: **one shared `waxwing-replica` Dexie DB** with compound `[accountId+id]` keys (the plan's M1.2 spec), **not** a database-per-account (ADR-004's auth pattern). Deciding difference: the replica holds no secrets, so ADR-004's per-DB crypto-isolation rationale does not transfer, while a shared DB gives a natural `accounts` registry and keeps cross-account views (unified search/list) open. Per-account eviction = scoped bulk delete; full wipe = `db.delete()`. |
 | 2026-07-10 | **M1.2 done** — local replica schema (`apps/web/src/sync/`, Dexie 4.4). Ten account-scoped tables keyed `[accountId+id]` (`accounts`/`mailboxes`/`threads`/`emails`/`emailBodies`/`blobsMeta`/`syncState`/`queryCache`/`outbox`/`localPrefs`); folder/keyword membership via derived account-scoped multiEntry indexes `amb`/`akw` (IndexedDB has no compound-multiEntry) — the ordered list renders from `queryCache.ids` (server collation), not a local re-sort. `db.ts` (schema + JMAP→row mappers + `clearAccount`/`wipeReplica`), `query-key.ts` (canonical `{filter,sort,collapseThreads}` key — order-independent filter, explicit `isAscending` default, order-preserving sort), `repo.ts` (indexed CRUD + the M1.5/M1.6 read paths), `react.tsx` (`ReplicaProvider` + liveQuery hooks). Migration policy = append-only `version()` chain (`db.ts` header). **ADR-008** for the shared-DB scoping. 29 tests (**430 total green**); size **105.5 KB gz** (Dexie tree-shaken until M1.5/M1.6 import the replica; projected entry delta ≈ **+31 KB gz** → ~136 KB, well under 300). Built via a 3-way parallel research fan-out + an adversarial review workflow. Follow-up (M1.3): wire `wipeReplica` into "Sign out & remove data". |
+| 2026-07-10 | **M1.3 done** — sync engine core + action-queue skeleton (`apps/web/src/sync/engine/`). Single-writer via `navigator.locks` leader election (`leader.ts`) + `EngineBus` (BroadcastChannel, leader status only). Push-driven delta sync (`delta.ts`): `Mailbox/Thread/Email changes` with the Mailbox `updatedProperties` patch, per-watched-query `Email/queryChanges` bounded by the window `upToId` (removed-then-index-splice-added, beyond-window adds clamped), `cannotCalculateChanges`→`fullRequery`, and a periodic forceFull re-probe (SP.4 "absence ≠ freshness"). Windowed backfill (`backfill.ts`, day-stable window key, `loadMore` paging). Optimistic action queue (`outbox.ts`): apply→replay→confirm/rollback, `ifInState`, method-level vs transport error handling, `inflight` recovery, mailbox-create id + dependent-ref reconcile; actions setKeywords/move/destroy/mailbox-CRUD. A narrow `JmapPort` (`port.ts`) is the only RFC-DSL adapter, so the logic is hermetically testable. **Real polling transport** added to `@waxwing/jmap` (`push/polling.ts`, session-state polling → resync `StateChange`) replacing the SP.3 stub. Wired live: `SyncEngineHost` (starts/stops on connect, `ReplicaProvider`), `StatusRegion` (offline/error live region + non-announced syncing spinner), `SessionProvider` exposes `getAuthProvider()` and `endSession` now stops the engine + `wipeReplica`s before the auth wipe (FR-AUTH-05 ordering). Built via 3-way parallel research + a 5-fork parallel implementation + an **adversarial review workflow that confirmed 8 defects** (2 high: windowed `queryChanges` order corruption from a missing `upToId`; a poison outbox intent wedging the FIFO tail + terminal-error re-replay) — all fixed + regression-tested. **473 tests** (60 files, incl. the jmap push suite); **147 KB gz** entry chunk (Dexie + push now shipped). Live two-tab consistency / leader hand-over / offline-replay E2E deferred to **M1.9**. |

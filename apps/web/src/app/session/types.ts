@@ -5,7 +5,7 @@
  * LoginForm, ReauthDialog, AccountMenu) import types without importing the provider.
  */
 
-import type { JmapClient } from '@waxwing/jmap'
+import type { AuthProvider, JmapClient } from '@waxwing/jmap'
 import type { AuthMethod } from '../../auth'
 
 /** A JMAP `Session` as the client exposes it (avoids naming the wire type directly). */
@@ -94,4 +94,6 @@ export interface SessionContextValue {
 
   /** Stable accessor for out-of-React consumers (M1.3 sync engine); null until connected. */
   getClient(): JmapClient | null
+  /** The (reauth-wrapped) auth provider the client uses; the sync engine reuses it for push. */
+  getAuthProvider(): AuthProvider | null
 }

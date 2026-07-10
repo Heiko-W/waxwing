@@ -7,13 +7,13 @@ import {
   createPushChannel,
   eligibleTransports,
   FailoverPushChannel,
-  PollingChannel,
   pickTransport,
 } from './channel'
 import {
   FakeScheduler,
   failingWebSocketFactory,
   fakeWebSocketFactory,
+  sessionFetchMock,
   sseFetchMock,
   tick,
 } from './test-support'
@@ -388,32 +388,26 @@ describe('createPushChannel · runtime transport failover', () => {
       scheduler.runNext()
       await tick()
     }
-    expect(channel.transport).toBe('sse') // still SSE, never advanced onto the polling stub
+    expect(channel.transport).toBe('sse') // still SSE, never advanced onto polling
     expect(channel.status).not.toBe('closed') // never permanently died
     expect(sse.connections.length).toBeGreaterThan(1) // kept retrying SSE
-    // The polling stub was never even constructed, so its "not implemented" error never surfaced.
-    expect(errors.some((error) => /not implemented yet \(M1\.3\)/.test(error.message))).toBe(false)
     channel.close()
     expect(channel.status).toBe('closed')
   })
 
-  it('settles closed only when the sole transport is the polling stub', async () => {
-    // The one genuine exhaustion: nothing but polling is eligible. The stub errors on open() and,
-    // with no real transport to fall over to, the facade surfaces that error once and settles.
+  it('opens the real polling transport when it is the sole eligible transport', async () => {
+    // Nothing but polling is eligible (no WS, no eventSourceUrl). Polling is a REAL transport now
+    // (M1.3): it re-fetches the Session, reaches `open`, and owns its own reconnect loop — it does
+    // NOT error-once-and-settle-closed like the old stub. Full lifecycle is covered in polling.test.ts.
     const scheduler = new FakeScheduler()
-    const errors: Error[] = []
-    const channel = createPushChannel(pollingOnly(), {
-      auth,
-      scheduler,
-      events: { onError: (error) => errors.push(error) },
-    })
+    const { fetch } = sessionFetchMock(['s0'])
+    const channel = createPushChannel(pollingOnly(), { auth, scheduler, fetch })
     expect(channel.transport).toBe('polling')
     channel.open()
-    await tick()
+    await tick() // the initial session poll resolves
+    expect(channel.status).toBe('open')
+    channel.close()
     expect(channel.status).toBe('closed')
-    const terminal = errors.filter((error) => /not implemented yet \(M1\.3\)/.test(error.message))
-    expect(terminal).toHaveLength(1) // the polling stub's error, surfaced exactly once
-    expect(scheduler.pending).toBe(0)
   })
 
   it('prefer:"sse" tries SSE first, so the WebSocket fallback is never constructed', async () => {
@@ -520,22 +514,5 @@ describe('createPushChannel · runtime transport failover', () => {
   })
 })
 
-describe('PollingChannel (interface-only stub)', () => {
-  it('reports a not-implemented error on open() and stays closed', () => {
-    const errors: Error[] = []
-    const channel = new PollingChannel({ onError: (e) => errors.push(e) })
-    channel.open()
-    expect(errors).toHaveLength(1)
-    expect(errors[0]?.message).toMatch(/not implemented yet \(M1\.3\)/)
-    expect(channel.status).toBe('closed')
-  })
-
-  it('supports subscribe/onStatus/onError registration and unsubscription', () => {
-    const channel = new PollingChannel()
-    const unsub = channel.subscribe(() => {})
-    expect(typeof unsub).toBe('function')
-    unsub()
-    channel.close()
-    expect(channel.status).toBe('closed')
-  })
-})
+// The real PollingChannel transport is covered in ./polling.test.ts; the facade↔polling wiring is
+// covered by "opens the real polling transport when it is the sole eligible transport" above.

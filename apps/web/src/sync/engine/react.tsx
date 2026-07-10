@@ -1,0 +1,56 @@
+/**
+ * Wires the {@link SyncEngine} into the connected shell (M1.3). Mounted inside the `ready` branch:
+ * it starts the engine on connect, stops it on disconnect, and provides the {@link ReplicaProvider}
+ * the feature panes read from. Where `Web Locks` are unavailable (older browsers, SSR, jsdom tests)
+ * it degrades gracefully — the UI still reads the replica, sync just does not run.
+ */
+
+import { type ReactNode, useEffect } from 'react'
+import { useConfig } from '../../app/config-context'
+import { useSession } from '../../app/session/context'
+import { getReplica } from '../db'
+import { ReplicaProvider } from '../react'
+import { createSyncEngine, setActiveEngine } from './engine'
+import { createJmapPort } from './port'
+
+/** True when the runtime primitives the single-writer engine needs are present. */
+function canRunEngine(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.locks?.request === 'function' &&
+    typeof BroadcastChannel !== 'undefined'
+  )
+}
+
+export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode {
+  const { connected, getAuthProvider, reportAuthExpired } = useSession()
+  const config = useConfig()
+  const cacheDays = config.offline.cacheDays
+
+  useEffect(() => {
+    if (!connected || !canRunEngine()) return
+    const auth = getAuthProvider()
+    if (!auth) return
+    const engine = createSyncEngine({
+      db: getReplica(),
+      port: createJmapPort(connected.client, connected.accountId),
+      session: connected.client.session,
+      auth,
+      config: { cacheDays },
+      onAuthExpired: reportAuthExpired,
+    })
+    setActiveEngine(engine)
+    engine.start()
+    return () => {
+      setActiveEngine(null)
+      void engine.stop()
+    }
+  }, [connected, getAuthProvider, reportAuthExpired, cacheDays])
+
+  if (!connected) return children
+  return (
+    <ReplicaProvider accountId={connected.accountId} db={getReplica()}>
+      {children}
+    </ReplicaProvider>
+  )
+}

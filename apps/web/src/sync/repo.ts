@@ -86,6 +86,10 @@ export function getThread(db: ReplicaDb, accountId: Id, id: Id): Promise<ThreadR
   return db.threads.get([accountId, id])
 }
 
+export function deleteThreads(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.threads.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
 // -------------------------------------------------------------------------------------------
 // Emails (M1.6 — the hot path). The ordered list renders from a QueryCache id window; these
 // helpers hydrate that window and serve membership/threading queries off indexes.

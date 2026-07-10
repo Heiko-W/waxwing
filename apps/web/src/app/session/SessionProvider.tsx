@@ -12,10 +12,13 @@
  * hermetically testable with no network and no real WebCrypto.
  */
 
-import { type JmapClient, JmapHttpError } from '@waxwing/jmap'
+import type { AuthProvider, JmapClient } from '@waxwing/jmap'
+import { JmapHttpError } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthExpiredError } from '../../auth'
+import { getReplica, wipeReplica } from '../../sync'
+import { getActiveEngine, setActiveEngine } from '../../sync/engine'
 import type { WaxwingConfig } from '../config'
 import { useServices } from '../services'
 import { SessionContext } from './context'
@@ -115,6 +118,8 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const controllerRef = useRef<AuthController | null>(null)
   const controllerIssuerRef = useRef<string | null>(null)
   const clientRef = useRef<JmapClient | null>(null)
+  // The (reauth-wrapped) auth provider the client uses; the M1.3 sync engine reuses it for push.
+  const authProviderRef = useRef<AuthProvider | null>(null)
   const targetRef = useRef<ConnectTarget | null>(null)
   const bootedRef = useRef(false)
   // Remembers the Basic "stay signed in" opt-in so a later re-auth (FR-AUTH-06) preserves it
@@ -162,6 +167,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       const accountId = jmapSession.primaryAccounts[JMAP_MAIL]
       if (accountId === undefined) throw new NoAccountError()
       clientRef.current = client
+      authProviderRef.current = provider
       controllerRef.current = controller
       targetRef.current = target
       writeStored(local(), DURABLE_TARGET_KEY, target)
@@ -372,10 +378,17 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const endSession = useCallback(
     (wipeData: boolean) => {
       void (async () => {
-        // FR-AUTH-05. TODO(M1.3): stop the sync engine / release the Web Lock BEFORE a wipe,
-        // or deleting IndexedDB blocks on the open Dexie connection.
+        // FR-AUTH-05 / FR-AUTH-06. Stop the sync engine and release the Web Lock BEFORE any wipe —
+        // otherwise `deleteDatabase` blocks on the engine's open Dexie/IndexedDB connection (M1.3).
+        const engine = getActiveEngine()
+        if (engine) {
+          setActiveEngine(null)
+          await engine.stop().catch(() => {})
+        }
+        if (wipeData) await wipeReplica(getReplica()).catch(() => {})
         await controllerRef.current?.logout(wipeData ? { wipeData: true } : {}).catch(() => {})
         clientRef.current = null
+        authProviderRef.current = null
         controllerRef.current = null
         controllerIssuerRef.current = null
         removeStored(local(), DURABLE_TARGET_KEY)
@@ -389,6 +402,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const signOutAndWipe = useCallback(() => endSession(true), [endSession])
   const cancelReauth = useCallback(() => endSession(false), [endSession])
   const getClient = useCallback(() => clientRef.current, [])
+  const getAuthProvider = useCallback(() => authProviderRef.current, [])
 
   const value = useMemo<SessionContextValue>(() => {
     const onboarding = state.status === 'onboarding' ? state.view : null
@@ -410,6 +424,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       signOut,
       signOutAndWipe,
       getClient,
+      getAuthProvider,
     }
   }, [
     state,
@@ -424,6 +439,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     signOut,
     signOutAndWipe,
     getClient,
+    getAuthProvider,
   ])
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
