@@ -107,7 +107,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
-| M1.1 | Design system foundation (doc, tokens, base components) | L | P0.2 | todo | |
+| M1.1 | Design system foundation (doc, tokens, base components) | L | P0.2 | done | **2026-07-10.** `docs/design-system.md` written; tokens finalized with **machine-verified WCAG AA contrast** (`tokens.contrast.test.ts`, 42 assertions) — added `border-strong`, `danger/success/warning-contrast`, elevation tokens. 14 base components + shared primitives in `src/ui/` (barrel `index.ts`), each with keyboard/APG-ARIA/both-themes/44px and a co-located axe test (96 tests). Dev-only gallery (`VITE_WAXWING_GALLERY=1`, DCE'd from prod); **browser axe scan zero violations incl. color-contrast in light+dark**. Bundle 80.69 KB gz. **D5** sign-off pending owner review of the doc |
 | M1.2 | Local replica schema (Dexie, account-scoped) | M | SP.1, P0.3 | todo | |
 | M1.3 | Sync engine core + action queue skeleton | L | M1.2, SP.3, G1 | todo | |
 | M1.4 | App shell: routing, layout, config/theme boot, auth UX | L | M1.1, SP.2 | todo | |
@@ -764,20 +764,29 @@ spine (replica + sync + action queue) that every later phase leans on.
 
 Spec: FR-UI-01/02, FR-A11Y-01, FR-THEME-01. Size: L.
 
-- [ ] Write `docs/design-system.md`: principles (Apple-HIG-inspired, calm, content-first),
+- [x] Write `docs/design-system.md`: principles (Apple-HIG-inspired, calm, content-first),
       token catalog, spacing/typography scales, motion rules (`prefers-reduced-motion`),
       component inventory. (The spec references this as a separate document — this WP
       creates it.)
-- [ ] Complete the token sets from P0.2 for both themes; contrast-check every token pair
-      (WCAG AA) and record results in the doc.
-- [ ] Base components in `src/ui/`: Button, IconButton, TextInput, Select, Checkbox/Switch,
+- [x] Complete the token sets from P0.2 for both themes; contrast-check every token pair
+      (WCAG AA) and record results in the doc. — `tokens.contrast.test.ts` parses the
+      shipped `tokens.css` and asserts 21 pairs × 2 themes = 42 assertions; added
+      `--waxwing-border-strong`, `--waxwing-{danger,success,warning}-contrast`, and
+      elevation tokens to close the gaps the audit surfaced.
+- [x] Base components in `src/ui/`: Button, IconButton, TextInput, Select, Checkbox/Switch,
       Menu (roving focus), Dialog (focus trap), Tooltip, Toast/Snackbar, Avatar (initials),
-      Badge, SplitPane, VisuallyHidden, Spinner/Skeleton.
-- [ ] Every component: keyboard support, ARIA per APG pattern, axe test, both themes.
-- [ ] 44-px minimum touch targets baked into tokens/components (FR-A11Y-01).
+      Badge, SplitPane, VisuallyHidden, Spinner/Skeleton. — all present; barrel `index.ts`;
+      shared primitives (Portal, useFocusTrap, useDismiss) in `src/ui/internal/`.
+- [x] Every component: keyboard support, ARIA per APG pattern, axe test, both themes. —
+      96 co-located jsdom+axe tests pass; contrast/theme rendering covered by the browser
+      gallery scan.
+- [x] 44-px minimum touch targets baked into tokens/components (FR-A11Y-01). —
+      `--waxwing-tap-target: 44px` applied to every interactive control.
 
 Done when: a component gallery dev page shows all base components in light/dark, and axe
-reports zero violations on it.
+reports zero violations on it. — **Met.** Dev-only gallery (`VITE_WAXWING_GALLERY=1`,
+DCE'd from prod); a real-Chromium axe scan (WCAG 2.x A/AA incl. `color-contrast`) over it
+reported **zero violations in light and dark**, including the open Dialog/Menu/Toast.
 
 ### M1.2 — Local replica schema
 
@@ -1474,7 +1483,7 @@ explicit owner decision:
 | D2 | WebSocket in V1 core vs. post-SSE enhancement — decide on SP.3/SP.5 evidence | Heiko | Gate G1 | **decided 2026-07-10 (G1): SSE-first — WebSocket deferred to a post-SSE enhancement.** Browser WS cannot authenticate against Stalwart v0.16.11; V1 push runs on the fetch-based SSE reader (ADR-005), the WS transport stays as server-side/future-server code and auto-degrades. Revisit under D3 if a v1.0 baseline adds browser-viable WS auth. |
 | D3 | Raise server baseline to Stalwart v1.0 (expected ~Oct 2026)? | Heiko | Gate G2 | open |
 | D4 | Secure free namespaces early: GitHub org, npm `@waxwing` scope / package names (decision log #1 recommends) | Heiko | ASAP, independent of code | open |
-| D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | open |
+| D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **open** — `docs/design-system.md` + the component gallery delivered 2026-07-10; awaiting owner sign-off before broad UI build-out (M1.4+) |
 
 ## 14. Appendix — Requirements Coverage Matrix
 
@@ -1556,4 +1565,5 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-07-10 | SP.4 **done** — raw end-to-end demo. Dev-only `apps/web/src/demo/` (login/mailboxes/paged list/raw message view/`Email/parse`), gated on `import.meta.env.DEV && VITE_WAXWING_DEMO==='1'` behind a dynamic import so Rollup DCEs it — grep-proven absent from `dist/`, budget unchanged (**80.55 KB gz**). New one-command harness `pnpm demo [--lan]` (`scripts/demo.mjs` + `e2e/stalwart/seed-demo.mjs`): resolves the browser origin, brings the fixture up advertising it via the now-overridable `STALWART_PUBLIC_URL`, seeds 25 deterministic mails (plain, hostile HTML, `message/rfc822` attachment), starts Vite behind a demo-only same-origin proxy, guarantees teardown. Live-verified from a real browser (2 Playwright specs: Basic + full OAuth PKCE via Stalwart's `/login`). **SP.5 answers:** `Email/parse` **supported** (no `postal-mime` for server-held blobs; `bodyValues` must be named in `properties`), `SearchSnippet/get` supported (returns `<mark>` markup — sanitise it), `Email/queryChanges` supported but did **not** raise `cannotCalculateChanges` for a bogus `sinceQueryState` (M1.3 must not read its absence as freshness). Further findings: Stalwart ignores `Host`/`X-Forwarded-*` when advertising session/OIDC URLs; blob download requires the `Authorization` header (no `<img src>`); a plain-http LAN origin is an insecure context, so `crypto.subtle` — hence OAuth PKCE and all `SecretStore` persistence — is unavailable there (Basic works). Review: 8 findings raised, 3 confirmed and fixed at root cause (`Email/parse` missing `bodyValues`; demo i18n leaking into the production locale chunks; `pnpm demo` teardown volume-wiping a fixture it never started), 5 adversarially refuted. 214 tests green. |
 | 2026-07-10 | **ADR-006** — OAuth token posture: Stalwart v0.16.11 exposes **no** RFC 7009 revocation and **no** RP-initiated logout; access tokens are opaque 1 h, refresh tokens are 30 d, **not rotated on use, reusable, and not `client_id`-bound**. Decision: Waxwing does not attempt server-side revocation; logout is a local encrypted-store wipe + natural expiry, and the AES-GCM `SecretStore` (NFR-SEC-02) is the security boundary for the refresh token. Ratifies existing `oauth.ts`/`controller.ts` behaviour; complements ADR-004/005. |
 | 2026-07-10 | SP.5 **done** — spike report: all five open checklist items answered **live** against Stalwart v0.16.11-alpine (fixture), with adversarial/negative probes recorded. **(a) OIDC:** no pre-registration (arbitrary `client_id` accepted); RFC 7591 `/auth/register` open→201 but rejects `:5173` loopback ports; opaque tokens (`sw1.`, not JWT), `expires_in=3600`; refresh 30 d **not rotated / reusable / `client_id` unchecked**; **no `revocation_endpoint`/`end_session_endpoint`** (probed → 404) → **ADR-006**. **(b) Limits:** core all positive (get/set 500, calls 16, req 10 MB, upload 50 MB) so `@waxwing/jmap` fallbacks never engage and the `maxObjectsInSet:0` split-loop is unreachable; mail limits + 9 `emailQuerySortOptions` in `accountCapabilities` (top-level `mail` is `{}`). **(c) Blob:** Content-Type echoed not sniffed, `blobId` content-addressed; oversize → **400** `urn:…:error:limit` (**not** RFC 8620 §6.1's mandated 413) **plus** an unadvertised **429** per-user quota (1000 files / 50 MB, `Retry-After` ~1 h); upload `{accountId}` not authz-checked; download header-auth only, `?accept=` reflected unvalidated → fetch→`blob:`; RFC 9404 `Blob/upload` available. **(d) FR-DEP-02:** Applications mount mechanism live-verified via Stalwart's own `/admin/` Portal app (`<base href="/">`→`/admin/` rewrite on index + deep routes, relative assets resolve, `immutable` asset cache, `/seg`→302, unconditional SPA fallback); **build gap** — `apps/web/dist/index.html` emits no `<base href="/">` (source has none), so M4.9 must add it. **(e) Sharing:** `principals` (+`:availability`) and `mail:share` advertised, `myRights.mayShare` present, `principals:owner` absent, **no delegation seeded** (M4.4 fixture prerequisite); `capabilities.ts:26` mislabels the URN (RFC 9670, not "RFC 8620 §8"). D2 (browser WebSocket) evidence stays in SP.3/ADR-005, **left open for Heiko at G1**. Docs-only WP: plan §SP.5 + M4.9 + status board updated; ADR-006 added; no code changed; 214 tests still green. |
+| 2026-07-10 | **M1.1 done** — design-system foundation. `docs/design-system.md` (principles, token catalog, contrast table, scales, motion, component inventory, contract). Tokens finalized with **machine-verified WCAG 2.2 AA contrast**: `contrast.ts` (WCAG relative-luminance math) + `tokens.contrast.test.ts` parse the shipped `tokens.css` and assert 21 pairs × 2 themes = **42 assertions**; the audit surfaced and fixed three real gaps — added `--waxwing-border-strong` (control boundaries, ≥3:1; `--waxwing-border` stays a sub-3:1 decorative hairline), raised dark `--waxwing-danger` (was 4.09:1 as card text), and added `--waxwing-{danger,success,warning}-contrast` labels for solid semantic fills; also added elevation tokens. **14 base components + shared primitives** in `src/ui/` (Button, IconButton, TextInput, Select [styled *native*], Checkbox, Switch, Spinner, Skeleton, Badge, Avatar, VisuallyHidden, Tooltip, Menu, Dialog, Toast, SplitPane; primitives Portal/useFocusTrap/useDismiss), public barrel `index.ts`, each with keyboard + APG-ARIA + both themes + 44px + a co-located jsdom/axe test (**96 tests**). Default user-visible strings via a new `ui.*` i18n namespace (en+de). **Dev-only gallery** (`VITE_WAXWING_GALLERY=1`, dynamic-import + DCE — prod bundle unchanged at **80.69 KB gz**); a real-Chromium **axe scan (WCAG 2.x A/AA incl. `color-contrast`) reported zero violations in light AND dark**, static page and open Dialog/Menu/Toast. **D5** (owner design sign-off) now actionable. |
 | 2026-07-10 | **Gate G1 passed** — owner reviewed the SP.5 report and decided **D2: SSE-first, WebSocket deferred** to a post-SSE enhancement (browser WS cannot authenticate against Stalwart v0.16.11; V1 push runs on the fetch-based SSE reader). **ADR-005 ratified**; ADR-006 (token posture) noted. Phase 1 (Spike) complete → **M1 unblocked**; next `todo` is **M1.1** (design-system foundation). Also folded the SP.5-verified Stalwart-Application mount recipe (`x:Application/set` over `POST /jmap/`, recovery-admin Basic, `resourceUrl` accepts `http://`, `urlPrefix` is an object) into the M4.9 deployment-guide item. |
