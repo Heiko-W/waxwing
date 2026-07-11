@@ -70,20 +70,21 @@ describe('ComposerWindow', () => {
     expect(await within(dialog).findByRole('textbox', { name: 'Message body' })).toBeInTheDocument()
   })
 
-  it('shows a read-only recipients summary for a reply draft', async () => {
+  it('renders recipient pills for a reply draft (Cc auto-shown)', async () => {
     const id = store().openDraft({
       to: [{ name: 'Alice', email: 'alice@x.test' }],
       cc: [{ name: null, email: 'c@x.test' }],
     })
     render(<Harness id={id} />)
-    expect(await screen.findByText(/To: Alice/)).toBeInTheDocument()
-    expect(screen.getByText(/Cc: c@x.test/)).toBeInTheDocument()
+    expect(await screen.findByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('c@x.test')).toBeInTheDocument()
   })
 
-  it('shows no recipients summary for a blank draft', async () => {
-    openWindow('docked') // openDraft() with no to/cc
-    await screen.findByRole('dialog')
-    expect(screen.queryByText(/^To:/)).toBeNull()
+  it('adds a typed recipient to the To field', async () => {
+    const id = openWindow('docked')
+    const to = screen.getAllByRole('combobox')[0] as HTMLElement
+    await userEvent.setup().type(to, 'x@y.test{Enter}')
+    expect(store().drafts.get(id)?.to).toEqual([{ name: null, email: 'x@y.test' }])
   })
 
   it('edits the subject through the store', async () => {

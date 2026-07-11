@@ -311,6 +311,15 @@
     "forwardLabelFrom": "Von",
     "forwardLabelTo": "An",
     "forwardLabelSubject": "Betreff",
-    "forwardLabelDate": "Datum"
+    "forwardLabelDate": "Datum",
+    "bccLabel": "Blindkopie",
+    "showCcField": "Cc-Feld anzeigen",
+    "showBccField": "Bcc-Feld anzeigen",
+    "recipientRemove": "{{address}} entfernen",
+    "recipientInvalid": "Ungültige E-Mail-Adresse",
+    "recipientDidYouMean": "Meinten Sie {{suggestion}}?",
+    "recipientDidYouMeanApply": "{{suggestion}} verwenden",
+    "recipientMoveTo": "Verschieben nach {{field}}",
+    "recipientMoveMenu": "Empfängeroptionen"
   }
 }

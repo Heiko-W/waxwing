@@ -15,6 +15,7 @@ import {
   putEmails,
   putQueryCache,
   putThreads,
+  recordAddressStats,
   setSyncState,
 } from '../repo'
 import type { JmapPort } from './types'
@@ -112,6 +113,12 @@ export async function backfillMailbox(
   const result = await port.queryEmails({ ...spec, position: 0, limit, calculateTotal: true })
   const envelopes = await port.getEmailEnvelopes(result.ids)
   await putEmails(db, accountId, envelopes.list)
+  // Recents accumulation (M2.4) is best-effort — a failure must never break the backfill.
+  try {
+    await recordAddressStats(db, accountId, envelopes.list)
+  } catch {
+    /* non-critical */
+  }
   await fetchThreadsFor(port, db, accountId, envelopes.list)
 
   // Seed the Email sync state from the get so delta email-sync can advance it (the query result
@@ -174,6 +181,11 @@ export async function loadMore(
   if (fresh.length > 0) {
     const envelopes = await port.getEmailEnvelopes(fresh)
     await putEmails(db, accountId, envelopes.list)
+    try {
+      await recordAddressStats(db, accountId, envelopes.list)
+    } catch {
+      /* non-critical */
+    }
     await fetchThreadsFor(port, db, accountId, envelopes.list)
   }
 

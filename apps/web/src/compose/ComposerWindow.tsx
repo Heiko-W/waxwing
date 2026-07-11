@@ -10,7 +10,6 @@
  * explicit button; a dirty draft asks before discarding (a stub until M2.6 autosaves to Drafts).
  */
 
-import type { EmailAddress } from '@waxwing/jmap'
 import { Maximize2, Minimize2, Minus, X } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -19,21 +18,25 @@ import { Button, Dialog, IconButton, TextInput, useFocusTrap } from '../ui'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
 import type { EditorFactory } from './editor-engine'
+import { RecipientFields } from './RecipientFields'
 import { RichTextEditor } from './RichTextEditor'
+import type { RecipientSuggestionSource } from './recipient-suggestions'
 
 export interface ComposerWindowProps {
   readonly draft: DraftWindow
   readonly tier: LayoutTier
   /** Injectable editor factory (tests pass a fake; production uses the real Squire adapter). */
   readonly editorFactory?: EditorFactory | undefined
+  /** Injectable recipient-suggestion source (tests pass a fake; production uses the recents source). */
+  readonly recipientSuggestions?: RecipientSuggestionSource | undefined
 }
 
-/** `Name` (or the bare email) list, comma-joined — a read-only preview until M2.4's pill fields. */
-function formatAddrs(list: EmailAddress[]): string {
-  return list.map((address) => address.name || address.email).join(', ')
-}
-
-export function ComposerWindow({ draft, tier, editorFactory }: ComposerWindowProps) {
+export function ComposerWindow({
+  draft,
+  tier,
+  editorFactory,
+  recipientSuggestions,
+}: ComposerWindowProps) {
   const { t } = useTranslation()
   const setMode = useComposerStore((state) => state.setMode)
   const closeDraft = useComposerStore((state) => state.closeDraft)
@@ -140,20 +143,10 @@ export function ComposerWindow({ draft, tier, editorFactory }: ComposerWindowPro
           </div>
         </div>
 
-        {(draft.to.length > 0 || draft.cc.length > 0) && (
-          <div className={styles.recipientSummary}>
-            {draft.to.length > 0 && (
-              <span>
-                {t('compose.toLabel')}: {formatAddrs(draft.to)}
-              </span>
-            )}
-            {draft.cc.length > 0 && (
-              <span>
-                {t('compose.ccLabel')}: {formatAddrs(draft.cc)}
-              </span>
-            )}
-          </div>
-        )}
+        <RecipientFields
+          draft={draft}
+          {...(recipientSuggestions ? { suggestionSource: recipientSuggestions } : {})}
+        />
 
         <div className={styles.field}>
           <label className={styles.subjectLabel} htmlFor={subjectId}>

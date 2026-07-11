@@ -10,6 +10,7 @@ import type { Id, Mailbox, Thread } from '@waxwing/jmap'
 import Dexie from 'dexie'
 import {
   type AccountRecord,
+  type AddressStatRow,
   type BlobMetaRow,
   type EmailBodyRow,
   type EmailEnvelopeInput,
@@ -101,6 +102,107 @@ export async function putEmails(
   emails: EmailEnvelopeInput[],
 ): Promise<void> {
   await db.emails.bulkPut(emails.map((email) => toEmailRow(accountId, email)))
+}
+
+/** How many recency-ordered rows `suggestAddresses` scans before prefix-filtering (bounded work). */
+const ADDRESS_STAT_SCAN_CAP = 500
+
+interface FoldedStat {
+  email: string
+  name: string | null
+  sent: number
+  received: number
+  lastSeenAt: number
+}
+
+/**
+ * Accumulate recent-correspondent stats from synced envelopes (M2.4, FR-CMP-05). `lastSeenAt` is
+ * `max(receivedAt)` (monotonic → idempotent for recency); counts are additive (approximate on
+ * re-sync — only relative rank matters). When `ownEmailsLower` is given, a message whose `from` is
+ * the user counts as SENT (harvest to/cc) else RECEIVED (harvest from/to/cc/replyTo — `bcc` is not
+ * on the stored envelope). Never throws for callers on the sync path — they wrap it best-effort.
+ */
+export async function recordAddressStats(
+  db: ReplicaDb,
+  accountId: Id,
+  emails: readonly EmailEnvelopeInput[],
+  ownEmailsLower?: ReadonlySet<string>,
+): Promise<void> {
+  const folded = new Map<string, FoldedStat>()
+  for (const email of emails) {
+    const receivedAt = (email.receivedAt ? Date.parse(email.receivedAt) : 0) || 0
+    const isSent =
+      ownEmailsLower !== undefined &&
+      (email.from ?? []).some((address) => ownEmailsLower.has(address.email.toLowerCase()))
+    const harvest = isSent
+      ? [...(email.to ?? []), ...(email.cc ?? [])]
+      : [...(email.from ?? []), ...(email.to ?? []), ...(email.cc ?? []), ...(email.replyTo ?? [])]
+    for (const address of harvest) {
+      const key = address.email.toLowerCase()
+      if (key === '') continue
+      const entry = folded.get(key) ?? {
+        email: address.email,
+        name: null,
+        sent: 0,
+        received: 0,
+        lastSeenAt: 0,
+      }
+      if (isSent) entry.sent += 1
+      else entry.received += 1
+      if (receivedAt >= entry.lastSeenAt) {
+        entry.lastSeenAt = receivedAt
+        entry.email = address.email
+      }
+      if ((entry.name === null || entry.name === '') && address.name) entry.name = address.name
+      folded.set(key, entry)
+    }
+  }
+  if (folded.size === 0) return
+
+  await db.transaction('rw', db.addressStats, async () => {
+    const entries = [...folded.entries()]
+    const existing = await db.addressStats.bulkGet(
+      entries.map(([emailLower]) => [accountId, emailLower] as [Id, string]),
+    )
+    const rows: AddressStatRow[] = entries.map(([emailLower, entry], index) => {
+      const prior = existing[index]
+      const newer = entry.lastSeenAt >= (prior?.lastSeenAt ?? 0)
+      return {
+        accountId,
+        emailLower,
+        email: newer ? entry.email : (prior?.email ?? entry.email),
+        name: entry.name ?? prior?.name ?? null,
+        sentCount: (prior?.sentCount ?? 0) + entry.sent,
+        receivedCount: (prior?.receivedCount ?? 0) + entry.received,
+        lastSeenAt: Math.max(prior?.lastSeenAt ?? 0, entry.lastSeenAt),
+      }
+    })
+    await db.addressStats.bulkPut(rows)
+  })
+}
+
+/**
+ * Recency-ordered candidate rows for a recipient-autocomplete prefix (empty prefix → most recent).
+ * Ranking (frequency × recency) is applied by the compose-side source, so this stays a pure sync
+ * read; it scans at most {@link ADDRESS_STAT_SCAN_CAP} recent rows before prefix-filtering.
+ */
+export async function suggestAddresses(
+  db: ReplicaDb,
+  accountId: Id,
+  prefix: string,
+): Promise<AddressStatRow[]> {
+  const candidates = await db.addressStats
+    .where('[accountId+lastSeenAt]')
+    .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
+    .reverse()
+    .limit(ADDRESS_STAT_SCAN_CAP)
+    .toArray()
+  const needle = prefix.trim().toLowerCase()
+  if (needle === '') return candidates
+  return candidates.filter(
+    (row) =>
+      row.emailLower.startsWith(needle) || (row.name?.toLowerCase().includes(needle) ?? false),
+  )
 }
 
 /**

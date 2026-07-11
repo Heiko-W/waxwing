@@ -72,4 +72,24 @@ describe('composer store', () => {
     expect(store().drafts.has(a)).toBe(true)
     expect(store().focusedId).toBe(a)
   })
+
+  it('setRecipients replaces a field and marks the draft dirty', () => {
+    const id = store().openDraft()
+    store().setRecipients(id, 'to', [{ name: null, email: 'a@x.com' }])
+    expect(store().drafts.get(id)?.to).toEqual([{ name: null, email: 'a@x.com' }])
+    expect(store().drafts.get(id)?.dirty).toBe(true)
+  })
+
+  it('moveRecipient moves one address between fields, deduping in the target', () => {
+    const id = store().openDraft({
+      to: [
+        { name: null, email: 'a@x.com' },
+        { name: null, email: 'b@x.com' },
+      ],
+      cc: [{ name: null, email: 'B@X.com' }],
+    })
+    store().moveRecipient(id, 'to', 'cc', 1)
+    expect(store().drafts.get(id)?.to).toEqual([{ name: null, email: 'a@x.com' }])
+    expect(store().drafts.get(id)?.cc).toEqual([{ name: null, email: 'B@X.com' }])
+  })
 })

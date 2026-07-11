@@ -6,18 +6,32 @@
  * `ComposerHost` is intentionally NOT re-exported here — it is loaded only via a lazy `import()`.
  */
 
+export {
+  formatAddress,
+  isPlausibleEmail,
+  parseAddressList,
+} from './address-validation'
 export { cleanOutgoingHtml } from './clean-html'
 export {
   type ComposerStore,
   type DraftMode,
   type DraftWindow,
   MAX_OPEN,
+  type RecipientField,
   useComposerStore,
 } from './composer-store'
 export type { ActiveFormats, EditorEngine, EditorFactory } from './editor-engine'
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
 export { NEW_MESSAGE_BTN_ID, NewMessageButton } from './NewMessageButton'
+export { RecipientFields, type RecipientFieldsProps } from './RecipientFields'
 export { RichTextEditor, type RichTextEditorProps } from './RichTextEditor'
+export {
+  combineSuggestionSources,
+  createRecentsSuggestionSource,
+  EMPTY_SUGGESTION_SOURCE,
+  type RecipientSuggestionSource,
+  scoreAddressStat,
+} from './recipient-suggestions'
 export {
   buildReplyDraft,
   type DraftAttachment,
@@ -34,3 +48,4 @@ export {
   stripSubjectPrefix,
   threadingHeaders,
 } from './reply'
+export { COMMON_EMAIL_DOMAINS, suggestDomainCorrection } from './typo-heuristic'

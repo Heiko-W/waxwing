@@ -35,11 +35,12 @@ function account(id: string): AccountRecord {
 }
 
 describe('ReplicaDb schema', () => {
-  it('declares all M1.2 tables', () => {
+  it('declares all replica tables', () => {
     const names = db.tables.map((table) => table.name).sort()
     expect(names).toEqual(
       [
         'accounts',
+        'addressStats',
         'blobsMeta',
         'emailBodies',
         'emails',

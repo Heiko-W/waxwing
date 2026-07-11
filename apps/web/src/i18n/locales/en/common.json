@@ -311,6 +311,15 @@
     "forwardLabelFrom": "From",
     "forwardLabelTo": "To",
     "forwardLabelSubject": "Subject",
-    "forwardLabelDate": "Date"
+    "forwardLabelDate": "Date",
+    "bccLabel": "Bcc",
+    "showCcField": "Show Cc field",
+    "showBccField": "Show Bcc field",
+    "recipientRemove": "Remove {{address}}",
+    "recipientInvalid": "Invalid email address",
+    "recipientDidYouMean": "Did you mean {{suggestion}}?",
+    "recipientDidYouMeanApply": "Use {{suggestion}}",
+    "recipientMoveTo": "Move to {{field}}",
+    "recipientMoveMenu": "Recipient options"
   }
 }

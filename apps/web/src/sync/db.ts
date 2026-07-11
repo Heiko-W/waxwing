@@ -216,6 +216,24 @@ export interface LocalPrefRow {
   value: unknown
 }
 
+/**
+ * Recent-correspondent accumulation (M2.4, FR-CMP-05) — the recents autocomplete source. Harvested
+ * from synced envelopes; `lastSeenAt` (max receivedAt ms) is monotonic so re-syncs stay idempotent
+ * for recency, while the counts are approximate (may drift up on re-sync) — only relative rank matters.
+ */
+export interface AddressStatRow {
+  accountId: Id
+  /** Identity/key half — lowercased email. */
+  emailLower: string
+  /** Best display casing (most-recent sighting). */
+  email: string
+  /** Best-known display name. */
+  name: string | null
+  sentCount: number
+  receivedCount: number
+  lastSeenAt: number
+}
+
 // ---------------------------------------------------------------------------------------------
 // The database.
 // ---------------------------------------------------------------------------------------------
@@ -231,6 +249,7 @@ export class ReplicaDb extends Dexie {
   queryCache!: Table<QueryCacheRow, [Id, string]>
   outbox!: Table<OutboxRow, [Id, Id]>
   localPrefs!: Table<LocalPrefRow, [Id, string]>
+  addressStats!: Table<AddressStatRow, [Id, string]>
 
   constructor(name: string = REPLICA_DB_NAME) {
     super(name)
@@ -246,6 +265,11 @@ export class ReplicaDb extends Dexie {
       queryCache: '[accountId+key], accountId, [accountId+lastUsedAt]',
       outbox: '[accountId+id], accountId, [accountId+createdAt], [accountId+status]',
       localPrefs: '[accountId+key], accountId',
+    })
+    // v2 (M2.4) — additive: the new addressStats store only. A brand-new store needs no `.upgrade()`
+    // (no data transform); Dexie carries every unspecified store forward unchanged.
+    this.version(2).stores({
+      addressStats: '[accountId+emailLower], accountId, [accountId+lastSeenAt]',
     })
   }
 }

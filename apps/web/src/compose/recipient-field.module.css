@@ -1,0 +1,166 @@
+/* Recipient fields (M2.4). Tokens only. The listbox is an absolutely-positioned popover. */
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.field {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--waxwing-space-2);
+}
+
+.label {
+  flex: none;
+  min-inline-size: 2.5rem;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.pills {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  min-inline-size: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-full);
+  background-color: var(--waxwing-surface-2);
+  font-size: var(--waxwing-text-sm);
+}
+
+.pillInvalid {
+  border-color: var(--waxwing-danger);
+  color: var(--waxwing-danger);
+}
+
+.pillText {
+  overflow: hidden;
+  max-inline-size: 16rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pillRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--waxwing-radius-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pillRemove:hover {
+  background-color: var(--waxwing-surface);
+}
+
+.pillIcon {
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+}
+
+.input {
+  flex: 1;
+  min-inline-size: 6rem;
+  border: 0;
+  padding: var(--waxwing-space-1) 0;
+  background: transparent;
+  color: var(--waxwing-text);
+  font: inherit;
+}
+
+.input:focus {
+  outline: none;
+}
+
+.listbox {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 0;
+  z-index: 5;
+  margin: 0;
+  padding: var(--waxwing-space-1);
+  list-style: none;
+  min-inline-size: 14rem;
+  max-block-size: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  cursor: pointer;
+}
+
+.optionActive {
+  background-color: var(--waxwing-surface-2);
+}
+
+.optionName {
+  font-size: var(--waxwing-text-sm);
+}
+
+.optionEmail {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.didYouMean {
+  margin: 0;
+  padding-inline-start: 2.5rem;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.didYouMeanApply {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--waxwing-accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.fieldToggles {
+  display: flex;
+  gap: var(--waxwing-space-2);
+  padding-inline-start: 2.5rem;
+}
+
+.fieldToggle {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  cursor: pointer;
+}
+
+.fieldToggle:hover {
+  color: var(--waxwing-text);
+}

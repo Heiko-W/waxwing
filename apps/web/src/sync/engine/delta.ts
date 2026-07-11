@@ -22,6 +22,7 @@ import {
   putMailboxes,
   putQueryCache,
   putThreads,
+  recordAddressStats,
   setSyncState,
 } from '../repo'
 import { CannotCalculateChangesError, type EngineClock, type JmapPort } from './types'
@@ -188,6 +189,12 @@ export async function syncEmails(
   if (acc.changed.length > 0) {
     const { list } = await port.getEmailEnvelopes(acc.changed)
     await putEmails(db, accountId, list)
+    // Recents accumulation (M2.4) is best-effort — never break delta sync on a stats failure.
+    try {
+      await recordAddressStats(db, accountId, list)
+    } catch {
+      /* non-critical */
+    }
   }
   if (acc.destroyed.length > 0) await deleteEmails(db, accountId, acc.destroyed)
   await setSyncState(db, accountId, 'Email', acc.newState, clock.now())

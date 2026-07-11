@@ -14,13 +14,16 @@ import styles from './composer.module.css'
 import { useComposerStore } from './composer-store'
 import type { EditorFactory } from './editor-engine'
 import { NEW_MESSAGE_BTN_ID } from './NewMessageButton'
+import type { RecipientSuggestionSource } from './recipient-suggestions'
 
 export interface ComposerHostProps {
   /** Injectable editor factory (tests pass a fake); production omits it (real Squire adapter). */
   readonly editorFactory?: EditorFactory | undefined
+  /** Injectable recipient-suggestion source (tests/E2E); production omits it (recents source). */
+  readonly recipientSuggestions?: RecipientSuggestionSource | undefined
 }
 
-export default function ComposerHost({ editorFactory }: ComposerHostProps) {
+export default function ComposerHost({ editorFactory, recipientSuggestions }: ComposerHostProps) {
   const tier = useLayoutTier()
   const drafts = useComposerStore((state) => state.drafts)
   const focusedId = useComposerStore((state) => state.focusedId)
@@ -50,6 +53,7 @@ export default function ComposerHost({ editorFactory }: ComposerHostProps) {
             draft={draft}
             tier={tier}
             {...(editorFactory ? { editorFactory } : {})}
+            {...(recipientSuggestions ? { recipientSuggestions } : {})}
           />
         ))}
       </div>

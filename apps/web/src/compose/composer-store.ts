@@ -16,6 +16,9 @@ import type { DraftAttachment } from './reply'
 
 export type DraftMode = 'docked' | 'expanded' | 'minimized'
 
+/** The three recipient fields (M2.4). */
+export type RecipientField = 'to' | 'cc' | 'bcc'
+
 export interface DraftWindow {
   readonly id: string
   mode: DraftMode
@@ -67,6 +70,10 @@ export interface ComposerActions {
   setMode(id: string, mode: DraftMode): void
   updateBody(id: string, body: string): void
   updateSubject(id: string, subject: string): void
+  /** Replace a whole recipient field (the pill field adds/removes by passing the new array). */
+  setRecipients(id: string, field: RecipientField, addrs: EmailAddress[]): void
+  /** Move one recipient from one field to another (keyboard "move to Cc/Bcc"), deduping in target. */
+  moveRecipient(id: string, from: RecipientField, to: RecipientField, index: number): void
   focusDraft(id: string): void
 }
 
@@ -136,6 +143,30 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
     if (current === undefined) return
     const next = new Map(get().drafts)
     next.set(id, { ...current, subject, dirty: true })
+    set({ drafts: next })
+  },
+
+  setRecipients(id, field, addrs) {
+    const current = get().drafts.get(id)
+    if (current === undefined) return
+    const next = new Map(get().drafts)
+    next.set(id, { ...current, [field]: addrs, dirty: true })
+    set({ drafts: next })
+  },
+
+  moveRecipient(id, from, to, index) {
+    const current = get().drafts.get(id)
+    if (current === undefined || from === to) return
+    const fromList = [...current[from]]
+    const moved = fromList[index]
+    if (moved === undefined) return
+    fromList.splice(index, 1)
+    const toList = [...current[to]]
+    if (!toList.some((addr) => addr.email.toLowerCase() === moved.email.toLowerCase())) {
+      toList.push(moved)
+    }
+    const next = new Map(get().drafts)
+    next.set(id, { ...current, [from]: fromList, [to]: toList, dirty: true })
     set({ drafts: next })
   },
 

@@ -8,6 +8,7 @@
 
 export {
   type AccountRecord,
+  type AddressStatRow,
   type BlobMetaRow,
   clearAccount,
   type EmailBodyRow,
@@ -42,6 +43,7 @@ export {
   useMailboxes,
   useQueryWindow,
   useReplica,
+  useReplicaOptional,
   useReplicaQuery,
   useThread,
 } from './react'

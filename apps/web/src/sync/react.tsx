@@ -43,6 +43,11 @@ export function useReplica(): ReplicaContextValue {
   return context
 }
 
+/** Like {@link useReplica} but returns `null` outside a provider — for optional consumers/tests. */
+export function useReplicaOptional(): ReplicaContextValue | null {
+  return useContext(ReplicaContext)
+}
+
 /**
  * `undefined` while the first query resolves, then the value; re-runs on any matching write.
  * A thin typed alias over dexie-react-hooks so callers don't import it directly.
