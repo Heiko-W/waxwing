@@ -81,6 +81,8 @@ export class SyncEngine {
   private offlineUnsub: (() => void) | undefined
   private busUnsub: (() => void) | undefined
   private safetyTimer: number | undefined
+  /** Wakes the leader when the earliest undo-send `notBefore` grace elapses (M2.8). */
+  private sendWakeTimer: number | undefined
 
   private isLeader = false
   private started = false
@@ -134,6 +136,7 @@ export class SyncEngine {
     if (!this.started) return
     this.stopController.abort()
     if (this.safetyTimer !== undefined) this.clock.clearTimeout(this.safetyTimer)
+    if (this.sendWakeTimer !== undefined) this.clock.clearTimeout(this.sendWakeTimer)
     this.push?.close()
     this.busUnsub?.()
     this.offlineUnsub?.()
@@ -165,6 +168,49 @@ export class SyncEngine {
     this.rollbacks.set(id, rollback)
     await this.refreshPendingCount()
     if (this.isLeader) void this.sync()
+  }
+
+  /**
+   * Undo-send (M2.8): if the send is still within its grace window (a `pending` row with a future
+   * `notBefore`), delete the queued submission, roll back the optimistic source flag, and reset the
+   * draft to editable. Returns `true` if it was canceled, `false` if it already fired / is firing.
+   */
+  async cancelSend(id: Id): Promise<boolean> {
+    const row = await this.db.outbox.get([this.accountId, id])
+    if (row === undefined || row.status !== 'pending') return false
+    if (row.notBefore === null || row.notBefore <= this.clock.now()) return false
+    await this.db.outbox.delete([this.accountId, id])
+    await this.rollbacks.get(id)?.()
+    this.rollbacks.delete(id)
+    const intent = row.payload as OutboxIntent
+    if (intent.kind === 'sendEmail') {
+      await this.db.drafts.update([this.accountId, intent.localId], {
+        status: 'pending',
+        lastError: null,
+      })
+    }
+    await this.scheduleSendWake()
+    await this.refreshPendingCount()
+    return true
+  }
+
+  /** Arm/refresh the timer that wakes the leader when the earliest undo-send grace elapses. */
+  private async scheduleSendWake(): Promise<void> {
+    if (this.sendWakeTimer !== undefined) {
+      this.clock.clearTimeout(this.sendWakeTimer)
+      this.sendWakeTimer = undefined
+    }
+    if (this.stopController.signal.aborted) return
+    const now = this.clock.now()
+    const futures = (await pendingOutbox(this.db, this.accountId))
+      .filter((row) => row.status === 'pending' && row.notBefore !== null && row.notBefore > now)
+      .map((row) => row.notBefore as number)
+    if (futures.length === 0) return
+    const delay = Math.max(0, Math.min(...futures) - now)
+    this.sendWakeTimer = this.clock.setTimeout(() => {
+      this.sendWakeTimer = undefined
+      if (this.isLeader) void this.sync()
+    }, delay)
   }
 
   /** Page older messages into a watched query window. */
@@ -318,7 +364,11 @@ export class SyncEngine {
       await syncThreads(this.port, this.db, this.accountId, this.clock)
       await syncEmails(this.port, this.db, this.accountId, this.clock)
       await this.reconcileWatched(forceFull)
-      await replayOutbox(this.port, this.db, this.accountId, { rollbacks: this.rollbacks })
+      await replayOutbox(this.port, this.db, this.accountId, {
+        rollbacks: this.rollbacks,
+        now: this.clock.now(),
+      })
+      await this.scheduleSendWake()
       const pending = await pendingOutbox(this.db, this.accountId)
       this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), pendingActions: pending.length })
     } catch (error) {

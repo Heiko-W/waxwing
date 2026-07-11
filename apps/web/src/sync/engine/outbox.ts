@@ -14,6 +14,7 @@
 
 import {
   type EmailCreate,
+  type Envelope,
   type Id,
   JmapMethodError,
   type Mailbox,
@@ -28,6 +29,7 @@ import {
   toMailboxRow,
 } from '../db'
 import {
+  deleteDraft,
   deleteEmails,
   deleteMailbox,
   emailsByIds,
@@ -72,6 +74,21 @@ export type OutboxIntent =
       readonly email: EmailCreate
     }
   | { readonly kind: 'discardDraft'; readonly localId: string; readonly serverEmailId: Id }
+  | {
+      // Send a draft (M2.8): create the Email + submit it in ONE request (port.submitEmail), with
+      // `onSuccessUpdateEmail` refiling Drafts→Sent + clearing `$draft`. Dispatched with a `notBefore`
+      // grace timestamp so an Undo can delete the row before it replays.
+      readonly kind: 'sendEmail'
+      readonly localId: string
+      readonly emailCreationId: string
+      readonly submissionCreationId: string
+      readonly priorServerId: Id | null
+      readonly email: EmailCreate
+      readonly identityId: Id
+      readonly envelope: Envelope
+      readonly onSuccessUpdateEmail: PatchObject
+      readonly source: { readonly emailId: Id; readonly keyword: '$answered' | '$forwarded' } | null
+    }
 
 export type Rollback = () => Promise<void>
 
@@ -203,6 +220,24 @@ export async function applyOptimistic(
       // Drafts are edit-state, not envelope cache: the local `drafts` row is written durably by the
       // persist bridge / discard handler, not optimistically into `emails`. Nothing to undo here.
       return async () => {}
+    case 'sendEmail': {
+      // No synthetic Sent row (the real copy arrives via delta in a few ms). The only optimistic
+      // replica change is the reply/forward source flag ($answered/$forwarded), rolled back on failure.
+      if (intent.source === null) return async () => {}
+      const originals = present(await emailsByIds(db, accountId, [intent.source.emailId]))
+      const keyword = intent.source.keyword
+      await putEmails(
+        db,
+        accountId,
+        originals.map((row) => ({
+          ...toEnvelope(row),
+          keywords: { ...row.keywords, [keyword]: true },
+        })),
+      )
+      return async () => {
+        await putEmails(db, accountId, originals.map(toEnvelope))
+      }
+    }
   }
 }
 
@@ -215,6 +250,8 @@ export interface EnqueueOptions {
   readonly id: Id
   readonly ifInState?: string | null
   readonly now: number
+  /** Epoch ms before which replay must not fire (M2.8 undo-send grace); omit for immediate replay. */
+  readonly notBefore?: number | null
 }
 
 /** Apply optimistically + persist the intent. Returns the id and its in-memory rollback. */
@@ -235,6 +272,7 @@ export async function enqueueAction(
     attempts: 0,
     createdAt: options.now,
     lastError: null,
+    notBefore: options.notBefore ?? null,
   }
   await enqueue(db, row)
   return { id: options.id, rollback }
@@ -293,6 +331,20 @@ function executeIntent(
       })
     case 'discardDraft':
       return port.setEmails({ destroy: [intent.serverEmailId], ifInState })
+    case 'sendEmail':
+      return port.submitEmail({
+        emailCreationId: intent.emailCreationId,
+        email: intent.email,
+        destroyServerDraftId: intent.priorServerId,
+        submissionCreationId: intent.submissionCreationId,
+        identityId: intent.identityId,
+        envelope: intent.envelope,
+        onSuccessUpdateEmail: intent.onSuccessUpdateEmail,
+        sourceUpdate: intent.source
+          ? { id: intent.source.emailId, patch: { [`keywords/${intent.source.keyword}`]: true } }
+          : null,
+        ifInState,
+      })
   }
 }
 
@@ -322,6 +374,10 @@ function rejection(intent: OutboxIntent, result: PortSetResult): string | null {
       return first(result.notCreated, [intent.creationId])
     case 'discardDraft':
       return first(result.notDestroyed, [intent.serverEmailId])
+    case 'sendEmail':
+      // The result is the EmailSubmission/set response — a rejected submission (bad recipient, quota,
+      // size) lands in notCreated under the submission creation id.
+      return first(result.notCreated, [intent.submissionCreationId])
   }
 }
 
@@ -405,6 +461,34 @@ async function stampDraftError(
   await db.drafts.update([accountId, intent.localId], { status: 'error', lastError: message })
 }
 
+/**
+ * On a confirmed send, drop the local drafts edit-state row (M2.8 — the Sent copy arrives via delta).
+ * `onSuccessUpdateEmail` (Drafts→Sent, clear `$draft`) is best-effort per RFC 8621 §7.5: if the
+ * submission is accepted but the refile patch fails, the sent message lingers in Drafts flagged
+ * `$draft` (a misfile the user can correct), but it was still sent — so we still drop the edit-state.
+ */
+async function reconcileSend(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  result: PortSetResult,
+): Promise<void> {
+  if (intent.kind !== 'sendEmail') return
+  if (!result.created[intent.submissionCreationId]) return
+  await deleteDraft(db, accountId, intent.localId)
+}
+
+/** Mark the local drafts row `error` when a send was rejected (M2.8) — use-draft-restore reopens it. */
+async function stampSendError(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  message: string,
+): Promise<void> {
+  if (intent.kind !== 'sendEmail') return
+  await db.drafts.update([accountId, intent.localId], { status: 'error', lastError: message })
+}
+
 /** Rewrite an intent's mailbox target from `fromId` to `toId`; returns null when it referenced neither. */
 function rewriteIntentTarget(intent: OutboxIntent, fromId: Id, toId: Id): OutboxIntent | null {
   switch (intent.kind) {
@@ -426,6 +510,8 @@ function rewriteIntentTarget(intent: OutboxIntent, fromId: Id, toId: Id): Outbox
 export interface ReplayOptions {
   readonly rollbacks?: Map<Id, Rollback>
   readonly maxAttempts?: number
+  /** Wall clock for the undo-send `notBefore` gate (M2.8); defaults to `Date.now()`. */
+  readonly now?: number
 }
 
 export interface ReplaySummary {
@@ -445,15 +531,30 @@ export async function replayOutbox(
 ): Promise<ReplaySummary> {
   const maxAttempts = options.maxAttempts ?? 5
   const rollbacks = options.rollbacks
-  // Recover intents stranded `inflight` by a leader that was killed mid-request; re-sending an
-  // idempotent `set` is safe, and otherwise the optimistic change would never reach the server.
-  await db.outbox
+  const now = options.now ?? Date.now()
+  // Recover intents stranded `inflight` by a leader killed mid-request. Re-sending an idempotent
+  // `set` is safe → back to `pending`. But EmailSubmission is NOT idempotent: a re-sent `sendEmail`
+  // could deliver the message twice, so a stranded send is marked `error` ("was it sent?") instead of
+  // auto-resent (M2.8) — the user decides via the reopened draft.
+  const stranded = await db.outbox
     .where('[accountId+status]')
     .equals([accountId, 'inflight'])
-    .modify({ status: 'pending' })
-  // Replay ONLY `pending` rows; a terminal `error` row is a dead-letter (retry UX = M3.3) and must
-  // never be re-sent, or one poison intent would be reprocessed on every sweep.
-  const rows = (await pendingOutbox(db, accountId)).filter((row) => row.status === 'pending')
+    .toArray()
+  for (const row of stranded) {
+    const intent = row.payload as OutboxIntent
+    if (intent.kind === 'sendEmail') {
+      const message = 'interrupted before confirmation — may or may not have sent'
+      await stampSendError(db, accountId, intent, message)
+      await db.outbox.update([accountId, row.id], { status: 'error', lastError: message })
+    } else {
+      await db.outbox.update([accountId, row.id], { status: 'pending' })
+    }
+  }
+  // Replay ONLY `pending` rows whose undo-send grace (`notBefore`) has elapsed; a terminal `error` row
+  // is a dead-letter (retry UX = M3.3) and must never be re-sent.
+  const rows = (await pendingOutbox(db, accountId)).filter(
+    (row) => row.status === 'pending' && (row.notBefore == null || row.notBefore <= now),
+  )
   let replayed = 0
   let failed = 0
 
@@ -467,12 +568,14 @@ export async function replayOutbox(
         await rollbacks?.get(row.id)?.()
         rollbacks?.delete(row.id)
         await stampDraftError(db, accountId, intent, rejected)
+        await stampSendError(db, accountId, intent, rejected)
         await db.outbox.update([accountId, row.id], { status: 'error', lastError: rejected })
         failed += 1
         continue
       }
       await reconcileCreate(db, accountId, intent, result)
       await reconcileDraftSave(db, accountId, intent, result)
+      await reconcileSend(db, accountId, intent, result)
       await db.outbox.delete([accountId, row.id])
       rollbacks?.delete(row.id)
       replayed += 1
@@ -485,6 +588,7 @@ export async function replayOutbox(
         await rollbacks?.get(row.id)?.()
         rollbacks?.delete(row.id)
         await stampDraftError(db, accountId, intent, message)
+        await stampSendError(db, accountId, intent, message)
         await db.outbox.update([accountId, row.id], { status: 'error', lastError: message })
         failed += 1
         continue
@@ -496,6 +600,7 @@ export async function replayOutbox(
         await rollbacks?.get(row.id)?.()
         rollbacks?.delete(row.id)
         await stampDraftError(db, accountId, intent, message)
+        await stampSendError(db, accountId, intent, message)
         await db.outbox.update([accountId, row.id], {
           status: 'error',
           attempts,

@@ -336,6 +336,25 @@
     "attachTotalTooLarge": "Attachments exceed the {{max}} limit",
     "attachQuota": "Upload limit reached — please try again later",
     "attachNetworkError": "Upload failed — check your connection",
-    "dropHint": "Drop files to attach"
+    "dropHint": "Drop files to attach",
+    "send": "Send",
+    "sendShortcut": "Send (⌘↵)",
+    "sending": "Sending…",
+    "sendUndo": "Undo",
+    "sendUndoToast": "Sending message…",
+    "sendCanceled": "Send canceled",
+    "sendNoIdentity": "Choose a From address before sending",
+    "sendNoRecipients": "Add at least one recipient",
+    "sendNoSentMailbox": "No Sent folder — cannot send yet",
+    "sendWaitUploads": "Wait for uploads to finish",
+    "sendErrorRecipient": "Some recipients were rejected: {{detail}}",
+    "sendErrorQuota": "Message not sent — mailbox is over quota",
+    "sendErrorSize": "Message too large to send",
+    "sendErrorGeneric": "Message could not be sent — it's saved in Drafts",
+    "attachMentionTitle": "Send without attachment?",
+    "attachMentionBody": "You mentioned an attachment but none is attached.",
+    "attachMentionSend": "Send anyway",
+    "attachMentionCancel": "Go back",
+    "attachMentionKeywords": ["attach", "attached", "attachment", "enclosed", "see the file"]
   }
 }

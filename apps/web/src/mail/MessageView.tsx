@@ -152,7 +152,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         forwardHeaderBlock,
       })
       const attachments = kind === 'forward' && body !== undefined ? forwardAttachments(body) : []
-      openDraft({ ...init, attachments })
+      openDraft({
+        ...init,
+        attachments,
+        sourceEmailId: init.sourceEmailId,
+        sourceFlag: init.sourceKind === 'forward' ? '$forwarded' : '$answered',
+      })
     },
     [isHtml, sanitized, joinedHtml, email, textBody, own, t, dateLabel, name, body, openDraft],
   )

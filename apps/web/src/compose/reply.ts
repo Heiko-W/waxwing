@@ -7,7 +7,7 @@
  * send time; here we only emit the HTML `<blockquote>` the editor seeds with.
  */
 
-import type { EmailAddress } from '@waxwing/jmap'
+import type { EmailAddress, Id } from '@waxwing/jmap'
 import type { EmailBodyRow } from '../sync'
 import { plainTextToHtml } from './html-to-text'
 
@@ -15,6 +15,7 @@ export type ReplyKind = 'reply' | 'replyAll' | 'forward'
 
 /** The message subset the reply/forward logic reads (an `EmailRow` is assignable to this). */
 export interface ReplySource {
+  readonly id: Id
   readonly from: EmailAddress[] | null
   readonly to: EmailAddress[] | null
   readonly cc: EmailAddress[] | null
@@ -177,6 +178,9 @@ export interface ReplyDraftInit {
   readonly inReplyTo: string[] | null
   readonly references: string[] | null
   readonly fromIdentityHint: string | undefined
+  /** The source message id + kind — carried so a successful send flags it $answered/$forwarded (M2.8). */
+  readonly sourceEmailId: Id
+  readonly sourceKind: ReplyKind
 }
 
 /** Single entry point: build the full draft init for a reply/reply-all/forward of `source`. */
@@ -216,5 +220,7 @@ export function buildReplyDraft(input: {
     inReplyTo,
     references,
     fromIdentityHint: inferFromIdentity(source, input.ownAddresses),
+    sourceEmailId: source.id,
+    sourceKind: kind,
   }
 }

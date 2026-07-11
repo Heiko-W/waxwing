@@ -25,6 +25,8 @@ export function serializeDraft(draft: DraftWindow): SerializedDraft {
     fromIdentityId: draft.fromIdentityId ?? null,
     fromIdentityHint: draft.fromIdentityHint ?? null,
     attachments: draft.attachments,
+    sourceEmailId: draft.sourceEmailId ?? null,
+    sourceFlag: draft.sourceFlag ?? null,
   }
 }
 
@@ -43,6 +45,8 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
     fromIdentityId: content.fromIdentityId ?? undefined,
     fromIdentityHint: content.fromIdentityHint ?? undefined,
     attachments: content.attachments,
+    sourceEmailId: content.sourceEmailId ?? undefined,
+    sourceFlag: content.sourceFlag ?? undefined,
   }
 }
 

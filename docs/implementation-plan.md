@@ -128,7 +128,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M2.5 | Identities & signatures | S | M2.2 | done | **2026-07-11.** `@waxwing/jmap`: RFC 8621 §6 `Identity` type + `Identity/get` method (`types/submission.ts`, `methods.ts`). Replica: `identities` store (Dexie `version(3)`, additive) + `useIdentities` + `putIdentities`/`identitiesForAccount`; engine does a one-shot `Identity/get` after `syncMailboxes` (guarded, refetched per session; `Identity/changes` deferred). Composer: pure `signature.ts` (marker-based `applySignature`/`replaceSignature`, `signatureHtmlForIdentity`, `pickDefaultIdentity`) + `FromField` (native-Select From picker, shown only when >1 identity; seeds the default identity's signature above the quote with `markDirty:false`, swaps in place on change preserving user text, respects a deleted signature). Store `fromIdentityId` + `setFromIdentity`. +20 tests (733 total, 89 files); 185.9 KB gz. **Build-infra: `pnpm verify` now runs `build:libs` first** (builds jmap+mail-html `dist` — M2.5 is the first jmap-package API change the web app consumes, and `dist` is gitignored/on-demand, so verify must be self-contained). Owner-default decisions (signature above quote, one-shot fetch, keep-deleted-signature, default = hint-match else primary). |
 | M2.6 | Drafts autosave (server + local, crash-safe) | M | M2.2, M1.3 | done | **2026-07-11.** Crash-safe drafts. `sync/`: new **`drafts`** store (`ReplicaDb.version(4)`, keys `[accountId+localId]` + `[accountId+serverEmailId]` + `[accountId+updatedAt]`), `DraftRow`/`SerializedDraft`/`DraftAttachmentLike` types, repo CRUD (`putDraft`/`getDraft`/`getDraftByServerId`/`listDrafts`/`deleteDraft`). Outbox: `saveDraft` (**create-new + destroy-old in one `Email/set`** — RFC 8621 §4.6 / RFC 8620 §5.3 gap-free) + `discardDraft` intents, coalesced by stable id `draft:<localId>`; `reconcileDraftSave` stamps `serverEmailId`+`synced`, `stampDraftError` marks `error`; `setEmails` gained `create`. `compose/`: pure `draft-email` (serialize/deserialize/isEmptyDraft/toEmailCreate/toDraftInit), `use-draft-sync` (durable flush + close/discard), `use-draft-autosave` (3 s idle + `visibilitychange` flush; mounted in ComposerHost), `use-draft-restore` (unsynced drafts → minimized chips; mounted in AppShell), `use-draft-opener` (open-from-Drafts, local copy keeps `bcc`); `openDraft` accepts a fixed `id` (idempotent reopen). `ComposerWindow`: **Close = save to Drafts** (Apple ⌘W), **Discard = delete** (trash button; empty discards silently), **Esc = de-escalate** (full-screen→docked→minimized, no data loss). `MessageList`/`Conversation` route `$draft` clicks to the composer. i18n `compose.discard` + `reading.editDraft`/`draftLead`; discard copy now "permanently deleted". +30 tests (754 total, 91 files); **entry chunk 187.4 KB gz** (≤ 300 budget). |
 | M2.7 | Attachments & inline images (upload pipeline) | M | M2.2, SP.1 | done | **2026-07-11.** Composer attachments + inline images. `compose/`: pure `attachment-upload` (validate/`classifyUploadError`/`BlobUploader` seam), `inline-images` (cid↔objectURL canonicalize/resolve/prune), `inline-image-registry` (module-scoped `cid→objectURL`, survives minimize/restore), `use-attachment-upload` (concurrency pool bounded by `maxConcurrentUpload`, per-file progress/cancel/retry, optimistic inline insert, `makeBlobUploader`), `AttachmentChips` (chip row; inline images live in the body, not chips). `RichTextEditor` gains a ref handle (`insertInlineImage`) + `onAddFiles` paste + `resolveInlineImage`; the `lastEmittedRef` guard keeps a just-inserted blob preview from being dropped by the external-value `setHTML`. `EditorEngine.insertImage` seam + Squire adapter (keeps `data-cid`). `ComposerWindow`: paperclip picker + window drag&drop overlay (editor-targeted drop → inline, else attachment) + hidden file input. `draft-email.toEmailCreate` maps `attachments`/inline `disposition` + prunes orphaned inline cids. `mail/attachment-icon` extracted + shared with the reader's `AttachmentList`. jmap: `getMailCapability` (+export), `Retry-After`→`JmapProblemError.retryAfterMs` (`parseRetryAfter`), `useSessionOptional`. i18n en+de (`compose.attach*`, `dropHint`). **+37 tests (791 total, 94 files); entry chunk 188.5 KB gz** — all attachment code confirmed in the lazy `ComposerHost` chunk (11.8 KB), grep-verified absent from `index-*.js`. Owner-decided UX + deferred reload-preview-restore recorded in §M2.7. |
-| M2.8 | Send pipeline (submission, errors, undo send) | M | M2.3–M2.7 | todo | |
+| M2.8 | Send pipeline (submission, errors, undo send) | M | M2.3–M2.7 | done | **2026-07-11.** Send pipeline. jmap: RFC 8621 §7 `EmailSubmission` types + `emailSubmissionSet` method (+`Envelope`/`onSuccessUpdateEmail`). `sync/engine`: `JmapPort.submitEmail` (ONE request — `Email/set create`+destroy+source-flag then `EmailSubmission/set` via `#creationId` back-ref + `onSuccessUpdateEmail` refiling Drafts→Sent/clear `$draft`/set `$seen`); new `sendEmail` outbox intent (optimistic source `$answered`/`$forwarded`, `reconcileSend`/`stampSendError`) with a persisted `notBefore` grace gate; `replayOutbox` skips pre-grace rows and **never auto-resends a stranded `inflight` send** (EmailSubmission isn't idempotent → marked `error`); engine `scheduleSendWake` timer + `cancelSend`. `compose`: `use-draft-sync.send` (identity/Drafts/Sent resolution, envelope `rcptTo`=dedup(to+cc+bcc), coalesces over autosave via `draft:<id>`) + `undoSend`; `ComposerWindow` primary Send button + ⌘/Ctrl+Enter, disabled with no recipients / while uploads in-flight, `attachment-mention` confirm (FR-CMP-10), Undo snackbar (Toast gained an `action`). Source id/kind threaded reply→draft→`SerializedDraft`. `DraftSyncStatus` gains `sending`; `useConfigOptional`. i18n en+de (`compose.send*`, `attachMention*`). **+26 tests (819 total, 96 files); entry chunk 190.0 KB gz.** Owner decisions + deferred Settings undo-picker recorded in §M2.8; the first LIVE `EmailSubmission/set` round-trip is M2.9. |
 | M2.9 | E2E write suite (send/receive round-trip) | S | M2.8 | todo | |
 
 ### Phase 4 — M3 "Daily driver"
@@ -1225,21 +1225,36 @@ follow-up).
 
 Spec: FR-CMP-07/08/10. Size: M.
 
-- [ ] `EmailSubmission/set` with envelope from identity; `onSuccessUpdateEmail`: move
-      draft → Sent, clear `$draft`, set `$seen` (FR-CMP-07).
-- [ ] Set `$answered`/`$forwarded` on the source message after successful send.
-- [ ] Error surfacing: per-recipient rejections, quota, size — actionable notices, draft
-      preserved (FR-CMP-07).
-- [ ] **Undo send:** client-side grace delay before submission fires; snackbar with Undo;
-      configurable off/5/15/30 s, default 15 s, hoster default via `config.json`
-      `undoSendSeconds` (FR-CMP-08 + decision log #2). Implemented as delayed outbox
-      entry so navigation/tab-close during grace is handled predictably (document
-      behavior).
-- [ ] "Attachment mentioned but none attached" warning — localized keyword list en/de
-      (FR-CMP-10).
+- [x] `EmailSubmission/set` with envelope from identity; `onSuccessUpdateEmail`: move
+      draft → Sent, clear `$draft`, set `$seen` (FR-CMP-07). The send is ONE atomic request
+      (`port.submitEmail`): `Email/set create` into Drafts + `EmailSubmission/set` via a
+      `#creationId` back-ref, so it works even without a prior autosaved server draft.
+- [x] Set `$answered`/`$forwarded` on the source message after successful send (source id +
+      kind threaded reply→draft→outbox; flagged optimistically, rolled back on failure).
+- [x] Error surfacing: synchronous rejections (invalidEmail/forbiddenToSend/quota/size) →
+      toast; the draft is **preserved** (`sendEmail` failure stamps the local row `error`,
+      and the Drafts Email stays put — `onSuccessUpdateEmail` only fires on success).
+      Async DSN bounces are out of scope (documented).
+- [x] **Undo send:** a persisted outbox `notBefore` grace timestamp (survives tab-close —
+      the send fires on the next leader once the grace elapses); a snackbar with Undo
+      (Toast gained an `action`); an engine wake-timer arms replay at the grace boundary;
+      `cancelSend` deletes the still-pending row, rolls back the source flag, reopens the
+      draft. Honors `config.json` `undoSendSeconds` (default 15); the user off/5/15/30
+      **Settings picker is deferred to the Settings WP** (M2.8 reads the config default).
+- [x] "Attachment mentioned but none attached" warning — pure `attachment-mention` +
+      localized keyword lists en/de (FR-CMP-10), quoted/signature text excluded.
 
 Done when: send → lands in fixture inbox; Sent copy correct; Undo actually prevents
-submission; rejected recipient shows a clear error.
+submission; rejected recipient shows a clear error. — The LIVE round-trip is the first
+`EmailSubmission/set` against Stalwart and is exercised by the **M2.9** E2E write suite;
+M2.8 is unit-covered (fake port/engine): submit batching + back-ref, sendEmail reconcile /
+rejection / notBefore gating / coalescing / no-double-send-on-recovery, cancelSend, envelope
+resolution, mention heuristic, and the ComposerWindow send UX.
+
+**Owner-decided (M2.8):** pending "sending" state (no synthetic Sent row); Send blocks while
+an attachment upload is in flight; a send stranded `inflight` is NEVER auto-resent (marked
+`error` "was it sent?") because EmailSubmission is not idempotent; the undo picker is deferred
+to Settings.
 
 ### M2.9 — E2E write suite
 

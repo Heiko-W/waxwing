@@ -6,8 +6,9 @@
  * against a plain fake port.
  */
 
-import type { Id } from '@waxwing/jmap'
+import type { Id, PatchObject } from '@waxwing/jmap'
 import {
+  creationRef,
   isMethodErrorType,
   type JmapClient,
   JmapMethodError,
@@ -235,6 +236,36 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
         ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
       })
       return toSetResult((await builder.send()).get(handle))
+    },
+
+    async submitEmail(args): Promise<PortSetResult> {
+      const builder = client.request()
+      // 1. Create the Email into Drafts (optionally destroy the prior autosaved copy + flag the source).
+      const emailUpdate: Record<Id, PatchObject> | undefined = args.sourceUpdate
+        ? { [args.sourceUpdate.id]: args.sourceUpdate.patch }
+        : undefined
+      builder.invoke(Methods.emailSet, {
+        accountId,
+        create: { [args.emailCreationId]: args.email },
+        ...(args.destroyServerDraftId ? { destroy: [args.destroyServerDraftId] } : {}),
+        ...(emailUpdate === undefined ? {} : { update: emailUpdate }),
+      })
+      // 2. Submit it via a #creationId back-ref; on success refile Drafts→Sent + clear $draft.
+      const submission = builder.invoke(Methods.emailSubmissionSet, {
+        accountId,
+        create: {
+          [args.submissionCreationId]: {
+            emailId: creationRef(args.emailCreationId),
+            identityId: args.identityId,
+            envelope: args.envelope,
+          },
+        },
+        onSuccessUpdateEmail: {
+          [creationRef(args.submissionCreationId)]: args.onSuccessUpdateEmail,
+        },
+        ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
+      })
+      return toSetResult((await builder.send()).get(submission))
     },
   }
 }

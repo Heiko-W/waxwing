@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Button } from './Button'
 import { IconButton } from './IconButton'
 import { cx } from './internal/cx'
 import { Portal } from './internal/Portal'
@@ -23,6 +24,8 @@ export interface ToastOptions {
   tone?: ToastTone
   /** Auto-dismiss after ms; `0` keeps it until dismissed. Default 5000. */
   duration?: number
+  /** An inline action (e.g. Undo); running it also dismisses the toast (M2.8). */
+  action?: { readonly label: ReactNode; readonly onAction: () => void }
 }
 
 interface ToastRecord extends ToastOptions {
@@ -134,6 +137,19 @@ function ToastItem({
         <p className={styles.title}>{record.title}</p>
         {record.description ? <p className={styles.description}>{record.description}</p> : null}
       </div>
+      {record.action ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={styles.action}
+          onClick={() => {
+            record.action?.onAction()
+            onDismiss(record.id)
+          }}
+        >
+          {record.action.label}
+        </Button>
+      ) : null}
       <IconButton
         label={t('ui.toast.dismiss')}
         variant="ghost"

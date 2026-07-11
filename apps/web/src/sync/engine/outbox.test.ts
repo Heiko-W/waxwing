@@ -36,6 +36,7 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     queryEmailChanges: unused,
     setEmails: unused,
     setMailboxes: unused,
+    submitEmail: unused,
   }
   return { ...base, ...overrides }
 }
@@ -136,6 +137,7 @@ describe('outbox — replay resilience (M1.3 review)', () => {
       attempts: 0,
       createdAt: 1,
       lastError: null,
+      notBefore: null,
     })
     const port = fakePort({ setEmails: async () => setResult({ updated: ['e1'] }) })
 
@@ -284,6 +286,8 @@ describe('outbox — drafts (M2.6)', () => {
         fromIdentityId: null,
         fromIdentityHint: null,
         attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
       },
       createdAt: 0,
       updatedAt: 1,
@@ -401,5 +405,163 @@ describe('outbox — drafts (M2.6)', () => {
     expect(args).toEqual({ destroy: ['srv-1'], ifInState: null })
     expect(summary.replayed).toBe(1)
     expect(await db.outbox.get([ACC, 'draft:d1'])).toBeUndefined()
+  })
+})
+
+describe('outbox — sendEmail (M2.8)', () => {
+  const emailCreate: EmailCreate = {
+    mailboxIds: { 'mb-d': true },
+    keywords: { $draft: true, $seen: true },
+    subject: 'Hi',
+    from: null,
+    to: [{ name: null, email: 'a@x.test' }],
+    cc: [],
+    bcc: [],
+    inReplyTo: null,
+    references: null,
+    htmlBody: [{ partId: 'html', type: 'text/html' }],
+    bodyValues: { html: { value: '<p>x</p>', isEncodingProblem: false, isTruncated: false } },
+  }
+
+  function draftRow(over: Partial<DraftRow> = {}): DraftRow {
+    return {
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'sending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'Hi',
+        body: '<p>x</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: 'id1',
+        fromIdentityHint: null,
+        attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+      ...over,
+    }
+  }
+
+  const sendIntent = (over: Record<string, unknown> = {}) =>
+    ({
+      kind: 'sendEmail',
+      localId: 'd1',
+      emailCreationId: 'send-d1',
+      submissionCreationId: 'sub-d1',
+      priorServerId: null,
+      email: emailCreate,
+      identityId: 'id1',
+      envelope: { mailFrom: { email: 'me@x.test' }, rcptTo: [{ email: 'a@x.test' }] },
+      onSuccessUpdateEmail: {
+        'mailboxIds/mb-d': null,
+        'mailboxIds/mb-s': true,
+        'keywords/$draft': null,
+        'keywords/$seen': true,
+      },
+      source: { emailId: 'src-9', keyword: '$answered' },
+      ...over,
+    }) as Parameters<typeof enqueueAction>[2]
+
+  it('confirmed send: flags the source, deletes the drafts row, drops the outbox row', async () => {
+    await putEmails(db, ACC, [email('src-9', { keywords: {} })])
+    await db.drafts.put(draftRow())
+    let args: Parameters<JmapPort['submitEmail']>[0] | undefined
+    const port = fakePort({
+      submitEmail: async (a) => {
+        args = a
+        return setResult({ created: { 'sub-d1': { id: 'srv-sub' } } })
+      },
+    })
+    await enqueueAction(db, ACC, sendIntent(), { id: 'draft:d1', now: 1 })
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({ $answered: true }) // optimistic
+
+    const summary = await replayOutbox(port, db, ACC, { now: 1 })
+
+    expect(summary.replayed).toBe(1)
+    expect(args?.sourceUpdate).toEqual({ id: 'src-9', patch: { 'keywords/$answered': true } })
+    expect(await db.drafts.get([ACC, 'd1'])).toBeUndefined() // reconcileSend dropped it
+    expect(await db.outbox.get([ACC, 'draft:d1'])).toBeUndefined()
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({ $answered: true }) // kept
+  })
+
+  it('rejected send: rolls back the source flag, marks the drafts row error', async () => {
+    await putEmails(db, ACC, [email('src-9', { keywords: {} })])
+    await db.drafts.put(draftRow())
+    const { rollback } = await enqueueAction(db, ACC, sendIntent(), { id: 'draft:d1', now: 1 })
+    const rollbacks = new Map<string, Rollback>([['draft:d1', rollback]])
+    const port = fakePort({
+      submitEmail: async () => setResult({ notCreated: { 'sub-d1': { type: 'forbiddenToSend' } } }),
+    })
+
+    const summary = await replayOutbox(port, db, ACC, { rollbacks, now: 1 })
+
+    expect(summary.failed).toBe(1)
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({}) // source flag rolled back
+    const row = await db.drafts.get([ACC, 'd1'])
+    expect(row?.status).toBe('error')
+    expect(row?.lastError).toBe('forbiddenToSend')
+    expect((await db.outbox.get([ACC, 'draft:d1']))?.status).toBe('error')
+  })
+
+  it('does not replay before the undo-send grace (notBefore) elapses', async () => {
+    await db.drafts.put(draftRow())
+    let called = false
+    const port = fakePort({
+      submitEmail: async () => {
+        called = true
+        return setResult({ created: { 'sub-d1': { id: 's' } } })
+      },
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null }), {
+      id: 'draft:d1',
+      now: 1,
+      notBefore: 1000,
+    })
+
+    let summary = await replayOutbox(port, db, ACC, { now: 500 })
+    expect(called).toBe(false)
+    expect(summary.replayed).toBe(0)
+    expect((await db.outbox.get([ACC, 'draft:d1']))?.status).toBe('pending')
+
+    summary = await replayOutbox(port, db, ACC, { now: 1000 })
+    expect(called).toBe(true)
+    expect(summary.replayed).toBe(1)
+  })
+
+  it('never auto-resends a send stranded inflight (EmailSubmission is not idempotent)', async () => {
+    await db.drafts.put(draftRow())
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'draft:d1',
+      type: 'sendEmail',
+      payload: sendIntent({ source: null }),
+      ifInState: null,
+      status: 'inflight',
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: null,
+    })
+    let called = false
+    const port = fakePort({
+      submitEmail: async () => {
+        called = true
+        return setResult({ created: { 'sub-d1': { id: 's' } } })
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 5 })
+
+    expect(called).toBe(false) // not re-sent
+    expect((await db.outbox.get([ACC, 'draft:d1']))?.status).toBe('error')
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('error')
   })
 })

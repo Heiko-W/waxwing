@@ -336,6 +336,25 @@
     "attachTotalTooLarge": "Anhänge überschreiten das Limit von {{max}}",
     "attachQuota": "Upload-Limit erreicht – bitte später erneut versuchen",
     "attachNetworkError": "Upload fehlgeschlagen – Verbindung prüfen",
-    "dropHint": "Dateien zum Anhängen ablegen"
+    "dropHint": "Dateien zum Anhängen ablegen",
+    "send": "Senden",
+    "sendShortcut": "Senden (⌘↵)",
+    "sending": "Wird gesendet…",
+    "sendUndo": "Rückgängig",
+    "sendUndoToast": "Nachricht wird gesendet…",
+    "sendCanceled": "Senden abgebrochen",
+    "sendNoIdentity": "Bitte zuerst eine Absenderadresse wählen",
+    "sendNoRecipients": "Mindestens einen Empfänger hinzufügen",
+    "sendNoSentMailbox": "Kein „Gesendet\"-Ordner — Senden noch nicht möglich",
+    "sendWaitUploads": "Warten, bis die Uploads abgeschlossen sind",
+    "sendErrorRecipient": "Einige Empfänger wurden abgelehnt: {{detail}}",
+    "sendErrorQuota": "Nicht gesendet — Speicherkontingent überschritten",
+    "sendErrorSize": "Nachricht zu groß zum Senden",
+    "sendErrorGeneric": "Konnte nicht gesendet werden — als Entwurf gespeichert",
+    "attachMentionTitle": "Ohne Anhang senden?",
+    "attachMentionBody": "Sie erwähnen einen Anhang, aber es ist keiner angehängt.",
+    "attachMentionSend": "Trotzdem senden",
+    "attachMentionCancel": "Zurück",
+    "attachMentionKeywords": ["anhang", "anbei", "angehängt", "beigefügt", "siehe datei"]
   }
 }

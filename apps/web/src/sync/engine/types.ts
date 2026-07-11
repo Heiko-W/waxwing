@@ -13,6 +13,7 @@ import type {
   EmailComparator,
   EmailCreate,
   EmailFilter,
+  Envelope,
   Id,
   Identity,
   Mailbox,
@@ -136,6 +137,24 @@ export interface JmapPort {
     create?: Record<string, Partial<Mailbox>>
     update?: Record<Id, PatchObject>
     destroy?: Id[]
+    ifInState?: string | null
+  }): Promise<PortSetResult>
+  /**
+   * Send an email atomically (M2.8): ONE request that creates the Email (into Drafts) — optionally
+   * destroying a prior autosaved draft copy and flagging the reply/forward source — and creates an
+   * `EmailSubmission` referencing it via a `#creationId` back-ref, with `onSuccessUpdateEmail`
+   * refiling Drafts→Sent + clearing `$draft`. Returns the EmailSubmission/set result (keyed by the
+   * submission creation id), so a per-recipient/quota rejection surfaces as `notCreated`.
+   */
+  submitEmail(args: {
+    emailCreationId: string
+    email: EmailCreate
+    destroyServerDraftId?: Id | null
+    submissionCreationId: string
+    identityId: Id
+    envelope: Envelope
+    onSuccessUpdateEmail: PatchObject
+    sourceUpdate?: { id: Id; patch: PatchObject } | null
     ifInState?: string | null
   }): Promise<PortSetResult>
 }

@@ -38,10 +38,12 @@ import {
 import { htmlToPlainText, plainTextToHtml } from './html-to-text'
 import { canonicalizeInlineImages, resolveInlineImages } from './inline-images'
 
-/** Imperative surface for the composer to drive inline-image insertion (M2.7). */
+/** Imperative surface for the composer to drive inline-image insertion (M2.7) + a send-time flush (M2.8). */
 export interface RichTextEditorHandle {
   /** Insert `<img src=objectUrl data-cid=cid alt=alt>` at the caret; false if the engine isn't ready. */
   insertInlineImage(objectUrl: string, cid: string, alt: string): boolean
+  /** Emit the current body NOW, cancelling the pending debounce — so a send never drops the last keystrokes. */
+  flush(): void
   focus(): void
 }
 
@@ -214,9 +216,24 @@ export function RichTextEditor({
     [runCommand],
   )
 
-  useImperativeHandle(ref, () => ({ insertInlineImage, focus: () => engineRef.current?.focus() }), [
-    insertInlineImage,
-  ])
+  const flush = useCallback((): void => {
+    const engine = engineRef.current
+    if (engine === null) return
+    if (debounceRef.current !== undefined) {
+      window.clearTimeout(debounceRef.current)
+      debounceRef.current = undefined
+    }
+    const html = toCanonicalHtml(engine.getHTML())
+    htmlRef.current = html
+    lastEmittedRef.current = html
+    onChangeRef.current(html)
+  }, [])
+
+  useImperativeHandle(
+    ref,
+    () => ({ insertInlineImage, flush, focus: () => engineRef.current?.focus() }),
+    [insertInlineImage, flush],
+  )
 
   function splitByImage(files: File[]): { images: File[]; others: File[] } {
     return {

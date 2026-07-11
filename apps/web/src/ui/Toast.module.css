@@ -74,3 +74,8 @@
 .dismiss {
   flex: none;
 }
+
+.action {
+  flex: none;
+  align-self: center;
+}

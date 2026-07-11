@@ -189,4 +189,47 @@ describe('createJmapPort', () => {
       notDestroyed: {},
     })
   })
+
+  it('submitEmail batches Email/set create+destroy+source-update and EmailSubmission/set (M2.8)', async () => {
+    const okSet = (created: Record<string, unknown>) => ({
+      accountId: ACC,
+      oldState: '0',
+      newState: '1',
+      created,
+      updated: null,
+      destroyed: null,
+      notCreated: null,
+      notUpdated: null,
+      notDestroyed: null,
+    })
+    const { client, calls } = fakeClient((method) => {
+      if (method === Methods.emailSet) return okSet({ 'send-1': { id: 'srv-e' } })
+      if (method === Methods.emailSubmissionSet) return okSet({ 'sub-1': { id: 'srv-sub' } })
+      return {}
+    })
+    const email = { mailboxIds: { 'mb-d': true }, keywords: { $draft: true } } as never
+    const result = await createJmapPort(client, ACC).submitEmail({
+      emailCreationId: 'send-1',
+      email,
+      destroyServerDraftId: 'old-draft',
+      submissionCreationId: 'sub-1',
+      identityId: 'id1',
+      envelope: { mailFrom: { email: 'me@x.test' }, rcptTo: [{ email: 'a@x.test' }] },
+      onSuccessUpdateEmail: { 'keywords/$draft': null },
+      sourceUpdate: { id: 'src-9', patch: { 'keywords/$answered': true } },
+    })
+
+    const emailCall = calls.find((c) => c.methodDef === Methods.emailSet)
+    expect(emailCall?.args.create).toEqual({ 'send-1': email })
+    expect(emailCall?.args.destroy).toEqual(['old-draft'])
+    expect(emailCall?.args.update).toEqual({ 'src-9': { 'keywords/$answered': true } })
+
+    const subCall = calls.find((c) => c.methodDef === Methods.emailSubmissionSet)
+    const create = subCall?.args.create as Record<string, { emailId: string; identityId: string }>
+    expect(create['sub-1']?.emailId).toBe('#send-1') // back-reference to the created Email
+    expect(create['sub-1']?.identityId).toBe('id1')
+    expect(subCall?.args.onSuccessUpdateEmail).toEqual({ '#sub-1': { 'keywords/$draft': null } })
+
+    expect(result.created).toEqual({ 'sub-1': { id: 'srv-sub' } }) // returns the submission result
+  })
 })

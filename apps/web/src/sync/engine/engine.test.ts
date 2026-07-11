@@ -10,8 +10,9 @@ import {
   type Unsubscribe,
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ReplicaDb } from '../db'
-import { freshDb } from '../test-utils'
+import type { DraftRow, ReplicaDb } from '../db'
+import { putEmails } from '../repo'
+import { email, freshDb } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import { SyncEngine, type SyncEngineDeps } from './engine'
 import type { LockManagerLike } from './leader'
@@ -212,6 +213,9 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
       return script.setEmails(args)
     },
     async setMailboxes() {
+      return emptySet()
+    },
+    async submitEmail() {
       return emptySet()
     },
   }
@@ -432,5 +436,95 @@ describe('SyncEngine', () => {
     await engine.fetchEnvelopes(['e1', 'e2'])
     expect(await db.emails.get([ACC, 'e2'])).toBeDefined()
     expect(requested).toEqual([['e1'], ['e2']])
+  })
+})
+
+describe('SyncEngine — undo-send (M2.8)', () => {
+  const NOW = 5000
+  function fixedClockDeps(port: JmapPort, push: FakePush): SyncEngineDeps {
+    const clock: EngineClock = { now: () => NOW, setTimeout: () => 0, clearTimeout: () => {} }
+    return { ...makeDeps(db, port, push), clock }
+  }
+  function sendingDraft(): DraftRow {
+    return {
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'sending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'Hi',
+        body: '<p>x</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: 'id1',
+        fromIdentityHint: null,
+        attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+      notBefore: null,
+    } as DraftRow
+  }
+  const intent = {
+    kind: 'sendEmail',
+    localId: 'd1',
+    emailCreationId: 'send-d1',
+    submissionCreationId: 'sub-d1',
+    priorServerId: null,
+    email: { mailboxIds: { 'mb-d': true } },
+    identityId: 'id1',
+    envelope: { mailFrom: { email: 'me@x.test' }, rcptTo: [{ email: 'a@x.test' }] },
+    onSuccessUpdateEmail: {},
+    source: { emailId: 'src-9', keyword: '$answered' },
+  } as unknown as Parameters<SyncEngine['dispatch']>[0]
+
+  it('cancelSend within the grace deletes the queued send and rolls back the source flag', async () => {
+    const port = fakePort({ emails: [], setEmails: emptySet })
+    const engine = new SyncEngine(fixedClockDeps(port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+    await putEmails(db, ACC, [email('src-9', { keywords: {} })])
+    await db.drafts.put(sendingDraft())
+
+    await engine.dispatch(intent, { id: 'draft:d1', notBefore: NOW + 15000 })
+    await flush()
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({ $answered: true }) // optimistic
+    expect((await db.outbox.get([ACC, 'draft:d1']))?.status).toBe('pending') // gated, not sent
+
+    expect(await engine.cancelSend('draft:d1')).toBe(true)
+    expect(await db.outbox.get([ACC, 'draft:d1'])).toBeUndefined()
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({}) // source flag rolled back
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('pending') // draft editable again
+    await engine.stop()
+  })
+
+  it('cancelSend returns false once the grace has elapsed / the row is gone', async () => {
+    const engine = new SyncEngine(
+      fixedClockDeps(fakePort({ emails: [], setEmails: emptySet }), new FakePush()),
+    )
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'draft:d1',
+      type: 'sendEmail',
+      payload: intent,
+      ifInState: null,
+      status: 'pending',
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: NOW - 1000, // grace already elapsed
+    })
+    expect(await engine.cancelSend('draft:d1')).toBe(false)
+    expect(await db.outbox.get([ACC, 'draft:d1'])).toBeDefined() // untouched
+    expect(await engine.cancelSend('nope')).toBe(false)
+    await engine.stop()
   })
 })

@@ -13,9 +13,13 @@ import type { EditorEngine, EditorFactory } from './editor-engine'
  *  the surface to mount, so every command is a no-op and no events fire. Stable factory reference. */
 function makeFakeEngine(): EditorEngine {
   const noop = (): void => {}
+  // Stateful getHTML/setHTML so a send-time flush() round-trips the body instead of wiping it.
+  let html = ''
   return {
-    getHTML: () => '',
-    setHTML: noop,
+    getHTML: () => html,
+    setHTML: (value: string) => {
+      html = value
+    },
     focus: noop,
     destroy: noop,
     bold: noop,
@@ -213,5 +217,61 @@ describe('ComposerWindow', () => {
       target: { files: [new File([new Uint8Array(2)], 'x.png', { type: 'image/png' })] },
     })
     expect(await screen.findByRole('button', { name: 'Retry x.png' })).toBeInTheDocument()
+  })
+
+  // ── Send (M2.8) ──────────────────────────────────────────────────────────────────────────────
+  const withRecipient = () =>
+    store().openDraft({ to: [{ name: null, email: 'a@x.test' }], body: '<p>hi</p>' })
+
+  it('disables Send until there is a recipient', async () => {
+    openWindow('docked')
+    await screen.findByRole('textbox', { name: 'Message body' })
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+
+  it('enables Send once a recipient is present', async () => {
+    render(<Harness id={withRecipient()} />)
+    await screen.findByRole('textbox', { name: 'Message body' })
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+  })
+
+  it('blocks Send while an attachment upload is in flight', async () => {
+    const id = withRecipient()
+    store().addUpload(id, {
+      tempId: 'u',
+      name: 'a.png',
+      type: 'image/png',
+      size: 1,
+      inline: false,
+      cid: null,
+      previewUrl: null,
+      status: 'uploading',
+      progress: 0,
+      error: null,
+    })
+    render(<Harness id={id} />)
+    await screen.findByRole('textbox', { name: 'Message body' })
+    expect(screen.getByRole('button', { name: 'Wait for uploads to finish' })).toBeDisabled()
+  })
+
+  it('warns before sending when the body mentions an attachment but none is attached', async () => {
+    const id = store().openDraft({
+      to: [{ name: null, email: 'a@x.test' }],
+      body: '<p>See the attached report.</p>',
+    })
+    render(<Harness id={id} />)
+    await screen.findByRole('textbox', { name: 'Message body' })
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Send' }))
+    expect(
+      await screen.findByRole('dialog', { name: 'Send without attachment?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('sends on ⌘/Ctrl+Enter (surfaces the not-connected error here)', async () => {
+    render(<Harness id={withRecipient()} />)
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.keyDown(dialog, { key: 'Enter', ctrlKey: true })
+    // Without a ReplicaProvider the send resolves to a "no Sent folder" failure toast (wired path).
+    expect(await screen.findByText('No Sent folder — cannot send yet')).toBeInTheDocument()
   })
 })

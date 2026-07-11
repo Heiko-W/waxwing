@@ -11,7 +11,7 @@
  * discards silently, a non-empty one asks first).
  */
 
-import { Maximize2, Minimize2, Minus, Paperclip, Trash2, X } from 'lucide-react'
+import { Maximize2, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react'
 import {
   type ChangeEvent,
   type DragEvent,
@@ -23,9 +23,11 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useConfigOptional } from '../app/config-context'
 import type { LayoutTier } from '../app/shell/layout'
-import { Button, Dialog, IconButton, TextInput, useFocusTrap } from '../ui'
+import { Button, Dialog, IconButton, TextInput, useFocusTrap, useToast } from '../ui'
 import { AttachmentChips } from './AttachmentChips'
+import { mentionsAttachment } from './attachment-mention'
 import type { BlobUploader } from './attachment-upload'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
@@ -58,18 +60,28 @@ export function ComposerWindow({
   uploader,
 }: ComposerWindowProps) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const setMode = useComposerStore((state) => state.setMode)
   const updateBody = useComposerStore((state) => state.updateBody)
   const updateSubject = useComposerStore((state) => state.updateSubject)
   const focusDraft = useComposerStore((state) => state.focusDraft)
   const draftSync = useDraftSync()
+  const undoSendSeconds = useConfigOptional()?.features.undoSendSeconds ?? 15
+  const uploadsInFlight = useComposerStore(
+    (state) => (state.uploads.get(draft.id)?.length ?? 0) > 0,
+  )
 
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [confirmMention, setConfirmMention] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+
+  const hasRecipients = draft.to.length + draft.cc.length + draft.bcc.length > 0
+  const canSend = hasRecipients && !uploadsInFlight
   const windowRef = useRef<HTMLDivElement>(null)
   const subjectRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<RichTextEditorHandle>(null)
+  const sendingRef = useRef(false)
   const focusedOnce = useRef(false)
   const titleId = useId()
 
@@ -114,7 +126,52 @@ export function ComposerWindow({
     else setConfirmDiscard(true)
   }
 
+  // Send: queue the message, close the window, and offer Undo for the grace window (M2.8, FR-CMP-07/08).
+  const doSend = useCallback(async (): Promise<void> => {
+    if (sendingRef.current) return // guard against a double ⌘Enter / double-click while awaiting
+    sendingRef.current = true
+    const result = await draftSync.send(draft.id, { undoMs: undoSendSeconds * 1000 })
+    if (!result.ok) {
+      sendingRef.current = false
+      const key =
+        result.reason === 'noIdentity'
+          ? 'compose.sendNoIdentity'
+          : result.reason === 'noSentMailbox'
+            ? 'compose.sendNoSentMailbox'
+            : 'compose.sendNoRecipients'
+      toast({ tone: 'danger', title: t(key) })
+      return
+    }
+    useComposerStore.getState().closeDraft(draft.id) // do NOT flush (that would race the send)
+    if (result.undoMs > 0) {
+      toast({
+        title: t('compose.sendUndoToast'),
+        duration: result.undoMs,
+        action: { label: t('compose.sendUndo'), onAction: () => void draftSync.undoSend(draft.id) },
+      })
+    }
+  }, [draftSync, draft.id, undoSendSeconds, toast, t])
+
+  const requestSend = useCallback((): void => {
+    if (!canSend) return
+    editorRef.current?.flush() // push the last (debounced) keystrokes into the store before we send
+    const current = useComposerStore.getState().drafts.get(draft.id)
+    if (current === undefined) return
+    // FR-CMP-10: warn if the text mentions an attachment but none is attached.
+    const keywords = t('compose.attachMentionKeywords', { returnObjects: true }) as string[]
+    if (current.attachments.length === 0 && mentionsAttachment(current.body, keywords)) {
+      setConfirmMention(true)
+      return
+    }
+    void doSend()
+  }, [canSend, t, draft.id, doSend])
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault()
+      requestSend()
+      return
+    }
     if (event.key !== 'Escape') return
     event.preventDefault()
     setMode(draft.id, fullscreen ? 'docked' : 'minimized')
@@ -201,6 +258,15 @@ export function ComposerWindow({
             {draft.subject || t('compose.noSubject')}
           </span>
           <div className={styles.titleActions}>
+            <IconButton
+              label={uploadsInFlight ? t('compose.sendWaitUploads') : t('compose.send')}
+              variant="primary"
+              size="sm"
+              disabled={!canSend}
+              onClick={requestSend}
+            >
+              <Send />
+            </IconButton>
             <IconButton
               label={t('compose.attach')}
               variant="ghost"
@@ -310,6 +376,33 @@ export function ComposerWindow({
           }
         >
           <p>{t('compose.discardBody')}</p>
+        </Dialog>
+      )}
+
+      {confirmMention && (
+        <Dialog
+          open
+          onClose={() => setConfirmMention(false)}
+          title={t('compose.attachMentionTitle')}
+          size="sm"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setConfirmMention(false)}>
+                {t('compose.attachMentionCancel')}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmMention(false)
+                  void doSend()
+                }}
+              >
+                {t('compose.attachMentionSend')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('compose.attachMentionBody')}</p>
         </Dialog>
       )}
     </>

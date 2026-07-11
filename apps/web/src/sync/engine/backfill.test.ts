@@ -34,6 +34,7 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     queryEmailChanges: unimplemented('queryEmailChanges'),
     setEmails: unimplemented('setEmails'),
     setMailboxes: unimplemented('setMailboxes'),
+    submitEmail: unimplemented('submitEmail'),
     ...overrides,
   } as JmapPort
 }

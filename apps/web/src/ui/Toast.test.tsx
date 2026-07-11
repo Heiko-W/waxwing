@@ -14,9 +14,18 @@ function Trigger() {
       <Button onClick={() => toast({ title: 'Ephemeral toast', duration: 40 })}>Quick</Button>
       <Button onClick={() => toast({ title: 'Hovered toast', duration: 120 })}>Pause</Button>
       <Button onClick={() => toast({ title: 'Persistent toast', duration: 0 })}>Sticky</Button>
+      <Button
+        onClick={() =>
+          toast({ title: 'Sending…', duration: 0, action: { label: 'Undo', onAction: onUndo } })
+        }
+      >
+        Undoable
+      </Button>
     </>
   )
 }
+
+const onUndo = vi.fn()
 
 function withProvider() {
   return render(
@@ -63,6 +72,17 @@ describe('Toast', () => {
     await user.click(screen.getByRole('button', { name: 'Quick' }))
     expect(screen.getByText('Ephemeral toast')).toBeInTheDocument()
     await waitForElementToBeRemoved(() => screen.queryByText('Ephemeral toast'))
+  })
+
+  it('renders an inline action that fires onAction and dismisses the toast (M2.8)', async () => {
+    onUndo.mockClear()
+    const user = userEvent.setup()
+    withProvider()
+    await user.click(screen.getByRole('button', { name: 'Undoable' }))
+    expect(screen.getByText('Sending…')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(onUndo).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Sending…')).toBeNull()
   })
 
   it('pauses the auto-dismiss countdown while hovered', async () => {

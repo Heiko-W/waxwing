@@ -1,10 +1,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import type { EditorEngine, EditorFactory } from './editor-engine'
 import { htmlToPlainText } from './html-to-text'
-import { RichTextEditor } from './RichTextEditor'
+import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 
 /** A fake {@link EditorEngine} — jsdom has no real contenteditable/selection, so the wrapper is
  *  tested against this injected double (spies on the format commands, a manual event bus). */
@@ -99,6 +100,28 @@ describe('RichTextEditor', () => {
     fake.html = '<p>changed</p>'
     fake.emit('input')
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('<p>changed</p>'), { timeout: 2000 })
+  })
+
+  it('flush() emits the current body immediately, ahead of the debounce (M2.8)', async () => {
+    const fake = createFakeEngine()
+    const factory: EditorFactory = () => Promise.resolve(fake)
+    const onChange = vi.fn()
+    const ref = createRef<RichTextEditorHandle>()
+    render(
+      <RichTextEditor
+        ref={ref}
+        value="<p>hi</p>"
+        onChange={onChange}
+        ariaLabel="Message body"
+        factory={factory}
+      />,
+    )
+    await whenReady(fake, '<p>hi</p>')
+    // Squire has the new text but the 200 ms debounce has not emitted it yet.
+    fake.html = '<p>hi there</p>'
+    fake.emit('input')
+    ref.current?.flush()
+    expect(onChange).toHaveBeenCalledWith('<p>hi there</p>') // emitted synchronously by flush
   })
 
   it('runs the matching engine command from a toolbar button', async () => {

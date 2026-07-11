@@ -24,6 +24,8 @@ function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
     fromIdentityHint: undefined,
     fromIdentityId: undefined,
     attachments: [],
+    sourceEmailId: undefined,
+    sourceFlag: undefined,
     dirty: false,
     createdAt: 0,
     ...over,

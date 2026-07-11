@@ -24,3 +24,8 @@ export function useConfig(): WaxwingConfig {
   if (!config) throw new Error('useConfig must be used within a ConfigProvider')
   return config
 }
+
+/** The config or `null` outside a provider — lets a component read an optional setting with a fallback. */
+export function useConfigOptional(): WaxwingConfig | null {
+  return useContext(ConfigContext)
+}

@@ -20,6 +20,9 @@ export type DraftMode = 'docked' | 'expanded' | 'minimized'
 /** The three recipient fields (M2.4). */
 export type RecipientField = 'to' | 'cc' | 'bcc'
 
+/** The keyword set on the reply/forward SOURCE message once THIS draft is sent (M2.8, FR-CMP-07). */
+export type SourceFlag = '$answered' | '$forwarded'
+
 export interface DraftWindow {
   readonly id: string
   mode: DraftMode
@@ -38,6 +41,9 @@ export interface DraftWindow {
   fromIdentityId: string | undefined
   /** Forwarded attachments carried by blob reference (chip UI M2.7, inclusion at send M2.8). */
   attachments: DraftAttachment[]
+  /** The reply/forward source message id (M2.8) — flagged $answered/$forwarded on a successful send. */
+  sourceEmailId: string | undefined
+  sourceFlag: SourceFlag | undefined
   /** True once the reader edited body/subject — drives the close-guard stub. */
   dirty: boolean
   readonly createdAt: number
@@ -60,6 +66,8 @@ export interface OpenDraftInit {
   readonly fromIdentityHint?: string | undefined
   readonly fromIdentityId?: string | undefined
   readonly attachments?: DraftAttachment[]
+  readonly sourceEmailId?: string | undefined
+  readonly sourceFlag?: SourceFlag | undefined
 }
 
 export interface ComposerState {
@@ -139,6 +147,8 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
       fromIdentityHint: init?.fromIdentityHint,
       fromIdentityId: init?.fromIdentityId,
       attachments: init?.attachments ?? [],
+      sourceEmailId: init?.sourceEmailId,
+      sourceFlag: init?.sourceFlag,
       dirty: false,
       createdAt: Date.now(),
     })

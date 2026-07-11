@@ -24,6 +24,8 @@ const content = (subject: string): SerializedDraft => ({
   fromIdentityId: null,
   fromIdentityHint: null,
   attachments: [],
+  sourceEmailId: null,
+  sourceFlag: null,
 })
 
 function row(over: Partial<DraftRow> & Pick<DraftRow, 'localId'>): DraftRow {

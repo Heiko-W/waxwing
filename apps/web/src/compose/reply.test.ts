@@ -1,6 +1,7 @@
 import type { EmailAddress, EmailBodyPart } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
 import {
+  buildReplyDraft,
   deriveRecipients,
   forwardAttachments,
   forwardBody,
@@ -18,6 +19,7 @@ const addr = (email: string, name: string | null = null): EmailAddress => ({ nam
 
 function source(over: Partial<ReplySource> = {}): ReplySource {
   return {
+    id: 'src-1',
     from: null,
     to: null,
     cc: null,
@@ -191,5 +193,25 @@ describe('forwardAttachments', () => {
     expect(result).toEqual([
       { blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 10, cid: null },
     ])
+  })
+})
+
+describe('buildReplyDraft — source threading (M2.8)', () => {
+  const base = {
+    bodyHtml: '<p>hi</p>',
+    textBody: 'hi',
+    ownAddresses: [] as string[],
+    attribution: 'On X, Y wrote:',
+    forwardSeparator: '----',
+    forwardHeaderBlock: 'From: y',
+  }
+  it('carries the source id + kind (reply → $answered path)', () => {
+    const init = buildReplyDraft({ kind: 'replyAll', source: source({ id: 'msg-9' }), ...base })
+    expect(init.sourceEmailId).toBe('msg-9')
+    expect(init.sourceKind).toBe('replyAll')
+  })
+  it('marks a forward with its kind', () => {
+    const init = buildReplyDraft({ kind: 'forward', source: source({ id: 'msg-9' }), ...base })
+    expect(init.sourceKind).toBe('forward')
   })
 })

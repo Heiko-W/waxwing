@@ -208,6 +208,8 @@ export interface OutboxRow {
   attempts: number
   createdAt: number
   lastError: string | null
+  /** Epoch ms before which replay must NOT fire (M2.8 undo-send grace); `null` = replay immediately. */
+  notBefore: number | null
 }
 
 /** Local-only per-account preference (collapsed tree state, per-folder prefs, allowlists — FR-MBX-04). */
@@ -257,9 +259,12 @@ export interface SerializedDraft {
   fromIdentityId: string | null
   fromIdentityHint: string | null
   attachments: DraftAttachmentLike[]
+  /** Reply/forward source id + the keyword to set on it after send (M2.8); `null` for a new draft. */
+  sourceEmailId: Id | null
+  sourceFlag: '$answered' | '$forwarded' | null
 }
 
-export type DraftSyncStatus = 'pending' | 'synced' | 'error'
+export type DraftSyncStatus = 'pending' | 'synced' | 'sending' | 'error'
 
 /**
  * Crash-safe local edit-state for one draft (M2.6, FR-CMP-03) — NOT a JMAP envelope cache.

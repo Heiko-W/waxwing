@@ -175,6 +175,7 @@ describe('sync state, query cache, prefs, outbox', () => {
       attempts: 0,
       createdAt: 20,
       lastError: null,
+      notBefore: null,
     })
     await enqueue(db, {
       accountId: ACC,
@@ -186,6 +187,7 @@ describe('sync state, query cache, prefs, outbox', () => {
       attempts: 1,
       createdAt: 10,
       lastError: 'boom',
+      notBefore: null,
     })
     await enqueue(db, {
       accountId: ACC,
@@ -197,6 +199,7 @@ describe('sync state, query cache, prefs, outbox', () => {
       attempts: 1,
       createdAt: 30,
       lastError: null,
+      notBefore: null,
     })
 
     const pending = await pendingOutbox(db, ACC)

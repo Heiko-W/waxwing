@@ -23,7 +23,9 @@ export function useDraftRestore(): void {
       if (cancelled) return
       const openDraft = useComposerStore.getState().openDraft
       for (const row of rows) {
-        if (row.status === 'synced') continue
+        // Skip `synced` (safe in the Drafts folder) and `sending` (M2.8 — in the send pipeline; the
+        // outbox fires it, and a failure re-surfaces it as `error` on a later load). Restore the rest.
+        if (row.status === 'synced' || row.status === 'sending') continue
         openDraft({ ...deserializeDraft(row), mode: 'minimized' })
       }
     })()
