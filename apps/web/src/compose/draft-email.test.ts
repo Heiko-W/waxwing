@@ -9,6 +9,7 @@ import {
   toDraftInit,
   toEmailCreate,
 } from './draft-email'
+import { htmlToPlainText } from './html-to-text'
 
 function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
   return {
@@ -141,6 +142,12 @@ describe('toEmailCreate', () => {
     expect(email.bcc).toEqual(draft.bcc)
     expect(email.inReplyTo).toEqual(['<m1>'])
     expect(email.references).toEqual(['<m0>'])
+  })
+
+  it('emits a multipart/alternative with a text/plain part derived from the html (M2.8)', () => {
+    const email = toEmailCreate({ draft, draftsMailboxId: 'mb-drafts', from: null })
+    expect(email.textBody).toEqual([{ partId: 'text', type: 'text/plain' }])
+    expect(email.bodyValues?.text?.value).toBe(htmlToPlainText(cleanOutgoingHtml(draft.body)))
   })
 })
 

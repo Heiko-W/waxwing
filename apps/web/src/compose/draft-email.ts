@@ -59,10 +59,12 @@ export function isEmptyDraft(draft: DraftWindow | SerializedDraft): boolean {
 }
 
 /**
- * The Drafts-mailbox `Email/set` create body (html-only; the text/plain alternative is M2.8).
- * Attachments map to `attachments[]` parts: `cid === null` → a regular `disposition:"attachment"`
- * part; `cid !== null` → an `disposition:"inline"` part the html body references via `cid:` — but
- * ONLY if that cid is still referenced (an inline image whose `<img>` was deleted is pruned).
+ * The Drafts-mailbox `Email/set` create body. Emits a `multipart/alternative`: a `text/plain` part
+ * derived from the html via {@link htmlToPlainText} (better deliverability + text-only clients) plus
+ * the `text/html` part. Attachments map to `attachments[]` parts: `cid === null` → a regular
+ * `disposition:"attachment"` part; `cid !== null` → an `disposition:"inline"` part the html body
+ * references via `cid:` — but ONLY if that cid is still referenced (an inline image whose `<img>`
+ * was deleted is pruned).
  */
 export function toEmailCreate(input: {
   draft: SerializedDraft
@@ -110,8 +112,10 @@ export function toEmailCreate(input: {
     bcc: draft.bcc,
     inReplyTo: draft.inReplyTo,
     references: draft.references,
+    textBody: [{ partId: 'text', type: 'text/plain' }],
     htmlBody: [{ partId: 'html', type: 'text/html' }],
     bodyValues: {
+      text: { value: htmlToPlainText(cleaned), isEncodingProblem: false, isTruncated: false },
       html: { value: cleaned, isEncodingProblem: false, isTruncated: false },
     },
   }

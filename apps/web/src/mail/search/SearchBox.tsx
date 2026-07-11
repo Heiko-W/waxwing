@@ -8,7 +8,7 @@
 import { Search, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconButton, Select } from '../../ui'
+import { IconButton, Select, VisuallyHidden } from '../../ui'
 import styles from './search.module.css'
 import type { SearchScope, SearchState } from './use-search'
 
@@ -22,6 +22,11 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
   const [input, setInput] = useState(search.q)
   const timerRef = useRef<number | undefined>(undefined)
   const chipsId = useId()
+  const hintId = useId()
+  // Always describe the box with the operator hint; add the chips list when present.
+  const describedBy = [hintId, search.chips.length > 0 ? chipsId : undefined]
+    .filter(Boolean)
+    .join(' ')
 
   // Sync the local input when the URL q changes externally (chip removal / clear / navigation).
   useEffect(() => setInput(search.q), [search.q])
@@ -64,9 +69,10 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
           value={input}
           placeholder={t('search.placeholder')}
           aria-label={t('search.label')}
-          aria-describedby={search.chips.length > 0 ? chipsId : undefined}
+          aria-describedby={describedBy}
           onChange={(event) => onInput(event.target.value)}
         />
+        <VisuallyHidden id={hintId}>{t('search.hint')}</VisuallyHidden>
         <Select
           className={styles.scope}
           aria-label={t('search.scope.label')}

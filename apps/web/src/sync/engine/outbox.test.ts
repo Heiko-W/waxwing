@@ -509,7 +509,29 @@ describe('outbox — sendEmail (M2.8)', () => {
     const row = await db.drafts.get([ACC, 'd1'])
     expect(row?.status).toBe('error')
     expect(row?.lastError).toBe('forbiddenToSend')
+    expect(row?.errorKind).toBe('send') // send failures are surfaced live; save failures are not
     expect((await db.outbox.get([ACC, 'draft:d1']))?.status).toBe('error')
+  })
+
+  it('rejected send: adopts the sibling Email/set-created draft id so a resave does not duplicate', async () => {
+    await db.drafts.put(draftRow({ serverEmailId: 'old-draft' }))
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({
+          notCreated: { 'sub-d1': { type: 'overQuota' } },
+          emailCreated: { id: 'new-draft' },
+        }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null }), { id: 'draft:d1', now: 1 })
+
+    await replayOutbox(port, db, ACC, { now: 1 })
+
+    // The submission failed but its Email/set create committed a NEW draft (the prior was destroyed);
+    // the row must point at that fresh id, else the reopened draft's next save destroys a gone id.
+    const row = await db.drafts.get([ACC, 'd1'])
+    expect(row?.serverEmailId).toBe('new-draft')
+    expect(row?.status).toBe('error')
+    expect(row?.errorKind).toBe('send')
   })
 
   it('does not replay before the undo-send grace (notBefore) elapses', async () => {

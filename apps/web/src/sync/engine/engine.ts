@@ -106,6 +106,8 @@ export class SyncEngine {
 
   /** Canonical keys of the queries kept fresh; their specs live in the persisted QueryCacheRow. */
   private readonly watched = new Set<string>()
+  /** Query keys with a backfill in flight — dedups a search's watch-effect unwatch→rewatch churn. */
+  private readonly inFlightBackfills = new Set<string>()
   /** In-memory rollbacks for optimistic outbox intents (lost on reload — persisted error rows = M3.3). */
   private readonly rollbacks = new Map<Id, Rollback>()
 
@@ -192,10 +194,18 @@ export class SyncEngine {
    * draft to editable. Returns `true` if it was canceled, `false` if it already fired / is firing.
    */
   async cancelSend(id: Id): Promise<boolean> {
-    const row = await this.db.outbox.get([this.accountId, id])
-    if (row === undefined || row.status !== 'pending') return false
-    if (row.notBefore === null || row.notBefore <= this.clock.now()) return false
-    await this.db.outbox.delete([this.accountId, id])
+    // Claim the cancellation in ONE rw txn (re-read + delete) so it is mutually exclusive with
+    // replayOutbox's claim-to-inflight on the same row: whichever txn commits first wins. If replay
+    // already flipped it to `inflight` (send firing), the re-read sees non-`pending` → we abort.
+    const now = this.clock.now()
+    const row = await this.db.transaction('rw', this.db.outbox, async () => {
+      const current = await this.db.outbox.get([this.accountId, id])
+      if (current === undefined || current.status !== 'pending') return undefined
+      if (current.notBefore === null || current.notBefore <= now) return undefined
+      await this.db.outbox.delete([this.accountId, id])
+      return current
+    })
+    if (row === undefined) return false
     await this.rollbacks.get(id)?.()
     this.rollbacks.delete(id)
     const intent = row.payload as OutboxIntent
@@ -288,10 +298,15 @@ export class SyncEngine {
   }
 
   private async backfillQueryIfAbsent(key: string, spec: QuerySpec): Promise<void> {
+    // A search's watch effect unwatches on cleanup then re-watches when its source ref churns (e.g. a
+    // concurrent delta writes the mailboxes table). Without an in-flight guard the second call would
+    // re-issue the whole Email/query+get before the first's putQueryCache lands — a wasted round-trip.
+    if (this.inFlightBackfills.has(key)) return
     if ((await getQueryCache(this.db, this.accountId, key)) !== undefined) {
       if (this.isLeader) void this.sync()
       return
     }
+    this.inFlightBackfills.add(key)
     try {
       await backfillQuery(this.port, this.db, this.accountId, spec, { now: this.clock.now() })
     } catch {
@@ -310,6 +325,8 @@ export class SyncEngine {
         collapseThreads: spec.collapseThreads ?? false,
         lastUsedAt: this.clock.now(),
       })
+    } finally {
+      this.inFlightBackfills.delete(key)
     }
   }
 
@@ -488,7 +505,16 @@ export class SyncEngine {
       const row = await getQueryCache(this.db, this.accountId, key)
       if (!row) continue
       const spec = { filter: row.filter, sort: row.sort, collapseThreads: row.collapseThreads }
-      await reconcileQuery(this.port, this.db, this.accountId, key, spec, this.clock, forceFull)
+      try {
+        await reconcileQuery(this.port, this.db, this.accountId, key, spec, this.clock, forceFull)
+      } catch (error) {
+        // Isolate per key: one watched query's failure must not fail the whole sync pass — that
+        // would skip `replayOutbox` + `scheduleSendWake` (stalling queued sends/moves) and starve
+        // the keys after it. A server-rejected search filter (e.g. free-text on an FTS-less server)
+        // would otherwise re-throw on every sweep. Re-throw ONLY auth-expiry so the pass can still
+        // route to re-auth (FR-AUTH-06); swallow the rest (the empty window self-heals next sweep).
+        if (isAuthExpiry(error)) throw error
+      }
     }
   }
 

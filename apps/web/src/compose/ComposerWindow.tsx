@@ -27,6 +27,7 @@ import { useConfigOptional } from '../app/config-context'
 import type { LayoutTier } from '../app/shell/layout'
 import { Button, Dialog, IconButton, TextInput, useFocusTrap, useToast } from '../ui'
 import { AttachmentChips } from './AttachmentChips'
+import { isPlausibleEmail } from './address-validation'
 import { mentionsAttachment } from './attachment-mention'
 import type { BlobUploader } from './attachment-upload'
 import styles from './composer.module.css'
@@ -66,9 +67,11 @@ export function ComposerWindow({
   const updateSubject = useComposerStore((state) => state.updateSubject)
   const focusDraft = useComposerStore((state) => state.focusDraft)
   const draftSync = useDraftSync()
-  const undoSendSeconds = useConfigOptional()?.features.undoSendSeconds ?? 15
-  const uploadsInFlight = useComposerStore(
-    (state) => (state.uploads.get(draft.id)?.length ?? 0) > 0,
+  const undoSendSeconds = useConfigOptional()?.features.undoSendSeconds ?? 10
+  // Only an ACTIVE upload blocks Send — an errored chip must not wedge it (the user can send
+  // without the failed file). Completed uploads have already left the slice for `draft.attachments`.
+  const uploadsInFlight = useComposerStore((state) =>
+    (state.uploads.get(draft.id) ?? []).some((upload) => upload.status === 'uploading'),
   )
 
   const [confirmDiscard, setConfirmDiscard] = useState(false)
@@ -76,7 +79,9 @@ export function ComposerWindow({
   const [dragActive, setDragActive] = useState(false)
 
   const hasRecipients = draft.to.length + draft.cc.length + draft.bcc.length > 0
-  const canSend = hasRecipients && !uploadsInFlight
+  const allRecipientsValid = [...draft.to, ...draft.cc, ...draft.bcc].every((address) =>
+    isPlausibleEmail(address.email),
+  )
   const windowRef = useRef<HTMLDivElement>(null)
   const subjectRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -95,6 +100,22 @@ export function ComposerWindow({
     ...(uploader ? { uploader } : {}),
   })
   const subjectId = useId()
+
+  const canSend = hasRecipients && allRecipientsValid && !uploadsInFlight && !attachments.oversized
+  const sendLabel = uploadsInFlight
+    ? t('compose.sendWaitUploads')
+    : attachments.oversized
+      ? t('compose.sendTooLarge')
+      : hasRecipients && !allRecipientsValid
+        ? t('compose.sendFixRecipients')
+        : t('compose.send')
+
+  // Prune inline attachments whose <img> the user deleted from the body (frees size budget + URL).
+  const syncInlineRef = useRef(attachments.syncInlineImages)
+  syncInlineRef.current = attachments.syncInlineImages
+  useEffect(() => {
+    syncInlineRef.current(draft.body)
+  }, [draft.body])
 
   const fullscreen = tier === 'phone' || draft.mode === 'expanded'
   const minimized = draft.mode === 'minimized' && tier !== 'phone'
@@ -119,6 +140,13 @@ export function ComposerWindow({
 
   // Close = save to Drafts, then close (Apple ⌘W). Discard = delete; only a non-empty draft asks first.
   const requestClose = (): void => {
+    if (uploadsInFlight) {
+      // Closing now would flush the draft WITHOUT the in-flight attachment (and the unmount would
+      // abort it) — a silent loss. Keep the window + upload alive by minimizing; autosave persists it.
+      setMode(draft.id, 'minimized')
+      toast({ title: t('compose.closeWaitUploads') })
+      return
+    }
     void draftSync.close(draft.id)
   }
   const requestDiscard = (): void => {
@@ -138,7 +166,9 @@ export function ComposerWindow({
           ? 'compose.sendNoIdentity'
           : result.reason === 'noSentMailbox'
             ? 'compose.sendNoSentMailbox'
-            : 'compose.sendNoRecipients'
+            : result.reason === 'engineUnavailable'
+              ? 'compose.sendUnavailable'
+              : 'compose.sendNoRecipients'
       toast({ tone: 'danger', title: t(key) })
       return
     }
@@ -259,7 +289,7 @@ export function ComposerWindow({
           </span>
           <div className={styles.titleActions}>
             <IconButton
-              label={uploadsInFlight ? t('compose.sendWaitUploads') : t('compose.send')}
+              label={sendLabel}
               variant="primary"
               size="sm"
               disabled={!canSend}

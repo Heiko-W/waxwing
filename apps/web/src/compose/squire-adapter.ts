@@ -18,19 +18,26 @@ import { cleanOutgoingHtml } from './clean-html'
 import type { EditorEngine } from './editor-engine'
 import { htmlToPlainText } from './html-to-text'
 
+// An ISOLATED DOMPurify instance for the composer editor only. Created via the `DOMPurify(window)`
+// factory so the permissive hook below lives on THIS instance's `hooks[]` — never on the shared
+// default singleton that @waxwing/mail-html uses to sanitize untrusted incoming mail. (A hook added
+// to the default singleton would leak across: mail-html's per-call `removeHook()` only pops the last
+// hook, so a globally-registered composer hook would survive and weaken the reading-side sanitizer.)
+const purify = DOMPurify(window)
+
 // Permit our own inline-image preview object URLs (`blob:`) as an `<img src>` (M2.7). DOMPurify
 // otherwise strips `blob:` as an unknown protocol, which would blank a pasted screenshot's preview
 // every time the editor re-seeds via setHTML (minimize→restore, From-identity change). Safe and
-// narrow: only `blob:` on an `<img>`, and this DOMPurify instance sanitizes ONLY the composer editor
-// (the reading side, @waxwing/mail-html, bundles a separate instance). `javascript:` etc. stay blocked.
-DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+// narrow: only `blob:` on an `<img>`, and it applies to the composer instance alone. `javascript:`
+// etc. stay blocked.
+purify.addHook('uponSanitizeAttribute', (node, data) => {
   if (data.attrName === 'src' && node.nodeName === 'IMG' && data.attrValue.startsWith('blob:')) {
     data.forceKeepAttr = true
   }
 })
 
 function sanitizeToDOMFragment(html: string): DocumentFragment {
-  return DOMPurify.sanitize(html, {
+  return purify.sanitize(html, {
     RETURN_DOM_FRAGMENT: true,
     // `target` (links) + `data-cid` (M2.7 inline-image marker). `data-*` survive DOMPurify by
     // default, but naming it is explicit; inline `<img src="blob:…">` previews are inserted via

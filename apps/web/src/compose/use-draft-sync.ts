@@ -23,7 +23,7 @@ import { deserializeDraft, isEmptyDraft, serializeDraft, toEmailCreate } from '.
 import { revokeInlineObjectUrls } from './inline-image-registry'
 
 /** Why a send could not start (surfaced by the composer as a toast). */
-export type SendFailure = 'noRecipients' | 'noIdentity' | 'noSentMailbox'
+export type SendFailure = 'noRecipients' | 'noIdentity' | 'noSentMailbox' | 'engineUnavailable'
 export type SendResult = { ok: true; undoMs: number } | { ok: false; reason: SendFailure }
 
 /** Unique SMTP recipients (RCPT TO) across to+cc+bcc, deduped by lowercased address. */
@@ -134,6 +134,9 @@ export function useDraftSync(): DraftSync {
       flush: (localId) => flushDraft(db, accountId, localId),
       close: async (localId) => {
         await flushDraft(db, accountId, localId)
+        // Free this draft's inline-image preview objectURLs (bounds the session-long registry leak).
+        // The draft is safe in the Drafts folder; reopening it re-downloads inline parts (follow-up).
+        revokeDraftInlineImages(localId)
         closeWindow(localId)
       },
       discard: async (localId) => {
@@ -162,6 +165,12 @@ export function useDraftSync(): DraftSync {
         if (draftsBox === undefined || sentBox === undefined) {
           return { ok: false, reason: 'noSentMailbox' }
         }
+        // Resolve the engine BEFORE any state mutation: if it is not running (no Web Locks /
+        // BroadcastChannel, or a teardown window) the dispatch below would be a silent no-op while
+        // we'd already have marked the draft `sending` (which restore skips) — a silent send loss
+        // with a false "sent". Bail cleanly instead, leaving the draft intact for a later retry.
+        const engine = getActiveEngine()
+        if (engine === null) return { ok: false, reason: 'engineUnavailable' }
 
         const content = serializeDraft(draft)
         const existing = await getDraft(db, accountId, localId)
@@ -179,6 +188,16 @@ export function useDraftSync(): DraftSync {
         })
         const from = { name: identity.name, email: identity.email }
         const email = toEmailCreate({ draft: content, draftsMailboxId: draftsBox.id, from })
+        // Apply the selected identity's submission extras (RFC 8621 §6): a Reply-To header and an
+        // "always bcc" copy. An identity bcc must ALSO reach the SMTP envelope (rcptTo) to deliver.
+        const identityBcc = identity.bcc ?? []
+        if (identity.replyTo !== null && identity.replyTo.length > 0)
+          email.replyTo = identity.replyTo
+        if (identityBcc.length > 0) {
+          const seen = new Set(content.bcc.map((address) => address.email.toLowerCase()))
+          const extra = identityBcc.filter((address) => !seen.has(address.email.toLowerCase()))
+          if (extra.length > 0) email.bcc = [...content.bcc, ...extra]
+        }
         const source =
           content.sourceEmailId !== null && content.sourceFlag !== null
             ? { emailId: content.sourceEmailId, keyword: content.sourceFlag }
@@ -187,7 +206,7 @@ export function useDraftSync(): DraftSync {
         // DISTINCT outbox id (`send:<id>`), so an autosave's reconcile can no longer delete it; the
         // send captures the latest content, making a pending save redundant.
         await db.outbox.delete([accountId, outboxId(localId)])
-        void getActiveEngine()?.dispatch(
+        void engine.dispatch(
           {
             kind: 'sendEmail',
             localId,
@@ -198,7 +217,12 @@ export function useDraftSync(): DraftSync {
             identityId: identity.id,
             envelope: {
               mailFrom: { email: identity.email },
-              rcptTo: dedupRecipients([...content.to, ...content.cc, ...content.bcc]),
+              rcptTo: dedupRecipients([
+                ...content.to,
+                ...content.cc,
+                ...content.bcc,
+                ...identityBcc,
+              ]),
             },
             onSuccessUpdateEmail: {
               [`mailboxIds/${draftsBox.id}`]: null,

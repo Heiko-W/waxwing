@@ -19,7 +19,7 @@
     "sieveEditor": true,
     "remoteContentDefault": "block",
     "imageProxyUrl": null,
-    "undoSendSeconds": 15
+    "undoSendSeconds": 10
   },
   "offline": {
     "cacheDays": 30,

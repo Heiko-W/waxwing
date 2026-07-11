@@ -34,7 +34,7 @@ import {
 } from './attachment-upload'
 import { useComposerStore } from './composer-store'
 import { putInlineObjectUrl, revokeInlineObjectUrl } from './inline-image-registry'
-import { removeInlineImage } from './inline-images'
+import { referencedCids, removeInlineImage } from './inline-images'
 
 /** Production {@link BlobUploader}: uploads to the session `uploadUrl` via the JMAP client. */
 export function makeBlobUploader(client: JmapClient, accountId: string): BlobUploader {
@@ -103,8 +103,12 @@ export interface AttachmentController {
   retry(tempId: string): void
   /** Remove a fully-uploaded attachment by blobId (and strip its inline `<img>`, if any). */
   removeAttachment(blobId: string): void
+  /** Drop + revoke any inline attachment whose `<img>` is no longer in `body` (call on body change). */
+  syncInlineImages(body: string): void
   /** False before the session connects (no uploader) — the UI disables the attach affordances. */
   readonly canUpload: boolean
+  /** True when the draft's attachments already exceed the per-email size cap (blocks Send). */
+  readonly oversized: boolean
 }
 
 export function useAttachmentUpload(
@@ -223,9 +227,22 @@ export function useAttachmentUpload(
         const classified = classifyUploadError(error)
         if (classified.code === 'aborted') return // removeUpload already cleaned the state up
         store.patchUpload(item.draftId, tempId, { status: 'error', progress: 0, error: classified })
+        // Surface EVERY non-abort failure as a danger toast (assertively announced) — not just
+        // quota/network — so a `server`/`tooLarge` rejection isn't a silent error chip a screen
+        // reader never hears.
         if (classified.code === 'quota') toast({ tone: 'danger', title: t('compose.attachQuota') })
         else if (classified.code === 'network') {
           toast({ tone: 'danger', title: t('compose.attachNetworkError') })
+        } else if (classified.code === 'tooLarge') {
+          toast({
+            tone: 'danger',
+            title: t('compose.attachTooLarge', {
+              name: item.name,
+              max: formatBytes(limitsRef.current.maxSizeUpload),
+            }),
+          })
+        } else {
+          toast({ tone: 'danger', title: t('compose.attachError') })
         }
       } finally {
         releaseSlot()
@@ -350,8 +367,45 @@ export function useAttachmentUpload(
     [draftId],
   )
 
+  const syncInlineImages = useCallback(
+    (body: string): void => {
+      const store = useComposerStore.getState()
+      const draft = store.drafts.get(draftId)
+      if (draft === undefined) return
+      const referenced = referencedCids(body)
+      for (const attachment of draft.attachments) {
+        // An inline attachment whose `<img>` was deleted from the body is now an orphan: it still
+        // counts against the size budget and its objectURL leaks until discard. Drop + revoke it.
+        if (attachment.cid !== null && !referenced.has(attachment.cid)) {
+          store.removeAttachment(draftId, attachment.blobId)
+          revokeInlineObjectUrl(attachment.cid)
+        }
+      }
+    },
+    [draftId],
+  )
+
+  // Reactive: does the draft's attachment total (completed + in-flight) already exceed the per-email
+  // cap? Forwarded attachments (M2.3) enter via openDraft and bypass addFiles' cumulative check, so
+  // this is the send-time gate that also covers a forwarded-only oversize set.
+  const oversized = useComposerStore((state) => {
+    const cap = limits.maxSizeAttachmentsPerEmail
+    if (cap === null) return false
+    const draft = state.drafts.get(draftId)
+    if (draft === undefined) return false
+    return totalAttachmentBytes(draft.attachments, state.uploads.get(draftId) ?? []) > cap
+  })
+
   return useMemo<AttachmentController>(
-    () => ({ addFiles, removeUpload, retry, removeAttachment, canUpload: uploader !== undefined }),
-    [addFiles, removeUpload, retry, removeAttachment, uploader],
+    () => ({
+      addFiles,
+      removeUpload,
+      retry,
+      removeAttachment,
+      syncInlineImages,
+      canUpload: uploader !== undefined,
+      oversized,
+    }),
+    [addFiles, removeUpload, retry, removeAttachment, syncInlineImages, uploader, oversized],
   )
 }

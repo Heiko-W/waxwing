@@ -34,7 +34,7 @@ import {
   useMailboxByRole,
   useReplica,
 } from '../sync'
-import { Button, Checkbox, Dialog, IconButton, Select, Spinner } from '../ui'
+import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden } from '../ui'
 import type { Density } from './MessageRow'
 import { MessageRow } from './MessageRow'
 import styles from './message-list.module.css'
@@ -156,8 +156,16 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
       }
       // Preserve the `?q=…` search so opening a result keeps the results list visible (M3.1).
       if (mailboxId !== undefined) {
+        // A cross-folder search result (scope=all / in:<other>) may not live in the current folder —
+        // file the URL under a mailbox the message is actually in so the active-folder context is
+        // right; fall back to the route folder when the row isn't loaded or is in it.
+        const row = rowById.get(id)
+        const targetMailbox =
+          row !== undefined && !row.mailboxIds[mailboxId]
+            ? (Object.keys(row.mailboxIds)[0] ?? mailboxId)
+            : mailboxId
         const qs = route.search.toString()
-        navigate(mailPath(mailboxId, id) + (qs ? `?${qs}` : ''))
+        navigate(mailPath(targetMailbox, id) + (qs ? `?${qs}` : ''))
       }
     },
     [mailboxId, navigate, rowById, draftOpener, route.search],
@@ -255,6 +263,16 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
           flat={flat}
           onChange={setPrefValue}
         />
+      )}
+
+      {search && (
+        <VisuallyHidden aria-live="polite">
+          {loading
+            ? ''
+            : ids.length === 0
+              ? t('search.results.empty')
+              : t('search.results.count', { count: total ?? ids.length })}
+        </VisuallyHidden>
       )}
 
       {ids.length === 0 && !loading ? (

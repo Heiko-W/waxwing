@@ -346,7 +346,11 @@
     "sendNoIdentity": "Choose a From address before sending",
     "sendNoRecipients": "Add at least one recipient",
     "sendNoSentMailbox": "No Sent folder — cannot send yet",
+    "sendUnavailable": "Not ready to send yet — please try again in a moment",
     "sendWaitUploads": "Wait for uploads to finish",
+    "sendTooLarge": "Attachments are too large to send",
+    "sendFixRecipients": "Fix the highlighted recipient address",
+    "closeWaitUploads": "Uploads still in progress — window minimized",
     "sendErrorRecipient": "Some recipients were rejected: {{detail}}",
     "sendErrorQuota": "Message not sent — mailbox is over quota",
     "sendErrorSize": "Message too large to send",
@@ -384,7 +388,9 @@
     },
     "hint": "Try from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
     "results": {
-      "empty": "No messages match your search."
+      "empty": "No messages match your search.",
+      "count_one": "{{count}} result",
+      "count_other": "{{count}} results"
     }
   }
 }

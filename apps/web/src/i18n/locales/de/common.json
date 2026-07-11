@@ -346,7 +346,11 @@
     "sendNoIdentity": "Bitte zuerst eine Absenderadresse wählen",
     "sendNoRecipients": "Mindestens einen Empfänger hinzufügen",
     "sendNoSentMailbox": "Kein „Gesendet\"-Ordner — Senden noch nicht möglich",
+    "sendUnavailable": "Noch nicht sendebereit — bitte gleich erneut versuchen",
     "sendWaitUploads": "Warten, bis die Uploads abgeschlossen sind",
+    "sendTooLarge": "Anhänge sind zu groß zum Senden",
+    "sendFixRecipients": "Ungültige Empfängeradresse korrigieren",
+    "closeWaitUploads": "Uploads laufen noch — Fenster minimiert",
     "sendErrorRecipient": "Einige Empfänger wurden abgelehnt: {{detail}}",
     "sendErrorQuota": "Nicht gesendet — Speicherkontingent überschritten",
     "sendErrorSize": "Nachricht zu groß zum Senden",
@@ -384,7 +388,9 @@
     },
     "hint": "Versuche from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
     "results": {
-      "empty": "Keine Nachrichten entsprechen deiner Suche."
+      "empty": "Keine Nachrichten entsprechen deiner Suche.",
+      "count_one": "{{count}} Treffer",
+      "count_other": "{{count}} Treffer"
     }
   }
 }

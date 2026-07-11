@@ -281,6 +281,12 @@ export interface DraftRow {
   createdAt: number
   updatedAt: number
   lastError: string | null
+  /**
+   * Which pipeline stamped a `status:'error'` (M2.8) — a failed `send` is surfaced live to the user
+   * (toast + reopen), a failed autosave `save` is not. Absent on non-error rows; written by both
+   * stamp functions alongside `status:'error'`, so it is always correct whenever `status==='error'`.
+   */
+  errorKind?: 'save' | 'send'
 }
 
 // ---------------------------------------------------------------------------------------------

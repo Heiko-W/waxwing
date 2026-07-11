@@ -133,6 +133,54 @@ describe('useDraftSync.send (M2.8)', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  it('refuses to send (engineUnavailable) when no engine runs, leaving the draft untouched', async () => {
+    setActiveEngine(null) // e.g. a browser without Web Locks / BroadcastChannel
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+    })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    const res = await result.current.send(id, { undoMs: 10000 })
+
+    expect(res).toEqual({ ok: false, reason: 'engineUnavailable' })
+    // Must NOT mark the draft `sending` (restore skips those) — that would be a silent send loss.
+    expect(await db.drafts.get(['a', id])).toBeUndefined()
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it("applies the identity's replyTo + auto-bcc to the email and the SMTP envelope", async () => {
+    await putIdentities(db, 'a', [
+      {
+        id: 'id2',
+        name: 'Me2',
+        email: 'me2@x.test',
+        replyTo: [{ name: null, email: 'reply@x.test' }],
+        bcc: [{ name: null, email: 'archive@x.test' }],
+        textSignature: '',
+        htmlSignature: '',
+        mayDelete: true,
+      },
+    ])
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id2',
+      subject: 'Hi',
+    })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    const intent = dispatch.mock.calls[0]?.[0] as {
+      email: { replyTo: unknown; bcc: unknown }
+      envelope: { rcptTo: unknown }
+    }
+    expect(intent.email.replyTo).toEqual([{ name: null, email: 'reply@x.test' }])
+    expect(intent.email.bcc).toEqual([{ name: null, email: 'archive@x.test' }])
+    expect(intent.envelope.rcptTo).toEqual([{ email: 'a@x.test' }, { email: 'archive@x.test' }])
+  })
+
   it('undoSend cancels the queued send and reopens the draft', async () => {
     const id = open({
       to: [{ name: null, email: 'a@x.test' }],

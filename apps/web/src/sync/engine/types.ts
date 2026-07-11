@@ -82,6 +82,13 @@ export interface PortSetResult {
   readonly notCreated: Record<string, PortSetError>
   readonly notUpdated: Record<Id, PortSetError>
   readonly notDestroyed: Record<Id, PortSetError>
+  /**
+   * Send only ({@link JmapPort.submitEmail}): the sibling `Email/set` create outcome, since that
+   * runs BEFORE the submission and commits even if the submission is rejected. Lets the send-failure
+   * path re-point the local draft at the newly-created (orphaned-in-Drafts) id instead of the
+   * already-destroyed prior — so a later save replaces it in place rather than duplicating.
+   */
+  readonly emailCreated?: ({ id: Id } & Record<string, unknown>) | null
 }
 
 export interface EmailQuerySpec {

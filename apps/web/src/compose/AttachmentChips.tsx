@@ -63,6 +63,9 @@ function UploadChip({
   const { t } = useTranslation()
   const Icon = attachmentIcon(item.type)
   const errored = item.status === 'error'
+  // A size rejection re-fails identically on retry — offer only Remove for it, not a pointless Retry.
+  const retryable =
+    errored && item.error?.code !== 'tooLarge' && item.error?.code !== 'totalTooLarge'
   return (
     <div className={`${styles.attachmentChip}${errored ? ` ${styles.attachmentChipError}` : ''}`}>
       {errored ? (
@@ -76,7 +79,7 @@ function UploadChip({
       <span className={styles.attachmentChipSize}>
         {errored ? t('compose.attachError') : formatBytes(item.size)}
       </span>
-      {errored && (
+      {retryable && (
         <IconButton
           label={t('compose.attachRetry', { name: item.name })}
           variant="ghost"

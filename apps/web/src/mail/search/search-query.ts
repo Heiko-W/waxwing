@@ -190,9 +190,23 @@ function parseDate(value: string, now: number): string | null {
   if (word === 'yesterday') return utcMidnight(now - DAY_MS)
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
   if (!match) return null
-  const ms = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const ms = Date.UTC(year, month - 1, day)
   if (Number.isNaN(ms)) return null
-  return new Date(ms).toISOString()
+  const date = new Date(ms)
+  // Reject calendar overflow — `Date.UTC` silently rolls `2026-02-30` → Mar 2, `…-00-00` → the prior
+  // month, etc. Without this the chip would show the typed date while the filter used a rolled one,
+  // breaking the documented "unparseable date → degrade to free text" contract. Require a round-trip.
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+  return date.toISOString()
 }
 
 /** UTC midnight of the day containing `epochMs`, as an ISO string. */

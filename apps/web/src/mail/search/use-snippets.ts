@@ -6,7 +6,7 @@
  */
 
 import type { EmailFilter, Id } from '@waxwing/jmap'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getActiveEngine } from '../../sync/engine'
 import { sanitizeSnippet } from './snippet'
 
@@ -23,16 +23,25 @@ export function useSnippets(
 ): Map<Id, Snippet> {
   const [snippets, setSnippets] = useState<Map<Id, Snippet>>(EMPTY)
   const idsKey = visibleIds.join(',')
+  // Depend on the filter's VALUE, not its object identity: a mailbox-table write re-derives an
+  // equal-but-fresh filter ref, which would otherwise re-run a redundant SearchSnippet/get.
+  const filterKey = filter ? JSON.stringify(filter) : ''
+  const filterRef = useRef(filter)
+  filterRef.current = filter
 
+  // The effect reads the live filter via ref and re-runs on the value-stable filterKey (not the
+  // churn-prone filter object identity); dropping filterKey would stop it re-fetching on a real change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filterKey is the intended re-fetch trigger.
   useEffect(() => {
-    if (filter === undefined || filter === null || idsKey === '') {
+    const activeFilter = filterRef.current
+    if (activeFilter === undefined || activeFilter === null || idsKey === '') {
       setSnippets((prev) => (prev.size === 0 ? prev : EMPTY))
       return
     }
     const engine = getActiveEngine()
     if (engine === null) return
     let cancelled = false
-    void engine.fetchSnippets(idsKey.split(','), filter).then((raw) => {
+    void engine.fetchSnippets(idsKey.split(','), activeFilter).then((raw) => {
       if (cancelled) return
       const next = new Map<Id, Snippet>()
       for (const [id, snippet] of raw) {
@@ -46,7 +55,7 @@ export function useSnippets(
     return () => {
       cancelled = true
     }
-  }, [filter, idsKey])
+  }, [filterKey, idsKey])
 
   return snippets
 }

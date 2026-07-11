@@ -47,6 +47,10 @@ describe('tokensToFilter — operators map 1:1 to JMAP conditions', () => {
     expect(filterOf('after:today')).toEqual({ after: '2026-07-11T00:00:00.000Z' })
     expect(filterOf('after:yesterday')).toEqual({ after: '2026-07-10T00:00:00.000Z' })
     expect(filterOf('before:soon')).toEqual({ text: 'before:soon' })
+    // Calendar overflow must degrade to text, not silently roll over (Date.UTC → Mar 2 / prior month).
+    expect(filterOf('before:2026-02-30')).toEqual({ text: 'before:2026-02-30' })
+    expect(filterOf('after:2026-13-01')).toEqual({ text: 'after:2026-13-01' })
+    expect(filterOf('before:2026-00-10')).toEqual({ text: 'before:2026-00-10' })
   })
 })
 

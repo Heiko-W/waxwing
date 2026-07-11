@@ -458,7 +458,11 @@ async function stampDraftError(
   message: string,
 ): Promise<void> {
   if (intent.kind !== 'saveDraft' && intent.kind !== 'discardDraft') return
-  await db.drafts.update([accountId, intent.localId], { status: 'error', lastError: message })
+  await db.drafts.update([accountId, intent.localId], {
+    status: 'error',
+    lastError: message,
+    errorKind: 'save',
+  })
 }
 
 /**
@@ -486,7 +490,31 @@ async function stampSendError(
   message: string,
 ): Promise<void> {
   if (intent.kind !== 'sendEmail') return
-  await db.drafts.update([accountId, intent.localId], { status: 'error', lastError: message })
+  await db.drafts.update([accountId, intent.localId], {
+    status: 'error',
+    lastError: message,
+    errorKind: 'send',
+  })
+}
+
+/**
+ * On a REJECTED send (M2.8), adopt the draft the sibling `Email/set` just created. The submission
+ * failed but its Email/set create ran first and committed (a new draft in Drafts, the prior one
+ * destroyed) — so the local row's `serverEmailId` now points at a destroyed id. Re-point it at the
+ * fresh id so the reopened draft's next save replaces it in place instead of destroying a gone id
+ * and spawning a duplicate. Only reachable when the request itself succeeded (a per-object
+ * rejection); a transport/method throw carries no result, so that residue is reconciled by re-sync.
+ */
+async function reconcileSendFailure(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  result: PortSetResult,
+): Promise<void> {
+  if (intent.kind !== 'sendEmail') return
+  const created = result.emailCreated
+  if (!created) return
+  await db.drafts.update([accountId, intent.localId], { serverEmailId: created.id })
 }
 
 /** Rewrite an intent's mailbox target from `fromId` to `toId`; returns null when it referenced neither. */
@@ -560,7 +588,18 @@ export async function replayOutbox(
 
   for (const row of rows) {
     const intent = row.payload as OutboxIntent
-    await db.outbox.update([accountId, row.id], { status: 'inflight' })
+    // Atomically claim the row before executing: re-read + flip pending→inflight in ONE rw txn so a
+    // concurrent cancelSend (undo) that deletes the row wins the race, instead of the send firing on
+    // a row that was just deleted (a Dexie `update` on a missing key is a silent no-op). Skip the row
+    // if it is gone or no longer pending (already claimed / canceled / grace not yet elapsed).
+    const claimed = await db.transaction('rw', db.outbox, async () => {
+      const current = await db.outbox.get([accountId, row.id])
+      if (current === undefined || current.status !== 'pending') return false
+      if (current.notBefore != null && current.notBefore > now) return false
+      await db.outbox.update([accountId, row.id], { status: 'inflight' })
+      return true
+    })
+    if (!claimed) continue
     try {
       const result = await executeIntent(port, intent, row.ifInState)
       const rejected = rejection(intent, result)
@@ -569,6 +608,7 @@ export async function replayOutbox(
         rollbacks?.delete(row.id)
         await stampDraftError(db, accountId, intent, rejected)
         await stampSendError(db, accountId, intent, rejected)
+        await reconcileSendFailure(db, accountId, intent, result)
         await db.outbox.update([accountId, row.id], { status: 'error', lastError: rejected })
         failed += 1
         continue

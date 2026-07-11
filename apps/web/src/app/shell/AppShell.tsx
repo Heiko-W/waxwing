@@ -8,7 +8,7 @@
 
 import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useComposerStore, useDraftRestore } from '../../compose'
+import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
 import { SEARCH_INPUT_ID } from '../../mail/search/SearchBox'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
@@ -39,6 +39,8 @@ export function AppShell({ config }: AppShellProps) {
 
   // Bring back any unsynced local drafts (crash/refresh) as minimized chips.
   useDraftRestore()
+  // Surface a send that was rejected after its undo grace (toast + reopen the draft).
+  useSendErrorNotifier()
 
   // Canonical redirect: the bare app root resolves to the mail area.
   useEffect(() => {

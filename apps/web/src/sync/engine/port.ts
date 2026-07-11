@@ -251,7 +251,7 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       const emailUpdate: Record<Id, PatchObject> | undefined = args.sourceUpdate
         ? { [args.sourceUpdate.id]: args.sourceUpdate.patch }
         : undefined
-      builder.invoke(Methods.emailSet, {
+      const emailHandle = builder.invoke(Methods.emailSet, {
         accountId,
         create: { [args.emailCreationId]: args.email },
         ...(args.destroyServerDraftId ? { destroy: [args.destroyServerDraftId] } : {}),
@@ -272,7 +272,11 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
         },
         ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
       })
-      return toSetResult((await builder.send()).get(submission))
+      const responses = await builder.send()
+      // The submission result drives success/rejection; carry the sibling Email/set create id so the
+      // rejection path can adopt the newly-created draft (which committed regardless of the submission).
+      const emailCreated = toSetResult(responses.get(emailHandle)).created[args.emailCreationId]
+      return { ...toSetResult(responses.get(submission)), emailCreated: emailCreated ?? null }
     },
   }
 }

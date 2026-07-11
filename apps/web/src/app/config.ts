@@ -62,7 +62,7 @@ export const DEFAULT_CONFIG: WaxwingConfig = {
     sieveEditor: true,
     remoteContentDefault: 'block',
     imageProxyUrl: null,
-    undoSendSeconds: 15,
+    undoSendSeconds: 10,
   },
   offline: { cacheDays: 30, maxStorageMB: 512 },
 }
@@ -92,6 +92,29 @@ function deepMerge<T>(base: T, override: unknown): T {
 }
 
 /**
+ * Clamp the undo-send grace to a sane range (0–30 s); a non-numeric or NaN override falls back to
+ * the default. Without this a negative value would send immediately yet leave a never-dismissing
+ * Undo toast (a duration ≤ 0 means "sticky"), and an absurd value would delay the send arbitrarily.
+ */
+function clampUndoSend(seconds: unknown): number {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds)) {
+    return DEFAULT_CONFIG.features.undoSendSeconds
+  }
+  return Math.min(30, Math.max(0, Math.round(seconds)))
+}
+
+/** Normalize a merged config: clamp operator-supplied numeric knobs into their supported ranges. */
+export function normalizeConfig(config: WaxwingConfig): WaxwingConfig {
+  return {
+    ...config,
+    features: {
+      ...config.features,
+      undoSendSeconds: clampUndoSend(config.features.undoSendSeconds),
+    },
+  }
+}
+
+/**
  * Load config.json relative to document.baseURI (so it works under any path prefix,
  * FR-DEP-02), network-first with no caching. Any failure — missing file, network
  * error, invalid JSON — falls back to the built-in defaults so the app always boots.
@@ -104,7 +127,7 @@ export async function loadConfig(): Promise<WaxwingConfig> {
       return DEFAULT_CONFIG
     }
     const raw: unknown = await response.json()
-    return deepMerge(DEFAULT_CONFIG, raw)
+    return normalizeConfig(deepMerge(DEFAULT_CONFIG, raw))
   } catch {
     return DEFAULT_CONFIG
   }
