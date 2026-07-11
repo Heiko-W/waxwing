@@ -3,7 +3,8 @@ import { Capabilities } from './capabilities'
 import { errorFromResponse } from './errors'
 import type { FetchLike } from './transport'
 import { getWithAuth, resolveFetch } from './transport'
-import type { CoreCapability, JmapResponse, Session } from './types/core'
+import type { CoreCapability, Id, JmapResponse, Session } from './types/core'
+import type { MailCapability } from './types/mail'
 
 /** The conventional well-known path a JMAP Session is discovered at (RFC 8620 §2). */
 export const WELL_KNOWN_PATH = '/.well-known/jmap'
@@ -118,6 +119,24 @@ function isCoreCapability(value: unknown): value is CoreCapability {
     typeof v.maxObjectsInGet === 'number' &&
     typeof v.maxObjectsInSet === 'number'
   )
+}
+
+/**
+ * Reads the per-account mail-capability limits from a Session (RFC 8621 §1.4) — notably
+ * `maxSizeAttachmentsPerEmail`. Returns `null` if the account is unknown or did not advertise
+ * `urn:ietf:params:jmap:mail`.
+ */
+export function getMailCapability(session: Session, accountId: Id): MailCapability | null {
+  const account = session.accounts[accountId]
+  if (account === undefined) return null
+  const value = account.accountCapabilities[Capabilities.mail]
+  return isMailCapability(value) ? value : null
+}
+
+function isMailCapability(value: unknown): value is MailCapability {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v.maxSizeAttachmentsPerEmail === 'number' && Array.isArray(v.emailQuerySortOptions)
 }
 
 /**

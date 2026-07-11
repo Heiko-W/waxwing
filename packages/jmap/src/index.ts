@@ -44,6 +44,7 @@ export {
   JmapRequestError,
   MethodErrorTypes,
   ProblemTypes,
+  parseRetryAfter,
 } from './errors'
 // Typed method registry (RFC 8620/8621 methods bound to their arg/response types).
 export type { MethodName } from './methods'
@@ -57,6 +58,7 @@ export { CallHandle, creationRef, defineMethod, MethodResponses, RequestBuilder 
 export type { GetSessionOptions } from './session'
 export {
   getCoreCapability,
+  getMailCapability,
   getSession,
   normalizeSession,
   resolveUrl,

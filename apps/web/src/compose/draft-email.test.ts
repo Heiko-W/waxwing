@@ -142,6 +142,51 @@ describe('toEmailCreate', () => {
   })
 })
 
+describe('toEmailCreate — attachments (M2.7)', () => {
+  it('maps regular attachments + referenced inline images, pruning an orphaned inline', () => {
+    const draft = serializeDraft(
+      draftWindow({
+        body: '<p><img src="cid:inline-1"></p>',
+        attachments: [
+          { blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 10, cid: null },
+          { blobId: 'b2', name: 'img.png', type: 'image/png', size: 20, cid: 'inline-1' },
+          { blobId: 'b3', name: 'gone.png', type: 'image/png', size: 5, cid: 'orphan' },
+        ],
+      }),
+    )
+    const email = toEmailCreate({ draft, draftsMailboxId: 'mb', from: null })
+    expect(email.attachments).toEqual([
+      { blobId: 'b1', type: 'application/pdf', name: 'a.pdf', size: 10, disposition: 'attachment' },
+      {
+        blobId: 'b2',
+        type: 'image/png',
+        name: 'img.png',
+        size: 20,
+        cid: 'inline-1',
+        disposition: 'inline',
+      },
+    ])
+  })
+
+  it('omits the attachments key when there are none', () => {
+    const email = toEmailCreate({
+      draft: serializeDraft(draftWindow()),
+      draftsMailboxId: 'mb',
+      from: null,
+    })
+    expect(email.attachments).toBeUndefined()
+  })
+
+  it('strips a body cid: reference with no backing attachment (upload in flight / errored)', () => {
+    const draft = serializeDraft(
+      draftWindow({ body: '<p><img src="cid:pending-1">text</p>', attachments: [] }),
+    )
+    const email = toEmailCreate({ draft, draftsMailboxId: 'mb', from: null })
+    expect(email.bodyValues?.html?.value).toBe('<p>text</p>') // dangling inline img removed
+    expect(email.attachments).toBeUndefined()
+  })
+})
+
 describe('toDraftInit', () => {
   it('seeds an init from a synced envelope + fetched body (no bcc on the envelope)', () => {
     const email = {

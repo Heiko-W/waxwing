@@ -46,6 +46,8 @@ export interface EditorEngine {
   decreaseQuoteLevel(): void
   makeLink(url: string): void
   removeLink(): void
+  /** Insert an `<img>` at the caret (M2.7 inline images); `attributes` add e.g. `data-cid`/`alt`. */
+  insertImage(src: string, attributes?: Record<string, string>): void
   setFontSize(size: string | null): void
   hasFormat(tag: string): boolean
   getPath(): string

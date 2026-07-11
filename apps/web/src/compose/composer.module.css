@@ -127,6 +127,74 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
 }
 
+.hiddenFileInput {
+  display: none;
+}
+
+/* Drag-over hint covering the window while files hover it (M2.7). */
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--waxwing-space-4);
+  border: 2px dashed var(--waxwing-accent);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--waxwing-surface) 85%, transparent);
+  color: var(--waxwing-text);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Attachment chip row (M2.7) — under the subject, above the editor. */
+.attachmentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  list-style: none;
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.attachmentChip {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  max-inline-size: 100%;
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface-2);
+  font-size: var(--waxwing-text-sm);
+}
+
+.attachmentChipError {
+  border-color: var(--waxwing-danger);
+}
+
+.attachmentChipIcon {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-text-muted);
+}
+
+.attachmentChipName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-inline-size: 12rem;
+}
+
+.attachmentChipSize {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Phone: the single full-screen composer fills the viewport. */
 @media (max-width: 39.999em) {
   .fullscreen {

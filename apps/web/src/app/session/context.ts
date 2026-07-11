@@ -25,3 +25,12 @@ export function useJmap(): ConnectedSession {
   if (!connected) throw new Error('useJmap requires a connected session')
   return connected
 }
+
+/**
+ * The connected session or `null` — outside a {@link SessionProvider} OR not yet connected
+ * (M2.7). Lets the composer's attachment hook read the client without forcing a provider in
+ * unit tests (which inject a fake uploader instead), mirroring {@link useReplicaOptional}.
+ */
+export function useSessionOptional(): ConnectedSession | null {
+  return useContext(SessionContext)?.connected ?? null
+}

@@ -11,19 +11,32 @@
  * discards silently, a non-empty one asks first).
  */
 
-import { Maximize2, Minimize2, Minus, Trash2, X } from 'lucide-react'
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
+import { Maximize2, Minimize2, Minus, Paperclip, Trash2, X } from 'lucide-react'
+import {
+  type ChangeEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LayoutTier } from '../app/shell/layout'
 import { Button, Dialog, IconButton, TextInput, useFocusTrap } from '../ui'
+import { AttachmentChips } from './AttachmentChips'
+import type { BlobUploader } from './attachment-upload'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
 import { isEmptyDraft } from './draft-email'
 import type { EditorFactory } from './editor-engine'
 import { FromField } from './FromField'
+import { getInlineObjectUrl } from './inline-image-registry'
 import { RecipientFields } from './RecipientFields'
-import { RichTextEditor } from './RichTextEditor'
+import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 import type { RecipientSuggestionSource } from './recipient-suggestions'
+import { useAttachmentUpload } from './use-attachment-upload'
 import { useDraftSync } from './use-draft-sync'
 
 export interface ComposerWindowProps {
@@ -33,6 +46,8 @@ export interface ComposerWindowProps {
   readonly editorFactory?: EditorFactory | undefined
   /** Injectable recipient-suggestion source (tests pass a fake; production uses the recents source). */
   readonly recipientSuggestions?: RecipientSuggestionSource | undefined
+  /** Injectable blob uploader (tests pass a fake; production builds one from the session). */
+  readonly uploader?: BlobUploader | undefined
 }
 
 export function ComposerWindow({
@@ -40,6 +55,7 @@ export function ComposerWindow({
   tier,
   editorFactory,
   recipientSuggestions,
+  uploader,
 }: ComposerWindowProps) {
   const { t } = useTranslation()
   const setMode = useComposerStore((state) => state.setMode)
@@ -49,10 +65,23 @@ export function ComposerWindow({
   const draftSync = useDraftSync()
 
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const windowRef = useRef<HTMLDivElement>(null)
   const subjectRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<RichTextEditorHandle>(null)
   const focusedOnce = useRef(false)
   const titleId = useId()
+
+  const insertInlineImage = useCallback(
+    (url: string, cid: string, alt: string): boolean =>
+      editorRef.current?.insertInlineImage(url, cid, alt) ?? false,
+    [],
+  )
+  const attachments = useAttachmentUpload(draft.id, {
+    insertInlineImage,
+    ...(uploader ? { uploader } : {}),
+  })
   const subjectId = useId()
 
   const fullscreen = tier === 'phone' || draft.mode === 'expanded'
@@ -91,6 +120,42 @@ export function ComposerWindow({
     setMode(draft.id, fullscreen ? 'docked' : 'minimized')
   }
 
+  // Attach: the paperclip opens the file picker; the picked files become attachments.
+  function onPickFiles(event: ChangeEvent<HTMLInputElement>): void {
+    const files = event.target.files
+    if (files !== null && files.length > 0) attachments.addFiles(Array.from(files), 'attach')
+    event.target.value = '' // let the same file be picked again later
+  }
+
+  // Drag & drop is owned here: a drop onto the editor surface inlines images (Apple Mail); a drop
+  // anywhere else in the window attaches. The overlay hint shows only while files hover the window.
+  function onWindowDragOver(event: DragEvent<HTMLDivElement>): void {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault() // never let the browser navigate to / natively insert a dropped file
+    if (attachments.canUpload) setDragActive(true)
+  }
+  function onWindowDragLeave(event: DragEvent<HTMLDivElement>): void {
+    if (!windowRef.current?.contains(event.relatedTarget as Node | null)) setDragActive(false)
+  }
+  function onWindowDrop(event: DragEvent<HTMLDivElement>): void {
+    if (!event.dataTransfer.types.includes('Files')) return
+    event.preventDefault()
+    setDragActive(false)
+    if (!attachments.canUpload) return
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length === 0) return
+    const inEditor =
+      event.target instanceof Element && event.target.closest('[role="textbox"]') !== null
+    if (inEditor) {
+      const images = files.filter((file) => file.type.startsWith('image/'))
+      const others = files.filter((file) => !file.type.startsWith('image/'))
+      if (images.length > 0) attachments.addFiles(images, 'inline')
+      if (others.length > 0) attachments.addFiles(others, 'attach')
+    } else {
+      attachments.addFiles(files, 'attach')
+    }
+  }
+
   if (minimized) {
     return (
       <button
@@ -122,12 +187,29 @@ export function ComposerWindow({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onMouseDownCapture={() => focusDraft(draft.id)}
+        onDragOver={onWindowDragOver}
+        onDragLeave={onWindowDragLeave}
+        onDrop={onWindowDrop}
       >
+        {dragActive && (
+          <div className={styles.dropOverlay} aria-hidden="true">
+            {t('compose.dropHint')}
+          </div>
+        )}
         <div className={styles.titleBar}>
           <span id={titleId} className={styles.title}>
             {draft.subject || t('compose.noSubject')}
           </span>
           <div className={styles.titleActions}>
+            <IconButton
+              label={t('compose.attach')}
+              variant="ghost"
+              size="sm"
+              disabled={!attachments.canUpload}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip />
+            </IconButton>
             <IconButton
               label={t('compose.discard')}
               variant="ghost"
@@ -179,14 +261,29 @@ export function ComposerWindow({
           />
         </div>
 
+        <AttachmentChips draftId={draft.id} controller={attachments} />
+
         <div className={styles.editorWrap}>
           <RichTextEditor
+            ref={editorRef}
             value={draft.body}
             onChange={(html) => updateBody(draft.id, html)}
             ariaLabel={t('compose.editorLabel')}
+            resolveInlineImage={getInlineObjectUrl}
+            {...(attachments.canUpload ? { onAddFiles: attachments.addFiles } : {})}
             {...(editorFactory ? { factory: editorFactory } : {})}
           />
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className={styles.hiddenFileInput}
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={onPickFiles}
+        />
       </div>
 
       {confirmDiscard && (

@@ -12,6 +12,7 @@
 
 import type { EmailAddress } from '@waxwing/jmap'
 import { create } from 'zustand'
+import type { UploadItem } from './attachment-upload'
 import type { DraftAttachment } from './reply'
 
 export type DraftMode = 'docked' | 'expanded' | 'minimized'
@@ -66,6 +67,8 @@ export interface ComposerState {
   readonly drafts: ReadonlyMap<string, DraftWindow>
   /** Draft with managed focus / on top; a required key whose value may be `undefined`. */
   readonly focusedId: string | undefined
+  /** draftId → in-flight/errored uploads (M2.7). View state ONLY — never serialized. */
+  readonly uploads: ReadonlyMap<string, readonly UploadItem[]>
 }
 
 export interface ComposerActions {
@@ -87,6 +90,16 @@ export interface ComposerActions {
     options?: { readonly markDirty?: boolean },
   ): void
   focusDraft(id: string): void
+  /** Append fully-uploaded attachments (M2.7), deduped by blobId+cid; marks the draft dirty. */
+  addAttachments(id: string, attachments: DraftAttachment[]): void
+  /** Remove an uploaded attachment by blobId; marks dirty. Body `<img>` stripping is the caller's job. */
+  removeAttachment(id: string, blobId: string): void
+  /** Register a new in-flight upload chip (M2.7). */
+  addUpload(id: string, item: UploadItem): void
+  /** Patch one in-flight upload (progress / status / error). */
+  patchUpload(id: string, tempId: string, patch: Partial<UploadItem>): void
+  /** Drop an in-flight/errored upload (cancel, retry-done, or completed → moved to attachments). */
+  removeUpload(id: string, tempId: string): void
 }
 
 export type ComposerStore = ComposerState & ComposerActions
@@ -96,6 +109,7 @@ const isOpen = (draft: DraftWindow): boolean => draft.mode !== 'minimized'
 export const useComposerStore = create<ComposerStore>()((set, get) => ({
   drafts: new Map<string, DraftWindow>(),
   focusedId: undefined,
+  uploads: new Map<string, readonly UploadItem[]>(),
 
   openDraft(init) {
     const id = init?.id ?? crypto.randomUUID()
@@ -135,9 +149,11 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
   closeDraft(id) {
     const next = new Map(get().drafts)
     if (!next.delete(id)) return
+    const uploads = new Map(get().uploads)
+    uploads.delete(id) // drop the view state; the upload hook's unmount cleanup aborts the transfers
     const remaining = [...next.keys()]
     const focusedId = get().focusedId === id ? remaining[remaining.length - 1] : get().focusedId
-    set({ drafts: next, focusedId })
+    set({ drafts: next, focusedId, uploads })
   },
 
   setMode(id, mode) {
@@ -205,5 +221,57 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
 
   focusDraft(id) {
     if (get().drafts.has(id)) set({ focusedId: id })
+  },
+
+  addAttachments(id, attachments) {
+    const current = get().drafts.get(id)
+    if (current === undefined) return
+    // Content-addressed blobIds mean identical files share an id; dedupe by blobId+cid so
+    // removeAttachment(blobId) stays unambiguous and re-uploads don't double the chip.
+    const fresh = attachments.filter(
+      (a) => !current.attachments.some((e) => e.blobId === a.blobId && e.cid === a.cid),
+    )
+    if (fresh.length === 0) return
+    const next = new Map(get().drafts)
+    next.set(id, { ...current, attachments: [...current.attachments, ...fresh], dirty: true })
+    set({ drafts: next })
+  },
+
+  removeAttachment(id, blobId) {
+    const current = get().drafts.get(id)
+    if (current === undefined) return
+    const index = current.attachments.findIndex((a) => a.blobId === blobId)
+    if (index === -1) return
+    const attachments = current.attachments.filter((_, i) => i !== index)
+    const next = new Map(get().drafts)
+    next.set(id, { ...current, attachments, dirty: true })
+    set({ drafts: next })
+  },
+
+  addUpload(id, item) {
+    const next = new Map(get().uploads)
+    next.set(id, [...(next.get(id) ?? []), item])
+    set({ uploads: next })
+  },
+
+  patchUpload(id, tempId, patch) {
+    const list = get().uploads.get(id)
+    if (list === undefined) return
+    const next = new Map(get().uploads)
+    next.set(
+      id,
+      list.map((u) => (u.tempId === tempId ? { ...u, ...patch } : u)),
+    )
+    set({ uploads: next })
+  },
+
+  removeUpload(id, tempId) {
+    const list = get().uploads.get(id)
+    if (list === undefined) return
+    const filtered = list.filter((u) => u.tempId !== tempId)
+    const next = new Map(get().uploads)
+    if (filtered.length === 0) next.delete(id)
+    else next.set(id, filtered)
+    set({ uploads: next })
   },
 }))

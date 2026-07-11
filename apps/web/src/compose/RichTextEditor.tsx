@@ -11,16 +11,20 @@
  */
 
 import {
+  type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
+  type Ref,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Dialog, TextInput } from '../ui'
+import type { AddFilesMode } from './attachment-upload'
 import { EditorToolbar, type ToolbarCommands } from './EditorToolbar'
 import styles from './editor.module.css'
 import {
@@ -32,9 +36,30 @@ import {
   readActiveFormats,
 } from './editor-engine'
 import { htmlToPlainText, plainTextToHtml } from './html-to-text'
+import { canonicalizeInlineImages, resolveInlineImages } from './inline-images'
+
+/** Imperative surface for the composer to drive inline-image insertion (M2.7). */
+export interface RichTextEditorHandle {
+  /** Insert `<img src=objectUrl data-cid=cid alt=alt>` at the caret; false if the engine isn't ready. */
+  insertInlineImage(objectUrl: string, cid: string, alt: string): boolean
+  focus(): void
+}
 
 /** Debounce between the last keystroke and an `onChange` — keeps typing off the parent's render path. */
 const DEBOUNCE_MS = 200
+
+/** getHTML → canonical body (inline `<img>` become `cid:`). Cheap no-op when no inline image is present. */
+function toCanonicalHtml(html: string): string {
+  return html.includes('data-cid') ? canonicalizeInlineImages(html) : html
+}
+
+/** canonical body → editor view (inline `cid:` become local objectURLs; unresolved ones are dropped). */
+function forDisplayHtml(
+  html: string,
+  resolve: ((cid: string) => string | null) | undefined,
+): string {
+  return html.includes('cid:') ? resolveInlineImages(html, resolve ?? (() => null)) : html
+}
 
 export interface RichTextEditorProps {
   /** The message HTML (source of truth). */
@@ -49,6 +74,12 @@ export interface RichTextEditorProps {
   readonly ariaLabel: string
   /** Injectable engine factory (defaults to the real Squire adapter; tests pass a fake). */
   readonly factory?: EditorFactory | undefined
+  /** Imperative handle for inline-image insertion (M2.7). */
+  readonly ref?: Ref<RichTextEditorHandle>
+  /** Files pasted/dropped onto the editor (image → inline, other → attachment). */
+  readonly onAddFiles?: ((files: File[], mode: AddFilesMode) => void) | undefined
+  /** Resolve an inline `cid:` to a local preview objectURL (null → drop from the view). */
+  readonly resolveInlineImage?: ((cid: string) => string | null) | undefined
 }
 
 export function RichTextEditor({
@@ -58,6 +89,9 @@ export function RichTextEditor({
   onPlainTextChange,
   ariaLabel,
   factory = defaultEditorFactory,
+  ref,
+  onAddFiles,
+  resolveInlineImage,
 }: RichTextEditorProps) {
   const [mode, setMode] = useState<'rich' | 'plain'>(plainText ? 'plain' : 'rich')
   const [active, setActive] = useState<ActiveFormats>(NO_ACTIVE_FORMATS)
@@ -72,6 +106,8 @@ export function RichTextEditor({
   const debounceRef = useRef<number | undefined>(undefined)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const resolveRef = useRef(resolveInlineImage)
+  resolveRef.current = resolveInlineImage
 
   // Create / tear down the Squire engine while in rich mode.
   useEffect(() => {
@@ -89,12 +125,14 @@ export function RichTextEditor({
       }
       engine = created
       engineRef.current = created
-      created.setHTML(htmlRef.current)
+      // Seed the editor with the DISPLAY form (cid: → objectURL); track the CANONICAL value so the
+      // external-value effect below never re-sets our own echo (which would fight the cursor).
+      created.setHTML(forDisplayHtml(htmlRef.current, resolveRef.current))
       lastEmittedRef.current = htmlRef.current
       const onInput = (): void => {
         if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current)
         debounceRef.current = window.setTimeout(() => {
-          const html = created.getHTML()
+          const html = toCanonicalHtml(created.getHTML())
           htmlRef.current = html
           lastEmittedRef.current = html
           onChangeRef.current(html)
@@ -123,7 +161,7 @@ export function RichTextEditor({
   useEffect(() => {
     htmlRef.current = value
     if (mode === 'rich' && engineRef.current !== null && value !== lastEmittedRef.current) {
-      engineRef.current.setHTML(value)
+      engineRef.current.setHTML(forDisplayHtml(value, resolveRef.current))
       lastEmittedRef.current = value
     }
   }, [value, mode])
@@ -134,7 +172,7 @@ export function RichTextEditor({
     fn(engine)
     engine.focus()
     setActive(readActiveFormats(engine))
-    const html = engine.getHTML()
+    const html = toCanonicalHtml(engine.getHTML())
     htmlRef.current = html
     lastEmittedRef.current = html
     onChangeRef.current(html)
@@ -162,6 +200,41 @@ export function RichTextEditor({
   const insertLink = (url: string): void => {
     runCommand((engine) => engine.makeLink(url))
     setLinkOpen(false)
+  }
+
+  // Inline-image insertion (M2.7): the upload hook drives this via the imperative handle; the
+  // objectURL previews immediately, `data-cid` carries the future `cid:` reference (canonicalized
+  // out on the next getHTML). Goes through runCommand so `lastEmittedRef` tracks the canonical body.
+  const insertInlineImage = useCallback(
+    (objectUrl: string, cid: string, alt: string): boolean => {
+      if (engineRef.current === null) return false // not mounted yet — caller falls back to attach
+      runCommand((engine) => engine.insertImage(objectUrl, { 'data-cid': cid, alt }))
+      return true
+    },
+    [runCommand],
+  )
+
+  useImperativeHandle(ref, () => ({ insertInlineImage, focus: () => engineRef.current?.focus() }), [
+    insertInlineImage,
+  ])
+
+  function splitByImage(files: File[]): { images: File[]; others: File[] } {
+    return {
+      images: files.filter((file) => file.type.startsWith('image/')),
+      others: files.filter((file) => !file.type.startsWith('image/')),
+    }
+  }
+
+  // Paste inlines an image (a screenshot) and attaches a file; a text/html paste falls through to
+  // Squire. Drag & drop is owned by ComposerWindow (it routes an editor-targeted drop to inline).
+  function onSurfacePaste(event: ClipboardEvent<HTMLDivElement>): void {
+    if (onAddFiles === undefined) return
+    const files = event.clipboardData?.files
+    if (files === undefined || files.length === 0) return
+    event.preventDefault()
+    const { images, others } = splitByImage(Array.from(files))
+    if (images.length > 0) onAddFiles(images, 'inline')
+    if (others.length > 0) onAddFiles(others, 'attach')
   }
 
   function onSurfaceKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
@@ -236,6 +309,7 @@ export function RichTextEditor({
             aria-label={ariaLabel}
             tabIndex={0}
             onKeyDown={onSurfaceKeyDown}
+            onPaste={onSurfacePaste}
           />
         </>
       )}

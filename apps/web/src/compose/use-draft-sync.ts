@@ -20,6 +20,16 @@ import {
 import { getActiveEngine } from '../sync/engine'
 import { useComposerStore } from './composer-store'
 import { isEmptyDraft, serializeDraft, toEmailCreate } from './draft-email'
+import { revokeInlineObjectUrls } from './inline-image-registry'
+
+/** Revoke the inline-image preview objectURLs a (discarded) draft holds — Close keeps them for reopen. */
+function revokeDraftInlineImages(localId: string): void {
+  const draft = useComposerStore.getState().drafts.get(localId)
+  if (draft === undefined) return
+  revokeInlineObjectUrls(
+    draft.attachments.map((a) => a.cid).filter((cid): cid is string => cid !== null),
+  )
+}
 
 export interface DraftSync {
   /** Persist the draft locally (durable) + queue the server save. No-op for an empty draft. */
@@ -86,7 +96,10 @@ export function useDraftSync(): DraftSync {
       return {
         flush: noop,
         close: async (localId) => closeWindow(localId),
-        discard: async (localId) => closeWindow(localId),
+        discard: async (localId) => {
+          revokeDraftInlineImages(localId)
+          closeWindow(localId)
+        },
       }
     }
     const { db, accountId } = replica
@@ -105,6 +118,7 @@ export function useDraftSync(): DraftSync {
             { id: outboxId(localId) },
           )
         }
+        revokeDraftInlineImages(localId)
         closeWindow(localId)
       },
     }

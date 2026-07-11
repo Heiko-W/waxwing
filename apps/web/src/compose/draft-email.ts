@@ -5,11 +5,12 @@
  * no network — fully unit-tested.
  */
 
-import type { EmailAddress, EmailCreate, Id } from '@waxwing/jmap'
+import type { EmailAddress, EmailBodyPart, EmailCreate, Id } from '@waxwing/jmap'
 import type { DraftRow, EmailRow, SerializedDraft } from '../sync'
 import { cleanOutgoingHtml } from './clean-html'
 import type { DraftWindow, OpenDraftInit } from './composer-store'
 import { htmlToPlainText } from './html-to-text'
+import { referencedCids, removeInlineImage } from './inline-images'
 
 /** The persistable subset of a live draft (UI-only mode/dirty/focus excluded). */
 export function serializeDraft(draft: DraftWindow): SerializedDraft {
@@ -53,14 +54,49 @@ export function isEmptyDraft(draft: DraftWindow | SerializedDraft): boolean {
   return noRecipients && blankSubject && blankBody
 }
 
-/** The Drafts-mailbox `Email/set` create body (html-only; the text/plain alternative is M2.8). */
+/**
+ * The Drafts-mailbox `Email/set` create body (html-only; the text/plain alternative is M2.8).
+ * Attachments map to `attachments[]` parts: `cid === null` → a regular `disposition:"attachment"`
+ * part; `cid !== null` → an `disposition:"inline"` part the html body references via `cid:` — but
+ * ONLY if that cid is still referenced (an inline image whose `<img>` was deleted is pruned).
+ */
 export function toEmailCreate(input: {
   draft: SerializedDraft
   draftsMailboxId: Id
   from: EmailAddress | null
 }): EmailCreate {
   const { draft } = input
-  return {
+  const inlineCids = new Set<string>()
+  for (const a of draft.attachments) if (a.cid !== null) inlineCids.add(a.cid)
+  // Strip any inline `<img src="cid:…">` with no backing (completed) attachment — an upload still in
+  // flight or errored — so the emitted html never references a cid that has no inline part.
+  let cleaned = cleanOutgoingHtml(draft.body)
+  for (const cid of referencedCids(cleaned)) {
+    if (!inlineCids.has(cid)) cleaned = removeInlineImage(cleaned, cid)
+  }
+  const referenced = referencedCids(cleaned)
+  const parts: Partial<EmailBodyPart>[] = []
+  for (const a of draft.attachments) {
+    if (a.cid === null) {
+      parts.push({
+        blobId: a.blobId,
+        type: a.type,
+        name: a.name,
+        size: a.size,
+        disposition: 'attachment',
+      })
+    } else if (referenced.has(a.cid)) {
+      parts.push({
+        blobId: a.blobId,
+        type: a.type,
+        name: a.name,
+        size: a.size,
+        cid: a.cid,
+        disposition: 'inline',
+      })
+    }
+  }
+  const email: EmailCreate = {
     mailboxIds: { [input.draftsMailboxId]: true },
     keywords: { $draft: true, $seen: true },
     subject: draft.subject,
@@ -72,13 +108,11 @@ export function toEmailCreate(input: {
     references: draft.references,
     htmlBody: [{ partId: 'html', type: 'text/html' }],
     bodyValues: {
-      html: {
-        value: cleanOutgoingHtml(draft.body),
-        isEncodingProblem: false,
-        isTruncated: false,
-      },
+      html: { value: cleaned, isEncodingProblem: false, isTruncated: false },
     },
   }
+  if (parts.length > 0) email.attachments = parts
+  return email
 }
 
 /** A synced Drafts envelope + its fetched body → an `openDraft` init (bcc isn't on the envelope). */

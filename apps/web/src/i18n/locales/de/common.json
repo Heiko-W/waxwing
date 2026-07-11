@@ -324,6 +324,18 @@
     "recipientDidYouMeanApply": "{{suggestion}} verwenden",
     "recipientMoveTo": "Verschieben nach {{field}}",
     "recipientMoveMenu": "Empfängeroptionen",
-    "discard": "Entwurf verwerfen"
+    "discard": "Entwurf verwerfen",
+    "attach": "Datei anhängen",
+    "attachmentsLabel": "Anhänge",
+    "attachRemove": "{{name}} entfernen",
+    "attachRetry": "{{name}} erneut versuchen",
+    "attachCancel": "Upload abbrechen",
+    "attachUploading": "{{name}} wird hochgeladen …",
+    "attachError": "Upload fehlgeschlagen",
+    "attachTooLarge": "{{name}} ist zu groß (max. {{max}})",
+    "attachTotalTooLarge": "Anhänge überschreiten das Limit von {{max}}",
+    "attachQuota": "Upload-Limit erreicht – bitte später erneut versuchen",
+    "attachNetworkError": "Upload fehlgeschlagen – Verbindung prüfen",
+    "dropHint": "Dateien zum Anhängen ablegen"
   }
 }

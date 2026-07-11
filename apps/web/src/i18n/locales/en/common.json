@@ -324,6 +324,18 @@
     "recipientDidYouMeanApply": "Use {{suggestion}}",
     "recipientMoveTo": "Move to {{field}}",
     "recipientMoveMenu": "Recipient options",
-    "discard": "Discard draft"
+    "discard": "Discard draft",
+    "attach": "Attach file",
+    "attachmentsLabel": "Attachments",
+    "attachRemove": "Remove {{name}}",
+    "attachRetry": "Retry {{name}}",
+    "attachCancel": "Cancel upload",
+    "attachUploading": "Uploading {{name}}…",
+    "attachError": "Upload failed",
+    "attachTooLarge": "{{name}} is too large (max {{max}})",
+    "attachTotalTooLarge": "Attachments exceed the {{max}} limit",
+    "attachQuota": "Upload limit reached — please try again later",
+    "attachNetworkError": "Upload failed — check your connection",
+    "dropHint": "Drop files to attach"
   }
 }

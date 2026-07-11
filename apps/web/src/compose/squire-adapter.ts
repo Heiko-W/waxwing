@@ -18,10 +18,24 @@ import { cleanOutgoingHtml } from './clean-html'
 import type { EditorEngine } from './editor-engine'
 import { htmlToPlainText } from './html-to-text'
 
+// Permit our own inline-image preview object URLs (`blob:`) as an `<img src>` (M2.7). DOMPurify
+// otherwise strips `blob:` as an unknown protocol, which would blank a pasted screenshot's preview
+// every time the editor re-seeds via setHTML (minimize→restore, From-identity change). Safe and
+// narrow: only `blob:` on an `<img>`, and this DOMPurify instance sanitizes ONLY the composer editor
+// (the reading side, @waxwing/mail-html, bundles a separate instance). `javascript:` etc. stay blocked.
+DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+  if (data.attrName === 'src' && node.nodeName === 'IMG' && data.attrValue.startsWith('blob:')) {
+    data.forceKeepAttr = true
+  }
+})
+
 function sanitizeToDOMFragment(html: string): DocumentFragment {
   return DOMPurify.sanitize(html, {
     RETURN_DOM_FRAGMENT: true,
-    ADD_ATTR: ['target'],
+    // `target` (links) + `data-cid` (M2.7 inline-image marker). `data-*` survive DOMPurify by
+    // default, but naming it is explicit; inline `<img src="blob:…">` previews are inserted via
+    // Squire.insertImage (DOM node, not this HTML-string path), so the blob: URL is never sanitized.
+    ADD_ATTR: ['target', 'data-cid'],
   }) as unknown as DocumentFragment
 }
 
@@ -80,6 +94,9 @@ export function createSquireEngine(root: HTMLElement): EditorEngine {
     },
     removeLink: () => {
       squire.removeLink()
+    },
+    insertImage: (src, attributes) => {
+      squire.insertImage(src, attributes ?? {})
     },
     setFontSize: (size) => {
       squire.setFontSize(size)

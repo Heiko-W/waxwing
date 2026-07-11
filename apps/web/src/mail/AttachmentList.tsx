@@ -7,12 +7,13 @@
  */
 
 import type { EmailBodyPart, Id } from '@waxwing/jmap'
-import { Download, FileText, ImageIcon, Paperclip } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSession } from '../app/session/context'
 import { formatBytes } from '../i18n/formatters'
 import { Button, IconButton, Spinner } from '../ui'
+import { attachmentIcon } from './attachment-icon'
 import styles from './reading.module.css'
 
 export interface AttachmentListProps {
@@ -24,12 +25,6 @@ export interface AttachmentListProps {
 function isAttachment(part: EmailBodyPart): part is EmailBodyPart & { blobId: Id } {
   if (part.blobId === null) return false
   return !(part.cid !== null && part.disposition === 'inline')
-}
-
-function iconFor(type: string) {
-  if (type.startsWith('image/')) return ImageIcon
-  if (type === 'application/pdf') return FileText
-  return Paperclip
 }
 
 function isPreviewable(type: string): boolean {
@@ -126,7 +121,7 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
       </div>
       <ul className={styles.attachmentItems}>
         {items.map((part) => {
-          const Icon = iconFor(part.type)
+          const Icon = attachmentIcon(part.type)
           const label = part.name ?? t('reading.attachments.unnamed')
           const open = preview?.blobId === part.blobId
           return (

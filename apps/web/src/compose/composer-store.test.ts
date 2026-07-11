@@ -1,8 +1,24 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import type { UploadItem } from './attachment-upload'
 import { MAX_OPEN, useComposerStore } from './composer-store'
 
-const reset = (): void => useComposerStore.setState({ drafts: new Map(), focusedId: undefined })
+const reset = (): void =>
+  useComposerStore.setState({ drafts: new Map(), focusedId: undefined, uploads: new Map() })
 const store = () => useComposerStore.getState()
+
+const uploadItem = (over: Partial<UploadItem> = {}): UploadItem => ({
+  tempId: 'u1',
+  name: 'a.png',
+  type: 'image/png',
+  size: 10,
+  inline: false,
+  cid: null,
+  previewUrl: null,
+  status: 'uploading',
+  progress: 0,
+  error: null,
+  ...over,
+})
 
 describe('composer store', () => {
   beforeEach(reset)
@@ -114,5 +130,55 @@ describe('composer store', () => {
     store().setFromIdentity(id, 'id-2', '<p>swapped</p>')
     expect(store().drafts.get(id)?.fromIdentityId).toBe('id-2')
     expect(store().drafts.get(id)?.dirty).toBe(true)
+  })
+
+  it('adds attachments (deduped by blobId+cid) and marks dirty (M2.7)', () => {
+    const id = store().openDraft()
+    store().addAttachments(id, [{ blobId: 'b1', name: 'a', type: 'image/png', size: 1, cid: null }])
+    store().addAttachments(id, [{ blobId: 'b1', name: 'a', type: 'image/png', size: 1, cid: null }]) // dup
+    store().addAttachments(id, [{ blobId: 'b1', name: 'a', type: 'image/png', size: 1, cid: 'x' }]) // same blob, inline
+    expect(store().drafts.get(id)?.attachments).toHaveLength(2)
+    expect(store().drafts.get(id)?.dirty).toBe(true)
+  })
+
+  it('removes an attachment by blobId', () => {
+    const id = store().openDraft()
+    store().addAttachments(id, [
+      { blobId: 'b1', name: 'a', type: 'x', size: 1, cid: null },
+      { blobId: 'b2', name: 'b', type: 'x', size: 1, cid: null },
+    ])
+    store().removeAttachment(id, 'b1')
+    expect(
+      store()
+        .drafts.get(id)
+        ?.attachments.map((a) => a.blobId),
+    ).toEqual(['b2'])
+  })
+
+  it('tracks in-flight uploads and patches / removes them', () => {
+    const id = store().openDraft()
+    store().addUpload(id, uploadItem({ tempId: 'u1' }))
+    store().addUpload(id, uploadItem({ tempId: 'u2' }))
+    store().patchUpload(id, 'u1', { status: 'error', error: { code: 'server' } })
+    expect(
+      store()
+        .uploads.get(id)
+        ?.find((u) => u.tempId === 'u1')?.status,
+    ).toBe('error')
+    store().removeUpload(id, 'u2')
+    expect(
+      store()
+        .uploads.get(id)
+        ?.map((u) => u.tempId),
+    ).toEqual(['u1'])
+  })
+
+  it('keeps uploads across a minimize and clears them on close', () => {
+    const id = store().openDraft()
+    store().addUpload(id, uploadItem())
+    store().setMode(id, 'minimized')
+    expect(store().uploads.get(id)).toHaveLength(1) // survives the window remount
+    store().closeDraft(id)
+    expect(store().uploads.has(id)).toBe(false)
   })
 })

@@ -8,9 +8,34 @@ import {
   JmapMethodError,
   JmapProblemError,
   ProblemTypes,
+  parseRetryAfter,
 } from './errors'
 import { at, jmapPostMock, makeSession } from './test-support'
 import type { Invocation, SetError } from './types/core'
+
+describe('parseRetryAfter', () => {
+  it('parses delta-seconds to milliseconds', () => {
+    expect(parseRetryAfter('120')).toBe(120_000)
+    expect(parseRetryAfter(' 5 ')).toBe(5000)
+  })
+  it('returns undefined for an absent or unparseable value', () => {
+    expect(parseRetryAfter(null)).toBeUndefined()
+    expect(parseRetryAfter('')).toBeUndefined()
+    expect(parseRetryAfter('soon')).toBeUndefined()
+  })
+})
+
+describe('errorFromResponse — carries Retry-After on a 429 (M2.7)', () => {
+  it('exposes retryAfterMs from the header', async () => {
+    const response = new Response(JSON.stringify({ type: 'x', status: 429 }), {
+      status: 429,
+      headers: { 'content-type': 'application/problem+json', 'Retry-After': '30' },
+    })
+    const error = (await errorFromResponse(response)) as JmapProblemError
+    expect(error.status).toBe(429)
+    expect(error.retryAfterMs).toBe(30_000)
+  })
+})
 
 describe('errorFromResponse — request-level (RFC 8620 §3.6.1)', () => {
   it('maps an application/problem+json body to JmapProblemError with type + limit', async () => {

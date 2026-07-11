@@ -44,6 +44,7 @@ function createFakeEngine(): FakeEngine {
     decreaseQuoteLevel: vi.fn(),
     makeLink: vi.fn(),
     removeLink: vi.fn(),
+    insertImage: vi.fn(),
     setFontSize: vi.fn(),
     hasFormat: (tag) => fake.formats.has(tag),
     getPath: () => fake.path,

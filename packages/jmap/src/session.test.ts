@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { basic, bearer } from './auth'
 import {
   getCoreCapability,
+  getMailCapability,
   getSession,
   normalizeSession,
   sessionStateChanged,
@@ -86,6 +87,28 @@ describe('getCoreCapability', () => {
     const session = makeSession()
     session.capabilities = {}
     expect(getCoreCapability(session)).toBeNull()
+  })
+})
+
+describe('getMailCapability', () => {
+  it('reads the mail limits from the account capability', () => {
+    const session = makeSession()
+    session.accounts.a = {
+      ...at(Object.values(session.accounts), 0),
+      accountCapabilities: {
+        'urn:ietf:params:jmap:mail': {
+          maxSizeAttachmentsPerEmail: 50_000_000,
+          emailQuerySortOptions: ['receivedAt'],
+        },
+      },
+    }
+    expect(getMailCapability(session, 'a')?.maxSizeAttachmentsPerEmail).toBe(50_000_000)
+  })
+
+  it('returns null for an unknown account or a missing capability', () => {
+    const session = makeSession() // the fixture account has accountCapabilities: {}
+    expect(getMailCapability(session, 'nope')).toBeNull()
+    expect(getMailCapability(session, 'a')).toBeNull()
   })
 })
 

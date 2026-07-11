@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react'
 import { useLayoutTier } from '../app/shell/layout'
 import { Portal } from '../ui'
+import type { BlobUploader } from './attachment-upload'
 import { ComposerWindow } from './ComposerWindow'
 import styles from './composer.module.css'
 import { useComposerStore } from './composer-store'
@@ -22,9 +23,15 @@ export interface ComposerHostProps {
   readonly editorFactory?: EditorFactory | undefined
   /** Injectable recipient-suggestion source (tests/E2E); production omits it (recents source). */
   readonly recipientSuggestions?: RecipientSuggestionSource | undefined
+  /** Injectable blob uploader (tests/E2E); production omits it (built from the session). */
+  readonly uploader?: BlobUploader | undefined
 }
 
-export default function ComposerHost({ editorFactory, recipientSuggestions }: ComposerHostProps) {
+export default function ComposerHost({
+  editorFactory,
+  recipientSuggestions,
+  uploader,
+}: ComposerHostProps) {
   const tier = useLayoutTier()
   const drafts = useComposerStore((state) => state.drafts)
   const focusedId = useComposerStore((state) => state.focusedId)
@@ -58,6 +65,7 @@ export default function ComposerHost({ editorFactory, recipientSuggestions }: Co
             tier={tier}
             {...(editorFactory ? { editorFactory } : {})}
             {...(recipientSuggestions ? { recipientSuggestions } : {})}
+            {...(uploader ? { uploader } : {})}
           />
         ))}
       </div>

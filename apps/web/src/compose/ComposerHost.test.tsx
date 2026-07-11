@@ -27,6 +27,7 @@ function makeFakeEngine(): EditorEngine {
     decreaseQuoteLevel: noop,
     makeLink: noop,
     removeLink: noop,
+    insertImage: noop,
     setFontSize: noop,
     hasFormat: () => false,
     getPath: () => '',

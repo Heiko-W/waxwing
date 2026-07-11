@@ -127,7 +127,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M2.4 | Recipient fields (pills, validation, basic autocomplete) | M | M2.2, M1.2 | done | **2026-07-11.** `apps/web/src/compose/`: `RecipientField` (APG editable-combobox — `role=combobox`+`aria-activedescendant` listbox, roving-tabindex pills, full keyboard map: Enter/`,`/`;`/Tab commit, Backspace-empty removes last, ArrowLeft→pills, per-pill move-menu) + `RecipientFields` (To always; Cc/Bcc toggles, auto-shown when populated; "did you mean" apply) replacing M2.3's read-only summary; pure `address-validation` (isPlausibleEmail/parseAddressList), `typo-heuristic` (Levenshtein ≤2 vs an en+de provider list), `recipient-suggestions` (a `RecipientSuggestionSource` interface + recents impl ranked by recency×frequency 30-day half-life + `combineSuggestionSources` M4.3 seam). Replica: new **`addressStats`** store (Dexie `version(2)`, additive) harvested best-effort after `putEmails` (backfill+delta, idempotent `lastSeenAt`); `useReplicaOptional`; store `setRecipients`/`moveRecipient`. +54 tests (713 total, 86 files); 185.0 KB gz (+3 KB pure modules via the barrel; squire/composer stay lazy). Owner-default decisions (Apple-Mail/iOS-aligned): keyboard-move over drag, Cc/Bcc toggles, recents on by default (local-only). Sent/received classification (own-address boost) a follow-up. |
 | M2.5 | Identities & signatures | S | M2.2 | done | **2026-07-11.** `@waxwing/jmap`: RFC 8621 §6 `Identity` type + `Identity/get` method (`types/submission.ts`, `methods.ts`). Replica: `identities` store (Dexie `version(3)`, additive) + `useIdentities` + `putIdentities`/`identitiesForAccount`; engine does a one-shot `Identity/get` after `syncMailboxes` (guarded, refetched per session; `Identity/changes` deferred). Composer: pure `signature.ts` (marker-based `applySignature`/`replaceSignature`, `signatureHtmlForIdentity`, `pickDefaultIdentity`) + `FromField` (native-Select From picker, shown only when >1 identity; seeds the default identity's signature above the quote with `markDirty:false`, swaps in place on change preserving user text, respects a deleted signature). Store `fromIdentityId` + `setFromIdentity`. +20 tests (733 total, 89 files); 185.9 KB gz. **Build-infra: `pnpm verify` now runs `build:libs` first** (builds jmap+mail-html `dist` — M2.5 is the first jmap-package API change the web app consumes, and `dist` is gitignored/on-demand, so verify must be self-contained). Owner-default decisions (signature above quote, one-shot fetch, keep-deleted-signature, default = hint-match else primary). |
 | M2.6 | Drafts autosave (server + local, crash-safe) | M | M2.2, M1.3 | done | **2026-07-11.** Crash-safe drafts. `sync/`: new **`drafts`** store (`ReplicaDb.version(4)`, keys `[accountId+localId]` + `[accountId+serverEmailId]` + `[accountId+updatedAt]`), `DraftRow`/`SerializedDraft`/`DraftAttachmentLike` types, repo CRUD (`putDraft`/`getDraft`/`getDraftByServerId`/`listDrafts`/`deleteDraft`). Outbox: `saveDraft` (**create-new + destroy-old in one `Email/set`** — RFC 8621 §4.6 / RFC 8620 §5.3 gap-free) + `discardDraft` intents, coalesced by stable id `draft:<localId>`; `reconcileDraftSave` stamps `serverEmailId`+`synced`, `stampDraftError` marks `error`; `setEmails` gained `create`. `compose/`: pure `draft-email` (serialize/deserialize/isEmptyDraft/toEmailCreate/toDraftInit), `use-draft-sync` (durable flush + close/discard), `use-draft-autosave` (3 s idle + `visibilitychange` flush; mounted in ComposerHost), `use-draft-restore` (unsynced drafts → minimized chips; mounted in AppShell), `use-draft-opener` (open-from-Drafts, local copy keeps `bcc`); `openDraft` accepts a fixed `id` (idempotent reopen). `ComposerWindow`: **Close = save to Drafts** (Apple ⌘W), **Discard = delete** (trash button; empty discards silently), **Esc = de-escalate** (full-screen→docked→minimized, no data loss). `MessageList`/`Conversation` route `$draft` clicks to the composer. i18n `compose.discard` + `reading.editDraft`/`draftLead`; discard copy now "permanently deleted". +30 tests (754 total, 91 files); **entry chunk 187.4 KB gz** (≤ 300 budget). |
-| M2.7 | Attachments & inline images (upload pipeline) | M | M2.2, SP.1 | todo | |
+| M2.7 | Attachments & inline images (upload pipeline) | M | M2.2, SP.1 | done | **2026-07-11.** Composer attachments + inline images. `compose/`: pure `attachment-upload` (validate/`classifyUploadError`/`BlobUploader` seam), `inline-images` (cid↔objectURL canonicalize/resolve/prune), `inline-image-registry` (module-scoped `cid→objectURL`, survives minimize/restore), `use-attachment-upload` (concurrency pool bounded by `maxConcurrentUpload`, per-file progress/cancel/retry, optimistic inline insert, `makeBlobUploader`), `AttachmentChips` (chip row; inline images live in the body, not chips). `RichTextEditor` gains a ref handle (`insertInlineImage`) + `onAddFiles` paste + `resolveInlineImage`; the `lastEmittedRef` guard keeps a just-inserted blob preview from being dropped by the external-value `setHTML`. `EditorEngine.insertImage` seam + Squire adapter (keeps `data-cid`). `ComposerWindow`: paperclip picker + window drag&drop overlay (editor-targeted drop → inline, else attachment) + hidden file input. `draft-email.toEmailCreate` maps `attachments`/inline `disposition` + prunes orphaned inline cids. `mail/attachment-icon` extracted + shared with the reader's `AttachmentList`. jmap: `getMailCapability` (+export), `Retry-After`→`JmapProblemError.retryAfterMs` (`parseRetryAfter`), `useSessionOptional`. i18n en+de (`compose.attach*`, `dropHint`). **+37 tests (791 total, 94 files); entry chunk 188.5 KB gz** — all attachment code confirmed in the lazy `ComposerHost` chunk (11.8 KB), grep-verified absent from `index-*.js`. Owner-decided UX + deferred reload-preview-restore recorded in §M2.7. |
 | M2.8 | Send pipeline (submission, errors, undo send) | M | M2.3–M2.7 | todo | |
 | M2.9 | E2E write suite (send/receive round-trip) | S | M2.8 | todo | |
 
@@ -1200,15 +1200,26 @@ pull-the-plug + offline-reconnect assertions are folded into the M2.9 E2E write 
 
 Spec: FR-CMP-04. Size: M.
 
-- [ ] Upload pipeline via session `uploadUrl` (SP.1 blob API): file picker, drag & drop
-      onto composer, **paste** (incl. screenshot paste → inline image) — inline images
-      upload → `cid:` reference in HTML body.
-- [ ] Progress UI per attachment, cancel, retry; failures don't lose the draft.
-- [ ] Validation before send: `maxSizeUpload` / total size vs. server limits with clear
-      errors (FR-CMP-04, FR-SRV-03).
+- [x] Upload pipeline via session `uploadUrl` (`JmapClient.upload`): file picker + drag & drop
+      onto the window + **paste** (screenshot → inline). Inline images use a canonical
+      `<img src="cid:…">` body form (`inline-images.ts`); `toEmailCreate` emits `disposition:"inline"`
+      parts referenced by the html body, and regular files as `disposition:"attachment"`.
+- [x] Progress UI per attachment (chip row), cancel (abort), retry; a failed upload keeps the
+      draft. Only fully-uploaded blobs enter `draft.attachments` (the persistable set).
+- [x] Validation before upload: per-file `maxSizeUpload` + total `maxSizeAttachmentsPerEmail`
+      (new `getMailCapability`), with localized toasts; the SP.5 429 quota (Retry-After captured
+      on `JmapProblemError`) surfaces as a retryable error.
 
 Done when: a pasted screenshot arrives as a proper inline image in another client;
-oversized files are rejected client-side with a useful message.
+oversized files are rejected client-side with a useful message. — The send-side round-trip
+(a real recipient sees the inline image) is exercised by the **M2.9** E2E write suite.
+
+**Owner-decided UX (Apple-Mail-aligned):** paste image → inline, drop-on-window → attachment,
+drop-on-editor → inline; no client-side image downscaling; Close during an in-flight upload
+proceeds (aborts unfinished uploads); **deferred follow-up** — inline-image PREVIEW after a full
+page reload (the `cid:` still sends correctly; previews survive minimize/restore via a module-scoped
+`cid→objectURL` registry, but a reload clears it → restore via authenticated blob download is a
+follow-up).
 
 ### M2.8 — Send pipeline
 

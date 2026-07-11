@@ -43,13 +43,16 @@ export class JmapProblemError extends JmapError {
   readonly detail: string | undefined
   readonly limit: string | undefined
   readonly problem: ProblemDetails
-  constructor(problem: ProblemDetails, httpStatus?: number) {
+  /** Parsed `Retry-After` in milliseconds (e.g. on a 429 rate-limit), or `undefined` if absent. */
+  readonly retryAfterMs: number | undefined
+  constructor(problem: ProblemDetails, httpStatus?: number, retryAfterMs?: number) {
     super(problem.detail ?? problem.type)
     this.type = problem.type
     this.status = problem.status ?? httpStatus
     this.detail = problem.detail
     this.limit = problem.limit
     this.problem = problem
+    this.retryAfterMs = retryAfterMs
   }
 }
 
@@ -152,6 +155,20 @@ function isProblemDetails(value: unknown): value is ProblemDetails {
 }
 
 /**
+ * Parses an HTTP `Retry-After` header (RFC 9110 §10.2.3 — delta-seconds OR an HTTP-date) to
+ * milliseconds from now. Returns `undefined` for an absent/unparseable value.
+ */
+export function parseRetryAfter(header: string | null): number | undefined {
+  if (header === null) return undefined
+  const trimmed = header.trim()
+  if (trimmed === '') return undefined
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000
+  const when = Date.parse(trimmed)
+  if (Number.isNaN(when)) return undefined
+  return Math.max(0, when - Date.now())
+}
+
+/**
  * Maps a failed `fetch` Response to the appropriate error. An
  * `application/problem+json` body becomes a {@link JmapProblemError}; anything else a
  * {@link JmapHttpError}. Never throws on a malformed body.
@@ -165,7 +182,13 @@ export async function errorFromResponse(response: Response): Promise<JmapError> 
   ) {
     try {
       const parsed: unknown = JSON.parse(text)
-      if (isProblemDetails(parsed)) return new JmapProblemError(parsed, response.status)
+      if (isProblemDetails(parsed)) {
+        return new JmapProblemError(
+          parsed,
+          response.status,
+          parseRetryAfter(response.headers.get('Retry-After')),
+        )
+      }
     } catch {
       // fall through to a plain HTTP error
     }
