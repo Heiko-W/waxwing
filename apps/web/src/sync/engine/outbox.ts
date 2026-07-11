@@ -12,7 +12,13 @@
  * rollbacks; a persisted `error` row therefore means "needs server reconciliation" — TODO(M3.3).
  */
 
-import { type Id, JmapMethodError, type Mailbox, type PatchObject } from '@waxwing/jmap'
+import {
+  type EmailCreate,
+  type Id,
+  JmapMethodError,
+  type Mailbox,
+  type PatchObject,
+} from '@waxwing/jmap'
 import {
   type EmailEnvelopeInput,
   type EmailRow,
@@ -56,6 +62,16 @@ export type OutboxIntent =
   | { readonly kind: 'renameMailbox'; readonly id: Id; readonly name: string }
   | { readonly kind: 'moveMailbox'; readonly id: Id; readonly parentId: Id | null }
   | { readonly kind: 'deleteMailbox'; readonly id: Id }
+  | {
+      // Save a draft (M2.6): a content change is create-new + destroy-old in ONE Email/set, because
+      // an Email is immutable except keywords/mailboxIds (RFC 8621 §4.6).
+      readonly kind: 'saveDraft'
+      readonly localId: string
+      readonly creationId: string
+      readonly priorServerId: Id | null
+      readonly email: EmailCreate
+    }
+  | { readonly kind: 'discardDraft'; readonly localId: string; readonly serverEmailId: Id }
 
 export type Rollback = () => Promise<void>
 
@@ -182,6 +198,11 @@ export async function applyOptimistic(
         else await deleteMailbox(db, accountId, intent.id)
       }
     }
+    case 'saveDraft':
+    case 'discardDraft':
+      // Drafts are edit-state, not envelope cache: the local `drafts` row is written durably by the
+      // persist bridge / discard handler, not optimistically into `emails`. Nothing to undo here.
+      return async () => {}
   }
 }
 
@@ -262,6 +283,16 @@ function executeIntent(
       })
     case 'deleteMailbox':
       return port.setMailboxes({ destroy: [intent.id], ifInState })
+    case 'saveDraft':
+      // create-new + destroy-old in one call — RFC 8620 §5.3 processes create before destroy, so the
+      // new draft exists before the prior one is removed (gap-free).
+      return port.setEmails({
+        create: { [intent.creationId]: intent.email },
+        ...(intent.priorServerId ? { destroy: [intent.priorServerId] } : {}),
+        ifInState,
+      })
+    case 'discardDraft':
+      return port.setEmails({ destroy: [intent.serverEmailId], ifInState })
   }
 }
 
@@ -287,6 +318,10 @@ function rejection(intent: OutboxIntent, result: PortSetResult): string | null {
       return first(result.notUpdated, [intent.id])
     case 'deleteMailbox':
       return first(result.notDestroyed, [intent.id])
+    case 'saveDraft':
+      return first(result.notCreated, [intent.creationId])
+    case 'discardDraft':
+      return first(result.notDestroyed, [intent.serverEmailId])
   }
 }
 
@@ -340,6 +375,34 @@ async function reconcileCreate(
     const rewritten = rewriteIntentTarget(queuedRow.payload as OutboxIntent, tempId, serverId)
     if (rewritten) await db.outbox.update([accountId, queuedRow.id], { payload: rewritten })
   }
+}
+
+/** On a confirmed draft save, record the new server Email id on the local drafts row (M2.6). */
+async function reconcileDraftSave(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  result: PortSetResult,
+): Promise<void> {
+  if (intent.kind !== 'saveDraft') return
+  const created = result.created[intent.creationId]
+  if (!created) return
+  await db.drafts.update([accountId, intent.localId], {
+    serverEmailId: created.id,
+    status: 'synced',
+    lastError: null,
+  })
+}
+
+/** Mark the local drafts row `error` when its server save/discard was rejected (M2.6). */
+async function stampDraftError(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  message: string,
+): Promise<void> {
+  if (intent.kind !== 'saveDraft' && intent.kind !== 'discardDraft') return
+  await db.drafts.update([accountId, intent.localId], { status: 'error', lastError: message })
 }
 
 /** Rewrite an intent's mailbox target from `fromId` to `toId`; returns null when it referenced neither. */
@@ -403,11 +466,13 @@ export async function replayOutbox(
       if (rejected !== null) {
         await rollbacks?.get(row.id)?.()
         rollbacks?.delete(row.id)
+        await stampDraftError(db, accountId, intent, rejected)
         await db.outbox.update([accountId, row.id], { status: 'error', lastError: rejected })
         failed += 1
         continue
       }
       await reconcileCreate(db, accountId, intent, result)
+      await reconcileDraftSave(db, accountId, intent, result)
       await db.outbox.delete([accountId, row.id])
       rollbacks?.delete(row.id)
       replayed += 1
@@ -419,6 +484,7 @@ export async function replayOutbox(
         // FIFO tail (a `break` here would wedge every later action behind the poison intent).
         await rollbacks?.get(row.id)?.()
         rollbacks?.delete(row.id)
+        await stampDraftError(db, accountId, intent, message)
         await db.outbox.update([accountId, row.id], { status: 'error', lastError: message })
         failed += 1
         continue
@@ -429,6 +495,7 @@ export async function replayOutbox(
       if (attempts >= maxAttempts) {
         await rollbacks?.get(row.id)?.()
         rollbacks?.delete(row.id)
+        await stampDraftError(db, accountId, intent, message)
         await db.outbox.update([accountId, row.id], {
           status: 'error',
           attempts,

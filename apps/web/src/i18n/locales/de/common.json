@@ -268,7 +268,9 @@
       "preview": "Vorschau",
       "hidePreview": "Vorschau ausblenden",
       "download": "{{name}} herunterladen"
-    }
+    },
+    "editDraft": "Entwurf bearbeiten",
+    "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben."
   },
   "compose": {
     "toolbar": "Formatierung",
@@ -302,7 +304,7 @@
     "restore": "Vollbild verlassen",
     "close": "Schließen",
     "discardTitle": "Diesen Entwurf verwerfen?",
-    "discardBody": "Ihre Änderungen wurden noch nicht gespeichert.",
+    "discardBody": "Dieser Entwurf wird endgültig gelöscht.",
     "discardConfirm": "Verwerfen",
     "discardCancel": "Weiter bearbeiten",
     "toLabel": "An",
@@ -321,6 +323,7 @@
     "recipientDidYouMean": "Meinten Sie {{suggestion}}?",
     "recipientDidYouMeanApply": "{{suggestion}} verwenden",
     "recipientMoveTo": "Verschieben nach {{field}}",
-    "recipientMoveMenu": "Empfängeroptionen"
+    "recipientMoveMenu": "Empfängeroptionen",
+    "discard": "Entwurf verwerfen"
   }
 }

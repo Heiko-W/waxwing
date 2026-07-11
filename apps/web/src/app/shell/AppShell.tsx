@@ -8,7 +8,7 @@
 
 import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useComposerStore } from '../../compose'
+import { useComposerStore, useDraftRestore } from '../../compose'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, useNavigate, useRoute } from '../route'
@@ -35,6 +35,9 @@ export function AppShell({ config }: AppShellProps) {
   const navigate = useNavigate()
   const { connected, reauth } = useSession()
   const hasDrafts = useComposerStore((state) => state.drafts.size > 0)
+
+  // Bring back any unsynced local drafts (crash/refresh) as minimized chips.
+  useDraftRestore()
 
   // Canonical redirect: the bare app root resolves to the mail area.
   useEffect(() => {

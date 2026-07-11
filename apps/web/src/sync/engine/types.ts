@@ -11,6 +11,7 @@ import type {
   EmailBodyPart,
   EmailBodyValue,
   EmailComparator,
+  EmailCreate,
   EmailFilter,
   Id,
   Identity,
@@ -126,6 +127,7 @@ export interface JmapPort {
   queryEmailChanges(spec: EmailQueryChangesSpec): Promise<QueryChangesResult>
 
   setEmails(args: {
+    create?: Record<string, EmailCreate>
     update?: Record<Id, PatchObject>
     destroy?: Id[]
     ifInState?: string | null

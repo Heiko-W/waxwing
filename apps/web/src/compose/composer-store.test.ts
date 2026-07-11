@@ -15,6 +15,17 @@ describe('composer store', () => {
     expect(store().focusedId).toBe(b)
   })
 
+  it('reopens under a fixed id idempotently (restore / open-from-Drafts): focuses, never duplicates', () => {
+    const first = store().openDraft({ id: 'local-1', subject: 'Draft' })
+    expect(first).toBe('local-1')
+    store().openDraft() // an unrelated draft steals focus
+    const again = store().openDraft({ id: 'local-1', subject: 'ignored on reopen' })
+    expect(again).toBe('local-1')
+    expect(store().drafts.size).toBe(2) // no duplicate row
+    expect(store().focusedId).toBe('local-1') // reopen re-focuses it
+    expect(store().drafts.get('local-1')?.subject).toBe('Draft') // existing content untouched
+  })
+
   it('seeds a reply/forward draft with recipients, threading and attachments', () => {
     const id = store().openDraft({
       subject: 'Re: Hi',

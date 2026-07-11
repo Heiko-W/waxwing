@@ -13,13 +13,22 @@ export {
 } from './address-validation'
 export { cleanOutgoingHtml } from './clean-html'
 export {
+  type ComposerActions,
   type ComposerStore,
   type DraftMode,
   type DraftWindow,
   MAX_OPEN,
+  type OpenDraftInit,
   type RecipientField,
   useComposerStore,
 } from './composer-store'
+export {
+  deserializeDraft,
+  isEmptyDraft,
+  serializeDraft,
+  toDraftInit,
+  toEmailCreate,
+} from './draft-email'
 export type { ActiveFormats, EditorEngine, EditorFactory } from './editor-engine'
 export { FromField } from './FromField'
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
@@ -58,3 +67,7 @@ export {
   signatureHtmlForIdentity,
 } from './signature'
 export { COMMON_EMAIL_DOMAINS, suggestDomainCorrection } from './typo-heuristic'
+export { useDraftAutosave } from './use-draft-autosave'
+export { type DraftOpener, useDraftOpener } from './use-draft-opener'
+export { useDraftRestore } from './use-draft-restore'
+export { type DraftSync, useDraftSync } from './use-draft-sync'

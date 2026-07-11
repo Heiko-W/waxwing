@@ -217,6 +217,7 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       const builder = client.request()
       const handle = builder.invoke(Methods.emailSet, {
         accountId,
+        ...(args.create === undefined ? {} : { create: args.create }),
         ...(args.update === undefined ? {} : { update: args.update }),
         ...(args.destroy === undefined ? {} : { destroy: args.destroy }),
         ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),

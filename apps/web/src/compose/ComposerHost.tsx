@@ -15,6 +15,7 @@ import { useComposerStore } from './composer-store'
 import type { EditorFactory } from './editor-engine'
 import { NEW_MESSAGE_BTN_ID } from './NewMessageButton'
 import type { RecipientSuggestionSource } from './recipient-suggestions'
+import { useDraftAutosave } from './use-draft-autosave'
 
 export interface ComposerHostProps {
   /** Injectable editor factory (tests pass a fake); production omits it (real Squire adapter). */
@@ -27,6 +28,9 @@ export default function ComposerHost({ editorFactory, recipientSuggestions }: Co
   const tier = useLayoutTier()
   const drafts = useComposerStore((state) => state.drafts)
   const focusedId = useComposerStore((state) => state.focusedId)
+
+  // Persist edits (durable local write + coalesced server save) on idle + on tab-hide.
+  useDraftAutosave()
 
   // Return focus to the New-message trigger when the last draft closes (WCAG 2.4.3).
   const prevCount = useRef(drafts.size)

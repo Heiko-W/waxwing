@@ -12,8 +12,9 @@
 
 import { type Ref, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDraftOpener } from '../compose'
 import { type EmailRow, useEmail, useThread } from '../sync'
-import { Avatar, Skeleton } from '../ui'
+import { Avatar, Button, Skeleton } from '../ui'
 import { formatMessageTime } from './format-message-time'
 import { MessageView } from './MessageView'
 import { senderName } from './message-body'
@@ -131,6 +132,14 @@ function ThreadItem({ id, mailboxId, expanded, isOpened, collapsible, onToggle }
   }, [expanded])
 
   if (email === undefined) return <Skeleton width="100%" height={48} />
+  // A draft opens back into the composer rather than rendering as a read-only message (FR-CMP-03).
+  if (email.keywords.$draft === true) {
+    return (
+      <div ref={expandedRef} tabIndex={-1} className={styles.expandedItem}>
+        <DraftCallout id={id} />
+      </div>
+    )
+  }
   if (expanded) {
     return (
       <div ref={expandedRef} tabIndex={-1} className={styles.expandedItem}>
@@ -144,6 +153,20 @@ function ThreadItem({ id, mailboxId, expanded, isOpened, collapsible, onToggle }
     )
   }
   return <CollapsedMessage ref={collapsedRef} email={email} onExpand={onToggle} />
+}
+
+/** Deep-link affordance for a draft reached in the reading pane: edit it in the composer. */
+function DraftCallout({ id }: { readonly id: string }) {
+  const { t } = useTranslation()
+  const draftOpener = useDraftOpener()
+  return (
+    <div className={styles.draftCallout}>
+      <p className={styles.draftCalloutLead}>{t('reading.draftLead')}</p>
+      <Button variant="primary" onClick={() => void draftOpener.open(id)}>
+        {t('reading.editDraft')}
+      </Button>
+    </div>
+  )
 }
 
 function CollapsedMessage({

@@ -235,6 +235,49 @@ export interface AddressStatRow {
   lastSeenAt: number
 }
 
+/** A forwarded/draft attachment carried by blob reference — a structural mirror of the composer's
+ *  `DraftAttachment` (kept inline to avoid a compose→sync import cycle). */
+export interface DraftAttachmentLike {
+  blobId: string
+  name: string | null
+  type: string
+  size: number
+  cid: string | null
+}
+
+/** The persistable subset of a composer `DraftWindow` (UI-only mode/dirty/focus are excluded). */
+export interface SerializedDraft {
+  to: EmailAddress[]
+  cc: EmailAddress[]
+  bcc: EmailAddress[]
+  subject: string
+  body: string
+  inReplyTo: string[] | null
+  references: string[] | null
+  fromIdentityId: string | null
+  fromIdentityHint: string | null
+  attachments: DraftAttachmentLike[]
+}
+
+export type DraftSyncStatus = 'pending' | 'synced' | 'error'
+
+/**
+ * Crash-safe local edit-state for one draft (M2.6, FR-CMP-03) — NOT a JMAP envelope cache.
+ * `localId` is the composer `DraftWindow.id`; `serverEmailId` is the Drafts-mailbox `Email` id once
+ * the create lands (a draft content change is create-new + destroy-old — RFC 8621 §4.6). The durable
+ * `put` of this row (no server round-trip) is the crash-safety guarantee.
+ */
+export interface DraftRow {
+  accountId: Id
+  localId: string
+  serverEmailId: Id | null
+  status: DraftSyncStatus
+  content: SerializedDraft
+  createdAt: number
+  updatedAt: number
+  lastError: string | null
+}
+
 // ---------------------------------------------------------------------------------------------
 // The database.
 // ---------------------------------------------------------------------------------------------
@@ -257,6 +300,7 @@ export class ReplicaDb extends Dexie {
   outbox!: Table<OutboxRow, [Id, Id]>
   localPrefs!: Table<LocalPrefRow, [Id, string]>
   addressStats!: Table<AddressStatRow, [Id, string]>
+  drafts!: Table<DraftRow, [Id, string]>
 
   constructor(name: string = REPLICA_DB_NAME) {
     super(name)
@@ -281,6 +325,10 @@ export class ReplicaDb extends Dexie {
     // v3 (M2.5) — additive: the identities store only (account-global From identities + signatures).
     this.version(3).stores({
       identities: '[accountId+id], accountId',
+    })
+    // v4 (M2.6) — additive: the crash-safe local drafts store only.
+    this.version(4).stores({
+      drafts: '[accountId+localId], accountId, [accountId+serverEmailId], [accountId+updatedAt]',
     })
   }
 }

@@ -12,6 +12,7 @@ import {
   type AccountRecord,
   type AddressStatRow,
   type BlobMetaRow,
+  type DraftRow,
   type EmailBodyRow,
   type EmailEnvelopeInput,
   type EmailRow,
@@ -398,4 +399,42 @@ export async function setPref(
 ): Promise<void> {
   const row: LocalPrefRow = { accountId, key, value }
   await db.localPrefs.put(row)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Drafts (M2.6, FR-CMP-03) — crash-safe local edit-state.
+// ---------------------------------------------------------------------------------------------
+
+export async function putDraft(db: ReplicaDb, row: DraftRow): Promise<void> {
+  await db.drafts.put(row)
+}
+
+export function getDraft(
+  db: ReplicaDb,
+  accountId: Id,
+  localId: string,
+): Promise<DraftRow | undefined> {
+  return db.drafts.get([accountId, localId])
+}
+
+/** Find the local draft that mirrors a given Drafts-mailbox `Email` id (open-from-Drafts). */
+export function getDraftByServerId(
+  db: ReplicaDb,
+  accountId: Id,
+  serverEmailId: Id,
+): Promise<DraftRow | undefined> {
+  return db.drafts.where('[accountId+serverEmailId]').equals([accountId, serverEmailId]).first()
+}
+
+/** All local drafts for an account, most-recently-edited first (the crash-restore list). */
+export function listDrafts(db: ReplicaDb, accountId: Id): Promise<DraftRow[]> {
+  return db.drafts
+    .where('[accountId+updatedAt]')
+    .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
+    .reverse()
+    .toArray()
+}
+
+export function deleteDraft(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
+  return db.drafts.delete([accountId, localId])
 }

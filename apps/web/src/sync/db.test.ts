@@ -42,6 +42,7 @@ describe('ReplicaDb schema', () => {
         'accounts',
         'addressStats',
         'blobsMeta',
+        'drafts',
         'emailBodies',
         'emails',
         'identities',

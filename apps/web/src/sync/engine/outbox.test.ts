@@ -1,6 +1,6 @@
-import { JmapMethodError } from '@waxwing/jmap'
+import { type EmailCreate, JmapMethodError } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ReplicaDb } from '../db'
+import type { DraftRow, ReplicaDb } from '../db'
 import { emailsInMailbox, emailsWithKeyword, pendingOutbox, putEmails } from '../repo'
 import { email, freshDb } from '../test-utils'
 import { enqueueAction, type Rollback, replayOutbox } from './outbox'
@@ -247,5 +247,159 @@ describe('outbox — replay', () => {
 
     expect(await db.mailboxes.get([ACC, 'tmp1'])).toBeUndefined()
     expect((await db.mailboxes.get([ACC, 'MB99']))?.name).toBe('Receipts')
+  })
+})
+
+describe('outbox — drafts (M2.6)', () => {
+  type SetArgs = Parameters<JmapPort['setEmails']>[0]
+
+  const emailCreate: EmailCreate = {
+    mailboxIds: { 'mb-d': true },
+    keywords: { $draft: true, $seen: true },
+    subject: 'Hi',
+    from: null,
+    to: [],
+    cc: [],
+    bcc: [],
+    inReplyTo: null,
+    references: null,
+    htmlBody: [{ partId: 'html', type: 'text/html' }],
+    bodyValues: { html: { value: '<p>x</p>', isEncodingProblem: false, isTruncated: false } },
+  }
+
+  function draftRow(over: Partial<DraftRow> = {}): DraftRow {
+    return {
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'pending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'Hi',
+        body: '<p>x</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: null,
+        fromIdentityHint: null,
+        attachments: [],
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+      ...over,
+    }
+  }
+
+  it('creates a new draft Email (no destroy) and stamps the server id on the local row', async () => {
+    await db.drafts.put(draftRow())
+    let args: SetArgs | undefined
+    const port = fakePort({
+      setEmails: async (a) => {
+        args = a
+        return setResult({ created: { 'draft-d1': { id: 'srv-1' } } })
+      },
+    })
+    await enqueueAction(
+      db,
+      ACC,
+      {
+        kind: 'saveDraft',
+        localId: 'd1',
+        creationId: 'draft-d1',
+        priorServerId: null,
+        email: emailCreate,
+      },
+      { id: 'draft:d1', now: 1 },
+    )
+
+    const summary = await replayOutbox(port, db, ACC)
+
+    expect(args).toEqual({ create: { 'draft-d1': emailCreate }, ifInState: null })
+    expect(summary.replayed).toBe(1)
+    const row = await db.drafts.get([ACC, 'd1'])
+    expect(row?.serverEmailId).toBe('srv-1')
+    expect(row?.status).toBe('synced')
+    expect(await db.outbox.get([ACC, 'draft:d1'])).toBeUndefined()
+  })
+
+  it('destroys the prior server draft when saving over an existing one (create-before-destroy)', async () => {
+    await db.drafts.put(draftRow({ serverEmailId: 'srv-1', status: 'synced' }))
+    let args: SetArgs | undefined
+    const port = fakePort({
+      setEmails: async (a) => {
+        args = a
+        return setResult({ created: { 'draft-d1': { id: 'srv-2' } }, destroyed: ['srv-1'] })
+      },
+    })
+    await enqueueAction(
+      db,
+      ACC,
+      {
+        kind: 'saveDraft',
+        localId: 'd1',
+        creationId: 'draft-d1',
+        priorServerId: 'srv-1',
+        email: emailCreate,
+      },
+      { id: 'draft:d1', now: 1 },
+    )
+
+    await replayOutbox(port, db, ACC)
+
+    expect(args?.create).toEqual({ 'draft-d1': emailCreate })
+    expect(args?.destroy).toEqual(['srv-1'])
+    expect((await db.drafts.get([ACC, 'd1']))?.serverEmailId).toBe('srv-2')
+  })
+
+  it('marks the draft row error when the create is rejected', async () => {
+    await db.drafts.put(draftRow())
+    const port = fakePort({
+      setEmails: async () =>
+        setResult({ notCreated: { 'draft-d1': { type: 'invalidProperties' } } }),
+    })
+    await enqueueAction(
+      db,
+      ACC,
+      {
+        kind: 'saveDraft',
+        localId: 'd1',
+        creationId: 'draft-d1',
+        priorServerId: null,
+        email: emailCreate,
+      },
+      { id: 'draft:d1', now: 1 },
+    )
+
+    const summary = await replayOutbox(port, db, ACC)
+
+    expect(summary.failed).toBe(1)
+    const row = await db.drafts.get([ACC, 'd1'])
+    expect(row?.status).toBe('error')
+    expect(row?.lastError).toBe('invalidProperties')
+    expect((await db.outbox.get([ACC, 'draft:d1']))?.status).toBe('error')
+  })
+
+  it('discards a draft by destroying its server Email', async () => {
+    let args: SetArgs | undefined
+    const port = fakePort({
+      setEmails: async (a) => {
+        args = a
+        return setResult({ destroyed: ['srv-1'] })
+      },
+    })
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'discardDraft', localId: 'd1', serverEmailId: 'srv-1' },
+      { id: 'draft:d1', now: 1 },
+    )
+
+    const summary = await replayOutbox(port, db, ACC)
+
+    expect(args).toEqual({ destroy: ['srv-1'], ifInState: null })
+    expect(summary.replayed).toBe(1)
+    expect(await db.outbox.get([ACC, 'draft:d1'])).toBeUndefined()
   })
 })

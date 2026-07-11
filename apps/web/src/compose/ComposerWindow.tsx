@@ -4,24 +4,27 @@
  * NON-modal (`aria-modal="false"`) so several coexist and the mail UI stays interactive; the
  * full-screen window is MODAL (focus trap + body-scroll-lock + backdrop).
  *
- * Escape is deliberately harmless (owner-directed, Apple-Mail-aligned): on the full-screen window
- * it collapses back to docked (reversible, no data loss); on a docked window it does nothing (the
- * editor's link sub-dialog handles its own Escape first via the ui dismiss stack). Close is an
- * explicit button; a dirty draft asks before discarding (a stub until M2.6 autosaves to Drafts).
+ * Escape de-escalates one reversible step (owner-directed, Apple-Mail-aligned) and never loses data
+ * because the draft is autosaved (M2.6): full screen → docked, docked → minimized. The editor's link
+ * sub-dialog and the discard confirm own their Escape first via the ui dismiss stack. Close SAVES the
+ * draft to the Drafts folder and closes the window (Apple ⌘W); Discard deletes it (an empty draft
+ * discards silently, a non-empty one asks first).
  */
 
-import { Maximize2, Minimize2, Minus, X } from 'lucide-react'
+import { Maximize2, Minimize2, Minus, Trash2, X } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { LayoutTier } from '../app/shell/layout'
 import { Button, Dialog, IconButton, TextInput, useFocusTrap } from '../ui'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
+import { isEmptyDraft } from './draft-email'
 import type { EditorFactory } from './editor-engine'
 import { FromField } from './FromField'
 import { RecipientFields } from './RecipientFields'
 import { RichTextEditor } from './RichTextEditor'
 import type { RecipientSuggestionSource } from './recipient-suggestions'
+import { useDraftSync } from './use-draft-sync'
 
 export interface ComposerWindowProps {
   readonly draft: DraftWindow
@@ -40,12 +43,12 @@ export function ComposerWindow({
 }: ComposerWindowProps) {
   const { t } = useTranslation()
   const setMode = useComposerStore((state) => state.setMode)
-  const closeDraft = useComposerStore((state) => state.closeDraft)
   const updateBody = useComposerStore((state) => state.updateBody)
   const updateSubject = useComposerStore((state) => state.updateSubject)
   const focusDraft = useComposerStore((state) => state.focusDraft)
+  const draftSync = useDraftSync()
 
-  const [confirmClose, setConfirmClose] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const windowRef = useRef<HTMLDivElement>(null)
   const subjectRef = useRef<HTMLInputElement>(null)
   const focusedOnce = useRef(false)
@@ -73,15 +76,19 @@ export function ComposerWindow({
     subjectRef.current?.focus()
   }, [fullscreen, minimized])
 
+  // Close = save to Drafts, then close (Apple ⌘W). Discard = delete; only a non-empty draft asks first.
   const requestClose = (): void => {
-    if (draft.dirty) setConfirmClose(true)
-    else closeDraft(draft.id)
+    void draftSync.close(draft.id)
+  }
+  const requestDiscard = (): void => {
+    if (isEmptyDraft(draft)) void draftSync.discard(draft.id)
+    else setConfirmDiscard(true)
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== 'Escape' || !fullscreen) return
+    if (event.key !== 'Escape') return
     event.preventDefault()
-    setMode(draft.id, 'docked')
+    setMode(draft.id, fullscreen ? 'docked' : 'minimized')
   }
 
   if (minimized) {
@@ -121,6 +128,14 @@ export function ComposerWindow({
             {draft.subject || t('compose.noSubject')}
           </span>
           <div className={styles.titleActions}>
+            <IconButton
+              label={t('compose.discard')}
+              variant="ghost"
+              size="sm"
+              onClick={requestDiscard}
+            >
+              <Trash2 />
+            </IconButton>
             <IconButton
               label={t('compose.minimize')}
               variant="ghost"
@@ -174,22 +189,22 @@ export function ComposerWindow({
         </div>
       </div>
 
-      {confirmClose && (
+      {confirmDiscard && (
         <Dialog
           open
-          onClose={() => setConfirmClose(false)}
+          onClose={() => setConfirmDiscard(false)}
           title={t('compose.discardTitle')}
           size="sm"
           footer={
             <>
-              <Button variant="ghost" onClick={() => setConfirmClose(false)}>
+              <Button variant="ghost" onClick={() => setConfirmDiscard(false)}>
                 {t('compose.discardCancel')}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => {
-                  setConfirmClose(false)
-                  closeDraft(draft.id)
+                  setConfirmDiscard(false)
+                  void draftSync.discard(draft.id)
                 }}
               >
                 {t('compose.discardConfirm')}

@@ -126,7 +126,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M2.3 | Reply / reply-all / forward (quoting, subjects, headers) | M | M2.1, M1.8 | done | **2026-07-11.** `apps/web/src/compose/reply.ts` — pure `deriveRecipients` (reply Reply-To>From; reply-all dedup + self-drop; forward empty), `stripSubjectPrefix`/`replySubject` (AW:/WG:/Re[2]:→single Re:/Fwd:, no stacking), `threadingHeaders` (In-Reply-To/References), `quoteBody` (`<blockquote>`+attribution), `forwardBody`, `inferFromIdentity`, `ownAddresses` (session personal accounts — M2.5 seam), `forwardAttachments` (blob refs), and the `buildReplyDraft` aggregator. Composer store extended (to/cc/bcc/inReplyTo/references/fromIdentityHint/attachments); `ComposerWindow` shows a read-only recipients summary (pill fields = M2.4). `MessageView` reply/reply-all/forward stubs → real `onCompose(kind)` wiring (disabled while the body loads). Envelope fetch gained messageId/inReplyTo/references/replyTo (`db.ts`+`engine/types.ts`; rebuildable cache). +34 tests (659 total, 80 files, 30 pure-logic cases); 181.9 KB gz. Decisions Apple-Mail-aligned per owner ("Apple standard"): Re:/Fwd: normalization, localized attribution. Quote-folding deferred. Implemented via a prescriptive-brief fork. |
 | M2.4 | Recipient fields (pills, validation, basic autocomplete) | M | M2.2, M1.2 | done | **2026-07-11.** `apps/web/src/compose/`: `RecipientField` (APG editable-combobox — `role=combobox`+`aria-activedescendant` listbox, roving-tabindex pills, full keyboard map: Enter/`,`/`;`/Tab commit, Backspace-empty removes last, ArrowLeft→pills, per-pill move-menu) + `RecipientFields` (To always; Cc/Bcc toggles, auto-shown when populated; "did you mean" apply) replacing M2.3's read-only summary; pure `address-validation` (isPlausibleEmail/parseAddressList), `typo-heuristic` (Levenshtein ≤2 vs an en+de provider list), `recipient-suggestions` (a `RecipientSuggestionSource` interface + recents impl ranked by recency×frequency 30-day half-life + `combineSuggestionSources` M4.3 seam). Replica: new **`addressStats`** store (Dexie `version(2)`, additive) harvested best-effort after `putEmails` (backfill+delta, idempotent `lastSeenAt`); `useReplicaOptional`; store `setRecipients`/`moveRecipient`. +54 tests (713 total, 86 files); 185.0 KB gz (+3 KB pure modules via the barrel; squire/composer stay lazy). Owner-default decisions (Apple-Mail/iOS-aligned): keyboard-move over drag, Cc/Bcc toggles, recents on by default (local-only). Sent/received classification (own-address boost) a follow-up. |
 | M2.5 | Identities & signatures | S | M2.2 | done | **2026-07-11.** `@waxwing/jmap`: RFC 8621 §6 `Identity` type + `Identity/get` method (`types/submission.ts`, `methods.ts`). Replica: `identities` store (Dexie `version(3)`, additive) + `useIdentities` + `putIdentities`/`identitiesForAccount`; engine does a one-shot `Identity/get` after `syncMailboxes` (guarded, refetched per session; `Identity/changes` deferred). Composer: pure `signature.ts` (marker-based `applySignature`/`replaceSignature`, `signatureHtmlForIdentity`, `pickDefaultIdentity`) + `FromField` (native-Select From picker, shown only when >1 identity; seeds the default identity's signature above the quote with `markDirty:false`, swaps in place on change preserving user text, respects a deleted signature). Store `fromIdentityId` + `setFromIdentity`. +20 tests (733 total, 89 files); 185.9 KB gz. **Build-infra: `pnpm verify` now runs `build:libs` first** (builds jmap+mail-html `dist` — M2.5 is the first jmap-package API change the web app consumes, and `dist` is gitignored/on-demand, so verify must be self-contained). Owner-default decisions (signature above quote, one-shot fetch, keep-deleted-signature, default = hint-match else primary). |
-| M2.6 | Drafts autosave (server + local, crash-safe) | M | M2.2, M1.3 | todo | |
+| M2.6 | Drafts autosave (server + local, crash-safe) | M | M2.2, M1.3 | done | **2026-07-11.** Crash-safe drafts. `sync/`: new **`drafts`** store (`ReplicaDb.version(4)`, keys `[accountId+localId]` + `[accountId+serverEmailId]` + `[accountId+updatedAt]`), `DraftRow`/`SerializedDraft`/`DraftAttachmentLike` types, repo CRUD (`putDraft`/`getDraft`/`getDraftByServerId`/`listDrafts`/`deleteDraft`). Outbox: `saveDraft` (**create-new + destroy-old in one `Email/set`** — RFC 8621 §4.6 / RFC 8620 §5.3 gap-free) + `discardDraft` intents, coalesced by stable id `draft:<localId>`; `reconcileDraftSave` stamps `serverEmailId`+`synced`, `stampDraftError` marks `error`; `setEmails` gained `create`. `compose/`: pure `draft-email` (serialize/deserialize/isEmptyDraft/toEmailCreate/toDraftInit), `use-draft-sync` (durable flush + close/discard), `use-draft-autosave` (3 s idle + `visibilitychange` flush; mounted in ComposerHost), `use-draft-restore` (unsynced drafts → minimized chips; mounted in AppShell), `use-draft-opener` (open-from-Drafts, local copy keeps `bcc`); `openDraft` accepts a fixed `id` (idempotent reopen). `ComposerWindow`: **Close = save to Drafts** (Apple ⌘W), **Discard = delete** (trash button; empty discards silently), **Esc = de-escalate** (full-screen→docked→minimized, no data loss). `MessageList`/`Conversation` route `$draft` clicks to the composer. i18n `compose.discard` + `reading.editDraft`/`draftLead`; discard copy now "permanently deleted". +30 tests (754 total, 91 files); **entry chunk 187.4 KB gz** (≤ 300 budget). |
 | M2.7 | Attachments & inline images (upload pipeline) | M | M2.2, SP.1 | todo | |
 | M2.8 | Send pipeline (submission, errors, undo send) | M | M2.3–M2.7 | todo | |
 | M2.9 | E2E write suite (send/receive round-trip) | S | M2.8 | todo | |
@@ -1177,16 +1177,24 @@ Done when: switching From swaps signatures correctly in both HTML and text modes
 
 Spec: FR-CMP-03. Size: M.
 
-- [ ] Local-first: every few seconds of typing → replica (`outbox`-adjacent draft store);
-      crash-safe (kill tab test loses ≤ a few seconds).
-- [ ] Server sync: debounced `Email/set` create/update in Drafts mailbox with `$draft`
-      keyword; updates replace prior draft version (destroy/create or update per server
-      behavior — decide via fixture test, record).
-- [ ] Offline: draft stays local, marked pending, syncs on reconnect (uses M1.3 queue).
-- [ ] Draft lifecycle: open-from-Drafts resumes editing; discard destroys local + server.
+- [x] Local-first: every few seconds of typing → replica (`drafts` store, durable `put`);
+      crash-safe (3 s idle debounce + `visibilitychange`→hidden flush; unsynced drafts
+      restored as minimized chips on next load).
+- [x] Server sync: debounced `Email/set` in the Drafts mailbox with `$draft`+`$seen`;
+      **decision (recorded):** an update = **create-new + destroy-old in ONE `Email/set`**
+      (RFC 8621 §4.6 — an Email is immutable except `keywords`/`mailboxIds`; RFC 8620 §5.3
+      processes create before destroy → gap-free). Coalesced by a stable outbox id
+      `draft:<localId>`; reconcile stamps the new `serverEmailId`.
+- [x] Offline: the durable local row stays `pending`; the `saveDraft`/`discardDraft`
+      intents ride the M1.3 outbox and replay on reconnect.
+- [x] Draft lifecycle: open-from-Drafts resumes editing (`use-draft-opener` — local copy
+      keeps `bcc`, else the server body); Close saves to Drafts (Apple ⌘W), Discard
+      destroys local + server. `MessageList`/`Conversation` route `$draft` to the composer.
 
 Done when: pull-the-plug test (kill tab mid-typing) recovers the draft; drafts created
-offline appear on the server after reconnect.
+offline appear on the server after reconnect. — Unit-covered (serialize/isEmpty/toEmailCreate,
+drafts repo, outbox saveDraft/discardDraft reconcile + error, idempotent reopen); the live
+pull-the-plug + offline-reconnect assertions are folded into the M2.9 E2E write suite.
 
 ### M2.7 — Attachments & inline images
 

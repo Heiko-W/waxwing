@@ -103,15 +103,28 @@ describe('ComposerWindow', () => {
     await waitFor(() => expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true'))
   })
 
-  it('confirms before discarding a dirty draft; Esc does not close a docked window', async () => {
+  it('Esc minimizes a docked window rather than closing it (no data loss)', async () => {
     const id = openWindow('docked')
     const user = userEvent.setup()
-    await user.type(screen.getByLabelText('Subject'), 'x') // make it dirty
-    // Esc on a docked window is harmless — the draft stays.
+    await user.type(screen.getByLabelText('Subject'), 'x')
     await user.keyboard('{Escape}')
-    expect(store().drafts.has(id)).toBe(true)
-    // Close asks first, then discards.
+    expect(store().drafts.get(id)?.mode).toBe('minimized')
+  })
+
+  it('Close saves the draft and closes the window without asking', async () => {
+    const id = openWindow('docked')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Subject'), 'x')
     await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog', { name: 'Discard this draft?' })).not.toBeInTheDocument()
+    expect(store().drafts.has(id)).toBe(false)
+  })
+
+  it('Discard asks before deleting a non-empty draft', async () => {
+    const id = openWindow('docked')
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('Subject'), 'x')
+    await user.click(screen.getByRole('button', { name: 'Discard draft' }))
     const confirm = await screen.findByRole('dialog', { name: 'Discard this draft?' })
     await user.click(within(confirm).getByRole('button', { name: 'Discard' }))
     expect(store().drafts.has(id)).toBe(false)

@@ -24,6 +24,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
+import { useDraftOpener } from '../compose'
 import {
   type EmailRow,
   setPref,
@@ -117,11 +118,17 @@ export function MessageList({ mailboxId }: MessageListProps) {
     }
   }, [lastIndex, ids.length, total, loadMore])
 
+  const draftOpener = useDraftOpener()
   const open = useCallback(
     (id: Id) => {
+      // A draft opens back into the composer instead of the reader (FR-CMP-03).
+      if (rowById.get(id)?.keywords.$draft === true) {
+        void draftOpener.open(id)
+        return
+      }
       if (mailboxId !== undefined) navigate(mailPath(mailboxId, id))
     },
-    [mailboxId, navigate],
+    [mailboxId, navigate, rowById, draftOpener],
   )
 
   // Move the roving position (keyboard) — scroll the target into view; the grid keeps DOM focus and

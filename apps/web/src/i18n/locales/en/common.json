@@ -268,7 +268,9 @@
       "preview": "Preview",
       "hidePreview": "Hide preview",
       "download": "Download {{name}}"
-    }
+    },
+    "editDraft": "Edit draft",
+    "draftLead": "This is a draft you haven't sent yet."
   },
   "compose": {
     "toolbar": "Formatting",
@@ -302,7 +304,7 @@
     "restore": "Exit full screen",
     "close": "Close",
     "discardTitle": "Discard this draft?",
-    "discardBody": "Your changes haven't been saved yet.",
+    "discardBody": "This draft will be permanently deleted.",
     "discardConfirm": "Discard",
     "discardCancel": "Keep editing",
     "toLabel": "To",
@@ -321,6 +323,7 @@
     "recipientDidYouMean": "Did you mean {{suggestion}}?",
     "recipientDidYouMeanApply": "Use {{suggestion}}",
     "recipientMoveTo": "Move to {{field}}",
-    "recipientMoveMenu": "Recipient options"
+    "recipientMoveMenu": "Recipient options",
+    "discard": "Discard draft"
   }
 }

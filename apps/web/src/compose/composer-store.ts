@@ -4,10 +4,10 @@
  * drafts survive route changes and host remounts. UI-state only: docked/expanded/minimized mode,
  * the in-progress body HTML and subject, and which draft has focus.
  *
- * PERSISTENCE IS OUT OF SCOPE HERE. M2.2 keeps drafts in memory only (a reload loses them); M2.6
- * adds crash-safe local + server "Drafts"-mailbox autosave and plugs into this same shape, at
- * which point closing a draft saves it to Drafts (findable in the folder tree) rather than the
- * discard-confirm stub used now.
+ * PERSISTENCE LIVES ELSEWHERE. This store stays UI-only; M2.6 bolts crash-safe local + server
+ * "Drafts"-mailbox autosave on TOP of this shape via `use-draft-autosave`/`use-draft-sync` (keyed by
+ * `id`), so closing a draft saves it to Drafts (findable in the folder tree). `openDraft` accepts a
+ * fixed `id` so a restore / open-from-Drafts reopens the SAME draft idempotently.
  */
 
 import type { EmailAddress } from '@waxwing/jmap'
@@ -46,6 +46,8 @@ export interface DraftWindow {
 export const MAX_OPEN = 3
 
 export interface OpenDraftInit {
+  /** Reopen under a fixed id (crash-restore / open-from-Drafts) — otherwise a fresh uuid is minted. */
+  readonly id?: string
   readonly subject?: string
   readonly body?: string
   readonly mode?: DraftMode
@@ -96,7 +98,12 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
   focusedId: undefined,
 
   openDraft(init) {
-    const id = crypto.randomUUID()
+    const id = init?.id ?? crypto.randomUUID()
+    // Idempotent reopen: a restore / open-from-Drafts of an already-open draft just focuses it.
+    if (get().drafts.has(id)) {
+      set({ focusedId: id })
+      return id
+    }
     const next = new Map(get().drafts)
     // Keep at most MAX_OPEN full windows — collapse the OLDEST open one to a minimized chip
     // (never dropped: it stays in the store and in the Drafts folder once M2.6 lands).
