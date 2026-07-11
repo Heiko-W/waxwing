@@ -7,6 +7,7 @@ import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
 import { SessionContext } from '../app/session/context'
 import type { SessionContextValue } from '../app/session/types'
+import { useComposerStore } from '../compose'
 import {
   type EmailBodyRow,
   type EmailRow,
@@ -76,13 +77,22 @@ function htmlRemoteRow(id: string): EmailBodyRow {
   }
 }
 
-const session = { getClient: () => null } as unknown as SessionContextValue
+const session = {
+  getClient: () => null,
+  connected: {
+    jmapSession: {
+      accounts: { a: { name: 'me@x.test', isPersonal: true } },
+      username: 'me@x.test',
+    },
+  },
+} as unknown as SessionContextValue
 const dispatch = vi.fn()
 let db: ReplicaDb
 
 beforeEach(async () => {
   db = freshDb()
   dispatch.mockReset()
+  useComposerStore.setState({ drafts: new Map(), focusedId: undefined })
   setActiveEngine({
     dispatch,
     fetchBody: vi.fn(async () => {}),
@@ -98,6 +108,7 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.useRealTimers()
   setActiveEngine(null)
+  useComposerStore.setState({ drafts: new Map(), focusedId: undefined })
   await db.delete()
 })
 
@@ -127,6 +138,65 @@ describe('MessageView', () => {
     renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }], subject: 'Hello' }))
     expect(await screen.findByText('Alice')).toBeInTheDocument()
     expect(screen.getByRole('article', { name: 'Hello' })).toBeInTheDocument()
+  })
+
+  it('reply seeds a draft addressed to the sender with a Re: subject and threading', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(
+      seen({
+        from: [{ name: 'Alice', email: 'alice@x.test' }],
+        subject: 'Hi',
+        messageId: ['<m1@x>'],
+      }),
+    )
+    const reply = await screen.findByRole('button', { name: 'Reply' })
+    await waitFor(() => expect(reply).toBeEnabled())
+    await user.click(reply)
+    const drafts = [...useComposerStore.getState().drafts.values()]
+    expect(drafts).toHaveLength(1)
+    expect(drafts[0]?.to).toEqual([{ name: 'Alice', email: 'alice@x.test' }])
+    expect(drafts[0]?.subject).toBe('Re: Hi')
+    expect(drafts[0]?.inReplyTo).toEqual(['<m1@x>'])
+  })
+
+  it('reply-all drops the signed-in user and keeps other recipients', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(
+      seen({
+        from: [{ name: 'Alice', email: 'alice@x.test' }],
+        to: [
+          { name: 'Me', email: 'me@x.test' },
+          { name: 'Bob', email: 'bob@x.test' },
+        ],
+        subject: 'Hi',
+      }),
+    )
+    const replyAll = await screen.findByRole('button', { name: 'Reply all' })
+    await waitFor(() => expect(replyAll).toBeEnabled())
+    await user.click(replyAll)
+    const draft = [...useComposerStore.getState().drafts.values()][0]
+    const cc = (draft?.cc ?? []).map((address) => address.email)
+    expect(cc).toContain('bob@x.test')
+    expect(cc).not.toContain('me@x.test')
+  })
+
+  it('forward yields an empty To, a Fwd: subject, and carries attachments', async () => {
+    await putEmailBody(db, {
+      ...textBodyRow('e1', 'body'),
+      attachments: [part({ blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 10 })],
+    })
+    const user = userEvent.setup()
+    renderView(seen({ subject: 'Hi' }))
+    const forward = await screen.findByRole('button', { name: 'Forward' })
+    await waitFor(() => expect(forward).toBeEnabled())
+    await user.click(forward)
+    const draft = [...useComposerStore.getState().drafts.values()][0]
+    expect(draft?.to).toEqual([])
+    expect(draft?.subject).toBe('Fwd: Hi')
+    expect(draft?.attachments).toHaveLength(1)
+    expect(draft?.inReplyTo).toBeNull()
   })
 
   it('archives by dispatching a move to the archive mailbox', async () => {

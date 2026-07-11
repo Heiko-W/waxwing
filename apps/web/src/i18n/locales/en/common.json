@@ -248,7 +248,6 @@
     "reply": "Reply",
     "replyAll": "Reply all",
     "forward": "Forward",
-    "comingSoon": "Composing messages arrives in a later milestone.",
     "quotedLabel": "Quoted text",
     "frameTitle": "Message: {{subject}}",
     "threadCount": "{{count}} messages in this conversation",
@@ -304,6 +303,14 @@
     "discardTitle": "Discard this draft?",
     "discardBody": "Your changes haven't been saved yet.",
     "discardConfirm": "Discard",
-    "discardCancel": "Keep editing"
+    "discardCancel": "Keep editing",
+    "toLabel": "To",
+    "ccLabel": "Cc",
+    "replyAttribution": "On {{date}}, {{name}} wrote:",
+    "forwardSeparator": "---------- Forwarded message ----------",
+    "forwardLabelFrom": "From",
+    "forwardLabelTo": "To",
+    "forwardLabelSubject": "Subject",
+    "forwardLabelDate": "Date"
   }
 }

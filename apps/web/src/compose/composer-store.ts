@@ -10,16 +10,28 @@
  * discard-confirm stub used now.
  */
 
+import type { EmailAddress } from '@waxwing/jmap'
 import { create } from 'zustand'
+import type { DraftAttachment } from './reply'
 
 export type DraftMode = 'docked' | 'expanded' | 'minimized'
 
 export interface DraftWindow {
   readonly id: string
   mode: DraftMode
+  to: EmailAddress[]
+  cc: EmailAddress[]
+  bcc: EmailAddress[]
+  subject: string
   /** Message HTML — fed to RichTextEditor's `value`, updated from its `onChange`. */
   body: string
-  subject: string
+  /** Threading headers seeded from a reply/reply-all source (M2.3); null for a new/forward draft. */
+  inReplyTo: string[] | null
+  references: string[] | null
+  /** Best-guess From identity (M2.3 hook; full Identity/get wiring is M2.5). */
+  fromIdentityHint: string | undefined
+  /** Forwarded attachments carried by blob reference (chip UI M2.7, inclusion at send M2.8). */
+  attachments: DraftAttachment[]
   /** True once the reader edited body/subject — drives the close-guard stub. */
   dirty: boolean
   readonly createdAt: number
@@ -32,6 +44,13 @@ export interface OpenDraftInit {
   readonly subject?: string
   readonly body?: string
   readonly mode?: DraftMode
+  readonly to?: EmailAddress[]
+  readonly cc?: EmailAddress[]
+  readonly bcc?: EmailAddress[]
+  readonly inReplyTo?: string[] | null
+  readonly references?: string[] | null
+  readonly fromIdentityHint?: string | undefined
+  readonly attachments?: DraftAttachment[]
 }
 
 export interface ComposerState {
@@ -72,8 +91,15 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
     next.set(id, {
       id,
       mode: init?.mode ?? 'docked',
-      body: init?.body ?? '',
+      to: init?.to ?? [],
+      cc: init?.cc ?? [],
+      bcc: init?.bcc ?? [],
       subject: init?.subject ?? '',
+      body: init?.body ?? '',
+      inReplyTo: init?.inReplyTo ?? null,
+      references: init?.references ?? null,
+      fromIdentityHint: init?.fromIdentityHint,
+      attachments: init?.attachments ?? [],
       dirty: false,
       createdAt: Date.now(),
     })

@@ -90,7 +90,11 @@ function toEnvelope(row: EmailRow): EmailEnvelopeInput {
     from: row.from,
     to: row.to,
     cc: row.cc,
+    replyTo: row.replyTo,
     subject: row.subject,
+    messageId: row.messageId,
+    inReplyTo: row.inReplyTo,
+    references: row.references,
     preview: row.preview,
     hasAttachment: row.hasAttachment,
   }

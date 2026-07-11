@@ -15,6 +15,27 @@ describe('composer store', () => {
     expect(store().focusedId).toBe(b)
   })
 
+  it('seeds a reply/forward draft with recipients, threading and attachments', () => {
+    const id = store().openDraft({
+      subject: 'Re: Hi',
+      body: '<blockquote>x</blockquote>',
+      to: [{ name: 'A', email: 'a@x.test' }],
+      cc: [{ name: null, email: 'c@x.test' }],
+      inReplyTo: ['<m1>'],
+      references: ['<m0>', '<m1>'],
+      fromIdentityHint: 'me@x.test',
+      attachments: [{ blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 3, cid: null }],
+    })
+    const draft = store().drafts.get(id)
+    expect(draft?.to).toEqual([{ name: 'A', email: 'a@x.test' }])
+    expect(draft?.cc).toHaveLength(1)
+    expect(draft?.inReplyTo).toEqual(['<m1>'])
+    expect(draft?.references).toEqual(['<m0>', '<m1>'])
+    expect(draft?.fromIdentityHint).toBe('me@x.test')
+    expect(draft?.attachments).toHaveLength(1)
+    expect(draft?.dirty).toBe(false)
+  })
+
   it('edits parallel drafts independently', () => {
     const a = store().openDraft()
     const b = store().openDraft()

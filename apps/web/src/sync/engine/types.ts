@@ -148,7 +148,11 @@ export const EMAIL_ENVELOPE_PROPERTIES: readonly (keyof Email | string)[] = [
   'from',
   'to',
   'cc',
+  'replyTo',
   'subject',
+  'messageId',
+  'inReplyTo',
+  'references',
   'preview',
   'hasAttachment',
 ]

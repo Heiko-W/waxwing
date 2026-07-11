@@ -2,7 +2,7 @@
  * One fully-rendered message (M1.8): header (sender, recipients, date, an expandable details
  * disclosure — FR-RD-06), the remote-content banner (FR-RD-04), the sanitized body in the sandboxed
  * frame (FR-RD-01), attachments (FR-RD-05), and an action bar (archive/junk/trash/move/flag/mark
- * unread via the outbox; reply/forward are stubbed to a "coming soon" toast until M2). Bodies are
+ * unread via the outbox; reply/reply-all/forward seed a composer draft — M2.3, FR-CMP-02). Bodies are
  * fetched on open and the message is auto-marked read after a short dwell unless disabled or already
  * read (FR-RD-07). Remote content is allowed when the deployment default is `allow`, the sender is on
  * the local allowlist, or the reader clicks "Load images".
@@ -21,12 +21,20 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
+import { useSession } from '../app/session/context'
+import {
+  buildReplyDraft,
+  forwardAttachments,
+  ownAddresses,
+  type ReplyKind,
+  useComposerStore,
+} from '../compose'
 import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useLocalPref, useMailboxByRole, useReplica } from '../sync'
-import { Avatar, Button, Dialog, IconButton, Spinner, useToast } from '../ui'
+import { Avatar, Button, Dialog, IconButton, Spinner } from '../ui'
 import { AttachmentList } from './AttachmentList'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
@@ -59,6 +67,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const config = useConfig()
   const { db, accountId } = useReplica()
   const actions = useMessageActions()
+  const openDraft = useComposerStore((state) => state.openDraft)
+  const { connected } = useSession()
+  const own = useMemo(
+    () => (connected ? ownAddresses(connected.jmapSession, accountId) : []),
+    [connected, accountId],
+  )
   const { body, htmlParts, textBody, loading } = useMessageBody(email.id)
   const { resolveCid, ready } = useInlineImages(accountId, body)
 
@@ -116,6 +130,32 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     dateStyle: 'medium',
     timeStyle: 'short',
   })
+
+  // Open a reply / reply-all / forward draft seeded from this message (M2.3, FR-CMP-02/10).
+  const onCompose = useCallback(
+    (kind: ReplyKind): void => {
+      const bodyHtml = isHtml ? (sanitized?.html ?? joinedHtml) : null
+      const forwardHeaderBlock = [
+        `${t('compose.forwardLabelFrom')}: ${formatAddressList(email.from, t('list.noSender'))}`,
+        `${t('compose.forwardLabelDate')}: ${dateLabel}`,
+        `${t('compose.forwardLabelSubject')}: ${email.subject ?? ''}`,
+        `${t('compose.forwardLabelTo')}: ${formatAddressList(email.to, t('reading.noRecipients'))}`,
+      ].join('\n')
+      const init = buildReplyDraft({
+        kind,
+        source: email,
+        bodyHtml,
+        textBody,
+        ownAddresses: own,
+        attribution: t('compose.replyAttribution', { date: dateLabel, name }),
+        forwardSeparator: t('compose.forwardSeparator'),
+        forwardHeaderBlock,
+      })
+      const attachments = kind === 'forward' && body !== undefined ? forwardAttachments(body) : []
+      openDraft({ ...init, attachments })
+    },
+    [isHtml, sanitized, joinedHtml, email, textBody, own, t, dateLabel, name, body, openDraft],
+  )
 
   const onAlwaysAllow =
     fromAddress !== null
@@ -231,9 +271,30 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           {t('list.actions.move')}
         </Button>
         <span className={styles.actionSpacer} />
-        <ReplyStub icon={<Reply />} label={t('reading.reply')} />
-        <ReplyStub icon={<ReplyAll />} label={t('reading.replyAll')} />
-        <ReplyStub icon={<Forward />} label={t('reading.forward')} />
+        <IconButton
+          label={t('reading.reply')}
+          variant="ghost"
+          disabled={loading}
+          onClick={() => onCompose('reply')}
+        >
+          <Reply />
+        </IconButton>
+        <IconButton
+          label={t('reading.replyAll')}
+          variant="ghost"
+          disabled={loading}
+          onClick={() => onCompose('replyAll')}
+        >
+          <ReplyAll />
+        </IconButton>
+        <IconButton
+          label={t('reading.forward')}
+          variant="ghost"
+          disabled={loading}
+          onClick={() => onCompose('forward')}
+        >
+          <Forward />
+        </IconButton>
       </div>
 
       {hasRemoteContent && !allowRemote && (
@@ -302,20 +363,5 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         </Dialog>
       )}
     </article>
-  )
-}
-
-/** Reply/forward affordance: enabled visuals, but composing lands in M2 — a toast explains. */
-function ReplyStub({ icon, label }: { readonly icon: ReactNode; readonly label: string }) {
-  const { t } = useTranslation()
-  const { toast } = useToast()
-  return (
-    <IconButton
-      label={label}
-      variant="ghost"
-      onClick={() => toast({ title: t('reading.comingSoon'), tone: 'neutral' })}
-    >
-      {icon}
-    </IconButton>
   )
 }

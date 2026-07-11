@@ -248,7 +248,6 @@
     "reply": "Antworten",
     "replyAll": "Allen antworten",
     "forward": "Weiterleiten",
-    "comingSoon": "Das Verfassen von Nachrichten kommt in einem späteren Meilenstein.",
     "quotedLabel": "Zitierter Text",
     "frameTitle": "Nachricht: {{subject}}",
     "threadCount": "{{count}} Nachrichten in dieser Konversation",
@@ -304,6 +303,14 @@
     "discardTitle": "Diesen Entwurf verwerfen?",
     "discardBody": "Ihre Änderungen wurden noch nicht gespeichert.",
     "discardConfirm": "Verwerfen",
-    "discardCancel": "Weiter bearbeiten"
+    "discardCancel": "Weiter bearbeiten",
+    "toLabel": "An",
+    "ccLabel": "Kopie",
+    "replyAttribution": "Am {{date}} schrieb {{name}}:",
+    "forwardSeparator": "---------- Weitergeleitete Nachricht ----------",
+    "forwardLabelFrom": "Von",
+    "forwardLabelTo": "An",
+    "forwardLabelSubject": "Betreff",
+    "forwardLabelDate": "Datum"
   }
 }

@@ -18,3 +18,19 @@ export type { ActiveFormats, EditorEngine, EditorFactory } from './editor-engine
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
 export { NEW_MESSAGE_BTN_ID, NewMessageButton } from './NewMessageButton'
 export { RichTextEditor, type RichTextEditorProps } from './RichTextEditor'
+export {
+  buildReplyDraft,
+  type DraftAttachment,
+  deriveRecipients,
+  forwardAttachments,
+  forwardBody,
+  inferFromIdentity,
+  ownAddresses,
+  quoteBody,
+  type ReplyDraftInit,
+  type ReplyKind,
+  type ReplySource,
+  replySubject,
+  stripSubjectPrefix,
+  threadingHeaders,
+} from './reply'

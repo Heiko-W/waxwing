@@ -70,6 +70,22 @@ describe('ComposerWindow', () => {
     expect(await within(dialog).findByRole('textbox', { name: 'Message body' })).toBeInTheDocument()
   })
 
+  it('shows a read-only recipients summary for a reply draft', async () => {
+    const id = store().openDraft({
+      to: [{ name: 'Alice', email: 'alice@x.test' }],
+      cc: [{ name: null, email: 'c@x.test' }],
+    })
+    render(<Harness id={id} />)
+    expect(await screen.findByText(/To: Alice/)).toBeInTheDocument()
+    expect(screen.getByText(/Cc: c@x.test/)).toBeInTheDocument()
+  })
+
+  it('shows no recipients summary for a blank draft', async () => {
+    openWindow('docked') // openDraft() with no to/cc
+    await screen.findByRole('dialog')
+    expect(screen.queryByText(/^To:/)).toBeNull()
+  })
+
   it('edits the subject through the store', async () => {
     const id = openWindow('docked')
     const user = userEvent.setup()

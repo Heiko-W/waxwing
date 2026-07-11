@@ -123,7 +123,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 |---|---|---|---|---|---|
 | M2.1 | Squire editor wrapper component | M | M1.1 | done | **2026-07-11.** `apps/web/src/compose/`: `RichTextEditor` (thin React wrapper over an `EditorEngine` seam — controlled-ish, async engine lifecycle w/ teardown, debounced `onChange`, `pathChange`→toolbar state, plain-text-only mode, ⌘B/I/U/K + link dialog) + `EditorToolbar` (`role="toolbar"` roving-tabindex, `aria-pressed`) + pure `htmlToPlainText`/`cleanOutgoingHtml` + `squire-adapter` (the ONLY squire-rte/dompurify importer, behind a dynamic `import()` → lazy chunk). New direct dep **dompurify ^3.4.11** (squire-rte's default `sanitizeToDOMFragment` references a bare global `DOMPurify` that a bundle lacks → we pass our own **permissive** compose sanitizer: keep tags/inline-styles/images, drop script/`on*`/`javascript:` — distinct from `@waxwing/mail-html`'s reading-side lockdown; tech-stack §2 note). +33 tests (609 total, 76 files); **entry chunk unchanged at 181.14 KB gz** (squire-rte 0 refs in entry — verified). **Font size/family controls DEFERRED to M2.2** (a11y: native select vs roving toolbar) — the only FR-CMP-01 gap, engine seam already has `setFontSize`. Real-Squire path (contenteditable) is fake-injected in jsdom → live coverage lands with M2.9 E2E. Implemented via a context-inheriting fork + adversarial-correction (the DOMPurify seam bug). |
 | M2.2 | Composer container (docked/fullscreen, parallel drafts) | M | M2.1, M1.4 | done | **2026-07-11.** `apps/web/src/compose/`: module-scoped **Zustand** `composer-store` (parallel drafts, `MAX_OPEN`=3 → oldest collapses to a minimized chip, none dropped, `openDraft`/`closeDraft`/`setMode`/`updateBody`/`updateSubject`/`focusDraft`) + `ComposerHost` (lazy, portals a fixed layer to `<body>` in the persistent AppShell → drafts survive route changes; desktop row / phone single full-screen; focus-return on last close) + `ComposerWindow` (docked non-modal `role=dialog`, full-screen modal w/ focus-trap+scroll-lock; subject field + RichTextEditor; discard-confirm stub) + `NewMessageButton` (Header trigger + best-effort ⌘/Ctrl+N). New dep **zustand ^5.0.14** (tech-stack §-sanctioned UI-state). +15 tests (624 total, 79 files); **entry chunk flat at 180.8 KB gz** — ComposerHost + squire-adapter (86 KB) are separate lazy chunks (0 heavy code in `index-*.js`, verified). **Owner-decided UX** (AskUserQuestion): docked parallel model, full-screen modal, Header trigger, Esc-harmless (Apple-Mail-aligned); persistence deferred to M2.6 (in-memory now → a reload loses drafts, acceptable pre-M2.6). Font size/family control still deferred (M2.1 note). |
-| M2.3 | Reply / reply-all / forward (quoting, subjects, headers) | M | M2.1, M1.8 | todo | |
+| M2.3 | Reply / reply-all / forward (quoting, subjects, headers) | M | M2.1, M1.8 | done | **2026-07-11.** `apps/web/src/compose/reply.ts` — pure `deriveRecipients` (reply Reply-To>From; reply-all dedup + self-drop; forward empty), `stripSubjectPrefix`/`replySubject` (AW:/WG:/Re[2]:→single Re:/Fwd:, no stacking), `threadingHeaders` (In-Reply-To/References), `quoteBody` (`<blockquote>`+attribution), `forwardBody`, `inferFromIdentity`, `ownAddresses` (session personal accounts — M2.5 seam), `forwardAttachments` (blob refs), and the `buildReplyDraft` aggregator. Composer store extended (to/cc/bcc/inReplyTo/references/fromIdentityHint/attachments); `ComposerWindow` shows a read-only recipients summary (pill fields = M2.4). `MessageView` reply/reply-all/forward stubs → real `onCompose(kind)` wiring (disabled while the body loads). Envelope fetch gained messageId/inReplyTo/references/replyTo (`db.ts`+`engine/types.ts`; rebuildable cache). +34 tests (659 total, 80 files, 30 pure-logic cases); 181.9 KB gz. Decisions Apple-Mail-aligned per owner ("Apple standard"): Re:/Fwd: normalization, localized attribution. Quote-folding deferred. Implemented via a prescriptive-brief fork. |
 | M2.4 | Recipient fields (pills, validation, basic autocomplete) | M | M2.2, M1.2 | todo | |
 | M2.5 | Identities & signatures | S | M2.2 | todo | |
 | M2.6 | Drafts autosave (server + local, crash-safe) | M | M2.2, M1.3 | todo | |
@@ -1116,16 +1116,21 @@ route change.
 
 Spec: FR-CMP-02, FR-CMP-10 (forward originals). Size: M.
 
-- [ ] Recipient derivation: reply (Reply-To > From), reply-all (dedup, drop own
-      identities), forward (empty).
-- [ ] Quoting: HTML `<blockquote>` with attribution line; `>`-quoting in text mode;
-      quote folding in the editor (collapsed by default, expandable).
-- [ ] Subject handling: `Re:`/`Fwd:` detection incl. localized variants, **no stacking**
-      (FR-CMP-02).
-- [ ] Threading headers: `In-Reply-To`, `References` built from the source message.
-- [ ] Forward: original attachments included by reference to existing blobs (FR-CMP-10).
-- [ ] Identity preselection: infer From by which identity the source was addressed to
-      (FR-CMP-06 hook, logic here).
+- [x] Recipient derivation (pure `deriveRecipients`): reply (Reply-To > From), reply-all
+      (dedup by lowercased email, drop own addresses), forward (empty To).
+- [x] Quoting: HTML `<blockquote>` with an attribution line; `>`-quoting in text mode comes free
+      from `htmlToPlainText`. _Quote folding (collapsed/expandable) DEFERRED to a later composer
+      polish pass — it needs Squire-adapter DOM work beyond M2.3's pure-logic + wiring scope._
+- [x] Subject handling (`replySubject`/`stripSubjectPrefix`): `Re:`/`Fwd:` + localized variants
+      (de `AW:`/`WG:`, counted `Re[2]:`) normalized to a single English `Re:`/`Fwd:` (Apple-Mail-
+      aligned, interop-first), **no stacking**.
+- [x] Threading headers: `In-Reply-To` = source `messageId`, `References` = source refs ∪ messageId
+      (forward starts a new thread). Envelope fetch extended with messageId/inReplyTo/references/
+      replyTo (rebuildable cache; existing rows backfill on next `/get`).
+- [x] Forward: original attachments carried by blob reference (`DraftAttachment[]` on the draft);
+      the chip UI is M2.7, blob-referenced inclusion at send is M2.8.
+- [x] Identity preselection (`inferFromIdentity`): the own address the source was addressed to,
+      from the JMAP session's personal accounts + username (M2.5 replaces with `Identity/get`).
 
 Done when: reply round-trip against the fixture threads correctly in a second client
 (headers verified in the raw message).

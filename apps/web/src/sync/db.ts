@@ -117,7 +117,12 @@ export interface EmailEnvelopeInput {
   from: EmailAddress[] | null
   to: EmailAddress[] | null
   cc: EmailAddress[] | null
+  replyTo: EmailAddress[] | null
   subject: string | null
+  /** RFC 5322 threading headers (M2.3) — for reply/forward derivation. Non-indexed. */
+  messageId: string[] | null
+  inReplyTo: string[] | null
+  references: string[] | null
   preview: string
   hasAttachment: boolean
 }

@@ -119,6 +119,16 @@
   color: var(--waxwing-text-muted);
 }
 
+.recipientSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
 .editorWrap {
   flex: 1;
   min-block-size: 0;
