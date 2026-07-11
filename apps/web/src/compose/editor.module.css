@@ -1,0 +1,78 @@
+/*
+ * Compose rich-text editor (M2.1). Tokens only; the surface is a bordered contenteditable region
+ * with a visible focus ring, the toolbar a wrapping row of ghost icon buttons above it.
+ */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-block-end: 1px solid var(--waxwing-border);
+  background-color: var(--waxwing-surface-2);
+}
+
+.surface {
+  flex: 1;
+  min-block-size: 8rem;
+  padding: var(--waxwing-space-3);
+  overflow-y: auto;
+  color: var(--waxwing-text);
+  font-size: var(--waxwing-text-base);
+  line-height: var(--waxwing-leading-normal);
+  outline: none;
+}
+
+.surface:focus-visible {
+  outline: 2px solid var(--waxwing-accent);
+  outline-offset: -2px;
+}
+
+.plain {
+  flex: 1;
+  min-block-size: 8rem;
+  padding: var(--waxwing-space-3);
+  border: 0;
+  resize: vertical;
+  color: var(--waxwing-text);
+  background-color: var(--waxwing-surface);
+  font-family: var(--waxwing-font-mono, monospace);
+  font-size: var(--waxwing-text-sm);
+  line-height: var(--waxwing-leading-normal);
+  outline: none;
+}
+
+.plain:focus-visible {
+  outline: 2px solid var(--waxwing-accent);
+  outline-offset: -2px;
+}
+
+.linkForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+}
+
+.linkLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.linkActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-2);
+  margin-block-start: var(--waxwing-space-2);
+}

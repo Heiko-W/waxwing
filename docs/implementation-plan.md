@@ -121,7 +121,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
-| M2.1 | Squire editor wrapper component | M | M1.1 | todo | |
+| M2.1 | Squire editor wrapper component | M | M1.1 | done | **2026-07-11.** `apps/web/src/compose/`: `RichTextEditor` (thin React wrapper over an `EditorEngine` seam — controlled-ish, async engine lifecycle w/ teardown, debounced `onChange`, `pathChange`→toolbar state, plain-text-only mode, ⌘B/I/U/K + link dialog) + `EditorToolbar` (`role="toolbar"` roving-tabindex, `aria-pressed`) + pure `htmlToPlainText`/`cleanOutgoingHtml` + `squire-adapter` (the ONLY squire-rte/dompurify importer, behind a dynamic `import()` → lazy chunk). New direct dep **dompurify ^3.4.11** (squire-rte's default `sanitizeToDOMFragment` references a bare global `DOMPurify` that a bundle lacks → we pass our own **permissive** compose sanitizer: keep tags/inline-styles/images, drop script/`on*`/`javascript:` — distinct from `@waxwing/mail-html`'s reading-side lockdown; tech-stack §2 note). +33 tests (609 total, 76 files); **entry chunk unchanged at 181.14 KB gz** (squire-rte 0 refs in entry — verified). **Font size/family controls DEFERRED to M2.2** (a11y: native select vs roving toolbar) — the only FR-CMP-01 gap, engine seam already has `setFontSize`. Real-Squire path (contenteditable) is fake-injected in jsdom → live coverage lands with M2.9 E2E. Implemented via a context-inheriting fork + adversarial-correction (the DOMPurify seam bug). |
 | M2.2 | Composer container (docked/fullscreen, parallel drafts) | M | M2.1, M1.4 | todo | |
 | M2.3 | Reply / reply-all / forward (quoting, subjects, headers) | M | M2.1, M1.8 | todo | |
 | M2.4 | Recipient fields (pills, validation, basic autocomplete) | M | M2.2, M1.2 | todo | |
@@ -1073,15 +1073,23 @@ Goal: full compose/send. After M2, Waxwing is a functional mail client (online).
 
 Spec: FR-CMP-01, tech-stack §4.4. Size: M.
 
-- [ ] React wrapper around `squire-rte`: controlled-enough API (value in/out as HTML),
-      toolbar state syncing (bold/italic/underline, lists, links, quote, font basics),
-      clean lifecycle (no leaks on unmount).
-- [ ] Output hygiene: generated HTML is mail-compatible (inline-safe styles, no
-      editor-only attributes); **plain-text alternative generator** (HTML → text with
-      sensible quoting/line breaks) as a pure, unit-tested function.
-- [ ] Per-message plain-text-only mode (swaps editor surface, keeps content).
-- [ ] Keyboard + a11y pass on the toolbar (roving focus, shortcuts ⌘B/⌘I/⌘K-link).
-- [ ] Keep Squire behind our component API so it stays swappable (tech-stack §8 risk).
+- [x] React wrapper around `squire-rte`: controlled-ish API (HTML in/out; re-`setHTML` only on
+      external change, never the own debounced echo → no cursor fight), toolbar state syncing
+      (bold/italic/underline, lists, link, quote), clean async lifecycle (engine torn down +
+      timer/listeners cleared on unmount). _Font basics (size/family) DEFERRED to M2.2's composer
+      — the engine seam exposes `setFontSize`; deferred to keep the roving toolbar all-buttons for
+      clean a11y (a native `<select>` conflicts with arrow-roving). Documented deviation._
+- [x] Output hygiene: mail-compatible HTML — `cleanOutgoingHtml` strips Squire's editor-only
+      classes (font/size/color/highlight) + bookmarks/ZWS while keeping inline styles; pure,
+      unit-tested `htmlToPlainText` generator (blocks→newlines, `- `/`1. ` lists, `> ` blockquote
+      nesting, `text (href)` links, entity decode, whitespace collapse).
+- [x] Per-message plain-text-only mode (swaps the Squire surface for a `<textarea>` seeded from
+      the generated text; converts back on toggle, content preserved).
+- [x] Keyboard + a11y on the toolbar (`role="toolbar"` roving focus ArrowLeft/Right/Home/End,
+      `aria-pressed`; ⌘/Ctrl+B/I/U + ⌘K-link; the surface is `role="textbox" aria-multiline`).
+- [x] Squire fully behind the `EditorEngine` seam (only `squire-adapter.ts` imports squire-rte +
+      dompurify, reached via a dynamic `import()` → lazy chunk, entry bundle unchanged); tests
+      inject a fake engine (jsdom has no contenteditable).
 
 Done when: editor round-trips pasted third-party HTML unmangled (fixture corpus test) and
 emits a sane text alternative.

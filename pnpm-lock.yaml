@@ -47,6 +47,9 @@ importers:
       dexie-react-hooks:
         specifier: ^4.4.0
         version: 4.4.0(dexie@4.4.4)(react@19.2.7)
+      dompurify:
+        specifier: ^3.4.11
+        version: 3.4.11
       i18next:
         specifier: ^26.3.4
         version: 26.3.4(typescript@6.0.3)
@@ -68,6 +71,9 @@ importers:
       react-i18next:
         specifier: ^17.0.8
         version: 17.0.8(i18next@26.3.4(typescript@6.0.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
+      squire-rte:
+        specifier: ^2.4.8
+        version: 2.4.8
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.1
@@ -1297,6 +1303,9 @@ packages:
     resolution: {integrity: sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ==}
     engines: {node: '>= 12'}
 
+  squire-rte@2.4.8:
+    resolution: {integrity: sha512-pUp+LhZf2cUlhRKnD40DopUCdhmHlYUF7zGYqOBr8I/tQk/qZie/nXQ1DQcKlXqlr8Bw16TpE/7LQWxUeVrFNg==}
+
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -2432,6 +2441,8 @@ snapshots:
   source-map-js@1.2.1: {}
 
   source-map@0.7.6: {}
+
+  squire-rte@2.4.8: {}
 
   stackback@0.0.2: {}
 

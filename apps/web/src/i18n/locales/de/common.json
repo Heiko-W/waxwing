@@ -270,5 +270,28 @@
       "hidePreview": "Vorschau ausblenden",
       "download": "{{name}} herunterladen"
     }
+  },
+  "compose": {
+    "toolbar": "Formatierung",
+    "editorLabel": "Nachrichtentext",
+    "bold": "Fett",
+    "italic": "Kursiv",
+    "underline": "Unterstrichen",
+    "bulletList": "Aufzählungsliste",
+    "numberedList": "Nummerierte Liste",
+    "quote": "Zitat",
+    "insertLink": "Link einfügen",
+    "removeLink": "Link entfernen",
+    "linkTitle": "Link einfügen",
+    "linkUrlLabel": "Link-URL",
+    "linkUrlPlaceholder": "https://example.com",
+    "linkInsert": "Einfügen",
+    "linkCancel": "Abbrechen",
+    "plainTextMode": "Nur Text",
+    "richTextMode": "Formatierter Text",
+    "textSize": "Textgröße",
+    "textSizeNormal": "Normal",
+    "textSizeSmall": "Klein",
+    "textSizeLarge": "Groß"
   }
 }

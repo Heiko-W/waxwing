@@ -270,5 +270,28 @@
       "hidePreview": "Hide preview",
       "download": "Download {{name}}"
     }
+  },
+  "compose": {
+    "toolbar": "Formatting",
+    "editorLabel": "Message body",
+    "bold": "Bold",
+    "italic": "Italic",
+    "underline": "Underline",
+    "bulletList": "Bulleted list",
+    "numberedList": "Numbered list",
+    "quote": "Quote",
+    "insertLink": "Insert link",
+    "removeLink": "Remove link",
+    "linkTitle": "Insert link",
+    "linkUrlLabel": "Link URL",
+    "linkUrlPlaceholder": "https://example.com",
+    "linkInsert": "Insert",
+    "linkCancel": "Cancel",
+    "plainTextMode": "Plain text",
+    "richTextMode": "Rich text",
+    "textSize": "Text size",
+    "textSizeNormal": "Normal",
+    "textSizeSmall": "Small",
+    "textSizeLarge": "Large"
   }
 }
