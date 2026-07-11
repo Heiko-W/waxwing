@@ -57,6 +57,7 @@ try {
   ])
   run('placeholder e2e suite', ['e2e'])
   run('read e2e suite', ['e2e:read'])
+  run('write e2e suite', ['e2e:write'])
 } catch (error) {
   failure = error
 } finally {

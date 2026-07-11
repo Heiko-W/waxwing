@@ -8,6 +8,7 @@
   "scripts": {
     "e2e": "playwright test",
     "e2e:read": "playwright test -c playwright.read.config.ts",
+    "e2e:write": "playwright test -c playwright.write.config.ts",
     "e2e:demo": "playwright test -c playwright.demo.config.ts",
     "server:up": "node stalwart/fixture.mjs up",
     "server:up:main": "node stalwart/fixture.mjs up main",

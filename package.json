@@ -20,6 +20,7 @@
     "demo": "node scripts/demo.mjs",
     "e2e": "pnpm --filter @waxwing/e2e run e2e",
     "e2e:read": "pnpm --filter @waxwing/e2e run e2e:read",
+    "e2e:write": "pnpm --filter @waxwing/e2e run e2e:write",
     "e2e:demo": "pnpm --filter @waxwing/e2e run e2e:demo",
     "e2e:server": "pnpm --filter @waxwing/e2e run server:up",
     "e2e:server:main": "pnpm --filter @waxwing/e2e run server:up:main",
