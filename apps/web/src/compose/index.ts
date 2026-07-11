@@ -21,6 +21,7 @@ export {
   useComposerStore,
 } from './composer-store'
 export type { ActiveFormats, EditorEngine, EditorFactory } from './editor-engine'
+export { FromField } from './FromField'
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
 export { NEW_MESSAGE_BTN_ID, NewMessageButton } from './NewMessageButton'
 export { RecipientFields, type RecipientFieldsProps } from './RecipientFields'
@@ -48,4 +49,12 @@ export {
   stripSubjectPrefix,
   threadingHeaders,
 } from './reply'
+export {
+  applySignature,
+  pickDefaultIdentity,
+  replaceSignature,
+  SIGNATURE_ATTR,
+  type SignaturePlacement,
+  signatureHtmlForIdentity,
+} from './signature'
 export { COMMON_EMAIL_DOMAINS, suggestDomainCorrection } from './typo-heuristic'

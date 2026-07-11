@@ -6,7 +6,7 @@
  * liveQuery hooks in `./react`).
  */
 
-import type { Id, Mailbox, Thread } from '@waxwing/jmap'
+import type { Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
 import Dexie from 'dexie'
 import {
   type AccountRecord,
@@ -15,6 +15,7 @@ import {
   type EmailBodyRow,
   type EmailEnvelopeInput,
   type EmailRow,
+  type IdentityRow,
   type LocalPrefRow,
   type MailboxRow,
   type OutboxRow,
@@ -24,6 +25,7 @@ import {
   scopeKey,
   type ThreadRow,
   toEmailRow,
+  toIdentityRow,
   toMailboxRow,
   toThreadRow,
 } from './db'
@@ -73,6 +75,24 @@ export function mailboxByRole(
 
 export function deleteMailbox(db: ReplicaDb, accountId: Id, id: Id): Promise<void> {
   return db.mailboxes.delete([accountId, id])
+}
+
+// -------------------------------------------------------------------------------------------
+// Identities (M2.5 — the From selector + per-identity signatures).
+// -------------------------------------------------------------------------------------------
+
+export async function putIdentities(
+  db: ReplicaDb,
+  accountId: Id,
+  identities: Identity[],
+): Promise<void> {
+  await db.identities.bulkPut(identities.map((identity) => toIdentityRow(accountId, identity)))
+}
+
+/** Every send identity for an account, ordered by name then email — the From-selector source. */
+export async function identitiesForAccount(db: ReplicaDb, accountId: Id): Promise<IdentityRow[]> {
+  const rows = await db.identities.where('accountId').equals(accountId).toArray()
+  return rows.sort((a, b) => a.name.localeCompare(b.name) || a.email.localeCompare(b.email))
 }
 
 // -------------------------------------------------------------------------------------------

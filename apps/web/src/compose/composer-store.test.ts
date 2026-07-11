@@ -92,4 +92,16 @@ describe('composer store', () => {
     expect(store().drafts.get(id)?.to).toEqual([{ name: null, email: 'a@x.com' }])
     expect(store().drafts.get(id)?.cc).toEqual([{ name: null, email: 'B@X.com' }])
   })
+
+  it('setFromIdentity sets the identity + body; markDirty:false leaves the draft clean (M2.5)', () => {
+    const id = store().openDraft({ fromIdentityHint: 'me@x.test' })
+    expect(store().drafts.get(id)?.fromIdentityId).toBeUndefined()
+    store().setFromIdentity(id, 'id-1', '<p>seeded</p>', { markDirty: false })
+    expect(store().drafts.get(id)?.fromIdentityId).toBe('id-1')
+    expect(store().drafts.get(id)?.body).toBe('<p>seeded</p>')
+    expect(store().drafts.get(id)?.dirty).toBe(false)
+    store().setFromIdentity(id, 'id-2', '<p>swapped</p>')
+    expect(store().drafts.get(id)?.fromIdentityId).toBe('id-2')
+    expect(store().drafts.get(id)?.dirty).toBe(true)
+  })
 })

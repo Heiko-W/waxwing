@@ -294,6 +294,7 @@
     "textSizeLarge": "Large",
     "new": "New message",
     "noSubject": "(No subject)",
+    "fromLabel": "From",
     "subjectLabel": "Subject",
     "subjectPlaceholder": "Subject",
     "minimize": "Minimize",

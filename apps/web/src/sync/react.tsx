@@ -11,8 +11,14 @@
 import type { Id } from '@waxwing/jmap'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
-import { getReplica, type MailboxRow, type QueryCacheRow, type ReplicaDb } from './db'
-import { emailsByIds, mailboxByRole, mailboxesForAccount } from './repo'
+import {
+  getReplica,
+  type IdentityRow,
+  type MailboxRow,
+  type QueryCacheRow,
+  type ReplicaDb,
+} from './db'
+import { emailsByIds, identitiesForAccount, mailboxByRole, mailboxesForAccount } from './repo'
 
 interface ReplicaContextValue {
   readonly db: ReplicaDb
@@ -63,6 +69,11 @@ export function useReplicaQuery<T>(
 /** The folder tree source: all mailboxes for the account, ordered (M1.5). */
 export function useMailboxes(): MailboxRow[] | undefined {
   return useReplicaQuery(({ db, accountId }) => mailboxesForAccount(db, accountId))
+}
+
+/** The From-selector source: all send identities for the account (M2.5). */
+export function useIdentities(): IdentityRow[] | undefined {
+  return useReplicaQuery(({ db, accountId }) => identitiesForAccount(db, accountId))
 }
 
 /** A single mailbox (live counts/rights). */

@@ -27,8 +27,9 @@
     "seed:large": "node e2e/stalwart/seed-large.mjs",
     "seed:read": "node e2e/stalwart/seed-read.mjs",
     "build": "pnpm -r --if-present build",
+    "build:libs": "pnpm --filter @waxwing/jmap --filter @waxwing/mail-html run build",
     "size": "pnpm --filter @waxwing/web build && size-limit",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm size",
+    "verify": "pnpm build:libs && pnpm typecheck && pnpm lint && pnpm test && pnpm size",
     "verify:e2e": "node scripts/verify-e2e.mjs",
     "verify:all": "pnpm verify && pnpm verify:e2e"
   },

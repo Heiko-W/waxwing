@@ -17,3 +17,5 @@ export * from './core'
 export * from './mail'
 // RFC 8620 §7 push + RFC 8887 WebSocket wire frames (StateChange, Request/Response, …).
 export * from './push'
+// RFC 8621 §6 — EmailSubmission / Identity (M2.5 uses Identity).
+export * from './submission'

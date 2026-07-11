@@ -110,6 +110,13 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       return { list: response.list, notFound: response.notFound, state: response.state }
     },
 
+    async getIdentities() {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.identityGet, { accountId, ids: null })
+      const response = (await builder.send()).get(handle)
+      return { list: response.list, notFound: response.notFound, state: response.state }
+    },
+
     async getThreads(ids) {
       const builder = client.request()
       const handle = builder.invoke(Methods.threadGet, { accountId, ids })

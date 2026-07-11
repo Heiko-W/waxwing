@@ -31,8 +31,10 @@ export interface DraftWindow {
   /** Threading headers seeded from a reply/reply-all source (M2.3); null for a new/forward draft. */
   inReplyTo: string[] | null
   references: string[] | null
-  /** Best-guess From identity (M2.3 hook; full Identity/get wiring is M2.5). */
+  /** Best-guess From identity email (M2.3 hook; resolved to an id in M2.5). */
   fromIdentityHint: string | undefined
+  /** Selected From identity id (M2.5); the M2.8 submission resolves from/replyTo/bcc from it. */
+  fromIdentityId: string | undefined
   /** Forwarded attachments carried by blob reference (chip UI M2.7, inclusion at send M2.8). */
   attachments: DraftAttachment[]
   /** True once the reader edited body/subject — drives the close-guard stub. */
@@ -53,6 +55,7 @@ export interface OpenDraftInit {
   readonly inReplyTo?: string[] | null
   readonly references?: string[] | null
   readonly fromIdentityHint?: string | undefined
+  readonly fromIdentityId?: string | undefined
   readonly attachments?: DraftAttachment[]
 }
 
@@ -74,6 +77,13 @@ export interface ComposerActions {
   setRecipients(id: string, field: RecipientField, addrs: EmailAddress[]): void
   /** Move one recipient from one field to another (keyboard "move to Cc/Bcc"), deduping in target. */
   moveRecipient(id: string, from: RecipientField, to: RecipientField, index: number): void
+  /** Set the From identity + the signature-swapped body (M2.5; caller computes body via signature.ts). */
+  setFromIdentity(
+    id: string,
+    identityId: string,
+    body: string,
+    options?: { readonly markDirty?: boolean },
+  ): void
   focusDraft(id: string): void
 }
 
@@ -106,6 +116,7 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
       inReplyTo: init?.inReplyTo ?? null,
       references: init?.references ?? null,
       fromIdentityHint: init?.fromIdentityHint,
+      fromIdentityId: init?.fromIdentityId,
       attachments: init?.attachments ?? [],
       dirty: false,
       createdAt: Date.now(),
@@ -167,6 +178,21 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
     }
     const next = new Map(get().drafts)
     next.set(id, { ...current, [from]: fromList, [to]: toList, dirty: true })
+    set({ drafts: next })
+  },
+
+  setFromIdentity(id, identityId, body, options) {
+    const current = get().drafts.get(id)
+    if (current === undefined) return
+    const next = new Map(get().drafts)
+    // Seeding the default identity passes markDirty:false so it never trips the close-guard;
+    // a user-initiated From change uses the default (true).
+    next.set(id, {
+      ...current,
+      fromIdentityId: identityId,
+      body,
+      dirty: current.dirty || (options?.markDirty ?? true),
+    })
     set({ drafts: next })
   },
 

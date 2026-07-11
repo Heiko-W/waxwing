@@ -13,6 +13,7 @@ import type {
   EmailComparator,
   EmailFilter,
   Id,
+  Identity,
   Mailbox,
   PatchObject,
   PushStatus,
@@ -113,6 +114,8 @@ export interface JmapPort {
 
   /** `ids === null` fetches all records (used for the initial mailbox/thread pull). */
   getMailboxes(ids: Id[] | null): Promise<GetResult<Mailbox>>
+  /** Fetches all send identities (RFC 8621 §6) — a one-shot pull; Identity/changes is deferred (M2.5). */
+  getIdentities(): Promise<GetResult<Identity>>
   getThreads(ids: Id[]): Promise<GetResult<Thread>>
   /** Fetches the envelope/index property set the list needs (never bodies). */
   getEmailEnvelopes(ids: Id[]): Promise<GetResult<EmailEnvelopeInput>>

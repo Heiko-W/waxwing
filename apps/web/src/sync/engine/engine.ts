@@ -25,7 +25,7 @@ import type { ReplicaDb } from '../db'
 import { getQueryCache, mailboxByRole, pendingOutbox, putEmailBody, putEmails } from '../repo'
 import { backfillMailbox, loadMore, type WindowSpec, windowQueryKey } from './backfill'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
-import { reconcileQuery, syncEmails, syncMailboxes, syncThreads } from './delta'
+import { reconcileQuery, syncEmails, syncIdentities, syncMailboxes, syncThreads } from './delta'
 import { type LockManagerLike, startLeaderElection } from './leader'
 import {
   type EnqueueOptions,
@@ -91,6 +91,8 @@ export class SyncEngine {
   /** In-memory rollbacks for optimistic outbox intents (lost on reload — persisted error rows = M3.3). */
   private readonly rollbacks = new Map<Id, Rollback>()
 
+  /** Identities are pulled once per leadership session (M2.5; Identity/changes deferred). */
+  private identitiesSynced = false
   private syncing = false
   private syncQueued = false
   private sweepCount = 0
@@ -139,6 +141,7 @@ export class SyncEngine {
     this.push = undefined
     this.bus = undefined
     this.isLeader = false
+    this.identitiesSynced = false // refetch identities on the next leadership session
     // Await the in-flight sync so a following wipe cannot delete the DB out from under it (which
     // would throw DatabaseClosedError and strand a bogus 'error' status into the next session).
     await this.activeSync?.catch(() => {})
@@ -307,6 +310,10 @@ export class SyncEngine {
   private async runSyncPass(forceFull: boolean): Promise<void> {
     try {
       await syncMailboxes(this.port, this.db, this.accountId, this.clock)
+      if (!this.identitiesSynced) {
+        await syncIdentities(this.port, this.db, this.accountId, this.clock)
+        this.identitiesSynced = true // only after success, so an offline first pass retries
+      }
       await this.ensureInboxWindow()
       await syncThreads(this.port, this.db, this.accountId, this.clock)
       await syncEmails(this.port, this.db, this.accountId, this.clock)

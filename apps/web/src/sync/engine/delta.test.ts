@@ -43,6 +43,7 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
     threadChanges: async () => emptyChanges('s'),
     emailChanges: async () => emptyChanges('s'),
     getMailboxes: async (): Promise<GetResult<Mailbox>> => ({ list: [], notFound: [], state: 's' }),
+    getIdentities: async () => ({ list: [], notFound: [], state: 's' }),
     getThreads: async () => ({ list: [], notFound: [], state: 's' }),
     getEmailEnvelopes: async (): Promise<GetResult<EmailEnvelopeInput>> => ({
       list: [],

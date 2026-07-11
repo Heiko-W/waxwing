@@ -294,6 +294,7 @@
     "textSizeLarge": "Groß",
     "new": "Neue Nachricht",
     "noSubject": "(Kein Betreff)",
+    "fromLabel": "Von",
     "subjectLabel": "Betreff",
     "subjectPlaceholder": "Betreff",
     "minimize": "Minimieren",

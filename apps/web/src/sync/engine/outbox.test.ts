@@ -28,6 +28,7 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     threadChanges: unused,
     emailChanges: unused,
     getMailboxes: unused,
+    getIdentities: unused,
     getThreads: unused,
     getEmailEnvelopes: unused,
     getEmailBodies: unused,

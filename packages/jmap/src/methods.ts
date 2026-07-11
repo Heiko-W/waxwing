@@ -43,6 +43,7 @@ import type {
   ThreadGetRequest,
   ThreadGetResponse,
 } from './types/mail'
+import type { IdentityGetRequest, IdentityGetResponse } from './types/submission'
 
 /** Registry of typed method definitions for the SP.1 capability surface. */
 export const Methods = {
@@ -68,6 +69,8 @@ export const Methods = {
   ),
   emailSet: defineMethod<EmailSetRequest, EmailSetResponse>('Email/set'),
   emailParse: defineMethod<EmailParseRequest, EmailParseResponse>('Email/parse'),
+
+  identityGet: defineMethod<IdentityGetRequest, IdentityGetResponse>('Identity/get'),
 } as const
 
 /** A key of the {@link Methods} registry (e.g. `"emailQuery"`). */

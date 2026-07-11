@@ -19,6 +19,7 @@ import {
   getQueryCache,
   getSyncState,
   putEmails,
+  putIdentities,
   putMailboxes,
   putQueryCache,
   putThreads,
@@ -104,6 +105,21 @@ async function drainChanges(
  * the `updatedProperties` optimization — when only named props (typically the counts) changed, the
  * existing rows are patched rather than replaced.
  */
+/**
+ * One-shot identity pull (M2.5). Identities rarely change and are few, so `Identity/changes` is
+ * deferred — the engine fetches them once per leadership session (guarded by a flag there).
+ */
+export async function syncIdentities(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const { list, state } = await port.getIdentities()
+  await putIdentities(db, accountId, list)
+  await setSyncState(db, accountId, 'Identity', state, clock.now())
+}
+
 export async function syncMailboxes(
   port: JmapPort,
   db: ReplicaDb,

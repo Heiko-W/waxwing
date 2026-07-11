@@ -114,7 +114,8 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
-.subjectLabel {
+.subjectLabel,
+.fromLabel {
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
 }

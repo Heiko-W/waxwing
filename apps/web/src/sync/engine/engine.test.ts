@@ -145,6 +145,24 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
         state: 'mbx-1',
       }
     },
+    async getIdentities() {
+      return {
+        list: [
+          {
+            id: 'id-1',
+            name: 'Me',
+            email: `me@${'x.test'}`,
+            replyTo: null,
+            bcc: null,
+            textSignature: '',
+            htmlSignature: '',
+            mayDelete: false,
+          },
+        ],
+        notFound: [],
+        state: 'idn-1',
+      }
+    },
     async getThreads(ids) {
       return { list: ids.map((id) => ({ id, emailIds: [id] })), notFound: [], state: 'thr-1' }
     },
@@ -245,10 +263,34 @@ describe('SyncEngine', () => {
     expect(await db.mailboxes.get([ACC, 'inbox'])).toBeDefined()
     expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
     expect((await db.emails.count()) >= 2).toBe(true)
+    expect(await db.identities.get([ACC, 'id-1'])).toBeDefined() // M2.5 one-shot Identity/get
     expect(getEngineStatus().lastSyncedAt).not.toBeNull()
 
     await engine.stop()
     expect(push.closed).toBe(true)
+  })
+
+  it('fetches identities once per session, not on every sync sweep (M2.5)', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    let identityCalls = 0
+    const port: JmapPort = {
+      ...base,
+      getIdentities: async () => {
+        identityCalls += 1
+        return { list: [], notFound: [], state: 'idn-1' }
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    const firstSync = getEngineStatus().lastSyncedAt
+
+    push.fireStateChange() // a second sync pass
+    await waitFor(() => getEngineStatus().lastSyncedAt !== firstSync)
+
+    expect(identityCalls).toBe(1)
+    await engine.stop()
   })
 
   it('re-syncs when push delivers a StateChange', async () => {

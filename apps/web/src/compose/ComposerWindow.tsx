@@ -18,6 +18,7 @@ import { Button, Dialog, IconButton, TextInput, useFocusTrap } from '../ui'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
 import type { EditorFactory } from './editor-engine'
+import { FromField } from './FromField'
 import { RecipientFields } from './RecipientFields'
 import { RichTextEditor } from './RichTextEditor'
 import type { RecipientSuggestionSource } from './recipient-suggestions'
@@ -142,6 +143,8 @@ export function ComposerWindow({
             </IconButton>
           </div>
         </div>
+
+        <FromField draft={draft} />
 
         <RecipientFields
           draft={draft}

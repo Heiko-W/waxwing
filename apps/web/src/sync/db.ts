@@ -39,6 +39,7 @@ import type {
   EmailComparator,
   EmailFilter,
   Id,
+  Identity,
   Mailbox,
   MailboxRights,
   Thread,
@@ -238,9 +239,15 @@ export interface AddressStatRow {
 // The database.
 // ---------------------------------------------------------------------------------------------
 
+/** RFC 8621 §6 Identity mirror (M2.5) — the From selector + per-identity signatures / reply-to. */
+export interface IdentityRow extends Identity {
+  accountId: Id
+}
+
 export class ReplicaDb extends Dexie {
   accounts!: Table<AccountRecord, Id>
   mailboxes!: Table<MailboxRow, [Id, Id]>
+  identities!: Table<IdentityRow, [Id, Id]>
   threads!: Table<ThreadRow, [Id, Id]>
   emails!: Table<EmailRow, [Id, Id]>
   emailBodies!: Table<EmailBodyRow, [Id, Id]>
@@ -270,6 +277,10 @@ export class ReplicaDb extends Dexie {
     // (no data transform); Dexie carries every unspecified store forward unchanged.
     this.version(2).stores({
       addressStats: '[accountId+emailLower], accountId, [accountId+lastSeenAt]',
+    })
+    // v3 (M2.5) — additive: the identities store only (account-global From identities + signatures).
+    this.version(3).stores({
+      identities: '[accountId+id], accountId',
     })
   }
 }
@@ -307,6 +318,11 @@ export function toMailboxRow(accountId: Id, mailbox: Mailbox): MailboxRow {
 /** Map a JMAP thread to its stored row. */
 export function toThreadRow(accountId: Id, thread: Thread): ThreadRow {
   return { accountId, id: thread.id, emailIds: thread.emailIds }
+}
+
+/** Map a JMAP identity to its stored row (M2.5). */
+export function toIdentityRow(accountId: Id, identity: Identity): IdentityRow {
+  return { ...identity, accountId }
 }
 
 // ---------------------------------------------------------------------------------------------
