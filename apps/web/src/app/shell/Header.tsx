@@ -6,6 +6,7 @@
  */
 
 import { useTranslation } from 'react-i18next'
+import { NewMessageButton } from '../../compose'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, Link } from '../route'
 import { AccountMenu } from './AccountMenu'
@@ -34,6 +35,7 @@ export function Header({ config, username }: HeaderProps) {
       </Link>
       <div className={styles.spacer} />
       <div className={styles.headerControls}>
+        <NewMessageButton />
         <StatusRegion />
         <AccountMenu productName={branding.productName} username={username} />
       </div>

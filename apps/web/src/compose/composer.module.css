@@ -1,0 +1,140 @@
+/*
+ * Composer windows (M2.2). The fixed `.layer` (portaled to <body>) lays out the docked/minimized
+ * windows bottom-right and lets clicks fall through its empty space to the mail UI; a full-screen
+ * window escapes the row as a fixed modal over a backdrop. Tokens only.
+ */
+
+.layer {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-3);
+  padding-inline: var(--waxwing-space-4);
+  pointer-events: none;
+}
+
+.window,
+.chip {
+  pointer-events: auto;
+}
+
+/* ---- docked window ---- */
+.docked {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(28rem, 92vw);
+  block-size: min(32rem, 80vh);
+  background-color: var(--waxwing-surface);
+  border: 1px solid var(--waxwing-border);
+  border-start-start-radius: var(--waxwing-radius-md);
+  border-start-end-radius: var(--waxwing-radius-md);
+  box-shadow: var(--waxwing-shadow-2);
+  overflow: hidden;
+}
+
+/* ---- full-screen (modal) window + backdrop ---- */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: auto;
+  background-color: var(--waxwing-overlay);
+}
+
+.fullscreen {
+  position: fixed;
+  inset: var(--waxwing-space-6);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--waxwing-surface);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  box-shadow: var(--waxwing-shadow-2);
+  overflow: hidden;
+}
+
+/* ---- minimized chip ---- */
+.chip {
+  display: flex;
+  align-items: center;
+  max-inline-size: 16rem;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-start-start-radius: var(--waxwing-radius-md);
+  border-start-end-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  box-shadow: var(--waxwing-shadow-2);
+  color: var(--waxwing-text);
+  font-size: var(--waxwing-text-sm);
+  cursor: pointer;
+}
+
+.chipTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- shared window chrome ---- */
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+  background-color: var(--waxwing-surface-2);
+}
+
+.title {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.titleActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.subjectLabel {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
+.editorWrap {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+}
+
+/* Phone: the single full-screen composer fills the viewport. */
+@media (max-width: 39.999em) {
+  .fullscreen {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .layer {
+    padding-inline: 0;
+  }
+}

@@ -292,6 +292,18 @@
     "textSize": "Text size",
     "textSizeNormal": "Normal",
     "textSizeSmall": "Small",
-    "textSizeLarge": "Large"
+    "textSizeLarge": "Large",
+    "new": "New message",
+    "noSubject": "(No subject)",
+    "subjectLabel": "Subject",
+    "subjectPlaceholder": "Subject",
+    "minimize": "Minimize",
+    "expand": "Full screen",
+    "restore": "Exit full screen",
+    "close": "Close",
+    "discardTitle": "Discard this draft?",
+    "discardBody": "Your changes haven't been saved yet.",
+    "discardConfirm": "Discard",
+    "discardCancel": "Keep editing"
   }
 }

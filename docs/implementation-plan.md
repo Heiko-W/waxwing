@@ -122,7 +122,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
 | M2.1 | Squire editor wrapper component | M | M1.1 | done | **2026-07-11.** `apps/web/src/compose/`: `RichTextEditor` (thin React wrapper over an `EditorEngine` seam — controlled-ish, async engine lifecycle w/ teardown, debounced `onChange`, `pathChange`→toolbar state, plain-text-only mode, ⌘B/I/U/K + link dialog) + `EditorToolbar` (`role="toolbar"` roving-tabindex, `aria-pressed`) + pure `htmlToPlainText`/`cleanOutgoingHtml` + `squire-adapter` (the ONLY squire-rte/dompurify importer, behind a dynamic `import()` → lazy chunk). New direct dep **dompurify ^3.4.11** (squire-rte's default `sanitizeToDOMFragment` references a bare global `DOMPurify` that a bundle lacks → we pass our own **permissive** compose sanitizer: keep tags/inline-styles/images, drop script/`on*`/`javascript:` — distinct from `@waxwing/mail-html`'s reading-side lockdown; tech-stack §2 note). +33 tests (609 total, 76 files); **entry chunk unchanged at 181.14 KB gz** (squire-rte 0 refs in entry — verified). **Font size/family controls DEFERRED to M2.2** (a11y: native select vs roving toolbar) — the only FR-CMP-01 gap, engine seam already has `setFontSize`. Real-Squire path (contenteditable) is fake-injected in jsdom → live coverage lands with M2.9 E2E. Implemented via a context-inheriting fork + adversarial-correction (the DOMPurify seam bug). |
-| M2.2 | Composer container (docked/fullscreen, parallel drafts) | M | M2.1, M1.4 | todo | |
+| M2.2 | Composer container (docked/fullscreen, parallel drafts) | M | M2.1, M1.4 | done | **2026-07-11.** `apps/web/src/compose/`: module-scoped **Zustand** `composer-store` (parallel drafts, `MAX_OPEN`=3 → oldest collapses to a minimized chip, none dropped, `openDraft`/`closeDraft`/`setMode`/`updateBody`/`updateSubject`/`focusDraft`) + `ComposerHost` (lazy, portals a fixed layer to `<body>` in the persistent AppShell → drafts survive route changes; desktop row / phone single full-screen; focus-return on last close) + `ComposerWindow` (docked non-modal `role=dialog`, full-screen modal w/ focus-trap+scroll-lock; subject field + RichTextEditor; discard-confirm stub) + `NewMessageButton` (Header trigger + best-effort ⌘/Ctrl+N). New dep **zustand ^5.0.14** (tech-stack §-sanctioned UI-state). +15 tests (624 total, 79 files); **entry chunk flat at 180.8 KB gz** — ComposerHost + squire-adapter (86 KB) are separate lazy chunks (0 heavy code in `index-*.js`, verified). **Owner-decided UX** (AskUserQuestion): docked parallel model, full-screen modal, Header trigger, Esc-harmless (Apple-Mail-aligned); persistence deferred to M2.6 (in-memory now → a reload loses drafts, acceptable pre-M2.6). Font size/family control still deferred (M2.1 note). |
 | M2.3 | Reply / reply-all / forward (quoting, subjects, headers) | M | M2.1, M1.8 | todo | |
 | M2.4 | Recipient fields (pills, validation, basic autocomplete) | M | M2.2, M1.2 | todo | |
 | M2.5 | Identities & signatures | S | M2.2 | todo | |
@@ -1098,10 +1098,16 @@ emits a sane text alternative.
 
 Spec: FR-CMP-09. Size: M.
 
-- [ ] Docked mini-composer (bottom-right) ↔ expand to full-screen; multiple parallel
-      drafts on desktop; single full-screen composer on phone.
-- [ ] Composer state store (Zustand): one instance per draft, survives route changes.
-- [ ] Unsaved-changes guard on close (relies on M2.6 autosave, so mostly invisible).
+- [x] Docked mini-composer (bottom-right) ↔ full-screen (modal); multiple parallel drafts on
+      desktop with no lossy cap (past `MAX_OPEN`=3 the oldest collapses to a minimized chip, none
+      dropped); single full-screen composer on phone. "New message" trigger in the Header + best-
+      effort ⌘/Ctrl+N. Escape harmless (owner-directed, Apple-aligned): full-screen→docked, docked
+      no-op; minimize/close are explicit buttons.
+- [x] Composer state store (**Zustand**, module-scoped): one entry per draft, survives route
+      changes (the docked host portals to `<body>` in the persistent AppShell, outside the
+      route-swapped `<main>`).
+- [x] Unsaved-changes guard on close (a discard-confirm `Dialog` for a dirty draft — a STUB; once
+      M2.6 autosaves to the Drafts mailbox, close saves silently and the guard is invisible).
 
 Done when: two drafts can be edited in parallel, docked, expanded, and restored after a
 route change.

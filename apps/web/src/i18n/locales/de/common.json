@@ -292,6 +292,18 @@
     "textSize": "Textgröße",
     "textSizeNormal": "Normal",
     "textSizeSmall": "Klein",
-    "textSizeLarge": "Groß"
+    "textSizeLarge": "Groß",
+    "new": "Neue Nachricht",
+    "noSubject": "(Kein Betreff)",
+    "subjectLabel": "Betreff",
+    "subjectPlaceholder": "Betreff",
+    "minimize": "Minimieren",
+    "expand": "Vollbild",
+    "restore": "Vollbild verlassen",
+    "close": "Schließen",
+    "discardTitle": "Diesen Entwurf verwerfen?",
+    "discardBody": "Ihre Änderungen wurden noch nicht gespeichert.",
+    "discardConfirm": "Verwerfen",
+    "discardCancel": "Weiter bearbeiten"
   }
 }

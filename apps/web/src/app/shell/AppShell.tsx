@@ -8,6 +8,7 @@
 
 import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useComposerStore } from '../../compose'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, useNavigate, useRoute } from '../route'
@@ -20,6 +21,9 @@ import styles from './shell.module.css'
 
 const ContactsPage = lazy(() => import('../../contacts/ContactsPage'))
 const SettingsPage = lazy(() => import('../../settings/SettingsPage'))
+// The composer host (docked drafts + squire) loads only once a draft is open (keeps it out of the
+// entry chunk). It lives here — outside the route-swapped <main> — so drafts survive navigation.
+const ComposerHost = lazy(() => import('../../compose/ComposerHost'))
 
 export interface AppShellProps {
   readonly config: WaxwingConfig
@@ -30,6 +34,7 @@ export function AppShell({ config }: AppShellProps) {
   const route = useRoute()
   const navigate = useNavigate()
   const { connected, reauth } = useSession()
+  const hasDrafts = useComposerStore((state) => state.drafts.size > 0)
 
   // Canonical redirect: the bare app root resolves to the mail area.
   useEffect(() => {
@@ -79,6 +84,11 @@ export function AppShell({ config }: AppShellProps) {
         </main>
       </div>
       {reauth && <ReauthDialog />}
+      {hasDrafts && (
+        <Suspense fallback={null}>
+          <ComposerHost />
+        </Suspense>
+      )}
     </div>
   )
 }
