@@ -4,9 +4,12 @@
 // (typecheck, lint, test, size); this runner adds the slow, host-dependent E2E gate:
 //
 //   1. ensure the pinned Playwright chromium is installed
-//   2. bring the Stalwart fixture up (pnpm e2e:server — self-smokes per ADR-002)
-//   3. run the Playwright suite (pnpm e2e)
-//   4. ALWAYS tear the fixture down (pnpm e2e:server:down), even if a step above failed
+//   2. run the self-contained placeholder suite (pnpm e2e — vite preview, no fixture)
+//   3. run the M1.9 read suite (pnpm e2e:read) — it self-manages the Stalwart fixture: its
+//      Playwright globalSetup brings the fixture up advertising the app origin + seeds alice's
+//      inbox (self-smokes per ADR-002), and globalTeardown tears it down
+//   4. ALWAYS tear the fixture down as a backstop, even if a step above failed or was killed
+//      before the read suite's own teardown ran
 //
 // A plain `&&` chain cannot guarantee teardown-on-failure, so steps 1–3 run inside a `try`
 // and teardown lives in `finally`. Dependency-free: node: builtins only.
@@ -52,13 +55,13 @@ try {
     'install',
     'chromium',
   ])
-  run('fixture up + smoke', ['e2e:server'])
-  run('playwright suite', ['e2e'])
+  run('placeholder e2e suite', ['e2e'])
+  run('read e2e suite', ['e2e:read'])
 } catch (error) {
   failure = error
 } finally {
   try {
-    run('fixture down', ['e2e:server:down'])
+    run('fixture down (backstop)', ['e2e:server:down'])
   } catch (teardownError) {
     // Never let a teardown error mask the real failure; surface it, keep the first one.
     if (failure) console.error(`[verify:e2e] teardown also failed: ${teardownError.message}`)

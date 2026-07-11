@@ -133,7 +133,11 @@ describe('MessageView', () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()
     renderView(seen(), 'inbox')
-    await user.click(screen.getByRole('button', { name: 'Archive' }))
+    // The Archive button is disabled until the archive-mailbox liveQuery resolves — wait for it
+    // (clicking a disabled button is a silent no-op, which would flake the dispatch assertion).
+    const archive = screen.getByRole('button', { name: 'Archive' })
+    await waitFor(() => expect(archive).toBeEnabled())
+    await user.click(archive)
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' }),
       expect.anything(),
@@ -204,6 +208,12 @@ describe('MessageView', () => {
     await putEmailBody(db, textBodyRow('e1', 'accessible body'))
     const { container } = renderView(seen({ subject: 'A11y' }))
     await screen.findByText('Alice')
-    await expectNoA11yViolations(container)
+    // Wait for the body frame so the full reading chrome is scanned, not the loading spinner.
+    await screen.findByTitle(/^Message:/)
+    // Do not descend into the sandboxed body iframe: axe cannot postMessage into a sandboxed
+    // srcdoc frame under jsdom (it throws "Respondable target must be a frame"), and the frame's
+    // internal a11y is the @waxwing/mail-html package's concern. This scans the MessageView
+    // chrome — header, action bar, banner, attachments.
+    await expectNoA11yViolations(container, { iframes: false })
   })
 })

@@ -8,6 +8,13 @@ import { defineConfig, type ProxyOptions } from 'vite'
 // import.meta.env.DEV so it is dead-code-eliminated from every production build (src/main.tsx).
 const DEMO = process.env.VITE_WAXWING_DEMO === '1'
 
+// The M1.9 read E2E suite serves the REAL production bundle (`vite preview`) and needs the same
+// same-origin Stalwart proxy as the demo — but NOT the demo entry. `WAXWING_E2E=1` switches the
+// proxy on (for both `server` and `preview`) while leaving the app bundle untouched, so the read
+// suite drives the shipping app against the live fixture with no CORS / cross-origin loopback.
+const E2E = process.env.WAXWING_E2E === '1'
+const PROXY = DEMO || E2E
+
 // Where the same-origin proxy forwards Stalwart's paths. Default is the P0.4 fixture's
 // loopback listener; overridable so the demo can point at another JMAP server.
 const PROXY_TARGET = process.env.WAXWING_PROXY_TARGET ?? 'http://127.0.0.1:18080'
@@ -73,8 +80,14 @@ export default defineConfig({
     headers: {
       'Content-Security-Policy': DEV_CSP,
     },
-    // Same-origin reverse proxy to Stalwart — demo-only, so a normal dev server is untouched.
-    ...(DEMO ? { proxy: demoProxy(PROXY_TARGET) } : {}),
+    // Same-origin reverse proxy to Stalwart — demo / E2E only, so a normal dev server is untouched.
+    ...(PROXY ? { proxy: demoProxy(PROXY_TARGET) } : {}),
+  },
+  // `vite preview` serves the built bundle; the read E2E suite (WAXWING_E2E=1) needs the same
+  // same-origin proxy there so the shipping app can reach the fixture. The production <meta> CSP
+  // in index.html governs this bundle — same-origin JMAP is 'self', so it passes unchanged.
+  preview: {
+    ...(PROXY ? { proxy: demoProxy(PROXY_TARGET) } : {}),
   },
   build: {
     target: 'es2022',

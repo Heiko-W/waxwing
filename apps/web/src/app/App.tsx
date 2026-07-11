@@ -14,6 +14,7 @@
  */
 
 import { SyncEngineHost } from '../sync/engine'
+import { ToastProvider } from '../ui'
 import type { WaxwingConfig } from './config'
 import { ConfigProvider } from './config-context'
 import { Onboarding } from './onboarding/Onboarding'
@@ -34,7 +35,11 @@ export function App({ config, services }: AppProps) {
     <ServicesProvider {...(services ? { value: services } : {})}>
       <ConfigProvider config={config}>
         <SessionProvider config={config}>
-          <AppBody config={config} />
+          {/* App-global toast surface: the reading action bar (reply/forward stubs) and future
+              features raise toasts; without a provider here `useToast` throws on first use. */}
+          <ToastProvider>
+            <AppBody config={config} />
+          </ToastProvider>
         </SessionProvider>
       </ConfigProvider>
     </ServicesProvider>
