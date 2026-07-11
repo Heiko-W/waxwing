@@ -15,15 +15,31 @@
 import {
   type AuthProvider,
   createPushChannel,
+  type EmailFilter,
   type Id,
   JmapHttpError,
   type PushChannel,
   type SchedulerLike,
+  type SearchSnippet,
   type Session,
 } from '@waxwing/jmap'
 import type { ReplicaDb } from '../db'
-import { getQueryCache, mailboxByRole, pendingOutbox, putEmailBody, putEmails } from '../repo'
-import { backfillMailbox, loadMore, type WindowSpec, windowQueryKey } from './backfill'
+import { canonicalQueryKey, type QuerySpec } from '../query-key'
+import {
+  getQueryCache,
+  mailboxByRole,
+  pendingOutbox,
+  putEmailBody,
+  putEmails,
+  putQueryCache,
+} from '../repo'
+import {
+  backfillMailbox,
+  backfillQuery,
+  loadMore,
+  type WindowSpec,
+  windowQueryKey,
+} from './backfill'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { reconcileQuery, syncEmails, syncIdentities, syncMailboxes, syncThreads } from './delta'
 import { type LockManagerLike, startLeaderElection } from './leader'
@@ -249,6 +265,70 @@ export class SyncEngine {
       ...(opts.sort ? { sort: opts.sort } : {}),
       ...(opts.collapseThreads !== undefined ? { collapseThreads: opts.collapseThreads } : {}),
     })
+  }
+
+  /**
+   * Register an ARBITRARY watched query (a search, M3.1). Returns the canonical key SYNCHRONOUSLY so
+   * the caller can subscribe to `queryCache[key]` immediately; the initial backfill runs in the
+   * background. Reuses the folder-window machinery — `reconcileWatched` keeps it fresh (incl. the
+   * forced full re-query re-probe). Searches are EPHEMERAL: the caller MUST {@link unwatchQuery} on
+   * unmount / when the query changes, or `watched` grows unbounded (row eviction is M3.4).
+   */
+  watchQuery(spec: QuerySpec): string {
+    const key = canonicalQueryKey(spec)
+    if (this.watched.has(key)) return key
+    this.watched.add(key)
+    void this.backfillQueryIfAbsent(key, spec)
+    return key
+  }
+
+  /** Stop keeping a search window fresh (folder windows stay watched for the session; searches don't). */
+  unwatchQuery(key: string): void {
+    this.watched.delete(key)
+  }
+
+  private async backfillQueryIfAbsent(key: string, spec: QuerySpec): Promise<void> {
+    if ((await getQueryCache(this.db, this.accountId, key)) !== undefined) {
+      if (this.isLeader) void this.sync()
+      return
+    }
+    try {
+      await backfillQuery(this.port, this.db, this.accountId, spec, { now: this.clock.now() })
+    } catch {
+      // A rejected search filter (e.g. a server without full-text support) must not raise an
+      // unhandled rejection OR leave the list spinning forever: write an empty window so it shows
+      // "no results", and — the key stays watched — the next reconcile self-heals a transient error.
+      await putQueryCache(this.db, {
+        accountId: this.accountId,
+        key,
+        ids: [],
+        queryState: '',
+        total: 0,
+        upToId: null,
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: spec.collapseThreads ?? false,
+        lastUsedAt: this.clock.now(),
+      })
+    }
+  }
+
+  /**
+   * Highlighted (`<mark>` markup) subject/preview for the visible slice of a search (M3.1). Transient
+   * VIEW data (query-specific) — NOT persisted. A failure returns an empty map (the list falls back
+   * to plain previews); the caller SANITIZES the markup before rendering.
+   */
+  async fetchSnippets(
+    emailIds: Id[],
+    filter: EmailFilter | null,
+  ): Promise<Map<Id, Pick<SearchSnippet, 'subject' | 'preview'>>> {
+    if (emailIds.length === 0) return new Map()
+    try {
+      const { list } = await this.port.getSearchSnippets(emailIds, filter)
+      return new Map(list.map((snippet) => [snippet.emailId, snippet]))
+    } catch {
+      return new Map()
+    }
   }
 
   /**

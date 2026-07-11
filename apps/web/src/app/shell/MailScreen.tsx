@@ -15,11 +15,13 @@
  */
 
 import { ChevronLeft, PanelLeft } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Conversation } from '../../mail/Conversation'
 import { FolderTree } from '../../mail/FolderTree'
 import { MessageList } from '../../mail/MessageList'
+import { SearchBox } from '../../mail/search/SearchBox'
+import { useSearch } from '../../mail/search/use-search'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { mailPath, useNavigate, useRoute } from '../route'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
@@ -37,7 +39,18 @@ export function MailScreen() {
 
   const mailboxId = route.params.mailboxId
   const emailId = route.params.emailId
+  const search = useSearch(mailboxId)
   const layout = computePaneLayout(tier, mode, emailId !== undefined)
+
+  // A STABLE search-descriptor for the list — a fresh object each render would re-fire the list's
+  // watch effect (and re-kick a sync) on every render (M3.1 review).
+  const listSearch = useMemo(
+    () =>
+      search.active && search.spec !== null
+        ? { spec: search.spec, scopeMailboxId: search.scopeMailboxId }
+        : undefined,
+    [search.active, search.spec, search.scopeMailboxId],
+  )
   const drawerCapable = tier !== 'desktop'
   const [foldersOpen, setFoldersOpen] = useState(false)
 
@@ -93,8 +106,9 @@ export function MailScreen() {
           </IconButton>
         </div>
       )}
+      <SearchBox search={search} />
       <div className={styles.paneBody}>
-        <MessageList mailboxId={mailboxId} />
+        <MessageList mailboxId={mailboxId} search={listSearch} />
       </div>
     </section>
   )

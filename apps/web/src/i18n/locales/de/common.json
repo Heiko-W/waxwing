@@ -356,5 +356,35 @@
     "attachMentionSend": "Trotzdem senden",
     "attachMentionCancel": "Zurück",
     "attachMentionKeywords": ["anhang", "anbei", "angehängt", "beigefügt", "siehe datei"]
+  },
+  "search": {
+    "placeholder": "E-Mails durchsuchen",
+    "label": "Suchen",
+    "clear": "Suche löschen",
+    "scope": {
+      "label": "Suchen in",
+      "folder": "Dieser Ordner",
+      "all": "Alle Postfächer"
+    },
+    "chip": {
+      "remove": "Filter {{filter}} entfernen",
+      "from": "Von: {{value}}",
+      "to": "An: {{value}}",
+      "cc": "Cc: {{value}}",
+      "subject": "Betreff: {{value}}",
+      "body": "Text: {{value}}",
+      "hasAttachment": "Mit Anhang",
+      "unread": "Ungelesen",
+      "read": "Gelesen",
+      "flagged": "Markiert",
+      "in": "In: {{value}}",
+      "before": "Vor {{value}}",
+      "after": "Nach {{value}}",
+      "text": "Enthält: {{value}}"
+    },
+    "hint": "Versuche from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "results": {
+      "empty": "Keine Nachrichten entsprechen deiner Suche."
+    }
   }
 }

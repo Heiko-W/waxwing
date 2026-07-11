@@ -20,6 +20,7 @@ import type {
   PatchObject,
   PushStatus,
   PushTransport,
+  SearchSnippet,
   Thread,
 } from '@waxwing/jmap'
 import type { EmailEnvelopeInput } from '../db'
@@ -126,6 +127,11 @@ export interface JmapPort {
 
   queryEmails(spec: EmailQuerySpec): Promise<QueryResult>
   queryEmailChanges(spec: EmailQueryChangesSpec): Promise<QueryChangesResult>
+  /** Highlighted (`<mark>` markup) subject/preview for the visible slice of a search (M3.1). */
+  getSearchSnippets(
+    emailIds: Id[],
+    filter: EmailFilter | null,
+  ): Promise<{ list: SearchSnippet[]; notFound: Id[] }>
 
   setEmails(args: {
     create?: Record<string, EmailCreate>

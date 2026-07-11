@@ -214,6 +214,13 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       }
     },
 
+    async getSearchSnippets(emailIds, filter) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.searchSnippetGet, { accountId, filter, emailIds })
+      const response = (await builder.send()).get(handle)
+      return { list: response.list, notFound: response.notFound }
+    },
+
     async setEmails(args): Promise<PortSetResult> {
       const builder = client.request()
       const handle = builder.invoke(Methods.emailSet, {

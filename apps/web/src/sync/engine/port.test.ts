@@ -190,6 +190,28 @@ describe('createJmapPort', () => {
     })
   })
 
+  it('getSearchSnippets builds SearchSnippet/get and maps the response (M3.1)', async () => {
+    const { client, calls } = fakeClient((method) =>
+      method === Methods.searchSnippetGet
+        ? {
+            accountId: ACC,
+            list: [{ emailId: 'e1', subject: '<mark>tax</mark> memo', preview: null }],
+            notFound: ['e2'],
+          }
+        : {},
+    )
+    const result = await createJmapPort(client, ACC).getSearchSnippets(['e1', 'e2'], {
+      text: 'tax',
+    })
+    expect(calls[0]?.args).toEqual({
+      accountId: ACC,
+      filter: { text: 'tax' },
+      emailIds: ['e1', 'e2'],
+    })
+    expect(result.list[0]?.subject).toBe('<mark>tax</mark> memo')
+    expect(result.notFound).toEqual(['e2'])
+  })
+
   it('submitEmail batches Email/set create+destroy+source-update and EmailSubmission/set (M2.8)', async () => {
     const okSet = (created: Record<string, unknown>) => ({
       accountId: ACC,

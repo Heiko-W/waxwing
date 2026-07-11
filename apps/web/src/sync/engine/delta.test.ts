@@ -66,6 +66,7 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
     setEmails: async () => emptySet(),
     setMailboxes: async () => emptySet(),
     submitEmail: async () => emptySet(),
+    getSearchSnippets: async () => ({ list: [], notFound: [] }),
     ...overrides,
   }
 }

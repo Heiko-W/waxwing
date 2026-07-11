@@ -11,7 +11,7 @@ import {
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
-import { putEmails } from '../repo'
+import { getQueryCache, putEmails } from '../repo'
 import { email, freshDb } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import { SyncEngine, type SyncEngineDeps } from './engine'
@@ -217,6 +217,9 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
     },
     async submitEmail() {
       return emptySet()
+    },
+    async getSearchSnippets() {
+      return { list: [], notFound: [] }
     },
   }
 }
@@ -525,6 +528,28 @@ describe('SyncEngine — undo-send (M2.8)', () => {
     expect(await engine.cancelSend('draft:d1')).toBe(false)
     expect(await db.outbox.get([ACC, 'draft:d1'])).toBeDefined() // untouched
     expect(await engine.cancelSend('nope')).toBe(false)
+    await engine.stop()
+  })
+})
+
+describe('SyncEngine — search (M3.1)', () => {
+  it('watchQuery backfills a search window into queryCache; unwatchQuery drops the watch', async () => {
+    const port = fakePort({ emails: ['e1', 'e2'], setEmails: emptySet })
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const spec = {
+      filter: { text: 'hello' },
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: true,
+    }
+    const key = engine.watchQuery(spec)
+    expect(engine.watchQuery(spec)).toBe(key) // idempotent — same canonical key
+    await waitFor(async () => (await getQueryCache(db, ACC, key)) !== undefined)
+    expect((await getQueryCache(db, ACC, key))?.ids).toEqual(['e1', 'e2'])
+
+    engine.unwatchQuery(key) // no throw; the search window is no longer kept fresh
     await engine.stop()
   })
 })

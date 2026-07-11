@@ -89,25 +89,19 @@ async function fetchThreadsFor(
 }
 
 /**
- * Seed a mailbox's recent window: run the initial `Email/query`, fetch the envelopes + their
- * threads into the replica, seed the `Email` sync state (so `delta.syncEmails` can take over), and
- * write the `queryCache` row the list renders from.
+ * Seed an ARBITRARY watched query (a mailbox recent-window OR a search, M3.1): run the initial
+ * `Email/query`, fetch the envelopes + their threads into the replica, seed the `Email` sync state
+ * (so `delta.syncEmails` can take over), and write the `queryCache` row the list renders from.
  */
-export async function backfillMailbox(
+export async function backfillQuery(
   port: JmapPort,
   db: ReplicaDb,
   accountId: Id,
-  mailboxId: Id,
-  opts: BackfillOptions,
+  spec: QuerySpec,
+  opts: { limit?: number; now: number },
 ): Promise<BackfillResult> {
   const limit = opts.limit ?? DEFAULT_LIMIT
-  const sort = opts.sort ?? [...DEFAULT_SORT]
-  const collapseThreads = opts.collapseThreads ?? true
-  const spec: QuerySpec = {
-    filter: windowFilter(mailboxId, opts.cacheDays, opts.now),
-    sort,
-    collapseThreads,
-  }
+  const collapseThreads = spec.collapseThreads ?? true
   const key = canonicalQueryKey(spec)
 
   const result = await port.queryEmails({ ...spec, position: 0, limit, calculateTotal: true })
@@ -141,6 +135,25 @@ export async function backfillMailbox(
   }
   await putQueryCache(db, row)
   return { key, ids: result.ids, total: result.total }
+}
+
+/** Seed a mailbox's recent window — the `inMailbox AND recent` filter over {@link backfillQuery}. */
+export async function backfillMailbox(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  mailboxId: Id,
+  opts: BackfillOptions,
+): Promise<BackfillResult> {
+  const spec: QuerySpec = {
+    filter: windowFilter(mailboxId, opts.cacheDays, opts.now),
+    sort: opts.sort ?? [...DEFAULT_SORT],
+    collapseThreads: opts.collapseThreads ?? true,
+  }
+  return backfillQuery(port, db, accountId, spec, {
+    limit: opts.limit ?? DEFAULT_LIMIT,
+    now: opts.now,
+  })
 }
 
 export interface LoadMoreOptions {

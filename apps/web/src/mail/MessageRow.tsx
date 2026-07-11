@@ -28,6 +28,8 @@ export interface MessageRowProps {
   readonly active: boolean
   readonly density: Density
   readonly style?: CSSProperties
+  /** Sanitized `<mark>` highlights for a search result (M3.1); plain text is used when absent. */
+  readonly highlight?: { readonly subject: string; readonly preview: string } | undefined
   readonly onOpen: () => void
   readonly onSelectToggle: () => void
   readonly onSelectRange: () => void
@@ -48,6 +50,7 @@ export function MessageRow({
   active,
   density,
   style,
+  highlight,
   onOpen,
   onSelectToggle,
   onSelectRange,
@@ -151,8 +154,18 @@ export function MessageRow({
             </time>
           </span>
         </div>
-        <div className={styles.subject}>{email.subject || t('list.noSubject')}</div>
-        <div className={styles.preview}>{email.preview}</div>
+        {highlight?.subject ? (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitizeSnippet permits only bare <mark> (M3.1)
+          <div className={styles.subject} dangerouslySetInnerHTML={{ __html: highlight.subject }} />
+        ) : (
+          <div className={styles.subject}>{email.subject || t('list.noSubject')}</div>
+        )}
+        {highlight?.preview ? (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitizeSnippet permits only bare <mark> (M3.1)
+          <div className={styles.preview} dangerouslySetInnerHTML={{ __html: highlight.preview }} />
+        ) : (
+          <div className={styles.preview}>{email.preview}</div>
+        )}
       </div>
     </div>
   )

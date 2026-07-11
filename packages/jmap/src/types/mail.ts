@@ -433,6 +433,32 @@ export type EmailQueryChangesRequest = Omit<QueryChangesRequest, 'filter' | 'sor
 /** Response for `Email/queryChanges`. */
 export type EmailQueryChangesResponse = QueryChangesResponse
 
+// ── SearchSnippet (RFC 8621 §5) — highlighted search results (M3.1) ───────────────────────────
+
+/**
+ * A per-email search snippet (RFC 8621 §5.1): the `subject`/`preview` with the query's matched terms
+ * wrapped in `<mark>` markup. SERVER-PRODUCED markup — the client MUST sanitize it before rendering.
+ */
+export interface SearchSnippet {
+  emailId: Id
+  subject: string | null
+  preview: string | null
+}
+
+/** Arguments for `SearchSnippet/get` (RFC 8621 §5.1): the same `filter` as the query + the email ids. */
+export interface SearchSnippetGetRequest {
+  accountId: Id
+  filter?: EmailFilter | null
+  emailIds: Id[]
+}
+
+/** Response for `SearchSnippet/get` (RFC 8621 §5.1). */
+export interface SearchSnippetGetResponse {
+  accountId: Id
+  list: SearchSnippet[]
+  notFound: Id[]
+}
+
 /**
  * The create form of an Email (RFC 8621 §4.8). `mailboxIds` is required; content may be
  * supplied structurally (`bodyStructure` + `bodyValues`) or simplified

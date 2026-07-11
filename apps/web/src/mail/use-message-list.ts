@@ -14,10 +14,15 @@
 import type { EmailComparator, Id } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useConfig } from '../app/config-context'
-import { useQueryWindow } from '../sync'
+import { canonicalQueryKey, type QuerySpec, useQueryWindow } from '../sync'
 import { getActiveEngine, useActiveEngine, type WindowSpec, windowQueryKey } from '../sync/engine'
 
 export type MessageSort = 'date' | 'from' | 'subject' | 'size'
+
+/** What the list renders: a folder's recent window, or an arbitrary search query (M3.1). */
+export type ListSource =
+  | { readonly kind: 'folder'; readonly mailboxId: Id }
+  | { readonly kind: 'search'; readonly spec: QuerySpec }
 
 export interface MessageListOptions {
   /** Sort unread messages to the top (a keyword-based comparator prepended to the base sort). */
@@ -58,31 +63,41 @@ function comparators(sort: MessageSort, unreadFirst: boolean): EmailComparator[]
 }
 
 export function useMessageList(
-  mailboxId: Id | undefined,
+  source: ListSource | undefined,
   sort: MessageSort = 'date',
   options: MessageListOptions = {},
 ): MessageListState {
   const cacheDays = useConfig().offline.cacheDays
   const { unreadFirst = false, flat = false } = options
 
-  const spec = useMemo<WindowSpec>(
+  // Folder windows key off (mailbox + sort + threading); a search keys off its own spec.
+  const folderSpec = useMemo<WindowSpec>(
     () => ({ sort: comparators(sort, unreadFirst), collapseThreads: !flat }),
     [sort, unreadFirst, flat],
   )
 
-  const key = useMemo(
-    () =>
-      mailboxId === undefined ? '' : windowQueryKey(mailboxId, cacheDays, Date.now(), spec).key,
-    [mailboxId, cacheDays, spec],
-  )
+  const key = useMemo(() => {
+    if (source === undefined) return ''
+    if (source.kind === 'search') return canonicalQueryKey(source.spec)
+    return windowQueryKey(source.mailboxId, cacheDays, Date.now(), folderSpec).key
+  }, [source, cacheDays, folderSpec])
 
   // Depend on the reactive engine so the watch re-runs the moment the engine appears (it is set by
   // SyncEngineHost's effect, which can commit AFTER this child's) — otherwise a deep-linked/reloaded
-  // non-default window would never backfill and would spin forever.
+  // non-default window would never backfill and would spin forever. A search is EPHEMERAL: unwatch it
+  // on unmount / when the query changes so `watched` does not grow unbounded.
   const engine = useActiveEngine()
   useEffect(() => {
-    if (mailboxId !== undefined) engine?.watchWindow(mailboxId, spec)
-  }, [engine, mailboxId, spec])
+    if (source === undefined) return
+    if (source.kind === 'search') {
+      const searchKey = engine?.watchQuery(source.spec)
+      return () => {
+        if (searchKey !== undefined) engine?.unwatchQuery(searchKey)
+      }
+    }
+    engine?.watchWindow(source.mailboxId, folderSpec)
+    return undefined
+  }, [engine, source, folderSpec])
 
   const window = useQueryWindow(key)
   const loadMore = useCallback(() => {
@@ -93,7 +108,7 @@ export function useMessageList(
     key,
     ids: window?.ids ?? EMPTY_IDS,
     total: window?.total ?? undefined,
-    loading: mailboxId !== undefined && window === undefined,
+    loading: source !== undefined && window === undefined,
     loadMore,
   }
 }

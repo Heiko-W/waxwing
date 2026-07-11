@@ -109,6 +109,32 @@ describe('Email/query → Email/get back-reference (typed invoke)', () => {
     expect(at(getResult.list, 1).keywords).toEqual({})
     expect(getResult.notFound).toEqual([])
   })
+
+  it('SearchSnippet/get invokes the method with the query filter + ids (M3.1)', async () => {
+    const { fetch, calls } = jmapPostMock((body) => ({
+      sessionState: 's',
+      methodResponses: body.methodCalls.map(([name, args, id]) => [
+        name,
+        {
+          accountId: (args as { accountId: string }).accountId,
+          list: [{ emailId: 'e1', subject: 'the <mark>tax</mark> memo', preview: null }],
+          notFound: [],
+        },
+        id,
+      ]),
+    }))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    const builder = client.request()
+    const handle = builder.invoke(Methods.searchSnippetGet, {
+      accountId: 'a',
+      filter: { text: 'tax' },
+      emailIds: ['e1', 'e2'],
+    })
+    const result = await builder.send()
+    expect(at(at(calls, 0).body.methodCalls, 0)[0]).toBe('SearchSnippet/get')
+    expect(at(calls, 0).body.using).toContain('urn:ietf:params:jmap:mail')
+    expect(result.get(handle).list[0]?.subject).toBe('the <mark>tax</mark> memo')
+  })
 })
 
 describe('Mailbox/get (typed invoke)', () => {

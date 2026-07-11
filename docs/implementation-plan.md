@@ -135,7 +135,7 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 
 | WP | Title | Size | Depends on | Status | Notes |
 |---|---|---|---|---|---|
-| M3.1 | Search (operators, chips, scoping) | M | M1.6 | todo | |
+| M3.1 | Search (operators, chips, scoping) | M | M1.6 | done | **2026-07-11.** Server-side search. Pure `mail/search/search-query` parser: Gmail operators (`from/to/cc/subject/body`, `has:attachment`, `is:unread/read/flagged`, `in:<folder>`, `before/after` incl. `today/yesterday/YYYY-MM-DD`, quoted phrases) → JMAP `EmailFilterCondition`s 1:1; unknown/unresolved/bad-date degrade to free text; scope ANDs `inMailbox` unless an explicit `in:` overrides. Chips derive from the same tokens (honored ops only) so text↔chips never drift. Engine seam: extracted `backfillQuery` (filter-first) + `watchQuery`/`unwatchQuery` (ephemeral search windows, kept fresh by the existing `reconcileWatched`/forced-full re-probe) + `fetchSnippets`; jmap `SearchSnippet/get` + `snippet.sanitizeSnippet` (escape-then-re-allow bare `<mark>`) rendered via `dangerouslySetInnerHTML`. `useMessageList` gained a `ListSource` (folder|search) union; `MessageList` reused for results (`?q` preserved on open, scope-gated bulk-move, highlight pass-through to `MessageRow`). `SearchBox` (`<search>` landmark, debounced-replace/submit-push, scope Select, removable chips) in `MailScreen`; `/` focus shortcut in `AppShell`. i18n en+de `search.*`. **+31 tests (851 total, 100 files); entry chunk 192.7 KB gz.** **Deferred to V1.x (explicit):** search history dropdown + saved searches + a separate advanced-search modal (the chip strip is the advanced view); offline local search (replica holds only windowed subsets). |
 | M3.2 | Keywords/labels UI + folder cleanup tools | M | M1.6 | todo | |
 | M3.3 | Offline outbox hardening + conflict UX | M | M1.3, M2.8 | todo | |
 | M3.4 | Cache policy & storage management | M | M1.3 | todo | |
@@ -1289,17 +1289,26 @@ offline, PWA install, push notifications, settings, shortcuts.
 
 Spec: FR-SRCH-01/02, FR-SRCH-03 (scoping + history; saved searches → V1.x). Size: M.
 
-- [ ] Global search box (shortcut `/`): server-side `Email/query` with full filter
-      mapping: text/from/to/subject/body, hasAttachment, before/after, mailbox, keywords.
-- [ ] Operator parser: `from:`, `to:`, `subject:`, `has:attachment`, `is:unread`,
-      `in:folder`, `before:`/`after:` → JMAP `FilterCondition`s 1:1 (FR-SRCH-02); chips
-      UI ↔ text operators stay in sync; advanced search panel builds the same filter.
-- [ ] Results as a virtualized list (reuse M1.6) with highlighted snippets via
-      `SearchSnippet/get` where supported (SP.5 finding; fallback: server preview).
-- [ ] Scoping current-folder/everywhere; local search history (`localPrefs`).
+- [x] Global search box (shortcut `/`): server-side `Email/query` with full filter
+      mapping via the pure `search-query` parser.
+- [x] Operator parser (`search-query.ts`): `from:`/`to:`/`cc:`/`subject:`/`body:`,
+      `has:attachment`, `is:unread`/`read`/`flagged`, `in:folder`, `before:`/`after:` (+
+      `today`/`yesterday`/`YYYY-MM-DD`), quoted phrases → JMAP `FilterCondition`s 1:1
+      (FR-SRCH-02); unknown/unresolved/bad-date operators degrade to free text. Chips are a
+      DERIVED view of the same tokens (honored operators only), so text ↔ chips can never
+      drift. (The chip strip IS the advanced view — no separate modal in v1.)
+- [x] Results as the virtualized M1.6 list (a `ListSource` union on `useMessageList` +
+      an engine `watchQuery`/`unwatchQuery` seam over the extracted `backfillQuery`), with
+      `SearchSnippet/get` `<mark>` highlights — sanitized escape-then-re-mark (`snippet.ts`)
+      + plain-preview fallback.
+- [x] Scoping current-folder / all-mailboxes (`?scope=`); an all-mailboxes selection gates
+      folder-move bulk actions. Search lives in `?q=…&scope=…` (opening a result preserves it).
 
-Done when: operator strings and panel produce identical JMAP filters (unit-tested);
-results render with highlights against the fixture.
+Done when: operator strings and the chips produce identical JMAP filters (unit-tested); results
+render with highlights against the fixture. — Parser is exhaustively unit-tested (operator
+mapping + `canonicalQueryKey` equality across orderings); the live snippet-highlight render is
+folded into a future search E2E. Search history in `localPrefs` and a saved-search/advanced-panel
+UI are deferred to V1.x (per §M3.1 scope).
 
 ### M3.2 — Keywords/labels + cleanup tools
 

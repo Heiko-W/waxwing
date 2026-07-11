@@ -27,6 +27,7 @@ import { mailPath, useNavigate, useRoute } from '../app/route'
 import { useDraftOpener } from '../compose'
 import {
   type EmailRow,
+  type QuerySpec,
   setPref,
   useEmailWindow,
   useLocalPref,
@@ -38,17 +39,23 @@ import type { Density } from './MessageRow'
 import { MessageRow } from './MessageRow'
 import styles from './message-list.module.css'
 import { EMPTY_SELECTION, selectionReducer } from './message-selection'
+import { useSnippets } from './search/use-snippets'
 import { useMessageActions } from './use-message-actions'
-import { type MessageSort, useMessageList } from './use-message-list'
+import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
 
 const OVERSCAN = 8
 const ROW_HEIGHT: Record<Density, number> = { comfortable: 76, compact: 54 }
 
 export interface MessageListProps {
+  /** The route's current folder — drives the folder list AND the open-path for a search result. */
   readonly mailboxId: Id | undefined
+  /** When present, the list renders SEARCH results (M3.1) instead of the folder window. */
+  readonly search?:
+    | { readonly spec: QuerySpec; readonly scopeMailboxId: Id | undefined }
+    | undefined
 }
 
-export function MessageList({ mailboxId }: MessageListProps) {
+export function MessageList({ mailboxId, search }: MessageListProps) {
   const { t } = useTranslation()
   const route = useRoute()
   const navigate = useNavigate()
@@ -65,18 +72,36 @@ export function MessageList({ mailboxId }: MessageListProps) {
     [db, accountId],
   )
 
-  const { ids, total, loading, loadMore } = useMessageList(mailboxId, sort, { unreadFirst, flat })
+  const source = useMemo<ListSource | undefined>(
+    () =>
+      search
+        ? { kind: 'search', spec: search.spec }
+        : mailboxId !== undefined
+          ? { kind: 'folder', mailboxId }
+          : undefined,
+    [search, mailboxId],
+  )
+  const {
+    key: windowKey,
+    ids,
+    total,
+    loading,
+    loadMore,
+  } = useMessageList(source, sort, {
+    unreadFirst,
+    flat,
+  })
   const actions = useMessageActions()
   const [selection, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION)
   const [focusIndex, setFocusIndex] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  // Reset selection/focus when the window (mailbox or sort) changes.
+  // Reset selection/focus when the window (mailbox/sort/search) changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset only on window identity change.
   useEffect(() => {
     dispatchSelection({ type: 'clear' })
     setFocusIndex(0)
-  }, [mailboxId, sort, unreadFirst, flat])
+  }, [windowKey])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -102,6 +127,9 @@ export function MessageList({ mailboxId }: MessageListProps) {
     return map
   }, [rows])
 
+  // Highlighted (`<mark>`) subject/preview for the visible slice — search only (M3.1).
+  const highlights = useSnippets(search?.spec.filter, visibleIds)
+
   // Infinite scroll: page more when the tail comes into view and the window is not yet complete.
   // Guarded so one page-request per window size cannot fire repeatedly while scrolling the tail.
   const lastIndex = virtualItems.at(-1)?.index ?? 0
@@ -126,9 +154,13 @@ export function MessageList({ mailboxId }: MessageListProps) {
         void draftOpener.open(id)
         return
       }
-      if (mailboxId !== undefined) navigate(mailPath(mailboxId, id))
+      // Preserve the `?q=…` search so opening a result keeps the results list visible (M3.1).
+      if (mailboxId !== undefined) {
+        const qs = route.search.toString()
+        navigate(mailPath(mailboxId, id) + (qs ? `?${qs}` : ''))
+      }
     },
-    [mailboxId, navigate, rowById, draftOpener],
+    [mailboxId, navigate, rowById, draftOpener, route.search],
   )
 
   // Move the roving position (keyboard) — scroll the target into view; the grid keeps DOM focus and
@@ -191,7 +223,7 @@ export function MessageList({ mailboxId }: MessageListProps) {
     }
   }
 
-  if (mailboxId === undefined) {
+  if (source === undefined) {
     return <p className={styles.empty}>{t('list.noMailbox')}</p>
   }
 
@@ -207,7 +239,7 @@ export function MessageList({ mailboxId }: MessageListProps) {
         <BulkBar
           count={selection.selected.size}
           ids={selectedIds}
-          fromMailbox={mailboxId}
+          fromMailbox={search ? search.scopeMailboxId : mailboxId}
           allSelected={allSelected}
           someSelected={someSelected}
           actions={actions}
@@ -226,7 +258,7 @@ export function MessageList({ mailboxId }: MessageListProps) {
       )}
 
       {ids.length === 0 && !loading ? (
-        <p className={styles.empty}>{t('list.empty')}</p>
+        <p className={styles.empty}>{search ? t('search.results.empty') : t('list.empty')}</p>
       ) : (
         <div
           ref={scrollRef}
@@ -266,6 +298,7 @@ export function MessageList({ mailboxId }: MessageListProps) {
                     selected={selection.selected.has(id)}
                     active={id === route.params.emailId}
                     density={density}
+                    highlight={highlights.get(id)}
                     onOpen={() => open(id)}
                     onSelectToggle={() => dispatchSelection({ type: 'toggle', id })}
                     onSelectRange={() => dispatchSelection({ type: 'range', id, ordered: ids })}
@@ -380,7 +413,8 @@ function Toolbar({ sort, density, unreadFirst, flat, onChange }: ToolbarProps) {
 interface BulkBarProps {
   readonly count: number
   readonly ids: Id[]
-  readonly fromMailbox: Id
+  /** The source mailbox for folder-move actions; `undefined` in an all-mailboxes search (moves gated). */
+  readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
   readonly actions: ReturnType<typeof useMessageActions>
@@ -405,9 +439,12 @@ function BulkBar({
   const junk = useMailboxByRole('junk')
   const trash = useMailboxByRole('trash')
 
-  // A moved message leaves the folder, so it must leave the selection too — otherwise it lingers in
-  // the Set and a follow-up move dispatches over a stale `from`, yielding wrong mailbox membership.
+  // Folder-move needs a known source mailbox; an all-mailboxes search selection spans folders, so the
+  // move actions are gated off there (read/flag/delete, which need no source, stay). A moved message
+  // leaves the folder → it must leave the selection too, or a follow-up move uses a stale `from`.
+  const canMove = fromMailbox !== undefined
   const moveThenClear = (to: Id) => {
+    if (fromMailbox === undefined) return
     actions.move(ids, fromMailbox, to)
     onClear()
   }
@@ -435,7 +472,7 @@ function BulkBar({
       >
         <Flag />
       </IconButton>
-      {archive && (
+      {canMove && archive && (
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
@@ -444,7 +481,7 @@ function BulkBar({
           <Archive />
         </IconButton>
       )}
-      {junk && (
+      {canMove && junk && (
         <IconButton
           label={t('list.actions.junk')}
           variant="ghost"
@@ -453,7 +490,7 @@ function BulkBar({
           <Ban />
         </IconButton>
       )}
-      {trash && (
+      {canMove && trash && (
         <IconButton
           label={t('list.actions.trash')}
           variant="ghost"

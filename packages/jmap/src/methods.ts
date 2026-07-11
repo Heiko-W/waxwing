@@ -38,6 +38,8 @@ import type {
   MailboxQueryResponse,
   MailboxSetRequest,
   MailboxSetResponse,
+  SearchSnippetGetRequest,
+  SearchSnippetGetResponse,
   ThreadChangesRequest,
   ThreadChangesResponse,
   ThreadGetRequest,
@@ -74,6 +76,9 @@ export const Methods = {
   ),
   emailSet: defineMethod<EmailSetRequest, EmailSetResponse>('Email/set'),
   emailParse: defineMethod<EmailParseRequest, EmailParseResponse>('Email/parse'),
+  searchSnippetGet: defineMethod<SearchSnippetGetRequest, SearchSnippetGetResponse>(
+    'SearchSnippet/get',
+  ),
 
   identityGet: defineMethod<IdentityGetRequest, IdentityGetResponse>('Identity/get'),
   emailSubmissionSet: defineMethod<EmailSubmissionSetRequest, EmailSubmissionSetResponse>(

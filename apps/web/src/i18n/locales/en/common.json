@@ -356,5 +356,35 @@
     "attachMentionSend": "Send anyway",
     "attachMentionCancel": "Go back",
     "attachMentionKeywords": ["attach", "attached", "attachment", "enclosed", "see the file"]
+  },
+  "search": {
+    "placeholder": "Search mail",
+    "label": "Search",
+    "clear": "Clear search",
+    "scope": {
+      "label": "Search in",
+      "folder": "This folder",
+      "all": "All mailboxes"
+    },
+    "chip": {
+      "remove": "Remove {{filter}} filter",
+      "from": "From: {{value}}",
+      "to": "To: {{value}}",
+      "cc": "Cc: {{value}}",
+      "subject": "Subject: {{value}}",
+      "body": "Body: {{value}}",
+      "hasAttachment": "Has attachment",
+      "unread": "Unread",
+      "read": "Read",
+      "flagged": "Flagged",
+      "in": "In: {{value}}",
+      "before": "Before {{value}}",
+      "after": "After {{value}}",
+      "text": "Contains: {{value}}"
+    },
+    "hint": "Try from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "results": {
+      "empty": "No messages match your search."
+    }
   }
 }
