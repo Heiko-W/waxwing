@@ -26,6 +26,12 @@ export class JmapHttpError extends JmapError {
     /** Raw response body (text), if any. */
     readonly body: string,
     message?: string,
+    /**
+     * Parsed `Retry-After` in milliseconds, or `undefined` if absent. A 429/503 whose body is NOT a
+     * problem document surfaces here rather than as a {@link JmapProblemError}, so the retry hint
+     * must be carried on both (M3.3 outbox backoff).
+     */
+    readonly retryAfterMs?: number | undefined,
   ) {
     super(message ?? `HTTP ${status}`)
   }
@@ -197,6 +203,7 @@ export async function errorFromResponse(response: Response): Promise<JmapError> 
     response.status,
     text,
     `HTTP ${response.status} ${response.statusText}`.trim(),
+    parseRetryAfter(response.headers.get('Retry-After')),
   )
 }
 

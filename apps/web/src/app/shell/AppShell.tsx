@@ -10,6 +10,7 @@ import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
 import { SEARCH_INPUT_ID } from '../../mail/search/SearchBox'
+import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, useNavigate, useRoute } from '../route'
@@ -41,6 +42,8 @@ export function AppShell({ config }: AppShellProps) {
   useDraftRestore()
   // Surface a send that was rejected after its undo grace (toast + reopen the draft).
   useSendErrorNotifier()
+  // Surface an offline action the server rejected on replay (gentle warning toast + one action).
+  useConflictNotifier()
 
   // Canonical redirect: the bare app root resolves to the mail area.
   useEffect(() => {
@@ -111,6 +114,7 @@ export function AppShell({ config }: AppShellProps) {
         </main>
       </div>
       {reauth && <ReauthDialog />}
+      <QueuedSends />
       {hasDrafts && (
         <Suspense fallback={null}>
           <ComposerHost />

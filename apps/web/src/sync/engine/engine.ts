@@ -1,15 +1,17 @@
 /**
- * The sync-engine facade (M1.3). One instance runs per tab; only the {@link startLeaderElection}
- * leader actually syncs — followers reflect the leader's status off the {@link EngineBus} while
- * reading the same replica via Dexie's cross-tab liveQuery. The leader:
+ * The sync-engine facade (M1.3, hardened in M3.3). One instance runs per tab; only the
+ * {@link startLeaderElection} leader actually syncs — followers reflect the leader's status off the
+ * {@link EngineBus} while reading the same replica via Dexie's cross-tab liveQuery. The leader:
  *  - opens a push channel (SSE-first per D2) and, on every `StateChange`, runs a delta {@link sync};
  *  - runs an initial sync (mailbox pull → inbox backfill → email/thread delta) on becoming leader;
  *  - runs a periodic safety sweep — the polling fallback AND the SP.4 "absence ≠ freshness"
  *    re-probe (every Nth sweep forces a full query re-reconcile);
- *  - replays the outbox after every sync.
+ *  - replays the outbox — after every sync AND on demand ({@link requestReplay}), so a queued action
+ *    never waits for a full delta round-trip, and a FOLLOWER's action wakes the leader over the bus.
  *
- * Everything external (locks, push, broadcast, clock, online-ness) is injected so the whole loop is
- * hermetically testable with fakes; {@link createSyncEngine} fills the browser defaults.
+ * Everything external (locks, push, broadcast, clock, online-ness, randomness) is injected so the
+ * whole loop — including offline/online flapping and retry backoff — is hermetically testable with
+ * fakes; {@link createSyncEngine} fills the browser defaults.
  */
 
 import {
@@ -18,7 +20,6 @@ import {
   type EmailFilter,
   getCoreCapability,
   type Id,
-  JmapHttpError,
   type PushChannel,
   type SchedulerLike,
   type SearchSnippet,
@@ -27,7 +28,9 @@ import {
 import type { ReplicaDb } from '../db'
 import { canonicalQueryKey, type QuerySpec } from '../query-key'
 import {
+  failedOutbox,
   getQueryCache,
+  getSyncState,
   mailboxByRole,
   pendingOutbox,
   putEmailBody,
@@ -41,15 +44,19 @@ import {
   type WindowSpec,
   windowQueryKey,
 } from './backfill'
+import { STUCK_AFTER_ATTEMPTS } from './backoff'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
+import { isAuthExpiry } from './conflict'
 import { reconcileQuery, syncEmails, syncIdentities, syncMailboxes, syncThreads } from './delta'
 import { type LockManagerLike, startLeaderElection } from './leader'
 import {
+  applyOptimistic,
+  applyUndo,
   type EnqueueOptions,
   enqueueAction,
   type OutboxIntent,
-  type Rollback,
   replayOutbox,
+  STATE_GUARDED_INTENTS,
 } from './outbox'
 import { setEngineStatus } from './status'
 import { type EngineClock, type EngineStatus, INITIAL_ENGINE_STATUS, type JmapPort } from './types'
@@ -59,6 +66,12 @@ const WATCHED_TYPES = ['Mailbox', 'Thread', 'Email']
 
 /** Force a full query re-reconcile every Nth safety sweep (SP.4 freshness re-probe). */
 const FULL_SWEEP_EVERY = 5
+
+/**
+ * A flapping connection fires `online` in bursts; each one used to start a full sync pass. Collapse
+ * a burst into ONE pass once the line has settled for this long (M3.3).
+ */
+const RECONNECT_DEBOUNCE_MS = 750
 
 export interface SyncEngineDeps {
   readonly db: ReplicaDb
@@ -81,6 +94,8 @@ export interface SyncEngineDeps {
   readonly onAuthExpired?: () => void
   /** Safety-sweep / polling-fallback interval (ms). */
   readonly safetyIntervalMs?: number
+  /** Jitter source for the outbox retry backoff; defaults to `Math.random` (tests pass `() => 0`). */
+  readonly random?: () => number
 }
 
 const DEFAULT_SAFETY_INTERVAL_MS = 60_000
@@ -90,6 +105,7 @@ export class SyncEngine {
   private readonly port: JmapPort
   private readonly accountId: Id
   private readonly clock: EngineClock
+  private readonly random: () => number
 
   private readonly stopController = new AbortController()
   private bus: EngineBus | undefined
@@ -98,8 +114,10 @@ export class SyncEngine {
   private offlineUnsub: (() => void) | undefined
   private busUnsub: (() => void) | undefined
   private safetyTimer: number | undefined
-  /** Wakes the leader when the earliest undo-send `notBefore` grace elapses (M2.8). */
-  private sendWakeTimer: number | undefined
+  /** Wakes the leader when the earliest `notBefore` grace / `nextAttemptAt` backoff elapses. */
+  private queueWakeTimer: number | undefined
+  /** Debounces an `online` burst into a single reconnect sync (M3.3). */
+  private reconnectTimer: number | undefined
 
   private isLeader = false
   private started = false
@@ -109,13 +127,15 @@ export class SyncEngine {
   private readonly watched = new Set<string>()
   /** Query keys with a backfill in flight — dedups a search's watch-effect unwatch→rewatch churn. */
   private readonly inFlightBackfills = new Set<string>()
-  /** In-memory rollbacks for optimistic outbox intents (lost on reload — persisted error rows = M3.3). */
-  private readonly rollbacks = new Map<Id, Rollback>()
 
   /** Identities are pulled once per leadership session (M2.5; Identity/changes deferred). */
   private identitiesSynced = false
   private syncing = false
   private syncQueued = false
+  /** The replay-only pass, coalesced exactly like `syncing`/`syncQueued` — and shared with it, so a
+   *  full sync and an on-demand replay can never interleave on the same queue. */
+  private replaying: Promise<void> | undefined
+  private replayQueued = false
   private sweepCount = 0
   /** The in-flight sync pass, so {@link stop} can await it before the caller wipes the replica. */
   private activeSync: Promise<void> | undefined
@@ -125,6 +145,7 @@ export class SyncEngine {
     this.port = deps.port
     this.accountId = deps.port.accountId
     this.clock = deps.clock
+    this.random = deps.random ?? Math.random
     this.status = { ...INITIAL_ENGINE_STATUS, online: deps.isOnline() }
   }
 
@@ -134,14 +155,28 @@ export class SyncEngine {
     this.started = true
     this.bus = new EngineBus(this.deps.createBus())
     this.busUnsub = this.bus.onMessage((message) => {
+      if (message.type === 'wake') {
+        // A follower queued an action. Replay it now (and arm the grace/backoff timer for it) rather
+        // than making it wait for the next push event or the 60 s sweep (M3.3, defect D7).
+        if (this.isLeader) {
+          this.requestReplay()
+          void this.scheduleQueueWake()
+        }
+        return
+      }
       // Followers mirror the leader's status (but keep their own leadership + online flags).
       if (!this.isLeader) {
         this.setStatus({ ...message.status, isLeader: false, online: this.deps.isOnline() }, false)
       }
     })
     this.offlineUnsub = this.deps.onOnlineChange((online) => {
-      this.patch({ online })
-      if (online && this.isLeader) void this.sync()
+      if (!online) {
+        this.cancelReconnect()
+        this.patch({ online: false, phase: 'offline' })
+        return
+      }
+      this.patch({ online: true })
+      this.scheduleReconnect()
     })
     this.leaderPromise = startLeaderElection({
       locks: this.deps.locks,
@@ -155,7 +190,8 @@ export class SyncEngine {
     if (!this.started) return
     this.stopController.abort()
     if (this.safetyTimer !== undefined) this.clock.clearTimeout(this.safetyTimer)
-    if (this.sendWakeTimer !== undefined) this.clock.clearTimeout(this.sendWakeTimer)
+    if (this.queueWakeTimer !== undefined) this.clock.clearTimeout(this.queueWakeTimer)
+    this.cancelReconnect()
     this.push?.close()
     this.busUnsub?.()
     this.offlineUnsub?.()
@@ -167,6 +203,7 @@ export class SyncEngine {
     // Await the in-flight sync so a following wipe cannot delete the DB out from under it (which
     // would throw DatabaseClosedError and strand a bogus 'error' status into the next session).
     await this.activeSync?.catch(() => {})
+    await this.replaying?.catch(() => {})
     await this.leaderPromise?.catch(() => {})
     // Reset the shared status store so a fresh login never inherits this session's phase.
     this.status = { ...INITIAL_ENGINE_STATUS, online: this.deps.isOnline() }
@@ -174,69 +211,190 @@ export class SyncEngine {
   }
 
   /**
-   * Enqueue a user action (optimistic apply now, replay on the next sync). NOTE (M3.3): the
-   * in-memory rollback is held by the tab that dispatched; if a FOLLOWER dispatches and the LEADER
-   * replays a rejected write, the leader marks the row `error` but cannot roll the replica back
-   * until a full re-sync corrects it. Single-tab (the common case) rolls back correctly.
+   * Enqueue a user action: apply it optimistically, persist the intent AND its durable undo, then
+   * replay. The undo is data on the row (M3.3), so whichever tab is leader when the server rejects
+   * the write can roll the replica back — including for an action a FOLLOWER dispatched.
+   *
+   * A follower cannot replay (it holds no lock), so it wakes the leader over the bus instead of
+   * leaving the action — a SEND, possibly — parked until the leader's next sweep.
    */
   async dispatch(intent: OutboxIntent, options: Omit<EnqueueOptions, 'now'>): Promise<void> {
-    const { id, rollback } = await enqueueAction(this.db, this.accountId, intent, {
+    const ifInState =
+      options.ifInState !== undefined ? options.ifInState : await this.mailboxGuard(intent)
+    await enqueueAction(this.db, this.accountId, intent, {
       ...options,
+      ifInState,
       now: this.clock.now(),
     })
-    this.rollbacks.set(id, rollback)
-    await this.refreshPendingCount()
-    if (this.isLeader) void this.sync()
+    await this.refreshQueueCounts()
+    this.wakeQueue()
   }
 
   /**
-   * Undo-send (M2.8): if the send is still within its grace window (a `pending` row with a future
-   * `notBefore`), delete the queued submission, roll back the optimistic source flag, and reset the
-   * draft to editable. Returns `true` if it was canceled, `false` if it already fired / is firing.
+   * The `ifInState` guard for a `Mailbox/set` (M3.3): folder state churns rarely and a concurrent
+   * folder mutation by another client is exactly the "gentle notice" case. `Email/set` stays
+   * UNGUARDED on purpose — the Email state is account-global and advances on every inbound message,
+   * so a guard would turn every offline replay into a bogus conflict (and the auto-chunker cannot
+   * split a state-guarded set, which would break every bulk cleanup chunk).
+   */
+  private async mailboxGuard(intent: OutboxIntent): Promise<string | null> {
+    if (!STATE_GUARDED_INTENTS.has(intent.kind)) return null
+    return getSyncState(this.db, this.accountId, 'Mailbox')
+  }
+
+  /**
+   * Undo-send (M2.8): delete the still-`pending` submission, roll back its optimistic source flag
+   * from the PERSISTED undo, and reset the draft to editable. Returns `true` if it was canceled,
+   * `false` if it already fired / is firing.
+   *
+   * The only safety property required is "the EmailSubmission has not been dispatched" — which is
+   * exactly `status === 'pending'`, enforced transactionally against replay's claim-to-`inflight`.
+   * There is deliberately NO `notBefore` check (M3.3): a send queued offline, or one backed off
+   * after a transient failure, is long past its grace yet has provably not been sent — it must stay
+   * cancelable.
    */
   async cancelSend(id: Id): Promise<boolean> {
     // Claim the cancellation in ONE rw txn (re-read + delete) so it is mutually exclusive with
     // replayOutbox's claim-to-inflight on the same row: whichever txn commits first wins. If replay
     // already flipped it to `inflight` (send firing), the re-read sees non-`pending` → we abort.
-    const now = this.clock.now()
     const row = await this.db.transaction('rw', this.db.outbox, async () => {
       const current = await this.db.outbox.get([this.accountId, id])
       if (current === undefined || current.status !== 'pending') return undefined
-      if (current.notBefore === null || current.notBefore <= now) return undefined
       await this.db.outbox.delete([this.accountId, id])
       return current
     })
     if (row === undefined) return false
-    await this.rollbacks.get(id)?.()
-    this.rollbacks.delete(id)
     const intent = row.payload as OutboxIntent
+    const undo = row.undo ?? null
+    // A send's undo is local-only (the source `$answered`/`$forwarded` flag) — it cannot throw.
+    if (undo !== null) await applyUndo(this.db, this.port, this.accountId, intent, undo, null)
     if (intent.kind === 'sendEmail') {
       await this.db.drafts.update([this.accountId, intent.localId], {
         status: 'pending',
         lastError: null,
       })
     }
-    await this.scheduleSendWake()
-    await this.refreshPendingCount()
+    await this.scheduleQueueWake()
+    await this.refreshQueueCounts()
+    // Tell the LEADER too: it owns the status broadcast, so without this its stale queue counts
+    // overwrite this tab's correct ones on the next tick (the badge would report a row we just removed).
+    this.wakeQueue()
     return true
   }
 
-  /** Arm/refresh the timer that wakes the leader when the earliest undo-send grace elapses. */
-  private async scheduleSendWake(): Promise<void> {
-    if (this.sendWakeTimer !== undefined) {
-      this.clock.clearTimeout(this.sendWakeTimer)
-      this.sendWakeTimer = undefined
+  /**
+   * Re-queue a dead letter (M3.3): re-apply the optimistic change, arm a FRESH undo, reset the
+   * backoff. Returns `false` when the row is gone, is not a dead letter, still OWES its rollback
+   * (applying the optimistic change on top of an un-undone one would double it), or is a `sendEmail`
+   * — a rejected send is retried by the user from the reopened draft, never by re-queuing the
+   * non-idempotent submission.
+   *
+   * The read, the optimistic re-apply and the row update are ONE `rw` transaction, so a concurrent
+   * retry from another tab cannot apply it twice.
+   */
+  async retryFailed(id: Id): Promise<boolean> {
+    const requeued = await this.db.transaction(
+      'rw',
+      this.db.outbox,
+      this.db.emails,
+      this.db.mailboxes,
+      async (): Promise<OutboxIntent | null> => {
+        const current = await this.db.outbox.get([this.accountId, id])
+        if (current === undefined || current.status !== 'error') return null
+        if ((current.undo ?? null) !== null) return null
+        const intent = current.payload as OutboxIntent
+        if (intent.kind === 'sendEmail') return null
+        const undo = await applyOptimistic(this.db, this.accountId, intent)
+        await this.db.outbox.update([this.accountId, id], {
+          status: 'pending',
+          attempts: 0,
+          nextAttemptAt: null,
+          refreshes: 0,
+          lastError: null,
+          conflict: null,
+          undo,
+        })
+        return intent
+      },
+    )
+    if (requeued === null) return false
+    // `stampDraftError` flagged the drafts row `error` when this intent dead-lettered. Its intent is
+    // back in the queue now, so clear that flag — otherwise the draft stays visibly "failed" forever
+    // while it is in fact being retried.
+    if (requeued.kind === 'saveDraft' || requeued.kind === 'discardDraft') {
+      await this.db.drafts.update([this.accountId, requeued.localId], {
+        status: 'pending',
+        lastError: null,
+      })
+    }
+    await this.refreshQueueCounts()
+    this.wakeQueue()
+    return true
+  }
+
+  /**
+   * Discard a dead letter (M3.3). Its rollback normally ran when it failed, so the replica is
+   * already consistent and the row is just a notice to dismiss. If the rollback is still OWED
+   * (a re-fetch that could not reach the server), it is applied FIRST — and if that still fails the
+   * row is KEPT, so the stale optimistic change stays visible as a problem instead of becoming
+   * permanent, invisible corruption.
+   */
+  async discardFailed(id: Id): Promise<boolean> {
+    const row = await this.db.outbox.get([this.accountId, id])
+    if (row === undefined || row.status !== 'error') return false
+    const undo = row.undo ?? null
+    if (undo !== null) {
+      try {
+        await applyUndo(
+          this.db,
+          this.port,
+          this.accountId,
+          row.payload as OutboxIntent,
+          undo,
+          row.conflict?.ids ?? null,
+        )
+      } catch {
+        return false // still owed — keep the row listed
+      }
+    }
+    await this.db.outbox.delete([this.accountId, id])
+    await this.refreshQueueCounts()
+    this.wakeQueue() // the leader owns the status broadcast — make it recount, or the badge lies
+    return true
+  }
+
+  /** Discard every dead letter (the problems dialog's "Discard all"). */
+  async discardAllFailed(): Promise<void> {
+    for (const row of await failedOutbox(this.db, this.accountId)) {
+      await this.discardFailed(row.id)
+    }
+    await this.refreshQueueCounts()
+    this.wakeQueue()
+  }
+
+  /** Replay now on the leader; on a follower, ask the leader to (BroadcastChannel skips the sender). */
+  private wakeQueue(): void {
+    if (this.isLeader) this.requestReplay()
+    else this.bus?.postWake('outbox')
+  }
+
+  /** Arm/refresh the timer that wakes the leader when the earliest grace/backoff deadline elapses. */
+  private async scheduleQueueWake(): Promise<void> {
+    if (this.queueWakeTimer !== undefined) {
+      this.clock.clearTimeout(this.queueWakeTimer)
+      this.queueWakeTimer = undefined
     }
     if (this.stopController.signal.aborted) return
     const now = this.clock.now()
-    const futures = (await pendingOutbox(this.db, this.accountId))
-      .filter((row) => row.status === 'pending' && row.notBefore !== null && row.notBefore > now)
-      .map((row) => row.notBefore as number)
-    if (futures.length === 0) return
-    const delay = Math.max(0, Math.min(...futures) - now)
-    this.sendWakeTimer = this.clock.setTimeout(() => {
-      this.sendWakeTimer = undefined
-      if (this.isLeader) void this.sync()
+    const deadlines = (await pendingOutbox(this.db, this.accountId))
+      .filter((row) => row.status === 'pending')
+      .map((row) => Math.max(row.notBefore ?? 0, row.nextAttemptAt ?? 0))
+      .filter((at) => at > now)
+    if (deadlines.length === 0) return
+    const delay = Math.max(0, Math.min(...deadlines) - now)
+    this.queueWakeTimer = this.clock.setTimeout(() => {
+      this.queueWakeTimer = undefined
+      if (this.isLeader) this.requestReplay()
     }, delay)
   }
 
@@ -454,7 +612,7 @@ export class SyncEngine {
    * Enqueue chunked `destroyEmails` intents — one durable outbox row per `maxObjectsInSet`-sized
    * batch, so a large purge survives a reload and resumes. NEVER passes `ifInState`: a bulk destroy
    * must not fail the whole batch on an unrelated concurrent change (and the auto-chunker cannot
-   * split a state-guarded set anyway).
+   * split a state-guarded set anyway). The N dispatches coalesce into ONE replay pass.
    */
   private async destroyMatching(filter: EmailFilter): Promise<{ scheduled: number }> {
     const ids = await this.collectMatchingIds(filter)
@@ -521,6 +679,22 @@ export class SyncEngine {
     }, interval)
   }
 
+  private cancelReconnect(): void {
+    if (this.reconnectTimer === undefined) return
+    this.clock.clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = undefined
+  }
+
+  /** Collapse an `online` burst (a flapping line) into ONE sync pass once it has settled. */
+  private scheduleReconnect(): void {
+    this.cancelReconnect()
+    if (this.stopController.signal.aborted) return
+    this.reconnectTimer = this.clock.setTimeout(() => {
+      this.reconnectTimer = undefined
+      if (this.isLeader) void this.sync()
+    }, RECONNECT_DEBOUNCE_MS)
+  }
+
   /** One coalesced sync pass (leader only): delta sync → reconcile watched queries → replay outbox. */
   private async sync(): Promise<void> {
     if (!this.isLeader || this.stopController.signal.aborted) return
@@ -543,34 +717,98 @@ export class SyncEngine {
     }
   }
 
+  /**
+   * A REPLAY-ONLY pass (no delta round-trip). Dispatching an action, a follower's wake and the
+   * grace/backoff timer all take this path: flushing a LOCAL queue does not need two full delta
+   * round-trips, and an M3.2 cleanup that enqueues N chunk intents in a loop collapses to ONE pass.
+   *
+   * NOTE (deliberate non-goal): intents are NOT coalesced with each other. Merging two `setKeywords`
+   * over overlapping id sets is only safe under last-writer-wins over IDENTICAL id sets; the general
+   * case reorders user intent. The coalescing that matters (drafts, via the stable `draft:<id>`
+   * outbox id) already happens at enqueue time.
+   */
+  requestReplay(): void {
+    if (!this.isLeader || this.stopController.signal.aborted) return
+    void this.runReplayCoalesced()
+  }
+
+  /** The shared guard: a full sync and an on-demand replay can never run the queue concurrently. */
+  private async runReplayCoalesced(): Promise<void> {
+    if (this.replaying) {
+      this.replayQueued = true
+      return
+    }
+    const pass = this.runReplay().catch((error: unknown) => this.reportError(error))
+    this.replaying = pass
+    await pass
+    this.replaying = undefined
+    if (this.replayQueued && this.isLeader && !this.stopController.signal.aborted) {
+      this.replayQueued = false
+      await this.runReplayCoalesced()
+    }
+  }
+
+  private async runReplay(): Promise<void> {
+    // Offline: skip the pass entirely. (The transport-error path still covers a lying
+    // `navigator.onLine` / a captive portal — it is a backoff, never a rollback.)
+    const online = this.deps.isOnline()
+    if (online) {
+      await replayOutbox(this.port, this.db, this.accountId, {
+        now: this.clock.now(),
+        random: this.random,
+        online: true,
+        refreshState: async (type) => {
+          await syncMailboxes(this.port, this.db, this.accountId, this.clock)
+          return getSyncState(this.db, this.accountId, type)
+        },
+      })
+    }
+    await this.scheduleQueueWake()
+    await this.refreshQueueCounts()
+  }
+
   private async runSyncPass(forceFull: boolean): Promise<void> {
     try {
-      await syncMailboxes(this.port, this.db, this.accountId, this.clock)
-      if (!this.identitiesSynced) {
-        await syncIdentities(this.port, this.db, this.accountId, this.clock)
-        this.identitiesSynced = true // only after success, so an offline first pass retries
+      let deltaError: unknown
+      try {
+        await syncMailboxes(this.port, this.db, this.accountId, this.clock)
+        if (!this.identitiesSynced) {
+          await syncIdentities(this.port, this.db, this.accountId, this.clock)
+          this.identitiesSynced = true // only after success, so an offline first pass retries
+        }
+        await this.ensureInboxWindow()
+        await syncThreads(this.port, this.db, this.accountId, this.clock)
+        await syncEmails(this.port, this.db, this.accountId, this.clock)
+        await this.reconcileWatched(forceFull)
+      } catch (error) {
+        // Re-throw ONLY auth-expiry (→ the re-auth funnel). A transient DELTA failure must not skip
+        // the replay below: that would starve the outbox — a queued send would sit unsent for as
+        // long as the server kept failing one `Email/changes` call (M3.3).
+        if (isAuthExpiry(error)) throw error
+        deltaError = error
       }
-      await this.ensureInboxWindow()
-      await syncThreads(this.port, this.db, this.accountId, this.clock)
-      await syncEmails(this.port, this.db, this.accountId, this.clock)
-      await this.reconcileWatched(forceFull)
-      await replayOutbox(this.port, this.db, this.accountId, {
-        rollbacks: this.rollbacks,
-        now: this.clock.now(),
-      })
-      await this.scheduleSendWake()
-      const pending = await pendingOutbox(this.db, this.accountId)
-      this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), pendingActions: pending.length })
+      await this.runReplayCoalesced()
+      if (deltaError !== undefined) {
+        this.patch({
+          phase: this.deps.isOnline() ? 'error' : 'offline',
+          error: errorMessage(deltaError),
+        })
+        return
+      }
+      this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), error: null })
     } catch (error) {
-      // A background 401/403 means the session expired — route it to the re-auth funnel (FR-AUTH-06)
-      // rather than sitting in a perpetual "Sync problem"; the overlay handles the UX.
-      if (isAuthExpiry(error) && this.deps.onAuthExpired) {
-        this.deps.onAuthExpired()
-        this.patch({ phase: 'idle', error: null })
-      } else {
-        this.patch({ phase: 'error', error: errorMessage(error) })
-      }
+      this.reportError(error)
     }
+  }
+
+  /** A background 401/403 means the session expired — route it to re-auth (FR-AUTH-06). */
+  private reportError(error: unknown): void {
+    if (isAuthExpiry(error) && this.deps.onAuthExpired) {
+      this.deps.onAuthExpired()
+      this.patch({ phase: 'idle', error: null })
+      return
+    }
+    this.patch({ phase: this.deps.isOnline() ? 'error' : 'offline', error: errorMessage(error) })
   }
 
   /** Watch the inbox recent window: adopt an existing cached window if present, else backfill it. */
@@ -602,18 +840,26 @@ export class SyncEngine {
         await reconcileQuery(this.port, this.db, this.accountId, key, spec, this.clock, forceFull)
       } catch (error) {
         // Isolate per key: one watched query's failure must not fail the whole sync pass — that
-        // would skip `replayOutbox` + `scheduleSendWake` (stalling queued sends/moves) and starve
-        // the keys after it. A server-rejected search filter (e.g. free-text on an FTS-less server)
-        // would otherwise re-throw on every sweep. Re-throw ONLY auth-expiry so the pass can still
-        // route to re-auth (FR-AUTH-06); swallow the rest (the empty window self-heals next sweep).
+        // would starve the keys after it. A server-rejected search filter (e.g. free-text on an
+        // FTS-less server) would otherwise re-throw on every sweep. Re-throw ONLY auth-expiry so the
+        // pass can still route to re-auth (FR-AUTH-06); swallow the rest (it self-heals next sweep).
         if (isAuthExpiry(error)) throw error
       }
     }
   }
 
-  private async refreshPendingCount(): Promise<void> {
-    const pending = await pendingOutbox(this.db, this.accountId)
-    this.patch({ pendingActions: pending.length })
+  /** The three queue counts the chrome renders: live queue, dead letters, and stuck-but-retrying. */
+  private async refreshQueueCounts(): Promise<void> {
+    const live = await pendingOutbox(this.db, this.accountId)
+    const failed = await failedOutbox(this.db, this.accountId)
+    const stuck = live.filter(
+      (row) => row.status === 'pending' && row.attempts >= STUCK_AFTER_ATTEMPTS,
+    ).length
+    this.patch({
+      pendingActions: live.length,
+      failedActions: failed.length,
+      stuckActions: stuck,
+    })
   }
 
   private patch(partial: Partial<EngineStatus>): void {
@@ -632,11 +878,6 @@ export class SyncEngine {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-/** A background 401/403 — the session expired and the engine should route to re-auth, not "error". */
-function isAuthExpiry(error: unknown): boolean {
-  return error instanceof JmapHttpError && (error.status === 401 || error.status === 403)
 }
 
 /** `AND(inMailbox, before)` — the "older than" cleanup filter (M3.2). */
@@ -688,6 +929,7 @@ export function createSyncEngine(deps: {
     auth: deps.auth,
     config: deps.config,
     clock,
+    random: () => Math.random(),
     locks: navigator.locks as unknown as LockManagerLike,
     createBus: () => defaultBroadcast(),
     createPush: (session, options) => createPushChannel(session, options),

@@ -1,0 +1,120 @@
+/* Outbox conflict + queued-send surfaces (M3.3). Tokens only. */
+
+/* ---- header problems button ---- */
+.problemsButton {
+  color: var(--waxwing-warning);
+}
+
+.problemsIconWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.problemsIcon {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+.problemsBadge {
+  position: absolute;
+  inset-block-start: -0.4rem;
+  inset-inline-end: -0.6rem;
+  font-size: var(--waxwing-text-xs);
+}
+
+/* ---- problems dialog ---- */
+.empty {
+  color: var(--waxwing-text-muted);
+}
+
+.problems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.problem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--waxwing-space-3);
+  padding-block: var(--waxwing-space-2);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.problem:last-child {
+  border-block-end: none;
+}
+
+.problemText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  min-inline-size: 0;
+}
+
+.problemTitle {
+  margin: 0;
+}
+
+.problemDetail,
+.problemMeta {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.problemActions {
+  display: inline-flex;
+  flex: none;
+  gap: var(--waxwing-space-1);
+}
+
+/* ---- queued sends (docked, bottom-start so it never overlaps the composer dock) ---- */
+.queue {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline-start: var(--waxwing-space-4);
+  z-index: 29;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  padding-block-end: var(--waxwing-space-3);
+  max-inline-size: min(22rem, 90vw);
+}
+
+.queued {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  background-color: var(--waxwing-surface);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+.queuedText {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  flex: 1;
+}
+
+.queuedSubject {
+  margin: 0;
+  font-weight: var(--waxwing-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queuedStatus {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}

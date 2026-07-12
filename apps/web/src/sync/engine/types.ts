@@ -251,7 +251,12 @@ export interface EngineStatus {
   readonly pushTransport: PushTransport | null
   readonly pushStatus: PushStatus | null
   readonly lastSyncedAt: number | null
+  /** The LIVE queue: `pending` + `inflight`. Dead letters are counted by {@link failedActions}. */
   readonly pendingActions: number
+  /** Dead-lettered actions awaiting the user (M3.3) — the problems button/dialog surface. */
+  readonly failedActions: number
+  /** Still-queued actions past {@link STUCK_AFTER_ATTEMPTS} retries — a gentle "still trying" notice. */
+  readonly stuckActions: number
   readonly error: string | null
 }
 
@@ -263,6 +268,8 @@ export const INITIAL_ENGINE_STATUS: EngineStatus = {
   pushStatus: null,
   lastSyncedAt: null,
   pendingActions: 0,
+  failedActions: 0,
+  stuckActions: 0,
   error: null,
 }
 

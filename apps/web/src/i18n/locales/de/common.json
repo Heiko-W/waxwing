@@ -94,6 +94,10 @@
       "syncing": "Wird synchronisiert…",
       "offline": "Offline",
       "error": "Synchronisationsproblem"
+    },
+    "outbox": {
+      "stuck_one": "Server nicht erreichbar — es wird weiter versucht ({{count}})",
+      "stuck_other": "Server nicht erreichbar — es wird weiter versucht ({{count}})"
     }
   },
   "settings": {
@@ -359,7 +363,8 @@
     "attachMentionBody": "Sie erwähnen einen Anhang, aber es ist keiner angehängt.",
     "attachMentionSend": "Trotzdem senden",
     "attachMentionCancel": "Zurück",
-    "attachMentionKeywords": ["anhang", "anbei", "angehängt", "beigefügt", "siehe datei"]
+    "attachMentionKeywords": ["anhang", "anbei", "angehängt", "beigefügt", "siehe datei"],
+    "sendErrorInterrupted": "Vor der Bestätigung unterbrochen — bitte „Gesendet“ prüfen, bevor Sie erneut senden"
   },
   "search": {
     "placeholder": "E-Mails durchsuchen",
@@ -388,7 +393,7 @@
     },
     "hint": "Versuche from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
     "results": {
-      "empty": "Keine Nachrichten entsprechen deiner Suche.",
+      "empty": "Keine Nachrichten entsprechen Ihrer Suche.",
       "count_one": "{{count}} Treffer",
       "count_other": "{{count}} Treffer"
     }
@@ -469,11 +474,45 @@
       "messageTrash_other": "Nachrichten in „{{name}}“, die älter als {{count}} Tage sind, in den Papierkorb verschieben?",
       "messageDestroy_one": "Nachrichten in „{{name}}“, die älter als {{count}} Tag sind, endgültig löschen? Das kann nicht rückgängig gemacht werden.",
       "messageDestroy_other": "Nachrichten in „{{name}}“, die älter als {{count}} Tage sind, endgültig löschen? Das kann nicht rückgängig gemacht werden.",
-      "noteTrash": "Verschobene Nachrichten bleiben im Papierkorb, bis du ihn leerst.",
+      "noteTrash": "Verschobene Nachrichten bleiben im Papierkorb, bis Sie ihn leeren.",
       "retention": "{{product}} löscht diese auf dem Server. Dein Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
       "confirmTrash": "In den Papierkorb",
       "confirmDestroy": "Endgültig löschen",
-      "invalid": "Gib eine Anzahl von Tagen ein (1–3650)."
+      "invalid": "Bitte eine Anzahl von Tagen eingeben (1–3650)."
+    }
+  },
+  "outbox": {
+    "problems": {
+      "open_one": "{{count}} Aktion nicht ausgeführt",
+      "open_other": "{{count}} Aktionen nicht ausgeführt",
+      "title": "Einige Aktionen wurden nicht ausgeführt",
+      "empty": "Alles ist aktuell.",
+      "discardAll": "Alle verwerfen"
+    },
+    "action": {
+      "retry": "Erneut versuchen",
+      "discard": "Verwerfen",
+      "keepHere": "In {{folder}} behalten",
+      "dismiss": "OK"
+    },
+    "conflict": {
+      "moveFolderGone": "Verschieben nicht möglich — der Ordner wurde gelöscht.",
+      "messageGone": "Diese Nachricht gibt es auf dem Server nicht mehr.",
+      "folderGone": "Diesen Ordner gibt es nicht mehr.",
+      "folderNotEmpty": "Der Ordner ist nicht leer.",
+      "forbidden": "Dazu fehlt die Berechtigung.",
+      "quota": "Speicherkontingent überschritten.",
+      "tooLarge": "Zu groß für den Server.",
+      "invalid": "Der Server hat die Änderung abgelehnt.",
+      "stateConflict": "Jemand hat das gleichzeitig geändert.",
+      "serverRejected": "Der Server hat die Änderung abgelehnt."
+    },
+    "send": {
+      "willSendWhenOnline": "Wird gesendet, sobald Sie wieder online sind",
+      "queuedOffline": "Sie sind offline — die Nachricht wird beim nächsten Verbinden gesendet",
+      "retrying": "Erneuter Versuch…",
+      "cancel": "Senden abbrechen",
+      "label": "Wartende Nachrichten"
     }
   }
 }

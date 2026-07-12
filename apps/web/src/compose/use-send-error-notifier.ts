@@ -17,15 +17,30 @@ import { useToast } from '../ui'
 import { useComposerStore } from './composer-store'
 import { deserializeDraft } from './draft-email'
 
-/** Map a stored `SetError` type / error message to the most specific send-failure message key. */
-function sendErrorKey(lastError: string | null): string {
-  const error = (lastError ?? '').toLowerCase()
-  if (/quota/.test(error)) return 'compose.sendErrorQuota'
-  if (/toolarge|maxsize|toobig/.test(error)) return 'compose.sendErrorSize'
-  if (/recipient|invalidemail|forbiddenfrom|forbiddenmailfrom|forbiddento|mailfrom/.test(error)) {
-    return 'compose.sendErrorRecipient'
-  }
-  return 'compose.sendErrorGeneric'
+/**
+ * `DraftRow.lastError` carries a STABLE code — a JMAP `SetError`/method-error `type`, or one of the
+ * engine's `ConflictCode`s — never prose (M3.3). It is matched EXACTLY here: the predecessor
+ * regex-matched an English sentence the engine had persisted, which both broke i18n and silently
+ * mis-classified anything a server phrased differently.
+ */
+const SEND_ERROR_KEY: Readonly<Record<string, string>> = {
+  // RFC 8621 §7.5 EmailSubmission SetErrors + the §4.6 Email ones a send can hit.
+  overQuota: 'compose.sendErrorQuota',
+  tooLarge: 'compose.sendErrorSize',
+  requestTooLarge: 'compose.sendErrorSize',
+  forbiddenFrom: 'compose.sendErrorRecipient',
+  forbiddenMailFrom: 'compose.sendErrorRecipient',
+  forbiddenToSend: 'compose.sendErrorRecipient',
+  invalidEmail: 'compose.sendErrorRecipient',
+  invalidRecipients: 'compose.sendErrorRecipient',
+  noRecipients: 'compose.sendErrorRecipient',
+  tooManyRecipients: 'compose.sendErrorRecipient',
+  // The engine's own codes.
+  sendInterrupted: 'compose.sendErrorInterrupted',
+}
+
+export function sendErrorKey(lastError: string | null): string {
+  return SEND_ERROR_KEY[lastError ?? ''] ?? 'compose.sendErrorGeneric'
 }
 
 export function useSendErrorNotifier(): void {

@@ -393,20 +393,43 @@ export function getQueryCache(
 }
 
 // -------------------------------------------------------------------------------------------
-// Outbox (schema-level; replay is M1.3 / M3.3).
+// Outbox (M1.3 replay, M3.3 durability/conflicts).
 // -------------------------------------------------------------------------------------------
 
 export async function enqueue(db: ReplicaDb, row: OutboxRow): Promise<void> {
   await db.outbox.put(row)
 }
 
-/** Pending/errored intents for an account in FIFO (createdAt) order — the replay queue (M1.3). */
+/**
+ * The LIVE queue for an account in FIFO (createdAt) order — `pending` + `inflight` (M1.3 replay
+ * source, and the `pendingActions` count). A terminal `error` row is a DEAD LETTER and is
+ * deliberately NOT returned (M3.3, defect D4): counting it here permanently inflated
+ * `EngineStatus.pendingActions` and made replay re-scan rows it can never send. Dead letters are
+ * {@link failedOutbox} — surfaced, retryable and discardable, never silently retried.
+ */
 export function pendingOutbox(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
   return db.outbox
     .where('[accountId+createdAt]')
     .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
-    .filter((row) => row.status === 'pending' || row.status === 'error')
+    .filter((row) => row.status === 'pending' || row.status === 'inflight')
     .toArray()
+}
+
+/** Dead-lettered intents (`status: 'error'`), oldest first — the conflict/problems surface (M3.3). */
+export async function failedOutbox(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
+  const rows = await db.outbox.where('[accountId+status]').equals([accountId, 'error']).toArray()
+  return rows.sort((a, b) => a.createdAt - b.createdAt)
+}
+
+/** Queued (not yet dispatched) sends, oldest first — the durable "will send" surface (M3.3). */
+export async function queuedSends(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
+  const rows = await db.outbox.where('[accountId+status]').equals([accountId, 'pending']).toArray()
+  return rows.filter((row) => row.type === 'sendEmail').sort((a, b) => a.createdAt - b.createdAt)
+}
+
+/** One outbox row by its client-generated intent id. */
+export function outboxRow(db: ReplicaDb, accountId: Id, id: Id): Promise<OutboxRow | undefined> {
+  return db.outbox.get([accountId, id])
 }
 
 // -------------------------------------------------------------------------------------------

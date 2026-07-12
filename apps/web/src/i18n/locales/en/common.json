@@ -94,6 +94,10 @@
       "syncing": "Syncing…",
       "offline": "Offline",
       "error": "Sync problem"
+    },
+    "outbox": {
+      "stuck_one": "Still trying to reach the server ({{count}})",
+      "stuck_other": "Still trying to reach the server ({{count}})"
     }
   },
   "settings": {
@@ -359,7 +363,8 @@
     "attachMentionBody": "You mentioned an attachment but none is attached.",
     "attachMentionSend": "Send anyway",
     "attachMentionCancel": "Go back",
-    "attachMentionKeywords": ["attach", "attached", "attachment", "enclosed", "see the file"]
+    "attachMentionKeywords": ["attach", "attached", "attachment", "enclosed", "see the file"],
+    "sendErrorInterrupted": "Interrupted before we could confirm — check Sent before resending"
   },
   "search": {
     "placeholder": "Search mail",
@@ -474,6 +479,40 @@
       "confirmTrash": "Move to Trash",
       "confirmDestroy": "Delete permanently",
       "invalid": "Enter a number of days (1–3650)."
+    }
+  },
+  "outbox": {
+    "problems": {
+      "open_one": "{{count}} action didn't go through",
+      "open_other": "{{count}} actions didn't go through",
+      "title": "Some actions didn't go through",
+      "empty": "Everything is up to date.",
+      "discardAll": "Discard all"
+    },
+    "action": {
+      "retry": "Try again",
+      "discard": "Discard",
+      "keepHere": "Keep in {{folder}}",
+      "dismiss": "OK"
+    },
+    "conflict": {
+      "moveFolderGone": "Couldn't move — that folder was deleted.",
+      "messageGone": "That message no longer exists on the server.",
+      "folderGone": "That folder no longer exists.",
+      "folderNotEmpty": "The folder isn't empty.",
+      "forbidden": "You don't have permission for that.",
+      "quota": "Your mailbox is over quota.",
+      "tooLarge": "That's too large for the server.",
+      "invalid": "The server rejected that change.",
+      "stateConflict": "Someone else changed that at the same time.",
+      "serverRejected": "The server rejected that change."
+    },
+    "send": {
+      "willSendWhenOnline": "Will send when you're back online",
+      "queuedOffline": "You're offline — this will send when you reconnect",
+      "retrying": "Retrying…",
+      "cancel": "Cancel send",
+      "label": "Queued messages"
     }
   }
 }

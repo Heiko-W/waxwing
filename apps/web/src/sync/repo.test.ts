@@ -6,6 +6,7 @@ import {
   emailsInThread,
   emailsWithKeyword,
   enqueue,
+  failedOutbox,
   getEmailBody,
   getPref,
   getQueryCache,
@@ -20,6 +21,7 @@ import {
   putMailboxes,
   putQueryCache,
   putThreads,
+  queuedSends,
   setPref,
   setSyncState,
 } from './repo'
@@ -164,46 +166,92 @@ describe('sync state, query cache, prefs, outbox', () => {
     expect(await getPref<string[]>(db, ACC, 'missing')).toBeUndefined()
   })
 
-  it('returns pending/errored outbox intents in FIFO order', async () => {
+  /**
+   * The LIVE queue and the DEAD-LETTER queue are separate reads (M3.3, defect D4). `pendingOutbox`
+   * used to return `error` rows too, which permanently inflated `EngineStatus.pendingActions` with
+   * every dead letter and made replay re-scan rows it can never send.
+   */
+  it('separates the live queue (pending+inflight) from the dead letters (error)', async () => {
+    const base = { accountId: ACC, payload: {}, ifInState: null, notBefore: null }
     await enqueue(db, {
-      accountId: ACC,
+      ...base,
       id: 'i2',
       type: 'setKeywords',
-      payload: {},
-      ifInState: null,
       status: 'pending',
       attempts: 0,
       createdAt: 20,
       lastError: null,
-      notBefore: null,
     })
     await enqueue(db, {
-      accountId: ACC,
+      ...base,
       id: 'i1',
       type: 'move',
-      payload: {},
-      ifInState: null,
       status: 'error',
       attempts: 1,
       createdAt: 10,
-      lastError: 'boom',
-      notBefore: null,
+      lastError: 'notFound',
     })
     await enqueue(db, {
-      accountId: ACC,
+      ...base,
       id: 'i3',
       type: 'destroy',
-      payload: {},
-      ifInState: null,
       status: 'done',
       attempts: 1,
       createdAt: 30,
       lastError: null,
-      notBefore: null,
+    })
+    await enqueue(db, {
+      ...base,
+      id: 'i4',
+      type: 'setKeywords',
+      status: 'inflight',
+      attempts: 0,
+      createdAt: 15,
+      lastError: null,
     })
 
-    const pending = await pendingOutbox(db, ACC)
-    expect(pending.map((row) => row.id)).toEqual(['i1', 'i2'])
+    // FIFO by createdAt; the `error` dead letter i1 and the terminal `done` i3 are excluded.
+    expect((await pendingOutbox(db, ACC)).map((row) => row.id)).toEqual(['i4', 'i2'])
+    expect((await failedOutbox(db, ACC)).map((row) => row.id)).toEqual(['i1'])
+  })
+
+  it('returns queued sends (pending sendEmail rows) oldest first', async () => {
+    const base = { accountId: ACC, payload: {}, ifInState: null, notBefore: null, lastError: null }
+    await enqueue(db, {
+      ...base,
+      id: 'send:b',
+      type: 'sendEmail',
+      status: 'pending',
+      attempts: 0,
+      createdAt: 20,
+    })
+    await enqueue(db, {
+      ...base,
+      id: 'send:a',
+      type: 'sendEmail',
+      status: 'pending',
+      attempts: 0,
+      createdAt: 10,
+    })
+    // Already dispatched (inflight) — no longer cancelable, so not a "queued" send.
+    await enqueue(db, {
+      ...base,
+      id: 'send:c',
+      type: 'sendEmail',
+      status: 'inflight',
+      attempts: 0,
+      createdAt: 5,
+    })
+    await enqueue(db, {
+      ...base,
+      id: 'i9',
+      type: 'setKeywords',
+      status: 'pending',
+      attempts: 0,
+      createdAt: 1,
+    })
+
+    expect((await queuedSends(db, ACC)).map((row) => row.id)).toEqual(['send:a', 'send:b'])
   })
 })
 

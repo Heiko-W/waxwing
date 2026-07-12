@@ -173,12 +173,20 @@ export function ComposerWindow({
       return
     }
     useComposerStore.getState().closeDraft(draft.id) // do NOT flush (that would race the send)
+    // Offline the message is QUEUED, not sending: say so, and say it stickily (a 10 s toast that
+    // claims "Sending message…" and vanishes would be a lie the user never gets to correct). The
+    // durable QueuedSends chip carries it from there; Undo stays available either way.
+    const offline = !navigator.onLine
+    const undo = {
+      label: t('compose.sendUndo'),
+      onAction: () => void draftSync.undoSend(draft.id),
+    }
+    if (offline) {
+      toast({ title: t('outbox.send.queuedOffline'), duration: 0, action: undo })
+      return
+    }
     if (result.undoMs > 0) {
-      toast({
-        title: t('compose.sendUndoToast'),
-        duration: result.undoMs,
-        action: { label: t('compose.sendUndo'), onAction: () => void draftSync.undoSend(draft.id) },
-      })
+      toast({ title: t('compose.sendUndoToast'), duration: result.undoMs, action: undo })
     }
   }, [draftSync, draft.id, undoSendSeconds, toast, t])
 

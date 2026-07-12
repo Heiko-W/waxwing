@@ -30,6 +30,13 @@
  * indexes automatically; omit a store entirely only to delete it deliberately. Because the replica
  * is a rebuildable cache, a breaking change may alternatively bump the DB *name* and let the old
  * database be garbage-collected, but that is a last resort — prefer an additive version bump.
+ *
+ * A purely ADDITIVE, NON-INDEXED, OPTIONAL row field needs **no** version bump: Dexie's schema
+ * declares indexes, not value shapes, so a new field simply appears on rows written from now on and
+ * reads as `undefined` on legacy rows (every reader must tolerate that). Precedent: `DraftRow.
+ * errorKind` (M2.8) and `OutboxRow.undo`/`conflict`/`nextAttemptAt`/`refreshes` (M3.3) — all served
+ * by the existing `[accountId+status]` / `[accountId+createdAt]` indexes. Bump the version only when
+ * an INDEX changes or stored data must be transformed.
  */
 
 import type {
@@ -193,8 +200,64 @@ export interface QueryCacheRow {
 export type OutboxStatus = 'pending' | 'inflight' | 'error' | 'done'
 
 /**
- * An idempotent JMAP `set` intent (FR-OFF-03). M1.2 defines the row; the replay engine, the
- * optimistic apply/rollback and `ifInState` conflict handling are M1.3 (online) / M3.3 (offline).
+ * Stable conflict codes (M3.3, FR-OFF-03) — a CODE, never prose: the row is persisted, so a stored
+ * user-visible string would defeat i18n (it would freeze the language at write time). The UI maps a
+ * code (plus the intent kind) to a translation key in `outbox/describe-conflict.ts`.
+ */
+export type ConflictCode =
+  | 'messageGone'
+  | 'folderGone'
+  | 'folderNotEmpty'
+  | 'forbidden'
+  | 'quota'
+  | 'tooLarge'
+  | 'invalid'
+  | 'stateConflict'
+  | 'sendRejected'
+  | 'sendInterrupted'
+  | 'serverRejected'
+
+/**
+ * The PERSISTED undo of an outbox intent's optimistic apply (M3.3). Data, not a closure: an
+ * in-memory rollback dies with the tab that dispatched it, so a reload — or a rejection replayed by
+ * the LEADER for an action a FOLLOWER dispatched — could never roll the replica back (ADR-009 debt).
+ * Stored on the row, it travels with the intent. Non-null on an `error` row ⇒ the rollback is still
+ * OWED and every replay pass retries it.
+ *
+ * Payloads stay tiny: a destroy re-fetches the (still-existing, because the destroy was REJECTED)
+ * envelopes from the server rather than storing them, which also self-corrects a PARTIAL rejection.
+ */
+export type OutboxUndo =
+  | { readonly kind: 'none' }
+  /** `setKeywords` + the `sendEmail` source flag: `had` = the ids that ALREADY carried the keyword. */
+  | { readonly kind: 'keywords'; readonly keyword: string; readonly had: Id[] }
+  /** `move`: `hadTo` = ids ALREADY in `to` (do not strip); `hadFrom` = ids that were in `from`. */
+  | {
+      readonly kind: 'mailboxIds'
+      readonly from: Id | null
+      readonly to: Id
+      readonly hadTo: Id[]
+      readonly hadFrom: Id[]
+    }
+  /** `destroyEmails`: re-fetch the rejected ids from the server (they still exist there). */
+  | { readonly kind: 'refetchEmails' }
+  | { readonly kind: 'mailbox'; readonly id: Id; readonly prior: MailboxRow | null }
+
+/** Why an outbox row is `error` (M3.3). Drives the conflict notice + the problems dialog. */
+export interface OutboxConflict {
+  readonly code: ConflictCode
+  /** The raw JMAP `SetError` / method-error `type` (details line + telemetry). */
+  readonly errorType: string | null
+  /** The server's `description`, verbatim — secondary detail only, NEVER the title. */
+  readonly detail: string | null
+  /** The objects that ACTUALLY failed (a subset of the intent's ids / its creation id). */
+  readonly ids: string[]
+  readonly at: number
+}
+
+/**
+ * An idempotent JMAP `set` intent (FR-OFF-03). M1.2 defines the row; M1.3 added online replay;
+ * M3.3 added durable undo, backoff and conflict classification (never silent data loss).
  */
 export interface OutboxRow {
   accountId: Id
@@ -210,6 +273,17 @@ export interface OutboxRow {
   lastError: string | null
   /** Epoch ms before which replay must NOT fire (M2.8 undo-send grace); `null` = replay immediately. */
   notBefore: number | null
+  /**
+   * Backoff gate (M3.3): epoch ms before which a RETRY may not fire. Orthogonal to {@link notBefore}
+   * (the undo-send grace) — overloading that one would make a twice-failed send look "undoable".
+   */
+  nextAttemptAt?: number | null
+  /** The persisted undo. Non-null ⇒ a rollback is still OWED; nulled the moment it is applied. */
+  undo?: OutboxUndo | null
+  /** Set together with `status: 'error'` (M3.3). */
+  conflict?: OutboxConflict | null
+  /** Bounded `stateMismatch` auto-refresh count (M3.3); persisted so the bound survives a reload. */
+  refreshes?: number
 }
 
 /** Local-only per-account preference (collapsed tree state, per-folder prefs, allowlists — FR-MBX-04). */

@@ -37,6 +37,27 @@ describe('errorFromResponse — carries Retry-After on a 429 (M2.7)', () => {
   })
 })
 
+describe('errorFromResponse — carries Retry-After on a NON-problem body too (M3.3)', () => {
+  it('exposes retryAfterMs on a plain JmapHttpError', async () => {
+    // A 429 whose body is not a problem document becomes a bare JmapHttpError — the outbox backoff
+    // still has to see the server's hint, so it must be carried on BOTH error classes.
+    const response = new Response('slow down', {
+      status: 429,
+      headers: { 'content-type': 'text/plain', 'Retry-After': '45' },
+    })
+    const error = (await errorFromResponse(response)) as JmapHttpError
+    expect(error).toBeInstanceOf(JmapHttpError)
+    expect(error.status).toBe(429)
+    expect(error.retryAfterMs).toBe(45_000)
+  })
+
+  it('leaves retryAfterMs undefined when the header is absent', async () => {
+    const response = new Response('boom', { status: 503 })
+    const error = (await errorFromResponse(response)) as JmapHttpError
+    expect(error.retryAfterMs).toBeUndefined()
+  })
+})
+
 describe('errorFromResponse — request-level (RFC 8620 §3.6.1)', () => {
   it('maps an application/problem+json body to JmapProblemError with type + limit', async () => {
     const response = new Response(

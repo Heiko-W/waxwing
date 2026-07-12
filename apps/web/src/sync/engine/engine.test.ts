@@ -507,7 +507,43 @@ describe('SyncEngine — undo-send (M2.8)', () => {
     await engine.stop()
   })
 
-  it('cancelSend returns false once the grace has elapsed / the row is gone', async () => {
+  /**
+   * M3.3 (Q5): the ONLY safety property is "the submission has not been dispatched" — which is
+   * exactly `status === 'pending'`, enforced transactionally against replay's claim-to-`inflight`.
+   * The old `notBefore` check added no safety and made an offline-queued or backed-off send
+   * (whose grace elapsed long ago, but which provably has NOT been sent) uncancelable.
+   */
+  it('cancelSend still works after the grace has elapsed, while the row is pending', async () => {
+    const engine = new SyncEngine(
+      fixedClockDeps(fakePort({ emails: [], setEmails: emptySet }), new FakePush()),
+    )
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+    await db.drafts.put(sendingDraft())
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'send:d1',
+      type: 'sendEmail',
+      payload: intent,
+      ifInState: null,
+      status: 'pending',
+      attempts: 3,
+      createdAt: 1,
+      lastError: 'serverUnavailable',
+      notBefore: NOW - 1000, // grace long elapsed
+      nextAttemptAt: NOW + 60_000, // and backed off
+      undo: { kind: 'none' },
+      conflict: null,
+      refreshes: 0,
+    })
+
+    expect(await engine.cancelSend('send:d1')).toBe(true)
+    expect(await db.outbox.get([ACC, 'send:d1'])).toBeUndefined()
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('pending') // editable again
+    await engine.stop()
+  })
+
+  it('cancelSend returns false once the row is inflight (dispatched) or gone', async () => {
     const engine = new SyncEngine(
       fixedClockDeps(fakePort({ emails: [], setEmails: emptySet }), new FakePush()),
     )
@@ -515,18 +551,18 @@ describe('SyncEngine — undo-send (M2.8)', () => {
     await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
     await db.outbox.put({
       accountId: ACC,
-      id: 'draft:d1',
+      id: 'send:d1',
       type: 'sendEmail',
       payload: intent,
       ifInState: null,
-      status: 'pending',
+      status: 'inflight', // replay claimed it — the submission is in the air
       attempts: 0,
       createdAt: 1,
       lastError: null,
-      notBefore: NOW - 1000, // grace already elapsed
+      notBefore: null,
     })
-    expect(await engine.cancelSend('draft:d1')).toBe(false)
-    expect(await db.outbox.get([ACC, 'draft:d1'])).toBeDefined() // untouched
+    expect(await engine.cancelSend('send:d1')).toBe(false)
+    expect(await db.outbox.get([ACC, 'send:d1'])).toBeDefined() // untouched
     expect(await engine.cancelSend('nope')).toBe(false)
     await engine.stop()
   })
@@ -550,6 +586,168 @@ describe('SyncEngine — search (M3.1)', () => {
     expect((await getQueryCache(db, ACC, key))?.ids).toEqual(['e1', 'e2'])
 
     engine.unwatchQuery(key) // no throw; the search window is no longer kept fresh
+    await engine.stop()
+  })
+})
+
+describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
+  /** A port whose `Email/set` rejects every object with the given SetError type. */
+  function rejectingPort(type: string): JmapPort & { setEmailsCalls: unknown[] } {
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    return {
+      ...base,
+      async setEmails(args) {
+        base.setEmailsCalls.push(args)
+        const update = (args as { update?: Record<string, unknown> }).update ?? {}
+        const notUpdated: Record<string, { type: string }> = {}
+        for (const id of Object.keys(update)) notUpdated[id] = { type }
+        return { ...emptySet(), notUpdated }
+      },
+    }
+  }
+
+  async function leaderWith(port: JmapPort): Promise<SyncEngine> {
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+    return engine
+  }
+
+  it('counts pending vs failed separately — a dead letter never inflates pendingActions (D4)', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    const engine = await leaderWith(rejectingPort('forbidden'))
+
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+
+    expect(engine.getStatus().pendingActions).toBe(0) // the dead letter is NOT "pending"
+    expect(engine.getStatus().stuckActions).toBe(0)
+    expect((await db.emails.get([ACC, 'e1']))?.keywords).toEqual({}) // rolled back from the row's undo
+    await engine.stop()
+  })
+
+  it('retryFailed re-applies the optimistic change, arms a fresh undo and requeues', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    let reject = true
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setEmails() {
+        if (reject) return { ...emptySet(), notUpdated: { e1: { type: 'forbidden' } } }
+        return { ...emptySet(), updated: ['e1'] }
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+
+    reject = false
+    expect(await engine.retryFailed('i1')).toBe(true)
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect((await db.emails.get([ACC, 'e1']))?.keywords).toEqual({ $seen: true }) // re-applied + confirmed
+    expect(engine.getStatus().failedActions).toBe(0)
+    await engine.stop()
+  })
+
+  it('retryFailed BAILS while the rollback is still owed (else the change is applied twice)', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    const engine = await leaderWith(rejectingPort('forbidden'))
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // Force the "rollback still owed" state (a re-fetch that could not reach the server).
+    await db.outbox.update([ACC, 'i1'], { undo: { kind: 'keywords', keyword: '$seen', had: [] } })
+
+    expect(await engine.retryFailed('i1')).toBe(false)
+    expect((await db.outbox.get([ACC, 'i1']))?.status).toBe('error') // untouched
+    await engine.stop()
+  })
+
+  it('never retries a rejected send (EmailSubmission is not idempotent)', async () => {
+    const engine = await leaderWith(fakePort({ emails: [], setEmails: emptySet }))
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'send:d1',
+      type: 'sendEmail',
+      payload: { kind: 'sendEmail', localId: 'd1', source: null },
+      ifInState: null,
+      status: 'error',
+      attempts: 1,
+      createdAt: 1,
+      lastError: 'forbiddenToSend',
+      notBefore: null,
+      undo: null,
+      conflict: {
+        code: 'sendRejected',
+        errorType: 'forbiddenToSend',
+        detail: null,
+        ids: [],
+        at: 1,
+      },
+    })
+
+    expect(await engine.retryFailed('send:d1')).toBe(false)
+    expect(await db.outbox.get([ACC, 'send:d1'])).toBeDefined()
+    await engine.stop()
+  })
+
+  it('discardFailed / discardAllFailed drop dead letters once their rollback has run', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} }), email('e2', { keywords: {} })])
+    const engine = await leaderWith(rejectingPort('forbidden'))
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e2'], keyword: '$seen', value: true },
+      { id: 'i2' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 2)
+
+    expect(await engine.discardFailed('i1')).toBe(true)
+    expect(engine.getStatus().failedActions).toBe(1)
+    await engine.discardAllFailed()
+    expect(engine.getStatus().failedActions).toBe(0)
+    expect(await db.outbox.count()).toBe(0)
+    await engine.stop()
+  })
+
+  it('a transient delta failure does not starve the outbox (the replay still runs)', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    let deltaFails = true
+    let sets = 0
+    const port: JmapPort = {
+      ...base,
+      async getMailboxes(ids) {
+        if (deltaFails) throw new TypeError('fetch failed')
+        return base.getMailboxes(ids)
+      },
+      async setEmails() {
+        sets += 1
+        return { ...emptySet(), updated: ['e1'] }
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error') // the delta failed…
+
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    // …but the action still replays: the outbox is not held hostage by a broken delta.
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect(sets).toBe(1)
+    deltaFails = false
     await engine.stop()
   })
 })

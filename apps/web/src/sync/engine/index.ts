@@ -4,8 +4,25 @@
  * the connected shell; {@link useEngineStatus} feeds the chrome status region.
  */
 
+// The conflict/undo row types live with the schema (`../db`) but are part of the engine's contract.
+export type { ConflictCode, OutboxConflict, OutboxUndo } from '../db'
 export { type WindowSpec, windowQueryKey } from './backfill'
-export { ENGINE_CHANNEL, EngineBus } from './bus'
+export {
+  backoffDelayMs,
+  DEFAULT_OUTBOX_BACKOFF,
+  MAX_REFRESHES,
+  type OutboxBackoff,
+  RETRY_AFTER_CAP_MS,
+  STUCK_AFTER_ATTEMPTS,
+} from './backoff'
+export { ENGINE_CHANNEL, EngineBus, type EngineBusMessage } from './bus'
+export {
+  classifySetError,
+  classifyThrown,
+  isAuthExpiry,
+  type ReplayVerdict,
+  SetErrorTypes,
+} from './conflict'
 export {
   createSyncEngine,
   getActiveEngine,

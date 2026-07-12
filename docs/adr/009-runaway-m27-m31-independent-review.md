@@ -68,6 +68,12 @@ remediation commit:
   their WP; read-only review agents (findings only, no write/commit) are used to audit unreviewed
   work. The runaway is the reason this ADR exists — future multi-WP drift should be caught at the
   first `git log` review, not after five packages.
-- **Deferred (unchanged, tracked in their WP sections):** inline-image preview **re-download on
-  reopen** after a close/reload (previews are now freed on close); the multi-tab follower-send wake
-  latency and persisted-rollback reconciliation belong to **M3.3** (offline/conflict hardening).
+- **Deferred (tracked in their WP sections):** inline-image preview **re-download on reopen** after a
+  close/reload (previews are now freed on close) — still open.
+- **DISCHARGED by M3.3 (2026-07-12):** the two debts this ADR deferred are done. The optimistic
+  rollback is now a **persisted `OutboxUndo` value on the outbox row** (the in-memory closure map is
+  deleted), so it survives a reload and a tab hand-over — and `status==='error' && undo != null`
+  is an explicit "rollback still owed" state that every replay pass drains. A **follower's dispatch
+  now wakes the leader** over the `EngineBus` (`wake` message) instead of waiting up to 60 s for the
+  next sweep, and because the undo travels with the row the leader can roll back a follower-dispatched
+  action correctly. The `dispatch` caveat comment this ADR prompted has been removed.
