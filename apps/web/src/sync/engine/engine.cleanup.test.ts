@@ -46,7 +46,7 @@ function makeEngine(
     port,
     session: sessionWithCap(cap),
     auth: { scheme: 'bearer', authorization: () => 'x' },
-    config: { cacheDays: 30 },
+    config: { cacheDays: 30, maxStorageMB: 512 },
     clock: { now: () => 1, setTimeout: () => 0, clearTimeout: () => {} },
     locks: { request: () => Promise.resolve() } as unknown as SyncEngineDeps['locks'],
     createBus: () => ({ postMessage() {}, close() {}, onmessage: null }),

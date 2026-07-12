@@ -58,6 +58,8 @@ function textBodyRow(id: string, text: string): EmailBodyRow {
     hasAttachment: false,
     fetchedAt: 1,
     lastAccessedAt: 1,
+    bytes: 0,
+    ablob: [],
   }
 }
 
@@ -74,6 +76,8 @@ function htmlRemoteRow(id: string): EmailBodyRow {
     hasAttachment: false,
     fetchedAt: 1,
     lastAccessedAt: 1,
+    bytes: 0,
+    ablob: [],
   }
 }
 

@@ -10,11 +10,11 @@ import type { EmailBodyPart, Id } from '@waxwing/jmap'
 import { Download } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSession } from '../app/session/context'
 import { formatBytes } from '../i18n/formatters'
 import { Button, IconButton, Spinner } from '../ui'
 import { attachmentIcon } from './attachment-icon'
 import styles from './reading.module.css'
+import { useBlobFetcher } from './use-blob'
 
 export interface AttachmentListProps {
   readonly accountId: Id
@@ -33,7 +33,7 @@ function isPreviewable(type: string): boolean {
 
 export function AttachmentList({ accountId, attachments }: AttachmentListProps) {
   const { t } = useTranslation()
-  const { getClient } = useSession()
+  const fetchBlob = useBlobFetcher(accountId)
   // One object URL per blob, reused across preview toggles and downloads and revoked once on unmount
   // — so re-opening a preview neither re-downloads nor leaks a superseded blob: URL.
   const urlCacheRef = useRef(new Map<Id, string>())
@@ -54,15 +54,14 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
     async (part: EmailBodyPart & { blobId: Id }): Promise<string | null> => {
       const cached = urlCacheRef.current.get(part.blobId)
       if (cached !== undefined) return cached
-      const client = getClient()
-      if (client === null) return null
-      const name = part.name ?? 'attachment'
-      const bytes = await client.download(accountId, part.blobId, part.type, name)
-      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: part.type }))
+      // M3.4: through the write-through cache — a re-open (or an offline open) hits the replica.
+      const blob = await fetchBlob({ blobId: part.blobId, type: part.type, name: part.name })
+      if (blob === null) return null
+      const url = URL.createObjectURL(blob)
       urlCacheRef.current.set(part.blobId, url)
       return url
     },
-    [accountId, getClient],
+    [fetchBlob],
   )
 
   const saveOne = useCallback(

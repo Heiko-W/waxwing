@@ -395,7 +395,7 @@ function makeHarness(
     // The cleanup chunk size = the server's advertised `maxObjectsInSet` (fallback 500).
     session: { capabilities: core } as unknown as Session,
     auth: { scheme: 'bearer', authorization: () => 'x' },
-    config: { cacheDays: 30 },
+    config: { cacheDays: 30, maxStorageMB: 512 },
     clock: time.clock,
     locks: immediateLock,
     createBus: () => hub.create(),

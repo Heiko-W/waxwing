@@ -58,6 +58,50 @@
   font-size: var(--waxwing-text-sm);
 }
 
+/* Offline & storage (M3.4). */
+.meter {
+  inline-size: 100%;
+  block-size: 0.5rem;
+  appearance: none;
+  border: none;
+  border-radius: var(--waxwing-radius-full);
+  background: var(--waxwing-surface-2);
+  overflow: hidden;
+}
+
+.meter::-webkit-progress-bar {
+  background: var(--waxwing-surface-2);
+}
+
+.meter::-webkit-progress-value {
+  background: var(--waxwing-accent);
+}
+
+.meter::-moz-progress-bar {
+  background: var(--waxwing-accent);
+}
+
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  max-inline-size: 22rem;
+  font-size: var(--waxwing-text-sm);
+}
+
+.breakdownRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--waxwing-space-3);
+}
+
+.breakdownRow dd {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 40em) {
   .page {
     padding: var(--waxwing-space-4);

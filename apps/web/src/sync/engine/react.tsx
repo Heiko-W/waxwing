@@ -41,6 +41,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
   const { connected, getAuthProvider, reportAuthExpired } = useSession()
   const config = useConfig()
   const cacheDays = config.offline.cacheDays
+  const maxStorageMB = config.offline.maxStorageMB
 
   useEffect(() => {
     if (!connected || !canRunEngine()) return
@@ -51,7 +52,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
       port: createJmapPort(connected.client, connected.accountId),
       session: connected.client.session,
       auth,
-      config: { cacheDays },
+      config: { cacheDays, maxStorageMB },
       onAuthExpired: reportAuthExpired,
     })
     setActiveEngine(engine)
@@ -60,7 +61,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
       setActiveEngine(null)
       void engine.stop()
     }
-  }, [connected, getAuthProvider, reportAuthExpired, cacheDays])
+  }, [connected, getAuthProvider, reportAuthExpired, cacheDays, maxStorageMB])
 
   if (!connected) return children
   return (

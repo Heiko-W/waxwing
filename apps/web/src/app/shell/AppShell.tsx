@@ -20,6 +20,7 @@ import { MailScreen } from './MailScreen'
 import { PrimaryNav } from './PrimaryNav'
 import { ReauthDialog } from './ReauthDialog'
 import styles from './shell.module.css'
+import { useStorageFullNotifier } from './use-storage-notifier'
 
 const ContactsPage = lazy(() => import('../../contacts/ContactsPage'))
 const SettingsPage = lazy(() => import('../../settings/SettingsPage'))
@@ -44,6 +45,8 @@ export function AppShell({ config }: AppShellProps) {
   useSendErrorNotifier()
   // Surface an offline action the server rejected on replay (gentle warning toast + one action).
   useConflictNotifier()
+  // Surface a cache write the browser refused for lack of space (mail is no longer kept offline).
+  useStorageFullNotifier()
 
   // Canonical redirect: the bare app root resolves to the mail area.
   useEffect(() => {

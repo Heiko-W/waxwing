@@ -39,6 +39,8 @@ function body(over: Partial<EmailBodyRow> = {}): EmailBodyRow {
     hasAttachment: false,
     fetchedAt: 1,
     lastAccessedAt: 1,
+    bytes: 0,
+    ablob: [],
     ...over,
   }
 }

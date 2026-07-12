@@ -14,7 +14,7 @@ import type { DraftRow, ReplicaDb } from '../db'
 import { getQueryCache, putEmails } from '../repo'
 import { email, freshDb } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
-import { SyncEngine, type SyncEngineDeps } from './engine'
+import { MAINTENANCE_INTERVAL_MS, SyncEngine, type SyncEngineDeps } from './engine'
 import type { LockManagerLike } from './leader'
 import { getEngineStatus, setEngineStatus } from './status'
 import {
@@ -236,7 +236,7 @@ function makeDeps(db: ReplicaDb, port: JmapPort, push: FakePush): SyncEngineDeps
     port,
     session: {} as Session,
     auth: { scheme: 'bearer', authorization: () => 'x' },
-    config: { cacheDays: 30 },
+    config: { cacheDays: 30, maxStorageMB: 512 },
     clock,
     locks: immediateLock,
     createBus: noopBus,
@@ -568,6 +568,171 @@ describe('SyncEngine — undo-send (M2.8)', () => {
   })
 })
 
+describe('SyncEngine — cache maintenance (M3.4)', () => {
+  /** A lock that is never granted — a FOLLOWER tab (it rejects on abort, exactly like Web Locks). */
+  const contendedLock: LockManagerLike = {
+    request(_name, options) {
+      return new Promise((_resolve, reject) => {
+        const abort = () => reject(new DOMException('aborted', 'AbortError'))
+        if (options.signal?.aborted) abort()
+        else options.signal?.addEventListener('abort', abort)
+      })
+    },
+  }
+
+  /** A clock the test drives; the safety sweep never fires, so nothing runs behind our back. */
+  function virtualClock(start = 1_000) {
+    let now = start
+    const clock: EngineClock = {
+      now: () => now,
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    }
+    return {
+      clock,
+      advance(ms: number): void {
+        now += ms
+      },
+    }
+  }
+
+  /** A body row with no envelope — an ORPHAN, which every pass drops unconditionally. */
+  async function seedOrphan(id: string): Promise<void> {
+    await db.emailBodies.put({
+      accountId: ACC,
+      id,
+      bodyValues: {},
+      bodyStructure: {} as never,
+      textBody: [],
+      htmlBody: [],
+      attachments: [],
+      hasAttachment: false,
+      fetchedAt: 0,
+      lastAccessedAt: 0,
+      bytes: 1024,
+      ablob: [],
+    })
+  }
+
+  const orphanGone = async (id: string): Promise<boolean> =>
+    (await db.emailBodies.get([ACC, id])) === undefined
+
+  function maintenanceDeps(
+    time: ReturnType<typeof virtualClock>,
+    push: FakePush,
+    over: Partial<SyncEngineDeps> = {},
+  ): SyncEngineDeps {
+    const port = fakePort({ emails: [], setEmails: emptySet })
+    return {
+      ...makeDeps(db, port, push),
+      clock: time.clock,
+      estimate: async () => null,
+      ...over,
+    }
+  }
+
+  it('runs ONCE after the first leader sync, then honours the interval gate', async () => {
+    const time = virtualClock()
+    const push = new FakePush()
+    const engine = new SyncEngine(maintenanceDeps(time, push))
+    await seedOrphan('first')
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await waitFor(() => orphanGone('first')) // the first pass after taking leadership always runs
+
+    // A second sync a minute later must NOT evict again — cache policy is not a per-sweep job.
+    await seedOrphan('second')
+    time.advance(60_000)
+    push.fireStateChange()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await flush()
+    expect(await orphanGone('second')).toBe(false)
+
+    // …but once the interval has elapsed, the next sync does run one.
+    time.advance(MAINTENANCE_INTERVAL_MS)
+    push.fireStateChange()
+    await waitFor(() => orphanGone('second'))
+
+    await engine.stop()
+  })
+
+  it('a FOLLOWER never runs a periodic pass (single-writer discipline)', async () => {
+    const time = virtualClock()
+    const engine = new SyncEngine(maintenanceDeps(time, new FakePush(), { locks: contendedLock }))
+    await seedOrphan('untouched')
+
+    engine.start()
+    await flush()
+    expect(engine.getStatus().isLeader).toBe(false)
+    expect(await engine.runMaintenance()).toBeNull() // refused: this tab holds no lock
+    expect(await orphanGone('untouched')).toBe(false)
+
+    // A USER-forced pass is still allowed on any tab: the deletes are idempotent and transactional,
+    // and a tab that just hit a full disk must be able to do something about it.
+    const result = await engine.runMaintenance({ force: true })
+    expect(result?.evicted.bodyIds).toEqual(['untouched'])
+    expect(await orphanGone('untouched')).toBe(true)
+
+    await engine.stop()
+  })
+
+  it('a forced pass bypasses the interval gate', async () => {
+    const time = virtualClock()
+    const engine = new SyncEngine(maintenanceDeps(time, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+
+    await seedOrphan('now-please')
+    expect(await engine.runMaintenance()).toBeNull() // gated — the initial pass just ran
+    expect(await orphanGone('now-please')).toBe(false)
+
+    const forced = await engine.runMaintenance({ force: true })
+    expect(forced?.evicted.bodyIds).toEqual(['now-please'])
+
+    await engine.stop()
+  })
+
+  it('stop() awaits an in-flight pass, so a wipe cannot race it into a closed database', async () => {
+    const time = virtualClock()
+    let release = (): void => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    // The gate only closes AFTER the engine has settled, so the initial leader pass is not blocked.
+    let blocking = false
+    let passFinished = false
+    const engine = new SyncEngine(
+      maintenanceDeps(time, new FakePush(), {
+        estimate: async () => {
+          if (blocking) await gate
+          return null
+        },
+      }),
+    )
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+
+    blocking = true
+    const pass = engine.runMaintenance({ force: true }).then(() => {
+      passFinished = true
+    })
+    await flush()
+
+    let finishedBeforeStopResolved = false
+    const stopping = engine.stop().then(() => {
+      finishedBeforeStopResolved = passFinished
+    })
+
+    release()
+    await pass
+    await stopping
+    // stop() cannot resolve while a pass is still deleting rows — otherwise the sign-out path's
+    // wipeReplica() would delete the database out from under it (DatabaseClosedError).
+    expect(finishedBeforeStopResolved).toBe(true)
+  })
+})
+
 describe('SyncEngine — search (M3.1)', () => {
   it('watchQuery backfills a search window into queryCache; unwatchQuery drops the watch', async () => {
     const port = fakePort({ emails: ['e1', 'e2'], setEmails: emptySet })
@@ -584,6 +749,10 @@ describe('SyncEngine — search (M3.1)', () => {
     expect(engine.watchQuery(spec)).toBe(key) // idempotent — same canonical key
     await waitFor(async () => (await getQueryCache(db, ACC, key)) !== undefined)
     expect((await getQueryCache(db, ACC, key))?.ids).toEqual(['e1', 'e2'])
+    // The window row is written BEFORE its envelopes (M3.4: it is what makes those ids un-prunable),
+    // so its presence no longer means the backfill is finished. Wait for the envelopes themselves, or
+    // the test tears the database down underneath a backfill that is still running.
+    await waitFor(async () => (await db.emails.where('accountId').equals(ACC).count()) === 2)
 
     engine.unwatchQuery(key) // no throw; the search window is no longer kept fresh
     await engine.stop()
@@ -652,6 +821,50 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     await waitFor(async () => (await db.outbox.count()) === 0)
     expect((await db.emails.get([ACC, 'e1']))?.keywords).toEqual({ $seen: true }) // re-applied + confirmed
     expect(engine.getStatus().failedActions).toBe(0)
+    await engine.stop()
+  })
+
+  /**
+   * `retryFailed` re-applies the optimistic change INSIDE an `rw` transaction, and a destroy's
+   * optimistic apply is `deleteEmails` — which (M3.4) also cascades to `emailBodies`. Dexie requires a
+   * sub-transaction's tables to be a SUBSET of its parent's, so the parent must name `emailBodies` too
+   * or every retried destroy throws.
+   */
+  it('retryFailed works for a destroy, whose optimistic apply cascades into emailBodies (M3.4)', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    await db.emailBodies.put({
+      accountId: ACC,
+      id: 'e1',
+      bodyValues: {},
+      bodyStructure: {} as never,
+      textBody: [],
+      htmlBody: [],
+      attachments: [],
+      hasAttachment: false,
+      fetchedAt: 1,
+      lastAccessedAt: 1,
+      bytes: 2048,
+      ablob: [],
+    })
+    let reject = true
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setEmails() {
+        if (reject) return { ...emptySet(), notDestroyed: { e1: { type: 'forbidden' } } }
+        return { ...emptySet(), destroyed: ['e1'] }
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch({ kind: 'destroyEmails', emailIds: ['e1'] }, { id: 'i1' })
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    expect(await db.emails.get([ACC, 'e1'])).toBeDefined() // rolled back (re-fetched)
+
+    reject = false
+    expect(await engine.retryFailed('i1')).toBe(true)
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect(await db.emails.get([ACC, 'e1'])).toBeUndefined()
+    expect(await db.emailBodies.get([ACC, 'e1'])).toBeUndefined() // and its body went with it
     await engine.stop()
   })
 

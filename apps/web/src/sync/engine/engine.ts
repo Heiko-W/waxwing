@@ -25,7 +25,13 @@ import {
   type SearchSnippet,
   type Session,
 } from '@waxwing/jmap'
-import type { ReplicaDb } from '../db'
+import {
+  collectBodyBlobIds,
+  type EmailBodyRow,
+  estimateBodyBytes,
+  type ReplicaDb,
+  scopeKey,
+} from '../db'
 import { canonicalQueryKey, type QuerySpec } from '../query-key'
 import {
   failedOutbox,
@@ -37,6 +43,7 @@ import {
   putEmails,
   putQueryCache,
 } from '../repo'
+import { browserEstimate, type EstimateFn, isQuotaExceeded, reportStorageFull } from '../storage'
 import {
   backfillMailbox,
   backfillQuery,
@@ -49,6 +56,7 @@ import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { isAuthExpiry } from './conflict'
 import { reconcileQuery, syncEmails, syncIdentities, syncMailboxes, syncThreads } from './delta'
 import { type LockManagerLike, startLeaderElection } from './leader'
+import { type MaintenanceResult, runMaintenance, withQuotaRecovery } from './maintenance'
 import {
   applyOptimistic,
   applyUndo,
@@ -73,14 +81,22 @@ const FULL_SWEEP_EVERY = 5
  */
 const RECONNECT_DEBOUNCE_MS = 750
 
+/**
+ * How often the periodic cache-maintenance pass may run (M3.4). Decoupled from the 60 s safety sweep:
+ * eviction is bookkeeping, not freshness, and running it every minute would be pure churn.
+ */
+export const MAINTENANCE_INTERVAL_MS = 5 * 60_000
+
 export interface SyncEngineDeps {
   readonly db: ReplicaDb
   readonly port: JmapPort
   /** The JMAP session, for the push channel. */
   readonly session: Session
   readonly auth: AuthProvider
-  readonly config: { readonly cacheDays: number }
+  readonly config: { readonly cacheDays: number; readonly maxStorageMB: number }
   readonly clock: EngineClock
+  /** Origin storage estimate (M3.4); defaults to {@link browserEstimate}. Injected in tests. */
+  readonly estimate?: EstimateFn
   readonly locks: LockManagerLike
   readonly createBus: () => BroadcastChannelLike
   readonly createPush: (
@@ -140,12 +156,20 @@ export class SyncEngine {
   /** The in-flight sync pass, so {@link stop} can await it before the caller wipes the replica. */
   private activeSync: Promise<void> | undefined
 
+  /** The message the reading pane has open (M3.4) — never evicted out from under the reader. */
+  private lastBodyFetchId: Id | null = null
+  private lastMaintenanceAt = 0
+  /** The in-flight maintenance pass, coalesced exactly like {@link replaying} and awaited by {@link stop}. */
+  private maintaining: Promise<MaintenanceResult | null> | undefined
+  private readonly estimate: EstimateFn
+
   constructor(private readonly deps: SyncEngineDeps) {
     this.db = deps.db
     this.port = deps.port
     this.accountId = deps.port.accountId
     this.clock = deps.clock
     this.random = deps.random ?? Math.random
+    this.estimate = deps.estimate ?? browserEstimate
     this.status = { ...INITIAL_ENGINE_STATUS, online: deps.isOnline() }
   }
 
@@ -204,6 +228,9 @@ export class SyncEngine {
     // would throw DatabaseClosedError and strand a bogus 'error' status into the next session).
     await this.activeSync?.catch(() => {})
     await this.replaying?.catch(() => {})
+    // Same for a maintenance pass: it deletes rows in chunked transactions, so a wipeReplica() racing
+    // it would abort mid-pass with a DatabaseClosedError (M3.4).
+    await this.maintaining?.catch(() => {})
     await this.leaderPromise?.catch(() => {})
     // Reset the shared status store so a fresh login never inherits this session's phase.
     this.status = { ...INITIAL_ENGINE_STATUS, online: this.deps.isOnline() }
@@ -297,6 +324,10 @@ export class SyncEngine {
       'rw',
       this.db.outbox,
       this.db.emails,
+      // `emailBodies` is in scope because a destroy's optimistic apply is `deleteEmails`, which
+      // cascades to the bodies (M3.4) — and Dexie requires a sub-transaction's tables to be a SUBSET
+      // of its parent's, so omitting it would make every retried destroy throw SubTransactionError.
+      this.db.emailBodies,
       this.db.mailboxes,
       async (): Promise<OutboxIntent | null> => {
         const current = await this.db.outbox.get([this.accountId, id])
@@ -469,6 +500,11 @@ export class SyncEngine {
     try {
       await backfillQuery(this.port, this.db, this.accountId, spec, { now: this.clock.now() })
     } catch {
+      // Shutdown is not a failed search. `stop()` does not await an in-flight backfill, so a sign-out
+      // mid-search leaves this one running against a replica that is being wiped: every further write
+      // throws `DatabaseClosedError`, and the recovery write below would throw too — an unhandled
+      // rejection, and a pointless one. Bail out instead.
+      if (this.stopController.signal.aborted) return
       // A rejected search filter (e.g. a server without full-text support) must not raise an
       // unhandled rejection OR leave the list spinning forever: write an empty window so it shows
       // "no results", and — the key stays watched — the next reconcile self-heals a transient error.
@@ -511,14 +547,111 @@ export class SyncEngine {
    * Fetch a message's full body (values/structure/attachments) into the replica when the reading
    * pane opens it (M1.8, FR-OFF-02: cached until LRU eviction). Already-cached bodies just get their
    * `lastAccessedAt` bumped (LRU touch) rather than re-fetched, so re-opens are offline-instant.
+   *
+   * M3.4: the opened message is recorded as {@link lastBodyFetchId} (it must never be evicted while
+   * the reader is looking at it), and a body write rejected for lack of space triggers ONE forced
+   * maintenance pass for exactly the bytes it needs and ONE retry.
+   *
+   * RETURNS the body when — and only when — it could NOT be persisted (the disk is full even after a
+   * forced eviction pass). The reading pane is local-first: it renders from a liveQuery over
+   * `emailBodies`, so a body that never lands in the replica would otherwise leave it spinning
+   * FOREVER. Handing the caller the in-memory row keeps "caching is best-effort and must never fail
+   * the read" actually true instead of merely intended. `null` = "it is in the replica, read it there".
    */
-  async fetchBody(emailId: Id): Promise<void> {
+  async fetchBody(emailId: Id): Promise<EmailBodyRow | null> {
     const now = this.clock.now()
+    this.lastBodyFetchId = emailId
     const existing = await this.db.emailBodies.get([this.accountId, emailId])
     if (existing !== undefined) {
       await this.db.emailBodies.update([this.accountId, emailId], { lastAccessedAt: now })
-      return
+      return null
     }
+    const { list } = await this.port.getEmailBodies([emailId])
+    let unstored: EmailBodyRow | null = null
+    for (const body of list) {
+      const row = { accountId: this.accountId, ...body, fetchedAt: now, lastAccessedAt: now }
+      try {
+        await withQuotaRecovery(
+          () => putEmailBody(this.db, row),
+          (needBytes) => this.runMaintenance({ force: true, needBytes }),
+          estimateBodyBytes(body),
+        )
+      } catch (error) {
+        if (!isQuotaExceeded(error)) throw error
+        reportStorageFull(now)
+        if (body.id === emailId) {
+          unstored = {
+            ...row,
+            bytes: estimateBodyBytes(body),
+            ablob: collectBodyBlobIds(row).map((blobId) => scopeKey(this.accountId, blobId)),
+          }
+        }
+      }
+    }
+    return unstored
+  }
+
+  /**
+   * Run cache maintenance (M3.4): reap stale windows, evict to the low watermark, prune aged-out
+   * envelopes, top up the pinned folders. Never throws.
+   *
+   * PERIODIC passes are leader-only — single-writer discipline: two tabs planning eviction against the
+   * same replica would each measure a usage the other is already changing. A FORCED pass (the user's
+   * "Free up space now", or the quota-recovery path) runs on any tab: its deletes are idempotent and
+   * transactional, and a follower that just hit a full disk must be able to do something about it.
+   *
+   * A periodic pass COALESCES (a concurrent caller joins it), but a FORCED one must not: the in-flight
+   * pass was planned with `needBytes: 0` and its eviction stage has very likely already run, so joining
+   * it would resolve without freeing the bytes the caller is waiting for — the retry would hit
+   * `QuotaExceededError` again and the user would be told the disk is full while megabytes of evictable
+   * rows sat there. A forced pass therefore waits its turn and then runs a fresh one.
+   */
+  async runMaintenance(
+    options: { force?: boolean; needBytes?: number } = {},
+  ): Promise<MaintenanceResult | null> {
+    if (this.stopController.signal.aborted) return null
+    if (options.force !== true && this.maintaining !== undefined) return this.maintaining
+    while (this.maintaining !== undefined) await this.maintaining
+    if (this.stopController.signal.aborted) return null
+    const now = this.clock.now()
+    if (!options.force) {
+      if (!this.isLeader) return null
+      // `lastMaintenanceAt === 0` ⇒ this tab has never run one: the first pass after taking
+      // leadership always maintains, whatever the wall clock says.
+      if (this.lastMaintenanceAt !== 0 && now - this.lastMaintenanceAt < MAINTENANCE_INTERVAL_MS) {
+        return null
+      }
+    }
+    const pass = runMaintenance({
+      db: this.db,
+      accountId: this.accountId,
+      config: {
+        cacheDays: this.deps.config.cacheDays,
+        maxStorageMB: this.deps.config.maxStorageMB,
+      },
+      estimate: this.estimate,
+      now,
+      watchedKeys: this.watched,
+      lastBodyFetchId: this.lastBodyFetchId,
+      signal: this.stopController.signal,
+      ...(options.needBytes === undefined ? {} : { needBytes: options.needBytes }),
+      // Prefetching a pinned folder is the one stage that talks to the server: leader + online only.
+      ...(this.isLeader && this.deps.isOnline()
+        ? { fetchBody: (id: Id) => this.prefetchBody(id) }
+        : {}),
+    }).catch(() => null)
+    this.maintaining = pass
+    try {
+      return await pass
+    } finally {
+      this.maintaining = undefined
+      this.lastMaintenanceAt = this.clock.now()
+    }
+  }
+
+  /** Fetch one body for the pinned-folder prefetch — a plain write, with no quota-recovery re-entry. */
+  private async prefetchBody(emailId: Id): Promise<void> {
+    const now = this.clock.now()
     const { list } = await this.port.getEmailBodies([emailId])
     for (const body of list) {
       await putEmailBody(this.db, {
@@ -795,6 +928,10 @@ export class SyncEngine {
         })
         return
       }
+      // Cache policy runs at the END of a SUCCESSFUL pass (M3.4): the replica is at its freshest, so
+      // the horizon, the orphan set and the watched windows are all accurate. It is interval-gated,
+      // so the 60 s safety sweep does not evict every minute.
+      await this.runMaintenance()
       this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), error: null })
     } catch (error) {
       this.reportError(error)
@@ -912,7 +1049,7 @@ export function createSyncEngine(deps: {
   port: JmapPort
   session: Session
   auth: AuthProvider
-  config: { cacheDays: number }
+  config: { cacheDays: number; maxStorageMB: number }
   onAuthExpired?: () => void
   clock?: EngineClock
   safetyIntervalMs?: number

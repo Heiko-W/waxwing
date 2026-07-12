@@ -8,6 +8,8 @@ export interface SwitchProps {
   /** Visible label; omit and pass `aria-label` for a control-only switch. */
   label?: ReactNode
   'aria-label'?: string
+  /** Id of the element describing the switch (a hint/consequence line) — announced after its name. */
+  'aria-describedby'?: string
   disabled?: boolean
   id?: string
   className?: string
@@ -29,6 +31,7 @@ export function Switch({
   className,
   ref,
   'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
 }: SwitchProps) {
   const labelId = useId()
 
@@ -41,6 +44,7 @@ export function Switch({
       aria-checked={checked}
       aria-labelledby={label !== undefined ? labelId : undefined}
       aria-label={label === undefined ? ariaLabel : undefined}
+      aria-describedby={ariaDescribedBy}
       disabled={disabled}
       className={cx(styles.switch, checked && styles.checked, className)}
       onClick={() => onCheckedChange(!checked)}

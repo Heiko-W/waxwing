@@ -105,6 +105,28 @@ export async function backfillQuery(
   const key = canonicalQueryKey(spec)
 
   const result = await port.queryEmails({ ...spec, position: 0, limit, calculateTotal: true })
+
+  // The window row is persisted BEFORE the envelopes it lists — deliberately, and M3.4's envelope
+  // prune depends on it. A window is what makes its ids un-prunable, so if the envelopes landed first
+  // there would be a wide interval (this function makes a NETWORK round-trip for the threads between
+  // the two writes) in which a maintenance pass sees old envelopes that no window claims yet — and
+  // prunes the results of the search that is still loading them. Writing the claim first means an
+  // envelope can never exist un-claimed. The reverse gap — a window listing ids whose envelopes have
+  // not arrived — is the state `hydrateMissing` already exists to handle, and the next reconcile fills.
+  const row: QueryCacheRow = {
+    accountId,
+    key,
+    ids: result.ids,
+    queryState: result.queryState,
+    total: result.total ?? null,
+    upToId: result.ids.at(-1) ?? null,
+    filter: spec.filter ?? null,
+    sort: spec.sort ?? null,
+    collapseThreads,
+    lastUsedAt: opts.now,
+  }
+  await putQueryCache(db, row)
+
   const envelopes = await port.getEmailEnvelopes(result.ids)
   await putEmails(db, accountId, envelopes.list)
   // Recents accumulation (M2.4) is best-effort — a failure must never break the backfill.
@@ -121,19 +143,6 @@ export async function backfillQuery(
     await setSyncState(db, accountId, 'Email', envelopes.state, opts.now)
   }
 
-  const row: QueryCacheRow = {
-    accountId,
-    key,
-    ids: result.ids,
-    queryState: result.queryState,
-    total: result.total ?? null,
-    upToId: result.ids.at(-1) ?? null,
-    filter: spec.filter ?? null,
-    sort: spec.sort ?? null,
-    collapseThreads,
-    lastUsedAt: opts.now,
-  }
-  await putQueryCache(db, row)
   return { key, ids: result.ids, total: result.total }
 }
 
@@ -191,6 +200,20 @@ export async function loadMore(
 
   const existing = new Set(row.ids)
   const fresh = result.ids.filter((id) => !existing.has(id))
+
+  // Same ordering rule as `backfillQuery`: the window claims the new ids BEFORE their envelopes are
+  // written, so a concurrent maintenance pass can never prune a page the user just asked to load.
+  const ids = [...row.ids, ...fresh]
+  const updated: QueryCacheRow = {
+    ...row,
+    ids,
+    upToId: ids.at(-1) ?? null,
+    queryState: result.queryState,
+    total: result.total ?? row.total,
+    lastUsedAt: opts.now,
+  }
+  await putQueryCache(db, updated)
+
   if (fresh.length > 0) {
     const envelopes = await port.getEmailEnvelopes(fresh)
     await putEmails(db, accountId, envelopes.list)
@@ -202,15 +225,5 @@ export async function loadMore(
     await fetchThreadsFor(port, db, accountId, envelopes.list)
   }
 
-  const ids = [...row.ids, ...fresh]
-  const updated: QueryCacheRow = {
-    ...row,
-    ids,
-    upToId: ids.at(-1) ?? null,
-    queryState: result.queryState,
-    total: result.total ?? row.total,
-    lastUsedAt: opts.now,
-  }
-  await putQueryCache(db, updated)
   return { added: fresh.length }
 }

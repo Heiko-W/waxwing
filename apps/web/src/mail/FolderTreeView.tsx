@@ -21,6 +21,7 @@ import {
   Inbox,
   type LucideIcon,
   MoreHorizontal,
+  Pin,
   Send,
   Trash2,
 } from 'lucide-react'
@@ -53,6 +54,10 @@ export interface FolderTreeViewProps {
   readonly onRequestEmpty?: (mailbox: MailboxRow) => void
   /** Delete messages older than N days from any purgeable mailbox (M3.2 cleanup); omit to hide. */
   readonly onRequestDeleteOlder?: (mailbox: MailboxRow) => void
+  /** Mailboxes kept offline (M3.4) — exempt from eviction and prefetched. */
+  readonly pinned?: ReadonlySet<string>
+  /** Toggle a folder's "keep offline" pin (M3.4); omit to hide the entry. */
+  readonly onTogglePin?: (mailbox: MailboxRow) => void
 }
 
 export function FolderTreeView({
@@ -66,6 +71,8 @@ export function FolderTreeView({
   onRequestDelete,
   onRequestEmpty,
   onRequestDeleteOlder,
+  pinned,
+  onTogglePin,
 }: FolderTreeViewProps) {
   const { t } = useTranslation()
   const rows = visibleRows(tree, (id) => collapsed.has(id))
@@ -153,12 +160,14 @@ export function FolderTreeView({
         const expanded = hasChildren ? !collapsed.has(mailbox.id) : undefined
         const selected = mailbox.id === selectedMailboxId
         const Icon = (mailbox.role !== null && ROLE_ICONS[mailbox.role]) || Folder
-        const menuItems = actionItems(mailbox, t, {
+        const isPinned = pinned?.has(mailbox.id) ?? false
+        const menuItems = actionItems(mailbox, t, isPinned, {
           onRequestCreate,
           onRequestRename,
           onRequestDelete,
           onRequestEmpty,
           onRequestDeleteOlder,
+          onTogglePin,
         })
         return (
           // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard is handled at the role=tree container via onKeyDown delegation (APG tree pattern), not per treeitem.
@@ -198,6 +207,13 @@ export function FolderTreeView({
             )}
             <Icon aria-hidden="true" className={styles.icon} />
             <span className={styles.label}>{folderDisplayName(mailbox, t)}</span>
+            {isPinned && (
+              // The pin glyph is decorative; the state is announced once, on the row itself.
+              <span className={styles.pin}>
+                <Pin aria-hidden="true" className={styles.icon} />
+                <VisuallyHidden>{t('mailbox.keptOffline')}</VisuallyHidden>
+              </span>
+            )}
             {mailbox.unreadEmails > 0 && (
               <span className={styles.count}>
                 {/* The visible pill is decorative; the count is announced once via VisuallyHidden. */}
@@ -236,12 +252,14 @@ export function FolderTreeView({
 function actionItems(
   mailbox: MailboxRow,
   t: (key: string) => string,
+  isPinned: boolean,
   handlers: {
     onRequestCreate: (parentId: string | null) => void
     onRequestRename: (mailbox: MailboxRow) => void
     onRequestDelete: (mailbox: MailboxRow) => void
     onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
     onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
+    onTogglePin?: ((mailbox: MailboxRow) => void) | undefined
   },
 ): MenuItemSpec[] {
   const items: MenuItemSpec[] = []
@@ -257,6 +275,18 @@ function actionItems(
       id: 'rename',
       label: t('mailbox.actions.rename'),
       onSelect: () => handlers.onRequestRename(mailbox),
+    })
+  }
+  // "Keep offline" (M3.4). A menu ITEM has no checked state, and inventing one would be a lie to
+  // assistive tech: the APG treatment for a toggle in a plain menu is to name the ACTION, so the
+  // label flips instead ("Keep offline" ⇄ "Stop keeping offline"). The current state is on the row.
+  if (handlers.onTogglePin && mailbox.myRights.mayReadItems) {
+    const onTogglePin = handlers.onTogglePin
+    items.push({
+      id: 'keepOffline',
+      label: isPinned ? t('mailbox.actions.keepOfflineOff') : t('mailbox.actions.keepOffline'),
+      icon: Pin,
+      onSelect: () => onTogglePin(mailbox),
     })
   }
   // Cleanup (M3.2): empty a Trash/Junk mailbox, or delete older messages from any purgeable one.

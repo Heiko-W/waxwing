@@ -99,6 +99,13 @@
   flex: 0 0 auto;
 }
 
+/* "Kept offline" (M3.4): a muted pin on the row; the state itself is announced via VisuallyHidden. */
+.pin {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--waxwing-text-muted);
+}
+
 /* The per-folder action menu: present in the DOM (keyboard-reachable), shown on row hover/focus. */
 .rowMenu {
   flex: 0 0 auto;

@@ -19,11 +19,31 @@ export interface MessageBody {
 export function useMessageBody(emailId: string): MessageBody {
   const engine = useActiveEngine()
 
+  // The body the engine fetched but could NOT cache (the disk is full, M3.4). This pane is
+  // local-first — it renders from a liveQuery over `emailBodies` — so a body that never lands in the
+  // replica would leave it loading FOREVER, for every message, with no retry. Caching is best-effort;
+  // reading is not. `null` is the normal case: the row is in the replica, so read it from there.
+  const [unstored, setUnstored] = useState<EmailBodyRow | null>(null)
+
   useEffect(() => {
-    if (emailId !== '') void engine?.fetchBody(emailId)
+    setUnstored(null)
+    if (emailId === '' || !engine) return
+    let active = true
+    void engine
+      .fetchBody(emailId)
+      .then((row) => {
+        if (active) setUnstored(row)
+      })
+      // A failed fetch (offline, or the message is gone) leaves the pane loading, exactly as before
+      // M3.4 — but it must not surface as an unhandled rejection.
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [engine, emailId])
 
-  const body = useEmailBody(emailId)
+  const stored = useEmailBody(emailId)
+  const body = stored ?? unstored ?? undefined
   return {
     body,
     htmlParts: body ? pickHtmlBody(body) : null,

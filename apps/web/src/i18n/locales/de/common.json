@@ -98,6 +98,9 @@
     "outbox": {
       "stuck_one": "Server nicht erreichbar — es wird weiter versucht ({{count}})",
       "stuck_other": "Server nicht erreichbar — es wird weiter versucht ({{count}})"
+    },
+    "storage": {
+      "full": "Der Speicher ist voll — einige E-Mails werden nicht zwischengespeichert."
     }
   },
   "settings": {
@@ -112,7 +115,35 @@
         "hint": "Wo eine geöffnete Nachricht erscheint."
       }
     },
-    "more": "Weitere Einstellungen folgen in einem späteren Meilenstein."
+    "more": "Weitere Einstellungen folgen in einem späteren Meilenstein.",
+    "offline": {
+      "title": "Offline & Speicher",
+      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sofort öffnen und offline verfügbar sind.",
+      "meter": {
+        "label": "Belegter Speicher"
+      },
+      "total": "{{used}} von {{total}} belegt",
+      "quotaUnknown": "Ihr Browser meldet kein Speicherkontingent.",
+      "category": {
+        "messages": "Nachrichtenindex (geschätzt)",
+        "bodies": "Nachrichtentexte",
+        "attachments": "Anhänge",
+        "other": "Sonstiges (App & Offline-Hülle)"
+      },
+      "persist": {
+        "label": "Daten auf diesem Gerät behalten",
+        "hint": "Bitten Sie Ihren Browser, zwischengespeicherte E-Mails nicht zu löschen, wenn der Speicher knapp wird.",
+        "granted": "Erteilt — Ihr Browser behält zwischengespeicherte E-Mails auch bei knappem Speicher.",
+        "denied": "Nicht erteilt — Ihr Browser kann zwischengespeicherte E-Mails löschen, wenn der Speicher knapp wird."
+      },
+      "freeUp": "Jetzt Speicher freigeben",
+      "freedToast": "{{size}} freigegeben",
+      "nothingToFree": "Nichts freizugeben",
+      "window_one": "E-Mails vom letzten Tag werden offline behalten.",
+      "window_other": "E-Mails der letzten {{count}} Tage werden offline behalten.",
+      "pinned_one": "{{count}} Ordner wird offline behalten",
+      "pinned_other": "{{count}} Ordner werden offline behalten"
+    }
   },
   "contacts": {
     "title": "Kontakte",
@@ -168,7 +199,9 @@
       "newSubfolder": "Neuer Unterordner",
       "newFolder": "Neuer Ordner",
       "rename": "Umbenennen",
-      "delete": "Löschen"
+      "delete": "Löschen",
+      "keepOffline": "Offline behalten",
+      "keepOfflineOff": "Nicht mehr offline behalten"
     },
     "create": {
       "title": "Neuer Ordner",
@@ -192,7 +225,8 @@
       "nameTooLong": "Der Name ist zu lang.",
       "nameTaken": "Ein Ordner mit diesem Namen existiert hier bereits."
     },
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "keptOffline": "Offline behalten"
   },
   "list": {
     "noSender": "(Kein Absender)",

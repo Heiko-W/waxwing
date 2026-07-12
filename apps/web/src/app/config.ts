@@ -103,6 +103,29 @@ function clampUndoSend(seconds: unknown): number {
   return Math.min(30, Math.max(0, Math.round(seconds)))
 }
 
+/**
+ * Clamp the offline horizon to 1–3650 days (M3.4). A NON-POSITIVE value falls back to the default
+ * rather than clamping to 1: `windowFilter` builds `receivedAt >= now − cacheDays`, so `0` puts that
+ * boundary at *today* (and a negative one in the future) and every mailbox renders permanently
+ * empty — an operator typo must not silently become "keep one day of mail", it must be ignored.
+ */
+function clampCacheDays(days: unknown): number {
+  if (typeof days !== 'number' || !Number.isFinite(days)) return DEFAULT_CONFIG.offline.cacheDays
+  const rounded = Math.round(days)
+  if (rounded < 1) return DEFAULT_CONFIG.offline.cacheDays
+  return Math.min(3650, rounded)
+}
+
+/**
+ * Clamp the cache budget to 50–4096 MB (M3.4). Below `MIN_BUDGET_BYTES` (50 MB) every maintenance
+ * pass would evict the cache it just filled; the eviction planner floors it there anyway, so
+ * accepting a lower number here would only misreport the budget in Settings.
+ */
+function clampMaxStorageMB(mb: unknown): number {
+  if (typeof mb !== 'number' || !Number.isFinite(mb)) return DEFAULT_CONFIG.offline.maxStorageMB
+  return Math.min(4096, Math.max(50, Math.round(mb)))
+}
+
 /** Normalize a merged config: clamp operator-supplied numeric knobs into their supported ranges. */
 export function normalizeConfig(config: WaxwingConfig): WaxwingConfig {
   return {
@@ -110,6 +133,11 @@ export function normalizeConfig(config: WaxwingConfig): WaxwingConfig {
     features: {
       ...config.features,
       undoSendSeconds: clampUndoSend(config.features.undoSendSeconds),
+    },
+    offline: {
+      ...config.offline,
+      cacheDays: clampCacheDays(config.offline.cacheDays),
+      maxStorageMB: clampMaxStorageMB(config.offline.maxStorageMB),
     },
   }
 }

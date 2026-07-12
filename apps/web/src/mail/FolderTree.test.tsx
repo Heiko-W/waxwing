@@ -80,6 +80,23 @@ describe('FolderTree (container)', () => {
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'deleteMailbox', id: 'work' })
   })
 
+  it('persists a "keep offline" pin to the replica (M3.4)', async () => {
+    const user = userEvent.setup()
+    renderTree()
+    const work = await screen.findByRole('treeitem', { name: /Work/ })
+
+    await user.click(within(work).getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Keep offline' }))
+
+    await waitFor(async () =>
+      expect(await getPref<string[]>(db, 'a', 'offline.pinnedMailboxes')).toEqual(['work']),
+    )
+    // The row now announces the state, and the action flips to its inverse.
+    expect(await screen.findByRole('treeitem', { name: /Work/ })).toHaveTextContent('Kept offline')
+    await user.click(within(work).getByRole('button', { name: 'Folder actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Stop keeping offline' })).toBeInTheDocument()
+  })
+
   it('creates a top-level folder from the new-folder affordance', async () => {
     const user = userEvent.setup()
     renderTree()

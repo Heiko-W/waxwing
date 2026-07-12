@@ -98,6 +98,9 @@
     "outbox": {
       "stuck_one": "Still trying to reach the server ({{count}})",
       "stuck_other": "Still trying to reach the server ({{count}})"
+    },
+    "storage": {
+      "full": "Storage is full — some mail is not cached."
     }
   },
   "settings": {
@@ -112,7 +115,35 @@
         "hint": "Where an opened message appears."
       }
     },
-    "more": "More settings arrive in a later milestone."
+    "more": "More settings arrive in a later milestone.",
+    "offline": {
+      "title": "Offline & storage",
+      "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
+      "meter": {
+        "label": "Storage used"
+      },
+      "total": "{{used}} of {{total}} used",
+      "quotaUnknown": "Your browser does not report a storage quota.",
+      "category": {
+        "messages": "Message index (estimated)",
+        "bodies": "Message bodies",
+        "attachments": "Attachments",
+        "other": "Other (app & offline shell)"
+      },
+      "persist": {
+        "label": "Keep data on this device",
+        "hint": "Ask your browser not to delete cached mail when storage runs low.",
+        "granted": "Granted — your browser will keep cached mail even when storage runs low.",
+        "denied": "Not granted — your browser may clear cached mail when storage runs low."
+      },
+      "freeUp": "Free up space now",
+      "freedToast": "Freed {{size}}",
+      "nothingToFree": "Nothing to free up",
+      "window_one": "Mail from the last {{count}} day is kept offline.",
+      "window_other": "Mail from the last {{count}} days is kept offline.",
+      "pinned_one": "{{count}} folder kept offline",
+      "pinned_other": "{{count}} folders kept offline"
+    }
   },
   "contacts": {
     "title": "Contacts",
@@ -168,7 +199,9 @@
       "newSubfolder": "New subfolder",
       "newFolder": "New folder",
       "rename": "Rename",
-      "delete": "Delete"
+      "delete": "Delete",
+      "keepOffline": "Keep offline",
+      "keepOfflineOff": "Stop keeping offline"
     },
     "create": {
       "title": "New folder",
@@ -192,7 +225,8 @@
       "nameTooLong": "The name is too long.",
       "nameTaken": "A folder with this name already exists here."
     },
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "keptOffline": "Kept offline"
   },
   "list": {
     "noSender": "(No sender)",

@@ -17,11 +17,14 @@ import { useCleanupActions } from './cleanup/use-cleanup-actions'
 import { FolderTreeView } from './FolderTreeView'
 import { buildFolderTree, folderDisplayName } from './folder-tree'
 import styles from './folder-tree.module.css'
+import { usePinActions, usePinnedMailboxes } from './pinned/use-pinned-folders'
 import { useFolderActions } from './use-folder-actions'
 
 /** JMAP `maxSizeMailboxName` default (Stalwart fixture = 255); a real cap comes from the capability. */
 const MAX_NAME_LENGTH = 255
 const COLLAPSED_PREF = 'folders.collapsed'
+/** Stable empty set for the first render, before the pins liveQuery resolves (no re-render churn). */
+const EMPTY_PINS: ReadonlySet<string> = new Set()
 
 type DialogState =
   | { readonly kind: 'create'; readonly parentId: string | null }
@@ -39,6 +42,8 @@ export function FolderTree() {
   const actions = useFolderActions()
   const cleanup = useCleanupActions()
   const collapsedList = useLocalPref<string[]>(COLLAPSED_PREF)
+  const pinned = usePinnedMailboxes()
+  const pins = usePinActions()
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
@@ -86,6 +91,8 @@ export function FolderTree() {
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
+        pinned={pinned ?? EMPTY_PINS}
+        onTogglePin={(mailbox) => pins.toggle(mailbox.id)}
       />
 
       {dialog?.kind === 'create' && (

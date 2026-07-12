@@ -7,17 +7,34 @@
  */
 
 export {
+  type BlobDownload,
+  type BlobRef,
+  getOrFetchBlob,
+  MAX_CACHED_BLOB_BYTES,
+} from './blob-cache'
+export {
+  type CacheCategory,
+  type CacheUsage,
+  collectCacheUsage,
+} from './cache-usage'
+export {
   type AccountRecord,
   type AddressStatRow,
+  BLOB_META_OVERHEAD_BYTES,
   type BlobMetaRow,
+  BODY_OVERHEAD_BYTES,
   type ConflictCode,
   clearAccount,
+  collectBodyBlobIds,
   type DraftAttachmentLike,
   type DraftRow,
   type DraftSyncStatus,
   type EmailBodyRow,
   type EmailEnvelopeInput,
   type EmailRow,
+  ENVELOPE_BYTES_ESTIMATE,
+  estimateBlobBytes,
+  estimateBodyBytes,
   getReplica,
   type IdentityRow,
   type LocalPrefRow,
@@ -58,3 +75,15 @@ export {
   useThread,
 } from './react'
 export * from './repo'
+export {
+  browserEstimate,
+  type EstimateFn,
+  getStorageFullAt,
+  isPersisted,
+  isQuotaExceeded,
+  reportStorageFull,
+  requestPersistence,
+  resetStorageFull,
+  type StorageEstimateLike,
+  subscribeStorageFull,
+} from './storage'

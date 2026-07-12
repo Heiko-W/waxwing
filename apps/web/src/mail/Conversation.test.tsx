@@ -56,6 +56,8 @@ function bodyRow(id: string): EmailBodyRow {
     hasAttachment: false,
     fetchedAt: 1,
     lastAccessedAt: 1,
+    bytes: 0,
+    ablob: [],
   }
 }
 

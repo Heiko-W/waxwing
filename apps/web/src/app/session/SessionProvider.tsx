@@ -17,7 +17,7 @@ import { JmapHttpError } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthExpiredError } from '../../auth'
-import { getReplica, wipeReplica } from '../../sync'
+import { getReplica, resetStorageFull, wipeReplica } from '../../sync'
 import { getActiveEngine, setActiveEngine } from '../../sync/engine'
 import type { WaxwingConfig } from '../config'
 import { useServices } from '../services'
@@ -386,6 +386,9 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           await engine.stop().catch(() => {})
         }
         if (wipeData) await wipeReplica(getReplica()).catch(() => {})
+        // The "storage is full" signal is a module singleton (M3.4): without this, a stale event from
+        // the PREVIOUS session re-fires its toast on the next sign-in, whose notifier starts fresh.
+        resetStorageFull()
         await controllerRef.current?.logout(wipeData ? { wipeData: true } : {}).catch(() => {})
         clientRef.current = null
         authProviderRef.current = null

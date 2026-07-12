@@ -37,6 +37,18 @@
  * errorKind` (M2.8) and `OutboxRow.undo`/`conflict`/`nextAttemptAt`/`refreshes` (M3.3) — all served
  * by the existing `[accountId+status]` / `[accountId+createdAt]` indexes. Bump the version only when
  * an INDEX changes or stored data must be transformed.
+ *
+ * An INDEXED field is NOT exempt from a version bump (precedent: `EmailBodyRow.bytes` /
+ * `BlobMetaRow.bytes`, M3.4): IndexedDB omits a record that LACKS the index's key path from that
+ * index ENTIRELY, so legacy rows would be silently invisible to every query served by it — here,
+ * both cache metering and LRU eviction. Adding an index therefore always means "the stored data must
+ * be transformed": bump the version and backfill the field in `.upgrade()`.
+ *
+ * **An `.upgrade()` callback must be TOTAL — it may never throw.** A throw inside `modify()` aborts
+ * the upgrade transaction, so `db.open()` rejects; and since the version is fixed in the code, it
+ * rejects again on every subsequent start. Nothing in the app rebuilds the replica when that happens,
+ * so a single malformed legacy row would leave the user with an app that never loads again. Derive
+ * defensively (a wrong byte estimate is a rounding error) and wrap each row transform in a try/catch.
  */
 
 import type {
@@ -156,6 +168,20 @@ export interface EmailBodyRow {
   hasAttachment: boolean
   fetchedAt: number
   lastAccessedAt: number
+  /**
+   * Approximate STORED size (M3.4) — {@link estimateBodyBytes}. Required and INDEXED: the cache
+   * budget is a key-only sum over `[accountId+lastAccessedAt+bytes]`, so eviction never deserializes
+   * a single body row. Written by {@link putEmailBody}, never by hand.
+   */
+  bytes: number
+  /**
+   * Derived, account-scoped blob membership: `["<accountId>\0<blobId>", …]` (multiEntry, M3.4) —
+   * every blob this body references (attachments + inline `cid:` parts). It is the ONLY link from a
+   * cached blob back to its owning message, and reading it through the index (keys + primaryKeys)
+   * yields the blob→owner map WITHOUT loading heavy body or blob rows. Cache policy needs it twice:
+   * a blob with no surviving owner is an ORPHAN, and a blob owned by a pinned message is PROTECTED.
+   */
+  ablob: string[]
 }
 
 /** Metadata (and optionally cached bytes) for a blob fetched on demand; LRU-evicted. */
@@ -163,12 +189,87 @@ export interface BlobMetaRow {
   accountId: Id
   blobId: Id
   type: string | null
+  /** The JMAP-reported part size (metadata only, nullable) — NOT the stored byte count. */
   size: number | null
   name: string | null
-  /** Cached bytes when downloaded (attachments/inline images); null = metadata only. */
-  data: Blob | null
+  /**
+   * Cached bytes when downloaded (attachments/inline images); null = metadata only. Stored as an
+   * `ArrayBuffer`, not a `Blob`: both are structured-cloneable, but ArrayBuffer round-trips through
+   * every IndexedDB implementation (including the `structuredClone` used by fake-indexeddb under
+   * jsdom, which silently flattens a DOM `Blob` to `{}`), and the media type is already on the row.
+   * {@link BlobCache} rehydrates a `Blob` from these bytes + {@link type} at the call site.
+   */
+  data: ArrayBuffer | null
   fetchedAt: number
   lastAccessedAt: number
+  /** Stored size (M3.4) — {@link estimateBlobBytes}. Required and INDEXED (see {@link EmailBodyRow.bytes}). */
+  bytes: number
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cache accounting (M3.4, FR-OFF-04). Deterministic, pure size estimates — the eviction budget is
+// OUR OWN sum of these, never `navigator.storage.estimate()` (which is coarse, padded and
+// origin-wide). They only have to be stable and roughly proportional; they are not a byte oracle.
+// ---------------------------------------------------------------------------------------------
+
+/** Flat per-body overhead: keys, structure, part metadata, IndexedDB record overhead. */
+export const BODY_OVERHEAD_BYTES = 2048
+
+/** Flat cost of a metadata-only blob row (no cached bytes). */
+export const BLOB_META_OVERHEAD_BYTES = 256
+
+/** Per-envelope constant for the UI/budget estimate — envelopes are counted, never weighed. */
+export const ENVELOPE_BYTES_ESTIMATE = 1_200
+
+/**
+ * Approximate stored size of a body row: UTF-16 payload + a flat structural overhead.
+ *
+ * It must NEVER throw. It runs inside the v5 `.upgrade()` over rows written by older builds (and by
+ * servers that omit things they should not), and a `TypeError` raised in a `modify()` callback aborts
+ * the upgrade transaction — which makes `db.open()` reject on this start AND on every start after it.
+ * The replica is a rebuildable cache, but nothing rebuilds it: the user's mail app would simply never
+ * load again. A wrong byte estimate costs a slightly-off eviction; a throw costs the whole app.
+ */
+export function estimateBodyBytes(row: Pick<EmailBodyRow, 'bodyValues'>): number {
+  let payload = 0
+  for (const value of Object.values(row.bodyValues ?? {})) {
+    if (typeof value?.value === 'string') payload += value.value.length * 2
+  }
+  return payload + BODY_OVERHEAD_BYTES
+}
+
+/**
+ * Blob row size: cached bytes when present, else the metadata overhead. Never throws either — and note
+ * that a row written by an older build could hold a `Blob` (which has `size`, not `byteLength`) rather
+ * than the `ArrayBuffer` stored today. Reading `byteLength` off a `Blob` yields `undefined`, and an
+ * `undefined` `bytes` drops the record from the `[accountId+lastAccessedAt+bytes]` index ENTIRELY —
+ * invisible to metering and to eviction, i.e. the exact failure this migration exists to prevent.
+ */
+export function estimateBlobBytes(row: Pick<BlobMetaRow, 'data' | 'size'>): number {
+  const data: unknown = row.data
+  if (data instanceof ArrayBuffer) return data.byteLength
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return data.size
+  if (typeof row.size === 'number' && Number.isFinite(row.size)) {
+    return row.size + BLOB_META_OVERHEAD_BYTES
+  }
+  return BLOB_META_OVERHEAD_BYTES
+}
+
+/** Every blobId a body references (attachments + inline `cid:` parts), deduped — see `ablob`. */
+export function collectBodyBlobIds(
+  row: Pick<EmailBodyRow, 'bodyStructure' | 'textBody' | 'htmlBody' | 'attachments'>,
+): Id[] {
+  const out = new Set<Id>()
+  const visit = (part: EmailBodyPart | undefined): void => {
+    if (!part) return
+    if (part.blobId !== null && part.blobId !== undefined) out.add(part.blobId)
+    for (const sub of part.subParts ?? []) visit(sub)
+  }
+  visit(row.bodyStructure)
+  for (const part of row.textBody ?? []) visit(part)
+  for (const part of row.htmlBody ?? []) visit(part)
+  for (const part of row.attachments ?? []) visit(part)
+  return [...out]
 }
 
 /** Per account+objectType JMAP state string — the replica's "keyed by JMAP state strings" spine. */
@@ -415,6 +516,45 @@ export class ReplicaDb extends Dexie {
     this.version(4).stores({
       drafts: '[accountId+localId], accountId, [accountId+serverEmailId], [accountId+updatedAt]',
     })
+    // v5 (M3.4) — size-carrying LRU indexes for cache eviction + metering, and the blob→owner link.
+    // NOT exempt from a bump: the new fields are INDEXED, and a record missing an index's key path is
+    // dropped from that index entirely — legacy rows would be invisible to metering AND eviction. So
+    // the stored rows are transformed (see the migration-policy note in the module header).
+    this.version(5)
+      .stores({
+        emailBodies:
+          '[accountId+id], accountId, [accountId+lastAccessedAt], [accountId+lastAccessedAt+bytes], *ablob',
+        blobsMeta:
+          '[accountId+blobId], accountId, [accountId+lastAccessedAt], [accountId+lastAccessedAt+bytes]',
+      })
+      // Belt AND braces: the estimators above never throw, and each row transform is ALSO wrapped, so
+      // one malformed legacy row can never abort the upgrade transaction. An aborted upgrade means
+      // `db.open()` rejects forever after — the app would not start again — and a cache row that gets
+      // a fallback size is a rounding error by comparison.
+      .upgrade(async (tx) => {
+        await tx
+          .table<EmailBodyRow>('emailBodies')
+          .toCollection()
+          .modify((row) => {
+            try {
+              row.bytes = estimateBodyBytes(row)
+              row.ablob = collectBodyBlobIds(row).map((blobId) => scopeKey(row.accountId, blobId))
+            } catch {
+              row.bytes = BODY_OVERHEAD_BYTES
+              row.ablob = []
+            }
+          })
+        await tx
+          .table<BlobMetaRow>('blobsMeta')
+          .toCollection()
+          .modify((row) => {
+            try {
+              row.bytes = estimateBlobBytes(row)
+            } catch {
+              row.bytes = BLOB_META_OVERHEAD_BYTES
+            }
+          })
+      })
   }
 }
 

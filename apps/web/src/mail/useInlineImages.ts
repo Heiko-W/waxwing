@@ -6,9 +6,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSession } from '../app/session/context'
 import type { EmailBodyRow } from '../sync'
 import { collectCidParts } from './message-body'
+import { useBlobFetcher } from './use-blob'
 
 export interface InlineImages {
   /** Synchronous `cid` (content-id, no `cid:` prefix) → `blob:` URL, or null. */
@@ -18,14 +18,13 @@ export interface InlineImages {
 }
 
 export function useInlineImages(accountId: string, body: EmailBodyRow | undefined): InlineImages {
-  const { getClient } = useSession()
+  const fetchBlob = useBlobFetcher(accountId)
   const mapRef = useRef(new Map<string, string>())
   const [ready, setReady] = useState(false)
   const parts = useMemo(() => (body ? collectCidParts(body) : []), [body])
 
   useEffect(() => {
-    const client = getClient()
-    if (body === undefined || parts.length === 0 || client === null) {
+    if (body === undefined || parts.length === 0) {
       mapRef.current = new Map()
       setReady(true)
       return
@@ -37,14 +36,16 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
     void (async () => {
       for (const part of parts) {
         try {
-          const bytes = await client.download(
-            accountId,
-            part.blobId,
-            part.type,
-            part.name ?? 'image',
-          )
+          // M3.4: through the write-through cache, so re-opening the message (or opening it offline)
+          // resolves every `cid:` from the replica instead of re-downloading each image.
+          const blob = await fetchBlob({
+            blobId: part.blobId,
+            type: part.type,
+            name: part.name ?? 'image',
+          })
           if (cancelled) return
-          const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: part.type }))
+          if (blob === null) continue
+          const url = URL.createObjectURL(blob)
           urls.push(url)
           map.set(part.cid, url)
         } catch {
@@ -59,7 +60,7 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
       cancelled = true
       for (const url of urls) URL.revokeObjectURL(url)
     }
-  }, [accountId, body, parts, getClient])
+  }, [body, parts, fetchBlob])
 
   const resolveCid = useCallback((cid: string) => mapRef.current.get(cid) ?? null, [])
   return { resolveCid, ready }

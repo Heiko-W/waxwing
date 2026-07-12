@@ -9,14 +9,18 @@
 import type { Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
 import Dexie from 'dexie'
 import { LABELS_PREF_KEY, type LabelPref } from '../mail/labels/label-model'
+import { PINNED_PREF_KEY, type PinnedPref } from '../mail/pinned/pinned-model'
 import {
   type AccountRecord,
   type AddressStatRow,
   type BlobMetaRow,
+  collectBodyBlobIds,
   type DraftRow,
   type EmailBodyRow,
   type EmailEnvelopeInput,
   type EmailRow,
+  estimateBlobBytes,
+  estimateBodyBytes,
   type IdentityRow,
   type LocalPrefRow,
   type MailboxRow,
@@ -31,6 +35,13 @@ import {
   toMailboxRow,
   toThreadRow,
 } from './db'
+
+/** One cached, evictable item — the ONLY shape the eviction planner and the usage UI ever see. */
+export interface CacheItem {
+  readonly id: Id
+  readonly bytes: number
+  readonly lastAccessedAt: number
+}
 
 // -------------------------------------------------------------------------------------------
 // Accounts (registry).
@@ -301,16 +312,63 @@ export function emailsInThread(db: ReplicaDb, accountId: Id, threadId: Id): Prom
   return db.emails.where('[accountId+threadId]').equals([accountId, threadId]).toArray()
 }
 
-export function deleteEmails(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
-  return db.emails.bulkDelete(ids.map((id) => [accountId, id]))
+/**
+ * Delete envelopes AND cascade to their bodies in ONE `rw` transaction (M3.4). Before the cascade a
+ * delta sync that destroyed N emails orphaned N `emailBodies` rows FOREVER — they are keyed by email
+ * id, nothing else references them, and no pass ever looked at them again. Blobs are not addressed
+ * by email id; their orphans are collected by the maintenance pass via the `ablob` owner index.
+ */
+export async function deleteEmails(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  if (ids.length === 0) return
+  const keys = ids.map((id) => [accountId, id] as [Id, Id])
+  await db.transaction('rw', db.emails, db.emailBodies, async () => {
+    await db.emails.bulkDelete(keys)
+    await db.emailBodies.bulkDelete(keys)
+  })
+}
+
+/** Ids of envelopes older than `beforeIso` — primary keys only, no rows (the M3.4 prune candidates). */
+export async function envelopeIdsBefore(
+  db: ReplicaDb,
+  accountId: Id,
+  beforeIso: string,
+): Promise<Id[]> {
+  const keys = (await db.emails
+    .where('[accountId+receivedAt]')
+    .between([accountId, Dexie.minKey], [accountId, beforeIso], true, false)
+    .primaryKeys()) as [Id, Id][]
+  return keys.map(([, id]) => id)
+}
+
+/** How many envelopes an account holds — an index count, never a row load (M3.4 metering). */
+export function envelopeCount(db: ReplicaDb, accountId: Id): Promise<number> {
+  return db.emails.where('accountId').equals(accountId).count()
+}
+
+/** Every envelope id in the replica for an account — primary keys only (the M3.4 orphan check). */
+export async function allEmailIds(db: ReplicaDb, accountId: Id): Promise<Id[]> {
+  const keys = (await db.emails.where('accountId').equals(accountId).primaryKeys()) as [Id, Id][]
+  return keys.map(([, id]) => id)
 }
 
 // -------------------------------------------------------------------------------------------
 // Email bodies (M1.8 — opened messages, FR-OFF-02) with LRU bookkeeping.
 // -------------------------------------------------------------------------------------------
 
-export async function putEmailBody(db: ReplicaDb, body: EmailBodyRow): Promise<void> {
-  await db.emailBodies.put(body)
+/**
+ * Store a body, deriving its accounting fields (M3.4). The derived `bytes`/`ablob` are computed HERE
+ * — never by the caller — so the LRU index and the blob→owner link cannot drift out of sync with the
+ * payload they describe.
+ */
+export async function putEmailBody(
+  db: ReplicaDb,
+  body: Omit<EmailBodyRow, 'bytes' | 'ablob'>,
+): Promise<void> {
+  await db.emailBodies.put({
+    ...body,
+    bytes: estimateBodyBytes(body),
+    ablob: collectBodyBlobIds(body).map((blobId) => scopeKey(body.accountId, blobId)),
+  })
 }
 
 /** Read a cached body and stamp its `lastAccessedAt` (LRU) in the same transaction. */
@@ -336,12 +394,76 @@ export function lruBodies(db: ReplicaDb, accountId: Id, limit: number): Promise<
     .toArray()
 }
 
+/**
+ * The full account-scoped span of a `[accountId+lastAccessedAt+bytes]` index. NUMERIC bounds, not
+ * `Dexie.minKey`/`Dexie.maxKey`: both trailing components are always numbers, so ±Infinity is exactly
+ * right — and `Dexie.maxKey` is ONE shared `[[]]` array instance, which a spec-conformant
+ * key-conversion routine rejects when it appears twice in the same key (it looks like a cycle).
+ */
+function cacheKeyRange(accountId: Id): {
+  lower: [Id, number, number]
+  upper: [Id, number, number]
+} {
+  return {
+    lower: [accountId, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY],
+    upper: [accountId, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY],
+  }
+}
+
+/**
+ * The cached bodies as `{ id, bytes, lastAccessedAt }` — KEY-ONLY: it reads the
+ * `[accountId+lastAccessedAt+bytes]` index and the matching primary keys, so a 200 MB body cache is
+ * planned without deserializing one byte of mail. Both passes run in ONE `'r'` transaction (a
+ * consistent snapshot) and the index cursor order is identical for `keys()` and `primaryKeys()`
+ * (ties break by primary key), so zipping them by position is sound — asserted in `repo.cache.test.ts`.
+ */
+export function bodyCacheEntries(db: ReplicaDb, accountId: Id): Promise<CacheItem[]> {
+  return db.transaction('r', db.emailBodies, async () => {
+    const { lower, upper } = cacheKeyRange(accountId)
+    const range = db.emailBodies
+      .where('[accountId+lastAccessedAt+bytes]')
+      .between(lower, upper, true, true)
+    const keys = (await range.keys()) as unknown as [Id, number, number][]
+    const pks = (await range.primaryKeys()) as [Id, Id][]
+    return zipCacheEntries(keys, pks)
+  })
+}
+
+/**
+ * blobId → the ids of the cached BODIES that reference it (M3.4). Read through the `ablob` multiEntry
+ * index as keys + primaryKeys, so it costs no row loads at all. A blob with no live owner is an
+ * orphan; a blob owned by a protected message is protected.
+ */
+export function blobOwners(db: ReplicaDb, accountId: Id): Promise<Map<Id, Id[]>> {
+  const prefix = scopeKey(accountId, '')
+  return db.transaction('r', db.emailBodies, async () => {
+    const range = db.emailBodies.where('ablob').startsWith(prefix)
+    const keys = (await range.keys()) as string[]
+    const pks = (await range.primaryKeys()) as [Id, Id][]
+    const owners = new Map<Id, Id[]>()
+    for (const [index, key] of keys.entries()) {
+      const pk = pks[index]
+      if (pk === undefined) continue
+      const blobId = key.slice(prefix.length)
+      const existing = owners.get(blobId)
+      if (existing) existing.push(pk[1])
+      else owners.set(blobId, [pk[1]])
+    }
+    return owners
+  })
+}
+
+export function deleteEmailBodies(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.emailBodies.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
 // -------------------------------------------------------------------------------------------
-// Blob metadata (attachments/inline images fetched on demand).
+// Blob metadata + cached bytes (attachments/inline images fetched on demand; M3.4 write-through).
 // -------------------------------------------------------------------------------------------
 
-export async function putBlobMeta(db: ReplicaDb, blob: BlobMetaRow): Promise<void> {
-  await db.blobsMeta.put(blob)
+/** Store a blob row, deriving its `bytes` (M3.4) — same invariant as {@link putEmailBody}. */
+export async function putBlobMeta(db: ReplicaDb, blob: Omit<BlobMetaRow, 'bytes'>): Promise<void> {
+  await db.blobsMeta.put({ ...blob, bytes: estimateBlobBytes(blob) })
 }
 
 export function getBlobMeta(
@@ -350,6 +472,47 @@ export function getBlobMeta(
   blobId: Id,
 ): Promise<BlobMetaRow | undefined> {
   return db.blobsMeta.get([accountId, blobId])
+}
+
+/** Stamp a cached blob's `lastAccessedAt` (LRU touch on read) — mirrors {@link getEmailBody}. */
+export async function touchBlob(
+  db: ReplicaDb,
+  accountId: Id,
+  blobId: Id,
+  now: number,
+): Promise<void> {
+  await db.blobsMeta.update([accountId, blobId], { lastAccessedAt: now })
+}
+
+/** The cached blobs as `{ id, bytes, lastAccessedAt }` — key-only, see {@link bodyCacheEntries}. */
+export function blobCacheEntries(db: ReplicaDb, accountId: Id): Promise<CacheItem[]> {
+  return db.transaction('r', db.blobsMeta, async () => {
+    const { lower, upper } = cacheKeyRange(accountId)
+    const range = db.blobsMeta
+      .where('[accountId+lastAccessedAt+bytes]')
+      .between(lower, upper, true, true)
+    const keys = (await range.keys()) as unknown as [Id, number, number][]
+    const pks = (await range.primaryKeys()) as [Id, Id][]
+    return zipCacheEntries(keys, pks)
+  })
+}
+
+export function deleteBlobs(db: ReplicaDb, accountId: Id, blobIds: Id[]): Promise<void> {
+  return db.blobsMeta.bulkDelete(blobIds.map((blobId) => [accountId, blobId]))
+}
+
+/** Zip an `[accountId+lastAccessedAt+bytes]` key cursor with its primary keys (same cursor order). */
+function zipCacheEntries(
+  keys: readonly [Id, number, number][],
+  pks: readonly [Id, Id][],
+): CacheItem[] {
+  const items: CacheItem[] = []
+  for (const [index, key] of keys.entries()) {
+    const pk = pks[index]
+    if (pk === undefined) continue
+    items.push({ id: pk[1], lastAccessedAt: key[1], bytes: key[2] })
+  }
+  return items
 }
 
 // -------------------------------------------------------------------------------------------
@@ -390,6 +553,15 @@ export function getQueryCache(
   key: string,
 ): Promise<QueryCacheRow | undefined> {
   return db.queryCache.get([accountId, key])
+}
+
+/** Every watched window for an account (M3.4: the reap candidates + the "still referenced" id source). */
+export function queryCacheRows(db: ReplicaDb, accountId: Id): Promise<QueryCacheRow[]> {
+  return db.queryCache.where('accountId').equals(accountId).toArray()
+}
+
+export function deleteQueryCacheRows(db: ReplicaDb, accountId: Id, keys: string[]): Promise<void> {
+  return db.queryCache.bulkDelete(keys.map((key) => [accountId, key]))
 }
 
 // -------------------------------------------------------------------------------------------
@@ -471,6 +643,26 @@ export async function updateLabels(
     const next = fn(current)
     await db.localPrefs.put({ accountId, key: LABELS_PREF_KEY, value: next })
   })
+}
+
+/** Read-modify-write the "keep offline" pin set (M3.4) — same cross-tab-safe shape as {@link updateLabels}. */
+export async function updatePinnedMailboxes(
+  db: ReplicaDb,
+  accountId: Id,
+  fn: (current: PinnedPref) => PinnedPref,
+): Promise<void> {
+  await db.transaction('rw', db.localPrefs, async () => {
+    const row = await db.localPrefs.get([accountId, PINNED_PREF_KEY])
+    const current = (row?.value as PinnedPref | undefined) ?? []
+    await db.localPrefs.put({ accountId, key: PINNED_PREF_KEY, value: fn(current) })
+  })
+}
+
+/** The pinned ("keep offline") mailbox ids — the engine reads this directly on every pass. */
+export async function pinnedMailboxes(db: ReplicaDb, accountId: Id): Promise<Id[]> {
+  const row = await db.localPrefs.get([accountId, PINNED_PREF_KEY])
+  const value = row?.value as PinnedPref | undefined
+  return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : []
 }
 
 // ---------------------------------------------------------------------------------------------

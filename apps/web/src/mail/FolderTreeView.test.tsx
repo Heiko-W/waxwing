@@ -156,3 +156,56 @@ describe('FolderTreeView', () => {
     await expectNoA11yViolations(container)
   })
 })
+
+describe('FolderTreeView — keep offline (M3.4)', () => {
+  it('offers "Keep offline" on an unpinned folder and toggles it', async () => {
+    const user = userEvent.setup()
+    const onTogglePin = vi.fn()
+    renderTree([row('inbox', { role: 'inbox' })], { pinned: new Set(), onTogglePin })
+
+    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Keep offline' }))
+
+    expect(onTogglePin).toHaveBeenCalledTimes(1)
+    expect(onTogglePin.mock.calls[0]?.[0]).toMatchObject({ id: 'inbox' })
+  })
+
+  it('flips the action label on a pinned folder (a menu item has no checked state)', async () => {
+    const user = userEvent.setup()
+    renderTree([row('inbox', { role: 'inbox' })], {
+      pinned: new Set(['inbox']),
+      onTogglePin: noop,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Stop keeping offline' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Keep offline' })).not.toBeInTheDocument()
+  })
+
+  it('announces the pinned state on the row itself', () => {
+    renderTree([row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })], {
+      pinned: new Set(['work']),
+      onTogglePin: noop,
+    })
+    expect(screen.getByRole('treeitem', { name: /Work/ })).toHaveTextContent('Kept offline')
+    expect(screen.getByRole('treeitem', { name: /Inbox/ })).not.toHaveTextContent('Kept offline')
+  })
+
+  it('hides the entry on a folder the user may not read', async () => {
+    const user = userEvent.setup()
+    renderTree([row('inbox', { role: 'inbox', myRights: { ...RIGHTS, mayReadItems: false } })], {
+      pinned: new Set(),
+      onTogglePin: noop,
+    })
+    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    expect(screen.queryByRole('menuitem', { name: 'Keep offline' })).not.toBeInTheDocument()
+  })
+
+  it('has no axe violations with a pinned folder', async () => {
+    const { container } = renderTree([row('inbox', { role: 'inbox', unreadEmails: 2 })], {
+      pinned: new Set(['inbox']),
+      onTogglePin: noop,
+    })
+    await expectNoA11yViolations(container)
+  })
+})

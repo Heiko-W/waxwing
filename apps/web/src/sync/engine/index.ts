@@ -26,12 +26,35 @@ export {
 export {
   createSyncEngine,
   getActiveEngine,
+  MAINTENANCE_INTERVAL_MS,
   SyncEngine,
   type SyncEngineDeps,
   setActiveEngine,
   subscribeActiveEngine,
 } from './engine'
+export {
+  chooseBudget,
+  type EvictionInputs,
+  type EvictionPlan,
+  LOW_WATERMARK,
+  MIN_BUDGET_BYTES,
+  PRESSURE_RATIO,
+  PRUNE_GRACE_MS,
+  planEnvelopePrune,
+  planEviction,
+  planWindowReap,
+  QUERY_WINDOW_TTL_MS,
+  QUOTA_SAFETY,
+} from './eviction'
 export { SYNC_LOCK, startLeaderElection } from './leader'
+export {
+  EVICT_CHUNK,
+  type MaintenanceDeps,
+  type MaintenanceResult,
+  PIN_PREFETCH_PER_PASS,
+  runMaintenance,
+  withQuotaRecovery,
+} from './maintenance'
 export type { OutboxIntent } from './outbox'
 export { createJmapPort } from './port'
 export { SyncEngineHost, useActiveEngine } from './react'

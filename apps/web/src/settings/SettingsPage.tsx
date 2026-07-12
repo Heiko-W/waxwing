@@ -10,7 +10,9 @@ import {
 } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
 import { changeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
+import { useReplicaOptional } from '../sync'
 import { Select } from '../ui'
+import { StorageSection } from './StorageSection'
 import styles from './settings.module.css'
 
 const THEME_OPTIONS: readonly ThemeSetting[] = ['auto', 'light', 'dark']
@@ -66,9 +68,10 @@ function Section(props: { title: string; children: ReactNode }) {
 }
 
 /**
- * Settings route screen (lazy chunk). M1.4 ships the Appearance section — theme, language and
- * the reading-pane layout (FR-LST-07 layout half); the rest arrives with M3.7. Default export
- * so `React.lazy(() => import(...))` can load it.
+ * Settings route screen (lazy chunk). M1.4 ships the Appearance section — theme, language and the
+ * reading-pane layout (FR-LST-07 layout half); M3.4 adds "Offline & storage" (usage, persistence,
+ * free-up-space); the rest arrives with M3.7. Default export so `React.lazy(() => import(...))` can
+ * load it.
  */
 export default function SettingsPage() {
   const { t, i18n } = useTranslation()
@@ -76,6 +79,9 @@ export default function SettingsPage() {
   const readingPane = useReadingPaneMode()
   const activeLanguage = i18n.resolvedLanguage ?? i18n.language
   const ids = { theme: useId(), language: useId(), readingPane: useId() }
+  // The storage section reads the replica; without a provider (an unconnected shell) it has nothing
+  // to report, so it is simply not rendered.
+  const replica = useReplicaOptional()
 
   function handleTheme(value: string): void {
     const next = value as ThemeSetting
@@ -119,6 +125,12 @@ export default function SettingsPage() {
           onChange={(value) => setReadingPaneMode(value as ReadingPaneMode)}
         />
       </Section>
+
+      {replica !== null && (
+        <Section title={t('settings.offline.title')}>
+          <StorageSection />
+        </Section>
+      )}
 
       <p className={styles.more}>{t('settings.more')}</p>
       <BrandLinks />
