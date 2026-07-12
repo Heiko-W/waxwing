@@ -5,5 +5,8 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts", "vitest.setup.ts", "env.d.ts"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts", "vitest.setup.ts", "env.d.ts"],
+  // The service worker needs `lib: WebWorker`, which conflicts with DOM. It has its own program
+  // (tsconfig.sw.json), wired into the `typecheck` script — it is checked, just not here.
+  "exclude": ["src/sw"]
 }

@@ -1,0 +1,22 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--waxwing-space-4);
+  block-size: 100%;
+  padding: var(--waxwing-space-6);
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--waxwing-text-xl);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.body {
+  margin: 0;
+  max-inline-size: 32rem;
+  color: var(--waxwing-text-muted);
+}

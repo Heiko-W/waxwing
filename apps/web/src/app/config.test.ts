@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG, normalizeConfig, type WaxwingConfig } from './config'
+import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_CONFIG, loadConfig, normalizeConfig, type WaxwingConfig } from './config'
 
 const withUndo = (undoSendSeconds: unknown): WaxwingConfig => ({
   ...DEFAULT_CONFIG,
@@ -62,5 +62,39 @@ describe('normalizeConfig — offline clamps (M3.4)', () => {
       normalizeConfig(withOffline({ maxStorageMB: 'lots' as unknown as number })).offline
         .maxStorageMB,
     ).toBe(512)
+  })
+})
+
+describe('loadConfig — the boot deadline (M3.5)', () => {
+  it('gives the request an abort signal: main.tsx AWAITS this before it renders anything', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, init?: RequestInit) =>
+        new Response(JSON.stringify({ branding: { productName: 'Acme Mail' } }), {
+          headers: { 'content-type': 'application/json' },
+          // Only here to make the signal's presence load-bearing for the assertion below.
+          status: init?.signal instanceof AbortSignal ? 200 : 500,
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const config = await loadConfig()
+    expect(config.branding.productName).toBe('Acme Mail')
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('boots on the defaults when the request NEVER answers (a captive portal)', async () => {
+    // A captive portal completes the TCP handshake and then says nothing — the fetch neither resolves
+    // nor rejects. Nothing here rescues `loadConfig` except the deadline actually firing, and
+    // `main.tsx` awaits it before it renders a single pixel: without the deadline this test hangs
+    // forever, which is precisely what the app used to do.
+    const hangs = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+        }),
+    )
+    vi.stubGlobal('fetch', hangs)
+
+    await expect(loadConfig({ timeoutMs: 10 })).resolves.toEqual(DEFAULT_CONFIG)
   })
 })

@@ -548,5 +548,36 @@
       "cancel": "Cancel send",
       "label": "Queued messages"
     }
+  },
+  "pwa": {
+    "update": {
+      "title": "An update is ready",
+      "body": "Reload to use the new version. Open drafts are saved first.",
+      "action": "Reload"
+    },
+    "install": {
+      "menu": "Install app",
+      "title": "Install {{product}}",
+      "body": "Installing gives you an app icon, a faster start, and access to your mail without a browser window.",
+      "action": "Install",
+      "cancel": "Not now",
+      "gotIt": "Got it",
+      "ios": {
+        "title": "Add to Home Screen",
+        "steps": {
+          "share": "Tap the Share button in Safari.",
+          "add": "Choose “Add to Home Screen”.",
+          "open": "Open {{product}} from the new icon on your Home Screen."
+        },
+        "pushNote": "On iPhone and iPad, mail notifications only work when the app runs from the Home Screen."
+      }
+    },
+    "error": {
+      "chunk": {
+        "title": "Something went wrong",
+        "body": "Part of the app could not be loaded. Reloading usually fixes it.",
+        "action": "Reload"
+      }
+    }
   }
 }

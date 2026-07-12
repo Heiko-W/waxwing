@@ -1,0 +1,12 @@
+{
+  // The service worker compiles in its OWN program: `lib: WebWorker` and `lib: DOM` declare the same
+  // globals with different types, so `src/sw` cannot live in the app program (which excludes it).
+  // Everything under src/pwa that the worker imports is checked here too — against the WORKER libs,
+  // which is exactly the constraint we want on that shared code (no `document`, no `window`).
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/sw"]
+}

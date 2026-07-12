@@ -548,5 +548,36 @@
       "cancel": "Senden abbrechen",
       "label": "Wartende Nachrichten"
     }
+  },
+  "pwa": {
+    "update": {
+      "title": "Eine Aktualisierung ist bereit",
+      "body": "Laden Sie neu, um die neue Version zu verwenden. Offene Entwürfe werden vorher gespeichert.",
+      "action": "Neu laden"
+    },
+    "install": {
+      "menu": "App installieren",
+      "title": "{{product}} installieren",
+      "body": "Nach der Installation haben Sie ein eigenes App-Symbol, einen schnelleren Start und Zugriff auf Ihre E-Mails ohne Browserfenster.",
+      "action": "Installieren",
+      "cancel": "Jetzt nicht",
+      "gotIt": "Alles klar",
+      "ios": {
+        "title": "Zum Home-Bildschirm hinzufügen",
+        "steps": {
+          "share": "Tippen Sie in Safari auf „Teilen“.",
+          "add": "Wählen Sie „Zum Home-Bildschirm“.",
+          "open": "Öffnen Sie {{product}} über das neue Symbol auf dem Home-Bildschirm."
+        },
+        "pushNote": "Auf iPhone und iPad funktionieren Mitteilungen für neue E-Mails nur, wenn die App vom Home-Bildschirm aus läuft."
+      }
+    },
+    "error": {
+      "chunk": {
+        "title": "Etwas ist schiefgelaufen",
+        "body": "Ein Teil der App konnte nicht geladen werden. Ein Neuladen behebt das meistens.",
+        "action": "Neu laden"
+      }
+    }
   }
 }

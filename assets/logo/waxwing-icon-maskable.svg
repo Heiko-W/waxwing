@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Waxwing app icon (maskable)">
+  <title>Waxwing app icon (maskable)</title>
+  <!--
+    The MASKABLE variant of waxwing-icon.svg (W3C maskable-icon spec / FR-DEP-06).
+
+    Two deliberate differences from the plain icon:
+    - The background is FULL-BLEED (no `rx`): the platform applies its own mask (circle,
+      squircle, rounded rect, teardrop), so a pre-rounded icon would show background
+      corners inside the platform's own rounding.
+    - The bird is scaled to 0.9 about the centre so that its bounding box fits inside the
+      spec's safe zone — the circle of radius 40 % of the icon (r = 102.4 at 256), which is
+      the only region a platform mask is guaranteed not to crop. At the plain icon's scale
+      the wing tip and the crest half-diagonal reach ~107, i.e. just outside it.
+
+    Rendered to PNG by scripts/icons.mjs. Keep in step with waxwing-icon.svg.
+  -->
+  <defs>
+    <linearGradient id="waxwing-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5911E"/>
+      <stop offset="1" stop-color="#D96A0A"/>
+    </linearGradient>
+    <mask id="waxwing-im">
+      <rect width="256" height="256" fill="black"/>
+      <g transform="translate(43.4,43.4) scale(0.657)">
+        <polygon points="72,170 20,208 32,228 86,196" fill="white"/>
+        <circle cx="120" cy="150" r="62" fill="white"/>
+        <circle cx="170" cy="104" r="40" fill="white"/>
+        <polygon points="148,80 103,36 184,70" fill="white"/>
+        <polygon points="204,92 238,106 204,120" fill="white"/>
+        <line x1="108" y1="208" x2="103" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
+        <line x1="134" y1="206" x2="131" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="180" cy="98" r="6.5" fill="black"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="256" height="256" fill="url(#waxwing-bg)"/>
+  <rect width="256" height="256" fill="#ffffff" mask="url(#waxwing-im)"/>
+  <!-- the sealing-wax drop on the wing -->
+  <circle cx="107.12" cy="151.13" r="6.57" fill="#C4331D"/>
+</svg>

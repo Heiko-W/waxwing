@@ -1,0 +1,40 @@
+{
+  "id": "./",
+  "name": "Waxwing",
+  "short_name": "Waxwing",
+  "description": "A serverless webmail client for JMAP.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "lang": "en",
+  "dir": "auto",
+  "categories": ["productivity"],
+  "theme_color": "#f5f5f7",
+  "background_color": "#f5f5f7",
+  "icons": [
+    {
+      "src": "branding/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "branding/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "branding/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "branding/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

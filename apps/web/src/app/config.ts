@@ -143,14 +143,27 @@ export function normalizeConfig(config: WaxwingConfig): WaxwingConfig {
 }
 
 /**
+ * How long the boot waits for config.json. `main.tsx` AWAITS this before it renders anything, so
+ * without a deadline a hung request — a captive portal answers the TCP handshake and then nothing —
+ * leaves the app on a blank page forever. On timeout the fetch aborts and we boot with the defaults.
+ */
+const CONFIG_TIMEOUT_MS = 5000
+
+/**
  * Load config.json relative to document.baseURI (so it works under any path prefix,
  * FR-DEP-02), network-first with no caching. Any failure — missing file, network
- * error, invalid JSON — falls back to the built-in defaults so the app always boots.
+ * error, invalid JSON, no answer within {@link CONFIG_TIMEOUT_MS} — falls back to the
+ * built-in defaults so the app always boots.
  */
-export async function loadConfig(): Promise<WaxwingConfig> {
+export async function loadConfig(
+  options: { readonly timeoutMs?: number } = {},
+): Promise<WaxwingConfig> {
   try {
     const url = new URL('config.json', document.baseURI)
-    const response = await fetch(url.href, { cache: 'no-store' })
+    const response = await fetch(url.href, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(options.timeoutMs ?? CONFIG_TIMEOUT_MS),
+    })
     if (!response.ok) {
       return DEFAULT_CONFIG
     }

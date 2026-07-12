@@ -19,6 +19,10 @@ blob-report/
 # Vite
 .vite/
 
+# vite-plugin-pwa's dev-mode service worker output (devOptions.enabled). Off today (M3.5), but a
+# flip of that flag must not drop generated Workbox code into the repo or into `pnpm lint`.
+apps/web/dev-dist/
+
 # Stalwart dev/E2E fixture runtime data. The fixture (e2e/stalwart) persists to ephemeral
 # Docker *named volumes* (wiped by `pnpm e2e:server:down`), so nothing normally lands here;
 # these entries only matter if someone switches the compose file to host bind-mounts.

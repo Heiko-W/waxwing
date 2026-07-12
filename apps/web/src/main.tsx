@@ -4,9 +4,16 @@ import { App } from './app/App'
 import { loadConfig } from './app/config'
 import { applyBranding, initTheme, loadThemeOverride } from './app/theme'
 import { initI18n } from './i18n'
+import { initInstallCapture } from './pwa/install/use-install-prompt'
 import './ui/global.css'
 
 async function boot(): Promise<void> {
+  // BEFORE the first await: `beforeinstallprompt` fires once and is never replayed, and on a repeat
+  // visit (the worker is already registered, so the app is already installable) Chromium can fire it
+  // while we are still waiting on config.json. A listener attached after that is a listener that
+  // never hears it — and the install offer would simply never appear (M3.5).
+  initInstallCapture()
+
   // Runtime configuration first: branding + theme depend on it (FR-DEP-04).
   const config = await loadConfig()
   // White-label token override from the deployment directory (FR-THEME-01), appended

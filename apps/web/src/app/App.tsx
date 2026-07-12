@@ -13,6 +13,7 @@
  * callback. Branding (product name) always comes from config — never hardcoded (FR-THEME-02).
  */
 
+import { useUpdatePrompt } from '../pwa/use-update-prompt'
 import { SyncEngineHost } from '../sync/engine'
 import { ToastProvider } from '../ui'
 import type { WaxwingConfig } from './config'
@@ -48,6 +49,14 @@ export function App({ config, services }: AppProps) {
 
 function AppBody({ config }: { config: WaxwingConfig }) {
   const { status } = useSession()
+
+  // Registered ABOVE the auth gate, and deliberately so: from inside <AppShell> the worker would only
+  // ever install after a sign-in, which means a first-time visitor precaches nothing (no offline shell
+  // — FR-OFF-01) and Chromium, whose installability check needs a registered worker, would offer no
+  // install at all on the sign-in screen (FR-DEP-06). Nothing in the registration needs a session.
+  // It is mounted here rather than in main.tsx because the reload it offers is a toast (ToastProvider,
+  // just above) and it must flush open drafts first.
+  useUpdatePrompt()
 
   if (status !== 'ready') {
     return <Onboarding />

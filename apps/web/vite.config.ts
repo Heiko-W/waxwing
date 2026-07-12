@@ -1,5 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, type ProxyOptions } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
+import { pwaOptions } from './src/pwa/pwa-options'
 
 // The dev-only SP.4 raw demo (apps/web/src/demo). When `VITE_WAXWING_DEMO=1` is set (by
 // scripts/demo.mjs), the demo is served AND a same-origin reverse proxy to the Stalwart
@@ -75,7 +77,11 @@ const DEV_CSP = [
 // which is required for Stalwart's <base href> rewriting (FR-DEP-02).
 export default defineConfig({
   base: './',
-  plugins: [react()],
+  // The PWA plugin (M3.5) bundles src/sw/sw.ts and precaches the app shell. It does NOT emit the
+  // manifest: that is a hoster-editable deployment file (public/manifest.json), for the reason
+  // spelled out in src/pwa/pwa-options.ts — where the whole configuration lives, so that a unit test
+  // can assert it rather than a reviewer eyeball it. Inert under `pnpm dev` and `pnpm test`.
+  plugins: [react(), VitePWA(pwaOptions)],
   server: {
     headers: {
       'Content-Security-Policy': DEV_CSP,

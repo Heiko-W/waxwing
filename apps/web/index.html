@@ -2,7 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      The mount prefix (FR-DEP-02, SP.5). Every relative URL in the app — the assets, config.json,
+      theme.css, branding/, the service-worker scope and the manifest's start_url — resolves through
+      document.baseURI, so the next line is what makes a sub-path deployment work: Stalwart rewrites
+      that exact tag to point at the prefix it serves the app under. A static host that mounts the
+      app in a subdirectory must edit the href to match ("/mail/").
+
+      Keep it a literal, root-path, double-quoted token, and keep any lookalike out of this comment:
+      a rewriter that pattern-matches would otherwise find the wrong one first.
+    -->
+    <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      Browser chrome color, per theme. The manifest carries a single theme_color and cannot follow
+      the OS setting; these two can. The values are --waxwing-bg from ui/tokens.css (light / dark).
+    -->
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)" />
     <!--
       Production CSP (strict, NFR-SEC-01): no inline script, no eval.
 
@@ -28,6 +45,16 @@
       content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https: wss:; frame-src 'self'"
     />
     <link rel="icon" type="image/svg+xml" href="branding/favicon.svg" />
+    <!-- iOS ignores the manifest's icons for "Add to Home Screen" and reads this instead. -->
+    <link rel="apple-touch-icon" href="branding/apple-touch-icon-180.png" />
+    <!--
+      The web app manifest is a DEPLOYMENT file (public/manifest.json), like config.json and
+      theme.css: a white-label hoster edits name, colors and icons in place, with no rebuild
+      (FR-DEP-04). It is therefore linked by hand rather than generated — and the href is relative,
+      so it resolves through the base tag above and survives a mount prefix.
+      NOT `.webmanifest`: Stalwart serves that extension as application/octet-stream (SP.5).
+    -->
+    <link rel="manifest" href="manifest.json" />
     <!-- Placeholder title; replaced at runtime from config.json branding.productName. -->
     <title>Waxwing</title>
   </head>

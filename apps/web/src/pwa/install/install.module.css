@@ -1,0 +1,19 @@
+.stepsTitle {
+  margin-block: var(--waxwing-space-5) var(--waxwing-space-2);
+  font-size: var(--waxwing-text-base);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding-inline-start: var(--waxwing-space-5);
+}
+
+.note {
+  margin-block-start: var(--waxwing-space-4);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
