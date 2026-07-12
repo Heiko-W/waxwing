@@ -36,6 +36,7 @@ import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useLocalPref, useMailboxByRole, useReplica } from '../sync'
 import { Avatar, Button, Dialog, IconButton, Spinner } from '../ui'
 import { AttachmentList } from './AttachmentList'
+import { LabelMenuButton } from './labels/LabelMenuButton'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
 import { formatAddressList, senderAddress, senderName } from './message-body'
@@ -272,6 +273,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         >
           <MailMinus />
         </IconButton>
+        <LabelMenuButton ids={[email.id]} />
         <Button size="sm" variant="ghost" onClick={() => setMoveOpen(true)}>
           {t('list.actions.move')}
         </Button>

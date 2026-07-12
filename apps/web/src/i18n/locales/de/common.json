@@ -392,5 +392,88 @@
       "count_one": "{{count}} Treffer",
       "count_other": "{{count}} Treffer"
     }
+  },
+  "labels": {
+    "title": "Labels",
+    "empty": "Noch keine Labels.",
+    "new": "Neues Label",
+    "newEllipsis": "Neues Label…",
+    "assign": "Label",
+    "menuTitle": "Labels anwenden",
+    "removeFromLabel": "Aus diesem Label entfernen",
+    "discoveredHint": "Auf synchronisierten Nachrichten gefundene Labels. Es werden nur Nachrichten aus dem Offline-Zeitraum angezeigt.",
+    "unread": "{{count}} ungelesen",
+    "rowLabels": "Labels",
+    "moreLabels_one": "{{count}} weiteres Label",
+    "moreLabels_other": "{{count}} weitere Labels",
+    "actions": {
+      "menu": "Label-Aktionen",
+      "rename": "Umbenennen",
+      "recolor": "Farbe ändern",
+      "delete": "Löschen",
+      "addToLabels": "Zu Labels hinzufügen"
+    },
+    "create": {
+      "title": "Neues Label",
+      "nameLabel": "Label-Name",
+      "colorLabel": "Farbe",
+      "submit": "Erstellen"
+    },
+    "rename": {
+      "title": "Label umbenennen",
+      "submit": "Umbenennen"
+    },
+    "recolor": {
+      "title": "Farbe ändern"
+    },
+    "save": "Speichern",
+    "delete": {
+      "title": "Label löschen?",
+      "message": "Label „{{name}}“ entfernen? Die Nachrichten behalten das zugrunde liegende Schlüsselwort.",
+      "alsoStrip": "Außerdem von {{count}} bekannten Nachrichten entfernen",
+      "confirm": "Löschen"
+    },
+    "color": {
+      "red": "Rot",
+      "orange": "Orange",
+      "yellow": "Gelb",
+      "green": "Grün",
+      "blue": "Blau",
+      "purple": "Lila",
+      "gray": "Grau"
+    },
+    "error": {
+      "empty": "Bitte einen Label-Namen eingeben.",
+      "tooLong": "Der Name ist zu lang.",
+      "taken": "Ein Label mit diesem Namen existiert bereits."
+    }
+  },
+  "cleanup": {
+    "cancel": "Abbrechen",
+    "menu": {
+      "emptyTrash": "Papierkorb leeren",
+      "emptyJunk": "Spam leeren",
+      "deleteOlder": "Älter als … löschen"
+    },
+    "empty": {
+      "title": "„{{name}}“ leeren?",
+      "message_one": "{{count}} Nachricht in „{{name}}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+      "message_other": "{{count}} Nachrichten in „{{name}}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+      "retention": "{{product}} löscht diese auf dem Server. Dein Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
+      "confirm": "Ordner leeren"
+    },
+    "older": {
+      "title": "Ältere Nachrichten löschen",
+      "daysLabel": "Nachrichten löschen, die älter sind als (Tage)",
+      "messageTrash_one": "Nachrichten in „{{name}}“, die älter als {{count}} Tag sind, in den Papierkorb verschieben?",
+      "messageTrash_other": "Nachrichten in „{{name}}“, die älter als {{count}} Tage sind, in den Papierkorb verschieben?",
+      "messageDestroy_one": "Nachrichten in „{{name}}“, die älter als {{count}} Tag sind, endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+      "messageDestroy_other": "Nachrichten in „{{name}}“, die älter als {{count}} Tage sind, endgültig löschen? Das kann nicht rückgängig gemacht werden.",
+      "noteTrash": "Verschobene Nachrichten bleiben im Papierkorb, bis du ihn leerst.",
+      "retention": "{{product}} löscht diese auf dem Server. Dein Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
+      "confirmTrash": "In den Papierkorb",
+      "confirmDestroy": "Endgültig löschen",
+      "invalid": "Gib eine Anzahl von Tagen ein (1–3650)."
+    }
   }
 }

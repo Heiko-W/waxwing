@@ -15,6 +15,8 @@ export interface MessageActions {
   setSeen(ids: Id[], seen: boolean): void
   /** Flag/unflag (`$flagged`). */
   setFlagged(ids: Id[], flagged: boolean): void
+  /** Add/remove an arbitrary keyword (label assign/remove — M3.2). */
+  setKeyword(ids: Id[], keyword: string, value: boolean): void
   /** Move out of `from` (null = keep other memberships) into `to` — archive/junk/trash/arbitrary. */
   move(ids: Id[], from: Id | null, to: Id): void
   /** Permanently destroy (Trash → purge). */
@@ -35,6 +37,8 @@ export function useMessageActions(): MessageActions {
         dispatch({ kind: 'setKeywords', emailIds: ids, keyword: '$seen', value: seen }),
       setFlagged: (ids, flagged) =>
         dispatch({ kind: 'setKeywords', emailIds: ids, keyword: '$flagged', value: flagged }),
+      setKeyword: (ids, keyword, value) =>
+        dispatch({ kind: 'setKeywords', emailIds: ids, keyword, value }),
       move: (ids, from, to) => dispatch({ kind: 'move', emailIds: ids, from, to }),
       destroy: (ids) => dispatch({ kind: 'destroyEmails', emailIds: ids }),
     }),

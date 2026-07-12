@@ -43,6 +43,16 @@
   --waxwing-warning-contrast: #ffffff;
   --waxwing-switch-thumb: #ffffff;
 
+  /* ---- Label swatch fills: light (M3.2). Decorative dots ringed by --waxwing-border-strong;
+     the label name is always the non-color signal, so these are not contrast-guaranteed. ---- */
+  --waxwing-label-red: #d70015;
+  --waxwing-label-orange: #cb6008;
+  --waxwing-label-yellow: #b8860b;
+  --waxwing-label-green: #1f8a3b;
+  --waxwing-label-blue: #2f6fe0;
+  --waxwing-label-purple: #7d3ac0;
+  --waxwing-label-gray: #86868b;
+
   /* ---- Elevation: light ---- */
   --waxwing-overlay: rgba(0, 0, 0, 0.32);
   --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -129,6 +139,15 @@
     --waxwing-warning-contrast: #1d1d1f;
     --waxwing-switch-thumb: #f5f5f7;
 
+    /* ---- Label swatch fills: dark (system preference) ---- */
+    --waxwing-label-red: #ff453a;
+    --waxwing-label-orange: #ff9f0a;
+    --waxwing-label-yellow: #ffd60a;
+    --waxwing-label-green: #30d158;
+    --waxwing-label-blue: #5e93f0;
+    --waxwing-label-purple: #bf5af2;
+    --waxwing-label-gray: #98989d;
+
     --waxwing-overlay: rgba(0, 0, 0, 0.6);
     --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
     --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
@@ -155,6 +174,15 @@
   --waxwing-warning-contrast: #1d1d1f;
   --waxwing-switch-thumb: #f5f5f7;
 
+  /* ---- Label swatch fills: dark (explicit user override) ---- */
+  --waxwing-label-red: #ff453a;
+  --waxwing-label-orange: #ff9f0a;
+  --waxwing-label-yellow: #ffd60a;
+  --waxwing-label-green: #30d158;
+  --waxwing-label-blue: #5e93f0;
+  --waxwing-label-purple: #bf5af2;
+  --waxwing-label-gray: #98989d;
+
   --waxwing-overlay: rgba(0, 0, 0, 0.6);
   --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
@@ -179,6 +207,15 @@
   --waxwing-warning: #8a5d00;
   --waxwing-warning-contrast: #ffffff;
   --waxwing-switch-thumb: #ffffff;
+
+  /* ---- Label swatch fills: light re-asserted ---- */
+  --waxwing-label-red: #d70015;
+  --waxwing-label-orange: #cb6008;
+  --waxwing-label-yellow: #b8860b;
+  --waxwing-label-green: #1f8a3b;
+  --waxwing-label-blue: #2f6fe0;
+  --waxwing-label-purple: #7d3ac0;
+  --waxwing-label-gray: #86868b;
 
   --waxwing-overlay: rgba(0, 0, 0, 0.32);
   --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);

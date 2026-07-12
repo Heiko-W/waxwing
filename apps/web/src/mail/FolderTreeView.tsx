@@ -49,6 +49,10 @@ export interface FolderTreeViewProps {
   readonly onRequestCreate: (parentId: string | null) => void
   readonly onRequestRename: (mailbox: MailboxRow) => void
   readonly onRequestDelete: (mailbox: MailboxRow) => void
+  /** Empty a Trash/Junk mailbox (M3.2 cleanup); omit to hide the entry. */
+  readonly onRequestEmpty?: (mailbox: MailboxRow) => void
+  /** Delete messages older than N days from any purgeable mailbox (M3.2 cleanup); omit to hide. */
+  readonly onRequestDeleteOlder?: (mailbox: MailboxRow) => void
 }
 
 export function FolderTreeView({
@@ -60,6 +64,8 @@ export function FolderTreeView({
   onRequestCreate,
   onRequestRename,
   onRequestDelete,
+  onRequestEmpty,
+  onRequestDeleteOlder,
 }: FolderTreeViewProps) {
   const { t } = useTranslation()
   const rows = visibleRows(tree, (id) => collapsed.has(id))
@@ -151,6 +157,8 @@ export function FolderTreeView({
           onRequestCreate,
           onRequestRename,
           onRequestDelete,
+          onRequestEmpty,
+          onRequestDeleteOlder,
         })
         return (
           // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard is handled at the role=tree container via onKeyDown delegation (APG tree pattern), not per treeitem.
@@ -232,6 +240,8 @@ function actionItems(
     onRequestCreate: (parentId: string | null) => void
     onRequestRename: (mailbox: MailboxRow) => void
     onRequestDelete: (mailbox: MailboxRow) => void
+    onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
+    onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
   },
 ): MenuItemSpec[] {
   const items: MenuItemSpec[] = []
@@ -247,6 +257,24 @@ function actionItems(
       id: 'rename',
       label: t('mailbox.actions.rename'),
       onSelect: () => handlers.onRequestRename(mailbox),
+    })
+  }
+  // Cleanup (M3.2): empty a Trash/Junk mailbox, or delete older messages from any purgeable one.
+  if (handlers.onRequestEmpty && (mailbox.role === 'trash' || mailbox.role === 'junk')) {
+    const onRequestEmpty = handlers.onRequestEmpty
+    items.push({
+      id: 'empty',
+      label: mailbox.role === 'trash' ? t('cleanup.menu.emptyTrash') : t('cleanup.menu.emptyJunk'),
+      destructive: true,
+      onSelect: () => onRequestEmpty(mailbox),
+    })
+  }
+  if (handlers.onRequestDeleteOlder && mailbox.myRights.mayRemoveItems) {
+    const onRequestDeleteOlder = handlers.onRequestDeleteOlder
+    items.push({
+      id: 'deleteOlder',
+      label: t('cleanup.menu.deleteOlder'),
+      onSelect: () => onRequestDeleteOlder(mailbox),
     })
   }
   if (mailbox.myRights.mayDelete) {

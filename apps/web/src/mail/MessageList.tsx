@@ -35,7 +35,10 @@ import {
   useReplica,
 } from '../sync'
 import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden } from '../ui'
-import type { Density } from './MessageRow'
+import { LabelMenu } from './labels/LabelMenu'
+import { LabelMenuButton } from './labels/LabelMenuButton'
+import { useLabels } from './labels/use-labels'
+import type { Density, RowLabel } from './MessageRow'
 import { MessageRow } from './MessageRow'
 import styles from './message-list.module.css'
 import { EMPTY_SELECTION, selectionReducer } from './message-selection'
@@ -53,9 +56,11 @@ export interface MessageListProps {
   readonly search?:
     | { readonly spec: QuerySpec; readonly scopeMailboxId: Id | undefined }
     | undefined
+  /** The active label keyword when browsing `/mail?label=…` (M3.2) — enables "Remove from label". */
+  readonly activeLabel?: string | undefined
 }
 
-export function MessageList({ mailboxId, search }: MessageListProps) {
+export function MessageList({ mailboxId, search, activeLabel }: MessageListProps) {
   const { t } = useTranslation()
   const route = useRoute()
   const navigate = useNavigate()
@@ -127,6 +132,19 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
     return map
   }, [rows])
 
+  // Registry name+color per keyword, so each row can render its label swatches without subscribing.
+  const labels = useLabels()
+  const labelLookup = useMemo(() => {
+    const map = new Map<string, RowLabel>()
+    for (const label of labels ?? [])
+      map.set(label.keyword, { name: label.name, color: label.color })
+    return map
+  }, [labels])
+
+  // The `l` shortcut opens a label picker for the selection / focused row, anchored to the container.
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [labelTargets, setLabelTargets] = useState<Id[] | null>(null)
+
   // Highlighted (`<mark>`) subject/preview for the visible slice — search only (M3.1).
   const highlights = useSnippets(search?.spec.filter, visibleIds)
 
@@ -154,19 +172,22 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
         void draftOpener.open(id)
         return
       }
-      // Preserve the `?q=…` search so opening a result keeps the results list visible (M3.1).
-      if (mailboxId !== undefined) {
-        // A cross-folder search result (scope=all / in:<other>) may not live in the current folder —
-        // file the URL under a mailbox the message is actually in so the active-folder context is
-        // right; fall back to the route folder when the row isn't loaded or is in it.
-        const row = rowById.get(id)
-        const targetMailbox =
-          row !== undefined && !row.mailboxIds[mailboxId]
+      const row = rowById.get(id)
+      // Resolve the mailbox to file the URL under. With a folder context, a cross-folder result
+      // (scope=all / in:<other>) may not live in the current folder — use a mailbox the message is
+      // actually in, else the route folder. With NO folder context (a label/all view), there is no
+      // route folder, so use the row's own mailbox. Preserve `?q=`/`?label=` so the results list stays.
+      const targetMailbox =
+        mailboxId !== undefined
+          ? row !== undefined && !row.mailboxIds[mailboxId]
             ? (Object.keys(row.mailboxIds)[0] ?? mailboxId)
             : mailboxId
-        const qs = route.search.toString()
-        navigate(mailPath(targetMailbox, id) + (qs ? `?${qs}` : ''))
-      }
+          : row !== undefined
+            ? Object.keys(row.mailboxIds)[0]
+            : undefined
+      if (targetMailbox === undefined) return
+      const qs = route.search.toString()
+      navigate(mailPath(targetMailbox, id) + (qs ? `?${qs}` : ''))
     },
     [mailboxId, navigate, rowById, draftOpener, route.search],
   )
@@ -228,6 +249,17 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
           dispatchSelection({ type: 'selectAll', ordered: ids })
         }
         break
+      case 'l':
+        // Label the current selection, or the focused row when nothing is selected (M3.2).
+        if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+          const targets =
+            selection.selected.size > 0 ? [...selection.selected] : id !== undefined ? [id] : []
+          if (targets.length > 0) {
+            event.preventDefault()
+            setLabelTargets(targets)
+          }
+        }
+        break
     }
   }
 
@@ -242,11 +274,12 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
   const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       {selection.selected.size > 0 ? (
         <BulkBar
           count={selection.selected.size}
           ids={selectedIds}
+          activeLabel={activeLabel}
           fromMailbox={search ? search.scopeMailboxId : mailboxId}
           allSelected={allSelected}
           someSelected={someSelected}
@@ -316,6 +349,7 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
                     selected={selection.selected.has(id)}
                     active={id === route.params.emailId}
                     density={density}
+                    labels={labelLookup}
                     highlight={highlights.get(id)}
                     onOpen={() => open(id)}
                     onSelectToggle={() => dispatchSelection({ type: 'toggle', id })}
@@ -358,6 +392,10 @@ export function MessageList({ mailboxId, search }: MessageListProps) {
         >
           <p>{t('list.selected', { count: selection.selected.size })}</p>
         </Dialog>
+      )}
+
+      {labelTargets !== null && (
+        <LabelMenu ids={labelTargets} anchorRef={scrollRef} onClose={() => setLabelTargets(null)} />
       )}
     </div>
   )
@@ -431,6 +469,8 @@ function Toolbar({ sort, density, unreadFirst, flat, onChange }: ToolbarProps) {
 interface BulkBarProps {
   readonly count: number
   readonly ids: Id[]
+  /** The active label keyword when in a label view (M3.2) — enables "Remove from this label". */
+  readonly activeLabel: string | undefined
   /** The source mailbox for folder-move actions; `undefined` in an all-mailboxes search (moves gated). */
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
@@ -444,6 +484,7 @@ interface BulkBarProps {
 function BulkBar({
   count,
   ids,
+  activeLabel,
   fromMailbox,
   allSelected,
   someSelected,
@@ -490,6 +531,19 @@ function BulkBar({
       >
         <Flag />
       </IconButton>
+      <LabelMenuButton ids={ids} />
+      {activeLabel !== undefined && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            actions.setKeyword(ids, activeLabel, false)
+            onClear()
+          }}
+        >
+          {t('labels.removeFromLabel')}
+        </Button>
+      )}
       {canMove && archive && (
         <IconButton
           label={t('list.actions.archive')}

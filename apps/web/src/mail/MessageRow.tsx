@@ -14,9 +14,21 @@ import { useTranslation } from 'react-i18next'
 import type { EmailRow } from '../sync'
 import { Avatar, Checkbox, Skeleton, VisuallyHidden } from '../ui'
 import { formatMessageTime } from './format-message-time'
+import { LabelSwatch } from './labels/LabelSwatch'
+import { isCustomKeyword, type LabelColor } from './labels/label-model'
+import labelStyles from './labels/labels.module.css'
 import styles from './message-list.module.css'
 
 export type Density = 'comfortable' | 'compact'
+
+/** The registry name+color a row needs to render one label swatch (keyed by keyword upstream). */
+export interface RowLabel {
+  readonly name: string
+  readonly color: LabelColor
+}
+
+/** Max swatches shown before collapsing to "+N", tuned per density. */
+const MAX_SWATCHES: Record<Density, number> = { comfortable: 3, compact: 2 }
 
 export interface MessageRowProps {
   /** Stable DOM id — the grid points `aria-activedescendant` here when this row is the roving one. */
@@ -28,6 +40,8 @@ export interface MessageRowProps {
   readonly active: boolean
   readonly density: Density
   readonly style?: CSSProperties
+  /** Registry name+color per keyword, so this row can render its label swatches (M3.2). */
+  readonly labels?: ReadonlyMap<string, RowLabel> | undefined
   /** Sanitized `<mark>` highlights for a search result (M3.1); plain text is used when absent. */
   readonly highlight?: { readonly subject: string; readonly preview: string } | undefined
   readonly onOpen: () => void
@@ -50,6 +64,7 @@ export function MessageRow({
   active,
   density,
   style,
+  labels,
   highlight,
   onOpen,
   onSelectToggle,
@@ -88,6 +103,15 @@ export function MessageRow({
   const flagged = email.keywords.$flagged === true
   const answered = email.keywords.$answered === true
   const name = senderName(email, t('list.noSender'))
+
+  // Label swatches for this row's custom keywords (color resolved from the registry, gray when the
+  // keyword is discovered-but-unregistered), capped per density with an accessible "+N" overflow.
+  const customKeywords = Object.keys(email.keywords).filter(isCustomKeyword)
+  const shownLabels = customKeywords.slice(0, MAX_SWATCHES[density]).map((keyword) => ({
+    keyword,
+    ...(labels?.get(keyword) ?? { name: keyword, color: 'gray' as LabelColor }),
+  }))
+  const overflowLabels = customKeywords.length - shownLabels.length
 
   function onRowClick(event: MouseEvent): void {
     onActivate()
@@ -131,6 +155,28 @@ export function MessageRow({
         <div className={styles.rowTop}>
           <span className={styles.sender}>{name}</span>
           <span className={styles.meta}>
+            {shownLabels.length > 0 && (
+              <span
+                className={labelStyles.rowSwatches}
+                role="group"
+                aria-label={t('labels.rowLabels')}
+              >
+                {shownLabels.map((label) => (
+                  <span key={label.keyword}>
+                    <LabelSwatch color={label.color} size="sm" />
+                    <VisuallyHidden>{label.name}</VisuallyHidden>
+                  </span>
+                ))}
+                {overflowLabels > 0 && (
+                  <span className={labelStyles.more}>
+                    <span aria-hidden="true">+{overflowLabels}</span>
+                    <VisuallyHidden>
+                      {t('labels.moreLabels', { count: overflowLabels })}
+                    </VisuallyHidden>
+                  </span>
+                )}
+              </span>
+            )}
             {answered && (
               <>
                 <Reply aria-hidden="true" className={styles.icon} />

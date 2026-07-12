@@ -12,6 +12,8 @@ import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
 import { Button, Dialog, IconButton, TextInput } from '../ui'
+import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
+import { useCleanupActions } from './cleanup/use-cleanup-actions'
 import { FolderTreeView } from './FolderTreeView'
 import { buildFolderTree, folderDisplayName } from './folder-tree'
 import styles from './folder-tree.module.css'
@@ -25,6 +27,8 @@ type DialogState =
   | { readonly kind: 'create'; readonly parentId: string | null }
   | { readonly kind: 'rename'; readonly mailbox: MailboxRow }
   | { readonly kind: 'delete'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'empty'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'deleteOlder'; readonly mailbox: MailboxRow }
 
 export function FolderTree() {
   const { t } = useTranslation()
@@ -33,6 +37,7 @@ export function FolderTree() {
   const route = useRoute()
   const navigate = useNavigate()
   const actions = useFolderActions()
+  const cleanup = useCleanupActions()
   const collapsedList = useLocalPref<string[]>(COLLAPSED_PREF)
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -52,6 +57,7 @@ export function FolderTree() {
     return <p className={styles.empty}>{t('shell.folders.empty')}</p>
   }
 
+  const trashMailbox = mailboxes.find((mailbox) => mailbox.role === 'trash')
   const siblingsOf = (parentId: string | null, excludeId?: string): MailboxRow[] =>
     mailboxes.filter((mailbox) => mailbox.parentId === parentId && mailbox.id !== excludeId)
 
@@ -78,6 +84,8 @@ export function FolderTree() {
         onRequestCreate={(parentId) => setDialog({ kind: 'create', parentId })}
         onRequestRename={(mailbox) => setDialog({ kind: 'rename', mailbox })}
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
+        onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
+        onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
       />
 
       {dialog?.kind === 'create' && (
@@ -126,8 +134,47 @@ export function FolderTree() {
           }}
         />
       )}
+
+      {dialog?.kind === 'empty' && (
+        <EmptyFolderDialog
+          mailbox={dialog.mailbox}
+          onClose={() => setDialog(null)}
+          onConfirm={() => {
+            void cleanup.emptyMailbox(dialog.mailbox.id)
+            setDialog(null)
+          }}
+        />
+      )}
+
+      {dialog?.kind === 'deleteOlder' && (
+        <DeleteOlderDialog
+          mailbox={dialog.mailbox}
+          mode={olderMode(dialog.mailbox, trashMailbox)}
+          onClose={() => setDialog(null)}
+          onConfirm={(days) => {
+            const mailbox = dialog.mailbox
+            if (olderMode(mailbox, trashMailbox) === 'trash' && trashMailbox) {
+              void cleanup.trashOlderThan(mailbox.id, trashMailbox.id, days)
+            } else {
+              void cleanup.deleteOlderThan(mailbox.id, days)
+            }
+            setDialog(null)
+          }}
+        />
+      )}
     </div>
   )
+}
+
+/**
+ * Delete-older-than is RECOVERABLE (move to Trash) for a normal folder, but PERMANENT for Trash/Junk
+ * itself (or when no Trash exists) — so a message multi-filed elsewhere is never destroyed everywhere
+ * from a routine cleanup.
+ */
+function olderMode(mailbox: MailboxRow, trash: MailboxRow | undefined): 'trash' | 'destroy' {
+  if (mailbox.role === 'trash' || mailbox.role === 'junk') return 'destroy'
+  if (trash === undefined || trash.id === mailbox.id) return 'destroy'
+  return 'trash'
 }
 
 /** The localized display label for a parent mailbox (role name for roles, else the server name). */

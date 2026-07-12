@@ -19,6 +19,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Conversation } from '../../mail/Conversation'
 import { FolderTree } from '../../mail/FolderTree'
+import { Labels } from '../../mail/labels/Labels'
+import { useLabelView } from '../../mail/labels/use-label-view'
 import { MessageList } from '../../mail/MessageList'
 import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
@@ -51,6 +53,9 @@ export function MailScreen() {
         : undefined,
     [search.active, search.spec, search.scopeMailboxId],
   )
+  // A label browse (`/mail?label=…`) reuses the search seam and wins over `?q=` (M3.2).
+  const labelView = useLabelView()
+  const effectiveSearch = labelView?.listSearch ?? listSearch
   const drawerCapable = tier !== 'desktop'
   const [foldersOpen, setFoldersOpen] = useState(false)
 
@@ -108,7 +113,11 @@ export function MailScreen() {
       )}
       <SearchBox search={search} />
       <div className={styles.paneBody}>
-        <MessageList mailboxId={mailboxId} search={listSearch} />
+        <MessageList
+          mailboxId={mailboxId}
+          search={effectiveSearch}
+          activeLabel={labelView?.activeLabel}
+        />
       </div>
     </section>
   )
@@ -146,6 +155,7 @@ export function MailScreen() {
         aria-label={t('shell.folders.title')}
       >
         <FolderTree />
+        <Labels />
       </nav>
       {drawerCapable && foldersOpen && (
         // A backdrop that closes the drawer on outside press. tabIndex=-1 keeps it out of the

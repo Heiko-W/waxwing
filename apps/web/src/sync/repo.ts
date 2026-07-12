@@ -8,6 +8,7 @@
 
 import type { Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
 import Dexie from 'dexie'
+import { LABELS_PREF_KEY, type LabelPref } from '../mail/labels/label-model'
 import {
   type AccountRecord,
   type AddressStatRow,
@@ -265,6 +266,36 @@ export function emailsWithKeyword(
   return db.emails.where('akw').equals(scopeKey(accountId, keyword)).toArray()
 }
 
+/**
+ * The distinct keywords present on cached mail for one account (M3.2 label discovery). Reads the
+ * account-scoped slice of the `akw` multiEntry index by prefix — the NUL separator in {@link scopeKey}
+ * guarantees no bleed from an account id that is a string prefix of another — and strips the scope,
+ * so it is a single indexed range, not a full-table scan. Reflects only the windowed replica subset.
+ */
+export async function distinctKeywords(db: ReplicaDb, accountId: Id): Promise<string[]> {
+  const prefix = scopeKey(accountId, '')
+  const keys = (await db.emails.where('akw').startsWith(prefix).uniqueKeys()) as string[]
+  return keys.map((key) => key.slice(prefix.length))
+}
+
+/** Per-keyword unread (`$seen`-absent) counts over the account's cached mail (M3.2 label badges). */
+export async function labelUnreadCounts(
+  db: ReplicaDb,
+  accountId: Id,
+  keywords: readonly string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  for (const keyword of keywords) {
+    const count = await db.emails
+      .where('akw')
+      .equals(scopeKey(accountId, keyword))
+      .filter((row) => row.keywords.$seen !== true)
+      .count()
+    counts.set(keyword, count)
+  }
+  return counts
+}
+
 /** The messages of a thread, for threaded rendering and collapse (FR-LST-02). */
 export function emailsInThread(db: ReplicaDb, accountId: Id, threadId: Id): Promise<EmailRow[]> {
   return db.emails.where('[accountId+threadId]').equals([accountId, threadId]).toArray()
@@ -399,6 +430,24 @@ export async function setPref(
 ): Promise<void> {
   const row: LocalPrefRow = { accountId, key, value }
   await db.localPrefs.put(row)
+}
+
+/**
+ * Read-modify-write the label registry (M3.2) inside a single Dexie `rw` transaction so concurrent
+ * tabs cannot lose an update (a blind `setPref` would clobber a sibling tab's change). `fn` receives
+ * the current registry (empty when unset) and returns the next one.
+ */
+export async function updateLabels(
+  db: ReplicaDb,
+  accountId: Id,
+  fn: (current: LabelPref[]) => LabelPref[],
+): Promise<void> {
+  await db.transaction('rw', db.localPrefs, async () => {
+    const row = await db.localPrefs.get([accountId, LABELS_PREF_KEY])
+    const current = (row?.value as LabelPref[] | undefined) ?? []
+    const next = fn(current)
+    await db.localPrefs.put({ accountId, key: LABELS_PREF_KEY, value: next })
+  })
 }
 
 // ---------------------------------------------------------------------------------------------

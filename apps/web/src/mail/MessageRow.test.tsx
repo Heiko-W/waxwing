@@ -103,6 +103,31 @@ describe('MessageRow', () => {
     expect(onOpen).toHaveBeenCalledTimes(1)
   })
 
+  it('renders label swatches for custom keywords with accessible names', () => {
+    grid(
+      <MessageRow
+        {...baseProps}
+        email={row({ keywords: { $seen: true, work: true, receipts: true } })}
+        labels={new Map([['work', { name: 'Work', color: 'red' }]])}
+      />,
+    )
+    // Registered keyword shows its display name; a discovered one falls back to the bare keyword.
+    expect(screen.getByText('Work')).toBeInTheDocument()
+    expect(screen.getByText('receipts')).toBeInTheDocument()
+  })
+
+  it('caps the visible swatches per density and announces the overflow', () => {
+    grid(
+      <MessageRow
+        {...baseProps}
+        density="comfortable"
+        email={row({ keywords: { a: true, b: true, c: true, d: true, e: true } })}
+      />,
+    )
+    expect(screen.getByText('+2')).toBeInTheDocument() // 5 custom keywords, 3 shown
+    expect(screen.getByText('2 more labels')).toBeInTheDocument()
+  })
+
   it('has no axe violations in a grid', async () => {
     const { container } = grid(
       <div role="rowgroup">

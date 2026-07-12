@@ -1,0 +1,238 @@
+/* Label UI (M3.2): swatches, the sidebar list, the picker popover, and the color picker. */
+
+/* ---- Swatch (a decorative colored dot ringed by --waxwing-border-strong). ---- */
+.swatch {
+  display: inline-block;
+  flex: none;
+  border-radius: var(--waxwing-radius-full);
+  box-shadow: inset 0 0 0 1px var(--waxwing-border-strong);
+}
+
+.swatchSm {
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+}
+
+.swatchMd {
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+}
+
+/* ---- Sidebar container (mirrors the folder-tree block). ---- */
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin-block-start: var(--waxwing-space-3);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-2);
+}
+
+.headerTitle {
+  flex: 1 1 auto;
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--waxwing-text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  cursor: pointer;
+  color: var(--waxwing-text);
+}
+
+.item:hover {
+  background-color: var(--waxwing-surface-2);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
+}
+
+.item[aria-selected="true"] {
+  background-color: var(--waxwing-surface-2);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--waxwing-text-sm);
+}
+
+.discovered {
+  color: var(--waxwing-text-muted);
+}
+
+.count {
+  flex: none;
+}
+
+.rowMenu {
+  flex: none;
+  display: inline-flex;
+}
+
+.empty,
+.hint {
+  padding-inline: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.hint {
+  margin-block-start: var(--waxwing-space-1);
+  line-height: var(--waxwing-leading-normal);
+}
+
+/* ---- Picker popover (a role=menu of menuitemcheckbox toggles + "New label…"). ---- */
+.menu {
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 14rem;
+  max-inline-size: min(22rem, 90vw);
+  max-block-size: min(24rem, 70vh);
+  overflow-y: auto;
+  padding: var(--waxwing-space-1);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  inline-size: 100%;
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
+  border: 0;
+  border-radius: var(--waxwing-radius-sm);
+  background-color: transparent;
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background-color: var(--waxwing-surface-2);
+  outline: none;
+}
+
+.menuItemLabel {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-accent);
+}
+
+.separator {
+  block-size: 1px;
+  margin-block: var(--waxwing-space-1);
+  background-color: var(--waxwing-border);
+}
+
+/* ---- Color picker (native radios styled as swatches). ---- */
+.colorPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+.colorOption {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.colorInput {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.colorDot {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: var(--waxwing-radius-full);
+  box-shadow: inset 0 0 0 1px var(--waxwing-border-strong);
+}
+
+.colorInput:checked + .colorDot {
+  box-shadow:
+    inset 0 0 0 1px var(--waxwing-border-strong),
+    0 0 0 2px var(--waxwing-focus-ring);
+}
+
+.colorInput:focus-visible + .colorDot {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---- Per-row swatch cluster (MessageRow). ---- */
+.rowSwatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.more {
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+}
+
+/* ---- Shared dialog form scaffolding. ---- */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.formLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.formError {
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}

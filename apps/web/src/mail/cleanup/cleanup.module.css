@@ -1,0 +1,32 @@
+/* Folder-cleanup dialogs (M3.2). */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.retention {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.fieldLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.daysInput {
+  inline-size: 6rem;
+}
+
+.error {
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}

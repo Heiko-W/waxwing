@@ -4,7 +4,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
-import { putEmails, putMailboxes, putQueryCache, type ReplicaDb, ReplicaProvider } from '../sync'
+import {
+  canonicalQueryKey,
+  putEmails,
+  putMailboxes,
+  putQueryCache,
+  type QuerySpec,
+  type ReplicaDb,
+  ReplicaProvider,
+} from '../sync'
 import { setActiveEngine, windowQueryKey } from '../sync/engine'
 import { email, freshDb, mailbox } from '../sync/test-utils'
 import { MessageList } from './MessageList'
@@ -60,6 +68,7 @@ beforeEach(async () => {
   setActiveEngine({
     watchWindow: vi.fn(() => 'k'),
     loadMoreFor: vi.fn(),
+    fetchEnvelopes: vi.fn(),
     dispatch,
   } as unknown as Parameters<typeof setActiveEngine>[0])
   await putMailboxes(db, 'a', [
@@ -183,5 +192,62 @@ describe('MessageList', () => {
       dispatch,
     } as unknown as Parameters<typeof setActiveEngine>[0])
     await waitFor(() => expect(watchWindow).toHaveBeenCalledWith('inbox', expect.anything()))
+  })
+
+  it('opens the label picker with the "l" shortcut for the focused row (M3.2)', async () => {
+    const user = userEvent.setup()
+    renderList()
+    await screen.findByText('First')
+    const grid = screen.getByRole('grid')
+    grid.focus()
+    await user.keyboard('l')
+    expect(await screen.findByRole('menu', { name: 'Apply labels' })).toBeInTheDocument()
+  })
+
+  it('files an opened result under the row’s own mailbox when there is no folder context (M3.2)', async () => {
+    const user = userEvent.setup()
+    // The list renders from the seeded search window even with no engine, and open() navigates
+    // without one — so null-out the engine to avoid stubbing every search-mode engine method.
+    setActiveEngine(null)
+    const spec: QuerySpec = {
+      filter: { hasKeyword: 'work' },
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: false,
+    }
+    const key = canonicalQueryKey(spec)
+    // e1 lives in Archive — no route folder in a label view, so open() must resolve the mailbox off it.
+    await putEmails(db, 'a', [
+      email('e1', { subject: 'Labeled', mailboxIds: { archive: true }, keywords: { work: true } }),
+    ])
+    await putQueryCache(db, {
+      accountId: 'a',
+      key,
+      ids: ['e1'],
+      queryState: 'q',
+      total: 1,
+      upToId: 'e1',
+      filter: spec.filter ?? null,
+      sort: spec.sort ?? null,
+      collapseThreads: false,
+      lastUsedAt: 1,
+    })
+
+    render(
+      <RouterProvider>
+        <ConfigProvider config={DEFAULT_CONFIG}>
+          <ReplicaProvider accountId="a" db={db}>
+            <MessageList
+              mailboxId={undefined}
+              search={{ spec, scopeMailboxId: undefined }}
+              activeLabel="work"
+            />
+          </ReplicaProvider>
+        </ConfigProvider>
+      </RouterProvider>,
+    )
+    const rowEl = (await screen.findByText('Labeled')).closest('[role="row"]') as HTMLElement
+    await user.click(rowEl)
+    // Navigation happened (row is aria-current) → open() resolved the mailbox from the row.
+    await waitFor(() => expect(rowEl).toHaveAttribute('aria-current', 'page'))
   })
 })

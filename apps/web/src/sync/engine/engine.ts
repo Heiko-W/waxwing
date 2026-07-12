@@ -16,6 +16,7 @@ import {
   type AuthProvider,
   createPushChannel,
   type EmailFilter,
+  getCoreCapability,
   type Id,
   JmapHttpError,
   type PushChannel,
@@ -392,6 +393,98 @@ export class SyncEngine {
     return this.status
   }
 
+  /**
+   * Empty a mailbox (M3.2 cleanup): destroy every message in it. Goes through the durable outbox
+   * `destroyEmails` intent, chunked at the engine level (one resumable intent per batch). Returns the
+   * number of messages scheduled for destruction.
+   */
+  emptyMailbox(mailboxId: Id): Promise<{ scheduled: number }> {
+    return this.destroyMatching({ inMailbox: mailboxId })
+  }
+
+  /** Permanently destroy messages older than `beforeIso` in a mailbox — for Trash/Junk cleanup. */
+  deleteOlderThan(mailboxId: Id, beforeIso: string): Promise<{ scheduled: number }> {
+    return this.destroyMatching(olderFilter(mailboxId, beforeIso))
+  }
+
+  /**
+   * Move messages older than `beforeIso` from `mailboxId` to `toMailboxId` (the Trash) — the
+   * RECOVERABLE "delete older than" for a NORMAL folder, so a message multi-filed elsewhere is not
+   * permanently destroyed everywhere (destroy is reserved for Trash/Junk).
+   */
+  trashOlderThan(
+    mailboxId: Id,
+    toMailboxId: Id,
+    beforeIso: string,
+  ): Promise<{ scheduled: number }> {
+    return this.moveMatching(olderFilter(mailboxId, beforeIso), mailboxId, toMailboxId)
+  }
+
+  /** The bulk-cleanup chunk size = the server's `maxObjectsInSet` (fallback 500). */
+  private get cleanupChunkSize(): number {
+    return getCoreCapability(this.deps.session)?.maxObjectsInSet ?? 500
+  }
+
+  /**
+   * Page ALL matching ids (oldest first) BEFORE any write, so a destructive/move pass never shifts
+   * its own query positions. Terminates on the authoritative `total` when advertised (a short page is
+   * not assumed to be the last), else on the first short/empty page.
+   */
+  private async collectMatchingIds(filter: EmailFilter): Promise<Id[]> {
+    const PAGE = 500
+    const ids: Id[] = []
+    let position = 0
+    for (;;) {
+      const result = await this.port.queryEmails({
+        filter,
+        sort: [{ property: 'receivedAt', isAscending: true }],
+        limit: PAGE,
+        position,
+        calculateTotal: true,
+      })
+      if (result.ids.length === 0) break
+      ids.push(...result.ids)
+      position += result.ids.length
+      if (result.total !== undefined ? ids.length >= result.total : result.ids.length < PAGE) break
+    }
+    return ids
+  }
+
+  /**
+   * Enqueue chunked `destroyEmails` intents — one durable outbox row per `maxObjectsInSet`-sized
+   * batch, so a large purge survives a reload and resumes. NEVER passes `ifInState`: a bulk destroy
+   * must not fail the whole batch on an unrelated concurrent change (and the auto-chunker cannot
+   * split a state-guarded set anyway).
+   */
+  private async destroyMatching(filter: EmailFilter): Promise<{ scheduled: number }> {
+    const ids = await this.collectMatchingIds(filter)
+    const cap = this.cleanupChunkSize
+    let scheduled = 0
+    for (let start = 0; start < ids.length; start += cap) {
+      const chunk = ids.slice(start, start + cap)
+      await this.dispatch({ kind: 'destroyEmails', emailIds: chunk }, { id: crypto.randomUUID() })
+      scheduled += chunk.length
+    }
+    return { scheduled }
+  }
+
+  /** Like {@link destroyMatching} but MOVES each batch from `from` to `to` (recoverable cleanup). */
+  private async moveMatching(
+    filter: EmailFilter,
+    from: Id,
+    to: Id,
+  ): Promise<{ scheduled: number }> {
+    const ids = await this.collectMatchingIds(filter)
+    const cap = this.cleanupChunkSize
+    let scheduled = 0
+    for (let start = 0; start < ids.length; start += cap) {
+      const chunk = ids.slice(start, start + cap)
+      await this.dispatch({ kind: 'move', emailIds: chunk, from, to }, { id: crypto.randomUUID() })
+      scheduled += chunk.length
+    }
+    return { scheduled }
+  }
+
   // ------------------------------------------------------------------------------------------
 
   private async onLeadership(isLeader: boolean): Promise<void> {
@@ -544,6 +637,11 @@ function errorMessage(error: unknown): string {
 /** A background 401/403 — the session expired and the engine should route to re-auth, not "error". */
 function isAuthExpiry(error: unknown): boolean {
   return error instanceof JmapHttpError && (error.status === 401 || error.status === 403)
+}
+
+/** `AND(inMailbox, before)` — the "older than" cleanup filter (M3.2). */
+function olderFilter(mailboxId: Id, beforeIso: string): EmailFilter {
+  return { operator: 'AND', conditions: [{ inMailbox: mailboxId }, { before: beforeIso }] }
 }
 
 // The single running engine for this tab, so the out-of-React sign-out path can stop it (release

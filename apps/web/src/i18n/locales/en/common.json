@@ -392,5 +392,88 @@
       "count_one": "{{count}} result",
       "count_other": "{{count}} results"
     }
+  },
+  "labels": {
+    "title": "Labels",
+    "empty": "No labels yet.",
+    "new": "New label",
+    "newEllipsis": "New label…",
+    "assign": "Label",
+    "menuTitle": "Apply labels",
+    "removeFromLabel": "Remove from this label",
+    "discoveredHint": "Labels found on synced messages. Only messages in your offline window are shown.",
+    "unread": "{{count}} unread",
+    "rowLabels": "Labels",
+    "moreLabels_one": "{{count}} more label",
+    "moreLabels_other": "{{count}} more labels",
+    "actions": {
+      "menu": "Label actions",
+      "rename": "Rename",
+      "recolor": "Change color",
+      "delete": "Delete",
+      "addToLabels": "Add to labels"
+    },
+    "create": {
+      "title": "New label",
+      "nameLabel": "Label name",
+      "colorLabel": "Color",
+      "submit": "Create"
+    },
+    "rename": {
+      "title": "Rename label",
+      "submit": "Rename"
+    },
+    "recolor": {
+      "title": "Change color"
+    },
+    "save": "Save",
+    "delete": {
+      "title": "Delete label?",
+      "message": "Remove the label “{{name}}”? Messages keep the underlying keyword.",
+      "alsoStrip": "Also remove it from {{count}} known messages",
+      "confirm": "Delete"
+    },
+    "color": {
+      "red": "Red",
+      "orange": "Orange",
+      "yellow": "Yellow",
+      "green": "Green",
+      "blue": "Blue",
+      "purple": "Purple",
+      "gray": "Gray"
+    },
+    "error": {
+      "empty": "Enter a label name.",
+      "tooLong": "The name is too long.",
+      "taken": "A label with this name already exists."
+    }
+  },
+  "cleanup": {
+    "cancel": "Cancel",
+    "menu": {
+      "emptyTrash": "Empty Trash",
+      "emptyJunk": "Empty Junk",
+      "deleteOlder": "Delete older than…"
+    },
+    "empty": {
+      "title": "Empty “{{name}}”?",
+      "message_one": "Permanently delete {{count}} message in “{{name}}”? This cannot be undone.",
+      "message_other": "Permanently delete {{count}} messages in “{{name}}”? This cannot be undone.",
+      "retention": "{{product}} deletes these on the server. Your provider may keep its own backups outside {{product}}’s control.",
+      "confirm": "Empty folder"
+    },
+    "older": {
+      "title": "Delete older messages",
+      "daysLabel": "Delete messages older than (days)",
+      "messageTrash_one": "Move messages in “{{name}}” older than {{count}} day to the Trash?",
+      "messageTrash_other": "Move messages in “{{name}}” older than {{count}} days to the Trash?",
+      "messageDestroy_one": "Permanently delete messages in “{{name}}” older than {{count}} day? This cannot be undone.",
+      "messageDestroy_other": "Permanently delete messages in “{{name}}” older than {{count}} days? This cannot be undone.",
+      "noteTrash": "Moved messages stay in the Trash until you empty it.",
+      "retention": "{{product}} deletes these on the server. Your provider may keep its own backups outside {{product}}’s control.",
+      "confirmTrash": "Move to Trash",
+      "confirmDestroy": "Delete permanently",
+      "invalid": "Enter a number of days (1–3650)."
+    }
   }
 }
