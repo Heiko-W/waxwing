@@ -97,7 +97,15 @@ below are unit-tested rather than eyeballed.
 | **Stale-while-revalidate** (`waxwing-branding`) | `branding/**` |
 | **Never touched** | everything else — above all **JMAP**. |
 
-Three things are load-bearing and easy to break:
+Four things are load-bearing and easy to break:
+
+0. **The navigation denylist must let a query string end a reserved path.** Workbox matches a
+   `NavigationRoute` denylist against `pathname + search`, so anchoring the server's paths with
+   `(?:/|$)` does **not** deny `/login?client_id=…` — and an OAuth authorization URL always carries
+   a query string. The worker then answers the sign-in redirect out of the precache and the user
+   gets the app shell instead of the server's login form: OAuth broken for everyone whose worker is
+   active. The anchor is `(?:[/?]|$)`, and `sw-routes.test.ts` pins it. (Shipped broken in M3.5;
+   caught by M1.9's OAuth E2E once M3.7's re-chunking made the race deterministic.)
 
 1. **The worker caches zero bytes from JMAP,** and that is enforced *structurally*: the cache
    predicates match only paths inside the app's own directory (the worker reads it from

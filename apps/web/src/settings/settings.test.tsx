@@ -92,6 +92,34 @@ afterEach(async () => {
   await db.delete()
 })
 
+describe('the settings shell (M3.7)', () => {
+  it('renders its sections in the order the plan lays out', async () => {
+    // The shell is the one place the WHOLE screen is asserted; each section owns its own tests.
+    // Without a session there is no Server section and no vacation responder, which is itself the
+    // FR-SRV-02 promise: a capability we cannot verify is absent, never broken.
+    renderSettings()
+    const headings = (await screen.findAllByRole('heading', { level: 2 })).map(
+      (heading) => heading.textContent,
+    )
+    expect(headings).toEqual([
+      'General',
+      'Appearance',
+      'Reading',
+      'Compose',
+      'Notifications',
+      'Offline & storage',
+      'About',
+    ])
+  })
+
+  it('hides the vacation responder and the server panel without a session', async () => {
+    renderSettings()
+    await screen.findByLabelText('Theme')
+    expect(screen.queryByRole('heading', { name: 'Vacation responder' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument()
+  })
+})
+
 describe('SettingsPage', () => {
   it('changes the reading-pane layout preference', async () => {
     const user = userEvent.setup()

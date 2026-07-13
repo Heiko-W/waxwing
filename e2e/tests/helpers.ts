@@ -38,6 +38,19 @@ export async function login(
   await openFolder(page, /Inbox/)
 }
 
+/**
+ * Open the Settings screen the way a user does — by clicking the nav rail.
+ *
+ * NOT `page.goto('/settings')`: that is a full page load, and `login()` does not tick "Stay signed
+ * in", so a reload deliberately drops the session and lands back on the sign-in form (see the
+ * cross-tab test, which passes `{ stay: true }` precisely because it depends on persistence).
+ * Routing through the nav also exercises the lazy `/settings` chunk, which is the real path.
+ */
+export async function openSettings(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+}
+
 /** Click a folder in the tree by name pattern. */
 export async function openFolder(page: Page, name: RegExp): Promise<void> {
   await page.getByRole('treeitem', { name }).click()
@@ -61,8 +74,20 @@ export async function fillSubject(page: Page, subject: string): Promise<void> {
 }
 
 export async function typeBody(page: Page, text: string): Promise<void> {
-  const body = page.getByRole('textbox', { name: 'Message body' })
-  await body.click()
+  await typeInEditor(page, 'Message body', text)
+}
+
+/**
+ * Type into a rich-text editor by its accessible name.
+ *
+ * `locator.fill()` does NOT work here and never will: the editor is a Squire `contenteditable`, and
+ * `fill()` sets the text without producing the input events Squire listens to — the React state
+ * behind it never learns anything, so the value is silently dropped on save. Click and type, the way
+ * a person does.
+ */
+export async function typeInEditor(page: Page, name: string, text: string): Promise<void> {
+  const editor = page.getByRole('textbox', { name })
+  await editor.click()
   await page.keyboard.type(text)
 }
 

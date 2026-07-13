@@ -62,7 +62,7 @@ export const DEFAULT_CONFIG: WaxwingConfig = {
     sieveEditor: true,
     remoteContentDefault: 'block',
     imageProxyUrl: null,
-    undoSendSeconds: 10,
+    undoSendSeconds: 15,
   },
   offline: { cacheDays: 30, maxStorageMB: 512 },
 }

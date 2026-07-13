@@ -9,7 +9,7 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/write.spec.ts'],
+  testMatch: ['**/write.spec.ts', '**/settings.spec.ts'],
   // One shared fixture, stateful sends → serial + per-test reset (see write.spec.ts beforeEach).
   fullyParallel: false,
   workers: 1,

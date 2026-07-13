@@ -1,7 +1,13 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from './db'
-import { ReplicaProvider, useLocalPref, useMailboxes, useReplica } from './react'
+import {
+  ReplicaProvider,
+  useLocalPref,
+  useLocalPrefOptional,
+  useMailboxes,
+  useReplica,
+} from './react'
 import { putMailboxes, setPref } from './repo'
 import { freshDb, mailbox } from './test-utils'
 
@@ -48,6 +54,28 @@ describe('ReplicaProvider + hooks', () => {
       return <span>{density ?? 'default'}</span>
     }
     wrap(<Density />)
+    expect(await screen.findByText('default')).toBeDefined()
+    await setPref(db, ACC, 'list.density', 'compact')
+    expect(await screen.findByText('compact')).toBeDefined()
+  })
+
+  it('useLocalPrefOptional yields undefined OUTSIDE a provider instead of throwing', () => {
+    // The composer and the reading pane read prefs and are unit-tested WITHOUT a replica. If the
+    // pref hook threw there, a settings-backed default would become a reason for a pane to crash.
+    function Optional() {
+      const value = useLocalPrefOptional<string>('list.density')
+      return <span>{value ?? 'no-replica'}</span>
+    }
+    render(<Optional />)
+    expect(screen.getByText('no-replica')).toBeDefined()
+  })
+
+  it('useLocalPrefOptional still reads the value WITH a provider', async () => {
+    function Optional() {
+      const value = useLocalPrefOptional<string>('list.density')
+      return <span>{value ?? 'default'}</span>
+    }
+    wrap(<Optional />)
     expect(await screen.findByText('default')).toBeDefined()
     await setPref(db, ACC, 'list.density', 'compact')
     expect(await screen.findByText('compact')).toBeDefined()

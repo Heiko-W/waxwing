@@ -24,6 +24,7 @@ import { useLabelView } from '../../mail/labels/use-label-view'
 import { MessageList } from '../../mail/MessageList'
 import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
+import { QuotaBar } from '../../quota'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { mailPath, useNavigate, useRoute } from '../route'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
@@ -156,6 +157,7 @@ export function MailScreen() {
       >
         <FolderTree />
         <Labels />
+        <QuotaBar />
       </nav>
       {drawerCapable && foldersOpen && (
         // A backdrop that closes the drawer on outside press. tabIndex=-1 keeps it out of the

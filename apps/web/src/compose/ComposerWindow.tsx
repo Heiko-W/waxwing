@@ -23,13 +23,13 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useConfigOptional } from '../app/config-context'
 import type { LayoutTier } from '../app/shell/layout'
 import { Button, Dialog, IconButton, TextInput, useFocusTrap, useToast } from '../ui'
 import { AttachmentChips } from './AttachmentChips'
 import { isPlausibleEmail } from './address-validation'
 import { mentionsAttachment } from './attachment-mention'
 import type { BlobUploader } from './attachment-upload'
+import { useUndoSendSeconds } from './compose-prefs'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
 import { isEmptyDraft } from './draft-email'
@@ -67,7 +67,7 @@ export function ComposerWindow({
   const updateSubject = useComposerStore((state) => state.updateSubject)
   const focusDraft = useComposerStore((state) => state.focusDraft)
   const draftSync = useDraftSync()
-  const undoSendSeconds = useConfigOptional()?.features.undoSendSeconds ?? 10
+  const undoSendSeconds = useUndoSendSeconds()
   // Only an ACTIVE upload blocks Send — an errored chip must not wedge it (the user can send
   // without the failed file). Completed uploads have already left the slice for `draft.attachments`.
   const uploadsInFlight = useComposerStore((state) =>

@@ -7,8 +7,11 @@ const withUndo = (undoSendSeconds: unknown): WaxwingConfig => ({
 })
 
 describe('normalizeConfig — undoSendSeconds clamp (M2.8)', () => {
-  it('defaults to the Apple-aligned 10 s', () => {
-    expect(DEFAULT_CONFIG.features.undoSendSeconds).toBe(10)
+  it('defaults to the 15 s the spec asks for (FR-CMP-08)', () => {
+    // Was 10 until M3.7. The spec and M2.8's own note both said 15; the code said 10, and nobody
+    // had decided that. The deployment value is still a DEFAULT — M3.7 gives the user a picker
+    // (off / 5 / 15 / 30) that overrides it per account.
+    expect(DEFAULT_CONFIG.features.undoSendSeconds).toBe(15)
   })
 
   it('clamps a negative grace to 0 (never a sticky, never-dismissing Undo toast)', () => {
@@ -25,8 +28,9 @@ describe('normalizeConfig — undoSendSeconds clamp (M2.8)', () => {
   })
 
   it('falls back to the default for a non-numeric / NaN override', () => {
-    expect(normalizeConfig(withUndo('soon')).features.undoSendSeconds).toBe(10)
-    expect(normalizeConfig(withUndo(Number.NaN)).features.undoSendSeconds).toBe(10)
+    const fallback = DEFAULT_CONFIG.features.undoSendSeconds
+    expect(normalizeConfig(withUndo('soon')).features.undoSendSeconds).toBe(fallback)
+    expect(normalizeConfig(withUndo(Number.NaN)).features.undoSendSeconds).toBe(fallback)
   })
 })
 

@@ -13,12 +13,34 @@ import type { ShellServices } from '../services'
 
 const JMAP_MAIL = 'urn:ietf:params:jmap:mail'
 
-export function fakeJmapSession(accountId = 'acc-1', username = 'alice@waxwing.test') {
+/**
+ * A minimal but STRUCTURALLY CONFORMANT session. `capabilities` and `accountCapabilities` are present
+ * and empty by default — a session object without them is not something a JMAP server may send
+ * (RFC 8620 §2), and a fake that omits them tests the app against a server that cannot exist.
+ * Pass `capabilities` to make a feature appear (M3.7: quota, vacation).
+ */
+export function fakeJmapSession(
+  accountId = 'acc-1',
+  username = 'alice@waxwing.test',
+  options: {
+    readonly capabilities?: Record<string, unknown>
+    readonly accountCapabilities?: Record<string, unknown>
+  } = {},
+) {
   return {
     username,
     state: 'state-0',
+    apiUrl: 'https://mail.waxwing.test/jmap/',
+    capabilities: options.capabilities ?? {},
     primaryAccounts: { [JMAP_MAIL]: accountId },
-    accounts: { [accountId]: { name: username } },
+    accounts: {
+      [accountId]: {
+        name: username,
+        isPersonal: true,
+        isReadOnly: false,
+        accountCapabilities: options.accountCapabilities ?? {},
+      },
+    },
   } as unknown as JmapClient['session']
 }
 

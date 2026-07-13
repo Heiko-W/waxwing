@@ -5,6 +5,7 @@ import {
   getMailCapability,
   getSession,
   getWebPushVapidCapability,
+  hasCapability,
   normalizeSession,
   sessionStateChanged,
   toWellKnownUrl,
@@ -135,6 +136,39 @@ describe('getWebPushVapidCapability (RFC 9749)', () => {
       session.capabilities[VAPID] = bad
       expect(getWebPushVapidCapability(session), JSON.stringify(bad)).toBeNull()
     }
+  })
+})
+
+describe('hasCapability (M3.7)', () => {
+  it('finds a capability advertised at SESSION level', () => {
+    expect(hasCapability(makeSession(), 'urn:ietf:params:jmap:core')).toBe(true)
+  })
+
+  it('finds one advertised ONLY on the account — the case Stalwart forces', () => {
+    // Stalwart advertises `mail` at both levels but leaves the SESSION-level object empty and puts
+    // every real limit in the account. A predicate that only looked at `session.capabilities` would
+    // still pass there — but one that only looked at the account would not, and a server is free to
+    // announce a per-account capability without a session-level twin. Check both.
+    const session = makeSession()
+    session.accounts.a = {
+      ...at(Object.values(session.accounts), 0),
+      accountCapabilities: { 'urn:ietf:params:jmap:quota': {} },
+    }
+    expect(hasCapability(session, 'urn:ietf:params:jmap:quota', 'a')).toBe(true)
+    // …and without the accountId there is nowhere to look.
+    expect(hasCapability(session, 'urn:ietf:params:jmap:quota')).toBe(false)
+  })
+
+  it('is false for a capability nobody advertises, and for an unknown account', () => {
+    const session = makeSession()
+    expect(hasCapability(session, 'urn:ietf:params:jmap:vacationresponse', 'a')).toBe(false)
+    expect(hasCapability(session, 'urn:ietf:params:jmap:quota', 'nope')).toBe(false)
+  })
+
+  it('does not mistake an inherited Object.prototype key for a capability', () => {
+    const session = makeSession()
+    expect(hasCapability(session, 'toString', 'a')).toBe(false)
+    expect(hasCapability(session, 'constructor', 'a')).toBe(false)
   })
 })
 

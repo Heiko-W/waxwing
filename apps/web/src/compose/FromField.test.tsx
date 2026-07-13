@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Identity } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { putIdentities, type ReplicaDb, ReplicaProvider } from '../sync'
+import { putIdentities, type ReplicaDb, ReplicaProvider, setPref } from '../sync'
 import { freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { useComposerStore } from './composer-store'
@@ -122,6 +122,22 @@ describe('FromField', () => {
     await waitFor(() => expect(store().drafts.get(id)?.fromIdentityId).toBe('only'))
     expect(store().drafts.get(id)?.body).toContain('Solo Sig')
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('honours the belowQuote signature placement (M3.7, FR-CMP-02)', async () => {
+    await setPref(db, 'a', 'compose.signaturePlacement', 'belowQuote')
+    await putIdentities(db, 'a', [
+      identity({ id: 'i1', email: 'a@x.test', htmlSignature: '<p>Sig</p>' }),
+    ])
+    store().openDraft({ id: 'd-below', body: '<blockquote>quoted</blockquote>' })
+    renderFrom('d-below', db)
+
+    await waitFor(() => {
+      const body = store().drafts.get('d-below')?.body ?? ''
+      expect(body).toContain(SIGNATURE_ATTR)
+      // Below the quote: the signature marker comes AFTER the quoted block.
+      expect(body.indexOf('</blockquote>')).toBeLessThan(body.indexOf(SIGNATURE_ATTR))
+    })
   })
 
   it('has no a11y violations', async () => {

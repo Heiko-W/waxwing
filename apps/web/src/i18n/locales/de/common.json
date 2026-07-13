@@ -113,9 +113,13 @@
         "bottom": "Unter der Liste",
         "off": "Nachrichten in voller Breite",
         "hint": "Wo eine geöffnete Nachricht erscheint."
+      },
+      "density": {
+        "label": "Listendichte",
+        "comfortable": "Komfortabel",
+        "compact": "Kompakt"
       }
     },
-    "more": "Weitere Einstellungen folgen in einem späteren Meilenstein.",
     "offline": {
       "title": "Offline & Speicher",
       "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sofort öffnen und offline verfügbar sind.",
@@ -143,6 +147,139 @@
       "window_other": "E-Mails der letzten {{count}} Tage werden offline behalten.",
       "pinned_one": "{{count}} Ordner wird offline behalten",
       "pinned_other": "{{count}} Ordner werden offline behalten"
+    },
+    "general": {
+      "title": "Allgemein"
+    },
+    "reading": {
+      "title": "Lesen",
+      "remote": {
+        "label": "Externe Bilder automatisch laden",
+        "hint": "Externe Bilder verraten dem Absender, dass Sie die Nachricht geöffnet haben, und geben Ihre IP-Adresse preis. Aus ist die sichere Wahl."
+      },
+      "allowList_one": "Für {{count}} Absender werden externe Inhalte immer geladen.",
+      "allowList_other": "Für {{count}} Absender werden externe Inhalte immer geladen.",
+      "clearAllowList": "Liste leeren",
+      "cleared": "Liste geleert",
+      "autoMarkRead": {
+        "label": "Nachrichten beim Öffnen als gelesen markieren",
+        "hint": "Nach einer kurzen Pause — bloßes Vorbeiscrollen markiert nichts."
+      }
+    },
+    "compose": {
+      "title": "Verfassen",
+      "undoSend": {
+        "label": "Senden rückgängig machen",
+        "hint": "Wie lange eine gesendete Nachricht wartet, bevor sie tatsächlich hinausgeht.",
+        "off": "Sofort senden",
+        "seconds_one": "{{count}} Sekunde",
+        "seconds_other": "{{count}} Sekunden"
+      },
+      "signature": {
+        "label": "Position der Signatur",
+        "hint": "Wo Ihre Signatur eingefügt wird, wenn Sie antworten oder weiterleiten.",
+        "aboveQuote": "Über dem zitierten Text",
+        "belowQuote": "Unter dem zitierten Text"
+      }
+    },
+    "vacation": {
+      "title": "Abwesenheitsnotiz",
+      "description": "Allen, die Ihnen schreiben, einmalig automatisch antworten.",
+      "enable": {
+        "label": "Automatische Antworten senden"
+      },
+      "from": "Beginn",
+      "to": "Ende",
+      "timezoneHint": "Zeiten gelten in Ihrer lokalen Zeitzone ({{zone}}). Ein leeres Feld bedeutet: keine Grenze.",
+      "subject": {
+        "label": "Betreff",
+        "placeholder": "Nicht im Büro"
+      },
+      "body": {
+        "label": "Antworttext"
+      },
+      "preview": {
+        "show": "Vorschau anzeigen",
+        "hide": "Vorschau ausblenden",
+        "title": "Vorschau der Abwesenheitsnotiz"
+      },
+      "save": "Speichern",
+      "saved": "Abwesenheitsnotiz gespeichert",
+      "status": {
+        "off": "Es werden keine automatischen Antworten gesendet.",
+        "active": "Automatische Antworten werden gerade gesendet.",
+        "scheduled": "Beginnt am {{date}}.",
+        "expired": "Das Enddatum ist verstrichen — es werden keine Antworten gesendet."
+      },
+      "error": {
+        "endBeforeStart": "Das Ende muss nach dem Beginn liegen.",
+        "conflict": "Die Abwesenheitsnotiz wurde anderswo geändert. Ihre Änderungen wurden nicht gespeichert — oben sehen Sie die aktuellen Einstellungen.",
+        "rejected": "Der Server hat diese Einstellungen abgelehnt.",
+        "offline": "Sie sind offline. Die Abwesenheitsnotiz lässt sich nur mit Verbindung ändern.",
+        "generic": "Die Abwesenheitsnotiz konnte nicht gespeichert werden."
+      }
+    },
+    "server": {
+      "title": "Server",
+      "description": "Was dieser JMAP-Server bietet. Nützlich, wenn Sie ein Problem melden.",
+      "connection": {
+        "url": "Server",
+        "username": "Angemeldet als",
+        "account": "Konto",
+        "readOnly": "schreibgeschützt"
+      },
+      "core": {
+        "title": "Grenzwerte"
+      },
+      "mail": {
+        "title": "Grenzwerte für E-Mail"
+      },
+      "capabilities": {
+        "title": "Optionale Funktionen"
+      },
+      "available": "Vorhanden",
+      "absent": "Nicht vorhanden",
+      "unlimited": "Unbegrenzt",
+      "yes": "Ja",
+      "no": "Nein",
+      "none": "Keine",
+      "coreMissing": "Dieser Server nennt kein Standard-Funktionsobjekt. Das ist ungewöhnlich — einzelne Funktionen könnten nicht arbeiten.",
+      "mailMissing": "Dieses Konto nennt keine E-Mail-Funktion, daher lassen sich keine Grenzwerte anzeigen.",
+      "extra": {
+        "title": "Weitere Funktionen, die dieser Server nennt"
+      },
+      "limit": {
+        "maxSizeUpload": "Größter Upload",
+        "maxSizeRequest": "Größte Anfrage",
+        "maxConcurrentRequests": "Gleichzeitige Anfragen",
+        "maxConcurrentUpload": "Gleichzeitige Uploads",
+        "maxCallsInRequest": "Methodenaufrufe je Anfrage",
+        "maxObjectsInGet": "Objekte je Abruf",
+        "maxObjectsInSet": "Objekte je Änderung",
+        "collationAlgorithms": "Sortierregeln",
+        "maxMailboxesPerEmail": "Ordner je Nachricht",
+        "maxMailboxDepth": "Ordner-Verschachtelungstiefe",
+        "maxSizeMailboxName": "Länge des Ordnernamens",
+        "maxSizeAttachmentsPerEmail": "Anhänge je Nachricht",
+        "mayCreateTopLevelMailbox": "Darf Ordner der obersten Ebene anlegen",
+        "emailQuerySortOptions": "Sortierbare Felder"
+      },
+      "cap": {
+        "core": "Kern",
+        "mail": "E-Mail",
+        "submission": "Senden",
+        "vacationResponse": "Abwesenheitsnotiz",
+        "quota": "Speicherkontingent",
+        "blob": "Datei-Handhabung",
+        "sieve": "Filterregeln (Sieve)",
+        "contacts": "Kontakte",
+        "webSocket": "WebSocket-Push",
+        "principals": "Freigaben",
+        "webPushVapid": "Web-Push-Signatur (RFC 9749)"
+      }
+    },
+    "about": {
+      "title": "Über"
     }
   },
   "contacts": {
@@ -623,5 +760,13 @@
       "count_one": "{{count}} neue Nachricht",
       "count_other": "{{count}} neue Nachrichten"
     }
+  },
+  "quota": {
+    "label": "Speicherkontingent",
+    "used": "{{used}} von {{total}}",
+    "nearlyFull": "{{used}} von {{total}} — fast voll",
+    "full": "Postfach voll",
+    "warnToast": "Ihr Postfach ist fast voll. Neue Nachrichten könnten bald abgewiesen werden.",
+    "fullToast": "Ihr Postfach ist voll. Neue Nachrichten werden abgewiesen, bis Sie Platz schaffen."
   }
 }

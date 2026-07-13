@@ -168,6 +168,32 @@ function isWebPushVapidCapability(value: unknown): value is WebPushVapidCapabili
 }
 
 /**
+ * Is `urn` advertised — at session level, or for `accountId` (RFC 8620 §2)?
+ *
+ * **Both levels must be checked, and that is not pedantry.** A capability object in `capabilities`
+ * announces what the SERVER implements; the copy in an account's `accountCapabilities` announces
+ * what may be invoked on THAT account, and a server is free to fill in only one of them. Stalwart
+ * advertises `urn:ietf:params:jmap:mail` at both levels but leaves the session-level object EMPTY
+ * (`{}`), keeping every real limit in the account object — so a check (or a settings panel) built on
+ * `session.capabilities` alone reads as "no mail limits" against the server we test against.
+ *
+ * This is a PRESENCE predicate only. To read a capability's contents use {@link getCoreCapability} /
+ * {@link getMailCapability}, which each look in the right place.
+ */
+export function hasCapability(session: Session, urn: string, accountId?: Id): boolean {
+  // Both maps are REQUIRED by RFC 8620 §2 — and are still not trusted to be there. A server that
+  // omits them is non-conformant, but "this feature is unavailable" is the right answer to that; a
+  // TypeError out of a capability probe would take down whatever mounted it.
+  if (has(session.capabilities, urn)) return true
+  if (accountId === undefined) return false
+  return has(session.accounts?.[accountId]?.accountCapabilities, urn)
+}
+
+function has(map: Record<string, unknown> | undefined, urn: string): boolean {
+  return typeof map === 'object' && map !== null && Object.hasOwn(map, urn)
+}
+
+/**
  * `true` if a response's `sessionState` differs from the cached {@link Session.state},
  * signalling that the Session should be re-fetched (RFC 8620 §2).
  */

@@ -15,6 +15,7 @@ import {
   putMailboxes,
   type ReplicaDb,
   ReplicaProvider,
+  setPref,
   toEmailRow,
 } from '../sync'
 import { setActiveEngine } from '../sync/engine'
@@ -258,6 +259,33 @@ describe('MessageView', () => {
     await user.click(screen.getByRole('button', { name: 'Load images' }))
     await waitFor(() =>
       expect(screen.queryByText('Remote content blocked')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('loads remote images with NO banner when the user has turned them on (M3.7)', async () => {
+    // The user's setting overrides the deployment default — which is what makes the config a default
+    // rather than a lock.
+    await setPref(db, 'a', 'reading.remoteContent', 'allow')
+    await putEmailBody(db, htmlRemoteRow('e1'))
+    renderView(seen({ subject: 'Newsletter' }))
+    // The pref arrives through liveQuery, so the first paint may still show the banner — what matters
+    // is that it goes away without the user clicking anything.
+    await waitFor(() =>
+      expect(screen.queryByText('Remote content blocked')).not.toBeInTheDocument(),
+    )
+  })
+
+  it('does NOT auto-mark read when the user has turned that off (M3.7)', async () => {
+    // The pref has gated this dwell timer since M1.8 — M3.7 is the first release in which anyone
+    // could actually set it.
+    await setPref(db, 'a', 'reading.autoMarkRead', false)
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    renderView(toEmailRow('a', email('e1', { keywords: {} })))
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 2)
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'setKeywords', keyword: '$seen' }),
+      expect.anything(),
     )
   })
 

@@ -13,6 +13,7 @@ import { SEARCH_INPUT_ID } from '../../mail/search/SearchBox'
 import { useNotificationClickNavigation } from '../../notify'
 import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { ChunkErrorBoundary } from '../../pwa/ChunkErrorBoundary'
+import { useQuotaNotifier } from '../../quota'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, useNavigate, useRoute } from '../route'
@@ -49,6 +50,8 @@ export function AppShell({ config }: AppShellProps) {
   useConflictNotifier()
   // Surface a cache write the browser refused for lack of space (mail is no longer kept offline).
   useStorageFullNotifier()
+  // Surface a server-side mailbox quota crossing 90 % / running out (M3.7, FR-QTA-01).
+  useQuotaNotifier()
   // The service worker focused this tab after a notification click — go where it says (M3.6).
   useNotificationClickNavigation()
 

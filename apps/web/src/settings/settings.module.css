@@ -64,10 +64,19 @@
   font-size: var(--waxwing-text-xs);
 }
 
-.more {
+/* Raw capability URNs the panel does not have a name for (M3.7). Monospace, and allowed to break:
+   a URN is long, and truncating a diagnostic is how you make it useless. */
+.urnList {
   margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  font-family: var(--waxwing-font-mono, monospace);
+  font-size: var(--waxwing-text-xs);
   color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-sm);
+  overflow-wrap: anywhere;
 }
 
 /* Offline & storage (M3.4). */

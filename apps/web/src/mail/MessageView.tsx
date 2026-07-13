@@ -23,7 +23,6 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useConfig } from '../app/config-context'
 import { useSession } from '../app/session/context'
 import {
   buildReplyDraft,
@@ -33,7 +32,7 @@ import {
   useComposerStore,
 } from '../compose'
 import { formatDate } from '../i18n/formatters'
-import { type EmailRow, setPref, useLocalPref, useMailboxByRole, useReplica } from '../sync'
+import { type EmailRow, setPref, useMailboxByRole, useReplica } from '../sync'
 import { Avatar, Button, Dialog, IconButton, Spinner } from '../ui'
 import { AttachmentList } from './AttachmentList'
 import { LabelMenuButton } from './labels/LabelMenuButton'
@@ -42,6 +41,12 @@ import { MoveDialog } from './MoveDialog'
 import { formatAddressList, senderAddress, senderName } from './message-body'
 import { RemoteContentBanner } from './RemoteContentBanner'
 import styles from './reading.module.css'
+import {
+  READING_PREF_KEYS,
+  useAutoMarkRead,
+  useRemoteAllowList,
+  useRemoteContentDefault,
+} from './reading-prefs'
 import { useMessageActions } from './use-message-actions'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
@@ -65,7 +70,6 @@ export interface MessageViewProps {
 
 export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: MessageViewProps) {
   const { t } = useTranslation()
-  const config = useConfig()
   const { db, accountId } = useReplica()
   const actions = useMessageActions()
   const openDraft = useComposerStore((state) => state.openDraft)
@@ -88,15 +92,14 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const [loadedOnce, setLoadedOnce] = useState(false)
 
   // Remote content: deployment default, sender allowlist, or an explicit "Load images" this session.
-  const remoteAllow = useLocalPref<string[]>('reading.remoteAllow')
+  const remoteAllow = useRemoteAllowList()
   const fromAddress = senderAddress(email.from)
-  const trustedSender = fromAddress !== null && (remoteAllow ?? []).includes(fromAddress)
-  const allowRemote =
-    config.features.remoteContentDefault === 'allow' || trustedSender || loadedOnce
+  const trustedSender = fromAddress !== null && remoteAllow.includes(fromAddress)
+  const allowRemote = useRemoteContentDefault() === 'allow' || trustedSender || loadedOnce
 
   // Auto-mark-read after a dwell (FR-RD-07), unless disabled, already read, or this is a sibling
   // message the reader did not open (a conversation passes autoMark=false for those).
-  const autoMarkRead = useLocalPref<boolean>('reading.autoMarkRead') !== false
+  const autoMarkRead = useAutoMarkRead()
   useEffect(() => {
     if (!autoMark || !autoMarkRead || email.keywords.$seen === true) return
     const timer = window.setTimeout(
@@ -167,7 +170,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     fromAddress !== null
       ? () => {
           setLoadedOnce(true)
-          void setPref(db, accountId, 'reading.remoteAllow', [...(remoteAllow ?? []), fromAddress])
+          void setPref(db, accountId, READING_PREF_KEYS.remoteAllow, [...remoteAllow, fromAddress])
         }
       : undefined
 

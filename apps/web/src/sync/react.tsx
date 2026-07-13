@@ -14,6 +14,7 @@ import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import {
   getReplica,
   type IdentityRow,
+  type LocalPrefRow,
   type MailboxRow,
   type QueryCacheRow,
   type ReplicaDb,
@@ -114,5 +115,24 @@ export function useThread(id: Id) {
 /** A local preference value (FR-MBX-04), typed by the caller. */
 export function useLocalPref<T>(key: string): T | undefined {
   const row = useReplicaQuery(({ db, accountId }) => db.localPrefs.get([accountId, key]), [key])
+  return row?.value as T | undefined
+}
+
+/**
+ * Like {@link useLocalPref}, but yields `undefined` OUTSIDE a `ReplicaProvider` instead of throwing
+ * (M3.7).
+ *
+ * The composer and the reading pane are unit-tested without a replica — they inject a fake uploader
+ * and a fake port instead — so reaching for the throwing hook there would break some twenty existing
+ * tests and, worse, make a settings-backed default a reason for a pane to crash. `undefined` means
+ * "no stored preference", which is exactly what the caller's fallback already handles.
+ */
+export function useLocalPrefOptional<T>(key: string): T | undefined {
+  const context = useReplicaOptional()
+  const row = useLiveQuery<LocalPrefRow | undefined>(
+    async () =>
+      context === null ? undefined : await context.db.localPrefs.get([context.accountId, key]),
+    [context?.db, context?.accountId, key],
+  )
   return row?.value as T | undefined
 }

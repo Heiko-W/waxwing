@@ -157,6 +157,25 @@ describe('navigateDenylist', () => {
     }
   })
 
+  it('denies a reserved path that carries a QUERY STRING — an OAuth redirect always does', () => {
+    // Workbox matches the denylist against `pathname + search`. With `(?:/|$)` alone, `/login?...`
+    // was NOT denied, so the worker answered the sign-in redirect from the precache: the user clicked
+    // "Sign in securely" and got the app shell back instead of the server's login form. OAuth was
+    // broken for every returning visitor (i.e. everyone whose worker had activated). Latent since
+    // M3.5; the M1.9 OAuth E2E caught it once M3.7's re-chunking made the race deterministic.
+    for (const path of [
+      '/login?client_id=waxwing&redirect_uri=http%3A%2F%2Fhost%2F&response_type=code',
+      '/auth/token?grant_type=authorization_code',
+      '/auth?x=1',
+      '/jmap?a=b',
+      '/api?y=2',
+      '/.well-known/openid-configuration?v=1',
+    ]) {
+      expect(denied(path), path).toBe(true)
+    }
+    expect(denied('/mail/login?x=1', '/mail/'), '/mail/login?x=1 under /mail/').toBe(true)
+  })
+
   it('does not mistake a MAILBOX for a server path — the reserved words are anchored to the root', () => {
     // A JMAP Id is `[A-Za-z0-9_-]`, so a mailbox or message can legitimately be called `api` or
     // `auth`. Matched anywhere in the path, `/mail/api` would be denied the shell and, offline, a

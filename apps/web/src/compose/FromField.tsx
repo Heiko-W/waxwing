@@ -12,6 +12,7 @@ import { useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type IdentityRow, useIdentities, useReplicaOptional } from '../sync'
 import { Select } from '../ui'
+import { useSignaturePlacement } from './compose-prefs'
 import styles from './composer.module.css'
 import { type DraftWindow, useComposerStore } from './composer-store'
 import {
@@ -35,15 +36,19 @@ function FromFieldInner({ draft }: { readonly draft: DraftWindow }) {
   const { t } = useTranslation()
   const identities = useIdentities()
   const setFromIdentity = useComposerStore((state) => state.setFromIdentity)
+  const placement = useSignaturePlacement()
   const selectId = useId()
 
-  // Seed the default identity + its signature above the quote once, when identities first load.
+  // Seed the default identity + its signature at the configured placement (FR-CMP-02), once, when
+  // identities first load. A LATER change of the preference does not relocate a signature already
+  // seeded into an open draft — `replaceSignature` swaps the contents in place, deliberately, so a
+  // From change cannot move text the user has since typed around. It applies to the next draft.
   useEffect(() => {
     if (identities === undefined || identities.length === 0) return
     if (draft.fromIdentityId !== undefined) return
     const chosen = pickDefaultIdentity(identities, draft.fromIdentityHint)
     if (chosen === undefined) return
-    const body = applySignature(draft.body, signatureHtmlForIdentity(chosen))
+    const body = applySignature(draft.body, signatureHtmlForIdentity(chosen), placement)
     setFromIdentity(draft.id, chosen.id, body, { markDirty: false })
   }, [
     identities,
@@ -51,6 +56,7 @@ function FromFieldInner({ draft }: { readonly draft: DraftWindow }) {
     draft.fromIdentityId,
     draft.fromIdentityHint,
     draft.body,
+    placement,
     setFromIdentity,
   ])
 

@@ -113,9 +113,13 @@
         "bottom": "Below the list",
         "off": "Full-width messages",
         "hint": "Where an opened message appears."
+      },
+      "density": {
+        "label": "List density",
+        "comfortable": "Comfortable",
+        "compact": "Compact"
       }
     },
-    "more": "More settings arrive in a later milestone.",
     "offline": {
       "title": "Offline & storage",
       "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
@@ -143,6 +147,139 @@
       "window_other": "Mail from the last {{count}} days is kept offline.",
       "pinned_one": "{{count}} folder kept offline",
       "pinned_other": "{{count}} folders kept offline"
+    },
+    "general": {
+      "title": "General"
+    },
+    "reading": {
+      "title": "Reading",
+      "remote": {
+        "label": "Load remote images automatically",
+        "hint": "Remote images tell the sender that you opened the message, and reveal your IP address. Off is the safe choice."
+      },
+      "allowList_one": "{{count}} sender always loads remote content.",
+      "allowList_other": "{{count}} senders always load remote content.",
+      "clearAllowList": "Clear the list",
+      "cleared": "List cleared",
+      "autoMarkRead": {
+        "label": "Mark messages as read when opened",
+        "hint": "After a short pause, so scrolling past a message does not mark it."
+      }
+    },
+    "compose": {
+      "title": "Compose",
+      "undoSend": {
+        "label": "Undo send",
+        "hint": "How long a sent message waits before it actually leaves.",
+        "off": "Send immediately",
+        "seconds_one": "{{count}} second",
+        "seconds_other": "{{count}} seconds"
+      },
+      "signature": {
+        "label": "Signature placement",
+        "hint": "Where your signature is added when you reply or forward.",
+        "aboveQuote": "Above the quoted text",
+        "belowQuote": "Below the quoted text"
+      }
+    },
+    "vacation": {
+      "title": "Vacation responder",
+      "description": "Automatically reply once to everyone who writes to you.",
+      "enable": {
+        "label": "Send automatic replies"
+      },
+      "from": "Start",
+      "to": "End",
+      "timezoneHint": "Times are in your local timezone ({{zone}}). Leave a field empty for no limit.",
+      "subject": {
+        "label": "Subject",
+        "placeholder": "Out of office"
+      },
+      "body": {
+        "label": "Reply message"
+      },
+      "preview": {
+        "show": "Show preview",
+        "hide": "Hide preview",
+        "title": "Vacation reply preview"
+      },
+      "save": "Save",
+      "saved": "Vacation responder saved",
+      "status": {
+        "off": "Not sending automatic replies.",
+        "active": "Sending automatic replies now.",
+        "scheduled": "Starts {{date}}.",
+        "expired": "The end date has passed — no replies are being sent."
+      },
+      "error": {
+        "endBeforeStart": "The end must be after the start.",
+        "conflict": "The vacation responder was changed elsewhere. Your changes were not saved — the current settings are shown above.",
+        "rejected": "The server rejected these settings.",
+        "offline": "You are offline. The vacation responder can only be changed while connected.",
+        "generic": "The vacation responder could not be saved."
+      }
+    },
+    "server": {
+      "title": "Server",
+      "description": "What this JMAP server offers. Useful when reporting a problem.",
+      "connection": {
+        "url": "Server",
+        "username": "Signed in as",
+        "account": "Account",
+        "readOnly": "read-only"
+      },
+      "core": {
+        "title": "Limits"
+      },
+      "mail": {
+        "title": "Mail limits"
+      },
+      "capabilities": {
+        "title": "Optional features"
+      },
+      "available": "Offered",
+      "absent": "Not offered",
+      "unlimited": "No limit",
+      "yes": "Yes",
+      "no": "No",
+      "none": "None",
+      "coreMissing": "This server advertises no standard capability object. That is unusual — some features may not work.",
+      "mailMissing": "This account advertises no mail capability, so no mail limits can be shown.",
+      "extra": {
+        "title": "Other capabilities this server advertises"
+      },
+      "limit": {
+        "maxSizeUpload": "Largest upload",
+        "maxSizeRequest": "Largest request",
+        "maxConcurrentRequests": "Simultaneous requests",
+        "maxConcurrentUpload": "Simultaneous uploads",
+        "maxCallsInRequest": "Method calls per request",
+        "maxObjectsInGet": "Objects per fetch",
+        "maxObjectsInSet": "Objects per change",
+        "collationAlgorithms": "Sort collations",
+        "maxMailboxesPerEmail": "Folders per message",
+        "maxMailboxDepth": "Folder nesting depth",
+        "maxSizeMailboxName": "Folder name length",
+        "maxSizeAttachmentsPerEmail": "Attachments per message",
+        "mayCreateTopLevelMailbox": "May create top-level folders",
+        "emailQuerySortOptions": "Sortable fields"
+      },
+      "cap": {
+        "core": "Core",
+        "mail": "Mail",
+        "submission": "Sending",
+        "vacationResponse": "Vacation responder",
+        "quota": "Quota",
+        "blob": "Blob handling",
+        "sieve": "Filter rules (Sieve)",
+        "contacts": "Contacts",
+        "webSocket": "WebSocket push",
+        "principals": "Sharing",
+        "webPushVapid": "Web Push signing (RFC 9749)"
+      }
+    },
+    "about": {
+      "title": "About"
     }
   },
   "contacts": {
@@ -623,5 +760,13 @@
       "count_one": "{{count}} new message",
       "count_other": "{{count}} new messages"
     }
+  },
+  "quota": {
+    "label": "Mailbox storage",
+    "used": "{{used}} of {{total}}",
+    "nearlyFull": "{{used}} of {{total}} — nearly full",
+    "full": "Mailbox full",
+    "warnToast": "Your mailbox is nearly full. New mail may soon be rejected.",
+    "fullToast": "Your mailbox is full. New mail is being rejected until you free up space."
   }
 }

@@ -2,6 +2,7 @@ import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrandLinks } from '../app/BrandLinks'
 import type { ThemeSetting } from '../app/config'
+import { useSessionOptional } from '../app/session/context'
 import {
   READING_PANE_MODES,
   type ReadingPaneMode,
@@ -10,13 +11,20 @@ import {
 } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
 import { changeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
-import { useReplicaOptional } from '../sync'
+import { setPref, useLocalPref, useReplica, useReplicaOptional } from '../sync'
 import { Select } from '../ui'
+import { ComposeSection } from './ComposeSection'
 import { NotificationsSection } from './NotificationsSection'
+import { ReadingSection } from './ReadingSection'
+import { ServerSection } from './ServerSection'
 import { StorageSection } from './StorageSection'
 import styles from './settings.module.css'
+import { VacationSection } from './VacationSection'
+import { serverSupportsVacation } from './vacation-client'
 
 const THEME_OPTIONS: readonly ThemeSetting[] = ['auto', 'light', 'dark']
+const DENSITY_OPTIONS = ['comfortable', 'compact'] as const
+type Density = (typeof DENSITY_OPTIONS)[number]
 
 interface Option {
   readonly value: string
@@ -68,21 +76,49 @@ function Section(props: { title: string; children: ReactNode }) {
   )
 }
 
+/** The density control needs a replica to write to; the rest of Appearance does not. */
+function DensityField({ id }: { readonly id: string }) {
+  const { t } = useTranslation()
+  const { db, accountId } = useReplica()
+  const density = useLocalPref<Density>('list.density') ?? 'comfortable'
+  return (
+    <SelectField
+      id={id}
+      label={t('settings.appearance.density.label')}
+      value={density}
+      options={DENSITY_OPTIONS.map((value) => ({
+        value,
+        label: t(`settings.appearance.density.${value}`),
+      }))}
+      onChange={(value) => void setPref(db, accountId, 'list.density', value)}
+    />
+  )
+}
+
 /**
- * Settings route screen (lazy chunk). M1.4 ships the Appearance section — theme, language and the
- * reading-pane layout (FR-LST-07 layout half); M3.4 adds "Offline & storage" (usage, persistence,
- * free-up-space); the rest arrives with M3.7. Default export so `React.lazy(() => import(...))` can
- * load it.
+ * Settings route screen (lazy chunk). M3.7 completes it: General, Appearance, Reading, Compose,
+ * Vacation responder, Notifications, Offline & storage, Server, About.
+ *
+ * **Theme, language and the reading-pane mode stay in `localStorage`, not `localPrefs`** — they are
+ * applied on the ONBOARDING screen, where there is no account and no replica to scope them to. The
+ * account-scoped preferences are the ones that only mean anything once you are signed in.
+ *
+ * Sections that need a replica or a session are simply absent without one, rather than rendering a
+ * broken control (FR-SRV-02: an absent capability is hidden, never broken). Vacation additionally
+ * requires the server to advertise it.
  */
 export default function SettingsPage() {
   const { t, i18n } = useTranslation()
   const [theme, setThemeState] = useState<ThemeSetting>(() => getTheme())
   const readingPane = useReadingPaneMode()
   const activeLanguage = i18n.resolvedLanguage ?? i18n.language
-  const ids = { theme: useId(), language: useId(), readingPane: useId() }
-  // The storage section reads the replica; without a provider (an unconnected shell) it has nothing
-  // to report, so it is simply not rendered.
+  const ids = { theme: useId(), language: useId(), readingPane: useId(), density: useId() }
   const replica = useReplicaOptional()
+  const connected = useSessionOptional()
+  const vacationAvailable = serverSupportsVacation(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+  )
 
   function handleTheme(value: string): void {
     const next = value as ThemeSetting
@@ -94,14 +130,7 @@ export default function SettingsPage() {
     <div className={styles.page}>
       <h1 className={styles.title}>{t('settings.title')}</h1>
 
-      <Section title={t('settings.appearance.title')}>
-        <SelectField
-          id={ids.theme}
-          label={t('theme.label')}
-          value={theme}
-          options={THEME_OPTIONS.map((value) => ({ value, label: t(`theme.${value}`) }))}
-          onChange={handleTheme}
-        />
+      <Section title={t('settings.general.title')}>
         <SelectField
           id={ids.language}
           label={t('language.label')}
@@ -114,6 +143,17 @@ export default function SettingsPage() {
             void changeLanguage(value as SupportedLanguage)
           }}
         />
+      </Section>
+
+      <Section title={t('settings.appearance.title')}>
+        <SelectField
+          id={ids.theme}
+          label={t('theme.label')}
+          value={theme}
+          options={THEME_OPTIONS.map((value) => ({ value, label: t(`theme.${value}`) }))}
+          onChange={handleTheme}
+        />
+        {replica !== null && <DensityField id={ids.density} />}
         <SelectField
           id={ids.readingPane}
           label={t('settings.appearance.readingPane.label')}
@@ -127,8 +167,24 @@ export default function SettingsPage() {
         />
       </Section>
 
-      {/* Both sections read the replica; without a provider (an unconnected shell) they have nothing
-          to show, so they are simply not rendered. */}
+      {replica !== null && (
+        <Section title={t('settings.reading.title')}>
+          <ReadingSection />
+        </Section>
+      )}
+
+      {replica !== null && (
+        <Section title={t('settings.compose.title')}>
+          <ComposeSection />
+        </Section>
+      )}
+
+      {replica !== null && vacationAvailable && (
+        <Section title={t('settings.vacation.title')}>
+          <VacationSection />
+        </Section>
+      )}
+
       {replica !== null && (
         <Section title={t('notify.title')}>
           <NotificationsSection />
@@ -141,8 +197,15 @@ export default function SettingsPage() {
         </Section>
       )}
 
-      <p className={styles.more}>{t('settings.more')}</p>
-      <BrandLinks />
+      {connected !== null && (
+        <Section title={t('settings.server.title')}>
+          <ServerSection />
+        </Section>
+      )}
+
+      <Section title={t('settings.about.title')}>
+        <BrandLinks />
+      </Section>
     </div>
   )
 }

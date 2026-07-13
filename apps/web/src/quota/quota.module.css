@@ -1,0 +1,67 @@
+/* The sidebar quota bar (M3.7). Muted until it matters; the TEXT carries the state, the colour only
+   reinforces it (WCAG 1.4.1). */
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-3);
+  border-block-start: 1px solid var(--waxwing-border);
+  margin-block-start: auto;
+}
+
+.label {
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-medium);
+  color: var(--waxwing-text-muted);
+}
+
+.meter {
+  inline-size: 100%;
+  block-size: 0.375rem;
+  appearance: none;
+  border: none;
+  border-radius: var(--waxwing-radius-full);
+  background: var(--waxwing-surface-2);
+  overflow: hidden;
+}
+
+.meter::-webkit-progress-bar {
+  background: var(--waxwing-surface-2);
+}
+
+.meter::-webkit-progress-value {
+  background: var(--waxwing-accent);
+}
+
+.meter::-moz-progress-bar {
+  background: var(--waxwing-accent);
+}
+
+.summary {
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bar[data-level="warn"] .summary,
+.bar[data-level="over"] .summary {
+  color: var(--waxwing-text);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.bar[data-level="warn"] .meter::-webkit-progress-value {
+  background: var(--waxwing-warning);
+}
+
+.bar[data-level="warn"] .meter::-moz-progress-bar {
+  background: var(--waxwing-warning);
+}
+
+.bar[data-level="over"] .meter::-webkit-progress-value {
+  background: var(--waxwing-danger);
+}
+
+.bar[data-level="over"] .meter::-moz-progress-bar {
+  background: var(--waxwing-danger);
+}

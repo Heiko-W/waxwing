@@ -12,6 +12,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { invalidateQuota } from '../quota'
 import { listDrafts, useReplicaQuery } from '../sync'
 import { useToast } from '../ui'
 import { useComposerStore } from './composer-store'
@@ -59,6 +60,8 @@ export function useSendErrorNotifier(): void {
       if (surfaced.current.get(row.localId) === row.updatedAt) continue
       surfaced.current.set(row.localId, row.updatedAt)
       const key = sendErrorKey(row.lastError)
+      // The bar in the sidebar is now lying: the server just refused a write for lack of space.
+      if (key === 'compose.sendErrorQuota') invalidateQuota()
       toast({
         tone: 'danger',
         title:

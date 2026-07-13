@@ -14,6 +14,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { invalidateQuota } from '../quota'
 import { useToast } from '../ui'
 import { describeConflict } from './describe-conflict'
 import { useOutboxProblems } from './use-outbox-problems'
@@ -41,6 +42,8 @@ export function useConflictNotifier(): void {
       if (row.conflict == null) continue
       if (surfaced.current.has(row.id)) continue
       surfaced.current.add(row.id)
+      // The server refused this write for lack of space — whatever the sidebar bar says is stale.
+      if (row.conflict.code === 'quota') invalidateQuota()
       const description = describeConflict(row, folderNames)
       if (description.action === 'none') continue // a send — the send notifier owns it
       const label = ACTION_LABEL[description.action]

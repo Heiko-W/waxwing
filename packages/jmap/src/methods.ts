@@ -45,12 +45,19 @@ import type {
   ThreadGetRequest,
   ThreadGetResponse,
 } from './types/mail'
+import type { QuotaGetRequest, QuotaGetResponse } from './types/quota'
 import type {
   EmailSubmissionSetRequest,
   EmailSubmissionSetResponse,
   IdentityGetRequest,
   IdentityGetResponse,
 } from './types/submission'
+import type {
+  VacationResponseGetRequest,
+  VacationResponseGetResponse,
+  VacationResponseSetRequest,
+  VacationResponseSetResponse,
+} from './types/vacation'
 
 /** Registry of typed method definitions for the SP.1 capability surface. */
 export const Methods = {
@@ -84,6 +91,17 @@ export const Methods = {
   emailSubmissionSet: defineMethod<EmailSubmissionSetRequest, EmailSubmissionSetResponse>(
     'EmailSubmission/set',
   ),
+
+  /** RFC 8621 §8 — the vacation-responder singleton (M3.7, FR-VAC-01). */
+  vacationResponseGet: defineMethod<VacationResponseGetRequest, VacationResponseGetResponse>(
+    'VacationResponse/get',
+  ),
+  vacationResponseSet: defineMethod<VacationResponseSetRequest, VacationResponseSetResponse>(
+    'VacationResponse/set',
+  ),
+
+  /** RFC 9425 — Quota (read-only; M3.7, FR-QTA-01). */
+  quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
 } as const
 
 /** A key of the {@link Methods} registry (e.g. `"emailQuery"`). */

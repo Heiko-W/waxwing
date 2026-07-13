@@ -61,6 +61,7 @@ export {
   getMailCapability,
   getSession,
   getWebPushVapidCapability,
+  hasCapability,
   normalizeSession,
   resolveUrl,
   sessionStateChanged,
@@ -72,5 +73,6 @@ export type { FetchLike, Transport } from './transport'
 export { getWithAuth, postApi, resolveFetch } from './transport'
 // Wire types (RFC 8620 core + RFC 8621 mail).
 export type * from './types/index'
-// Runtime value(s) from the mail types module (the type re-export above strips values).
+// Runtime value(s) from the types modules (the type-only re-export above strips values).
 export { MailboxRoles } from './types/mail'
+export { VACATION_SINGLETON_ID } from './types/vacation'

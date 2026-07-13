@@ -13,6 +13,14 @@ export {
 } from './address-validation'
 export { cleanOutgoingHtml } from './clean-html'
 export {
+  COMPOSE_PREF_KEYS,
+  coerceSignaturePlacement,
+  coerceUndoSendSeconds,
+  UNDO_SEND_OPTIONS,
+  useSignaturePlacement,
+  useUndoSendSeconds,
+} from './compose-prefs'
+export {
   type ComposerActions,
   type ComposerStore,
   type DraftMode,
@@ -34,7 +42,11 @@ export { FromField } from './FromField'
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
 export { NEW_MESSAGE_BTN_ID, NewMessageButton } from './NewMessageButton'
 export { RecipientFields, type RecipientFieldsProps } from './RecipientFields'
-export { RichTextEditor, type RichTextEditorProps } from './RichTextEditor'
+export {
+  RichTextEditor,
+  type RichTextEditorHandle,
+  type RichTextEditorProps,
+} from './RichTextEditor'
 export {
   combineSuggestionSources,
   createRecentsSuggestionSource,

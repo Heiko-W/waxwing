@@ -168,6 +168,35 @@ async function ensureAccount(account, domainId) {
   return { ...account, id: created.id, created: true }
 }
 
+/**
+ * Give every test account a disk quota (M3.7, FR-QTA-01).
+ *
+ * Stalwart advertises `urn:ietf:params:jmap:quota` out of the box but returns an EMPTY `Quota/get`
+ * list until an account actually HAS one — so without this, the quota bar has nothing to reflect and
+ * the M3.7 Done-when ("the quota bar reflects a filled test account") is untestable.
+ *
+ * The key is `maxDiskQuota`, camelCase: Stalwart's `quotas` map is keyed by its `StorageQuota` enum,
+ * and `MaxDiskQuota` / `max-disk-quota` are both rejected with `invalidPatch`.
+ *
+ * 100 MB is chosen to be roomy: uploads are capped at 50 MB and the seeded corpora are tiny, so no
+ * existing send/upload test can bump into it — but it is small enough that a filled account moves
+ * the bar. Idempotent, like the rest of `provision()`.
+ */
+const ACCOUNT_QUOTA_BYTES = 100 * 1024 * 1024
+
+async function ensureQuota(accountId) {
+  const args = await jmap([
+    [
+      'x:Account/set',
+      { update: { [accountId]: { quotas: { maxDiskQuota: ACCOUNT_QUOTA_BYTES } } } },
+      '0',
+    ],
+  ])
+  if (args.notUpdated?.[accountId]) {
+    throw new Error(`Quota not set on ${accountId}: ${JSON.stringify(args.notUpdated[accountId])}`)
+  }
+}
+
 // Idempotent: query-before-create, so it is safe to run on every `up`.
 export async function provision() {
   const domain = await ensureDomain()
@@ -175,7 +204,8 @@ export async function provision() {
   for (const account of ACCOUNTS) {
     const result = await ensureAccount(account, domain.id)
     const state = result.created ? '(created)' : '(exists)'
-    console.log(`  account ${result.login} -> ${result.id} ${state}`)
+    await ensureQuota(result.id)
+    console.log(`  account ${result.login} -> ${result.id} ${state} quota=${ACCOUNT_QUOTA_BYTES}`)
   }
 }
 

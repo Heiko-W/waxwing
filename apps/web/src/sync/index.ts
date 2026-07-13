@@ -65,6 +65,7 @@ export {
   useEmailWindow,
   useIdentities,
   useLocalPref,
+  useLocalPrefOptional,
   useMailbox,
   useMailboxByRole,
   useMailboxes,

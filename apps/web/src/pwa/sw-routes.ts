@@ -114,10 +114,18 @@ function escapeForRegExp(literal: string): string {
  * unanchored, a mailbox whose server-assigned JMAP Id happens to be `api` or `auth` (both legal — RFC
  * 8620 Ids are `[A-Za-z0-9_-]`) would produce `/mail/api`, and the app's own deep link would be denied
  * the shell: offline, reloading that message would show the browser's offline page.
+ *
+ * A reserved segment must be allowed to end in `?` as well as in `/` or end-of-string, and that is not
+ * cosmetic. Workbox matches against `pathname + search`, so `(?:/|$)` alone does NOT deny
+ * `/login?client_id=…` — and an OAuth authorization URL *always* carries a query string. The worker
+ * would then answer the sign-in redirect out of the precache: the user clicks "Sign in securely", the
+ * app shell comes back instead of the server's login form, and OAuth is simply broken for everyone
+ * whose worker is active — i.e. every returning visitor. (Found by the M1.9 OAuth E2E, which M3.7's
+ * re-chunking finally made fail deterministically; it had been a latent race since M3.5.)
  */
 export function navigateDenylist(root: string): RegExp[] {
   const prefix = escapeForRegExp(root)
-  return [new RegExp(`^${prefix}(?:${RESERVED_SEGMENTS.join('|')})(?:/|$)`), HAS_EXTENSION]
+  return [new RegExp(`^${prefix}(?:${RESERVED_SEGMENTS.join('|')})(?:[/?]|$)`), HAS_EXTENSION]
 }
 
 /**
