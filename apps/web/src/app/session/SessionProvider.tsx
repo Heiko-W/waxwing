@@ -17,6 +17,7 @@ import { JmapHttpError } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthExpiredError } from '../../auth'
+import { closeAllNotifications } from '../../notify'
 import { getReplica, resetStorageFull, wipeReplica } from '../../sync'
 import { getActiveEngine, setActiveEngine } from '../../sync/engine'
 import type { WaxwingConfig } from '../config'
@@ -386,6 +387,11 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           await engine.stop().catch(() => {})
         }
         if (wipeData) await wipeReplica(getReplica()).catch(() => {})
+        // A notification is local data this app put on the OPERATING SYSTEM's screen, and the OS keeps
+        // it there across sign-out, reload and browser restart. Wiping IndexedDB while three banners
+        // reading "Alice Weber — Kündigung Arbeitsvertrag" sit in the notification centre would make a
+        // liar of FR-AUTH-05, and clicking one would still deep-link into the mailbox we just left.
+        await closeAllNotifications()
         // The "storage is full" signal is a module singleton (M3.4): without this, a stale event from
         // the PREVIOUS session re-fires its toast on the next sign-in, whose notifier starts fresh.
         resetStorageFull()

@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useComposerStore } from '../compose'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
-import type { RegisterSwDeps } from './register-sw'
+import {
+  getActiveSwRegistration,
+  type RegisterSwDeps,
+  resetSwRegistrationState,
+} from './register-sw'
 import { useUpdatePrompt } from './use-update-prompt'
 
 // The registration seam: the test drives the two callbacks by hand, exactly as a real worker would.
@@ -50,6 +54,7 @@ beforeEach(() => {
 afterEach(() => {
   useComposerStore.getState().closeDraft('d1')
   useComposerStore.getState().closeDraft('d2')
+  resetSwRegistrationState()
 })
 
 /** What a waiting worker triggers, from inside React's world. */
@@ -141,5 +146,33 @@ describe('useUpdatePrompt', () => {
 
     updateReady() // a new build lands later
     expect(await screen.findByText('An update is ready')).toBeInTheDocument()
+  })
+})
+
+describe('useUpdatePrompt — publishing the registration (M3.6)', () => {
+  it('publishes the registration for the notifier, and clears it on unmount', async () => {
+    // M3.6 shows every notification through `registration.showNotification()`; `new Notification()`
+    // throws on Android Chrome, so a stale or missing registration is not a degraded experience — it
+    // is no notifications at all. And it must not outlive the flow that owns it: the browser hands
+    // back the SAME registration object, and a stale one would survive a sign-out.
+    const registration = { update: vi.fn(async () => {}) } as unknown as ServiceWorkerRegistration
+    const dispose = vi.fn()
+    const registerReal = vi.fn(async () => ({ registration, dispose }))
+
+    function PublishHarness() {
+      useUpdatePrompt({ register: registerReal, reload, draftSync: { flush } })
+      return null
+    }
+
+    const view = render(
+      <ToastProvider>
+        <PublishHarness />
+      </ToastProvider>,
+    )
+    await waitFor(() => expect(getActiveSwRegistration()).toBe(registration))
+
+    view.unmount()
+    expect(getActiveSwRegistration()).toBeNull()
+    expect(dispose).toHaveBeenCalled()
   })
 })

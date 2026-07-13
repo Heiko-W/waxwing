@@ -281,10 +281,21 @@ webmail is an open gap.
   (SP.4) — `createPushChannel` tries the capability-eligible transports in order and, when the
   browser's WebSocket attempt never opens, auto-degrades to the SSE reader with no caller hint —
   so the effective browser transport is SSE. Whether WS becomes V1 core is decision D2 (Gate G1).
-- **FR-NOTIF-02 (Must)** — **System notifications while the app is closed** via Web Push:
-  JMAP `PushSubscription` with RFC 8291 encryption, handled in the service worker
-  (Stalwart supports this natively — no relay server needed beyond the browser vendor's
-  push service; document this privacy aspect: payloads are end-to-end encrypted).
+- **FR-NOTIF-02 (Must, _conditional on the server_ — see ADR-010)** — **System notifications**
+  via Web Push: JMAP `PushSubscription` with RFC 8291 encryption, handled in the service
+  worker. No relay server beyond the browser vendor's push service; payloads are end-to-end
+  encrypted (the privacy aspect to document, NFR-PRIV-01).
+  **Precondition, and it is not met by any JMAP server today (M3.6, verified live):** Chromium
+  and Safari refuse a `PushManager.subscribe()` without an `applicationServerKey`, and the push
+  service then rejects any POST not signed with the matching VAPID key (RFC 8292 §4.2). A JMAP
+  server must therefore advertise **`urn:ietf:params:jmap:webpush-vapid`** (RFC 9749) and sign
+  its pushes. **Stalwart v0.16.x does neither**, and additionally base64-wraps the ciphertext it
+  sends under `Content-Encoding: aes128gcm`, so no browser can decrypt it — Firefox included.
+  Web Push while the app is **closed** is therefore **deferred** (ADR-010), blocked upstream.
+  What M3.6 ships instead, on every supported browser: the same notifications sourced from the
+  **live push channel** (FR-NOTIF-01) whenever the app is running, a backgrounded or minimised
+  tab included. The app probes for the capability and says plainly what it cannot do
+  (NFR-PRIV-02).
 - **FR-NOTIF-03 (Must)** — Notification preferences: per-folder on/off, quiet hours,
   preview content on/off (privacy), sound on/off.
 - **FR-NOTIF-04 (Should)** — Unread badge on the installed PWA icon (Badging API where

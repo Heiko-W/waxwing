@@ -5,8 +5,9 @@
  * whether a stale precache can outlive a deploy.
  *
  * Strategy: **injectManifest** with our own `src/sw/sw.ts`. `generateSW` would emit an untyped,
- * unbundled worker, and M3.6 (Web Push) has to add `push` / `notificationclick` /
- * `pushsubscriptionchange` listeners to that same file — type-checked and bundled.
+ * unbundled worker, and the worker has real listeners to carry — M3.6 added `notificationclick`
+ * there, type-checked and bundled. (M3.5 expected M3.6 to add `push` and `pushsubscriptionchange`
+ * too; it turned out no JMAP server can deliver a Web Push to a browser at all — ADR-010.)
  *
  * With `injectManifest` the plugin's `workbox: {…}` block is IGNORED: `cleanupOutdatedCaches`,
  * `skipWaiting` and `clientsClaim` are OUR calls inside `sw.ts`. Do not add a `workbox:` key here.

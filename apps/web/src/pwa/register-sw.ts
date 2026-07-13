@@ -49,9 +49,31 @@ export interface SwRegistration {
  */
 let controllerChangeHandled = false
 
-/** Test seam: forget the one-shot `controllerchange` guard between cases. */
+/**
+ * The live registration, published for anything that needs to talk to the worker without owning the
+ * registration flow — today M3.6's notifier, which shows every notification through
+ * `registration.showNotification()`.
+ *
+ * A plain getter, deliberately: it is published the moment `register()` resolves, which is BEFORE the
+ * worker activates, and `showNotification()` rejects on a registration whose `.active` is null. So a
+ * reader cannot simply take what is here — `notify/registration.ts` checks `.active` and otherwise
+ * waits for `serviceWorker.ready`, which resolves only with an active worker. An observable would
+ * merely have told consumers *sooner* about a registration they still could not use.
+ */
+let activeRegistration: ServiceWorkerRegistration | null = null
+
+export function setActiveSwRegistration(registration: ServiceWorkerRegistration | null): void {
+  activeRegistration = registration
+}
+
+export function getActiveSwRegistration(): ServiceWorkerRegistration | null {
+  return activeRegistration
+}
+
+/** Test seam: forget the one-shot `controllerchange` guard and the published registration. */
 export function resetSwRegistrationState(): void {
   controllerChangeHandled = false
+  activeRegistration = null
 }
 
 /** `navigator.serviceWorker`, or null — it is ABSENT in an insecure context (`pnpm demo --lan`) and in jsdom. */

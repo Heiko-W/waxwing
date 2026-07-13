@@ -579,5 +579,49 @@
         "action": "Reload"
       }
     }
+  },
+  "notify": {
+    "title": "Notifications",
+    "description": "{{product}} notifies you about new mail whenever it is running — including in a background tab or window.",
+    "enable": {
+      "label": "Notify me about new mail"
+    },
+    "permission": {
+      "denied": "Your browser is blocking notifications for this site. Allow them in your browser's site settings, then reload {{product}}.",
+      "dismissed": "Notifications were not allowed. Turn the switch on again to be asked once more.",
+      "unsupported": "This browser does not support notifications.",
+      "iosInstall": "On iPhone and iPad, notifications only work when {{product}} runs from the Home Screen. Add it there first."
+    },
+    "folders": {
+      "label": "Notify for these folders",
+      "hint": "New mail in other folders is still synced — it just stays quiet."
+    },
+    "quiet": {
+      "label": "Quiet hours",
+      "hint": "No notifications between these times. A range that crosses midnight is allowed.",
+      "from": "From",
+      "to": "To"
+    },
+    "preview": {
+      "label": "Show sender and subject",
+      "hint": "When off, a notification only says that new mail arrived — useful on a shared screen."
+    },
+    "sound": {
+      "label": "Play a sound",
+      "hint": "Whether a sound is actually played is up to your operating system."
+    },
+    "background": {
+      "unavailable": "Notifications while {{product}} is fully closed are not available with this server. They need the server to publish a Web-Push signing key (RFC 9749); this one does not. Everything above works whenever {{product}} is open.",
+      "available": "This server also supports notifications while {{product}} is closed."
+    },
+    "message": {
+      "noSubject": "(no subject)",
+      "unknownSender": "Unknown sender"
+    },
+    "body": {
+      "generic": "New message",
+      "count_one": "{{count}} new message",
+      "count_other": "{{count}} new messages"
+    }
   }
 }

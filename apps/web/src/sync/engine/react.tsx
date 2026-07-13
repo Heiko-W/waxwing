@@ -8,6 +8,7 @@
 import { type ReactNode, useEffect, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
 import { useSession } from '../../app/session/context'
+import { createMailNotifier } from '../../notify/notifier'
 import { getReplica } from '../db'
 import { ReplicaProvider } from '../react'
 import {
@@ -42,6 +43,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
   const config = useConfig()
   const cacheDays = config.offline.cacheDays
   const maxStorageMB = config.offline.maxStorageMB
+  const productName = config.branding.productName
 
   useEffect(() => {
     if (!connected || !canRunEngine()) return
@@ -54,6 +56,13 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
       auth,
       config: { cacheDays, maxStorageMB },
       onAuthExpired: reportAuthExpired,
+      // This is the one place that has the replica, the account and the branding at once — and the
+      // engine is where the leader/first-pass/foreground guards live (M3.6).
+      notify: createMailNotifier({
+        db: getReplica(),
+        accountId: connected.accountId,
+        productName,
+      }),
     })
     setActiveEngine(engine)
     engine.start()
@@ -61,7 +70,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
       setActiveEngine(null)
       void engine.stop()
     }
-  }, [connected, getAuthProvider, reportAuthExpired, cacheDays, maxStorageMB])
+  }, [connected, getAuthProvider, reportAuthExpired, cacheDays, maxStorageMB, productName])
 
   if (!connected) return children
   return (

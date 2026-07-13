@@ -41,6 +41,18 @@
   max-inline-size: 22rem;
 }
 
+/* A <fieldset> for a group of checkboxes (M3.6): the semantics are worth having, the browser's
+   default border and padding are not. Otherwise it behaves exactly like .field. */
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  max-inline-size: 22rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .label {
   font-size: var(--waxwing-text-sm);
   font-weight: var(--waxwing-weight-medium);

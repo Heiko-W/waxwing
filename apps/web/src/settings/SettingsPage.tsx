@@ -12,6 +12,7 @@ import { getTheme, setTheme } from '../app/theme'
 import { changeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
 import { useReplicaOptional } from '../sync'
 import { Select } from '../ui'
+import { NotificationsSection } from './NotificationsSection'
 import { StorageSection } from './StorageSection'
 import styles from './settings.module.css'
 
@@ -125,6 +126,14 @@ export default function SettingsPage() {
           onChange={(value) => setReadingPaneMode(value as ReadingPaneMode)}
         />
       </Section>
+
+      {/* Both sections read the replica; without a provider (an unconnected shell) they have nothing
+          to show, so they are simply not rendered. */}
+      {replica !== null && (
+        <Section title={t('notify.title')}>
+          <NotificationsSection />
+        </Section>
+      )}
 
       {replica !== null && (
         <Section title={t('settings.offline.title')}>

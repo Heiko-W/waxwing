@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  getActiveSwRegistration,
   registerServiceWorker,
   resetSwRegistrationState,
   type SwContainerLike,
+  setActiveSwRegistration,
   startUpdateChecks,
 } from './register-sw'
 
@@ -191,5 +193,29 @@ describe('startUpdateChecks', () => {
     await Promise.resolve()
     expect(registration.update).toHaveBeenCalled()
     stop()
+  })
+})
+
+/**
+ * The published registration (M3.6). The notifier shows every banner through
+ * `registration.showNotification()`, and it does not own the registration flow — `useUpdatePrompt`
+ * does. This is the hand-off between them.
+ */
+describe('the active registration store', () => {
+  it('starts empty, publishes, and can be cleared', () => {
+    expect(getActiveSwRegistration()).toBeNull()
+
+    const registration = {} as ServiceWorkerRegistration
+    setActiveSwRegistration(registration)
+    expect(getActiveSwRegistration()).toBe(registration)
+
+    setActiveSwRegistration(null)
+    expect(getActiveSwRegistration()).toBeNull()
+  })
+
+  it('is cleared by resetSwRegistrationState, so it cannot leak between tests', () => {
+    setActiveSwRegistration({} as ServiceWorkerRegistration)
+    resetSwRegistrationState()
+    expect(getActiveSwRegistration()).toBeNull()
   })
 })

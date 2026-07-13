@@ -10,6 +10,7 @@ import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
 import { SEARCH_INPUT_ID } from '../../mail/search/SearchBox'
+import { useNotificationClickNavigation } from '../../notify'
 import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { ChunkErrorBoundary } from '../../pwa/ChunkErrorBoundary'
 import { Spinner } from '../../ui'
@@ -48,6 +49,8 @@ export function AppShell({ config }: AppShellProps) {
   useConflictNotifier()
   // Surface a cache write the browser refused for lack of space (mail is no longer kept offline).
   useStorageFullNotifier()
+  // The service worker focused this tab after a notification click — go where it says (M3.6).
+  useNotificationClickNavigation()
 
   // (The service worker is registered in <App>, above the auth gate, and the browser's install offer
   // is captured in main.tsx before the first await — see those files for why neither belongs here.)

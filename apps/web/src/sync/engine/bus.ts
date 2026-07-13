@@ -6,9 +6,15 @@
  *  - `wake` — a FOLLOWER's "I queued something, replay it now" (M3.3, defect D7). Without it a
  *    follower's action — including a SEND — sat in the outbox until the leader's next push event or
  *    its 60 s safety sweep.
+ *  - `foreground?` / `foreground!` — M3.6's cross-tab foreground probe. Leadership is per-ORIGIN (the
+ *    first tab to win the Web Lock keeps it), but "is the user looking at us?" is per-TAB. Without
+ *    this, a hidden leader banners mail the user is watching land in the focused tab next door. The
+ *    leader asks; any tab that is itself visible+focused answers. It is a QUERY, not a heartbeat:
+ *    a crashed tab simply does not reply, so there is no TTL to get wrong and no state to go stale.
  *
- * `BroadcastChannel` never delivers a message to the sender, so a leader's own post cannot loop back.
- * The channel is injected via {@link BroadcastChannelLike} so it can be faked in tests.
+ * `BroadcastChannel` never delivers a message to the sender, so a leader's own post cannot loop back
+ * (which is exactly why the leader cannot answer its own `foreground?` — it checks itself locally
+ * first). The channel is injected via {@link BroadcastChannelLike} so it can be faked in tests.
  */
 
 import type { EngineStatus } from './types'
@@ -22,6 +28,15 @@ export interface BroadcastChannelLike {
 export type EngineBusMessage =
   | { readonly type: 'status'; readonly status: EngineStatus }
   | { readonly type: 'wake'; readonly reason: 'outbox' }
+  | { readonly type: 'foreground?' }
+  | { readonly type: 'foreground!' }
+
+const BUS_MESSAGE_TYPES: ReadonlySet<string> = new Set<EngineBusMessage['type']>([
+  'status',
+  'wake',
+  'foreground?',
+  'foreground!',
+])
 
 export const ENGINE_CHANNEL = 'waxwing-engine'
 
@@ -36,7 +51,7 @@ export class EngineBus {
   constructor(private readonly channel: BroadcastChannelLike) {
     channel.onmessage = (event) => {
       const message = event.data as EngineBusMessage | null
-      if (message?.type !== 'status' && message?.type !== 'wake') return
+      if (message === null || !BUS_MESSAGE_TYPES.has(message.type)) return
       for (const listener of this.listeners) listener(message)
     }
   }
@@ -48,6 +63,16 @@ export class EngineBus {
   /** Ask the leader (whichever tab that is) to replay the outbox now. */
   postWake(reason: 'outbox'): void {
     this.channel.postMessage({ type: 'wake', reason } satisfies EngineBusMessage)
+  }
+
+  /** M3.6: "is ANY tab of this app in the foreground?" — asked by the leader before it banners. */
+  postForegroundQuery(): void {
+    this.channel.postMessage({ type: 'foreground?' } satisfies EngineBusMessage)
+  }
+
+  /** The answer, sent by any tab that is itself visible and focused. Silence means "no". */
+  postForegroundAck(): void {
+    this.channel.postMessage({ type: 'foreground!' } satisfies EngineBusMessage)
   }
 
   onMessage(listener: (message: EngineBusMessage) => void): () => void {

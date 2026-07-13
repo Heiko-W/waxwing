@@ -10,6 +10,13 @@ import type { Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
 import Dexie from 'dexie'
 import { LABELS_PREF_KEY, type LabelPref } from '../mail/labels/label-model'
 import { PINNED_PREF_KEY, type PinnedPref } from '../mail/pinned/pinned-model'
+// `notify-model` is pure and has only type-only imports of its own, so this pulls no runtime
+// dependency into the sync layer (the `label-model` / `pinned-model` precedent).
+import {
+  coerceNotificationPrefs,
+  NOTIFY_PREF_KEY,
+  type NotificationPrefs,
+} from '../notify/notify-model'
 import {
   type AccountRecord,
   type AddressStatRow,
@@ -656,6 +663,44 @@ export async function updatePinnedMailboxes(
     const current = (row?.value as PinnedPref | undefined) ?? []
     await db.localPrefs.put({ accountId, key: PINNED_PREF_KEY, value: fn(current) })
   })
+}
+
+/**
+ * Read-modify-write the notification preferences (M3.6) — same cross-tab-safe shape as
+ * {@link updateLabels}. The settings screen writes one field at a time (the master switch, a folder
+ * checkbox, a quiet-hours time), and a blind `setPref` of the whole object would let a second tab's
+ * write clobber the first's.
+ */
+export async function updateNotificationPrefs(
+  db: ReplicaDb,
+  accountId: Id,
+  fn: (current: NotificationPrefs) => NotificationPrefs,
+): Promise<void> {
+  await db.transaction('rw', db.localPrefs, async () => {
+    const row = await db.localPrefs.get([accountId, NOTIFY_PREF_KEY])
+    const next = fn(coerceNotificationPrefs(row?.value))
+    await db.localPrefs.put({ accountId, key: NOTIFY_PREF_KEY, value: next })
+  })
+}
+
+/**
+ * Epoch-ms of the newest `receivedAt` the replica holds for this account, or `null` when it holds no
+ * mail at all.
+ *
+ * The point is that this is a timestamp in the SERVER's units. M3.6's notification floor is stamped
+ * from the client clock, and a client whose clock runs ahead would otherwise place that floor in the
+ * server's future and silence every notification (see `engine.ts#anchorNotifyFloor`). Reads the
+ * `[accountId+receivedAt]` index — `receivedAt` is an ISO-8601 UTC string, so its lexicographic order
+ * IS its chronological order, and the newest row is simply the last key.
+ */
+export async function newestReceivedAt(db: ReplicaDb, accountId: Id): Promise<number | null> {
+  const newest = await db.emails
+    .where('[accountId+receivedAt]')
+    .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
+    .last()
+  if (newest === undefined) return null
+  const parsed = Date.parse(newest.receivedAt)
+  return Number.isNaN(parsed) ? null : parsed
 }
 
 /** The pinned ("keep offline") mailbox ids — the engine reads this directly on every pass. */

@@ -9,12 +9,17 @@ import {
   type StatusListener,
   type Unsubscribe,
 } from '@waxwing/jmap'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
 import { getQueryCache, putEmails } from '../repo'
 import { email, freshDb } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
-import { MAINTENANCE_INTERVAL_MS, SyncEngine, type SyncEngineDeps } from './engine'
+import {
+  isDocumentForeground,
+  MAINTENANCE_INTERVAL_MS,
+  SyncEngine,
+  type SyncEngineDeps,
+} from './engine'
 import type { LockManagerLike } from './leader'
 import { getEngineStatus, setEngineStatus } from './status'
 import {
@@ -243,6 +248,10 @@ function makeDeps(db: ReplicaDb, port: JmapPort, push: FakePush): SyncEngineDeps
     createPush: () => push,
     isOnline: () => true,
     onOnlineChange: () => () => {},
+    // The cross-tab foreground probe (M3.6). A connected fake bus answers synchronously, so this
+    // deadline only ever elapses in the "nobody is there" case — keep it short so the suite is not
+    // pacing itself against a 100 ms production timeout.
+    foregroundAckMs: 10,
   }
 }
 
@@ -962,5 +971,423 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     expect(sets).toBe(1)
     deltaFails = false
     await engine.stop()
+  })
+})
+
+/**
+ * M3.6 — the guards around the notifier. Each of these is a bug that would otherwise ship, and every
+ * one of them is invisible in a happy-path demo: they only bite on a sign-in, a hand-over, a flaky
+ * network, or a second tab.
+ */
+describe('SyncEngine — new-mail notifications (M3.6)', () => {
+  /** A port whose Email/changes reports `created` on every pass AFTER the first. */
+  function notifyingPort(): JmapPort {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    let pass = 0
+    return {
+      ...base,
+      async emailChanges(s) {
+        pass += 1
+        // Note that the FIRST pass already reports a created id. `ensureInboxWindow` → `backfillMailbox`
+        // seeds the Email sync state before `syncEmails` runs, so `syncEmails` does NOT return early on
+        // pass 1 — it returns a created id like any other pass. That is precisely why the storm guard
+        // has to be a real guard rather than an accident of the first pass being empty.
+        return {
+          newState: `${s}-${pass}`,
+          hasMoreChanges: false,
+          created: [`new-${pass}`],
+          updated: [],
+          destroyed: [],
+        }
+      },
+      async getEmailEnvelopes(ids) {
+        return { list: ids.map((id) => email(id)), notFound: [], state: 'e' }
+      },
+    }
+  }
+
+  interface NotifyCall {
+    ids: string[]
+    ctx: { now: number; sinceMs: number }
+  }
+
+  function notifySpy() {
+    const calls: NotifyCall[] = []
+    const notify = async (created: readonly { id: string }[], ctx: NotifyCall['ctx']) => {
+      calls.push({ ids: created.map((e) => e.id), ctx })
+    }
+    return { calls, notify }
+  }
+
+  /** Drive one more sync pass and wait for it to land. */
+  async function anotherPass(push: FakePush): Promise<void> {
+    const before = getEngineStatus().lastSyncedAt
+    push.fireStateChange()
+    await waitFor(() => getEngineStatus().lastSyncedAt !== before)
+  }
+
+  it('never notifies on the FIRST pass of a leadership session — the catch-up storm guard', async () => {
+    // Sign-in, a fresh tab, a re-election, a laptop waking after eight hours: that first delta may add
+    // hundreds of ids, every one of them "new" to this replica. Silencing it structurally beats trying
+    // to date-filter our way out afterwards.
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+
+    expect(calls).toEqual([])
+    await engine.stop()
+  })
+
+  it('notifies on a LATER pass, with only the created ids', async () => {
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await anotherPass(push)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.ids).toEqual(['new-2'])
+    await engine.stop()
+  })
+
+  it('never notifies while THIS tab is in the foreground', async () => {
+    // No banner for a message the user is watching land.
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      notify,
+      isForeground: () => true,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await anotherPass(push)
+
+    expect(calls).toEqual([])
+    await engine.stop()
+  })
+
+  it('a tab that never wins the lock never notifies — leader-only, structurally', async () => {
+    // Otherwise every open tab raises its own banner for the same message.
+    // The lock is held by some other tab and never granted to us — but it still honours the abort
+    // signal, exactly as `navigator.locks` does, so `stop()` can complete.
+    const neverLeader: LockManagerLike = {
+      request(_name, options) {
+        return new Promise((_resolve, reject) => {
+          const abort = () => reject(new DOMException('aborted', 'AbortError'))
+          if (options.signal?.aborted) return abort()
+          options.signal?.addEventListener('abort', abort)
+        })
+      },
+    }
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      locks: neverLeader,
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await flush()
+    await flush()
+
+    expect(engine.getStatus().isLeader).toBe(false)
+    expect(calls).toEqual([])
+    await engine.stop()
+  })
+
+  it('a FAILED pass does not spend the catch-up exemption', async () => {
+    // An offline first pass must not burn the "first pass is silent" allowance on nothing — otherwise
+    // the real catch-up, once the network returns, buzzes at the user for every mail of the night.
+    let failing = true
+    const base = notifyingPort()
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(s) {
+        if (failing) throw new Error('offline')
+        return base.emailChanges(s)
+      },
+    }
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+    expect(calls).toEqual([])
+
+    // The network is back. This pass is the catch-up — still silent.
+    failing = false
+    push.fireStateChange()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    expect(calls).toEqual([])
+
+    // Only now do notifications begin.
+    await anotherPass(push)
+    expect(calls).toHaveLength(1)
+    await engine.stop()
+  })
+
+  it('a notifier that THROWS does not fail the sync pass', async () => {
+    const push = new FakePush()
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      notify: async () => {
+        throw new TypeError('the notification centre is on fire')
+      },
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await anotherPass(push)
+
+    expect(engine.getStatus().phase).toBe('idle')
+    expect(engine.getStatus().error).toBeNull()
+    await engine.stop()
+  })
+
+  it('stamps the floor ONCE at leadership and never advances it', async () => {
+    // The earlier version of this test asserted `sinceMs > 0` and `now >= sinceMs` — both trivially
+    // true of the incrementing fake clock, wherever the stamp happened to live. Moving the stamp into
+    // `runSyncPass` (i.e. re-flooring on every pass, which destroys the guard outright) left it green.
+    // The property is that the floor is IDENTICAL across passes; assert exactly that.
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await anotherPass(push)
+    await anotherPass(push)
+
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.ctx.sinceMs).toBe(calls[1]?.ctx.sinceMs)
+    // …and `now` did move on, so the equality above is a real invariant and not a frozen clock.
+    expect(calls[1]?.ctx.now).toBeGreaterThan(calls[0]?.ctx.now ?? 0)
+    await engine.stop()
+  })
+
+  it('clamps the floor onto the SERVER clock — a client running fast still notifies', async () => {
+    // The floor is stamped from the CLIENT clock and compared against the SERVER's `receivedAt`. A
+    // machine 30 minutes fast would put the floor half an hour into the server's future, and then
+    // NOTHING would ever clear it: no notifications, no error, no diagnostic, for half an hour. The
+    // replica's newest `receivedAt` is a timestamp in the server's own units, so the floor is clamped
+    // down onto it.
+    const serverNewest = Date.parse('2026-07-13T12:00:00Z')
+    const clientNow = serverNewest + 30 * 60_000 // this machine is half an hour fast
+    await putEmails(db, ACC, [
+      { ...email('anchor'), receivedAt: new Date(serverNewest).toISOString() },
+    ])
+
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    let t = clientNow
+    const engine = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      clock: { now: () => t++, setTimeout: () => 0, clearTimeout: () => {} },
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await anotherPass(push)
+
+    // Unclamped this would be `clientNow`, and no server-stamped mail could ever be "strictly newer".
+    expect(calls[0]?.ctx.sinceMs).toBe(serverNewest)
+    await engine.stop()
+  })
+
+  it('does not notify when leadership is lost DURING the pass', async () => {
+    // `runSyncPass` awaits half a dozen round-trips; a sign-out flips `isLeader` under it. Without the
+    // re-check AFTER those awaits, the departing tab still banners. Deleting that one line left every
+    // other test in this file green — it had no coverage at all.
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    let parking = false
+    let release: (() => void) | undefined
+    const base = notifyingPort()
+    const port: JmapPort = {
+      ...base,
+      async getEmailEnvelopes(ids) {
+        // Only park once the initial sync is behind us — `backfill` calls this too, and parking there
+        // would simply stall the first pass.
+        if (parking && release === undefined) {
+          await new Promise<void>((resolve) => {
+            release = resolve
+          })
+        }
+        return base.getEmailEnvelopes(ids)
+      },
+    }
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+
+    parking = true
+    push.fireStateChange() // this pass would notify — it parks mid-flight instead
+    await waitFor(() => release !== undefined)
+
+    const stopped = engine.stop() // aborts, drops leadership, then awaits the in-flight pass
+    release?.() // let the parked pass run on; it must now find itself demoted
+    await stopped
+
+    expect(calls).toEqual([])
+  })
+
+  it('without a notifier, nothing anywhere breaks', async () => {
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, notifyingPort(), push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    push.fireStateChange()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    expect(engine.getStatus().error).toBeNull()
+    await engine.stop()
+  })
+
+  // --- the CROSS-TAB foreground probe -----------------------------------------------------------
+  //
+  // Leadership is per-ORIGIN and sticky — the first tab to take the Web Lock keeps it — but "is the
+  // user looking at us?" is per-TAB. Open a second tab and work in it, and the leader is a hidden tab
+  // that would happily banner mail the user is watching arrive right in front of them. So the leader
+  // asks over the bus, and any tab that is itself foreground answers.
+
+  /** A real cross-tab bus: every channel it hands out sees the others' posts, but never its own. */
+  function connectedBuses(): () => BroadcastChannelLike {
+    const channels: BroadcastChannelLike[] = []
+    return () => {
+      const self: BroadcastChannelLike = {
+        postMessage(message) {
+          for (const other of channels) {
+            if (other !== self) other.onmessage?.({ data: message })
+          }
+        },
+        close() {},
+        onmessage: null,
+      }
+      channels.push(self)
+      return self
+    }
+  }
+
+  it('a HIDDEN leader stays silent when ANOTHER tab is in the foreground', async () => {
+    const createBus = connectedBuses()
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+
+    const leader = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      createBus,
+      notify,
+      isForeground: () => false, // hidden
+    })
+    // The tab the user is actually looking at. It never wins the lock, so it never syncs — but it does
+    // answer the probe, which is the whole reason it exists here.
+    const follower = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), new FakePush()),
+      createBus,
+      locks: {
+        request(_name, options) {
+          return new Promise((_resolve, reject) => {
+            const abort = () => reject(new DOMException('aborted', 'AbortError'))
+            if (options.signal?.aborted) return abort()
+            options.signal?.addEventListener('abort', abort)
+          })
+        },
+      },
+      isForeground: () => true, // focused
+    })
+
+    follower.start()
+    leader.start()
+    await waitFor(() => leader.getStatus().phase === 'idle')
+    await anotherPass(push)
+
+    expect(calls).toEqual([])
+    await leader.stop()
+    await follower.stop()
+  })
+
+  it('…but banners when NO tab answers — silence is the "no"', async () => {
+    // The same wiring, minus the focused tab. A crashed or closed tab simply does not reply, which is
+    // exactly why this is a query and not a heartbeat: there is no stale liveness state to get wrong.
+    const createBus = connectedBuses()
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+
+    const leader = new SyncEngine({
+      ...makeDeps(db, notifyingPort(), push),
+      createBus,
+      notify,
+      isForeground: () => false,
+    })
+
+    leader.start()
+    await waitFor(() => leader.getStatus().phase === 'idle')
+    await anotherPass(push)
+
+    expect(calls).toHaveLength(1)
+    await leader.stop()
+  })
+
+  describe('isDocumentForeground — the production wiring', () => {
+    // Every test above INJECTS isForeground, so the real predicate had no coverage at all: dropping
+    // `&& document.hasFocus()` from it left the whole suite green.
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    const withDocument = (visibility: DocumentVisibilityState, focused: boolean) => {
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(visibility)
+      vi.spyOn(document, 'hasFocus').mockReturnValue(focused)
+    }
+
+    it('is true only when the tab is visible AND focused', () => {
+      withDocument('visible', true)
+      expect(isDocumentForeground()).toBe(true)
+    })
+
+    it('is FALSE for a visible-but-unfocused window — one sitting behind another application', () => {
+      // The whole reason `hasFocus()` is there. A buried window still reports `visible`, and calling it
+      // "foreground" would suppress the one signal that tells the user mail arrived.
+      withDocument('visible', false)
+      expect(isDocumentForeground()).toBe(false)
+    })
+
+    it('is false for a hidden tab', () => {
+      withDocument('hidden', true)
+      expect(isDocumentForeground()).toBe(false)
+    })
   })
 })

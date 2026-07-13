@@ -1,12 +1,13 @@
 /**
- * The Waxwing service worker (M3.5, FR-OFF-01, tech-stack §6). Bundled by `vite-plugin-pwa`'s
- * `injectManifest` strategy, so it is ordinary TypeScript with real imports — M3.6 extends THIS
- * file with the Web Push listeners.
+ * The Waxwing service worker (M3.5/M3.6, FR-OFF-01, tech-stack §6). Bundled by `vite-plugin-pwa`'s
+ * `injectManifest` strategy, so it is ordinary TypeScript with real imports.
  *
- * It compiles in its own program (`tsconfig.sw.json`, `lib: ["ES2023","WebWorker"]`) because the
- * worker globals and the DOM globals cannot coexist in one `lib`. Consequence: NO test file may
- * live in this directory. Everything worth testing is a pure function in `src/pwa/sw-routes.ts`,
- * which is imported here and asserted there; this file is glue.
+ * It compiles in its own program (`tsconfig.sw.json`, `lib: ["ES2023","WebWorker"]`, `types: []`)
+ * because the worker globals and the DOM globals cannot coexist in one `lib`. Two consequences, both
+ * load-bearing: NO test file may live in this directory, and every module reachable from here — even
+ * through a type-only import — must itself be DOM-free. Everything worth testing is a pure function in
+ * `src/pwa/sw-routes.ts` and `src/notify/click-route.ts`, imported here and asserted there; this file
+ * is glue.
  *
  * What it does NOT do, deliberately:
  *  - **No `skipWaiting()` at install** and **no `clientsClaim()`**. A new worker that activates
@@ -16,6 +17,11 @@
  *  - **No route that can match a JMAP path.** Unmatched requests get no `respondWith` at all and go
  *    straight to the network. Every route below is anchored to the app's own directory — see the
  *    invariant in sw-routes.ts, which also explains why an anchor rather than a denylist.
+ *  - **No `push` listener, and no Web Push at all.** M3.5 expected M3.6 to add one; M3.6 established
+ *    that it could not work. No JMAP server signs a browser push (RFC 9749/VAPID), and Stalwart also
+ *    base64-wraps the aes128gcm body, so the `push` event never fires in ANY browser — see ADR-010.
+ *    Notifications are raised by the PAGE, from the live push channel, and the worker's only part in
+ *    them is the `notificationclick` handler at the bottom of this file.
  */
 
 /// <reference lib="webworker" />
@@ -29,6 +35,13 @@ import {
 } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { NetworkFirst, StaleWhileRevalidate, type Strategy } from 'workbox-strategies'
+import {
+  isAppClient,
+  NOTIFY_CLICK,
+  type NotifyClickMessage,
+  notificationTargetHref,
+  notificationTargetPath,
+} from '../notify/click-route'
 import {
   appRoot,
   BRANDING_FILES,
@@ -148,6 +161,44 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   }
 })
 
-// M3.6 (Web Push) adds its three listeners HERE — `push` (decode the JMAP StateChange, decide
-// notify-worthiness, show the notification), `notificationclick` (focus-or-open the message) and
-// `pushsubscriptionchange` (resubscribe + PushSubscription/set). Nothing push-related exists yet.
+/**
+ * A notification raised through THIS registration was clicked (M3.6): focus a window of ours and tell
+ * it where to go; open one if we have none.
+ *
+ * `includeUncontrolled: true` is mandatory. There is no `clientsClaim()` (see the header), so the very
+ * page that showed the notification is typically NOT controlled by this worker — a default `matchAll`
+ * would not see it, and we would silently open a SECOND tab next to the one the user is looking at.
+ * For the same reason the route travels by `postMessage` rather than `WindowClient.navigate()`: that
+ * method rejects for an uncontrolled client.
+ *
+ * Every rule it applies (which route, which client is ours, how the mount prefix folds in) is a tested
+ * pure function in `../notify/click-route` — this stays glue, because nothing in this directory can
+ * have a test.
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const data: unknown = event.notification.data
+  event.waitUntil(focusOrOpen(data))
+})
+
+async function focusOrOpen(data: unknown): Promise<void> {
+  const path = notificationTargetPath(data)
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+  for (const client of windows) {
+    if (!isAppClient(client.url, self.location.href)) continue
+    try {
+      // focus() first — it consumes the click's user activation, and a postMessage cannot get it back.
+      const focused = await client.focus()
+      focused.postMessage({ type: NOTIFY_CLICK, path } satisfies NotifyClickMessage)
+      return
+    } catch {
+      // focus() is specified to reject without transient activation, and Android rejects it for a
+      // client in another browser task. Uncaught, that rejection escapes waitUntil and takes the
+      // openWindow fallback with it: the user clicks the notification and NOTHING happens at all.
+      // Try the next window instead, and open a fresh one if none of them will take focus.
+    }
+  }
+
+  await self.clients.openWindow(notificationTargetHref(ROOT, data))
+}

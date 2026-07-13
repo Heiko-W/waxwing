@@ -188,6 +188,110 @@ describe('syncEmails', () => {
     expect(await db.emails.get([ACC, 'e2'])).toBeUndefined()
     expect(await getSyncState(db, ACC, 'Email')).toBe('e1')
   })
+
+  // --- the M3.6 new-mail signal -----------------------------------------------------------------
+  //
+  // `Email/changes` reports `created` and `updated` separately and the engine folds them together to
+  // fetch them. The notifier needs them apart: an `updated` id is a `$seen` flip from a phone, a move,
+  // a label edit — any write by any client — and treating that as an arrival would buzz at the user
+  // for reading their own mail somewhere else.
+
+  it('returns ONLY the created envelopes — never the updated ones', async () => {
+    await setSyncState(db, ACC, 'Email', 'e0', 1)
+    const port = fakePort({
+      emailChanges: async () => ({
+        newState: 'e1',
+        hasMoreChanges: false,
+        created: ['new-1'],
+        updated: ['read-elsewhere'], // e.g. another client just marked it $seen
+        destroyed: [],
+      }),
+      getEmailEnvelopes: async () => ({
+        list: [email('new-1'), email('read-elsewhere')],
+        notFound: [],
+        state: 'e1',
+      }),
+    })
+
+    const created = await syncEmails(port, db, ACC, clock)
+
+    expect(created.map((e) => e.id)).toEqual(['new-1'])
+    // …but BOTH are still stored: the fold is right for the replica, wrong for the notifier.
+    expect(await db.emails.get([ACC, 'read-elsewhere'])).toBeDefined()
+  })
+
+  it('returns nothing when there is no Email state (the initial pass is backfill, not delta)', async () => {
+    expect(await syncEmails(fakePort(), db, ACC, clock)).toEqual([])
+  })
+
+  it('an id created on one page and UPDATED on a later one is still an arrival', async () => {
+    await setSyncState(db, ACC, 'Email', 'e0', 1)
+    const pages = [
+      { newState: 'e1', hasMoreChanges: true, created: ['e1'], updated: [], destroyed: [] },
+      { newState: 'e2', hasMoreChanges: false, created: [], updated: ['e1'], destroyed: [] },
+    ]
+    let page = 0
+    const port = fakePort({
+      emailChanges: async () => pages[page++] as (typeof pages)[number],
+      getEmailEnvelopes: async () => ({ list: [email('e1')], notFound: [], state: 'e2' }),
+    })
+
+    expect((await syncEmails(port, db, ACC, clock)).map((e) => e.id)).toEqual(['e1'])
+  })
+
+  it('an id created and then DESTROYED across pages is neither fetched nor notified', async () => {
+    // Two layers have to hold, and the test has to pin BOTH — an earlier version of it handed back an
+    // empty `list` from the fake port, which made it pass no matter what the fold did.
+    //
+    //  1. The destroyed id is dropped from `changed`, so it is never even asked for.
+    //  2. It is dropped from `created` too. `syncEmails` intersects `created` with what the `/get`
+    //     actually returned, so (1) alone would usually cover it — but a server that hands back an
+    //     envelope we did not ask for must not be able to turn a destroyed message into a banner.
+    await setSyncState(db, ACC, 'Email', 'e0', 1)
+    const pages = [
+      {
+        newState: 'e1',
+        hasMoreChanges: true,
+        created: ['gone', 'kept'],
+        updated: [],
+        destroyed: [],
+      },
+      { newState: 'e2', hasMoreChanges: false, created: [], updated: [], destroyed: ['gone'] },
+    ]
+    let page = 0
+    const requested: string[][] = []
+    const port = fakePort({
+      emailChanges: async () => pages[page++] as (typeof pages)[number],
+      getEmailEnvelopes: async (ids) => {
+        requested.push([...ids])
+        // The server answers with the destroyed id anyway. `created.delete()` is what stops it.
+        return { list: [email('kept'), email('gone')], notFound: [], state: 'e2' }
+      },
+    })
+
+    const created = await syncEmails(port, db, ACC, clock)
+
+    expect(requested).toEqual([['kept']]) // layer 1: never asked for
+    expect(created.map((e) => e.id)).toEqual(['kept']) // layer 2: never notified
+  })
+
+  it('does not notify for an id the server called created but did not return an envelope for', async () => {
+    // A `/get` that omits an id (destroyed in the meantime, or invisible to us) leaves nothing to
+    // build a banner from — the notification would have no sender, no subject and no target.
+    await setSyncState(db, ACC, 'Email', 'e0', 1)
+    const port = fakePort({
+      emailChanges: async () => ({
+        newState: 'e1',
+        hasMoreChanges: false,
+        created: ['ghost'],
+        updated: [],
+        destroyed: [],
+      }),
+      getEmailEnvelopes: async () => ({ list: [], notFound: ['ghost'], state: 'e1' }),
+    })
+
+    expect(await syncEmails(port, db, ACC, clock)).toEqual([])
+  })
 })
 
 describe('reconcileQuery', () => {

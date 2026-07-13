@@ -20,6 +20,7 @@ import {
   type RegisterSwDeps,
   registerServiceWorker,
   type SwRegistration,
+  setActiveSwRegistration,
   startUpdateChecks,
 } from './register-sw'
 
@@ -116,14 +117,19 @@ export function useUpdatePrompt(deps: UpdatePromptDeps = {}): void {
       }
       teardown = registered.dispose
       stopUpdateChecks = startUpdateChecks(registered.registration)
+      // Publish it: M3.6 shows every notification through `registration.showNotification()`, and this
+      // is the one place that owns the registration flow.
+      setActiveSwRegistration(registered.registration)
     })
 
     return () => {
       disposed = true
-      // Both matter: the interval, and the listeners attached to the registration object — which the
-      // browser hands back IDENTICALLY on the next register(), so a leaked one would fire again.
+      // All three matter: the interval, the listeners attached to the registration object — which the
+      // browser hands back IDENTICALLY on the next register(), so a leaked one would fire again — and
+      // the published registration, which must not outlive the flow that owns it.
       stopUpdateChecks?.()
       teardown?.()
+      setActiveSwRegistration(null)
     }
   }, [register, reload])
 }

@@ -4,6 +4,7 @@ import {
   getCoreCapability,
   getMailCapability,
   getSession,
+  getWebPushVapidCapability,
   normalizeSession,
   sessionStateChanged,
   toWellKnownUrl,
@@ -109,6 +110,31 @@ describe('getMailCapability', () => {
     const session = makeSession() // the fixture account has accountCapabilities: {}
     expect(getMailCapability(session, 'nope')).toBeNull()
     expect(getMailCapability(session, 'a')).toBeNull()
+  })
+})
+
+describe('getWebPushVapidCapability (RFC 9749)', () => {
+  const VAPID = 'urn:ietf:params:jmap:webpush-vapid'
+
+  it('reads the applicationServerKey when the server advertises one', () => {
+    const session = makeSession()
+    session.capabilities[VAPID] = { applicationServerKey: 'BEl62iUYgUiv…' }
+    expect(getWebPushVapidCapability(session)?.applicationServerKey).toBe('BEl62iUYgUiv…')
+  })
+
+  it('returns null when the capability is absent — which is every JMAP server today (ADR-010)', () => {
+    // The fixture session mirrors Stalwart's: core, mail, submission… and no VAPID.
+    expect(getWebPushVapidCapability(makeSession())).toBeNull()
+  })
+
+  it('returns null for a malformed capability rather than handing out a bad key', () => {
+    // A key that is not a non-empty string would be passed straight to PushManager.subscribe(),
+    // where it throws — better to report "unsupported" than to break the subscribe call.
+    const session = makeSession()
+    for (const bad of [null, 'nope', 42, {}, { applicationServerKey: '' }, { key: 'x' }]) {
+      session.capabilities[VAPID] = bad
+      expect(getWebPushVapidCapability(session), JSON.stringify(bad)).toBeNull()
+    }
   })
 })
 

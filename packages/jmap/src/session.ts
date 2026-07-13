@@ -3,7 +3,13 @@ import { Capabilities } from './capabilities'
 import { errorFromResponse } from './errors'
 import type { FetchLike } from './transport'
 import { getWithAuth, resolveFetch } from './transport'
-import type { CoreCapability, Id, JmapResponse, Session } from './types/core'
+import type {
+  CoreCapability,
+  Id,
+  JmapResponse,
+  Session,
+  WebPushVapidCapability,
+} from './types/core'
 import type { MailCapability } from './types/mail'
 
 /** The conventional well-known path a JMAP Session is discovered at (RFC 8620 §2). */
@@ -137,6 +143,28 @@ function isMailCapability(value: unknown): value is MailCapability {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
   return typeof v.maxSizeAttachmentsPerEmail === 'number' && Array.isArray(v.emailQuerySortOptions)
+}
+
+/**
+ * Reads the RFC 9749 VAPID capability — the server's Web-Push signing key.
+ *
+ * `null` means the server cannot sign a Web Push, and therefore **cannot deliver a notification
+ * while the app is closed** on Chromium or Safari: both refuse `PushManager.subscribe()` without an
+ * `applicationServerKey`, and the push service then rejects an unsigned POST (RFC 8292 §4.2).
+ *
+ * No JMAP server advertises this today (ADR-010). The probe exists so the app can say so honestly
+ * (NFR-PRIV-02) instead of offering a switch that could never work — and so it lights up by itself
+ * the day a server ships the capability.
+ */
+export function getWebPushVapidCapability(session: Session): WebPushVapidCapability | null {
+  const value = session.capabilities[Capabilities.webPushVapid]
+  return isWebPushVapidCapability(value) ? value : null
+}
+
+function isWebPushVapidCapability(value: unknown): value is WebPushVapidCapability {
+  if (typeof value !== 'object' || value === null) return false
+  const key = (value as Record<string, unknown>).applicationServerKey
+  return typeof key === 'string' && key !== ''
 }
 
 /**

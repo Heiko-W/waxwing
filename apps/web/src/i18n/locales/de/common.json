@@ -579,5 +579,49 @@
         "action": "Neu laden"
       }
     }
+  },
+  "notify": {
+    "title": "Mitteilungen",
+    "description": "{{product}} benachrichtigt Sie über neue E-Mails, solange es läuft — auch in einem Hintergrund-Tab oder -Fenster.",
+    "enable": {
+      "label": "Über neue E-Mails benachrichtigen"
+    },
+    "permission": {
+      "denied": "Ihr Browser blockiert Mitteilungen für diese Seite. Erlauben Sie sie in den Website-Einstellungen Ihres Browsers und laden Sie {{product}} neu.",
+      "dismissed": "Mitteilungen wurden nicht erlaubt. Schalten Sie den Schalter erneut ein, um noch einmal gefragt zu werden.",
+      "unsupported": "Dieser Browser unterstützt keine Mitteilungen.",
+      "iosInstall": "Auf iPhone und iPad funktionieren Mitteilungen nur, wenn {{product}} vom Home-Bildschirm aus läuft. Fügen Sie es dort zuerst hinzu."
+    },
+    "folders": {
+      "label": "Für diese Ordner benachrichtigen",
+      "hint": "Neue E-Mails in anderen Ordnern werden weiterhin synchronisiert — sie bleiben nur still."
+    },
+    "quiet": {
+      "label": "Ruhezeiten",
+      "hint": "Zwischen diesen Zeiten keine Mitteilungen. Ein Zeitraum über Mitternacht ist erlaubt.",
+      "from": "Von",
+      "to": "Bis"
+    },
+    "preview": {
+      "label": "Absender und Betreff anzeigen",
+      "hint": "Wenn ausgeschaltet, meldet eine Mitteilung nur, dass neue Post da ist — nützlich an einem geteilten Bildschirm."
+    },
+    "sound": {
+      "label": "Ton abspielen",
+      "hint": "Ob tatsächlich ein Ton erklingt, entscheidet Ihr Betriebssystem."
+    },
+    "background": {
+      "unavailable": "Mitteilungen bei vollständig geschlossenem {{product}} sind mit diesem Server nicht möglich. Sie setzen voraus, dass der Server einen Web-Push-Signaturschlüssel veröffentlicht (RFC 9749); dieser tut es nicht. Alles Obige funktioniert, solange {{product}} geöffnet ist.",
+      "available": "Dieser Server unterstützt Mitteilungen auch bei geschlossenem {{product}}."
+    },
+    "message": {
+      "noSubject": "(kein Betreff)",
+      "unknownSender": "Unbekannter Absender"
+    },
+    "body": {
+      "generic": "Neue Nachricht",
+      "count_one": "{{count}} neue Nachricht",
+      "count_other": "{{count}} neue Nachrichten"
+    }
   }
 }

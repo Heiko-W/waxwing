@@ -129,3 +129,37 @@ node scripts/icons.mjs   # 192 / 512 / maskable-512 / apple-touch-180
 There is **no service worker in `pnpm dev`** (`devOptions.enabled: false`) and none under
 `pnpm test` (`vitest.config.ts` merges `vite.config.ts`, so the plugin is explicitly disabled
 when `VITEST` is set).
+
+## Notifications (M3.6) — and the one thing they cannot do
+
+Waxwing raises system notifications for new mail **whenever the app is running**, a backgrounded
+or minimised tab included. They are fed by the live push channel that already drives the UI
+(FR-NOTIF-01), shown through `ServiceWorkerRegistration.showNotification()`, and clicking one
+focuses the tab and opens the message. Preferences live in Settings → Notifications: per folder,
+quiet hours, sender/subject preview on or off, sound on or off.
+
+**They do not work while the app is fully closed, and that is not a bug we can fix here.**
+No JMAP server on earth can deliver a Web Push to a browser today:
+
+- Chromium and Safari both refuse `PushManager.subscribe()` without an `applicationServerKey`,
+  and supplying one binds the endpoint to a VAPID signature the *server* must produce
+  (RFC 8292 §4.2).
+- The capability that would publish that key — **`urn:ietf:params:jmap:webpush-vapid`,
+  RFC 9749** — is implemented by no JMAP server, Stalwart included.
+- Stalwart additionally base64-wraps the encrypted payload while announcing
+  `Content-Encoding: aes128gcm`, so no browser can decrypt it — Firefox included.
+
+The app therefore **probes for the capability and tells the user the truth** rather than offering
+a switch that would do nothing (NFR-PRIV-02). See [ADR-010](../../docs/adr/010-web-push-deferred-no-vapid.md)
+for the evidence, and `docs/upstream/` for the two Stalwart defects as written up for upstream.
+The day a server ships RFC 9749 and a spec-conforming payload, the subscription flow is the only
+piece still missing — everything else here is transport-agnostic.
+
+Two things to know if you touch this code:
+
+1. **The "new mail" signal is `Email/changes.created`, and only that.** `drainChanges` used to fold
+   `created` into `updated`, which made a `$seen` flip from another client indistinguishable from
+   an arrival. `syncEmails`'s return value is the only seam — do not hook `putEmails`, which the
+   `forceFull` re-probe and every backfill page also call.
+2. **`new Notification()` is never a fallback.** Android Chrome throws `Illegal constructor` for
+   the page-side constructor. No registration means no notification, and that is the whole story.

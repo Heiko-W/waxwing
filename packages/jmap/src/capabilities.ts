@@ -25,6 +25,13 @@ export const Capabilities = {
   webSocket: 'urn:ietf:params:jmap:websocket',
   /** RFC 8620 §8 (JMAP Sharing) — principals. */
   principals: 'urn:ietf:params:jmap:principals',
+  /**
+   * RFC 9749 — Use of VAPID in JMAP Web Push. Carries the server's `applicationServerKey`.
+   *
+   * Not a method capability (nothing is added to `PREFIX_TO_CAPABILITY`): it is a pure session-level
+   * announcement, read by {@link getWebPushVapidCapability}. `PushSubscription/*` is core.
+   */
+  webPushVapid: 'urn:ietf:params:jmap:webpush-vapid',
 } as const
 
 /** Union of the known capability URN string literals. */

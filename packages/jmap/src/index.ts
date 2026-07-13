@@ -60,6 +60,7 @@ export {
   getCoreCapability,
   getMailCapability,
   getSession,
+  getWebPushVapidCapability,
   normalizeSession,
   resolveUrl,
   sessionStateChanged,

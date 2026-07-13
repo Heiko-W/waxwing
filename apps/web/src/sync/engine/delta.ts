@@ -10,7 +10,7 @@
  */
 
 import type { EmailComparator, EmailFilter, Id, Mailbox } from '@waxwing/jmap'
-import type { MailboxRow, QueryCacheRow, ReplicaDb } from '../db'
+import type { EmailEnvelopeInput, MailboxRow, QueryCacheRow, ReplicaDb } from '../db'
 import {
   deleteEmails,
   deleteMailbox,
@@ -41,6 +41,16 @@ const DEFAULT_WINDOW_LIMIT = 50
 /** Accumulated effect of a (possibly multi-page) `Foo/changes` run. */
 interface ChangesAccumulator {
   readonly changed: Id[]
+  /**
+   * The ids the server reported as CREATED — a strict subset of {@link changed}, kept apart because
+   * "new" and "changed" are different questions and only one of them means new mail (M3.6).
+   *
+   * Everything else in the engine wants `changed` (fetch it, store it). The notifier wants exactly
+   * this: fold the two together and a `$seen` flip from a phone, a move, a label edit — any write by
+   * any client — becomes indistinguishable from an arrival, and the app buzzes at the user for
+   * reading their own mail somewhere else.
+   */
+  readonly created: Id[]
   readonly destroyed: Id[]
   readonly newState: string
   /** Union of `updatedProperties` across pages, or null if any page reported a full update. */
@@ -64,6 +74,7 @@ async function drainChanges(
   sinceState: string,
 ): Promise<ChangesAccumulator> {
   const changed = new Set<Id>()
+  const created = new Set<Id>()
   const destroyed = new Set<Id>()
   const props = new Set<string>()
   let propsWholeUpdate = false
@@ -74,13 +85,17 @@ async function drainChanges(
     for (const id of page.created) {
       destroyed.delete(id)
       changed.add(id)
+      created.add(id)
     }
     for (const id of page.updated) {
       destroyed.delete(id)
       changed.add(id)
+      // NOT `created.delete(id)`: an id created on one page and updated on a later one is still an
+      // arrival — the server is describing one object's history, not two events.
     }
     for (const id of page.destroyed) {
       changed.delete(id)
+      created.delete(id)
       destroyed.add(id)
     }
     if (page.updatedProperties === null || page.updatedProperties === undefined) {
@@ -94,6 +109,7 @@ async function drainChanges(
 
   return {
     changed: [...changed],
+    created: [...created],
     destroyed: [...destroyed],
     newState: state,
     updatedProperties: propsWholeUpdate ? null : [...props],
@@ -191,20 +207,35 @@ export async function syncThreads(
 /**
  * Email sync — delta only (no-op from a null state; initial population is {@link fullRequery}).
  * Advances the Email state by applying `Email/changes` into the envelope table.
+ *
+ * Returns the envelopes of the emails `Email/changes` reported as **created** — and only those. This
+ * is the sole place in the engine that learns "this Email is new to the account", and M3.6's notifier
+ * is built on it. It is deliberately a RETURN VALUE and not a callback: `delta.ts` stays a pure data
+ * function tested against a fake port, while the policy (leader? first pass? foreground? which
+ * folders?) sits in the engine and the notifier, where the session facts it needs actually live.
+ *
+ * **Nothing else may serve as the new-mail seam.** `putEmails` is also called by {@link fullRequery}
+ * (the periodic `forceFull` re-probe), by every backfill page and by `hydrateMissing` — a hook there
+ * would fire on a re-probe of mail the user read last week.
  */
 export async function syncEmails(
   port: JmapPort,
   db: ReplicaDb,
   accountId: Id,
   clock: EngineClock,
-): Promise<void> {
+): Promise<EmailEnvelopeInput[]> {
   const sinceState = await getSyncState(db, accountId, 'Email')
-  if (sinceState === null) return
+  if (sinceState === null) return []
 
   const acc = await drainChanges((s) => port.emailChanges(s), sinceState)
+  let created: EmailEnvelopeInput[] = []
   if (acc.changed.length > 0) {
     const { list } = await port.getEmailEnvelopes(acc.changed)
     await putEmails(db, accountId, list)
+    const createdIds = new Set(acc.created)
+    // From `list`, not from `acc.created`: an id the server reported as created but did not return
+    // from the `/get` (destroyed in the meantime, or not visible to us) has no envelope to notify with.
+    created = list.filter((email) => createdIds.has(email.id))
     // Recents accumulation (M2.4) is best-effort — never break delta sync on a stats failure.
     try {
       await recordAddressStats(db, accountId, list)
@@ -214,6 +245,7 @@ export async function syncEmails(
   }
   if (acc.destroyed.length > 0) await deleteEmails(db, accountId, acc.destroyed)
   await setSyncState(db, accountId, 'Email', acc.newState, clock.now())
+  return created
 }
 
 /**

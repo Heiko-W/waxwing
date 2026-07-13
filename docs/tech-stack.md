@@ -29,7 +29,7 @@ browser. Everything else is the JMAP server.
 │  │              @waxwing/jmap client                │          │
 │  │   (typed JMAP core • WebSocket/SSE push • blobs) │          │
 │  └───────────────────────┬──────────────────────────┘          │
-│  Service worker: precache, Web Push (RFC 8291), badge          │
+│  Service worker: precache, notifications, badge                 │
 └──────────────────────────┼─────────────────────────────────────┘
                            │ HTTPS / WSS (JSON)
                            ▼
@@ -77,7 +77,7 @@ decision buys offline support, instant UI, crash-safety, and multi-tab consisten
 | Icons | **Lucide** | MIT, tree-shakable |
 | i18n | **i18next** (lazy-loaded JSON locales) | Weblate-friendly |
 | Auth | **oauth4webapi** (OAuth 2.0 Code + PKCE) | Basic-auth fallback |
-| PWA | **vite-plugin-pwa** (Workbox) | precache + Web Push SW |
+| PWA | **vite-plugin-pwa** (Workbox) | precache + notification SW (Web Push blocked upstream — ADR-010) |
 | MIME fallback | **postal-mime** (lazy-loaded) | only if server lacks `Email/parse` |
 | Tests | **Vitest**, Testing Library, **Playwright** | E2E vs. real Stalwart (Docker) |
 | Lint/format | **Biome** | one fast tool |
@@ -250,6 +250,7 @@ waxwing/
 | JMAP Calendars still an IETF draft | V2 calendar rework | V1 ships without calendar (by design); Contacts is a published RFC (9610) — safe |
 | No prior art for JS JMAP-over-WebSocket | unknown edge cases | build on SSE first (proven), add RFC 8887 as enhancement; it's a small framed protocol |
 | Safari/iOS PWA limits (push only when installed, storage eviction) | degraded iOS UX | `storage.persist()`, in-app install guidance, EventSource fallback while open |
+| **No JMAP server signs Web Push (RFC 9749/VAPID)** — and Stalwart base64-wraps the aes128gcm body | **background push impossible on every browser**, not just Safari | notifications sourced from the live SSE channel while the app runs (all browsers); capability probe + honest in-app statement; two upstream bug reports. **ADR-010** |
 | Stalwart CORS is all-or-nothing | cross-origin deployments weaken posture | recommend same-origin (Applications); document proxy pattern; upstream feature request for per-origin CORS |
 | Official Stalwart webmail (Rust/Dioxus) planned post-1.0 | competition | different lane: web-native TS, community-owned, any-JMAP-server; our MIT `@waxwing/jmap` package builds goodwill either way |
 | Squire is contenteditable-based (quirks) | composer bugs | it's the most battle-tested email editor in existence (Fastmail/Proton/Tutanota/Zoho); wrap behind our own component API so it stays swappable |

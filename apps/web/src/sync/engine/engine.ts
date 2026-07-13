@@ -25,9 +25,11 @@ import {
   type SearchSnippet,
   type Session,
 } from '@waxwing/jmap'
+import type { NotifyNewMail } from '../../notify/notifier'
 import {
   collectBodyBlobIds,
   type EmailBodyRow,
+  type EmailEnvelopeInput,
   estimateBodyBytes,
   type ReplicaDb,
   scopeKey,
@@ -38,6 +40,7 @@ import {
   getQueryCache,
   getSyncState,
   mailboxByRole,
+  newestReceivedAt,
   pendingOutbox,
   putEmailBody,
   putEmails,
@@ -112,9 +115,22 @@ export interface SyncEngineDeps {
   readonly safetyIntervalMs?: number
   /** Jitter source for the outbox retry backoff; defaults to `Math.random` (tests pass `() => 0`). */
   readonly random?: () => number
+  /** Raise system notifications for newly delivered mail (M3.6). Absent ⇒ notifications never fire. */
+  readonly notify?: NotifyNewMail
+  /** Is this tab visible AND focused? Defaults to a document check in {@link createSyncEngine}. */
+  readonly isForeground?: () => boolean
+  /** How long to wait for another tab to answer the foreground probe; defaults to {@link FOREGROUND_ACK_MS}. */
+  readonly foregroundAckMs?: number
 }
 
 const DEFAULT_SAFETY_INTERVAL_MS = 60_000
+
+/**
+ * How long the leader waits for another tab to admit it is in the foreground (M3.6). A
+ * `BroadcastChannel` round-trip inside one browser is sub-millisecond; this is generous, and it is
+ * paid only on a pass that has new mail AND has cleared every other notification guard.
+ */
+const FOREGROUND_ACK_MS = 100
 
 export class SyncEngine {
   private readonly db: ReplicaDb
@@ -146,6 +162,29 @@ export class SyncEngine {
 
   /** Identities are pulled once per leadership session (M2.5; Identity/changes deferred). */
   private identitiesSynced = false
+
+  /**
+   * M3.6's storm guard. The FIRST successful sync pass of a leadership session never notifies: that
+   * pass IS the catch-up — a sign-in, a fresh tab, a re-election — and its delta may legitimately add
+   * hundreds of ids. Silencing it structurally beats trying to date-filter our way out afterwards.
+   *
+   * It does NOT cover a laptop waking from sleep: a Web Lock survives suspend, so the tab is still the
+   * leader, this flag is still armed, and every id that arrived overnight is genuinely new and clears
+   * the floor. What bounds *that* case is the notifier's rolling burst budget, which collapses the
+   * night's mail into one summary banner. Two different guards, two different jobs.
+   */
+  private notifyArmed = false
+  /**
+   * Stamped when leadership is acquired; mail not strictly newer than this is never notified.
+   *
+   * `clock.now()` is the CLIENT's clock while `receivedAt` is the SERVER's, so the floor is clamped
+   * down to the newest `receivedAt` the replica already holds — see {@link anchorNotifyFloor}.
+   */
+  private notifySinceMs = 0
+  /** The in-flight {@link anchorNotifyFloor}; awaited before the floor is first used, never before. */
+  private notifyFloorReady: Promise<void> | undefined
+  /** Settles the in-flight `foreground?` probe — on the first `foreground!` back, or on {@link stop}. */
+  private settleForeground: ((foreground: boolean) => void) | undefined
   private syncing = false
   private syncQueued = false
   /** The replay-only pass, coalesced exactly like `syncing`/`syncQueued` — and shared with it, so a
@@ -188,6 +227,17 @@ export class SyncEngine {
         }
         return
       }
+      if (message.type === 'foreground?') {
+        // M3.6: the leader is about to raise a banner and wants to know whether the user is looking at
+        // ANY tab of this app. Every tab answers for itself — leader or follower — and a tab that is
+        // not in the foreground stays silent, because silence is the "no".
+        if (this.deps.isForeground?.() === true) this.bus?.postForegroundAck()
+        return
+      }
+      if (message.type === 'foreground!') {
+        this.settleForeground?.(true)
+        return
+      }
       // Followers mirror the leader's status (but keep their own leadership + online flags).
       if (!this.isLeader) {
         this.setStatus({ ...message.status, isLeader: false, online: this.deps.isOnline() }, false)
@@ -216,6 +266,9 @@ export class SyncEngine {
     if (this.safetyTimer !== undefined) this.clock.clearTimeout(this.safetyTimer)
     if (this.queueWakeTimer !== undefined) this.clock.clearTimeout(this.queueWakeTimer)
     this.cancelReconnect()
+    // A foreground probe in flight would otherwise sit on its timeout while `stop()` awaits the pass
+    // that owns it. Settle it as "foreground" — on the way out, the safe direction is silence.
+    this.settleForeground?.(true)
     this.push?.close()
     this.busUnsub?.()
     this.offlineUnsub?.()
@@ -782,9 +835,42 @@ export class SyncEngine {
     this.isLeader = isLeader
     this.patch({ isLeader })
     if (!isLeader || this.stopController.signal.aborted) return
+    // Re-arm M3.6's storm guard for THIS leadership session: the next successful pass is the catch-up
+    // and stays silent, and nothing older than this instant may ever notify.
+    this.notifyArmed = false
+    this.notifySinceMs = this.clock.now()
+    // Started, NOT awaited. `onLeadership` must not yield before `sync()` has marked itself busy —
+    // everything from the lock grant to that point runs in one task, and callers observe a freshly
+    // elected leader as already syncing. The floor is only consulted by the notifier, which cannot run
+    // before the second pass (the first is the silent catch-up), so it has all the time it needs.
+    this.notifyFloorReady = this.anchorNotifyFloor()
     this.openPush()
     this.scheduleSafetySweep()
     await this.sync()
+  }
+
+  /**
+   * Clamp M3.6's notification floor onto the SERVER's timeline (defect found in review).
+   *
+   * The floor is stamped from the CLIENT's clock, but every `receivedAt` it is compared against comes
+   * from the SERVER's. A client running Δ ahead — a dead RTC battery, no NTP, a VM with a drifted host
+   * clock — puts the floor Δ into the server's future, and then *every* arrival fails the "strictly
+   * newer" test for the next Δ. Notifications simply stop: no error, no status, no diagnostic. Hours
+   * ahead means hours of silence.
+   *
+   * The replica already holds the answer. The newest `receivedAt` we have synced is a timestamp in the
+   * server's own units, so clamping the floor down to it re-anchors us onto the right timeline. Mail
+   * genuinely newer than everything we hold still clears it, which is the only property the floor
+   * needs. A read failure (or an empty replica) leaves the synchronous stamp in place — degraded, not
+   * broken.
+   */
+  private async anchorNotifyFloor(): Promise<void> {
+    try {
+      const newest = await newestReceivedAt(this.db, this.accountId)
+      if (newest !== null) this.notifySinceMs = Math.min(this.notifySinceMs, newest)
+    } catch {
+      /* the client-clock stamp stands; a floor is not worth failing a leadership hand-over over */
+    }
   }
 
   private openPush(): void {
@@ -903,6 +989,7 @@ export class SyncEngine {
   private async runSyncPass(forceFull: boolean): Promise<void> {
     try {
       let deltaError: unknown
+      let created: EmailEnvelopeInput[] = []
       try {
         await syncMailboxes(this.port, this.db, this.accountId, this.clock)
         if (!this.identitiesSynced) {
@@ -911,7 +998,7 @@ export class SyncEngine {
         }
         await this.ensureInboxWindow()
         await syncThreads(this.port, this.db, this.accountId, this.clock)
-        await syncEmails(this.port, this.db, this.accountId, this.clock)
+        created = await syncEmails(this.port, this.db, this.accountId, this.clock)
         await this.reconcileWatched(forceFull)
       } catch (error) {
         // Re-throw ONLY auth-expiry (→ the re-auth funnel). A transient DELTA failure must not skip
@@ -928,6 +1015,7 @@ export class SyncEngine {
         })
         return
       }
+      await this.raiseNewMailNotifications(created)
       // Cache policy runs at the END of a SUCCESSFUL pass (M3.4): the replica is at its freshest, so
       // the horizon, the orphan set and the watched windows are all accurate. It is interval-gated,
       // so the 60 s safety sweep does not evict every minute.
@@ -936,6 +1024,72 @@ export class SyncEngine {
     } catch (error) {
       this.reportError(error)
     }
+  }
+
+  /**
+   * The engine-session guard around M3.6's notifier. Four conditions, and every one of them is a bug
+   * someone would otherwise ship:
+   *
+   *  - **Armed.** The first successful pass of a leadership session is the catch-up and stays silent
+   *    (see {@link notifyArmed}). A FAILED pass does not arm it — otherwise an offline first pass
+   *    would spend the exemption on nothing and the real catch-up would then buzz.
+   *  - **Still the leader.** `runSyncPass` awaits half a dozen round-trips, and a sign-out or a
+   *    hand-over can flip `isLeader` under it. Without this re-check the departing tab notifies while
+   *    the incoming leader is silently catching up — a banner nobody is left to explain.
+   *  - **No tab in the foreground.** No banner for a message the user is watching land — in ANY tab,
+   *    not just this one (see {@link isAppInForeground}).
+   *  - **Never fatal.** A notification is a courtesy; a sync pass is not. It is caught (the
+   *    `recordAddressStats` precedent in delta.ts).
+   */
+  private async raiseNewMailNotifications(created: EmailEnvelopeInput[]): Promise<void> {
+    const wasArmed = this.notifyArmed
+    this.notifyArmed = true
+    if (!wasArmed) return
+    if (created.length === 0) return
+    if (!this.isLeader || this.stopController.signal.aborted) return
+    const notify = this.deps.notify
+    if (notify === undefined) return
+    if (await this.isAppInForeground()) return
+    await this.notifyFloorReady // the clamp was started at leadership; this is where it is first needed
+    try {
+      await notify(created, { now: this.clock.now(), sinceMs: this.notifySinceMs })
+    } catch {
+      /* non-critical — a failed banner must never fail the pass that produced it */
+    }
+  }
+
+  /**
+   * Is the user looking at ANY tab of this app — not merely at this one?
+   *
+   * Leadership is per-ORIGIN and sticky: the first tab to take the Web Lock keeps it, so the leader is
+   * usually the tab opened FIRST. Open a second tab and work there, and the leader is a hidden tab
+   * that would happily banner mail the user is watching arrive in the tab in front of them. That is
+   * not an exotic configuration; it is the normal one.
+   *
+   * So the leader asks. Any tab that is itself visible and focused answers; a tab that is neither, or
+   * that has crashed, says nothing — and silence is the "no". A query beats a heartbeat here: there is
+   * no TTL to tune, no liveness table, and nothing that can go stale. The cost is bounded by
+   * {@link FOREGROUND_ACK_MS} and paid only on a pass that actually has mail to announce.
+   */
+  private async isAppInForeground(): Promise<boolean> {
+    if (this.deps.isForeground?.() === true) return true
+    const bus = this.bus
+    if (bus === undefined) return false
+
+    return await new Promise<boolean>((resolve) => {
+      // The REAL timer, deliberately, not `this.clock`: the injected clock exists to keep the safety
+      // sweep and the outbox backoff out of tests' wall-clock, and its `setTimeout` is a no-op stub.
+      // This deadline has to actually fire, or a leader with no other tabs would wait for an answer
+      // that is never coming and wedge the sync pass.
+      const deadline = this.deps.foregroundAckMs ?? FOREGROUND_ACK_MS
+      const timer = setTimeout(() => this.settleForeground?.(false), deadline)
+      this.settleForeground = (foreground) => {
+        this.settleForeground = undefined
+        clearTimeout(timer)
+        resolve(foreground)
+      }
+      bus.postForegroundQuery()
+    })
   }
 
   /** A background 401/403 means the session expired — route it to re-auth (FR-AUTH-06). */
@@ -1044,6 +1198,21 @@ export function subscribeActiveEngine(listener: () => void): () => void {
 }
 
 /** Browser-wired {@link SyncEngine}: real locks, BroadcastChannel, push, and `navigator.onLine`. */
+/**
+ * Is the user actually looking at THIS tab (M3.6)?
+ *
+ * `hasFocus()` is load-bearing next to `visibilityState`, and dropping it is the easy mistake: a
+ * desktop window sitting BEHIND another application is still `visible` to the Page Visibility API. A
+ * check on visibility alone would therefore call a buried window "foreground" and suppress the banner
+ * at precisely the moment the banner is the only way the user would ever learn the mail arrived.
+ *
+ * Exported so it can be tested — `createSyncEngine` itself cannot be constructed under jsdom (no
+ * `navigator.locks`), which is how this went untested in the first place.
+ */
+export function isDocumentForeground(): boolean {
+  return document.visibilityState === 'visible' && document.hasFocus()
+}
+
 export function createSyncEngine(deps: {
   db: ReplicaDb
   port: JmapPort
@@ -1053,6 +1222,8 @@ export function createSyncEngine(deps: {
   onAuthExpired?: () => void
   clock?: EngineClock
   safetyIntervalMs?: number
+  /** M3.6's notifier. Omitted ⇒ no notifications (an unconnected shell, a test). */
+  notify?: NotifyNewMail
 }): SyncEngine {
   const clock: EngineClock = deps.clock ?? {
     now: () => Date.now(),
@@ -1081,7 +1252,9 @@ export function createSyncEngine(deps: {
         window.removeEventListener('offline', off)
       }
     },
+    isForeground: isDocumentForeground,
     ...(deps.onAuthExpired === undefined ? {} : { onAuthExpired: deps.onAuthExpired }),
     ...(deps.safetyIntervalMs === undefined ? {} : { safetyIntervalMs: deps.safetyIntervalMs }),
+    ...(deps.notify === undefined ? {} : { notify: deps.notify }),
   })
 }
