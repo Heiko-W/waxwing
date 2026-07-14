@@ -381,6 +381,9 @@ export class SyncEngine {
       // cascades to the bodies (M3.4) — and Dexie requires a sub-transaction's tables to be a SUBSET
       // of its parent's, so omitting it would make every retried destroy throw SubTransactionError.
       this.db.emailBodies,
+      // Same rule for `queryCache`: a move/destroy's optimistic apply also prunes the message out of
+      // the cached list windows (M3.8), in its own sub-transaction.
+      this.db.queryCache,
       this.db.mailboxes,
       async (): Promise<OutboxIntent | null> => {
         const current = await this.db.outbox.get([this.accountId, id])

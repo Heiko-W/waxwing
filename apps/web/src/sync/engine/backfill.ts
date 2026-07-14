@@ -208,7 +208,11 @@ export async function loadMore(
     ...row,
     ids,
     upToId: ids.at(-1) ?? null,
-    queryState: result.queryState,
+    // A VOIDED window stays voided (M3.8): `queryState: null` means "these ids have been edited
+    // locally — re-query fully" (outbox.ts). Appending an older page does not make the edited part of
+    // the window honest again, so adopting this query's fresh state here would hand `queryChanges` a
+    // baseline it never produced — and the delta against it would never re-add what the edit removed.
+    queryState: row.queryState === null ? null : result.queryState,
     total: result.total ?? row.total,
     lastUsedAt: opts.now,
   }

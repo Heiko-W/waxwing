@@ -150,4 +150,47 @@ describe('loadMore', () => {
     expect(row?.upToId).toBe('e4')
     expect(row?.queryState).toBe('qs2')
   })
+
+  /**
+   * A VOIDED window stays voided (M3.8). `queryState: null` means "these ids were edited locally —
+   * re-query in full" (the optimistic prune of an archive/destroy, outbox.ts). Appending an older page
+   * does not make the EDITED part of the window honest again, so adopting this query's fresh state
+   * would hand `Email/queryChanges` a baseline it never produced — and its delta would never re-add
+   * what the edit removed. That is the same permanent-loss defect, entered through "load more".
+   */
+  it('keeps a window that was marked for a full re-query marked (does not adopt a fresh queryState)', async () => {
+    let call = 0
+    const port = fakePort({
+      queryEmails: async () => {
+        call += 1
+        return call === 1 ? query(['e1', 'e2'], 'qs1', 5) : query(['e3'], 'qs2', 5)
+      },
+      getEmailEnvelopes: async (ids) => ({
+        list: ids.map((id) => email(id)),
+        notFound: [],
+        state: 'st',
+      }),
+      getThreads: async (ids) => ({
+        list: ids.map((id) => thread(id, [])),
+        notFound: [],
+        state: 'ts',
+      }),
+    })
+
+    const { key } = await backfillMailbox(port, db, ACC, 'inbox', {
+      cacheDays: 30,
+      limit: 2,
+      now: NOW,
+    })
+    // What an optimistic archive leaves behind: `e1` pruned out of the ids, the baseline voided.
+    const seeded = await getQueryCache(db, ACC, key)
+    if (!seeded) throw new Error('no window')
+    await db.queryCache.put({ ...seeded, ids: ['e2'], upToId: 'e2', queryState: null })
+
+    await loadMore(port, db, ACC, key, { limit: 2, now: NOW + 1 })
+
+    const row = await getQueryCache(db, ACC, key)
+    expect(row?.ids).toEqual(['e2', 'e3']) // the page was appended…
+    expect(row?.queryState).toBeNull() // …but the window is STILL owed a full re-query
+  })
 })

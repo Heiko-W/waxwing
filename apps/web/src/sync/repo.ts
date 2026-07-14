@@ -652,6 +652,30 @@ export async function updateLabels(
   })
 }
 
+/**
+ * The command palette's recent-action list (M3.8) — a most-recent-first array of palette item ids.
+ * Unlike the label/pinned/notify keys this one has no feature model of its own to live in: the
+ * palette's model is two pure functions in a LAZY chunk, and pulling that chunk into the eager sync
+ * layer just to name a string would defeat the split.
+ */
+export const PALETTE_RECENTS_KEY = 'palette.recents'
+
+/** Read-modify-write the palette's recents (M3.8) — same cross-tab-safe shape as {@link updateLabels}. */
+export async function updatePaletteRecents(
+  db: ReplicaDb,
+  accountId: Id,
+  fn: (current: string[]) => string[],
+): Promise<void> {
+  await db.transaction('rw', db.localPrefs, async () => {
+    const row = await db.localPrefs.get([accountId, PALETTE_RECENTS_KEY])
+    const stored = row?.value
+    const current = Array.isArray(stored)
+      ? stored.filter((entry): entry is string => typeof entry === 'string')
+      : []
+    await db.localPrefs.put({ accountId, key: PALETTE_RECENTS_KEY, value: fn(current) })
+  })
+}
+
 /** Read-modify-write the "keep offline" pin set (M3.4) — same cross-tab-safe shape as {@link updateLabels}. */
 export async function updatePinnedMailboxes(
   db: ReplicaDb,

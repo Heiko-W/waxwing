@@ -1,6 +1,6 @@
-import { type EmailCreate, JmapHttpError, JmapMethodError } from '@waxwing/jmap'
+import { type EmailCreate, type EmailFilter, JmapHttpError, JmapMethodError } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { DraftRow, OutboxRow, ReplicaDb } from '../db'
+import type { DraftRow, OutboxRow, QueryCacheRow, ReplicaDb } from '../db'
 import {
   emailsInMailbox,
   emailsWithKeyword,
@@ -8,11 +8,13 @@ import {
   pendingOutbox,
   putEmails,
   putMailboxes,
+  putQueryCache,
 } from '../repo'
 import { email, freshDb, mailbox } from '../test-utils'
 import { STUCK_AFTER_ATTEMPTS } from './backoff'
+import { reconcileQuery } from './delta'
 import { enqueueAction, type OutboxIntent, replayOutbox } from './outbox'
-import type { JmapPort, PortSetResult } from './types'
+import type { EngineClock, JmapPort, PortSetResult } from './types'
 
 let db: ReplicaDb
 const ACC = 'acc'
@@ -112,7 +114,359 @@ describe('outbox — optimistic apply + enqueue', () => {
       to: 'archive',
       hadTo: ['e2'], // e2 must NOT be stripped from `archive` on a rollback
       hadFrom: ['e1', 'e2'],
+      prunedKeys: [], // no cached window in this test — nothing to prune
     })
+  })
+})
+
+/**
+ * M3.8 defect: the list renders `queryCache[key].ids` VERBATIM (the server-ordered window), so an
+ * optimistic apply that only patched `emails.mailboxIds` left the archived message rendering in the
+ * folder it had just left — and `dispatch` triggers a REPLAY-ONLY pass, so nothing local ever fixed
+ * it. The row went away only when the SERVER's push echoed the change back: never while offline, and
+ * not at all when the archive beat the push channel's connect (reproduced live on both counts).
+ *
+ * These tests look at the WINDOW. The pre-existing suite only ever looked at `emails`, which is
+ * exactly why the defect shipped.
+ */
+describe('outbox — the cached list window (M3.8)', () => {
+  /** `AND(inMailbox, after)` — a folder window's filter, exactly as `backfillMailbox` writes it. */
+  const inMailboxFilter = (mailboxId: string): EmailFilter => ({
+    operator: 'AND',
+    conditions: [{ inMailbox: mailboxId }, { after: '2026-06-01T00:00:00Z' }],
+  })
+
+  function windowRow(
+    key: string,
+    filter: EmailFilter | null,
+    ids: string[],
+    over: Partial<QueryCacheRow> = {},
+  ): QueryCacheRow {
+    return {
+      accountId: ACC,
+      key,
+      ids,
+      queryState: 'q-1',
+      total: ids.length,
+      upToId: ids.at(-1) ?? null,
+      filter,
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: true,
+      lastUsedAt: 1,
+      ...over,
+    }
+  }
+
+  const win = (key: string): Promise<QueryCacheRow | undefined> => db.queryCache.get([ACC, key])
+
+  /** The window keys an intent's PERSISTED undo recorded (sorted — the scan order is the index's). */
+  async function prunedKeys(id: string): Promise<string[]> {
+    const undo = (await row(id))?.undo
+    if (!undo || !('prunedKeys' in undo)) return []
+    return [...(undo.prunedKeys ?? [])].sort()
+  }
+
+  const inbox = (id: string) => email(id, { mailboxIds: { inbox: true } })
+
+  const clock: EngineClock = { now: () => 9, setTimeout: () => 0, clearTimeout: () => {} }
+
+  it('a move prunes the ids out of the SOURCE window and decrements its total', async () => {
+    await putEmails(db, ACC, [inbox('e1'), inbox('e2'), inbox('e3')])
+    // `total` (42) is the SERVER's match count, not the window length — the decrement is by the
+    // number of ids actually removed, never a re-count of `ids`.
+    await putQueryCache(
+      db,
+      windowRow('inbox-win', inMailboxFilter('inbox'), ['e1', 'e2', 'e3'], {
+        total: 42,
+      }),
+    )
+    // A SECOND Inbox window (another sort) that does not actually hold the ids — they sit past its
+    // loaded slice. Its `ids` are not edited, so its delta baseline is still honest: leave it alone.
+    await putQueryCache(db, windowRow('inbox-old-win', inMailboxFilter('inbox'), ['e9']))
+
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1', 'e3'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+
+    // No sync, no server, no push: the window the list renders is already correct.
+    const window = await win('inbox-win')
+    expect(window?.ids).toEqual(['e2'])
+    expect(window?.total).toBe(40)
+    expect(window?.upToId).toBe('e2') // the cursor invariant (`upToId === ids.at(-1)`) survives
+    // We edited its `ids`, so the state the server computes its delta AGAINST is no longer the state
+    // we hold: void it (see the next two tests for what keeping it costs).
+    expect(window?.queryState).toBeNull()
+    expect((await win('inbox-old-win'))?.queryState).toBe('q-1') // untouched ids ⇒ honest baseline
+    expect((await pendingOutbox(db, ACC)).map((r) => r.id)).toEqual(['i1'])
+    expect(await prunedKeys('i1')).toEqual(['inbox-win'])
+  })
+
+  /**
+   * The DESTINATION half. A message that ARRIVES in a folder has to appear in that folder's list, and
+   * only the server can say WHERE: the window is in its collation, and with `collapseThreads` the
+   * entries are thread representatives. So the window is marked for a full re-query — never spliced at
+   * an index we guessed.
+   */
+  it('a move VOIDS the DESTINATION windows — the arrival is the server’s to place', async () => {
+    await putEmails(db, ACC, [inbox('e1'), inbox('e2')])
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1', 'e2']))
+    await putQueryCache(db, windowRow('archive-win', inMailboxFilter('archive'), ['e9']))
+    await putQueryCache(db, windowRow('later-win', inMailboxFilter('later'), ['e9']))
+
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+
+    // The destination keeps its ids (we do not know where `e1` goes) but loses its delta cursor, so
+    // the next reconcile re-queries it in full and picks the message up in the server's order.
+    expect((await win('archive-win'))?.ids).toEqual(['e9'])
+    expect((await win('archive-win'))?.queryState).toBeNull()
+    // A window pinned to a THIRD mailbox is neither source nor destination: nothing about it changed,
+    // so it keeps its cheap delta.
+    expect((await win('later-win'))?.ids).toEqual(['e9'])
+    expect((await win('later-win'))?.queryState).toBe('q-1')
+    // The destination is NOT recorded in the undo: nothing was edited there, so a rollback owes it
+    // nothing — a re-query of an unedited window returns the truth whatever the server answered.
+    expect(await prunedKeys('i1')).toEqual(['inbox-win'])
+  })
+
+  /**
+   * THE defect, at engine level: Undo — the button `use-triage` puts in every archive/junk/trash toast.
+   *
+   * Archive `e1` (the Inbox window drops the id), then Undo, which dispatches the INVERSE move
+   * (archive → inbox). Server-side the message leaves the Inbox and comes straight back: a NET-ZERO
+   * change. While the Inbox window still carried the queryState it held BEFORE the archive, the next
+   * `Email/queryChanges` truthfully answered "nothing changed", that empty delta was applied to our
+   * already-pruned ids, and `e1` never came back into the list — reproduced live against Stalwart
+   * (15 s, push channel connected, row never returned). The Undo button was decorative.
+   */
+  it('Undo (the inverse move) brings the row back into the list, in the server’s order', async () => {
+    await putEmails(db, ACC, [inbox('e1'), inbox('e2')])
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1', 'e2']))
+
+    // `e` — archive.
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+    expect((await win('inbox-win'))?.ids).toEqual(['e2'])
+
+    // "Undo" — the inverse move, exactly what the toast dispatches.
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: 'archive', to: 'inbox' },
+      { id: 'i2', now: 2 },
+    )
+
+    expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true })
+    // The window cannot place the row itself — but it is now marked for a full re-query (as the
+    // DESTINATION of the inverse move), which is the only thing that can.
+    expect((await win('inbox-win'))?.ids).toEqual(['e2'])
+    expect((await win('inbox-win'))?.queryState).toBeNull()
+
+    // Now drive the reconcile the engine runs next, against a server that has the message back.
+    const server = ['e1', 'e2'] // the SERVER's order: e1 is the newest again
+    let deltaCalled = false
+    let seenLimit: number | undefined
+    const port = fakePort({
+      queryEmailChanges: async () => {
+        deltaCalled = true
+        // What a correct server really answers for a move-out-and-back: nothing changed. Applied to
+        // our pruned ids it would strand `e1` forever — so this branch must not be taken at all.
+        return { oldQueryState: 'q-1', newQueryState: 'q-2', removed: [], added: [] }
+      },
+      queryEmails: async (spec) => {
+        seenLimit = spec.limit
+        const ids = server.slice(0, spec.limit ?? server.length)
+        return { ids, queryState: 'q-2', canCalculateChanges: true, position: 0, total: ids.length }
+      },
+      getEmailEnvelopes: async (ids) => ({
+        list: ids.map((id) => inbox(id)),
+        notFound: [],
+        state: 'eml-1',
+      }),
+    })
+
+    await reconcileQuery(port, db, ACC, 'inbox-win', { filter: inMailboxFilter('inbox') }, clock)
+
+    expect(deltaCalled).toBe(false) // the net-zero delta was never consulted
+    expect((await win('inbox-win'))?.ids).toEqual(['e1', 'e2']) // BACK — and in the server's order
+    expect((await win('inbox-win'))?.queryState).toBe('q-2')
+    // The re-query must not re-materialize the window at the length the PRUNE left it (1), or the
+    // restored row would return at the top while `e2` silently dropped off the bottom (delta.ts).
+    expect(seenLimit).not.toBe(1)
+  })
+
+  it('touches no window it cannot prove the message left (other folder, search, label, OR)', async () => {
+    await putEmails(db, ACC, [inbox('e1')])
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1']))
+    await putQueryCache(db, windowRow('archive-win', inMailboxFilter('archive'), ['e1']))
+    await putQueryCache(db, windowRow('search-win', { text: 'invoice' }, ['e1']))
+    await putQueryCache(db, windowRow('label-win', { hasKeyword: 'work' }, ['e1']))
+    await putQueryCache(db, windowRow('nofilter-win', null, ['e1']))
+    await putQueryCache(
+      db,
+      windowRow(
+        'or-win',
+        { operator: 'OR', conditions: [{ inMailbox: 'inbox' }, { hasKeyword: 'work' }] },
+        ['e1'],
+      ),
+    )
+
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+
+    expect((await win('inbox-win'))?.ids).toEqual([]) // the source folder — pruned
+    // The destination window already LISTS `e1` (it was in `archive` too): there is nothing to pick
+    // up, so it is left with its cheap delta rather than being sent on a pointless full re-query.
+    expect((await win('archive-win'))?.ids).toEqual(['e1'])
+    expect((await win('archive-win'))?.queryState).toBe('q-1')
+    expect((await win('search-win'))?.ids).toEqual(['e1']) // a search is a SNAPSHOT — it keeps the hit
+    expect((await win('label-win'))?.ids).toEqual(['e1']) // so is a label view (FR-LST / M3.2)
+    expect((await win('nofilter-win'))?.ids).toEqual(['e1'])
+    expect((await win('or-win'))?.ids).toEqual(['e1']) // an OR can still match on its other branch
+    // None of them was edited, so none of them lost its baseline either.
+    for (const key of ['search-win', 'label-win', 'nofilter-win', 'or-win']) {
+      expect((await win(key))?.queryState).toBe('q-1')
+    }
+    expect(await prunedKeys('i1')).toEqual(['inbox-win'])
+  })
+
+  it('a move with from === null (the source folder is unknown) prunes nothing', async () => {
+    await putEmails(db, ACC, [inbox('e1')])
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1']))
+
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: null, to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+
+    // It is a COPY into `archive`, not a move out of `inbox` — so the message is still in the Inbox
+    // and the Inbox window is still right. (This is also why the M3.8 shortcuts refuse to fire here.)
+    expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true, archive: true })
+    expect((await win('inbox-win'))?.ids).toEqual(['e1'])
+    expect(await prunedKeys('i1')).toEqual([])
+  })
+
+  /**
+   * A destroy has no destination, and its prune is unconditional. Voiding the baseline of the windows
+   * it edited is DEFENSIVE here rather than load-bearing — a destroy is irreversible, the id can never
+   * re-enter a query result, so the server's delta can only ever agree with the prune ("removed: e1",
+   * which we already applied). It is kept because the exception would have to be re-proved every time
+   * this code is touched, and because a permanent delete is rare: the re-query costs nothing real.
+   */
+  it('a destroy prunes the ids out of EVERY window — a destroyed message belongs in none', async () => {
+    await putEmails(db, ACC, [inbox('e1'), inbox('e2')])
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1', 'e2']))
+    await putQueryCache(db, windowRow('archive-win', inMailboxFilter('archive'), ['e1']))
+    await putQueryCache(db, windowRow('search-win', { text: 'invoice' }, ['e1'], { total: 9 }))
+    await putQueryCache(db, windowRow('later-win', inMailboxFilter('later'), ['e9']))
+
+    await enqueueAction(db, ACC, { kind: 'destroyEmails', emailIds: ['e1'] }, { id: 'i1', now: 1 })
+
+    expect((await win('inbox-win'))?.ids).toEqual(['e2'])
+    expect((await win('archive-win'))?.ids).toEqual([])
+    expect((await win('search-win'))?.ids).toEqual([]) // even a search: its envelope is GONE
+    expect((await win('search-win'))?.total).toBe(8)
+    // Every window whose ids we edited loses its baseline — the same rule as a move's source.
+    for (const key of ['inbox-win', 'archive-win', 'search-win']) {
+      expect((await win(key))?.queryState).toBeNull()
+    }
+    // …and the one that held none of the destroyed ids keeps its cheap delta.
+    expect((await win('later-win'))?.ids).toEqual(['e9'])
+    expect((await win('later-win'))?.queryState).toBe('q-1')
+    expect(await prunedKeys('i1')).toEqual(['archive-win', 'inbox-win', 'search-win'])
+  })
+
+  it('never touches a window belonging to a DIFFERENT account', async () => {
+    const OTHER = 'other-acc'
+    await putEmails(db, ACC, [inbox('e1')])
+    await putEmails(db, OTHER, [inbox('e1')])
+    // Same canonical key on both accounts — `canonicalQueryKey` deliberately excludes the accountId
+    // (scoping is the compound primary key), so a prune that forgot to scope would hit both.
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1']))
+    await putQueryCache(db, {
+      ...windowRow('inbox-win', inMailboxFilter('inbox'), ['e1']),
+      accountId: OTHER,
+    })
+
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+    await enqueueAction(db, ACC, { kind: 'destroyEmails', emailIds: ['e1'] }, { id: 'i2', now: 2 })
+
+    expect((await db.queryCache.get([ACC, 'inbox-win']))?.ids).toEqual([])
+    expect((await db.queryCache.get([OTHER, 'inbox-win']))?.ids).toEqual(['e1'])
+    expect(await db.emails.get([OTHER, 'e1'])).toBeDefined()
+  })
+
+  it('the rollback of a REJECTED move marks the pruned window for a full re-query', async () => {
+    await putEmails(db, ACC, [inbox('e1')])
+    await putQueryCache(db, windowRow('inbox-win', inMailboxFilter('inbox'), ['e1'], { total: 5 }))
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+    expect((await win('inbox-win'))?.ids).toEqual([])
+
+    const port = fakePort({
+      setEmails: async () => setResult({ notUpdated: { e1: { type: 'forbidden' } } }),
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect((await row('i1'))?.status).toBe('error')
+    expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true }) // envelope restored
+    // The window is NOT repaired by re-inserting the id at a guessed index — we hold none of the
+    // server's sort keys. It is marked for a full re-query instead (a rollback means the server
+    // ANSWERED, so we are online and the round-trip is free).
+    expect((await win('inbox-win'))?.queryState).toBeNull()
+
+    // And that null really is what `reconcileQuery` branches on: the row comes back, in the server's
+    // order. (Asserting only on `queryState === null` would leave the delta.ts contract untested.)
+    const requeryPort = fakePort({
+      queryEmails: async () => ({
+        ids: ['e1'],
+        queryState: 'q-2',
+        canCalculateChanges: true,
+        position: 0,
+        total: 5,
+      }),
+      getEmailEnvelopes: async (ids) => ({
+        list: ids.map((id) => email(id)),
+        notFound: [],
+        state: 'eml-1',
+      }),
+    })
+    await reconcileQuery(
+      requeryPort,
+      db,
+      ACC,
+      'inbox-win',
+      { filter: inMailboxFilter('inbox') },
+      clock,
+    )
+    expect((await win('inbox-win'))?.ids).toEqual(['e1'])
+    expect((await win('inbox-win'))?.queryState).toBe('q-2')
   })
 })
 
@@ -171,7 +525,8 @@ describe('outbox — persisted undo (M3.3, defect D6)', () => {
     await replayOutbox(port, db, ACC, { random: NO_JITTER })
     const owed = await row('i1')
     expect(owed?.status).toBe('error')
-    expect(owed?.undo).toEqual({ kind: 'refetchEmails' }) // STILL OWED — never silently dropped
+    // STILL OWED — never silently dropped.
+    expect(owed?.undo).toEqual({ kind: 'refetchEmails', prunedKeys: [] })
     expect(await db.emails.get([ACC, 'e1'])).toBeUndefined()
     // The dead letter is still listed, so the stale local state is visible, not silent.
     expect((await failedOutbox(db, ACC)).map((r) => r.id)).toEqual(['i1'])

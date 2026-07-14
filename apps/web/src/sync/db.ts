@@ -327,6 +327,18 @@ export type ConflictCode =
  *
  * Payloads stay tiny: a destroy re-fetches the (still-existing, because the destroy was REJECTED)
  * envelopes from the server rather than storing them, which also self-corrects a PARTIAL rejection.
+ *
+ * `prunedKeys` is the same idea one level up: an optimistic move/destroy also prunes the message out
+ * of the cached list windows it left ({@link QueryCacheRow.ids} — what the list actually renders), and
+ * the rollback has to put it back. The KEYS are recorded (data, not a closure) rather than the ids and
+ * their positions: the window is in the SERVER's collation and we hold none of its sort keys, so a
+ * local re-insert would land the row in the wrong place. Marking the window for a full re-query is
+ * both correct and free — a rollback only happens when the server answered, i.e. we are online.
+ * OPTIONAL: an undo persisted by a build before M3.8 pruned nothing, and `undefined` reads as "none".
+ *
+ * The DESTINATION windows a move marks for re-query are deliberately NOT recorded: nothing was edited
+ * there (only `queryState` was voided), so whatever the server answers, the re-query returns the truth
+ * — a rejected move simply re-queries a window that never changed.
  */
 export type OutboxUndo =
   | { readonly kind: 'none' }
@@ -339,9 +351,11 @@ export type OutboxUndo =
       readonly to: Id
       readonly hadTo: Id[]
       readonly hadFrom: Id[]
+      /** The {@link QueryCacheRow.key}s whose window this apply pruned the ids out of. */
+      readonly prunedKeys?: string[]
     }
   /** `destroyEmails`: re-fetch the rejected ids from the server (they still exist there). */
-  | { readonly kind: 'refetchEmails' }
+  | { readonly kind: 'refetchEmails'; readonly prunedKeys?: string[] }
   | { readonly kind: 'mailbox'; readonly id: Id; readonly prior: MailboxRow | null }
 
 /** Why an outbox row is `error` (M3.3). Drives the conflict notice + the problems dialog. */

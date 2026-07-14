@@ -349,6 +349,44 @@ describe('SyncEngine', () => {
     await engine.stop()
   })
 
+  /**
+   * M3.8: archiving OFFLINE must show an effect. The list renders the cached `queryCache` window, and
+   * the optimistic apply used to patch only `emails.mailboxIds` — so the archived row kept rendering
+   * in the Inbox until the SERVER's push echoed the move back. Offline that never comes (and online,
+   * an archive dispatched before the push channel connects never gets echoed either), so the row sat
+   * there indefinitely. `dispatch` deliberately triggers a REPLAY-ONLY pass — no `reconcileWatched` —
+   * and that design stays: the window is fixed by the optimistic apply itself, not by a round-trip.
+   */
+  it('an offline move leaves the list window without the message, the intent still pending (M3.8)', async () => {
+    const port = fakePort({ emails: ['e1', 'e2'], setEmails: emptySet })
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), isOnline: () => false })
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const inboxWindow = async () =>
+      (await db.queryCache.where('accountId').equals(ACC).toArray())[0]
+    expect((await inboxWindow())?.ids).toEqual(['e1', 'e2'])
+
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      {
+        id: 'i1',
+      },
+    )
+
+    // The window the list renders — not just the envelope — no longer holds the archived message.
+    expect((await inboxWindow())?.ids).toEqual(['e2'])
+    expect((await inboxWindow())?.total).toBe(1)
+    expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ archive: true })
+    // …and nothing was sent: offline, the intent is durably queued and still pending.
+    expect(port.setEmailsCalls).toEqual([])
+    expect((await db.outbox.get([ACC, 'i1']))?.status).toBe('pending')
+    expect(engine.getStatus().pendingActions).toBe(1)
+
+    await engine.stop()
+  })
+
   it('routes a background 401 to the re-auth funnel instead of a stuck error (M1.3 review)', async () => {
     const base = fakePort({ emails: [], setEmails: emptySet })
     const port: JmapPort = {

@@ -16,12 +16,17 @@
  *  - **Dead letters are surfaced.** A row that fails permanently is rolled back, marked `error` with
  *    an {@link OutboxConflict}, and shown to the user (retry / discard) — never silently retried,
  *    never silently dropped.
+ *  - **"Instant UI" includes the LIST** (M3.8). The list renders the cached `queryCache` window, not
+ *    a local re-sort of `emails`, so an optimistic move/destroy prunes the message out of the windows
+ *    it left — in the SAME transaction as the envelope patch (see {@link updateWindows}). Without that
+ *    an archived row only vanished when the server's push echoed the change back: never offline, and
+ *    not at all if the archive beat the push channel's connect.
  *
  * Classification lives in `conflict.ts`, the retry curve in `backoff.ts`; this module owns the
  * replica mutations and the queue state machine.
  */
 
-import type { EmailCreate, Envelope, Id, Mailbox, PatchObject } from '@waxwing/jmap'
+import type { EmailCreate, EmailFilter, Envelope, Id, Mailbox, PatchObject } from '@waxwing/jmap'
 import {
   type ConflictCode,
   type EmailEnvelopeInput,
@@ -29,6 +34,7 @@ import {
   type OutboxConflict,
   type OutboxRow,
   type OutboxUndo,
+  type QueryCacheRow,
   type ReplicaDb,
   scopeKey,
   toMailboxRow,
@@ -156,6 +162,133 @@ function present(rows: (EmailRow | undefined)[]): EmailRow[] {
   return rows.filter((row): row is EmailRow => row !== undefined)
 }
 
+// ---------------------------------------------------------------------------------------------
+// The cached list windows (M3.8) — the OTHER half of an optimistic move/destroy.
+//
+// The message list renders `queryCache[key].ids` VERBATIM (the server-ordered window; `emails` is a
+// row cache, never a local re-sort). So patching `emails.mailboxIds` was only half the apply: until
+// the WINDOW drops the id, an archived message keeps rendering in the folder it just left — and
+// nothing local ever fixed that. `dispatch` triggers a REPLAY-ONLY pass (no `reconcileWatched`), so
+// the row disappeared only when the SERVER's push echoed the change back: never while offline, and
+// not at all when the archive happened before the push channel finished connecting.
+//
+// THE INVARIANT THAT MAKES THAT SAFE (and the one whose absence broke Undo — see below):
+//
+//   A window whose cached `ids` we edited locally, or whose membership we know is about to change
+//   but cannot place, is no longer the baseline `Email/queryChanges` computes its delta against.
+//   Its `queryState` MUST be voided (`null` ⇒ `reconcileQuery` takes the `fullRequery` branch).
+//
+// Why it is not optional: archive `e1` (the Inbox window drops the id), then Undo — which dispatches
+// the INVERSE move, archive → inbox. Server-side the message leaves the Inbox and comes straight back:
+// a NET-ZERO change. `queryChanges` since the state we still held truthfully reports "nothing changed",
+// that empty delta is applied to our already-pruned `ids`, and the Inbox window stays PERMANENTLY short
+// of a message that is sitting in the Inbox — the Undo button is decorative. Voiding the state costs a
+// full re-query of one window; keeping it costs a wrong list.
+//
+// Nothing is ever re-inserted into a window locally: the window is in the SERVER's collation (and, with
+// `collapseThreads`, its entries are thread representatives), so any index we computed would be a guess.
+// A voided window comes back in the server's own order on the next reconcile.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Does EVERY message matching `filter` necessarily live in `mailboxId`? That implication is what lets
+ * us say a message LEFT the window when it leaves the mailbox — and, read the other way, that it
+ * ENTERED the window when it arrives there.
+ *
+ * `AND` is the only operator that carries it: an `OR` could still match on its other branch, and under
+ * a `NOT` the condition is inverted. Everything without such a condition — a search (`text:`), a label
+ * window (`hasKeyword`) — is deliberately left alone: those are snapshots that legitimately keep a
+ * message which merely changed folder. (Being pinned to the mailbox is necessary, not sufficient, for
+ * an ARRIVAL: an `AND(inMailbox, after)` window may still reject the message on its other conditions.
+ * That only costs a re-query that changes nothing — never a wrong row.)
+ */
+function filterPinsMailbox(filter: EmailFilter | null, mailboxId: Id): boolean {
+  if (filter === null) return false
+  if ('operator' in filter) {
+    if (filter.operator !== 'AND') return false
+    return filter.conditions.some((condition) =>
+      filterPinsMailbox(condition as EmailFilter, mailboxId),
+    )
+  }
+  return filter.inMailbox === mailboxId
+}
+
+/** Which cached windows an optimistic mutation touches, and how. */
+interface WindowEffects {
+  /** Windows the messages provably LEFT: drop the ids, and void the baseline they no longer match. */
+  readonly left?: (window: QueryCacheRow) => boolean
+  /** Windows the messages provably ENTERED: void the baseline — only the server can place them. */
+  readonly entered?: (window: QueryCacheRow) => boolean
+}
+
+/**
+ * Bring this account's cached windows in line with an optimistic mutation, in ONE scan, and return the
+ * keys actually pruned — the DATA the rollback needs ({@link invalidateWindows}).
+ *
+ * `left` windows lose the ids: `total` drops by the number they really held (never below 0) and
+ * `upToId` is re-derived, so the row keeps the invariant every other writer maintains
+ * (`upToId === ids.at(-1)`; backfill/loadMore/reconcile). `entered` windows keep their ids untouched —
+ * we do not know where the message goes in the server's collation — and are simply marked for a full
+ * re-query, which fetches it back in the right place. Both void `queryState` (see the invariant above);
+ * a window whose `ids` did NOT actually change keeps its state, because its baseline is still honest.
+ *
+ * MUST run inside the caller's transaction, together with the `emails` mutation it mirrors: a crash
+ * between the two would leave a window listing a message that has moved out from under it.
+ */
+async function updateWindows(
+  db: ReplicaDb,
+  accountId: Id,
+  emailIds: readonly Id[],
+  effects: WindowEffects,
+): Promise<string[]> {
+  if (emailIds.length === 0) return []
+  const touched = new Set<Id>(emailIds)
+  const pruned: string[] = []
+  for (const window of await db.queryCache.where('accountId').equals(accountId).toArray()) {
+    if (effects.left?.(window) === true) {
+      const ids = window.ids.filter((id) => !touched.has(id))
+      const removed = window.ids.length - ids.length
+      // A window pinned to the source mailbox that does not actually HOLD the id (it sits past the
+      // loaded window) keeps its ids — and therefore its baseline. Nothing to do, nothing to undo.
+      if (removed === 0) continue
+      await db.queryCache.put({
+        ...window,
+        ids,
+        total: window.total === null ? null : Math.max(0, window.total - removed),
+        upToId: ids.at(-1) ?? null,
+        queryState: null,
+      })
+      pruned.push(window.key)
+      continue
+    }
+    // A window that already lists the message has nothing to pick up (a re-archive, or a `from: null`
+    // copy into a folder the message was in anyway) — leave its cheap delta intact.
+    if (effects.entered?.(window) === true && !window.ids.some((id) => touched.has(id))) {
+      await db.queryCache.update([accountId, window.key], { queryState: null })
+    }
+  }
+  return pruned
+}
+
+/**
+ * The rollback of a prune ({@link updateWindows}): mark the damaged windows as needing a full re-query.
+ *
+ * Still needed even though the apply already voided them: a reconcile may have run in between and
+ * restored `queryState` — against a window whose ids are the ones we are now un-pruning. `update`, not
+ * `put`, so a window that cache maintenance reaped in the meantime stays reaped instead of being
+ * resurrected as a half-row. Deliberately NOT a re-insert at the old index (see the invariant above);
+ * a rollback only ever happens because the server ANSWERED — we are online — so the round-trip is free.
+ */
+async function invalidateWindows(
+  db: ReplicaDb,
+  accountId: Id,
+  keys: readonly string[],
+): Promise<void> {
+  for (const key of keys) {
+    await db.queryCache.update([accountId, key], { queryState: null })
+  }
+}
+
 /**
  * Apply an intent to the replica immediately and return the DATA needed to undo it (M3.3). Only
  * rows that actually exist locally are touched. The undo is deliberately id-set-based, not a
@@ -184,31 +317,71 @@ export async function applyOptimistic(
       return { kind: 'keywords', keyword: intent.keyword, had }
     }
     case 'move': {
-      const originals = present(await emailsByIds(db, accountId, intent.emailIds))
-      const hadTo = originals.filter((row) => row.mailboxIds[intent.to] === true).map((r) => r.id)
       const from = intent.from
-      const hadFrom =
-        from === null
-          ? []
-          : originals.filter((row) => row.mailboxIds[from] === true).map((row) => row.id)
-      await putEmails(
-        db,
-        accountId,
-        originals.map((row) => {
-          const mailboxIds = { ...row.mailboxIds }
-          if (from !== null) delete mailboxIds[from]
-          mailboxIds[intent.to] = true
-          return { ...toEnvelope(row), mailboxIds }
-        }),
-      )
-      return { kind: 'mailboxIds', from, to: intent.to, hadTo, hadFrom }
+      // ONE transaction: the envelope patch and the window prune are the same fact stated twice, and
+      // a crash between them would leave the list rendering a message that is no longer in the folder.
+      return db.transaction('rw', db.emails, db.queryCache, async (): Promise<OutboxUndo> => {
+        const originals = present(await emailsByIds(db, accountId, intent.emailIds))
+        const hadTo = originals.filter((row) => row.mailboxIds[intent.to] === true).map((r) => r.id)
+        const hadFrom =
+          from === null
+            ? []
+            : originals.filter((row) => row.mailboxIds[from] === true).map((row) => row.id)
+        await putEmails(
+          db,
+          accountId,
+          originals.map((row) => {
+            const mailboxIds = { ...row.mailboxIds }
+            if (from !== null) delete mailboxIds[from]
+            mailboxIds[intent.to] = true
+            return { ...toEnvelope(row), mailboxIds }
+          }),
+        )
+        // The windows, BOTH ends of the move (M3.8):
+        //  - SOURCE: the message provably left `from` → prune it out of those windows. `from === null`
+        //    is a copy (a label add, or a move from a view whose folder is unknown) — the message left
+        //    nothing, so nothing is pruned.
+        //  - DESTINATION: the message provably entered `to` → those windows must show it, and only the
+        //    server can say WHERE (its collation, its thread collapsing). They are marked for a full
+        //    re-query. This is what makes Undo work: the inverse move's destination is the folder the
+        //    row was archived out of, so the row comes back — see the invariant above.
+        const prunedKeys = await updateWindows(db, accountId, intent.emailIds, {
+          // (`exactOptionalPropertyTypes`: an absent `left` is the "prune nothing" case, not `undefined`.)
+          ...(from === null
+            ? {}
+            : { left: (window: QueryCacheRow) => filterPinsMailbox(window.filter, from) }),
+          entered: (window) => filterPinsMailbox(window.filter, intent.to),
+        })
+        return { kind: 'mailboxIds', from, to: intent.to, hadTo, hadFrom, prunedKeys }
+      })
     }
     case 'destroyEmails': {
-      await deleteEmails(db, accountId, intent.emailIds)
-      // The "before" state is the full envelope set — far too big to persist. It does not need to
-      // be: a REJECTED destroy means the messages still exist on the server, so the undo is a
-      // re-fetch. That also self-corrects a PARTIAL rejection — only the surviving ids come back.
-      return { kind: 'refetchEmails' }
+      return db.transaction(
+        'rw',
+        db.emails,
+        db.emailBodies, // `deleteEmails` cascades to the bodies (M3.4) — a sub-txn needs it in scope
+        db.queryCache,
+        async (): Promise<OutboxUndo> => {
+          await deleteEmails(db, accountId, intent.emailIds)
+          // A destroyed message belongs in NO window — not even a search or a label view, which would
+          // otherwise render a row whose envelope no longer exists. There is no destination.
+          //
+          // The prune voids those windows' `queryState` like any other (the invariant above). Here it
+          // is DEFENSIVE rather than load-bearing: a destroy is irreversible — the id can never re-enter
+          // a query result — so the server's delta can only ever agree with us ("removed: [e1]", which
+          // our prune has already applied). It is kept anyway because a destroy is the rare, deliberate
+          // permanent-delete path, so a re-query of the affected windows is cheap, and one unconditional
+          // invariant ("we never hand `queryChanges` a baseline we have edited") is worth more than an
+          // exception that has to be re-proved every time this code is touched.
+          const prunedKeys = await updateWindows(db, accountId, intent.emailIds, {
+            left: () => true,
+          })
+          // The "before" state is the full envelope set — far too big to persist. It does not need to
+          // be: a REJECTED destroy means the messages still exist on the server, so the undo is a
+          // re-fetch. That also self-corrects a PARTIAL rejection — only the surviving ids come back.
+          return { kind: 'refetchEmails', prunedKeys }
+        },
+      )
     }
     case 'createMailbox': {
       const mailbox: Mailbox = {
@@ -323,19 +496,23 @@ export async function applyUndo(
     case 'mailboxIds': {
       const ids = undoTargets(intent, onlyIds)
       if (ids.length === 0) return
-      const rows = present(await emailsByIds(db, accountId, ids))
       const hadTo = new Set(undo.hadTo)
       const hadFrom = new Set(undo.hadFrom)
-      await putEmails(
-        db,
-        accountId,
-        rows.map((row) => {
-          const mailboxIds = { ...row.mailboxIds }
-          if (!hadTo.has(row.id)) delete mailboxIds[undo.to]
-          if (undo.from !== null && hadFrom.has(row.id)) mailboxIds[undo.from] = true
-          return { ...toEnvelope(row), mailboxIds }
-        }),
-      )
+      const prunedKeys = undo.prunedKeys ?? []
+      await db.transaction('rw', db.emails, db.queryCache, async () => {
+        const rows = present(await emailsByIds(db, accountId, ids))
+        await putEmails(
+          db,
+          accountId,
+          rows.map((row) => {
+            const mailboxIds = { ...row.mailboxIds }
+            if (!hadTo.has(row.id)) delete mailboxIds[undo.to]
+            if (undo.from !== null && hadFrom.has(row.id)) mailboxIds[undo.from] = true
+            return { ...toEnvelope(row), mailboxIds }
+          }),
+        )
+        await invalidateWindows(db, accountId, prunedKeys)
+      })
       return
     }
     case 'refetchEmails': {
@@ -343,8 +520,14 @@ export async function applyUndo(
       if (ids.length === 0) return
       // The rejected ids still exist server-side (that is WHY the destroy was rejected). Anything
       // the server reports as `notFound` really is gone — leave it deleted.
+      // The fetch is deliberately OUTSIDE the transaction below (a Dexie txn cannot survive a
+      // non-Dexie await); it MAY THROW, and then the whole undo stays owed and is retried.
       const { list } = await port.getEmailEnvelopes(ids)
-      if (list.length > 0) await putEmails(db, accountId, list)
+      const prunedKeys = undo.prunedKeys ?? []
+      await db.transaction('rw', db.emails, db.queryCache, async () => {
+        if (list.length > 0) await putEmails(db, accountId, list)
+        await invalidateWindows(db, accountId, prunedKeys)
+      })
       return
     }
     case 'mailbox': {

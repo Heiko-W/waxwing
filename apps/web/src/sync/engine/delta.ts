@@ -264,9 +264,14 @@ export async function reconcileQuery(
   forceFull = false,
 ): Promise<void> {
   const row = await getQueryCache(db, accountId, queryKey)
-  // Re-materialize a same-sized window on a full pass so forceFull/recovery never replaces a
-  // bounded recent window with the entire (possibly huge) filtered result set.
-  const windowLimit = row && row.ids.length > 0 ? row.ids.length : DEFAULT_WINDOW_LIMIT
+  // Re-materialize a same-sized window on a full pass so forceFull/recovery never replaces a bounded
+  // recent window with the entire (possibly huge) filtered result set — but never SMALLER than the
+  // window every query starts with. `ids.length` is a floor on what the user has loaded, not a target:
+  // messages LEAVE a window all the time (a server-side removal, or the optimistic prune of an archive
+  // — M3.8/outbox.ts), and re-querying at the shrunken length would bake each departure in. Undoing an
+  // archive would then restore the row at the top of the list while silently dropping the oldest row
+  // off the bottom, and the window would ratchet down one row per triaged message.
+  const windowLimit = Math.max(row?.ids.length ?? 0, DEFAULT_WINDOW_LIMIT)
   if (forceFull || row === undefined || row.queryState === null) {
     await fullRequery(port, db, accountId, queryKey, spec, clock, windowLimit)
     return

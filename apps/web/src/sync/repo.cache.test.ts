@@ -25,10 +25,12 @@ import {
   deleteEmails,
   envelopeCount,
   envelopeIdsBefore,
+  PALETTE_RECENTS_KEY,
   putBlobMeta,
   putEmailBody,
   putEmails,
   touchBlob,
+  updatePaletteRecents,
   updatePinnedMailboxes,
 } from './repo'
 import { email, freshDb } from './test-utils'
@@ -203,6 +205,41 @@ describe('pinned mailboxes', () => {
     await updatePinnedMailboxes(db, ACC, (current) => [...current, 'projects'])
     const row = await db.localPrefs.get([ACC, 'offline.pinnedMailboxes'])
     expect(row?.value).toEqual(['work', 'projects'])
+  })
+})
+
+// The palette's recents (M3.8). Same contract as the pin set and the label registry — Invariant 8:
+// a `localPrefs` write is a transactional read-modify-write, never a blind `setPref`.
+describe('updatePaletteRecents', () => {
+  const recents = () => db.localPrefs.get([ACC, PALETTE_RECENTS_KEY]).then((row) => row?.value)
+
+  it('is a read-modify-write: the second call sees the first call’s result', async () => {
+    await updatePaletteRecents(db, ACC, (current) => ['action:triage.archive', ...current])
+    await updatePaletteRecents(db, ACC, (current) => ['folder:inbox', ...current])
+    expect(await recents()).toEqual(['folder:inbox', 'action:triage.archive'])
+  })
+
+  // THE reason this is a transaction: two tabs (or two quick runs) must not lose each other's write.
+  // A blind `put` reads both lists before either commits, and the loser's id vanishes.
+  it('two INTERLEAVED updates keep both writes (the sibling-tab clobber)', async () => {
+    await Promise.all([
+      updatePaletteRecents(db, ACC, (current) => ['action:a', ...current]),
+      updatePaletteRecents(db, ACC, (current) => ['action:b', ...current]),
+    ])
+    expect(new Set((await recents()) as string[])).toEqual(new Set(['action:a', 'action:b']))
+  })
+
+  it('is account-scoped', async () => {
+    await updatePaletteRecents(db, ACC, () => ['action:a'])
+    await updatePaletteRecents(db, 'other', () => ['action:b'])
+    expect(await recents()).toEqual(['action:a'])
+    expect((await db.localPrefs.get(['other', PALETTE_RECENTS_KEY]))?.value).toEqual(['action:b'])
+  })
+
+  it('tolerates a garbage stored value (starts from an empty list)', async () => {
+    await db.localPrefs.put({ accountId: ACC, key: PALETTE_RECENTS_KEY, value: 'not-an-array' })
+    await updatePaletteRecents(db, ACC, (current) => [...current, 'action:a'])
+    expect(await recents()).toEqual(['action:a'])
   })
 })
 
