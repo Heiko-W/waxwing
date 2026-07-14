@@ -138,6 +138,40 @@ There is **no service worker in `pnpm dev`** (`devOptions.enabled: false`) and n
 `pnpm test` (`vitest.config.ts` merges `vite.config.ts`, so the plugin is explicitly disabled
 when `VITEST` is set).
 
+## Keyboard shortcuts & the command palette (M3.8)
+
+`src/shortcuts/` is a **pure-data registry** (`registry.ts`) plus **one** `window` keydown listener
+(`ShortcutProvider`). The `?` cheat-sheet and the `⌘K` palette are lazy chunks rendered *from that same
+registry*, so they cannot drift from what the keys actually do. `registry.test.ts` is the guard: unique ids,
+no two actions sharing a chord in an overlapping scope, every title resolving in `en` **and** `de`.
+
+Five things are load-bearing:
+
+1. **The listener is on `window`, in the BUBBLE phase.** React attaches its handlers at the root container, so
+   every existing `onKeyDown` — Squire's ⌘B/I/U/K, the composer's ⌘↵/Escape, the message grid's arrows — runs
+   *first*, and its `preventDefault()` becomes a free, precise veto (step 1 of the dispatcher). Move this to
+   capture and you break all of them at once.
+2. **Escape is never bound here.** `ui/internal/useDismiss` owns it (capture, LIFO stack). A second owner would
+   close two layers at once.
+3. **Match on `event.key`, never `event.code`** — `code` is physical: on a German layout the `KeyZ` key
+   produces `y`. And **symbol chords must NOT test `shiftKey`**: `#` is Shift+3 on en-US but *unshifted* on
+   de-DE, `?` is Shift+ß, `/` is Shift+7. A `!shiftKey` guard kills `#`/`?` on US layouts *or* `/` on German
+   ones. Symbols also accept **AltGr** (`ctrlKey && altKey`), because that is how fr-FR/es-ES/it-IT produce
+   `#` at all — while `Mod+`/letter chords still reject it, which is what stops AltGr+K from opening the
+   palette.
+4. **`[data-waxwing-portal]` is the "an overlay is up" test.** It covers every Dialog, Menu, Toast *and the
+   composer*, so no single-letter chord fires while a modal or a draft has focus — no special case needed.
+   `isTextEntryTarget` discriminates `<input>` by `type`: a checkbox is **not** text entry, or `e` would be
+   dead in the commonest flow there is (tick three rows with the mouse, then archive).
+5. **A keystroke and a button are the same code path, literally.** Both go through `mail/use-triage.ts` (over
+   the unchanged `useMessageActions` seam). The open `MessageView` publishes its own action-bar callbacks into
+   `mail/reading-store.ts`, so `r` invokes the identical closure the Reply button does — it does not rebuild
+   the reply draft. The list's selection and roving focus live in `mail/list-store.ts` for the same reason.
+
+The stores are module-scoped, so **`endSession` must reset them** — otherwise a shortcut can act on the
+previous account's messages (JMAP mailbox ids are per-account, and the window key does not include the
+account).
+
 ## Notifications (M3.6) — and the one thing they cannot do
 
 Waxwing raises system notifications for new mail **whenever the app is running**, a backgrounded

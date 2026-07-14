@@ -1,6 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
+import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
+import { useReadingStore } from '../../mail/reading-store'
+import { usePaletteUi } from '../../shortcuts'
 import { DEFAULT_CONFIG, type WaxwingConfig } from '../config'
 import { ServicesProvider } from '../services'
 import { useSession } from './context'
@@ -50,6 +53,9 @@ function renderSession(options: FakeServicesOptions = {}, config: WaxwingConfig 
 afterEach(() => {
   sessionStorage.clear()
   localStorage.clear()
+  useListStore.setState(EMPTY_LIST_STATE)
+  useReadingStore.setState({ handlers: null })
+  usePaletteUi.getState().closeOverlays()
 })
 
 describe('SessionProvider', () => {
@@ -148,5 +154,51 @@ describe('SessionProvider', () => {
 
     await waitFor(() => expect(fake.spies.logout).toHaveBeenCalledTimes(1))
     expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+  })
+
+  /**
+   * Sign-out is an in-SPA transition: the module graph survives it, so every module-scoped singleton
+   * the previous account touched is still loaded. The keyboard layer's stores (M3.8) hold that
+   * account's list window — its selected email ids, its roving row, the open message's handlers.
+   * JMAP ids are per-account and short (Stalwart hands out `a`, `b`, …) and the window key carries no
+   * account id, so account B's Inbox window can be byte-identical to account A's: the selection would
+   * survive the switch and one `e` would dispatch a move for account A's ids under account B.
+   */
+  it('resets the module-scoped keyboard state on sign-out (no cross-account carry-over)', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    act(() => {
+      useListStore.getState().setWindow('inbox|date', ['e1', 'e2'], 'inbox')
+      useListStore.getState().select({ type: 'toggle', id: 'e1' })
+      useReadingStore.getState().set({
+        emailId: 'e1',
+        mailboxId: 'inbox',
+        bodyReady: true,
+        compose: () => {},
+        archive: () => {},
+        junk: () => {},
+        trash: () => {},
+        toggleFlag: () => {},
+        markUnread: () => {},
+        openMove: () => {},
+        openLabels: () => {},
+        requestDelete: () => {},
+      })
+      usePaletteUi.getState().openPalette()
+    })
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('onboarding'))
+
+    await waitFor(() => expect(useListStore.getState().ids).toEqual([]))
+    expect(useListStore.getState().selection.selected.size).toBe(0)
+    expect(useListStore.getState().windowKey).toBe('')
+    expect(useListStore.getState().sourceMailboxId).toBeNull()
+    expect(useReadingStore.getState().handlers).toBeNull()
+    expect(usePaletteUi.getState().paletteOpen).toBe(false)
   })
 })

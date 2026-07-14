@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Id } from '@waxwing/jmap'
 import { useRef } from 'react'
@@ -94,7 +94,9 @@ describe('LabelMenu', () => {
     const onClose = vi.fn()
     render(<Harness ids={['e1']} onClose={onClose} />)
     const work = await screen.findByRole('menuitemcheckbox', { name: /Work/ })
-    expect(work).toHaveFocus() // first item focused on open
+    // The autofocus lands in an EFFECT, i.e. after the item is in the DOM — so wait for it rather
+    // than assume the two happen in the same tick (under a loaded suite they do not).
+    await waitFor(() => expect(work).toHaveFocus()) // first item focused on open
     await user.keyboard('{ArrowDown}')
     expect(screen.getByRole('menuitemcheckbox', { name: /Urgent/ })).toHaveFocus()
     await user.keyboard('{Escape}')

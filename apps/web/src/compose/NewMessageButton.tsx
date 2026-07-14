@@ -5,7 +5,6 @@
  */
 
 import { SquarePen } from 'lucide-react'
-import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconButton } from '../ui'
 import { useComposerStore } from './composer-store'
@@ -17,23 +16,8 @@ export function NewMessageButton() {
   const { t } = useTranslation()
   const openDraft = useComposerStore((state) => state.openDraft)
 
-  // ⌘/Ctrl+N compose shortcut (Apple Mail parity). Best-effort: most browsers reserve ⌘N for a
-  // new window and never deliver it to the page, so the button is the reliable trigger.
-  useEffect(() => {
-    function onKey(event: KeyboardEvent): void {
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        !event.shiftKey &&
-        !event.altKey &&
-        event.key.toLowerCase() === 'n'
-      ) {
-        event.preventDefault()
-        openDraft()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [openDraft])
+  // (The ⌘/Ctrl+N listener that used to live here is now the `compose.new` registry row — `c` primary,
+  // ⌘N a best-effort second chord — dispatched by the single ShortcutProvider listener. M3.8.)
 
   return (
     <IconButton

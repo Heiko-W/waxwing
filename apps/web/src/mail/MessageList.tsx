@@ -12,16 +12,7 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
 import { Archive, Ban, Flag, MailOpen, Trash2 } from 'lucide-react'
-import {
-  type KeyboardEvent,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from 'react'
+import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { useDraftOpener } from '../compose'
@@ -38,13 +29,14 @@ import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden }
 import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
 import { useLabels } from './labels/use-labels'
+import { type GridHandle, useListStore } from './list-store'
 import type { Density, RowLabel } from './MessageRow'
 import { MessageRow } from './MessageRow'
 import styles from './message-list.module.css'
-import { EMPTY_SELECTION, selectionReducer } from './message-selection'
 import { useSnippets } from './search/use-snippets'
 import { useMessageActions } from './use-message-actions'
 import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
+import { useTriage } from './use-triage'
 
 const OVERSCAN = 8
 const ROW_HEIGHT: Record<Density, number> = { comfortable: 76, compact: 54 }
@@ -97,16 +89,27 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
     flat,
   })
   const actions = useMessageActions()
-  const [selection, dispatchSelection] = useReducer(selectionReducer, EMPTY_SELECTION)
-  const [focusIndex, setFocusIndex] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  // Reset selection/focus when the window (mailbox/sort/search) changes.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only on window identity change.
+  // Selection, roving focus and the label-picker request live in the hoisted list store (M3.8), so the
+  // keyboard layer and the command palette can drive the list from outside this component. The
+  // selection MODEL is unchanged — the store wraps the same pure `selectionReducer`.
+  const selection = useListStore((state) => state.selection)
+  const focusIndex = useListStore((state) => state.focusIndex)
+  const labelTargets = useListStore((state) => state.labelTargets)
+  const dispatchSelection = useListStore((state) => state.select)
+  const focusIndexTo = useListStore((state) => state.focusIndexTo)
+  const requestLabels = useListStore((state) => state.requestLabels)
+  const setWindow = useListStore((state) => state.setWindow)
+  const setGridHandle = useListStore((state) => state.setGridHandle)
+
+  // The move source: a cross-folder search has none (moves are gated off), a folder view is itself.
+  const sourceMailboxId = search ? (search.scopeMailboxId ?? null) : (mailboxId ?? null)
+
+  // Publish the window. A new key (mailbox/sort/search changed) resets focus + selection in the store.
   useEffect(() => {
-    dispatchSelection({ type: 'clear' })
-    setFocusIndex(0)
-  }, [windowKey])
+    setWindow(windowKey, ids, sourceMailboxId)
+  }, [windowKey, ids, sourceMailboxId, setWindow])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -142,8 +145,8 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   }, [labels])
 
   // The `l` shortcut opens a label picker for the selection / focused row, anchored to the container.
+  // The chord itself now lives in the shortcut registry; this component only renders what it requests.
   const containerRef = useRef<HTMLDivElement>(null)
-  const [labelTargets, setLabelTargets] = useState<Id[] | null>(null)
 
   // Highlighted (`<mark>`) subject/preview for the visible slice — search only (M3.1).
   const highlights = useSnippets(search?.spec.filter, visibleIds)
@@ -167,6 +170,11 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   const draftOpener = useDraftOpener()
   const open = useCallback(
     (id: Id) => {
+      // Opening a message makes IT the subject: drop any leftover selection. `targetIds` puts the
+      // selection first, so without this an `e` in the reading pane would archive a message that is
+      // no longer on screen (on a narrow viewport the list is not even rendered) instead of the one
+      // the user is looking at.
+      dispatchSelection({ type: 'clear' })
       // A draft opens back into the composer instead of the reader (FR-CMP-03).
       if (rowById.get(id)?.keywords.$draft === true) {
         void draftOpener.open(id)
@@ -189,7 +197,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       const qs = route.search.toString()
       navigate(mailPath(targetMailbox, id) + (qs ? `?${qs}` : ''))
     },
-    [mailboxId, navigate, rowById, draftOpener, route.search],
+    [mailboxId, navigate, rowById, draftOpener, route.search, dispatchSelection],
   )
 
   // Move the roving position (keyboard) — scroll the target into view; the grid keeps DOM focus and
@@ -197,11 +205,32 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   const moveTo = useCallback(
     (index: number) => {
       const clamped = Math.max(0, Math.min(index, ids.length - 1))
-      setFocusIndex(clamped)
+      focusIndexTo(clamped)
       virtualizer.scrollToIndex(clamped, { align: 'auto' })
     },
-    [ids.length, virtualizer],
+    [ids.length, virtualizer, focusIndexTo],
   )
+
+  // Lend the store the two imperative moves only the MOUNTED list can make (scroll a virtualized row
+  // into view; return DOM focus to the grid) plus `open`, so `j`/`k`/`o` behave exactly like a click.
+  // The handle is built ONCE and reads the changing `open` through a ref: a fresh handle object every
+  // render would write to the store on every render, and the store re-renders this component.
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+  const gridHandle = useMemo<GridHandle>(
+    () => ({
+      scrollToIndex: (index) => virtualizer.scrollToIndex(index, { align: 'auto' }),
+      focus: () => scrollRef.current?.focus(),
+      open: (id) => openRef.current(id),
+    }),
+    [virtualizer],
+  )
+  useEffect(() => {
+    setGridHandle(gridHandle)
+    return () => setGridHandle(null)
+  }, [gridHandle, setGridHandle])
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     const id = ids[focusIndex]
@@ -249,17 +278,8 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           dispatchSelection({ type: 'selectAll', ordered: ids })
         }
         break
-      case 'l':
-        // Label the current selection, or the focused row when nothing is selected (M3.2).
-        if (!event.metaKey && !event.ctrlKey && !event.altKey) {
-          const targets =
-            selection.selected.size > 0 ? [...selection.selected] : id !== undefined ? [id] : []
-          if (targets.length > 0) {
-            event.preventDefault()
-            setLabelTargets(targets)
-          }
-        }
-        break
+      // `l` (label the selection / focused row) is NOT here any more: it is a registry row (M3.8), so
+      // the cheat-sheet stays accurate. Only the APG *grid* keys live in this handler.
     }
   }
 
@@ -280,7 +300,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           count={selection.selected.size}
           ids={selectedIds}
           activeLabel={activeLabel}
-          fromMailbox={search ? search.scopeMailboxId : mailboxId}
+          fromMailbox={sourceMailboxId ?? undefined}
           allSelected={allSelected}
           someSelected={someSelected}
           actions={actions}
@@ -355,7 +375,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
                     onSelectToggle={() => dispatchSelection({ type: 'toggle', id })}
                     onSelectRange={() => dispatchSelection({ type: 'range', id, ordered: ids })}
                     onActivate={() => {
-                      setFocusIndex(item.index)
+                      focusIndexTo(item.index)
                       scrollRef.current?.focus()
                     }}
                   />
@@ -395,7 +415,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       )}
 
       {labelTargets !== null && (
-        <LabelMenu ids={labelTargets} anchorRef={scrollRef} onClose={() => setLabelTargets(null)} />
+        <LabelMenu ids={labelTargets} anchorRef={scrollRef} onClose={() => requestLabels(null)} />
       )}
     </div>
   )
@@ -494,6 +514,9 @@ function BulkBar({
   onRequestDelete,
 }: BulkBarProps) {
   const { t } = useTranslation()
+  // The SAME seam the `e`/`#`/`!` chords use (M3.8) — so a click and a keystroke are one action, and
+  // both get the undo toast.
+  const triage = useTriage()
   const archive = useMailboxByRole('archive')
   const junk = useMailboxByRole('junk')
   const trash = useMailboxByRole('trash')
@@ -502,9 +525,9 @@ function BulkBar({
   // move actions are gated off there (read/flag/delete, which need no source, stay). A moved message
   // leaves the folder → it must leave the selection too, or a follow-up move uses a stale `from`.
   const canMove = fromMailbox !== undefined
-  const moveThenClear = (to: Id) => {
+  const moveThenClear = (move: (ids: Id[], from: Id | null) => void) => {
     if (fromMailbox === undefined) return
-    actions.move(ids, fromMailbox, to)
+    move(ids, fromMailbox)
     onClear()
   }
 
@@ -520,14 +543,14 @@ function BulkBar({
       <IconButton
         label={t('list.actions.read')}
         variant="ghost"
-        onClick={() => actions.setSeen(ids, true)}
+        onClick={() => triage.setSeen(ids, true)}
       >
         <MailOpen />
       </IconButton>
       <IconButton
         label={t('list.actions.flag')}
         variant="ghost"
-        onClick={() => actions.setFlagged(ids, true)}
+        onClick={() => triage.setFlagged(ids, true)}
       >
         <Flag />
       </IconButton>
@@ -548,7 +571,7 @@ function BulkBar({
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
-          onClick={() => moveThenClear(archive.id)}
+          onClick={() => moveThenClear(triage.archive)}
         >
           <Archive />
         </IconButton>
@@ -557,7 +580,7 @@ function BulkBar({
         <IconButton
           label={t('list.actions.junk')}
           variant="ghost"
-          onClick={() => moveThenClear(junk.id)}
+          onClick={() => moveThenClear(triage.junk)}
         >
           <Ban />
         </IconButton>
@@ -566,7 +589,7 @@ function BulkBar({
         <IconButton
           label={t('list.actions.trash')}
           variant="ghost"
-          onClick={() => moveThenClear(trash.id)}
+          onClick={() => moveThenClear(triage.trash)}
         >
           <Trash2 />
         </IconButton>

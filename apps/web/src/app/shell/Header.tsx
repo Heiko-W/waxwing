@@ -5,9 +5,13 @@
  * status and the account menu; theme + language live in Settings.
  */
 
+import { Command } from 'lucide-react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NewMessageButton } from '../../compose'
 import { OutboxProblemsButton } from '../../outbox'
+import { formatChord, isApplePlatform, usePaletteUi } from '../../shortcuts'
+import { IconButton } from '../../ui'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, Link } from '../route'
 import { AccountMenu } from './AccountMenu'
@@ -23,6 +27,13 @@ export function Header({ config, username }: HeaderProps) {
   const { t } = useTranslation()
   const { branding } = config
   const logoSrc = new URL(branding.logo, document.baseURI).href
+  const openPalette = usePaletteUi((state) => state.openPalette)
+
+  // The chord is rendered, never hardcoded: ⌘K on Apple, Ctrl+K everywhere else.
+  const paletteKeys = useMemo(() => {
+    const apple = isApplePlatform()
+    return formatChord('Mod+k', apple).join(apple ? '' : '+')
+  }, [])
 
   return (
     <header className={styles.header}>
@@ -36,6 +47,15 @@ export function Header({ config, username }: HeaderProps) {
       </Link>
       <div className={styles.spacer} />
       <div className={styles.headerControls}>
+        {/* Discoverability (and the only way to reach the palette on a touch device, where there is
+            no ⌘K to press). */}
+        <IconButton
+          label={t('palette.open', { keys: paletteKeys })}
+          variant="ghost"
+          onClick={() => openPalette()}
+        >
+          <Command />
+        </IconButton>
         <NewMessageButton />
         <OutboxProblemsButton />
         <StatusRegion />

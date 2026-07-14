@@ -21,7 +21,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSession } from '../app/session/context'
 import {
@@ -35,6 +35,7 @@ import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useMailboxByRole, useReplica } from '../sync'
 import { Avatar, Button, Dialog, IconButton, Spinner } from '../ui'
 import { AttachmentList } from './AttachmentList'
+import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
@@ -47,7 +48,9 @@ import {
   useRemoteAllowList,
   useRemoteContentDefault,
 } from './reading-prefs'
+import { type ReadingHandlers, useReadingStore } from './reading-store'
 import { useMessageActions } from './use-message-actions'
+import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
 
@@ -72,6 +75,9 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const { t } = useTranslation()
   const { db, accountId } = useReplica()
   const actions = useMessageActions()
+  // Moves go through the shared triage seam (M3.8): same dispatch, plus the undo toast — and it is the
+  // very seam the `e` / `#` / `!` chords call, so a click and a keystroke cannot drift apart.
+  const triage = useTriage()
   const openDraft = useComposerStore((state) => state.openDraft)
   const { connected } = useSession()
   const own = useMemo(
@@ -90,6 +96,9 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const [moveOpen, setMoveOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [loadedOnce, setLoadedOnce] = useState(false)
+  // The `l` chord's picker, anchored to the action bar (the mouse path is the LabelMenuButton below).
+  const [labelsOpen, setLabelsOpen] = useState(false)
+  const actionBarRef = useRef<HTMLDivElement>(null)
 
   // Remote content: deployment default, sender allowlist, or an explicit "Load images" this session.
   const remoteAllow = useRemoteAllowList()
@@ -176,6 +185,39 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
 
   const inTrash = trashBox !== undefined && inThisMailbox === trashBox.id
 
+  // Publish the action-bar callbacks so the keyboard layer can invoke them (M3.8). The buttons below
+  // use the SAME object, which is the point: `r` and the Reply icon are one code path. Reply/forward
+  // in particular CANNOT be reconstructed from outside — they close over the sanitized body, the
+  // account's own addresses and four localized strings.
+  const handlers = useMemo<ReadingHandlers>(
+    () => ({
+      emailId: email.id,
+      mailboxId: inThisMailbox,
+      bodyReady: !loading,
+      compose: onCompose,
+      archive: () => triage.archive([email.id], inThisMailbox),
+      junk: () => triage.junk([email.id], inThisMailbox),
+      trash: () => triage.trash([email.id], inThisMailbox),
+      toggleFlag: () => triage.setFlagged([email.id], email.keywords.$flagged !== true),
+      markUnread: () => triage.setSeen([email.id], false),
+      openMove: () => setMoveOpen(true),
+      openLabels: () => setLabelsOpen(true),
+      requestDelete: () => setConfirmDelete(true),
+    }),
+    [email.id, email.keywords.$flagged, inThisMailbox, loading, onCompose, triage],
+  )
+
+  // Only the message the reader actually OPENED registers — `autoMark` already means precisely that
+  // (a thread's auto-expanded newest sibling gets `autoMark={false}`). The unmount clear is guarded by
+  // id so a thread re-render can never null out another message's entry.
+  const registerReading = useReadingStore((state) => state.set)
+  const clearReading = useReadingStore((state) => state.clear)
+  useEffect(() => {
+    if (!autoMark) return
+    registerReading(handlers)
+    return () => clearReading(handlers.emailId)
+  }, [autoMark, handlers, registerReading, clearReading])
+
   return (
     <article className={styles.message} aria-label={email.subject || t('list.noSubject')}>
       <header className={styles.header}>
@@ -231,12 +273,17 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         </div>
       </header>
 
-      <div className={styles.actionBar} role="toolbar" aria-label={t('reading.actions')}>
+      <div
+        className={styles.actionBar}
+        role="toolbar"
+        aria-label={t('reading.actions')}
+        ref={actionBarRef}
+      >
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
           disabled={archiveBox === undefined}
-          onClick={() => archiveBox && actions.move([email.id], inThisMailbox, archiveBox.id)}
+          onClick={handlers.archive}
         >
           <Archive />
         </IconButton>
@@ -244,7 +291,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           label={t('list.actions.junk')}
           variant="ghost"
           disabled={junkBox === undefined}
-          onClick={() => junkBox && actions.move([email.id], inThisMailbox, junkBox.id)}
+          onClick={handlers.junk}
         >
           <MailWarning />
         </IconButton>
@@ -252,11 +299,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           label={inTrash ? t('list.actions.delete') : t('list.actions.trash')}
           variant="ghost"
           disabled={!inTrash && trashBox === undefined}
-          onClick={() =>
-            inTrash
-              ? setConfirmDelete(true)
-              : trashBox && actions.move([email.id], inThisMailbox, trashBox.id)
-          }
+          onClick={() => (inTrash ? handlers.requestDelete() : handlers.trash())}
         >
           <Trash2 />
         </IconButton>
@@ -265,19 +308,15 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag')
           }
           variant="ghost"
-          onClick={() => actions.setFlagged([email.id], email.keywords.$flagged !== true)}
+          onClick={handlers.toggleFlag}
         >
           <Star className={email.keywords.$flagged === true ? styles.flagOn : undefined} />
         </IconButton>
-        <IconButton
-          label={t('reading.markUnread')}
-          variant="ghost"
-          onClick={() => actions.setSeen([email.id], false)}
-        >
+        <IconButton label={t('reading.markUnread')} variant="ghost" onClick={handlers.markUnread}>
           <MailMinus />
         </IconButton>
         <LabelMenuButton ids={[email.id]} />
-        <Button size="sm" variant="ghost" onClick={() => setMoveOpen(true)}>
+        <Button size="sm" variant="ghost" onClick={handlers.openMove}>
           {t('list.actions.move')}
         </Button>
         <span className={styles.actionSpacer} />
@@ -344,6 +383,10 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             setMoveOpen(false)
           }}
         />
+      )}
+
+      {labelsOpen && (
+        <LabelMenu ids={[email.id]} anchorRef={actionBarRef} onClose={() => setLabelsOpen(false)} />
       )}
 
       {confirmDelete && (

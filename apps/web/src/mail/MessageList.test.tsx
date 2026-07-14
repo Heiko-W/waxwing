@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -15,6 +15,8 @@ import {
 } from '../sync'
 import { setActiveEngine, windowQueryKey } from '../sync/engine'
 import { email, freshDb, mailbox } from '../sync/test-utils'
+import { ToastProvider } from '../ui'
+import { EMPTY_LIST_STATE, useListStore } from './list-store'
 import { MessageList } from './MessageList'
 
 // The virtualizer needs a measurable viewport; jsdom has no layout, so stub the primitives it reads.
@@ -65,6 +67,9 @@ function inboxKey(): string {
 beforeEach(async () => {
   db = freshDb()
   dispatch.mockReset()
+  // The list's window/focus/selection live in a MODULE-scoped store (M3.8) — reset it, or one test's
+  // roving focus leaks into the next.
+  useListStore.setState(EMPTY_LIST_STATE)
   setActiveEngine({
     watchWindow: vi.fn(() => 'k'),
     loadMoreFor: vi.fn(),
@@ -100,13 +105,17 @@ afterEach(async () => {
   await db.delete()
 })
 
+// The bulk bar triages through `useTriage`, which raises an undo toast — so a ToastProvider is now
+// part of the list's minimum provider stack (M3.8).
 function renderList() {
   return render(
     <RouterProvider>
       <ConfigProvider config={DEFAULT_CONFIG}>
-        <ReplicaProvider accountId="a" db={db}>
-          <MessageList mailboxId="inbox" />
-        </ReplicaProvider>
+        <ToastProvider>
+          <ReplicaProvider accountId="a" db={db}>
+            <MessageList mailboxId="inbox" />
+          </ReplicaProvider>
+        </ToastProvider>
       </ConfigProvider>
     </RouterProvider>,
   )
@@ -127,6 +136,22 @@ describe('MessageList', () => {
     const first = (await screen.findByText('First')).closest('[role="row"]') as HTMLElement
     await user.click(first)
     await waitFor(() => expect(first).toHaveAttribute('aria-current', 'page'))
+  })
+
+  // Opening a message makes IT the subject. A leftover selection would otherwise win the `targetIds`
+  // precedence and `e` in the reading pane would archive a message that is not even on screen.
+  it('opening a message clears the selection (review regression)', async () => {
+    const user = userEvent.setup()
+    renderList()
+    await screen.findByText('First')
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+
+    const second = (await screen.findByText('Second')).closest('[role="row"]') as HTMLElement
+    await user.click(second)
+
+    await waitFor(() => expect(screen.queryByText('1 selected')).toBeNull())
+    expect(useListStore.getState().selection.selected.size).toBe(0)
   })
 
   it('shows the bulk bar and dispatches a mark-read intent over the selection', async () => {
@@ -194,13 +219,13 @@ describe('MessageList', () => {
     await waitFor(() => expect(watchWindow).toHaveBeenCalledWith('inbox', expect.anything()))
   })
 
-  it('opens the label picker with the "l" shortcut for the focused row (M3.2)', async () => {
-    const user = userEvent.setup()
+  // The `l` CHORD itself moved into the shortcut registry (M3.8) — it is exercised end to end in
+  // shortcuts/ShortcutProvider.test.tsx. What the list still owns is RENDERING the picker the store
+  // asks for, which is what this asserts.
+  it('renders the label picker for the targets the list store requests (M3.2/M3.8)', async () => {
     renderList()
     await screen.findByText('First')
-    const grid = screen.getByRole('grid')
-    grid.focus()
-    await user.keyboard('l')
+    act(() => useListStore.getState().requestLabels(['e1']))
     expect(await screen.findByRole('menu', { name: 'Apply labels' })).toBeInTheDocument()
   })
 
@@ -235,13 +260,15 @@ describe('MessageList', () => {
     render(
       <RouterProvider>
         <ConfigProvider config={DEFAULT_CONFIG}>
-          <ReplicaProvider accountId="a" db={db}>
-            <MessageList
-              mailboxId={undefined}
-              search={{ spec, scopeMailboxId: undefined }}
-              activeLabel="work"
-            />
-          </ReplicaProvider>
+          <ToastProvider>
+            <ReplicaProvider accountId="a" db={db}>
+              <MessageList
+                mailboxId={undefined}
+                search={{ spec, scopeMailboxId: undefined }}
+                activeLabel="work"
+              />
+            </ReplicaProvider>
+          </ToastProvider>
         </ConfigProvider>
       </RouterProvider>,
     )

@@ -17,7 +17,10 @@ import { JmapHttpError } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthExpiredError } from '../../auth'
+import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
+import { useReadingStore } from '../../mail/reading-store'
 import { closeAllNotifications } from '../../notify'
+import { usePaletteUi } from '../../shortcuts'
 import { getReplica, resetStorageFull, wipeReplica } from '../../sync'
 import { getActiveEngine, setActiveEngine } from '../../sync/engine'
 import type { WaxwingConfig } from '../config'
@@ -395,6 +398,15 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // The "storage is full" signal is a module singleton (M3.4): without this, a stale event from
         // the PREVIOUS session re-fires its toast on the next sign-in, whose notifier starts fresh.
         resetStorageFull()
+        // The keyboard layer's state is module-scoped too (M3.8), and sign-out is an in-SPA
+        // transition — the module graph survives it. Left alone, the NEXT account inherits this
+        // account's list window: its selected email ids, its roving row, its open message's action
+        // handlers. JMAP ids are per-account and short (`a`, `b`, …) and the window key carries no
+        // account, so account B's Inbox key can be byte-identical to account A's — and one `e` would
+        // then dispatch a move for account A's ids against account B's mailbox.
+        useListStore.setState(EMPTY_LIST_STATE)
+        useReadingStore.setState({ handlers: null })
+        usePaletteUi.getState().closeOverlays()
         await controllerRef.current?.logout(wipeData ? { wipeData: true } : {}).catch(() => {})
         clientRef.current = null
         authProviderRef.current = null

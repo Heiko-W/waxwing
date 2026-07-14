@@ -408,7 +408,13 @@
     "loadMore": "Mehr laden",
     "loading": "Nachrichten werden geladen",
     "empty": "Keine Nachrichten in diesem Ordner.",
-    "noMailbox": "Wählen Sie einen Ordner"
+    "noMailbox": "Wählen Sie einen Ordner",
+    "undo": "Rückgängig",
+    "moved": {
+      "archive": "Ins Archiv verschoben",
+      "junk": "In Spam verschoben",
+      "trash": "In den Papierkorb verschoben"
+    }
   },
   "reading": {
     "from": "Von",
@@ -768,5 +774,64 @@
     "full": "Postfach voll",
     "warnToast": "Ihr Postfach ist fast voll. Neue Nachrichten könnten bald abgewiesen werden.",
     "fullToast": "Ihr Postfach ist voll. Neue Nachrichten werden abgewiesen, bis Sie Platz schaffen."
+  },
+  "shortcuts": {
+    "title": "Tastaturkürzel",
+    "or": "oder",
+    "targetNote": "Kürzel wirken auf die ausgewählten Nachrichten — ist nichts ausgewählt, auf die geöffnete Nachricht, sonst auf die fokussierte Zeile.",
+    "editorNote": "Steht der Cursor im Nachrichtentext, behält der Editor seine eigenen Kürzel (fett, kursiv, Link einfügen).",
+    "groups": {
+      "navigation": "Navigation",
+      "triage": "Bearbeiten",
+      "compose": "Verfassen",
+      "application": "Anwendung"
+    },
+    "scopes": {
+      "global": "Überall",
+      "list": "Nachrichtenliste",
+      "reading": "Leseansicht"
+    },
+    "actions": {
+      "nav": {
+        "next": "Nächste Nachricht",
+        "prev": "Vorherige Nachricht",
+        "open": "Nachricht öffnen",
+        "back": "Zurück zur Liste"
+      },
+      "list": {
+        "select": "Nachricht aus- oder abwählen"
+      },
+      "triage": {
+        "archive": "Archivieren",
+        "trash": "In den Papierkorb",
+        "junk": "Als Spam markieren",
+        "unread": "Als ungelesen markieren",
+        "flag": "Markierung setzen oder entfernen",
+        "label": "Labels anwenden",
+        "move": "In Ordner verschieben"
+      },
+      "compose": {
+        "new": "Neue Nachricht",
+        "reply": "Antworten",
+        "replyAll": "Allen antworten",
+        "forward": "Weiterleiten"
+      },
+      "app": {
+        "search": "Suchen",
+        "palette": "Befehlspalette",
+        "help": "Tastaturkürzel"
+      }
+    }
+  },
+  "palette": {
+    "title": "Befehlspalette",
+    "open": "Befehlspalette ({{keys}})",
+    "placeholder": "Aktionen, Ordner und Labels suchen…",
+    "recent": "Zuletzt verwendet",
+    "empty": "Keine Treffer.",
+    "goToFolder": "Zum Ordner: {{folder}}",
+    "goToLabel": "Zum Label: {{label}}",
+    "goToSettings": "Zu den Einstellungen",
+    "goToContacts": "Zu den Kontakten"
   }
 }

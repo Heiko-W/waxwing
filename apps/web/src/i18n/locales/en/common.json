@@ -408,7 +408,13 @@
     "loadMore": "Load more",
     "loading": "Loading messages",
     "empty": "No messages in this folder.",
-    "noMailbox": "Select a folder"
+    "noMailbox": "Select a folder",
+    "undo": "Undo",
+    "moved": {
+      "archive": "Moved to Archive",
+      "junk": "Moved to Junk",
+      "trash": "Moved to Trash"
+    }
   },
   "reading": {
     "from": "From",
@@ -768,5 +774,64 @@
     "full": "Mailbox full",
     "warnToast": "Your mailbox is nearly full. New mail may soon be rejected.",
     "fullToast": "Your mailbox is full. New mail is being rejected until you free up space."
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "or": "or",
+    "targetNote": "Shortcuts act on the selected messages — or, when nothing is selected, on the open message, otherwise on the focused row.",
+    "editorNote": "While the cursor is in a message body the editor keeps its own shortcuts (bold, italic, insert link).",
+    "groups": {
+      "navigation": "Navigation",
+      "triage": "Triage",
+      "compose": "Compose",
+      "application": "Application"
+    },
+    "scopes": {
+      "global": "Anywhere",
+      "list": "Message list",
+      "reading": "Reading pane"
+    },
+    "actions": {
+      "nav": {
+        "next": "Next message",
+        "prev": "Previous message",
+        "open": "Open message",
+        "back": "Back to the list"
+      },
+      "list": {
+        "select": "Select or deselect message"
+      },
+      "triage": {
+        "archive": "Archive",
+        "trash": "Move to Trash",
+        "junk": "Mark as junk",
+        "unread": "Mark as unread",
+        "flag": "Flag or unflag",
+        "label": "Apply labels",
+        "move": "Move to folder"
+      },
+      "compose": {
+        "new": "New message",
+        "reply": "Reply",
+        "replyAll": "Reply all",
+        "forward": "Forward"
+      },
+      "app": {
+        "search": "Search",
+        "palette": "Command palette",
+        "help": "Keyboard shortcuts"
+      }
+    }
+  },
+  "palette": {
+    "title": "Command palette",
+    "open": "Command palette ({{keys}})",
+    "placeholder": "Search actions, folders and labels…",
+    "recent": "Recent",
+    "empty": "No matches.",
+    "goToFolder": "Go to folder: {{folder}}",
+    "goToLabel": "Go to label: {{label}}",
+    "goToSettings": "Go to Settings",
+    "goToContacts": "Go to Contacts"
   }
 }

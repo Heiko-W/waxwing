@@ -9,11 +9,11 @@
 import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
-import { SEARCH_INPUT_ID } from '../../mail/search/SearchBox'
 import { useNotificationClickNavigation } from '../../notify'
 import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { ChunkErrorBoundary } from '../../pwa/ChunkErrorBoundary'
 import { useQuotaNotifier } from '../../quota'
+import { ShortcutProvider } from '../../shortcuts'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
 import { HOME_PATH, useNavigate, useRoute } from '../route'
@@ -63,26 +63,9 @@ export function AppShell({ config }: AppShellProps) {
     if (route.path === '/') navigate(HOME_PATH, { replace: true })
   }, [route.path, navigate])
 
-  // `/` focuses the search box (M3.1) — unless the user is already typing in a field.
-  useEffect(() => {
-    function onKey(event: KeyboardEvent): void {
-      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
-      const target = event.target
-      if (
-        target instanceof HTMLElement &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-      ) {
-        return
-      }
-      const input = document.getElementById(SEARCH_INPUT_ID)
-      if (input instanceof HTMLInputElement) {
-        event.preventDefault()
-        input.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  // (`/` → focus search used to be an ad-hoc listener right here. It is now one row in the shortcut
+  // registry, dispatched by the single <ShortcutProvider/> listener below — M3.8. Two listeners for
+  // one key is exactly the conflict the plan forbids.)
 
   const username = connected?.username ?? ''
 
@@ -151,6 +134,10 @@ export function AppShell({ config }: AppShellProps) {
           </main>
         </div>
         {reauth && <ReauthDialog />}
+        {/* The keyboard layer (M3.8): one window listener + the lazy ⌘K palette / `?` cheat-sheet.
+            It renders no chrome, and it sits INSIDE the router, the replica and the toast provider —
+            exactly the contexts its action context is assembled from. */}
+        <ShortcutProvider />
         <QueuedSends />
         {hasDrafts && (
           <Suspense fallback={null}>

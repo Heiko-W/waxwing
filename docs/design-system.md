@@ -192,6 +192,13 @@ Not exported; the shared kernel the overlays build on.
 | **Toast** | `ToastProvider`/`useToast`; per-toast `status`/`alert` live region; auto-dismiss pauses on hover/focus (WCAG 2.2.1). |
 | **SplitPane** | APG window splitter: pointer + keyboard resize (arrows/Home/End), `aria-valuenow/min/max`. |
 
+Not in `src/ui/` but worth knowing about (M3.8, `src/shortcuts/`):
+
+| Element | Pattern / notes |
+| --- | --- |
+| **`kbd` chip** | The key-cap chip used by the `?` cheat-sheet and the command palette (`shortcuts.module.css` → `.kbd`). Tokens only (`--waxwing-surface-2` / `--waxwing-border` / `--waxwing-font-mono`); one chip per chord token, so ⌘K renders as two chips. Not promoted to `src/ui/` — it has exactly one consumer area. |
+| **Command palette** | A **feature-level** APG combobox (input + `aria-activedescendant` over a non-focusable `role="listbox"`), built inside the shared `Dialog` rather than as a `ui/` primitive. It is the "single place that genuinely needs one" the Select decision below anticipated; it is not a general combobox and must not be reused as one. |
+
 ---
 
 ## 5. Notable decisions

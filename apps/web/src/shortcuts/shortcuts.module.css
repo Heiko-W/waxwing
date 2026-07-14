@@ -1,0 +1,174 @@
+/* Command palette + cheat-sheet (M3.8). Tokens only — no literal colors, sizes or radii. */
+
+/* ── The <kbd> chip: the one new visual primitive this WP introduces. ───────────────────────── */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.75em;
+  padding: 0 var(--waxwing-space-1);
+  border: 1px solid var(--waxwing-border);
+  border-block-end-width: 2px;
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-2);
+  color: var(--waxwing-text);
+  font-family: var(--waxwing-font-mono);
+  font-size: var(--waxwing-text-xs);
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* ── Command palette ────────────────────────────────────────────────────────────────────────── */
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  min-block-size: 0;
+}
+
+.paletteInput {
+  inline-size: 100%;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+}
+
+.paletteInput:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 1px;
+}
+
+.listbox {
+  overflow-y: auto;
+  max-block-size: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.groupHeader {
+  padding: var(--waxwing-space-2) var(--waxwing-space-2) var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  cursor: pointer;
+}
+
+.optionActive {
+  background: var(--waxwing-surface-2);
+}
+
+.optionLabel {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionLabel mark {
+  background: transparent;
+  color: var(--waxwing-accent);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.optionKeys {
+  display: inline-flex;
+  gap: var(--waxwing-space-1);
+  flex: 0 0 auto;
+}
+
+.empty {
+  padding: var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  text-align: center;
+}
+
+/* ── Cheat-sheet ────────────────────────────────────────────────────────────────────────────── */
+.help {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--waxwing-space-4);
+}
+
+.helpGroup {
+  min-inline-size: 0;
+}
+
+.helpGroupTitle {
+  margin: 0 0 var(--waxwing-space-2);
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.helpList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.helpRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--waxwing-space-2);
+}
+
+.helpTerm {
+  display: flex;
+  align-items: baseline;
+  gap: var(--waxwing-space-1);
+  flex-wrap: wrap;
+  min-inline-size: 0;
+}
+
+.helpKeys {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  flex: 0 0 auto;
+}
+
+.chord {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+}
+
+.chordOr {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.scopePill {
+  padding: 0 var(--waxwing-space-1);
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.helpNote {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}

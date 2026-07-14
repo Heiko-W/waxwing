@@ -47,6 +47,10 @@ export default [
       // Lazy dialogs.
       '!apps/web/dist/assets/OutboxProblemsDialog-*.js',
       '!apps/web/dist/assets/InstallDialog-*.js',
+      // Lazy keyboard overlays (shortcuts/, M3.8): the ⌘K palette (with its fuzzy matcher) and the
+      // `?` cheat-sheet. The registry + dispatcher stay eager; these two surfaces do not.
+      '!apps/web/dist/assets/CommandPalette-*.js',
+      '!apps/web/dist/assets/ShortcutHelp-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],
