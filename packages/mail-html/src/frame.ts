@@ -21,9 +21,24 @@ export interface FrameOptions {
   readonly allowRemote?: boolean
 }
 
+export interface MailLinkInfo {
+  readonly href: string
+  /**
+   * The link's text, trimmed. NOT clamped — `link-host.ts` explains at length why any cap here is a
+   * bypass rather than a bound: the attacker chooses both the padding and where the claim sits, and
+   * hides the padding with CSS the sanitizer legitimately keeps. Empty for an image-only link or an
+   * `<area>`.
+   */
+  readonly text: string
+}
+
 export interface MailFrameCallbacks {
-  /** A link inside the frame was clicked; the app opens it (`noopener` + visible host, FR-RD-08). */
-  readonly onLink?: (href: string) => void
+  /**
+   * A link inside the frame was clicked; the app opens it (`noopener` + visible host, FR-RD-08).
+   * `info.text` is what the reader saw — the app compares it against the real host (`link-host.ts`)
+   * before opening, which is a check only the app can do: nothing executes in the frame.
+   */
+  readonly onLink?: (href: string, info: MailLinkInfo) => void
   /** The rendered content height changed (px) — the app may mirror it onto the iframe. */
   readonly onHeight?: (px: number) => void
 }
@@ -79,13 +94,21 @@ export function mountMailFrame(
   // Intercept anchors AND image-map <area> links, on primary AND auxiliary (middle/ctrl) clicks —
   // any of which would otherwise navigate the frame itself (no sandbox stops same-frame nav).
   const onClick = (event: Event): void => {
-    const target = event.target
-    if (!(target instanceof Element)) return
+    // NOT `instanceof Element`. `event.target` is a node from the FRAME's document, and a frame — a
+    // sandboxed `srcdoc` one included — is its own realm with its own `Element` constructor. An
+    // `instanceof` against THIS realm's `Element` is therefore always false for the very nodes this
+    // listener exists to handle, and the interception would silently never fire (fixed in M3.9;
+    // jsdom models the realm split, so `frame.test.ts` now covers it). Duck-type the interface.
+    const target = event.target as Element | null
+    if (target === null || typeof target.closest !== 'function') return
     const link = target.closest('a[href], area[href]')
-    const href = link?.getAttribute('href')
-    if (href === null || href === undefined) return
+    if (link === null) return
+    const href = link.getAttribute('href')
+    if (href === null) return
     event.preventDefault()
-    callbacks.onLink?.(href)
+    // Deliberately unclamped — see MailLinkInfo.text.
+    const text = (link.textContent ?? '').trim()
+    callbacks.onLink?.(href, { href, text })
   }
 
   const onLoad = (): void => {

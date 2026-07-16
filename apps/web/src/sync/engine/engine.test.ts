@@ -439,6 +439,80 @@ describe('SyncEngine', () => {
     await engine.stop()
   })
 
+  /**
+   * The trap inside the fix above, found by the M3.8 keyboard E2E (`j o e u x #` — archive one
+   * message, trash another a moment later).
+   *
+   * A re-query answers with the SERVER's list, which cannot possibly reflect an intent still sitting
+   * in our outbox. If a second dispatch voids the window while the first pass is mid-flight, that
+   * pass re-queries, gets a list that still contains the message the user just trashed, refills the
+   * window with it — and restores `queryState`. The pass that finally sends the trash then skips the
+   * window as "not voided", and the row stays on screen indefinitely. So: never reconcile with work
+   * still queued.
+   */
+  it('never re-queries a window while an intent is still unsent (M3.9)', async () => {
+    // The server's list, mutated only when a set is actually replayed.
+    const server = ['e1', 'e2']
+    let queries = 0
+    let inFlightSet: (() => void) | undefined
+    const base = fakePort({ emails: server, setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async queryEmails() {
+        queries += 1
+        return {
+          ids: [...server],
+          queryState: `q-${queries}`,
+          canCalculateChanges: true,
+          position: 0,
+          total: server.length,
+        }
+      },
+      async setEmails(args) {
+        // Hold the FIRST set open so the second dispatch lands while this pass is mid-flight —
+        // the exact interleaving the E2E hit by hand.
+        if (inFlightSet === undefined) {
+          await new Promise<void>((resolve) => {
+            inFlightSet = resolve
+          })
+        }
+        const update = (args as { update?: Record<string, unknown> }).update ?? {}
+        for (const id of Object.keys(update)) {
+          const at = server.indexOf(id)
+          if (at !== -1) server.splice(at, 1)
+        }
+        return emptySet()
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const inboxWindow = async () =>
+      (await db.queryCache.where('accountId').equals(ACC).toArray())[0]
+    expect((await inboxWindow())?.ids).toEqual(['e1', 'e2'])
+
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+      { id: 'a' },
+    )
+    await waitFor(() => inFlightSet !== undefined) // pass 1 is now blocked inside setEmails
+    // …and now the user trashes e2, voiding the window a second time.
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e2'], from: 'inbox', to: 'trash' },
+      { id: 'b' },
+    )
+    expect((await inboxWindow())?.ids).toEqual([]) // both pruned optimistically
+    inFlightSet?.()
+
+    await waitFor(async () => (await db.outbox.where('accountId').equals(ACC).count()) === 0)
+    await waitFor(async () => (await inboxWindow())?.queryState !== null)
+    // The window must NOT have been refilled from a server list that predated the trash.
+    expect((await inboxWindow())?.ids).toEqual([])
+
+    await engine.stop()
+  })
+
   it('routes a background 401 to the re-auth funnel instead of a stuck error (M1.3 review)', async () => {
     const base = fakePort({ emails: [], setEmails: emptySet })
     const port: JmapPort = {

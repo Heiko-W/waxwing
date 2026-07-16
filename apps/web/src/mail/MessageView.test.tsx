@@ -1,7 +1,7 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EmailBodyPart, EmailBodyValue } from '@waxwing/jmap'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
@@ -95,10 +95,13 @@ const session = {
 } as unknown as SessionContextValue
 const dispatch = vi.fn()
 let db: ReplicaDb
+/** Every external link opens through `window.open`; the FR-RD-08 tests assert on exactly this. */
+let openSpy: MockInstance<typeof window.open>
 
 beforeEach(async () => {
   db = freshDb()
   dispatch.mockReset()
+  openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
   useComposerStore.setState({ drafts: new Map(), focusedId: undefined })
   setActiveEngine({
     dispatch,
@@ -423,6 +426,193 @@ describe('MessageView', () => {
     await user.click(screen.getByRole('button', { name: 'More actions' }))
     await user.click(await screen.findByRole('menuitem', { name: 'View source' }))
     expect(await screen.findByRole('dialog', { name: 'Message source' })).toBeInTheDocument()
+  })
+
+  // ---- phishing friction (M3.9, FR-RD-08) ----
+
+  /**
+   * Click a link inside the real body frame — no mock anywhere in the path: MessageView renders
+   * MailBodyFrame, which mounts the real `mountMailFrame`, whose real listener resolves the target
+   * and calls back into `useLinkOpener`.
+   *
+   * Two things a browser does that jsdom does not, done by hand: fire `load` for an assigned
+   * `srcdoc`, and parse it into the child document. Everything downstream is production code, and
+   * the click is dispatched from the FRAME's realm — the only way this reaches the app at all
+   * (see the cross-realm note in `@waxwing/mail-html`'s `frame.ts`).
+   */
+  async function clickBodyLink(href: string, text: string): Promise<void> {
+    const frame = (await screen.findByTitle(/^Message:/)) as HTMLIFrameElement
+    // The iframe being IN the DOM does not mean it has been mounted: `mountMailFrame` runs in a
+    // passive effect, and findByTitle's MutationObserver can resolve before React flushes it. An
+    // assigned srcdoc is the observable proof that it ran — and therefore that the click listener
+    // this whole helper depends on exists. (Without this wait the tests pass or fail on tick
+    // alignment; they were doing exactly that.)
+    await waitFor(() => expect(frame.srcdoc).not.toBe(''))
+    await act(async () => {
+      frame.dispatchEvent(new Event('load'))
+    })
+    const doc = frame.contentDocument
+    if (doc === null) throw new Error('no contentDocument')
+    doc.body.innerHTML = `<a href="${href}">${text}</a>`
+    const link = doc.querySelector('a')
+    const view = doc.defaultView
+    if (link === null || view === null) throw new Error('no link')
+    await act(async () => {
+      link.dispatchEvent(new view.MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+  }
+
+  it('opens a benign link straight away, with no dialog and no opener handle', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    await clickBodyLink('https://bank.test/login', 'bank.test')
+    expect(openSpy).toHaveBeenCalledWith('https://bank.test/login', '_blank', 'noopener,noreferrer')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('raises the interstitial for a link whose text names a different host', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    const dialog = await screen.findByRole('dialog', { name: 'This link may not be genuine' })
+    // Both hosts named, and nothing opened while the reader decides.
+    expect(within(dialog).getByText('bank.test')).toBeInTheDocument()
+    expect(within(dialog).getByText('paypa1-secure.ru')).toBeInTheDocument()
+    expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it('raises the interstitial for a protocol-relative href, through the real frame (D1)', async () => {
+    // End-to-end proof of the base fix: nothing mocked between the click and the verdict. The href
+    // never parses on its own, and `window.open` would resolve it against the app document and land
+    // on evil.tld — the same destination `https://evil.tld/steal` has always warned about.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    await clickBodyLink('//evil.tld/steal', 'bank.test')
+    const dialog = await screen.findByRole('dialog', { name: 'This link may not be genuine' })
+    expect(within(dialog).getByText('evil.tld')).toBeInTheDocument()
+    expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it('raises the interstitial for a host hidden behind display:none markup (D3)', async () => {
+    // The sanitizer keeps `display:none` on purpose, so the reader sees exactly `bank.test` while
+    // `textContent` is `!bank.test`. Driven through the real frame, which is what reads textContent.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    await clickBodyLink('https://evil.tld/', '<span style="display:none">!</span>bank.test')
+    const dialog = await screen.findByRole('dialog', { name: 'This link may not be genuine' })
+    expect(within(dialog).getByText('bank.test')).toBeInTheDocument()
+    expect(within(dialog).getByText('evil.tld')).toBeInTheDocument()
+    expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it('Cancel does NOT open the link', async () => {
+    // The single most important assertion in this file: the friction has to actually stop it.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen())
+    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(openSpy).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('focuses Cancel when the interstitial opens, and Escape backs out without opening', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen())
+    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus(),
+    )
+    await user.keyboard('{Escape}')
+    expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it('Open anyway opens the link the reader was warned about, and only that link', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen())
+    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Open anyway' }))
+    expect(openSpy).toHaveBeenCalledExactlyOnceWith(
+      'https://paypa1-secure.ru/login',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('offers no way to stop being asked — the friction cannot be trained away', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }] }))
+    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/don't ask|do not ask|always|trust/i)).not.toBeInTheDocument()
+  })
+
+  it('opens a mailto: link normally — there is no host to compare', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    await clickBodyLink('mailto:support@bank.test', 'bank.test')
+    expect(openSpy).toHaveBeenCalledWith(
+      'mailto:support@bank.test',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('has no a11y violations on the interstitial', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    await screen.findByRole('dialog')
+    // Dialog portals to document.body, outside the RTL container — scan the default root.
+    await expectNoA11yViolations(undefined, { iframes: false })
+  })
+
+  // ---- the sender's real address (M3.9, FR-RD-08) ----
+
+  it('shows the real address next to the display name, always — no hover involved', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }] }))
+    const header = (await screen.findByText('Alice')).closest('header')
+    expect(header).not.toBeNull()
+    // Present in the DOM without a pointer ever touching it, and not the details disclosure —
+    // that is still collapsed.
+    expect(within(header as HTMLElement).getByText('alice@x.test')).toBeInTheDocument()
+    expect(screen.queryByText('Message-ID')).not.toBeInTheDocument()
+  })
+
+  it('does not repeat the address when it IS the display name', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen({ from: [{ name: null, email: 'alice@x.test' }] }))
+    const header = (await screen.findByText('alice@x.test')).closest('header')
+    expect(within(header as HTMLElement).getAllByText('alice@x.test')).toHaveLength(1)
+  })
+
+  it('marks a display name that impersonates a different address', async () => {
+    // From: "security@bank.test" <attacker@evil.tld> — the trick no hover affordance catches on a
+    // touch screen, which is why the marker is always on.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen({ from: [{ name: 'security@bank.test', email: 'attacker@evil.tld' }] }))
+    expect(
+      await screen.findByText("The name shown is not the sender's real address"),
+    ).toBeInTheDocument()
+    expect(screen.getByText('attacker@evil.tld')).toBeInTheDocument()
+  })
+
+  it('does NOT mark an ordinary sender', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }] }))
+    await screen.findByText('Alice')
+    expect(
+      screen.queryByText("The name shown is not the sender's real address"),
+    ).not.toBeInTheDocument()
   })
 
   it('has no a11y violations', async () => {

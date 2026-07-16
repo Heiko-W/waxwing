@@ -15,6 +15,7 @@
 
 import { renderPlainText, sanitize } from '@waxwing/mail-html'
 import {
+  AlertTriangle,
   Archive,
   ChevronDown,
   ChevronUp,
@@ -46,7 +47,13 @@ import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
-import { formatAddressList, sameAddresses, senderAddress, senderName } from './message-body'
+import {
+  formatAddressList,
+  nameLooksLikeAddress,
+  sameAddresses,
+  senderAddress,
+  senderName,
+} from './message-body'
 import { RemoteContentBanner } from './RemoteContentBanner'
 import styles from './reading.module.css'
 import {
@@ -56,6 +63,7 @@ import {
   useRemoteContentDefault,
 } from './reading-prefs'
 import { type ReadingHandlers, useReadingStore } from './reading-store'
+import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
@@ -73,6 +81,8 @@ const SENT_AT_DIVERGENCE_MS = 5 * 60 * 1000
 
 /** The raw-source dialog is a route nobody takes twice a day — code-split it (NFR-PERF-03). */
 const MessageSourceDialog = lazy(() => import('./MessageSourceDialog'))
+/** Likewise the link interstitial: most readers never meet a link that lies (M3.9, FR-RD-08). */
+const LinkWarningDialog = lazy(() => import('./LinkWarningDialog'))
 
 export interface MessageViewProps {
   readonly email: EmailRow
@@ -153,11 +163,19 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     : renderPlainText(textBody, { quotedLabel: t('reading.quotedLabel') })
   const hasRemoteContent = sanitized?.hasRemoteContent ?? false
 
-  const onOpenLink = useCallback((href: string) => {
-    window.open(href, '_blank', 'noopener,noreferrer')
-  }, [])
+  // Link clicks out of the body go through the host check first (FR-RD-08).
+  const links = useLinkOpener()
 
   const name = senderName(email.from, t('list.noSender'))
+  /**
+   * The sender's real address, shown ALWAYS — dimmed, next to the name, never on hover. The spec
+   * says "on hover/tap"; a phone has no hover, and phishing friction a phone user cannot get is not
+   * friction. Suppressed only when it would be a literal duplicate of the name (a sender with no
+   * display name, where `senderName` already returns the address).
+   */
+  const showFromAddress = fromAddress !== null && fromAddress !== name
+  /** `From: "security@bank.test" <attacker@evil.tld>` — the one shape a dimmed address can't answer. */
+  const nameIsAddressLike = nameLooksLikeAddress(email.from)
   const dateLabel = formatDate(new Date(email.receivedAt), {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -281,7 +299,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         <Avatar name={name} size="md" />
         <div className={styles.headerMain}>
           <div className={styles.headerTop}>
-            <span className={styles.from}>{name}</span>
+            {/* Not inside the action bar or any other @media print-hidden chrome: the address is
+                part of who the message is from, and it SHOULD appear on a printed copy. */}
+            <span className={styles.fromLine}>
+              <span className={styles.from}>{name}</span>
+              {showFromAddress && <span className={styles.fromAddress}>{fromAddress}</span>}
+              {nameIsAddressLike && (
+                <span className={styles.nameWarning}>
+                  <AlertTriangle className={styles.nameWarningIcon} aria-hidden="true" />
+                  {t('reading.nameLooksLikeAddress')}
+                </span>
+              )}
+            </span>
             <time className={styles.date} dateTime={email.receivedAt}>
               {dateLabel}
             </time>
@@ -478,10 +507,21 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             bodyHtml={bodyHtml}
             allowRemote={allowRemote}
             title={t('reading.frameTitle', { subject: email.subject || t('list.noSubject') })}
-            onOpenLink={onOpenLink}
+            onOpenLink={links.onOpenLink}
           />
         )}
       </div>
+
+      {links.pending !== null && (
+        <Suspense fallback={null}>
+          <LinkWarningDialog
+            claimedHost={links.pending.claimedHost}
+            targetHost={links.pending.targetHost}
+            onConfirm={links.confirm}
+            onCancel={links.cancel}
+          />
+        </Suspense>
+      )}
 
       {body !== undefined && (
         <AttachmentList accountId={accountId} attachments={body.attachments} />

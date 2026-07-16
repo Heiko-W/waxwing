@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import {
   deliverLiveMail,
   READ_BODIES,
+  READ_PHISHING,
   READ_SUBJECTS,
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
@@ -180,5 +181,123 @@ test.describe('M1.9 read suite', () => {
     // Generous smoke bounds — headless E2E adds click+render overhead beyond the app's own work.
     expect(cachedOpenMs).toBeLessThan(3000)
     expect(folderSwitchMs).toBeLessThan(3000)
+  })
+})
+
+// M3.9 — header details (FR-RD-06) and phishing friction (FR-RD-08), against the seeded phishing
+// message. It carries every hostile pattern at once, because they co-occur in the real thing: two
+// Authentication-Results headers (a failing one on top, the sender's own forgery below), a display
+// name that IS a different email address, and a link whose text names a host it does not open.
+test.describe('M3.9 reading polish', () => {
+  test('the auth results shown are the TOPMOST header, never the sender’s forgery', async ({
+    page,
+  }) => {
+    await login(page)
+    // `.first()`: the row renders the subject in its cell AND in the preview line, so a bare
+    // getByText matches two nodes and Playwright refuses in strict mode.
+    await page.getByText(READ_SUBJECTS.phishing).first().click()
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(READ_SUBJECTS.phishing, {
+      timeout: 20_000,
+    })
+
+    await page.getByRole('button', { name: 'Details' }).click()
+    const details = page.locator('dl').first()
+
+    // THE assertion of this work package. RFC 8621 §4.1.3 makes `header:X:asText` return the LAST
+    // instance; the receiving MTA PREPENDS its own (RFC 8601 §5), so the last one is the ATTACKER'S.
+    // Ask the obvious way and this reads "dmarc=pass" for a message that failed every check.
+    await expect(details).toContainText(READ_PHISHING.trustedAuthserv)
+    await expect(details).toContainText('dmarc=fail')
+    await expect(details).not.toContainText(READ_PHISHING.forgedAuthserv)
+    await expect(details).not.toContainText('dmarc=pass')
+    // Reported, never adjudicated: the reader is told we cannot vouch for who wrote this.
+    await expect(details).toContainText(/cannot be verified/i)
+  })
+
+  test('the sender’s real address is visible without hovering, and the fake name is marked', async ({
+    page,
+  }) => {
+    await login(page)
+    // `.first()`: the row renders the subject in its cell AND in the preview line, so a bare
+    // getByText matches two nodes and Playwright refuses in strict mode.
+    await page.getByText(READ_SUBJECTS.phishing).first().click()
+    const article = page.getByRole('article').first()
+    await expect(article).toBeVisible({ timeout: 20_000 })
+
+    // "on hover/tap" is what the spec says; hover does not exist on a phone, so the address is
+    // always on. No hover, no click, no disclosure — it is simply there.
+    await expect(article).toContainText(READ_PHISHING.realAddress)
+    await expect(article).toContainText(READ_PHISHING.displayName)
+    // `From: "security@bank.test" <mallory@evil.tld>` — the name is impersonating an address.
+    await expect(article).toContainText(/not the sender's real address/i)
+  })
+
+  test('a link whose text names another host is interrupted; Cancel opens nothing', async ({
+    page,
+    context,
+  }) => {
+    await login(page)
+    // `.first()`: the row renders the subject in its cell AND in the preview line, so a bare
+    // getByText matches two nodes and Playwright refuses in strict mode.
+    await page.getByText(READ_SUBJECTS.phishing).first().click()
+    const frame = bodyFrame(page, READ_SUBJECTS.phishing)
+    await expect(frame.locator('body')).toBeVisible({ timeout: 20_000 })
+
+    let opened = 0
+    context.on('page', () => {
+      opened += 1
+    })
+
+    await frame.getByText(READ_PHISHING.linkText).click()
+    // The dialog is a LAZY chunk — wait for it. An immediate visibility check races the import and
+    // reports a false "no warning", which is how this very test first lied to me.
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible({ timeout: 15_000 })
+    await expect(dialog).toContainText('bank.test')
+    await expect(dialog).toContainText('paypa1-secure.ru')
+
+    // The whole point: the default answer is "no", and it must be inert.
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(dialog).toBeHidden()
+    await page.waitForTimeout(500)
+    expect(opened).toBe(0)
+  })
+
+  test('an honest link in the same message opens with no warning at all', async ({ page }) => {
+    await login(page)
+    // `.first()`: the row renders the subject in its cell AND in the preview line, so a bare
+    // getByText matches two nodes and Playwright refuses in strict mode.
+    await page.getByText(READ_SUBJECTS.phishing).first().click()
+    const frame = bodyFrame(page, READ_SUBJECTS.phishing)
+    await expect(frame.locator('body')).toBeVisible({ timeout: 20_000 })
+
+    // The false-positive control, and it is not a formality: a warning readers learn to click
+    // through is worse than no warning. Prose text over any href must stay silent.
+    await frame.getByText(READ_PHISHING.benignText).click()
+    await page.waitForTimeout(1500)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  })
+
+  test('View source shows the raw message, and Save as .eml downloads it', async ({ page }) => {
+    await login(page)
+    await page.getByText(READ_SUBJECTS.plain).click()
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(READ_SUBJECTS.plain, {
+      timeout: 20_000,
+    })
+
+    await page.getByRole('button', { name: 'More actions' }).click()
+    await page.getByRole('menuitem', { name: 'View source' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Message source' })
+    await expect(dialog).toBeVisible({ timeout: 15_000 })
+    // The real RFC 5322 bytes — and single angle brackets, which the seeder used to double.
+    await expect(dialog.locator('pre')).toContainText(`Message-ID: <lunch-thursday@waxwing.test>`)
+    await expect(dialog.locator('pre')).toContainText(`Subject: ${READ_SUBJECTS.plain}`)
+
+    const download = page.waitForEvent('download', { timeout: 15_000 })
+    await page.getByRole('button', { name: 'Save as .eml' }).click()
+    const file = await download
+    // The subject sanitizes into the filename; the `?` is not a legal one.
+    expect(file.suggestedFilename()).toBe('Lunch on Thursday.eml')
   })
 })

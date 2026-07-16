@@ -464,6 +464,15 @@
       "reportedBy": "Gemeldet von {{host}}:",
       "unverified": "Diese Angabe stammt aus der Nachricht selbst und lässt sich nicht überprüfen. Beurteilen Sie die Echtheit einer Nachricht nicht allein danach."
     },
+    "nameLooksLikeAddress": "Der angezeigte Name ist nicht die echte Absenderadresse",
+    "linkWarning": {
+      "title": "Dieser Link ist möglicherweise nicht echt",
+      "lead": "Der Text dieses Links nennt eine Website, geöffnet wird aber eine andere. Genau so funktionieren Phishing-Nachrichten.",
+      "claimed": "Der Link nennt",
+      "target": "Tatsächlich öffnet er",
+      "note": "Öffnen Sie ihn nur, wenn Sie sicher sind, dass er echt ist. Schließen Sie diesen Hinweis im Zweifel und geben Sie die Adresse selbst im Browser ein.",
+      "open": "Trotzdem öffnen"
+    },
     "source": {
       "title": "Nachrichtenquelltext",
       "view": "Quelltext anzeigen",

@@ -112,10 +112,50 @@
   align-items: baseline;
 }
 
+/* Name, real address and (rarely) the impersonation marker, on one wrapping baseline run. */
+.fromLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--waxwing-space-1) var(--waxwing-space-2);
+  min-width: 0;
+}
+
 .from {
   font-weight: var(--waxwing-weight-semibold);
   color: var(--waxwing-text);
   overflow-wrap: anywhere;
+}
+
+/*
+ * The sender's real address (M3.9, FR-RD-08). Always rendered, never hover-gated — hover does not
+ * exist on a phone. Dimmed and smaller so it stays out of the way of reading, but it is never
+ * hidden, and the @media print block below deliberately does NOT strip it.
+ */
+.fromAddress {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The display name is itself shaped like a (different) address. Rare enough to deserve a marker and
+ * serious enough to earn the colour the authentication report is denied: unlike that header, this is
+ * a fact about the message we can establish ourselves, not a claim we are relaying.
+ */
+.nameWarning {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-medium);
+  color: var(--waxwing-danger);
+}
+
+.nameWarningIcon {
+  flex-shrink: 0;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
 }
 
 .date {
@@ -490,6 +530,73 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
+}
+
+/* ---- link warning interstitial (M3.9, FR-RD-08) ---- */
+
+.linkWarnLead {
+  display: flex;
+  gap: var(--waxwing-space-2);
+  align-items: flex-start;
+  margin: 0 0 var(--waxwing-space-3);
+  color: var(--waxwing-text);
+}
+
+.linkWarnIcon {
+  flex-shrink: 0;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  color: var(--waxwing-danger);
+}
+
+.linkHosts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: var(--waxwing-space-3);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface-2);
+}
+
+.linkHosts dt {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.linkHosts dd {
+  margin: 0 0 var(--waxwing-space-2);
+  font-family: var(--waxwing-font-mono);
+  /* A host is one long unbreakable token; wrap it rather than let it scroll out of the panel —
+     a truncated host is exactly the fact the reader came here for. */
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.linkHosts dd:last-child {
+  margin-bottom: 0;
+}
+
+/* The claim: present, but subordinate. It is the attacker's text, and it is not the answer. */
+.linkHostClaimed {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-decoration: line-through;
+}
+
+/* Where the link actually goes — the single fact this dialog exists to deliver, so it is the
+   biggest thing in it. */
+.linkHostTarget {
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-lg);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+}
+
+.linkWarnNote {
+  margin: var(--waxwing-space-3) 0 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
 }
 
 @media (prefers-reduced-motion: reduce) {

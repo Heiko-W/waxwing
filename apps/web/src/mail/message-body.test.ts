@@ -4,6 +4,7 @@ import type { EmailBodyRow } from '../sync'
 import {
   collectCidParts,
   formatAddressList,
+  nameLooksLikeAddress,
   pickHtmlBody,
   pickTextBody,
   sameAddresses,
@@ -182,5 +183,80 @@ describe('sameAddresses', () => {
   it('treats null and an empty list as the same (both name nobody)', () => {
     expect(sameAddresses(null, [])).toBe(true)
     expect(sameAddresses(null, [{ name: null, email: 'a@x.test' }])).toBe(false)
+  })
+})
+
+describe('nameLooksLikeAddress', () => {
+  const from = (name: string | null, email: string) => [{ name, email }]
+
+  it('flags a display name impersonating a DIFFERENT address', () => {
+    // The classic: From: "security@bank.test" <attacker@evil.tld>
+    expect(nameLooksLikeAddress(from('security@bank.test', 'attacker@evil.tld'))).toBe(true)
+  })
+
+  it('flags the bracketed-with-label form — the shape that actually gets sent (D6)', () => {
+    // From: "Bank Support <security@bank.test>" <attacker@evil.tld>. Requiring the WHOLE name to be
+    // an address missed this, and it is the more convincing forgery of the two: the label supplies
+    // plausibility, the brackets supply authority.
+    expect(
+      nameLooksLikeAddress(from('Bank Support <security@bank.test>', 'attacker@evil.tld')),
+    ).toBe(true)
+    expect(nameLooksLikeAddress(from('Security (security@bank.test)', 'attacker@evil.tld'))).toBe(
+      true,
+    )
+    expect(nameLooksLikeAddress(from('via security@bank.test', 'attacker@evil.tld'))).toBe(true)
+  })
+
+  it('does NOT flag a same-org local-part variant (D6)', () => {
+    // "noreply@example.com" <no-reply@example.com> is one organisation spelling its own robot two
+    // ways. Nothing is impersonated, and comparing addresses whole made it a warning.
+    expect(nameLooksLikeAddress(from('noreply@example.com', 'no-reply@example.com'))).toBe(false)
+    expect(nameLooksLikeAddress(from('Support <help@example.com>', 'tickets@example.com'))).toBe(
+      false,
+    )
+  })
+
+  it('does NOT flag an address under the sender own domain, or vice versa', () => {
+    expect(nameLooksLikeAddress(from('alice@mail.bank.test', 'noreply@bank.test'))).toBe(false)
+    expect(nameLooksLikeAddress(from('alice@bank.test', 'noreply@mail.bank.test'))).toBe(false)
+    // ...but a domain that merely ENDS with the real one is a different party (the label trick).
+    expect(nameLooksLikeAddress(from('alice@bank.test', 'noreply@evilbank.test'))).toBe(true)
+  })
+
+  it('flags it regardless of surrounding whitespace or casing', () => {
+    expect(nameLooksLikeAddress(from('  Security@Bank.TEST  ', 'attacker@evil.tld'))).toBe(true)
+  })
+
+  it('does NOT flag a name that merely repeats the real address', () => {
+    // Extremely common — and it is the truth, not an impersonation.
+    expect(nameLooksLikeAddress(from('alice@x.test', 'alice@x.test'))).toBe(false)
+    expect(nameLooksLikeAddress(from('Alice@X.test', 'alice@x.test'))).toBe(false)
+  })
+
+  it('does NOT flag an ordinary display name', () => {
+    for (const name of ['Alice', 'Alice Smith', 'Alice (Support)', 'Support', '', null]) {
+      expect(nameLooksLikeAddress(from(name, 'alice@x.test'))).toBe(false)
+    }
+  })
+
+  it('does NOT flag a name that is address-ISH but not address-shaped', () => {
+    // No dotted domain, or a space where an address cannot have one: a name, not a claimed address.
+    for (const name of ['alice@localhost', 'me @ x.test', 'a@b@c.test', 'x@.test']) {
+      expect(nameLooksLikeAddress(from(name, 'attacker@evil.tld'))).toBe(false)
+    }
+  })
+
+  it('flags a name that dresses an address up in angle brackets', () => {
+    // `From: "<alice@x.test>" <attacker@evil.tld>` is the same impersonation wearing a hat — the
+    // local part is deliberately permissive (real ones carry all sorts of punctuation), so this
+    // falls out of the rule rather than needing one of its own.
+    expect(nameLooksLikeAddress(from('<alice@x.test>', 'attacker@evil.tld'))).toBe(true)
+  })
+
+  it('is defensive about a missing or malformed From', () => {
+    expect(nameLooksLikeAddress(null)).toBe(false)
+    expect(nameLooksLikeAddress([])).toBe(false)
+    expect(nameLooksLikeAddress([undefined as never])).toBe(false)
+    expect(nameLooksLikeAddress([{ name: 'a@b.test' } as never])).toBe(false)
   })
 })

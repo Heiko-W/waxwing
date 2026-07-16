@@ -464,6 +464,15 @@
       "reportedBy": "Reported by {{host}}:",
       "unverified": "This report comes from the message itself and cannot be verified. Do not rely on it alone to judge whether a message is genuine."
     },
+    "nameLooksLikeAddress": "The name shown is not the sender's real address",
+    "linkWarning": {
+      "title": "This link may not be genuine",
+      "lead": "The text of this link names one website, but the link opens a different one. That is how phishing messages work.",
+      "claimed": "The link says",
+      "target": "It actually opens",
+      "note": "Open it only if you are certain it is genuine. If in doubt, close this and type the address into your browser yourself.",
+      "open": "Open anyway"
+    },
     "source": {
       "title": "Message source",
       "view": "View source",

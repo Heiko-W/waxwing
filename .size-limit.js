@@ -49,6 +49,9 @@ export default [
       '!apps/web/dist/assets/InstallDialog-*.js',
       // The raw .eml source view (mail/, M3.9) — opened from the reading pane's overflow menu.
       '!apps/web/dist/assets/MessageSourceDialog-*.js',
+      // The phishing-friction interstitial (mail/, M3.9, FR-RD-08) — raised only by a link whose
+      // text names a host the link does not go to.
+      '!apps/web/dist/assets/LinkWarningDialog-*.js',
       // Lazy keyboard overlays (shortcuts/, M3.8): the ⌘K palette (with its fuzzy matcher) and the
       // `?` cheat-sheet. The registry + dispatcher stay eager; these two surfaces do not.
       '!apps/web/dist/assets/CommandPalette-*.js',

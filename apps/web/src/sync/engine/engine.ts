@@ -1015,7 +1015,19 @@ export class SyncEngine {
       //
       // Scoped to voided windows so an M3.2 bulk cleanup still costs ONE re-query rather than one per
       // chunk: its N intents void the same window once, and a window with a live baseline is skipped.
-      await this.reconcileWatched(false, true)
+      //
+      // ONLY once the queue is empty, and that guard is not belt-and-braces — without it this fix
+      // creates a worse bug than the one it fixes. A re-query answers with the SERVER's list, which
+      // by definition cannot reflect an intent we have not sent yet. Archive, then trash a second
+      // message a moment later: the trash's optimistic prune voids the window while this pass is
+      // still mid-flight, so the pass re-queries, gets a list that still contains the trashed
+      // message, refills the window with it AND restores `queryState` — whereupon the next pass,
+      // the one that actually sends the trash, skips the window as "not voided" and the row stays
+      // on screen for good. Caught by the M3.8 keyboard E2E (`j o e u x #`), which is exactly that
+      // sequence at human speed. A queued row means the next pass reconciles instead.
+      if ((await pendingOutbox(this.db, this.accountId)).length === 0) {
+        await this.reconcileWatched(false, true)
+      }
     }
     await this.scheduleQueueWake()
     await this.refreshQueueCounts()

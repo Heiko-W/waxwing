@@ -211,6 +211,49 @@ no new writer may be able to produce that shape by forgetting a field. And `save
 object URL on the **next task**, not synchronously after `click()`: activating an `<a download>`
 only *queues* the fetch.
 
+## Phishing friction (M3.9, FR-RD-08)
+
+Two halves. The sender's real address is **always** visible next to the display name (never on hover —
+hover does not exist on a phone, and friction a phone user cannot get is not friction), with an extra
+marker when the display name is itself a *different* email address. And a link whose visible text
+names a host it does not open raises a blocking interstitial: `link-host.ts` (pure, in the package)
+decides, `use-link-opener.ts` + a lazy `LinkWarningDialog` ask. **No opt-out, by design** — a friction
+the reader can switch off is one the attacker's own message can talk them into switching off, and a
+per-sender allowlist would be keyed on the spoofable `From` this warning exists because we distrust.
+
+**The interception this is built on never fired.** `frame.ts` checked `event.target instanceof Element`
+— but the target is a node from the *frame's* document, and a frame is its own realm with its own
+`Element`. Cross-realm `instanceof` is always false, so from M1.8 until M3.9 clicking any link in an
+HTML mail did not open a tab: it navigated the frame, and the reader's message was replaced by a
+browser error page. (No data leaked — the app's own `frame-src 'self'` CSP blocked the load, which is
+defence-in-depth doing its job.) Nothing caught it because **no test ever asserted `onLink` fired**;
+`git grep onLink` over the pre-M3.9 tree returns the definition, the wiring, and the call. It is
+duck-typed now, and `frame.test.ts` pins `doc.querySelector('b') instanceof Element === false` so the
+trap is visible rather than folklore.
+
+Four rules, each of which was a live bypass before it existed:
+
+1. **Never clamp the link text.** A clamp looks like a free bound; it is a bypass. Tokenising a claim
+   out of anywhere means the attacker just pads: 2100 characters of `display:none` inside the anchor,
+   and a head-clamped check sees only padding, finds no claim, and opens `evil.tld` silently. No clamp
+   shape survives — guard the head and the padding goes in front, guard head *and* tail and it goes in
+   the middle. The whole text is scanned, once per click. `PLAIN_WORD` keeps that cheap without
+   reintroducing the hole.
+2. **Resolve the href against a base.** `//evil.tld/steal` throws in `new URL()` without one → the old
+   code called it "not a web link" and opened it — and the *browser* resolved it against our origin and
+   went there. `https://evil.tld/steal`, the identical destination, warned.
+3. **Normalise the text (NFKC + strip `\p{Cf}`), and match host shapes in Unicode.** `bank<ZWSP>.test`
+   renders pixel-identical to `bank.test`; `trim()` does not remove format characters. And an
+   ASCII-only host pattern meant a bare `аpple.com` (Cyrillic а) claimed nothing — the homograph
+   defence would only have worked against attackers who politely write `https://` first.
+4. **Compare and display the punycode form, always.** `URL.hostname` yields it for free. A reader shown
+   `xn--pple-43d.com` has been told the truth; one shown `аpple.com` has been lied to by the renderer.
+
+The false-positive budget is the whole design: a warning readers learn to click through trains exactly
+the reflex phishing needs. Hence `FILE_EXTENSIONS` (a link labelled `invoice.pdf` over a CDN is not a
+host claim), `www.`-stripping, and "any honoured claim clears the link". The accepted cost is named in
+the file: a newsletter whose link text is a domain but routes through a click-tracker will warn.
+
 ## Notifications (M3.6) — and the one thing they cannot do
 
 Waxwing raises system notifications for new mail **whenever the app is running**, a backgrounded
