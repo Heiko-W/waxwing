@@ -30,6 +30,43 @@ export const READ_SUBJECTS = {
   newsletter: 'Waxwing Weekly — issue 42',
   plain: 'Lunch on Thursday?',
   thread: 'Q3 planning sync',
+  phishing: 'Your account needs verification',
+  rfc822: 'Fwd: the original quarterly figures',
+}
+
+/**
+ * The M3.9 phishing corpus (FR-RD-06 auth-results + FR-RD-08). One imported message carries every
+ * hostile pattern at once, because they co-occur in the real thing:
+ *
+ *  - TWO `Authentication-Results` headers. The topmost is what a trusting MTA would have prepended
+ *    (dmarc=FAIL); the one below is the SENDER'S OWN FORGERY (dmarc=pass). RFC 8621 §4.1.2 makes
+ *    `header:X:asText` return the *last* instance — i.e. the attacker's — so a client that asks the
+ *    obvious way renders "dmarc=pass" for a message that failed. `:asText:all` + `[0]` is the fix,
+ *    and this message is what proves it live.
+ *  - A display name that IS an email address, different from the real one (`"security@bank.test"
+ *    <mallory@evil.tld>`) — the trick no hover affordance catches on touch.
+ *  - A link whose TEXT claims `https://bank.test/account` but whose href goes to `paypa1-secure.ru`.
+ *  - A benign link in the same body, so the warning's false-positive rate is asserted too.
+ */
+export const READ_PHISHING = {
+  /** The forged authserv-id — must NEVER be what the UI attributes the results to. */
+  forgedAuthserv: 'forged.attacker.test',
+  /** The topmost (trusted-position) authserv-id — this is what the UI must report. */
+  trustedAuthserv: 'mx.waxwing.test',
+  displayName: 'security@bank.test',
+  realAddress: 'mallory@evil.tld',
+  linkText: 'https://bank.test/account',
+  linkTarget: 'https://paypa1-secure.ru/login',
+  benignText: 'the Waxwing handbook',
+  benignTarget: 'https://example.invalid/handbook',
+}
+
+/** Subject/body of the inner message carried as a `message/rfc822` attachment (FR-RD-07). */
+export const READ_NESTED = {
+  subject: 'Quarterly figures Q2',
+  body: 'The Q2 figures are attached to the original message. — Carol',
+  from: 'carol@waxwing.test',
+  filename: 'original.eml',
 }
 
 export const READ_BODIES = {
@@ -112,6 +149,90 @@ async function destroyExisting(accountId) {
   return ids.length
 }
 
+/** Upload raw bytes and return the blobId (the `.eml` and nested-message vectors). */
+async function uploadBlob(accountId, contentType, body) {
+  const res = await fetch(`${BASE_URL}/jmap/upload/${accountId}/`, {
+    method: 'POST',
+    headers: { Authorization: authHeader(), 'Content-Type': contentType },
+    body,
+  })
+  if (!res.ok) throw new Error(`blob upload failed: HTTP ${res.status} — ${await res.text()}`)
+  return (await res.json()).blobId
+}
+
+/**
+ * The phishing message as RAW RFC 5322. It must be IMPORTED, not created via `Email/set`: only a
+ * raw blob can carry two `Authentication-Results` headers, and `Email/set`'s `header:X:asText` form
+ * RFC-2047-encodes the value on write (verified against the fixture), which a real MTA never does.
+ */
+function phishingRaw(receivedAt) {
+  const P = READ_PHISHING
+  const html = [
+    '<html><body>',
+    '<p>Dear customer, your account needs verification.</p>',
+    `<p><a href="${P.linkTarget}">${P.linkText}</a></p>`,
+    `<p>See also <a href="${P.benignTarget}">${P.benignText}</a>.</p>`,
+    '</body></html>',
+  ].join('\n')
+  return [
+    // TOPMOST = the trusted position (what our MTA would prepend). It FAILS.
+    `Authentication-Results: ${P.trustedAuthserv}; spf=fail smtp.mailfrom=${P.realAddress}; dkim=fail; dmarc=fail header.from=bank.test`,
+    // BELOW = travelled with the message. The attacker wrote this one himself. It "passes".
+    `Authentication-Results: ${P.forgedAuthserv}; spf=pass smtp.mailfrom=${P.displayName}; dkim=pass header.d=bank.test; dmarc=pass header.from=bank.test`,
+    'Message-ID: <phish-1@evil.tld>',
+    `From: "${P.displayName}" <${P.realAddress}>`,
+    'To: "Alice Anderson" <alice@waxwing.test>',
+    `Subject: ${READ_SUBJECTS.phishing}`,
+    `Date: ${new Date(receivedAt).toUTCString()}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset="utf-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    html,
+    '',
+  ].join('\r\n')
+}
+
+/** The inner RFC 5322 message that rides along as a `message/rfc822` attachment (FR-RD-07). */
+function nestedRaw() {
+  return [
+    'Message-ID: <nested-q2@waxwing.test>',
+    `From: "Carol Chen" <${READ_NESTED.from}>`,
+    'To: "Bob Baker" <bob@waxwing.test>',
+    `Subject: ${READ_NESTED.subject}`,
+    'Date: Mon, 13 Jul 2026 09:00:00 +0000',
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="utf-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    READ_NESTED.body,
+    '',
+  ].join('\r\n')
+}
+
+/** The carrier message whose only attachment is the nested `message/rfc822` blob (FR-RD-07). */
+function rfc822Creation(inboxId, receivedAt, innerBlobId) {
+  return {
+    mailboxIds: { [inboxId]: true },
+    keywords: { [READ_KEYWORD]: true, $seen: true },
+    receivedAt,
+    messageId: ['fwd-quarterly@waxwing.test'],
+    from: [{ name: 'Bob Baker', email: bob() }],
+    to: [{ name: 'Alice Anderson', email: alice() }],
+    subject: READ_SUBJECTS.rfc822,
+    textBody: [{ partId: 't', type: 'text/plain' }],
+    bodyValues: { t: { value: 'Forwarding the original message as an attachment.' } },
+    attachments: [
+      {
+        blobId: innerBlobId,
+        type: 'message/rfc822',
+        name: READ_NESTED.filename,
+        disposition: 'attachment',
+      },
+    ],
+  }
+}
+
 function newsletterCreation(inboxId, receivedAt) {
   const html = [
     '<html><body>',
@@ -128,7 +249,7 @@ function newsletterCreation(inboxId, receivedAt) {
     mailboxIds: { [inboxId]: true },
     keywords: { [READ_KEYWORD]: true, $seen: true },
     receivedAt,
-    messageId: ['<newsletter-42@waxwing.test>'],
+    messageId: ['newsletter-42@waxwing.test'],
     from: [{ name: 'Waxwing Weekly', email: bob() }],
     to: [{ name: 'Alice Anderson', email: alice() }],
     subject: READ_SUBJECTS.newsletter,
@@ -147,7 +268,7 @@ function plainCreation(inboxId, receivedAt) {
     // Left UNREAD (no $seen) so the list shows the unread indicator and mark-read has a target.
     keywords: { [READ_KEYWORD]: true },
     receivedAt,
-    messageId: ['<lunch-thursday@waxwing.test>'],
+    messageId: ['lunch-thursday@waxwing.test'],
     from: [{ name: 'Bob Baker', email: bob() }],
     to: [{ name: 'Alice Anderson', email: alice() }],
     subject: READ_SUBJECTS.plain,
@@ -193,9 +314,14 @@ export async function seedReadMail() {
   const base = Date.now()
   const at = (slot) => new Date(base - slot * 3_600_000).toISOString()
 
-  const q1 = '<q3-1@waxwing.test>'
-  const q2 = '<q3-2@waxwing.test>'
-  const q3 = '<q3-3@waxwing.test>'
+  // BARE message-ids — no angle brackets. RFC 8621 §4.1.2: `messageId` is the Message-ID header
+  // value "with the surrounding angle brackets removed"; the server adds them back on the wire.
+  // Passing `<id>` here yielded a literal `Message-ID: <<q3-1@waxwing.test>>` in the raw message
+  // (proven against the fixture in M3.9). Threading survived it, so nothing caught it until the
+  // header-details view started SHOWING the message-id. `seed-write.mjs:172` had it right all along.
+  const q1 = 'q3-1@waxwing.test'
+  const q2 = 'q3-2@waxwing.test'
+  const q3 = 'q3-3@waxwing.test'
 
   const create = {
     // Thread newest occupies the most recent slot so the collapsed thread row sorts on top.
@@ -228,6 +354,11 @@ export async function seedReadMail() {
       refs: [],
       seen: true,
     }),
+    rfc822: rfc822Creation(
+      inboxId,
+      at(5),
+      await uploadBlob(accountId, 'message/rfc822', nestedRaw()),
+    ),
   }
 
   const response = await jmap([['Email/set', { accountId, create }, '0']])
@@ -239,7 +370,35 @@ export async function seedReadMail() {
       `expected ${expected} created, got ${created}: ${JSON.stringify(result.notCreated ?? {})}`,
     )
   }
-  return { accountId, inboxId, removed, created }
+
+  // The phishing message goes in via Email/import — see phishingRaw() for why Email/set cannot
+  // express it. `keywords` here is what makes destroyExisting() find it on the next reseed.
+  const phishBlob = await uploadBlob(accountId, 'message/rfc822', phishingRaw(at(6)))
+  const imported = await jmap([
+    [
+      'Email/import',
+      {
+        accountId,
+        emails: {
+          phish: {
+            blobId: phishBlob,
+            mailboxIds: { [inboxId]: true },
+            keywords: { [READ_KEYWORD]: true },
+            receivedAt: at(6),
+          },
+        },
+      },
+      '0',
+    ],
+  ])
+  const importResult = imported.methodResponses[0][1]
+  if (importResult?.created?.phish === undefined) {
+    throw new Error(
+      `phishing import failed: ${JSON.stringify(importResult?.notCreated ?? imported.methodResponses[0])}`,
+    )
+  }
+
+  return { accountId, inboxId, removed, created: created + 1 }
 }
 
 /**

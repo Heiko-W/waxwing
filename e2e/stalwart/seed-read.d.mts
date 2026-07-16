@@ -4,6 +4,24 @@ export const READ_SUBJECTS: {
   readonly newsletter: string
   readonly plain: string
   readonly thread: string
+  readonly phishing: string
+  readonly rfc822: string
+}
+export const READ_PHISHING: {
+  readonly forgedAuthserv: string
+  readonly trustedAuthserv: string
+  readonly displayName: string
+  readonly realAddress: string
+  readonly linkText: string
+  readonly linkTarget: string
+  readonly benignText: string
+  readonly benignTarget: string
+}
+export const READ_NESTED: {
+  readonly subject: string
+  readonly body: string
+  readonly from: string
+  readonly filename: string
 }
 export const READ_BODIES: {
   readonly plain: string
