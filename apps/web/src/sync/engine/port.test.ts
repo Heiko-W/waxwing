@@ -110,6 +110,53 @@ describe('createJmapPort', () => {
     expect(properties).toContain('receivedAt')
   })
 
+  it('asks for Authentication-Results with :asText:all, never the singular form (M3.9)', async () => {
+    // RFC 8621 §4.1.2: the singular `:asText` is "the value of the LAST instance of the header
+    // field" — and the receiving MTA PREPENDS its report (RFC 8601 §5), so the last instance is the
+    // one the SENDER forged. If this ever narrows to `:asText`, Waxwing renders the forgery.
+    const { client, calls } = fakeClient((method) =>
+      method === Methods.emailGet ? { accountId: ACC, state: 'b1', list: [], notFound: [] } : {},
+    )
+    await createJmapPort(client, ACC).getEmailBodies(['e1'])
+
+    const properties = calls[0]?.args.properties as string[]
+    expect(properties).toContain('header:Authentication-Results:asText:all')
+    expect(properties).not.toContain('header:Authentication-Results:asText')
+    // The raw `headers` array is Raw-form (RFC 2047-encoded, folded) and would bloat every body row;
+    // the .eml source view covers the raw truth instead.
+    expect(properties).not.toContain('headers')
+    expect(properties).toContain('bcc')
+    expect(properties).toContain('sender')
+  })
+
+  it('renames the header:… key to authResults, so the awkward key never escapes the port (M3.9)', async () => {
+    const { client } = fakeClient((method) =>
+      method === Methods.emailGet
+        ? {
+            accountId: ACC,
+            state: 'b1',
+            list: [
+              {
+                id: 'e1',
+                bodyValues: {},
+                bcc: null,
+                sender: null,
+                'header:Authentication-Results:asText:all': ['mx.test; spf=pass', 'evil; spf=pass'],
+              },
+              // A server that omits the property entirely (no such header) → [], not undefined.
+              { id: 'e2', bodyValues: {}, bcc: null, sender: null },
+            ],
+            notFound: [],
+          }
+        : {},
+    )
+    const { list } = await createJmapPort(client, ACC).getEmailBodies(['e1', 'e2'])
+
+    expect(list[0]?.authResults).toEqual(['mx.test; spf=pass', 'evil; spf=pass'])
+    expect(list[0]).not.toHaveProperty('header:Authentication-Results:asText:all')
+    expect(list[1]?.authResults).toEqual([])
+  })
+
   it('maps Email/query results', async () => {
     const { client } = fakeClient(() => ({
       accountId: ACC,

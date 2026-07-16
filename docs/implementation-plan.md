@@ -1601,18 +1601,52 @@ the mouse; palette reaches every folder and action.
 Spec: FR-RD-06/07/08, FR-MBX-03, FR-LST-06. Size: M.
 
 - [ ] Header details on demand: full addresses, date, message-id, authentication results
-      where exposed (FR-RD-06).
-- [ ] "View source" / download `.eml` via Blob capability when present, else raw blob
-      download (FR-RD-06, capability-gated per SP.5 finding).
+      where exposed (FR-RD-06). **Live-probed (M3.9 step 0):** `headers` (Raw) is deliberately
+      NOT fetched — RFC 8621 returns it RFC-2047-encoded and folded, and everything we show is
+      available server-decoded via dedicated properties. Auth results use
+      `header:Authentication-Results:asText:all` and read `[0]`: RFC 8621 §4.1.2 makes the
+      un-suffixed form return the **last** instance, which on a phishing mail is the sender's own
+      forgery. Rendered neutrally + attributed, never as a verdict (RFC 8601 §7.1).
+- [ ] "View source" / download `.eml` — an unconditional authenticated download of the Email's
+      own `blobId`. **The capability gate this task used to prescribe does not exist** →
+      **ADR-011**; `downloadUrl` is mandatory in RFC 8620 and RFC 9404 `Blob/get` is strictly
+      worse (base64-in-JSON, capped at `maxSizeRequest` = 10 MB vs the endpoint's 50 MB).
+      Must NOT use the blob cache: the Email's own blobId has no owner link, so the next
+      maintenance pass reaps it as an orphan (`eviction.ts:217`).
 - [ ] Attached `message/rfc822` opens as nested in-app message view via `Email/parse`
-      (or `postal-mime` fallback per SP.5) (FR-RD-07).
+      (FR-RD-07). **No `postal-mime` fallback** — SP.5 already answered that (`:589-597`); the
+      parenthetical that used to stand here contradicted the finding it cited. `bodyValues` MUST
+      be named in `properties` (SP.4 caveat).
 - [ ] Phishing friction: display-name vs. address reveal on hover/tap; warn when link
       text host ≠ target host (FR-RD-08).
-- [ ] Drag & drop: messages → folders, folder re-parenting (FR-MBX-03) with keyboard
-      alternative (a11y).
+- [ ] **5a — the non-pointer paths FIRST** (they do not exist today, and WCAG 2.2 **SC 2.5.7
+      Dragging Movements** makes them a *prerequisite* of the drag, not a companion — the task
+      used to read as though only the drag were missing): a `Move…` entry in the list's bulk bar,
+      the `v` move chord widened from `reading` to the list scope, and a folder "Move to…"
+      action. **Folder re-parenting has no UI at all** — `moveMailbox` is fully implemented,
+      undoable and state-guarded, with *zero* callers (`use-folder-actions.ts:34`). Pure
+      `folder-tree` guards (no self/descendant cycle, `mayCreateChild`, `maxMailboxDepth`,
+      top-level gated on `mayCreateTopLevelMailbox`) are where the correctness lives.
+      Also closes a real inconsistency: `MessageView.tsx:382` moves via `actions.move` directly,
+      bypassing the Undo toast that archive/trash get — `Triage` gains `moveTo`.
+- [ ] **5b — drag & drop** on top of 5a: messages → folders, folder re-parenting (FR-MBX-03).
+      HTML5 DnD (not pointer events — they would fight the swipe below; the two are separated by
+      `pointerType`). Routes through the existing `move`/`moveMailbox` intents; no new write path.
+      `dragover` may only consult `dataTransfer.types` (values are unreadable until `drop`, by
+      spec). No `aria-dropeffect` (deprecated/unimplemented) — announce via a live region.
 - [ ] Swipe gestures on touch: configurable archive/delete/read actions (FR-LST-06).
+      **Owner decision (2026-07-16): Apple parity** — default right = mark read, left = archive
+      (→ trash when the account has no archive role), configurable per direction in Settings, as
+      iOS Mail does. Routed through `use-triage.ts` so a swipe, a button and a keystroke are one
+      code path. Mouse pointers are ignored (that is 5b's drag). No confirmation on a destructive
+      swipe — the Undo toast is the safety net (Apple parity) — but swipe-to-trash **inside**
+      Trash must never mean destroy (`destroy` has no undo).
+      **Known interaction:** swipe-to-read makes **B1** (§13) user-visible in the commonest touch
+      flow (a swiped-read row stays in a `?q=is:unread` view until the server echoes; offline,
+      until reconnect). Accepted and noted; B1 lands before G2 as planned.
 
-Done when: each item demo-able; DnD and swipe have non-pointer equivalents.
+Done when: each item demo-able; **the non-pointer path exists for every drag operation** (SC
+2.5.7); swipe has a keyboard/button equivalent.
 
 ### M3.10 — E2E: offline & push suites
 
@@ -1877,6 +1911,7 @@ explicit owner decision:
 | D3 | Raise server baseline to Stalwart v1.0 (expected ~Oct 2026)? | Heiko | Gate G2 | open |
 | D4 | Secure free namespaces early: GitHub org, npm `@waxwing` scope / package names (decision log #1 recommends) | Heiko | ASAP, independent of code | open |
 | **B1** | **Known defect (found in M3.8, not fixed there): `setKeywords` leaves a keyword-filtered window stale.** M3.8 fixed the same class of bug for `move`/`destroyEmails` (the cached `queryCache` window is now pruned + its `queryState` voided in the optimistic apply). `setKeywords` was left alone deliberately: it is **bidirectional** — marking a message read must REMOVE it from an `is:unread` window, but adding a label must ADD it to a `hasKeyword` window, and a prune cannot express that. Today, marking read/unread or (un)labelling leaves a `?q=is:unread` result or a `?label=` view showing the message until the server's push echoes back — and **offline, until reconnect**. Same two failure modes as the `move` bug. Fix before **G2** (see the M3.8 changelog entry for the mechanism). | — | Gate G2 | open |
+| **B2** | **Known gap (found and half-fixed in M3.9): offline, a message moved INTO a visible window does not appear until reconnect.** A cached `queryCache` window is in the SERVER's collation (and, under `collapseThreads`, its entries are thread representatives), so the optimistic apply refuses to guess an index: a departure is pruned locally, an arrival only voids the baseline and waits for a re-query. M3.9 made the ONLINE case immediate (`runReplay` now reconciles the windows the apply voided — before that, Undo looked dead for up to 60 s). Offline there is nothing to re-query, so undoing an archive offline puts the mail back server-side-eventually but the row reappears only on reconnect. Fixing it means placing the row locally — feasible for the default `receivedAt desc, collapseThreads:false` window (compare against the neighbours' envelopes), wrong for a collapsed-thread or server-sorted window. Decide scope before **G2**; a partial fix gated on the window's sort/collapse is the likely shape. | — | Gate G2 | open |
 | D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **signed off 2026-07-10.** Owner approved after two revisions: calmer accent (orange → blue `#2f6fe0`/`#5e93f0`, warm colors reserved for signals) and responsive compact controls (34px pointer / 44px touch via `--waxwing-control-min`, tightened spacing) — both WCAG-AA-verified. Broad UI build-out (M1.4+) unblocked. |
 
 ## 14. Appendix — Requirements Coverage Matrix

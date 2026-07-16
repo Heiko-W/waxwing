@@ -57,7 +57,7 @@ function body(
   id: string,
   text: string,
   lastAccessedAt: number,
-): Omit<EmailBodyRow, 'bytes' | 'ablob'> {
+): Omit<EmailBodyRow, 'bytes' | 'ablob'> & { authResults: string[] } {
   return {
     accountId: ACC,
     id,
@@ -67,6 +67,7 @@ function body(
     htmlBody: [],
     attachments: [],
     hasAttachment: false,
+    authResults: [],
     fetchedAt: 1,
     lastAccessedAt,
   }
@@ -88,6 +89,28 @@ describe('size accounting', () => {
         bodyValues: { a: { value: 'abcde', isEncodingProblem: false, isTruncated: false } },
       }),
     ).toBe(10 + BODY_OVERHEAD_BYTES)
+  })
+
+  it('estimateBodyBytes counts the M3.9 header details and never throws on a malformed row', () => {
+    expect(
+      estimateBodyBytes({
+        bodyValues: {},
+        bcc: [{ name: 'Ann', email: 'a@x.test' }],
+        sender: [{ name: null, email: 'b@x.test' }],
+        authResults: ['abcde'],
+      }),
+    ).toBe((3 + 8 + 8 + 5) * 2 + BODY_OVERHEAD_BYTES)
+    // It runs inside a Dexie .upgrade() over rows written by older builds, where a throw would abort
+    // the transaction and make db.open() reject FOREVER after. Garbage must cost a wrong number, not
+    // the whole app.
+    expect(() =>
+      estimateBodyBytes({
+        bodyValues: {},
+        bcc: 'nonsense' as never,
+        sender: { not: 'a list' } as never,
+        authResults: [42 as never],
+      }),
+    ).not.toThrow()
   })
 
   it('putEmailBody derives `bytes` and `ablob` — a caller cannot forget them', async () => {

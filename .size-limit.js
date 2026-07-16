@@ -47,6 +47,8 @@ export default [
       // Lazy dialogs.
       '!apps/web/dist/assets/OutboxProblemsDialog-*.js',
       '!apps/web/dist/assets/InstallDialog-*.js',
+      // The raw .eml source view (mail/, M3.9) — opened from the reading pane's overflow menu.
+      '!apps/web/dist/assets/MessageSourceDialog-*.js',
       // Lazy keyboard overlays (shortcuts/, M3.8): the ⌘K palette (with its fuzzy matcher) and the
       // `?` cheat-sheet. The registry + dispatcher stay eager; these two surfaces do not.
       '!apps/web/dist/assets/CommandPalette-*.js',

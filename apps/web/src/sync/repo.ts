@@ -366,10 +366,16 @@ export async function allEmailIds(db: ReplicaDb, accountId: Id): Promise<Id[]> {
  * Store a body, deriving its accounting fields (M3.4). The derived `bytes`/`ablob` are computed HERE
  * — never by the caller — so the LRU index and the blob→owner link cannot drift out of sync with the
  * payload they describe.
+ *
+ * `authResults` is REQUIRED here even though `EmailBodyRow` declares it optional, and the asymmetry
+ * is the point: on the ROW, `undefined` is the load-bearing signal "written before M3.9, re-fetch it"
+ * (`engine.fetchBody`); on the WRITE it must never be producible, or a new writer that simply forgets
+ * the field mints rows that look legacy forever and re-fetch on every open. Pass `[]` for a message
+ * with no such header — which is exactly what `port.ts` already maps a missing property to.
  */
 export async function putEmailBody(
   db: ReplicaDb,
-  body: Omit<EmailBodyRow, 'bytes' | 'ablob'>,
+  body: Omit<EmailBodyRow, 'bytes' | 'ablob'> & { authResults: string[] },
 ): Promise<void> {
   await db.emailBodies.put({
     ...body,

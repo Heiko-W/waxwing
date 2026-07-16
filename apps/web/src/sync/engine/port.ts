@@ -17,6 +17,7 @@ import {
 } from '@waxwing/jmap'
 import type { EmailEnvelopeInput } from '../db'
 import {
+  AUTH_RESULTS_PROPERTY,
   BODY_PART_PROPERTIES,
   CannotCalculateChangesError,
   type ChangesResult,
@@ -34,6 +35,20 @@ import {
 
 /** The wire shape of `SetError`-style entries; only `type`/`description` are surfaced. */
 type WireSetErrors = Record<string, { type: string; description?: string | null }> | null
+
+/**
+ * The wire shape of a body `/get` record: an {@link EmailBodyInput} whose Authentication-Results
+ * arrive under the literal, colon-laden JMAP property name rather than a clean field.
+ */
+type EmailBodyWire = Omit<EmailBodyInput, 'authResults'> & {
+  readonly [AUTH_RESULTS_PROPERTY]?: string[] | null
+}
+
+/** Wire → port: rename `header:…:asText:all` to `authResults` so the awkward key stops here. */
+function toEmailBodyInput(wire: EmailBodyWire): EmailBodyInput {
+  const { [AUTH_RESULTS_PROPERTY]: authResults, ...rest } = wire
+  return { ...rest, authResults: authResults ?? [] }
+}
 
 function mapSetErrors(errors: WireSetErrors): Record<string, PortSetError> {
   const out: Record<string, PortSetError> = {}
@@ -153,7 +168,7 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       })
       const response = (await builder.send()).get(handle)
       return {
-        list: response.list as unknown as EmailBodyInput[],
+        list: (response.list as unknown as EmailBodyWire[]).map(toEmailBodyInput),
         notFound: response.notFound,
         state: response.state,
       }

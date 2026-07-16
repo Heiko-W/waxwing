@@ -62,3 +62,18 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Print: no overlay ever prints (FR-RD-05, "clean print stylesheet").
+ *
+ * Every Dialog, Menu, Tooltip and Toast is portalled to `document.body` (`ui/internal/Portal`), i.e.
+ * OUT of the tree the per-component print rules reach — so `reading.module.css`'s `@media print`
+ * block cannot hide the ⋯ menu's popup, the move dialog or a toast, and Ctrl+P with any of them open
+ * prints it over the message. It lives here, keyed on the marker the portal already stamps, because
+ * that marker is exactly "an overlay is up" (the same test the M3.8 keyboard layer uses).
+ */
+@media print {
+  [data-waxwing-portal] {
+    display: none;
+  }
+}

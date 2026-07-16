@@ -420,7 +420,13 @@
     "from": "Von",
     "to": "An",
     "cc": "Kopie",
+    "replyTo": "Antwort an",
+    "bcc": "Blindkopie",
+    "sender": "Absender",
+    "senderOnBehalfOf": "{{sender}} im Auftrag von {{from}}",
     "date": "Datum",
+    "sentAt": "Gesendet",
+    "messageId": "Message-ID",
     "details": "Details",
     "noRecipients": "(Keine Empfänger)",
     "actions": "Nachrichtenaktionen",
@@ -451,7 +457,27 @@
       "download": "{{name}} herunterladen"
     },
     "editDraft": "Entwurf bearbeiten",
-    "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben."
+    "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben.",
+    "more": "Weitere Aktionen",
+    "authResults": {
+      "label": "Authentifizierung",
+      "reportedBy": "Gemeldet von {{host}}:",
+      "unverified": "Diese Angabe stammt aus der Nachricht selbst und lässt sich nicht überprüfen. Beurteilen Sie die Echtheit einer Nachricht nicht allein danach."
+    },
+    "source": {
+      "title": "Nachrichtenquelltext",
+      "view": "Quelltext anzeigen",
+      "save": "Als .eml speichern",
+      "copy": "Kopieren",
+      "copyHead": "Die ersten {{size}} kopieren",
+      "copied": "Kopiert",
+      "truncated": "Es wird nur der Anfang dieser Nachricht angezeigt (insgesamt {{size}}). Speichern Sie sie als .eml, um alles zu sehen.",
+      "error": {
+        "offline": "Der Quelltext konnte nicht geladen werden, da Sie offline sind.",
+        "notFound": "Diese Nachricht ist nicht mehr auf dem Server vorhanden.",
+        "failed": "Der Quelltext konnte nicht geladen werden."
+      }
+    }
   },
   "compose": {
     "toolbar": "Formatierung",

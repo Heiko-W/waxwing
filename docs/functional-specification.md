@@ -192,8 +192,12 @@ webmail is an open gap.
 - **FR-RD-05 (Must)** — Standard actions: reply, reply-all, forward, archive, delete,
   junk/not-junk, move, flag, mark unread, print (clean print stylesheet).
 - **FR-RD-06 (Should)** — Header details on demand (full from/to/cc, date, message-id,
-  authentication results if exposed); "View source" / download as `.eml` (via Blob
-  capability where available).
+  authentication results if exposed); "View source" / download as `.eml` (an authenticated
+  download of the Email's own `blobId` — see [ADR-011](adr/011-eml-download-needs-no-blob-capability.md):
+  `downloadUrl` is mandatory in RFC 8620, so no Blob-capability gate exists or is needed).
+  Authentication results are reported **neutrally and attributed** — never as a verdict:
+  the header is forgeable by the sender (RFC 8601 §7.1) and JMAP exposes no trusted
+  `authserv-id`, so only the topmost instance is read and the reporting host is always named.
 - **FR-RD-07 (Should)** — Attached messages (`message/rfc822`) open in-app as nested
   message views.
 - **FR-RD-08 (Should)** — Phishing friction: visually distinguish display name vs. actual

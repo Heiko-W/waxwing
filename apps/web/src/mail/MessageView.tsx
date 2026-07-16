@@ -6,6 +6,11 @@
  * fetched on open and the message is auto-marked read after a short dwell unless disabled or already
  * read (FR-RD-07). Remote content is allowed when the deployment default is `allow`, the sender is on
  * the local allowlist, or the reader clicks "Load images".
+ *
+ * M3.9 rounds the details disclosure out to the full set a reader ever needs to judge a message —
+ * Reply-To, Bcc, Sender, the sent/received divergence, the Message-ID and the authentication report
+ * (reported, never judged: `auth-results.ts` explains why) — and adds the raw .eml behind the
+ * overflow menu, lazily.
  */
 
 import { renderPlainText, sanitize } from '@waxwing/mail-html'
@@ -16,12 +21,13 @@ import {
   Forward,
   MailMinus,
   MailWarning,
+  MoreHorizontal,
   Reply,
   ReplyAll,
   Star,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSession } from '../app/session/context'
 import {
@@ -33,13 +39,14 @@ import {
 } from '../compose'
 import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useMailboxByRole, useReplica } from '../sync'
-import { Avatar, Button, Dialog, IconButton, Spinner } from '../ui'
+import { Avatar, Button, Dialog, IconButton, Menu, type MenuItemSpec, Spinner } from '../ui'
 import { AttachmentList } from './AttachmentList'
+import { topmostAuthResults } from './auth-results'
 import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
-import { formatAddressList, senderAddress, senderName } from './message-body'
+import { formatAddressList, sameAddresses, senderAddress, senderName } from './message-body'
 import { RemoteContentBanner } from './RemoteContentBanner'
 import styles from './reading.module.css'
 import {
@@ -56,6 +63,16 @@ import { useMessageBody } from './useMessageBody'
 
 /** How long an opened message must stay open before it is auto-marked read (FR-RD-07). */
 export const AUTO_MARK_READ_DELAY_MS = 1500
+
+/**
+ * How far `sentAt` must sit from `receivedAt` before the details list shows BOTH. Every message
+ * differs by a second or two, and a "Sent" row that always restates "Date" is pure noise; a genuine
+ * gap (a queued/backdated/delayed message) is worth seeing.
+ */
+const SENT_AT_DIVERGENCE_MS = 5 * 60 * 1000
+
+/** The raw-source dialog is a route nobody takes twice a day — code-split it (NFR-PERF-03). */
+const MessageSourceDialog = lazy(() => import('./MessageSourceDialog'))
 
 export interface MessageViewProps {
   readonly email: EmailRow
@@ -93,6 +110,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const inThisMailbox = mailboxId ?? null
 
   const [detailsOpen, setDetailsOpen] = useState(false)
+  /** Which overflow action opened the raw-source dialog; `null` = closed (and never mounted). */
+  const [sourceOpen, setSourceOpen] = useState<'view' | 'save' | null>(null)
   const [moveOpen, setMoveOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [loadedOnce, setLoadedOnce] = useState(false)
@@ -144,6 +163,34 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     timeStyle: 'short',
   })
 
+  // ---- header details (M3.9, FR-RD-06). Each row earns its place or is not rendered. ----
+
+  /** A Reply-To that merely repeats From is what most mail carries; only a DIFFERENT one is news. */
+  const replyTo =
+    email.replyTo !== null && email.replyTo.length > 0 && !sameAddresses(email.replyTo, email.from)
+      ? email.replyTo
+      : null
+  const bcc = body?.bcc !== undefined && body.bcc !== null && body.bcc.length > 0 ? body.bcc : null
+  /** RFC 5322 `Sender`: the mailbox that actually sent it, on behalf of `From`. */
+  const sender =
+    body?.sender !== undefined &&
+    body.sender !== null &&
+    body.sender.length > 0 &&
+    !sameAddresses(body.sender, email.from)
+      ? body.sender
+      : null
+  const messageId = email.messageId?.[0]
+  const sentLabel = useMemo(() => {
+    if (email.sentAt === null) return null
+    const sent = new Date(email.sentAt).getTime()
+    const received = new Date(email.receivedAt).getTime()
+    if (Number.isNaN(sent) || Number.isNaN(received)) return null
+    if (Math.abs(sent - received) <= SENT_AT_DIVERGENCE_MS) return null
+    return formatDate(new Date(sent), { dateStyle: 'medium', timeStyle: 'short' })
+  }, [email.sentAt, email.receivedAt])
+  // Reported, never judged — no verdict, no colour, no tick. See `auth-results.ts` for the why.
+  const authReport = useMemo(() => topmostAuthResults(body?.authResults), [body?.authResults])
+
   // Open a reply / reply-all / forward draft seeded from this message (M2.3, FR-CMP-02/10).
   const onCompose = useCallback(
     (kind: ReplyKind): void => {
@@ -173,6 +220,16 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       })
     },
     [isHtml, sanitized, joinedHtml, email, textBody, own, t, dateLabel, name, body, openDraft],
+  )
+
+  // Both overflow actions route through the SAME lazy dialog: it is the only place that holds the
+  // downloaded bytes, and a visible loading/error surface beats a save that fails silently.
+  const overflowItems = useMemo<MenuItemSpec[]>(
+    () => [
+      { id: 'viewSource', label: t('reading.source.view'), onSelect: () => setSourceOpen('view') },
+      { id: 'saveEml', label: t('reading.source.save'), onSelect: () => setSourceOpen('save') },
+    ],
+    [t],
   )
 
   const onAlwaysAllow =
@@ -258,6 +315,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             <dl className={styles.details}>
               <dt>{t('reading.from')}</dt>
               <dd>{formatAddressList(email.from, t('list.noSender'))}</dd>
+              {replyTo !== null && (
+                <>
+                  <dt>{t('reading.replyTo')}</dt>
+                  <dd>{formatAddressList(replyTo, t('reading.noRecipients'))}</dd>
+                </>
+              )}
               <dt>{t('reading.to')}</dt>
               <dd>{formatAddressList(email.to, t('reading.noRecipients'))}</dd>
               {email.cc !== null && email.cc.length > 0 && (
@@ -266,8 +329,49 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
                   <dd>{formatAddressList(email.cc, t('reading.noRecipients'))}</dd>
                 </>
               )}
+              {bcc !== null && (
+                <>
+                  <dt>{t('reading.bcc')}</dt>
+                  <dd>{formatAddressList(bcc, t('reading.noRecipients'))}</dd>
+                </>
+              )}
+              {sender !== null && (
+                <>
+                  <dt>{t('reading.sender')}</dt>
+                  <dd>
+                    {t('reading.senderOnBehalfOf', {
+                      sender: formatAddressList(sender, t('list.noSender')),
+                      from: formatAddressList(email.from, t('list.noSender')),
+                    })}
+                  </dd>
+                </>
+              )}
               <dt>{t('reading.date')}</dt>
               <dd>{dateLabel}</dd>
+              {sentLabel !== null && (
+                <>
+                  <dt>{t('reading.sentAt')}</dt>
+                  <dd>{sentLabel}</dd>
+                </>
+              )}
+              {messageId !== undefined && (
+                <>
+                  <dt>{t('reading.messageId')}</dt>
+                  <dd>{messageId}</dd>
+                </>
+              )}
+              {authReport !== null && (
+                <>
+                  <dt>{t('reading.authResults.label')}</dt>
+                  <dd>
+                    {t('reading.authResults.reportedBy', { host: authReport.authservId })}{' '}
+                    {authReport.results
+                      .map((result) => `${result.method}=${result.result}`)
+                      .join(' · ')}
+                    <span className={styles.authNote}>{t('reading.authResults.unverified')}</span>
+                  </dd>
+                </>
+              )}
             </dl>
           )}
         </div>
@@ -344,6 +448,16 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         >
           <Forward />
         </IconButton>
+        {/* Wrapped rather than given `className` directly — the same shape FolderTreeView uses, and
+            the span is what the `@media print` rule hides. */}
+        <span className={styles.overflowMenu}>
+          <Menu
+            triggerLabel={t('reading.more')}
+            trigger={<MoreHorizontal aria-hidden="true" />}
+            align="end"
+            items={overflowItems}
+          />
+        </span>
       </div>
 
       {hasRemoteContent && !allowRemote && (
@@ -387,6 +501,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
 
       {labelsOpen && (
         <LabelMenu ids={[email.id]} anchorRef={actionBarRef} onClose={() => setLabelsOpen(false)} />
+      )}
+
+      {sourceOpen !== null && (
+        <Suspense fallback={null}>
+          <MessageSourceDialog
+            open
+            accountId={accountId}
+            email={email}
+            autoSave={sourceOpen === 'save'}
+            onClose={() => setSourceOpen(null)}
+          />
+        </Suspense>
       )}
 
       {confirmDelete && (

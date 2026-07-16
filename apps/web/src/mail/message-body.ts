@@ -90,3 +90,35 @@ export function senderName(from: EmailAddress[] | null, noneLabel: string): stri
 export function senderAddress(from: EmailAddress[] | null): string | null {
   return from?.[0]?.email ?? null
 }
+
+/**
+ * Whether two address lists name the same mailboxes — order- and display-name-insensitive (M3.9).
+ * The header details use it to decide whether a `Reply-To`/`Sender` is worth showing at all: one that
+ * merely repeats `From` (the overwhelmingly common case) is noise, not information.
+ *
+ * Addresses are compared case-insensitively in full. The local part is technically case-sensitive
+ * (RFC 5321 §2.3.11), but this is a "would the reader notice a difference?" test, not routing.
+ */
+export function sameAddresses(a: EmailAddress[] | null, b: EmailAddress[] | null): boolean {
+  const left = addressSet(a)
+  const right = addressSet(b)
+  if (left.size !== right.size) return false
+  for (const address of left) if (!right.has(address)) return false
+  return true
+}
+
+/**
+ * Defensive on purpose: `EmailAddress.email` is non-nullable per RFC 8621, but this runs during
+ * RENDER on server data, and `db.ts`'s byte estimator already treats the very same rows as possibly
+ * malformed (`address?.email?.length ?? 0`, "a throw costs the whole app"). A `TypeError` here would
+ * take the entire mail screen down to the error boundary over one bad address. Every sibling helper
+ * (`senderAddress`, `formatAddressList`) is already guarded; this was the only bare method call.
+ */
+function addressSet(list: EmailAddress[] | null): Set<string> {
+  const out = new Set<string>()
+  for (const address of list ?? []) {
+    const email = address?.email
+    if (typeof email === 'string') out.add(email.toLowerCase())
+  }
+  return out
+}

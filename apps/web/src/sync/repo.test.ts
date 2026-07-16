@@ -111,6 +111,7 @@ describe('email bodies + LRU (M1.8 / FR-OFF-04)', () => {
       htmlBody: [],
       attachments: [],
       hasAttachment: false,
+      authResults: [],
       fetchedAt: 1,
       lastAccessedAt: 1,
     })
@@ -123,6 +124,7 @@ describe('email bodies + LRU (M1.8 / FR-OFF-04)', () => {
       htmlBody: [],
       attachments: [],
       hasAttachment: false,
+      authResults: [],
       fetchedAt: 2,
       lastAccessedAt: 2,
     })

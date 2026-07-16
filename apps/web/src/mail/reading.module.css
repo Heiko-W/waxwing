@@ -162,6 +162,18 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * The authentication report (M3.9, FR-RD-06). Deliberately styled as plain prose: no colour, no
+ * icon, no badge. The header is forgeable and we have no way to verify it (see mail/auth-results.ts),
+ * so anything that reads as a VERDICT — a green tick above all — would be vouching for a forgery.
+ */
+.authNote {
+  display: block;
+  margin-top: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
 /* ---- action bar ---- */
 
 .actionBar {
@@ -175,6 +187,24 @@
 
 .actionSpacer {
   flex: 1;
+}
+
+/* The overflow (⋯) menu. `Menu`'s trigger is a bordered button by default; here it sits among ghost
+   IconButtons, so it borrows their look. */
+.overflowMenu {
+  display: inline-flex;
+}
+
+.overflowMenu button {
+  border-color: transparent;
+  background-color: transparent;
+  padding-inline: var(--waxwing-space-2);
+}
+
+@media (hover: hover) {
+  .overflowMenu button:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 .flagOn {
@@ -428,6 +458,40 @@
   color: var(--waxwing-text-muted);
 }
 
+/* ---- raw source dialog (M3.9, FR-RD-06) ---- */
+
+.sourceStatus {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.sourceTruncated {
+  margin: 0 0 var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+/* Wrapping, not horizontal scroll: an unfolded header or a base64 part is one very long line, and a
+   source view you have to scroll sideways through is unreadable. */
+.sourceText {
+  margin: 0;
+  max-block-size: 60vh;
+  overflow: auto;
+  padding: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-2);
+  color: var(--waxwing-text);
+  font-family: var(--waxwing-font-mono);
+  font-size: var(--waxwing-text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .moveItem,
   .collapsed {
@@ -440,6 +504,9 @@
  * The sandboxed body frame prints its own content. (FR-RD-05.)
  */
 @media print {
+  /* NB the ⋯ menu needs no entry here: its trigger lives inside `.actionBar` (hidden below), and its
+   * open POPUP is portalled out of this tree entirely — `ui/global.css` hides that, keyed on
+   * `[data-waxwing-portal]`. A `.overflowMenu` rule here would look like the guard and be a no-op. */
   .actionBar,
   .remoteActions,
   .attachmentPreview,

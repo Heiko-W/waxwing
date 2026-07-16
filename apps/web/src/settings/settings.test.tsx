@@ -72,6 +72,7 @@ beforeEach(async () => {
     htmlBody: [],
     attachments: [],
     hasAttachment: false,
+    authResults: [],
     fetchedAt: 1,
     lastAccessedAt: 1,
   })

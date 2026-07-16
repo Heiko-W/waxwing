@@ -166,6 +166,22 @@ export interface EmailBodyRow {
   htmlBody: EmailBodyPart[]
   attachments: EmailBodyPart[]
   hasAttachment: boolean
+  /**
+   * Header details for the reading pane's disclosure (M3.9, FR-RD-06). All three are OPTIONAL and
+   * NON-INDEXED, so per the migration policy above they need **no** Dexie version bump: they appear
+   * on rows written from now on and read as `undefined` on rows written before M3.9.
+   */
+  bcc?: EmailAddress[] | null
+  sender?: EmailAddress[] | null
+  /**
+   * Every `Authentication-Results` value, in message order (`:asText:all`). `[0]` is the topmost —
+   * the receiving MTA prepends its own, so it is the only one worth showing (RFC 8601 §5); see
+   * `mail/auth-results.ts` for why the UI renders no verdict from it.
+   *
+   * The three states are load-bearing: `undefined` means EXACTLY "this row predates M3.9" (and
+   * `fetchBody` re-fetches it), `[]` means "the message carries no such header".
+   */
+  authResults?: string[]
   fetchedAt: number
   lastAccessedAt: number
   /**
@@ -230,10 +246,23 @@ export const ENVELOPE_BYTES_ESTIMATE = 1_200
  * The replica is a rebuildable cache, but nothing rebuilds it: the user's mail app would simply never
  * load again. A wrong byte estimate costs a slightly-off eviction; a throw costs the whole app.
  */
-export function estimateBodyBytes(row: Pick<EmailBodyRow, 'bodyValues'>): number {
+export function estimateBodyBytes(
+  row: Pick<EmailBodyRow, 'bodyValues' | 'bcc' | 'sender' | 'authResults'>,
+): number {
   let payload = 0
   for (const value of Object.values(row.bodyValues ?? {})) {
     if (typeof value?.value === 'string') payload += value.value.length * 2
+  }
+  // M3.9's header details. Same never-throws discipline as above: an `Array.isArray` gate rather than
+  // `?? []`, because spreading/iterating whatever a malformed row actually holds is what would throw.
+  for (const address of [
+    ...(Array.isArray(row.bcc) ? row.bcc : []),
+    ...(Array.isArray(row.sender) ? row.sender : []),
+  ]) {
+    payload += ((address?.name?.length ?? 0) + (address?.email?.length ?? 0)) * 2
+  }
+  for (const value of Array.isArray(row.authResults) ? row.authResults : []) {
+    if (typeof value === 'string') payload += value.length * 2
   }
   return payload + BODY_OVERHEAD_BYTES
 }

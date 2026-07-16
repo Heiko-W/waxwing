@@ -6,6 +6,7 @@ import {
   formatAddressList,
   pickHtmlBody,
   pickTextBody,
+  sameAddresses,
   senderName,
 } from './message-body'
 
@@ -138,5 +139,48 @@ describe('senderName', () => {
     expect(senderName([{ name: 'Bob', email: 'b@x.test' }], '(no sender)')).toBe('Bob')
     expect(senderName([{ name: null, email: 'b@x.test' }], '(no sender)')).toBe('b@x.test')
     expect(senderName(null, '(no sender)')).toBe('(no sender)')
+  })
+})
+
+describe('sameAddresses', () => {
+  it('ignores order and display names', () => {
+    expect(
+      sameAddresses(
+        [
+          { name: 'Alice', email: 'a@x.test' },
+          { name: null, email: 'b@x.test' },
+        ],
+        [
+          { name: 'Bob', email: 'b@x.test' },
+          { name: 'Alice Smith', email: 'a@x.test' },
+        ],
+      ),
+    ).toBe(true)
+  })
+
+  it('ignores address casing', () => {
+    expect(
+      sameAddresses([{ name: null, email: 'A@X.test' }], [{ name: null, email: 'a@x.test' }]),
+    ).toBe(true)
+  })
+
+  it('is false when the mailboxes differ', () => {
+    expect(
+      sameAddresses([{ name: null, email: 'a@x.test' }], [{ name: null, email: 'b@x.test' }]),
+    ).toBe(false)
+    expect(
+      sameAddresses(
+        [{ name: null, email: 'a@x.test' }],
+        [
+          { name: null, email: 'a@x.test' },
+          { name: null, email: 'b@x.test' },
+        ],
+      ),
+    ).toBe(false)
+  })
+
+  it('treats null and an empty list as the same (both name nobody)', () => {
+    expect(sameAddresses(null, [])).toBe(true)
+    expect(sameAddresses(null, [{ name: null, email: 'a@x.test' }])).toBe(false)
   })
 })

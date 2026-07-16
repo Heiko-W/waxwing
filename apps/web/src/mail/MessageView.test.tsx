@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EmailBodyPart, EmailBodyValue } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -47,7 +47,7 @@ const val = (v: string): EmailBodyValue => ({
   isTruncated: false,
 })
 
-function textBodyRow(id: string, text: string): EmailBodyRow {
+function textBodyRow(id: string, text: string): EmailBodyRow & { authResults: string[] } {
   return {
     accountId: 'a',
     id,
@@ -57,6 +57,7 @@ function textBodyRow(id: string, text: string): EmailBodyRow {
     htmlBody: [part({ partId: 't1', type: 'text/plain' })],
     attachments: [],
     hasAttachment: false,
+    authResults: [],
     fetchedAt: 1,
     lastAccessedAt: 1,
     bytes: 0,
@@ -64,7 +65,7 @@ function textBodyRow(id: string, text: string): EmailBodyRow {
   }
 }
 
-function htmlRemoteRow(id: string): EmailBodyRow {
+function htmlRemoteRow(id: string): EmailBodyRow & { authResults: string[] } {
   const html = '<p>Hi</p><img src="https://track.test/pixel.png" alt="x">'
   return {
     accountId: 'a',
@@ -75,6 +76,7 @@ function htmlRemoteRow(id: string): EmailBodyRow {
     htmlBody: [part({ partId: 'h1', type: 'text/html' })],
     attachments: [],
     hasAttachment: false,
+    authResults: [],
     fetchedAt: 1,
     lastAccessedAt: 1,
     bytes: 0,
@@ -304,6 +306,123 @@ describe('MessageView', () => {
       }),
       expect.anything(),
     )
+  })
+
+  // ---- header details (M3.9, FR-RD-06) ----
+
+  async function openDetails(
+    row: EmailRow,
+    body?: EmailBodyRow & { authResults: string[] },
+  ): Promise<HTMLElement> {
+    await putEmailBody(db, body ?? textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(row)
+    await user.click(await screen.findByRole('button', { name: 'Details' }))
+    return screen.getByRole('article')
+  }
+
+  it('shows Bcc, the Message-ID and a differing Reply-To in the details', async () => {
+    const details = await openDetails(
+      seen({
+        from: [{ name: 'Alice', email: 'alice@x.test' }],
+        replyTo: [{ name: null, email: 'list@x.test' }],
+        messageId: ['<m-42@x.test>'],
+      }),
+      { ...textBodyRow('e1', 'body'), bcc: [{ name: null, email: 'secret@x.test' }] },
+    )
+    expect(within(details).getByText('Reply-To')).toBeInTheDocument()
+    expect(within(details).getByText('list@x.test')).toBeInTheDocument()
+    expect(within(details).getByText('Bcc')).toBeInTheDocument()
+    expect(within(details).getByText('secret@x.test')).toBeInTheDocument()
+    expect(within(details).getByText('Message-ID')).toBeInTheDocument()
+    expect(within(details).getByText('<m-42@x.test>')).toBeInTheDocument()
+  })
+
+  it('hides a Reply-To that merely repeats From — noise, not information', async () => {
+    const details = await openDetails(
+      seen({
+        from: [{ name: 'Alice', email: 'alice@x.test' }],
+        // Same mailbox, different display name and casing: still the same address.
+        replyTo: [{ name: 'Alice Smith', email: 'ALICE@x.test' }],
+      }),
+    )
+    expect(within(details).queryByText('Reply-To')).not.toBeInTheDocument()
+  })
+
+  it('names the Sender as acting on behalf of From', async () => {
+    const details = await openDetails(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }] }), {
+      ...textBodyRow('e1', 'body'),
+      sender: [{ name: 'Mailer', email: 'bounce@list.test' }],
+    })
+    expect(within(details).getByText(/on behalf of/)).toBeInTheDocument()
+    expect(within(details).getByText(/bounce@list\.test/)).toBeInTheDocument()
+  })
+
+  it('shows Sent separately only when it diverges from the received time', async () => {
+    const near = await openDetails(
+      seen({ receivedAt: '2026-07-01T12:00:00Z', sentAt: '2026-07-01T11:58:00Z' }),
+    )
+    expect(within(near).queryByText('Sent')).not.toBeInTheDocument()
+    cleanup()
+    await db.emailBodies.clear()
+
+    const far = await openDetails(
+      seen({ receivedAt: '2026-07-01T12:00:00Z', sentAt: '2026-06-28T09:00:00Z' }),
+    )
+    expect(within(far).getByText('Sent')).toBeInTheDocument()
+  })
+
+  it('renders NO authentication block when the message carries no such header', async () => {
+    const details = await openDetails(seen(), { ...textBodyRow('e1', 'body'), authResults: [] })
+    expect(within(details).queryByText('Authentication')).not.toBeInTheDocument()
+  })
+
+  it('quotes the TOPMOST report and names who reported it — with no verdict', async () => {
+    // The whole point of `:asText:all` + [0]: the forged report a phishing message carries is the
+    // LAST one; our MTA's is the first. This asserts the fail, the authserv-id, and the absence of
+    // any verdict styling.
+    const details = await openDetails(seen(), {
+      ...textBodyRow('e1', 'body'),
+      authResults: [
+        'mx.stalwart.test; dkim=fail header.d=paypal.test; dmarc=fail header.from=paypal.test',
+        'mx.paypal.test; dkim=pass header.d=paypal.test; dmarc=pass header.from=paypal.test',
+      ],
+    })
+    expect(within(details).getByText('Authentication')).toBeInTheDocument()
+    expect(within(details).getByText(/Reported by mx\.stalwart\.test/)).toBeInTheDocument()
+    expect(within(details).getByText(/dkim=fail · dmarc=fail/)).toBeInTheDocument()
+    expect(within(details).queryByText(/dmarc=pass/)).not.toBeInTheDocument()
+    expect(within(details).getByText(/cannot be verified/)).toBeInTheDocument()
+  })
+
+  it('renders no authentication block for a body row written before M3.9', async () => {
+    // `authResults: undefined` is exactly "this row predates M3.9" — the engine re-fetches it, and
+    // until it lands the details must simply omit the block rather than invent one.
+    const details = await openDetails(seen(), textBodyRow('e1', 'body'))
+    expect(within(details).queryByText('Authentication')).not.toBeInTheDocument()
+  })
+
+  // ---- overflow menu (M3.9) ----
+
+  it('offers View source / Save as .eml from the overflow menu', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen())
+    await user.click(await screen.findByRole('button', { name: 'More actions' }))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'View source' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Save as .eml' })).toBeInTheDocument()
+  })
+
+  it('does not mount the source dialog until View source is chosen', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen())
+    await screen.findByText('Alice')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'View source' }))
+    expect(await screen.findByRole('dialog', { name: 'Message source' })).toBeInTheDocument()
   })
 
   it('has no a11y violations', async () => {

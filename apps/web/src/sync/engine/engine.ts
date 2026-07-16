@@ -618,14 +618,29 @@ export class SyncEngine {
     const now = this.clock.now()
     this.lastBodyFetchId = emailId
     const existing = await this.db.emailBodies.get([this.accountId, emailId])
+    // The LRU touch is UNCONDITIONAL — a row the reader just opened is hot whatever else happens
+    // next. Leaving it inside the early return below made a pre-M3.9 row age toward eviction while
+    // being re-fetched on every open, and offline it never ran at all (the fetch throws first).
     if (existing !== undefined) {
       await this.db.emailBodies.update([this.accountId, emailId], { lastAccessedAt: now })
-      return null
     }
+    // M3.9 INVARIANT: every write below sets `authResults` (`[]` when the message carries no such
+    // header), so `undefined` means EXACTLY "this row was written before M3.9 and lacks the header
+    // details". Re-fetch it — otherwise a message the reader has already opened would never gain them
+    // until it happened to be evicted. (Once, in practice: the fetch rewrites the row with `[]` at
+    // minimum. A message destroyed server-side yields no row and so re-fetches on each open — bounded
+    // by the reader's own opens, and it is about to disappear from the list anyway.)
+    if (existing !== undefined && existing.authResults !== undefined) return null
     const { list } = await this.port.getEmailBodies([emailId])
     let unstored: EmailBodyRow | null = null
     for (const body of list) {
-      const row = { accountId: this.accountId, ...body, fetchedAt: now, lastAccessedAt: now }
+      const row = {
+        accountId: this.accountId,
+        ...body,
+        authResults: body.authResults ?? [],
+        fetchedAt: now,
+        lastAccessedAt: now,
+      }
       try {
         await withQuotaRecovery(
           () => putEmailBody(this.db, row),
@@ -713,6 +728,9 @@ export class SyncEngine {
       await putEmailBody(this.db, {
         accountId: this.accountId,
         ...body,
+        // Same invariant as {@link fetchBody}: without this, a prefetched row would look like a
+        // pre-M3.9 legacy row and be re-fetched the moment the reader opened it.
+        authResults: body.authResults ?? [],
         fetchedAt: now,
         lastAccessedAt: now,
       })

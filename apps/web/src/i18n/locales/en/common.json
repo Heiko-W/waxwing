@@ -420,7 +420,13 @@
     "from": "From",
     "to": "To",
     "cc": "Cc",
+    "replyTo": "Reply-To",
+    "bcc": "Bcc",
+    "sender": "Sender",
+    "senderOnBehalfOf": "{{sender}} on behalf of {{from}}",
     "date": "Date",
+    "sentAt": "Sent",
+    "messageId": "Message-ID",
     "details": "Details",
     "noRecipients": "(No recipients)",
     "actions": "Message actions",
@@ -451,7 +457,27 @@
       "download": "Download {{name}}"
     },
     "editDraft": "Edit draft",
-    "draftLead": "This is a draft you haven't sent yet."
+    "draftLead": "This is a draft you haven't sent yet.",
+    "more": "More actions",
+    "authResults": {
+      "label": "Authentication",
+      "reportedBy": "Reported by {{host}}:",
+      "unverified": "This report comes from the message itself and cannot be verified. Do not rely on it alone to judge whether a message is genuine."
+    },
+    "source": {
+      "title": "Message source",
+      "view": "View source",
+      "save": "Save as .eml",
+      "copy": "Copy",
+      "copyHead": "Copy the first {{size}}",
+      "copied": "Copied",
+      "truncated": "Showing the beginning of this message only ({{size}} in total). Save it as .eml to see all of it.",
+      "error": {
+        "offline": "The message source could not be loaded because you are offline.",
+        "notFound": "This message is no longer on the server.",
+        "failed": "The message source could not be loaded."
+      }
+    }
   },
   "compose": {
     "toolbar": "Formatting",

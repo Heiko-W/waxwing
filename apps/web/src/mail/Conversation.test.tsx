@@ -44,7 +44,7 @@ const val = (v: string): EmailBodyValue => ({
   isTruncated: false,
 })
 
-function bodyRow(id: string): EmailBodyRow {
+function bodyRow(id: string): EmailBodyRow & { authResults: string[] } {
   return {
     accountId: 'a',
     id,
@@ -54,6 +54,7 @@ function bodyRow(id: string): EmailBodyRow {
     htmlBody: [part()],
     attachments: [],
     hasAttachment: false,
+    authResults: [],
     fetchedAt: 1,
     lastAccessedAt: 1,
     bytes: 0,

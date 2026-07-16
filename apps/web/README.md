@@ -172,6 +172,45 @@ The stores are module-scoped, so **`endSession` must reset them** — otherwise 
 previous account's messages (JMAP mailbox ids are per-account, and the window key does not include the
 account).
 
+## Header details, authentication results & `.eml` (M3.9)
+
+The reading pane's Details disclosure (`MessageView.tsx`) shows the full addresses, both dates, the
+message-id and — when the message carries one — the authentication results. The ⋯ menu adds "View
+source" and "Save as .eml" (`use-message-source.ts` + a lazy `MessageSourceDialog`).
+
+Four things are load-bearing, and three of them are security:
+
+1. **Ask for `header:Authentication-Results:asText:all` and read `[0]`. Never `:asText`.**
+   RFC 8621 §4.1.3: the un-suffixed form is *"the value of the **last** instance of the header
+   field"*. A phishing message carries its own forged `Authentication-Results`, and the receiving
+   MTA **prepends** its report (RFC 8601 §5) — so the last instance is **the attacker's**. Verified
+   live against the fixture on a message with both: `:asText` → the forged `dmarc=pass`;
+   `:asText:all[0]` → the true `dmarc=fail`. `topmostAuthResults` therefore never falls through to
+   `[1]` when `[0]` fails to parse: every step down the list is a step closer to the sender.
+2. **Report, never verdict — and validate the host.** RFC 8601 §7.1: the header is forgeable, and
+   JMAP exposes no trusted `authserv-id`, so we cannot prove the topmost one is ours. Hence: plain
+   text, no colour, no tick, always naming the reporting host, always with the caveat. The
+   authserv-id is held to RFC 2045's `token` production — *that* is what stops
+   `mx.your-server.test:dkim=pass·dmarc=pass; dkim=fail` from rendering as your own MTA followed by
+   passes. `method`/`result` were keyword-guarded from the start; the host field was the way around
+   them (found by adversarial review). Parsing also **fails closed**: an unbalanced `(` or `"`
+   returns `null` rather than a subset — the swallowed entries are exactly the `fail`s.
+3. **`headers` (the raw array) is deliberately never fetched.** RFC 8621 returns it in **Raw** form,
+   which may be RFC-2047-encoded and folded (observed live). Everything shown here has a
+   server-decoded property, and the raw truth is the `.eml` view. It would also add 1–4 KB to every
+   body row and break M3.4's cache budget.
+4. **`.eml` never goes through the blob cache.** `classifyBlobOrphans` reaps any `blobsMeta` row with
+   no owner, and `collectBodyBlobIds` can never contain the Email's *own* `blobId` — a cached `.eml`
+   would be written and reaped on the next maintenance pass. It is a direct `client.download`
+   (header-auth; `<a href={downloadUrl} download>` cannot work). No Blob capability is involved —
+   see [ADR-011](../../docs/adr/011-eml-download-needs-no-blob-capability.md).
+
+Two smaller invariants worth keeping: `putEmailBody` **requires** `authResults` even though the row
+declares it optional — on the row, `undefined` is the signal "written before M3.9, re-fetch it", so
+no new writer may be able to produce that shape by forgetting a field. And `save()` revokes its
+object URL on the **next task**, not synchronously after `click()`: activating an `<a download>`
+only *queues* the fetch.
+
 ## Notifications (M3.6) — and the one thing they cannot do
 
 Waxwing raises system notifications for new mail **whenever the app is running**, a backgrounded

@@ -11,7 +11,7 @@ import {
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
-import { getQueryCache, putEmails } from '../repo'
+import { getQueryCache, putEmailBody, putEmails } from '../repo'
 import { email, freshDb } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
@@ -491,6 +491,93 @@ describe('SyncEngine', () => {
     expect(calls).toBe(1)
 
     // Re-open: cached → no re-fetch, only an LRU touch.
+    await engine.fetchBody('e1')
+    expect(calls).toBe(1)
+  })
+
+  it('fetchBody writes authResults on every body, so a cached row is never mistaken for legacy (M3.9)', async () => {
+    const structure = { partId: '1', blobId: 'b', size: 1 } as never
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    let calls = 0
+    const port: JmapPort = {
+      ...base,
+      getEmailBodies: async (ids) => {
+        calls += 1
+        return {
+          list: ids.map((id) => ({
+            id,
+            bodyValues: {},
+            bodyStructure: structure,
+            textBody: [structure],
+            htmlBody: [],
+            attachments: [],
+            hasAttachment: false,
+            // A message with no Authentication-Results header: the port still says so, with [].
+            authResults: [],
+          })),
+          notFound: [],
+          state: 'b1',
+        }
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    await engine.fetchBody('e1')
+    expect((await db.emailBodies.get([ACC, 'e1']))?.authResults).toEqual([])
+    // `[]` is NOT `undefined`: a message that genuinely carries no such header must not re-fetch on
+    // every single open.
+    await engine.fetchBody('e1')
+    expect(calls).toBe(1)
+  })
+
+  it('fetchBody re-fetches a body row written before M3.9 rather than waiting for eviction', async () => {
+    // The trap this guards: a reader who had already opened a message would NEVER see the new header
+    // details, because the early return only checked for the row's existence.
+    const structure = { partId: '1', blobId: 'b', size: 1 } as never
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    let calls = 0
+    const port: JmapPort = {
+      ...base,
+      getEmailBodies: async (ids) => {
+        calls += 1
+        return {
+          list: ids.map((id) => ({
+            id,
+            bodyValues: {},
+            bodyStructure: structure,
+            textBody: [structure],
+            htmlBody: [],
+            attachments: [],
+            hasAttachment: false,
+            authResults: ['mx.test; spf=pass'],
+          })),
+          notFound: [],
+          state: 'b1',
+        }
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    // A row exactly as a pre-M3.9 build wrote it: no `authResults` key at all. The cast is the
+    // point — `putEmailBody` now REQUIRES the field precisely so no new writer can produce this
+    // shape by accident, so the one test that needs it must ask for it out loud.
+    await putEmailBody(db, {
+      accountId: ACC,
+      id: 'e1',
+      bodyValues: {},
+      bodyStructure: structure,
+      textBody: [structure],
+      htmlBody: [],
+      attachments: [],
+      hasAttachment: false,
+      fetchedAt: 1,
+      lastAccessedAt: 1,
+    } as unknown as Parameters<typeof putEmailBody>[1])
+
+    await engine.fetchBody('e1')
+    expect(calls).toBe(1)
+    expect((await db.emailBodies.get([ACC, 'e1']))?.authResults).toEqual(['mx.test; spf=pass'])
+    // And now it is current — the next open is a plain LRU touch.
     await engine.fetchBody('e1')
     expect(calls).toBe(1)
   })

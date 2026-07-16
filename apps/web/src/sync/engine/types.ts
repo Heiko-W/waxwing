@@ -8,6 +8,7 @@
 
 import type {
   Email,
+  EmailAddress,
   EmailBodyPart,
   EmailBodyValue,
   EmailComparator,
@@ -194,6 +195,16 @@ export const EMAIL_ENVELOPE_PROPERTIES: readonly (keyof Email | string)[] = [
   'hasAttachment',
 ]
 
+/**
+ * The `Email/get` property name for the Authentication-Results header (M3.9, FR-RD-06).
+ *
+ * `:all` — NOT the plain `:asText` — because RFC 8621 §4.1.2 defines the singular form as "the value
+ * of the last instance of the header field", while the RECEIVING MTA *prepends* its report (RFC 8601
+ * §5): the last instance is therefore whatever the SENDER forged, and the first is the only one our
+ * server wrote. `port.ts` renames this key to `authResults` and the UI reads `[0]`.
+ */
+export const AUTH_RESULTS_PROPERTY = 'header:Authentication-Results:asText:all'
+
 /** The full-body fields fetched for an opened message (mapped to an `EmailBodyRow` by the engine). */
 export interface EmailBodyInput {
   readonly id: Id
@@ -203,10 +214,21 @@ export interface EmailBodyInput {
   readonly htmlBody: EmailBodyPart[]
   readonly attachments: EmailBodyPart[]
   readonly hasAttachment: boolean
+  /** Header details (M3.9). Optional: a fake port in a test need not supply them. */
+  readonly bcc?: EmailAddress[] | null
+  readonly sender?: EmailAddress[] | null
+  /**
+   * Every `Authentication-Results` value, in message order ({@link AUTH_RESULTS_PROPERTY}); `[]` when
+   * the message carries none. The awkward `header:…` key is mapped away in `port.ts` and never
+   * escapes it.
+   */
+  readonly authResults?: string[]
 }
 
 /** Email properties fetched for a full body. `bodyValues` MUST be named here (SP.4: the fetch flags
- * alone do not populate it). */
+ * alone do not populate it). `headers` (the raw array) is deliberately ABSENT: RFC 8621 returns it in
+ * Raw form — RFC 2047-encoded and folded — while `:asText:all` is server-decoded and unfolded, and the
+ * raw truth is already covered by the .eml source view. */
 export const EMAIL_BODY_PROPERTIES: readonly string[] = [
   'id',
   'bodyValues',
@@ -215,6 +237,9 @@ export const EMAIL_BODY_PROPERTIES: readonly string[] = [
   'htmlBody',
   'attachments',
   'hasAttachment',
+  'bcc',
+  'sender',
+  AUTH_RESULTS_PROPERTY,
 ]
 
 /** Per-part properties for the body/attachment `EmailBodyPart`s (incl. `cid` for inline-image mapping). */
