@@ -354,8 +354,9 @@ describe('SyncEngine', () => {
    * the optimistic apply used to patch only `emails.mailboxIds` — so the archived row kept rendering
    * in the Inbox until the SERVER's push echoed the move back. Offline that never comes (and online,
    * an archive dispatched before the push channel connects never gets echoed either), so the row sat
-   * there indefinitely. `dispatch` deliberately triggers a REPLAY-ONLY pass — no `reconcileWatched` —
-   * and that design stays: the window is fixed by the optimistic apply itself, not by a round-trip.
+   * there indefinitely. `dispatch` deliberately triggers a REPLAY-ONLY pass (no delta round-trip),
+   * and that design stays: a DEPARTURE is fixed by the optimistic apply itself, offline and for free.
+   * (An ARRIVAL cannot be — see the sibling test below.)
    */
   it('an offline move leaves the list window without the message, the intent still pending (M3.8)', async () => {
     const port = fakePort({ emails: ['e1', 'e2'], setEmails: emptySet })
@@ -383,6 +384,57 @@ describe('SyncEngine', () => {
     expect(port.setEmailsCalls).toEqual([])
     expect((await db.outbox.get([ACC, 'i1']))?.status).toBe('pending')
     expect(engine.getStatus().pendingActions).toBe(1)
+
+    await engine.stop()
+  })
+
+  /**
+   * M3.9, the other half of the M3.8 fix: a move INTO a watched window must become visible without
+   * waiting for the server's push echo.
+   *
+   * The apply refuses to guess an index in the server's collation, so an arrival only voids the
+   * window's baseline — the message appears when the window is RE-QUERIED. Nothing in the replay path
+   * did that, so the re-query rode on the push echo, and before the push channel connects (the first
+   * ~second after a boot) on the 60 s sweep. Undo an archive in that gap and the button looks dead for
+   * a minute while the server has long since put the mail back. Reproduced live 3/3 against the
+   * fixture before this test existed.
+   *
+   * Note there is NO push event here and NO `engine.sync()` — that is the whole point.
+   */
+  it('a move INTO a watched window re-queries it without a push echo (M3.9)', async () => {
+    // The server's truth: e1 sits in Archive, only e2 is in the Inbox.
+    const server = { emails: ['e2'] }
+    const port = fakePort({
+      emails: server.emails,
+      // Replaying the move is what makes the server agree that e1 is back in the Inbox.
+      setEmails: () => {
+        server.emails.unshift('e1')
+        return emptySet()
+      },
+    })
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const inboxWindow = async () =>
+      (await db.queryCache.where('accountId').equals(ACC).toArray())[0]
+    expect((await inboxWindow())?.ids).toEqual(['e2'])
+
+    // e1 exists locally, in Archive — as it would right after an archive + its optimistic prune.
+    await putEmails(db, ACC, [email('e1', { mailboxIds: { archive: true } })])
+
+    // The Undo: the inverse move, archive → inbox.
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e1'], from: 'archive', to: 'inbox' },
+      { id: 'undo-1' },
+    )
+
+    await waitFor(async () => (await inboxWindow())?.ids.length === 2)
+    expect((await inboxWindow())?.ids).toEqual(['e1', 'e2'])
+    // Re-queried, so the baseline is honest again rather than left null forever.
+    expect((await inboxWindow())?.queryState).toBe('q-1')
+    expect(push.opened).toBe(true) // the channel exists; it just never delivered anything
 
     await engine.stop()
   })

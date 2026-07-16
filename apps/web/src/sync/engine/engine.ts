@@ -984,6 +984,20 @@ export class SyncEngine {
           return getSyncState(this.db, this.accountId, type)
         },
       })
+      // Re-query the windows the optimistic apply VOIDED — and only those.
+      //
+      // This path deliberately skips the delta round-trip, so nothing else here reconciles. For a
+      // DEPARTURE that is fine: `updateWindows` already pruned the ids, so the list is right locally
+      // and offline. For an ARRIVAL it is not — a window is in the SERVER's collation, so the apply
+      // refuses to guess an index and only voids the baseline, leaving the message invisible until
+      // someone re-queries. Nobody did: the correction rode on the server's push echo, and until the
+      // push channel connects (the first ~second after a boot) on the 60 s sweep. Undo an archive in
+      // that gap and the button looks dead for a minute while the server has long since put the mail
+      // back — reproduced live, 3/3, against the fixture (M3.9).
+      //
+      // Scoped to voided windows so an M3.2 bulk cleanup still costs ONE re-query rather than one per
+      // chunk: its N intents void the same window once, and a window with a live baseline is skipped.
+      await this.reconcileWatched(false, true)
     }
     await this.scheduleQueueWake()
     await this.refreshQueueCounts()
@@ -1125,10 +1139,15 @@ export class SyncEngine {
     this.watched.add(result.key)
   }
 
-  private async reconcileWatched(forceFull: boolean): Promise<void> {
+  /**
+   * @param onlyVoided Reconcile ONLY windows whose baseline an optimistic apply threw away
+   *   (`queryState === null`). See {@link runReplay} for why the replay path needs that.
+   */
+  private async reconcileWatched(forceFull: boolean, onlyVoided = false): Promise<void> {
     for (const key of this.watched) {
       const row = await getQueryCache(this.db, this.accountId, key)
       if (!row) continue
+      if (onlyVoided && row.queryState !== null) continue
       const spec = { filter: row.filter, sort: row.sort, collapseThreads: row.collapseThreads }
       try {
         await reconcileQuery(this.port, this.db, this.accountId, key, spec, this.clock, forceFull)
