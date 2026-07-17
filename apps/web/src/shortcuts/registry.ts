@@ -275,10 +275,24 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     id: 'triage.move',
     titleKey: 'shortcuts.actions.triage.move',
     keys: ['v'],
-    scopes: ['reading'],
+    scopes: ['list', 'reading'],
     group: 'triage',
-    enabled: (context) => context.reading !== null,
-    run: (context) => context.reading?.openMove(),
+    // Not `reading !== null`: in the list scope that is always false, so a bare scope widening would
+    // have made `v` an inert key there AND hidden it from ⌘K — `isRunnable` gates both from this one
+    // predicate. `sourceMailboxId !== null` is `canMove`'s non-role half: without a source, `move`
+    // keeps the other memberships, which is a copy rather than a move.
+    enabled: (context) => context.targetIds.length > 0 && context.sourceMailboxId !== null,
+    // Mirrors `triage.label` (`l`) exactly, including its selection precedence: an explicit selection
+    // wins over the open message. Only OPENS the picker — the dispatch, the selection clear and any
+    // advance belong to whoever the dialog reports back to.
+    run: (context) => {
+      const reading = context.reading
+      if (context.scope === 'reading' && !context.hasSelection && reading !== null) {
+        reading.openMove()
+        return
+      }
+      context.list.requestMove([...context.targetIds])
+    },
   },
   {
     id: 'compose.new',

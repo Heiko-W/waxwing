@@ -31,6 +31,9 @@ function Probe({ from }: { readonly from: string | null }) {
       <button type="button" onClick={() => triage.setSeen(['e1'], false)}>
         probe-unread
       </button>
+      <button type="button" onClick={() => triage.moveTo(['e1'], from, 'p1', 'Projects')}>
+        probe-move-to
+      </button>
     </>
   )
 }
@@ -126,6 +129,52 @@ describe('useTriage', () => {
       value: false,
       emailIds: ['e1'],
     })
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  // `moveTo` (M3.9): the arbitrary-target move. Until now the folder picker dispatched `actions.move`
+  // straight past this seam, so the one move the user chose EXPLICITLY was the only one without an
+  // Undo — while archive, which needs no confirmation, had one.
+  it('moveTo dispatches the move and names the target in the toast', async () => {
+    const user = userEvent.setup()
+    await renderProbe()
+    await user.click(screen.getByRole('button', { name: 'probe-move-to' }))
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'move',
+      emailIds: ['e1'],
+      from: 'inbox',
+      to: 'p1',
+    })
+    // Interpolated, not a bare key: the label comes from the picker, since a role folder's display
+    // name is localized rather than the server's `name`.
+    expect(await screen.findByText('Moved to Projects')).toBeInTheDocument()
+  })
+
+  it('moveTo Undo puts the message back where it came from', async () => {
+    const user = userEvent.setup()
+    await renderProbe()
+    await user.click(screen.getByRole('button', { name: 'probe-move-to' }))
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+
+    await user.click(await screen.findByRole('button', { name: 'Undo' }))
+    expect(dispatch.mock.calls[1]?.[0]).toMatchObject({
+      kind: 'move',
+      emailIds: ['e1'],
+      from: 'p1',
+      to: 'inbox',
+    })
+  })
+
+  it('moveTo still dispatches without a known source, but offers no Undo', async () => {
+    const user = userEvent.setup()
+    await renderProbe(null)
+    await user.click(screen.getByRole('button', { name: 'probe-move-to' }))
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('Moved to Projects')).toBeInTheDocument()
+    // There is nowhere to put it back — a broken Undo would be worse than none.
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
   })
 })

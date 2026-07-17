@@ -35,6 +35,15 @@ export interface Triage {
   archive(ids: Id[], from: Id | null): boolean
   junk(ids: Id[], from: Id | null): boolean
   trash(ids: Id[], from: Id | null): boolean
+  /**
+   * Move to an ARBITRARY mailbox the user picked, naming it in the toast. `toName` is the label
+   * already on screen — this module cannot resolve a display name (it holds no mailbox list, and a
+   * role folder's name is localized, not the server's `name`), so the picker hands it down.
+   *
+   * Unlike the three above, the boolean cannot report a missing mailbox: `to` is caller-supplied and
+   * therefore always known. It is `false` only for an empty id set, and is returned for uniformity.
+   */
+  moveTo(ids: Id[], from: Id | null, to: Id, toName: string): boolean
   setSeen(ids: Id[], seen: boolean): void
   setFlagged(ids: Id[], flagged: boolean): void
 }
@@ -48,16 +57,18 @@ export function useTriage(): Triage {
   const trashBox = useMailboxByRole('trash')
 
   return useMemo<Triage>(() => {
+    // Takes the finished title, not a key: a folder move interpolates its target's name, and the
+    // role moves' titles are plain lookups — resolving them at the call site keeps one helper.
     const moveWithUndo = (
       ids: Id[],
       from: Id | null,
       to: Id | undefined,
-      titleKey: string,
+      title: string,
     ): boolean => {
       if (to === undefined || ids.length === 0) return false
       actions.move(ids, from, to)
       toast({
-        title: t(titleKey),
+        title,
         // Without a known source there is no inverse move — offer no Undo rather than a broken one.
         ...(from !== null
           ? { action: { label: t('list.undo'), onAction: () => actions.move(ids, to, from) } }
@@ -66,9 +77,11 @@ export function useTriage(): Triage {
       return true
     }
     return {
-      archive: (ids, from) => moveWithUndo(ids, from, archiveBox?.id, 'list.moved.archive'),
-      junk: (ids, from) => moveWithUndo(ids, from, junkBox?.id, 'list.moved.junk'),
-      trash: (ids, from) => moveWithUndo(ids, from, trashBox?.id, 'list.moved.trash'),
+      archive: (ids, from) => moveWithUndo(ids, from, archiveBox?.id, t('list.moved.archive')),
+      junk: (ids, from) => moveWithUndo(ids, from, junkBox?.id, t('list.moved.junk')),
+      trash: (ids, from) => moveWithUndo(ids, from, trashBox?.id, t('list.moved.trash')),
+      moveTo: (ids, from, to, toName) =>
+        moveWithUndo(ids, from, to, t('list.moved.folder', { folder: toName })),
       setSeen: (ids, seen) => actions.setSeen(ids, seen),
       setFlagged: (ids, flagged) => actions.setFlagged(ids, flagged),
     }

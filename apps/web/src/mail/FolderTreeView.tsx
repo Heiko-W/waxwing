@@ -50,6 +50,8 @@ export interface FolderTreeViewProps {
   readonly onRequestCreate: (parentId: string | null) => void
   readonly onRequestRename: (mailbox: MailboxRow) => void
   readonly onRequestDelete: (mailbox: MailboxRow) => void
+  /** Re-parent a folder (M3.9, FR-MBX-03) — the non-pointer path SC 2.5.7 requires; omit to hide. */
+  readonly onRequestMove?: (mailbox: MailboxRow) => void
   /** Empty a Trash/Junk mailbox (M3.2 cleanup); omit to hide the entry. */
   readonly onRequestEmpty?: (mailbox: MailboxRow) => void
   /** Delete messages older than N days from any purgeable mailbox (M3.2 cleanup); omit to hide. */
@@ -69,6 +71,7 @@ export function FolderTreeView({
   onRequestCreate,
   onRequestRename,
   onRequestDelete,
+  onRequestMove,
   onRequestEmpty,
   onRequestDeleteOlder,
   pinned,
@@ -165,6 +168,7 @@ export function FolderTreeView({
           onRequestCreate,
           onRequestRename,
           onRequestDelete,
+          onRequestMove,
           onRequestEmpty,
           onRequestDeleteOlder,
           onTogglePin,
@@ -257,6 +261,7 @@ function actionItems(
     onRequestCreate: (parentId: string | null) => void
     onRequestRename: (mailbox: MailboxRow) => void
     onRequestDelete: (mailbox: MailboxRow) => void
+    onRequestMove?: ((mailbox: MailboxRow) => void) | undefined
     onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
     onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
     onTogglePin?: ((mailbox: MailboxRow) => void) | undefined
@@ -275,6 +280,17 @@ function actionItems(
       id: 'rename',
       label: t('mailbox.actions.rename'),
       onSelect: () => handlers.onRequestRename(mailbox),
+    })
+  }
+  // A re-parent is a Mailbox/set update on THIS mailbox, so `mayRename` is the right that governs it
+  // — there is no `mayMove`. Whether any legal target exists is the dialog's question, not the
+  // menu's: gating here would need the whole tree and turn a pure helper into a tree walk.
+  if (handlers.onRequestMove && mailbox.myRights.mayRename) {
+    const onRequestMove = handlers.onRequestMove
+    items.push({
+      id: 'move',
+      label: t('mailbox.actions.move'),
+      onSelect: () => onRequestMove(mailbox),
     })
   }
   // "Keep offline" (M3.4). A menu ITEM has no checked state, and inventing one would be a lie to

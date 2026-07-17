@@ -338,7 +338,8 @@
       "rename": "Rename",
       "delete": "Delete",
       "keepOffline": "Keep offline",
-      "keepOfflineOff": "Stop keeping offline"
+      "keepOfflineOff": "Stop keeping offline",
+      "move": "Move to…"
     },
     "create": {
       "title": "New folder",
@@ -363,7 +364,12 @@
       "nameTaken": "A folder with this name already exists here."
     },
     "cancel": "Cancel",
-    "keptOffline": "Kept offline"
+    "keptOffline": "Kept offline",
+    "move": {
+      "title": "Move {{name}}",
+      "topLevel": "Top level",
+      "empty": "There is no folder this one can move into."
+    }
   },
   "list": {
     "noSender": "(No sender)",
@@ -413,7 +419,8 @@
     "moved": {
       "archive": "Moved to Archive",
       "junk": "Moved to Junk",
-      "trash": "Moved to Trash"
+      "trash": "Moved to Trash",
+      "folder": "Moved to {{folder}}"
     }
   },
   "reading": {

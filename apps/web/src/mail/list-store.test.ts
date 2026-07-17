@@ -8,11 +8,12 @@ beforeEach(() => {
 })
 
 describe('useListStore', () => {
-  it('setWindow with a NEW key resets the focus, the selection and the label picker', () => {
+  it('setWindow with a NEW key resets the focus, the selection and both pickers', () => {
     store().setWindow('w1', ['a', 'b', 'c'], 'inbox')
     store().moveFocus(2)
     store().select({ type: 'toggle', id: 'b' })
     store().requestLabels(['b'])
+    store().requestMove(['b'])
     expect(store().focusIndex).toBe(2)
     expect(store().selection.selected.has('b')).toBe(true)
 
@@ -20,7 +21,25 @@ describe('useListStore', () => {
     expect(store().focusIndex).toBe(0)
     expect(store().selection.selected.size).toBe(0)
     expect(store().labelTargets).toBeNull()
+    // A picker left open across a folder switch would move mail the user can no longer see.
+    expect(store().moveTargets).toBeNull()
     expect(store().sourceMailboxId).toBe('archive')
+  })
+
+  it('requestMove opens the picker over the given ids and null closes it', () => {
+    store().requestMove(['a', 'b'])
+    expect(store().moveTargets).toEqual(['a', 'b'])
+    store().requestMove(null)
+    expect(store().moveTargets).toBeNull()
+  })
+
+  it('setWindow with the SAME key leaves an open move picker alone', () => {
+    // The optimistic prune of a just-archived row re-publishes the same window. Closing the picker
+    // there would yank the dialog out from under a user who is mid-pick.
+    store().setWindow('w1', ['a', 'b', 'c'], 'inbox')
+    store().requestMove(['a'])
+    store().setWindow('w1', ['a', 'b'], 'inbox') // 'c' pruned
+    expect(store().moveTargets).toEqual(['a'])
   })
 
   it('setWindow with the SAME key keeps a selection that is still IN the window', () => {

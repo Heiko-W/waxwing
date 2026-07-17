@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -276,5 +276,110 @@ describe('MessageList', () => {
     await user.click(rowEl)
     // Navigation happened (row is aria-current) → open() resolved the mailbox from the row.
     await waitFor(() => expect(rowEl).toHaveAttribute('aria-current', 'page'))
+  })
+
+  // The list's move path (M3.9, FR-MBX-03). It is the non-pointer route WCAG 2.2 SC 2.5.7 makes a
+  // prerequisite of the drag, and the bulk bar had no way to reach an arbitrary folder at all.
+  describe('move to folder', () => {
+    it('the bulk bar offers Move to…, and the picker dispatches through the undo seam', async () => {
+      const user = userEvent.setup()
+      renderList()
+      await screen.findByText('First')
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      expect(await screen.findByText('1 selected')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Move to…' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Move to folder' })
+      // `findBy`, not `getBy`: the dialog's targets come from `useMailboxes()`, a liveQuery
+      // INDEPENDENT of the email window `findByText('First')` waited on. The dialog exists one tick
+      // before its folders do, and until then it renders the "No other folders." empty state — a sync
+      // query lands in that gap ~1 run in 20. Two unresolved liveQueries racing is precisely the
+      // shape of the M3.8 keyboard flake (M3.9); it is no more acceptable in a test than in the app.
+      await user.click(await within(dialog).findByRole('button', { name: 'Archive' }))
+
+      await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'move',
+        emailIds: ['e1'],
+        from: 'inbox',
+        to: 'archive',
+      })
+      // Named after the target, and undoable — a bare `actions.move` would give neither.
+      expect(await screen.findByText('Moved to Archive')).toBeInTheDocument()
+      // The mail left the folder, so it must leave the selection: a follow-up action would
+      // otherwise run with a stale `from`.
+      await waitFor(() => expect(screen.queryByText('1 selected')).toBeNull())
+    })
+
+    it('the `v` chord opens the same picker via the store', async () => {
+      renderList()
+      await screen.findByText('First')
+      act(() => useListStore.getState().requestMove(['e1']))
+      expect(await screen.findByRole('dialog', { name: 'Move to folder' })).toBeInTheDocument()
+    })
+
+    it('offers neither the button nor the picker in a cross-folder view', async () => {
+      // A label view spans folders, so there is no `from`. `move(ids, null, to)` keeps every other
+      // membership — it would ADD the mail to the target and leave it where it was, which is a copy,
+      // not the move the button promises. Both halves of the gate are asserted: the bulk bar hides
+      // the button, and the render site refuses even if `requestMove` is driven directly.
+      // No engine: the list renders from the seeded search window, and this test dispatches nothing
+      // — the same shortcut the label-view test above takes rather than stub every search method.
+      setActiveEngine(null)
+      const spec: QuerySpec = {
+        filter: { hasKeyword: 'work' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        collapseThreads: false,
+      }
+      const key = canonicalQueryKey(spec)
+      await putEmails(db, 'a', [
+        email('x1', {
+          subject: 'Labeled',
+          mailboxIds: { archive: true },
+          keywords: { work: true },
+        }),
+      ])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key,
+        ids: ['x1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'x1',
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: false,
+        lastUsedAt: 1,
+      })
+      const user = userEvent.setup()
+      render(
+        <RouterProvider>
+          <ConfigProvider config={DEFAULT_CONFIG}>
+            <ToastProvider>
+              <ReplicaProvider accountId="a" db={db}>
+                <MessageList
+                  mailboxId={undefined}
+                  search={{ spec, scopeMailboxId: undefined }}
+                  activeLabel="work"
+                />
+              </ReplicaProvider>
+            </ToastProvider>
+          </ConfigProvider>
+        </RouterProvider>,
+      )
+      await screen.findByText('Labeled')
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      expect(await screen.findByText('1 selected')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Move to…' })).toBeNull()
+
+      act(() => useListStore.getState().requestMove(['x1']))
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog', { name: 'Move to folder' })).toBeNull(),
+      )
+    })
   })
 })

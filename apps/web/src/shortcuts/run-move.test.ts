@@ -33,6 +33,7 @@ function listStore(overrides: Partial<ListStore> = {}): ListStore {
     focusIndexTo: vi.fn(),
     focusToId: vi.fn(),
     requestLabels: vi.fn(),
+    requestMove: vi.fn(),
     setGridHandle: vi.fn(),
     ...overrides,
   } as ListStore
@@ -44,6 +45,7 @@ function triageStub(dispatched: boolean): Triage {
     archive: vi.fn(() => dispatched),
     junk: vi.fn(() => dispatched),
     trash: vi.fn(() => dispatched),
+    moveTo: vi.fn(() => dispatched),
     setSeen: vi.fn(),
     setFlagged: vi.fn(),
   }
@@ -176,5 +178,66 @@ describe('runMove — a keystroke must never advance over a move that did not ha
     const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
     const noRoles = { ...context, roles: {} } as unknown as ShortcutContext
     expect(archiveAction && isRunnable(archiveAction, noRoles)).toBe(false)
+  })
+})
+
+const moveAction = SHORTCUTS.find((a) => a.id === 'triage.move')
+
+describe('the `v` move chord — the non-pointer path WCAG 2.2 SC 2.5.7 requires', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('is bound to `v` and runs in BOTH the list and the reading scope', () => {
+    // It used to be reading-only, so a folder move was reachable only with a message open — there
+    // was no keyboard route to it from the list at all, and none for the drag in 5b to mirror.
+    expect(moveAction?.keys).toContain('v')
+    expect(moveAction?.scopes).toEqual(expect.arrayContaining(['list', 'reading']))
+  })
+
+  it('opens the LIST picker in the list scope, without touching the reading pane', () => {
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    const listScope = {
+      ...context,
+      scope: 'list',
+      targetIds: ['m1', 'm2'],
+    } as unknown as ShortcutContext
+    moveAction?.run(listScope)
+
+    expect(listScope.list.requestMove).toHaveBeenCalledWith(['m1', 'm2'])
+    expect(listScope.reading?.openMove).not.toHaveBeenCalled()
+  })
+
+  it('still opens the reading pane picker when a message is open and nothing is selected', () => {
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    moveAction?.run(context)
+
+    expect(context.reading?.openMove).toHaveBeenCalledTimes(1)
+    expect(context.list.requestMove).not.toHaveBeenCalled()
+  })
+
+  it('prefers an explicit selection over the open message, exactly as `l` does', () => {
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    const selected = {
+      ...context,
+      hasSelection: true,
+      targetIds: ['m2', 'm3'],
+    } as unknown as ShortcutContext
+    moveAction?.run(selected)
+
+    expect(selected.list.requestMove).toHaveBeenCalledWith(['m2', 'm3'])
+    expect(selected.reading?.openMove).not.toHaveBeenCalled()
+  })
+
+  it('is inert without a source mailbox — a move with no `from` is a COPY', () => {
+    // `move(ids, null, to)` keeps every other membership, so the mail would be added to the target
+    // and stay where it was. The reading pane's Move button gates on the same value.
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    const noSource = { ...context, sourceMailboxId: null } as unknown as ShortcutContext
+    expect(moveAction && isRunnable(moveAction, noSource)).toBe(false)
+  })
+
+  it('is inert with nothing to act on', () => {
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    const empty = { ...context, targetIds: [] } as unknown as ShortcutContext
+    expect(moveAction && isRunnable(moveAction, empty)).toBe(false)
   })
 })

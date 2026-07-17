@@ -208,4 +208,35 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
     })
     await expectNoA11yViolations(container)
   })
+
+  // "Move to…" (M3.9, FR-MBX-03) — the keyboard route to a re-parent, and the one WCAG 2.2 SC 2.5.7
+  // makes a prerequisite of the drag rather than a companion to it.
+  it('offers Move to… and raises it with the clicked mailbox', async () => {
+    const user = userEvent.setup()
+    const onRequestMove = vi.fn()
+    const rows = [row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })]
+    renderTree(rows, { onRequestMove })
+
+    const menus = screen.getAllByRole('button', { name: 'Folder actions' })
+    await user.click(menus[1] as HTMLElement)
+    await user.click(screen.getByRole('menuitem', { name: 'Move to…' }))
+    expect(onRequestMove).toHaveBeenCalledWith(expect.objectContaining({ id: 'work' }))
+  })
+
+  it('hides Move to… when the folder may not be renamed', async () => {
+    // A re-parent IS a rename-class update on the mailbox — there is no separate `mayMove` right.
+    const user = userEvent.setup()
+    renderTree([row('inbox', { role: 'inbox', myRights: { ...RIGHTS, mayRename: false } })], {
+      onRequestMove: noop,
+    })
+    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    expect(screen.queryByRole('menuitem', { name: 'Move to…' })).not.toBeInTheDocument()
+  })
+
+  it('hides Move to… when no handler is passed', async () => {
+    const user = userEvent.setup()
+    renderTree([row('inbox', { role: 'inbox' })])
+    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    expect(screen.queryByRole('menuitem', { name: 'Move to…' })).not.toBeInTheDocument()
+  })
 })

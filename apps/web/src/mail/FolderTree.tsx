@@ -14,6 +14,7 @@ import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from
 import { Button, Dialog, IconButton, TextInput } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
 import { useCleanupActions } from './cleanup/use-cleanup-actions'
+import { FolderMoveDialog } from './FolderMoveDialog'
 import { FolderTreeView } from './FolderTreeView'
 import { buildFolderTree, folderDisplayName } from './folder-tree'
 import styles from './folder-tree.module.css'
@@ -29,6 +30,7 @@ const EMPTY_PINS: ReadonlySet<string> = new Set()
 type DialogState =
   | { readonly kind: 'create'; readonly parentId: string | null }
   | { readonly kind: 'rename'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'move'; readonly mailbox: MailboxRow }
   | { readonly kind: 'delete'; readonly mailbox: MailboxRow }
   | { readonly kind: 'empty'; readonly mailbox: MailboxRow }
   | { readonly kind: 'deleteOlder'; readonly mailbox: MailboxRow }
@@ -88,6 +90,7 @@ export function FolderTree() {
         onSelect={(id) => navigate(mailPath(id))}
         onRequestCreate={(parentId) => setDialog({ kind: 'create', parentId })}
         onRequestRename={(mailbox) => setDialog({ kind: 'rename', mailbox })}
+        onRequestMove={(mailbox) => setDialog({ kind: 'move', mailbox })}
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
@@ -126,6 +129,17 @@ export function FolderTree() {
           onClose={() => setDialog(null)}
           onSubmit={(name) => {
             actions.rename(dialog.mailbox.id, name)
+            setDialog(null)
+          }}
+        />
+      )}
+
+      {dialog?.kind === 'move' && (
+        <FolderMoveDialog
+          mailbox={dialog.mailbox}
+          onClose={() => setDialog(null)}
+          onMove={(parentId) => {
+            actions.move(dialog.mailbox.id, parentId)
             setDialog(null)
           }}
         />

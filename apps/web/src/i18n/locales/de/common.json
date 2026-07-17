@@ -338,7 +338,8 @@
       "rename": "Umbenennen",
       "delete": "Löschen",
       "keepOffline": "Offline behalten",
-      "keepOfflineOff": "Nicht mehr offline behalten"
+      "keepOfflineOff": "Nicht mehr offline behalten",
+      "move": "Verschieben nach…"
     },
     "create": {
       "title": "Neuer Ordner",
@@ -363,7 +364,12 @@
       "nameTaken": "Ein Ordner mit diesem Namen existiert hier bereits."
     },
     "cancel": "Abbrechen",
-    "keptOffline": "Offline behalten"
+    "keptOffline": "Offline behalten",
+    "move": {
+      "title": "„{{name}}“ verschieben",
+      "topLevel": "Oberste Ebene",
+      "empty": "Es gibt keinen Ordner, in den dieser verschoben werden kann."
+    }
   },
   "list": {
     "noSender": "(Kein Absender)",
@@ -413,7 +419,8 @@
     "moved": {
       "archive": "Ins Archiv verschoben",
       "junk": "In Spam verschoben",
-      "trash": "In den Papierkorb verschoben"
+      "trash": "In den Papierkorb verschoben",
+      "folder": "Nach „{{folder}}“ verschoben"
     }
   },
   "reading": {

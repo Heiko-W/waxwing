@@ -11,7 +11,7 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
-import { Archive, Ban, Flag, MailOpen, Trash2 } from 'lucide-react'
+import { Archive, Ban, Flag, FolderInput, MailOpen, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
@@ -32,6 +32,7 @@ import { useLabels } from './labels/use-labels'
 import { type GridHandle, useListStore } from './list-store'
 import type { Density, RowLabel } from './MessageRow'
 import { MessageRow } from './MessageRow'
+import { MoveDialog } from './MoveDialog'
 import styles from './message-list.module.css'
 import { useSnippets } from './search/use-snippets'
 import { useMessageActions } from './use-message-actions'
@@ -89,6 +90,9 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
     flat,
   })
   const actions = useMessageActions()
+  // The list's own move picker (`v`, and the bulk bar's Move) dispatches through the same triage seam
+  // the chords use, so it gets the undo toast rather than a bare `actions.move`.
+  const triage = useTriage()
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Selection, roving focus and the label-picker request live in the hoisted list store (M3.8), so the
@@ -97,9 +101,11 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   const selection = useListStore((state) => state.selection)
   const focusIndex = useListStore((state) => state.focusIndex)
   const labelTargets = useListStore((state) => state.labelTargets)
+  const moveTargets = useListStore((state) => state.moveTargets)
   const dispatchSelection = useListStore((state) => state.select)
   const focusIndexTo = useListStore((state) => state.focusIndexTo)
   const requestLabels = useListStore((state) => state.requestLabels)
+  const requestMove = useListStore((state) => state.requestMove)
   const setWindow = useListStore((state) => state.setWindow)
   const setGridHandle = useListStore((state) => state.setGridHandle)
 
@@ -307,6 +313,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
           onClear={() => dispatchSelection({ type: 'clear' })}
           onRequestDelete={() => setConfirmDelete(true)}
+          onRequestMove={() => requestMove(selectedIds)}
         />
       ) : (
         <Toolbar
@@ -417,6 +424,23 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       {labelTargets !== null && (
         <LabelMenu ids={labelTargets} anchorRef={scrollRef} onClose={() => requestLabels(null)} />
       )}
+
+      {/* `sourceMailboxId !== null` is the same gate the bulk bar's `canMove` applies: without a
+          source, `move` keeps the other memberships — a copy, not the move this dialog offers. */}
+      {moveTargets !== null && sourceMailboxId !== null && (
+        <MoveDialog
+          open
+          currentMailboxId={sourceMailboxId}
+          onClose={() => requestMove(null)}
+          onMove={(target, label) => {
+            triage.moveTo(moveTargets, sourceMailboxId, target, label)
+            requestMove(null)
+            // The moved mail leaves the folder, so it must leave the selection too — otherwise a
+            // follow-up action runs against a stale `from`.
+            dispatchSelection({ type: 'clear' })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -499,6 +523,7 @@ interface BulkBarProps {
   readonly onSelectAll: () => void
   readonly onClear: () => void
   readonly onRequestDelete: () => void
+  readonly onRequestMove: () => void
 }
 
 function BulkBar({
@@ -512,6 +537,7 @@ function BulkBar({
   onSelectAll,
   onClear,
   onRequestDelete,
+  onRequestMove,
 }: BulkBarProps) {
   const { t } = useTranslation()
   // The SAME seam the `e`/`#`/`!` chords use (M3.8) — so a click and a keystroke are one action, and
@@ -592,6 +618,14 @@ function BulkBar({
           onClick={() => moveThenClear(triage.trash)}
         >
           <Trash2 />
+        </IconButton>
+      )}
+      {/* Move to an arbitrary folder — the only non-pointer path to it, and the one WCAG 2.2
+          SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
+          button are one path. Clearing the selection is the picker's job, not this button's. */}
+      {canMove && (
+        <IconButton label={t('list.actions.move')} variant="ghost" onClick={onRequestMove}>
+          <FolderInput />
         </IconButton>
       )}
       <IconButton label={t('list.actions.delete')} variant="ghost" onClick={onRequestDelete}>

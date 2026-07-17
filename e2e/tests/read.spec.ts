@@ -301,3 +301,93 @@ test.describe('M3.9 reading polish', () => {
     expect(file.suggestedFilename()).toBe('Lunch on Thursday.eml')
   })
 })
+
+// M3.9 step 4 — the non-pointer move paths (FR-MBX-03, WCAG 2.2 SC 2.5.7). These run against the
+// live server on purpose: `moveMailbox` was implemented in M1.5 and had ZERO callers until now, so
+// nothing had ever executed it end to end. The unit tests stub the engine dispatch, which means they
+// prove the UI asks correctly and nothing whatsoever about whether Stalwart accepts the ask.
+test.describe('M3.9 move paths', () => {
+  /** Create a top-level folder through the UI and wait for it to appear in the tree. */
+  async function newFolder(page: Page, name: string): Promise<void> {
+    await page.getByRole('button', { name: 'New folder' }).click()
+    await page.getByLabel('Folder name', { exact: true }).fill(name)
+    await page.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(page.getByRole('treeitem', { name: new RegExp(name) })).toBeVisible({
+      timeout: 15_000,
+    })
+  }
+
+  /** Delete a folder through the UI, so the fixture is left as we found it. */
+  async function removeFolder(page: Page, name: string): Promise<void> {
+    const item = page.getByRole('treeitem', { name: new RegExp(name) })
+    await item.hover()
+    await item.getByRole('button', { name: 'Folder actions' }).click()
+    // `exact`: the menu also carries "Delete older than…", which a prefix match would hit first.
+    await page.getByRole('menuitem', { name: 'Delete', exact: true }).click()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect(item).toBeHidden({ timeout: 15_000 })
+  }
+
+  test('a folder re-parents itself — and the SERVER keeps it (moveMailbox first real run)', async ({
+    page,
+  }) => {
+    // `stay` is required, not incidental: this test RELOADS to prove the server kept the move, and
+    // without it the token lives only in memory (NFR-SEC-02) so a reload lands back on sign-in.
+    await login(page, { stay: true })
+    await newFolder(page, 'ZzSrc')
+    await newFolder(page, 'ZzDst')
+
+    const src = page.getByRole('treeitem', { name: /ZzSrc/ })
+    // Top level: one level deep, i.e. aria-level 1.
+    await expect(src).toHaveAttribute('aria-level', '1')
+
+    await src.hover()
+    await src.getByRole('button', { name: 'Folder actions' }).click()
+    await page.getByRole('menuitem', { name: 'Move to…' }).click()
+
+    const dialog = page.getByRole('dialog', { name: 'Move ZzSrc' })
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+    // The subject must never be able to swallow itself.
+    await expect(dialog.getByRole('button', { name: 'ZzSrc', exact: true })).toHaveCount(0)
+    await dialog.getByRole('button', { name: 'ZzDst', exact: true }).click()
+
+    // Optimistic: the row nests immediately.
+    await expect(src).toHaveAttribute('aria-level', '2', { timeout: 15_000 })
+
+    // The half that matters and that no unit test can reach: reload from the server. An optimistic
+    // patch that the server rejected would snap back here.
+    await page.reload()
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('treeitem', { name: /ZzSrc/ })).toHaveAttribute('aria-level', '2', {
+      timeout: 30_000,
+    })
+
+    await removeFolder(page, 'ZzDst') // takes ZzSrc with it (it is now a child)
+  })
+
+  test('`v` moves the open message to a folder, with an Undo that puts it back', async ({
+    page,
+  }) => {
+    await login(page)
+    await page.keyboard.press('j')
+    await page.keyboard.press('o')
+    const subject = await page.getByRole('heading', { level: 2 }).innerText({ timeout: 20_000 })
+
+    await page.keyboard.press('v')
+    const dialog = page.getByRole('dialog', { name: 'Move to folder' })
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+    await dialog.getByRole('button', { name: 'Archive', exact: true }).click()
+
+    // Named after its target — a bare `actions.move` (what MessageView did until M3.9) raised no
+    // toast at all, so the one move the user chose explicitly was the only one without an Undo.
+    await expect(page.getByText('Moved to Archive')).toBeVisible({ timeout: 15_000 })
+    await expect(messageList(page).getByText(subject, { exact: true })).toBeHidden({
+      timeout: 15_000,
+    })
+
+    await page.getByRole('button', { name: 'Undo' }).click()
+    await expect(messageList(page).getByText(subject, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    })
+  })
+})

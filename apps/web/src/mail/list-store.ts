@@ -41,6 +41,8 @@ export interface ListState {
   readonly sourceMailboxId: Id | null
   /** The `l` picker's targets — rendered by `MessageList`; `null` = closed. */
   readonly labelTargets: Id[] | null
+  /** The `v` picker's targets — rendered by `MessageList`; `null` = closed. */
+  readonly moveTargets: Id[] | null
   readonly grid: GridHandle | null
 }
 
@@ -64,6 +66,9 @@ export interface ListController {
    */
   focusToId(id: Id): void
   requestLabels(ids: Id[] | null): void
+  /** Open the move picker over `ids`, or close it with `null`. A bare setter, like {@link requestLabels}
+   *  — whether a move is possible at all is the caller's gate, not this store's. */
+  requestMove(ids: Id[] | null): void
   setGridHandle(handle: GridHandle | null): void
 }
 
@@ -76,6 +81,7 @@ export const EMPTY_LIST_STATE: ListState = {
   selection: EMPTY_SELECTION,
   sourceMailboxId: null,
   labelTargets: null,
+  moveTargets: null,
   grid: null,
 }
 
@@ -137,6 +143,7 @@ export const useListStore = create<ListStore>()((set, get) => ({
       focusIndex: 0,
       selection: EMPTY_SELECTION,
       labelTargets: null,
+      moveTargets: null,
     })
   },
 
@@ -166,6 +173,10 @@ export const useListStore = create<ListStore>()((set, get) => ({
 
   requestLabels(ids) {
     set({ labelTargets: ids })
+  },
+
+  requestMove(ids) {
+    set({ moveTargets: ids })
   },
 
   setGridHandle(handle) {

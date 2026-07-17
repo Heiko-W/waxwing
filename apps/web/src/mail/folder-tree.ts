@@ -100,6 +100,147 @@ export function folderDisplayName(
   return mailbox.name
 }
 
+/**
+ * The account limits a re-parent has to respect. `maxMailboxDepth: null` means UNLIMITED (RFC 8621
+ * §1.4) — never conflate it with 0, and never let `undefined` reach here: the session capability is
+ * typed `UnsignedInt | null` but is not validated at the wire (`isMailCapability` checks only two
+ * other fields), so a server that omits it hands us `undefined` and TypeScript cannot see it. The
+ * caller narrows with `typeof === 'number'`; this module only ever sees a number or `null`.
+ */
+export interface MoveLimits {
+  readonly maxMailboxDepth: number | null
+  readonly mayCreateTopLevelMailbox: boolean
+}
+
+/** Index `id → mailbox` once; the guards below walk parent chains repeatedly. */
+function byId(mailboxes: readonly MailboxRow[]): Map<string, MailboxRow> {
+  return new Map(mailboxes.map((mailbox) => [mailbox.id, mailbox]))
+}
+
+/**
+ * Is `candidateId` the subject itself, or one of its descendants? Moving a folder into its own
+ * subtree detaches that subtree from the root — {@link buildFolderTree} would quietly re-surface it
+ * as an orphan root, so the mistake *renders fine* and only diverges when the server rejects it.
+ *
+ * Walks UP from the candidate rather than down from the subject: a chain is bounded by the mailbox
+ * count, a subtree walk would need its own cycle guard. Tolerates a `parentId` cycle, as
+ * {@link buildFolderTree} does — a replica mid-sync is allowed to be briefly impossible.
+ */
+export function isSelfOrDescendant(
+  mailboxes: readonly MailboxRow[],
+  subjectId: string,
+  candidateId: string,
+): boolean {
+  if (candidateId === subjectId) return true
+  const index = byId(mailboxes)
+  const seen = new Set<string>([candidateId])
+  let current = index.get(candidateId)?.parentId ?? null
+  while (current !== null) {
+    if (current === subjectId) return true
+    if (seen.has(current)) return false // cycle — it never reaches the subject
+    seen.add(current)
+    current = index.get(current)?.parentId ?? null
+  }
+  return false
+}
+
+/**
+ * The HEIGHT of the subject's subtree: 0 for a leaf, 1 with children, 2 with grandchildren.
+ *
+ * This — not the subject's own depth — is what a depth limit has to budget for: moving a folder
+ * moves everything under it, and it is the DEEPEST descendant that hits the ceiling first.
+ */
+export function subtreeDepth(mailboxes: readonly MailboxRow[], subjectId: string): number {
+  const childrenOf = new Map<string, MailboxRow[]>()
+  for (const mailbox of mailboxes) {
+    if (mailbox.parentId === null) continue
+    const siblings = childrenOf.get(mailbox.parentId) ?? []
+    siblings.push(mailbox)
+    childrenOf.set(mailbox.parentId, siblings)
+  }
+  const walk = (id: string, seen: Set<string>): number => {
+    let deepest = 0
+    for (const child of childrenOf.get(id) ?? []) {
+      if (seen.has(child.id)) continue // cycle guard, as buildFolderTree has
+      seen.add(child.id)
+      deepest = Math.max(deepest, walk(child.id, seen) + 1)
+    }
+    return deepest
+  }
+  return walk(subjectId, new Set([subjectId]))
+}
+
+/** 0-based ancestor count: a top-level mailbox has 0. Cycle-tolerant. */
+function ancestorCount(index: Map<string, MailboxRow>, id: string): number {
+  let count = 0
+  const seen = new Set<string>([id])
+  let current = index.get(id)?.parentId ?? null
+  while (current !== null && !seen.has(current)) {
+    seen.add(current)
+    count += 1
+    current = index.get(current)?.parentId ?? null
+  }
+  return count
+}
+
+/**
+ * Every parent the subject may legally move to, in display order, `null` (top level) first.
+ *
+ * This is where the correctness of FR-MBX-03 lives: `moveMailbox` writes `parentId` optimistically
+ * and unconditionally, so an illegal move looks *successful* locally and only comes back as a
+ * generic `invalid` conflict after a round-trip. Every rule below is therefore a precondition the
+ * UI must enforce, not a hint.
+ */
+export function legalParents(
+  mailboxes: readonly MailboxRow[],
+  subjectId: string,
+  limits: MoveLimits,
+): readonly (string | null)[] {
+  const index = byId(mailboxes)
+  const subject = index.get(subjectId)
+  // A re-parent is a Mailbox/set update on the SUBJECT — there is no `mayMove` right, so `mayRename`
+  // is the one that governs it (RFC 8621 §2).
+  if (subject === undefined || !subject.myRights.mayRename) return []
+
+  const height = subtreeDepth(mailboxes, subjectId)
+  const withinDepth = (candidate: MailboxRow | null): boolean => {
+    if (limits.maxMailboxDepth === null) return true // unlimited
+    // 1-based, per RFC 8621: a top-level mailbox has depth 1. The subject lands one level under the
+    // candidate, and its deepest descendant a further `height` down.
+    const resulting = (candidate === null ? 0 : ancestorCount(index, candidate.id) + 1) + height + 1
+    return resulting <= limits.maxMailboxDepth
+  }
+  const nameTaken = (parentId: string | null): boolean =>
+    mailboxes.some(
+      (other) =>
+        other.id !== subjectId &&
+        other.parentId === parentId &&
+        other.name.toLowerCase() === subject.name.toLowerCase(),
+    )
+
+  const out: (string | null)[] = []
+  if (
+    limits.mayCreateTopLevelMailbox &&
+    subject.parentId !== null && // already there — a no-op, not a move
+    withinDepth(null) &&
+    !nameTaken(null)
+  ) {
+    out.push(null)
+  }
+  for (const node of visibleRows(buildFolderTree(mailboxes), () => false)) {
+    const candidate = node.mailbox
+    if (candidate.id === subject.parentId) continue // no-op
+    if (isSelfOrDescendant(mailboxes, subjectId, candidate.id)) continue
+    // `mayCreateChild` is asked of the TARGET — it is the target that gains a child. (The tree's
+    // "New subfolder" item asks it of the clicked mailbox, which is the same question there.)
+    if (!candidate.myRights.mayCreateChild) continue
+    if (!withinDepth(candidate)) continue
+    if (nameTaken(candidate.id)) continue
+    out.push(candidate.id)
+  }
+  return out
+}
+
 /** Flatten the tree to the currently-visible rows, skipping the subtrees of collapsed folders. */
 export function visibleRows(
   tree: readonly FolderNode[],

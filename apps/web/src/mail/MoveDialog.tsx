@@ -6,40 +6,41 @@
 
 import type { Id } from '@waxwing/jmap'
 import { useTranslation } from 'react-i18next'
-import { type MailboxRow, useMailboxes } from '../sync'
+import { useMailboxes } from '../sync'
 import { Dialog } from '../ui'
+import { folderDisplayName } from './folder-tree'
 import styles from './reading.module.css'
 
 export interface MoveDialogProps {
   readonly open: boolean
   readonly currentMailboxId: Id | null
   readonly onClose: () => void
-  readonly onMove: (target: Id) => void
-}
-
-function mailboxLabel(mailbox: MailboxRow, roleName: (role: string) => string): string {
-  return mailbox.role !== null ? roleName(mailbox.role) : mailbox.name
+  /** Hands the target's LABEL up with its id — the caller names it in the Undo toast and cannot
+   *  re-derive it (a role folder shows a localized name, not the server's `name`). */
+  readonly onMove: (target: Id, label: string) => void
 }
 
 export function MoveDialog({ open, currentMailboxId, onClose, onMove }: MoveDialogProps) {
   const { t } = useTranslation()
   const mailboxes = useMailboxes() ?? []
   const targets = mailboxes
-    .filter((mailbox) => mailbox.id !== currentMailboxId)
+    // A mailbox we may not add to is not a target — offering it would dispatch a move the server
+    // rejects, after the optimistic apply has already shown it as done.
+    .filter((mailbox) => mailbox.id !== currentMailboxId && mailbox.myRights.mayAddItems)
     .slice()
-    .sort((a, b) =>
-      mailboxLabel(a, (r) => t(`mailbox.role.${r}`)).localeCompare(
-        mailboxLabel(b, (r) => t(`mailbox.role.${r}`)),
-      ),
-    )
+    .sort((a, b) => folderDisplayName(a, t).localeCompare(folderDisplayName(b, t)))
 
   return (
     <Dialog open={open} onClose={onClose} title={t('reading.moveTitle')} size="sm">
       <ul className={styles.moveList}>
         {targets.map((mailbox) => (
           <li key={mailbox.id}>
-            <button type="button" className={styles.moveItem} onClick={() => onMove(mailbox.id)}>
-              {mailboxLabel(mailbox, (r) => t(`mailbox.role.${r}`))}
+            <button
+              type="button"
+              className={styles.moveItem}
+              onClick={() => onMove(mailbox.id, folderDisplayName(mailbox, t))}
+            >
+              {folderDisplayName(mailbox, t)}
             </button>
           </li>
         ))}

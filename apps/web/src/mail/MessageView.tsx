@@ -449,7 +449,15 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           <MailMinus />
         </IconButton>
         <LabelMenuButton ids={[email.id]} />
-        <Button size="sm" variant="ghost" onClick={handlers.openMove}>
+        {/* Without a source mailbox `move` keeps the other memberships — that is a COPY, not the
+            move this button promises. The `v` chord gates on the same value (the shortcut context
+            reads this very `mailboxId` back off the registered handlers), so the two cannot drift. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={inThisMailbox === null}
+          onClick={handlers.openMove}
+        >
           {t('list.actions.move')}
         </Button>
         <span className={styles.actionSpacer} />
@@ -532,8 +540,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           open={moveOpen}
           currentMailboxId={inThisMailbox}
           onClose={() => setMoveOpen(false)}
-          onMove={(target) => {
-            actions.move([email.id], inThisMailbox, target)
+          onMove={(target, label) => {
+            triage.moveTo([email.id], inThisMailbox, target, label)
             setMoveOpen(false)
           }}
         />
