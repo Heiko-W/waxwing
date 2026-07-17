@@ -30,6 +30,14 @@
   --waxwing-bg: #f5f5f7;
   --waxwing-surface: #ffffff;
   --waxwing-surface-2: #ebebef;
+  /* ---- Row states (M1.6; defined M3.9). `surface-hover` is the transient one (a pointer over a
+     row); `surface-selected` marks the row the reader is ON — an accent tint, per Apple Mail. Both
+     were referenced by the message list from M1.6 and DEFINED NOWHERE for eight milestones, so an
+     opened or ticked row computed to `transparent` and looked like every other row (measured live in
+     a browser, not inferred). Nothing could catch it: CSS custom properties are not typechecked, and
+     the E2E assert `aria-current`, never colour. Text stays dark on both — tokens.contrast.test.ts. */
+  --waxwing-surface-hover: #ebebef;
+  --waxwing-surface-selected: #dbe7fa;
   --waxwing-text: #1d1d1f;
   --waxwing-text-muted: #636366;
   --waxwing-border: #d2d2d7;
@@ -126,6 +134,9 @@
     --waxwing-bg: #1c1c1e;
     --waxwing-surface: #2c2c2e;
     --waxwing-surface-2: #3a3a3c;
+    /* ---- Row states: dark (see the light block for why these exist). ---- */
+    --waxwing-surface-hover: #3a3a3c;
+    --waxwing-surface-selected: #28394f;
     --waxwing-text: #f5f5f7;
     --waxwing-text-muted: #a5a5ad;
     --waxwing-border: #48484a;
@@ -161,6 +172,9 @@
   --waxwing-bg: #1c1c1e;
   --waxwing-surface: #2c2c2e;
   --waxwing-surface-2: #3a3a3c;
+  /* ---- Row states: dark (see the light block for why these exist). ---- */
+  --waxwing-surface-hover: #3a3a3c;
+  --waxwing-surface-selected: #28394f;
   --waxwing-text: #f5f5f7;
   --waxwing-text-muted: #a5a5ad;
   --waxwing-border: #48484a;
@@ -195,6 +209,9 @@
   --waxwing-bg: #f5f5f7;
   --waxwing-surface: #ffffff;
   --waxwing-surface-2: #ebebef;
+  /* ---- Row states: light (see the :root block). ---- */
+  --waxwing-surface-hover: #ebebef;
+  --waxwing-surface-selected: #dbe7fa;
   --waxwing-text: #1d1d1f;
   --waxwing-text-muted: #636366;
   --waxwing-border: #d2d2d7;

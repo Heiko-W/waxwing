@@ -433,8 +433,12 @@
 }
 
 .moveItem:focus-visible {
-  outline: none;
-  box-shadow: var(--waxwing-focus-ring);
+  /* `box-shadow: <bare colour>` is invalid syntax — offsets are mandatory — so the declaration was
+     dropped at computed-value time and the `outline: none` above it left NO focus indicator at all
+     (WCAG 2.4.7, Level A; measured in a real browser: boxShadow "none", outlineStyle "none"). Every
+     other focus style in the app is this outline; these two were the only box-shadow ones. */
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
 }
 
 .moveEmpty {
@@ -466,8 +470,12 @@
 }
 
 .collapsed:focus-visible {
-  outline: none;
-  box-shadow: var(--waxwing-focus-ring);
+  /* `box-shadow: <bare colour>` is invalid syntax — offsets are mandatory — so the declaration was
+     dropped at computed-value time and the `outline: none` above it left NO focus indicator at all
+     (WCAG 2.4.7, Level A; measured in a real browser: boxShadow "none", outlineStyle "none"). Every
+     other focus style in the app is this outline; these two were the only box-shadow ones. */
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
 }
 
 .collapsedUnread {

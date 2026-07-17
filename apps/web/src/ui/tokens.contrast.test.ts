@@ -57,6 +57,14 @@ const PAIRS: Pair[] = [
   { fg: 'text-muted', bg: 'bg', min: TEXT_AA, note: 'secondary text on page' },
   { fg: 'text-muted', bg: 'surface', min: TEXT_AA, note: 'secondary text on card' },
   { fg: 'text-muted', bg: 'surface-2', min: TEXT_AA, note: 'secondary text on raised' },
+  // Row states (M1.6, defined M3.9). A list row keeps `--waxwing-text` / `--waxwing-text-muted` on
+  // top of these fills, so both have to carry body AND secondary text. These pairs are the reason
+  // the fills are tokens at all rather than literals at the call site: the eight milestones during
+  // which they were referenced-but-undefined were invisible precisely because no test looked here.
+  { fg: 'text', bg: 'surface-hover', min: TEXT_AA, note: 'row text under the pointer' },
+  { fg: 'text-muted', bg: 'surface-hover', min: TEXT_AA, note: 'row preview under the pointer' },
+  { fg: 'text', bg: 'surface-selected', min: TEXT_AA, note: 'text on the selected row' },
+  { fg: 'text-muted', bg: 'surface-selected', min: TEXT_AA, note: 'preview on the selected row' },
   { fg: 'accent-contrast', bg: 'accent', min: TEXT_AA, note: 'label on default accent fill' },
   { fg: 'danger', bg: 'bg', min: TEXT_AA, note: 'error text on page' },
   { fg: 'danger', bg: 'surface', min: TEXT_AA, note: 'error text on card' },
