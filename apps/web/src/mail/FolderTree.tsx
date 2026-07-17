@@ -14,12 +14,16 @@ import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from
 import { Button, Dialog, IconButton, TextInput } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
 import { useCleanupActions } from './cleanup/use-cleanup-actions'
+import { canDropMessages, clearActiveDrag, getActiveDrag, setActiveDrag } from './dnd'
 import { FolderMoveDialog } from './FolderMoveDialog'
 import { FolderTreeView } from './FolderTreeView'
-import { buildFolderTree, folderDisplayName } from './folder-tree'
+import { buildFolderTree, folderDisplayName, legalParents } from './folder-tree'
 import styles from './folder-tree.module.css'
+import { useListStore } from './list-store'
 import { usePinActions, usePinnedMailboxes } from './pinned/use-pinned-folders'
 import { useFolderActions } from './use-folder-actions'
+import { useMoveLimits } from './use-move-limits'
+import { useTriage } from './use-triage'
 
 /** JMAP `maxSizeMailboxName` default (Stalwart fixture = 255); a real cap comes from the capability. */
 const MAX_NAME_LENGTH = 255
@@ -46,6 +50,11 @@ export function FolderTree() {
   const collapsedList = useLocalPref<string[]>(COLLAPSED_PREF)
   const pinned = usePinnedMailboxes()
   const pins = usePinActions()
+  // Drop targets (M3.9 5b): a message drop routes through the SAME triage seam the `v` chord and the
+  // bulk bar use, so it inherits the "Moved to …" Undo toast; a folder drop calls `actions.move`.
+  const triage = useTriage()
+  const clearSelection = useListStore((state) => state.select)
+  const limits = useMoveLimits()
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
@@ -94,6 +103,36 @@ export function FolderTree() {
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
+        onDragStartMailbox={(mailbox) =>
+          setActiveDrag({
+            kind: 'mailbox',
+            id: mailbox.id,
+            // Compute the legal parents ONCE at dragstart — `legalParents` runs `buildFolderTree`
+            // per candidate, and `dragover` fires continuously. `null` (top level) is dropped: the
+            // tree has no node to drop onto for it, and the picker owns that target.
+            legal: new Set(
+              legalParents(mailboxes, mailbox.id, limits).filter((p): p is string => p !== null),
+            ),
+          })
+        }
+        canDropOn={(mailbox) => {
+          const drag = getActiveDrag()
+          if (drag?.kind === 'messages') return canDropMessages(mailbox, drag.from)
+          if (drag?.kind === 'mailbox') return drag.legal.has(mailbox.id)
+          return false
+        }}
+        onDropOn={(mailbox) => {
+          const drag = getActiveDrag()
+          if (drag?.kind === 'messages') {
+            triage.moveTo([...drag.ids], drag.from, mailbox.id, folderDisplayName(mailbox, t))
+            // The tree does not go through MessageList's move path, so it must clear the selection
+            // itself — otherwise a follow-up action runs against a stale `from`.
+            clearSelection({ type: 'clear' })
+          } else if (drag?.kind === 'mailbox') {
+            actions.move(drag.id, mailbox.id)
+          }
+          clearActiveDrag()
+        }}
         pinned={pinned ?? EMPTY_PINS}
         onTogglePin={(mailbox) => pins.toggle(mailbox.id)}
       />

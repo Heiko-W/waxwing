@@ -133,7 +133,9 @@ export function MessageRow({
       style={style}
       onClick={onRowClick}
     >
-      <div role="gridcell" className={styles.selectCell}>
+      {/* `draggable` on the row makes descendants draggable too — the checkbox must stay a
+          checkbox, mirroring the stopPropagation below. */}
+      <div role="gridcell" className={styles.selectCell} draggable={false}>
         <Checkbox
           aria-label={t('list.select')}
           checked={selected}

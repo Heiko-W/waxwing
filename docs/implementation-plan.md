@@ -1635,11 +1635,22 @@ Spec: FR-RD-06/07/08, FR-MBX-03, FR-LST-06. Size: M.
       rollback; **owner decision (2026-07-17): no user-facing Undo toast for folder actions in 5a** —
       rename/delete have none either, and a move-only toast would make those two look broken. All
       three land together in a later WP or not at all.
-- [ ] **5b — drag & drop** on top of 5a: messages → folders, folder re-parenting (FR-MBX-03).
-      HTML5 DnD (not pointer events — they would fight the swipe below; the two are separated by
-      `pointerType`). Routes through the existing `move`/`moveMailbox` intents; no new write path.
-      `dragover` may only consult `dataTransfer.types` (values are unreadable until `drop`, by
-      spec). No `aria-dropeffect` (deprecated/unimplemented) — announce via a live region.
+- [x] **5b — drag & drop** on top of 5a: messages → folders, folder re-parenting (FR-MBX-03).
+      HTML5 DnD (not pointer events). **Correction to this task's own text:** it said the drag and the
+      swipe "are separated by `pointerType`" — a `DragEvent extends MouseEvent`, NOT `PointerEvent`,
+      so a drag handler has no `pointerType` to read. The separation is real but one-directional: only
+      the swipe (step 5) can filter `pointerType !== 'touch'`; the drag relies on browsers not firing
+      `dragstart` from touch, which makes it **desktop-only** — recorded as **ADR-012**. Routes
+      through the existing `move`/`moveMailbox` intents via the 5a seams (`triage.moveTo` for a
+      message drop, so it inherits the Undo toast; `useFolderActions().move` for a folder) and the 5a
+      guards (`legalParents`, snapshotted into a Set at dragstart) — no new write path, no parallel
+      legality check. `dragover` may only consult `dataTransfer.types` (values are unreadable until
+      `drop`, by spec) — so the kind rides in the MIME type and the subject in module-level state.
+      No `aria-dropeffect` (deprecated); an **always-mounted** `aria-live` region (Toast's rule)
+      announces "Drop on {folder}". Dragged-set rule: a row inside the selection drags the whole
+      selection, a row outside it drags just that row (the opposite of `targetIds`, which is
+      selection-first — wrong under a pointer). Proven live incl. a mutation check (removing the
+      `mayAddItems` gate turns the E2E red).
 - [ ] Swipe gestures on touch: configurable archive/delete/read actions (FR-LST-06).
       **Owner decision (2026-07-16): Apple parity** — default right = mark read, left = archive
       (→ trash when the account has no archive role), configurable per direction in Settings, as

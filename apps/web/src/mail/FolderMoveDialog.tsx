@@ -12,20 +12,14 @@
  * would look like it worked and only come back as an `invalid` conflict a round-trip later.
  */
 
-import { getMailCapability, type Id } from '@waxwing/jmap'
+import type { Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSessionOptional } from '../app/session/context'
 import { type MailboxRow, useMailboxes } from '../sync'
 import { Dialog } from '../ui'
-import {
-  buildFolderTree,
-  folderDisplayName,
-  legalParents,
-  type MoveLimits,
-  visibleRows,
-} from './folder-tree'
+import { buildFolderTree, folderDisplayName, legalParents, visibleRows } from './folder-tree'
 import styles from './reading.module.css'
+import { useMoveLimits } from './use-move-limits'
 
 export interface FolderMoveDialogProps {
   readonly mailbox: MailboxRow
@@ -36,22 +30,8 @@ export interface FolderMoveDialogProps {
 export function FolderMoveDialog({ mailbox, onClose, onMove }: FolderMoveDialogProps) {
   const { t } = useTranslation()
   const mailboxes = useMailboxes() ?? []
-  // Optional on purpose: `useSession` throws, and the folder tree is mounted in tests (and, briefly,
-  // in the shell) without a session provider.
-  const session = useSessionOptional()
-
-  const limits = useMemo<MoveLimits>(() => {
-    const cap = session ? getMailCapability(session.jmapSession, session.accountId) : null
-    return {
-      // `maxMailboxDepth` is TYPED `UnsignedInt | null`, but nothing validates it at the wire — a
-      // server that omits it hands us `undefined`, which TypeScript cannot see. `undefined > n` is
-      // false (silently allows everything) and `?? 0` blocks every move on the commonest config, so
-      // narrow explicitly and let an absent limit mean what the RFC says `null` means: unlimited.
-      maxMailboxDepth: typeof cap?.maxMailboxDepth === 'number' ? cap.maxMailboxDepth : null,
-      // Absent capability ⇒ allowed, matching the ungated top-level "New folder" button.
-      mayCreateTopLevelMailbox: cap?.mayCreateTopLevelMailbox ?? true,
-    }
-  }, [session])
+  // Same limits the drag uses — one source, so the two cannot disagree about what is legal.
+  const limits = useMoveLimits()
 
   const legal = useMemo(
     () => new Set(legalParents(mailboxes, mailbox.id, limits)),

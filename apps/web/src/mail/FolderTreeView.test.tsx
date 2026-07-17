@@ -1,8 +1,9 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { MailboxRow } from '../sync'
 import { expectNoA11yViolations } from '../test/axe'
+import { MESSAGES_MIME } from './dnd'
 import { FolderTreeView } from './FolderTreeView'
 import { buildFolderTree } from './folder-tree'
 
@@ -238,5 +239,105 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
     renderTree([row('inbox', { role: 'inbox' })])
     await user.click(screen.getByRole('button', { name: 'Folder actions' }))
     expect(screen.queryByRole('menuitem', { name: 'Move to…' })).not.toBeInTheDocument()
+  })
+})
+
+// Drop target + the live region (M3.9 5b). axe cannot see any of this — it verifies structure, never
+// that a region announces — so these are the tests that catch the single most likely 5b defect: a
+// region mounted only during a drag, which is silent on NVDA/JAWS.
+describe('FolderTreeView — drag & drop target', () => {
+  const dataTransfer = (types: string[]) => ({
+    types,
+    getData: () => '',
+    setData: () => {},
+    dropEffect: 'none',
+  })
+
+  it('the live region exists and is EMPTY before any drag (the always-mounted invariant)', () => {
+    // Mounted only while dragging → silent on NVDA/JAWS. This is the assertion that catches that.
+    const { container } = renderTree([row('inbox', { role: 'inbox' })])
+    const region = container.querySelector('[aria-live="polite"]')
+    expect(region).not.toBeNull()
+    expect(region).toBeEmptyDOMElement()
+  })
+
+  it('dragging a droppable message over a legal target rings it and announces the target', () => {
+    const { container } = renderTree(
+      [row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })],
+      {
+        canDropOn: () => true,
+      },
+    )
+    const work = screen.getByRole('treeitem', { name: /Work/ })
+    fireEvent.dragOver(work, { dataTransfer: dataTransfer([MESSAGES_MIME]) })
+
+    expect(work.className).toMatch(/dropTarget/)
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent('Drop on Work')
+  })
+
+  it('does not accept or announce a drag over an ILLEGAL target', () => {
+    const { container } = renderTree(
+      [row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })],
+      {
+        canDropOn: () => false,
+      },
+    )
+    const work = screen.getByRole('treeitem', { name: /Work/ })
+    const event = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer([MESSAGES_MIME]) })
+    fireEvent(work, event)
+
+    expect(event.defaultPrevented).toBe(false) // the drop is refused
+    expect(work.className).not.toMatch(/dropTarget/)
+    expect(container.querySelector('[aria-live="polite"]')).toBeEmptyDOMElement()
+  })
+
+  it('ignores a drag whose type is not one of ours (a file drag passes through)', () => {
+    const { container } = renderTree([row('inbox', { role: 'inbox' })], { canDropOn: () => true })
+    const inbox = screen.getByRole('treeitem', { name: /Inbox/ })
+    const event = new Event('dragover', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: dataTransfer(['Files']) })
+    fireEvent(inbox, event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(container.querySelector('[aria-live="polite"]')).toBeEmptyDOMElement()
+  })
+
+  it('keeps the highlight when dragleave crosses into a child span, clears when it truly leaves', () => {
+    renderTree([row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })], {
+      canDropOn: () => true,
+    })
+    const work = screen.getByRole('treeitem', { name: /Work/ })
+    fireEvent.dragOver(work, { dataTransfer: dataTransfer([MESSAGES_MIME]) })
+    expect(work.className).toMatch(/dropTarget/)
+
+    // `fireEvent.dragLeave(node, { relatedTarget })` does NOT put relatedTarget on the synthetic
+    // event (jsdom falls back to a plain Event whose relatedTarget stays null), so build the event
+    // by hand — the same technique the illegal-drag tests above use for dataTransfer.
+    const leaveTo = (related: Node | null) => {
+      const event = new Event('dragleave', { bubbles: true })
+      Object.defineProperty(event, 'relatedTarget', { value: related })
+      fireEvent(work, event)
+    }
+
+    // relatedTarget is a descendant → the cursor is still inside the row: keep the ring.
+    leaveTo(work.querySelector('span'))
+    expect(work.className).toMatch(/dropTarget/)
+
+    // relatedTarget outside the row → really left: clear it.
+    leaveTo(document.body)
+    expect(work.className).not.toMatch(/dropTarget/)
+  })
+
+  it('a mailbox with mayRename is draggable; one without is not', () => {
+    renderTree(
+      [
+        row('inbox', { role: 'inbox' }),
+        row('locked', { name: 'Locked', myRights: { ...RIGHTS, mayRename: false } }),
+      ],
+      { onDragStartMailbox: noop },
+    )
+    expect(screen.getByRole('treeitem', { name: /Inbox/ })).toHaveAttribute('draggable', 'true')
+    expect(screen.getByRole('treeitem', { name: /Locked/ })).toHaveAttribute('draggable', 'false')
   })
 })

@@ -26,6 +26,7 @@ import {
   useReplica,
 } from '../sync'
 import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden } from '../ui'
+import { clearActiveDrag, draggedMessageIds, MESSAGES_MIME, setActiveDrag } from './dnd'
 import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
 import { useLabels } from './labels/use-labels'
@@ -363,11 +364,34 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
               const id = ids[item.index]
               if (id === undefined) return null
               return (
+                // The drag is a pointer-only affordance on this presentational wrapper; the
+                // non-pointer equivalent SC 2.5.7 requires is the keyboard move path (`v`, bulk Move).
+                // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drag; keyboard path is the a11y route.
                 <div
                   key={id}
                   role="presentation"
                   className={styles.rowWrap}
                   style={{ transform: `translateY(${item.start}px)`, height: item.size }}
+                  // The drag lives on the WRAPPER, not on MessageRow: this is the only node holding
+                  // the id, the selection and the store in closure, so the row stays presentational.
+                  // Both gates are load-bearing. A skeleton row (`email === undefined`) is a live
+                  // `role="row"` with nothing to move; and without a source mailbox `move` keeps the
+                  // other memberships — a copy, not a move — which is the same gate `canMove` and the
+                  // `v` chord already apply.
+                  draggable={rowById.get(id) !== undefined && sourceMailboxId !== null}
+                  onDragStart={(event) => {
+                    if (sourceMailboxId === null) return
+                    const dragged = draggedMessageIds(selection.selected, id)
+                    // Dragging a row outside the selection makes IT the subject — the same rule
+                    // `open()` applies below, and the opposite of `targetIds`' selection-first one.
+                    if (!selection.selected.has(id)) dispatchSelection({ type: 'selectOne', id })
+                    setActiveDrag({ kind: 'messages', ids: dragged, from: sourceMailboxId })
+                    // The value is unreadable until `drop`; the TYPE is what `dragover` may consult.
+                    event.dataTransfer.setData(MESSAGES_MIME, dragged.join(','))
+                    event.dataTransfer.effectAllowed = 'move'
+                  }}
+                  // Not the drop site's job alone: a drag cancelled with Escape never drops.
+                  onDragEnd={() => clearActiveDrag()}
                 >
                   <MessageRow
                     id={rowDomId(id)}

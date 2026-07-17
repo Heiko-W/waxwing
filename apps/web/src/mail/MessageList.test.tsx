@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -380,6 +380,120 @@ describe('MessageList', () => {
       await waitFor(() =>
         expect(screen.queryByRole('dialog', { name: 'Move to folder' })).toBeNull(),
       )
+    })
+  })
+
+  // Drag & drop source (M3.9 5b, FR-MBX-03). The dragged-set rule and the two `draggable` gates are
+  // the contract; the drop side lives in FolderTree.test. jsdom ships no DataTransfer, so it is
+  // hand-stubbed on the fireEvent init, exactly as ComposerWindow.test does for file drops.
+  describe('drag source', () => {
+    /** A minimal DataTransfer that records setData calls. */
+    function dataTransfer() {
+      const store = new Map<string, string>()
+      return {
+        data: store,
+        setData: (type: string, value: string) => store.set(type, value),
+        getData: (type: string) => store.get(type) ?? '',
+        setDragImage: () => {},
+        types: [] as string[],
+        effectAllowed: 'uninitialized',
+      }
+    }
+    const rowWrap = (subject: string) =>
+      (screen.getByText(subject).closest('[role="row"]')?.parentElement as HTMLElement) ?? null
+
+    it('dragging a row OUTSIDE the selection carries only that row and makes it the selection', async () => {
+      const user = userEvent.setup()
+      renderList()
+      await screen.findByText('First')
+      // Select 'Second' and 'Third', then drag 'First', which is NOT selected.
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[1] as HTMLElement,
+      )
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[2] as HTMLElement,
+      )
+      expect(await screen.findByText('2 selected')).toBeInTheDocument()
+
+      const dt = dataTransfer()
+      fireEvent.dragStart(rowWrap('First'), { dataTransfer: dt })
+
+      // Carries e1 alone — NOT the selection. The rule `targetIds` gets backwards for a pointer.
+      expect(dt.data.get('application/x-waxwing-messages')).toBe('e1')
+      // …and 'First' becomes the whole selection (selectOne's first production caller).
+      expect(useListStore.getState().selection.selected.has('e1')).toBe(true)
+      expect(useListStore.getState().selection.selected.size).toBe(1)
+    })
+
+    it('dragging a row INSIDE the selection carries every selected id and leaves the selection alone', async () => {
+      const user = userEvent.setup()
+      renderList()
+      await screen.findByText('First')
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[1] as HTMLElement,
+      )
+      expect(await screen.findByText('2 selected')).toBeInTheDocument()
+
+      const dt = dataTransfer()
+      fireEvent.dragStart(rowWrap('First'), { dataTransfer: dt })
+
+      expect((dt.data.get('application/x-waxwing-messages') ?? '').split(',').sort()).toEqual([
+        'e1',
+        'e2',
+      ])
+      expect(useListStore.getState().selection.selected.size).toBe(2)
+    })
+
+    it('a real row is draggable; a cross-folder search row is not (that move would be a copy)', async () => {
+      renderList()
+      await screen.findByText('First')
+      expect(rowWrap('First')).toHaveAttribute('draggable', 'true')
+    })
+
+    it('rows in a cross-folder search are NOT draggable', async () => {
+      setActiveEngine(null)
+      const spec: QuerySpec = {
+        filter: { hasKeyword: 'work' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        collapseThreads: false,
+      }
+      const key = canonicalQueryKey(spec)
+      await putEmails(db, 'a', [
+        email('x1', {
+          subject: 'Labeled',
+          mailboxIds: { archive: true },
+          keywords: { work: true },
+        }),
+      ])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key,
+        ids: ['x1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'x1',
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: false,
+        lastUsedAt: 1,
+      })
+      render(
+        <RouterProvider>
+          <ConfigProvider config={DEFAULT_CONFIG}>
+            <ToastProvider>
+              <ReplicaProvider accountId="a" db={db}>
+                <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId: undefined }} />
+              </ReplicaProvider>
+            </ToastProvider>
+          </ConfigProvider>
+        </RouterProvider>,
+      )
+      // sourceMailboxId is null here: `move` with no `from` keeps the other memberships — a copy.
+      await screen.findByText('Labeled')
+      expect(rowWrap('Labeled')).toHaveAttribute('draggable', 'false')
     })
   })
 })

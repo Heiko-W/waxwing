@@ -25,10 +25,11 @@ import {
   Send,
   Trash2,
 } from 'lucide-react'
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { MailboxRow } from '../sync'
 import { Badge, Menu, type MenuItemSpec, VisuallyHidden } from '../ui'
+import { MAILBOX_MIME, MESSAGES_MIME } from './dnd'
 import { type FolderNode, folderDisplayName, visibleRows } from './folder-tree'
 import styles from './folder-tree.module.css'
 
@@ -52,6 +53,12 @@ export interface FolderTreeViewProps {
   readonly onRequestDelete: (mailbox: MailboxRow) => void
   /** Re-parent a folder (M3.9, FR-MBX-03) — the non-pointer path SC 2.5.7 requires; omit to hide. */
   readonly onRequestMove?: (mailbox: MailboxRow) => void
+  /** May the drag in flight drop on this mailbox? Omit to disable drop entirely (M3.9 5b). */
+  readonly canDropOn?: (mailbox: MailboxRow) => boolean
+  /** A drag was dropped on this mailbox — carry out the move (M3.9 5b). */
+  readonly onDropOn?: (mailbox: MailboxRow) => void
+  /** A folder re-parent drag started on this mailbox (M3.9 5b); omit to disable folder dragging. */
+  readonly onDragStartMailbox?: (mailbox: MailboxRow) => void
   /** Empty a Trash/Junk mailbox (M3.2 cleanup); omit to hide the entry. */
   readonly onRequestEmpty?: (mailbox: MailboxRow) => void
   /** Delete messages older than N days from any purgeable mailbox (M3.2 cleanup); omit to hide. */
@@ -72,6 +79,9 @@ export function FolderTreeView({
   onRequestRename,
   onRequestDelete,
   onRequestMove,
+  canDropOn,
+  onDropOn,
+  onDragStartMailbox,
   onRequestEmpty,
   onRequestDeleteOlder,
   pinned,
@@ -79,10 +89,17 @@ export function FolderTreeView({
 }: FolderTreeViewProps) {
   const { t } = useTranslation()
   const rows = visibleRows(tree, (id) => collapsed.has(id))
+  const rowsById = useMemo(
+    () => new Map(rows.map((node) => [node.mailbox.id, node.mailbox])),
+    [rows],
+  )
   const itemRefs = useRef(new Map<string, HTMLDivElement>())
   // The single tabbable row (roving focus). `undefined` until the user navigates, so the tree never
   // steals focus on mount.
   const [focusId, setFocusId] = useState<string | undefined>(undefined)
+  // The mailbox a drag is currently hovering (M3.9 5b); drives the `.dropTarget` ring and the
+  // announcer. Null when no drag is over a legal target.
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
   // Exactly one roving tab stop. The preferred id (last-focused, else the routed selection) is only
   // honored when it is actually a VISIBLE row — otherwise (its ancestor was collapsed, or it was
@@ -151,105 +168,151 @@ export function FolderTreeView({
   }
 
   return (
-    <div
-      role="tree"
-      aria-label={t('shell.folders.title')}
-      className={styles.tree}
-      onKeyDown={onKeyDown}
-    >
-      {rows.map((node) => {
-        const { mailbox, depth } = node
-        const hasChildren = node.children.length > 0
-        const expanded = hasChildren ? !collapsed.has(mailbox.id) : undefined
-        const selected = mailbox.id === selectedMailboxId
-        const Icon = (mailbox.role !== null && ROLE_ICONS[mailbox.role]) || Folder
-        const isPinned = pinned?.has(mailbox.id) ?? false
-        const menuItems = actionItems(mailbox, t, isPinned, {
-          onRequestCreate,
-          onRequestRename,
-          onRequestDelete,
-          onRequestMove,
-          onRequestEmpty,
-          onRequestDeleteOlder,
-          onTogglePin,
-        })
-        return (
-          // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard is handled at the role=tree container via onKeyDown delegation (APG tree pattern), not per treeitem.
-          <div
-            key={mailbox.id}
-            ref={(element) => {
-              if (element) itemRefs.current.set(mailbox.id, element)
-              else itemRefs.current.delete(mailbox.id)
-            }}
-            role="treeitem"
-            aria-level={depth + 1}
-            aria-setsize={node.setsize}
-            aria-posinset={node.posinset}
-            aria-selected={selected}
-            aria-expanded={expanded}
-            aria-current={selected ? 'page' : undefined}
-            tabIndex={mailbox.id === tabbableId ? 0 : -1}
-            className={styles.item}
-            style={{
-              paddingInlineStart: `calc(${depth} * var(--waxwing-space-4) + var(--waxwing-space-2))`,
-            }}
-            onClick={(event) => {
-              if ((event.target as HTMLElement).closest('[data-chevron]')) {
-                onToggleCollapse(mailbox.id)
-              } else {
-                setFocusId(mailbox.id)
-                onSelect(mailbox.id)
-              }
-            }}
-          >
-            {hasChildren ? (
-              <span data-chevron className={styles.chevron} aria-hidden="true">
-                {expanded ? <ChevronDown /> : <ChevronRight />}
-              </span>
-            ) : (
-              <span className={styles.chevron} aria-hidden="true" />
-            )}
-            <Icon aria-hidden="true" className={styles.icon} />
-            <span className={styles.label}>{folderDisplayName(mailbox, t)}</span>
-            {isPinned && (
-              // The pin glyph is decorative; the state is announced once, on the row itself.
-              <span className={styles.pin}>
-                <Pin aria-hidden="true" className={styles.icon} />
-                <VisuallyHidden>{t('mailbox.keptOffline')}</VisuallyHidden>
-              </span>
-            )}
-            {mailbox.unreadEmails > 0 && (
-              <span className={styles.count}>
-                {/* The visible pill is decorative; the count is announced once via VisuallyHidden. */}
-                <span aria-hidden="true">
-                  <Badge tone="neutral">{mailbox.unreadEmails}</Badge>
+    <>
+      <div
+        role="tree"
+        aria-label={t('shell.folders.title')}
+        className={styles.tree}
+        onKeyDown={onKeyDown}
+      >
+        {rows.map((node) => {
+          const { mailbox, depth } = node
+          const hasChildren = node.children.length > 0
+          const expanded = hasChildren ? !collapsed.has(mailbox.id) : undefined
+          const selected = mailbox.id === selectedMailboxId
+          const Icon = (mailbox.role !== null && ROLE_ICONS[mailbox.role]) || Folder
+          const isPinned = pinned?.has(mailbox.id) ?? false
+          const menuItems = actionItems(mailbox, t, isPinned, {
+            onRequestCreate,
+            onRequestRename,
+            onRequestDelete,
+            onRequestMove,
+            onRequestEmpty,
+            onRequestDeleteOlder,
+            onTogglePin,
+          })
+          return (
+            // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard is handled at the role=tree container via onKeyDown delegation (APG tree pattern), not per treeitem.
+            <div
+              key={mailbox.id}
+              ref={(element) => {
+                if (element) itemRefs.current.set(mailbox.id, element)
+                else itemRefs.current.delete(mailbox.id)
+              }}
+              role="treeitem"
+              aria-level={depth + 1}
+              aria-setsize={node.setsize}
+              aria-posinset={node.posinset}
+              aria-selected={selected}
+              aria-expanded={expanded}
+              aria-current={selected ? 'page' : undefined}
+              tabIndex={mailbox.id === tabbableId ? 0 : -1}
+              className={`${styles.item}${dropTargetId === mailbox.id ? ` ${styles.dropTarget}` : ''}`}
+              style={{
+                paddingInlineStart: `calc(${depth} * var(--waxwing-space-4) + var(--waxwing-space-2))`,
+              }}
+              // A folder re-parents by dragging; the subject-side right is `mayRename`, exactly what the
+              // "Move to…" menu item gates on. The legal-target Set is computed once at dragstart.
+              draggable={onDragStartMailbox !== undefined && mailbox.myRights.mayRename}
+              onDragStart={(event) => {
+                event.dataTransfer.setData(MAILBOX_MIME, mailbox.id)
+                event.dataTransfer.effectAllowed = 'move'
+                onDragStartMailbox?.(mailbox)
+              }}
+              onDragEnd={() => setDropTargetId(null)}
+              onDragOver={(event) => {
+                // Only OUR drags, and only where the caller says a drop is legal. By spec `dragover`
+                // may read `types` but never the values — which is why the subject rides in module
+                // state, not the payload.
+                const types = event.dataTransfer.types
+                if (!types.includes(MESSAGES_MIME) && !types.includes(MAILBOX_MIME)) return
+                if (canDropOn?.(mailbox) !== true) return
+                event.preventDefault() // accept the drop
+                event.dataTransfer.dropEffect = 'move'
+                setDropTargetId(mailbox.id)
+              }}
+              onDragLeave={(event) => {
+                // dragleave fires when the cursor crosses into a CHILD span (chevron/label/count) too;
+                // only clear when it truly left the row, or the highlight flickers.
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDropTargetId(null)
+                }
+              }}
+              onDrop={(event) => {
+                if (canDropOn?.(mailbox) !== true) return
+                event.preventDefault()
+                setDropTargetId(null)
+                onDropOn?.(mailbox)
+              }}
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest('[data-chevron]')) {
+                  onToggleCollapse(mailbox.id)
+                } else {
+                  setFocusId(mailbox.id)
+                  onSelect(mailbox.id)
+                }
+              }}
+            >
+              {hasChildren ? (
+                <span data-chevron className={styles.chevron} aria-hidden="true">
+                  {expanded ? <ChevronDown /> : <ChevronRight />}
                 </span>
-                <VisuallyHidden>
-                  {t('mailbox.unread', { count: mailbox.unreadEmails })}
-                </VisuallyHidden>
-              </span>
-            )}
-            {menuItems.length > 0 && (
-              // biome-ignore lint/a11y/noStaticElementInteractions: stops a menu click from selecting the row.
-              <span
-                className={styles.rowMenu}
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => event.stopPropagation()}
-              >
-                <Menu
-                  align="end"
-                  triggerLabel={t('mailbox.actions.menu')}
-                  trigger={<MoreHorizontal aria-hidden="true" className={styles.icon} />}
-                  items={menuItems}
-                  // Keep the tree a single tab stop: only the active row's action button is tabbable.
-                  triggerTabIndex={mailbox.id === tabbableId ? 0 : -1}
-                />
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
+              ) : (
+                <span className={styles.chevron} aria-hidden="true" />
+              )}
+              <Icon aria-hidden="true" className={styles.icon} />
+              <span className={styles.label}>{folderDisplayName(mailbox, t)}</span>
+              {isPinned && (
+                // The pin glyph is decorative; the state is announced once, on the row itself.
+                <span className={styles.pin}>
+                  <Pin aria-hidden="true" className={styles.icon} />
+                  <VisuallyHidden>{t('mailbox.keptOffline')}</VisuallyHidden>
+                </span>
+              )}
+              {mailbox.unreadEmails > 0 && (
+                <span className={styles.count}>
+                  {/* The visible pill is decorative; the count is announced once via VisuallyHidden. */}
+                  <span aria-hidden="true">
+                    <Badge tone="neutral">{mailbox.unreadEmails}</Badge>
+                  </span>
+                  <VisuallyHidden>
+                    {t('mailbox.unread', { count: mailbox.unreadEmails })}
+                  </VisuallyHidden>
+                </span>
+              )}
+              {menuItems.length > 0 && (
+                // biome-ignore lint/a11y/noStaticElementInteractions: stops a menu click from selecting the row.
+                <span
+                  className={styles.rowMenu}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <Menu
+                    align="end"
+                    triggerLabel={t('mailbox.actions.menu')}
+                    trigger={<MoreHorizontal aria-hidden="true" className={styles.icon} />}
+                    items={menuItems}
+                    // Keep the tree a single tab stop: only the active row's action button is tabbable.
+                    triggerTabIndex={mailbox.id === tabbableId ? 0 : -1}
+                  />
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {/* OUTSIDE role="tree" (a tree may only contain treeitem/group — axe aria-required-children),
+          and ALWAYS mounted with its text swapped: a screen reader only announces a live region that
+          already existed in the DOM (Toast.tsx says the same). Derived from `dropTargetId`, so it
+          changes on target CHANGE, not on the dragover firehose. No `aria-dropeffect` — deprecated. */}
+      <VisuallyHidden aria-live="polite">
+        {dropTargetId !== null && rowsById.has(dropTargetId)
+          ? t('folders.drag.over', {
+              folder: folderDisplayName(rowsById.get(dropTargetId) as MailboxRow, t),
+            })
+          : ''}
+      </VisuallyHidden>
+    </>
   )
 }
 

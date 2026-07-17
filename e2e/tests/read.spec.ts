@@ -391,3 +391,57 @@ test.describe('M3.9 move paths', () => {
     })
   })
 })
+
+// M3.9 step 5b — HTML5 drag & drop (FR-MBX-03). Runs against the live server because nothing else
+// exercises real DnD: jsdom fires no drag events, so the unit tests stage `getActiveDrag` by hand and
+// prove the wiring but not that a browser's dragstart→dragover→drop actually lands the move.
+test.describe('M3.9 drag & drop', () => {
+  /**
+   * Drive a real HTML5 drag through the browser. Playwright's built-in dragTo does not reliably
+   * synthesize dragstart/drop for HTML5 DnD, so dispatch the sequence with ONE shared DataTransfer —
+   * the pattern the ecosystem settled on for this API.
+   */
+  async function dragDrop(page: Page, subject: string, targetFolder: string): Promise<void> {
+    await page.evaluate(
+      ([subj, folder]) => {
+        // The draggable node is the row's wrapper (`[draggable]`); the row itself is inside it.
+        const row = [...document.querySelectorAll('[role="row"]')].find((r) =>
+          r.textContent?.includes(subj as string),
+        )
+        const src = row?.closest('[draggable="true"]')
+        const dst = [...document.querySelectorAll('[role="treeitem"]')].find((t) =>
+          t.textContent?.includes(folder as string),
+        )
+        if (!src || !dst) throw new Error(`drag nodes missing: src=${!!src} dst=${!!dst}`)
+        const dataTransfer = new DataTransfer()
+        const fire = (node: Element, type: string) =>
+          node.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer }))
+        fire(src, 'dragstart')
+        fire(dst, 'dragenter')
+        fire(dst, 'dragover')
+        fire(dst, 'drop')
+        fire(src, 'dragend')
+      },
+      [subject, targetFolder],
+    )
+  }
+
+  test('dragging a message onto a folder moves it — through the undo seam', async ({ page }) => {
+    await login(page)
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain).first()).toBeVisible({
+      timeout: 20_000,
+    })
+
+    await dragDrop(page, READ_SUBJECTS.plain, 'Archive')
+    // A real move dispatched through triage.moveTo raises the named Undo toast…
+    await expect(page.getByText('Moved to Archive')).toBeVisible({ timeout: 15_000 })
+    // …and the row leaves the inbox list.
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain, { exact: true })).toBeHidden({
+      timeout: 15_000,
+    })
+    await page.getByRole('button', { name: 'Undo' }).click()
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain, { exact: true })).toBeVisible({
+      timeout: 15_000,
+    })
+  })
+})

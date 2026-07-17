@@ -66,6 +66,15 @@
   outline-offset: -2px;
 }
 
+/* The drop target under a drag (M3.9 5b). An INSET ring, not a background: hover and
+   aria-selected both already resolve to --waxwing-surface-2, and the cursor is by definition
+   hovering the row it is about to drop on, so a background-based cue is invisible by
+   construction. Not a border either — `.item` carries an inline paddingInlineStart derived from
+   its depth, so a border would shift every row's text sideways mid-drag. */
+.dropTarget {
+  box-shadow: inset 0 0 0 2px var(--waxwing-accent);
+}
+
 .chevron {
   display: inline-flex;
   align-items: center;

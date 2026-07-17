@@ -875,5 +875,10 @@
     "goToLabel": "Go to label: {{label}}",
     "goToSettings": "Go to Settings",
     "goToContacts": "Go to Contacts"
+  },
+  "folders": {
+    "drag": {
+      "over": "Drop on {{folder}}"
+    }
   }
 }
