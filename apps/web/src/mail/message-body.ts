@@ -5,8 +5,19 @@
  * in BOTH textBody and htmlBody), and `bodyValues` is keyed by `partId`.
  */
 
-import type { EmailAddress, EmailBodyPart } from '@waxwing/jmap'
-import type { EmailBodyRow } from '../sync'
+import type { Email, EmailAddress, EmailBodyPart } from '@waxwing/jmap'
+
+/**
+ * The body fields these helpers touch — the five that a rendered message needs, and the five a
+ * PARSED `message/rfc822` (from `Email/parse`) carries. Widening from `EmailBodyRow` to this lets a
+ * parsed Email — which has no stored id and never enters Dexie — reuse the exact same rendering
+ * transforms without going near the id-keyed `useMessageBody`. `EmailBodyRow` is structurally
+ * assignable to it, so every existing caller stays green.
+ */
+export type RenderableBody = Pick<
+  Email,
+  'bodyValues' | 'bodyStructure' | 'textBody' | 'htmlBody' | 'attachments'
+>
 
 export interface BodyText {
   readonly partId: string
@@ -14,7 +25,7 @@ export interface BodyText {
 }
 
 /** The genuine `text/html` body parts (decoded), or `null` when the message has no real HTML. */
-export function pickHtmlBody(body: EmailBodyRow): BodyText[] | null {
+export function pickHtmlBody(body: RenderableBody): BodyText[] | null {
   const parts = body.htmlBody.filter(
     (part): part is EmailBodyPart & { partId: string } =>
       part.partId !== null && part.type === 'text/html',
@@ -27,7 +38,7 @@ export function pickHtmlBody(body: EmailBodyRow): BodyText[] | null {
 }
 
 /** The concatenated decoded `text/plain` body. */
-export function pickTextBody(body: EmailBodyRow): string {
+export function pickTextBody(body: RenderableBody): string {
   return body.textBody
     .filter(
       (part): part is EmailBodyPart & { partId: string } =>
@@ -45,7 +56,7 @@ export interface CidPart {
 }
 
 /** Every inline part with a `cid` AND a `blobId`, walking the structure/htmlBody/attachments. */
-export function collectCidParts(body: EmailBodyRow): CidPart[] {
+export function collectCidParts(body: RenderableBody): CidPart[] {
   const out: CidPart[] = []
   const seen = new Set<string>()
   const visit = (part: EmailBodyPart | undefined): void => {

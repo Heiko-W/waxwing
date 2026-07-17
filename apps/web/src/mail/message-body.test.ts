@@ -7,6 +7,7 @@ import {
   nameLooksLikeAddress,
   pickHtmlBody,
   pickTextBody,
+  type RenderableBody,
   sameAddresses,
   senderName,
 } from './message-body'
@@ -74,6 +75,20 @@ describe('pickHtmlBody', () => {
   it('falls back to an empty string when the body value is missing', () => {
     const b = body({ htmlBody: [part({ partId: 'h1', type: 'text/html' })] })
     expect(pickHtmlBody(b)).toEqual([{ partId: 'h1', value: '' }])
+  })
+
+  it('accepts a bare RenderableBody — an Email/parse result with no stored id (FR-RD-07)', () => {
+    // A parsed message/rfc822 is a full Email with bodyValues inline but no id and no Dexie row.
+    // The widening is what lets it reuse this helper; the test pins that the five fields suffice.
+    const parsed: RenderableBody = {
+      bodyValues: { h1: value('<p>nested</p>') },
+      bodyStructure: part(),
+      textBody: [],
+      htmlBody: [part({ partId: 'h1', type: 'text/html' })],
+      attachments: [],
+    }
+    expect(pickHtmlBody(parsed)).toEqual([{ partId: 'h1', value: '<p>nested</p>' }])
+    expect(pickTextBody(parsed)).toBe('')
   })
 })
 

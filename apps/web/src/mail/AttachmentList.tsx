@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { formatBytes } from '../i18n/formatters'
 import { Button, IconButton, Spinner } from '../ui'
 import { attachmentIcon } from './attachment-icon'
+import { NestedMessageView } from './NestedMessageView'
 import styles from './reading.module.css'
 import { useBlobFetcher } from './use-blob'
 
@@ -31,6 +32,11 @@ function isPreviewable(type: string): boolean {
   return type.startsWith('image/') || type === 'application/pdf'
 }
 
+/** An attached email (M3.9, FR-RD-07) — opens as a nested in-app view, not a download preview. */
+function isMessage(type: string): boolean {
+  return type === 'message/rfc822'
+}
+
 export function AttachmentList({ accountId, attachments }: AttachmentListProps) {
   const { t } = useTranslation()
   const fetchBlob = useBlobFetcher(accountId)
@@ -39,6 +45,8 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
   const urlCacheRef = useRef(new Map<Id, string>())
   const [busy, setBusy] = useState<string | null>(null)
   const [preview, setPreview] = useState<{ blobId: Id; type: string; url: string } | null>(null)
+  // The attached message currently expanded inline (M3.9, FR-RD-07); null = none open.
+  const [openMessage, setOpenMessage] = useState<Id | null>(null)
 
   const items = attachments.filter(isAttachment)
 
@@ -142,6 +150,21 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
                     {open ? t('reading.attachments.hidePreview') : t('reading.attachments.preview')}
                   </Button>
                 )}
+                {/* message/rfc822 is not previewable, so Preview and Open are mutually exclusive. */}
+                {isMessage(part.type) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-expanded={openMessage === part.blobId}
+                    onClick={() =>
+                      setOpenMessage((current) => (current === part.blobId ? null : part.blobId))
+                    }
+                  >
+                    {openMessage === part.blobId
+                      ? t('reading.nested.close')
+                      : t('reading.nested.open')}
+                  </Button>
+                )}
                 <IconButton
                   label={t('reading.attachments.download', { name: label })}
                   variant="ghost"
@@ -165,6 +188,9 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
                     />
                   )}
                 </div>
+              )}
+              {openMessage === part.blobId && (
+                <NestedMessageView accountId={accountId} blobId={part.blobId} />
               )}
             </li>
           )

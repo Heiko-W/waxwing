@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import {
   deliverLiveMail,
   READ_BODIES,
+  READ_NESTED,
   READ_PHISHING,
   READ_SUBJECTS,
   seedReadMail,
@@ -443,5 +444,34 @@ test.describe('M3.9 drag & drop', () => {
     await expect(messageList(page).getByText(READ_SUBJECTS.plain, { exact: true })).toBeVisible({
       timeout: 15_000,
     })
+  })
+})
+
+// M3.9 step 7 — a nested message/rfc822 opens in-app via Email/parse (FR-RD-07). Live because the
+// parse round-trip and its body-value delivery were only ever exercised in the dev demo (SP.4); this
+// asserts the production affordance end to end against the real server.
+test.describe('M3.9 nested message', () => {
+  test('an attached .eml opens inline through Email/parse', async ({ page }) => {
+    await login(page)
+    // Open the carrier message that forwards the original as an attachment.
+    await page.getByText(READ_SUBJECTS.rfc822).first().click()
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText(READ_SUBJECTS.rfc822, {
+      timeout: 20_000,
+    })
+
+    // The attachment strip lists the .eml with an Open message affordance (not a download preview).
+    const open = page.getByRole('button', { name: 'Open message' })
+    await expect(open).toBeVisible({ timeout: 15_000 })
+    await open.click()
+
+    // Email/parse round-trips and the inner message renders: its header (subject + sender) and its
+    // body inside the sandboxed frame. The body value coming back inline is the SP.4 caveat live.
+    await expect(page.getByText(READ_NESTED.subject)).toBeVisible({ timeout: 20_000 })
+    const innerFrame = page.frameLocator(`iframe[title="Attached message: ${READ_NESTED.subject}"]`)
+    await expect(innerFrame.getByText(READ_NESTED.body)).toBeVisible({ timeout: 20_000 })
+
+    // Toggling it closed removes the nested view.
+    await page.getByRole('button', { name: 'Hide message' }).click()
+    await expect(page.getByText(READ_NESTED.subject)).toBeHidden()
   })
 })

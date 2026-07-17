@@ -493,6 +493,18 @@
         "notFound": "Diese Nachricht ist nicht mehr auf dem Server vorhanden.",
         "failed": "Der Quelltext konnte nicht geladen werden."
       }
+    },
+    "nested": {
+      "open": "Nachricht öffnen",
+      "close": "Nachricht ausblenden",
+      "frameTitle": "Angehängte Nachricht: {{subject}}",
+      "error": {
+        "notParsable": "Diese angehängte Nachricht konnte nicht geöffnet werden.",
+        "offline": "Stellen Sie eine Verbindung her, um diese Nachricht zu öffnen.",
+        "failed": "Diese angehängte Nachricht konnte nicht geöffnet werden."
+      },
+      "subjectLabel": "Betreff",
+      "truncated": "Es wird nur der Anfang dieser Nachricht angezeigt. Laden Sie den Anhang herunter, um sie vollständig zu sehen."
     }
   },
   "compose": {

@@ -645,3 +645,45 @@
     min-height: 0;
   }
 }
+
+/* Nested message/rfc822 view (M3.9, FR-RD-07) — a parsed attachment rendered inline under its row. */
+.nested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin-block-start: var(--waxwing-space-2);
+  padding: var(--waxwing-space-3);
+  background: var(--waxwing-surface-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+.nestedHeader {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--waxwing-space-1) var(--waxwing-space-3);
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+}
+.nestedRow {
+  display: contents;
+}
+.nestedHeader dt {
+  color: var(--waxwing-text-muted);
+  font-weight: var(--waxwing-weight-medium);
+}
+.nestedHeader dd {
+  margin: 0;
+  color: var(--waxwing-text);
+  overflow-wrap: anywhere;
+}
+.nestedLoading {
+  display: flex;
+  justify-content: center;
+  padding: var(--waxwing-space-4);
+}
+.nestedError {
+  margin: var(--waxwing-space-2) 0 0;
+  padding: var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
