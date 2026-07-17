@@ -21,10 +21,20 @@ import { useToast } from '../ui'
 import { useMessageActions } from './use-message-actions'
 
 export interface Triage {
-  /** Move to the Archive role mailbox (no-op when the account has none). */
-  archive(ids: Id[], from: Id | null): void
-  junk(ids: Id[], from: Id | null): void
-  trash(ids: Id[], from: Id | null): void
+  /**
+   * Move to the Archive role mailbox. **Returns whether the move was dispatched** — `false` when the
+   * account has no such mailbox OR its liveQuery has not resolved yet.
+   *
+   * The boolean is not decoration. These moves used to return `void`, and a caller had no way to tell
+   * "filed" from "silently dropped": `e` on a just-opened message ran through MessageView's own
+   * `useMailboxByRole('archive')`, found it still `undefined`, returned quietly — and the registry
+   * advanced the reading pane anyway, handing the user the exact confirmation they were trained to
+   * trust while the mail sat untouched in the Inbox. Proven at ~7% against the live fixture (M3.9).
+   * A caller that ignores this result reintroduces that bug.
+   */
+  archive(ids: Id[], from: Id | null): boolean
+  junk(ids: Id[], from: Id | null): boolean
+  trash(ids: Id[], from: Id | null): boolean
   setSeen(ids: Id[], seen: boolean): void
   setFlagged(ids: Id[], flagged: boolean): void
 }
@@ -43,8 +53,8 @@ export function useTriage(): Triage {
       from: Id | null,
       to: Id | undefined,
       titleKey: string,
-    ): void => {
-      if (to === undefined || ids.length === 0) return
+    ): boolean => {
+      if (to === undefined || ids.length === 0) return false
       actions.move(ids, from, to)
       toast({
         title: t(titleKey),
@@ -53,6 +63,7 @@ export function useTriage(): Triage {
           ? { action: { label: t('list.undo'), onAction: () => actions.move(ids, to, from) } }
           : {}),
       })
+      return true
     }
     return {
       archive: (ids, from) => moveWithUndo(ids, from, archiveBox?.id, 'list.moved.archive'),

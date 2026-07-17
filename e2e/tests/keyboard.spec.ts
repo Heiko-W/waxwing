@@ -31,6 +31,16 @@ async function focusedRowSubject(page: Page): Promise<string> {
   return (await page.locator(`[id="${id}"] [class*="subject"]`).innerText()).trim()
 }
 
+/** The subject of the row `x` actually ticked — read from the checked checkbox, not from the focus. */
+async function selectedRowSubject(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const row = [...document.querySelectorAll('[role="row"]')].find(
+      (r) => (r.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked,
+    )
+    return row?.querySelector('[class*="subject"]')?.textContent?.trim() ?? null
+  })
+}
+
 // Reseed before every test — the triage chords MOVE mail, so each test needs a fresh corpus.
 test.beforeEach(async () => {
   await seedReadMail()
@@ -70,6 +80,12 @@ test.describe('M3.8 keyboard shortcuts + command palette', () => {
     const doomed = await focusedRowSubject(page)
     await page.keyboard.press('x')
     await expect(page.getByText('1 selected')).toBeVisible()
+    // `x` must have ticked the row we just read. This is not paranoia: `advanceAfterTriage` used to
+    // anchor the focus by INDEX, so the archive's prune could shift the rows between the read above
+    // and this keypress — and then the assertion at the bottom would wait for a message nobody ever
+    // trashed and blame the app for it. Asserting the link explicitly means a future drift fails HERE,
+    // naming the real problem, instead of masquerading as "the trashed row never disappeared".
+    expect(await selectedRowSubject(page)).toBe(doomed)
     await page.keyboard.press('#')
     // Address the toasts by their own title: they STACK, so the archive's Undo button from a few
     // lines up is still on screen and a bare `name: 'Undo'` would be ambiguous.

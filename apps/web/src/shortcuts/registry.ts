@@ -61,11 +61,13 @@ export function advanceAfterTriage(context: ShortcutContext, consumed: readonly 
     context.navigate(mailHref(context, mailboxId))
     return
   }
-  // Anchor the roving focus on the message we are ABOUT to show, by id. The index it sits at now is
-  // one past the consumed message; once the move lands and the consumed id leaves the window, the
-  // store re-anchors this id to its new index (`list-store.setWindow`) so the focused row and the
-  // reading pane never drift apart.
-  context.list.focusIndexTo(index + 1)
+  // Anchor the roving focus on the message we are ABOUT to show BY ID — never by index. `index + 1`
+  // is read off the window as it stands before the move; the triage above prunes the consumed row
+  // optimistically, and if that lands first every row shifts up and the same index points one row too
+  // far. Then `x` ticks a message the reader is not looking at and `#` trashes THAT one. Measured at
+  // 3/30 against the live fixture (M3.9) — and the comment that used to sit here claimed this was
+  // anchored by id while the code below it did the index thing.
+  context.list.focusToId(next)
   context.navigate(mailHref(context, mailboxId, next))
 }
 
@@ -78,17 +80,33 @@ function canMove(context: ShortcutContext, role: Id | undefined): boolean {
  * Run a move over the current targets. With a message open and nothing selected, this goes through
  * the reading pane's OWN handler (identical action, but it also closes that view's dialogs and keeps
  * its `from` mailbox) — otherwise straight through {@link Triage} over the selection/focused row.
+ *
+ * The reading pane's handler can REFUSE, and that is the whole reason both seams return a boolean.
+ * `MessageView` resolves its role mailboxes through its own `useMailboxByRole` instances, which are
+ * `undefined` for the first tick(s) after it mounts. The E2E's only barrier before `e` is the `<h2>`
+ * — rendered by a different liveQuery, and satisfied a couple of milliseconds EARLIER. Press `e` in
+ * that window and the old code archived nothing, said nothing, and advanced the pane regardless, so
+ * the reader saw "it moved on" and believed the mail was filed. ~7% of runs against the live fixture
+ * (M3.9); worse the faster you triage, which is the one thing this layer exists for. The mouse never
+ * had the hole — `MessageView`'s buttons carry `disabled={archiveBox === undefined}`.
+ *
+ * So a refusal falls through to the SHORTCUT layer's own triage, whose mailboxes resolved with the
+ * app shell long before any row could be focused. That keeps `use-triage`'s promise — a click and a
+ * keystroke are the same action — instead of merely documenting it. If BOTH refuse (the account
+ * genuinely has no such mailbox) nothing moves, and then the pane must not advance either: an
+ * advance over a move that never dispatched is worse than inaction, because it looks like success.
  */
 function runMove(context: ShortcutContext, kind: 'archive' | 'junk' | 'trash'): void {
   const consumed = [...context.targetIds]
   const reading = context.reading
+  let moved: boolean
   if (!context.hasSelection && context.openEmailId !== undefined && reading !== null) {
-    reading[kind]()
+    moved = reading[kind]() || context.triage[kind](consumed, context.sourceMailboxId)
   } else {
-    context.triage[kind](consumed, context.sourceMailboxId)
+    moved = context.triage[kind](consumed, context.sourceMailboxId)
     context.list.select({ type: 'clear' })
   }
-  advanceAfterTriage(context, consumed)
+  if (moved) advanceAfterTriage(context, consumed)
 }
 
 /** Move the roving focus; with a message open, follow it into the reading pane (Gmail parity). */

@@ -1181,6 +1181,24 @@ export class SyncEngine {
       const spec = { filter: row.filter, sort: row.sort, collapseThreads: row.collapseThreads }
       try {
         await reconcileQuery(this.port, this.db, this.accountId, key, spec, this.clock, forceFull)
+        // Re-check the queue AFTER the round-trips, not just before them.
+        //
+        // `runReplay`'s `pendingOutbox` guard is a CHECK-THEN-ACT: it samples an empty queue and then
+        // spends two network round-trips here re-querying. An intent dispatched inside that window —
+        // `#` a moment after `e`, which is human triage speed — voids this window and queues, but the
+        // in-flight answer below it is already stale: it was computed from a server list that predates
+        // the trash. Writing it back restores `queryState` to non-null, and the very next pass, the one
+        // that finally sends the trash, then SKIPS this window at the `onlyVoided` test above. The row
+        // stays on screen until the 60 s safety sweep — four times the E2E's timeout, and forever as
+        // far as the reader is concerned. Fixing only the pre-check made the race narrower, not gone
+        // (still 2/30 live); the guard has to bracket the round-trips, not precede them.
+        //
+        // Re-void rather than write: the next pass re-queries with the trash already sent, so the
+        // window converges. The cost of a false positive is one extra query, which is the cheap side
+        // of this trade.
+        if (onlyVoided && (await pendingOutbox(this.db, this.accountId)).length > 0) {
+          await this.db.queryCache.update([this.accountId, key], { queryState: null })
+        }
       } catch (error) {
         // Isolate per key: one watched query's failure must not fail the whole sync pass — that
         // would starve the keys after it. A server-rejected search filter (e.g. free-text on an

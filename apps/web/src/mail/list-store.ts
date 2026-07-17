@@ -52,6 +52,17 @@ export interface ListController {
   moveFocus(delta: number): void
   /** Set the roving focus to an absolute index (clamped). Does not touch DOM focus. */
   focusIndexTo(index: number): void
+  /**
+   * Set the roving focus to a specific message, by id. No-op when it is not in the window.
+   *
+   * Prefer this over {@link focusIndexTo} whenever the target is a known message: an index computed
+   * from the window as it was is wrong the moment the window changes, and an optimistic prune changes
+   * it within the same tick. `advanceAfterTriage` used to compute `index + 1` before the move and
+   * apply it after, so whenever the prune won the race the focus landed one row too far — `x` then
+   * ticked a different message than the one the reader was looking at. Measured at 3/30 against the
+   * live fixture (M3.9). {@link setWindow} already re-anchors by id for exactly this reason.
+   */
+  focusToId(id: Id): void
   requestLabels(ids: Id[] | null): void
   setGridHandle(handle: GridHandle | null): void
 }
@@ -146,6 +157,11 @@ export const useListStore = create<ListStore>()((set, get) => ({
     const { ids } = get()
     if (ids.length === 0) return
     set({ focusIndex: clamp(index, ids.length) })
+  },
+
+  focusToId(id) {
+    const found = get().ids.indexOf(id)
+    if (found >= 0) set({ focusIndex: found })
   },
 
   requestLabels(ids) {

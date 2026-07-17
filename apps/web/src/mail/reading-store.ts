@@ -23,9 +23,15 @@ export interface ReadingHandlers {
   /** Reply/forward need the loaded body; false while it is still fetching (the buttons are disabled). */
   readonly bodyReady: boolean
   compose(kind: ReplyKind): void
-  archive(): void
-  junk(): void
-  trash(): void
+  /**
+   * Move the open message. **Returns whether the move was dispatched** — `false` when this view's own
+   * role-mailbox liveQuery has not resolved yet (its buttons carry the same condition as
+   * `disabled`). The keyboard has no `disabled` state to read, so it needs the answer at call time;
+   * see {@link Triage.archive} for the bug this exists to prevent.
+   */
+  archive(): boolean
+  junk(): boolean
+  trash(): boolean
   toggleFlag(): void
   markUnread(): void
   openMove(): void
