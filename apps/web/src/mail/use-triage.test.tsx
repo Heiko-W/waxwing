@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { putMailboxes, type ReplicaDb, ReplicaProvider, useMailboxByRole } from '../sync'
 import { setActiveEngine } from '../sync/engine'
@@ -18,15 +19,25 @@ function Probe({ from }: { readonly from: string | null }) {
   // is right (the real buttons are disabled until then), but it means a click fired before the
   // query resolves is silently swallowed and no `waitFor` can bring it back. So publish readiness
   // and let every test await it: this is a precondition, not a timing guess.
+  // Archive and Trash are two INDEPENDENT liveQueries and may land on different ticks, so the
+  // marker waits for both — otherwise the self-move test could click while `trash` is still
+  // `undefined` and pass for the wrong reason.
   const archiveId = useMailboxByRole('archive')?.id
+  const trashId = useMailboxByRole('trash')?.id
+  // The seam's boolean is the contract the callers branch on, so assert it, not just the dispatch.
+  const [result, setResult] = useState<boolean | null>(null)
   return (
     <>
-      {archiveId !== undefined && <span>roles-ready</span>}
+      {archiveId !== undefined && trashId !== undefined && <span>roles-ready</span>}
+      {result !== null && <span>{`result:${result}`}</span>}
       <button type="button" onClick={() => triage.archive(['e1'], from)}>
         probe-archive
       </button>
       <button type="button" onClick={() => triage.junk(['e1'], from)}>
         probe-junk
+      </button>
+      <button type="button" onClick={() => setResult(triage.trash(['e1'], from))}>
+        probe-trash
       </button>
       <button type="button" onClick={() => triage.setSeen(['e1'], false)}>
         probe-unread
@@ -58,6 +69,7 @@ beforeEach(async () => {
   await putMailboxes(db, 'a', [
     mailbox('inbox', { role: 'inbox' }),
     mailbox('archive', { role: 'archive' }),
+    mailbox('trash', { role: 'trash' }),
   ])
 })
 
@@ -115,6 +127,38 @@ describe('useTriage', () => {
 
     expect(dispatch).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  // A self-move (`to === from`) is destructive, not idle: the replay patch writes
+  // `mailboxIds/<x>: true` and then `mailboxIds/<x>: null` onto the SAME key, so the server is asked
+  // to remove the mail from the only mailbox it is in; optimistically the row is pruned out of the
+  // window it never left. The bulk bar reaches this today with its Trash button inside Trash.
+  it('refuses a self-move: Trash while already in Trash dispatches nothing', async () => {
+    const user = userEvent.setup()
+    await renderProbe('trash')
+    await user.click(screen.getByRole('button', { name: 'probe-trash' }))
+
+    expect(await screen.findByText('result:false')).toBeInTheDocument()
+    expect(dispatch).not.toHaveBeenCalled()
+    // No toast either — an Undo for a move that never happened would be a lie about what the app did.
+    expect(screen.queryByText('Moved to Trash')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  it('the self-move guard leaves a genuine move untouched', async () => {
+    const user = userEvent.setup()
+    await renderProbe()
+    await user.click(screen.getByRole('button', { name: 'probe-trash' }))
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'move',
+      emailIds: ['e1'],
+      from: 'inbox',
+      to: 'trash',
+    })
+    expect(screen.getByText('result:true')).toBeInTheDocument()
+    expect(await screen.findByText('Moved to Trash')).toBeInTheDocument()
   })
 
   it('read/flag go straight through — no toast (they are cheap and visibly reversible)', async () => {

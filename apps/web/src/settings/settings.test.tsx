@@ -106,6 +106,7 @@ describe('the settings shell (M3.7)', () => {
       'General',
       'Appearance',
       'Reading',
+      'Swipe actions',
       'Compose',
       'Notifications',
       'Offline & storage',

@@ -51,6 +51,113 @@
   position: absolute;
   inset-inline: 0;
   inset-block-start: 0;
+  /*
+   * A swipe translates `.row` sideways by up to its own width. Without this the offset extends
+   * `scrollWidth` on `.scroll` AND on the `.paneBody` above it — both `overflow: auto` — i.e. a real
+   * horizontal scrollbar appears on the grid. Nothing of the row is clipped by it: the unread dot's
+   * -4px/-2px offsets sit inside the row's inline padding, and `.row:focus-visible` insets its
+   * outline. A future badge that overflows a row WOULD be cut here, silently.
+   */
+  overflow: hidden;
+  /*
+   * The only thing that actually lets the browser own vertical scrolling in this list — and what
+   * makes it fire `pointercancel` at the gesture when it takes the scroll, which is how a swipe
+   * abandons itself. The JS axis lock in `use-swipe` covers the first few pixels, and is the whole
+   * mechanism under jsdom, where `touch-action` means nothing.
+   *
+   * `pinch-zoom` must be named EXPLICITLY and may never be dropped as redundant. The grammar is
+   * `[ pan-x || pan-y || pinch-zoom ]` — whatever is left out is DISABLED, so a bare `pan-y` turns
+   * off pinch-zoom, and `.rowWrap` tiles the entire virtual list contiguously: the app's primary
+   * surface would become a zoom-dead zone. `index.html` deliberately keeps zoom available
+   * everywhere (no `user-scalable=no`, no `maximum-scale`); killing it here is a WCAG 1.4.4 failure
+   * for low-vision users. `pan-x` stays out — that is the horizontal lock this rule exists for.
+   */
+  touch-action: pan-y pinch-zoom;
+}
+
+/*
+ * Swipe reveal (FR-LST-06). Each layer is clamped to the strip its direction has vacated, so it can
+ * never sit behind an untouched row — `--swipe-x` is negative for a left swipe, which collapses the
+ * right layer to zero, and vice versa. `.row` is transformed and therefore paints above both.
+ */
+.actionLayer {
+  position: absolute;
+  inset-block: 0;
+  overflow: hidden;
+  /*
+   * The same transition as `.row`, so the strip closes at exactly the rate the row slides back over
+   * it. `--swipe-x` is an unregistered custom property: it has no type and therefore cannot be
+   * interpolated, so the `clamp()` below steps to its new width in ONE frame while `.row`'s
+   * transform still eases home — leaving the vacated strip showing bare scroller surface, since
+   * `.row` paints no background of its own. Most visible on the commonest gesture of all: a short
+   * swipe that changes its mind, and every read-toggle, where the row survives the commit.
+   *
+   * Transitioning `inline-size` rather than registering `--swipe-x` with `@property` is deliberate:
+   * a registered property would need its own reduced-motion story, whereas this rides `global.css`'s
+   * blanket `transition-duration` collapse for free — same as `.row`.
+   */
+  transition: inline-size var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.actionLeft {
+  inset-inline-end: 0;
+  inline-size: clamp(0px, calc(-1 * var(--swipe-x, 0px)), 100%);
+}
+
+.actionRight {
+  inset-inline-start: 0;
+  inline-size: clamp(0px, var(--swipe-x, 0px), 100%);
+}
+
+/*
+ * Pinned to the layer's OUTER edge and clipped by it, so the icon and label are uncovered
+ * progressively as the finger travels instead of popping in at full width.
+ */
+.actionContent {
+  position: absolute;
+  inset-block: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-3);
+  font-size: var(--waxwing-text-sm);
+  white-space: nowrap;
+}
+
+.actionLeft .actionContent {
+  inset-inline-end: 0;
+}
+
+.actionRight .actionContent {
+  inset-inline-start: 0;
+}
+
+.actionIcon {
+  flex: 0 0 auto;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+/* Past the commit threshold: lift now and it fires. Emphasis only — the label already says what
+   the action is, so nothing here is meaning carried by motion alone. */
+.rowWrap[data-swipe-armed="true"] .actionIcon {
+  transform: scale(1.2);
+}
+
+.actionArchive {
+  background-color: var(--waxwing-accent);
+  color: var(--waxwing-accent-contrast);
+}
+
+.actionTrash {
+  background-color: var(--waxwing-danger);
+  color: var(--waxwing-danger-contrast);
+}
+
+.actionRead {
+  background-color: var(--waxwing-success);
+  color: var(--waxwing-success-contrast);
 }
 
 .loading {
@@ -75,6 +182,28 @@
   border-block-end: 1px solid var(--waxwing-border);
   cursor: pointer;
   color: var(--waxwing-text);
+  /*
+   * Driven imperatively by `use-swipe`, which writes `--swipe-x` on `.rowWrap` (custom properties
+   * inherit) rather than through React state — a setState per pointermove would re-render every
+   * virtual row at 60 Hz. `transform` changes no layout box, so `block-size: 100%` and the
+   * wrapper's inline height are untouched and nothing here can feed back into the virtualiser.
+   * That last part holds only because nothing calls `measureElement`; adding one would start
+   * measuring a transformed row.
+   */
+  transform: translateX(var(--swipe-x, 0px));
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+/*
+ * While the finger is down the row IS the finger — 1:1, no easing behind it, and the layer it
+ * uncovers must not lag half a strip behind the row's edge. Both transitions exist only for the
+ * snap back on lift, and `global.css` collapses their duration under
+ * `prefers-reduced-motion`, so that preference is honoured with no JS at all. Which is also why
+ * nothing may ever wait for `transitionend`: under `reduce` that is a 0.01ms event.
+ */
+.swiping .row,
+.swiping .actionLayer {
+  transition: none;
 }
 
 .row:hover {

@@ -259,6 +259,15 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       : undefined
 
   const inTrash = trashBox !== undefined && inThisMailbox === trashBox.id
+  /**
+   * A move whose target is the mailbox being read IN is not a move: `useTriage` refuses it (the patch
+   * would order the mail out of the only mailbox it is in), so an enabled Archive button while
+   * reading a message in Archive clicked through to nothing at all — no dispatch, no toast, no undo.
+   * Trash already had this, as the `inTrash` swap to "Delete"; Archive and Junk did not. The `e`/`!`
+   * chords gate on the same comparison in `canMove`, so button and keystroke cannot drift apart.
+   */
+  const inArchive = archiveBox !== undefined && inThisMailbox === archiveBox.id
+  const inJunk = junkBox !== undefined && inThisMailbox === junkBox.id
 
   // Publish the action-bar callbacks so the keyboard layer can invoke them (M3.8). The buttons below
   // use the SAME object, which is the point: `r` and the Reply icon are one code path. Reply/forward
@@ -415,7 +424,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
-          disabled={archiveBox === undefined}
+          disabled={archiveBox === undefined || inArchive}
           onClick={handlers.archive}
         >
           <Archive />
@@ -423,7 +432,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         <IconButton
           label={t('list.actions.junk')}
           variant="ghost"
-          disabled={junkBox === undefined}
+          disabled={junkBox === undefined || inJunk}
           onClick={handlers.junk}
         >
           <MailWarning />

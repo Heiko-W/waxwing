@@ -11,7 +11,7 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
-import { Archive, Ban, Flag, FolderInput, MailOpen, Trash2 } from 'lucide-react'
+import { Archive, Ban, Flag, FolderInput, Mail, MailOpen, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
@@ -23,6 +23,7 @@ import {
   useEmailWindow,
   useLocalPref,
   useMailboxByRole,
+  useMailboxes,
   useReplica,
 } from '../sync'
 import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden } from '../ui'
@@ -36,12 +37,41 @@ import { MessageRow } from './MessageRow'
 import { MoveDialog } from './MoveDialog'
 import styles from './message-list.module.css'
 import { useSnippets } from './search/use-snippets'
+import { useSwipeLeft, useSwipeRight } from './swipe-prefs'
 import { useMessageActions } from './use-message-actions'
 import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
+import { type ResolvedSwipe, useRowSwipe } from './use-swipe'
 import { useTriage } from './use-triage'
 
 const OVERSCAN = 8
 const ROW_HEIGHT: Record<Density, number> = { comfortable: 76, compact: 54 }
+
+/**
+ * Vite types a CSS module as an index signature, so every class reads `string | undefined` under
+ * `noUncheckedIndexedAccess`. The gesture hands this straight to `classList`, where an empty string
+ * throws — so it gets a token that is always valid.
+ */
+const SWIPING_CLASS = styles.swiping ?? 'swiping'
+
+/**
+ * What `resolveSwipe` (below) locks in at the axis lock. The gesture's own
+ * {@link ResolvedSwipe} carries only what it needs to paint the strip; the SOURCE mailbox a move was
+ * resolved against rides along here because `commit` reaches this component through an options ref
+ * that `use-swipe` refreshes on every render — it would otherwise move `from` whatever mailbox is
+ * current at LIFT, not the one the gesture started in.
+ *
+ * That is reachable, not theoretical: `<MessageList>` is not keyed on the mailbox in `MailScreen`, so
+ * a folder change re-renders it in place and an in-flight gesture survives. On a tablet with a
+ * persistent folder rail, finger 1 locks a swipe on an Inbox row while finger 2 taps Sent — the
+ * gesture rejects that second pointer (`isPrimary`), but the rail's click is not the gesture's to
+ * reject and goes through. The lift then archived e1 `from: 'sent'`, whose `mailboxIds/sent: null`
+ * patch is a no-op on a message that was never there: the mail ends up in Inbox AND Archive, and the
+ * Undo toast offers to file it into Sent.
+ *
+ * OPTIONAL purely so this stays assignable to `RowSwipeOptions.commit` (`use-swipe.ts` is not ours to
+ * change). `resolveSwipe` always sets it for a move; `kind: 'read'` is not a move and has no source.
+ */
+type ResolvedRowSwipe = ResolvedSwipe & { readonly from?: Id }
 
 export interface MessageListProps {
   /** The route's current folder — drives the folder list AND the open-path for a search result. */
@@ -118,6 +148,20 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
     setWindow(windowKey, ids, sourceMailboxId)
   }, [windowKey, ids, sourceMailboxId, setWindow])
 
+  // Swipe actions (FR-LST-06). ONE mailbox query, deliberately, not two `useMailboxByRole` calls:
+  // those are two independent liveQueries that can resolve on different ticks, and "archive, else
+  // Trash" read across a tick where only Trash had landed would trash mail that belongs in Archive.
+  // For the same reason the fallback must NOT be driven off `triage.archive()`'s boolean — `false`
+  // there also means "the liveQuery has not resolved yet" (see `Triage.archive`), so a
+  // boolean-driven fallback trashes mail on the first render tick of an account that DOES have an
+  // Archive folder. Until this one query resolves, the move directions are simply inert.
+  const mailboxes = useMailboxes()
+  const rolesReady = mailboxes !== undefined
+  const archiveId = mailboxes?.find((box) => box.role === 'archive')?.id
+  const trashId = mailboxes?.find((box) => box.role === 'trash')?.id
+  const swipeLeftAction = useSwipeLeft()
+  const swipeRightAction = useSwipeRight()
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
     count: ids.length,
@@ -141,6 +185,85 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
     for (const row of rows ?? []) if (row) map.set(row.id, row)
     return map
   }, [rows])
+
+  // What a direction means ON THIS ROW, or `null` for "nothing" — which the gesture treats as
+  // genuinely inert: the row does not follow the finger that way and no colour is revealed, so a
+  // suppressed direction never promises an action it will not perform. Also called at RENDER time
+  // to build the reveal layers, so the strip under the finger and the action on lift cannot drift.
+  const resolveSwipe = useCallback(
+    (id: Id, direction: 'left' | 'right'): ResolvedRowSwipe | null => {
+      // A skeleton row is a live `role="row"` with nothing to act on — the same gate `draggable`
+      // applies.
+      const row = rowById.get(id)
+      if (row === undefined) return null
+      const action = direction === 'left' ? swipeLeftAction : swipeRightAction
+      if (action === 'none') return null
+      // Toggle, not "mark read": the gesture stays useful on a row that is already read, and it is
+      // the same rule `triage.flag` follows. Read from the row's state at THIS moment.
+      if (action === 'read') return { kind: 'read', seen: row.keywords.$seen !== true }
+      // A move needs a source: with `from: null` the message keeps its other memberships (a copy,
+      // not a move) and gets no Undo, so a cross-folder search result cannot be swiped away.
+      if (!rolesReady || sourceMailboxId === null) return null
+      const kind = action === 'archive' && archiveId !== undefined ? 'archive' : 'trash'
+      const target = kind === 'archive' ? archiveId : trashId
+      // Suppressed when the target IS the folder on screen — Trash inside Trash, Archive inside
+      // Archive. A self-move has no legitimate meaning downstream (it patches the mail out of the
+      // only mailbox it is in), and the seam refuses it anyway; this keeps the gesture honest about
+      // it instead of revealing a colour and doing nothing.
+      if (target === undefined || target === sourceMailboxId) return null
+      // The source travels WITH the decision — see {@link ResolvedRowSwipe}. Everything else the move
+      // needs is re-derived at commit; this one value cannot be, because by then it may have changed.
+      return { kind, from: sourceMailboxId }
+    },
+    [rowById, swipeLeftAction, swipeRightAction, rolesReady, archiveId, trashId, sourceMailboxId],
+  )
+
+  const commitSwipe = useCallback(
+    (id: Id, resolved: ResolvedRowSwipe): void => {
+      // Deliberately NOT `runMove`: that acts on the selection and advances the reading pane. A
+      // swipe acts on the row under the finger alone, and leaves the reading pane be.
+      if (resolved.kind === 'read') {
+        triage.setSeen([id], resolved.seen === true)
+        return
+      }
+      // The gesture must still be about the folder it started in. Anything else is the tablet
+      // two-finger case in {@link ResolvedRowSwipe}: a move `from` a mailbox this message was never
+      // in patches nothing away and leaves it filed in two places at once.
+      if (resolved.from === undefined || resolved.from !== sourceMailboxId) return
+      // The NAMED seam, not `actions.move` and not `moveTo`, so the move gets the role's own Undo
+      // toast — the affordance a gesture needs most, since there is nothing to un-click.
+      const moved =
+        resolved.kind === 'archive'
+          ? triage.archive([id], resolved.from)
+          : triage.trash([id], resolved.from)
+      // The boolean answers exactly one question: did the row really leave this folder? It can only
+      // be `false` here because `useTriage` resolves the role through its OWN liveQueries, so those
+      // lagged behind the `useMailboxes()` above at the instant of the lift — `resolve` re-checked
+      // every other condition the seam refuses on (mailbox known, target ≠ source, non-empty set) at
+      // the axis lock. Then the row snapped back, nothing happened, and it must stay as it was.
+      if (!moved) return
+      // A move takes the row OUT of this folder, so it has to leave the selection with it. Every
+      // other move path prunes (`runMove` clears, the move picker clears, a drag moves the whole
+      // selection); leaving a swiped row behind is not an untidy checkbox but a data-integrity bug.
+      // The bulk bar keeps counting it, and the next bulk Trash patches `mailboxIds/<trash>: true`
+      // onto a message whose `mailboxIds/<inbox>` removal is a no-op — filed in Archive AND Trash.
+      //
+      // Just this id, never `clear`: a swipe acts on the row under the finger, not on the selection,
+      // and the other ticked rows are still exactly where the user left them. `toggle` is the
+      // reducer's only single-id removal, hence the guard — unguarded it would ADD an unselected row.
+      // Read from the store, not from this render's `selection`, so a lift that lands between a
+      // checkbox click and its re-render cannot decide against a stale set.
+      if (useListStore.getState().selection.selected.has(id))
+        dispatchSelection({ type: 'toggle', id })
+    },
+    [triage, sourceMailboxId, dispatchSelection],
+  )
+
+  const swipe = useRowSwipe({
+    resolve: resolveSwipe,
+    commit: commitSwipe,
+    swipingClassName: SWIPING_CLASS,
+  })
 
   // Registry name+color per keyword, so each row can render its label swatches without subscribing.
   const labels = useLabels()
@@ -310,6 +433,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           fromMailbox={sourceMailboxId ?? undefined}
           allSelected={allSelected}
           someSelected={someSelected}
+          allSeen={selectedIds.every((id) => rowById.get(id)?.keywords.$seen === true)}
           actions={actions}
           onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
           onClear={() => dispatchSelection({ type: 'clear' })}
@@ -364,9 +488,10 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
               const id = ids[item.index]
               if (id === undefined) return null
               return (
-                // The drag is a pointer-only affordance on this presentational wrapper; the
-                // non-pointer equivalent SC 2.5.7 requires is the keyboard move path (`v`, bulk Move).
-                // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drag; keyboard path is the a11y route.
+                // Drag (mouse) and swipe (touch) are both pointer-only affordances on this
+                // presentational wrapper; the non-pointer equivalent WCAG SC 2.5.7 requires is the
+                // row checkbox plus the bulk bar (and `v` / `e` from the keyboard).
+                // biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drag+swipe; the checkbox/bulk-bar and keyboard paths are the a11y route.
                 <div
                   key={id}
                   role="presentation"
@@ -379,7 +504,19 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
                   // other memberships — a copy, not a move — which is the same gate `canMove` and the
                   // `v` chord already apply.
                   draggable={rowById.get(id) !== undefined && sourceMailboxId !== null}
+                  onPointerDown={swipe.onPointerDown(id)}
                   onDragStart={(event) => {
+                    // ADR-012 (amended): a long-press on `draggable="true"` really does start an
+                    // HTML5 drag on touch — Chrome-on-Android since 100 (kTouchDragAndDrop), iOS
+                    // Safari via UIDragInteraction — so one finger can enter both gestures on this
+                    // one node. Both are kept: hold still and the drag wins, move sideways and the
+                    // swipe does. Only a swipe that has LOCKED an axis cancels the drag, so a plain
+                    // long press is still a drag source. `preventDefault` matters: the bare return
+                    // below would leave a drag running with no payload.
+                    if (swipe.isSwipeActive()) {
+                      event.preventDefault()
+                      return
+                    }
                     if (sourceMailboxId === null) return
                     const dragged = draggedMessageIds(selection.selected, id)
                     // Dragging a row outside the selection makes IT the subject — the same rule
@@ -393,6 +530,12 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
                   // Not the drop site's job alone: a drag cancelled with Escape never drops.
                   onDragEnd={() => clearActiveDrag()}
                 >
+                  {/* The colour a swipe uncovers, one layer per direction that does something on
+                      this row. SIBLINGS of MessageRow, never a wrapper around it: the grid is
+                      `role="grid"` → `role="row"` and the drag tests reach this node through the
+                      row's `parentElement`. Decorative, so `aria-hidden` and no role. */}
+                  <SwipeLayer side="left" resolved={resolveSwipe(id, 'left')} />
+                  <SwipeLayer side="right" resolved={resolveSwipe(id, 'right')} />
                   <MessageRow
                     id={rowDomId(id)}
                     rowIndex={item.index + 1}
@@ -465,6 +608,59 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           }}
         />
       )}
+    </div>
+  )
+}
+
+interface SwipeLayerProps {
+  readonly side: 'left' | 'right'
+  /** What this direction does on this row; `null` renders nothing — the direction is inert. */
+  readonly resolved: ResolvedSwipe | null
+}
+
+/**
+ * The strip a swipe uncovers. It is clamped to the width the row has vacated rather than sitting
+ * BEHIND the row: `.row` paints no background of its own (only `:hover`/`.selected`/`aria-current`
+ * do), so a full-width layer underneath would show straight through an untouched row.
+ *
+ * Icon AND text, never colour alone — the design system forbids encoding meaning in motion or
+ * colour alone, and the two moves additionally land an Undo toast in a live region.
+ */
+function SwipeLayer({ side, resolved }: SwipeLayerProps) {
+  const { t } = useTranslation()
+  if (resolved === null) return null
+  const seen = resolved.seen === true
+  const tone =
+    resolved.kind === 'archive'
+      ? styles.actionArchive
+      : resolved.kind === 'trash'
+        ? styles.actionTrash
+        : styles.actionRead
+  const label =
+    resolved.kind === 'archive'
+      ? t('list.actions.archive')
+      : resolved.kind === 'trash'
+        ? t('list.actions.trash')
+        : seen
+          ? t('list.actions.read')
+          : t('list.actions.unread')
+  return (
+    <div
+      aria-hidden="true"
+      className={`${styles.actionLayer} ${side === 'left' ? styles.actionLeft : styles.actionRight} ${tone}`}
+    >
+      <span className={styles.actionContent}>
+        {resolved.kind === 'archive' ? (
+          <Archive className={styles.actionIcon} />
+        ) : resolved.kind === 'trash' ? (
+          <Trash2 className={styles.actionIcon} />
+        ) : seen ? (
+          <MailOpen className={styles.actionIcon} />
+        ) : (
+          <Mail className={styles.actionIcon} />
+        )}
+        <span>{label}</span>
+      </span>
     </div>
   )
 }
@@ -543,6 +739,12 @@ interface BulkBarProps {
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
+  /**
+   * Whether every selected message is already read — the read button toggles on it. An unhydrated
+   * row counts as unread, which is the safe way round: the button then offers "mark as read", and
+   * re-reading an already-read message is harmless.
+   */
+  readonly allSeen: boolean
   readonly actions: ReturnType<typeof useMessageActions>
   readonly onSelectAll: () => void
   readonly onClear: () => void
@@ -554,6 +756,7 @@ function BulkBar({
   count,
   ids,
   activeLabel,
+  allSeen,
   fromMailbox,
   allSelected,
   someSelected,
@@ -575,10 +778,22 @@ function BulkBar({
   // move actions are gated off there (read/flag/delete, which need no source, stay). A moved message
   // leaves the folder → it must leave the selection too, or a follow-up move uses a stale `from`.
   const canMove = fromMailbox !== undefined
-  const moveThenClear = (move: (ids: Id[], from: Id | null) => void) => {
+  /**
+   * …and the target must not BE the mailbox on screen. `useTriage` refuses that move (its patch would
+   * take the mail out of the only mailbox it is in), so an Archive button offered while viewing
+   * Archive dispatched nothing, said nothing — and cleared the selection anyway. That is the exact
+   * anti-pattern the `e` fix (6da2350) exists to kill, one surface over. {@link MoveDialog} expresses
+   * the same rule by leaving the current mailbox out of its list; here it leaves the button out of
+   * the bar, which is how this bar already treats a role the account does not have at all.
+   */
+  const canMoveTo = (target: Id | undefined): boolean =>
+    canMove && target !== undefined && target !== fromMailbox
+  const moveThenClear = (move: (ids: Id[], from: Id | null) => boolean) => {
     if (fromMailbox === undefined) return
-    move(ids, fromMailbox)
-    onClear()
+    // Clear only over a move that actually dispatched: `useTriage`'s boolean is the one signal that
+    // the mail left the folder, and dropping the selection without it discards the user's work to
+    // report a filing that never happened.
+    if (move(ids, fromMailbox)) onClear()
   }
 
   return (
@@ -590,12 +805,21 @@ function BulkBar({
         onChange={(event) => (event.target.checked ? onSelectAll() : onClear())}
       />
       <span className={styles.bulkCount}>{t('list.selected', { count })}</span>
+      {/*
+        A TOGGLE, not a setter — and that is a WCAG 2.2 SC 2.5.7 requirement here, not a nicety.
+        Swipe-right toggles `$seen` against the row's current state, so SC 2.5.7 owes each swipe
+        outcome a single-pointer, non-dragging equivalent. Archive and Trash had one; marking a
+        message UNREAD was reachable only from the `u` chord, which is a keyboard path (SC 2.1.1)
+        and no help to the pointer user this gesture exists for.
+        It also ends a three-way drift that had grown across the entry points: the button SET
+        `$seen`, `u` CLEARED it, the swipe TOGGLES it — exactly what `useTriage` exists to prevent.
+      */}
       <IconButton
-        label={t('list.actions.read')}
+        label={allSeen ? t('list.actions.unread') : t('list.actions.read')}
         variant="ghost"
-        onClick={() => triage.setSeen(ids, true)}
+        onClick={() => triage.setSeen(ids, !allSeen)}
       >
-        <MailOpen />
+        {allSeen ? <Mail /> : <MailOpen />}
       </IconButton>
       <IconButton
         label={t('list.actions.flag')}
@@ -617,7 +841,7 @@ function BulkBar({
           {t('labels.removeFromLabel')}
         </Button>
       )}
-      {canMove && archive && (
+      {canMoveTo(archive?.id) && (
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
@@ -626,7 +850,7 @@ function BulkBar({
           <Archive />
         </IconButton>
       )}
-      {canMove && junk && (
+      {canMoveTo(junk?.id) && (
         <IconButton
           label={t('list.actions.junk')}
           variant="ghost"
@@ -635,7 +859,7 @@ function BulkBar({
           <Ban />
         </IconButton>
       )}
-      {canMove && trash && (
+      {canMoveTo(trash?.id) && (
         <IconButton
           label={t('list.actions.trash')}
           variant="ghost"

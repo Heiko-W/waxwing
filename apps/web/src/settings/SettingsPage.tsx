@@ -18,6 +18,7 @@ import { NotificationsSection } from './NotificationsSection'
 import { ReadingSection } from './ReadingSection'
 import { ServerSection } from './ServerSection'
 import { StorageSection } from './StorageSection'
+import { SwipeSection } from './SwipeSection'
 import styles from './settings.module.css'
 import { VacationSection } from './VacationSection'
 import { serverSupportsVacation } from './vacation-client'
@@ -96,8 +97,8 @@ function DensityField({ id }: { readonly id: string }) {
 }
 
 /**
- * Settings route screen (lazy chunk). M3.7 completes it: General, Appearance, Reading, Compose,
- * Vacation responder, Notifications, Offline & storage, Server, About.
+ * Settings route screen (lazy chunk). M3.7 completes it: General, Appearance, Reading, Swipe
+ * actions, Compose, Vacation responder, Notifications, Offline & storage, Server, About.
  *
  * **Theme, language and the reading-pane mode stay in `localStorage`, not `localPrefs`** — they are
  * applied on the ONBOARDING screen, where there is no account and no replica to scope them to. The
@@ -170,6 +171,12 @@ export default function SettingsPage() {
       {replica !== null && (
         <Section title={t('settings.reading.title')}>
           <ReadingSection />
+        </Section>
+      )}
+
+      {replica !== null && (
+        <Section title={t('settings.swipe.title')}>
+          <SwipeSection />
         </Section>
       )}
 

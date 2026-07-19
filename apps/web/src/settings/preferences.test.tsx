@@ -13,12 +13,14 @@ import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { COMPOSE_PREF_KEYS } from '../compose'
 import { READING_PREF_KEYS } from '../mail/reading-prefs'
+import { SWIPE_PREF_KEYS } from '../mail/swipe-prefs'
 import { getPref, type ReplicaDb, ReplicaProvider, setPref } from '../sync'
 import { freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { ComposeSection } from './ComposeSection'
 import { ReadingSection } from './ReadingSection'
+import { SwipeSection } from './SwipeSection'
 
 const ACC = 'a'
 let db: ReplicaDb
@@ -124,6 +126,33 @@ describe('<ComposeSection>', () => {
   it('has no a11y violations', async () => {
     const { container } = renderSection(<ComposeSection />)
     await screen.findByLabelText('Undo send')
+    await expectNoA11yViolations(container)
+  })
+})
+
+describe('<SwipeSection>', () => {
+  it('reads the defaults with nothing stored (FR-LST-06)', async () => {
+    renderSection(<SwipeSection />)
+    expect(await screen.findByLabelText('Swipe left')).toHaveValue('archive')
+    expect(screen.getByLabelText('Swipe right')).toHaveValue('read')
+  })
+
+  it('writes each direction under its own key', async () => {
+    const user = userEvent.setup()
+    renderSection(<SwipeSection />)
+
+    await user.selectOptions(await screen.findByLabelText('Swipe left'), 'trash')
+    await waitFor(async () => expect(await getPref(db, ACC, SWIPE_PREF_KEYS.left)).toBe('trash'))
+    // The other direction is untouched — two scalar keys, not one record.
+    expect(await getPref(db, ACC, SWIPE_PREF_KEYS.right)).toBeUndefined()
+
+    await user.selectOptions(screen.getByLabelText('Swipe right'), 'none')
+    await waitFor(async () => expect(await getPref(db, ACC, SWIPE_PREF_KEYS.right)).toBe('none'))
+  })
+
+  it('has no a11y violations', async () => {
+    const { container } = renderSection(<SwipeSection />)
+    await screen.findByLabelText('Swipe left')
     await expectNoA11yViolations(container)
   })
 })

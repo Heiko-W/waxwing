@@ -166,6 +166,23 @@
         "hint": "Nach einer kurzen Pause — bloßes Vorbeiscrollen markiert nichts."
       }
     },
+    "swipe": {
+      "title": "Wischgesten",
+      "left": {
+        "label": "Nach links wischen",
+        "hint": "Eine Nachricht auf dem Touchscreen nach links ziehen. Archivieren weicht auf den Papierkorb aus, wenn dieses Konto keinen Archivordner hat."
+      },
+      "right": {
+        "label": "Nach rechts wischen",
+        "hint": "Eine Nachricht auf dem Touchscreen nach rechts ziehen."
+      },
+      "action": {
+        "archive": "Archivieren",
+        "trash": "In den Papierkorb",
+        "read": "Als gelesen oder ungelesen markieren",
+        "none": "Nichts"
+      }
+    },
     "compose": {
       "title": "Verfassen",
       "undoSend": {

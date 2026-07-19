@@ -71,9 +71,22 @@ export function advanceAfterTriage(context: ShortcutContext, consumed: readonly 
   context.navigate(mailHref(context, mailboxId, next))
 }
 
-/** A move is only possible with a known source mailbox and a target role mailbox. */
+/**
+ * A move is only possible with a known source mailbox, a target role mailbox — and a target that is
+ * not the source. That last clause is not tidiness: `useTriage` refuses a self-move (its patch would
+ * order the mail out of the only mailbox it is in), so without it `e` while viewing Archive passed
+ * this gate, dispatched nothing, showed nothing, and `runMove` still cleared the selection. Exactly
+ * the "archived nothing, said nothing" shape 6da2350 exists to kill — and the chord was offered in
+ * ⌘K too, since `isRunnable` gates both surfaces from here. `MoveDialog` and `canDropMessages`
+ * already make the same comparison.
+ */
 function canMove(context: ShortcutContext, role: Id | undefined): boolean {
-  return context.targetIds.length > 0 && role !== undefined && context.sourceMailboxId !== null
+  return (
+    context.targetIds.length > 0 &&
+    role !== undefined &&
+    context.sourceMailboxId !== null &&
+    role !== context.sourceMailboxId
+  )
 }
 
 /**

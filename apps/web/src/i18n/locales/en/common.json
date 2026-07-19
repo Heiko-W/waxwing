@@ -166,6 +166,23 @@
         "hint": "After a short pause, so scrolling past a message does not mark it."
       }
     },
+    "swipe": {
+      "title": "Swipe actions",
+      "left": {
+        "label": "Swipe left",
+        "hint": "Drag a message to the left on a touchscreen. Archive falls back to Trash if this account has no Archive folder."
+      },
+      "right": {
+        "label": "Swipe right",
+        "hint": "Drag a message to the right on a touchscreen."
+      },
+      "action": {
+        "archive": "Archive",
+        "trash": "Move to Trash",
+        "read": "Mark as read or unread",
+        "none": "Nothing"
+      }
+    },
     "compose": {
       "title": "Compose",
       "undoSend": {

@@ -31,6 +31,16 @@ export interface Triage {
    * advanced the reading pane anyway, handing the user the exact confirmation they were trained to
    * trust while the mail sat untouched in the Inbox. Proven at ~7% against the live fixture (M3.9).
    * A caller that ignores this result reintroduces that bug.
+   *
+   * It is also `false` for a SELF-MOVE (`to === from`) — Trash while viewing Trash, Archive while
+   * viewing Archive. That is not a harmless no-op downstream, which is why it is stopped here rather
+   * than at each call site: `moveUpdate` builds the patch as `{[`mailboxIds/${to}`]: true}` and then
+   * writes `[`mailboxIds/${from}`]: null` onto it, so with the same id the removal wins on the SAME
+   * key and the server is told to take the mail out of the only mailbox it is in — an
+   * `invalidProperties` rejection at best, an Email in no mailbox at worst (RFC 8621 requires ≥ 1).
+   * Optimistically it is just as wrong: the apply passes one predicate as both `left` and `entered`,
+   * `left` is tested first, and the row is pruned out of the window it never left. Reachable today
+   * from the bulk bar's Trash button while viewing Trash.
    */
   archive(ids: Id[], from: Id | null): boolean
   junk(ids: Id[], from: Id | null): boolean
@@ -41,7 +51,8 @@ export interface Triage {
    * role folder's name is localized, not the server's `name`), so the picker hands it down.
    *
    * Unlike the three above, the boolean cannot report a missing mailbox: `to` is caller-supplied and
-   * therefore always known. It is `false` only for an empty id set, and is returned for uniformity.
+   * therefore always known. It is `false` for an empty id set or a self-move, and is returned for
+   * uniformity.
    */
   moveTo(ids: Id[], from: Id | null, to: Id, toName: string): boolean
   setSeen(ids: Id[], seen: boolean): void
@@ -65,7 +76,7 @@ export function useTriage(): Triage {
       to: Id | undefined,
       title: string,
     ): boolean => {
-      if (to === undefined || ids.length === 0) return false
+      if (to === undefined || to === from || ids.length === 0) return false
       actions.move(ids, from, to)
       toast({
         title,

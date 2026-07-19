@@ -224,6 +224,18 @@ describe('MessageView', () => {
     )
   })
 
+  it('the Archive button is disabled while reading a message already IN Archive', async () => {
+    // `useTriage` refuses `to === from`, so this button was enabled over a dispatch that could never
+    // happen: click, no move, no toast, no undo — "archived nothing, said nothing" (6da2350) on the
+    // mouse path. Trash always had the equivalent (it swaps to Delete inside Trash); Archive did not.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen(), 'archive')
+    // Junk IS a real move from Archive, and it enables as soon as its liveQuery lands — waiting for
+    // it is what proves the assertion below is the self-move gate rather than an unresolved query.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Mark as junk' })).toBeEnabled())
+    expect(screen.getByRole('button', { name: 'Archive' })).toBeDisabled()
+  })
+
   it('marks unread by dispatching a $seen=false keyword change', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()

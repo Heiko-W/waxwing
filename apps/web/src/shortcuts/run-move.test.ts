@@ -174,6 +174,18 @@ describe('runMove — a keystroke must never advance over a move that did not ha
     expect(list.focusIndexTo).not.toHaveBeenCalled()
   })
 
+  it('the gate refuses when the Archive folder IS the one on screen (a self-move moves nothing)', () => {
+    // `useTriage` refuses `to === from` — the patch would order the mail out of the only mailbox it
+    // is in. Without this clause `e` while viewing Archive passed the gate, dispatched nothing, said
+    // nothing, and `runMove` cleared the selection anyway; ⌘K offered it too, since `isRunnable`
+    // gates both surfaces from here.
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    const inArchive = { ...context, sourceMailboxId: 'arch' } as unknown as ShortcutContext
+    expect(archiveAction && isRunnable(archiveAction, inArchive)).toBe(false)
+    // Positive control in the same shape: from any other folder it is runnable.
+    expect(archiveAction && isRunnable(archiveAction, context)).toBe(true)
+  })
+
   it('the gate still refuses when the account has no archive role at all', () => {
     const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
     const noRoles = { ...context, roles: {} } as unknown as ShortcutContext
