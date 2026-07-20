@@ -10,10 +10,23 @@ const BASE_URL = `http://localhost:${PORT}`
 // E2E suite); those will replace the webServer below with the provisioned Stalwart stack.
 export default defineConfig({
   testDir: './tests',
-  // The SP.4 demo spec has its own config (playwright.demo.config.ts): it needs `pnpm demo`
-  // running (fixture + demo dev server), which this self-contained `vite preview` webServer
-  // does not provide. Keep it out of the default suite.
-  testIgnore: ['**/demo.spec.ts'],
+  // ALLOWLIST, not a denylist — and this distinction is load-bearing, because the denylist
+  // form silently rotted. Until M3.10 this config carried only `testIgnore: ['**/demo.spec.ts']`
+  // and no `testMatch`, so Playwright's default `**/*.@(spec|test).?(c|m)[jt]s?(x)` collected
+  // EVERY other spec: read, write, keyboard, swipe and settings — 40 tests across 6 files, five
+  // of which need the Stalwart fixture (port 18080), the `WAXWING_E2E=1` same-origin proxy and
+  // (for swipe) a `hasTouch` project, none of which this self-contained config provides. Since
+  // `scripts/verify-e2e.mjs` runs this suite BEFORE it brings the fixture up, `pnpm verify:e2e`
+  // — the project's own full E2E gate — had been red from the moment the specs grew past
+  // shell.spec.ts, and nobody noticed because the read/write suites were always run directly.
+  //
+  // A denylist has to be edited every time a spec file is added and fails OPEN when it is not;
+  // an allowlist fails CLOSED (a new spec is simply not collected here until someone opts it
+  // in). Same allowlist-vs-preference reasoning as BROWSER_PUSH_TRANSPORTS in
+  // apps/web/src/sync/engine/engine.ts, where a `prefer:` ordering silently readmitted the
+  // transport it was meant to exclude. Fixture-backed specs belong to playwright.read.config.ts
+  // / playwright.write.config.ts; the SP.4 demo spec to playwright.demo.config.ts.
+  testMatch: ['**/shell.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

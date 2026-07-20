@@ -5,13 +5,24 @@
 //
 //   1. ensure the pinned Playwright chromium is installed
 //   2. run the self-contained placeholder suite (pnpm e2e — vite preview, no fixture)
-//   3. run the M1.9 read suite (pnpm e2e:read) — it self-manages the Stalwart fixture: its
-//      Playwright globalSetup brings the fixture up advertising the app origin + seeds alice's
-//      inbox (self-smokes per ADR-002), and globalTeardown tears it down
-//   4. ALWAYS tear the fixture down as a backstop, even if a step above failed or was killed
-//      before the read suite's own teardown ran
+//   3. run the M3.10 /mail/ mount suite (pnpm e2e:mount — static mount server, no fixture)
+//   4. run the M1.9 read and M2.9 write suites (pnpm e2e:read / e2e:write) — they self-manage the
+//      Stalwart fixture: their Playwright globalSetup brings the fixture up advertising the app
+//      origin + seeds alice's inbox (self-smokes per ADR-002), and globalTeardown tears it down
+//   5. ALWAYS tear the fixture down as a backstop, even if a step above failed or was killed
+//      before the read/write suites' own teardown ran
 //
-// A plain `&&` chain cannot guarantee teardown-on-failure, so steps 1–3 run inside a `try`
+// Order is cheapest-first: the two fixture-free suites (2, 3) fail in seconds on a bundle that
+// cannot boot, so a broken build never pays for a Docker fixture to find out.
+//
+// This IS the E2E gate — ADR-003 realizes CI as `pnpm verify` + `pnpm verify:e2e` because no
+// GitHub repository exists yet. Every suite therefore has to be listed here or it is not gated
+// at all; a suite that only ever runs when someone types its script by hand is not covered. M3.10
+// found this the hard way: the placeholder config had no `testMatch`, silently collected all five
+// fixture-backed spec files, and step 2 had been failing for a milestone (see the testMatch
+// comment in e2e/playwright.config.ts).
+//
+// A plain `&&` chain cannot guarantee teardown-on-failure, so steps 1–4 run inside a `try`
 // and teardown lives in `finally`. Dependency-free: node: builtins only.
 
 import { spawnSync } from 'node:child_process'
@@ -56,6 +67,11 @@ try {
     'chromium',
   ])
   run('placeholder e2e suite', ['e2e'])
+  // The /mail/ mount suite (M3.10). Fixture-free and fast, so it runs BEFORE the Docker-backed
+  // suites: it asserts the built bundle boots under a path prefix, which is the deployment shape
+  // Stalwart produces, and a bundle that cannot boot there should fail in seconds rather than
+  // after two minutes of fixture work.
+  run('mount e2e suite', ['e2e:mount'])
   run('read e2e suite', ['e2e:read'])
   run('write e2e suite', ['e2e:write'])
 } catch (error) {

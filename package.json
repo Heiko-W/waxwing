@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "demo": "node scripts/demo.mjs",
     "e2e": "pnpm --filter @waxwing/e2e run e2e",
+    "e2e:mount": "pnpm --filter @waxwing/e2e run e2e:mount",
     "e2e:read": "pnpm --filter @waxwing/e2e run e2e:read",
     "e2e:write": "pnpm --filter @waxwing/e2e run e2e:write",
     "e2e:demo": "pnpm --filter @waxwing/e2e run e2e:demo",
