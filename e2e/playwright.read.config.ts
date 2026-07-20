@@ -24,6 +24,7 @@ export default defineConfig({
     '**/offline.spec.ts',
     '**/push.spec.ts',
     '**/pwa.spec.ts',
+    '**/notify.spec.ts',
   ],
   // One seeded account, stateful mutations (flag/move/delete/live-deliver) → keep it serial and
   // reseed per test (see read.spec.ts beforeEach), so ordering never makes a test flaky.
@@ -44,8 +45,9 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      // The swipe suite needs a touchscreen; a desktop context cannot dispatch a touch at all.
-      testIgnore: '**/swipe.spec.ts',
+      // The swipe suite needs a touchscreen; a desktop context cannot dispatch a touch at all, and
+      // the notify suite needs a browser build that can show a notification at all (see below).
+      testIgnore: ['**/swipe.spec.ts', '**/notify.spec.ts'],
     },
     {
       // M3.9 step 5 (FR-LST-06). A phone-shaped context with a real touchscreen, because the two
@@ -60,6 +62,34 @@ export default defineConfig({
         hasTouch: true,
         isMobile: true,
         viewport: { width: 390, height: 844 },
+      },
+    },
+    {
+      // M3.10 wave 3 (FR-NOTIF-01/03, FR-AUTH-05). Two `use` settings, and BOTH are load-bearing —
+      // without either one the whole notification suite is green and proves nothing.
+      //
+      // `channel: 'chromium'` — because `devices['Desktop Chrome']` sets NO channel, so every other
+      // project in this repo runs on Playwright's default browser: the chromium HEADLESS SHELL. The
+      // shell has no notification platform at all. Measured, on this machine, with that exact device
+      // config: `Notification.permission` is **denied** (grantPermissions notwithstanding),
+      // `registration.showNotification()` throws a TypeError, and `getNotifications()` returns 0.
+      // The full chromium build grants, shows and lists. `playwright install chromium` already
+      // installs both binaries, so the verify:e2e gate needs no change for this.
+      //
+      // The trap this avoids is specific and was measured: an `addInitScript` spy on
+      // `showNotification` records the call in BOTH browsers — including the one that refused
+      // outright. A suite built on the spy alone, under the default project, would pass every
+      // positive assertion with zero notifications ever having existed.
+      //
+      // `permissions` — the notifier never asks; the Settings switch does, and only from a real
+      // click (NotificationsSection.tsx). Granting at the context level makes `permission.state`
+      // 'granted' before the switch is touched, so the switch takes its no-prompt branch.
+      name: 'chromium-notify',
+      testMatch: '**/notify.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chromium',
+        permissions: ['notifications'],
       },
     },
   ],

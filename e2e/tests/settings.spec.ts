@@ -158,6 +158,52 @@ test.describe('M3.7 settings suite', () => {
     ).toHaveText(String(mail.maxMailboxDepth))
   })
 
+  /**
+   * FR-NOTIF-02 / NFR-PRIV-02, and the ONLY background-push assertion this repo may contain.
+   *
+   * No JMAP server publishes a Web-Push signing key (ADR-010), so the app deliberately contains no
+   * `applicationServerKey`, no `PushSubscription/set` and no `push` listener — there is no background
+   * push to test and no test may pretend otherwise. What CAN be checked, and matters more than a
+   * mocked stand-in would, is that the app SAYS SO: `serverSupportsBackgroundPush` probes the live
+   * session for `urn:ietf:params:jmap:webpush-vapid`, and this is the guard on that probe reaching
+   * the UI against a real Stalwart rather than only against a hand-made fixture in jsdom.
+   *
+   * The server side is asserted first, so the sentence on screen is checked against what this server
+   * actually advertises — the day one ships the capability, the app must switch to the other string
+   * and this test must fail rather than pin the pessimistic wording forever.
+   *
+   * MUTATION-PROVEN: making `serverSupportsBackgroundPush` return `true` turns this RED — the section
+   * claims background notifications work, against a server that cannot sign one.
+   */
+  test('the notifications section admits background push is unavailable (FR-NOTIF-02)', async ({
+    page,
+  }) => {
+    const session = (await alice.session()) as unknown as SessionDoc
+    expect(
+      Object.hasOwn(session.capabilities, 'urn:ietf:params:jmap:webpush-vapid'),
+      'ADR-010: no JMAP server publishes a VAPID key — if this fails, the premise changed',
+    ).toBe(false)
+
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page)
+
+    // Two regions on this page answer to "Notifications" — the settings section and the toast live
+    // region (`ui.toast.region`). Filtering on the master switch picks the settings one without
+    // reaching for a CSS selector, and would fail loudly if the section lost its switch.
+    const notifications = page
+      .getByRole('region', { name: 'Notifications' })
+      .filter({ hasText: 'Notify me about new mail' })
+    await expect(notifications).toBeVisible()
+    await expect(notifications).toContainText(
+      'Notifications while Waxwing is fully closed are not available with this server',
+    )
+    // …and it does not simultaneously claim the opposite. The two strings are mutually exclusive by
+    // construction, so this is the assertion that a future edit cannot satisfy by rendering both.
+    await expect(notifications).not.toContainText(
+      'This server also supports notifications while Waxwing is closed',
+    )
+  })
+
   test('the quota bar reflects the account allowance (FR-QTA-01)', async ({ page }) => {
     const args = await first<{ list: QuotaRow[] }>(
       alice,

@@ -34,6 +34,15 @@ const MOUNT = '/mail/'
  * against the document's directory, so only a route deeper than the mount can expose a missing
  * `<base>`. `/mail/` + the app's own `/mail/:mailboxId/:emailId` route (app/route/route.ts) is
  * how the two coordinate spaces documented in notify/click-route.ts actually stack up in a URL.
+ *
+ * It is also, exactly, the href a NOTIFICATION CLICK would open under this mount:
+ * `notificationTargetHref(ROOT, { mailboxId: 'inbox', emailId: '42' })` where
+ * `ROOT = appRoot(self.location.href)`. That makes the tests below the browser half of M3.6's
+ * click-route claim — the string math is unit-covered (click-route.test.ts) and the click itself is
+ * not dispatchable from Playwright (see the header of notify.spec.ts), so "the URL the worker would
+ * open is one this deployment actually serves" is the part a browser can settle, and this is where
+ * it is settled. The service-worker test further down carries the other half: that the worker's own
+ * root really IS the mount, which is what `ROOT` is read from.
  */
 const DEEP_LINK = `${MOUNT}mail/inbox/42`
 
