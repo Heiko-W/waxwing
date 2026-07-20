@@ -49,3 +49,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# M3.10 deploy-suite build outputs (two full app builds + the served root).
+e2e/.pwa/

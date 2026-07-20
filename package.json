@@ -20,6 +20,7 @@
     "demo": "node scripts/demo.mjs",
     "e2e": "pnpm --filter @waxwing/e2e run e2e",
     "e2e:mount": "pnpm --filter @waxwing/e2e run e2e:mount",
+    "e2e:deploy": "pnpm --filter @waxwing/e2e run e2e:deploy",
     "e2e:read": "pnpm --filter @waxwing/e2e run e2e:read",
     "e2e:write": "pnpm --filter @waxwing/e2e run e2e:write",
     "e2e:demo": "pnpm --filter @waxwing/e2e run e2e:demo",
@@ -31,7 +32,8 @@
     "build": "pnpm -r --if-present build",
     "build:libs": "pnpm --filter @waxwing/jmap --filter @waxwing/mail-html run build",
     "size": "pnpm --filter @waxwing/web build && size-limit",
-    "verify": "pnpm build:libs && pnpm typecheck && pnpm lint && pnpm test && pnpm size",
+    "check:dist": "node scripts/check-dist-contract.mjs",
+    "verify": "pnpm build:libs && pnpm typecheck && pnpm lint && pnpm test && pnpm size && pnpm check:dist",
     "verify:e2e": "node scripts/verify-e2e.mjs",
     "verify:all": "pnpm verify && pnpm verify:e2e"
   },

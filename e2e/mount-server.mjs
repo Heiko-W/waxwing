@@ -34,6 +34,15 @@ const DIST = resolve(HERE, '../apps/web/dist')
 export const MOUNT = '/mail/'
 
 /**
+ * The document root. Defaults to the app's own `dist`, and is overridable (`--root`) so a suite can
+ * point the server at a directory it owns and is free to REWRITE UNDER ITSELF — which is what
+ * tests/deploy.spec.ts does to model a hoster editing a deployed file and to stage a second build.
+ * Every response is read from disk per request and sent `no-store`, so a swap lands on the next
+ * load with no server restart and no cache to defeat.
+ */
+const DEFAULT_ROOT = DIST
+
+/**
  * Stalwart's paths, proxied to the fixture. This is the same set `demoProxy` enumerates in
  * apps/web/vite.config.ts — kept in sync by hand rather than imported, because that file is
  * TypeScript inside the web package and this is a dependency-free .mjs in the e2e package.
@@ -104,8 +113,8 @@ async function serveStatic(res, filePath) {
   }
 }
 
-async function serveIndex(res, status = 200) {
-  const html = rewriteBase(await readFile(join(DIST, 'index.html'), 'utf8'))
+async function serveIndex(res, root, mount, status = 200) {
+  const html = rewriteBase(await readFile(join(root, 'index.html'), 'utf8'), mount)
   res.writeHead(status, { 'content-type': MIME['.html'], 'cache-control': 'no-store' })
   res.end(html)
 }
@@ -133,7 +142,11 @@ function proxy(req, res, target) {
   req.pipe(upstream)
 }
 
-export function createMountServer({ mount = MOUNT, target = PROXY_TARGET } = {}) {
+export function createMountServer({
+  mount = MOUNT,
+  target = PROXY_TARGET,
+  root = DEFAULT_ROOT,
+} = {}) {
   const upstream = new URL(target)
 
   const server = createServer(async (req, res) => {
@@ -158,9 +171,9 @@ export function createMountServer({ mount = MOUNT, target = PROXY_TARGET } = {})
 
     // index.html is served through the rewriter, never as a static file, so no route can ever
     // receive the un-rewritten root-based document.
-    if (relative === '' || relative === 'index.html') return serveIndex(res)
+    if (relative === '' || relative === 'index.html') return serveIndex(res, root, mount)
 
-    const filePath = safeJoin(DIST, relative)
+    const filePath = safeJoin(root, relative)
     if (filePath === null) {
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
       return res.end('mount-server: forbidden\n')
@@ -170,7 +183,7 @@ export function createMountServer({ mount = MOUNT, target = PROXY_TARGET } = {})
     // SPA fallback — but ONLY for extension-less paths. A missing `.js` must 404 rather than
     // receive index.html: the M3.5 defect is a 404 on the entry chunk, and answering it with HTML
     // would turn a hard failure into a confusing MIME error and hide what actually broke.
-    if (!relative.split('/').pop().includes('.')) return serveIndex(res)
+    if (!relative.split('/').pop().includes('.')) return serveIndex(res, root, mount)
 
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
     res.end(`mount-server: ${relative} not found in dist\n`)
@@ -199,12 +212,17 @@ export function createMountServer({ mount = MOUNT, target = PROXY_TARGET } = {})
   return server
 }
 
-// CLI: `node mount-server.mjs --port 4185`
+// CLI: `node mount-server.mjs --port 4185 [--mount /mail/] [--root <dir>]`
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const portArg = process.argv.indexOf('--port')
-  const port = Number(portArg === -1 ? (process.env.PORT ?? 4185) : process.argv[portArg + 1])
-  createMountServer().listen(port, () => {
-    console.log(`[mount-server] ${DIST}`)
-    console.log(`[mount-server] http://localhost:${port}${MOUNT} → proxying to ${PROXY_TARGET}`)
+  const flag = (name, fallback) => {
+    const at = process.argv.indexOf(name)
+    return at === -1 ? fallback : process.argv[at + 1]
+  }
+  const port = Number(flag('--port', process.env.PORT ?? 4185))
+  const mount = flag('--mount', MOUNT)
+  const root = resolve(HERE, flag('--root', DEFAULT_ROOT))
+  createMountServer({ mount, root }).listen(port, () => {
+    console.log(`[mount-server] ${root}`)
+    console.log(`[mount-server] http://localhost:${port}${mount} → proxying to ${PROXY_TARGET}`)
   })
 }

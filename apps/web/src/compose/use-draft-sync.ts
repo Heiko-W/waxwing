@@ -11,6 +11,7 @@ import { useMemo } from 'react'
 import {
   type DraftRow,
   deleteDraft,
+  getActiveReplica,
   getDraft,
   mailboxByRole,
   putDraft,
@@ -110,6 +111,24 @@ async function flushDraft(db: ReplicaDb, accountId: Id, localId: string): Promis
     },
     { id: outboxId(localId) },
   )
+}
+
+/**
+ * {@link DraftSync.flush} for callers that are NOT inside the `ReplicaProvider` subtree (M3.10).
+ *
+ * The hook below cannot serve them: the PWA update prompt is mounted ABOVE the auth gate (see
+ * `app/App.tsx`), so `useReplicaOptional()` hands it the `null` branch and its flush persists
+ * nothing — the defect this exists to close. Reading {@link getActiveReplica} instead resolves the
+ * replica at CALL time, which is also the correct moment: the user accepts the reload long after
+ * both trees have mounted.
+ *
+ * No replica yet (still on the sign-in screen) is a clean no-op, not an error — the composer only
+ * exists inside the shell, so there is nothing open to lose.
+ */
+export async function flushActiveDraft(localId: string): Promise<void> {
+  const replica = getActiveReplica()
+  if (replica === null) return
+  await flushDraft(replica.db, replica.accountId, localId)
 }
 
 export function useDraftSync(): DraftSync {

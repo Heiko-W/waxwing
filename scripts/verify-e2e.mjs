@@ -6,11 +6,12 @@
 //   1. ensure the pinned Playwright chromium is installed
 //   2. run the self-contained placeholder suite (pnpm e2e — vite preview, no fixture)
 //   3. run the M3.10 /mail/ mount suite (pnpm e2e:mount — static mount server, no fixture)
-//   4. run the M1.9 read and M2.9 write suites (pnpm e2e:read / e2e:write) — they self-manage the
-//      Stalwart fixture: their Playwright globalSetup brings the fixture up advertising the app
-//      origin + seeds alice's inbox (self-smokes per ADR-002), and globalTeardown tears it down
+//   4. run the M1.9 read, M2.9 write and M3.10 deploy suites (pnpm e2e:read / e2e:write /
+//      e2e:deploy) — they self-manage the Stalwart fixture: their Playwright globalSetup brings the
+//      fixture up advertising the app origin + seeds alice's inbox (self-smokes per ADR-002), and
+//      globalTeardown tears it down
 //   5. ALWAYS tear the fixture down as a backstop, even if a step above failed or was killed
-//      before the read/write suites' own teardown ran
+//      before those suites' own teardown ran
 //
 // Order is cheapest-first: the two fixture-free suites (2, 3) fail in seconds on a bundle that
 // cannot boot, so a broken build never pays for a Docker fixture to find out.
@@ -74,6 +75,10 @@ try {
   run('mount e2e suite', ['e2e:mount'])
   run('read e2e suite', ['e2e:read'])
   run('write e2e suite', ['e2e:write'])
+  // The M3.10 deploy suite runs LAST: it is the only one that builds the app TWICE (a staged second
+  // deploy, e2e/pwa-stage.vite.config.mjs), so putting it earlier would make every other suite wait
+  // on work none of them need. It self-manages the fixture like read/write.
+  run('deploy e2e suite', ['e2e:deploy'])
 } catch (error) {
   failure = error
 } finally {

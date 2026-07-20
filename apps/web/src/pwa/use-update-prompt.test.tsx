@@ -2,6 +2,8 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useComposerStore } from '../compose'
+import { putMailboxes, type ReplicaDb, ReplicaProvider } from '../sync'
+import { freshDb, mailbox } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import {
@@ -26,8 +28,13 @@ let releaseFlush: () => void = () => {}
 let flushGate: Promise<void>
 const flush = vi.fn(() => flushGate)
 
-function Harness() {
-  useUpdatePrompt({ register, reload, draftSync: { flush } })
+function Harness({ deadlineMs }: { deadlineMs?: number } = {}) {
+  useUpdatePrompt({
+    register,
+    reload,
+    draftSync: { flush },
+    ...(deadlineMs === undefined ? {} : { flushDeadlineMs: deadlineMs }),
+  })
   return null
 }
 
@@ -136,6 +143,25 @@ describe('useUpdatePrompt', () => {
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
   })
 
+  it('hands over even when a flush never SETTLES — a blocked database must not freeze the reload', async () => {
+    // The third failure mode, and the one `allSettled` alone cannot survive: an IndexedDB request
+    // blocked behind another tab's `versionchange` neither resolves nor rejects until that tab
+    // closes, which may be never. Without the deadline the user would click "Reload" and sit on a
+    // build whose lazy chunks are already gone from the server, with no way forward.
+    flush.mockImplementation(() => new Promise<void>(() => {})) // never settles
+    const user = userEvent.setup()
+    render(
+      <ToastProvider>
+        <Harness deadlineMs={5} />
+      </ToastProvider>,
+    )
+    updateReady()
+
+    await user.click(await screen.findByRole('button', { name: 'Reload' }))
+
+    await waitFor(() => expect(activate).toHaveBeenCalledTimes(1))
+  })
+
   it('offers the NEXT deploy again after the user dismissed the last one', async () => {
     const user = userEvent.setup()
     renderShell()
@@ -146,6 +172,79 @@ describe('useUpdatePrompt', () => {
 
     updateReady() // a new build lands later
     expect(await screen.findByText('An update is ready')).toBeInTheDocument()
+  })
+})
+
+/**
+ * ── THE WIRING, NOT THE SEAM (M3.10) ──────────────────────────────────────────────────────────
+ *
+ * Every test above injects `deps.draftSync`, which is exactly why the defect this file now guards
+ * against shipped and survived five milestones: `useUpdatePrompt` is mounted ABOVE the
+ * `ReplicaProvider` (app/App.tsx), so its real `useDraftSync()` read `null` from context and took
+ * the no-replica branch, whose `flush` is `async () => {}`. The toast said "Open drafts are saved
+ * first" and nothing was ever written — while every test here passed, because none of them used the
+ * default. A suite that cannot fail on the production path is not coverage of that path.
+ *
+ * So these two inject NOTHING and assert against a real Dexie database, and they reproduce the
+ * ancestry that caused the bug: the prompt is a SIBLING of the provider, never a descendant. If the
+ * flush is ever wired back through React context, the first test here goes red rather than green.
+ */
+describe('useUpdatePrompt — the REAL draft flush, mounted outside the ReplicaProvider', () => {
+  let db: ReplicaDb
+
+  beforeEach(async () => {
+    db = freshDb()
+    await putMailboxes(db, 'acc-1', [mailbox('mb-d', { role: 'drafts' })])
+  })
+  afterEach(async () => {
+    await db.delete()
+  })
+
+  /** The App.tsx shape: the prompt above the gate, the replica provided by a subtree beside it. */
+  function RealShell({ withReplica }: { withReplica: boolean }) {
+    return (
+      <ToastProvider>
+        <RealHarness />
+        {withReplica ? (
+          <ReplicaProvider accountId="acc-1" db={db}>
+            <div />
+          </ReplicaProvider>
+        ) : null}
+      </ToastProvider>
+    )
+  }
+
+  function RealHarness() {
+    useUpdatePrompt({ register, reload }) // no `draftSync` — the production default
+    return null
+  }
+
+  it('writes the open drafts to the local store before handing over to the new worker', async () => {
+    const user = userEvent.setup()
+    render(<RealShell withReplica={true} />)
+    updateReady()
+
+    await user.click(await screen.findByRole('button', { name: 'Reload' }))
+    await waitFor(() => expect(activate).toHaveBeenCalledTimes(1))
+
+    // The durable local write — `flushDraft`'s AWAITED `putDraft`, the crash-safety guarantee, and
+    // the same store the M3.10 deploy E2E reads out of IndexedDB after the reload.
+    const rows = await db.drafts.where('accountId').equals('acc-1').toArray()
+    expect(rows.map((row) => row.content.subject).sort()).toEqual(['and another', 'half a thought'])
+  })
+
+  it('still hands over when there is no replica yet — the sign-in screen has nothing to flush', async () => {
+    // The pre-auth case the module-level accessor has to get right. `getActiveReplica()` is `null`
+    // here, which is a normal answer and not a failure: no account, no database, and the composer
+    // only exists inside the shell. What must NOT happen is the reload being blocked or thrown by it.
+    const user = userEvent.setup()
+    render(<RealShell withReplica={false} />)
+    updateReady()
+
+    await user.click(await screen.findByRole('button', { name: 'Reload' }))
+
+    await waitFor(() => expect(activate).toHaveBeenCalledTimes(1))
+    expect(await db.drafts.count()).toBe(0)
   })
 })
 

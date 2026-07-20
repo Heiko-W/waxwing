@@ -8,6 +8,7 @@
   "scripts": {
     "e2e": "playwright test",
     "e2e:mount": "playwright test -c playwright.mount.config.ts",
+    "e2e:deploy": "playwright test -c playwright.deploy.config.ts",
     "e2e:read": "playwright test -c playwright.read.config.ts",
     "e2e:write": "playwright test -c playwright.write.config.ts",
     "e2e:demo": "playwright test -c playwright.demo.config.ts",

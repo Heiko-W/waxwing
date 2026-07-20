@@ -83,7 +83,125 @@ test.describe('/mail/ mount', () => {
     // original defect at its source rather than at its consequence.
     expect(await page.evaluate(() => document.baseURI)).toBe(new URL(MOUNT, page.url()).toString())
   })
+
+  /**
+   * The SERVICE WORKER half of the mount (M3.10 wave 2). The two tests above prove the bundle is
+   * SERVED correctly under a prefix; these prove it is CACHED correctly under one, which is a
+   * separate property with its own separate way of breaking.
+   *
+   * Everything the worker does is anchored to `appRoot(self.location)` (sw-routes.ts) rather than to
+   * `/`, and the precache is keyed by URL. Under a mount that anchoring is load-bearing in two
+   * places, and at the root it is invisible in both — `/` and the mount prefix are the same string
+   * there, so every leading-slash literal a developer might reach for happens to work. This is the
+   * same asymmetry the `<base>` tests above exist for, one layer down.
+   */
+  test('offline, a deep link under the mount is answered from the precache', async ({
+    page,
+    context,
+  }) => {
+    const heading = page.getByRole('heading', { level: 1 })
+
+    await page.goto(DEEP_LINK)
+    await expect(heading).toContainText('Sign in to')
+
+    // From here on the assertion is `booted()`, not a specific heading — see its comment. The
+    // onboarding branch the app picks depends on a network probe, so it CHANGES when we go offline,
+    // and pinning the online wording would make these tests red for a reason that is not the defect.
+
+    // Gain control. A freshly registered worker never controls the page that registered it —
+    // `sw.ts` calls neither `skipWaiting()` nor `clientsClaim()`, deliberately — so until this
+    // reload the worker's fetch handler has not run once and an offline assertion would be
+    // measuring Chromium's HTTP cache. Gate on `controller`, not on `ready`: `ready` resolves on an
+    // ACTIVE worker and says nothing about THIS page being controlled.
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => {}))
+    await page.reload()
+    await expect
+      .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+        timeout: 15_000,
+      })
+      .toBe(true)
+
+    // The worker registered under the MOUNT, not at the origin root. If this were `/` the precache
+    // would be keyed off the wrong scope and every assertion below would be about a different app.
+    expect(await page.evaluate(() => navigator.serviceWorker.ready.then((r) => r.scope))).toBe(
+      new URL(MOUNT, page.url()).toString(),
+    )
+
+    await context.setOffline(true)
+    const broken = brokenRequests(page)
+    await page.reload()
+
+    // The whole point: with no network at all, a deep route several segments below the mount is
+    // still answered with the precached shell. `sw.ts` gets this right by resolving
+    // `createHandlerBoundToURL('index.html')` against the WORKER's own location — a leading-slash
+    // '/index.html' literal would look identical at the root and miss the precache entirely here.
+    await booted(page)
+    expect(broken).toEqual([])
+
+    // The guard: this test must not be able to pass while the browser is online.
+    expect(await page.evaluate(() => navigator.onLine)).toBe(false)
+  })
+
+  test('offline, a mailbox Id that is a reserved word still gets the shell', async ({
+    page,
+    context,
+  }) => {
+    // RFC 8620 Ids are `[A-Za-z0-9_-]`, so a server is free to hand out a mailbox Id of `api` or
+    // `auth`. Stacked under a Stalwart mount the two coordinate spaces documented in
+    // notify/click-route.ts give `/mail/` (the MOUNT) + `mail/api` (the APP's own route for that
+    // mailbox) = `/mail/mail/api`. `navigateDenylist` anchors the reserved words to the app root so
+    // only the FIRST segment below it counts; matched anywhere in the path, that URL would be read
+    // as Stalwart's `/api` and denied the shell, and reloading that mailbox offline would show the
+    // browser's error page instead of the app.
+    //
+    // Getting this URL shape right is the whole test, and it is easy to get wrong: `/mail/api` —
+    // the obvious guess — is a DIFFERENT case, one the denylist denies on purpose, because directly
+    // below the mount root is exactly where the server's own paths live. Unit-covered from both
+    // sides in sw-routes.test.ts ("does not mistake a MAILBOX for a server path" and "anchors to
+    // the mount prefix"); this is the wiring in a real worker.
+    await page.goto(MOUNT)
+    await booted(page)
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => {}))
+    await page.reload()
+    await expect
+      .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+        timeout: 15_000,
+      })
+      .toBe(true)
+
+    await context.setOffline(true)
+
+    // The reserved-word mailbox, and a SEARCH URL — the second is the `HAS_EXTENSION`-stops-at-`?`
+    // case: Workbox matches the denylist against `pathname + search`, so an entry that ran past the
+    // query string would swallow this one too.
+    for (const path of [`${MOUNT}mail/api`, `${MOUNT}mail/inbox?q=from:a.b@c.de`]) {
+      const broken = brokenRequests(page)
+      await page.goto(path)
+      await booted(page)
+      expect(broken, `navigating to ${path} offline`).toEqual([])
+    }
+
+    expect(await page.evaluate(() => navigator.onLine)).toBe(false)
+  })
 })
+
+/**
+ * The app's entry chunk resolved, executed and mounted React — which is the only thing the offline
+ * tests need to know, and the most they can honestly assert.
+ *
+ * NOT a text match on the heading, deliberately. Which onboarding screen the app settles on is
+ * decided by `SessionProvider`'s same-origin `services.probe()`: reachable → the sign-in form
+ * ("Sign in to <host>"), unreachable → the connect screen ("Welcome to Waxwing"). Going offline
+ * flips that probe, so the wording the two ONLINE tests above assert is not the wording an offline
+ * test sees. Pinning it anyway is how this test first went red — for the app changing screens, not
+ * for the precache failing, which is the only thing under test here. The white screen these tests
+ * exist to catch has no `<h1>` at all, so presence is the discriminating signal and the text is
+ * noise.
+ */
+async function booted(page: Page): Promise<void> {
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('heading', { level: 1 })).not.toBeEmpty()
+}
 
 /**
  * Collects failed / 4xx / 5xx requests for the app's OWN resources under the mount, so a boot

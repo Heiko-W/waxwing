@@ -55,7 +55,18 @@ function AppBody({ config }: { config: WaxwingConfig }) {
   // — FR-OFF-01) and Chromium, whose installability check needs a registered worker, would offer no
   // install at all on the sign-in screen (FR-DEP-06). Nothing in the registration needs a session.
   // It is mounted here rather than in main.tsx because the reload it offers is a toast (ToastProvider,
-  // just above) and it must flush open drafts first.
+  // just above).
+  //
+  // THE COST OF THAT PLACEMENT, AND HOW IT IS PAID (M3.10). The update toast promises "Open drafts
+  // are saved first", and the draft flush needs the replica — which <ReplicaProvider> supplies from
+  // inside <SyncEngineHost>, a DESCENDANT of this component. Context flows down only, so the hook's
+  // original `useDraftSync()` read `null` here and silently took the no-replica branch, whose `flush`
+  // is `async () => {}`: for five milestones the toast said the drafts were saved and nothing was
+  // written. The registration could not simply move below the gate without losing both guarantees
+  // above, so the SEAM moved instead — `flushActiveDraft` (compose/use-draft-sync.ts) resolves the
+  // live replica through `getActiveReplica()` at call time, which needs no ancestry at all. Pre-auth
+  // there is genuinely nothing to flush (no account, and the composer lives inside the shell), so the
+  // accessor's `null` is the correct answer there rather than a hole.
   useUpdatePrompt()
 
   if (status !== 'ready') {

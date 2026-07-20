@@ -58,6 +58,8 @@ export {
 } from './db'
 export { canonicalQueryKey, type QuerySpec } from './query-key'
 export {
+  getActiveReplica,
+  type ReplicaContextValue,
   ReplicaProvider,
   type ReplicaProviderProps,
   useEmail,

@@ -23,6 +23,7 @@ export default defineConfig({
     '**/swipe.spec.ts',
     '**/offline.spec.ts',
     '**/push.spec.ts',
+    '**/pwa.spec.ts',
   ],
   // One seeded account, stateful mutations (flag/move/delete/live-deliver) → keep it serial and
   // reseed per test (see read.spec.ts beforeEach), so ordering never makes a test flaky.

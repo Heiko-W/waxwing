@@ -10,7 +10,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { createContext, type ReactNode, useContext, useMemo } from 'react'
+import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
 import {
   getReplica,
   type IdentityRow,
@@ -21,7 +21,7 @@ import {
 } from './db'
 import { emailsByIds, identitiesForAccount, mailboxByRole, mailboxesForAccount } from './repo'
 
-interface ReplicaContextValue {
+export interface ReplicaContextValue {
   readonly db: ReplicaDb
   readonly accountId: Id
 }
@@ -35,11 +35,47 @@ export interface ReplicaProviderProps {
   readonly children: ReactNode
 }
 
+// ---------------------------------------------------------------------------------------------
+// The live replica, reachable from OUTSIDE the provider's subtree (M3.10).
+//
+// React context only flows DOWN, and two things that must reach the replica sit ABOVE the provider
+// rather than below it: the PWA update prompt (`pwa/use-update-prompt.ts`), mounted above the auth
+// gate so a first-time visitor still precaches the shell, and any future out-of-React teardown path.
+// `useReplicaOptional()` returns `null` for them however correct their intent — which is exactly how
+// M3.5's "open drafts are saved first" promise came to be wired to a no-op flush for five milestones.
+//
+// A module-level accessor is the same shape the engine (`setActiveEngine`) and the storage-full
+// signal (`storage.ts`) already use for live sync state, and it is deliberately NOT reactive: the one
+// caller reads it once, inside an event handler, at the moment the user accepts a reload.
+// ---------------------------------------------------------------------------------------------
+
+let activeReplica: ReplicaContextValue | null = null
+
+/**
+ * The mounted {@link ReplicaProvider}'s replica, or `null` before sign-in and after sign-out.
+ *
+ * `null` is a NORMAL answer, not an error: on the sign-in screen there is no account, no database
+ * handle and — since the composer lives inside the shell — nothing that could need flushing. Callers
+ * treat it as "nothing to do" rather than as a failure.
+ */
+export function getActiveReplica(): ReplicaContextValue | null {
+  return activeReplica
+}
+
 export function ReplicaProvider({ accountId, db, children }: ReplicaProviderProps): ReactNode {
   const value = useMemo<ReplicaContextValue>(
     () => ({ db: db ?? getReplica(), accountId }),
     [db, accountId],
   )
+  useEffect(() => {
+    activeReplica = value
+    return () => {
+      // Only clear it if it is still OURS. React can mount a replacement tree before unmounting the
+      // old one (a route swap, StrictMode's double-invoke), and an unconditional `= null` here would
+      // let the departing provider blank its own successor's entry.
+      if (activeReplica === value) activeReplica = null
+    }
+  }, [value])
   return <ReplicaContext.Provider value={value}>{children}</ReplicaContext.Provider>
 }
 

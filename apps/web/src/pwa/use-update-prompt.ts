@@ -14,7 +14,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { type DraftSync, useComposerStore, useDraftSync } from '../compose'
+import { type DraftSync, flushActiveDraft, useComposerStore } from '../compose'
 import { useToast } from '../ui'
 import {
   type RegisterSwDeps,
@@ -26,41 +26,76 @@ import {
 
 type RegisterFn = (deps: RegisterSwDeps) => Promise<SwRegistration | null>
 
+/**
+ * The composer's real persistence seam, resolved at CALL time rather than through `useDraftSync()`.
+ *
+ * This hook runs ABOVE the `ReplicaProvider` (app/App.tsx explains why the registration has to live
+ * there), so the hook form would hand it the no-replica branch — whose `flush` is `async () => {}`.
+ * That is precisely the defect M3.10 found: the toast promised "Open drafts are saved first" while
+ * `flushOpenDrafts` awaited nothing, and the unit tests could not see it because every one of them
+ * injected `deps.draftSync`. {@link flushActiveDraft} reads the live replica out of a module-level
+ * accessor instead, so it is a real write whenever there IS a replica and a no-op when there is not.
+ */
+const ACTIVE_DRAFT_SYNC: Pick<DraftSync, 'flush'> = { flush: flushActiveDraft }
+
+/**
+ * How long a reload will wait on the draft flush before going ahead without it.
+ *
+ * A local IndexedDB write is single-digit milliseconds, so this is three orders of magnitude of
+ * headroom: past it the likeliest explanation is a database blocked behind another tab's
+ * `versionchange`, which resolves only when that tab closes — i.e. possibly never. The reload must
+ * not be hostage to that, for the same reason a REJECTED flush must not block it (see below).
+ */
+const FLUSH_DEADLINE_MS = 2000
+
 export interface UpdatePromptDeps {
   /** Defaults to {@link registerServiceWorker} in a production build; never runs in dev/tests. */
   readonly register?: RegisterFn | undefined
   /** Defaults to a full page reload. */
   readonly reload?: (() => void) | undefined
-  /** Defaults to the composer's real persistence seam. */
+  /** Defaults to {@link ACTIVE_DRAFT_SYNC}, the composer's real persistence seam. */
   readonly draftSync?: Pick<DraftSync, 'flush'> | undefined
+  /** Defaults to {@link FLUSH_DEADLINE_MS}; injectable so a test need not wait out the real one. */
+  readonly flushDeadlineMs?: number | undefined
 }
 
 /**
  * Persist every open draft. Called before ANY reload this module causes — see the header.
  *
- * **It can never fail the reload it precedes.** `flush` writes to IndexedDB, which rejects on a full
- * disk (the state M3.4's storage notifier exists for), on a closed database, and in Safari's private
- * mode — and a rejection here used to swallow the `activate()` that followed it: the user clicked
- * "Reload", the toast dismissed itself, and nothing happened, ever again. Saving the draft is
- * best-effort; stranding the user on a dead build is not an acceptable price for it. `allSettled`,
- * so one bad draft cannot take the others' flushes down with it either.
+ * **It can never fail the reload it precedes, and can never delay it indefinitely.** `flush` writes
+ * to IndexedDB, which rejects on a full disk (the state M3.4's storage notifier exists for), on a
+ * closed database, and in Safari's private mode — and a rejection here used to swallow the
+ * `activate()` that followed it: the user clicked "Reload", the toast dismissed itself, and nothing
+ * happened, ever again. Saving the draft is best-effort; stranding the user on a dead build is not
+ * an acceptable price for it. So: `allSettled`, so one bad draft cannot take the others' flushes
+ * down with it, and a DEADLINE, because a write can also do neither — a database blocked behind
+ * another tab's `versionchange` simply never settles, and `allSettled` would wait for it forever.
  */
-async function flushOpenDrafts(draftSync: Pick<DraftSync, 'flush'>): Promise<void> {
+async function flushOpenDrafts(
+  draftSync: Pick<DraftSync, 'flush'>,
+  deadlineMs: number,
+): Promise<void> {
   const openIds = [...useComposerStore.getState().drafts.keys()]
-  await Promise.allSettled(openIds.map((localId) => draftSync.flush(localId)))
+  const flushed = Promise.allSettled(openIds.map((localId) => draftSync.flush(localId)))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, deadlineMs)
+  })
+  await Promise.race([flushed, deadline])
+  clearTimeout(timer)
 }
 
 export function useUpdatePrompt(deps: UpdatePromptDeps = {}): void {
   const { t } = useTranslation()
   const { toast, dismiss } = useToast()
-  const realDraftSync = useDraftSync()
-  const draftSync = deps.draftSync ?? realDraftSync
+  const draftSync = deps.draftSync ?? ACTIVE_DRAFT_SYNC
+  const flushDeadlineMs = deps.flushDeadlineMs ?? FLUSH_DEADLINE_MS
 
   // The registration effect must run ONCE — re-registering on every language change or draft
   // mutation would re-arm the update interval — so what it needs is read through a live ref.
-  const live = useRef({ t, toast, dismiss, draftSync })
+  const live = useRef({ t, toast, dismiss, draftSync, flushDeadlineMs })
   useEffect(() => {
-    live.current = { t, toast, dismiss, draftSync }
+    live.current = { t, toast, dismiss, draftSync, flushDeadlineMs }
   })
 
   const { register, reload } = deps
@@ -96,7 +131,7 @@ export function useUpdatePrompt(deps: UpdatePromptDeps = {}): void {
             label: translate('pwa.update.action'),
             onAction: () => {
               void (async () => {
-                await flushOpenDrafts(live.current.draftSync)
+                await flushOpenDrafts(live.current.draftSync, live.current.flushDeadlineMs)
                 activate() // → SKIP_WAITING → the new worker activates → `controllerchange` reloads us
               })()
             },
@@ -105,7 +140,7 @@ export function useUpdatePrompt(deps: UpdatePromptDeps = {}): void {
       },
       onControllerChange: () => {
         void (async () => {
-          await flushOpenDrafts(live.current.draftSync)
+          await flushOpenDrafts(live.current.draftSync, live.current.flushDeadlineMs)
           doReload()
         })()
       },
