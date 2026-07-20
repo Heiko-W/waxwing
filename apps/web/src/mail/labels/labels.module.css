@@ -139,10 +139,18 @@
   cursor: pointer;
 }
 
-.menuItem:hover,
+.menuItem:hover {
+  background-color: var(--waxwing-surface-2);
+}
+
+/* WCAG 2.4.7. These two states used to share one rule that set `outline: none`, so keyboard
+   focus was signalled ONLY by a fill byte-identical to hover — and surface → surface-2 is
+   1.19:1 in light, 1.23:1 in dark, i.e. invisible. The ring is what carries the state; the
+   fill stays as a redundant cue. Same idiom as `.item:focus-visible` above. */
 .menuItem:focus-visible {
   background-color: var(--waxwing-surface-2);
-  outline: none;
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
 }
 
 .menuItemLabel {

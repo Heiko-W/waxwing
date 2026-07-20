@@ -357,22 +357,38 @@ export type ConflictCode =
  * Payloads stay tiny: a destroy re-fetches the (still-existing, because the destroy was REJECTED)
  * envelopes from the server rather than storing them, which also self-corrects a PARTIAL rejection.
  *
- * `prunedKeys` is the same idea one level up: an optimistic move/destroy also prunes the message out
- * of the cached list windows it left ({@link QueryCacheRow.ids} — what the list actually renders), and
+ * `prunedKeys` is the same idea one level up: an optimistic move/destroy/keyword-change also prunes the
+ * message out of the cached list windows it left ({@link QueryCacheRow.ids} — what the list renders), and
  * the rollback has to put it back. The KEYS are recorded (data, not a closure) rather than the ids and
- * their positions: the window is in the SERVER's collation and we hold none of its sort keys, so a
- * local re-insert would land the row in the wrong place. Marking the window for a full re-query is
- * both correct and free — a rollback only happens when the server answered, i.e. we are online.
+ * their positions: the window is in the SERVER's collation, so re-inserting at the old index would be a
+ * guess. Marking the window for a full re-query is both correct and free — a rollback only happens when
+ * the server answered, i.e. we are online.
  * OPTIONAL: an undo persisted by a build before M3.8 pruned nothing, and `undefined` reads as "none".
  *
- * The DESTINATION windows a move marks for re-query are deliberately NOT recorded: nothing was edited
- * there (only `queryState` was voided), so whatever the server answers, the re-query returns the truth
- * — a rejected move simply re-queries a window that never changed.
+ * `insertedKeys` (M3.10) is its mirror image, and it exists because the arrival half stopped being
+ * void-only: a move now SPLICES the message into a destination window whenever that placement is
+ * locally computable (`engine/outbox.ts`, gap B2 — otherwise a message moved into a visible window
+ * offline never appeared, so Undo read as broken). Those windows genuinely hold an id we invented, so
+ * a rejection has to take it back OUT — voiding alone would leave a phantom row rendering until the
+ * re-query lands. The keys record WINDOWS, not which id went into which, so the rollback intersects
+ * them with the ids actually being undone (a partial rejection undoes a subset). A destination window
+ * we could NOT place into is still not recorded: nothing was edited there, so its re-query returns the
+ * truth whatever the server answered.
  */
 export type OutboxUndo =
   | { readonly kind: 'none' }
   /** `setKeywords` + the `sendEmail` source flag: `had` = the ids that ALREADY carried the keyword. */
-  | { readonly kind: 'keywords'; readonly keyword: string; readonly had: Id[] }
+  | {
+      readonly kind: 'keywords'
+      readonly keyword: string
+      readonly had: Id[]
+      /**
+       * The {@link QueryCacheRow.key}s whose window this apply pruned the ids out of (M3.10).
+       * OPTIONAL and absent on `sendEmail`'s source-flag undo, which prunes nothing, as well as on
+       * any undo persisted before M3.10 — every reader takes it as "none".
+       */
+      readonly prunedKeys?: string[]
+    }
   /** `move`: `hadTo` = ids ALREADY in `to` (do not strip); `hadFrom` = ids that were in `from`. */
   | {
       readonly kind: 'mailboxIds'
@@ -382,6 +398,11 @@ export type OutboxUndo =
       readonly hadFrom: Id[]
       /** The {@link QueryCacheRow.key}s whose window this apply pruned the ids out of. */
       readonly prunedKeys?: string[]
+      /**
+       * The {@link QueryCacheRow.key}s whose window this apply SPLICED the ids into (M3.10). OPTIONAL
+       * and absent on every undo persisted before M3.10, which read as "nothing was inserted".
+       */
+      readonly insertedKeys?: string[]
     }
   /** `destroyEmails`: re-fetch the rejected ids from the server (they still exist there). */
   | { readonly kind: 'refetchEmails'; readonly prunedKeys?: string[] }

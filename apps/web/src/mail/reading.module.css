@@ -48,6 +48,8 @@
   display: block;
 }
 
+/* waxwing-focus-exempt: programmatic tabindex=-1 target, never tab-reachable; the expanded
+   message header is the visible cue (WCAG 2.4.3, see the note above). */
 .expandedItem:focus {
   outline: none;
 }

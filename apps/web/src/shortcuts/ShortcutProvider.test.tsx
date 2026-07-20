@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -9,7 +9,14 @@ import { EMPTY_LIST_STATE, useListStore } from '../mail/list-store'
 import { MessageList } from '../mail/MessageList'
 import { type ReadingHandlers, useReadingStore } from '../mail/reading-store'
 import { SEARCH_INPUT_ID } from '../mail/search/SearchBox'
-import { putEmails, putMailboxes, putQueryCache, type ReplicaDb, ReplicaProvider } from '../sync'
+import {
+  deleteMailbox,
+  putEmails,
+  putMailboxes,
+  putQueryCache,
+  type ReplicaDb,
+  ReplicaProvider,
+} from '../sync'
 import { setActiveEngine, windowQueryKey } from '../sync/engine'
 import { email, freshDb, mailbox } from '../sync/test-utils'
 import { TextInput, ToastProvider } from '../ui'
@@ -395,6 +402,79 @@ describe('ShortcutProvider — the guards (this is the work package)', () => {
     press('e', {}, document.activeElement ?? box)
     await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'archive' })
+  })
+
+  /**
+   * G2/B3. `e` on an account with no Archive folder used to fall out of the dispatcher's loop and do
+   * nothing at all — no move, no toast, no live-region text — which from the keyboard is
+   * indistinguishable from a key that was never bound. Now it says so, and names `v` as the way out.
+   *
+   * The barrier has to watch THE DISPATCHER'S OWN view of the roles, and that is subtler than it
+   * looks. `useMailboxes()` is a plain `useLiveQuery`, so every call site is an INDEPENDENT
+   * subscription: `MessageList`'s swipe reveal layer, `useShortcutContext`, and `useTriage`'s
+   * `useMailboxByRole` each re-run their own query on the delete and land on their own tick. Waiting
+   * for the reveal layer's "Archive" strip to disappear therefore proves only that `MessageList`
+   * caught up, and nothing at all about the context that actually answers `e` — measured at 4/160
+   * runs, the context was still holding the deleted mailbox, `e` dispatched a real `move` to it, and
+   * `findByText` timed out at ~1s having never seen a toast. `waitFor` re-runs on DOM mutation, so
+   * the reveal layer's own removal is what releases it, in the very commit before the context's.
+   *
+   * The `?` sheet is the honest barrier: `ShortcutProvider` hands `ShortcutHelp` the very `context`
+   * object the key dispatcher reads out of `contextRef`, and B3 has it render this reason straight
+   * from `action.unavailable(context)`. Once the sheet says the folder is missing, the dispatcher
+   * cannot still disagree — it is the same object. Opened through the store rather than the `?` chord
+   * so the barrier also holds on `/settings`, where every chord drops to the `global` scope.
+   */
+  async function withoutArchive(): Promise<void> {
+    await mounted()
+    await screen.findAllByText('Archive')
+    await deleteMailbox(db, 'a', 'archive')
+
+    act(() => usePaletteUi.getState().openHelp())
+    const sheet = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })
+    await within(sheet).findByText('This account has no Archive folder.')
+    act(() => usePaletteUi.getState().closeOverlays())
+    // The sheet renders the same string the toast does, and `isInOverlay` would swallow `e` while it
+    // is up — so the assertions below only mean what they say once it is fully gone.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  }
+
+  it('e on an account with no Archive folder SAYS so, and moves nothing', async () => {
+    await withoutArchive()
+
+    const event = press('e')
+
+    expect(await screen.findByText('This account has no Archive folder.')).toBeInTheDocument()
+    // The message is a fix, not an apology: `v` needs no role mailbox and works on the same targets.
+    expect(screen.getByText('Press V to pick a folder instead.')).toBeInTheDocument()
+    // Nothing reached the outbox — the toast replaces the silence, it does not replace the gate.
+    expect(dispatch).not.toHaveBeenCalled()
+    // The chord IS ours the moment we answer it, so we own the key too.
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('e outside the mail area stays completely silent (scope, not just the missing folder)', async () => {
+    // Settings and Contacts drop every chord to the `global` scope. `e` explaining mailbox roles from
+    // the Settings screen would be a NEW bug introduced by the fix above — this is the regression it
+    // most plausibly causes. The URL is set BEFORE the render: the router reads `location` at mount
+    // and only listens for `popstate`, so a `pushState` afterwards would leave the route on /mail and
+    // this test would pass while proving nothing.
+    window.history.pushState(null, '', '/settings')
+    await withoutArchive()
+
+    press('e')
+
+    await waitFor(() => expect(dispatch).not.toHaveBeenCalled())
+    expect(screen.queryByText('This account has no Archive folder.')).toBeNull()
+  })
+
+  it('a held e cannot stack toasts (auto-repeat is swallowed above the gate)', async () => {
+    await withoutArchive()
+    press('e')
+    press('e', { repeat: true })
+    press('e', { repeat: true })
+
+    expect(await screen.findAllByText('This account has no Archive folder.')).toHaveLength(1)
   })
 
   // `/` preventDefaults BEFORE it runs, so an always-enabled `/` eats the key on Settings/Contacts —

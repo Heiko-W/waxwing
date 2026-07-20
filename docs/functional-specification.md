@@ -171,7 +171,10 @@ webmail is an open gap.
   actions: read/unread, flag, move, archive, junk, delete.
 - **FR-LST-05 (Must)** — Sorting: date (default), from, subject, size; unread-first toggle.
 - **FR-LST-06 (Should)** — Swipe gestures on touch devices (configurable actions, e.g.
-  archive / delete / read), matching platform conventions.
+  archive / delete / read), matching platform conventions. A direction whose target role
+  mailbox the account does not have is **inert** — the row does not follow the finger and no
+  action strip is revealed — and is never **substituted** with a different mailbox: a gesture
+  the user configured as "Archive" must not move mail to Trash (ADR-014).
 - **FR-LST-07 (Should)** — Density options (comfortable / compact) and reading-pane
   layouts: right, bottom, off (list-only, message opens full-screen).
 - **FR-LST-08 (Could)** — Sectioned list grouping ("Today, Yesterday, This week…").
@@ -384,7 +387,11 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
   actions). One codebase, no separate mobile app.
 - **FR-UI-04 (Must)** — Complete keyboard support incl. Gmail/Fastmail-style shortcuts
   (`j/k`, `e`, `r`, `c`, `/`, `?` for the cheat-sheet) and a **command palette (⌘K)** for
-  every action and folder jump.
+  every action and folder jump. A shortcut that is inert because of the **account's shape**
+  (e.g. `e` on an account with no Archive role — JMAP does not mandate one) must **say so** and
+  name a way forward, and the cheat-sheet must show it as unavailable with the reason rather
+  than as available. Silence stays correct for the ordinary inert cases — nothing selected,
+  empty folder — where the user can see why for themselves (G2/B3).
 
 ### 7.2 FR-THEME — Theming & white-labeling
 

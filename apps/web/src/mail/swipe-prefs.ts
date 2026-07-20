@@ -28,7 +28,16 @@ export function coerceSwipeAction(value: unknown, fallback: SwipeAction): SwipeA
   return SWIPE_ACTIONS.includes(value as SwipeAction) ? (value as SwipeAction) : fallback
 }
 
-/** Default `archive` — and archive falls back to Trash on an account that has no Archive role. */
+/**
+ * Default `archive`. On an account with no Archive role the direction is INERT — the row does not
+ * follow the finger and no strip is revealed.
+ *
+ * It used to fall back to Trash there, deliberately and documented as such. REVERSED in G2/B3: a
+ * gesture the user configured as "Archive" must never be the thing that puts mail in the bin. The
+ * fallback was silent, had no confirmation (a thumb is the whole interaction), and contradicted the
+ * keyboard on the same list — `e` refused the identical account shape. Since B3 `e` also SAYS so, so
+ * an inert direction is now the consistent half of one answer rather than a second silence.
+ */
 export function useSwipeLeft(): SwipeAction {
   return coerceSwipeAction(useLocalPrefOptional<unknown>(SWIPE_PREF_KEYS.left), 'archive')
 }

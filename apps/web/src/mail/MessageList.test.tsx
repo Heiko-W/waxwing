@@ -830,9 +830,10 @@ describe('MessageList', () => {
     it('SAFETY: a direction set to "Nothing" is inert — it must never fall through to a move', async () => {
       // `none` is a real choice in the settings picker (SWIPE_ACTIONS), and the one whose failure
       // mode is worst. `resolveSwipe` ends its move branch in
-      // `kind = action === 'archive' && archiveId ? 'archive' : 'trash'` — so a `none` that escapes
-      // its own gate does not fall through to a no-op, it falls through to TRASH. The user asked for
-      // the direction to do nothing and a thumb deletes their mail.
+      // `target = action === 'archive' ? archiveId : trashId` — so a `none` that escapes its own gate
+      // does not fall through to a no-op, it falls through to TRASH. The user asked for the direction
+      // to do nothing and a thumb deletes their mail. (TypeScript now catches this particular escape
+      // at `kind: action`, since G2/B3 removed the `kind` widening — but the gate is the guarantee.)
       //
       // RIGHT is set to `archive` rather than left on its `read` default purely to make the readiness
       // gate below airtight — see the comment on the gate.
@@ -876,32 +877,37 @@ describe('MessageList', () => {
       })
     })
 
-    it('falls back to Trash on an account with no Archive folder', async () => {
+    it('SAFETY: a direction set to "Archive" is INERT on an account with no Archive — it must never fall back to Trash', async () => {
+      // REVERSED in G2/B3; this test used to assert the opposite ("falls back to Trash"). The
+      // fallback was deliberate, but a gesture the user configured as "Archive" must never be the
+      // thing that puts mail in the bin: a thumb IS the whole interaction, there is no confirmation
+      // step, and the strip the finger revealed said "Archive". It also contradicted the keyboard on
+      // the same list, where `e` refused the identical account shape — and now says so out loud.
       renderList()
       await screen.findByText('First')
       // Render WITH an Archive and wait for its layer — that is what pins `useMailboxes()` as
-      // resolved — then take the folder away. The gate is "the Archive layer is gone", which a
-      // correct fallback and a missing fallback satisfy equally, so it cannot double as the
-      // assertion: with a fallback-less resolver this test fails on the dispatch, not on a timeout.
+      // resolved — then take the folder away. "The Archive layer is gone" cannot double as the
+      // assertion here (roles-not-ready satisfies it too), which is what the positive control below
+      // is for.
       await screen.findAllByText('Archive')
       await deleteMailbox(db, 'a', 'archive')
       await waitFor(() => expect(screen.queryByText('Archive')).toBeNull())
 
       swipe(rowWrap('First'), -150)
 
+      // Nothing reaches the outbox — in particular no move to Trash, which is what this used to do.
+      expect(dispatch).not.toHaveBeenCalled()
+      // …and inert in the two ways the user perceives it, not merely refused downstream.
+      expectInert(rowWrap('First'))
+      // `queryAllBy`: the failure mode reveals a strip on EVERY row, and `queryByText` would throw
+      // "found multiple elements" instead of stating the count.
+      expect(screen.queryAllByText('Move to Trash')).toHaveLength(0)
+
+      // Positive control in the SAME render: the other direction still acts, so "nothing dispatched"
+      // above is this gate and not a list whose gestures stopped being wired at all.
+      swipe(rowWrap('First'), 150)
       expect(dispatch).toHaveBeenCalledTimes(1)
-      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
-        kind: 'move',
-        emailIds: ['e1'],
-        from: 'inbox',
-        to: 'trash',
-      })
-      // Resolved off the mailbox LIST, never off `triage.archive()`'s boolean: `false` there also
-      // means "the liveQuery has not resolved yet", so a boolean-driven fallback would trash mail on
-      // the first render tick of an account that does have an Archive.
-      expect(await screen.findByText('Moved to Trash')).toBeInTheDocument()
-      // …and the strip names the fallback rather than promising an Archive that is gone.
-      expect(screen.getAllByText('Move to Trash')).toHaveLength(3)
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'setKeywords', emailIds: ['e1'] })
     })
 
     it('a swipe that has locked an axis cancels the drag (ADR-012)', async () => {

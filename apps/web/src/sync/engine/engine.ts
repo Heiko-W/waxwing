@@ -21,6 +21,7 @@ import {
   getCoreCapability,
   type Id,
   type PushChannel,
+  type PushTransport,
   type SchedulerLike,
   type SearchSnippet,
   type Session,
@@ -75,6 +76,27 @@ import { type EngineClock, type EngineStatus, INITIAL_ENGINE_STATUS, type JmapPo
 /** Data types we ask push to notify on and delta-sync. */
 const WATCHED_TYPES = ['Mailbox', 'Thread', 'Email']
 
+/**
+ * The push transports a *browser* may use (decision D2, ratified at G1; ADR-005).
+ *
+ * A browser cannot set the `Authorization` header on a `WebSocket` upgrade, and Stalwart offers no
+ * query-param or subprotocol token fallback — so the RFC 8887 WS transport can never authenticate
+ * here. It stays in the library for the Node/server-side path; this list states the browser's own
+ * constraint at the only place that knows it.
+ *
+ * This is an allowlist (`transports`), NOT a preference (`prefer:'sse'`), and the difference is
+ * load-bearing. `prefer` only *reorders*: it would yield `['sse','websocket','polling']`, leaving
+ * the un-authable WebSocket in the chain one hop behind SSE. SSE would then have a real failover
+ * target where today it has none, so a couple of transient SSE errors at login (server restarting,
+ * a CORS blip) would spend the failover budget and strand the channel on the WebSocket — which is
+ * itself terminal. Push would be permanently dead for the session, in exactly the case the current
+ * order self-heals. Restricting the set instead keeps SSE last-real, so it retries forever.
+ *
+ * If a server ever ships browser-viable WS auth (the D2 revisit trigger), THIS is the first place
+ * to look — it is what would keep the browser off a WebSocket that finally works.
+ */
+const BROWSER_PUSH_TRANSPORTS: readonly PushTransport[] = ['sse', 'polling']
+
 /** Force a full query re-reconcile every Nth safety sweep (SP.4 freshness re-probe). */
 const FULL_SWEEP_EVERY = 5
 
@@ -104,7 +126,12 @@ export interface SyncEngineDeps {
   readonly createBus: () => BroadcastChannelLike
   readonly createPush: (
     session: Session,
-    options: { auth: AuthProvider; dataTypes?: string[]; scheduler?: SchedulerLike },
+    options: {
+      auth: AuthProvider
+      dataTypes?: string[]
+      transports?: readonly PushTransport[]
+      scheduler?: SchedulerLike
+    },
   ) => PushChannel
   /** Current online-ness + a subscription to changes (defaults wrap `navigator`/`window`). */
   readonly isOnline: () => boolean
@@ -898,6 +925,7 @@ export class SyncEngine {
     const push = this.deps.createPush(this.deps.session, {
       auth: this.deps.auth,
       dataTypes: [...WATCHED_TYPES],
+      transports: BROWSER_PUSH_TRANSPORTS,
     })
     this.push = push
     push.onStatus((pushStatus) => this.patch({ pushStatus, pushTransport: push.transport }))
@@ -1007,7 +1035,8 @@ export class SyncEngine {
       // This path deliberately skips the delta round-trip, so nothing else here reconciles. For a
       // DEPARTURE that is fine: `updateWindows` already pruned the ids, so the list is right locally
       // and offline. For an ARRIVAL it is not — a window is in the SERVER's collation, so the apply
-      // refuses to guess an index and only voids the baseline, leaving the message invisible until
+      // always voids the baseline (M3.10 also SPLICES the row in where that is locally provable, but
+      // the index is its guess, not the server's answer), leaving the placement unconfirmed until
       // someone re-queries. Nobody did: the correction rode on the server's push echo, and until the
       // push channel connects (the first ~second after a boot) on the 60 s sweep. Undo an archive in
       // that gap and the button looks dead for a minute while the server has long since put the mail

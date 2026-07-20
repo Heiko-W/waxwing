@@ -23,8 +23,32 @@ import type { ShortcutAction, ShortcutContext } from './types'
  * user could not see.
  */
 export function isRunnable(action: ShortcutAction, context: ShortcutContext): boolean {
-  if (!action.scopes.includes(context.scope) && !action.scopes.includes('global')) return false
-  return action.enabled(context)
+  return inScope(action, context) && action.enabled(context)
+}
+
+/** Is the chord ours in the scope the user is currently in? The first half of {@link isRunnable}. */
+function inScope(action: ShortcutAction, context: ShortcutContext): boolean {
+  return action.scopes.includes(context.scope) || action.scopes.includes('global')
+}
+
+/**
+ * The i18n key the key DISPATCHER should announce when a chord refused, or `null` for silence.
+ *
+ * Two questions, deliberately kept apart. `action.unavailable` answers "can this account EVER do
+ * this?" — selection-independent, because the cheat-sheet asks it while nothing is selected. This one
+ * adds "…and is the account's shape the ONLY thing standing in the way right now?".
+ *
+ * Both extra clauses hold for every action that carries an `unavailable` today (all three are moves),
+ * and — not a coincidence — both also disable `v`, so the message may name `v` as the way out and
+ * still be true in every case where it fires. Without them the app would lecture about a missing
+ * Archive folder to a user who has simply selected nothing, where "nothing to act on" is the real,
+ * ordinary, self-correcting reason and silence is right. The scope check is the other half: `e` on the
+ * Settings screen must stay as mute as it is today, not start explaining mailbox roles.
+ */
+export function unavailableNow(action: ShortcutAction, context: ShortcutContext): string | null {
+  if (!inScope(action, context)) return null
+  if (context.targetIds.length === 0 || context.sourceMailboxId === null) return null
+  return action.unavailable?.(context) ?? null
 }
 
 /** The mailbox a move/navigation should be filed under: the list's window, else the open message's. */
@@ -87,6 +111,24 @@ function canMove(context: ShortcutContext, role: Id | undefined): boolean {
     context.sourceMailboxId !== null &&
     role !== context.sourceMailboxId
   )
+}
+
+/**
+ * {@link canMove}'s ACCOUNT-SHAPE clause on its own: this account has no such role mailbox, so the
+ * chord can never fire here — as opposed to `canMove`'s three other clauses, every one of which is
+ * momentary and fixes itself the moment the user selects a row.
+ *
+ * `rolesReady` is what keeps this quiet on the first render tick: `context.roles` is empty both before
+ * `useMailboxes()` resolves and on an account that genuinely has no Archive, so without the flag every
+ * login would announce a missing folder to accounts that have one.
+ *
+ * Deliberately NOT covered: the self-move (`role === context.sourceMailboxId` — "Archive while viewing
+ * Archive"). That is arguably worth a word too, but it is a different message and a different
+ * judgement call; it stays exactly as silent as it is today. Same for the transient
+ * `bodyReady === false` refusal of `r`/`a`/`f`, which heals itself a tick later.
+ */
+function missingRole(context: ShortcutContext, role: Id | undefined, key: string): string | null {
+  return context.rolesReady && role === undefined ? key : null
 }
 
 /**
@@ -210,6 +252,8 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     scopes: ['list', 'reading'],
     group: 'triage',
     enabled: (context) => canMove(context, context.roles.archive),
+    unavailable: (context) =>
+      missingRole(context, context.roles.archive, 'shortcuts.unavailable.archive'),
     run: (context) => runMove(context, 'archive'),
   },
   {
@@ -222,6 +266,12 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
       context.inTrash
         ? context.reading !== null // in Trash the chord means DESTROY — only from the open message
         : canMove(context, context.roles.trash),
+    // Inside Trash the chord means DESTROY and needs no role mailbox at all, so there is nothing an
+    // account could be missing — its only refusal there is "no message open", which is ordinary.
+    unavailable: (context) =>
+      context.inTrash
+        ? null
+        : missingRole(context, context.roles.trash, 'shortcuts.unavailable.trash'),
     run: (context) => {
       // Already in Trash: "delete" can only mean permanently — go through the existing confirmation.
       if (context.inTrash) {
@@ -238,6 +288,8 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     scopes: ['list', 'reading'],
     group: 'triage',
     enabled: (context) => canMove(context, context.roles.junk),
+    unavailable: (context) =>
+      missingRole(context, context.roles.junk, 'shortcuts.unavailable.junk'),
     run: (context) => runMove(context, 'junk'),
   },
   {
@@ -295,6 +347,9 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     // predicate. `sourceMailboxId !== null` is `canMove`'s non-role half: without a source, `move`
     // keeps the other memberships, which is a copy rather than a move.
     enabled: (context) => context.targetIds.length > 0 && context.sourceMailboxId !== null,
+    // No `unavailable`, and there must never be one: `v` needs no role mailbox — it opens the folder
+    // picker — which is exactly what makes it the escape hatch the archive/junk/trash message names.
+    // Reporting it unavailable would leave the user with a refusal that points at another refusal.
     // Mirrors `triage.label` (`l`) exactly, including its selection precedence: an explicit selection
     // wins over the open message. Only OPENS the picker — the dispatch, the selection clear and any
     // advance belong to whoever the dialog reports back to.

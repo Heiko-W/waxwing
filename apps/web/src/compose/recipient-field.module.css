@@ -87,8 +87,15 @@
   font: inherit;
 }
 
-.input:focus {
-  outline: none;
+/* WCAG 2.4.7. This was `outline: none` with no replacement from M2.4, so the primary To/Cc/Bcc
+   entry had NO focus indicator at all: `.input:focus` is (0,2,0) and outranks global.css's
+   `:focus-visible` net at (0,1,0), so the suppression simply won. Ringing the input rather than
+   the `.field` row — a row ring would have to coexist with the input's own, and suppressing the
+   inner one again is exactly how this started. Offset 1px keeps it clear of the sibling pills. */
+.input:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 1px;
+  border-radius: var(--waxwing-radius-sm);
 }
 
 .listbox {

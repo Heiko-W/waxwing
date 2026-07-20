@@ -13,7 +13,7 @@ import { Dialog } from '../ui'
 import { formatChord, isApplePlatform } from './keys'
 import { SHORTCUTS } from './registry'
 import styles from './shortcuts.module.css'
-import { GROUP_ORDER, type ShortcutAction } from './types'
+import { GROUP_ORDER, type ShortcutAction, type ShortcutContext } from './types'
 
 /** The scope pill: nothing for a global chord, else the (disjoint) scopes it is limited to. */
 function scopeLabel(action: ShortcutAction, t: (key: string) => string): string | null {
@@ -21,7 +21,20 @@ function scopeLabel(action: ShortcutAction, t: (key: string) => string): string 
   return action.scopes.map((scope) => t(`shortcuts.scopes.${scope}`)).join(' · ')
 }
 
-export default function ShortcutHelp({ onClose }: { readonly onClose: () => void }) {
+/**
+ * A chord the ACCOUNT cannot run is DIMMED and explained — never removed (G2/B3). Hiding is the wrong
+ * verb for a reference surface: the user who pressed `e` and got nothing opens this sheet precisely to
+ * find out why, and an absent row answers "that key does not exist", which is a different falsehood —
+ * the key exists, the mailbox does not. The ⌘K palette is a different kind of surface ("what can I do
+ * right now"), so the hide it already does is correct there and unchanged.
+ */
+export default function ShortcutHelp({
+  context,
+  onClose,
+}: {
+  readonly context: ShortcutContext
+  readonly onClose: () => void
+}) {
   const { t } = useTranslation()
   const apple = useMemo(() => isApplePlatform(), [])
 
@@ -37,11 +50,18 @@ export default function ShortcutHelp({ onClose }: { readonly onClose: () => void
               <dl className={styles.helpList}>
                 {actions.map((action) => {
                   const scope = scopeLabel(action, t)
+                  const reason = action.unavailable?.(context) ?? null
                   return (
-                    <div key={action.id} className={styles.helpRow}>
+                    <div
+                      key={action.id}
+                      className={`${styles.helpRow}${reason === null ? '' : ` ${styles.helpRowUnavailable}`}`}
+                    >
                       <dt className={styles.helpTerm}>
                         {t(action.titleKey)}
                         {scope !== null && <span className={styles.scopePill}>{scope}</span>}
+                        {/* The reason is TEXT, not merely a shade: dimming alone reaches neither a
+                            screen reader nor anyone who cannot resolve the contrast step. */}
+                        {reason !== null && <span className={styles.helpReason}>{t(reason)}</span>}
                       </dt>
                       <dd className={styles.helpKeys}>
                         {action.keys.map((chord, chordIndex) => (

@@ -5,6 +5,10 @@
  * open message's registered handlers, the role mailboxes — plus the SAME action seams the buttons use
  * (`useTriage` → `useMessageActions`, the composer store). The sync engine is never reachable from a
  * shortcut: that is the invariant this file exists to hold.
+ *
+ * `notify` is the one thing this file does NOT read: it is passed in by `ShortcutProvider`, which
+ * already sits inside the `ToastProvider`. Calling `useToast()` here would make a pure reader throw
+ * wherever no toast host is mounted, and would be the first line in this file that OUTPUTS anything.
  */
 
 import type { Id } from '@waxwing/jmap'
@@ -26,7 +30,7 @@ function isRoleKey(role: string | null): role is RoleKey {
   return role !== null && (ROLE_KEYS as readonly string[]).includes(role)
 }
 
-export function useShortcutContext(): ShortcutContext {
+export function useShortcutContext(notify: (messageKey: string) => void): ShortcutContext {
   const router = useRouter()
   const route = router.match
   const list = useListStore()
@@ -35,6 +39,11 @@ export function useShortcutContext(): ShortcutContext {
   const mailboxes = useMailboxes()
   const openPalette = usePaletteUi((state) => state.openPalette)
   const openHelp = usePaletteUi((state) => state.openHelp)
+
+  // `undefined` until the liveQuery lands — and an empty `roles` map means "not resolved yet" just as
+  // much as it means "this account has no Archive". Only this flag tells the two apart, which is the
+  // difference between explaining a missing folder and slandering an account that has one.
+  const rolesReady = mailboxes !== undefined
 
   const roles = useMemo<RoleMailboxes>(() => {
     const map: { -readonly [K in RoleKey]?: Id } = {}
@@ -91,6 +100,7 @@ export function useShortcutContext(): ShortcutContext {
       hasSelection,
       targetsAllFlagged,
       roles,
+      rolesReady,
       inTrash,
       triage,
       reading,
@@ -104,6 +114,7 @@ export function useShortcutContext(): ShortcutContext {
       },
       openPalette,
       openHelp,
+      notify,
     }),
     [
       scope,
@@ -116,12 +127,14 @@ export function useShortcutContext(): ShortcutContext {
       hasSelection,
       targetsAllFlagged,
       roles,
+      rolesReady,
       inTrash,
       triage,
       reading,
       list,
       openPalette,
       openHelp,
+      notify,
     ],
   )
 }

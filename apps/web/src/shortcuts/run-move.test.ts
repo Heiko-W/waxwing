@@ -17,8 +17,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_LIST_STATE, type ListStore } from '../mail/list-store'
 import type { ReadingHandlers } from '../mail/reading-store'
 import type { Triage } from '../mail/use-triage'
-import { isRunnable, SHORTCUTS } from './registry'
-import type { ShortcutContext } from './types'
+import { isRunnable, SHORTCUTS, unavailableNow } from './registry'
+import type { ShortcutAction, ShortcutContext } from './types'
 
 const IDS: Id[] = ['m1', 'm2', 'm3']
 
@@ -97,6 +97,11 @@ function readingContext(options: {
     hasSelection: false,
     targetsAllFlagged: false,
     roles: { archive: 'arch', junk: 'junk', trash: 'trash' },
+    // The mailbox liveQuery HAS resolved. Not decoration: these stubs are `as unknown as
+    // ShortcutContext`, so an omitted field compiles happily as `undefined` — and `undefined` here
+    // makes every `unavailable` return `null`, which would let the "stays silent" tests below pass
+    // without exercising a single line of the thing they claim to guard.
+    rolesReady: true,
     inTrash: false,
     triage: triageStub(options.triageDispatches),
     reading: readingStub(options.readingDispatches),
@@ -105,6 +110,7 @@ function readingContext(options: {
     focusSearch: vi.fn(),
     openPalette: vi.fn(),
     openHelp: vi.fn(),
+    notify: vi.fn(),
   } as unknown as ShortcutContext
   return { context, navigate }
 }
@@ -186,10 +192,114 @@ describe('runMove — a keystroke must never advance over a move that did not ha
     expect(archiveAction && isRunnable(archiveAction, context)).toBe(true)
   })
 
+  // Half the story since G2/B3: the gate still refuses, but the refusal is no longer the END of it —
+  // `unavailable` / `unavailableNow` (the describe below) are what turn it into something the user
+  // hears. `enabled` itself is deliberately untouched: there is still exactly ONE gate.
   it('the gate still refuses when the account has no archive role at all', () => {
     const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
     const noRoles = { ...context, roles: {} } as unknown as ShortcutContext
     expect(archiveAction && isRunnable(archiveAction, noRoles)).toBe(false)
+  })
+})
+
+/** A registry entry by id, or a loud failure — `find` returning `undefined` must never pass as `null`. */
+function action(id: string): ShortcutAction {
+  const found = SHORTCUTS.find((entry) => entry.id === id)
+  if (found === undefined) throw new Error(`no such action: ${id}`)
+  return found
+}
+
+/**
+ * G2/B3 — a chord that cannot fire because the ACCOUNT has no such folder must say so. It used to
+ * fall out of the dispatcher's loop and do nothing at all: no move, no toast, no live-region text,
+ * which from the keyboard is indistinguishable from a key that is not bound.
+ *
+ * Two predicates, deliberately: `unavailable` is the account-shape question the `?` cheat-sheet asks
+ * while NOTHING is selected, `unavailableNow` adds "and is that the only thing in the way right now"
+ * for the dispatcher. Folding the selection into one predicate would have shown Archive as available
+ * on an account that has none — on the very surface a user opens after the key did nothing.
+ */
+describe('an unavailable role names itself instead of failing silently', () => {
+  /** The same open-message context, with the role mailboxes (and anything else) overridden. */
+  function ctx(over: Partial<ShortcutContext> = {}): ShortcutContext {
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
+    return { ...context, ...over } as unknown as ShortcutContext
+  }
+
+  const NO_ARCHIVE = { junk: 'junk', trash: 'trash' }
+  const NO_JUNK = { archive: 'arch', trash: 'trash' }
+  const NO_TRASH = { archive: 'arch', junk: 'junk' }
+
+  it('names the missing folder for archive, junk and trash', () => {
+    expect(action('triage.archive').unavailable?.(ctx({ roles: NO_ARCHIVE }))).toBe(
+      'shortcuts.unavailable.archive',
+    )
+    expect(action('triage.junk').unavailable?.(ctx({ roles: NO_JUNK }))).toBe(
+      'shortcuts.unavailable.junk',
+    )
+    expect(action('triage.trash').unavailable?.(ctx({ roles: NO_TRASH }))).toBe(
+      'shortcuts.unavailable.trash',
+    )
+  })
+
+  it('stays silent when the account HAS the folder', () => {
+    expect(action('triage.archive').unavailable?.(ctx())).toBeNull()
+  })
+
+  it('stays silent while the mailbox liveQuery is still unresolved', () => {
+    // `roles` is empty both before `useMailboxes()` lands and on an account that truly has no
+    // Archive. Without this clause every login would announce a missing folder to an account that
+    // has one — the same hazard `MessageList` documents for the swipe.
+    const unresolved = ctx({ roles: {}, rolesReady: false })
+    expect(action('triage.archive').unavailable?.(unresolved)).toBeNull()
+  })
+
+  it('stays silent about a self-move — "Archive while viewing Archive" is a different message', () => {
+    const inArchive = ctx({ sourceMailboxId: 'arch' })
+    // `enabled` still refuses it (the gate test above); B3 deliberately does not explain it.
+    expect(isRunnable(action('triage.archive'), inArchive)).toBe(false)
+    expect(action('triage.archive').unavailable?.(inArchive)).toBeNull()
+  })
+
+  it('says nothing about `#` inside Trash — there the chord destroys and needs no role', () => {
+    expect(action('triage.trash').unavailable?.(ctx({ roles: NO_TRASH, inTrash: true }))).toBeNull()
+  })
+
+  it('`v` carries no reason at all — it is the escape hatch the message names', () => {
+    // `triage.move` opens the folder picker and needs no role mailbox. A message that says "press V"
+    // while V reported itself unavailable would point one refusal at another.
+    expect(action('triage.move').unavailable).toBeUndefined()
+  })
+
+  describe('…and the DISPATCHER only announces it when the account is the only obstacle', () => {
+    const archive = () => action('triage.archive')
+
+    it('announces with something to act on', () => {
+      expect(unavailableNow(archive(), ctx({ roles: NO_ARCHIVE }))).toBe(
+        'shortcuts.unavailable.archive',
+      )
+    })
+
+    it('says nothing when NOTHING is selected — "nothing to act on" is the real reason', () => {
+      expect(unavailableNow(archive(), ctx({ roles: NO_ARCHIVE, targetIds: [] }))).toBeNull()
+    })
+
+    it('says nothing without a source mailbox — a cross-folder search disables `v` too', () => {
+      // The message names `v` as the way out, and `v` is dead without a `from`. Announcing here would
+      // hand the user a hint that is false in exactly this state.
+      const noSource = ctx({ roles: NO_ARCHIVE, sourceMailboxId: null })
+      expect(unavailableNow(archive(), noSource)).toBeNull()
+    })
+
+    it('says nothing outside the mail area — Settings must not start explaining mailbox roles', () => {
+      expect(unavailableNow(archive(), ctx({ roles: NO_ARCHIVE, scope: 'global' }))).toBeNull()
+    })
+
+    it('says nothing for an ordinary refusal that carries no reason at all', () => {
+      // `l` (labels) has no `unavailable`: silence is right, and the dispatcher must not invent a
+      // message for every chord that happens to be disabled.
+      expect(unavailableNow(action('triage.label'), ctx({ roles: NO_ARCHIVE }))).toBeNull()
+    })
   })
 })
 

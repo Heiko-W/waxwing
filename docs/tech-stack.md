@@ -117,9 +117,14 @@ So Waxwing ships its own thin client as a separate package:
   `Authorization` header), **not** the native `EventSource` API — Stalwart authenticates its
   SSE endpoint only via the `Authorization` header, which `EventSource` cannot set (ADR-005).
   Against Stalwart v0.16.11 the browser `WebSocket` likewise cannot authenticate (no header),
-  so WS is a Node/server-side transport there and browsers reach the SSE reader through
-  `createPushChannel`'s **runtime failover** — the doomed WS attempt never opens and the
-  channel auto-degrades to SSE with no `prefer` needed (decision D2).
+  so WS is a Node/server-side transport there. **Browsers are SSE-first by construction**
+  (decision D2, implemented in G2/B4): the app passes a transport **allowlist**
+  (`transports: ['sse','polling']`) to `createPushChannel`, so the doomed WS attempt is never
+  constructed at all. `prefer` is *not* the mechanism and must not be used for this — it
+  reorders without restricting, which would leave WebSocket in the chain *behind* SSE and hand
+  a transient SSE failure a path onto the un-authable transport, permanently (ADR-005, amended
+  2026-07-20). Runtime failover remains underneath as the safety net, not as the discovery
+  mechanism. The library default (WS → SSE → polling) is unchanged for third-party consumers.
 - Session handling (`/.well-known/jmap`), upload/download URL templating, request
   chunking against session limits (FR-SRV-03).
 - Zero runtime deps; `jmap-rfc-types` and `jmap-jam` (MIT) serve as references.
@@ -241,6 +246,15 @@ waxwing/
 | Component | Vitest + Testing Library | composer, list virtualization, a11y (axe) |
 | E2E | Playwright + Stalwart in Docker | login (OAuth + Basic), send/receive round-trip, push updates, offline outbox (network throttling), PWA install/manifest |
 | Compat | scheduled CI matrix | latest Stalwart release + `main`; smoke tests vs. Cyrus (keeps the "any JMAP server" promise honest) |
+| CSS (static) | Vitest, Node project | token references resolve, theme blocks agree, focus outlines are never suppressed without a replacement or a reasoned exemption (ADR-015) |
+
+**Stylesheet tests read from disk, so they run in the Node project, not jsdom.**
+`apps/web/src/ui/**/*.css.test.ts` (and the older `*.contrast.test.ts`) are collected by the
+root `vitest.config.ts`, because vitest stubs `.css` imports to empty under jsdom and jsdom
+computes no CSS at all. Both `vitest.config.ts` files must be edited together — the include
+*and* the exclude — or these files are collected twice. jsdom's CSS blindness is the reason
+this whole row exists: it is why `expectNoA11yViolations` cannot see a missing focus ring, and
+why every defect in that class so far was found by a person reading a stylesheet (ADR-015).
 
 ## 8. Risks & Mitigations
 

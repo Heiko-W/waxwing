@@ -12,10 +12,12 @@
  * overlay always wins. Two owners for one key is the bug, not the feature.
  */
 
-import { lazy, Suspense, useEffect, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useToast } from '../ui'
 import { isInOverlay, isTextEntryTarget } from './dom'
 import { matchesAny } from './keys'
-import { isRunnable, SHORTCUTS } from './registry'
+import { isRunnable, SHORTCUTS, unavailableNow } from './registry'
 import type { ShortcutContext } from './types'
 import { usePaletteUi } from './ui-store'
 import { useShortcutContext } from './use-shortcut-context'
@@ -26,7 +28,33 @@ const CommandPalette = lazy(() => import('./CommandPalette'))
 const ShortcutHelp = lazy(() => import('./ShortcutHelp'))
 
 export function ShortcutProvider() {
-  const context = useShortcutContext()
+  const { t } = useTranslation()
+  const { toast } = useToast()
+  // `t` changes identity on every i18n event, and `notify` is a dependency of the context object the
+  // whole registry is memoised on — listing `t` there would churn that object, and every consumer of
+  // it, on a language change. So `t` is read through a ref, the same trick `contextRef` below plays on
+  // the listener. `toast` is already stable (a `useCallback` inside the toast host).
+  const tRef = useRef(t)
+  useEffect(() => {
+    tRef.current = t
+  })
+
+  const notify = useCallback(
+    (messageKey: string) => {
+      // `warning`, not `danger`: this lands in the POLITE live region, which is right for "this account
+      // cannot do that" — nothing failed and nothing was lost. The hint is added here rather than
+      // carried in the key, so the registry keeps answering with exactly ONE key per reason and every
+      // such message still ends by naming a way forward instead of merely apologising.
+      toast({
+        title: tRef.current(messageKey),
+        description: tRef.current('shortcuts.unavailable.hint'),
+        tone: 'warning',
+      })
+    },
+    [toast],
+  )
+
+  const context = useShortcutContext(notify)
   const contextRef = useRef<ShortcutContext>(context)
   const paletteOpen = usePaletteUi((state) => state.paletteOpen)
   const helpOpen = usePaletteUi((state) => state.helpOpen)
@@ -56,7 +84,19 @@ export function ShortcutProvider() {
         if (event.repeat && action.allowRepeat !== true) return
         // ONE gate, shared with the palette (`isRunnable` = scope ∧ enabled). Deriving it twice is
         // what let the palette offer list actions from the Settings screen.
-        if (!isRunnable(action, context)) continue
+        if (!isRunnable(action, context)) {
+          // A refusal caused by the ACCOUNT'S SHAPE gets answered instead of swallowed (G2/B3): `e` on
+          // an account with no Archive folder used to fall out of this loop and do nothing at all — no
+          // move, no toast, no live-region text — which is indistinguishable from a broken keyboard.
+          // Every other refusal still falls through silently, because it is momentary and its cause is
+          // on screen (nothing selected, an empty list, a body still loading).
+          const reason = unavailableNow(action, context)
+          if (reason === null) continue
+          // The chord IS ours — we are answering it, so we own the key too.
+          event.preventDefault()
+          context.notify(reason)
+          return
+        }
         event.preventDefault()
         action.run(context)
         return
@@ -75,7 +115,7 @@ export function ShortcutProvider() {
       )}
       {helpOpen && (
         <Suspense fallback={null}>
-          <ShortcutHelp onClose={closeOverlays} />
+          <ShortcutHelp context={context} onClose={closeOverlays} />
         </Suspense>
       )}
     </>

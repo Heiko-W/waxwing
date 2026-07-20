@@ -66,6 +66,13 @@ export interface ShortcutContext {
   readonly targetsAllFlagged: boolean
 
   readonly roles: RoleMailboxes
+  /**
+   * Has the mailbox liveQuery resolved? {@link ShortcutContext.roles} is empty BOTH before it lands
+   * and on an account that genuinely lacks the role, and confusing the two is the whole hazard:
+   * without this flag every fast `e` after a fresh load would announce "this account has no Archive"
+   * on an account that has one. `MessageList` gates its swipe on this same value, for this same reason.
+   */
+  readonly rolesReady: boolean
   /** True when the acted-on messages live in Trash (there, "delete" means destroy). */
   readonly inTrash: boolean
 
@@ -79,6 +86,14 @@ export interface ShortcutContext {
   focusSearch(): void
   openPalette(): void
   openHelp(): void
+
+  /**
+   * Say something the user can actually perceive — a toast, which is also this app's aria-live
+   * announcement (its two regions are always mounted, see `ui/Toast`). INJECTED by `ShortcutProvider`
+   * rather than read from a hook, so this file's promise survives: the registry may answer a chord out
+   * loud without knowing that React, the DOM or a toast host exist.
+   */
+  notify(messageKey: string): void
 }
 
 export interface ShortcutAction {
@@ -93,6 +108,21 @@ export interface ShortcutAction {
   /** Runnable right now? Gates BOTH the key dispatch and the palette's item list. Pure and cheap. */
   enabled(context: ShortcutContext): boolean
   run(context: ShortcutContext): void
+  /**
+   * Why this chord can NEVER fire on THIS ACCOUNT — an i18n key — or `null` when it is merely inert
+   * for an ordinary, momentary reason (nothing selected, empty list, body still loading). Optional:
+   * only the three role-mailbox moves carry one.
+   *
+   * Deliberately independent of the selection. The `?` cheat-sheet consumes it with nothing selected
+   * at all, so a predicate that folded in "is anything selected" would show Archive as perfectly
+   * available on an account that has no Archive — precisely the state a user is in when they open the
+   * sheet after the key did nothing. Whether the reason is worth SAYING right now is a separate
+   * question, asked in `unavailableNow` (registry.ts) and nowhere else.
+   *
+   * NOT a tri-state `enabled`. `enabled` gates two surfaces and there is deliberately exactly one
+   * gate; this adds no second one — it only explains a refusal that has already happened.
+   */
+  unavailable?(context: ShortcutContext): string | null
   /** `j`/`k` only — everything else ignores auto-repeat (a held `e` must not archive 40 messages). */
   readonly allowRepeat?: boolean
   /** Hide from the command palette (a "next message" palette entry is meaningless). */

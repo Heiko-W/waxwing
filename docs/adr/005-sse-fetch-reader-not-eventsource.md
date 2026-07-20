@@ -57,11 +57,52 @@ browser against Stalwart: native `EventSource` cannot send the required header, 
   the next one on its own. In a browser against Stalwart, WS is eligible (the capability
   advertises `supportsPush:true`) but its handshake 401s and closes abnormally forever, so the
   facade discovers this at runtime and falls over to the fetch-based SSE reader with **no
-  caller involvement**. `prefer:'sse'` remains available purely as an *optimisation* — it
-  reorders SSE ahead of WebSocket so a browser skips the (doomed) initial WS attempt entirely
-  — but it is no longer required for push to work. Whether WS becomes a V1-core browser
-  transport is **decision D2**, the owner's call at Gate G1 — this ADR records the evidence, it
-  does not decide D2.
+  caller involvement**. Whether WS becomes a V1-core browser transport is **decision D2**, the
+  owner's call at Gate G1 — this ADR records the evidence, it does not decide D2.
+
+### Amendment (2026-07-20, G2 gap B4) — the browser *excludes* WebSocket, it does not merely deprioritise it
+
+D2 was ratified at G1 ("SSE-first") and then **never reached the code**: `engine.ts` called
+`createPushChannel` with no preference at all, so every browser login still paid the runtime
+failover — measured live, a WS attempt at 85 ms → 401 → close, a second at 584 ms → 401 →
+close, and the SSE request only at 586 ms. Two console errors and ~500 ms of delayed push per
+login, on every session, for a decision that had been made a milestone earlier.
+
+**The obvious fix is actively harmful, and this is the load-bearing part of the amendment.**
+The paragraph struck above recommended `prefer:'sse'`. But `prefer` **reorders and never
+restricts** (`packages/jmap/src/push/channel.ts`, `transportOrder`), so it yields
+`['sse','websocket','polling']` — and that is strictly worse than doing nothing:
+
+- today SSE is the **last real** transport, `hasRealFailoverTarget()` is false, and a
+  transient SSE failure at login retries forever until it heals;
+- with `prefer:'sse'`, WebSocket sits *behind* SSE, so SSE acquires a failover target it does
+  not have today. Two pre-open SSE errors spend the budget, `advance()` lands on the
+  un-authable WebSocket — which is itself terminal, since only the polling stub follows it —
+  and push is **permanently dead** for that session instead of self-healing.
+
+This is not reasoned, it is measured: substituting `prefer:'sse'` into the new regression test
+yields `expected 'websocket' to be 'sse'`. Worse, `channel.test.ts` carries a test named
+*"reorders (does not restrict) for an explicit prefer"* — so the one-line fix the plan
+prescribed would have shipped **green**.
+
+**Decision:** add a genuinely restrictive `CreatePushChannelOptions.transports` allowlist to
+`@waxwing/jmap`, applied before the eligibility filter so an excluded transport is absent from
+the failover chain rather than merely deprioritised, and have the app pass
+`BROWSER_PUSH_TRANSPORTS = ['sse','polling']` (`apps/web/src/sync/engine/engine.ts`). `prefer`
+orders; `transports` restricts; they are separate concepts and the option's doc-comment says
+why. `'polling'` is permitted regardless of the allowlist, so the resulting set is never empty
+and an allowlist can never silently produce a dead channel.
+
+The **library default is deliberately unchanged** (WS → SSE → polling). `packages/jmap` is MIT
+and published for third-party consumption; the browser's inability to authenticate a WebSocket
+is a property of the *browser*, not of the library, so the app states its own constraint
+rather than the package narrowing its default for everyone. `push.integration.test.ts` still
+exercises the default WS → SSE degradation, untouched.
+
+The exclusion is hardcoded rather than made a hoster config knob, for the same reason: it
+follows from the browser API, not from the deployment. D2's revisit trigger — a server shipping
+a browser-viable WS auth path — points at `BROWSER_PUSH_TRANSPORTS` as the one place
+capability detection would go.
 
 ## Consequences
 
@@ -81,6 +122,12 @@ browser against Stalwart: native `EventSource` cannot send the required header, 
   (SSE in the browser) is never torn down onto the non-functional polling stub, so a transient
   startup blip self-heals rather than permanently killing push. Reaching *browser WS* still
   needs an upstream Stalwart change (a browser-viable WS auth path) — tracked with D2.
+  **Since the 2026-07-20 amendment the doomed attempt is not made at all**: the browser never
+  constructs a WebSocket, so the two 401s and the ~500 ms delay are gone rather than merely
+  survived. The self-healing property above is now guaranteed **by construction** — with
+  `['sse','polling']` SSE is last-real and `hasRealFailoverTarget()` is false — instead of
+  depending on the accident that WebSocket happened to sort first. Runtime failover is retained
+  underneath as the safety net; it is no longer the discovery mechanism.
 - tech-stack §4.2 and FR-NOTIF-01 are updated to note the fetch-based SSE reader and the
   Stalwart WS-auth limitation; the requirement itself (SSE fallback, WS-preferred
   auto-select, reconnect/backoff) is unchanged.

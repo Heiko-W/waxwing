@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { bearer } from '../auth'
 import { makeSession } from '../test-support'
+import type { FetchLike } from '../transport'
 import type { Session } from '../types/core'
 import type { StateChange } from '../types/push'
 import {
@@ -9,6 +10,7 @@ import {
   FailoverPushChannel,
   pickTransport,
 } from './channel'
+import type { SseConnection } from './test-support'
 import {
   FakeScheduler,
   failingWebSocketFactory,
@@ -49,6 +51,27 @@ function pollingOnly(): Session {
 }
 
 const auth = bearer('tok')
+
+/**
+ * An SSE fetch mock whose first `failures` connects reject outright, after which it behaves like
+ * {@link sseFetchMock}. Models a transient blip at startup (the server restarting mid-login, a
+ * CORS hiccup, a flaky network at boot) — the scenario in which a *reordering* transport fix
+ * strands push on the un-authable WebSocket instead of letting SSE retry itself back to health.
+ */
+function flakySseFetchMock(failures: number): {
+  fetch: FetchLike
+  connections: SseConnection[]
+  attempts: { count: number }
+} {
+  const healthy = sseFetchMock()
+  const attempts = { count: 0 }
+  const fetch: FetchLike = (url, init) => {
+    attempts.count++
+    if (attempts.count <= failures) return Promise.reject(new Error('SSE connect failed'))
+    return healthy.fetch(url, init)
+  }
+  return { fetch, connections: healthy.connections, attempts }
+}
 
 /** The SSE wire frame the fetch mock hands back once a subscriber is attached. */
 const STATE_FRAME =
@@ -121,6 +144,35 @@ describe('eligibleTransports', () => {
     expect(
       eligibleTransports(withWebSocketNoPush(), { auth, WebSocket: factory, prefer: 'websocket' }),
     ).toEqual(['sse', 'polling'])
+  })
+
+  it('RESTRICTS (does not reorder) for an explicit transports allowlist', () => {
+    // The counterpart to the `prefer` test above, and the whole reason the option exists. This
+    // session is FULLY WebSocket-eligible (capability advertised + a factory injected), so the
+    // default order would be ['websocket','sse','polling'] and `prefer:'sse'` would only demote WS
+    // to ['sse','websocket','polling'] — still a failover target. The allowlist must remove it
+    // from the chain outright, so no amount of SSE failure can ever reach a WebSocket.
+    const { factory } = fakeWebSocketFactory()
+    expect(
+      eligibleTransports(withWebSocket(), {
+        auth,
+        WebSocket: factory,
+        transports: ['sse', 'polling'],
+      }),
+    ).toEqual(['sse', 'polling'])
+  })
+
+  it('always permits polling, so no allowlist can produce an empty set', () => {
+    // Polling is capability-free and always eligible; it is the guaranteed tail that keeps the
+    // facade's terminal-transport logic meaningful. An allowlist naming no real transport (here
+    // the degenerate empty one) must degrade to ['polling'], not to [] — a caller must not be
+    // able to hand FailoverPushChannel a set with nothing in it. Documented in the option's
+    // doc-comment, and pinned here because a documented-but-untested contract is precisely how
+    // the SSE-first decision drifted out of the code in the first place.
+    const { factory } = fakeWebSocketFactory()
+    expect(
+      eligibleTransports(withWebSocket(), { auth, WebSocket: factory, transports: [] }),
+    ).toEqual(['polling'])
   })
 })
 
@@ -393,6 +445,57 @@ describe('createPushChannel · runtime transport failover', () => {
     expect(sse.connections.length).toBeGreaterThan(1) // kept retrying SSE
     channel.close()
     expect(channel.status).toBe('closed')
+  })
+
+  it('a browser allowlist keeps SSE self-healing — transient failures never reach the WebSocket', async () => {
+    // THE regression this option exists for (gap B4, decision D2). The session is fully
+    // WebSocket-eligible, exactly as a real browser's is: Stalwart advertises the RFC 8887
+    // capability, `globalThis.WebSocket` exists — and the handshake still 401s forever, because a
+    // browser cannot set the `Authorization` header on the upgrade.
+    //
+    // The tempting "SSE-first" fix is `prefer:'sse'`. It ships GREEN against the whole existing
+    // suite and it is actively harmful: `prefer` reorders to ['sse','websocket','polling'], which
+    // hands SSE a real failover target it does not have today. With the budget spent on the
+    // transient failures below, the facade advances onto the WebSocket — which is itself terminal
+    // (only 'polling' follows) — and push is dead until reload. Substituting `prefer:'sse'` for
+    // the allowlist here is the empirical proof: this test then fails with 'websocket' to be 'sse'.
+    //
+    // With the allowlist, SSE is the last *real* transport, `hasRealFailoverTarget()` is false, and
+    // it is left to its own ReconnectLoop — which retries forever until the blip clears.
+    const ws = fakeWebSocketFactory()
+    const sse = flakySseFetchMock(3) // three consecutive pre-open failures…
+    const scheduler = new FakeScheduler()
+    const statuses: PushStatus[] = []
+    const channel = createPushChannel(withWebSocket(), {
+      auth,
+      WebSocket: ws.factory,
+      fetch: sse.fetch,
+      scheduler,
+      transports: ['sse', 'polling'],
+      failoverAfterAttempts: 1, // …against a budget of ONE: every failure would trip a failover
+      backoff: { random: () => 1, initialDelay: 100 },
+      events: { onStatus: (status) => statuses.push(status) },
+    })
+    expect(channel.transport).toBe('sse') // WS was excluded from the chain, not merely demoted
+    channel.open()
+    await tick() // SSE attempt 1 rejects
+
+    for (let i = 0; i < 3; i++) {
+      expect(channel.transport).toBe('sse') // never advanced, despite exceeding the budget
+      expect(ws.sockets).toHaveLength(0) // and never built the WebSocket it cannot authenticate
+      expect(scheduler.pending).toBe(1) // its own ReconnectLoop always has a retry armed
+      scheduler.runNext()
+      await tick()
+    }
+
+    // The blip cleared on attempt 4: SSE reconnected itself and opened, with no failover at all.
+    expect(sse.attempts.count).toBe(4)
+    expect(channel.transport).toBe('sse')
+    expect(channel.status).toBe('open')
+    expect(sse.connections).toHaveLength(1)
+    expect(ws.sockets).toHaveLength(0)
+    expect(statuses).not.toContain('closed')
+    channel.close()
   })
 
   it('opens the real polling transport when it is the sole eligible transport', async () => {

@@ -75,6 +75,12 @@ class FakePush implements PushChannel {
   status: PushStatus = 'closed'
   opened = false
   closed = false
+  /**
+   * The options the engine asked `createPush` for. Recorded because the fake used to discard its
+   * arguments entirely, which is why nothing on the app side could observe *which* transports the
+   * engine requests — the blindness that let decision D2 (SSE-first) sit unimplemented.
+   */
+  createOptions: Parameters<SyncEngineDeps['createPush']>[1] | undefined
   private stateCb: StateChangeListener | undefined
   open(): void {
     this.opened = true
@@ -245,7 +251,10 @@ function makeDeps(db: ReplicaDb, port: JmapPort, push: FakePush): SyncEngineDeps
     clock,
     locks: immediateLock,
     createBus: noopBus,
-    createPush: () => push,
+    createPush: (_session, options) => {
+      push.createOptions = options
+      return push
+    },
     isOnline: () => true,
     onOnlineChange: () => () => {},
     // The cross-tab foreground probe (M3.6). A connected fake bus answers synchronously, so this
@@ -324,6 +333,24 @@ describe('SyncEngine', () => {
     await engine.stop()
   })
 
+  it('opens push SSE-first: it requests only ["sse","polling"], never the WebSocket (D2)', async () => {
+    // Decision D2 (ratified at G1) and ADR-005: a browser cannot authenticate the RFC 8887
+    // WebSocket against Stalwart — it cannot set the `Authorization` header on the upgrade — so
+    // the engine must exclude it from the transport set rather than merely deprioritise it.
+    // Nothing asserted this before, which is exactly how the ratified decision drifted out of the
+    // code for a milestone: deleting the argument from openPush() reproduces gap B4 verbatim, and
+    // this is the only test in the repo that notices.
+    const port = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+
+    expect(push.createOptions?.transports).toEqual(['sse', 'polling'])
+    expect(push.createOptions?.transports).not.toContain('websocket')
+    await engine.stop()
+  })
+
   it('optimistically applies a dispatched action and replays it', async () => {
     const port = fakePort({ emails: ['e1'], setEmails: emptySet })
     const push = new FakePush()
@@ -392,12 +419,17 @@ describe('SyncEngine', () => {
    * M3.9, the other half of the M3.8 fix: a move INTO a watched window must become visible without
    * waiting for the server's push echo.
    *
-   * The apply refuses to guess an index in the server's collation, so an arrival only voids the
-   * window's baseline — the message appears when the window is RE-QUERIED. Nothing in the replay path
-   * did that, so the re-query rode on the push echo, and before the push channel connects (the first
-   * ~second after a boot) on the 60 s sweep. Undo an archive in that gap and the button looks dead for
-   * a minute while the server has long since put the mail back. Reproduced live 3/3 against the
-   * fixture before this test existed.
+   * An arrival always voids the window's baseline, and the RE-QUERY is what puts the message where the
+   * server says it goes. Nothing in the replay path did that, so the re-query rode on the push echo,
+   * and before the push channel connects (the first ~second after a boot) on the 60 s sweep. Undo an
+   * archive in that gap and the button looks dead for a minute while the server has long since put the
+   * mail back. Reproduced live 3/3 against the fixture before this test existed.
+   *
+   * M3.10 (gap B2) added a local splice on top, so this test can no longer wait on "the row showed
+   * up" — the apply already put it there. It waits on the BASELINE coming back instead, and the
+   * ordering assertion is now doing double duty: the two envelopes have the same `receivedAt`, our
+   * tie-break appended, the server disagrees, and the re-query must win. That is the convergence
+   * contract, observed end to end rather than argued.
    *
    * Note there is NO push event here and NO `engine.sync()` — that is the whole point.
    */
@@ -430,11 +462,190 @@ describe('SyncEngine', () => {
       { id: 'undo-1' },
     )
 
-    await waitFor(async () => (await inboxWindow())?.ids.length === 2)
+    // The local splice is immediate but guesses `['e2','e1']` on the tie; the re-query is what makes
+    // the order the server's. Waiting on the baseline is waiting on exactly that.
+    expect((await inboxWindow())?.ids).toEqual(['e2', 'e1'])
+    await waitFor(async () => (await inboxWindow())?.queryState !== null)
     expect((await inboxWindow())?.ids).toEqual(['e1', 'e2'])
     // Re-queried, so the baseline is honest again rather than left null forever.
     expect((await inboxWindow())?.queryState).toBe('q-1')
     expect(push.opened).toBe(true) // the channel exists; it just never delivered anything
+
+    await engine.stop()
+  })
+
+  /**
+   * M3.10 (gap B2), THE defect: undo an archive while OFFLINE.
+   *
+   * The test above needs the network for its repair, and offline there is none — `runReplay` puts the
+   * whole replay + `reconcileWatched` block behind `isOnline()`. So a message moved INTO a visible
+   * window only voided the baseline and then waited for a re-query that would not come until
+   * reconnect. The envelope was right, the outbox row was right, and the list was empty: Undo did
+   * exactly what it promised and looked broken for the rest of the offline session.
+   *
+   * Nothing here may touch the port at all. That is the assertion that makes the test about B2 rather
+   * than about the reconcile.
+   */
+  it('an offline move INTO a watched window puts the row in the list, with no server (M3.10)', async () => {
+    const base = fakePort({ emails: ['e2', 'e3'], setEmails: emptySet })
+    let queries = 0
+    let online = true
+    const port: JmapPort = {
+      ...base,
+      async queryEmails(args) {
+        queries += 1
+        return base.queryEmails(args)
+      },
+    }
+    const engine = new SyncEngine({ ...makeDeps(db, port, new FakePush()), isOnline: () => online })
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const inboxWindow = async () =>
+      (await db.queryCache.where('accountId').equals(ACC).toArray())[0]
+    expect((await inboxWindow())?.ids).toEqual(['e2', 'e3'])
+    // The fake port dates every envelope alike; give the two rows an order of their own so the
+    // assertion below is about the PLACEMENT and not about a tie-break.
+    await putEmails(db, ACC, [
+      email('e2', { mailboxIds: { inbox: true }, receivedAt: '2026-07-05T00:00:00Z' }),
+      email('e3', { mailboxIds: { inbox: true }, receivedAt: '2026-07-02T00:00:00Z' }),
+    ])
+
+    // Now go offline, and archive `e2` — the optimistic prune (M3.8) already worked offline.
+    online = false
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e2'], from: 'inbox', to: 'archive' },
+      { id: 'a' },
+    )
+    expect((await inboxWindow())?.ids).toEqual(['e3'])
+
+    const queriesBefore = queries
+    // …and Undo it. The inverse move's destination is the window the row was archived out of.
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e2'], from: 'archive', to: 'inbox' },
+      { id: 'b' },
+    )
+
+    // Back in the list, in the same frame, at the index its own envelope proves.
+    expect((await inboxWindow())?.ids).toEqual(['e2', 'e3'])
+    expect((await inboxWindow())?.queryState).toBeNull() // …and still marked for the eventual re-query
+    expect(queries).toBe(queriesBefore) // NOTHING was asked of the server
+    expect(base.setEmailsCalls).toEqual([])
+    expect(engine.getStatus().pendingActions).toBe(2)
+
+    await engine.stop()
+  })
+
+  /**
+   * The online repair is DOUBLE-gated and this is what that costs: `runReplay` only reconciles once
+   * the outbox has DRAINED (a re-query cannot reflect an intent we have not sent — see the trap test
+   * below). So during a triage burst a locally placed row keeps OUR index across several passes, not
+   * one. That is acceptable — it is coherent, and the alternative is not showing the row at all — but
+   * it must be true that it stays coherent, not that it flickers or duplicates.
+   */
+  it('a locally placed row stays coherent through a burst, until the queue drains (M3.10)', async () => {
+    const server = ['e3']
+    let released: (() => void) | undefined
+    const base = fakePort({ emails: server, setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setEmails(args) {
+        // Hold the FIRST replay open so the second dispatch lands with work still queued.
+        if (released === undefined) {
+          await new Promise<void>((resolve) => {
+            released = resolve
+          })
+        }
+        const update = (args as { update?: Record<string, unknown> }).update ?? {}
+        for (const id of Object.keys(update)) if (!server.includes(id)) server.unshift(id)
+        return emptySet()
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const inboxWindow = async () =>
+      (await db.queryCache.where('accountId').equals(ACC).toArray())[0]
+    expect((await inboxWindow())?.ids).toEqual(['e3'])
+
+    await putEmails(db, ACC, [
+      email('e1', { mailboxIds: { archive: true }, receivedAt: '2026-07-03T00:00:00Z' }),
+      email('e2', { mailboxIds: { archive: true }, receivedAt: '2026-07-02T00:00:00Z' }),
+    ])
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e1'], from: 'archive', to: 'inbox' },
+      { id: 'a' },
+    )
+    await waitFor(() => released !== undefined) // pass 1 is blocked inside setEmails
+    await engine.dispatch(
+      { kind: 'move', emailIds: ['e2'], from: 'archive', to: 'inbox' },
+      { id: 'b' },
+    )
+
+    // Two arrivals, both placed, in date order — with a pass still mid-flight and a row still queued.
+    expect((await inboxWindow())?.ids).toEqual(['e1', 'e2', 'e3'])
+    expect((await inboxWindow())?.queryState).toBeNull()
+    released?.()
+
+    await waitFor(async () => (await db.outbox.where('accountId').equals(ACC).count()) === 0)
+    await waitFor(async () => (await inboxWindow())?.queryState !== null)
+    // Only now does the server get a say — and it agrees, with no id twice.
+    expect((await inboxWindow())?.ids).toEqual(['e2', 'e1', 'e3'])
+
+    await engine.stop()
+  })
+
+  /**
+   * M3.10 (gap B1), the cross-module half: the keyword apply only VOIDS the windows a message may have
+   * newly entered, so the fix leans entirely on `reconcileWatched(false, true)` picking those up. That
+   * selection keys on `queryState === null` ALONE — it never inspects the intent — so a `setKeywords`
+   * gets M3.9's immediate re-query for free, with no change in this file. This test is what makes that
+   * claim falsifiable: special-case the reconcile on intent kind and it goes red.
+   *
+   * Again: NO push event and NO `engine.sync()`.
+   */
+  it('a keyword change into a watched window re-queries it without a push echo (M3.10)', async () => {
+    // The server's truth for `?q=is:read`: only e2 is read so far.
+    const server = { emails: ['e2'] }
+    const port = fakePort({
+      emails: server.emails,
+      // Replaying the mark-read is what makes the server agree that e1 is read too.
+      setEmails: () => {
+        server.emails.unshift('e1')
+        return emptySet()
+      },
+    })
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const spec = {
+      filter: { hasKeyword: '$seen' },
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: true,
+    }
+    const key = engine.watchQuery(spec)
+    await waitFor(async () => (await getQueryCache(db, ACC, key))?.ids.length === 1)
+    const inboxKey = (await db.queryCache.where('accountId').equals(ACC).toArray()).find(
+      (row) => row.key !== key,
+    )?.key
+
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+
+    await waitFor(async () => (await getQueryCache(db, ACC, key))?.ids.length === 2)
+    expect((await getQueryCache(db, ACC, key))?.ids).toEqual(['e1', 'e2'])
+    expect((await getQueryCache(db, ACC, key))?.queryState).toBe('q-1') // baseline honest again
+    // …and ONLY the voided window: the folder window neither filters nor sorts on `$seen`, so the
+    // apply left it alone and the reconcile skipped it.
+    // (Its ids, not its queryState: this port answers `q-1` to every query, so only the CONTENT can
+    // tell a window that was never re-queried from one that was.)
+    expect(inboxKey).toBeDefined()
+    expect((await getQueryCache(db, ACC, inboxKey ?? ''))?.ids).toEqual(['e2'])
 
     await engine.stop()
   })

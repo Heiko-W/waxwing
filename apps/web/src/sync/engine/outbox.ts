@@ -16,17 +16,34 @@
  *  - **Dead letters are surfaced.** A row that fails permanently is rolled back, marked `error` with
  *    an {@link OutboxConflict}, and shown to the user (retry / discard) — never silently retried,
  *    never silently dropped.
- *  - **"Instant UI" includes the LIST** (M3.8). The list renders the cached `queryCache` window, not
- *    a local re-sort of `emails`, so an optimistic move/destroy prunes the message out of the windows
- *    it left — in the SAME transaction as the envelope patch (see {@link updateWindows}). Without that
- *    an archived row only vanished when the server's push echoed the change back: never offline, and
- *    not at all if the archive beat the push channel's connect.
+ *  - **"Instant UI" includes the LIST** (M3.8/M3.10). The list renders the cached `queryCache` window,
+ *    not a local re-sort of `emails`, so an optimistic move/destroy/**keyword change** prunes the
+ *    message out of the windows it left — in the SAME transaction as the envelope patch (see
+ *    {@link updateWindows}). Without that an archived row only vanished when the server's push echoed
+ *    the change back: never offline, and not at all if the archive beat the push channel's connect.
+ *    A keyword change reaches the same windows through {@link filterPinsKeyword}: marking a message
+ *    read prunes it out of `is:unread`, stripping a label prunes it out of that `?label=` view, and a
+ *    keyword the window SORTS on ({@link sortUsesKeyword}, the "Unread first" toggle) voids its
+ *    baseline so the server re-places the row — whether or not that window currently LISTS the message,
+ *    because a keyword sort is also how a message arrives in one. The ARRIVAL half is symmetric where
+ *    it can be: a move
+ *    into a window whose filter and sort are locally reproducible SPLICES the row in
+ *    ({@link placeArrival}) instead of only voiding — offline nothing else ever would, which made
+ *    Undo look broken.
  *
  * Classification lives in `conflict.ts`, the retry curve in `backoff.ts`; this module owns the
  * replica mutations and the queue state machine.
  */
 
-import type { EmailCreate, EmailFilter, Envelope, Id, Mailbox, PatchObject } from '@waxwing/jmap'
+import type {
+  EmailComparator,
+  EmailCreate,
+  EmailFilter,
+  Envelope,
+  Id,
+  Mailbox,
+  PatchObject,
+} from '@waxwing/jmap'
 import {
   type ConflictCode,
   type EmailEnvelopeInput,
@@ -185,9 +202,45 @@ function present(rows: (EmailRow | undefined)[]): EmailRow[] {
 // of a message that is sitting in the Inbox — the Undo button is decorative. Voiding the state costs a
 // full re-query of one window; keeping it costs a wrong list.
 //
-// Nothing is ever re-inserted into a window locally: the window is in the SERVER's collation (and, with
-// `collapseThreads`, its entries are thread representatives), so any index we computed would be a guess.
-// A voided window comes back in the server's own order on the next reconcile.
+// THE ARRIVAL HALF, and why it needed its own answer (M3.10, gap B2).
+//
+// Until M3.10 a departure was pruned locally but an ARRIVAL only voided the baseline and waited for a
+// re-query — and OFFLINE there is nothing to re-query (`runReplay` puts the whole replay +
+// `reconcileWatched` block behind `isOnline()`; engine.ts). So archiving a message offline made the row
+// vanish instantly, and UNDOING it put the message back in the replica but NOT back in the list until
+// reconnect. The Undo button worked and looked broken, which is worse than not working.
+//
+// So a locally computable arrival IS now spliced in — under a gate that refuses everything it cannot
+// evaluate ({@link placeArrival}):
+//   - the window's whole filter must be evaluable against the envelope ({@link windowAcceptsLocally}),
+//   - every comparator must be one we can reproduce ({@link localSortKey}: `receivedAt`, `size`,
+//     `hasKeyword` — never `from`/`subject`, whose collation is the server's),
+//   - every neighbour in the window must have its envelope in the replica (a window is written BEFORE
+//     its envelopes — backfill.ts — so this is a real, transient state, not a theoretical one),
+//   - under `collapseThreads` the arriving message's thread must not already be represented.
+// Any failure ⇒ exactly the old behaviour, void-only. The window is ALSO voided on success: our index
+// is a good guess, not the server's answer, and `queryChanges` against a baseline whose ids we edited
+// is the lie the invariant above forbids. `fullRequery` replaces `ids` wholesale (delta.ts), so
+// insert-then-requery converges and can never duplicate.
+//
+// TWO THINGS THIS IS HONEST ABOUT rather than claiming to have solved:
+//  - Under `collapseThreads` — which is the DEFAULT for every folder list (backfill.ts, and
+//    `use-message-list.ts` passes `collapseThreads: !flat` with `flat` false) — the POSITION is a
+//    guess too, not only the preview line. The server orders collapsed results by a key it picks for
+//    the THREAD, which need not be the representative envelope it handed us. This is a heuristic that
+//    the next reconcile corrects, and it beats showing nothing at all. Do not call it provable.
+//  - Online the correction is DOUBLE-gated: `runReplay` only calls `reconcileWatched` once the outbox
+//    queue has DRAINED (engine.ts). During a triage burst a locally placed row keeps our index across
+//    several passes. That is the point — it is coherent and it is there — but it is not "one pass".
+//
+// The window's LENGTH is deliberately preserved on an incomplete window: the splice is followed by
+// dropping the last id. A cached window is the head page `position: 0` of the server's result, and
+// `loadMore` pages by `position: ids.length` (backfill.ts) — so pushing the oldest loaded row out of
+// the slice is exactly what the server did, and it is re-fetched at that same position. Letting
+// `ids.length` grow instead would ratchet `reconcileQuery`'s `windowLimit`
+// (`Math.max(row.ids.length, DEFAULT_WINDOW_LIMIT)`, delta.ts) up by one PERMANENTLY per arrival, and
+// would re-arm `MessageList`'s load-more guard (which keys off `ids.length`). A COMPLETE window
+// (`ids.length >= total`) keeps every id — there is no page behind it to push a row into.
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -197,10 +250,13 @@ function present(rows: (EmailRow | undefined)[]): EmailRow[] {
  *
  * `AND` is the only operator that carries it: an `OR` could still match on its other branch, and under
  * a `NOT` the condition is inverted. Everything without such a condition — a search (`text:`), a label
- * window (`hasKeyword`) — is deliberately left alone: those are snapshots that legitimately keep a
- * message which merely changed folder. (Being pinned to the mailbox is necessary, not sufficient, for
- * an ARRIVAL: an `AND(inMailbox, after)` window may still reject the message on its other conditions.
- * That only costs a re-query that changes nothing — never a wrong row.)
+ * window (`hasKeyword`) — is left alone BY THIS PREDICATE: those are snapshots that legitimately keep
+ * a message which merely changed FOLDER. (A keyword change reaches them instead through
+ * {@link filterPinsKeyword} — the two predicates are siblings, deliberately not one generalised
+ * function: this one's proof is about `inMailbox`, and three comments name it by that.) (Being pinned
+ * to the mailbox is necessary, not sufficient, for an ARRIVAL: an `AND(inMailbox, after)` window may
+ * still reject the message on its other conditions. That only costs a re-query that changes nothing —
+ * never a wrong row.)
  */
 function filterPinsMailbox(filter: EmailFilter | null, mailboxId: Id): boolean {
   if (filter === null) return false
@@ -213,24 +269,361 @@ function filterPinsMailbox(filter: EmailFilter | null, mailboxId: Id): boolean {
   return filter.inMailbox === mailboxId
 }
 
+/**
+ * The keyword sibling of {@link filterPinsMailbox} (M3.10): does EVERY message matching `filter`
+ * necessarily carry `keyword` (`present`) / necessarily NOT carry it (`!present`)?
+ *
+ * Read at the polarity a `setKeywords` is WRITING, that single question answers both halves:
+ *  - mark read (`$seen := true`) ⇒ a window pinned to `notKeyword:$seen` (`?q=is:unread`) provably no
+ *    longer matches the message — **prune** it, same frame, online or off;
+ *  - mark read ⇒ a window pinned to `hasKeyword:$seen` (`?q=is:read`) MAY newly match — **void** it,
+ *    because only the server can say where the row lands in its collation;
+ *  - strip a label (`work := false`) ⇒ `hasKeyword:work` (the `?label=work` view) — prune;
+ *  - add a label ⇒ `notKeyword:work` — void.
+ *
+ * `AND`-only for the same reason as its sibling, and an ALLOW-LIST by construction: only `hasKeyword`
+ * and `notKeyword` are understood, and anything else answers `false`. In particular the THREE
+ * thread-level conditions — `allInThreadHaveKeyword`, `someInThreadHaveKeyword`,
+ * `noneInThreadHaveKeyword` (RFC 8621 §4.4.1) — are ignored ON PURPOSE and must stay that way: they
+ * are properties of a THREAD, and one message's keyword can neither prove nor disprove them (marking
+ * one message read says nothing about `allInThreadHaveKeyword:$seen`). They are one autocomplete away
+ * from being "helpfully" added here; adding them would prune rows that still belong in the window.
+ *
+ * Note that `EmailFilterCondition` allows several keys on ONE object (implicitly ANDed, RFC 8621
+ * §4.4.1), so this tests the individual field rather than asserting the condition has a single key.
+ */
+function filterPinsKeyword(filter: EmailFilter | null, keyword: string, present: boolean): boolean {
+  if (filter === null) return false
+  if ('operator' in filter) {
+    if (filter.operator !== 'AND') return false
+    return filter.conditions.some((condition) =>
+      filterPinsKeyword(condition as EmailFilter, keyword, present),
+    )
+  }
+  return present ? filter.hasKeyword === keyword : filter.notKeyword === keyword
+}
+
+/**
+ * The comparator properties that take a `keyword` (RFC 8621 §4.4.2). Checked so a nonsense comparator
+ * — `{property:'receivedAt', keyword:'$seen'}` is structurally legal, {@link EmailComparator} carries
+ * `keyword` as an optional extra on ANY property — does not buy a pointless full re-query.
+ */
+const KEYWORD_SORT_PROPERTIES: ReadonlySet<string> = new Set([
+  'hasKeyword',
+  'allInThreadHaveKeyword',
+  'someInThreadHaveKeyword',
+])
+
+/**
+ * Does the window's ORDER depend on this keyword? A keyword change can leave a window's MEMBERSHIP
+ * untouched and still make its cached order wrong: with the shipped "Unread first" toggle the stored
+ * sort is `[{property:'hasKeyword', keyword:'$seen', isAscending:true}, …]`, so marking a message read
+ * has to move it down — and nothing local re-sorts (the list renders `ids` verbatim), so without this
+ * the just-read row stayed pinned to the top until the server echoed. The same sort is also how a
+ * message ARRIVES in a window it was not listed in, which is why {@link updateWindows} asks this of
+ * every window and not only of the ones that hold the id.
+ *
+ * The answer is always a VOID, never a re-order: the position is the server's to compute. Because it
+ * is void-only, the thread-level comparators are INCLUDED here even though the identical field names
+ * are refused in {@link filterPinsKeyword} — a superfluous re-query is safe, a wrong prune is not.
+ */
+function sortUsesKeyword(sort: EmailComparator[] | null, keyword: string): boolean {
+  return (
+    sort?.some((c) => c.keyword === keyword && KEYWORD_SORT_PROPERTIES.has(c.property)) === true
+  )
+}
+
+/**
+ * Does `row` provably satisfy EVERY condition of `filter` (M3.10, gap B2)? The question
+ * {@link filterPinsMailbox} deliberately does NOT answer: it proves only that the window is pinned to
+ * the destination mailbox, which is *necessary, not sufficient* — a folder window's real filter is
+ * `AND(inMailbox, after: <cacheDays boundary>)` (backfill.ts), so a message moved into the Inbox that
+ * is older than the horizon does NOT belong in that window and must not be spliced into it.
+ *
+ * A strict ALLOW-LIST over the condition KEYS, and it must stay one. `false` here means "not proven",
+ * which conflates "does not match" with "cannot tell" — sound only under `AND` (an unprovable branch
+ * makes the whole conjunction unprovable, so we fall back to the void). That is why `OR` and `NOT` are
+ * refused outright rather than given `some`/negation semantics, and why the free-text and header
+ * conditions (`text`, `body`, `from`, `subject`, `header`, `hasAttachment`, the three thread-level
+ * keyword conditions, `inMailboxOtherThan`, `minSize`/`maxSize`) all fall through to `false`: the
+ * server owns their semantics, and a wrong `true` renders a row that does not belong in the list.
+ *
+ * `EmailFilterCondition` may carry SEVERAL keys on one object, implicitly ANDed (RFC 8621 §4.4.1), so
+ * every present key is checked — an unknown one anywhere refuses the whole condition. Values are
+ * type-narrowed rather than trusted: this filter was persisted by an older build and read back.
+ */
+function windowAcceptsLocally(filter: EmailFilter | null, row: EmailEnvelopeInput): boolean {
+  // A window with no filter matches every message. Unreachable in practice (`entered` requires a
+  // proven `inMailbox` pin, which a null filter cannot give) but stated rather than left to luck.
+  if (filter === null) return true
+  if ('operator' in filter) {
+    if (filter.operator !== 'AND') return false
+    return filter.conditions.every((condition) =>
+      windowAcceptsLocally(condition as EmailFilter, row),
+    )
+  }
+  const receivedAt = Date.parse(row.receivedAt)
+  for (const [key, value] of Object.entries(filter as Record<string, unknown>)) {
+    if (value === undefined) continue
+    switch (key) {
+      case 'inMailbox':
+        if (typeof value !== 'string' || row.mailboxIds[value] !== true) return false
+        break
+      case 'after': {
+        // RFC 8621 §4.4.1: `after` is `receivedAt >= value`, `before` is `receivedAt < value`.
+        if (typeof value !== 'string') return false
+        const bound = Date.parse(value)
+        if (!Number.isFinite(receivedAt) || !Number.isFinite(bound) || receivedAt < bound) {
+          return false
+        }
+        break
+      }
+      case 'before': {
+        if (typeof value !== 'string') return false
+        const bound = Date.parse(value)
+        if (!Number.isFinite(receivedAt) || !Number.isFinite(bound) || receivedAt >= bound) {
+          return false
+        }
+        break
+      }
+      case 'hasKeyword':
+        if (typeof value !== 'string' || row.keywords[value] !== true) return false
+        break
+      case 'notKeyword':
+        if (typeof value !== 'string' || row.keywords[value] === true) return false
+        break
+      default:
+        // Not understood ⇒ not proven. The caller falls back to voiding the window.
+        return false
+    }
+  }
+  return true
+}
+
+/**
+ * The window's sort reduced to a numeric key for `row`, or `null` when this sort is not locally
+ * reproducible (M3.10, gap B2). Keys are compared element-wise; descending comparators are negated at
+ * build time so the comparison is uniformly ascending.
+ *
+ * An ALLOW-LIST on `property`, and — unlike {@link sortUsesKeyword} — it has no choice: `Comparator`
+ * types `property` as a bare `string` (RFC 8620 §5.5), so a deny-list would silently give a future or
+ * unknown comparator `receivedAt` semantics. Three traps live here:
+ *  - `from` and `subject` are refused ON PURPOSE, not by oversight. They sort by STRING COLLATION —
+ *    the server's locale, case and `collation` rules — which is not reproducible client-side.
+ *  - `allInThreadHaveKeyword` / `someInThreadHaveKeyword` carry a `keyword` exactly like `hasKeyword`
+ *    does (mail.ts), so a "has a keyword field" test would accept them and get them WRONG: they are
+ *    properties of the whole thread, whose other envelopes the replica does not guarantee to hold.
+ *  - `isAscending` is OPTIONAL and defaults to TRUE (core.ts), so the test is `=== false`, never
+ *    `!c.isAscending` — which would read an omitted flag as descending.
+ * `collation` is ignored because none of the three accepted properties is a string.
+ */
+function localSortKey(sort: EmailComparator[] | null, row: EmailEnvelopeInput): number[] | null {
+  if (sort === null || sort.length === 0) return null
+  const key: number[] = []
+  for (const comparator of sort) {
+    let value: number
+    switch (comparator.property) {
+      case 'receivedAt': {
+        const at = Date.parse(row.receivedAt)
+        if (!Number.isFinite(at)) return null
+        value = at
+        break
+      }
+      case 'size':
+        if (!Number.isFinite(row.size)) return null
+        value = row.size
+        break
+      case 'hasKeyword':
+        // Ascending puts messages WITHOUT the keyword first — which is what makes the shipped
+        // "Unread first" toggle (`hasKeyword $seen` ascending) put unread mail on top.
+        if (typeof comparator.keyword !== 'string') return null
+        value = row.keywords[comparator.keyword] === true ? 1 : 0
+        break
+      default:
+        return null
+    }
+    key.push(comparator.isAscending === false ? -value : value)
+  }
+  return key
+}
+
+/** Element-wise comparison of two {@link localSortKey} results (already normalised to ascending). */
+function compareSortKeys(a: readonly number[], b: readonly number[]): number {
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i] ?? 0
+    const right = b[i] ?? 0
+    if (left !== right) return left < right ? -1 : 1
+  }
+  return 0
+}
+
+/**
+ * Splice ONE arriving message into a window's cached ids, or refuse (`null`) — the gate described in
+ * the block comment above. `total` is the window's CURRENT working total (it moves as arrivals land).
+ *
+ * The tail rules are the load-bearing part:
+ *  - An index past the last loaded row is only legal on a COMPLETE window (`ids.length >= total`).
+ *    Otherwise the arrival belongs to a page the user has not scrolled to, and showing it after the
+ *    last loaded row would put it before messages that sort ahead of it.
+ *  - On an INCOMPLETE window the splice is paid for by dropping the last id, keeping `ids.length` — and
+ *    therefore the head page this window is — exactly as long as it was. See the block comment for the
+ *    two things that would otherwise drift (`windowLimit`, the load-more guard). The dropped id is
+ *    never one we just inserted: an incomplete window refuses a tail insert.
+ */
+function placeArrival(
+  window: Pick<QueryCacheRow, 'filter' | 'sort' | 'collapseThreads'>,
+  ids: readonly Id[],
+  total: number | null,
+  envelopes: ReadonlyMap<Id, EmailEnvelopeInput>,
+  arrival: EmailEnvelopeInput,
+): Id[] | null {
+  if (ids.includes(arrival.id)) return null
+  if (!windowAcceptsLocally(window.filter, arrival)) return null
+  const key = localSortKey(window.sort, arrival)
+  if (key === null) return null
+
+  const neighbours: number[][] = []
+  for (const id of ids) {
+    const envelope = envelopes.get(id)
+    // A window is persisted BEFORE the envelopes it lists (backfill.ts, "the reverse gap"), so a hole
+    // is a real state. We cannot compare against a row we do not hold — refuse and void.
+    if (envelope === undefined) return null
+    // Under thread collapsing an entry stands for a whole thread. If the arrival's thread is already
+    // represented, the server would NOT add a second row for it — inserting one would double the
+    // conversation on screen and over-count `total`, which counts threads for a collapsed query.
+    if (window.collapseThreads && envelope.threadId === arrival.threadId) return null
+    const neighbourKey = localSortKey(window.sort, envelope)
+    if (neighbourKey === null) return null
+    neighbours.push(neighbourKey)
+  }
+
+  let index = neighbours.findIndex((neighbour) => compareSortKeys(key, neighbour) < 0)
+  if (index === -1) index = ids.length
+  const complete = total !== null && ids.length >= total
+  if (index === ids.length && !complete) return null
+
+  const next = [...ids]
+  next.splice(index, 0, arrival.id)
+  if (!complete) next.pop()
+  return next
+}
+
+/**
+ * Place every arriving message that can be placed into one window; `null` when none could be, which is
+ * the caller's signal to fall back to voiding only.
+ *
+ * The cheap, pure gates run FIRST so that a window this can never place — a free-text search, a
+ * `from`-sorted list — costs no envelope read at all. Only then are the neighbours loaded, once per
+ * window rather than once per arrival, inside the caller's transaction.
+ */
+async function placeArrivals(
+  db: ReplicaDb,
+  accountId: Id,
+  window: QueryCacheRow,
+  arrivals: readonly EmailEnvelopeInput[],
+): Promise<{ ids: Id[]; total: number | null } | null> {
+  const candidates = arrivals.filter(
+    (arrival) =>
+      !window.ids.includes(arrival.id) &&
+      windowAcceptsLocally(window.filter, arrival) &&
+      localSortKey(window.sort, arrival) !== null,
+  )
+  if (candidates.length === 0) return null
+
+  const loaded = await emailsByIds(db, accountId, [...window.ids])
+  const envelopes = new Map<Id, EmailEnvelopeInput>()
+  window.ids.forEach((id, position) => {
+    const row = loaded[position]
+    if (row !== undefined) envelopes.set(id, row)
+  })
+
+  let ids: Id[] = window.ids
+  let total = window.total
+  let placed = false
+  for (const arrival of candidates) {
+    const next = placeArrival(window, ids, total, envelopes, arrival)
+    if (next === null) continue
+    ids = next
+    // The dropped tail id (see {@link placeArrival}) is NOT a departure — that message still matches
+    // the query, it just sits on the next page now. So `total` only counts the arrival.
+    total = total === null ? null : total + 1
+    envelopes.set(arrival.id, arrival)
+    placed = true
+  }
+  return placed ? { ids, total } : null
+}
+
+/** What {@link updateWindows} changed — the DATA a rollback needs. */
+interface WindowChanges {
+  /** Keys whose window lost the ids ({@link invalidateWindows} re-voids them). */
+  readonly pruned: string[]
+  /** Keys whose window GAINED an id locally ({@link retractWindows} takes them back out). */
+  readonly inserted: string[]
+}
+
 /** Which cached windows an optimistic mutation touches, and how. */
 interface WindowEffects {
   /** Windows the messages provably LEFT: drop the ids, and void the baseline they no longer match. */
   readonly left?: (window: QueryCacheRow) => boolean
-  /** Windows the messages provably ENTERED: void the baseline — only the server can place them. */
+  /**
+   * Windows the messages provably ENTERED: splice them in when {@link arrivals} makes that possible,
+   * and void the baseline either way. Without `arrivals` this is the pre-M3.10 behaviour verbatim —
+   * void only, and wait for the re-query to place the row.
+   */
   readonly entered?: (window: QueryCacheRow) => boolean
+  /**
+   * The POST-apply envelopes of the arriving messages — what {@link entered} windows are placed from.
+   * They must be the patched rows, not the originals: the gate evaluates the window's own filter
+   * against them, and a pre-move envelope is not yet in the destination mailbox.
+   */
+  readonly arrivals?: readonly EmailEnvelopeInput[]
+  /**
+   * Windows whose COLLATION depends on what just changed (M3.10): void the baseline and let the server
+   * re-place the rows. Asked of EVERY window, unlike {@link entered} — one that keeps the message can
+   * be rendering it in the wrong place, and one that does not hold it yet can be about to gain it by
+   * sort alone. See {@link updateWindows} for why membership is the wrong gate here, and what it costs.
+   */
+  readonly resorted?: (window: QueryCacheRow) => boolean
 }
 
 /**
  * Bring this account's cached windows in line with an optimistic mutation, in ONE scan, and return the
- * keys actually pruned — the DATA the rollback needs ({@link invalidateWindows}).
+ * keys it actually EDITED — the DATA the rollback needs ({@link invalidateWindows},
+ * {@link retractWindows}).
  *
  * `left` windows lose the ids: `total` drops by the number they really held (never below 0) and
  * `upToId` is re-derived, so the row keeps the invariant every other writer maintains
- * (`upToId === ids.at(-1)`; backfill/loadMore/reconcile). `entered` windows keep their ids untouched —
- * we do not know where the message goes in the server's collation — and are simply marked for a full
- * re-query, which fetches it back in the right place. Both void `queryState` (see the invariant above);
- * a window whose `ids` did NOT actually change keeps its state, because its baseline is still honest.
+ * (`upToId === ids.at(-1)`; backfill/loadMore/reconcile). `entered` windows GAIN the ids when
+ * {@link WindowEffects.arrivals} lets us place them locally ({@link placeArrivals}) and otherwise keep
+ * their ids untouched; `resorted` windows always keep theirs. All three void `queryState` (see the
+ * invariant above) — including a successful local insert, whose index is our guess and not the
+ * server's answer. A window whose `ids` did NOT actually change keeps its state, because its baseline
+ * is still honest.
+ *
+ * `entered` IS gated on membership and `resorted` is NOT, and the asymmetry is the point:
+ *  - `entered` is about FILTER arrival, so it is asked only of windows that do NOT yet list an id. A
+ *    window that already holds the row has already taken it in; there is nothing to splice.
+ *  - `resorted` is about COLLATION, which is not a property of the rows a window happens to have
+ *    loaded. Gating it on membership concealed a whole case: a message can arrive in a window BY SORT.
+ *    An "Unread first" folder window (filter `AND(inMailbox, after)`, sort `hasKeyword $seen`) whose
+ *    loaded slice stops before `e1` must show `e1` at the TOP the moment `e1` is marked unread from
+ *    somewhere else — a search result, a label view. Under the old gate `resorted` was not asked (the
+ *    window does not list `e1`) and `entered` was false (a folder window carries a keyword SORT, not a
+ *    keyword FILTER), so nothing voided and the row appeared only at the next full reconcile: online
+ *    when the server's push echoed, offline not until reconnect. The question is therefore asked of
+ *    every window, and the answer is the same either way — if a window's order depends on this
+ *    keyword, then any change to that keyword on any message that could belong to it makes our
+ *    baseline a lie, whether or not the id is currently listed.
+ *
+ * That price is real and was weighed, not overlooked: with "Unread first" ON, every mark-read voids
+ * the folder window the user is looking at and buys one `fullRequery`. It is honest — they turned on a
+ * sort that depends on read state, so changing read state genuinely must re-sort — and it is bounded,
+ * because `runReplay` only reconciles once `pendingOutbox` is empty (engine.ts), so a triage burst
+ * collapses into ONE re-query rather than one per keystroke. With the toggle OFF (the default)
+ * {@link sortUsesKeyword} is false and nothing is voided at all, so the cost is strictly opt-in.
+ *
+ * A window is still never scanned twice and never voided twice: an `entered` window that also
+ * `resorted` is written exactly once, by the insert (or by the insert's fallback void).
  *
  * MUST run inside the caller's transaction, together with the `emails` mutation it mirrors: a crash
  * between the two would leave a window listing a message that has moved out from under it.
@@ -240,10 +633,11 @@ async function updateWindows(
   accountId: Id,
   emailIds: readonly Id[],
   effects: WindowEffects,
-): Promise<string[]> {
-  if (emailIds.length === 0) return []
+): Promise<WindowChanges> {
+  if (emailIds.length === 0) return { pruned: [], inserted: [] }
   const touched = new Set<Id>(emailIds)
   const pruned: string[] = []
+  const inserted: string[] = []
   for (const window of await db.queryCache.where('accountId').equals(accountId).toArray()) {
     if (effects.left?.(window) === true) {
       const ids = window.ids.filter((id) => !touched.has(id))
@@ -261,13 +655,37 @@ async function updateWindows(
       pruned.push(window.key)
       continue
     }
-    // A window that already lists the message has nothing to pick up (a re-archive, or a `from: null`
-    // copy into a folder the message was in anyway) — leave its cheap delta intact.
-    if (effects.entered?.(window) === true && !window.ids.some((id) => touched.has(id))) {
+    // Membership gates `entered` ONLY (see the doc-comment): a window that already lists the message
+    // has nothing to pick up — a re-archive, or a `from: null` copy into a folder it was in anyway.
+    // `resorted` is asked below REGARDLESS, because a message can arrive in a window by SORT.
+    const listed = window.ids.some((id) => touched.has(id))
+    if (!listed && effects.entered?.(window) === true) {
+      // Place what can be placed (M3.10, gap B2) — offline this is the ONLY thing that will ever put
+      // the row on screen. `null` ⇒ nothing was provable here, which is the pre-M3.10 behaviour.
+      const placed = await placeArrivals(db, accountId, window, effects.arrivals ?? [])
+      if (placed === null) {
+        await db.queryCache.update([accountId, window.key], { queryState: null })
+        continue
+      }
+      // The `put` voids as well, so a window that is both `entered` and `resorted` is written exactly
+      // once — the insert already tells the truth this window needed to hear.
+      await db.queryCache.put({
+        ...window,
+        ids: placed.ids,
+        total: placed.total,
+        upToId: placed.ids.at(-1) ?? null,
+        queryState: null,
+      })
+      inserted.push(window.key)
+      continue
+    }
+    // Two cases, one answer: the order of a window that HOLDS the message changed under it, or the
+    // message just sorted its way INTO a window that does not hold it yet. Both are a void.
+    if (effects.resorted?.(window) === true) {
       await db.queryCache.update([accountId, window.key], { queryState: null })
     }
   }
-  return pruned
+  return { pruned, inserted }
 }
 
 /**
@@ -290,6 +708,50 @@ async function invalidateWindows(
 }
 
 /**
+ * The rollback of a local INSERT (M3.10, gap B2) — and the reason {@link invalidateWindows} could not
+ * simply be reused: its whole body is a void, and voiding leaves the phantom id sitting in `ids`,
+ * rendering a message the server rejected until the re-query lands.
+ *
+ * `ids` is the rollback's SCOPE, not the full intent: a partial rejection undoes only the objects that
+ * actually failed (`undoTargets`), and an `insertedKeys` array records WINDOWS, not which id landed in
+ * which window — so the removal intersects. An id in scope that the window does not hold costs
+ * nothing. Any window in `insertedKeys` is voided whether or not it still holds the id, because the
+ * apply voided it and a reconcile may have restored a `queryState` in between.
+ *
+ * `total` comes back down by what was removed. The id that the insert pushed off the tail of an
+ * incomplete window is NOT restored — it is one page away and the forced re-query brings it back.
+ */
+async function retractWindows(
+  db: ReplicaDb,
+  accountId: Id,
+  keys: readonly string[],
+  ids: readonly Id[],
+): Promise<void> {
+  if (keys.length === 0) return
+  const drop = new Set(ids)
+  for (const key of keys) {
+    // `get`-then-`put` rather than a bare `put`, for the same reason `invalidateWindows` uses
+    // `update`: a window that cache maintenance reaped meanwhile must stay reaped, not be
+    // resurrected as a half-row.
+    const window = await db.queryCache.get([accountId, key])
+    if (window === undefined) continue
+    const remaining = window.ids.filter((id) => !drop.has(id))
+    const removed = window.ids.length - remaining.length
+    if (removed === 0) {
+      await db.queryCache.update([accountId, key], { queryState: null })
+      continue
+    }
+    await db.queryCache.put({
+      ...window,
+      ids: remaining,
+      total: window.total === null ? null : Math.max(0, window.total - removed),
+      upToId: remaining.at(-1) ?? null,
+      queryState: null,
+    })
+  }
+}
+
+/**
  * Apply an intent to the replica immediately and return the DATA needed to undo it (M3.3). Only
  * rows that actually exist locally are touched. The undo is deliberately id-set-based, not a
  * snapshot: it is persisted on the outbox row, so it must stay small and must survive being applied
@@ -302,19 +764,44 @@ export async function applyOptimistic(
 ): Promise<OutboxUndo> {
   switch (intent.kind) {
     case 'setKeywords': {
-      const originals = present(await emailsByIds(db, accountId, intent.emailIds))
-      const had = originals.filter((row) => row.keywords[intent.keyword] === true).map((r) => r.id)
-      await putEmails(
-        db,
-        accountId,
-        originals.map((row) => {
-          const keywords = { ...row.keywords }
-          if (intent.value) keywords[intent.keyword] = true
-          else delete keywords[intent.keyword]
-          return { ...toEnvelope(row), keywords }
-        }),
-      )
-      return { kind: 'keywords', keyword: intent.keyword, had }
+      // ONE transaction, for the same reason as `move` below: the envelope patch and the window edit
+      // are the same fact stated twice, and a crash between them would leave the list rendering an
+      // unread message in `is:unread` that the replica already knows is read.
+      return db.transaction('rw', db.emails, db.queryCache, async (): Promise<OutboxUndo> => {
+        const originals = present(await emailsByIds(db, accountId, intent.emailIds))
+        const had = originals
+          .filter((row) => row.keywords[intent.keyword] === true)
+          .map((r) => r.id)
+        await putEmails(
+          db,
+          accountId,
+          originals.map((row) => {
+            const keywords = { ...row.keywords }
+            if (intent.value) keywords[intent.keyword] = true
+            else delete keywords[intent.keyword]
+            return { ...toEnvelope(row), keywords }
+          }),
+        )
+        // The windows (M3.10). MIND THE POLARITY — it is inverted between the two, and it is the whole
+        // fix: `left` must prove NON-membership, so it asks for the OPPOSITE of the value being
+        // written, while `entered` asks for the same value.
+        //   mark read (`$seen := true`) ⇒ prune the `notKeyword:$seen` windows (`?q=is:unread`)
+        //                              ⇒ void  the `hasKeyword:$seen` windows (`?q=is:read`)
+        //   strip a label (`work := false`) ⇒ prune the `hasKeyword:work` window (`?label=work`)
+        // `resorted` is the third case, and unlike the other two it is about ORDER, not membership:
+        // the "Unread first" window keeps the message and merely renders it in the wrong place.
+        // No `arrivals`: a keyword change deliberately keeps the void-only arrival (gap B2 placed the
+        // arrival for a MOVE). Adding a label would have to place the row in a `?label=` view whose
+        // sort we can often reproduce — but the window it arrives in is also the one whose membership
+        // just changed under a DIFFERENT predicate, and that pairing has not been reasoned through.
+        // Void-only there is correct, just one round-trip slower.
+        const { pruned } = await updateWindows(db, accountId, intent.emailIds, {
+          left: (window) => filterPinsKeyword(window.filter, intent.keyword, !intent.value),
+          entered: (window) => filterPinsKeyword(window.filter, intent.keyword, intent.value),
+          resorted: (window) => sortUsesKeyword(window.sort, intent.keyword),
+        })
+        return { kind: 'keywords', keyword: intent.keyword, had, prunedKeys: pruned }
+      })
     }
     case 'move': {
       const from = intent.from
@@ -327,32 +814,43 @@ export async function applyOptimistic(
           from === null
             ? []
             : originals.filter((row) => row.mailboxIds[from] === true).map((row) => row.id)
-        await putEmails(
-          db,
-          accountId,
-          originals.map((row) => {
-            const mailboxIds = { ...row.mailboxIds }
-            if (from !== null) delete mailboxIds[from]
-            mailboxIds[intent.to] = true
-            return { ...toEnvelope(row), mailboxIds }
-          }),
-        )
+        // Keep the PATCHED envelopes: they are what the window gate is evaluated against below (an
+        // arrival is only in the destination mailbox after the patch), and re-reading them would cost
+        // a second round through `emails` for the same rows.
+        const moved = originals.map((row) => {
+          const mailboxIds = { ...row.mailboxIds }
+          if (from !== null) delete mailboxIds[from]
+          mailboxIds[intent.to] = true
+          return { ...toEnvelope(row), mailboxIds }
+        })
+        await putEmails(db, accountId, moved)
         // The windows, BOTH ends of the move (M3.8):
         //  - SOURCE: the message provably left `from` → prune it out of those windows. `from === null`
         //    is a copy (a label add, or a move from a view whose folder is unknown) — the message left
         //    nothing, so nothing is pruned.
-        //  - DESTINATION: the message provably entered `to` → those windows must show it, and only the
-        //    server can say WHERE (its collation, its thread collapsing). They are marked for a full
-        //    re-query. This is what makes Undo work: the inverse move's destination is the folder the
-        //    row was archived out of, so the row comes back — see the invariant above.
-        const prunedKeys = await updateWindows(db, accountId, intent.emailIds, {
+        //  - DESTINATION: the message provably entered `to` → those windows must SHOW it. Where it goes
+        //    is the server's collation, so the row is spliced in only where that is locally provable
+        //    (`arrivals` → {@link placeArrivals}) and the window is marked for a full re-query either
+        //    way. This is what makes Undo work: the inverse move's destination is the folder the row
+        //    was archived out of, so the row comes back — offline from the splice (gap B2), online
+        //    from the re-query — see the invariant above.
+        const { pruned, inserted } = await updateWindows(db, accountId, intent.emailIds, {
           // (`exactOptionalPropertyTypes`: an absent `left` is the "prune nothing" case, not `undefined`.)
           ...(from === null
             ? {}
             : { left: (window: QueryCacheRow) => filterPinsMailbox(window.filter, from) }),
           entered: (window) => filterPinsMailbox(window.filter, intent.to),
+          arrivals: moved,
         })
-        return { kind: 'mailboxIds', from, to: intent.to, hadTo, hadFrom, prunedKeys }
+        return {
+          kind: 'mailboxIds',
+          from,
+          to: intent.to,
+          hadTo,
+          hadFrom,
+          prunedKeys: pruned,
+          insertedKeys: inserted,
+        }
       })
     }
     case 'destroyEmails': {
@@ -373,13 +871,13 @@ export async function applyOptimistic(
           // permanent-delete path, so a re-query of the affected windows is cheap, and one unconditional
           // invariant ("we never hand `queryChanges` a baseline we have edited") is worth more than an
           // exception that has to be re-proved every time this code is touched.
-          const prunedKeys = await updateWindows(db, accountId, intent.emailIds, {
+          const { pruned } = await updateWindows(db, accountId, intent.emailIds, {
             left: () => true,
           })
           // The "before" state is the full envelope set — far too big to persist. It does not need to
           // be: a REJECTED destroy means the messages still exist on the server, so the undo is a
           // re-fetch. That also self-corrects a PARTIAL rejection — only the surviving ids come back.
-          return { kind: 'refetchEmails', prunedKeys }
+          return { kind: 'refetchEmails', prunedKeys: pruned }
         },
       )
     }
@@ -479,18 +977,24 @@ export async function applyUndo(
     case 'keywords': {
       const ids = undoTargets(intent, onlyIds)
       if (ids.length === 0) return
-      const rows = present(await emailsByIds(db, accountId, ids))
       const had = new Set(undo.had)
-      await putEmails(
-        db,
-        accountId,
-        rows.map((row) => {
-          const keywords = { ...row.keywords }
-          if (had.has(row.id)) keywords[undo.keyword] = true
-          else delete keywords[undo.keyword]
-          return { ...toEnvelope(row), keywords }
-        }),
-      )
+      // `?? []`: `sendEmail`'s source-flag undo never prunes a window, and neither did any `keywords`
+      // undo persisted before M3.10 — both read as "nothing to re-void".
+      const prunedKeys = undo.prunedKeys ?? []
+      await db.transaction('rw', db.emails, db.queryCache, async () => {
+        const rows = present(await emailsByIds(db, accountId, ids))
+        await putEmails(
+          db,
+          accountId,
+          rows.map((row) => {
+            const keywords = { ...row.keywords }
+            if (had.has(row.id)) keywords[undo.keyword] = true
+            else delete keywords[undo.keyword]
+            return { ...toEnvelope(row), keywords }
+          }),
+        )
+        await invalidateWindows(db, accountId, prunedKeys)
+      })
       return
     }
     case 'mailboxIds': {
@@ -499,6 +1003,8 @@ export async function applyUndo(
       const hadTo = new Set(undo.hadTo)
       const hadFrom = new Set(undo.hadFrom)
       const prunedKeys = undo.prunedKeys ?? []
+      // `?? []`: an undo persisted before M3.10 inserted nothing — it reads as "nothing to take back".
+      const insertedKeys = undo.insertedKeys ?? []
       await db.transaction('rw', db.emails, db.queryCache, async () => {
         const rows = present(await emailsByIds(db, accountId, ids))
         await putEmails(
@@ -512,6 +1018,17 @@ export async function applyUndo(
           }),
         )
         await invalidateWindows(db, accountId, prunedKeys)
+        // KNOWN over-retraction, named rather than fixed. The envelope patch above deliberately does
+        // NOT strip `to` from a `hadTo` id (it was already in the destination before the move, so the
+        // rejection does not take it out), but `retractWindows` removes the arrival unconditionally —
+        // it records WINDOWS, not which id landed where. So rejecting a move of a message that was
+        // already in the destination drops a row from that window which still legitimately belongs
+        // there, and under-counts its `total` by one. It self-corrects: `retractWindows` voids the
+        // window, so the next reconcile is a `fullRequery` that rebuilds `ids` and `total` wholesale
+        // (delta.ts). And it is ONLINE-only — a rollback happens only because the server answered — so
+        // that re-query is always reachable. Making it exact would mean persisting a per-window id map
+        // in the undo, which is the one thing the undo may not grow into (it is stored on the row).
+        await retractWindows(db, accountId, insertedKeys, ids)
       })
       return
     }

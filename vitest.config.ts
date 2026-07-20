@@ -22,10 +22,13 @@ export default defineConfig({
           include: [
             'packages/*/src/**/*.{test,spec}.ts',
             'apps/web/src/auth/**/*.{test,spec}.ts',
-            // Pure color math over the shipped tokens.css — no DOM. Lives here (not the
-            // jsdom "web" project) so it can read the CSS from disk; vitest stubs `.css`
-            // imports to empty under jsdom.
+            // Static analysis over the app's shipped stylesheets — no DOM. These live here
+            // (not the jsdom "web" project) so they can read the CSS from disk; vitest stubs
+            // `.css` imports to empty under jsdom. `*.contrast.test.ts` is the colour math;
+            // `*.css.test.ts` is the B5 family (token references, focus indicators), which
+            // walks every *.css under apps/web with plain node:fs.
             'apps/web/src/ui/**/*.contrast.test.ts',
+            'apps/web/src/ui/**/*.css.test.ts',
           ],
           setupFiles: ['fake-indexeddb/auto'],
           // No passWithNoTests: this project spans all packages/* and jmap always

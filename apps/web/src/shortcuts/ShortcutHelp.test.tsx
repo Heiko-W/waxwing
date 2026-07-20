@@ -78,6 +78,42 @@ describe('ShortcutHelp', () => {
     expect(within(dialog).getAllByText('Message list').length).toBeGreaterThan(0)
   })
 
+  // G2/B3. The sheet is the surface a user opens right after a chord did nothing, so it has to answer
+  // the question they came with. It must NOT answer it by removing the row: the key exists, the
+  // mailbox does not, and an absent row states a different falsehood.
+  //
+  // This asserts on the TEXT, never on the dimming class — jsdom computes no CSS, so a class assertion
+  // would prove nothing about what anyone sees. The text is also the half that reaches a screen reader.
+  it('explains a chord this account cannot run, and still lists it', async () => {
+    // `beforeEach` seeds an Inbox and nothing else, so Archive/Junk/Trash have no target mailbox.
+    const dialog = await openHelp()
+    expect(
+      await within(dialog).findByText('This account has no Archive folder.'),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText('This account has no Junk folder.')).toBeInTheDocument()
+    // …and the chords are all still on the sheet, with their keys.
+    expect(within(dialog).getAllByText('Archive').length).toBeGreaterThan(0)
+    // `v` needs no role mailbox — it is what the toast tells the user to press, so it must never be
+    // explained away here.
+    expect(within(dialog).getByText('Move to folder')).toBeInTheDocument()
+    expect(within(dialog).queryByText('This account has no Move folder.')).toBeNull()
+  })
+
+  it('says nothing about an account that DOES have the folder', async () => {
+    // The positive control for the test above: without it, a predicate stuck at "always unavailable"
+    // passes just as happily, and every account would be told it is missing every folder.
+    await putMailboxes(db, 'a', [
+      mailbox('inbox', { role: 'inbox' }),
+      mailbox('archive', { role: 'archive' }),
+    ])
+    const dialog = await openHelp()
+    // Junk is still missing, which is what proves the sheet has resolved its mailboxes at all — an
+    // assertion that merely waits for the Archive reason to be absent would also pass on the very
+    // first tick, before `useMailboxes()` had answered anything.
+    expect(await within(dialog).findByText('This account has no Junk folder.')).toBeInTheDocument()
+    expect(within(dialog).queryByText('This account has no Archive folder.')).toBeNull()
+  })
+
   it('has no a11y violations', async () => {
     await openHelp()
     await expectNoA11yViolations(document.body)

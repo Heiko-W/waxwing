@@ -152,6 +152,33 @@ separately by a **browser axe scan over the gallery in both themes**, including 
 Deliberately *not* asserted: `--waxwing-border` (decorative hairline) and the accent as a
 background/graphic (config-overridable, never a sole indicator — see §2.1).
 
+### 3.1 Two more static checks over the stylesheets (ADR-015)
+
+Contrast was for a long time the *only* thing verifying CSS, and it verifies token **values**.
+Two further checks verify token **references** and **focus suppression**; all three read the
+shipped stylesheets from disk and run in the root Node vitest project, because jsdom computes
+no CSS.
+
+- **`tokens.references.css.test.ts`** — every `var(--waxwing-*)` in CSS and TSX resolves to a
+  token that exists, all theme override blocks carry the same keys as `:root`, and the three
+  token names `public/theme.css` shows hosters by example still exist. Undefined custom
+  properties are invalid at computed-value time and fail **silently**: this is what let the
+  message list ship for eight milestones with no selection highlight at all.
+- **`focus-indicator.css.test.ts`** — **a rule may switch the focus outline off only if** it
+  scopes the suppression away from keyboard focus (`:not(:focus-visible)`), supplies a
+  replacement indicator on a sibling `:focus-visible` rule for the same selector base, or
+  carries a `/* waxwing-focus-exempt: <reason> */` comment directly above it. The reason is
+  mandatory and machine-checked for length; exemptions that have stopped suppressing anything
+  are failed as stale, so the licence cannot outlive its use. Exactly one exemption exists
+  today. **WCAG 2.4.7, Level A.**
+
+Neither check can see rendered output — they prove a stylesheet no longer *says* the wrong
+thing, not that anything *looks* right. A ring that exists but is invisible against its
+background passes both; that case still needs the browser sweep ADR-015 defers.
+
+When adding an interactive component, do not override the global `:focus-visible` ring (§9.5).
+If you must, the guard will make you say why.
+
 ---
 
 ## 4. Component inventory

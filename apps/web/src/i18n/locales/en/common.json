@@ -170,7 +170,7 @@
       "title": "Swipe actions",
       "left": {
         "label": "Swipe left",
-        "hint": "Drag a message to the left on a touchscreen. Archive falls back to Trash if this account has no Archive folder."
+        "hint": "Drag a message to the left on a touchscreen. Archive does nothing if this account has no Archive folder."
       },
       "right": {
         "label": "Swipe right",
@@ -851,6 +851,12 @@
     "or": "or",
     "targetNote": "Shortcuts act on the selected messages — or, when nothing is selected, on the open message, otherwise on the focused row.",
     "editorNote": "While the cursor is in a message body the editor keeps its own shortcuts (bold, italic, insert link).",
+    "unavailable": {
+      "archive": "This account has no Archive folder.",
+      "junk": "This account has no Junk folder.",
+      "trash": "This account has no Trash folder.",
+      "hint": "Press V to pick a folder instead."
+    },
     "groups": {
       "navigation": "Navigation",
       "triage": "Triage",

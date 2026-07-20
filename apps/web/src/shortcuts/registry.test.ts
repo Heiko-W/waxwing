@@ -10,7 +10,7 @@ import de from '../i18n/locales/de/common.json'
 import en from '../i18n/locales/en/common.json'
 import { type ChordEvent, matchesChord, parseChord } from './keys'
 import { SHORTCUTS } from './registry'
-import { GROUP_ORDER, type ShortcutScope } from './types'
+import { GROUP_ORDER, type ShortcutContext, type ShortcutScope } from './types'
 
 /** Walk a dot-path through a locale bundle; `undefined` when any segment is missing. */
 function resolve(bundle: unknown, key: string): unknown {
@@ -69,6 +69,31 @@ describe('SHORTCUTS registry', () => {
       expect(typeof resolve(en, action.titleKey), `en: ${action.titleKey}`).toBe('string')
       expect(typeof resolve(de, action.titleKey), `de: ${action.titleKey}`).toBe('string')
     }
+  })
+
+  it('resolves every `unavailable` reason — and the hint it points at — in BOTH en and de', () => {
+    // The reasons are only reachable by CALLING the predicate, so build the account shape that
+    // produces them: no role mailboxes at all, with the mailbox liveQuery resolved.
+    const noRoles = {
+      roles: {},
+      rolesReady: true,
+      inTrash: false,
+      targetIds: ['m1'],
+      sourceMailboxId: 'inbox',
+    } as unknown as ShortcutContext
+    const keys = SHORTCUTS.map((action) => action.unavailable?.(noRoles)).filter(
+      (key): key is string => typeof key === 'string',
+    )
+    // Three today (archive, junk, trash). Without this the loop below is vacuously green the moment
+    // someone drops the field — which is exactly the half of the Definition of Done that gets skipped.
+    expect(keys).toHaveLength(3)
+    for (const key of keys) {
+      expect(typeof resolve(en, key), `en: ${key}`).toBe('string')
+      expect(typeof resolve(de, key), `de: ${key}`).toBe('string')
+    }
+    // The dispatcher appends this to every one of them, so it is part of the same contract.
+    expect(typeof resolve(en, 'shortcuts.unavailable.hint')).toBe('string')
+    expect(typeof resolve(de, 'shortcuts.unavailable.hint')).toBe('string')
   })
 
   it('resolves every group + scope label in BOTH en and de', () => {

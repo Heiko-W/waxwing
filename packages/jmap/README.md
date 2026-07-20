@@ -21,7 +21,10 @@ const client = await connect('https://mail.example.com', bearer(token))
 
 const channel = createPushChannel(client.session, {
   auth: bearer(token),
-  // No `prefer` needed: the facade tries WebSocket → SSE → polling and degrades on its own.
+  // Omit `transports` and the facade tries WebSocket → SSE → polling, degrading on its own.
+  // In a browser, say so instead: WS can never authenticate there, so exclude it from the
+  // chain rather than deprioritise it (see "Ordering vs. restricting the set" below).
+  transports: ['sse', 'polling'],
 })
 channel.subscribe((change) => {
   // change.changed[accountId] === { Email: 'newState', Mailbox: 'newState', … }
@@ -43,10 +46,28 @@ down and moves to the next eligible transport — so a browser whose WebSocket h
 Once a transport *opens*, failover is disabled for good and its own reconnect loop owns every
 subsequent drop (it survives a server restart and never downgrades). The last real transport is
 never torn down onto the non-functional polling stub, so a transient startup blip self-heals
-instead of permanently killing push. `prefer` is a soft **reorder** (matching `pickTransport`,
-not a restriction): `prefer: 'sse'` moves SSE ahead of WebSocket, so a browser tries the working
-SSE reader first and — since SSE opens — never reaches the WebSocket fallback, without ever
-collapsing the failover set to polling-only.
+instead of permanently killing push.
+
+### Ordering vs. restricting the set
+
+Two different options, for two different problems:
+
+- **`prefer`** *reorders* the chain, a soft preference. `prefer: 'sse'` yields
+  `['sse','websocket','polling']` — SSE is tried first, but WebSocket **stays in the chain** as a
+  failover target behind it.
+- **`transports`** *restricts* it, a hard allowlist. `transports: ['sse','polling']` yields exactly
+  `['sse','polling']` — the WebSocket is **absent**, so no amount of SSE failure can ever reach it.
+  `'polling'` is permitted regardless of the list, so the set is never empty; an allowlist naming
+  no real transport degrades to `['polling']`.
+
+Reach for `transports` whenever a transport is not merely slower but *structurally unusable in
+this runtime* — and do not reach for `prefer` there, because it cannot express that and quietly
+makes things worse. A browser cannot authenticate the WebSocket at all (below), yet `prefer: 'sse'`
+leaves it one failover hop behind SSE. SSE thereby gains a real failover target it does not have
+under the default order: a couple of transient SSE errors at startup spend the attempt budget, the
+facade advances onto the WebSocket, and *that* transport is itself terminal — push is then
+permanently dead until reload, in exactly the case the default order self-heals. With
+`transports: ['sse','polling']`, SSE is the last real transport and keeps retrying forever.
 
 Or construct a specific transport directly (no failover): `new SseChannel({ session, auth })`,
 `new WebSocketChannel({ session, auth, dataTypes })`. The `WebSocketChannel` also does a typed
@@ -66,8 +87,10 @@ as `JmapClient`.
   fallback, so **against Stalwart the WS transport is Node/server-side only** (undici forwards
   the header); in a browser the handshake 401s and closes abnormally. `createPushChannel` detects
   this at runtime (WS never opens → attempt budget → fail over) and degrades to SSE with no caller
-  intervention. WS still works browser-side against any server that accepts an unauthenticated or
-  cookie-authenticated WS.
+  intervention — so push works either way, but a browser client that knows it can never
+  authenticate a WS should pass `transports: ['sse','polling']` and skip the doomed attempt
+  altogether. WS still works browser-side against any server that accepts an unauthenticated or
+  cookie-authenticated WS, so this is the *caller's* constraint to state, not a library default.
 - **Reconnect** is exponential backoff with full jitter (cap 30 s), reset on a healthy
   connection, race-free `close()`. After any reconnect the client must re-sync via `Foo/changes`
   (Stalwart does not support SSE `Last-Event-ID` resumption).

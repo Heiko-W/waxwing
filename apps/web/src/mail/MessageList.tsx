@@ -149,12 +149,15 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   }, [windowKey, ids, sourceMailboxId, setWindow])
 
   // Swipe actions (FR-LST-06). ONE mailbox query, deliberately, not two `useMailboxByRole` calls:
-  // those are two independent liveQueries that can resolve on different ticks, and "archive, else
-  // Trash" read across a tick where only Trash had landed would trash mail that belongs in Archive.
-  // For the same reason the fallback must NOT be driven off `triage.archive()`'s boolean — `false`
-  // there also means "the liveQuery has not resolved yet" (see `Triage.archive`), so a
-  // boolean-driven fallback trashes mail on the first render tick of an account that DOES have an
-  // Archive folder. Until this one query resolves, the move directions are simply inert.
+  // those are two independent liveQueries that can resolve on different ticks, so a direction could
+  // resolve against a half-landed account. Until G2/B3 that was DANGEROUS: "archive, else Trash"
+  // read across a tick where only Trash had landed trashed mail that belonged in Archive, which is
+  // also why the choice was never driven off `triage.archive()`'s boolean (`false` there likewise
+  // means "not resolved yet", see `Triage.archive`). B3 removed that fallback, so a mis-read now
+  // costs an inert gesture rather than a wrong mailbox, and the `rolesReady` guard in `resolveSwipe`
+  // is strictly speaking redundant — an unresolved query leaves the target `undefined`, which that
+  // function already refuses. It stays because it states the intent the target lookup only implies:
+  // until this one query resolves the move directions are inert BY DECISION, not by accident.
   const mailboxes = useMailboxes()
   const rolesReady = mailboxes !== undefined
   const archiveId = mailboxes?.find((box) => box.role === 'archive')?.id
@@ -204,8 +207,13 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       // A move needs a source: with `from: null` the message keeps its other memberships (a copy,
       // not a move) and gets no Undo, so a cross-folder search result cannot be swiped away.
       if (!rolesReady || sourceMailboxId === null) return null
-      const kind = action === 'archive' && archiveId !== undefined ? 'archive' : 'trash'
-      const target = kind === 'archive' ? archiveId : trashId
+      // A direction configured "Archive" resolves to Archive or to NOTHING. Until G2/B3 it fell back
+      // to Trash on an account with no Archive role (the reversal is recorded in `swipe-prefs.ts`):
+      // a gesture the user chose as "Archive" must never be the thing that puts mail in the bin —
+      // there is no confirmation under a thumb, and the strip the finger revealed said "Archive".
+      // The direction goes inert instead, which is the same answer `e` now gives out loud on this
+      // very list ("this account has no Archive folder").
+      const target = action === 'archive' ? archiveId : trashId
       // Suppressed when the target IS the folder on screen — Trash inside Trash, Archive inside
       // Archive. A self-move has no legitimate meaning downstream (it patches the mail out of the
       // only mailbox it is in), and the seam refuses it anyway; this keeps the gesture honest about
@@ -213,7 +221,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       if (target === undefined || target === sourceMailboxId) return null
       // The source travels WITH the decision — see {@link ResolvedRowSwipe}. Everything else the move
       // needs is re-derived at commit; this one value cannot be, because by then it may have changed.
-      return { kind, from: sourceMailboxId }
+      return { kind: action, from: sourceMailboxId }
     },
     [rowById, swipeLeftAction, swipeRightAction, rolesReady, archiveId, trashId, sourceMailboxId],
   )

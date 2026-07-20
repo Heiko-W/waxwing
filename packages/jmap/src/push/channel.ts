@@ -13,7 +13,9 @@
  * abnormally forever. The facade now discovers that at runtime and degrades to SSE on its own,
  * so callers no longer have to pass `prefer:'sse'` to get push in a browser. Callers who want a
  * specific transport still construct {@link SseChannel} / {@link WebSocketChannel} directly (no
- * failover there), or pass {@link CreatePushChannelOptions.prefer}.
+ * failover there), pass {@link CreatePushChannelOptions.prefer} to *reorder* the set, or pass
+ * {@link CreatePushChannelOptions.transports} to *restrict* it when a transport is not merely
+ * slower but structurally unusable in this runtime.
  */
 
 import type { AuthProvider } from '../auth'
@@ -48,6 +50,27 @@ export interface CreatePushChannelOptions {
   WebSocket?: WebSocketFactory
   /** Preferred transport(s), tried before the default `websocket → sse → polling` order. */
   prefer?: PushTransport | PushTransport[]
+  /**
+   * The allowlist of transports this *runtime* may use. `prefer` orders the set, `transports`
+   * restricts it: an excluded transport is absent from the failover chain entirely, not merely
+   * deprioritised. Defaults to "everything" — the library's documented `websocket → sse → polling`
+   * behaviour is unchanged for callers who omit this.
+   *
+   * These are deliberately separate concepts, because reordering is the *wrong* tool for a hard
+   * runtime constraint. `prefer:'sse'` yields `['sse','websocket','polling']` — the unusable
+   * transport is still in the chain, one failover hop behind the working one. A browser that
+   * cannot authenticate a WebSocket at all (no way to set the `Authorization` header on the
+   * Upgrade) therefore *gains* a failover target it should not have: a couple of transient SSE
+   * blips at startup spend the budget, the facade advances onto the WebSocket, and that transport
+   * is itself terminal — push is then permanently dead where the default order self-heals. Pass
+   * `transports: ['sse','polling']` instead; SSE stays last-real and keeps retrying forever.
+   *
+   * `'polling'` is always permitted regardless of this list — it is capability-free, always
+   * eligible, and the guaranteed tail that keeps {@link FailoverPushChannel}'s terminal-transport
+   * logic meaningful. So the eligible set is never empty: an allowlist naming no real transport
+   * (including `[]`) degrades to `['polling']` rather than throwing or yielding a dead channel.
+   */
+  transports?: readonly PushTransport[]
   /** Types to receive: WS `WebSocketPushEnable.dataTypes` / SSE `{types}`. */
   dataTypes?: string[] | null
   /** SSE auth placement (`header` default; `query` for servers with `?access_token=`). */
@@ -80,30 +103,41 @@ export const DEFAULT_FAILOVER_AFTER_ATTEMPTS = 2
  * Chooses a transport for `session`: the first entry of the preference order that is
  * *eligible* (its capability is advertised and its runtime primitive resolves). Retained for
  * callers and tests that only need the name of the first transport the facade would try.
+ *
+ * Derived from {@link eligibleTransports} rather than re-walking the order itself, so the two
+ * cannot drift: the docblock below promises they "always agree on which transports are
+ * reachable", and with a second, *narrowing* option that promise only stays true if they share
+ * one code path.
  */
 export function pickTransport(session: Session, options: CreatePushChannelOptions): PushTransport {
-  for (const transport of transportOrder(options.prefer)) {
-    if (isEligible(transport, session, options)) return transport
-  }
-  return 'polling'
+  return eligibleTransports(session, options)[0] ?? 'polling'
 }
 
 /**
  * The ordered list of eligible transports the {@link FailoverPushChannel} will try, in order.
  * This is the preference order ({@link CreatePushChannelOptions.prefer} first, then the default
- * `websocket → sse → polling`) intersected with {@link isEligible}. `prefer` *reorders* the set
- * (a soft preference, exactly as {@link pickTransport} and the option's contract describe); it
- * never *restricts* it. So an ineligible preferred transport still falls through to the other
- * eligible transports instead of collapsing to the polling stub — the facade and
- * {@link pickTransport} therefore always agree on which transports are reachable.
+ * `websocket → sse → polling`), narrowed by the {@link CreatePushChannelOptions.transports}
+ * allowlist, then intersected with {@link isEligible}.
+ *
+ * The two options are separate concepts on purpose. `prefer` *reorders* the set (a soft
+ * preference, exactly as {@link pickTransport} and the option's contract describe); it never
+ * *restricts* it, so an ineligible preferred transport still falls through to the other eligible
+ * transports instead of collapsing to the polling stub. `transports` is the hard constraint:
+ * anything it excludes is removed from the chain, so it can never be reached by failover either.
+ * Reordering deliberately cannot express that — moving an unusable transport to the back still
+ * leaves it as a failover target, and the facade would eventually land on it (see the
+ * {@link CreatePushChannelOptions.transports} doc-comment for the browser/WebSocket case this
+ * exists for). The allowlist is applied BEFORE {@link isEligible} so an excluded transport is
+ * absent from the chain rather than merely deprioritised within it.
+ *
+ * The facade and {@link pickTransport} therefore always agree on which transports are reachable —
+ * structurally, since {@link pickTransport} is defined in terms of this function.
  */
 export function eligibleTransports(
   session: Session,
   options: CreatePushChannelOptions,
 ): PushTransport[] {
-  return transportOrder(options.prefer).filter((transport) =>
-    isEligible(transport, session, options),
-  )
+  return permittedTransports(options).filter((transport) => isEligible(transport, session, options))
 }
 
 /**
@@ -115,6 +149,19 @@ export function createPushChannel(
   options: CreatePushChannelOptions,
 ): PushChannel {
   return new FailoverPushChannel(session, options, eligibleTransports(session, options))
+}
+
+/**
+ * The preference order narrowed by the {@link CreatePushChannelOptions.transports} allowlist.
+ * A genuine filter, never a reorder — see {@link eligibleTransports}. `'polling'` survives any
+ * allowlist, so the result is never empty and the caller cannot accidentally hand
+ * {@link FailoverPushChannel} a set with no transport in it.
+ */
+function permittedTransports(options: CreatePushChannelOptions): PushTransport[] {
+  const order = transportOrder(options.prefer)
+  const allowed = options.transports
+  if (allowed === undefined) return order
+  return order.filter((transport) => transport === 'polling' || allowed.includes(transport))
 }
 
 function transportOrder(prefer: CreatePushChannelOptions['prefer']): PushTransport[] {
