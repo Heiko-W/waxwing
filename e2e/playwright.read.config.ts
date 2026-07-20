@@ -17,7 +17,13 @@ export default defineConfig({
   testDir: './tests',
   // The M3.8 keyboard suite rides along here: it needs exactly this fixture (a seeded inbox with
   // several messages, an Archive and a Trash folder) and reseeds per test like read.spec does.
-  testMatch: ['**/read.spec.ts', '**/keyboard.spec.ts', '**/swipe.spec.ts'],
+  testMatch: [
+    '**/read.spec.ts',
+    '**/keyboard.spec.ts',
+    '**/swipe.spec.ts',
+    '**/offline.spec.ts',
+    '**/push.spec.ts',
+  ],
   // One seeded account, stateful mutations (flag/move/delete/live-deliver) → keep it serial and
   // reseed per test (see read.spec.ts beforeEach), so ordering never makes a test flaky.
   fullyParallel: false,

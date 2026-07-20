@@ -118,16 +118,22 @@ test.describe('M1.9 read suite', () => {
   })
 
   test('auto-refreshes on a live delivery, no manual reload', async ({ page }) => {
-    // The slow one: with Basic auth a browser cannot authenticate the WebSocket push handshake
-    // (no Authorization header on a WS upgrade), so live updates arrive via the engine's
-    // safety-sweep poll (≈60 s) rather than an instant push. Either way the client re-renders
-    // from the replica with no manual reload — that user-visible guarantee is what we assert.
-    // Instant-push validation (OAuth Bearer + SSE) is a follow-up (see plan §7, M1.9 changelog).
-    test.setTimeout(90_000)
+    // This used to be "the slow one", budgeted at 75 s because the WebSocket push handshake cannot
+    // carry an `Authorization` header under Basic auth — so the comment concluded that push could
+    // not authenticate in a browser at all and that live updates had to wait for the ≈60 s
+    // safety-sweep poll. That conclusion was half wrong, and M3.10 measured it: SSE is a plain
+    // streaming `fetch`, which CAN set the header, and since gap B4 restricted the browser to
+    // `['sse','polling']` (engine.ts BROWSER_PUSH_TRANSPORTS) the delivery lands in well under a
+    // second. The 60 s of dead budget on every read run is gone with it.
+    //
+    // The tightened budget is now load-bearing rather than defensive: 20 s is comfortably under the
+    // safety sweep, so this can only pass if push really pushed. Reverting B4 (dropping the
+    // `transports` allowlist) strands the channel on the un-authable WebSocket and blows it —
+    // verified, not assumed. Do not loosen it back without re-reading that paragraph.
     await login(page)
     const list = messageList(page)
     const subject = await deliverLiveMail('t-live')
-    await expect(list.getByText(subject)).toBeVisible({ timeout: 75_000 })
+    await expect(list.getByText(subject)).toBeVisible({ timeout: 20_000 })
   })
 
   test('OAuth login reaches the inbox (secure-context localhost)', async ({ page }) => {
