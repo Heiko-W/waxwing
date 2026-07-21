@@ -290,6 +290,18 @@
   color: var(--waxwing-warning);
 }
 
+/* The bulk bar's star when every selected message is already flagged — the same on-state the
+   reading pane's star uses (`reading.module.css .flagOn`): filled, in the warning colour.
+   NOT "the same everywhere": `.flag` above, the per-row indicator, sets colour only, so the row
+   paints an OUTLINE star. Three surfaces, two renderings, deliberately left that way — the row mark
+   is one glyph in a dense line of metadata where a solid fill reads as a heavier signal than the
+   others beside it, while these two are the ACTIONABLE star and match each other.
+   Colour is never the only signal: the button's accessible name flips to "Unflag" with it. */
+.flagOn {
+  color: var(--waxwing-warning);
+  fill: currentColor;
+}
+
 .time {
   font-size: var(--waxwing-text-xs);
   white-space: nowrap;

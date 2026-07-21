@@ -101,3 +101,46 @@ lives upstream.
   channel path, which is what M3.6 actually ships.
 - If upstream lands the two fixes, the baseline may need raising (NFR-COMPAT-02 already allows
   this: *"If the upcoming Stalwart v1.0 ships changes Waxwing needs, the baseline is raised"*).
+
+## Amendment (2026-07-21) — the reversal condition is MET upstream; the client half is not built
+
+Stalwart **v0.16.14** (released 2026-07-20) fixes all three blockers this ADR rests on. The three
+reports in `docs/upstream/` were acted on; the evidence, at source level:
+
+1. **The base64 wrapper is gone.** `crates/services/src/state_manager/http.rs` now sends the
+   aes128gcm ciphertext as **raw octets**, which is what `Content-Encoding: aes128gcm` promises
+   (RFC 8188 §2). Fact 2 above no longer holds; a browser can decrypt the payload.
+2. **Unpadded base64url keys are accepted.** `crates/jmap/src/push/set.rs` decodes the client's
+   `p256dh`/`auth` with `DecodePaddingMode::Indifferent`, so the unpadded encoding every browser
+   emits is no longer rejected.
+3. **RFC 9749 is implemented.** `crates/jmap-proto/src/request/capability.rs` carries a
+   `WebPushVapid` variant, i.e. `urn:ietf:params:jmap:webpush-vapid` with an
+   `applicationServerKey` — the capability that fact 3 above recorded as implemented by nobody.
+   And `crates/common/src/manager/defaults.rs:342` (`if count_object(OidcProvider) == 0 {`) nests
+   at `:373-374` a *"Generate a Web Push VAPID signing key (RFC 9749)"* step, so a **virgin
+   registry auto-generates the keypair**: a stock install advertises the capability with a real
+   key, no configuration.
+
+Decision 5 above states this ADR's own reversal condition — *"It is fulfilled the day a JMAP server
+ships RFC 9749 and a spec-conforming payload encoding."* **That day has arrived.**
+
+**This amendment does not reverse the ADR.** The upstream blocker is gone; the *client* half was
+never built and still is not: no `PushSubscription/set`, no `applicationServerKey` read for a
+`subscribe()` call, no `push` listener in `apps/web/src/sw/sw.ts`. Building it is a scoped work
+package with an owner gate on it — **an OPEN DECISION**, not a consequence of bumping a Docker tag.
+
+**What this change did do is stop the app lying.** The moment the fixture pin moved to v0.16.14 the
+capability probe (`apps/web/src/notify/capability.ts`) began returning `true` against a stock
+server, and the Notifications settings rendered `notify.background.available` — *"This server also
+supports notifications while Waxwing is closed."* Waxwing then delivers nothing. That string is
+**deleted, not merely unused**: a dead string asserting a capability is how the app silently starts
+lying again the day someone flips a boolean. It is replaced by `notify.background.notImplemented`,
+which credits the server and admits our gap in the same sentence. There are now two honest states
+and deliberately no third — no key in the locale files claims background push works. NFR-PRIV-02
+governs, exactly as it did in 2026-07-13.
+
+The E2E guard in `e2e/tests/settings.spec.ts` was written to fail on this day (*"the day one ships
+the capability, the app must switch to the other string and this test must fail rather than pin the
+pessimistic wording forever"*). It did, and it was honoured rather than silenced: the premise
+assertion now demands the capability is **present**, and the negative assertion holds the line that
+nothing on that screen may claim background push works.

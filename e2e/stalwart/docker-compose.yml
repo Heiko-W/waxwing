@@ -42,12 +42,12 @@ x-stalwart-common: &stalwart-common
 
 services:
   # Pinned baseline — NFR-COMPAT-02 (Stalwart v0.16.x). What dev + CI test against.
-  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.11 (non-alpine)
+  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.14 (non-alpine)
   # and note it in README.md; the fixture is otherwise identical.
   stalwart:
     <<: *stalwart-common
     profiles: [dev]
-    image: stalwartlabs/stalwart:v0.16.11-alpine
+    image: stalwartlabs/stalwart:v0.16.14-alpine
     container_name: waxwing-stalwart-dev
     ports:
       # host 18080 -> container 8080 (plain-HTTP JMAP / web / OAuth). No root, no :443.

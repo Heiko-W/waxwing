@@ -237,19 +237,36 @@ describe('NotificationsSection — the preferences', () => {
 
 describe('NotificationsSection — the honest capability note (ADR-010)', () => {
   it('says plainly that this server cannot notify while the app is closed', async () => {
-    // Every JMAP server on earth, today. Promising it and silently not delivering is exactly the
-    // failure NFR-PRIV-02 exists to forbid.
+    // The server does not advertise RFC 9749. Promising it and silently not delivering is exactly
+    // the failure NFR-PRIV-02 exists to forbid.
     renderSection({ permission: permissionApi('default'), backgroundPush: false })
 
     expect(screen.getByText(/not available with this server/i)).toBeInTheDocument()
     expect(screen.getByText(/RFC 9749/)).toBeInTheDocument()
   })
 
-  it('and says the opposite the day a server advertises the capability', async () => {
+  /**
+   * The state that exists since Stalwart v0.16.14 (2026-07-20): the SERVER can, and Waxwing still
+   * cannot — no subscribe flow, no `PushSubscription/set`, no `push` listener (ADR-010 + amendment).
+   * The note must own both halves. Stating only the first half is the app promising a delivery it
+   * never makes, which is the defect class this milestone exists to close.
+   */
+  it('with a capable server, credits the server AND admits Waxwing does not deliver it yet', async () => {
     renderSection({ permission: permissionApi('default'), backgroundPush: true })
 
-    expect(screen.getByText(/also supports notifications while/i)).toBeInTheDocument()
+    expect(screen.getByText(/this server supports notifications while/i)).toBeInTheDocument()
+    expect(screen.getByText(/does not deliver them yet/i)).toBeInTheDocument()
     expect(screen.queryByText(/not available with this server/i)).not.toBeInTheDocument()
+  })
+
+  it('never claims background push works — no wording on this screen may say it does', () => {
+    for (const backgroundPush of [true, false]) {
+      const view = renderSection({ permission: permissionApi('default'), backgroundPush })
+      // The old "This server also supports notifications while X is closed." claim, and any
+      // reinstatement of it. `not.toContainText`-style guard: absence is the whole assertion.
+      expect(view.container.textContent).not.toMatch(/also supports notifications while/i)
+      view.unmount()
+    }
   })
 
   it('shows the note whatever the switch says — it is a fact about the SERVER, not a setting', async () => {

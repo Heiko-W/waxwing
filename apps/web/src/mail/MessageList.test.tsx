@@ -4,6 +4,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
+import de from '../i18n/locales/de/common.json'
+import en from '../i18n/locales/en/common.json'
 import {
   canonicalQueryKey,
   deleteMailbox,
@@ -215,6 +217,319 @@ describe('MessageList', () => {
     expect(await screen.findByText('2 selected')).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: 'Mark as read' }))
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ keyword: '$seen', value: true })
+  })
+
+  it('the bulk-bar flag button TOGGLES, and its accessible name says which way', async () => {
+    // Mirrors the read test above, because the defect was the same one control over: `s` toggles
+    // `$flagged` through this very seam while the button hard-wired `setFlagged(ids, true)` — and
+    // announced itself as "Flag" while doing it. `IconButton`'s label IS the accessible name, so a
+    // static one is a lie to a screen reader, not a cosmetic slip.
+    // 'e2' is seeded flagged, so selecting only it must flip the button to the unflag affordance.
+    await putEmails(db, 'a', [
+      email('e2', {
+        from: [{ name: 'Bob', email: 'b@x.test' }],
+        subject: 'Second',
+        keywords: { $flagged: true },
+      }),
+    ])
+    const user = userEvent.setup()
+    renderList()
+    await screen.findByText('First')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[1] as HTMLElement)
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Unflag' }))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'setKeywords',
+      keyword: '$flagged',
+      value: false,
+      emailIds: ['e2'],
+    })
+
+    // POSITIVE CONTROL, same render: adding an unflagged row makes the selection no longer all-
+    // flagged, so the button must go back to SETTING the keyword ("set unless every target already
+    // has it" — the same rule read/unread and `s` follow). Without this the test would also pass if
+    // the button were hard-wired the other way round.
+    dispatch.mockClear()
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Flag' }))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ keyword: '$flagged', value: true })
+  })
+
+  it('the bulk toggles read the WHOLE selection, not just the rows on screen', async () => {
+    // The test that proves the fix is not a relocation of the drift. Both toggle predicates used to
+    // be hydrated from `rowById`, which holds the VIRTUAL WINDOW only — but select-all dispatches
+    // over the whole window. Off-screen selected rows resolve to `undefined` there, the predicate
+    // reads false even though every message qualifies, and the button then SETS what `s`/`u` (which
+    // hydrate from the full target set) would CLEAR.
+    //
+    // 30 rows is not decoration: the harness stubs a 600px viewport and at comfortable density
+    // (76px) with OVERSCAN 8 the virtualizer renders ~16 rows, and `scrollTo` is a no-op so the
+    // window stays at the head. Any smaller fixture puts every selected id inside `rowById` and the
+    // mutation below stays green — the test would prove nothing.
+    const ids = Array.from({ length: 30 }, (_, i) => `m${String(i + 1).padStart(2, '0')}`)
+    await putEmails(
+      db,
+      'a',
+      ids.map((id) =>
+        email(id, { subject: `Msg ${id}`, keywords: { $flagged: true, $seen: true } }),
+      ),
+    )
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: inboxKey(),
+      ids,
+      queryState: 'q',
+      total: ids.length,
+      upToId: ids.at(-1) as string,
+      filter: null,
+      sort: null,
+      collapseThreads: true,
+      lastUsedAt: 1,
+    })
+    const user = userEvent.setup()
+    renderList()
+    await screen.findByText('Msg m01')
+    // Precondition the whole test rests on: the tail is genuinely NOT rendered, so those rows exist
+    // only in the selection — never in `rowById`.
+    expect(screen.queryByText('Msg m30')).toBeNull()
+    expect(screen.getAllByRole('row').length).toBeLessThan(ids.length)
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    expect(await screen.findByText('30 selected')).toBeInTheDocument()
+
+    // Every one of the 30 is flagged AND read, so both buttons must offer to CLEAR — exactly what
+    // `s` and `u` would do over the same selection.
+    expect(await screen.findByRole('button', { name: 'Unflag' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Mark as unread' })).toBeInTheDocument()
+
+    // …and the click that follows the label really does clear, so this is not just a label test.
+    await user.click(screen.getByRole('button', { name: 'Unflag' }))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'setKeywords',
+      keyword: '$flagged',
+      value: false,
+      emailIds: ids,
+    })
+  })
+
+  it('a selection whose rows have not caught up with its ids is not treated as all-flagged', async () => {
+    // The `selectedRows.length === ids.length` clause of the predicate, which nothing else covers.
+    // The race is real and reachable with two clicks: growing the selection changes
+    // `useEmailWindow`'s deps, and dexie-react-hooks keeps serving the PREVIOUS result until the new
+    // query resolves. So for one render `ids` is [e1, e2] while `selectedRows` still holds the
+    // single row for [e1] — and `every` over that one flagged row would answer "all flagged" for a
+    // selection whose second member has not been looked at yet.
+    //
+    // Both seeded rows ARE flagged, deliberately: the converged answer is "Unflag" both before and
+    // after, so the only thing that can produce "Flag" in between is the length guard refusing to
+    // trust a result that has not caught up. The test cannot pass by accident of the fixture.
+    await putEmails(db, 'a', [
+      email('e1', { subject: 'First', keywords: { $flagged: true } }),
+      email('e2', { subject: 'Second', keywords: { $flagged: true } }),
+    ])
+    renderList()
+    await screen.findByText('First')
+    const boxes = () => screen.getAllByRole('checkbox', { name: 'Select message' })
+
+    // `fireEvent`, not `userEvent`: userEvent awaits between events and would flush the pending
+    // liveQuery, which is precisely the render this test needs to observe.
+    fireEvent.click(boxes()[0] as HTMLElement)
+    expect(await screen.findByRole('button', { name: 'Unflag' })).toBeInTheDocument()
+
+    fireEvent.click(boxes()[1] as HTMLElement)
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+    // The unconverged render: one row in hand, two in the selection → the SAFE label. Offering to
+    // set a keyword a message already carries is harmless; offering to CLEAR the flag on a message
+    // nobody has looked at is the destructive way round.
+    expect(screen.getByRole('button', { name: 'Flag' })).toBeInTheDocument()
+
+    // …and it converges rather than sticking on the safe answer: both rows really are flagged.
+    expect(await screen.findByRole('button', { name: 'Unflag' })).toBeInTheDocument()
+  })
+
+  // `loading` is true only while the window ROW is missing, so a window that EXISTS with `ids: []`
+  // and a non-zero `total` used to paint the confident empty state over a folder that has mail —
+  // contradicting the `aria-rowcount` beside it and announcing "no results" to a screen reader.
+  // Several sync-side paths reach that state and they are NOT a closed set — the comment on
+  // `retracted` in `MessageList.tsx` names the ones known and says plainly what is not detected (see
+  // also §13 B17). Do not re-enumerate them here: an earlier revision of this block counted "three",
+  // and a fourth was found in `delta.ts` afterwards.
+  //
+  // What the tests below cover is only the RENDERING, from a seeded window, because that is all this
+  // component can see — it has no way to tell which path pruned the window, and deliberately renders
+  // the same thing for every one of them, which is also why an unenumerated producer still gets the
+  // right rendering. So no test here constructs a move, a rejection, or a connectivity state, and
+  // none should claim to: the recoverability argument belongs to `outbox.ts`'s and `delta.ts`'s
+  // tests, and lives here only as the reason the WORDING defers to the next sync rather than
+  // promising a refresh in progress.
+  describe('the empty state', () => {
+    async function seedWindow(windowIds: string[], total: number) {
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: inboxKey(),
+        ids: windowIds,
+        queryState: 'q',
+        total,
+        upToId: 'e3',
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 1,
+      })
+    }
+
+    it('an empty window over a non-empty total is out of date, not empty', async () => {
+      await seedWindow([], 41)
+      renderList()
+      expect(
+        await screen.findByText('This list is out of date and will refresh on the next sync.'),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No messages in this folder.')).toBeNull()
+      // NOT the generic spinner: nothing is loading. The window resolved — it is merely stale.
+      expect(screen.queryByText('Loading messages')).toBeNull()
+      // The row count next to it says 41; claiming emptiness beside that is incoherent either way.
+      expect(screen.getByRole('grid')).toHaveAttribute('aria-rowcount', '41')
+    })
+
+    // The half the WORDING turns on, and the only half this component can be tested for: the list
+    // does not rescue itself. Whether a re-query is reachable is a connectivity question owned by
+    // `delta.ts`/`outbox.ts`, but `loadMore` is right here and is gated on `ids.length > 0`, so a
+    // retracted window cannot even page its way out. That is why the message must name the condition
+    // instead of promising a spinner's progress — asserted below by the engine never being asked.
+    it('a retracted window does not page its way out — `loadMore` is never called', async () => {
+      const loadMoreFor = vi.fn()
+      setActiveEngine({
+        watchWindow: vi.fn(() => 'k'),
+        loadMoreFor,
+        fetchEnvelopes: vi.fn(),
+        dispatch,
+      } as unknown as Parameters<typeof setActiveEngine>[0])
+      // A folder of 200 whose whole 50-id head page a bulk move's prune (or its rollback) took away.
+      await seedWindow([], 150)
+      renderList()
+
+      expect(
+        await screen.findByText('This list is out of date and will refresh on the next sync.'),
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Loading messages')).toBeNull()
+      // The claim the guard exists to suppress: no confident "empty", visibly or to a screen reader.
+      expect(screen.queryByText('No messages in this folder.')).toBeNull()
+      expect(screen.getByRole('grid')).toHaveAttribute('aria-rowcount', '150')
+      // …and it really is a dead end until reconnect, not a paging gap the list can close itself.
+      await waitFor(() => expect(loadMoreFor).not.toHaveBeenCalled())
+    })
+
+    // The rendered assertions above only ever see ENGLISH — the test i18n instance runs `en` — so
+    // nothing here noticed when the German said "wird aktualisiert": a present passive, "is being
+    // updated right now", which is the spinner's claim and the exact promise the split onto
+    // `loading` was made to stop making. Both bundles must name the CONDITION and defer the action
+    // to the next sync, so both are asserted, in both languages, from the bundles themselves.
+    it('neither language promises an update that is already under way', () => {
+      expect(en.list.stale).toBe('This list is out of date and will refresh on the next sync.')
+      expect(de.list.stale).toBe(
+        'Diese Liste ist nicht aktuell und wird bei der nächsten Synchronisation aktualisiert.',
+      )
+      // The property behind the literals, so a future reword cannot quietly drop the qualifier and
+      // fall back to "…und wird aktualisiert" / "…will refresh".
+      expect(en.list.stale).toMatch(/on the next sync\.$/)
+      expect(de.list.stale).toMatch(/bei der nächsten Synchronisation aktualisiert\.$/)
+      // …and it uses the bundle's ONE word for the concept. The first draft said "Abgleich" — correct
+      // German, but a second term for what every other German sync string calls Synchronisation
+      // ("sobald die Synchronisation folgt", "Wird synchronisiert…", "Synchronisationsproblem"). It
+      // was a test exactly like this one that would have made the inconsistency permanent, so the
+      // term is asserted, not just the sentence.
+      expect(de.list.stale).not.toMatch(/Abgleich/)
+    })
+
+    it('a genuinely empty folder still says so', async () => {
+      // The half a careless guard swallows — and swallowing it would be the worse bug: a real empty
+      // folder that shows a permanent spinner never resolves for the user.
+      await seedWindow([], 0)
+      renderList()
+      expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
+      expect(screen.queryByText('Loading messages')).toBeNull()
+      expect(
+        screen.queryByText('This list is out of date and will refresh on the next sync.'),
+      ).toBeNull()
+    })
+
+    // The OTHER half, and the one a `total === undefined ||` slip turns into a second permanent
+    // spinner: `QueryCacheRow.total` is `number | null` (`db.ts`) and `null` is a real persisted
+    // value the outbox preserves deliberately. `use-message-list.ts` surfaces it as `undefined`, so
+    // a PRESENT window with an unknown total is reachable — and it is a genuine empty state.
+    it('an empty window with an UNKNOWN total is empty, not out of date', async () => {
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: inboxKey(),
+        ids: [],
+        queryState: 'q',
+        total: null,
+        upToId: 'e3',
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 1,
+      })
+      renderList()
+      expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
+      expect(
+        screen.queryByText('This list is out of date and will refresh on the next sync.'),
+      ).toBeNull()
+      expect(screen.queryByText('Loading messages')).toBeNull()
+    })
+
+    it('a search whose window is retracted announces nothing, and a truly empty one says so', async () => {
+      setActiveEngine(null)
+      const spec: QuerySpec = {
+        filter: { hasKeyword: 'work' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        collapseThreads: false,
+      }
+      const key = canonicalQueryKey(spec)
+      const seedSearch = async (total: number) => {
+        await putQueryCache(db, {
+          accountId: 'a',
+          key,
+          ids: [],
+          queryState: 'q',
+          total,
+          upToId: 'x1',
+          filter: spec.filter ?? null,
+          sort: spec.sort ?? null,
+          collapseThreads: false,
+          lastUsedAt: 1,
+        })
+      }
+      const ui = (
+        <RouterProvider>
+          <ConfigProvider config={DEFAULT_CONFIG}>
+            <ToastProvider>
+              <ReplicaProvider accountId="a" db={db}>
+                <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId: undefined }} />
+              </ReplicaProvider>
+            </ToastProvider>
+          </ConfigProvider>
+        </RouterProvider>
+      )
+
+      await seedSearch(7)
+      const { unmount } = render(ui)
+      // The live region is rendered but must stay SILENT: announcing "no messages match" for a
+      // query that matched seven is worse than saying nothing, because a screen-reader user has no
+      // rowcount to contradict it with.
+      await screen.findByText('This list is out of date and will refresh on the next sync.')
+      expect(screen.queryAllByText('No messages match your search.')).toHaveLength(0)
+      unmount()
+
+      // Positive control: a search that really found nothing still announces it.
+      await seedSearch(0)
+      render(ui)
+      // Twice over, and both matter: the visible empty state AND the live region's announcement.
+      expect(await screen.findAllByText('No messages match your search.')).toHaveLength(2)
+    })
   })
 
   // The `to === from` guard lives in `useTriage`, which means every SURFACE that offers such a move

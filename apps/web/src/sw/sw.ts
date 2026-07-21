@@ -18,8 +18,10 @@
  *    straight to the network. Every route below is anchored to the app's own directory — see the
  *    invariant in sw-routes.ts, which also explains why an anchor rather than a denylist.
  *  - **No `push` listener, and no Web Push at all.** M3.5 expected M3.6 to add one; M3.6 established
- *    that it could not work. No JMAP server signs a browser push (RFC 9749/VAPID), and Stalwart also
- *    base64-wraps the aes128gcm body, so the `push` event never fires in ANY browser — see ADR-010.
+ *    that it could not work then — no server signed a browser push. That premise has since moved:
+ *    Stalwart v0.16.14 (2026-07-20) ships RFC 9749/VAPID and raw aes128gcm octets. What is still
+ *    missing is OUR half — no `PushSubscription/set`, no subscribe flow, so nothing would ever
+ *    dispatch a `push` event here. Reversing ADR-010 is an open owner decision, not a leftover.
  *    Notifications are raised by the PAGE, from the live push channel, and the worker's only part in
  *    them is the `notificationclick` handler at the bottom of this file.
  */

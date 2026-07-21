@@ -13,7 +13,7 @@ import {
 import { email, freshDb, mailbox } from '../test-utils'
 import { STUCK_AFTER_ATTEMPTS } from './backoff'
 import { reconcileQuery } from './delta'
-import { enqueueAction, type OutboxIntent, replayOutbox } from './outbox'
+import { enqueueAction, type OutboxIntent, reapplyPendingCounts, replayOutbox } from './outbox'
 import type { EngineClock, JmapPort, PortSetResult } from './types'
 
 let db: ReplicaDb
@@ -1526,6 +1526,508 @@ describe('outbox — the cached list window (M3.8)', () => {
       expect((await db.emails.get([ACC, 'e2']))?.mailboxIds).toEqual({ inbox: true })
     })
   })
+
+  /**
+   * Gap B8: the membership gate in front of `entered` used to be a WHOLE-WINDOW quantifier
+   * (`window.ids.some(id => touched.has(id))`), so one already-listed id marked the entire window
+   * "listed" and suppressed the whole batch. A bulk move of `[e1,e2]` into a window already showing
+   * `e1` placed NEITHER and did not even void it — the row was visibly missing until a reconcile that
+   * offline never runs. The gate is now per id: "is this window missing any of them?".
+   */
+  describe('per-id window membership (M3.10, gap B8)', () => {
+    const at = (day: number) => `2026-07-${String(day).padStart(2, '0')}T00:00:00Z`
+
+    /**
+     * The B8 shape: a COMPLETE archive window that already lists ONE of the ids the move touches.
+     * `e1` is in the archive AND the Inbox (a copy, or an archive the user re-filed); `e2` is
+     * Inbox-only and is the id the window is missing.
+     */
+    async function seedOverlap(over: Partial<QueryCacheRow> = {}): Promise<void> {
+      await putEmails(db, ACC, [
+        email('a1', { mailboxIds: { archive: true }, receivedAt: at(9) }),
+        email('e1', { mailboxIds: { archive: true, inbox: true }, receivedAt: at(7) }),
+        inbox('e2', { receivedAt: at(5) }),
+      ])
+      await putQueryCache(
+        db,
+        windowRow('archive-win', inMailboxFilter('archive'), ['a1', 'e1'], { total: 2, ...over }),
+      )
+    }
+
+    const moveToArchive = (emailIds: string[]) =>
+      enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds, from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+
+    it('places the ids a window is MISSING even though it already lists one of them', async () => {
+      await seedOverlap()
+
+      await moveToArchive(['e1', 'e2'])
+
+      // `e2` lands after `e1` (day 5 < day 7) — legal past the tail because the window is complete.
+      // `e1` is filtered out of the batch by `placeArrivals`, so it is not duplicated.
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1', 'e2'])
+      expect((await win('archive-win'))?.total).toBe(3) // by the number really PLACED, not the batch size
+      expect((await win('archive-win'))?.upToId).toBe('e2')
+      expect((await win('archive-win'))?.queryState).toBeNull()
+      expect(await insertedKeys('i1')).toEqual(['archive-win'])
+    })
+
+    it('never lists the already-present id TWICE, on a window with no thread collapsing', async () => {
+      // B8 turned the per-id filtering inside `placeArrivals`/`placeArrival` from defensive dead code
+      // into live code: before it, a partially-overlapping batch never reached the placement at all.
+      // On a COLLAPSED window the same-thread refusal would mask a missing id guard; a FLAT window
+      // (`collapseThreads: false`, what `useLabelView` and the flat list mode write) has no such
+      // second line of defence, so `e1` would be appended a second time and render twice.
+      await seedOverlap({ collapseThreads: false })
+
+      await moveToArchive(['e1', 'e2'])
+
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1', 'e2'])
+      expect((await win('archive-win'))?.total).toBe(3)
+    })
+
+    it('still skips a window that already lists EVERY id the move touches', async () => {
+      // The guardrail against over-correcting into an unconditional `entered`: there is genuinely
+      // nothing to pick up here, so the window keeps its cheap delta instead of buying a re-query.
+      await seedOverlap()
+
+      await moveToArchive(['e1'])
+
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1'])
+      expect((await win('archive-win'))?.total).toBe(2)
+      expect((await win('archive-win'))?.queryState).toBe('q-1')
+      expect(await insertedKeys('i1')).toEqual([])
+    })
+
+    it('voids a window that holds every id it could ACCEPT — accepted cost, not desired behaviour', async () => {
+      // PINNED AS A KNOWN COST, so it is visible rather than rediscovered. The `entered` gate asks
+      // "does the intent contain an id this window does not LIST?" — which is NOT the same question
+      // as "is there anything here for this window to pick up?": neither the gate nor `entered`
+      // itself (`filterPinsMailbox`, mailbox-coarse) is filter-aware. This window is pinned to
+      // `archive` AND `hasKeyword:$flagged`, and it already holds `e1` — the only id in the batch it
+      // could ever accept, because `e2` is unflagged. It is voided all the same, buying a
+      // `fullRequery` that changes nothing.
+      //
+      // Deliberate, not an oversight: the only per-id filter test available (`windowAcceptsLocally`)
+      // is an allow-list that REFUSES what it cannot decide, so using it as a gate would skip the
+      // void exactly where we are least sure the baseline is still valid. Over-voiding costs a
+      // round-trip; under-voiding is a wrong list. If the gate is ever made filter-aware, the
+      // `queryState` expectation below is the one to flip.
+      await putEmails(db, ACC, [
+        email('e1', {
+          mailboxIds: { archive: true, inbox: true },
+          keywords: { $flagged: true },
+          receivedAt: at(7),
+        }),
+        inbox('e2', { receivedAt: at(5) }), // unflagged ⇒ this window can never take it
+      ])
+      await putQueryCache(
+        db,
+        windowRow(
+          'flagged-win',
+          { operator: 'AND', conditions: [{ inMailbox: 'archive' }, { hasKeyword: '$flagged' }] },
+          ['e1'],
+          { total: 1 },
+        ),
+      )
+
+      await moveToArchive(['e1', 'e2'])
+
+      expect((await win('flagged-win'))?.ids).toEqual(['e1']) // `e2` is correctly NOT spliced in
+      expect((await win('flagged-win'))?.total).toBe(1)
+      expect((await win('flagged-win'))?.queryState).toBeNull() // ← the cost: a re-query for nothing
+      expect(await insertedKeys('i1')).toEqual([])
+    })
+
+    it('VOIDS a partially-overlapping window whose order it cannot reproduce', async () => {
+      // The other half of the B8 report ("does not even void"): the newly-opened branch must still
+      // fall back to voiding when the placement is not provable — here a `subject` sort, whose
+      // collation is the server's.
+      await seedOverlap({ sort: [{ property: 'subject', isAscending: true }] })
+
+      await moveToArchive(['e1', 'e2'])
+
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1'])
+      expect((await win('archive-win'))?.queryState).toBeNull()
+      expect(await insertedKeys('i1')).toEqual([]) // nothing edited ⇒ nothing to roll back
+    })
+
+    it('keeps a partially-overlapping INCOMPLETE window as long as it was, after EVERY insert', async () => {
+      // The tail-drop invariant is paid per INSERT, not per transaction. Two arrivals both place at
+      // index 0, and the second evicts the first-inserted id rather than growing the head page.
+      await seedOverlap({ total: 40 })
+      await putEmails(db, ACC, [
+        inbox('e2', { receivedAt: at(20) }), // newer than everything loaded ⇒ index 0
+        inbox('e3', { receivedAt: at(30) }), // newer still ⇒ index 0 again, evicting e2's neighbour
+      ])
+
+      await moveToArchive(['e1', 'e2', 'e3'])
+
+      expect((await win('archive-win'))?.ids).toEqual(['e3', 'e2'])
+      expect((await win('archive-win'))?.ids).toHaveLength(2) // exactly as long as it was seeded
+      expect((await win('archive-win'))?.upToId).toBe('e2')
+      // 40 + e2 + e3. `e1` was already listed, so it is not a new match and moves nothing; `a1` and
+      // the old `e1` row did not LEAVE the query, they are one page down.
+      expect((await win('archive-win'))?.total).toBe(42)
+      expect(await insertedKeys('i1')).toEqual(['archive-win'])
+    })
+
+    it('places a bulk batch in the intent’s order and gets the same answer in any order', async () => {
+      // The decision NOT to pre-sort the arrivals (see `placeArrivals`): each placement recomputes its
+      // index against the RUNNING ids, so on a complete window the result is an insertion sort and is
+      // order-independent. This is the reverse of the `places a BULK move in one pass` case above and
+      // must land on the identical ids.
+      await putEmails(db, ACC, [
+        email('a1', { mailboxIds: { archive: true }, receivedAt: at(9) }),
+        email('a2', { mailboxIds: { archive: true }, receivedAt: at(5) }),
+        email('a3', { mailboxIds: { archive: true }, receivedAt: at(1) }),
+        inbox('e1', { receivedAt: at(20) }),
+        inbox('e2', { receivedAt: at(7) }),
+        inbox('e3', { receivedAt: at(3) }),
+      ])
+      await putQueryCache(
+        db,
+        windowRow('archive-win', inMailboxFilter('archive'), ['a1', 'a2', 'a3'], { total: 3 }),
+      )
+
+      await moveToArchive(['e3', 'e2', 'e1']) // reversed
+
+      expect((await win('archive-win'))?.ids).toEqual(['e1', 'a1', 'e2', 'a2', 'e3', 'a3'])
+      expect((await win('archive-win'))?.total).toBe(6)
+    })
+
+    it('breaks a TIE by ARRIVAL order, not by the sort — the order-independence has a limit', async () => {
+      // The claim above holds only for DISTINCT sort keys, and the test above cannot see the gap
+      // because every id in its fixture has its own day. `placeArrival` scans for the first
+      // neighbour the arrival sorts STRICTLY before (`compareSortKeys(...) < 0`), so an arrival ties
+      // in AFTER an equal neighbour — including one placed a moment earlier in the same batch. Two
+      // messages carrying the same `receivedAt` is the normal case for bulk-delivered mail.
+      //
+      // Recorded, not wished away, and behaviourally benign: every insert voids the window, so the
+      // server's `fullRequery` replaces `ids` wholesale and decides the tie itself.
+      const seed = async (key: string) => {
+        await putEmails(db, ACC, [
+          email('a1', { mailboxIds: { archive: true }, receivedAt: at(9) }),
+          inbox('e1', { receivedAt: at(5) }),
+          inbox('e2', { receivedAt: at(5) }), // the SAME instant as `e1`
+        ])
+        await putQueryCache(
+          db,
+          windowRow(key, inMailboxFilter('archive'), ['a1'], { total: 1 }), // complete
+        )
+      }
+
+      await seed('fwd-win')
+      await moveToArchive(['e1', 'e2'])
+      expect((await win('fwd-win'))?.ids).toEqual(['a1', 'e1', 'e2'])
+
+      // The identical batch, reversed, over an identical window and identical envelopes.
+      await db.queryCache.delete([ACC, 'fwd-win'])
+      await seed('rev-win')
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e2', 'e1'], from: 'inbox', to: 'archive' },
+        { id: 'i2', now: 2 },
+      )
+      expect((await win('rev-win'))?.ids).toEqual(['a1', 'e2', 'e1']) // NOT the forward answer
+      expect((await win('rev-win'))?.queryState).toBeNull() // which is why it does not matter
+    })
+
+    it('voids a partially-overlapping keyword window too — the setKeywords half of B8', async () => {
+      // `setKeywords` passes no `arrivals`, so its `entered` branch is void-only. It sat behind the
+      // same whole-window gate: an `is:read` window listing `e1` was not even voided when `[e1,e2]`
+      // were marked read together, so `e2` did not show up there until the next full reconcile.
+      await putEmails(db, ACC, [
+        email('e1', { keywords: { $seen: true } }),
+        inbox('e2'),
+        inbox('e3'),
+      ])
+      await putQueryCache(db, windowRow('read-win', { hasKeyword: '$seen' }, ['e1'], { total: 9 }))
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1', 'e2'], keyword: '$seen', value: true },
+        { id: 'i1', now: 1 },
+      )
+
+      expect((await win('read-win'))?.ids).toEqual(['e1']) // only the server can place `e2`
+      expect((await win('read-win'))?.total).toBe(9)
+      expect((await win('read-win'))?.queryState).toBeNull()
+      expect(await prunedKeys('i1')).toEqual([]) // void-only ⇒ nothing was edited, nothing to undo
+
+      // …and the all-listed case still keeps its baseline, exactly as for a move.
+      await db.queryCache.update([ACC, 'read-win'], { queryState: 'q-3' })
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+        { id: 'i2', now: 2 },
+      )
+      expect((await win('read-win'))?.queryState).toBe('q-3')
+    })
+
+    /**
+     * The UNDO half, and the ACCEPTED COST B8 makes reachable: rejecting the bulk move retracts MORE
+     * than it inserted. This is pinned as behaviour, not celebrated as correct.
+     *
+     * `insertedKeys` records WINDOWS, not which id landed where, so the retraction removes by
+     * intersection over the undo's whole id set — and that takes `e1` out of `archive-win` even though
+     * the apply never spliced `e1` in (the window already listed it) and the envelope patch
+     * deliberately leaves `e1` IN the archive. The window ends one row SHORTER than it was before the
+     * move. Before B8 this window could never have been in `insertedKeys` at all, because the
+     * whole-window gate skipped any window that listed a touched id; the existing arrival-retraction
+     * tests all seed a destination window with ZERO overlap, which is why it was not covered.
+     *
+     * A narrowing by `hadTo` was tried here and REVERTED — see the long note in `applyUndo`. `hadTo` is
+     * envelope-scoped and the question is window-scoped, so it fixes this shape and breaks the one in
+     * "an id the window did NOT list is spliced in and must come back out" below.
+     *
+     * What redeems it is the forced re-query at the end of this test, and nothing else.
+     */
+    it('a REJECTED bulk move over-retracts the id the window already listed, and re-queries', async () => {
+      await seedOverlap()
+      await moveToArchive(['e1', 'e2'])
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1', 'e2'])
+
+      const port = fakePort({
+        setEmails: async () =>
+          setResult({ notUpdated: { e1: { type: 'forbidden' }, e2: { type: 'forbidden' } } }),
+      })
+      await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      // The ENVELOPES are exact: `e2` goes back to the Inbox, and `e1` — which was in the archive
+      // before the move — keeps `archive` and gets `inbox` back.
+      expect((await db.emails.get([ACC, 'e2']))?.mailboxIds).toEqual({ inbox: true })
+      expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true, archive: true })
+      // The WINDOW is NOT: the retraction drops the whole undo id set, so `e1` goes too — a row that
+      // was in this window BEFORE the move and that the apply never inserted. `total` is one short of
+      // the truth to match. This is the over-retraction, asserted so a change to it is deliberate.
+      expect((await win('archive-win'))?.ids).toEqual(['a1'])
+      expect((await win('archive-win'))?.total).toBe(1)
+      expect((await win('archive-win'))?.upToId).toBe('a1')
+      // The window is voided anyway: our `ids` were edited, so the delta baseline is a lie regardless.
+      expect((await win('archive-win'))?.queryState).toBeNull()
+
+      const requeryPort = fakePort({
+        queryEmails: async () => ({
+          ids: ['a1', 'e1'],
+          queryState: 'q-9',
+          canCalculateChanges: true,
+          position: 0,
+          total: 2,
+        }),
+        getEmailEnvelopes: async (ids) => ({
+          list: ids.map((id) => email(id)),
+          notFound: [],
+          state: 'eml-1',
+        }),
+      })
+      await reconcileQuery(
+        requeryPort,
+        db,
+        ACC,
+        'archive-win',
+        { filter: inMailboxFilter('archive') },
+        clock,
+      )
+
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1']) // `e1` is back
+      expect((await win('archive-win'))?.total).toBe(2)
+      expect((await win('archive-win'))?.queryState).toBe('q-9')
+    })
+
+    /**
+     * THE SHAPE THAT KILLED THE `hadTo` NARROWING, and the reason it could ship green: every other
+     * fixture in this block puts the `hadTo` id INSIDE `window.ids`, so the `hadTo ∧ NOT-LISTED`
+     * branch was reached by no test at all.
+     *
+     * `e1` is in the archive AND the Inbox, so it is `hadTo` — a property of the ENVELOPE. But THIS
+     * archive window does not list it (it is a complete two-row window of `a1`/`a2`; think a filtered
+     * or freshly-paged view). The apply passes every touched envelope as an arrival and
+     * `placeArrivals` drops only the ids the window ALREADY LISTS, so `e1` IS spliced in here and DOES
+     * add 1 to `total`. A retraction that excluded `hadTo` ids would therefore leave `e1` and its `+1`
+     * behind for good — a phantom row the server rejected.
+     *
+     * The assertion below is the reverted, correct behaviour: the window returns to its exact pre-move
+     * state. Re-applying `ids.filter((id) => !hadTo.has(id))` in `applyUndo` must turn this RED.
+     */
+    it('an id the window did NOT list is spliced in and must come back out, `hadTo` or not', async () => {
+      await putEmails(db, ACC, [
+        email('a1', { mailboxIds: { archive: true }, receivedAt: at(9) }),
+        email('a2', { mailboxIds: { archive: true }, receivedAt: at(8) }),
+        // `hadTo` (already in the archive) — and NOT listed by the window below.
+        email('e1', { mailboxIds: { archive: true, inbox: true }, receivedAt: at(20) }),
+        inbox('e2', { receivedAt: at(21) }),
+      ])
+      await putQueryCache(
+        db,
+        windowRow('archive-win', inMailboxFilter('archive'), ['a1', 'a2'], { total: 2 }),
+      )
+
+      await moveToArchive(['e1', 'e2'])
+
+      // Both are spliced in — `e1` too, because THIS window never listed it.
+      expect((await win('archive-win'))?.ids).toEqual(['e2', 'e1', 'a1', 'a2'])
+      expect((await win('archive-win'))?.total).toBe(4)
+      expect(await insertedKeys('i1')).toEqual(['archive-win'])
+
+      const port = fakePort({
+        setEmails: async () =>
+          setResult({ notUpdated: { e1: { type: 'forbidden' }, e2: { type: 'forbidden' } } }),
+      })
+      await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      // The envelope patch is unchanged by any of this: `e1` keeps the archive it had before the move.
+      expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true, archive: true })
+      expect((await db.emails.get([ACC, 'e2']))?.mailboxIds).toEqual({ inbox: true })
+      // And the WINDOW is back to exactly what it was before the move — both inserts and both `+1`s
+      // taken back. Under the reverted narrowing this was `['e1','a1','a2']` with a total of 3.
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'a2'])
+      expect((await win('archive-win'))?.total).toBe(2)
+      expect((await win('archive-win'))?.upToId).toBe('a2')
+      expect((await win('archive-win'))?.queryState).toBeNull()
+    })
+
+    it('a destination window that could reject the restored `from` is never inserted into', async () => {
+      // The undo RESTORES `from` on the envelope, so a destination window whose filter EXCLUDES `from`
+      // could in principle be left holding a row it no longer accepts. It cannot happen: such a window
+      // can never be in `insertedKeys` in the first place. Saying "in the archive and NOT in the inbox"
+      // needs an `OR`/`NOT`, which `windowAcceptsLocally` refuses outright, so `placeArrivals` returns
+      // null and the window is only VOIDED. The conditions it DOES understand
+      // (`inMailbox`/`after`/`before`/`hasKeyword`/`notKeyword`) cannot be falsified by adding a
+      // mailbox id back to the envelope — so the placement gate, not the retraction, is what keeps
+      // this sound.
+      await putEmails(db, ACC, [
+        email('a1', { mailboxIds: { archive: true }, receivedAt: at(9) }),
+        email('e1', { mailboxIds: { archive: true, inbox: true }, receivedAt: at(7) }),
+        inbox('e2', { receivedAt: at(5) }),
+      ])
+      await putQueryCache(
+        db,
+        windowRow(
+          'not-inbox-win',
+          {
+            operator: 'AND',
+            conditions: [
+              { inMailbox: 'archive' },
+              { operator: 'NOT', conditions: [{ inMailbox: 'inbox' }] },
+            ],
+          },
+          ['a1'],
+          { total: 1 },
+        ),
+      )
+
+      await moveToArchive(['e1', 'e2'])
+
+      expect((await win('not-inbox-win'))?.ids).toEqual(['a1']) // nothing spliced in…
+      expect((await win('not-inbox-win'))?.queryState).toBeNull() // …void-only, the old behaviour
+      expect(await insertedKeys('i1')).toEqual([]) // ⇒ the retraction never sees this window
+    })
+
+    /**
+     * THE LARGER HOLE — the same rollback as the two tests above, at its worst.
+     *
+     * An arrival into an INCOMPLETE window is paid for by dropping the tail id, and the undo records
+     * nothing about what was evicted. At N > 2 that eats the entire head page: four inserts push all
+     * three original rows off the tail, the retraction takes the four inserts back out, and the
+     * window ends EMPTY while still carrying a `total` of 41.
+     *
+     * Not fixable within the undo's budget: restoring the evicted ids means recording them, i.e.
+     * growing a payload stored on the outbox row, which `outbox.ts` says it may not do. It converges
+     * (the retraction voids, the next reconcile is a `fullRequery`, and a rollback only happens
+     * because the server ANSWERED — so we are online). Until then the window is empty-but-nonzero,
+     * and the web UI must not paint a confident "no messages" over a window whose `total` is not zero.
+     */
+    it('the retraction can wipe the whole head page — the eviction the undo cannot record', async () => {
+      await putEmails(db, ACC, [
+        email('a1', { mailboxIds: { archive: true }, receivedAt: at(9) }),
+        email('a2', { mailboxIds: { archive: true }, receivedAt: at(8) }),
+        email('e1', { mailboxIds: { archive: true, inbox: true }, receivedAt: at(7) }),
+        inbox('e2', { receivedAt: at(20) }), // all four sort to index 0, newest last
+        inbox('e3', { receivedAt: at(21) }),
+        inbox('e4', { receivedAt: at(22) }),
+        inbox('e5', { receivedAt: at(23) }),
+      ])
+      await putQueryCache(
+        db,
+        windowRow('archive-win', inMailboxFilter('archive'), ['a1', 'a2', 'e1'], { total: 40 }),
+      )
+
+      await moveToArchive(['e1', 'e2', 'e3', 'e4', 'e5'])
+
+      // The APPLY is CORRECT: four inserts at index 0, the head page stays three long, `total` up by
+      // the four ids that really are new matches (`e1` was already listed).
+      expect((await win('archive-win'))?.ids).toEqual(['e5', 'e4', 'e3'])
+      expect((await win('archive-win'))?.total).toBe(44)
+
+      const port = fakePort({
+        setEmails: async () =>
+          setResult({
+            notUpdated: Object.fromEntries(
+              ['e1', 'e2', 'e3', 'e4', 'e5'].map((id) => [id, { type: 'forbidden' }]),
+            ),
+          }),
+      })
+      await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      // The ENVELOPES are exact, as always: `e1` keeps the archive it had before the move.
+      expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true, archive: true })
+      expect((await db.emails.get([ACC, 'e5']))?.mailboxIds).toEqual({ inbox: true })
+      // The WINDOW is not: a1/a2/e1 were evicted off the tail by the inserts and nothing restores
+      // them, so removing the four inserts leaves an EMPTY head page carrying a total of 41.
+      expect((await win('archive-win'))?.ids).toEqual([])
+      expect((await win('archive-win'))?.total).toBe(41) // ← empty, and not zero
+      expect((await win('archive-win'))?.upToId).toBeNull()
+      expect((await win('archive-win'))?.queryState).toBeNull() // the only thing that saves it
+    })
+
+    /**
+     * `retractWindows`' `Math.max(0, …)` clamp, which survived deletion with the whole suite green.
+     *
+     * It is NOT decorative, and the function's own comment says why: the retraction removes ids by a
+     * bare intersection over the undo's whole id set, so it can remove ids this rollback never put
+     * there — ids the window's `total` therefore never counted. Drive `total` below the number
+     * removed and a bare subtraction hands the list a NEGATIVE match count.
+     *
+     * The way it gets there is the one `retractWindows` already documents in its `get`-then-`put`:
+     * a reconcile landing BETWEEN the optimistic apply and the rollback, rewriting `total` from the
+     * server's answer. Here the server has meanwhile emptied the archive down to a single match.
+     */
+    it('the retraction clamps `total` at zero — it removes ids the total never counted', async () => {
+      await seedOverlap()
+
+      await moveToArchive(['e1', 'e2'])
+      expect((await win('archive-win'))?.ids).toEqual(['a1', 'e1', 'e2'])
+      expect(await insertedKeys('i1')).toEqual(['archive-win'])
+
+      // A reconcile lands in between and re-states `total` from the server: one match left.
+      const applied = await win('archive-win')
+      if (applied === undefined) throw new Error('window vanished')
+      await putQueryCache(db, { ...applied, total: 1, queryState: 'q-2' })
+
+      const port = fakePort({
+        setEmails: async () =>
+          setResult({ notUpdated: { e1: { type: 'forbidden' }, e2: { type: 'forbidden' } } }),
+      })
+      await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      // Two ids come out (`e1` — the over-retraction — and `e2`), against a total of 1.
+      expect((await win('archive-win'))?.ids).toEqual(['a1'])
+      expect((await win('archive-win'))?.total).toBe(0) // ← NOT -1
+      expect((await win('archive-win'))?.queryState).toBeNull()
+    })
+  })
 })
 
 describe('outbox — persisted undo (M3.3, defect D6)', () => {
@@ -1593,6 +2095,753 @@ describe('outbox — persisted undo (M3.3, defect D6)', () => {
     expect(await db.emails.get([ACC, 'e1'])).toBeDefined() // drained on the next pass
     expect(await db.emails.get([ACC, 'e2'])).toBeDefined()
     expect((await row('i1'))?.undo).toBeNull()
+  })
+
+  /**
+   * `applyUndo`'s `hadFrom` guard — the twin of the `hadTo` guard three lines above it, and the one
+   * the whole M8 episode was NOT about. It survived deletion with the suite green because the only
+   * fixture that set `hadFrom` set it to EVERY id in the batch, so the guard could never discriminate.
+   *
+   * A bulk move's ids do NOT have to share a source. `from` is the view the user acted in (the folder
+   * the list is pinned to), while a selected message can sit in other folders and not in that one at
+   * all — a Sent copy shown in a thread, a search result, a label view. `applyOptimistic` already
+   * knows this: `hadFrom` is computed per id, and the forward patch only deletes `from` from the ids
+   * that had it. Without the guard the ROLLBACK is not the inverse — it ADDS `from` to messages that
+   * were never in it, filing mail into a folder the user never put it in.
+   */
+  it('a rollback re-adds the SOURCE folder only to the ids that were actually in it', async () => {
+    await putEmails(db, ACC, [
+      email('e1', { mailboxIds: { inbox: true } }),
+      email('e2', { mailboxIds: { sent: true } }), // selected from a thread — never in the Inbox
+    ])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'move', emailIds: ['e1', 'e2'], from: 'inbox', to: 'archive' },
+      { id: 'i1', now: 1 },
+    )
+    expect((await row('i1'))?.undo).toMatchObject({ hadFrom: ['e1'] }) // per id, already
+
+    const port = fakePort({
+      setEmails: async () =>
+        setResult({ notUpdated: { e1: { type: 'forbidden' }, e2: { type: 'forbidden' } } }),
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect((await row('i1'))?.status).toBe('error')
+    expect((await db.emails.get([ACC, 'e1']))?.mailboxIds).toEqual({ inbox: true })
+    // The whole point: `e2` goes back to Sent ALONE. An unguarded rollback would leave it
+    // `{ sent: true, inbox: true }` — filed into the Inbox by an operation that failed.
+    expect((await db.emails.get([ACC, 'e2']))?.mailboxIds).toEqual({ sent: true })
+  })
+})
+
+/**
+ * M3.10, gap B7 — the folder-tree badge. `Mailbox.unreadEmails`/`totalEmails` are server-owned and
+ * were never patched optimistically. That was invisible while the LIST was equally stale; B1 and B2
+ * made the list move instantly, so the row now leaves the folder while the badge beside it does not,
+ * until the server's delta lands — offline, until reconnect.
+ *
+ * The fix is a DELTA PATCH (±1), not a replica recompute: `db.emails` is a bounded, actively
+ * shrinking horizon, so a local `count()` of a 50k Inbox is not stale but categorically wrong. See
+ * `adjustMailboxCounts` for the full argument.
+ *
+ * Every fixture below seeds NON-ZERO counts on purpose. With everything at 0 the `Math.max(0, …)`
+ * clamp makes several wrong implementations indistinguishable from a correct one — the failure mode
+ * B1's verification caught, reproduced here deliberately as a rule rather than an accident.
+ */
+describe('outbox — the folder counts (M3.10, gap B7)', () => {
+  /** Non-zero everywhere, and the THREAD counts are non-zero too so "untouched" is assertable. */
+  async function seedBoxes(): Promise<void> {
+    await putMailboxes(db, ACC, [
+      mailbox('inbox', { totalEmails: 10, unreadEmails: 4, totalThreads: 7, unreadThreads: 3 }),
+      mailbox('archive', { totalEmails: 2, unreadEmails: 1, totalThreads: 2, unreadThreads: 1 }),
+      mailbox('work', { totalEmails: 5, unreadEmails: 5, totalThreads: 5, unreadThreads: 5 }),
+    ])
+  }
+
+  async function counts(id: string): Promise<{ total: number; unread: number }> {
+    const box = await db.mailboxes.get([ACC, id])
+    if (box === undefined) throw new Error(`no mailbox ${id}`)
+    return { total: box.totalEmails, unread: box.unreadEmails }
+  }
+
+  const read = (id: string, mailboxIds: Record<string, true>) =>
+    email(id, { mailboxIds, keywords: { $seen: true } })
+  const unread = (id: string, mailboxIds: Record<string, true>) =>
+    email(id, { mailboxIds, keywords: {} })
+
+  const rejectAll = (ids: string[]) =>
+    fakePort({
+      setEmails: async () =>
+        setResult({ notUpdated: Object.fromEntries(ids.map((id) => [id, { type: 'forbidden' }])) }),
+    })
+
+  describe('the forward apply', () => {
+    /**
+     * THE `from` GATE — the third case `moveCountDeltas` covers and the only one its doc used to
+     * omit. The `to` gate ("already in the destination") is pinned by the test below and the
+     * `from === null` case by the copy test; `from !== null` but the message was NEVER IN `from` was
+     * neither named nor covered, and dropping `&& row.mailboxIds[from] === true` left the whole
+     * suite green.
+     *
+     * The action is ordinary, not exotic: a bulk selection made from a LABEL or a SEARCH view spans
+     * folders, and `from` is only the view the user archived out of. Without the gate the source is
+     * debited once per id in the batch regardless of where those ids were — 8/2 where the truth is
+     * 9/3, i.e. the Inbox badge counts down for a message the Inbox never held.
+     */
+    it('a move debits the source only for the ids that were ACTUALLY in it', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true }),
+        unread('e2', { work: true }), // NEVER in the source
+      ])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 }) // e1 left it; e2 never was in it
+      expect(await counts('work')).toEqual({ total: 5, unread: 5 }) // a move touches `from` and `to`, nothing else
+      expect(await counts('archive')).toEqual({ total: 4, unread: 3 }) // BOTH arrived
+      // The gate's other half of the machinery: `hadFrom` is per id, and persisting it is the only
+      // way the rollback and the re-apply can still tell e1 from e2 later.
+      expect((await row('i1'))?.undo).toMatchObject({ hadFrom: ['e1'] })
+    })
+
+    it('a move debits the source and credits the destination, per id and per read state', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true }),
+        read('e2', { inbox: true }),
+        unread('e3', { inbox: true, archive: true }), // ALREADY in the destination
+      ])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2', 'e3'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+
+      // Source: three left it, two of them unread.
+      expect(await counts('inbox')).toEqual({ total: 7, unread: 2 })
+      // Destination: only TWO arrived — `e3` was already there and must contribute 0 to both fields
+      // — and only `e1` of those was unread.
+      expect(await counts('archive')).toEqual({ total: 4, unread: 2 })
+      // The THREAD counts are deliberately left alone: they are server-owned, nothing reads them,
+      // and a per-message move cannot imply a thread-count delta at all (moving one message out of a
+      // three-message thread changes `totalThreads` by 0, not 1, and nothing local can tell which).
+      const box = await db.mailboxes.get([ACC, 'inbox'])
+      expect(box?.totalThreads).toBe(7)
+      expect(box?.unreadThreads).toBe(3)
+    })
+
+    it('a move with from === null (a copy) credits the destination and debits NOTHING', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true })])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1'], from: null, to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 }) // the message left nothing
+      expect(await counts('archive')).toEqual({ total: 3, unread: 2 })
+    })
+
+    it('marking read decrements unreadEmails in EVERY mailbox the message is in, total never', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true, work: true }),
+        read('e2', { inbox: true }), // already read — marking it read again must move nothing
+      ])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1', 'e2'], keyword: '$seen', value: true },
+        { id: 'i1', now: 1 },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 3 })
+      expect(await counts('work')).toEqual({ total: 5, unread: 4 })
+    })
+
+    it('marking UNread increments, and only for the ids that were actually read', async () => {
+      await seedBoxes()
+      // The two ids differ in MEMBERSHIP as well as in read state, deliberately: with both of them
+      // in the Inbox alone, inverting the flip gate ("skip the rows that were already read" vs
+      // "skip the rows that flip") yields the same Inbox number and the test proves nothing.
+      await putEmails(db, ACC, [
+        read('e1', { inbox: true, work: true }),
+        unread('e2', { inbox: true }), // already unread — must contribute 0
+      ])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1', 'e2'], keyword: '$seen', value: false },
+        { id: 'i1', now: 1 },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 5 })
+      expect(await counts('work')).toEqual({ total: 5, unread: 6 })
+    })
+
+    /**
+     * THE GATE, and the single most mutation-worthy line in B7. `Mailbox.unreadEmails` is a count of
+     * `$seen`; no other keyword has a folder count at all. A label add or strip is a `setKeywords`
+     * intent reaching exactly the same code path, and it must leave every badge where it was.
+     */
+    it('a LABEL add or strip moves no folder count whatsoever', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true, work: true }),
+        email('e2', { mailboxIds: { inbox: true }, keywords: { $flagged: true } }),
+      ])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1'], keyword: 'work', value: true },
+        { id: 'i1', now: 1 },
+      )
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e2'], keyword: '$flagged', value: false },
+        { id: 'i2', now: 2 },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+      expect(await counts('work')).toEqual({ total: 5, unread: 5 })
+    })
+
+    /**
+     * The pre-image MUST be read before `deleteEmails` — this case used to read nothing at all before
+     * it. Computed afterwards the delta is empty and every badge stays put.
+     */
+    it('a destroy debits every mailbox the message was in — read from the PRE-image', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true, archive: true }),
+        read('e2', { inbox: true }),
+      ])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'destroyEmails', emailIds: ['e1', 'e2'] },
+        {
+          id: 'i1',
+          now: 1,
+        },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 8, unread: 3 })
+      expect(await counts('archive')).toEqual({ total: 1, unread: 0 })
+    })
+
+    it('never drives a count negative — the replica may hold what the server has not counted', async () => {
+      // The horizon cuts both ways: a backfill can hold envelopes a stale `Mailbox` row does not
+      // reflect yet, so a decrement can outrun the number it is decrementing.
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 1, unreadEmails: 0 })])
+      await putEmails(db, ACC, [unread('e1', { inbox: true }), unread('e2', { inbox: true })])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'destroyEmails', emailIds: ['e1', 'e2'] },
+        {
+          id: 'i1',
+          now: 1,
+        },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 0, unread: 0 }) // NOT -1 / -2
+    })
+
+    it('leaves a mailbox the replica does not hold alone instead of inventing a row', async () => {
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 10, unreadEmails: 4 })])
+      await putEmails(db, ACC, [unread('e1', { inbox: true })])
+
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'not-synced-yet' },
+        { id: 'i1', now: 1 },
+      )
+
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 })
+      expect(await db.mailboxes.get([ACC, 'not-synced-yet'])).toBeUndefined()
+    })
+  })
+
+  describe('the rollback', () => {
+    /**
+     * The same `from` gate, in the direction where its absence INVENTS mail: `negate` turns the
+     * missing debit into a CREDIT, so `inbox` gains +1 for an id that was never in `inbox` — a badge
+     * counting a message the folder never held, which no later `Mailbox/changes` need ever correct.
+     *
+     * This is the direction the persisted `hadFrom` exists for. `applyUndo` rebuilds the pre-image
+     * as `{ [from]: hadFrom.has(id), [to]: hadTo.has(id) }` — with an explicit `false`, which is the
+     * only membership record in this module that ever carries one — purely so the gate can consume
+     * it. Nothing tested that the persistence did anything at all.
+     *
+     * THE RE-SEED between the apply and the rollback is load-bearing, not decoration. The gate is
+     * SHARED by both directions, so a round trip cancels itself out: without it the apply reads
+     * -2/-2 and the rollback +2/+2, landing on exactly the same number as the correct -1/-1 then
+     * +1/+1. Restating the post-move counts discards the forward arithmetic and leaves the
+     * rollback's alone under test.
+     */
+    it('a rejected move credits the source only for the ids that were ACTUALLY in it', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true }),
+        unread('e2', { work: true }), // never in `inbox`
+      ])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+      // The post-move truth, restated. See above — this is what isolates the rollback.
+      await putMailboxes(db, ACC, [
+        mailbox('inbox', { totalEmails: 9, unreadEmails: 3 }),
+        mailbox('archive', { totalEmails: 4, unreadEmails: 3 }),
+      ])
+
+      await replayOutbox(rejectAll(['e1', 'e2']), db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 }) // +1 for e1 — and nothing for e2
+      expect(await counts('archive')).toEqual({ total: 2, unread: 1 }) // both leave again
+      expect(await counts('work')).toEqual({ total: 5, unread: 5 }) // still untouched
+    })
+
+    it('a REJECTED move puts both mailboxes’ counts back exactly', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true }),
+        read('e2', { inbox: true }),
+        unread('e3', { inbox: true, archive: true }),
+      ])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2', 'e3'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+
+      await replayOutbox(rejectAll(['e1', 'e2', 'e3']), db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+      expect(await counts('archive')).toEqual({ total: 2, unread: 1 })
+    })
+
+    it('a PARTIAL rejection reverses the count only for the ids that actually failed', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true }), unread('e2', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+      expect(await counts('inbox')).toEqual({ total: 8, unread: 2 })
+
+      const port = fakePort({
+        setEmails: async () =>
+          setResult({ updated: ['e1'], notUpdated: { e2: { type: 'forbidden' } } }),
+      })
+      await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+      // e1 stayed archived, e2 came back: exactly ONE of the two is reversed on each side.
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 })
+      expect(await counts('archive')).toEqual({ total: 3, unread: 2 })
+    })
+
+    it('a REJECTED mark-read restores unreadEmails, and only for the id that flipped', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true }), read('e2', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1', 'e2'], keyword: '$seen', value: true },
+        { id: 'i1', now: 1 },
+      )
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 3 })
+
+      await replayOutbox(rejectAll(['e1', 'e2']), db, ACC, { random: NO_JITTER })
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 }) // back, not 2
+    })
+
+    it('a rejected LABEL change reverses no count either — both directions of the gate', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1'], keyword: 'work', value: true },
+        { id: 'i1', now: 1 },
+      )
+
+      await replayOutbox(rejectAll(['e1']), db, ACC, { random: NO_JITTER })
+
+      expect((await row('i1'))?.status).toBe('error')
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+    })
+
+    /**
+     * The sharpest trap in the rollback path: a destroy's undo is a network RE-FETCH, and an id the
+     * server reports `notFound` is really gone ("already gone" is a SUCCESS here). Restoring its
+     * count would be a permanent over-count with no correction coming — that mailbox never changes
+     * again, so `Mailbox/changes` never re-reports it.
+     */
+    it('a rejected destroy restores counts only for the envelopes the server RETURNED', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true }), unread('e2', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'destroyEmails', emailIds: ['e1', 'e2'] },
+        {
+          id: 'i1',
+          now: 1,
+        },
+      )
+      expect(await counts('inbox')).toEqual({ total: 8, unread: 2 })
+
+      const port = fakePort({
+        setEmails: async () =>
+          setResult({ notDestroyed: { e1: { type: 'forbidden' }, e2: { type: 'forbidden' } } }),
+        // e2 really is gone server-side — it must come back neither as an envelope nor as a count.
+        getEmailEnvelopes: async () => ({
+          list: [unread('e1', { inbox: true })],
+          notFound: ['e2'],
+          state: 's',
+        }),
+      })
+      await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+      expect(await db.emails.get([ACC, 'e2'])).toBeUndefined()
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 }) // +1, not +2
+    })
+  })
+
+  /**
+   * `reapplyPendingCounts` — the durability half. A sync pass writes the server's ABSOLUTE count
+   * over a badge an unsent intent has already moved, so the delta has to go back on.
+   *
+   * The narrowing to `pending` is the whole safety argument and it is asserted here directly rather
+   * than through the engine, because the engine cannot hold a row `inflight` on demand.
+   */
+  describe('re-applying after a sync pass', () => {
+    const bothFields = { total: ['inbox'], unread: ['inbox'] }
+
+    async function markRead(): Promise<void> {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+        { id: 'i1', now: 1 },
+      )
+      // The pass overwrites the badge with the server's pre-mutation number.
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 10, unreadEmails: 4 })])
+    }
+
+    it('puts an UNSENT intent’s delta back over the count the pass overwrote', async () => {
+      await markRead()
+
+      await reapplyPendingCounts(db, ACC, bothFields)
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 3 })
+    })
+
+    /**
+     * THE `inflight` EXCLUSION. `pendingOutbox` — the function every other caller here uses —
+     * returns `pending` AND `inflight`, and re-using it would have been the obvious thing to do. It
+     * is wrong for arithmetic: an inflight intent's request is already out, its effect may already
+     * be in the number the server just handed us, and `recoverStranded` even re-sends one a killed
+     * leader left behind. Adding its ±1 again is a double-count — and a double-count, unlike
+     * staleness, NEVER self-corrects, because the mailbox is only re-reported when it changes again.
+     */
+    it('never re-applies an INFLIGHT intent — its effect may already be in the server’s number', async () => {
+      await markRead()
+      await db.outbox.update([ACC, 'i1'], { status: 'inflight' })
+
+      await reapplyPendingCounts(db, ACC, bothFields)
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 }) // the server's word stands
+    })
+
+    it('re-applies only the FIELDS the pass actually wrote', async () => {
+      await markRead()
+
+      // A rename: neither count was overwritten, so neither may be re-applied.
+      await reapplyPendingCounts(db, ACC, { total: [], unread: [] })
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+
+      // A second unsent intent — a move, whose delta spans BOTH fields — against a pass that
+      // rewrote only `unreadEmails`.
+      await putEmails(db, ACC, [unread('e2', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e2'], from: 'inbox', to: 'archive' },
+        { id: 'i2', now: 2 },
+      )
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 10, unreadEmails: 4 })])
+      await reapplyPendingCounts(db, ACC, { total: [], unread: ['inbox'] })
+
+      // `unreadEmails` gets both unsent deltas back (-1 mark-read, -1 move); `totalEmails` gets
+      // nothing, because the pass never touched it and the optimistic -1 is still in the row.
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 2 })
+    })
+
+    /**
+     * THE OTHER POLARITY of the same narrowing. The test above only ever passes
+     * `{ total: [], unread: [] }` and `{ total: [], unread: ['inbox'] }`, so the `total` half of the
+     * per-field zeroing carried all the weight and the `unread` half carried none: deleting
+     * `if (!unread.has(mailboxId)) delta.unread = 0` left the whole suite green.
+     *
+     * `{ total: ['inbox'], unread: [] }` is an EVERYDAY pass, not a contrivance. A READ message
+     * arriving in or leaving a folder changes `totalEmails` and not `unreadEmails`, so
+     * `Mailbox/changes` reporting `updatedProperties: ['totalEmails']` alone is ordinary, and
+     * `delta.ts` turns exactly that into this shape.
+     *
+     * And what sits behind it is the failure mode this module argues about at length: the unsent
+     * move's `unread` -1 goes on top of the optimistic -1 STILL SITTING in the row, so
+     * `unreadEmails` reads 2 where the truth is 3 — a double-count, which unlike staleness never
+     * self-corrects, because the mailbox is only re-reported when it changes AGAIN.
+     */
+    it('re-applies only the FIELDS the pass wrote — the `unread` half of the narrowing too', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [unread('e1', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 })
+
+      // The pass overwrote `totalEmails` ONLY: it is back at the server's pre-move 10, while
+      // `unreadEmails` still holds our optimistic 3.
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 10, unreadEmails: 3 })])
+
+      await reapplyPendingCounts(db, ACC, { total: ['inbox'], unread: [] })
+
+      // `totalEmails` gets the -1 back. `unreadEmails` must NOT — it was never overwritten.
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 })
+      // The destination was not in the pass at all, so neither field of its delta may be re-applied.
+      expect(await counts('archive')).toEqual({ total: 3, unread: 2 })
+    })
+
+    it('re-derives a move’s delta from the persisted undo, on both ends', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true }),
+        unread('e2', { inbox: true, archive: true }), // already in the destination
+      ])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+      await putMailboxes(db, ACC, [
+        mailbox('inbox', { totalEmails: 10, unreadEmails: 4 }),
+        mailbox('archive', { totalEmails: 2, unreadEmails: 1 }),
+      ])
+
+      await reapplyPendingCounts(db, ACC, {
+        total: ['inbox', 'archive'],
+        unread: ['inbox', 'archive'],
+      })
+
+      // `hadFrom`/`hadTo` survive in the undo, so `e2` still contributes 0 to the destination.
+      expect(await counts('inbox')).toEqual({ total: 8, unread: 2 })
+      expect(await counts('archive')).toEqual({ total: 3, unread: 2 })
+    })
+
+    /**
+     * The THIRD consumer of the `from` gate, and the third place a membership record is built with
+     * an explicit `false` for it: `unsentCountDeltas` reconstructs
+     * `{ [from]: hadFrom.has(id) }` from the persisted undo. The test above re-derives a move whose
+     * ids were ALL in `from`, so `hadFrom.has` returned `true` for every one of them and the gate
+     * could not discriminate — the same blind spot the forward and rollback tests had.
+     *
+     * Here `e2` was never in the Inbox, so the undo persists `hadFrom: ['e1']` and the re-apply must
+     * put back exactly ONE debit. Without the gate it puts back two, on top of the number the pass
+     * just wrote.
+     */
+    it('re-derives a move’s delta for the ids that were ACTUALLY in the source, and no others', async () => {
+      await seedBoxes()
+      await putEmails(db, ACC, [
+        unread('e1', { inbox: true }),
+        unread('e2', { work: true }), // never in `inbox`
+      ])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'move', emailIds: ['e1', 'e2'], from: 'inbox', to: 'archive' },
+        { id: 'i1', now: 1 },
+      )
+      // The pass re-reported the Inbox with the server's pre-move numbers, erasing our -1.
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 10, unreadEmails: 4 })])
+
+      await reapplyPendingCounts(db, ACC, bothFields)
+
+      expect(await counts('inbox')).toEqual({ total: 9, unread: 3 }) // -1, not -2
+    })
+
+    /**
+     * THE GATE, on the RE-APPLY path — a second copy of it used to live in `unsentCountDeltas` and
+     * was completely unpinned: deleting it left the whole suite green, because the forward-apply
+     * gate test above only ever exercised the copy in `countDeltasFor`.
+     *
+     * There is real behaviour behind it. An offline label add is a `setKeywords` intent with a
+     * `keywords` undo, and it reaches this path like any other. Without the gate its `had` — the set
+     * of ids that already carried the LABEL — is read as if it were the `$seen` pre-image, and
+     * `unreadEmails` badges move for a change that touched no read state at all. The two copies are
+     * now ONE: the re-apply routes through `countDeltasFor`, so there is a single gate to get right.
+     */
+    it('a LABEL add is never re-applied as a read-state change', async () => {
+      await seedBoxes()
+      // Unread and NOT yet labelled, so `had` is empty: with the gate gone, `!had.has('e1')` reads
+      // as "was unread", the flip gate passes, and the Inbox badge moves 4 → 3 for a label add.
+      await putEmails(db, ACC, [unread('e1', { inbox: true })])
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'setKeywords', emailIds: ['e1'], keyword: 'work', value: true },
+        { id: 'i1', now: 1 },
+      )
+      await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 10, unreadEmails: 4 })])
+
+      await reapplyPendingCounts(db, ACC, bothFields)
+
+      expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+    })
+
+    /**
+     * THE FOUR LAUNDERING PATHS, and the reason the predicate is `pending` AND `attempts === 0`
+     * rather than `pending` alone.
+     *
+     * `pending` in this state machine means "not currently dispatched", NOT "never dispatched".
+     * Each path below takes a row whose request HAS gone out and puts it back to `pending`; its ±1
+     * may already be in the server's number, so re-applying it double-counts — and a double-count
+     * never self-corrects, because the mailbox is only re-reported when it changes AGAIN. All four
+     * assert the SAFE error instead: the server's number stands, and it reverts to the optimistic
+     * one when the intent finally lands.
+     *
+     * This block was titled THE THREE LAUNDERING PATHS and covered three. The fourth — the
+     * per-object `rateLimit` retry — was missed because it is the only one not reached from a THROWN
+     * error, and it is the one whose exclusion needs the least hedging of the four.
+     */
+    describe('never re-applies a row that was already dispatched', () => {
+      it('a row `recoverStranded` returned to pending — the request went out, the leader died', async () => {
+        await markRead()
+        // A leader claimed the row and was killed mid-request: it is stranded `inflight`.
+        await db.outbox.update([ACC, 'i1'], { status: 'inflight' })
+        // `notBefore` past `now` keeps replay from ALSO re-sending it in this pass, so what is under
+        // test is the recovery alone.
+        await db.outbox.update([ACC, 'i1'], { notBefore: 10_000 })
+        const port = fakePort({ setEmails: unused })
+
+        await replayOutbox(port, db, ACC, { now: 100, random: NO_JITTER })
+
+        const recovered = await row('i1')
+        expect(recovered?.status).toBe('pending') // laundered back — this is the hazard
+        expect(recovered?.attempts).toBe(1) // …but recorded as dispatched, which is what saves it
+
+        await reapplyPendingCounts(db, ACC, bothFields)
+        expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+      })
+
+      it('a row the TRANSIENT retry returned to pending — a thrown error may have been processed', async () => {
+        await markRead()
+        const port = fakePort({
+          setEmails: async () => {
+            // The response may simply have been lost. The code's own comment says a thrown error
+            // leaves it UNKNOWN whether the request reached the server; that reasoning was applied
+            // only to `sendEmail`, and a ±1 count delta is no more idempotent than a submission.
+            throw new TypeError('fetch failed')
+          },
+        })
+
+        await replayOutbox(port, db, ACC, { now: 100, random: NO_JITTER })
+
+        const backedOff = await row('i1')
+        expect(backedOff?.status).toBe('pending')
+        expect(backedOff?.attempts).toBe(1)
+
+        await reapplyPendingCounts(db, ACC, bothFields)
+        expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+      })
+
+      it('a row AUTH EXPIRY returned to pending', async () => {
+        await markRead()
+        const port = fakePort({
+          setEmails: async () => {
+            throw new JmapHttpError(401, '')
+          },
+        })
+
+        await expect(
+          replayOutbox(port, db, ACC, { now: 100, random: NO_JITTER }),
+        ).rejects.toBeInstanceOf(JmapHttpError)
+
+        const parked = await row('i1')
+        expect(parked?.status).toBe('pending')
+        expect(parked?.attempts).toBe(1)
+
+        // The weakest of the four — a 401 very probably precedes processing — and skipped anyway,
+        // because "very probably" is not a standard an unrecoverable double-count may rest on.
+        await reapplyPendingCounts(db, ACC, bothFields)
+        expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+      })
+
+      /**
+       * THE FOURTH PATH, and the STRONGEST case for skipping of all four. The other three rest on
+       * "the request MAY have reached the server": a stranded leader, a lost response, a 401 that
+       * probably preceded processing. This one rests on "it DID". A per-object `SetError` is the
+       * server ANSWERING — the request provably arrived and was processed — and in a bulk intent
+       * the objects that were NOT rate-limited were applied, so part of this row's delta is
+       * certainly already inside the number the pass just handed us. There is no doubt to resolve
+       * here, only an obligation to skip.
+       *
+       * It is also the path that was missed, twice, because it is the only one not reached from a
+       * thrown error: the row is laundered back to `pending` from a SUCCESSFUL response.
+       */
+      it('a row a per-object rateLimit returned to pending — the server ANSWERED', async () => {
+        await markRead()
+        const port = fakePort({
+          setEmails: async () => setResult({ notUpdated: { e1: { type: 'rateLimit' } } }),
+        })
+
+        await replayOutbox(port, db, ACC, { now: 100, random: NO_JITTER })
+
+        const backedOff = await row('i1')
+        expect(backedOff?.status).toBe('pending')
+        expect(backedOff?.attempts).toBe(1) // the increment is the whole safety property
+
+        await reapplyPendingCounts(db, ACC, bothFields)
+        expect(await counts('inbox')).toEqual({ total: 10, unread: 4 })
+      })
+    })
   })
 })
 
@@ -1936,7 +3185,12 @@ describe('outbox — replay resilience', () => {
     )
     const still = await row('i1')
     expect(still?.status).toBe('pending')
-    expect(still?.attempts).toBe(0)
+    // `attempts` DOES advance, and this assertion is the whole reason: it is what marks the row as
+    // having been dispatched, so `unsentOutbox` will not re-apply its count delta on top of a server
+    // number that might already contain it. Nothing else about the row changes — it is not backed
+    // off, not rolled back and not dead-lettered.
+    expect(still?.attempts).toBe(1)
+    expect(still?.nextAttemptAt).toBeNull() // ready immediately once the session is renewed
     expect((await db.emails.get([ACC, 'e1']))?.keywords).toEqual({ $seen: true })
   })
 

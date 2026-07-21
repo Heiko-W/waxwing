@@ -34,13 +34,14 @@ import {
  * test here runs `visible`, so the visibility half of that AND is NEVER exercised. It has dedicated
  * unit coverage for exactly that reason.
  *
- * **There is no background-push test and there must never be one.** Not "hard" — there is no code.
- * ADR-010: Stalwart publishes no VAPID key, so the app contains no `applicationServerKey`, no
- * `PushSubscription/set` and no `push` listener at all. A spec that closed the app and waited for a
- * banner would be asserting behaviour that exists in no browser against any JMAP server. The only
- * legitimate neighbour is the assertion that the app SAYS SO honestly, and it lives in
- * settings.spec.ts (`notify.background.unavailable`) as the guard on the capability probe reaching
- * the UI against a real session.
+ * **There is no background-push test, because there is no background-push code.** The app contains
+ * no `applicationServerKey`, no `PushSubscription/set` and no `push` listener at all (ADR-010).
+ * Stalwart v0.16.14 now DOES publish a VAPID key, so the blocker is no longer the server — it is
+ * that our client half was never built, and building it is an open owner decision. Until it is
+ * built, a spec that closed the app and waited for a banner would assert behaviour no code
+ * implements. The only legitimate neighbour is the assertion that the app SAYS SO honestly, and it
+ * lives in settings.spec.ts (the `notify.background.*` note) as the guard on the capability probe
+ * reaching the UI against a real session.
  *
  * **A notification CLICK is not dispatchable.** No Playwright API and no CDP method fires one. A
  * synthetic `NotificationEvent` fails twice over: `ExtendableEvent.waitUntil` rejects untrusted

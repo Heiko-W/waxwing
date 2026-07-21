@@ -430,6 +430,7 @@
     },
     "loadMore": "Load more",
     "loading": "Loading messages",
+    "stale": "This list is out of date and will refresh on the next sync.",
     "empty": "No messages in this folder.",
     "noMailbox": "Select a folder",
     "undo": "Undo",
@@ -826,7 +827,7 @@
     },
     "background": {
       "unavailable": "Notifications while {{product}} is fully closed are not available with this server. They need the server to publish a Web-Push signing key (RFC 9749); this one does not. Everything above works whenever {{product}} is open.",
-      "available": "This server also supports notifications while {{product}} is closed."
+      "notImplemented": "This server supports notifications while {{product}} is closed, but {{product}} does not deliver them yet."
     },
     "message": {
       "noSubject": "(no subject)",

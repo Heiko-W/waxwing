@@ -65,6 +65,7 @@ import {
   failedOutbox,
   pendingOutbox,
   putEmails,
+  unsentOutbox,
 } from '../repo'
 import {
   backoffDelayMs,
@@ -74,6 +75,7 @@ import {
   STUCK_AFTER_ATTEMPTS,
 } from './backoff'
 import { classifySetError, classifyThrown, isAuthExpiry, thrownErrorType } from './conflict'
+import type { MailboxCountWrites } from './delta'
 import type { JmapPort, PortSetError, PortSetResult } from './types'
 
 // ---------------------------------------------------------------------------------------------
@@ -467,8 +469,9 @@ function compareSortKeys(a: readonly number[], b: readonly number[]): number {
  *    last loaded row would put it before messages that sort ahead of it.
  *  - On an INCOMPLETE window the splice is paid for by dropping the last id, keeping `ids.length` — and
  *    therefore the head page this window is — exactly as long as it was. See the block comment for the
- *    two things that would otherwise drift (`windowLimit`, the load-more guard). The dropped id is
- *    never one we just inserted: an incomplete window refuses a tail insert.
+ *    two things that would otherwise drift (`windowLimit`, the load-more guard). WITHIN ONE CALL the
+ *    dropped id is never the one being inserted: an incomplete window refuses a tail insert. Across a
+ *    BATCH it may well be an arrival a previous call placed — see {@link placeArrivals}.
  */
 function placeArrival(
   window: Pick<QueryCacheRow, 'filter' | 'sort' | 'collapseThreads'>,
@@ -515,6 +518,29 @@ function placeArrival(
  * The cheap, pure gates run FIRST so that a window this can never place — a free-text search, a
  * `from`-sorted list — costs no envelope read at all. Only then are the neighbours loaded, once per
  * window rather than once per arrival, inside the caller's transaction.
+ *
+ * ORDER — decided, not accidental (gap B8, where a bulk move first reached this with a window that
+ * already holds part of the batch):
+ *  - The arrivals are placed in the INTENT's order and are deliberately NOT pre-sorted by
+ *    {@link localSortKey}. Each placement recomputes its index against the RUNNING `ids`, so placing
+ *    one arrival does shift the index computed for the next; there is no batch-computed index to go
+ *    stale. On a COMPLETE window that makes the result an insertion sort, and therefore independent of
+ *    the order the ids arrive in AS LONG AS THEIR SORT KEYS ARE DISTINCT (pinned by the tests).
+ *    TIES ARE ORDER-DEPENDENT, and that is not a rounding error: {@link placeArrival} scans for the
+ *    first neighbour the arrival sorts STRICTLY before (`compareSortKeys(...) < 0`), so an arrival
+ *    lands AFTER every equal neighbour — including one placed a moment earlier in the same batch. Two
+ *    ids delivered in the same second (the normal case for bulk mail, not a contrived one) therefore
+ *    come out in intent order: `[e1,e2]` gives `…e1,e2`, `[e2,e1]` gives `…e2,e1`. Benign, and pinned
+ *    by a test rather than wished away: the window is voided on every insert, so the server's
+ *    `fullRequery` replaces `ids` wholesale and decides the tie itself.
+ *  - Sorting first would be strictly WORSE on an incomplete window: place newest-first and each insert
+ *    shortens the tail under the arrivals still to come, so one that now sorts past the last loaded row
+ *    is refused ({@link placeArrival}) and its match never reaches `total`. The intent order had
+ *    already made room for it.
+ *  - The tail-drop rule is paid PER INSERT, not per transaction, so `ids.length` is preserved after N
+ *    arrivals exactly as it is after one — a 50-id move into a 20-long incomplete window leaves it 20
+ *    long, each insert evicting the current last id — which ACROSS THE BATCH may be an arrival placed
+ *    a moment ago, even though within a single {@link placeArrival} call it never is.
  */
 async function placeArrivals(
   db: ReplicaDb,
@@ -600,9 +626,12 @@ interface WindowEffects {
  * server's answer. A window whose `ids` did NOT actually change keeps its state, because its baseline
  * is still honest.
  *
- * `entered` IS gated on membership and `resorted` is NOT, and the asymmetry is the point:
- *  - `entered` is about FILTER arrival, so it is asked only of windows that do NOT yet list an id. A
- *    window that already holds the row has already taken it in; there is nothing to splice.
+ * `entered` IS gated on membership — PER ID (gap B8) — and `resorted` is NOT, and the asymmetry is
+ * the point:
+ *  - `entered` is about FILTER arrival, so it is asked only of windows still MISSING at least one of
+ *    the touched ids. A window that already holds ALL of them has taken them in; there is nothing left
+ *    to splice. Per ID rather than per window because a bulk move is ONE call: a window listing `e1`
+ *    but not `e2` must still pick `e2` up, and the whole-window quantifier placed neither.
  *  - `resorted` is about COLLATION, which is not a property of the rows a window happens to have
  *    loaded. Gating it on membership concealed a whole case: a message can arrive in a window BY SORT.
  *    An "Unread first" folder window (filter `AND(inMailbox, after)`, sort `hasKeyword $seen`) whose
@@ -655,11 +684,30 @@ async function updateWindows(
       pruned.push(window.key)
       continue
     }
-    // Membership gates `entered` ONLY (see the doc-comment): a window that already lists the message
-    // has nothing to pick up — a re-archive, or a `from: null` copy into a folder it was in anyway.
-    // `resorted` is asked below REGARDLESS, because a message can arrive in a window by SORT.
-    const listed = window.ids.some((id) => touched.has(id))
-    if (!listed && effects.entered?.(window) === true) {
+    // Membership gates `entered` ONLY, and PER ID (gap B8). A window that lists EVERY touched id has
+    // nothing to pick up — a re-archive, or a `from: null` copy into a folder it was in anyway — but a
+    // window that lists only SOME of them is still missing the rest, and a bulk move must place those.
+    // Asking "does this window list ANY of them?" let one already-listed id suppress the whole batch:
+    // a move of `[e1,e2]` into a window already showing `e1` placed neither and did not even void.
+    //
+    // MIND WHAT THIS ACTUALLY ASKS, because it is not the question one wants it to be. It asks "does
+    // the INTENT contain an id this window does not LIST?" — it is not filter-aware, and neither is
+    // `entered` itself (`filterPinsMailbox` is mailbox-coarse: pinned to the destination is necessary,
+    // not sufficient). So a window that already holds every id it could ever ACCEPT is still voided
+    // when the batch contains an id it would reject: `AND(inMailbox:archive, hasKeyword:$flagged)`
+    // listing `e1`, given a move of `[e1,e2]` where `e2` is unflagged, buys a `fullRequery` that
+    // changes nothing. That cost is deliberate and pinned by a test ("voids a window that holds every
+    // id it could ACCEPT"). Making the gate filter-aware would mean asking `windowAcceptsLocally` per
+    // id — and that is a deliberate allow-list which REFUSES what it cannot decide, so it would skip
+    // the void exactly when we are least sure the window is still a valid baseline. Over-voiding costs
+    // a re-query; under-voiding is a wrong list. Voiding is the safe direction.
+    //
+    // `placeArrivals` drops the already-listed ids from the batch itself, so nothing here can produce
+    // a duplicate. `resorted` is asked below REGARDLESS, because a message can arrive in a window by
+    // SORT.
+    const holds = new Set<Id>(window.ids)
+    const unlisted = emailIds.some((id) => !holds.has(id))
+    if (unlisted && effects.entered?.(window) === true) {
       // Place what can be placed (M3.10, gap B2) — offline this is the ONLY thing that will ever put
       // the row on screen. `null` ⇒ nothing was provable here, which is the pre-M3.10 behaviour.
       const placed = await placeArrivals(db, accountId, window, effects.arrivals ?? [])
@@ -694,8 +742,10 @@ async function updateWindows(
  * Still needed even though the apply already voided them: a reconcile may have run in between and
  * restored `queryState` — against a window whose ids are the ones we are now un-pruning. `update`, not
  * `put`, so a window that cache maintenance reaped in the meantime stays reaped instead of being
- * resurrected as a half-row. Deliberately NOT a re-insert at the old index (see the invariant above);
- * a rollback only ever happens because the server ANSWERED — we are online — so the round-trip is free.
+ * resurrected as a half-row. Deliberately NOT a re-insert at the old index (see the invariant above):
+ * a rollback USUALLY happens because the server ANSWERED, so we are online and the round-trip is free.
+ * The exception is `discardFailed` (engine.ts), which runs an OWED undo with no connectivity check —
+ * see {@link applyUndo}.
  */
 async function invalidateWindows(
   db: ReplicaDb,
@@ -718,8 +768,10 @@ async function invalidateWindows(
  * nothing. Any window in `insertedKeys` is voided whether or not it still holds the id, because the
  * apply voided it and a reconcile may have restored a `queryState` in between.
  *
- * `total` comes back down by what was removed. The id that the insert pushed off the tail of an
- * incomplete window is NOT restored — it is one page away and the forced re-query brings it back.
+ * `total` comes back down by what was removed. The ids the inserts pushed off the TAIL of an
+ * incomplete window are NOT restored — nothing records them — and after N inserts that is N rows, up
+ * to and including every row the window had (see the eviction paragraph in {@link applyUndo}). The
+ * forced re-query brings them back.
  */
 async function retractWindows(
   db: ReplicaDb,
@@ -751,6 +803,339 @@ async function retractWindows(
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The folder-tree counts (M3.10, gap B7).
+// ---------------------------------------------------------------------------------------------
+
+/** A change to one mailbox's `totalEmails` / `unreadEmails`, in messages. */
+interface MailboxCountDelta {
+  total: number
+  unread: number
+}
+
+type MailboxCountDeltas = Map<Id, MailboxCountDelta>
+
+/**
+ * The pre-mutation facts a count delta is derived from. Nothing else about the envelope matters, and
+ * saying so explicitly is what lets the SAME arithmetic serve the forward apply (pre-image = the rows
+ * as read), the rollback (pre-image = reconstructed from the persisted {@link OutboxUndo}) and the
+ * re-apply after a sync pass.
+ */
+interface CountPreimage {
+  readonly id: Id
+  /** The mailboxes the message was in BEFORE the mutation. */
+  readonly mailboxIds: Readonly<Record<Id, boolean>>
+  /** `$seen !== true` BEFORE the mutation. */
+  readonly unread: boolean
+}
+
+function preimageOf(rows: readonly EmailRow[]): CountPreimage[] {
+  return rows.map((row) => ({
+    id: row.id,
+    mailboxIds: row.mailboxIds,
+    unread: row.keywords.$seen !== true,
+  }))
+}
+
+function bump(deltas: MailboxCountDeltas, mailboxId: Id, total: number, unread: number): void {
+  const entry = deltas.get(mailboxId) ?? { total: 0, unread: 0 }
+  entry.total += total
+  entry.unread += unread
+  deltas.set(mailboxId, entry)
+}
+
+/**
+ * A move: `from` loses every message that was ACTUALLY in it, `to` gains every message that was NOT
+ * already there. Both gates are the pre-image's, and there are THREE cases they cover, not two — an
+ * earlier version of this comment named only the first two and the third was uncovered as a result:
+ *
+ *  1. a re-archive of a message already in `to` credits `to` with 0;
+ *  2. a `from === null` copy debits nothing;
+ *  3. `from !== null` but the message was NEVER IN `from` debits `from` with 0. Ordinary, not
+ *     exotic: a bulk selection made from a label or a search view spans folders, so a batch archived
+ *     "from Inbox" routinely contains ids that were never in the Inbox. Debiting for them takes the
+ *     badge below the truth for messages the folder never held.
+ *
+ * The `from` gate is the reason three call sites hand this function a membership record carrying an
+ * explicit `false` rather than an absent key ({@link applyOptimistic}'s move via `hadFrom`,
+ * {@link applyUndo}'s `mailboxIds` case and {@link unsentCountDeltas}'s move branch): `hadFrom` is
+ * persisted on the outbox row for precisely this gate to consume. On the rollback path the gate is
+ * what stops a `negate`d delta from CREDITING `from` +1 — inventing a message in a folder it was
+ * never in, which no later `Mailbox/changes` need ever correct.
+ */
+function moveCountDeltas(
+  before: readonly CountPreimage[],
+  from: Id | null,
+  to: Id,
+): MailboxCountDeltas {
+  const deltas: MailboxCountDeltas = new Map()
+  for (const row of before) {
+    if (from !== null && row.mailboxIds[from] === true) bump(deltas, from, -1, row.unread ? -1 : 0)
+    if (row.mailboxIds[to] !== true) bump(deltas, to, 1, row.unread ? 1 : 0)
+  }
+  return deltas
+}
+
+/**
+ * A `$seen` flip — `unreadEmails` ONLY, `totalEmails` NEVER, and only where the flag ACTUALLY
+ * changed. Marking an already-read message read moves no badge, and a message counts against every
+ * mailbox it is in.
+ *
+ * Reached only for `$seen`. A label add/strip is a keyword change too and must move NOTHING here:
+ * `Mailbox.unreadEmails` is defined over `$seen`, and no other keyword has a folder count at all.
+ */
+function seenCountDeltas(before: readonly CountPreimage[], value: boolean): MailboxCountDeltas {
+  const deltas: MailboxCountDeltas = new Map()
+  for (const row of before) {
+    // Only where the flag ACTUALLY flips. `value === true` (mark read) moves a badge only for a row
+    // that WAS unread; `value === false` only for one that was read. Note the polarity: `unread` and
+    // `value` are opposite senses, so the flip condition is `unread === value`.
+    if (row.unread !== value) continue
+    const step = value ? -1 : 1
+    for (const [mailboxId, member] of Object.entries(row.mailboxIds)) {
+      // `=== true` rather than a bare truthiness test is DEFENSIVE ONLY, with no behavioural effect
+      // reachable from here, and the asymmetry with {@link moveCountDeltas} is worth stating because
+      // it is not obvious: per RFC 8621 a `Mailbox/get` `mailboxIds` value is always `true`, and
+      // `applyOptimistic` removes a membership with `delete`, never by assigning `false` — so every
+      // pre-image reaching THIS function (and `removalCountDeltas`) is built from a stored row and
+      // can only contain `true`. `moveCountDeltas` genuinely can receive `false`: its callers
+      // construct `{ [from]: hadFrom.has(id) }` records on purpose. Deleting this test is green.
+      if (member === true) bump(deltas, mailboxId, 0, step)
+    }
+  }
+  return deltas
+}
+
+/** A destroy: the message leaves EVERY mailbox it was in, total and (if unread) unread alike. */
+function removalCountDeltas(before: readonly CountPreimage[]): MailboxCountDeltas {
+  const deltas: MailboxCountDeltas = new Map()
+  for (const row of before) {
+    for (const [mailboxId, member] of Object.entries(row.mailboxIds)) {
+      // DEFENSIVE ONLY, exactly as in {@link seenCountDeltas} — see the asymmetry argued there.
+      if (member === true) bump(deltas, mailboxId, -1, row.unread ? -1 : 0)
+    }
+  }
+  return deltas
+}
+
+/** The rollback of any of the above. */
+function negate(deltas: MailboxCountDeltas): MailboxCountDeltas {
+  const out: MailboxCountDeltas = new Map()
+  for (const [mailboxId, delta] of deltas) {
+    out.set(mailboxId, { total: -delta.total, unread: -delta.unread })
+  }
+  return out
+}
+
+/** The count delta of ONE intent, given its pre-image. Four intents move a count; the rest do not. */
+function countDeltasFor(
+  intent: OutboxIntent,
+  before: readonly CountPreimage[],
+): MailboxCountDeltas {
+  switch (intent.kind) {
+    case 'move':
+      return moveCountDeltas(before, intent.from, intent.to)
+    case 'setKeywords':
+      // THE GATE. `unreadEmails` is a count of `$seen`; a `work` label has no folder count, so a
+      // label add or strip must leave every badge exactly where it was.
+      return intent.keyword === '$seen' ? seenCountDeltas(before, intent.value) : new Map()
+    case 'destroyEmails':
+      return removalCountDeltas(before)
+    default:
+      // `createMailbox` seeds 0/0; `renameMailbox`/`moveMailbox` do not move mail; `deleteMailbox`
+      // removes the row entirely; drafts are not envelopes; and `sendEmail` writes no synthetic Sent
+      // row (the real copy arrives via delta — patching here would DOUBLE it), its only replica edit
+      // being an `$answered`/`$forwarded` flag, which is not `$seen`.
+      return new Map()
+  }
+}
+
+/**
+ * Apply a count delta to the mailbox rows — a DELTA PATCH, deliberately not a recompute (M3.10, gap
+ * B7).
+ *
+ * WHY NOT A RECOMPUTE. `db.emails` is a bounded, actively-SHRINKING horizon, not the folder:
+ * `backfill.ts`'s `windowFilter` is `inMailbox AND receivedAt >= now - cacheDays`, and
+ * `maintenance.ts` bulk-deletes the envelopes outside it. A local `count()` over a 50k-message Inbox
+ * with `cacheDays: 30` is not merely stale, it is categorically wrong — it would replace a briefly
+ * stale badge with a permanently and confidently wrong one. (`labelUnreadCounts` in `repo.ts` DOES
+ * recompute, and its own doc admits it "reflects only the windowed replica subset": a label is a
+ * client-side concept whose carriers are mostly recent. `Mailbox.unreadEmails` is a server-owned
+ * absolute over mail this client has never seen, and the only sound local edit to it is ±1.) A
+ * hybrid — recompute unread, patch total — is rejected for making one row's two numbers answer to
+ * two different authorities.
+ *
+ * NO DEFENSIVE BOOKKEEPING IS NEEDED AGAINST THE SERVER: `patchMailboxes`/`putMailboxes` (delta.ts)
+ * assign the server's ABSOLUTE number, never combine it arithmetically, so a delta that reports the
+ * mailbox erases whatever we patched. What that costs instead is durability, which is why
+ * {@link reapplyPendingCounts} exists.
+ *
+ * `Math.max(0, …)` on BOTH fields, for the same reason `updateWindows` clamps `window.total`: the
+ * replica may hold a message the server's count does not reflect yet, so a decrement can outrun the
+ * number it is decrementing.
+ *
+ * `get`-then-`put` rather than `update` because the new value is a FUNCTION OF THE OLD ONE
+ * (`old + delta`, clamped), and `update` has no way to express that — it can only assign a value the
+ * caller already knows, which we do not. The read is the point; the `put` is just how the computed
+ * row goes back. It is NOT what stops a mailbox a concurrent `Mailbox/changes` destroyed from being
+ * resurrected — an earlier version of this comment claimed that and was wrong. Dexie's
+ * `Table.update()` on a missing primary key is a documented no-op returning 0 and never inserts, so
+ * `update` would resurrect nothing either. The protection against the destroyed mailbox is the
+ * `if (row === undefined) continue` guard below, and nothing else.
+ *
+ * `totalThreads`/`unreadThreads` are deliberately LEFT ALONE. They are server-owned, no surface
+ * reads them, and — decisively — a per-MESSAGE mutation cannot imply a thread-count delta at all:
+ * moving one message out of a three-message thread changes `totalThreads` by 0, not by 1, and there
+ * is no local way to tell those two cases apart on a partial replica.
+ *
+ * BEHAVIOUR CHANGE, deliberate: the three non-badge readers of `totalEmails` — the delete-folder
+ * confirmation (`FolderTree.tsx`), the empty-folder confirmation (`cleanup/CleanupDialogs.tsx`) and
+ * `demo/MailboxListView.tsx` (static demo fixtures, which this code never reaches) — now quote the
+ * OPTIMISTIC total. That is correct (they should reflect what the user just did), but the
+ * delete-folder dialog is where an over-count would produce a scarier confirmation than reality.
+ *
+ * MUST run inside the caller's transaction, with `db.mailboxes` in scope, together with the envelope
+ * mutation it mirrors — a crash between the two would leave the badge disagreeing with the list.
+ */
+async function adjustMailboxCounts(
+  db: ReplicaDb,
+  accountId: Id,
+  deltas: MailboxCountDeltas,
+): Promise<void> {
+  for (const [mailboxId, delta] of deltas) {
+    // A PURE OPTIMISATION with no behavioural effect, said plainly because it is not covered and
+    // cannot be: a 0/0 delta would write the row back byte-identical. It only skips the round trip.
+    if (delta.total === 0 && delta.unread === 0) continue
+    const row = await db.mailboxes.get([accountId, mailboxId])
+    // NOT an optimisation — THE guard that keeps a mailbox a concurrent `Mailbox/changes` destroyed
+    // from being resurrected as a half-row by our `put`. See this function's doc.
+    if (row === undefined) continue
+    await db.mailboxes.put({
+      ...row,
+      totalEmails: Math.max(0, row.totalEmails + delta.total),
+      unreadEmails: Math.max(0, row.unreadEmails + delta.unread),
+    })
+  }
+}
+
+/**
+ * Re-apply the count deltas of the intents that have NOT been sent, over exactly the mailbox count
+ * fields a `syncMailboxes` pass has just OVERWRITTEN with the server's pre-mutation number.
+ *
+ * Three narrowings, each load-bearing:
+ *  1. {@link unsentOutbox}, NOT `pendingOutbox` — and its test is `pending` AND `attempts === 0`,
+ *    not `pending` alone. `pending` in this state machine means "not currently dispatched", not
+ *    "never dispatched": `recoverStranded`, the transient-retry branch, auth expiry AND the
+ *    per-object `rateLimit` retry all return an already-dispatched row to `pending` — four paths,
+ *    not the three an earlier version of this list named — and a row whose request DID reach the
+ *    server has its ±1
+ *    in the server's number already. Adding it again double-counts, and unlike staleness a
+ *    double-count never self-corrects. The predicate fails CLOSED for exactly that reason — see
+ *    {@link unsentOutbox} for the full argument and the residual `inflight` gap it accepts.
+ *  2. Only the FIELDS the pass actually wrote ({@link MailboxCountWrites}). `syncMailboxes` patches
+ *    only the mailboxes `Mailbox/changes` reports and only the properties it names, so a pass that
+ *    left a mailbox alone must NOT have the delta added a second time on top of the patch already
+ *    sitting in the row. The two halves are INDEPENDENT and both reachable: `Mailbox/changes` names
+ *    `totalEmails` without `unreadEmails` whenever a READ message enters or leaves a folder, and
+ *    `unreadEmails` without `totalEmails` on every remote mark-read.
+ *  3. The delta is re-DERIVED from the persisted undo plus the current envelopes, not remembered —
+ *    the undo is the only durable record, and it already carries exactly the gates the forward
+ *    arithmetic uses (`had`, `hadTo`, `hadFrom`).
+ *
+ * The collision this fixes is common, not exotic: new mail arriving in the Inbox IS a server-side
+ * change to the Inbox, and the Inbox is where marking-read happens.
+ */
+export async function reapplyPendingCounts(
+  db: ReplicaDb,
+  accountId: Id,
+  writes: MailboxCountWrites,
+): Promise<void> {
+  const total = new Set(writes.total)
+  const unread = new Set(writes.unread)
+  // BOTH early returns are PURE OPTIMISATIONS with no behavioural effect, stated plainly because
+  // neither is pinned and neither can be. With no fields written, the per-field zeroing below
+  // reduces every delta to 0/0 and `adjustMailboxCounts` skips all of them; with no rows, the loop
+  // body never runs. They save a pointless `rw` transaction, nothing more. (An earlier mutation log
+  // recorded these as "two independent guards, one RED each" — that claim was wrong on both counts.)
+  if (total.size === 0 && unread.size === 0) return
+  const rows = await unsentOutbox(db, accountId)
+  if (rows.length === 0) return
+  await db.transaction('rw', db.emails, db.mailboxes, async () => {
+    for (const row of rows) {
+      const deltas = await unsentCountDeltas(db, accountId, row)
+      for (const [mailboxId, delta] of deltas) {
+        if (!total.has(mailboxId)) delta.total = 0
+        if (!unread.has(mailboxId)) delta.unread = 0
+      }
+      await adjustMailboxCounts(db, accountId, deltas)
+    }
+  })
+}
+
+/** Re-derive one unsent row's count delta from its persisted undo and the CURRENT envelopes. */
+async function unsentCountDeltas(
+  db: ReplicaDb,
+  accountId: Id,
+  row: OutboxRow,
+): Promise<MailboxCountDeltas> {
+  const intent = row.payload as OutboxIntent
+  const undo = row.undo
+  // A CRASH GUARD with no behavioural effect reachable from here, said plainly because it is not
+  // covered and cannot be: `enqueueAction` always persists an undo, and the only writer that clears
+  // one (`undo: null`, after a rollback is drained) leaves the row `error`, which
+  // {@link unsentOutbox} never returns. Deleting it is green. It stays because the two branches
+  // below dereference `undo`, and `OutboxRow.undo` is typed optional.
+  if (undo === null || undo === undefined) return new Map()
+  if (intent.kind === 'setKeywords' && undo.kind === 'keywords') {
+    const had = new Set(undo.had)
+    const rows = present(await emailsByIds(db, accountId, intent.emailIds))
+    // Routed through {@link countDeltasFor} rather than calling `seenCountDeltas` directly, so THE
+    // GATE (`keyword === '$seen'`) exists exactly ONCE. It used to be duplicated here, and the copy
+    // was unpinned: deleting it left the suite green while real behaviour sat behind it. An offline
+    // label add/strip is a `setKeywords` intent with a `keywords` undo and reaches this line, and
+    // without the gate its `had` — the set that carried the LABEL — would be read as a `$seen`
+    // pre-image, moving `unreadEmails` badges that no label change may move. `unread` below is
+    // therefore MEANINGLESS for a non-`$seen` keyword, and correct only because the gate discards it.
+    //
+    // A keyword change never touched `mailboxIds`, so the current row's membership IS the
+    // pre-image's; `had` is the pre-image `$seen`. KNOWN IMPRECISION, accepted: if a LATER unsent
+    // intent has moved the message since, the current membership is that move's destination, so
+    // this delta is re-applied to the folder the message is in NOW rather than the one it was in
+    // when the keyword flipped. Recording the membership per intent would mean growing the
+    // persisted undo, which this module forbids itself. It converges — sending either intent makes
+    // the server re-report both folders.
+    return countDeltasFor(
+      intent,
+      rows.map((r) => ({ id: r.id, mailboxIds: r.mailboxIds, unread: !had.has(r.id) })),
+    )
+  }
+  if (intent.kind === 'move' && undo.kind === 'mailboxIds') {
+    const hadTo = new Set(undo.hadTo)
+    const hadFrom = new Set(undo.hadFrom)
+    const rows = present(await emailsByIds(db, accountId, intent.emailIds))
+    // `hadTo`/`hadFrom` ARE the pre-image membership of the only two mailboxes the move's arithmetic
+    // consults; a move never touched the keywords, so `unread` is still the current row's.
+    return moveCountDeltas(
+      rows.map((r) => ({
+        id: r.id,
+        mailboxIds: {
+          ...(undo.from === null ? {} : { [undo.from]: hadFrom.has(r.id) }),
+          [undo.to]: hadTo.has(r.id),
+        },
+        unread: r.keywords.$seen !== true,
+      })),
+      undo.from,
+      undo.to,
+    )
+  }
+  // `destroyEmails` is NOT re-derivable and is deliberately skipped: its envelopes are gone from the
+  // replica and its undo (`refetchEmails`) carries only `prunedKeys`, by design — the "before" state
+  // is a full envelope set, far too big to persist. So an UNSENT destroy's count patch still reverts
+  // if a concurrent server change to that folder lands first. Bounded and self-correcting: sending
+  // the destroy makes the server re-report the mailbox with the right number.
+  return new Map()
+}
+
 /**
  * Apply an intent to the replica immediately and return the DATA needed to undo it (M3.3). Only
  * rows that actually exist locally are touched. The undo is deliberately id-set-based, not a
@@ -767,91 +1152,116 @@ export async function applyOptimistic(
       // ONE transaction, for the same reason as `move` below: the envelope patch and the window edit
       // are the same fact stated twice, and a crash between them would leave the list rendering an
       // unread message in `is:unread` that the replica already knows is read.
-      return db.transaction('rw', db.emails, db.queryCache, async (): Promise<OutboxUndo> => {
-        const originals = present(await emailsByIds(db, accountId, intent.emailIds))
-        const had = originals
-          .filter((row) => row.keywords[intent.keyword] === true)
-          .map((r) => r.id)
-        await putEmails(
-          db,
-          accountId,
-          originals.map((row) => {
-            const keywords = { ...row.keywords }
-            if (intent.value) keywords[intent.keyword] = true
-            else delete keywords[intent.keyword]
-            return { ...toEnvelope(row), keywords }
-          }),
-        )
-        // The windows (M3.10). MIND THE POLARITY — it is inverted between the two, and it is the whole
-        // fix: `left` must prove NON-membership, so it asks for the OPPOSITE of the value being
-        // written, while `entered` asks for the same value.
-        //   mark read (`$seen := true`) ⇒ prune the `notKeyword:$seen` windows (`?q=is:unread`)
-        //                              ⇒ void  the `hasKeyword:$seen` windows (`?q=is:read`)
-        //   strip a label (`work := false`) ⇒ prune the `hasKeyword:work` window (`?label=work`)
-        // `resorted` is the third case, and unlike the other two it is about ORDER, not membership:
-        // the "Unread first" window keeps the message and merely renders it in the wrong place.
-        // No `arrivals`: a keyword change deliberately keeps the void-only arrival (gap B2 placed the
-        // arrival for a MOVE). Adding a label would have to place the row in a `?label=` view whose
-        // sort we can often reproduce — but the window it arrives in is also the one whose membership
-        // just changed under a DIFFERENT predicate, and that pairing has not been reasoned through.
-        // Void-only there is correct, just one round-trip slower.
-        const { pruned } = await updateWindows(db, accountId, intent.emailIds, {
-          left: (window) => filterPinsKeyword(window.filter, intent.keyword, !intent.value),
-          entered: (window) => filterPinsKeyword(window.filter, intent.keyword, intent.value),
-          resorted: (window) => sortUsesKeyword(window.sort, intent.keyword),
-        })
-        return { kind: 'keywords', keyword: intent.keyword, had, prunedKeys: pruned }
-      })
+      return db.transaction(
+        'rw',
+        db.emails,
+        db.queryCache,
+        db.mailboxes, // the folder counts (gap B7) — same fact, same atomic unit
+        async (): Promise<OutboxUndo> => {
+          const originals = present(await emailsByIds(db, accountId, intent.emailIds))
+          const had = originals
+            .filter((row) => row.keywords[intent.keyword] === true)
+            .map((r) => r.id)
+          // The PRE-IMAGE, taken before anything is written — `seenCountDeltas` needs the `$seen`
+          // state the mutation is about to destroy.
+          const before = preimageOf(originals)
+          await putEmails(
+            db,
+            accountId,
+            originals.map((row) => {
+              const keywords = { ...row.keywords }
+              if (intent.value) keywords[intent.keyword] = true
+              else delete keywords[intent.keyword]
+              return { ...toEnvelope(row), keywords }
+            }),
+          )
+          // The folder badges (gap B7). `$seen` ONLY, `unreadEmails` only — see
+          // {@link countDeltasFor}: a label add or strip must move nothing.
+          await adjustMailboxCounts(db, accountId, countDeltasFor(intent, before))
+          // The windows (M3.10). MIND THE POLARITY — it is inverted between the two, and it is the whole
+          // fix: `left` must prove NON-membership, so it asks for the OPPOSITE of the value being
+          // written, while `entered` asks for the same value.
+          //   mark read (`$seen := true`) ⇒ prune the `notKeyword:$seen` windows (`?q=is:unread`)
+          //                              ⇒ void  the `hasKeyword:$seen` windows (`?q=is:read`)
+          //   strip a label (`work := false`) ⇒ prune the `hasKeyword:work` window (`?label=work`)
+          // `resorted` is the third case, and unlike the other two it is about ORDER, not membership:
+          // the "Unread first" window keeps the message and merely renders it in the wrong place.
+          // No `arrivals`: a keyword change deliberately keeps the void-only arrival (gap B2 placed the
+          // arrival for a MOVE). Adding a label would have to place the row in a `?label=` view whose
+          // sort we can often reproduce — but the window it arrives in is also the one whose membership
+          // just changed under a DIFFERENT predicate, and that pairing has not been reasoned through.
+          // Void-only there is correct, just one round-trip slower.
+          const { pruned } = await updateWindows(db, accountId, intent.emailIds, {
+            left: (window) => filterPinsKeyword(window.filter, intent.keyword, !intent.value),
+            entered: (window) => filterPinsKeyword(window.filter, intent.keyword, intent.value),
+            resorted: (window) => sortUsesKeyword(window.sort, intent.keyword),
+          })
+          return { kind: 'keywords', keyword: intent.keyword, had, prunedKeys: pruned }
+        },
+      )
     }
     case 'move': {
       const from = intent.from
       // ONE transaction: the envelope patch and the window prune are the same fact stated twice, and
       // a crash between them would leave the list rendering a message that is no longer in the folder.
-      return db.transaction('rw', db.emails, db.queryCache, async (): Promise<OutboxUndo> => {
-        const originals = present(await emailsByIds(db, accountId, intent.emailIds))
-        const hadTo = originals.filter((row) => row.mailboxIds[intent.to] === true).map((r) => r.id)
-        const hadFrom =
-          from === null
-            ? []
-            : originals.filter((row) => row.mailboxIds[from] === true).map((row) => row.id)
-        // Keep the PATCHED envelopes: they are what the window gate is evaluated against below (an
-        // arrival is only in the destination mailbox after the patch), and re-reading them would cost
-        // a second round through `emails` for the same rows.
-        const moved = originals.map((row) => {
-          const mailboxIds = { ...row.mailboxIds }
-          if (from !== null) delete mailboxIds[from]
-          mailboxIds[intent.to] = true
-          return { ...toEnvelope(row), mailboxIds }
-        })
-        await putEmails(db, accountId, moved)
-        // The windows, BOTH ends of the move (M3.8):
-        //  - SOURCE: the message provably left `from` → prune it out of those windows. `from === null`
-        //    is a copy (a label add, or a move from a view whose folder is unknown) — the message left
-        //    nothing, so nothing is pruned.
-        //  - DESTINATION: the message provably entered `to` → those windows must SHOW it. Where it goes
-        //    is the server's collation, so the row is spliced in only where that is locally provable
-        //    (`arrivals` → {@link placeArrivals}) and the window is marked for a full re-query either
-        //    way. This is what makes Undo work: the inverse move's destination is the folder the row
-        //    was archived out of, so the row comes back — offline from the splice (gap B2), online
-        //    from the re-query — see the invariant above.
-        const { pruned, inserted } = await updateWindows(db, accountId, intent.emailIds, {
-          // (`exactOptionalPropertyTypes`: an absent `left` is the "prune nothing" case, not `undefined`.)
-          ...(from === null
-            ? {}
-            : { left: (window: QueryCacheRow) => filterPinsMailbox(window.filter, from) }),
-          entered: (window) => filterPinsMailbox(window.filter, intent.to),
-          arrivals: moved,
-        })
-        return {
-          kind: 'mailboxIds',
-          from,
-          to: intent.to,
-          hadTo,
-          hadFrom,
-          prunedKeys: pruned,
-          insertedKeys: inserted,
-        }
-      })
+      return db.transaction(
+        'rw',
+        db.emails,
+        db.queryCache,
+        db.mailboxes, // the folder counts (gap B7) — same fact, same atomic unit
+        async (): Promise<OutboxUndo> => {
+          const originals = present(await emailsByIds(db, accountId, intent.emailIds))
+          const hadTo = originals
+            .filter((row) => row.mailboxIds[intent.to] === true)
+            .map((r) => r.id)
+          const hadFrom =
+            from === null
+              ? []
+              : originals.filter((row) => row.mailboxIds[from] === true).map((row) => row.id)
+          // The PRE-IMAGE, taken before `moved` overwrites `mailboxIds`: `hadFrom`/`hadTo` are the
+          // gates, and `$seen` is read off the ORIGINAL row.
+          const before = preimageOf(originals)
+          // Keep the PATCHED envelopes: they are what the window gate is evaluated against below (an
+          // arrival is only in the destination mailbox after the patch), and re-reading them would cost
+          // a second round through `emails` for the same rows.
+          const moved = originals.map((row) => {
+            const mailboxIds = { ...row.mailboxIds }
+            if (from !== null) delete mailboxIds[from]
+            mailboxIds[intent.to] = true
+            return { ...toEnvelope(row), mailboxIds }
+          })
+          await putEmails(db, accountId, moved)
+          // The folder badges, both ends (gap B7) — gated on `hadFrom`/`hadTo` exactly as the undo is.
+          await adjustMailboxCounts(db, accountId, countDeltasFor(intent, before))
+          // The windows, BOTH ends of the move (M3.8):
+          //  - SOURCE: the message provably left `from` → prune it out of those windows. `from === null`
+          //    is a copy (a label add, or a move from a view whose folder is unknown) — the message left
+          //    nothing, so nothing is pruned.
+          //  - DESTINATION: the message provably entered `to` → those windows must SHOW it. Where it goes
+          //    is the server's collation, so the row is spliced in only where that is locally provable
+          //    (`arrivals` → {@link placeArrivals}) and the window is marked for a full re-query either
+          //    way. This is what makes Undo work: the inverse move's destination is the folder the row
+          //    was archived out of, so the row comes back — offline from the splice (gap B2), online
+          //    from the re-query — see the invariant above.
+          const { pruned, inserted } = await updateWindows(db, accountId, intent.emailIds, {
+            // (`exactOptionalPropertyTypes`: an absent `left` is the "prune nothing" case, not `undefined`.)
+            ...(from === null
+              ? {}
+              : { left: (window: QueryCacheRow) => filterPinsMailbox(window.filter, from) }),
+            entered: (window) => filterPinsMailbox(window.filter, intent.to),
+            arrivals: moved,
+          })
+          return {
+            kind: 'mailboxIds',
+            from,
+            to: intent.to,
+            hadTo,
+            hadFrom,
+            prunedKeys: pruned,
+            insertedKeys: inserted,
+          }
+        },
+      )
     }
     case 'destroyEmails': {
       return db.transaction(
@@ -859,8 +1269,14 @@ export async function applyOptimistic(
         db.emails,
         db.emailBodies, // `deleteEmails` cascades to the bodies (M3.4) — a sub-txn needs it in scope
         db.queryCache,
+        db.mailboxes, // the folder counts (gap B7) — same fact, same atomic unit
         async (): Promise<OutboxUndo> => {
+          // THE PRE-IMAGE MUST BE READ FIRST (gap B7). `deleteEmails` is destructive and this case
+          // used to read nothing at all before it — afterwards there is no membership left to count.
+          const before = preimageOf(present(await emailsByIds(db, accountId, intent.emailIds)))
           await deleteEmails(db, accountId, intent.emailIds)
+          // The folder badges: the message leaves every mailbox it was in, total AND unread.
+          await adjustMailboxCounts(db, accountId, countDeltasFor(intent, before))
           // A destroyed message belongs in NO window — not even a search or a label view, which would
           // otherwise render a row whose envelope no longer exists. There is no destination.
           //
@@ -981,8 +1397,25 @@ export async function applyUndo(
       // `?? []`: `sendEmail`'s source-flag undo never prunes a window, and neither did any `keywords`
       // undo persisted before M3.10 — both read as "nothing to re-void".
       const prunedKeys = undo.prunedKeys ?? []
-      await db.transaction('rw', db.emails, db.queryCache, async () => {
+      await db.transaction('rw', db.emails, db.queryCache, db.mailboxes, async () => {
         const rows = present(await emailsByIds(db, accountId, ids))
+        // The folder badges (gap B7), reversed. `undo.keyword === '$seen'` is THE behavioural
+        // narrowing and carries the whole condition: no other keyword has a folder count, and it
+        // already excludes the only other producer of a `keywords` undo — `sendEmail`'s
+        // `$answered`/`$forwarded` source flag. `intent.kind === 'setKeywords'` is a TYPE NARROWING
+        // and nothing more: it is what gives TypeScript the `intent.value` read below, and deleting
+        // it changes no behaviour at any input. (It was previously described as a second
+        // behavioural narrowing "twice over"; that was wrong — the `$seen` test alone does that work.)
+        // `ids` is already `undoTargets`', so a partial rejection reverses only what actually failed.
+        if (undo.keyword === '$seen' && intent.kind === 'setKeywords') {
+          const before = rows.map((row) => ({
+            id: row.id,
+            // A keyword change never touched `mailboxIds`; `had` is the pre-image `$seen`.
+            mailboxIds: row.mailboxIds,
+            unread: !had.has(row.id),
+          }))
+          await adjustMailboxCounts(db, accountId, negate(seenCountDeltas(before, intent.value)))
+        }
         await putEmails(
           db,
           accountId,
@@ -1005,8 +1438,30 @@ export async function applyUndo(
       const prunedKeys = undo.prunedKeys ?? []
       // `?? []`: an undo persisted before M3.10 inserted nothing — it reads as "nothing to take back".
       const insertedKeys = undo.insertedKeys ?? []
-      await db.transaction('rw', db.emails, db.queryCache, async () => {
+      await db.transaction('rw', db.emails, db.queryCache, db.mailboxes, async () => {
         const rows = present(await emailsByIds(db, accountId, ids))
+        // The folder badges (gap B7), reversed. `hadFrom`/`hadTo` ARE the pre-image membership of the
+        // only two mailboxes the move's arithmetic consults, and a move never touched the keywords,
+        // so `unread` is still the current row's. Unlike the WINDOW retraction below, this one is
+        // exact: it is per-id, and both gates are recorded.
+        await adjustMailboxCounts(
+          db,
+          accountId,
+          negate(
+            moveCountDeltas(
+              rows.map((row) => ({
+                id: row.id,
+                mailboxIds: {
+                  ...(undo.from === null ? {} : { [undo.from]: hadFrom.has(row.id) }),
+                  [undo.to]: hadTo.has(row.id),
+                },
+                unread: row.keywords.$seen !== true,
+              })),
+              undo.from,
+              undo.to,
+            ),
+          ),
+        )
         await putEmails(
           db,
           accountId,
@@ -1018,16 +1473,46 @@ export async function applyUndo(
           }),
         )
         await invalidateWindows(db, accountId, prunedKeys)
-        // KNOWN over-retraction, named rather than fixed. The envelope patch above deliberately does
-        // NOT strip `to` from a `hadTo` id (it was already in the destination before the move, so the
-        // rejection does not take it out), but `retractWindows` removes the arrival unconditionally —
-        // it records WINDOWS, not which id landed where. So rejecting a move of a message that was
-        // already in the destination drops a row from that window which still legitimately belongs
-        // there, and under-counts its `total` by one. It self-corrects: `retractWindows` voids the
-        // window, so the next reconcile is a `fullRequery` that rebuilds `ids` and `total` wholesale
-        // (delta.ts). And it is ONLINE-only — a rollback happens only because the server answered — so
-        // that re-query is always reachable. Making it exact would mean persisting a per-window id map
-        // in the undo, which is the one thing the undo may not grow into (it is stored on the row).
+        // THE RETRACTION OVER-REMOVES, and that is accepted here rather than fixed. `insertedKeys`
+        // records WINDOWS, not which id landed in which window, so the removal is a bare intersection
+        // over the undo's whole id set: a window can lose an id this rollback never put there.
+        //
+        // B8 WIDENED that hole. Before it, a window listing any touched id was skipped by the
+        // whole-window gate and could not be in `insertedKeys` at all; now a partially-overlapping
+        // window is inserted into, so the intersection reaches ids that predate the mutation. And the
+        // insert itself is paid for, on an INCOMPLETE window, by dropping the tail id
+        // ({@link placeArrival}) — which the undo does not record. At N > 2 the eviction eats the whole
+        // head page: an incomplete window `['a1','a2','e1']` with `total: 40` taking four arrivals ends
+        // `['e5','e4','e3']` — correct — and then the retraction removes all four, leaving
+        // `{ ids: [], total: 41 }`. An EMPTY head page carrying a total of 41. The window loses rows
+        // that were there BEFORE the mutation, up to every row it had.
+        //
+        // AN EXACT RETRACTION WAS ATTEMPTED AND REVERTED — do not re-apply it. The attempt narrowed the
+        // drop set to `ids.filter((id) => !hadTo.has(id))`, reasoning that a `hadTo` id was in the
+        // destination before the move and is not this rollback's to remove. It is WRONG, because
+        // `hadTo` is ENVELOPE-scoped ("this message was already in `to`") while the question here is
+        // WINDOW-scoped ("did the apply splice this id into THIS window?"). The apply passes every
+        // touched envelope as an arrival and {@link placeArrivals} drops only the ids the window
+        // ALREADY LISTS — so a `hadTo` id that the window does NOT list is spliced in, and the
+        // narrowing then leaves it there for good, along with the `+1` it added to `total`. A sound
+        // narrowing needs a per-window record of which id landed where; `insertedKeys` is persisted on
+        // the outbox row, and growing it into an id map is exactly the payload growth this module
+        // forbids itself. So the exact retraction is not available without a design change.
+        //
+        // It self-corrects: the retraction voids the window and the next reconcile is a `fullRequery`
+        // that rebuilds `ids` and `total` wholesale. USUALLY that is immediate, because the rollback
+        // ran on the strength of a server ANSWER — a rejection — so we are online. NOT ALWAYS, and
+        // the older, broader claim ("a rollback only ever happens because the server answered") was
+        // simply false: `discardFailed` (engine.ts) also runs an OWED undo, it is reached from
+        // `use-outbox-problems.ts` with no connectivity check, and `replayOutbox`'s `online === false`
+        // bail does not cover it. Discard a dead letter offline and the retraction runs offline too,
+        // with the self-correcting re-query unreachable until reconnect. Until it lands the window can
+        // be empty-but-nonzero,
+        // and the web UI must not paint a confident "no messages" over a window whose `total` is not
+        // zero; the two halves reference each other on purpose. Pinned by "a REJECTED bulk move
+        // over-retracts the id the window already listed", "an id the window did NOT list is spliced in
+        // and must come back out" and "the retraction can wipe the whole head page — the eviction the
+        // undo cannot record".
         await retractWindows(db, accountId, insertedKeys, ids)
       })
       return
@@ -1041,8 +1526,31 @@ export async function applyUndo(
       // non-Dexie await); it MAY THROW, and then the whole undo stays owed and is retried.
       const { list } = await port.getEmailEnvelopes(ids)
       const prunedKeys = undo.prunedKeys ?? []
-      await db.transaction('rw', db.emails, db.queryCache, async () => {
-        if (list.length > 0) await putEmails(db, accountId, list)
+      await db.transaction('rw', db.emails, db.queryCache, db.mailboxes, async () => {
+        // A PURE OPTIMISATION with no behavioural effect, said plainly because it is not covered:
+        // with an empty `list` (the server reported every id `notFound`) `putEmails` writes nothing
+        // and `removalCountDeltas([])` is empty, so both calls below are already no-ops.
+        if (list.length > 0) {
+          await putEmails(db, accountId, list)
+          // The folder badges (gap B7), restored from the RE-FETCHED envelopes and from nothing else.
+          // The intent's id set would be wrong: an id the server reports `notFound` is REALLY gone
+          // (that is what `notFound` means here — see above), and a count restored for it would be a
+          // permanent over-count with no correction coming, because that mailbox never changes again
+          // and so `Mailbox/changes` never re-reports it.
+          await adjustMailboxCounts(
+            db,
+            accountId,
+            negate(
+              removalCountDeltas(
+                list.map((envelope) => ({
+                  id: envelope.id,
+                  mailboxIds: envelope.mailboxIds,
+                  unread: envelope.keywords.$seen !== true,
+                })),
+              ),
+            ),
+          )
+        }
         await invalidateWindows(db, accountId, prunedKeys)
       })
       return
@@ -1448,6 +1956,20 @@ async function drainOwedUndos(port: JmapPort, db: ReplicaDb, accountId: Id): Pro
  * is safe → back to `pending`. But an `EmailSubmission` is NOT idempotent: a re-sent `sendEmail`
  * could deliver the message twice, so a stranded send is dead-lettered with the `sendInterrupted`
  * CODE ("was it sent?") instead of auto-resent (M2.8) — the user decides via the reopened draft.
+ *
+ * `attempts` IS INCREMENTED on the way back to `pending`. A stranded row was dispatched — the
+ * request went out and we simply never learned its fate — so recording the attempt is true on its
+ * own terms. It is also load-bearing: {@link unsentOutbox} reads `attempts === 0` as "provably never
+ * dispatched", and without the increment this function would launder a dispatched row into a set
+ * whose whole purpose is to exclude it, double-counting its ±1 on top of a server number that may
+ * already contain it. Note the asymmetry with the safety argument one line up: a re-sent `set` is
+ * harmless BECAUSE it is idempotent, and a ±1 count delta is precisely the thing that is not.
+ *
+ * TWO REAL SIDE EFFECTS, both accepted. A row stranded {@link STUCK_AFTER_ATTEMPTS} times is now
+ * REPORTED as stuck — which is accurate (it has been dispatched six times and never settled) and
+ * costs nothing but a "still trying" notice; it is never discarded or rolled back. And the next
+ * transient failure's backoff is computed from the higher counter, so it waits one step longer.
+ * Neither delays THIS recovery: `nextAttemptAt` is untouched, so the row is ready immediately.
  */
 async function recoverStranded(db: ReplicaDb, accountId: Id, now: number): Promise<void> {
   const stranded = await db.outbox
@@ -1457,7 +1979,10 @@ async function recoverStranded(db: ReplicaDb, accountId: Id, now: number): Promi
   for (const row of stranded) {
     const intent = row.payload as OutboxIntent
     if (intent.kind !== 'sendEmail') {
-      await db.outbox.update([accountId, row.id], { status: 'pending' })
+      await db.outbox.update([accountId, row.id], {
+        status: 'pending',
+        attempts: row.attempts + 1,
+      })
       continue
     }
     const code: ConflictCode = 'sendInterrupted'
@@ -1597,7 +2122,18 @@ export async function replayOutbox(
       if (isAuthExpiry(thrown)) {
         // The session expired: nothing about this row is wrong. Put it back and let the engine route
         // to the re-auth funnel (FR-AUTH-06).
-        await db.outbox.update([accountId, row.id], { status: 'pending' })
+        //
+        // `attempts` IS incremented, for {@link unsentOutbox}'s "provably never dispatched" test and
+        // for no other reason. A 401/403 very probably precedes processing — but "very probably" is
+        // the wrong standard for an arithmetic re-apply whose failure mode (a double-counted ±1) does
+        // not self-correct, while the cost of being conservative is a badge that reverts until the
+        // intent lands. The row is still ready immediately (`nextAttemptAt` untouched) and is not
+        // rolled back; the only visible cost is that a session expiring
+        // {@link STUCK_AFTER_ATTEMPTS} times over gets the row a "still trying" notice.
+        await db.outbox.update([accountId, row.id], {
+          status: 'pending',
+          attempts: row.attempts + 1,
+        })
         throw thrown
       }
       const attempts = row.attempts + 1

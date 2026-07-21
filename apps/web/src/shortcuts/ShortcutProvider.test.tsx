@@ -290,6 +290,29 @@ describe('ShortcutProvider — triage', () => {
     )
   })
 
+  // The other half of the multi-selection rule, and the half nothing covered: the mixed case below
+  // proves `s` SETS, but only this proves it ever CLEARS over more than one row. The bulk bar's flag
+  // button is now driven off the same predicate (B9), so "the keystroke is already right" had to
+  // stop being an assumption before the button could be made to agree with it.
+  it('s UNflags a multi-selection in which every row is already flagged', async () => {
+    await putEmails(db, 'a', [email('e2', { subject: 'Second', keywords: { $flagged: true } })])
+    await mounted()
+    press('j')
+    press('x') // e2 — flagged
+    press('j')
+    press('x') // e3 — flagged
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+
+    await pressUntil('s', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'setKeywords',
+        keyword: '$flagged',
+        value: false,
+        emailIds: ['e2', 'e3'],
+      }),
+    )
+  })
+
   it('s flags a MIXED selection (it only unflags when every target already carries the flag)', async () => {
     await mounted()
     press('x') // e1 — not flagged

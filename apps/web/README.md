@@ -262,22 +262,24 @@ or minimised tab included. They are fed by the live push channel that already dr
 focuses the tab and opens the message. Preferences live in Settings → Notifications: per folder,
 quiet hours, sender/subject preview on or off, sound on or off.
 
-**They do not work while the app is fully closed, and that is not a bug we can fix here.**
-No JMAP server on earth can deliver a Web Push to a browser today:
+**They do not work while the app is fully closed.** When M3.6 shipped, that was blocked upstream:
+no JMAP server could deliver a Web Push to a browser at all. Chromium and Safari refuse
+`PushManager.subscribe()` without an `applicationServerKey`; supplying one binds the endpoint to a
+VAPID signature the *server* must produce (RFC 8292 §4.2); the capability that publishes that key —
+**`urn:ietf:params:jmap:webpush-vapid`, RFC 9749** — was implemented by nobody, and Stalwart
+additionally base64-wrapped the encrypted payload while announcing `Content-Encoding: aes128gcm`,
+so no browser could decrypt it. Three write-ups went upstream (`docs/upstream/`).
 
-- Chromium and Safari both refuse `PushManager.subscribe()` without an `applicationServerKey`,
-  and supplying one binds the endpoint to a VAPID signature the *server* must produce
-  (RFC 8292 §4.2).
-- The capability that would publish that key — **`urn:ietf:params:jmap:webpush-vapid`,
-  RFC 9749** — is implemented by no JMAP server, Stalwart included.
-- Stalwart additionally base64-wraps the encrypted payload while announcing
-  `Content-Encoding: aes128gcm`, so no browser can decrypt it — Firefox included.
+**Stalwart v0.16.14 (2026-07-20) fixed all three**, and auto-generates a VAPID keypair on a fresh
+install. So the blocker is now on our side, and only ours: Waxwing has no `PushSubscription/set`,
+no `applicationServerKey` read for a `subscribe()` call, and no `push` listener in `src/sw/sw.ts`.
+Building that is a scoped work package with an owner gate on it — not a consequence of bumping a
+Docker tag. See the amendment in
+[ADR-010](../../docs/adr/010-web-push-deferred-no-vapid.md).
 
-The app therefore **probes for the capability and tells the user the truth** rather than offering
-a switch that would do nothing (NFR-PRIV-02). See [ADR-010](../../docs/adr/010-web-push-deferred-no-vapid.md)
-for the evidence, and `docs/upstream/` for the two Stalwart defects as written up for upstream.
-The day a server ships RFC 9749 and a spec-conforming payload, the subscription flow is the only
-piece still missing — everything else here is transport-agnostic.
+Until then the app **probes the live session and tells the user the truth** rather than offering a
+switch that would do nothing (NFR-PRIV-02) — and the truth now has two forms: this server cannot,
+or this server can and *we* do not yet. There is deliberately no third string claiming it works.
 
 Two things to know if you touch this code:
 

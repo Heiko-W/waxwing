@@ -44,6 +44,12 @@ const MGMT_USING = ['urn:ietf:params:jmap:core', 'urn:stalwart:jmap']
 // the same host port, so at most one may run at a time — used by the conflict preflight.
 const CONTAINER = { dev: 'waxwing-stalwart-dev', main: 'waxwing-stalwart-main' }
 
+// The compose project name (`name:` in docker-compose.yml) prefixes every named volume.
+const VOLUME = {
+  dev: 'waxwing-stalwart_stalwart-data',
+  main: 'waxwing-stalwart_stalwart-main-data',
+}
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const basicAuth = (login, password) =>
@@ -88,6 +94,54 @@ function assertNoConflictingProfile(profile) {
       `${CONTAINER[other]} is already using port ${HOST_PORT} — run ` +
         `\`pnpm e2e:server:down\` first, then \`up ${profile}\`.`,
     )
+  }
+}
+
+function dockerOut(args) {
+  return execFileSync('docker', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim()
+}
+
+/**
+ * Warn when the data volume is OLDER than the image now running on it.
+ *
+ * Stalwart seeds its first-boot defaults only into a VIRGIN registry — the whole block in
+ * `crates/common/src/manager/defaults.rs` is nested inside `if count_object(OidcProvider) == 0`, and
+ * that includes the RFC 9749 VAPID keypair v0.16.14 generates. The registry lives in a NAMED volume
+ * that `up` deliberately does NOT remove (that would destroy seeded state without asking; `down -v`
+ * is the explicit, data-losing step). So the ordinary upgrade path — bump the pinned tag, run `up` —
+ * boots a new binary against a registry an older version populated, and those defaults are silently
+ * never generated. The symptom surfaces far away, as a capability the pinned version is supposed to
+ * have simply being absent (`e2e/tests/settings.spec.ts` fails on its premise while the pin is fine).
+ *
+ * A volume created BEFORE the image was built cannot have been populated by that image, which makes
+ * this a cheap and general detector — no per-version knowledge, no capability list to maintain.
+ *
+ * It only ever WARNS: it never blocks `up` and never deletes data. It is also strictly best-effort —
+ * every failure path (docker output shape changed, volume not created yet, unparseable timestamps)
+ * falls through silently, because a diagnostic must not be able to break the fixture it diagnoses.
+ */
+function warnIfVolumePredatesImage(profile) {
+  try {
+    const volume = VOLUME[profile]
+    if (!volume) return
+    const volumeAt = Date.parse(
+      dockerOut(['volume', 'inspect', '--format', '{{.CreatedAt}}', volume]),
+    )
+    const imageId = dockerOut(['inspect', '--format', '{{.Image}}', CONTAINER[profile]])
+    const imageAt = Date.parse(dockerOut(['image', 'inspect', '--format', '{{.Created}}', imageId]))
+    if (!Number.isFinite(volumeAt) || !Number.isFinite(imageAt) || volumeAt >= imageAt) return
+    console.warn(
+      `[fixture] WARNING: the data volume ${volume} predates the image it is running on.\n` +
+        "  It was populated by an OLDER Stalwart, so this version's first-boot defaults (the\n" +
+        '  RFC 9749 VAPID keypair among them) were never generated and capabilities may be missing.\n' +
+        '  If you just bumped the pinned tag: `pnpm e2e:server:down` then `pnpm e2e:server`.\n' +
+        '  That DELETES all fixture data — see e2e/stalwart/README.md "Upgrading the pinned image".',
+    )
+  } catch {
+    // Best-effort diagnostic only — never let it fail `up`.
   }
 }
 
@@ -279,6 +333,7 @@ export async function up(profile = 'dev') {
     }
     throw error
   }
+  warnIfVolumePredatesImage(profile)
   console.log('[fixture] provisioning test domain + accounts ...')
   await provision()
   console.log('[fixture] smoke check ...')

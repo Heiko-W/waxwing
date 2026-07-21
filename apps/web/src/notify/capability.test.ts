@@ -1,6 +1,8 @@
 /**
  * The RFC 9749 probe (M3.6). It is what lets the Notifications settings say, truthfully and without a
- * hardcoded claim, whether this server could ever notify while the app is CLOSED — see ADR-010.
+ * hardcoded claim, whether this server COULD notify while the app is CLOSED — see ADR-010 and its
+ * amendment. `true` means the server could, not that Waxwing delivers it: the client half is
+ * unimplemented, and the settings copy says so.
  */
 
 import type { Session } from '@waxwing/jmap'
@@ -11,6 +13,8 @@ const session = (capabilities: Record<string, unknown>): Session =>
   ({ capabilities }) as unknown as Session
 
 describe('serverSupportsBackgroundPush', () => {
+  // Stalwart v0.16.14 (2026-07-20) auto-generates a VAPID keypair on a virgin registry, so this is
+  // now the case a stock fixture hits — not a hypothetical.
   it('is true when the server advertises a usable application server key', () => {
     expect(
       serverSupportsBackgroundPush(
@@ -22,10 +26,10 @@ describe('serverSupportsBackgroundPush', () => {
     ).toBe(true)
   })
 
-  it('is FALSE against a real Stalwart session — no JMAP server implements RFC 9749 today', () => {
-    // The capability list Stalwart v0.16.11 actually advertises. This is the case that matters: it is
-    // what every user sees, and it is why the settings screen explains itself instead of offering a
-    // switch that could not work.
+  it('is false against a server that does not advertise the capability', () => {
+    // What Stalwart advertised up to v0.16.13, and what any JMAP server without RFC 9749 still
+    // advertises. It is why the settings screen explains itself instead of offering a switch that
+    // could not work.
     expect(
       serverSupportsBackgroundPush(
         session({

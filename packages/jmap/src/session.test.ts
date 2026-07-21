@@ -123,8 +123,9 @@ describe('getWebPushVapidCapability (RFC 9749)', () => {
     expect(getWebPushVapidCapability(session)?.applicationServerKey).toBe('BEl62iUYgUiv…')
   })
 
-  it('returns null when the capability is absent — which is every JMAP server today (ADR-010)', () => {
-    // The fixture session mirrors Stalwart's: core, mail, submission… and no VAPID.
+  it('returns null when the capability is absent, as on most JMAP servers', () => {
+    // The fixture session is a server that does not implement RFC 9749: core, mail, submission…
+    // and no VAPID. (Stalwart does implement it as of v0.16.14 — see the case above.)
     expect(getWebPushVapidCapability(makeSession())).toBeNull()
   })
 

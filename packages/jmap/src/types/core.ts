@@ -105,7 +105,8 @@ export interface CoreCapability {
  * `PushManager.subscribe()` requires — Chromium and Safari refuse to subscribe without one, and the
  * push service then rejects any POST the server did not sign with the matching private key
  * (RFC 8292 §4.2). A server that omits this capability therefore cannot reach a browser with Web
- * Push at all. No JMAP server implements it today; see ADR-010.
+ * Push at all. Implementations are still sparse — Stalwart has shipped it since v0.16.14
+ * (2026-07-20), most other JMAP servers have not — so treat its absence as the common case.
  */
 export interface WebPushVapidCapability {
   /** The server's ECDSA P-256 public key, uncompressed and base64url-encoded (RFC 8292 §3.2). */

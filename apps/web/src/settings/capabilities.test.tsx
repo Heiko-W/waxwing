@@ -27,7 +27,18 @@ const CORE = {
   collationAlgorithms: ['i;ascii-numeric'],
 }
 
-/** The real shape Stalwart v0.16 sends: an EMPTY top-level `mail`, the limits on the account. */
+const WEBPUSH_VAPID = 'urn:ietf:params:jmap:webpush-vapid'
+
+/**
+ * The real shape Stalwart v0.16 sends: an EMPTY top-level `mail`, the limits on the account.
+ *
+ * **This fixture must keep mirroring the PINNED fixture server, and that is load-bearing.** Its E2E
+ * sibling (`e2e/tests/settings.spec.ts`, "the capabilities panel matches the session document")
+ * derives each Offered / Not-offered from the LIVE session document. The moment this hand-made
+ * session disagrees with what the pinned Stalwart advertises, the two tests assert opposite worlds
+ * and neither one can notice — which is exactly what happened to `webPushVapid` below when the pin
+ * moved to v0.16.14.
+ */
 function stalwartSession(over: Partial<JmapSession> = {}): JmapSession {
   return {
     capabilities: {
@@ -36,6 +47,9 @@ function stalwartSession(over: Partial<JmapSession> = {}): JmapSession {
       'urn:ietf:params:jmap:vacationresponse': {},
       'urn:ietf:params:jmap:quota': {},
       'urn:ietf:params:jmap:principals:availability': {},
+      // RFC 9749. Stalwart v0.16.14 (2026-07-20) implements it and auto-generates the keypair on a
+      // virgin registry, so a stock install advertises this with a real key.
+      [WEBPUSH_VAPID]: { applicationServerKey: 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkTVfzcJhBk' },
     },
     accounts: {
       [ACC]: {
@@ -93,7 +107,34 @@ describe('buildCapabilitiesView', () => {
     expect(present('vacationResponse')).toBe(true) // session level only
     expect(present('quota')).toBe(true) // both levels
     expect(present('sieve')).toBe(false) // neither
-    expect(present('webPushVapid')).toBe(false) // no server has it (ADR-010)
+  })
+
+  /**
+   * The RFC 9749 row, which until 2026-07-21 was pinned to `false` with the comment "no server has
+   * it (ADR-010)". A server that has it now exists — Stalwart v0.16.14, released 2026-07-20 — so
+   * the comment was false and the assertion was pinning a fact about the world, not about the code.
+   *
+   * Flipping it to `true` would repeat the mistake in the other direction, so the property asserted
+   * is the one that survives the world changing again: the row **tracks the session document**.
+   * A v0.16.14-shaped session reports Offered; the same session with the capability taken away (any
+   * pre-v0.16.14 server, or any other JMAP server today) reports Not offered. Hardcoding either
+   * answer fails one of the two.
+   *
+   * Note what this row does NOT claim. It is a PRESENCE row: "the server offers RFC 9749". Waxwing
+   * still delivers no background push — the client half (subscribe, `PushSubscription/set`, a `push`
+   * listener) was never built and reversing ADR-010 is an open owner decision. The Notifications
+   * section says so in words, and it branches on a stricter predicate than this one
+   * (`serverSupportsBackgroundPush`, which also requires a usable `applicationServerKey`).
+   */
+  it('tracks the session document for RFC 9749, rather than pinning an answer', () => {
+    const offered = (session: JmapSession): boolean | undefined =>
+      buildCapabilitiesView(session, ACC).known.find((row) => row.key === 'webPushVapid')?.present
+
+    expect(offered(stalwartSession())).toBe(true)
+
+    const older = stalwartSession()
+    delete older.capabilities[WEBPUSH_VAPID]
+    expect(offered(older)).toBe(false)
   })
 
   it('surfaces URNs it does not have a name for, rather than swallowing them', () => {

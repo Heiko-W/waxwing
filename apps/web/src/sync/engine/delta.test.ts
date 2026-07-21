@@ -149,6 +149,57 @@ describe('syncMailboxes', () => {
     expect(row?.unreadEmails).toBe(7)
     expect(row?.name).toBe('Local Name')
   })
+
+  /**
+   * The count fields this pass OVERWROTE, per field (M3.10, gap B7). `reapplyPendingCounts` puts an
+   * unsent intent's ±1 back on top of exactly these — so reporting a field the pass did not write
+   * would add the delta a SECOND time, on top of the optimistic patch already sitting in the row,
+   * and a double-count does not self-correct.
+   */
+  it('reports which count fields it overwrote — per field, and nothing when nothing changed', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox')])
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+
+    const changed = (updatedProperties: string[] | undefined) =>
+      fakePort({
+        mailboxChanges: async () => ({
+          newState: 'm1',
+          hasMoreChanges: false,
+          created: [],
+          updated: ['inbox'],
+          destroyed: [],
+          ...(updatedProperties === undefined ? {} : { updatedProperties }),
+        }),
+        getMailboxes: async () => ({ list: [mailbox('inbox')], notFound: [], state: 'm1' }),
+      })
+
+    // A rename: the counts were NOT rewritten, so neither field may be re-applied over.
+    expect(await syncMailboxes(changed(['name']), db, ACC, clock)).toEqual({
+      total: [],
+      unread: [],
+    })
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+    // The common "counts moved" delta.
+    expect(await syncMailboxes(changed(['totalEmails', 'unreadEmails']), db, ACC, clock)).toEqual({
+      total: ['inbox'],
+      unread: ['inbox'],
+    })
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+    // Only one of the two — the fields must not be reported together.
+    expect(await syncMailboxes(changed(['unreadEmails']), db, ACC, clock)).toEqual({
+      total: [],
+      unread: ['inbox'],
+    })
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+    // `updatedProperties` absent ⇒ a whole-row put ⇒ both fields rewritten.
+    expect(await syncMailboxes(changed(undefined), db, ACC, clock)).toEqual({
+      total: ['inbox'],
+      unread: ['inbox'],
+    })
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+    // Nothing changed at all: the mailbox is not even fetched, so nothing was overwritten.
+    expect(await syncMailboxes(fakePort(), db, ACC, clock)).toEqual({ total: [], unread: [] })
+  })
 })
 
 describe('syncEmails', () => {

@@ -1,10 +1,13 @@
 /**
  * "Can this server notify me while the app is CLOSED?" (M3.6, RFC 9749 — see ADR-010.)
  *
- * The honest answer today is no, for every JMAP server in existence, and the app says so rather than
- * offering a switch that could never work (NFR-PRIV-02: document what a static client cannot do). The
- * probe is not decoration: it is what makes the statement *checked* rather than hardcoded, so the day
- * a server ships the capability the UI tells the truth without a release.
+ * Servers that can DO exist: Stalwart v0.16.14 (2026-07-20) ships RFC 9749 and auto-generates a
+ * VAPID keypair, so this probe now returns `true` against a stock install. Waxwing still cannot —
+ * the client half (subscribe, `PushSubscription/set`, a `push` listener) is unimplemented, and
+ * reversing ADR-010 is an open owner decision. So a `true` here means "the server could, we do not
+ * yet", never "it works"; the settings copy is worded accordingly (NFR-PRIV-02: document what a
+ * static client cannot do). The probe is not decoration — it is what keeps that statement *checked*
+ * against the live session rather than hardcoded.
  */
 
 import { getWebPushVapidCapability } from '@waxwing/jmap'

@@ -152,9 +152,10 @@ function isMailCapability(value: unknown): value is MailCapability {
  * while the app is closed** on Chromium or Safari: both refuse `PushManager.subscribe()` without an
  * `applicationServerKey`, and the push service then rejects an unsigned POST (RFC 8292 §4.2).
  *
- * No JMAP server advertises this today (ADR-010). The probe exists so the app can say so honestly
- * (NFR-PRIV-02) instead of offering a switch that could never work — and so it lights up by itself
- * the day a server ships the capability.
+ * Server support is still the exception rather than the rule, so a client must handle `null` as an
+ * ordinary outcome and say what it means rather than offering a switch that cannot work. Stalwart
+ * implements RFC 9749 as of v0.16.14 (2026-07-20) and auto-generates the keypair on a fresh install,
+ * so a stock server does advertise it; most other JMAP servers do not.
  */
 export function getWebPushVapidCapability(session: Session): WebPushVapidCapability | null {
   const value = session.capabilities[Capabilities.webPushVapid]

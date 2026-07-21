@@ -11,7 +11,7 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
-import { Archive, Ban, Flag, FolderInput, Mail, MailOpen, Trash2 } from 'lucide-react'
+import { Archive, Ban, FolderInput, Mail, MailOpen, Star, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
@@ -430,6 +430,65 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   const someSelected = selection.selected.size > 0 && !allSelected
   const activeId = ids[focusIndex]
   const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
+  /**
+   * "Empty" and "out of date" are not the same state, and `loading` alone cannot tell them apart: it
+   * is true only while the window ROW itself is missing (`use-message-list.ts`), so a window that
+   * EXISTS with `ids: []` and a non-zero `total` reads as loaded-and-empty. It is neither — the
+   * window says it has mail and holds none of it. This is NOT a closed set — an earlier revision of
+   * this comment enumerated "three paths" and a checker found a fourth by reading `delta.ts`. What
+   * follows are the paths KNOWN to produce the shape, and the recovery argument is stated so that an
+   * unknown fifth does not silently inherit a promise written for these.
+   *
+   * KNOWN producers, all of which VOID the window (`queryState: null`):
+   *   1. a bulk move's OPTIMISTIC prune, which retracts a whole loaded head page (a folder of 200
+   *      with a 50-id window leaves `ids: []`, `total: 150`);
+   *   2. the ROLLBACK of one from a server REJECTION (`outbox.ts`'s `retractWindows`, whose tail
+   *      eviction the undo cannot record);
+   *   3. the same rollback reached from a DISCARDED dead letter.
+   * Painting the confident empty state in any of these contradicts the `aria-rowcount` rendered
+   * beside it and makes the live region announce "no results" for a folder that has some, so this
+   * state suppresses them all — and suppresses the shape itself, however it arose, which is why an
+   * unenumerated producer still gets the right rendering even where the wording below over-promises.
+   *
+   * What it does NOT do is claim progress, and the honest statement of WHY is a NETWORK call:
+   * `delta.ts`'s `Email/query` (`fullRequery`). Two things reach it, and only the first is a
+   * detector: a VOIDED window is re-queried on the next pass, and — independently of voiding —
+   * `engine.ts` forces a full pass every `FULL_SWEEP_EVERY` (5) sync passes, with a safety sweep
+   * every 60 s under it. There is NO detector for empty-ids-with-non-zero-total anywhere in the
+   * engine: a producer that leaves `queryState` NON-null is not recovered by the voiding mechanism
+   * at all, only by that periodic sweep, and only online. `delta.ts`'s `applyQueryChanges` is
+   * exactly such a producer on paper (it drops `added` entries whose index lands past the shortened
+   * `ids`, so a removal of the whole head page can write `ids: []` with a carried-over `total` and a
+   * live `queryState`). UNPROVEN against a real server and filed as §13 **B17** — go there rather
+   * than re-deriving the argument here.
+   *
+   * On the three known paths, connectivity is what separates them, and none of them is guaranteed
+   * prompt. A rejection IS a server answer, so path 2 proves we were online at ROLLBACK time — not
+   * at RECOVERY time: the connection can drop in between, and on the replay path (`reconcileWatched`
+   * with `onlyVoided`, which is the one a rollback's re-query takes) `engine.ts` re-voids and DEFERS
+   * rather than writing the answer whenever `pendingOutbox` is non-empty, so during a triage burst
+   * the re-query is not immediate either. Paths 1 and 3 have no guarantee at
+   * all. The optimistic prune runs offline by design; and the rollback has an offline arm —
+   * `discardFailed` (`engine.ts`) runs an OWED undo with NO connectivity check, reached from
+   * `use-outbox-problems.ts`, `replayOutbox`'s `online === false` bail does not cover it, and
+   * `applyUndo`'s `mailboxIds` arm is a purely LOCAL transaction, so offline it does not fail, it
+   * SUCCEEDS and retracts the window right there. Discard a dead letter offline and the state
+   * persists until the connection returns: nothing is retrying, `loadMore` is gated on
+   * `ids.length > 0` and will not rescue it either. Nothing here can tell the paths apart, so this
+   * message is written for the reconnect-bound ones — the same limitation already recorded for B2's
+   * arrival direction. Hence its own message
+   * (`list.stale`) rather than the spinner's "Loading messages": it names the CONDITION (out of
+   * date, refreshing on the next sync) instead of claiming progress that, offline, is not happening.
+   * `outbox.ts`'s `retractWindows` / `invalidateWindows` docs carry the other half of this and hedge
+   * the same way ("USUALLY that is immediate"); the two halves reference each other on purpose, so
+   * correct both or neither.
+   *
+   * Only this INCOHERENT combination is caught. `total === 0` and an unknown `total` (a persisted
+   * `null`, which `use-message-list.ts` surfaces as `undefined`) are the genuine empty cases and
+   * still say so out loud — a swallowed empty state would be the worse bug.
+   */
+  const retracted = ids.length === 0 && total !== undefined && total > 0
+  const resolving = loading || retracted
 
   return (
     <div className={styles.container} ref={containerRef}>
@@ -441,7 +500,6 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           fromMailbox={sourceMailboxId ?? undefined}
           allSelected={allSelected}
           someSelected={someSelected}
-          allSeen={selectedIds.every((id) => rowById.get(id)?.keywords.$seen === true)}
           actions={actions}
           onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
           onClear={() => dispatchSelection({ type: 'clear' })}
@@ -460,7 +518,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
 
       {search && (
         <VisuallyHidden aria-live="polite">
-          {loading
+          {resolving
             ? ''
             : ids.length === 0
               ? t('search.results.empty')
@@ -468,7 +526,11 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
         </VisuallyHidden>
       )}
 
-      {ids.length === 0 && !loading ? (
+      {/* Outside the grid on purpose: `role="grid"` owes its accessible tree rows, and this note is
+          not one. It sits where the empty state would, because that is the claim it replaces. */}
+      {retracted && <p className={styles.empty}>{t('list.stale')}</p>}
+
+      {ids.length === 0 && !resolving ? (
         <p className={styles.empty}>{search ? t('search.results.empty') : t('list.empty')}</p>
       ) : (
         <div
@@ -747,12 +809,6 @@ interface BulkBarProps {
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
-  /**
-   * Whether every selected message is already read — the read button toggles on it. An unhydrated
-   * row counts as unread, which is the safe way round: the button then offers "mark as read", and
-   * re-reading an already-read message is harmless.
-   */
-  readonly allSeen: boolean
   readonly actions: ReturnType<typeof useMessageActions>
   readonly onSelectAll: () => void
   readonly onClear: () => void
@@ -764,7 +820,6 @@ function BulkBar({
   count,
   ids,
   activeLabel,
-  allSeen,
   fromMailbox,
   allSelected,
   someSelected,
@@ -781,6 +836,66 @@ function BulkBar({
   const archive = useMailboxByRole('archive')
   const junk = useMailboxByRole('junk')
   const trash = useMailboxByRole('trash')
+
+  /**
+   * The two toggle predicates, hydrated from the SELECTION's own rows.
+   *
+   * Deliberately NOT from the list's `rowById`, which the read button used to read: that map holds
+   * the VIRTUAL WINDOW only, while select-all dispatches over the whole window. Select all, scroll,
+   * and every off-screen selected row resolves to `undefined` there — the predicate reads false even
+   * when every message qualifies, so the button SETS what the `s` chord would CLEAR.
+   *
+   * Parity is with `s` ONLY, and it is worth being exact about that. `s` (`registry.ts`,
+   * `triage.flag`) is a toggle and therefore hydrates the same predicate from the full target set —
+   * `targetsAllFlagged` in `use-shortcut-context.ts`, which is this guard shape line for line, so
+   * the two can drift and the shared shape is what stops them. `u` (`triage.unread`) is NOT a
+   * partner: it is an unconditional `setSeen(targetIds, false)` with no predicate behind it, so it
+   * hydrates nothing and cannot drift from anything. It is named here only because the read button
+   * is the surface a user would expect it to agree with.
+   *
+   * The shape itself: a result that has not caught up with `ids` is not trusted, and an unhydrated
+   * row never counts as qualifying (the safe way round — the button then offers to set, and setting
+   * a keyword a message already carries is harmless).
+   *
+   * TRADE-OFF, named here rather than left to be rediscovered as "B9 did not fully fix the drift":
+   * this is the THIRD live subscription over this selection. The list's own is
+   * `useEmailWindow(visibleIds)` — the VIRTUAL WINDOW, a different id-set from this one — and
+   * `use-shortcut-context.ts` already runs `useEmailWindow(targetIds)` over exactly the set this bar
+   * holds, and already derives the finished predicate as `targetsAllFlagged`. Three independent
+   * subscriptions resolve on their own ticks. This one is not deduped against the shortcut
+   * context's: `useShortcutContext` is consumed only by `ShortcutProvider`, so sharing its result
+   * means hoisting it (store or context) — plumbing that belongs to plan row B10, which is where the
+   * next reader should go rather than rediscovering this.
+   *
+   * The cost meanwhile is bounded (the selection, and this bar only mounts when there is one), it
+   * converges, and every side reads the same table, so the worst transient is a label one tick
+   * behind — which the `selectedRows.length === ids.length` guard above turns into the SAFE label
+   * ("set") rather than a wrong one. It is never a dispatch against stale data: the click reads
+   * exactly the value the label was rendered from.
+   */
+  const selectedRows = useEmailWindow(ids)
+  const allWithKeyword = (keyword: '$seen' | '$flagged'): boolean =>
+    // DEFENSIVE, and unreachable today — recorded rather than left to look like coverage. This bar
+    // mounts only under `selection.selected.size > 0` and `ids` is that selection, so `ids` is never
+    // empty here; deleting this line leaves the suite green. It is kept because the failure it
+    // prevents is silent: `[].every(…)` is vacuously TRUE, so an empty `ids` would report every
+    // keyword as universally set and render "Unflag"/"Mark unread" over a selection of nothing. The
+    // invariant that rules that out lives in a DIFFERENT component (the mount condition above), so
+    // the guard is the local statement of it. `use-shortcut-context.ts`'s `targetsAllFlagged` carries
+    // the same line and is kept in step with it deliberately — but do NOT read that as "the other one
+    // is load-bearing".
+    // It is equally inert, by a different route: `targetIds` there genuinely can be empty, yet
+    // `targetsAllFlagged` has exactly one consumer, the `run` of `registry.ts`'s `triage.flag` entry,
+    // which is gated by its own `enabled: targetIds.length > 0` — the same gate the key dispatcher and
+    // ⌘K palette both apply before running anything. So the value is computed on every render with
+    // empty targets and no consumer can read it then. BOTH lines are defensive; the shared shape is
+    // worth keeping so the two predicates cannot drift, and that is the whole of the argument.
+    ids.length > 0 &&
+    selectedRows !== undefined &&
+    selectedRows.length === ids.length &&
+    selectedRows.every((row) => row?.keywords[keyword] === true)
+  const allSeen = allWithKeyword('$seen')
+  const allFlagged = allWithKeyword('$flagged')
 
   // Folder-move needs a known source mailbox; an all-mailboxes search selection spans folders, so the
   // move actions are gated off there (read/flag/delete, which need no source, stay). A moved message
@@ -829,12 +944,20 @@ function BulkBar({
       >
         {allSeen ? <Mail /> : <MailOpen />}
       </IconButton>
+      {/*
+        A TOGGLE for the same reason the read button beside it is one: the `s` chord toggles through
+        this very seam, and a button that can only ever SET the flag is the keystroke/button drift
+        `useTriage` exists to prevent. The label is the accessible name, so it has to move with the
+        state too — a control permanently announced as "Flag" that unflags is a lie to a screen
+        reader, not a cosmetic slip. And it draws a STAR, the mark the row indicator and the reading
+        pane both paint: the bulk button was the one surface not showing the mark it sets.
+      */}
       <IconButton
-        label={t('list.actions.flag')}
+        label={allFlagged ? t('list.actions.unflag') : t('list.actions.flag')}
         variant="ghost"
-        onClick={() => triage.setFlagged(ids, true)}
+        onClick={() => triage.setFlagged(ids, !allFlagged)}
       >
-        <Flag />
+        <Star className={allFlagged ? styles.flagOn : undefined} />
       </IconButton>
       <LabelMenuButton ids={ids} />
       {activeLabel !== undefined && (

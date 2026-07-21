@@ -80,6 +80,14 @@ export function useShortcutContext(notify: (messageKey: string) => void): Shortc
 
   // `s` is a TOGGLE, so it has to know the current flag state of what it is about to act on — read from
   // the replica, the same source the star button renders from, so key and button can never disagree.
+  //
+  // The `targetIds.length > 0` term is DEFENSIVE, not load-bearing, and is recorded as such because
+  // `MessageList.tsx`'s twin guard used to cite this one as the case where it matters. It does not:
+  // the only consumer of `targetsAllFlagged` is the `run` of `registry.ts`'s `triage.flag` entry,
+  // gated by its own `enabled: targetIds.length > 0` — the one gate both the key dispatcher and the
+  // ⌘K palette apply. Empty targets therefore compute a value nothing can read. Without the term `[].every(…)`
+  // would be vacuously TRUE and the toggle would read "already all flagged"; keeping it, and keeping
+  // it shaped like the bar's, is what stops the two predicates drifting.
   const targetRows = useEmailWindow(useMemo(() => [...targetIds], [targetIds]))
   const targetsAllFlagged =
     targetIds.length > 0 &&

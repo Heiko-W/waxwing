@@ -25,6 +25,34 @@ re-checks everything.
 Requires Docker (`docker` + `docker compose`). No other local dependencies — the control
 script (`fixture.mjs`) uses only Node ≥ 22 built-ins.
 
+## Upgrading the pinned image — recreate the volume, or defaults go missing
+
+> **After changing the pinned image tag in `docker-compose.yml`, tear the fixture down with
+> `pnpm e2e:server:down` before the next `pnpm e2e:server`.** Otherwise the new binary boots
+> against the registry the *old* version populated, and **server-generated defaults are not
+> regenerated**.
+
+This is not hypothetical bookkeeping. Stalwart seeds its defaults **only into a virgin registry**
+— the whole block in `crates/common/src/manager/defaults.rs` is nested inside
+`if count_object(OidcProvider) == 0`. Anything it would create on first boot is therefore created
+**once, by whichever version got there first**, and never again.
+
+The concrete case that bit us: v0.16.14 auto-generates the **RFC 9749 Web-Push VAPID keypair** at
+that step. Bump the tag from v0.16.11, run `pnpm e2e:server` without a prior `down`, and the server
+is v0.16.14 but advertises **no** `urn:ietf:params:jmap:webpush-vapid` — because the registry is
+not virgin. `e2e/tests/settings.spec.ts` fails on its premise, and the pin is entirely innocent.
+
+`up()` deliberately does **not** wipe the volume for you: that would destroy seeded state (demo
+mail, mailboxes, anything you were mid-way through) without asking. `down` is the explicit,
+data-losing step, and it stays explicit. `up` warns when it notices the data volume is older than
+the image it is running (see “Troubleshooting”), but a warning is all it can safely do.
+
+```sh
+# after editing the `image:` tag in docker-compose.yml
+pnpm e2e:server:down   # removes containers AND the data volume
+pnpm e2e:server        # fresh registry -> defaults regenerated
+```
+
 ## Test accounts
 
 The baseline is **Stalwart v0.16.x** (NFR-COMPAT-02). In v0.16 the config file is only a
@@ -115,8 +143,9 @@ fixture-side hooks make the browser demo work:
 `docker-compose.yml` defines two variants behind compose **profiles** so a bare
 `docker compose up` starts nothing by accident:
 
-- **`dev`** — pinned `stalwartlabs/stalwart:v0.16.11-alpine`, the tested baseline. This is
-  what `pnpm e2e:server` runs.
+- **`dev`** — pinned `stalwartlabs/stalwart:v0.16.14-alpine`, the tested baseline. This is
+  what `pnpm e2e:server` runs. **Changing this tag requires a `pnpm e2e:server:down` before the
+  next `up`** — see “Upgrading the pinned image” above.
 - **`main`** — `stalwartlabs/stalwart:latest`, for the scheduled, **non-blocking** compat
   job wired in **P0.5**. It never runs by default. Both share host port `18080`, so run
   only one at a time.
@@ -137,7 +166,7 @@ node e2e/stalwart/fixture.mjs down     # tears down whichever profile is running
 
 ## Troubleshooting
 
-- **Alpine image issues** — swap `:v0.16.11-alpine` for the non-alpine `:v0.16.11` in
+- **Alpine image issues** — swap `:v0.16.14-alpine` for the non-alpine `:v0.16.14` in
   `docker-compose.yml` (both were verified to boot identically) and note it here.
 - **Port 18080 in use** — something else holds the port; free it or change the host port in
   **all three** places, which must stay in sync: the `ports:` mapping **and**
@@ -147,3 +176,8 @@ node e2e/stalwart/fixture.mjs down     # tears down whichever profile is running
 - **Stale state** — `pnpm e2e:server:down` wipes the data volume; the next `up` starts
   fresh. Inspect with `node e2e/stalwart/fixture.mjs status` or
   `docker logs waxwing-stalwart-dev`.
+- **“data volume predates the image” warning, or a capability the pinned version should have is
+  missing** — the registry was populated by an older Stalwart and its first-boot defaults were
+  never regenerated. `pnpm e2e:server:down`, then `pnpm e2e:server`. See “Upgrading the pinned
+  image”. The warning is a heuristic (volume creation time vs. image build time) and only ever
+  warns — it never blocks or deletes anything.

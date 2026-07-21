@@ -136,31 +136,55 @@ export async function syncIdentities(
   await setSyncState(db, accountId, 'Identity', state, clock.now())
 }
 
+/**
+ * Which mailbox rows this pass overwrote with the server's ABSOLUTE count, PER FIELD (M3.10, gap B7).
+ *
+ * Per field because `Mailbox/changes` may name `updatedProperties`, and a pass that rewrote only
+ * `unreadEmails` must not have an optimistic `totalEmails` delta re-applied on top of a `totalEmails`
+ * it never touched. Empty ⇒ nothing to re-apply, which is the common case: `syncMailboxes` patches
+ * only the mailboxes the server actually reports as changed.
+ */
+export interface MailboxCountWrites {
+  readonly total: readonly Id[]
+  readonly unread: readonly Id[]
+}
+
+const NO_COUNT_WRITES: MailboxCountWrites = { total: [], unread: [] }
+
 export async function syncMailboxes(
   port: JmapPort,
   db: ReplicaDb,
   accountId: Id,
   clock: EngineClock,
-): Promise<void> {
+): Promise<MailboxCountWrites> {
   const sinceState = await getSyncState(db, accountId, 'Mailbox')
   if (sinceState === null) {
     const { list, state } = await port.getMailboxes(null)
     await putMailboxes(db, accountId, list)
     await setSyncState(db, accountId, 'Mailbox', state, clock.now())
-    return
+    const ids = list.map((mailbox) => mailbox.id)
+    return { total: ids, unread: ids }
   }
 
   const acc = await drainChanges((s) => port.mailboxChanges(s), sinceState)
+  let writes = NO_COUNT_WRITES
   if (acc.changed.length > 0) {
     const { list } = await port.getMailboxes(acc.changed)
+    const ids = list.map((mailbox) => mailbox.id)
     if (acc.updatedProperties === null) {
       await putMailboxes(db, accountId, list)
+      writes = { total: ids, unread: ids } // a whole-row put rewrites both
     } else {
       await patchMailboxes(db, accountId, list, acc.updatedProperties)
+      writes = {
+        total: acc.updatedProperties.includes('totalEmails') ? ids : [],
+        unread: acc.updatedProperties.includes('unreadEmails') ? ids : [],
+      }
     }
   }
   for (const id of acc.destroyed) await deleteMailbox(db, accountId, id)
   await setSyncState(db, accountId, 'Mailbox', acc.newState, clock.now())
+  return writes
 }
 
 /** Patch only the changed props onto existing mailbox rows; full-insert any not present locally. */

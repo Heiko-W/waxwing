@@ -724,6 +724,167 @@ describe('SyncEngine', () => {
     await engine.stop()
   })
 
+  /**
+   * M3.10, gap B7 — the ORDERING hazard, which no other test can see.
+   *
+   * `syncMailboxes` runs as the FIRST statement of a sync pass, before the replay, and it writes the
+   * server's ABSOLUTE `unreadEmails`. So a pass firing while an intent is still unsent can overwrite
+   * the optimistic badge with the server's PRE-mutation number, and it stays reverted until the
+   * intent lands. It needs a CONCURRENT server-side change to that same mailbox — which is not
+   * exotic: new mail arriving in the Inbox is exactly that, and the Inbox is where marking-read
+   * happens.
+   *
+   * THE FIXTURE IS THE TEST. `mailboxChanges` must report the mailbox as CHANGED as well as
+   * `getMailboxes` returning the stale count: with an empty `changed` list `patchMailboxes` is never
+   * called at all, the badge holds for a reason that has nothing to do with the fix, and deleting
+   * the re-apply step leaves this green.
+   *
+   * THE ROW IS HELD UNSENT BY `notBefore`, not by a failing `setEmails`. It used to be the latter,
+   * and that was a defect in this test: a THROWN `setEmails` dispatches the row, and the transient
+   * branch then returns it to `pending`. So the only row this test ever fed to the re-apply was one
+   * whose request had already gone out — exactly the case the re-apply must now REFUSE (see the
+   * companion test below). A future `notBefore` keeps the row provably un-dispatched
+   * (`attempts === 0`), which is the case this test is actually about.
+   */
+  it('an UNSENT mark-read survives a pass that rewrites the mailbox — and is never counted twice', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    let changedProps: string[] | null = null // null ⇒ the server reports no mailbox change at all
+    let state = 0
+    const port: JmapPort = {
+      ...base,
+      async mailboxChanges() {
+        if (changedProps === null) return emptyChanges(`mbx-${state}`)
+        state += 1
+        return {
+          newState: `mbx-${state}`,
+          hasMoreChanges: false,
+          created: [],
+          updated: ['inbox'],
+          destroyed: [],
+          updatedProperties: changedProps,
+        }
+      },
+      async getMailboxes(ids) {
+        const got = await base.getMailboxes(ids)
+        // The server still reports the PRE-mutation count: it has not seen our mark-read.
+        return { ...got, list: got.list.map((box) => ({ ...box, unreadEmails: 3 })) }
+      },
+      async setEmails() {
+        // The `notBefore` gate below must keep replay from ever reaching this. If it fires, the row
+        // has been dispatched and this test is no longer testing what it claims to.
+        throw new Error('replay must not dispatch a row held by notBefore')
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const unread = async () => (await db.mailboxes.get([ACC, 'inbox']))?.unreadEmails
+    expect(await unread()).toBe(3)
+
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1', notBefore: 10_000_000 }, // far past the test clock — never claimed, never sent
+    )
+    expect(await unread()).toBe(2) // the optimistic badge
+    const queued = await db.outbox.get([ACC, 'i1'])
+    expect(queued?.status).toBe('pending')
+    expect(queued?.attempts).toBe(0) // PROVABLY un-dispatched — the whole precondition
+
+    const pass = async () => {
+      const before = getEngineStatus().lastSyncedAt
+      push.fireStateChange()
+      await waitFor(() => getEngineStatus().lastSyncedAt !== before)
+    }
+
+    // 1. The collision: the server reports the Inbox changed (new mail) and hands back its
+    //    pre-mutation `unreadEmails`. Without the re-apply the badge silently reverts to 3.
+    changedProps = ['totalEmails', 'unreadEmails']
+    await pass()
+    expect(await unread()).toBe(2)
+    expect((await db.outbox.get([ACC, 'i1']))?.status).toBe('pending') // still unsent
+
+    // 2. A pass that changed NOTHING must not re-apply the delta on top of the patch already in the
+    //    row — that would be a double-count, and unlike staleness a double-count never corrects.
+    changedProps = null
+    await pass()
+    await pass()
+    expect(await unread()).toBe(2)
+
+    // 3. A rename touches the mailbox but NOT its counts: same argument, per field.
+    changedProps = ['name']
+    await pass()
+    expect(await unread()).toBe(2)
+
+    await engine.stop()
+  })
+
+  /**
+   * The other half of the same design, end to end, and the case the original B7 test accidentally
+   * inverted: a row whose request DID go out and came back as a thrown error is returned to
+   * `pending` by the transient branch, and its ±1 may ALREADY be in the server's number. Re-applying
+   * it there is a double-count, and a double-count does not self-correct — the mailbox is only
+   * re-reported when it changes again. So the re-apply must fail CLOSED and leave the server's word
+   * standing, accepting a badge that reverts until the intent lands.
+   */
+  it('does NOT re-apply a mark-read whose request already went out and threw', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    let changedProps: string[] | null = null
+    let state = 0
+    const port: JmapPort = {
+      ...base,
+      async mailboxChanges() {
+        if (changedProps === null) return emptyChanges(`mbx-${state}`)
+        state += 1
+        return {
+          newState: `mbx-${state}`,
+          hasMoreChanges: false,
+          created: [],
+          updated: ['inbox'],
+          destroyed: [],
+          updatedProperties: changedProps,
+        }
+      },
+      async getMailboxes(ids) {
+        const got = await base.getMailboxes(ids)
+        return { ...got, list: got.list.map((box) => ({ ...box, unreadEmails: 3 })) }
+      },
+      async setEmails() {
+        // A THROWN error says nothing about whether the server processed the request — the response
+        // may simply have been lost. The transient branch puts the row back to `pending`.
+        throw new TypeError('fetch failed')
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader && engine.getStatus().phase === 'idle')
+
+    const unread = async () => (await db.mailboxes.get([ACC, 'inbox']))?.unreadEmails
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    expect(await unread()).toBe(2) // the optimistic badge, applied as always
+
+    // The dispatch-triggered replay throws and launders the row back to `pending` — but with
+    // `attempts` incremented, which is what marks it as having been dispatched.
+    await waitFor(async () => ((await db.outbox.get([ACC, 'i1']))?.attempts ?? 0) > 0)
+    const laundered = await db.outbox.get([ACC, 'i1'])
+    expect(laundered?.status).toBe('pending') // `pending` ≠ "never dispatched"
+
+    const before = getEngineStatus().lastSyncedAt
+    changedProps = ['totalEmails', 'unreadEmails']
+    push.fireStateChange()
+    await waitFor(() => getEngineStatus().lastSyncedAt !== before)
+
+    // The server's absolute number stands. Skipping is the SAFE error: it self-corrects the moment
+    // the intent lands, whereas a 3 → 2 → 1 double-count would not.
+    expect(await unread()).toBe(3)
+    await engine.stop()
+  })
+
   it('routes a background 401 to the re-auth funnel instead of a stuck error (M1.3 review)', async () => {
     const base = fakePort({ emails: [], setEmails: emptySet })
     const port: JmapPort = {

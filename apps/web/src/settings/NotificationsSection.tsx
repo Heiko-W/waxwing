@@ -7,10 +7,12 @@
  *    user gesture is auto-denied, and that denial sticks to the origin forever — an unsolicited
  *    prompt does not annoy the user, it destroys the feature for them. So the request lives in
  *    `onCheckedChange` and nowhere else.
- *  - **It never claims we can notify while the app is closed.** No JMAP server can sign a browser
- *    push (ADR-010), so the capability probe is `false` everywhere today and the section says so in
- *    plain words. Promising it and silently not delivering is exactly the failure NFR-PRIV-02 exists
- *    to forbid.
+ *  - **It never claims we can notify while the app is closed.** Servers that sign a browser push do
+ *    exist now — Stalwart v0.16.14 ships RFC 9749 — but Waxwing has no client half: no
+ *    `PushSubscription/set`, no `push` listener (ADR-010 and its amendment). So the capability probe
+ *    decides only WHICH honest sentence is shown: "this server cannot" or "this server can, we do
+ *    not yet". Neither says it works. Promising it and silently not delivering is exactly the
+ *    failure NFR-PRIV-02 exists to forbid.
  *
  * Lives in the lazy `/settings` chunk, so none of it costs the entry bundle anything.
  */
@@ -265,10 +267,12 @@ export function NotificationsSection(props: NotificationsSectionProps) {
         </>
       )}
 
-      {/* Always rendered, whatever the switch says: it is a fact about the SERVER, not a setting. */}
+      {/* Always rendered, whatever the switch says: it is a fact about the SERVER, not a setting.
+          Two honest states, and no third: the server cannot, or the server can and WE cannot yet.
+          There is deliberately no string for "it works" — see ADR-010's amendment. */}
       <p className={styles.hint}>
         {backgroundPush
-          ? t('notify.background.available', { product })
+          ? t('notify.background.notImplemented', { product })
           : t('notify.background.unavailable', { product })}
       </p>
     </div>

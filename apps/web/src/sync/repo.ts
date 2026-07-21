@@ -600,6 +600,66 @@ export function pendingOutbox(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]
     .toArray()
 }
 
+/**
+ * The queue rows that have provably NEVER BEEN DISPATCHED — `status === 'pending'` **and**
+ * `attempts === 0`, FIFO.
+ *
+ * WHY THE SECOND CONJUNCT EXISTS. This function used to filter on `status === 'pending'` alone,
+ * justified by "a `pending` row has by definition never been dispatched". **That was false.** In
+ * this state machine `pending` means "not currently dispatched", not "never dispatched": FOUR
+ * paths in `outbox.ts` launder an ALREADY-DISPATCHED row back to `pending`, and every one of them
+ * carries `move`/`setKeywords`/`destroyEmails` — exactly the three intents that move a count. (This
+ * list said THREE until the fourth was found; it had been missed because it is the only one not
+ * reached from a thrown error.)
+ *
+ *  1. `recoverStranded` — a leader killed mid-request leaves the row `inflight`; recovery puts every
+ *     non-`sendEmail` row back to `pending` to be re-sent.
+ *  2. The TRANSIENT retry branch — a THROWN error leaves it UNKNOWN whether the request reached the
+ *     server (the response may simply have been lost), and the row goes back to `pending`.
+ *  3. Auth expiry — a 401/403 puts the row back to `pending` and re-throws to the re-auth funnel.
+ *  4. The per-object `rateLimit` retry — a `SetError` on SOME objects backs the WHOLE row off to
+ *     `pending` for a later re-execute. This is the LEAST AMBIGUOUS of the four and the one whose
+ *     exclusion needs no hedging: a per-object `SetError` means the server ANSWERED, so the request
+ *     provably arrived and was processed — and in a bulk intent the objects that were NOT rate-
+ *     limited WERE applied, so part of this row's delta is certainly already in the server's number.
+ *     Paths 2 and 3 rest on "may have been processed"; this one rests on "was".
+ *
+ * All four now INCREMENT `attempts`, which is true independently of this predicate (each of those
+ * rows genuinely was attempted) and is what makes `attempts === 0` mean "never dispatched".
+ *
+ * WHY IT MUST FAIL CLOSED, i.e. why the doubt is resolved by SKIPPING. The two errors are not
+ * symmetric. A missed re-apply self-corrects: the badge reverts to the server's number until the
+ * intent lands, and sending it makes the server re-report the mailbox. A double-count does NOT
+ * self-correct: the mailbox is only re-reported when it changes AGAIN, so a ±1 added on top of a
+ * server number that already contains it can sit there indefinitely. When in doubt, skip.
+ *
+ * `inflight` is excluded for the same reason and remains a residual, accepted gap: an inflight
+ * intent's count patch still reverts if a pass overwrites its mailbox, bounded by one intent and
+ * erased by the next `Mailbox/changes` that reports it.
+ *
+ * NOT excluded, deliberately: a row requeued by `SyncEngine.retryFailed`, which resets `attempts`
+ * to 0. That reset is honest here, because every dead-letter a retry can reach is one the server
+ * ANSWERED — a per-object `SetError`, or a method-level error (`forbidden`, `invalid`,
+ * `stateConflict`). A transport failure or a lost response classifies as `retry`, never as a
+ * dead-letter, so a retryable row's mutation provably did not land. (`sendInterrupted` is the one
+ * ambiguous dead-letter, and `retryFailed` refuses `sendEmail` outright — which moves no count
+ * anyway.)
+ *
+ * THE ENUMERATION IS CLOSED, re-derived rather than trusted (it has been found incomplete twice).
+ * Every write that can put an outbox row into `pending` is one of six: `enqueueAction` (row
+ * creation, `attempts: 0` — the honest case this predicate is FOR), the four laundering paths above,
+ * and `SyncEngine.retryFailed`. Nothing else reaches the table: `repo.ts#enqueue` is the only
+ * `db.outbox.put`, and `enqueueAction` is its only caller; every other writer is a
+ * `db.outbox.update`, and the ones naming `status` set `inflight` or `error`.
+ */
+export function unsentOutbox(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
+  return db.outbox
+    .where('[accountId+createdAt]')
+    .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
+    .filter((row) => row.status === 'pending' && row.attempts === 0)
+    .toArray()
+}
+
 /** Dead-lettered intents (`status: 'error'`), oldest first — the conflict/problems surface (M3.3). */
 export async function failedOutbox(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
   const rows = await db.outbox.where('[accountId+status]').equals([accountId, 'error']).toArray()

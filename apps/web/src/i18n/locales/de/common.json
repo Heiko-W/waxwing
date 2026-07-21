@@ -430,6 +430,7 @@
     },
     "loadMore": "Mehr laden",
     "loading": "Nachrichten werden geladen",
+    "stale": "Diese Liste ist nicht aktuell und wird bei der nächsten Synchronisation aktualisiert.",
     "empty": "Keine Nachrichten in diesem Ordner.",
     "noMailbox": "Wählen Sie einen Ordner",
     "undo": "Rückgängig",
@@ -826,7 +827,7 @@
     },
     "background": {
       "unavailable": "Mitteilungen bei vollständig geschlossenem {{product}} sind mit diesem Server nicht möglich. Sie setzen voraus, dass der Server einen Web-Push-Signaturschlüssel veröffentlicht (RFC 9749); dieser tut es nicht. Alles Obige funktioniert, solange {{product}} geöffnet ist.",
-      "available": "Dieser Server unterstützt Mitteilungen auch bei geschlossenem {{product}}."
+      "notImplemented": "Dieser Server unterstützt Mitteilungen bei geschlossenem {{product}}, {{product}} liefert sie aber noch nicht."
     },
     "message": {
       "noSubject": "(kein Betreff)",
