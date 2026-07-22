@@ -41,8 +41,7 @@ import {
   useMailboxes,
   useReplica,
 } from '../sync'
-import { Switch, TextInput } from '../ui'
-import { Checkbox } from '../ui/Checkbox'
+import { Checkbox, Switch, TextInput } from '../ui'
 import styles from './settings.module.css'
 
 export interface NotificationsSectionProps {

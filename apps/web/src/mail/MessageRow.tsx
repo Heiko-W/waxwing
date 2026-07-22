@@ -72,7 +72,14 @@ export function MessageRow({
   onActivate,
 }: MessageRowProps) {
   const { t } = useTranslation()
-  const rowClass = `${styles.row} ${density === 'compact' ? styles.compact : styles.comfortable}`
+  // Comfortable is the BASE row and takes no modifier class: the stylesheet expresses density as a
+  // compact-only override, and the 76 px comfortable height comes from `ROW_HEIGHT` in
+  // `MessageList.tsx` (the virtualizer's `estimateSize` → `.rowWrap`'s inline height → `.row`'s
+  // `block-size: 100%`), not from CSS. This used to name a `styles.comfortable` that no rule ever
+  // declared, so every non-compact row shipped a literal `undefined` class token. Under Vitest that
+  // is invisible — its CSS-Module proxy invents `_comfortable_<hash>` for any key — which is why
+  // `message-list-classes.test.ts` pairs the two files by text instead.
+  const rowClass = `${styles.row}${density === 'compact' ? ` ${styles.compact}` : ''}`
 
   if (email === undefined) {
     return (

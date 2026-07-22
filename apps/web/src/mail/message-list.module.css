@@ -28,6 +28,14 @@
   white-space: nowrap;
 }
 
+/* Why the sort/threading/unread-first controls beside it are disabled (the search seam cannot
+   honour them). It wraps to its own line on a narrow toolbar rather than squeezing the controls. */
+.toolbarNote {
+  flex: 1 1 100%;
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+}
+
 .bulkCount {
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
@@ -329,7 +337,14 @@
   font-weight: 600;
 }
 
-/* Density: compact hides the preview line and tightens spacing. */
+/*
+ * Density: compact hides the preview line and tightens spacing. There is deliberately NO
+ * `.comfortable` rule — comfortable is the bare `.row`, and its 76 px height is set by `ROW_HEIGHT`
+ * in `MessageList.tsx` (the virtualizer writes it onto `.rowWrap`, which `.row { block-size: 100% }`
+ * fills), not here. `MessageRow` used to reference a `styles.comfortable` that never existed, which
+ * put a literal `undefined` class on every non-compact row; adding the rule here would have been the
+ * wrong end of that fix. `message-list-classes.test.ts` holds the two files to each other.
+ */
 .compact .preview {
   display: none;
 }

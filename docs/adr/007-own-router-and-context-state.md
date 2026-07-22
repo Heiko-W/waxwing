@@ -33,8 +33,13 @@ Load-bearing constraints:
    `<a href>` and only intercepts an unmodified left-click). The base is derived from
    `document.baseURI`, so `Link to="/contacts"` resolves to `/mail/contacts` under a `/mail/`
    mount. `/contacts` and `/settings` are `React.lazy` chunks behind one `<Suspense>` (mail is
-   the eager primary), realizing NFR-PERF-03; `.size-limit.js` now measures the entry chunk
-   (`index-*.js`) so those on-demand chunks don't count against the initial budget.
+   the eager primary), realizing NFR-PERF-03; `.size-limit.js` keeps those on-demand chunks out
+   of the initial budget. (**Corrected 2026-07-21:** M1.4 did this by measuring the entry chunk
+   `index-*.js` alone. M3.7 **inverted** the rule, because the old one let a 17 KB move *out* of
+   the entry read as a 17 KB saving while the initial load was unchanged: `.size-limit.js` now
+   counts **everything under `assets/`** and excludes each lazy chunk **by name**, so a new eager
+   chunk is counted automatically and a new lazy one has to be listed — a change a reviewer can
+   see. The lazy route screens are two of those named exclusions.)
    **Not react-router:** its ~20 KB buys nothing here, and its `basename` plumbing is an
    awkward fit for a runtime-derived base that our own `deriveBase` handles in one line.
 

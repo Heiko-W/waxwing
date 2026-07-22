@@ -284,21 +284,38 @@ webmail is an open gap.
   (SP.3/ADR-005): the SSE ("EventSource") fallback is realized as a **fetch-based reader**,
   because Stalwart authenticates the SSE endpoint only via the `Authorization` header, which
   the native `EventSource` API cannot send. Against Stalwart v0.16.11 the browser `WebSocket`
-  is likewise unauthenticable (no header); selection is therefore done by **runtime failover**
-  (SP.4) — `createPushChannel` tries the capability-eligible transports in order and, when the
-  browser's WebSocket attempt never opens, auto-degrades to the SSE reader with no caller hint —
-  so the effective browser transport is SSE. Whether WS becomes V1 core is decision D2 (Gate G1).
-- **FR-NOTIF-02 (Must, _conditional on the server_ — see ADR-010)** — **System notifications**
+  is likewise unauthenticable (no header), and **decision D2 settled this at Gate G1
+  (2026-07-10): SSE-first, WebSocket deferred** to a post-SSE enhancement. Since the B4 fix
+  (2026-07-20, ADR-005 amendment) the browser therefore **never constructs a `WebSocket` at
+  all**: the app hands `createPushChannel` the restrictive `transports` allowlist
+  `BROWSER_PUSH_TRANSPORTS = ['sse','polling']` (`apps/web/src/sync/engine/engine.ts`), applied
+  *before* the eligibility filter, so WS is absent from the failover chain rather than merely
+  deprioritised — `prefer` would only reorder and would leave the un-authable WS one hop behind
+  SSE. Runtime failover (SP.4) remains underneath as a safety net; it is no longer how the
+  browser reaches SSE. The library default (WS → SSE → polling) is unchanged for server-side
+  callers.
+- **FR-NOTIF-02 (Must, _deferred — see ADR-010 / decision D6_)** — **System notifications**
   via Web Push: JMAP `PushSubscription` with RFC 8291 encryption, handled in the service
   worker. No relay server beyond the browser vendor's push service; payloads are end-to-end
   encrypted (the privacy aspect to document, NFR-PRIV-01).
-  **Precondition, and it is not met by any JMAP server today (M3.6, verified live):** Chromium
-  and Safari refuse a `PushManager.subscribe()` without an `applicationServerKey`, and the push
-  service then rejects any POST not signed with the matching VAPID key (RFC 8292 §4.2). A JMAP
-  server must therefore advertise **`urn:ietf:params:jmap:webpush-vapid`** (RFC 9749) and sign
-  its pushes. **Stalwart v0.16.x does neither**, and additionally base64-wraps the ciphertext it
-  sends under `Content-Encoding: aes128gcm`, so no browser can decrypt it — Firefox included.
-  Web Push while the app is **closed** is therefore **deferred** (ADR-010), blocked upstream.
+  **Precondition (M3.6, verified live):** Chromium and Safari refuse a
+  `PushManager.subscribe()` without an `applicationServerKey`, and the push service then
+  rejects any POST not signed with the matching VAPID key (RFC 8292 §4.2). A JMAP server must
+  therefore advertise **`urn:ietf:params:jmap:webpush-vapid`** (RFC 9749) and sign its pushes,
+  and must send the `aes128gcm` payload in a form a browser can decrypt. No JMAP server met
+  this when ADR-010 was written; **Stalwart v0.16.14 (2026-07-20) — the version the fixture
+  pins — meets it**, verified at source and live: RFC 9749 is implemented and a virgin registry
+  auto-generates the VAPID keypair, the ciphertext now goes out as **raw octets** instead of
+  base64-wrapped, and unpadded base64url `p256dh`/`auth` keys are accepted. All three of
+  Waxwing's upstream reports (`docs/upstream/`) are fixed there. **The precondition is met; the
+  client half has never been built** — no `PushSubscription/set`, no `applicationServerKey` read
+  **for a `subscribe()` call**, no `push` listener — so Web Push while the app is **closed** stays
+  **deferred** (ADR-010, amended 2026-07-21). The qualifier is load-bearing: the key *is* read, and
+  shipped, for the capability probe that decides which settings sentence the user sees
+  (`apps/web/src/notify/capability.ts` over `getWebPushVapidCapability`); what does not exist is the
+  subscription handshake. Whether to build that is open owner decision **D6** (Gate G2 /
+  M4 planning); this requirement does not pre-empt it, and nothing in the app claims background
+  push works.
   What M3.6 ships instead, on every supported browser: the same notifications sourced from the
   **live push channel** (FR-NOTIF-01) whenever the app is running, a backgrounded or minimised
   tab included. The app probes for the capability and says plainly what it cannot do

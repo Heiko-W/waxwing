@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -9,6 +10,7 @@ import en from '../i18n/locales/en/common.json'
 import {
   canonicalQueryKey,
   deleteMailbox,
+  getPref,
   putEmails,
   putMailboxes,
   putQueryCache,
@@ -82,6 +84,12 @@ beforeEach(async () => {
   useListStore.setState(EMPTY_LIST_STATE)
   setActiveEngine({
     watchWindow: vi.fn(() => 'k'),
+    // The search seam's pair (M3.1/M3.2). Stubbed here so a search-mode render does not have to
+    // null the engine out and lose `dispatch` with it.
+    watchQuery: vi.fn(() => 'k'),
+    unwatchQuery: vi.fn(),
+    // `useSnippets` runs on the search seam only, and asks the engine for the `<mark>` highlights.
+    fetchSnippets: vi.fn(async () => new Map<string, never>()),
     loadMoreFor: vi.fn(),
     fetchEnvelopes: vi.fn(),
     dispatch,
@@ -124,6 +132,46 @@ function renderList(mailboxId = 'inbox') {
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
             <MessageList mailboxId={mailboxId} />
+          </ReplicaProvider>
+        </ToastProvider>
+      </ConfigProvider>
+    </RouterProvider>,
+  )
+}
+
+/** The same list over the SEARCH seam (M3.1 results / M3.2 label browse), with no folder context. */
+function renderSearch(spec: QuerySpec, scopeMailboxId?: string) {
+  return render(
+    <RouterProvider>
+      <ConfigProvider config={DEFAULT_CONFIG}>
+        <ToastProvider>
+          <ReplicaProvider accountId="a" db={db}>
+            <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId }} />
+          </ReplicaProvider>
+        </ToastProvider>
+      </ConfigProvider>
+    </RouterProvider>,
+  )
+}
+
+/**
+ * The search seam WITH a folder context — `/mail/inbox?q=…`, which is what `MailScreen` renders for
+ * the overwhelmingly common search: type in the box while standing in a folder and the route keeps
+ * the folder (`route.params.mailboxId`) while `useSearch` supplies the spec, so BOTH props arrive.
+ *
+ * It exists because {@link renderSearch} hardcodes `mailboxId={undefined}`, which is the RARE case
+ * (`/mail?q=…`, reachable only by editing the URL or from an all-mailboxes label browse). Every
+ * search-seam assertion written against that helper alone is blind to the difference between
+ * "is this a search?" and "is there no folder?" — two conditions that are equal in the helper and
+ * opposite here, which is exactly where the toolbar gate lives.
+ */
+function renderFolderSearch(spec: QuerySpec, mailboxId = 'inbox', scopeMailboxId = mailboxId) {
+  return render(
+    <RouterProvider>
+      <ConfigProvider config={DEFAULT_CONFIG}>
+        <ToastProvider>
+          <ReplicaProvider accountId="a" db={db}>
+            <MessageList mailboxId={mailboxId} search={{ spec, scopeMailboxId }} />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -561,6 +609,402 @@ describe('MessageList', () => {
     // Trash is a real move from here and stays — so "no Archive button" is the gate, not an empty bar.
     expect(screen.getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull()
+  })
+
+  /**
+   * Two of the three terms in `canMoveTo`, the gate that stands IN FRONT of `moveThenClear`. (The
+   * third — the self-move term, `target !== fromMailbox` — is pinned by "the bulk bar offers no
+   * Archive while viewing Archive" just above, so it is not repeated here.) They are pinned here
+   * because `moveThenClear` itself cannot be pinned, and it is worth being exact about why rather
+   * than leaving the next reader to rediscover it as a coverage hole.
+   *
+   * `moveThenClear` carries two defensive lines. Deleting EITHER leaves this whole file green, and
+   * that is not a gap these tests close:
+   *
+   *   - `if (fromMailbox === undefined) return` — its real enforcement is the TYPE checker, not the
+   *     suite: `useTriage`'s moves take `Id | null` and `fromMailbox` is `Id | undefined`, so
+   *     removing the narrowing fails `tsc --noEmit` with TS2345 while vitest still passes. Verified.
+   *     Behaviourally it is unreachable, because `canMoveTo` starts with `canMove`
+   *     (`fromMailbox !== undefined`) and all three of this bar's move buttons render behind it.
+   *   - `if (move(…)) onClear()` — the boolean it tests is false in exactly three cases
+   *     (`to === undefined`, `to === from`, `ids.length === 0`), and each is already excluded before
+   *     the button is drawn: the first two by `canMoveTo`'s own two terms, the third by the bar
+   *     mounting only under `selection.selected.size > 0` over `ids = [...selection.selected]`.
+   *     Dropping the condition passes `tsc` AND this suite. Verified.
+   *
+   * So the honest statement is: those lines are dominated by the gates below, and the gates are what
+   * a test can hold. Weaken `canMoveTo` and one of these two goes red — at which point the guards in
+   * `moveThenClear` stop being redundant and start being the thing that saves the user's selection.
+   * That is the property worth pinning, and it is the one pinned here.
+   *
+   * (One residual divergence is NOT covered and is not claimed to be: `canMoveTo` reads BulkBar's
+   * own `useMailboxByRole` while `useTriage` reads its own separate subscription of the same query.
+   * Two independent `useLiveQuery` instances could in principle report the role mailbox on different
+   * renders. Probed directly — two subscriptions in one component, mailbox inserted under a mounted
+   * tree — and they resolved in the SAME render every time under React's batching, so no test here
+   * can produce the skew. It is why the `if (move(…))` line is kept, not something it is proven to
+   * catch.)
+   */
+  describe('what canMoveTo refuses before a move button is drawn', () => {
+    async function selectFirst(user: UserEvent): Promise<void> {
+      await screen.findByText('First')
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    }
+
+    // `canMoveTo`'s `target !== undefined` term. An account with no Archive role must not be offered
+    // an Archive button, because `triage.archive` would return false and file nothing — the `e`-chord
+    // bug (6da2350) one surface over. Trash still shows, so this is the gate and not an empty bar.
+    it('offers no Archive when the account has no Archive mailbox', async () => {
+      const user = userEvent.setup()
+      await deleteMailbox(db, 'a', 'archive')
+      renderList()
+      await selectFirst(user)
+
+      expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
+    })
+
+    // `canMoveTo`'s leading `canMove` term, on the ARCHIVE button. The destructive end of the bar
+    // already has this covered ("offers neither destructive button in a source-less search
+    // selection"); Archive did not, and it is the button whose absence makes `moveThenClear`'s
+    // `fromMailbox === undefined` line unreachable. Read/flag need no source and stay, so a green
+    // assertion here means the gate fired rather than the bar failing to mount.
+    it('offers no Archive in a source-less (cross-folder) search selection', async () => {
+      const user = userEvent.setup()
+      const spec: QuerySpec = {
+        filter: { text: 'report' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        collapseThreads: false,
+      }
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: canonicalQueryKey(spec),
+        ids: ['e1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'e1',
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: false,
+        lastUsedAt: 1,
+      })
+      renderSearch(spec)
+      await selectFirst(user)
+
+      expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Mark as read' })).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * The bulk bar's destructive end. It used to render "Move to Trash" AND an unconditional "Delete"
+   * (permanent destroy) as adjacent icon-only buttons drawing the SAME `Trash2` glyph — in the Inbox
+   * a user saw two identical icons, one recoverable and one not, told apart only by an accessible
+   * name they never hear. It is now the ONE button `MessageView`'s action bar has always had, and
+   * that the `#` chord's `inTrash` context already assumed: Move to Trash outside Trash, Delete
+   * inside it.
+   */
+  describe('the destructive bulk action', () => {
+    async function seedFolder(mailboxId: string, subject: string): Promise<void> {
+      await putEmails(db, 'a', [
+        email('x1', { subject, mailboxIds: { [mailboxId]: true }, keywords: {} }),
+      ])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: folderKey(mailboxId),
+        ids: ['x1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'x1',
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 1,
+      })
+    }
+
+    async function selectOne(user: UserEvent, subject: string): Promise<void> {
+      await screen.findByText(subject)
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      await screen.findByText('1 selected')
+    }
+
+    it('offers exactly one Trash2 button outside Trash — the recoverable one', async () => {
+      const user = userEvent.setup()
+      renderList()
+      await selectOne(user, 'First')
+
+      expect(screen.getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+    })
+
+    it('swaps to the permanent Delete inside Trash, and offers no move-to-Trash there', async () => {
+      const user = userEvent.setup()
+      await seedFolder('trash', 'Binned')
+      renderList('trash')
+      await selectOne(user, 'Binned')
+
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Move to Trash' })).toBeNull()
+    })
+
+    // Icon-only buttons whose meaning is irreversible owe their confirm dialog the word "permanent".
+    // The dialog used to say only "1 selected", which is a count, not a warning.
+    it('confirms the destroy with a permanence warning, then dispatches it', async () => {
+      const user = userEvent.setup()
+      await seedFolder('trash', 'Binned')
+      renderList('trash')
+      await selectOne(user, 'Binned')
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Delete' })
+      expect(dialog).toHaveTextContent(/permanently deleted/)
+      expect(dialog).toHaveTextContent(/can’t be undone/)
+
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'destroyEmails',
+        emailIds: ['x1'],
+      })
+    })
+
+    // A cross-folder search selection spans folders, so there is no `from` to move out of — and a
+    // per-folder permanent destroy is exactly the action the plan forbids there (a message filed
+    // elsewhere too would be destroyed everywhere). Neither destructive button belongs.
+    it('offers neither destructive button in a source-less search selection', async () => {
+      const user = userEvent.setup()
+      const spec: QuerySpec = {
+        filter: { text: 'report' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        collapseThreads: false,
+      }
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: canonicalQueryKey(spec),
+        ids: ['e1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'e1',
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: false,
+        lastUsedAt: 1,
+      })
+      renderSearch(spec)
+      await selectOne(user, 'First')
+
+      expect(screen.queryByRole('button', { name: 'Move to Trash' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+    })
+
+    /**
+     * Junk — the folder this bar had no test for at all, and the one where it deliberately does NOT
+     * follow `FolderTree`'s `olderMode` (which destroys permanently in Junk, and is tested there).
+     *
+     * The rule this bar follows is the per-selection one its two sibling surfaces already implement:
+     * `MessageView`'s action bar (`inTrash`, one `Trash2` reading "Move to Trash" outside Trash and
+     * "Delete" inside it) and the `#` chord's `inTrash` in `use-shortcut-context.ts`. Both resolve
+     * `inTrash` against the TRASH role alone, so in Junk both offer the recoverable move — and a bar
+     * that destroyed here would be the odd one out among three surfaces, not the one that fell in
+     * line. Junk is also where a false-positive classification lands, which is the mail most in need
+     * of a recovery step.
+     */
+    it('offers the recoverable move in Junk, not the permanent destroy', async () => {
+      const user = userEvent.setup()
+      await putMailboxes(db, 'a', [mailbox('junk', { role: 'junk' })])
+      await seedFolder('junk', 'Spam')
+      renderList('junk')
+      await selectOne(user, 'Spam')
+
+      expect(screen.getByRole('button', { name: 'Move to Trash' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull()
+      // And no "Mark as junk" while standing IN Junk — `canMoveTo` already refuses a self-move, so
+      // the destructive end of the bar is the only thing this test is pinning.
+      expect(screen.queryByRole('button', { name: 'Mark as junk' })).toBeNull()
+    })
+
+    // The move must actually dispatch, not merely render: a button that survives the gate and then
+    // does nothing is the anti-pattern this bar's `canMoveTo` exists to prevent, one folder over.
+    it('moves the Junk selection to Trash rather than destroying it', async () => {
+      const user = userEvent.setup()
+      await putMailboxes(db, 'a', [mailbox('junk', { role: 'junk' })])
+      await seedFolder('junk', 'Spam')
+      renderList('junk')
+      await selectOne(user, 'Spam')
+
+      await user.click(screen.getByRole('button', { name: 'Move to Trash' }))
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'move',
+        emailIds: ['x1'],
+        from: 'junk',
+        to: 'trash',
+      })
+      // The one thing that must never come out of this bar in Junk.
+      for (const call of dispatch.mock.calls) {
+        expect(call[0]).not.toMatchObject({ kind: 'destroyEmails' })
+      }
+    })
+
+    it('names the permanence warning in German too, in the formal register', () => {
+      expect(de.list.confirmDeleteBody_other).toMatch(/endgültig gelöscht/)
+      expect(de.list.confirmDeleteBody_one).toMatch(/endgültig gelöscht/)
+      expect(de.list.confirmDeleteBody_other).not.toMatch(/\b[Dd]ein|\bDu\b/)
+    })
+  })
+
+  /**
+   * The toolbar's Sort / Conversations / Unread-first on the SEARCH seam (search results M3.1 and
+   * label browse M3.2, which share it).
+   *
+   * `use-message-list.ts` keys a search off `canonicalQueryKey(spec)` and watches that spec alone —
+   * it never reads the `sort`/`unreadFirst`/`flat` arguments on that branch. So all three controls
+   * were fully enabled, wrote their preference, and changed nothing about the list in front of the
+   * user: the control moved, the setting stuck, the list did not budge. Enabled-and-inert is the one
+   * option that is not allowed; they are disabled here with the reason on screen.
+   */
+  describe('the view options that the search seam cannot honour', () => {
+    const spec: QuerySpec = {
+      filter: { hasKeyword: 'work' },
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: false,
+    }
+
+    async function seedLabelWindow(): Promise<void> {
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: canonicalQueryKey(spec),
+        ids: ['e1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'e1',
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: false,
+        lastUsedAt: 1,
+      })
+    }
+
+    it('leaves them live in a folder view (the control, so "disabled" means something)', async () => {
+      renderList()
+      await screen.findByText('First')
+      expect(screen.getByLabelText('Sort')).toBeEnabled()
+      expect(screen.getByLabelText('Conversations')).toBeEnabled()
+      expect(screen.getByRole('checkbox', { name: 'Unread first' })).toBeEnabled()
+      expect(screen.queryByText(/apply to folders only/)).toBeNull()
+      // …and no control points at a reason that is not on screen. The note only renders on the
+      // search seam, so an unconditional `aria-describedby` here would be a dangling IDREF — a
+      // screen reader announcing nothing extra, and the one defect axe cannot see from the search
+      // render alone (it never renders this branch).
+      for (const control of [
+        screen.getByLabelText('Sort'),
+        screen.getByLabelText('Conversations'),
+        screen.getByRole('checkbox', { name: 'Unread first' }),
+      ]) {
+        expect(control).not.toHaveAttribute('aria-describedby')
+      }
+    })
+
+    /**
+     * THE case the gate exists for, and the one wave 1 never rendered: a folder-scoped search
+     * (`/mail/inbox?q=report`), where `MailScreen` passes `mailboxId` AND `search` together.
+     *
+     * Every other test in this block goes through `renderSearch`, which hardcodes
+     * `mailboxId={undefined}` — so "on the search seam" and "outside any folder" were the same
+     * condition in every fixture, and a gate keyed off EITHER one passed all of them. Keyed off the
+     * mailbox, this is the exact route where the three controls come back to life, write their
+     * preference, and move nothing: the defect the gate was added to remove, in its dominant form.
+     */
+    it('disables them for a folder-scoped search too (mailboxId AND search)', async () => {
+      await seedLabelWindow()
+      renderFolderSearch(spec)
+      await screen.findByText('First')
+
+      const reason = screen.getByText('Sorting and conversation view apply to folders only.')
+      for (const control of [
+        screen.getByLabelText('Sort'),
+        screen.getByLabelText('Conversations'),
+        screen.getByRole('checkbox', { name: 'Unread first' }),
+      ]) {
+        expect(control).toBeDisabled()
+        expect(control).toHaveAttribute('aria-describedby', reason.id)
+      }
+      expect(screen.getByLabelText('Density')).toBeEnabled()
+    })
+
+    // The persisting half, on that same route. A folder-scoped search is precisely where a written
+    // preference does the most damage: the user is one `Escape` away from the folder view where the
+    // sort they never chose is suddenly in force.
+    it('writes no preference from a folder-scoped search either', async () => {
+      await seedLabelWindow()
+      renderFolderSearch(spec)
+      await screen.findByText('First')
+
+      fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'subject' } })
+      fireEvent.change(screen.getByLabelText('Conversations'), { target: { value: 'flat' } })
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Unread first' }))
+
+      await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument())
+      expect(await getPref(db, 'a', 'list.sort')).toBeUndefined()
+      expect(await getPref(db, 'a', 'list.flat')).toBeUndefined()
+      expect(await getPref(db, 'a', 'list.unreadFirst')).toBeUndefined()
+    })
+
+    it('disables them on the search seam and says why on screen', async () => {
+      await seedLabelWindow()
+      renderSearch(spec)
+      await screen.findByText('First')
+
+      const reason = screen.getByText('Sorting and conversation view apply to folders only.')
+      for (const control of [
+        screen.getByLabelText('Sort'),
+        screen.getByLabelText('Conversations'),
+        screen.getByRole('checkbox', { name: 'Unread first' }),
+      ]) {
+        expect(control).toBeDisabled()
+        // Not a bare grey control: the reason is reachable from the control itself, not only by
+        // sighted proximity.
+        expect(control).toHaveAttribute('aria-describedby', reason.id)
+      }
+      // Density still works on this seam — it is pure presentation — so it stays live.
+      expect(screen.getByLabelText('Density')).toBeEnabled()
+    })
+
+    // The other half of the promise, and the half that persists: a setting the user cannot see take
+    // effect must not be written behind their back either. `disabled` carries this in a browser (a
+    // disabled control fires no change event); the guard carries it against any other dispatch.
+    it('writes no preference when a change is forced onto a disabled control', async () => {
+      await seedLabelWindow()
+      renderSearch(spec)
+      await screen.findByText('First')
+
+      fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'subject' } })
+      fireEvent.change(screen.getByLabelText('Conversations'), { target: { value: 'flat' } })
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Unread first' }))
+
+      await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument())
+      expect(await getPref(db, 'a', 'list.sort')).toBeUndefined()
+      expect(await getPref(db, 'a', 'list.flat')).toBeUndefined()
+      expect(await getPref(db, 'a', 'list.unreadFirst')).toBeUndefined()
+    })
+
+    it('states the reason in German too, in the formal register', () => {
+      expect(de.list.viewOptionsUnavailable).toMatch(/Ordner/)
+      expect(de.list.viewOptionsUnavailable).not.toMatch(/\b[Dd]ein|\bDu\b/)
+    })
+
+    // The disabled state is new markup in a labelled toolbar; axe catches the classic slips here
+    // (a description pointing at nothing, a label orphaned from its control).
+    it('has no axe violations with the controls disabled', async () => {
+      await seedLabelWindow()
+      const { container } = renderSearch(spec)
+      await screen.findByText('First')
+      await expectNoA11yViolations(container)
+    })
   })
 
   it('select-all covers the whole window id-set', async () => {

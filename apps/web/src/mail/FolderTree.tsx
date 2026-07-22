@@ -11,7 +11,7 @@ import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'rea
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
-import { Button, Dialog, IconButton, TextInput } from '../ui'
+import { Button, Dialog, IconButton, TextInput, useToast } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
 import { useCleanupActions } from './cleanup/use-cleanup-actions'
 import { canDropMessages, clearActiveDrag, getActiveDrag, setActiveDrag } from './dnd'
@@ -55,6 +55,7 @@ export function FolderTree() {
   const triage = useTriage()
   const clearSelection = useListStore((state) => state.select)
   const limits = useMoveLimits()
+  const { toast } = useToast()
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
@@ -66,6 +67,42 @@ export function FolderTree() {
     if (next.has(id)) next.delete(id)
     else next.add(id)
     void setPref(db, accountId, COLLAPSED_PREF, [...next])
+  }
+
+  /**
+   * Start a cleanup and make sure the user hears about it if it does not happen.
+   *
+   * Every OTHER destructive action in this tree (create/rename/move/delete, and a message drop) is
+   * outbox-backed: it is enqueued locally first, so it survives being offline and a server refusal
+   * lands in the dead-letter queue that `use-outbox-problems.ts` surfaces. Cleanup does not get that
+   * for free. `Engine.destroyMatching`/`moveMatching` must page the matching ids with a live
+   * `Email/query` (`collectMatchingIds`) BEFORE they enqueue anything, so the network is reached
+   * ahead of the outbox: offline, or on any server error, the promise rejects with nothing queued
+   * and nothing for that surface to report. These handlers fired it floating (`void …`), which meant
+   * the confirm dialog closed and the user was left believing a folder had been emptied.
+   *
+   * `undefined` — `useCleanupActions` returns it when no engine is running — is the same outcome
+   * from the user's side and is reported identically.
+   *
+   * What this does NOT do is queue the cleanup for retry, and the wording is chosen to match: it
+   * says the action did not go through, and does not claim nothing was changed. A large purge is
+   * enqueued in `maxObjectsInSet` chunks, so a failure part-way through the dispatch loop can leave
+   * earlier chunks already queued. Making the whole cleanup path outbox-backed (so an offline
+   * "Empty Trash" replays on reconnect) is a sync-engine change; it is filed, not smuggled in here.
+   */
+  function runCleanup(name: string, started: Promise<unknown> | undefined): void {
+    const report = (): void => {
+      toast({
+        title: t('cleanup.failed.title', { name }),
+        description: t('cleanup.failed.body'),
+        tone: 'danger',
+      })
+    }
+    if (started === undefined) {
+      report()
+      return
+    }
+    void started.catch(report)
   }
 
   if (mailboxes === undefined) return null
@@ -200,7 +237,7 @@ export function FolderTree() {
           mailbox={dialog.mailbox}
           onClose={() => setDialog(null)}
           onConfirm={() => {
-            void cleanup.emptyMailbox(dialog.mailbox.id)
+            runCleanup(dialog.mailbox.name, cleanup.emptyMailbox(dialog.mailbox.id))
             setDialog(null)
           }}
         />
@@ -213,11 +250,12 @@ export function FolderTree() {
           onClose={() => setDialog(null)}
           onConfirm={(days) => {
             const mailbox = dialog.mailbox
-            if (olderMode(mailbox, trashMailbox) === 'trash' && trashMailbox) {
-              void cleanup.trashOlderThan(mailbox.id, trashMailbox.id, days)
-            } else {
-              void cleanup.deleteOlderThan(mailbox.id, days)
-            }
+            runCleanup(
+              mailbox.name,
+              olderMode(mailbox, trashMailbox) === 'trash' && trashMailbox
+                ? cleanup.trashOlderThan(mailbox.id, trashMailbox.id, days)
+                : cleanup.deleteOlderThan(mailbox.id, days),
+            )
             setDialog(null)
           }}
         />
@@ -227,9 +265,25 @@ export function FolderTree() {
 }
 
 /**
- * Delete-older-than is RECOVERABLE (move to Trash) for a normal folder, but PERMANENT for Trash/Junk
- * itself (or when no Trash exists) — so a message multi-filed elsewhere is never destroyed everywhere
- * from a routine cleanup.
+ * Which arm "Delete older than…" takes. RECOVERABLE (move to Trash) for a normal folder — so a
+ * message multi-filed elsewhere is not destroyed everywhere by a routine cleanup — and PERMANENT in
+ * the two PURGE folders, Trash and Junk, or when there is no Trash to move to.
+ *
+ * The junk term is the one that looks arbitrary, so: it is not this function's invention. FR-ORG-04
+ * names "Empty-trash / empty-junk" as a single feature, `FolderTreeView` puts one Empty entry on
+ * BOTH purge roles and picks its label by role ("Empty Trash" / "Empty Junk") — an unconditional
+ * destroy either way, with no recoverable arm to pick — and `Engine.deleteOlderThan` is documented
+ * "for Trash/Junk cleanup". A recoverable arm here would put this menu entry at odds with the entry
+ * directly above it in the same menu.
+ *
+ * The reach of that argument is exactly the folder-purge family and stops there. It is NOT a general
+ * rule that "Junk destroys": `MessageList`'s bulk bar, `MessageView`'s action bar and the `#` chord
+ * all resolve their own `inTrash` against the trash role ALONE, so a hand-picked delete in Junk is a
+ * recoverable move on all three. An earlier revision of the bulk bar's comment cited THIS function
+ * as its authority; it never granted that. Both sides are pinned by tests that name the rule — here
+ * "destroys permanently from Junk even though a Trash exists to move to", and in
+ * `MessageList.test.tsx` "offers the recoverable move in Junk, not the permanent destroy" — so a
+ * future editor cannot flip one and leave the other.
  */
 function olderMode(mailbox: MailboxRow, trash: MailboxRow | undefined): 'trash' | 'destroy' {
   if (mailbox.role === 'trash' || mailbox.role === 'junk') return 'destroy'

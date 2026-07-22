@@ -1,7 +1,18 @@
 /**
- * Public surface of the Waxwing design system (M1.1). Feature code imports base components
- * from `@/ui` (this barrel), never from a component file directly, so the inventory stays
- * discoverable and the internal primitives (src/ui/internal) remain private.
+ * Public surface of the Waxwing design system (M1.1). Feature code imports base components from
+ * this barrel rather than from a component file directly, so the inventory stays discoverable and
+ * what feature code may depend on is exactly the list below.
+ *
+ * That is a convention, not an invariant: NOTHING enforces it — no lint rule, no import boundary,
+ * no test. It happens to hold across `apps/web/src` right now (checked with
+ * `grep -rn "from '\.\./ui/" apps/web/src` outside `src/ui/` itself, source and tests, one hit
+ * which was moved onto the barrel), and it will stop holding the first time someone deep-imports
+ * without noticing. Read the sentence above as the intent and this one as its actual standing.
+ *
+ * `src/ui/internal` is **not** private wholesale, and saying otherwise would misdescribe this
+ * file: `Portal` and `useFocusTrap` are deliberately re-exported here (see the note at their
+ * export). The rest of that directory — `cx`, `focusables`, `useDismiss` — has no importer
+ * outside `src/ui/` and is not part of this surface.
  */
 
 export { Avatar, type AvatarProps, type AvatarSize, initialsFromName } from './Avatar'

@@ -512,6 +512,10 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           density={density}
           unreadFirst={unreadFirst}
           flat={flat}
+          // Sort / threading / unread-first are folder-window options; the search seam cannot honour
+          // them (see {@link ToolbarProps.viewOptionsApply}). Keyed off `search`, not off
+          // `mailboxId`: a scope=folder search has a mailbox AND goes through the search seam.
+          viewOptionsApply={search === undefined}
           onChange={setPrefValue}
         />
       )}
@@ -654,7 +658,10 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
             </>
           }
         >
-          <p>{t('list.selected', { count: selection.selected.size })}</p>
+          {/* The count alone ("3 selected") restates the bulk bar; it is not a warning, and this is
+              an irreversible action reached from an icon-only button. Say what it does — the same
+              thing `reading.confirmDeleteBody` says for the single-message destroy. */}
+          <p>{t('list.confirmDeleteBody', { count: selection.selected.size })}</p>
         </Dialog>
       )}
 
@@ -740,14 +747,49 @@ interface ToolbarProps {
   readonly density: Density
   readonly unreadFirst: boolean
   readonly flat: boolean
+  /**
+   * Whether Sort / Conversations / Unread-first can actually change the list on screen.
+   *
+   * They cannot on the SEARCH seam — search results (M3.1) and label browse (M3.2), which share it.
+   * `use-message-list.ts` keys a search off `canonicalQueryKey(spec)` and hands that spec to
+   * `watchQuery`; the `sort` argument and the `unreadFirst`/`flat` options are read only on the
+   * FOLDER branch, where they build the watched `WindowSpec`. So on a search these three were
+   * enabled, wrote their preference, and moved nothing: the control changed, the setting stuck, the
+   * list stayed exactly as it was. That reads as a broken app, and it was the worse of the two
+   * options — the other being to disable them and say why, which is what this flag does.
+   *
+   * Making them WORK there is a real option, not a lost cause, but it is not a toolbar change: it
+   * means composing the caller's spec with these preferences inside `use-message-list.ts` (a file
+   * this component does not own), and `collapseThreads` in particular reverses a documented M3.1
+   * decision — search deliberately shows each MATCHING message rather than a thread anchor, which is
+   * also what the `<mark>` snippets in each row are highlighting. Filed rather than guessed at.
+   *
+   * Density is NOT gated by this: it is pure presentation (row height + the preview line) and works
+   * identically on both seams.
+   */
+  readonly viewOptionsApply: boolean
   readonly onChange: (key: string, value: unknown) => void
 }
 
-function Toolbar({ sort, density, unreadFirst, flat, onChange }: ToolbarProps) {
+function Toolbar({ sort, density, unreadFirst, flat, viewOptionsApply, onChange }: ToolbarProps) {
   const { t } = useTranslation()
   const sortId = useId()
   const viewId = useId()
   const densityId = useId()
+  const reasonId = useId()
+  /**
+   * One gate for both halves of the promise. `disabled` makes the control inoperable — and in a
+   * browser that alone stops the write, since a disabled control fires no change event — while this
+   * covers the write on any other dispatch path. The preference is the half that PERSISTS: a
+   * setting silently recorded from a view where the user could not see it take effect is the same
+   * defect one step later, when they return to a folder and find their sort changed.
+   */
+  const change = (key: string, value: unknown): void => {
+    if (!viewOptionsApply) return
+    onChange(key, value)
+  }
+  // Only set when there is something to point at, so a folder view carries no dangling reference.
+  const describedBy = viewOptionsApply ? undefined : reasonId
   return (
     <div className={styles.toolbar}>
       <div className={styles.control}>
@@ -757,7 +799,9 @@ function Toolbar({ sort, density, unreadFirst, flat, onChange }: ToolbarProps) {
         <Select
           id={sortId}
           value={sort}
-          onChange={(event) => onChange('list.sort', event.target.value)}
+          disabled={!viewOptionsApply}
+          aria-describedby={describedBy}
+          onChange={(event) => change('list.sort', event.target.value)}
         >
           <option value="date">{t('list.sort.date')}</option>
           <option value="from">{t('list.sort.from')}</option>
@@ -772,7 +816,9 @@ function Toolbar({ sort, density, unreadFirst, flat, onChange }: ToolbarProps) {
         <Select
           id={viewId}
           value={flat ? 'flat' : 'threaded'}
-          onChange={(event) => onChange('list.flat', event.target.value === 'flat')}
+          disabled={!viewOptionsApply}
+          aria-describedby={describedBy}
+          onChange={(event) => change('list.flat', event.target.value === 'flat')}
         >
           <option value="threaded">{t('list.view.threaded')}</option>
           <option value="flat">{t('list.view.flat')}</option>
@@ -794,8 +840,17 @@ function Toolbar({ sort, density, unreadFirst, flat, onChange }: ToolbarProps) {
       <Checkbox
         label={t('list.sort.unreadFirst')}
         checked={unreadFirst}
-        onChange={(event) => onChange('list.unreadFirst', event.target.checked)}
+        disabled={!viewOptionsApply}
+        aria-describedby={describedBy}
+        onChange={(event) => change('list.unreadFirst', event.target.checked)}
       />
+      {/* Visible, not a tooltip: a `title` on a disabled control is unreachable by keyboard and
+          unreliable on touch, and this has to reach the user who just found three dead controls. */}
+      {!viewOptionsApply && (
+        <p id={reasonId} className={styles.toolbarNote}>
+          {t('list.viewOptionsUnavailable')}
+        </p>
+      )}
     </div>
   )
 }
@@ -911,11 +966,50 @@ function BulkBar({
    */
   const canMoveTo = (target: Id | undefined): boolean =>
     canMove && target !== undefined && target !== fromMailbox
+  /**
+   * Standing IN the Trash — where "delete" means destroy, and where "Move to Trash" is meaningless
+   * anyway (`canMoveTo(trash?.id)` is already false for it). The same shape the other two surfaces
+   * carry under the same name, each over its own notion of "the folder this acts in":
+   * `MessageView`'s is the mailbox the open message is being READ in, and
+   * `use-shortcut-context.ts`'s (which the `#` chord consults) is the shortcut target's source; this
+   * one is the bar's `fromMailbox`. A source-less selection (cross-folder search) is deliberately
+   * NOT in Trash by this test: it spans folders, so there is no single folder whose rules apply.
+   *
+   * JUNK is deliberately not in this test either, and this is the line an editor would change to add
+   * it — read the destructive button's comment below first. `FolderTree`'s `olderMode` DOES group
+   * junk with trash; it governs folder-level purges, which this bar does not perform.
+   */
+  const inTrash = trash !== undefined && fromMailbox !== undefined && trash.id === fromMailbox
+  /**
+   * Both lines here are DEFENSIVE, and neither is load-bearing at the three call sites below today.
+   * Saying so plainly, because an earlier version of this comment asserted the opposite and a
+   * mutation test caught it out.
+   *
+   * `fromMailbox === undefined`: enforced by the TYPE checker, not by the suite. `useTriage`'s moves
+   * take `Id | null`; `fromMailbox` is `Id | undefined`. Delete this line and `tsc --noEmit` fails
+   * with TS2345 while `MessageList.test.tsx` stays green. Behaviourally it is unreachable — every
+   * caller is drawn behind `canMoveTo`, whose first term IS `canMove` (`fromMailbox !== undefined`).
+   *
+   * `if (move(…)) onClear()`: `useTriage`'s boolean is false in exactly three cases — `to` unknown,
+   * `to === from`, empty `ids` — and all three are already excluded before the button exists.
+   * `canMoveTo`'s two remaining terms cover the first two; the third is impossible because this bar
+   * mounts only under `selection.selected.size > 0` and `ids` is that same set. Delete the condition
+   * and BOTH `tsc` and the suite stay green. That is not a coverage hole to be plugged: it is what
+   * "dominated by the render gate" looks like, and `MessageList.test.tsx`'s "what canMoveTo refuses
+   * before a move button is drawn" pins the gate instead, so weakening one of them goes red
+   * and makes these two lines load-bearing again.
+   *
+   * Why keep them, then. One divergence is genuinely outside the gate's reach and is the reason this
+   * is not simplified away: `canMoveTo` reads BulkBar's own `useMailboxByRole`, while `useTriage`
+   * holds a SEPARATE `useLiveQuery` subscription to the same query. Nothing makes two subscriptions
+   * render in step. Probed directly (two subscriptions in one component, the role mailbox inserted
+   * under a mounted tree) they landed in the same render every time under React's batching — so the
+   * skew is not demonstrated, and no claim is made that this line catches it. It is cheap insurance
+   * against a divergence the type system cannot see and the gate does not own, and it keeps each
+   * call site correct on its own rather than by reference to a condition three lines up.
+   */
   const moveThenClear = (move: (ids: Id[], from: Id | null) => boolean) => {
     if (fromMailbox === undefined) return
-    // Clear only over a move that actually dispatched: `useTriage`'s boolean is the one signal that
-    // the mail left the folder, and dropping the selection without it discards the user's work to
-    // report a filing that never happened.
     if (move(ids, fromMailbox)) onClear()
   }
 
@@ -990,14 +1084,60 @@ function BulkBar({
           <Ban />
         </IconButton>
       )}
-      {canMoveTo(trash?.id) && (
-        <IconButton
-          label={t('list.actions.trash')}
-          variant="ghost"
-          onClick={() => moveThenClear(triage.trash)}
-        >
+      {/*
+        ONE destructive button, and which destruction it is depends on where you are standing.
+
+        It used to be two: this "Move to Trash" and, below the Move button, an UNCONDITIONAL
+        "Delete" (permanent destroy) — adjacent, icon-only, and drawing the SAME `Trash2` glyph. In
+        the Inbox that put two identical icons side by side, one recoverable and one not, told apart
+        only by an accessible name a sighted pointer user never hears.
+
+        The swap that replaces it is not an invention: `MessageView`'s action bar has always drawn
+        one `Trash2` that reads "Move to Trash" outside Trash and "Delete" inside it (its `inTrash`),
+        and the `#` chord's shortcut context carries the same distinction — `ShortcutContext.inTrash`
+        in `shortcuts/types.ts` is documented, verbatim: True when the acted-on messages live in
+        Trash (there, "delete" means destroy). Those two are this bar's peers: all
+        three act on a hand-picked target from wherever the user happens to be standing, and all
+        three resolve `inTrash` against the TRASH role alone. The bulk bar was the one of the three
+        that offered a permanent destroy from ANY folder.
+
+        Do NOT cite `FolderTree`'s `olderMode` for this rule — an earlier version of this comment
+        did, and it says the OPPOSITE: `role === 'trash' || role === 'junk'` → `'destroy'`. That is
+        a different family of action, not a contradiction to resolve. "Empty Junk" / "Delete older
+        than…" are FOLDER-LEVEL PURGES: named for the folder, confirmed in their own dialog, and
+        permanent in both purge folders by spec — FR-ORG-04 pairs "empty-trash / empty-junk" as one
+        feature, `FolderTreeView` puts one Empty entry on BOTH purge roles and picks its label by
+        role ("Empty Trash" / "Empty Junk"), and `Engine.deleteOlderThan` is documented "for
+        Trash/Junk cleanup". Nothing in that family
+        speaks for what an icon-only button does to five ticked rows.
+
+        So Junk parts company with Trash HERE and only here, and the reason is the kind of action,
+        not the folder: a hand-picked delete in Junk stays recoverable, because Junk is where a
+        false-positive classification lands and this button has no dialog naming the folder. Both
+        halves are pinned — `MessageList.test.tsx` "offers the recoverable move in Junk, not the
+        permanent destroy" and `FolderTree.test.tsx` "destroys permanently from Junk even though a
+        Trash exists to move to" — so moving either surface to the other's rule fails a test that
+        states the rule out loud.
+
+        What that costs, stated rather than glossed: from Junk, or from a source-less cross-folder
+        search selection, the bulk bar no longer permanently destroys. Junk keeps "Move to Trash"
+        and its own "Empty Junk"; a search selection keeps read/flag/label and gets neither
+        destructive button, which is the same gate `canMove` already applies to every move here.
+      */}
+      {inTrash ? (
+        <IconButton label={t('list.actions.delete')} variant="ghost" onClick={onRequestDelete}>
           <Trash2 />
         </IconButton>
+      ) : (
+        canMoveTo(trash?.id) && (
+          <IconButton
+            label={t('list.actions.trash')}
+            variant="ghost"
+            onClick={() => moveThenClear(triage.trash)}
+          >
+            <Trash2 />
+          </IconButton>
+        )
       )}
       {/* Move to an arbitrary folder — the only non-pointer path to it, and the one WCAG 2.2
           SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
@@ -1007,9 +1147,6 @@ function BulkBar({
           <FolderInput />
         </IconButton>
       )}
-      <IconButton label={t('list.actions.delete')} variant="ghost" onClick={onRequestDelete}>
-        <Trash2 />
-      </IconButton>
     </div>
   )
 }

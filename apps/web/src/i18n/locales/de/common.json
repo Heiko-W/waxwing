@@ -428,6 +428,9 @@
       "threaded": "Konversationen",
       "flat": "Einzelne Nachrichten"
     },
+    "viewOptionsUnavailable": "Sortierung und Konversationsansicht gelten nur für Ordner.",
+    "confirmDeleteBody_one": "Diese Nachricht wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
+    "confirmDeleteBody_other": "Diese {{count}} Nachrichten werden endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
     "loadMore": "Mehr laden",
     "loading": "Nachrichten werden geladen",
     "stale": "Diese Liste ist nicht aktuell und wird bei der nächsten Synchronisation aktualisiert.",
@@ -728,6 +731,10 @@
       "confirmTrash": "In den Papierkorb",
       "confirmDestroy": "Endgültig löschen",
       "invalid": "Bitte eine Anzahl von Tagen eingeben (1–3650)."
+    },
+    "failed": {
+      "title": "„{{name}}“ konnte nicht aufgeräumt werden",
+      "body": "Die Aktion ist nicht durchgegangen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
     }
   },
   "outbox": {

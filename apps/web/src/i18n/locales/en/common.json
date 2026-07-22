@@ -428,6 +428,9 @@
       "threaded": "Conversations",
       "flat": "Individual messages"
     },
+    "viewOptionsUnavailable": "Sorting and conversation view apply to folders only.",
+    "confirmDeleteBody_one": "This message will be permanently deleted. This can’t be undone.",
+    "confirmDeleteBody_other": "These {{count}} messages will be permanently deleted. This can’t be undone.",
     "loadMore": "Load more",
     "loading": "Loading messages",
     "stale": "This list is out of date and will refresh on the next sync.",
@@ -728,6 +731,10 @@
       "confirmTrash": "Move to Trash",
       "confirmDestroy": "Delete permanently",
       "invalid": "Enter a number of days (1–3650)."
+    },
+    "failed": {
+      "title": "Couldn’t clean up “{{name}}”",
+      "body": "This didn’t go through. Check your connection and try again."
     }
   },
   "outbox": {

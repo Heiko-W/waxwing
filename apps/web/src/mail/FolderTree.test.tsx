@@ -1,7 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { UserEvent } from '@testing-library/user-event'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_CONFIG } from '../app/config'
+import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
+import de from '../i18n/locales/de/common.json'
 import { getPref, putMailboxes, type ReplicaDb, ReplicaProvider } from '../sync'
 import { setActiveEngine } from '../sync/engine'
 import { freshDb, mailbox } from '../sync/test-utils'
@@ -30,14 +34,18 @@ afterEach(async () => {
   await db.delete()
 })
 
+// ConfigProvider is part of the minimum stack because the cleanup dialogs name the product in their
+// retention caution (`useConfig().branding.productName`).
 function renderTree() {
   return render(
     <RouterProvider>
-      <ToastProvider>
-        <ReplicaProvider accountId="a" db={db}>
-          <FolderTree />
-        </ReplicaProvider>
-      </ToastProvider>
+      <ConfigProvider config={DEFAULT_CONFIG}>
+        <ToastProvider>
+          <ReplicaProvider accountId="a" db={db}>
+            <FolderTree />
+          </ReplicaProvider>
+        </ToastProvider>
+      </ConfigProvider>
     </RouterProvider>,
   )
 }
@@ -101,6 +109,256 @@ describe('FolderTree (container)', () => {
     expect(await screen.findByRole('treeitem', { name: /Work/ })).toHaveTextContent('Kept offline')
     await user.click(within(work).getByRole('button', { name: 'Folder actions' }))
     expect(screen.getByRole('menuitem', { name: 'Stop keeping offline' })).toBeInTheDocument()
+  })
+
+  /**
+   * Cleanup is the ONE destructive path in this tree that is not outbox-backed end to end: the
+   * engine has to page the matching ids with a live `Email/query` (`collectMatchingIds`) before it
+   * enqueues anything, so offline — or on any server error — the promise rejects with nothing
+   * queued and nothing for `use-outbox-problems.ts` to surface. It was fired floating (`void …`), so
+   * the dialog closed over silence and the user was left believing a folder had been emptied.
+   *
+   * Every test here therefore asserts the same one thing from a different direction: the user LEARNS
+   * that it did not happen.
+   */
+  describe('a cleanup that never reaches the server', () => {
+    async function seedTrash(): Promise<void> {
+      await putMailboxes(db, 'a', [mailbox('trash', { name: 'Trash', role: 'trash' })])
+    }
+
+    /** Open a folder's action menu and pick one of its cleanup entries. */
+    async function chooseCleanup(user: UserEvent, folder: RegExp, item: string): Promise<void> {
+      const row = await screen.findByRole('treeitem', { name: folder })
+      await user.click(within(row).getByRole('button', { name: 'Folder actions' }))
+      await user.click(await screen.findByRole('menuitem', { name: item }))
+    }
+
+    it('reports a rejected "Empty folder" instead of closing the dialog over silence', async () => {
+      const user = userEvent.setup()
+      const emptyMailbox = vi.fn().mockRejectedValue(new Error('offline'))
+      setActiveEngine({ dispatch, emptyMailbox } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedTrash()
+      renderTree()
+
+      await chooseCleanup(user, /Trash/, 'Empty Trash')
+      await user.click(screen.getByRole('button', { name: 'Empty folder' }))
+
+      expect(emptyMailbox).toHaveBeenCalledWith('trash')
+      expect(await screen.findByText('Couldn’t clean up “Trash”')).toBeInTheDocument()
+    })
+
+    it('reports a rejected "Delete older than…" the same way', async () => {
+      const user = userEvent.setup()
+      const deleteOlderThan = vi.fn().mockRejectedValue(new Error('boom'))
+      setActiveEngine({ dispatch, deleteOlderThan } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      renderTree()
+
+      // No Trash mailbox is seeded, so `olderMode` resolves to the permanent-destroy arm.
+      await chooseCleanup(user, /Work/, 'Delete older than…')
+      await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
+
+      expect(deleteOlderThan).toHaveBeenCalled()
+      expect(await screen.findByText('Couldn’t clean up “Work”')).toBeInTheDocument()
+    })
+
+    it('reports the recoverable (move-to-Trash) cleanup arm too', async () => {
+      const user = userEvent.setup()
+      const trashOlderThan = vi.fn().mockRejectedValue(new Error('boom'))
+      setActiveEngine({ dispatch, trashOlderThan } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedTrash()
+      renderTree()
+
+      await chooseCleanup(user, /Work/, 'Delete older than…')
+      await user.click(screen.getByRole('button', { name: 'Move to Trash' }))
+
+      // `useCleanupActions` converts the day count to the engine's UTC-midnight `before` bound.
+      expect(trashOlderThan).toHaveBeenCalledWith(
+        'work',
+        'trash',
+        expect.stringMatching(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/),
+      )
+      expect(await screen.findByText('Couldn’t clean up “Work”')).toBeInTheDocument()
+    })
+
+    // `useCleanupActions` returns `undefined` when no engine is running (`getActiveEngine()?.…`).
+    // From the user's side that is the same outcome — the folder was not emptied — so it owes the
+    // same report; a bare `void undefined` is exactly as silent as a swallowed rejection.
+    it('reports a cleanup that could not even start (no engine running)', async () => {
+      const user = userEvent.setup()
+      setActiveEngine(null)
+      await seedTrash()
+      renderTree()
+
+      await chooseCleanup(user, /Trash/, 'Empty Trash')
+      await user.click(screen.getByRole('button', { name: 'Empty folder' }))
+
+      expect(await screen.findByText('Couldn’t clean up “Trash”')).toBeInTheDocument()
+    })
+
+    // The report must not fire on the happy path — a success toast reading "couldn't clean up"
+    // would be its own lie, and a `.catch` attached to the wrong end produces exactly that.
+    it('says nothing when the cleanup is accepted', async () => {
+      const user = userEvent.setup()
+      const emptyMailbox = vi.fn().mockResolvedValue({ scheduled: 12 })
+      setActiveEngine({ dispatch, emptyMailbox } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedTrash()
+      renderTree()
+
+      await chooseCleanup(user, /Trash/, 'Empty Trash')
+      await user.click(screen.getByRole('button', { name: 'Empty folder' }))
+
+      await waitFor(() => expect(emptyMailbox).toHaveBeenCalled())
+      expect(screen.queryByText('Couldn’t clean up “Trash”')).toBeNull()
+    })
+
+    // The German bundle is never exercised by the assertions above (the test i18n instance runs
+    // `en`), and this app's German is the formal register — a failure message is precisely where an
+    // informal "Du" slips in unnoticed.
+    it('names the failure in German too, in the formal register', () => {
+      expect(de.cleanup.failed.title).toContain('{{name}}')
+      expect(de.cleanup.failed.body).toMatch(/Prüfen Sie/)
+      expect(`${de.cleanup.failed.title} ${de.cleanup.failed.body}`).not.toMatch(/\b[Dd]ein|\bDu\b/)
+    })
+  })
+
+  /**
+   * `olderMode` — WHICH arm "Delete older than…" takes, per folder. The cases pinned below are the
+   * recoverable arm (a normal folder with a Trash), the no-Trash-exists fallback (in the cleanup
+   * block above), and both purge folders. Junk and Trash each arrived here after a mutation
+   * survived the suite: the `role === 'junk'` term had no test at all, and Trash's two terms are
+   * redundant one at a time and only fall to a composite mutation (see that test).
+   *
+   * Junk sits with Trash here on purpose, and the authority is not this function: FR-ORG-04 names
+   * "Empty-trash / empty-junk" as one feature, `FolderTreeView` puts one Empty entry on BOTH purge
+   * roles and labels it by role, and `Engine.deleteOlderThan` is documented "for Trash/Junk
+   * cleanup". This is the FOLDER-PURGE family, and it is permanent in both purge folders.
+   *
+   * What it is NOT is a rule about a hand-picked selection — see the bulk bar's own Junk test in
+   * `MessageList.test.tsx`, which pins the opposite answer for the opposite kind of action.
+   */
+  describe('“Delete older than…” in the purge folders', () => {
+    async function seedBoth(): Promise<void> {
+      await putMailboxes(db, 'a', [
+        mailbox('trash', { name: 'Trash', role: 'trash' }),
+        mailbox('junk', { name: 'Junk', role: 'junk' }),
+      ])
+    }
+
+    async function chooseDeleteOlder(user: UserEvent, folder: RegExp): Promise<void> {
+      const row = await screen.findByRole('treeitem', { name: folder })
+      await user.click(within(row).getByRole('button', { name: 'Folder actions' }))
+      await user.click(await screen.findByRole('menuitem', { name: 'Delete older than…' }))
+    }
+
+    // The load-bearing case: a Trash mailbox EXISTS, so the recoverable arm is available — and Junk
+    // still takes the permanent one. Without the `role === 'junk'` term this folder would silently
+    // get "Move to Trash" instead, which is the whole difference the term encodes.
+    it('destroys permanently from Junk even though a Trash exists to move to', async () => {
+      const user = userEvent.setup()
+      const deleteOlderThan = vi.fn().mockResolvedValue({ scheduled: 3 })
+      const trashOlderThan = vi.fn().mockResolvedValue({ scheduled: 3 })
+      setActiveEngine({ dispatch, deleteOlderThan, trashOlderThan } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedBoth()
+      renderTree()
+
+      await chooseDeleteOlder(user, /Junk/)
+      // The dialog names the outcome before it happens: permanence is offered, not recovery.
+      expect(screen.getByRole('button', { name: 'Delete permanently' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Move to Trash' })).toBeNull()
+
+      await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
+      await waitFor(() => expect(deleteOlderThan).toHaveBeenCalled())
+      expect(deleteOlderThan.mock.calls[0]?.[0]).toBe('junk')
+      expect(trashOlderThan).not.toHaveBeenCalled()
+    })
+
+    /**
+     * The OTHER purge folder — the one this describe block was named for, plural, and had no
+     * fixture. Trash reaches `'destroy'` through two terms that are individually redundant for a
+     * well-formed account (exactly one mailbox carries the trash role, so `role === 'trash'` and
+     * `trash.id === mailbox.id` select the same folder), which is why deleting either one alone
+     * leaves the suite green and why no single-term mutation proves this test is load-bearing.
+     *
+     * The mutation this test exists to fail is therefore a COMPOSITE one — drop the `role ===
+     * 'trash'` term AND the `trash.id === mailbox.id` term together and `olderMode` returns
+     * `'trash'` for the Trash folder itself, i.e. "Delete older than…" in Trash offers to MOVE
+     * Trash mail to Trash. That is verified: with both terms removed the assertions below go red.
+     *
+     * General lesson, since this recurs: a guard built from mutually-redundant terms is only
+     * pinned by mutating them jointly. Trying each term on its own reports "unkillable" and is
+     * wrong about it.
+     */
+    it('destroys permanently from Trash rather than moving Trash mail to Trash', async () => {
+      const user = userEvent.setup()
+      const deleteOlderThan = vi.fn().mockResolvedValue({ scheduled: 5 })
+      const trashOlderThan = vi.fn().mockResolvedValue({ scheduled: 5 })
+      setActiveEngine({ dispatch, deleteOlderThan, trashOlderThan } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedBoth()
+      renderTree()
+
+      await chooseDeleteOlder(user, /Trash/)
+      expect(screen.getByRole('button', { name: 'Delete permanently' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Move to Trash' })).toBeNull()
+
+      await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
+      await waitFor(() => expect(deleteOlderThan).toHaveBeenCalled())
+      expect(deleteOlderThan.mock.calls[0]?.[0]).toBe('trash')
+      expect(trashOlderThan).not.toHaveBeenCalled()
+    })
+
+    // The contrast that gives the assertion above its meaning: with the SAME two mailboxes seeded, a
+    // normal folder takes the recoverable arm. So "permanent" is a property of the purge folders,
+    // not of this dialog.
+    it('still moves to Trash from a normal folder with the same mailboxes seeded', async () => {
+      const user = userEvent.setup()
+      const deleteOlderThan = vi.fn().mockResolvedValue({ scheduled: 3 })
+      const trashOlderThan = vi.fn().mockResolvedValue({ scheduled: 3 })
+      setActiveEngine({ dispatch, deleteOlderThan, trashOlderThan } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedBoth()
+      renderTree()
+
+      await chooseDeleteOlder(user, /Work/)
+      await user.click(screen.getByRole('button', { name: 'Move to Trash' }))
+
+      await waitFor(() => expect(trashOlderThan).toHaveBeenCalled())
+      expect(trashOlderThan.mock.calls[0]?.slice(0, 2)).toEqual(['work', 'trash'])
+      expect(deleteOlderThan).not.toHaveBeenCalled()
+    })
+
+    // The reason Junk belongs to the folder-purge family: FR-ORG-04's "empty-junk" is an
+    // unconditional destroy of the whole folder, with no recoverable arm to choose — the same entry
+    // Trash gets, under a role-picked label. A "Delete older than…" that moved to Trash from this
+    // same menu would contradict the entry directly above it.
+    it('empties Junk through the same permanent path as Trash', async () => {
+      const user = userEvent.setup()
+      const emptyMailbox = vi.fn().mockResolvedValue({ scheduled: 7 })
+      setActiveEngine({ dispatch, emptyMailbox } as unknown as Parameters<
+        typeof setActiveEngine
+      >[0])
+      await seedBoth()
+      renderTree()
+
+      const row = await screen.findByRole('treeitem', { name: /Junk/ })
+      await user.click(within(row).getByRole('button', { name: 'Folder actions' }))
+      await user.click(await screen.findByRole('menuitem', { name: 'Empty Junk' }))
+      await user.click(screen.getByRole('button', { name: 'Empty folder' }))
+
+      expect(emptyMailbox).toHaveBeenCalledWith('junk')
+    })
   })
 
   it('creates a top-level folder from the new-folder affordance', async () => {

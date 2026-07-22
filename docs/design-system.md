@@ -187,16 +187,23 @@ Public API: `apps/web/src/ui/index.ts`. Every component ships keyboard support, 
 WAI-ARIA APG pattern, both themes, a responsive `--waxwing-control-min` target where interactive, and a co-located test with
 a jsdom axe scan.
 
-### 4.1 Primitives (internal — `src/ui/internal/`)
+### 4.1 Primitives (`src/ui/internal/`)
 
-Not exported; the shared kernel the overlays build on.
+The shared kernel the overlays build on. Three are internal; **two are re-exported from the
+barrel** because feature code owns legitimate portal/focus-trapped surfaces of its own — the
+composer windows (M2.2), the queued-sends chips and the label menu — and re-implementing them
+there would be the worse outcome. The file location is `internal/`; the export status is what
+`src/ui/index.ts` says.
 
-- **Portal** — renders into a `document.body` host so overlays escape ancestor overflow/stacking.
-- **useFocusTrap** — Tab/Shift+Tab wrap within a container, focus restored to the opener on close.
-- **useDismiss** — Escape + outside-pointer dismissal, capture-phase so it survives inner
-  `stopPropagation`.
-- **getFocusableElements** — jsdom-safe focusable discovery (no `offsetParent`).
-- **cx** — class-name join.
+- **Portal** (**exported**) — renders into a `document.body` host so overlays escape ancestor
+  overflow/stacking.
+- **useFocusTrap** (**exported**) — Tab/Shift+Tab wrap within a container, focus restored to the
+  opener on close.
+- **useDismiss** (internal) — Escape + outside-pointer dismissal, capture-phase so it survives
+  inner `stopPropagation`.
+- **getFocusableElements** (internal, `internal/focusables.ts`) — jsdom-safe focusable discovery
+  (no `offsetParent`).
+- **cx** (internal) — class-name join.
 
 ### 4.2 Components
 

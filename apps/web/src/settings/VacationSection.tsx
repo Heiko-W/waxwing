@@ -4,10 +4,12 @@
  * Rendered only when the server advertises `urn:ietf:params:jmap:vacationresponse` (FR-SRV-02: a
  * feature the server does not have is hidden, never broken).
  *
- * **"Preview" means the message a recipient will actually get** — the same sanitizer and the same
- * sandboxed frame the reading pane uses, with remote content off. A second, hand-rolled rendering
- * surface would be a promise we could not keep: the point of a preview is that it is not a different
- * renderer.
+ * **"Preview" means the message a recipient will actually get** — the same sanitizer, the same
+ * sandboxed frame and the same link gate the reading pane uses, with remote content off. A second,
+ * hand-rolled rendering surface would be a promise we could not keep: the point of a preview is that
+ * it is not a different renderer. "Same" has to include the SECURITY behaviour, which is where this
+ * went wrong once (G2): the preview was the one `MailBodyFrame` consumer that opened links itself,
+ * so the FR-RD-08 host check did not run on this surface at all.
  *
  * Saving is online-only and carries `ifInState`, so a change made elsewhere is caught rather than
  * quietly overwritten — and a conflict repaints the form from the server instead of merging behind
@@ -16,7 +18,7 @@
 
 import { JmapMethodError } from '@waxwing/jmap'
 import { sanitize } from '@waxwing/mail-html'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import {
@@ -27,6 +29,7 @@ import {
 } from '../compose'
 import { formatDate } from '../i18n/formatters'
 import { MailBodyFrame } from '../mail/MailBodyFrame'
+import { useLinkOpener } from '../mail/use-link-opener'
 import { useEngineStatus } from '../sync/engine'
 import { Button, Switch, TextInput, useToast } from '../ui'
 import styles from './settings.module.css'
@@ -47,6 +50,9 @@ export interface VacationSectionProps {
   readonly editorFactory?: EditorFactory
 }
 
+/** Lazy, exactly as the reading pane loads it: most users never open a preview, let alone trip it. */
+const LinkWarningDialog = lazy(() => import('../mail/LinkWarningDialog'))
+
 type SaveError = { readonly key: string } | null
 
 export function VacationSection(props: VacationSectionProps) {
@@ -54,6 +60,13 @@ export function VacationSection(props: VacationSectionProps) {
   const { toast } = useToast()
   const connected = useSessionOptional()
   const status = useEngineStatus()
+  // The preview is the reading pane's frame, so it gets the reading pane's link gate — the same hook,
+  // the same `classifyLink`, the same non-disableable interstitial (FR-RD-08). It used to call
+  // `window.open` from an inline arrow instead, which meant TWO defects in one line: no host
+  // comparison happened on this surface at all, and a fresh `onOpenLink` identity on every render
+  // re-fired `MailBodyFrame`'s mount effect, tearing the iframe down and rebuilding it on every
+  // keystroke in the form above. `useLinkOpener`'s callbacks are stable, which fixes both.
+  const links = useLinkOpener()
 
   const injected = props.client
   const [draft, setDraft] = useState<VacationDraft>(DEFAULT_VACATION_DRAFT)
@@ -249,9 +262,21 @@ export function VacationSection(props: VacationSectionProps) {
               bodyHtml={previewHtml}
               allowRemote={false}
               title={t('settings.vacation.preview.title')}
-              onOpenLink={(href) => window.open(href, '_blank', 'noopener,noreferrer')}
+              onOpenLink={links.onOpenLink}
             />
           </div>
+        )}
+        {/* Outside the `previewOpen` branch on purpose: hiding the preview mid-decision must not
+            silently drop the dialog the reader is still looking at. */}
+        {links.pending !== null && (
+          <Suspense fallback={null}>
+            <LinkWarningDialog
+              claimedHost={links.pending.claimedHost}
+              targetHost={links.pending.targetHost}
+              onConfirm={links.confirm}
+              onCancel={links.cancel}
+            />
+          </Suspense>
         )}
       </div>
 

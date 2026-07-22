@@ -26,6 +26,7 @@ import {
   Reply,
   ReplyAll,
   Star,
+  Tag,
   Trash2,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -44,7 +45,6 @@ import { Avatar, Button, Dialog, IconButton, Menu, type MenuItemSpec, Spinner } 
 import { AttachmentList } from './AttachmentList'
 import { topmostAuthResults } from './auth-results'
 import { LabelMenu } from './labels/LabelMenu'
-import { LabelMenuButton } from './labels/LabelMenuButton'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
 import {
@@ -125,9 +125,20 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const [moveOpen, setMoveOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [loadedOnce, setLoadedOnce] = useState(false)
-  // The `l` chord's picker, anchored to the action bar (the mouse path is the LabelMenuButton below).
+  /**
+   * The label picker — ONE open state and ONE anchor for both the `l` chord and the Label button,
+   * the same "a keystroke and a click are one code path" rule the rest of this action bar follows.
+   *
+   * It used to be two: `LabelMenuButton` owned the mouse path, while `l` opened a second
+   * `LabelMenu` anchored to the `role="toolbar"` div below. That div has no `tabIndex`, so
+   * `LabelMenu`'s close path — `anchorRef.current?.focus()` — was a silent no-op and Escape or Tab
+   * dropped the keyboard reader onto `<body>`, outside the pane they were reading in. Anchoring to
+   * the button a mouse user would have clicked is both a focusable element and where the rest of the
+   * app returns focus; it also positions the popover under the Label button rather than the toolbar's
+   * left edge, and lets `aria-expanded` tell the truth when the chord opened it.
+   */
   const [labelsOpen, setLabelsOpen] = useState(false)
-  const actionBarRef = useRef<HTMLDivElement>(null)
+  const labelButtonRef = useRef<HTMLButtonElement>(null)
 
   // Remote content: deployment default, sender allowlist, or an explicit "Load images" this session.
   const remoteAllow = useRemoteAllowList()
@@ -138,14 +149,198 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // Auto-mark-read after a dwell (FR-RD-07), unless disabled, already read, or this is a sibling
   // message the reader did not open (a conversation passes autoMark=false for those).
   const autoMarkRead = useAutoMarkRead()
+  /**
+   * The LIVE `$seen` — read when the dwell FIRES rather than when it was armed — together with the
+   * message id that value belonged to. The arming effect below deliberately does not re-run on
+   * `$seen`, so without the `seen` half a message read by other means mid-dwell (another client, the
+   * list) would still get a redundant keyword intent pushed at it. It is written by the transition
+   * effect that follows the arming effect, not here.
+   *
+   * The `id` half is what makes the transition effect's edge test mean anything. A bare boolean
+   * cannot tell "someone marked THIS message unread" from "the reader navigated from a read message
+   * to an unread one" — both arrive here as `$seen` true → false — and reading the second as the
+   * first is precisely the regression the wave-4 cancel shipped: opening an unread message straight
+   * after a read one armed a dwell and then cancelled it in the same commit, so FR-RD-07 did not fire
+   * at all. Only the transition effect writes this pair, and it writes both halves together, so the
+   * `seen` here is always the one observed for the `id` here.
+   *
+   * The fire path reads `seen` without re-checking `id`, and may: `email.id` is a dependency of the
+   * arming effect, so any change of message runs that effect's cleanup and clears the timer. A
+   * PENDING dwell therefore always belongs to the currently rendered message, which is the same
+   * message this ref was last written for.
+   */
+  const seenNow = useRef<{ id: string; seen: boolean }>({
+    id: email.id,
+    seen: email.keywords.$seen === true,
+  })
+  /**
+   * The armed dwell, held so a mark-unread can CANCEL it.
+   *
+   * Keeping `$seen` out of the arming effect stops the dwell from RE-arming after it has fired, but
+   * a timer that is still pending when the reader acts is a second, narrower instance of the same
+   * bug: open → glance → "mark as unread" → the dwell goes off 1.5 s after the open and marks read
+   * the message they just said to keep unread. That is the exact window a fast reader works in.
+   *
+   * TWO cancels, on two different signals, because the intent reaches this component two ways:
+   *
+   * - `markUnread` below cancels on the ACTION. It is the single closure every mark-unread issued
+   *   THROUGH this pane goes through, so no reading-pane entry point can be added that quietly
+   *   loses the cancel — and it fires even when the message is already unread and no row moves.
+   * - the effect declared after the arming effect cancels on a `$seen` true → false TRANSITION ON
+   *   ONE AND THE SAME MESSAGE, whoever caused it: this pane, the message list's bulk read/unread
+   *   toggle or its read swipe
+   *   (in `MessageList.tsx` — `BulkBar`'s read button and `commitSwipe`'s `read` branch; cited by
+   *   symbol, because line numbers in a neighbouring file drift), or another client's sync. None of
+   *   those call into this component; they reach it ONLY as a new `email` row, so the row is where
+   *   their intent is legible here. Watching the transition rather than the level is what keeps it
+   *   clear of the original loop — the arming effect's deps stay untouched. The "same message" part
+   *   is not a refinement but load-bearing: a change of MESSAGE from a read one to an unread one
+   *   produces the identical true → false edge with nobody having marked anything, and cancelling on
+   *   it broke auto-mark-read outright for that sequence.
+   *
+   * WHAT THIS PAIR DOES NOT COVER, so it is not read as complete: a mark-unread issued from OUTSIDE
+   * this pane against a message that is ALREADY unread. It produces no `$seen` transition and never
+   * reaches `markUnread`, so an armed dwell survives it and fires ~1.5 s after the open, against the
+   * reader's stated intent. Do not assume the list's controls cannot issue such a thing because they
+   * are toggles: `BulkBar`'s `allSeen` is derived from `useEmailWindow(ids)`, a Dexie `useLiveQuery`
+   * that keeps returning its LAST RESOLVED value while a query for a changed `ids` is in flight, and
+   * the only freshness guard there is `selectedRows.length === ids.length` — which a stale result of
+   * equal cardinality satisfies. That timing is not exercised by any test in this repo and no claim
+   * is made either way; it is treated as reachable. Closing this needs the cancel to hang off the
+   * dispatched intent, in the triage seam, where the target ids are known regardless of any row.
+   *
+   * The list-scoped `u` chord is not part of any of the above — it cannot fire while this component
+   * is mounted at all; the scope proof is on the arming effect below.
+   */
+  const dwellTimer = useRef<number | null>(null)
+  const cancelDwell = useCallback(() => {
+    // Belt-and-braces, deliberately kept: `clearTimeout` on an already-fired or already-cleared id
+    // is a no-op, so this early return changes no behaviour the suite can see. It is here so that
+    // `dwellTimer.current === null` keeps meaning "nothing pending" at every read of the ref.
+    if (dwellTimer.current === null) return
+    window.clearTimeout(dwellTimer.current)
+    dwellTimer.current = null
+  }, [])
+  /**
+   * `email.keywords.$seen` is NOT a dependency, and that omission is the whole fix. FR-RD-07 is
+   * "the reader dwelled on a message they OPENED" — a property of the opening, not of the current
+   * keyword. With `$seen` in the deps, a "mark as unread" flipped it true → false, re-ran this
+   * effect, cleared its own guard and re-armed the timer — so the message silently marked itself
+   * read again 1.5 s later, undoing the one control the reader has for keeping it unread.
+   *
+   * "A mark as unread" means, precisely: this pane's own action bar button, the message list's
+   * pointer controls (see the scope note above), or another client's sync. NOT a keyboard chord in
+   * this pane — there is no chord that can mark the open message unread. `registry.ts` gives
+   * `triage.unread` (`u`) `scopes: ['list']`, `use-shortcut-context.ts` computes `scope = 'reading'`
+   * whenever `route.params.emailId` is defined, and `MailScreen.tsx` mounts `<Conversation>` — the
+   * only non-demo parent of this component — only when `emailId !== undefined`. So for the whole
+   * lifetime of any `MessageView` the scope is `reading`, where `u` is bound to `nav.back`. Nor is
+   * the ⌘K palette a way around that: `usePaletteItems` filters on `isRunnable`, which is scope AND
+   * enabled — the same gate the key dispatcher applies. And the `triage.unread` entry is the only
+   * one in `registry.ts` that touches `$seen` at all, so there is no second chord to check.
+   *
+   * Keying on `email.id` instead means: arm once per opened message, using the `$seen` of the render
+   * that opened it. Navigating A → B → A re-arms on the second open of A, which is right — that is a
+   * new opening. A ref-based "armed once" latch would be wrong here: every effect re-run runs the
+   * cleanup, so any later re-run (StrictMode's dev double-invoke, a pref flip) would cancel the
+   * timer and then refuse to re-arm it, and the feature would just stop.
+   *
+   * That re-arm is a property of THIS effect alone, and it was not the whole story until the
+   * navigation fix below. An earlier version of this comment said A → B → A "re-arms on the second
+   * open, which is right" full stop, and that was false whenever the message left behind was `$seen`:
+   * this effect armed and the transition-cancel effect, running later in the same commit, saw the
+   * `$seen` true → false that the CHANGE OF MESSAGE had produced and cancelled the arm. What makes
+   * the sentence true now is that the cancel is scoped to a transition on one and the same message —
+   * see `seenNow` and the effect below.
+   *
+   * WARNING for whoever edits this list next, established by mutation and not by reasoning: since
+   * the transition-cancel effect below exists, putting `$seen` BACK into these deps no longer turns
+   * the suite red. The re-armed timer is cancelled by that effect on the same true → false edge that
+   * re-armed it, so the two are redundant for this timeline and only a COMPOSITE mutation (both
+   * changed at once) fails — it does, on "does NOT re-mark a message the reader marked unread after
+   * the dwell already fired". Green after removing this `biome-ignore` is therefore not evidence
+   * that removing it is safe; it means the other mechanism absorbed it. Leave the deps as they are.
+   *
+   * Re-run after the navigation fix, and it still reads the same way: `$seen` added back here alone
+   * is 45/45 GREEN; the composite (added back AND the transition cancel deleted) is 3 red, the named
+   * test among them, plus "never arms for a message that was already read when it was opened" and
+   * "cancels an armed dwell on a read-then-unread issued from OUTSIDE this pane".
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `$seen` is read at arm time on purpose — see above.
   useEffect(() => {
     if (!autoMark || !autoMarkRead || email.keywords.$seen === true) return
-    const timer = window.setTimeout(
-      () => actions.setSeen([email.id], true),
-      AUTO_MARK_READ_DELAY_MS,
-    )
-    return () => window.clearTimeout(timer)
-  }, [autoMark, autoMarkRead, email.id, email.keywords.$seen, actions])
+    const timer = window.setTimeout(() => {
+      dwellTimer.current = null
+      if (!seenNow.current.seen) actions.setSeen([email.id], true)
+    }, AUTO_MARK_READ_DELAY_MS)
+    dwellTimer.current = timer
+    return () => {
+      window.clearTimeout(timer)
+      // Belt-and-braces, like the two lines above and the early return in `cancelDwell`: never
+      // another arm's id, because React runs an effect's cleanup before the next run of that same
+      // effect (StrictMode's mount → cleanup → mount included), so the only values this can hold
+      // are `timer` itself or the `null` the fire/cancel paths already left. Deleting it changes
+      // nothing the suite can see; it is kept so the ref's stated meaning holds on every path.
+      dwellTimer.current = null
+    }
+  }, [autoMark, autoMarkRead, email.id, actions])
+  /**
+   * The `$seen` watcher: it carries the live value forward for the fire path (`seenNow` above) and,
+   * on a true → false EDGE **on one and the same message**, cancels an armed dwell whatever issued
+   * the unread — see the two-cancels note on `dwellTimer` for what that does and does not reach.
+   *
+   * `previous.id === email.id` is the whole of the navigation fix and is NOT decoration. `$seen`
+   * true → false is two different events wearing one shape:
+   *
+   * - SAME message — someone marked the open message unread (this pane, the list, another client).
+   *   An armed dwell must die; that is what this effect is for.
+   * - DIFFERENT message — the reader closed a read message and opened an unread one. Nobody marked
+   *   anything. The arming effect has just armed a legitimate dwell for the NEW message earlier in
+   *   this very commit (`email.id` is one of its deps), and cancelling here killed it. Open a read
+   *   message, then an unread one, and the unread one was never auto-marked read.
+   *
+   * Declaration ORDER cannot separate those two — both are one commit, both run both effects — which
+   * is why the fix is identity and not a reshuffle. Order still matters for the narrow case it was
+   * introduced for and the effect stays declared AFTER the arming effect for it: when a same-message
+   * true → false lands in the same commit as a re-run of the arming effect (`autoMark`,
+   * `autoMarkRead` or `actions` changing alongside it — a pref flip is the realistic one), effects
+   * run in declaration order, the cancel runs last and wins, and the message stays unread. The other
+   * order would let the arming effect re-arm over an explicit mark-unread, the shape of the original
+   * bug. Moving this above the arming effect would ALSO happen to hide the navigation bug — the
+   * cancel would run before the new arm existed — which is exactly why that is not the fix: it would
+   * leave the same-message case broken and read as if both were handled.
+   *
+   * `email.id` is in the deps because the body READS it (the exhaustive-deps rule requires it), and
+   * it keeps the ref's owner current on a commit where the message changed but `$seen` did not. It
+   * is INERT, established by mutation: removing it leaves all 45 tests green, and that is not a gap
+   * in the suite. A stale owner can only survive a navigation across which `$seen` did not move, so
+   * the two messages had the same `$seen` at the boundary; for the stale id to then matter, the NEW
+   * message needs a pending dwell (so it was opened unread) AND a true → false edge — which it can
+   * only reach by first going false → true, a run of this very effect that re-writes the pair with
+   * the current id. The refresh always precedes the case it would be needed for. It is kept as
+   * fidelity, not as a guard, and must not be cited as one.
+   *
+   * `previous.seen` is pinned by the suite: without it this cancels the dwell on mount for every
+   * unread message and nothing is ever auto-marked.
+   *
+   * `!next` is INERT — deleting it alone leaves the suite green. (Deleting it together with the
+   * fire-path `seenNow` guard IS red, but that composite proves nothing about this term: the
+   * `seenNow` guard is red on its own.) It is kept as a statement of the edge, not as a guard: the
+   * deps are `email.id`, `$seen` and `cancelDwell`, and `cancelDwell` is a `useCallback(…, [])` that
+   * never changes identity — so a post-mount re-run with an UNCHANGED `email.id` can only have come
+   * from `$seen` moving, and already has `previous.seen !== next`. (The claim is about `cancelDwell`
+   * being stable, not about `$seen` being the only dep; an earlier version of this comment said the
+   * latter and it was simply untrue of the array below.) StrictMode's second mount invoke re-runs the
+   * body with nothing changed, where `!next` does bite — and finds nothing armed to cancel anyway,
+   * because the arming effect refuses a message that is already read. Read its inertness as the
+   * invariant being stated twice, not as slack in the check.
+   */
+  useEffect(() => {
+    const next = email.keywords.$seen === true
+    const previous = seenNow.current
+    seenNow.current = { id: email.id, seen: next }
+    if (previous.id === email.id && previous.seen && !next) cancelDwell()
+  }, [email.id, email.keywords.$seen, cancelDwell])
 
   // Sanitize only once inline images are downloaded, so `cid:` refs resolve synchronously.
   const joinedHtml = useMemo(
@@ -283,12 +478,22 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       junk: () => triage.junk([email.id], inThisMailbox),
       trash: () => triage.trash([email.id], inThisMailbox),
       toggleFlag: () => triage.setFlagged([email.id], email.keywords.$flagged !== true),
-      markUnread: () => triage.setSeen([email.id], false),
+      // Cancel first: an armed dwell that fires after this would mark read the very message the
+      // reader has just asked to keep unread. Everything that reaches mark-unread THROUGH the
+      // reading pane — this button, and anything the reading store's handlers grow later — is this
+      // one closure, so no reading-pane entry point can be added that quietly loses the cancel.
+      // This is one of two cancels and covers only this pane; the other watches the `$seen`
+      // transition. Neither reaches an outside-pane unread against an already-unread message —
+      // `dwellTimer`'s note says why, and that case is open.
+      markUnread: () => {
+        cancelDwell()
+        triage.setSeen([email.id], false)
+      },
       openMove: () => setMoveOpen(true),
       openLabels: () => setLabelsOpen(true),
       requestDelete: () => setConfirmDelete(true),
     }),
-    [email.id, email.keywords.$flagged, inThisMailbox, loading, onCompose, triage],
+    [email.id, email.keywords.$flagged, inThisMailbox, loading, onCompose, triage, cancelDwell],
   )
 
   // Only the message the reader actually OPENED registers — `autoMark` already means precisely that
@@ -415,12 +620,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         </div>
       </header>
 
-      <div
-        className={styles.actionBar}
-        role="toolbar"
-        aria-label={t('reading.actions')}
-        ref={actionBarRef}
-      >
+      <div className={styles.actionBar} role="toolbar" aria-label={t('reading.actions')}>
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
@@ -457,7 +657,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         <IconButton label={t('reading.markUnread')} variant="ghost" onClick={handlers.markUnread}>
           <MailMinus />
         </IconButton>
-        <LabelMenuButton ids={[email.id]} />
+        {/* Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
+            way to reach. The bulk bar still uses it — there, nothing but the mouse opens the picker. */}
+        <IconButton
+          ref={labelButtonRef}
+          label={t('labels.assign')}
+          variant="ghost"
+          aria-haspopup="menu"
+          aria-expanded={labelsOpen}
+          onClick={() => setLabelsOpen((open) => !open)}
+        >
+          <Tag />
+        </IconButton>
         {/* Without a source mailbox `move` keeps the other memberships — that is a COPY, not the
             move this button promises. The `v` chord gates on the same value (the shortcut context
             reads this very `mailboxId` back off the registered handlers), so the two cannot drift. */}
@@ -557,7 +768,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
 
       {labelsOpen && (
-        <LabelMenu ids={[email.id]} anchorRef={actionBarRef} onClose={() => setLabelsOpen(false)} />
+        <LabelMenu
+          ids={[email.id]}
+          anchorRef={labelButtonRef}
+          onClose={() => setLabelsOpen(false)}
+        />
       )}
 
       {sourceOpen !== null && (

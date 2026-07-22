@@ -20,6 +20,7 @@ import { setActiveEngine } from '../sync/engine'
 import { email, freshDb, mailbox, thread } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
 import { Conversation } from './Conversation'
+import { AUTO_MARK_READ_DELAY_MS } from './MessageView'
 
 function part(over: Partial<EmailBodyPart> = {}): EmailBodyPart {
   return {
@@ -99,9 +100,53 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  // Real timers FIRST: `db.delete()` is a Dexie round-trip, and fake-indexeddb does not complete
+  // one while the clock is faked and nobody is advancing it.
+  vi.useRealTimers()
   setActiveEngine(null)
   await db.delete()
 })
+
+/**
+ * The ids of every "$seen = true" intent dispatched so far, in order — i.e. every message something
+ * has decided to mark READ. Asserting on the whole list rather than with a pair of
+ * `toHaveBeenCalledWith` / `not.toHaveBeenCalledWith` checks is deliberate: it names the offending
+ * sibling in the failure message instead of just reporting that an absence assertion tripped.
+ */
+interface KeywordIntent {
+  readonly kind: string
+  readonly keyword?: string
+  readonly value?: boolean
+  readonly emailIds: readonly string[]
+}
+
+function markedReadIds(): string[] {
+  return dispatch.mock.calls
+    .map((call) => call[0] as KeywordIntent)
+    .filter((intent) => intent.kind === 'setKeywords' && intent.keyword === '$seen')
+    .filter((intent) => intent.value === true)
+    .flatMap((intent) => [...intent.emailIds])
+}
+
+/**
+ * Step the FAKE clock until `predicate` holds. The replica's liveQueries settle on faked timers
+ * (`advanceTimersByTimeAsync` flushes microtasks between ticks), so a barrier can be a state the
+ * test DRIVES the app into rather than one it hopes has arrived by some wall-clock deadline.
+ *
+ * `waitFor` cannot serve here: with the clock faked it never resolves in this file's setup, and
+ * with the clock real it cannot promise that a pending dwell has fired — which is the only thing
+ * an "and this other message was NOT marked read" assertion can be built on.
+ *
+ * Throws rather than falling through when the predicate never holds: a barrier that quietly gives
+ * up hands every assertion after it to chance, which is precisely the failure being fixed here.
+ */
+async function advanceUntil(what: string, predicate: () => boolean, stepMs = 10): Promise<void> {
+  for (let step = 0; step < 500; step++) {
+    if (predicate()) return
+    await vi.advanceTimersByTimeAsync(stepMs)
+  }
+  throw new Error(`barrier never held: ${what}`)
+}
 
 function renderConversation(emailId: string) {
   return render(
@@ -162,23 +207,36 @@ describe('Conversation', () => {
   it('auto-marks only the opened message read, never the auto-expanded newest', async () => {
     // Both unread; open the OLDER e1. e1 (opened) is marked read after the dwell; e2 (newest,
     // auto-expanded for reading) must NOT be — opening one message never marks a sibling read.
+    //
+    // The BARRIER is the whole test, and getting it wrong is why this assertion was decorative
+    // until now. "e2 was not marked read" is an assertion of ABSENCE, and an absence asserted under
+    // a barrier that does not cover the thing it denies proves nothing — the recurring hazard §13
+    // B10 tracks (it has bitten M3.8's chord suite and G2's swipe-reveal race already; this is the
+    // third). The obvious barrier — wait until e1's own dispatch lands — is exactly that mistake:
+    // `Conversation` starts with only the OPENED id expanded and merges the thread's newest in an
+    // effect, so e2 mounts a commit later, arms its dwell later, and is still pending at the
+    // instant e1's fires. Under that barrier `!autoMark` could be deleted from MessageView's dwell
+    // guard and all 79 tests stayed green.
+    //
+    // So the barrier is "both messages are MOUNTED" (two action toolbars = e2's dwell is armed, if
+    // it arms at all), and only then is the clock driven past both dwells. Fake timers, not a
+    // wall-clock `waitFor`: the point is to reach a state where every timer that was ever going to
+    // fire has fired, which no timeout can promise.
     await putEmails(db, 'a', [
       email('e1', { threadId: 't1', keywords: {} }),
       email('e2', { threadId: 't1', keywords: {} }),
     ])
+    // After the async seeding above — fake-indexeddb stalls if the clock is faked during it.
+    vi.useFakeTimers()
     renderConversation('e1')
-    await waitFor(
-      () =>
-        expect(dispatch).toHaveBeenCalledWith(
-          expect.objectContaining({ keyword: '$seen', value: true, emailIds: ['e1'] }),
-          expect.anything(),
-        ),
-      { timeout: 3000 },
+    await advanceUntil(
+      'both thread messages are expanded',
+      () => screen.queryAllByRole('toolbar', { name: 'Message actions' }).length === 2,
     )
-    expect(dispatch).not.toHaveBeenCalledWith(
-      expect.objectContaining({ keyword: '$seen', value: true, emailIds: ['e2'] }),
-      expect.anything(),
-    )
+    // Both dwells are now armed (if e2 arms one at all). Four dwell lengths is far past both.
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    // Exactly one message read, and it is the one the reader opened.
+    expect(markedReadIds()).toEqual(['e1'])
   })
 
   it('hydrates a thread member whose envelope the replica is missing', async () => {

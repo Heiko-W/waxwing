@@ -6,7 +6,7 @@
  * came from the `/get`, both body alternatives — and the three ways a save can fail.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { PatchObject, VacationResponse } from '@waxwing/jmap'
 import { JmapMethodError } from '@waxwing/jmap'
@@ -282,5 +282,123 @@ describe('the away message survives an immediate Save (the editor debounce)', ()
     }
     expect(patch.htmlBody).toContain('Back on Monday')
     expect(patch.textBody).toContain('Back on Monday')
+  })
+})
+
+/**
+ * The regression guard for the G2 finding: the vacation preview was the ONE `MailBodyFrame` consumer
+ * that did not route `onOpenLink` through `useLinkOpener`. It called `window.open` directly, so no
+ * host comparison happened on that surface at all — a link in a message the user is about to send to
+ * everyone who writes to them opened straight out of a "preview", with the FR-RD-08 interstitial
+ * (deliberately non-disableable everywhere else) simply absent.
+ *
+ * It also passed an INLINE ARROW as `onOpenLink`, which that prop's contract forbids: it is an effect
+ * dependency, so a fresh identity on every render tore the iframe down and rebuilt it on every
+ * keystroke in the form above it.
+ *
+ * Both are driven through the REAL frame here — MailBodyFrame mounting the real `mountMailFrame`,
+ * whose real listener reads `textContent` and calls back into the app. Nothing is mocked in the path.
+ */
+describe('the preview frame is behind the same phishing gate as the reading pane (G2)', () => {
+  /** Two things a browser does that jsdom does not: fire `load` for an assigned srcdoc, and parse it. */
+  async function openPreviewFrame(): Promise<HTMLIFrameElement> {
+    const frame = (await screen.findByTitle('Vacation reply preview')) as HTMLIFrameElement
+    await waitFor(() => expect(frame.srcdoc).not.toBe(''))
+    await act(async () => {
+      frame.dispatchEvent(new Event('load'))
+    })
+    return frame
+  }
+
+  async function clickPreviewLink(frame: HTMLIFrameElement, html: string): Promise<void> {
+    const doc = frame.contentDocument
+    if (doc === null) throw new Error('no contentDocument')
+    doc.body.innerHTML = html
+    const link = doc.querySelector('a')
+    const view = doc.defaultView
+    if (link === null || view === null) throw new Error('no link')
+    // Dispatched from the FRAME's realm — the only way the interception fires at all.
+    await act(async () => {
+      link.dispatchEvent(new view.MouseEvent('click', { bubbles: true, cancelable: true }))
+    })
+  }
+
+  async function renderWithPreview(): Promise<HTMLIFrameElement> {
+    const user = userEvent.setup()
+    const { client } = fakeClient({ vacation: { ...SINGLETON, htmlBody: '<p>Back Monday</p>' } })
+    renderSection(client)
+    await screen.findByLabelText('Subject')
+    await user.click(screen.getByRole('button', { name: 'Show preview' }))
+    return await openPreviewFrame()
+  }
+
+  it('raises the interstitial instead of opening a link whose text names another host', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const frame = await renderWithPreview()
+    await clickPreviewLink(frame, '<a href="https://paypa1-secure.ru/login">bank.test</a>')
+
+    const dialog = await screen.findByRole('dialog', { name: 'This link may not be genuine' })
+    expect(within(dialog).getByText('bank.test')).toBeInTheDocument()
+    expect(within(dialog).getByText('paypa1-secure.ru')).toBeInTheDocument()
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('closes the D8 hole here too — a hidden host does not clear the link', async () => {
+    // The preview renders the sender's own draft, but it also renders whatever was pasted into it,
+    // and it uses the SAME classifier. Proving it through this surface is what stops the preview
+    // drifting back into a second, laxer link path.
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const frame = await renderWithPreview()
+    await clickPreviewLink(
+      frame,
+      '<a href="https://evil.tld/steal"><span style="display:none">evil.tld </span>bank.test</a>',
+    )
+
+    await screen.findByRole('dialog', { name: 'This link may not be genuine' })
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('opens a link that goes where its text says, with no dialog and no opener handle', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const frame = await renderWithPreview()
+    await clickPreviewLink(frame, '<a href="https://bank.test/login">bank.test</a>')
+
+    await waitFor(() => expect(open).toHaveBeenCalled())
+    expect(open).toHaveBeenCalledWith('https://bank.test/login', '_blank', 'noopener,noreferrer')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('does NOT rebuild the iframe when an unrelated field is typed into (the inline arrow)', async () => {
+    // `onOpenLink` is a `mountMailFrame` effect dependency. An inline arrow is a new identity every
+    // render, so every keystroke in Subject destroyed and remounted the frame — losing scroll
+    // position and re-running the whole mount. A stable opener is what makes the srcdoc memo the
+    // only thing that can remount it.
+    const user = userEvent.setup()
+    const frame = await renderWithPreview()
+    // `mountMailFrame` sets `sandbox` on mount; clearing it makes a remount observable.
+    frame.removeAttribute('sandbox')
+
+    await user.type(screen.getByLabelText('Subject'), 'Away')
+
+    expect(screen.getByTitle('Vacation reply preview')).toBe(frame)
+    expect(frame.getAttribute('sandbox')).toBeNull()
+  })
+
+  it('keeps the dialog up when the preview is collapsed underneath it', async () => {
+    // The dialog is rendered OUTSIDE the `previewOpen` branch on purpose. "Hide preview" is still
+    // reachable behind the modal via the keyboard, and a warning that vanishes when the surface it
+    // came from closes would resolve the reader's question by making it disappear — the one outcome
+    // a friction dialog must never have.
+    const user = userEvent.setup()
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    const frame = await renderWithPreview()
+    await clickPreviewLink(frame, '<a href="https://paypa1-secure.ru/login">bank.test</a>')
+    await screen.findByRole('dialog', { name: 'This link may not be genuine' })
+
+    await user.click(screen.getByRole('button', { name: 'Hide preview' }))
+
+    expect(screen.queryByTitle('Vacation reply preview')).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'This link may not be genuine' })).toBeInTheDocument()
+    expect(open).not.toHaveBeenCalled()
   })
 })

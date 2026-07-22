@@ -1,6 +1,7 @@
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EmailBodyPart, EmailBodyValue } from '@waxwing/jmap'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
@@ -23,6 +24,7 @@ import { email, freshDb, mailbox } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { AUTO_MARK_READ_DELAY_MS, MessageView } from './MessageView'
+import { useReadingStore } from './reading-store'
 
 function part(over: Partial<EmailBodyPart> = {}): EmailBodyPart {
   return {
@@ -106,6 +108,8 @@ beforeEach(async () => {
   setActiveEngine({
     dispatch,
     fetchBody: vi.fn(async () => {}),
+    // The label picker hydrates the ids it was given before computing membership.
+    fetchEnvelopes: vi.fn(async () => {}),
   } as unknown as Parameters<typeof setActiveEngine>[0])
   await putMailboxes(db, 'a', [
     mailbox('inbox', { role: 'inbox' }),
@@ -126,20 +130,53 @@ function seen(over: Parameters<typeof email>[1] = {}): EmailRow {
   return toEmailRow('a', email('e1', { keywords: { $seen: true }, ...over }))
 }
 
-function renderView(row: EmailRow, mailboxId: string | undefined = 'inbox') {
-  return render(
-    <RouterProvider>
-      <ConfigProvider config={DEFAULT_CONFIG}>
-        <SessionContext.Provider value={session}>
-          <ToastProvider>
-            <ReplicaProvider accountId="a" db={db}>
-              <MessageView email={row} mailboxId={mailboxId} />
-            </ReplicaProvider>
-          </ToastProvider>
-        </SessionContext.Provider>
-      </ConfigProvider>
-    </RouterProvider>,
+/**
+ * The tree under test, as a value — so a test can `rerender` it with a DIFFERENT `email` row. That
+ * is exactly how the replica reaches this component in the app: an optimistic keyword apply lands,
+ * the liveQuery fires, and the parent re-renders `MessageView` with a new row for the same message.
+ *
+ * Wrapped in `<StrictMode>` because `main.tsx` is: the dwell timer is an effect with a cleanup, and
+ * StrictMode's dev double-invoke (mount → cleanup → mount) is precisely what breaks the obvious
+ * "arm once per message id" ref-latch implementation of it — the latch refuses the second mount and
+ * the message is never marked read at all. Without this wrapper that bug ships green.
+ */
+function tree(row: EmailRow, mailboxId: string | undefined = 'inbox') {
+  return (
+    <StrictMode>
+      <RouterProvider>
+        <ConfigProvider config={DEFAULT_CONFIG}>
+          <SessionContext.Provider value={session}>
+            <ToastProvider>
+              <ReplicaProvider accountId="a" db={db}>
+                <MessageView email={row} mailboxId={mailboxId} />
+              </ReplicaProvider>
+            </ToastProvider>
+          </SessionContext.Provider>
+        </ConfigProvider>
+      </RouterProvider>
+    </StrictMode>
   )
+}
+
+function renderView(row: EmailRow, mailboxId: string | undefined = 'inbox') {
+  return render(tree(row, mailboxId))
+}
+
+/** An unread row for `e1` — the shape the auto-mark dwell exists for. */
+function unseen(over: Parameters<typeof email>[1] = {}): EmailRow {
+  return toEmailRow('a', email('e1', { keywords: {}, ...over }))
+}
+
+/**
+ * Every `$seen` intent dispatched so far, in order: `true` = "mark read", `false` = "mark unread".
+ * Asserting on the SEQUENCE is the point — the auto-mark bug is a second `true` that nobody asked
+ * for, and a `not.toHaveBeenCalled()` style assertion cannot see it.
+ */
+function seenIntents(): boolean[] {
+  return dispatch.mock.calls
+    .map((call) => call[0] as { kind: string; keyword?: string; value?: boolean })
+    .filter((intent) => intent.kind === 'setKeywords' && intent.keyword === '$seen')
+    .map((intent) => intent.value === true)
 }
 
 describe('MessageView', () => {
@@ -321,6 +358,215 @@ describe('MessageView', () => {
       }),
       expect.anything(),
     )
+  })
+
+  it('does NOT re-mark a message the reader marked unread after the dwell already fired', async () => {
+    // The bug: `$seen` was a dependency of the dwell effect, so the reader's own "mark as unread"
+    // re-armed the very timer that had just marked it read — the control silently undid itself
+    // 1.5 s later. The dwell belongs to the OPENING, not to every `$seen` transition.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    const { rerender } = renderView(unseen())
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS)
+    expect(seenIntents()).toEqual([true])
+
+    // The optimistic apply lands ($seen true), then the message is marked unread — from this pane's
+    // action bar, from the message list's pointer controls, or by another client. All three reach
+    // this component the same way, as a new row; that is all this test needs them to have in common.
+    // (No keyboard chord is in that list: none can mark the open message unread — see the scope
+    // proof on the arming effect in `MessageView.tsx`.)
+    rerender(tree(seen()))
+    rerender(tree(unseen()))
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+
+    // Still exactly one auto-mark. A second `true` here is the message re-marking itself read.
+    expect(seenIntents()).toEqual([true])
+  })
+
+  it('cancels an armed dwell when the reader marks unread INSIDE the window', async () => {
+    // The other half of the same defect — and the half a fast reader actually meets: open, glance,
+    // "mark as unread", move on, all inside 1.5 s. Keeping `$seen` out of the effect's deps closes
+    // the case where the reader acts AFTER the dwell has fired, but it does nothing about a timer
+    // that is still ARMED: it goes off at 1.5 s and marks read the message the reader has just said
+    // to keep unread. Same user-visible symptom as the original bug ("mark as unread undoes
+    // itself"), a narrower window, and no less wrong inside it.
+    //
+    // The click goes through the real action-bar button rather than the published handler, so what
+    // is proven is the path a reader actually takes. This is also the ONE test that isolates
+    // `markUnread`'s own cancel: `$seen` is false before the click and false after it, so no row
+    // transition occurs and the transition effect cannot be what saves it. The outside-pane control
+    // path is covered by the test below; what neither covers is an outside mark-unread against an
+    // already-unread message, which moves no row — see the note on `dwellTimer`. No keyboard sibling
+    // exists to drift from: reading scope has no mark-unread chord at all today (`u` is `nav.back`).
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    renderView(unseen())
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS - 500)
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }))
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    // The reader's intent, and nothing after it. A `true` here is the dwell overruling them.
+    expect(seenIntents()).toEqual([false])
+  })
+
+  it('never arms for a message that was already read when it was opened', async () => {
+    // Same defect from the other side: opening an already-read message must not leave a dwell
+    // "primed" that fires the moment anything flips `$seen` back to false. The flip happens INSIDE
+    // the dwell window on purpose — that is the one moment at which a timer wrongly armed at open
+    // would still be pending AND would find `$seen` false when it fires.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    const { rerender } = renderView(seen())
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS / 3)
+    rerender(tree(unseen()))
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    expect(seenIntents()).toEqual([])
+  })
+
+  it('drops a pending dwell when the message is read by other means first', async () => {
+    // Another client (or the list) marks it read mid-dwell. Firing anyway would push a redundant
+    // keyword intent into the outbox for a message that is already read.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    const { rerender } = renderView(unseen())
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS - 500)
+    rerender(tree(seen()))
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 2)
+    expect(seenIntents()).toEqual([])
+  })
+
+  it('cancels an armed dwell on a read-then-unread issued from OUTSIDE this pane', async () => {
+    // This used to be pinned as a KNOWN RESIDUAL asserting `[true]` — the argument being that a
+    // mark-unread from outside can only be seen here as an action, and no action arrives. That was
+    // wrong: a dwell is armed while `$seen` is false at the ARMING instant and survives `$seen`
+    // going true (that is what the one-shot `seenNow`/timer pair is for), so the outside unread
+    // does show up here — as a `$seen` true → false transition on a live timer. The transition
+    // effect in `MessageView.tsx` cancels on exactly that, and this test now asserts the fix.
+    //
+    // The two controls it stands for are `MessageList.tsx`'s bulk read/unread toggle (`BulkBar`'s
+    // read button) and `commitSwipe`'s `read` branch, whose own comment says it "leaves the reading
+    // pane be" — cited by symbol, because line numbers in a neighbouring file drift. Both call the
+    // triage seam directly, so neither passes through `markUnread`.
+    //
+    // The transitions are driven at the replica boundary (a new `email` row), which is exactly how
+    // a `triage.setSeen` from either control reaches this component — `MessageList` is not mounted
+    // here, so what is proven is this component's response to that row sequence, not the list's
+    // dispatch of it. NOT proven, and still open: an outside mark-unread against a message that is
+    // ALREADY unread. It moves no row, so there is nothing for this effect to see; see the
+    // "what this pair does not cover" note on `dwellTimer`.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    const { rerender } = renderView(unseen())
+    await vi.advanceTimersByTimeAsync(500)
+    rerender(tree(seen())) // read by other means — the dwell is still armed, `seenNow` moves to true
+    await vi.advanceTimersByTimeAsync(200)
+    rerender(tree(unseen())) // the mark-unread that never reaches `markUnread`
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    // Nothing at all: no auto-mark after the reader's unread, and no unread of our own to dispatch
+    // (the unread came from elsewhere). A `true` here is the dwell overruling the reader.
+    expect(seenIntents()).toEqual([])
+
+    // The SAME timeline with the unread issued from this pane's own button. Be exact about what
+    // this half is worth: it does NOT isolate `markUnread`'s cancel, because the optimistic apply
+    // below also produces a true → false row and the transition effect would cancel on its own.
+    // What pins `markUnread`'s cancel specifically is the "INSIDE the window" test above, where the
+    // row never changes at all and the transition effect therefore never runs. This half is kept
+    // as the realistic mouse timeline, and as the pair to the outside-pane one.
+    //
+    // The `unseen()` rerender after the click is not decoration, and leaving it out made this half
+    // pass for the wrong reason: `triage.setSeen` applies optimistically and the row comes back
+    // unread, which is what puts `seenNow` back to false by the time the timer would fire. Without
+    // it the stale `seenNow === true` from the read step suppresses the dispatch on its own, and
+    // this half stays green even with both cancels deleted — proving nothing about either.
+    cleanup()
+    dispatch.mockReset()
+    const inPane = render(tree(unseen()))
+    await vi.advanceTimersByTimeAsync(500)
+    inPane.rerender(tree(seen()))
+    await vi.advanceTimersByTimeAsync(200)
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }))
+    inPane.rerender(tree(unseen())) // the optimistic apply lands
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    expect(seenIntents()).toEqual([false])
+  })
+
+  it('arms for an unread message opened right after a READ one (navigation)', async () => {
+    // The wave-4 transition-cancel effect regressed the commonest reading sequence there is: open a
+    // read message, then open an unread one. Both effects re-run in that ONE commit — the arming
+    // effect because `email.id` changed (it correctly arms for the new message), the transition
+    // effect because `$seen` went true → false across the boundary — and the cancel, running last,
+    // killed the arm it had no business seeing. `$seen` fell from true to false because the MESSAGE
+    // changed, not because anyone marked anything unread, so the new message was never auto-marked
+    // read at all. FR-RD-07 stopped working for every reader who opens a read message first.
+    //
+    // The transition effect therefore has to know WHICH message its previous `$seen` belonged to; a
+    // bare boolean cannot tell a mark-unread from a navigation. Both message rows are seeded so the
+    // sequence is the one the app produces: the list hands `MessageView` a new `email` prop.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    await putEmailBody(db, textBodyRow('e2', 'body'))
+    vi.useFakeTimers()
+    const { rerender } = renderView(seen())
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS / 3)
+    rerender(tree(toEmailRow('a', email('e2', { keywords: {} }))))
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 2)
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'setKeywords',
+        keyword: '$seen',
+        value: true,
+        emailIds: ['e2'],
+      }),
+      expect.anything(),
+    )
+    // …and exactly once: the arm belongs to the opening of `e2` and nothing re-arms behind it.
+    expect(seenIntents()).toEqual([true])
+  })
+
+  // ---- the `l` chord's label picker (M3.2 / M3.8) ----
+
+  /** Invoke the `l` chord exactly as `shortcuts/registry.ts` does: through the published handlers. */
+  function pressLabelChord(): void {
+    act(() => {
+      useReadingStore.getState().handlers?.openLabels()
+    })
+  }
+
+  it('the `l` chord opens the same picker the Label button owns', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    const button = await screen.findByRole('button', { name: 'Label' })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    pressLabelChord()
+    expect(await screen.findByRole('menu', { name: 'Apply labels' })).toBeInTheDocument()
+    // One picker, one state: a chord-opened menu is announced on the button a mouse user would click.
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('returns focus to the Label button when Escape closes the `l` picker', async () => {
+    // The picker used to be anchored to the `role="toolbar"` div, which has no tabIndex — so
+    // `anchorRef.current?.focus()` was a no-op and the keyboard user landed on <body>.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen())
+    const button = await screen.findByRole('button', { name: 'Label' })
+    pressLabelChord()
+    await screen.findByRole('menu', { name: 'Apply labels' })
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    expect(button).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('returns focus to the Label button when Tab dismisses the `l` picker', async () => {
+    // fireEvent, not user-event: user-event would ALSO move focus itself for a Tab key, which would
+    // mask whether the picker's own close path restored it.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(seen())
+    const button = await screen.findByRole('button', { name: 'Label' })
+    pressLabelChord()
+    const menu = await screen.findByRole('menu', { name: 'Apply labels' })
+    fireEvent.keyDown(menu, { key: 'Tab' })
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    expect(button).toHaveFocus()
   })
 
   // ---- header details (M3.9, FR-RD-06) ----

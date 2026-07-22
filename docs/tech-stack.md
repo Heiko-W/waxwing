@@ -205,13 +205,25 @@ in the first spike).
 waxwing/
 ├── apps/
 │   └── web/                  # the SPA (AGPL-3.0)
-│       ├── public/           # manifest, icons, default config.json, theme.css
-│       └── src/
-│           ├── app/          # shell, routing, command palette
-│           ├── features/     # mail/, contacts/, settings/, sieve/, onboarding/
+│       ├── public/           # manifest, branding/ icons, config.json, theme.css
+│       └── src/              # feature folders are top-level; there is no features/
+│           ├── app/          # shell, routing, runtime config, session + onboarding
+│           ├── auth/         # OAuth/Basic connect flow, token + secret stores
+│           ├── mail/         # mailbox list, message list, reading pane, triage
+│           ├── compose/      # composer windows + editor adapter
+│           ├── contacts/     # contacts screens
+│           ├── settings/     # settings screens
+│           ├── shortcuts/    # keyboard registry, ⌘K command palette, cheat sheet
+│           ├── notify/       # notification core, permission, preferences
+│           ├── outbox/       # offline-queue UI (problems dialog, queued sends)
+│           ├── pwa/          # install + update surfaces, chunk-error boundary
+│           ├── quota/        # storage / quota surfaces
 │           ├── sync/         # sync engine, outbox, replica schema (Dexie)
+│           ├── i18n/         # i18next setup + locale bundles
 │           ├── ui/           # design system components + tokens
-│           └── sw/           # service worker (push, precache hooks)
+│           ├── sw/           # service worker (precache, notification click)
+│           ├── demo/         # standalone dev/demo app (not shipped in the SPA build)
+│           └── test/         # shared test helper (jsdom axe scan)
 ├── packages/
 │   ├── jmap/                 # @waxwing/jmap — typed JMAP client (MIT)
 │   ├── jscontact/            # JSContact ↔ vCard 4 conversion (MIT)

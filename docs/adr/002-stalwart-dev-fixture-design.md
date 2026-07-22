@@ -58,3 +58,26 @@ from assumptions baked into the implementation plan and require decisions:
   are **out of scope here** and validated separately in the spike (SP.5).
 - If `:v0.16.11-alpine` ever misbehaves, fall back to non-alpine `:v0.16.11` (verified to
   boot identically) and note it in the fixture README.
+
+## Amendment (2026-07-21) — the pin is `v0.16.14-alpine`; no new ADR was needed
+
+The `v0.16.11-alpine` named in **Decision** and **Consequences** above is superseded: since
+commit `2e6c615` the `dev` service in `e2e/stalwart/docker-compose.yml` runs
+**`stalwartlabs/stalwart:v0.16.14-alpine`**. The non-alpine image stays the fallback of record,
+now at `:v0.16.14` — but the *"verified to boot identically"* in that note was established against
+**v0.16.11 and has not been re-run**, so non-alpine `:v0.16.14` is an untested fallback until
+someone boots it. Everything else this ADR fixes — the single-line RocksDB store
+descriptor, provisioning over `x:Domain/set`/`x:Account/set`, the ephemeral named volume, the
+plain-HTTP loopback exception on host `18080`, the `dev`/`main` compose profiles and the
+security-equivalent smoke assertions — is unchanged by the bump.
+
+**Why no new ADR:** NFR-COMPAT-02 scopes the baseline to the **minor line** (*"Server baseline:
+Stalwart v0.16.x"*), so moving the patch pin inside v0.16 is bookkeeping, not a decision this
+ADR's scope reserves. Only leaving v0.16 would be — and NFR-COMPAT-02 already prescribes that
+case (*"If the upcoming Stalwart v1.0 ships changes Waxwing needs, the baseline is raised"*),
+which is open decision D3.
+
+The bump was not inert, but its consequences land elsewhere, not here: v0.16.14 fixes all
+three defects Waxwing reported in `docs/upstream/` and implements RFC 9749 VAPID. That is
+recorded in **ADR-010**'s amendment and gated as open decision **D6**; the fixture's own
+shape is untouched.
