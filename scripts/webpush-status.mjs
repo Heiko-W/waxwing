@@ -47,18 +47,31 @@ if (list.length === 0) {
   console.log('  (Switching them off DESTROYS the subscription; that is deliberate.)')
 }
 for (const row of list) {
-  const verified = row.verificationCode !== null && row.verificationCode !== undefined
   console.log(`\n  id              ${row.id}`)
   console.log(`  deviceClientId  ${row.deviceClientId ?? '(none)'}`)
   console.log(`  types           ${JSON.stringify(row.types ?? null)}`)
   console.log(`  expires         ${row.expires ?? '(never)'}`)
-  console.log(
-    `  verified        ${verified ? 'yes' : 'NO — the server is pushing nothing but the verification'}`,
-  )
 
   if (JSON.stringify(row.types) !== JSON.stringify(['EmailDelivery'])) {
     console.log('  ! expected types ["EmailDelivery"] — without it the app is woken on every')
     console.log('    Email change, including a message read on another device.')
   }
 }
+
+// ── Why there is no "verified" line here, and why that mattered ────────────────────────────────
+//
+// This script used to print one, derived from `verificationCode`. **It was always wrong.** Stalwart
+// requests that property (crates/jmap/src/push/get.rs:42) but never fills it: the match has no arm
+// for it, so it falls to `property => insert(Value::Null)` and comes back `null` whether the
+// subscription is verified or not. The line therefore read "NO" forever, and during the B29
+// hand-check (2026-07-23) it was taken as evidence that verification was stuck — which sent the
+// investigation down several wrong paths before Chrome's own `gcm-internals` produced the real
+// defect (a transient state tearing the subscription down; see the plan's B29 row).
+//
+// There is no JMAP-visible way to ask "is this verified": the server keeps that to itself. The only
+// honest test is the behaviour — a delivery with every tab closed either raises a banner or does
+// not. `pnpm webpush:deliver` and look at the screen.
+console.log('\n  (Stalwart never discloses whether a subscription is verified — it returns')
+console.log('   verificationCode: null either way. The only honest check is the banner itself:')
+console.log('   close every tab, run `pnpm webpush:deliver`, and see whether one appears.)')
 console.log('')
