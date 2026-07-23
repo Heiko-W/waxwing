@@ -49,6 +49,14 @@ services:
     profiles: [dev]
     image: stalwartlabs/stalwart:v0.16.14-alpine
     container_name: waxwing-stalwart-dev
+    # A real DNS-shaped hostname, and it is load-bearing for Web Push on Safari. Stalwart's VAPID
+    # `sub` claim falls back to `mailto:postmaster@{hostname}`, and without this the hostname is the
+    # random Docker container id (e.g. `132e0ba72d04`) — which has no dot and is not a valid mailto
+    # domain. Apple's push service REJECTS a VAPID token with such a `sub` (FCM/Chrome tolerate it),
+    # so the verification push never reaches Safari and the subscription can never verify. Proven by
+    # decrypting Stalwart's push on the wire (2026-07-23, B29). A production server has a real
+    # hostname and does not hit this; the fixture needs one set explicitly.
+    hostname: mail.waxwing.test
     ports:
       # host 18080 -> container 8080 (plain-HTTP JMAP / web / OAuth). No root, no :443.
       # Bound to loopback only: this fixture is deliberately insecure (well-known admin +
