@@ -6,9 +6,20 @@
   "description": "JSContact (RFC 9553) <-> vCard 4.0 (RFC 6350) conversion.",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "8.5.1"
   }
 }

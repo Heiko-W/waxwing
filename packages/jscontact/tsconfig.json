@@ -1,4 +1,20 @@
 {
+  // `DOM` is here for the TESTS, not for the source. `TextEncoder`/`TextDecoder` are Web-platform
+  // globals present in browsers, Node and workers alike, but TypeScript declares them only in
+  // lib.dom — and the fold test uses them deliberately, as an independent oracle against this
+  // package's own UTF-8 arithmetic. The source itself touches no DOM API: its one platform
+  // dependency, `crypto.randomUUID`, is declared locally in from-vcard.ts so it stays visible.
+  //
+  // `types: ["node"]` is likewise test-only: `matrix.test.ts` reads README.md off disk, so the
+  // documented support matrix is checked against actual behaviour instead of being maintained by
+  // hand. The shipped code imports no Node built-in — `pnpm size` would notice if it did.
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    // The base config sets `baseUrl`, which TS 6 deprecates and the dts build treats as an error.
+    // Same line, same reason as packages/jmap; it goes when the base config drops `baseUrl`.
+    "ignoreDeprecations": "6.0"
+  },
   "include": ["src"]
 }
