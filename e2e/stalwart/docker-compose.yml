@@ -65,6 +65,18 @@ services:
     volumes:
       - ./config:/etc/stalwart:ro # read-only, host-owned RocksDB store descriptor
       - stalwart-data:/var/lib/stalwart # ephemeral named volume; `down -v` wipes it
+    # Stalwart's DEFAULT tracer writes to /var/log/stalwart — and silently writes NOTHING without
+    # this, because the container runs as uid 2000 and cannot create that directory. The symptom is
+    # a server that looks perfectly healthy and produces zero diagnostics: `docker logs` is empty,
+    # there is no log file, and every failure downstream is invisible. It cost a whole debugging
+    # session (2026-07-23, B29) before the missing directory was noticed. A tmpfs owned by the
+    # server's uid fixes it and keeps logs ephemeral, which is right for a fixture.
+    #
+    # The level is `info` by default; raise it when a push or delivery has to be traced —
+    #   x:Tracer/query + x:Tracer/set {"level":"trace"} over the management JMAP API,
+    # then restart (tracers are read at startup). Note `trace` logs entire HTTP bodies.
+    tmpfs:
+      - /var/log/stalwart:uid=2000,gid=2000,mode=0755
 
   # Non-blocking compatibility target for the scheduled compat job (wired in P0.5). Tracks
   # the latest published Stalwart. Never runs by default — only with `--profile main`.
