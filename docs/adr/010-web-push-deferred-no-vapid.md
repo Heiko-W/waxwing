@@ -1,6 +1,10 @@
 # 010 — Web Push (app closed) deferred: no JMAP server can sign a browser push
 
-- **Status:** accepted
+- **Status:** accepted — **reversed on 2026-07-23 by [ADR-017](017-web-push-contentless.md)**
+  (owner decision D6a at Gate G2). Its analysis of the three upstream blockers stands and is
+  history; its *decision* — do not build the client half — no longer holds. What ADR-017 does
+  **not** reverse is the closed-app banner's content: it stays contentless, so the finding
+  below that a `StateChange` carries no sender or subject remains load-bearing.
 - **Date:** 2026-07-13
 - **Deciders:** M3.6 implementer (the technical finding below is forced by live evidence).
   **Owner decision (2026-07-13):** M3.6 ships notifications from the existing live push channel

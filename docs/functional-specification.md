@@ -205,6 +205,14 @@ webmail is an open gap.
   message views.
 - **FR-RD-08 (Should)** — Phishing friction: visually distinguish display name vs. actual
   address on hover/tap; warn when a link's text and target host differ.
+  **This is friction, not a boundary, and the distinction is a decided one (Gate G2,
+  2026-07-23; §13 row B19).** The check compares the host the link text claims against the host
+  it opens, and both come from text the attacker writes — including the CSS. It was hardened
+  substantially in the G2 review and twelve named ways past it remain open. The interstitial's
+  own copy is left unhedged, because it is accurate whenever it appears; what needs saying is
+  that its **absence** means "nothing found", not "checked and safe", and that belongs in the
+  release notes and security guide (M4.9) under NFR-PRIV-02 — not inside the one dialog that is
+  warning a reader correctly.
 - **FR-RD-09 (Could)** — Honor `Reply-To`, `List-Unsubscribe` (one-click unsubscribe
   button for mailing lists, RFC 8058 POST where possible — note: may require CORS
   exemption; fallback: mailto/URL open).
@@ -294,7 +302,7 @@ webmail is an open gap.
   SSE. Runtime failover (SP.4) remains underneath as a safety net; it is no longer how the
   browser reaches SSE. The library default (WS → SSE → polling) is unchanged for server-side
   callers.
-- **FR-NOTIF-02 (Must, _deferred — see ADR-010 / decision D6_)** — **System notifications**
+- **FR-NOTIF-02 (Must, _partially met — contentless; see ADR-017 / decision D6a_)** — **System notifications**
   via Web Push: JMAP `PushSubscription` with RFC 8291 encryption, handled in the service
   worker. No relay server beyond the browser vendor's push service; payloads are end-to-end
   encrypted (the privacy aspect to document, NFR-PRIV-01).
@@ -307,25 +315,51 @@ webmail is an open gap.
   pins — meets it**, verified at source and live: RFC 9749 is implemented and a virgin registry
   auto-generates the VAPID keypair, the ciphertext now goes out as **raw octets** instead of
   base64-wrapped, and unpadded base64url `p256dh`/`auth` keys are accepted. All three of
-  Waxwing's upstream reports (`docs/upstream/`) are fixed there. **The precondition is met; the
-  client half has never been built** — no `PushSubscription/set`, no `applicationServerKey` read
-  **for a `subscribe()` call**, no `push` listener — so Web Push while the app is **closed** stays
-  **deferred** (ADR-010, amended 2026-07-21). The qualifier is load-bearing: the key *is* read, and
-  shipped, for the capability probe that decides which settings sentence the user sees
-  (`apps/web/src/notify/capability.ts` over `getWebPushVapidCapability`); what does not exist is the
-  subscription handshake. Whether to build that is open owner decision **D6** (Gate G2 /
-  M4 planning); this requirement does not pre-empt it, and nothing in the app claims background
-  push works.
+  Waxwing's upstream reports (`docs/upstream/`) are fixed there.
+  **Decided at Gate G2 (2026-07-23, decision D6a, [ADR-017](adr/017-web-push-contentless.md)): the
+  client half is built, and the closed-app banner is CONTENTLESS.** Work package M4.0; until it
+  lands, nothing in the app claims background push works.
+  **Which half of this requirement is delivered, stated so the prose above is not read as fully
+  met.** The transport is: a JMAP `PushSubscription` with RFC 8291 encryption, handled in the
+  service worker, no relay beyond the browser vendor's push service. The *content* is not: a JMAP
+  push payload is a bare `StateChange` (RFC 8620 §7.1) carrying one state string per data type and
+  no sender, subject or message id, so a banner naming the sender would require the worker to fetch
+  the message itself — an authenticated JMAP call from a DOM-free worker, dragging the access token,
+  the AES-GCM `SecretStore` (NFR-SEC-02) and the OAuth refresh path in with it. That is filed as
+  **B28** with its own owner decision and security review, and is deliberately not folded in here.
+  What makes the contentless banner meaningful rather than noise is measured, not assumed:
+  `PushSubscription` carries a server-side **`types`** filter, Stalwart honours it, and
+  **`EmailDelivery`** is a type distinct from `Email` — so the worker is woken on arrival only, not
+  when another client merely reads a message, and it needs no token to know that. Three further
+  limits belong to this requirement and are surfaced in the UI rather than papered over: **no
+  per-folder filtering while closed** (`EmailDelivery` names no mailbox, so FR-NOTIF-03's
+  per-folder preference applies to the live channel only), **no FR-NOTIF-05 actions** on the
+  closed-app banner (archive and mark-read are JMAP writes), and a **7-day subscription expiry
+  whose ceiling is the server's** — measured against v0.16.14, which grants 7 days whether 90 are
+  requested or none — so background notifications stop for anyone who does not open Waxwing within
+  a week. The `applicationServerKey` was already read and shipped before M4.0 for the capability
+  probe that decides which settings sentence the user sees
+  (`apps/web/src/notify/capability.ts` over `getWebPushVapidCapability`); M4.0 is what finally
+  hands it to `PushManager.subscribe()`.
   What M3.6 ships instead, on every supported browser: the same notifications sourced from the
   **live push channel** (FR-NOTIF-01) whenever the app is running, a backgrounded or minimised
   tab included. The app probes for the capability and says plainly what it cannot do
   (NFR-PRIV-02).
 - **FR-NOTIF-03 (Must)** — Notification preferences: per-folder on/off, quiet hours,
   preview content on/off (privacy), sound on/off.
+  **Scope split by transport (D6a, ADR-017).** On the live channel (FR-NOTIF-01) all four apply.
+  On the closed-app banner (FR-NOTIF-02) the master switch, quiet hours and sound apply — the
+  worker reads them from `localPrefs`, which is unencrypted IndexedDB — while **per-folder does
+  not and cannot**, because the push names no mailbox. The preview toggle is met by construction:
+  the closed-app banner carries no content to withhold. Both gaps are stated in the settings UI;
+  a preference that cannot take effect must not be left looking effective.
 - **FR-NOTIF-04 (Should)** — Unread badge on the installed PWA icon (Badging API where
   supported).
 - **FR-NOTIF-05 (Should)** — Notification actions: archive / mark read / reply (opens
   composer) directly from the notification where the platform allows.
+  **Live channel only (D6a, ADR-017).** Archive and mark-read are JMAP writes, and the
+  closed-app banner is deliberately built without the token that would make them possible;
+  its click opens Waxwing. Revisit only alongside B28, which is where that trade-off is decided.
 
 ### 4.8 FR-OFF — Offline
 
