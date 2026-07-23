@@ -215,27 +215,27 @@ test.describe('M3.7 settings suite', () => {
   /**
    * FR-NOTIF-02 / NFR-PRIV-02, and the ONLY background-push assertion this repo may contain.
    *
-   * **The premise moved on 2026-07-20 and this test moved with it.** Stalwart v0.16.14 ships
-   * RFC 9749 and auto-generates a VAPID keypair, so this server DOES publish a Web-Push signing key.
-   * What has not changed is our side: the app still contains no `applicationServerKey`, no
-   * `PushSubscription/set` and no `push` listener (ADR-010 + amendment), so there is still no
-   * background push to test and no test may pretend otherwise.
+   * **This test has now been rewritten twice by its own instructions, which is the point of it.**
+   * The first form asserted the capability was ABSENT and said it must fail the day a server shipped
+   * RFC 9749; Stalwart v0.16.14 did, on 2026-07-20, and it failed. The second form asserted the app
+   * admitted "we do not deliver it yet" and said it must fail again if the client half ever shipped.
+   * M4.0 shipped it (owner decision D6a, ADR-017), and it failed. Both times the fix was to make the
+   * app honest and follow it here — never to pin a wording that had stopped being true.
    *
-   * What CAN be checked — and matters more than a mocked stand-in would — is that the app SAYS SO:
-   * `serverSupportsBackgroundPush` probes the live session for `urn:ietf:params:jmap:webpush-vapid`,
-   * and this is the guard on that probe reaching the UI against a real Stalwart rather than only
-   * against a hand-made fixture in jsdom.
+   * What it guards NOW is the shape ADR-017 accepted: the good news may be stated, and never alone.
+   * A closed-app banner names no sender and no subject, the folder list on this very screen does not
+   * reach it, and the subscription lapses after seven days without a visit. All three are limits a
+   * user cannot discover by using the feature — only by being told.
    *
-   * The server side is asserted first, so the sentence on screen is checked against what this server
-   * actually advertises. The previous version of this test asserted the capability was ABSENT and
-   * was written to fail the day a server shipped it; it did exactly that, and the fix was to make
-   * the app honest rather than to pin the pessimistic wording. Keep that property: if the client
-   * half ever ships, this must fail again rather than assert "we don't deliver it" forever.
-   *
-   * MUTATION-PROVEN (previous form): making `serverSupportsBackgroundPush` return the wrong branch
-   * turns this RED — the section makes a claim about background push that does not match the server.
+   * **What this test deliberately does NOT do: verify a delivery.** Playwright cannot observe a
+   * closed app, and Chromium here has no push service to mint an endpoint against, so
+   * `pushManager.subscribe()` fails and the app degrades to `unsupported` — exactly as designed.
+   * The closed-app half is verified by hand, per platform (see the M4.0 checklist). Asserting the
+   * copy against a REAL v0.16.14 session is what this gate can honestly add, and it is not nothing:
+   * it is the guard on `serverSupportsBackgroundPush` reaching the UI against a live server rather
+   * than only against a hand-made session in jsdom.
    */
-  test('the notifications section admits Waxwing does not deliver background push yet (FR-NOTIF-02)', async ({
+  test('the notifications section states background push AND its three limits (FR-NOTIF-02)', async ({
     page,
   }) => {
     const session = (await alice.session()) as unknown as SessionDoc
@@ -251,18 +251,23 @@ test.describe('M3.7 settings suite', () => {
       .getByRole('region', { name: 'Notifications' })
       .filter({ hasText: 'Notify me about new mail' })
     await expect(notifications).toBeVisible()
+
     await expect(notifications).toContainText(
-      'This server supports notifications while Waxwing is closed, but Waxwing does not deliver them yet',
+      'This server can also notify you while Waxwing is closed',
     )
+    // The three limits, each of which a user would otherwise discover only by being let down.
+    await expect(notifications).toContainText('never the sender or the subject')
+    await expect(notifications).toContainText('folder setting above does not apply')
+    await expect(notifications).toContainText('at least once a week')
+
     // …and it does not simultaneously claim the server cannot. The two strings are mutually
     // exclusive by construction, so this is the assertion a future edit cannot satisfy by rendering
     // both.
     await expect(notifications).not.toContainText(
       'Notifications while Waxwing is fully closed are not available with this server',
     )
-    // The load-bearing negative: nothing on this screen may claim background push WORKS. There is no
-    // string in the bundle that does — this is the guard against someone adding one back.
-    await expect(notifications).not.toContainText('also supports notifications while')
+    // The dead string from before M4.0. Its reinstatement would be a lie in the other direction.
+    await expect(notifications).not.toContainText('does not deliver them yet')
   })
 
   test('the quota bar reflects the account allowance (FR-QTA-01)', async ({ page }) => {

@@ -246,27 +246,50 @@ describe('NotificationsSection — the honest capability note (ADR-010)', () => 
   })
 
   /**
-   * The state that exists since Stalwart v0.16.14 (2026-07-20): the SERVER can, and Waxwing still
-   * cannot — no subscribe flow, no `PushSubscription/set`, no `push` listener (ADR-010 + amendment).
-   * The note must own both halves. Stating only the first half is the app promising a delivery it
-   * never makes, which is the defect class this milestone exists to close.
+   * **This assertion was inverted by M4.0, deliberately and on the record.**
+   *
+   * Until 2026-07-23 it demanded the note admit "Waxwing does not deliver them yet", and it was
+   * right to: no subscribe flow existed. Owner decision D6a built one (ADR-017), so the honest
+   * sentence changed — and the guard has to change WITH the code rather than be deleted. What it
+   * now protects is the thing that can still go wrong: the good news appearing on its own.
+   *
+   * A closed-app banner names no sender and no subject, the folder list on this very screen does not
+   * apply to it, and the subscription lapses after seven days without a visit. A user who reads only
+   * "this server can also notify you while it is closed" would believe three things the code does
+   * not do.
    */
-  it('with a capable server, credits the server AND admits Waxwing does not deliver it yet', async () => {
+  it('with a capable server, says it works AND names all three limits', async () => {
     renderSection({ permission: permissionApi('default'), backgroundPush: true })
 
-    expect(screen.getByText(/this server supports notifications while/i)).toBeInTheDocument()
-    expect(screen.getByText(/does not deliver them yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/can also notify you while/i)).toBeInTheDocument()
+    // No sender, no subject.
+    expect(screen.getByText(/never the sender or the subject/i)).toBeInTheDocument()
+    // The folder setting above does not reach the closed-app banner (`EmailDelivery` names no mailbox).
+    expect(screen.getByText(/folder setting above does not apply/i)).toBeInTheDocument()
+    // Seven days, and only a running app can renew.
+    expect(screen.getByText(/once a week/i)).toBeInTheDocument()
     expect(screen.queryByText(/not available with this server/i)).not.toBeInTheDocument()
   })
 
-  it('never claims background push works — no wording on this screen may say it does', () => {
-    for (const backgroundPush of [true, false]) {
-      const view = renderSection({ permission: permissionApi('default'), backgroundPush })
-      // The old "This server also supports notifications while X is closed." claim, and any
-      // reinstatement of it. `not.toContainText`-style guard: absence is the whole assertion.
-      expect(view.container.textContent).not.toMatch(/also supports notifications while/i)
-      view.unmount()
-    }
+  /**
+   * The surviving half of the old "never claims background push works" guard, re-aimed. The claim is
+   * allowed now; what is forbidden is making it ALONE. Deleting a caveat is a one-line change that
+   * looks like tidying, and this is the test that makes it fail.
+   */
+  it('never states the good news without its limits', () => {
+    const view = renderSection({ permission: permissionApi('default'), backgroundPush: true })
+    const text = view.container.textContent ?? ''
+    expect(text).toMatch(/can also notify you while/i)
+    expect(text).toMatch(/never the sender or the subject/i)
+    expect(text).toMatch(/folder setting above does not apply/i)
+    expect(text).toMatch(/once a week/i)
+    view.unmount()
+  })
+
+  it('claims nothing at all about background push when the server cannot sign one', () => {
+    const view = renderSection({ permission: permissionApi('default'), backgroundPush: false })
+    expect(view.container.textContent).not.toMatch(/can also notify you while/i)
+    view.unmount()
   })
 
   it('shows the note whatever the switch says — it is a fact about the SERVER, not a setting', async () => {

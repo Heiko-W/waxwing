@@ -1,17 +1,20 @@
 /**
  * Notifications (M3.6, FR-NOTIF-03).
  *
- * System notifications sourced from the LIVE push channel — i.e. whenever the app is running,
- * including a backgrounded or minimised tab. Notifications while the app is fully CLOSED (Web Push,
- * FR-NOTIF-02) are **deferred** — and since 2026-07-20 the reason is ours, not upstream's. Stalwart
- * v0.16.14 ships RFC 9749 and auto-generates a VAPID keypair, so a server that can sign a browser
- * push now exists; Waxwing's client half (subscribe, `PushSubscription/set`, a `push` listener) was
- * never built, and reversing ADR-010 is an open owner decision. `capability.ts` probes the live
- * session so the UI states which of those two is true instead of hardcoding either.
+ * Two transports, one policy layer. The LIVE push channel raises the rich banner — sender, subject,
+ * per-folder filtering — whenever the app is running, a backgrounded or minimised tab included.
+ * **Web Push (FR-NOTIF-02) covers the app being fully CLOSED and is contentless**: it says that mail
+ * arrived and nothing more, because a JMAP `StateChange` carries no sender and no subject and
+ * fetching them would need an authenticated call from the service worker (M4.0, owner decision D6a,
+ * ADR-017; the richer banner is B28). `capability.ts` probes the live session for RFC 9749 so the
+ * settings state which of the two is available rather than hardcoding either.
  *
- * `click-route.ts` is deliberately NOT re-exported from this barrel: it is imported by the service
+ * **Four modules here are deliberately NOT re-exported from this barrel** — `click-route.ts`,
+ * `push-frame.ts`, `push-store.ts` and `quiet-hours.ts`. All four are imported by the service
  * worker, which compiles under `lib: WebWorker` and must never reach the React/Dexie modules this
- * barrel pulls in. The worker imports it by its module path.
+ * barrel pulls in; the worker imports them by module path. `push-subscribe.ts` is left out for the
+ * opposite reason: it is the page-side half, and keeping it off the barrel makes an accidental
+ * import from worker-adjacent code visible in review.
  */
 
 export { serverSupportsBackgroundPush, useBackgroundPushSupport } from './capability'
@@ -46,3 +49,4 @@ export {
   type NotificationPermissionApi,
   useNotificationPermission,
 } from './use-notification-permission'
+export { PushSubscriptionHost } from './use-push-subscription'

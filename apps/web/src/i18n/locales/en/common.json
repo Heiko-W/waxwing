@@ -834,7 +834,9 @@
     },
     "background": {
       "unavailable": "Notifications while {{product}} is fully closed are not available with this server. They need the server to publish a Web-Push signing key (RFC 9749); this one does not. Everything above works whenever {{product}} is open.",
-      "notImplemented": "This server supports notifications while {{product}} is closed, but {{product}} does not deliver them yet."
+      "available": "This server can also notify you while {{product}} is closed.",
+      "contentless": "Those notifications say only that mail arrived — never the sender or the subject — and the folder setting above does not apply to them.",
+      "renewal": "Open {{product}} at least once a week to keep them coming: this server renews the background subscription for seven days at a time, and only {{product}} itself can renew it."
     },
     "message": {
       "noSubject": "(no subject)",

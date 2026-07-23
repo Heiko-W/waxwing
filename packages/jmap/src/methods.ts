@@ -45,6 +45,12 @@ import type {
   ThreadGetRequest,
   ThreadGetResponse,
 } from './types/mail'
+import type {
+  PushSubscriptionGetRequest,
+  PushSubscriptionGetResponse,
+  PushSubscriptionSetRequest,
+  PushSubscriptionSetResponse,
+} from './types/push'
 import type { QuotaGetRequest, QuotaGetResponse } from './types/quota'
 import type {
   EmailSubmissionSetRequest,
@@ -102,6 +108,21 @@ export const Methods = {
 
   /** RFC 9425 — Quota (read-only; M3.7, FR-QTA-01). */
   quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
+
+  /**
+   * RFC 8620 §7.2 — Web Push subscriptions (M4.0, FR-NOTIF-02).
+   *
+   * The only `get`/`set` pair in JMAP that takes no `accountId`: a subscription belongs to the
+   * credentials rather than to an account. `usingForMethods` maps the `PushSubscription` prefix to
+   * core, which is correct — RFC 9749's VAPID URN is a session-level announcement and must NOT be
+   * added to `using`, or a server that pushes without VAPID would reject the whole request.
+   */
+  pushSubscriptionGet: defineMethod<PushSubscriptionGetRequest, PushSubscriptionGetResponse>(
+    'PushSubscription/get',
+  ),
+  pushSubscriptionSet: defineMethod<PushSubscriptionSetRequest, PushSubscriptionSetResponse>(
+    'PushSubscription/set',
+  ),
 } as const
 
 /** A key of the {@link Methods} registry (e.g. `"emailQuery"`). */

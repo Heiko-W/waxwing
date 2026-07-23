@@ -25,18 +25,17 @@ import type { Id } from '@waxwing/jmap'
 import type { EmailEnvelopeInput } from '../sync/db'
 import type { MailNotificationData } from './click-route'
 import type { NotificationPermissionState } from './permission'
+import { inQuietHours, localMinutesOfDay, type QuietHours } from './quiet-hours'
+
+/**
+ * Re-exported, not redefined (M4.0). The quiet-hours rule moved to a DOM-free module so the service
+ * worker can apply the same one to a closed-app push banner; every existing import of these three
+ * from `notify-model` still resolves, and there is exactly one copy of the midnight-crossing logic.
+ */
+export { inQuietHours, localMinutesOfDay, type QuietHours }
 
 /** localPrefs key. ONE compound object, like `labels` — the predicate needs all of it at once. */
 export const NOTIFY_PREF_KEY = 'notifications'
-
-/**
- * A quiet window in LOCAL minutes since midnight. `fromMinutes` inclusive, `toMinutes` exclusive.
- * `from > to` crosses midnight (22:00 → 07:00). `from === to` is EMPTY, never "always".
- */
-export interface QuietHours {
-  readonly fromMinutes: number
-  readonly toMinutes: number
-}
 
 export interface NotificationPrefs {
   /** Master switch. Default false — a permission prompt is never implicit. */
@@ -110,26 +109,6 @@ export function coerceNotificationPrefs(value: unknown): NotificationPrefs {
     preview: v.preview !== false,
     sound: v.sound !== false,
   }
-}
-
-/** Local minutes since midnight (0–1439) for an epoch-ms instant. */
-export function localMinutesOfDay(now: number): number {
-  const date = new Date(now)
-  return date.getHours() * 60 + date.getMinutes()
-}
-
-/**
- * Is `minutesOfDay` inside the quiet window? `from` inclusive, `to` exclusive.
- *
- * `from > to` CROSSES MIDNIGHT: 22:00 → 07:00 is quiet at 23:00 *and* at 03:00, and loud at noon.
- * `from === to` is an EMPTY range — never quiet, not always quiet: a zero-length window means "off",
- * and "always off" is what the master switch is for.
- */
-export function inQuietHours(minutesOfDay: number, range: QuietHours): boolean {
-  const { fromMinutes: from, toMinutes: to } = range
-  if (from === to) return false
-  if (from < to) return minutesOfDay >= from && minutesOfDay < to
-  return minutesOfDay >= from || minutesOfDay < to
 }
 
 /** `"22:00"` ⇄ minutes, for the native `<input type="time">` in the settings section. */

@@ -212,8 +212,72 @@ function checkBuiltIndexHtml() {
   }
 }
 
+/**
+ * The service worker carries NO credentials and NO JMAP client (M4.0, ADR-017, decision D6a).
+ *
+ * This is the security property the whole contentless design was chosen for, and it is exactly the
+ * kind of property that erodes by accident. Nothing in the source gates can see it: the worker's own
+ * `tsconfig.sw.json` would happily compile an import of the auth layer, `pnpm test` never builds a
+ * bundle, and a reviewer reading a diff sees one new import, not what it drags in. Only the shipped
+ * file answers "is the token in there".
+ *
+ * Why it will be attacked: **B28** wants sender and subject on the closed-app banner, and the only
+ * way to get them is an authenticated `Email/get` from the worker — the access token, the AES-GCM
+ * `SecretStore` and the OAuth refresh path all cross the line. That is a legitimate thing to want and
+ * a separate owner decision with its own NFR-SEC-02/NFR-SEC-04 review. This check is what makes it a
+ * DECISION rather than a side effect: whoever adds the import has to delete these lines and say why.
+ *
+ * The needles are symbols that survive minification — string literals and stable identifiers — not
+ * local names a bundler renames. A miss is possible; a false alarm is not, which is the right way
+ * round for a gate that blocks the build.
+ */
+const SW_MUST_NOT_CONTAIN = [
+  ['SecretStore', 'the AES-GCM secret store (NFR-SEC-02)'],
+  ['oauth.refreshToken', 'the persisted refresh-token key'],
+  ['waxwing-auth', 'the auth IndexedDB database'],
+  ['Authorization', 'an authenticated request header'],
+  ['Email/get', 'a JMAP mail call'],
+  ['Email/query', 'a JMAP mail call'],
+  ['Dexie', 'the replica ORM — the worker reads its own raw-IDB store instead'],
+]
+
+/** And the things that MUST be there, so a silently gutted push path fails too. */
+const SW_MUST_CONTAIN = [
+  ['EmailDelivery', 'the frame filter that makes a contentless banner meaningful'],
+  ['waxwing-push', 'the page → worker handover store'],
+  ['showNotification', 'the banner itself'],
+]
+
+function checkServiceWorkerHasNoCredentials() {
+  let sw
+  try {
+    sw = readFileSync(resolve(DIST, 'sw.js'), 'utf8')
+  } catch {
+    fail('dist/sw.js is missing — the PWA build did not run.')
+    return
+  }
+
+  for (const [needle, what] of SW_MUST_NOT_CONTAIN) {
+    if (sw.includes(needle)) {
+      fail(
+        `dist/sw.js contains "${needle}" (${what}). The service worker must carry no credentials ` +
+          'and make no JMAP call — see ADR-017. If this is deliberate (B28: sender and subject on ' +
+          'the closed-app banner), it needs an owner decision and an NFR-SEC-02/NFR-SEC-04 review, ' +
+          'and this check has to be amended in the same change.',
+      )
+    }
+  }
+
+  for (const [needle, what] of SW_MUST_CONTAIN) {
+    if (!sw.includes(needle)) {
+      fail(`dist/sw.js no longer contains "${needle}" (${what}). Web Push is silently disabled.`)
+    }
+  }
+}
+
 checkPrecacheContents()
 checkBuiltIndexHtml()
+checkServiceWorkerHasNoCredentials()
 
 if (failures.length > 0) {
   console.error('\n[check:dist] FAILED — the built app-shell contract is broken:\n')

@@ -834,7 +834,9 @@
     },
     "background": {
       "unavailable": "Mitteilungen bei vollständig geschlossenem {{product}} sind mit diesem Server nicht möglich. Sie setzen voraus, dass der Server einen Web-Push-Signaturschlüssel veröffentlicht (RFC 9749); dieser tut es nicht. Alles Obige funktioniert, solange {{product}} geöffnet ist.",
-      "notImplemented": "Dieser Server unterstützt Mitteilungen bei geschlossenem {{product}}, {{product}} liefert sie aber noch nicht."
+      "available": "Dieser Server kann Sie auch benachrichtigen, während {{product}} geschlossen ist.",
+      "contentless": "Diese Mitteilungen nennen nur, dass Post eingegangen ist – nie Absender oder Betreff –, und die Ordnerauswahl oben gilt für sie nicht.",
+      "renewal": "Öffnen Sie {{product}} mindestens einmal pro Woche, damit sie weiterlaufen: Dieser Server verlängert die Hintergrund-Anmeldung jeweils um sieben Tage, und nur {{product}} selbst kann sie erneuern."
     },
     "message": {
       "noSubject": "(kein Betreff)",

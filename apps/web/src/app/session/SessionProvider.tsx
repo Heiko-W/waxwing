@@ -20,6 +20,8 @@ import { AuthExpiredError } from '../../auth'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
 import { closeAllNotifications } from '../../notify'
+import { tearDownPushSubscription } from '../../notify/push-subscribe'
+import { getPushRegistration } from '../../notify/registration'
 import { usePaletteUi } from '../../shortcuts'
 import { getReplica, resetStorageFull, wipeReplica } from '../../sync'
 import { getActiveEngine, setActiveEngine } from '../../sync/engine'
@@ -395,6 +397,16 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // reading "Alice Weber — Kündigung Arbeitsvertrag" sit in the notification centre would make a
         // liar of FR-AUTH-05, and clicking one would still deep-link into the mailbox we just left.
         await closeAllNotifications()
+        // And the SUBSCRIPTION, not just the banners already on screen (M4.0). A Web Push
+        // subscription lives on the SERVER and knows nothing about a sign-out: left in place, this
+        // browser keeps waking up and announcing "New message" for a mailbox nobody is signed into —
+        // possibly to the next person at the machine. It says nothing about the message, but it does
+        // say this account still receives mail, and the click opens the app. Ordered before the
+        // client is dropped below, because destroying the subscription is an authenticated call.
+        await tearDownPushSubscription({
+          registration: await getPushRegistration(),
+          client: clientRef.current,
+        })
         // The "storage is full" signal is a module singleton (M3.4): without this, a stale event from
         // the PREVIOUS session re-fires its toast on the next sign-in, whose notifier starts fresh.
         resetStorageFull()

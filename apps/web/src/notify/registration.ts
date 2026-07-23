@@ -68,6 +68,27 @@ export async function getNotificationRegistration(
 }
 
 /**
+ * The same registration, unnarrowed — M4.0 needs `pushManager`, which the notifier's slice hides.
+ *
+ * It reuses {@link getNotificationRegistration}'s resolution rather than repeating it, because the
+ * `.active` subtlety documented above applies identically: `pushManager.subscribe()` on a
+ * registration whose worker has not activated rejects, and the failure would look exactly like a
+ * browser that refuses push.
+ */
+export async function getPushRegistration(
+  timeoutMs: number = READY_TIMEOUT_MS,
+): Promise<ServiceWorkerRegistration | null> {
+  const published = getActiveSwRegistration()
+  if (hasActiveWorker(published)) return published
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return null
+  try {
+    return await withTimeout(navigator.serviceWorker.ready, timeoutMs)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Close every notification this app has on screen (M3.6, FR-AUTH-05).
  *
  * A notification is local data the app put on the OPERATING SYSTEM's screen, and the OS keeps it

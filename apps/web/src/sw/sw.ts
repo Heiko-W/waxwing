@@ -17,13 +17,16 @@
  *  - **No route that can match a JMAP path.** Unmatched requests get no `respondWith` at all and go
  *    straight to the network. Every route below is anchored to the app's own directory — see the
  *    invariant in sw-routes.ts, which also explains why an anchor rather than a denylist.
- *  - **No `push` listener, and no Web Push at all.** M3.5 expected M3.6 to add one; M3.6 established
- *    that it could not work then — no server signed a browser push. That premise has since moved:
- *    Stalwart v0.16.14 (2026-07-20) ships RFC 9749/VAPID and raw aes128gcm octets. What is still
- *    missing is OUR half — no `PushSubscription/set`, no subscribe flow, so nothing would ever
- *    dispatch a `push` event here. Reversing ADR-010 is an open owner decision, not a leftover.
- *    Notifications are raised by the PAGE, from the live push channel, and the worker's only part in
- *    them is the `notificationclick` handler at the bottom of this file.
+ *  - **No JMAP call, no access token, and no `SecretStore` access — including in the `push` handler.**
+ *    This is the security property M4.0 was scoped around (ADR-017, owner decision D6a), not an
+ *    accident of what has been built so far. The closed-app banner says only that mail arrived,
+ *    which is exactly what a push can establish without asking anyone: the subscription is created
+ *    with `types: ["EmailDelivery"]`, so the SERVER filters and a delivered push already means new
+ *    mail. Everything the banner needs — the translated strings, the icon, quiet hours — is put in
+ *    the `waxwing-push` database by the page (`notify/push-store.ts`), because this worker can run
+ *    neither i18next nor Dexie. A future "sender and subject" banner (B28) would need a token in
+ *    here; that is a separate owner decision with its own security review, and until it is taken,
+ *    an import that reaches auth or JMAP from this file is a design error.
  */
 
 /// <reference lib="webworker" />
@@ -44,6 +47,14 @@ import {
   notificationTargetHref,
   notificationTargetPath,
 } from '../notify/click-route'
+import {
+  PUSH_VERIFICATION,
+  type PushVerificationMessage,
+  parsePushFrame,
+  shouldRaisePushBanner,
+} from '../notify/push-frame'
+import { putPendingVerification, readPushState } from '../notify/push-store'
+import { localMinutesOfDay } from '../notify/quiet-hours'
 import {
   appRoot,
   BRANDING_FILES,
@@ -162,6 +173,91 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     void self.skipWaiting()
   }
 })
+
+/**
+ * Web Push arrived (M4.0, FR-NOTIF-02) — the app may be fully closed.
+ *
+ * Three frames, three answers, and the classification is a tested pure function
+ * (`notify/push-frame.ts`) because nothing in this directory can have a test:
+ *
+ *  - **`delivery`** — mail arrived. Raise ONE contentless banner, unless a window of ours is already
+ *    visible: in that case the live push channel is running and has already raised the richer banner
+ *    with sender and subject, and a second one beside it is worse than none.
+ *  - **`verification`** — RFC 8620 §7.2.2. Hand it to the page, which alone can write it back;
+ *    park it in the database when no page is running, so the next start completes the handshake
+ *    rather than leaving a subscription that is silent forever with nothing to say why.
+ *  - **`stateChange` / `unknown`** — nothing. A `StateChange` without `EmailDelivery` means someone
+ *    read a message on another device, which is not news.
+ *
+ * Whether a delivery becomes a banner is `shouldRaisePushBanner`, not an `if` chain down here: this
+ * file cannot be tested, and "when do we stay silent" is four rules deep, including the one that
+ * suppresses a banner while a window is visible because the live channel has already raised a better
+ * one. Everything below is the doing.
+ */
+self.addEventListener('push', (event) => {
+  event.waitUntil(handlePush(event.data === null ? null : event.data.text()))
+})
+
+/**
+ * `renotify` is in the Notifications spec and shipped in Chromium and Firefox, but TypeScript's
+ * `NotificationOptions` still omits it. `notify-model.ts` widens it the same way for the live
+ * channel; that type cannot be imported here (it reaches `window`), so the widening is repeated
+ * rather than the property dropped — without it a burst of arrivals replaces the banner silently.
+ */
+interface PushNotificationOptions extends NotificationOptions {
+  renotify?: boolean
+}
+
+async function handlePush(text: string | null): Promise<void> {
+  const frame = parsePushFrame(text)
+
+  if (frame.kind === 'verification') {
+    const message: PushVerificationMessage = {
+      type: PUSH_VERIFICATION,
+      pushSubscriptionId: frame.pushSubscriptionId,
+      verificationCode: frame.verificationCode,
+    }
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    const ours = windows.filter((client) => isAppClient(client.url, self.location.href))
+    for (const client of ours) client.postMessage(message)
+    if (ours.length === 0) await putPendingVerification(message)
+    return
+  }
+
+  // Read the state before asking about clients: `shouldRaisePushBanner` needs both, and neither
+  // lookup is worth short-circuiting — this is a worker that just woke up for one decision.
+  const state = frame.kind === 'delivery' ? await readPushState() : null
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+
+  const decision = shouldRaisePushBanner({
+    frame,
+    hasState: state !== null,
+    hasVisibleClient: windows.some(
+      (client) =>
+        isAppClient(client.url, self.location.href) && client.visibilityState === 'visible',
+    ),
+    quietHours: state?.quietHours ?? null,
+    minutesOfDay: localMinutesOfDay(Date.now()),
+  })
+  if (!decision.show || state === null) return
+
+  // Via a typed local, not inline: an object LITERAL is excess-property-checked against
+  // `showNotification`'s narrower `NotificationOptions`, which would reject `renotify` outright.
+  const options: PushNotificationOptions = {
+    body: state.body,
+    icon: state.iconUrl,
+    badge: state.badgeUrl,
+    silent: !state.sound,
+    // One tag for every push banner: a burst of five deliveries while the app is closed replaces one
+    // banner five times instead of stacking five identical "New mail" lines. `renotify` keeps each
+    // arrival audible. The live channel's per-message tags are unaffected — they carry an email id.
+    tag: 'waxwing:push:delivery',
+    renotify: true,
+    // No `data`: the click has nothing to route to. `notificationTargetPath` answers an unrecognised
+    // shape with the mail home, which is exactly right — we know mail arrived and nothing more.
+  }
+  await self.registration.showNotification(state.title, options)
+}
 
 /**
  * A notification raised through THIS registration was clicked (M3.6): focus a window of ours and tell

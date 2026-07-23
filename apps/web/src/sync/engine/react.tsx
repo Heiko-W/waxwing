@@ -9,6 +9,7 @@ import { type ReactNode, useEffect, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
 import { useSession } from '../../app/session/context'
 import { createMailNotifier } from '../../notify/notifier'
+import { PushSubscriptionHost } from '../../notify/use-push-subscription'
 import { getReplica } from '../db'
 import { ReplicaProvider } from '../react'
 import {
@@ -75,7 +76,10 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
   if (!connected) return children
   return (
     <ReplicaProvider accountId={connected.accountId} db={getReplica()}>
-      {children}
+      {/* Inside the provider, because it reads the notification prefs from `localPrefs` (M4.0). It
+          renders nothing of its own — it reconciles the Web Push subscription, which has to happen
+          on every start: the server grants seven days at a time and only a running client renews. */}
+      <PushSubscriptionHost>{children}</PushSubscriptionHost>
     </ReplicaProvider>
   )
 }
