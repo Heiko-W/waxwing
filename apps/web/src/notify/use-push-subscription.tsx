@@ -28,7 +28,7 @@ import {
   NOTIFY_PREF_KEY,
 } from './notify-model'
 import { isPushVerificationMessage } from './push-frame'
-import { reconcilePushSubscription } from './push-reconcile'
+import { reconcilePush } from './push-reconcile'
 import { clearPendingVerification } from './push-store'
 import { submitPushVerification } from './push-subscribe'
 import { getPushRegistration } from './registration'
@@ -84,7 +84,7 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
     void (async () => {
       const registration = await getPushRegistration()
       if (cancelled) return
-      await reconcilePushSubscription({
+      await reconcilePush({
         registration,
         client,
         session,

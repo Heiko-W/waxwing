@@ -9,7 +9,11 @@ import type { JmapClient, Session } from '@waxwing/jmap'
 import { MethodResponses } from '@waxwing/jmap'
 import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { reconcilePushSubscription } from './push-reconcile'
+import {
+  reconcilePush,
+  reconcilePushSubscription,
+  resetReconcileSerialisation,
+} from './push-reconcile'
 import {
   peekPendingVerification,
   putPendingVerification,
@@ -28,6 +32,7 @@ let idb: IDBFactory
 
 beforeEach(() => {
   idb = new IDBFactory()
+  resetReconcileSerialisation()
 })
 
 function fakeSubscription(): BrowserPushSubscription & { unsubscribed: boolean } {
@@ -356,5 +361,50 @@ describe('reconcilePushSubscription', () => {
 
     await reconcilePushSubscription(deps({ quietHours: { fromMinutes: 1320, toMinutes: 420 } }))
     expect((await readPushState(idb))?.quietHours).toEqual({ fromMinutes: 1320, toMinutes: 420 })
+  })
+})
+
+describe('reconcilePush — serialisation', () => {
+  /**
+   * **The regression test for the race that kept the subscription from ever settling.**
+   *
+   * The host's effect re-runs several times while a session comes up (client, then session document,
+   * then capability probe). Overlapping passes each created a subscription and destroyed the other's
+   * — Stalwart's log showed `create` / `destroy` / `create` with two DIFFERENT FCM endpoints inside
+   * three seconds — so the verification code the worker had parked never matched the subscription
+   * that currently existed.
+   *
+   * Three concurrent calls must produce ONE create, not three.
+   */
+  it('runs one pass at a time — concurrent calls do not each create a subscription', async () => {
+    const client = fakeClient()
+    const registration = fakeRegistration()
+    const shared = () => deps({ client, registration })
+
+    const [a, b, c] = await Promise.all([
+      reconcilePush(shared()),
+      reconcilePush(shared()),
+      reconcilePush(shared()),
+    ])
+
+    expect([a, b, c].every((outcome) => outcome === 'subscribed')).toBe(true)
+    const creates = client.calls.filter(([, args]) => args.create !== undefined)
+    expect(creates).toHaveLength(1)
+    const destroys = client.calls.filter(([, args]) => args.destroy !== undefined)
+    expect(destroys).toHaveLength(0)
+  })
+
+  it('coalesces the queue: many waiting callers share one follow-up pass', async () => {
+    const client = fakeClient()
+    const registration = fakeRegistration()
+    const first = reconcilePush(deps({ client, registration }))
+    // Five more while the first is still running — they must collapse into a single later pass.
+    const rest = Array.from({ length: 5 }, () => reconcilePush(deps({ client, registration })))
+    await Promise.all([first, ...rest])
+
+    const gets = client.calls.filter(([name]) => name === 'PushSubscription/get')
+    // One pass does 2 gets (list + granted-expiry read-back); the follow-up adds at most one more
+    // pass's worth. Six passes would be far more — the point is that the queue collapsed.
+    expect(gets.length).toBeLessThanOrEqual(6)
   })
 })

@@ -94,6 +94,69 @@ export interface ReconcileDeps {
  * session, capability not yet known — means *we do not know yet*, and the honest response to not
  * knowing is to leave the subscription alone.
  */
+/**
+ * Serialisation state for {@link reconcilePush}. Module-level on purpose: the thing being protected
+ * is not a component but the browser's ONE push subscription and its server-side twin.
+ */
+let inFlight: Promise<unknown> | null = null
+/** The deps of the pass waiting behind the running one. Latest wins — see {@link reconcilePush}. */
+let pendingDeps: ReconcileDeps | null = null
+let pendingWaiters: ((outcome: ReconcileOutcome) => void)[] = []
+
+/**
+ * Reconcile, but never twice at once — a bug fix, not a nicety.
+ *
+ * The React host's effect legitimately re-runs several times within a second while a session settles:
+ * the client arrives, then the session document, then the capability probe flips. Without a guard
+ * those passes OVERLAP, and each one that finds no matching server subscription creates one and
+ * destroys the other's — so they undo each other. Seen verbatim in Stalwart's request log
+ * (2026-07-23, B29): `create` with one FCM endpoint, `destroy` of the previous id, and a second
+ * `create` with a DIFFERENT endpoint, all inside three seconds. The subscription therefore never
+ * settled, the verification code the service worker had parked never matched the subscription that
+ * currently existed, and the handshake could not close.
+ *
+ * Waiting passes are COALESCED to the latest: several queued callers share one later run, because
+ * they would otherwise each redo the same work against the same final state.
+ */
+export function reconcilePush(deps: ReconcileDeps): Promise<ReconcileOutcome> {
+  if (inFlight !== null) {
+    pendingDeps = deps // latest wins
+    return new Promise<ReconcileOutcome>((resolve) => pendingWaiters.push(resolve))
+  }
+  return startPass(deps)
+}
+
+function startPass(deps: ReconcileDeps): Promise<ReconcileOutcome> {
+  const run = reconcilePushSubscription(deps)
+  inFlight = run.catch(() => undefined)
+  void run
+    .catch(() => 'failed' as ReconcileOutcome)
+    .then(() => {
+      inFlight = null
+      const next = pendingDeps
+      const waiters = pendingWaiters
+      pendingDeps = null
+      pendingWaiters = []
+      if (next === null) return
+      void startPass(next).then(
+        (outcome) => {
+          for (const resolve of waiters) resolve(outcome)
+        },
+        () => {
+          for (const resolve of waiters) resolve('failed')
+        },
+      )
+    })
+  return run
+}
+
+/** Test seam: forget any in-flight/queued pass between cases. */
+export function resetReconcileSerialisation(): void {
+  inFlight = null
+  pendingDeps = null
+  pendingWaiters = []
+}
+
 export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<ReconcileOutcome> {
   const idb = deps.idb ?? null
   if (deps.registration === null) return 'noServiceWorker'
