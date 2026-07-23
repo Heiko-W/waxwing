@@ -23,6 +23,7 @@ import {
 import type { LockManagerLike } from './leader'
 import { getEngineStatus, setEngineStatus } from './status'
 import {
+  CannotCalculateChangesError,
   type ChangesResult,
   type EngineClock,
   INITIAL_ENGINE_STATUS,
@@ -330,6 +331,80 @@ describe('SyncEngine', () => {
     await waitFor(() => getEngineStatus().lastSyncedAt !== firstSync)
 
     expect(getEngineStatus().lastSyncedAt).not.toBe(firstSync)
+    await engine.stop()
+  })
+
+  /**
+   * A server that lost its history — restored from a backup, reset, or replaced — answers
+   * `Foo/changes` with `cannotCalculateChanges` (RFC 8620 §5.2), because the client's cached
+   * `sinceState` names a point it no longer has. This is exactly what happens when the dev fixture is
+   * recreated under a live session, and it happened to the owner during the B29 hand-check.
+   *
+   * The query path already recovered (`delta.ts#reconcileQuery`); the TYPE-changes path did not, so
+   * one such error stranded the whole app on a red "sync problem" a reload could not clear — the bad
+   * state is in IndexedDB. This asserts the engine now resets its states and resyncs in the same
+   * pass, landing on `idle`. Deleting the recovery in `runSyncPass` turns it red with `phase: error`.
+   */
+  it('recovers from cannotCalculateChanges by resetting state and resyncing (not a stuck error)', async () => {
+    let failNextEmailChanges = false
+    const base = fakePort({ emails: ['e1', 'e2'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(state) {
+        if (failNextEmailChanges) {
+          failNextEmailChanges = false
+          throw new CannotCalculateChangesError()
+        }
+        return base.emailChanges(state)
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle' && engine.getStatus().isLeader)
+    const firstSync = getEngineStatus().lastSyncedAt
+
+    // The server's history is gone: the next `Email/changes` cannot be calculated.
+    failNextEmailChanges = true
+    push.fireStateChange()
+
+    // It must reach `idle` again — a full resync — NOT settle on `error`.
+    await waitFor(() => getEngineStatus().lastSyncedAt !== firstSync)
+    expect(getEngineStatus().phase).toBe('idle')
+    expect(getEngineStatus().error).toBeNull()
+    // The replica is intact: the mailbox and its emails are still there after the resync.
+    expect(await db.mailboxes.get([ACC, 'inbox'])).toBeDefined()
+    expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
+    await engine.stop()
+  })
+
+  /**
+   * The recovery is bounded by construction, and this pins WHY. The resync resets the type states to
+   * null, and every full-pull path (`getMailboxes(null)`, `queryEmails`) calls `Foo/get`/`Foo/query`,
+   * NEVER `Foo/changes` — so even a server that fails EVERY `emailChanges` recovers to `idle` rather
+   * than looping or erroring. It just pays a full resync on each pass, which is the RFC-sanctioned
+   * fallback for a server that cannot compute a delta.
+   */
+  it('a server that always fails emailChanges recovers to idle, never loops or errors', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async emailChanges() {
+        throw new CannotCalculateChangesError()
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    const firstSync = getEngineStatus().lastSyncedAt
+
+    // A second pass now hits emailChanges (state was seeded on the first) and must recover, not error.
+    push.fireStateChange()
+    await waitFor(() => getEngineStatus().lastSyncedAt !== firstSync)
+    expect(getEngineStatus().phase).toBe('idle')
+    expect(getEngineStatus().error).toBeNull()
+    expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
     await engine.stop()
   })
 

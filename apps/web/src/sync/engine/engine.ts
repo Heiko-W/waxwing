@@ -46,6 +46,7 @@ import {
   putEmailBody,
   putEmails,
   putQueryCache,
+  setSyncState,
 } from '../repo'
 import { browserEstimate, type EstimateFn, isQuotaExceeded, reportStorageFull } from '../storage'
 import {
@@ -72,7 +73,13 @@ import {
   STATE_GUARDED_INTENTS,
 } from './outbox'
 import { setEngineStatus } from './status'
-import { type EngineClock, type EngineStatus, INITIAL_ENGINE_STATUS, type JmapPort } from './types'
+import {
+  CannotCalculateChangesError,
+  type EngineClock,
+  type EngineStatus,
+  INITIAL_ENGINE_STATUS,
+  type JmapPort,
+} from './types'
 
 /** Data types we ask push to notify on and delta-sync. */
 const WATCHED_TYPES = ['Mailbox', 'Thread', 'Email']
@@ -1066,33 +1073,46 @@ export class SyncEngine {
     await this.refreshQueueCounts()
   }
 
+  /**
+   * A `Foo/changes` state the server can no longer resolve (RFC 8620 §5.2 `cannotCalculateChanges`).
+   *
+   * It happens when a server is restored from a backup, resets, or is replaced — the client's cached
+   * `sinceState` names a point in a history the server no longer has. The QUERY path already recovers
+   * (`delta.ts#reconcileQuery` → `fullRequery`); the TYPE-changes path (`syncMailboxes`/`syncEmails`/
+   * `syncThreads`, all through `drainChanges`) did NOT, so a single such error stranded the whole app
+   * on a red "sync problem" that a reload could not clear — the bad state is persisted in IndexedDB.
+   *
+   * The recovery is a full resync WITHOUT touching user data: reset the three watched-type states to
+   * null so `syncMailboxes` re-pulls every folder and `fullRequery` re-seeds the Email state, and
+   * force the query windows to re-materialise rather than delta against a query state the server
+   * likewise no longer knows. The full-pull paths call `Foo/get`/`Foo/query`, never `Foo/changes`, so
+   * this cannot itself raise `cannotCalculateChanges` — there is no loop to guard against.
+   */
+  private async resetWatchedStates(): Promise<void> {
+    const now = this.clock.now()
+    for (const type of WATCHED_TYPES) {
+      await setSyncState(this.db, this.accountId, type, null, now)
+    }
+  }
+
   private async runSyncPass(forceFull: boolean): Promise<void> {
     try {
       let deltaError: unknown
       let created: EmailEnvelopeInput[] = []
+      let recoveredFull = forceFull
       try {
-        const mailboxWrites = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
-        // The folder badges an unsent intent has already moved (M3.10, gap B7). `syncMailboxes`
-        // writes the server's ABSOLUTE count, and it runs BEFORE the replay below — so a mailbox the
-        // server reports as changed for an UNRELATED reason (new mail in the Inbox, another client)
-        // silently reverts the optimistic badge to the pre-mutation number, and it stays reverted
-        // until the intent lands. Re-applying is scoped to the count fields this pass actually wrote
-        // and to intents that have provably NEVER BEEN DISPATCHED — which is NOT the same as
-        // `status === 'pending'`, since several paths return an already-dispatched row to `pending`.
-        // See {@link reapplyPendingCounts} and `unsentOutbox`.
-        await reapplyPendingCounts(this.db, this.accountId, mailboxWrites)
-        if (!this.identitiesSynced) {
-          await syncIdentities(this.port, this.db, this.accountId, this.clock)
-          this.identitiesSynced = true // only after success, so an offline first pass retries
+        try {
+          created = await this.runDeltaBlock(recoveredFull)
+        } catch (error) {
+          if (!(error instanceof CannotCalculateChangesError)) throw error
+          // The server cannot calculate the delta from our state. Drop the states and re-run the
+          // whole block as a full resync — once. A second failure is not a state problem and is
+          // surfaced like any other.
+          await this.resetWatchedStates()
+          recoveredFull = true
+          created = await this.runDeltaBlock(true)
         }
-        await this.ensureInboxWindow()
-        await syncThreads(this.port, this.db, this.accountId, this.clock)
-        created = await syncEmails(this.port, this.db, this.accountId, this.clock)
-        await this.reconcileWatched(forceFull)
       } catch (error) {
-        // Re-throw ONLY auth-expiry (→ the re-auth funnel). A transient DELTA failure must not skip
-        // the replay below: that would starve the outbox — a queued send would sit unsent for as
-        // long as the server kept failing one `Email/changes` call (M3.3).
         if (isAuthExpiry(error)) throw error
         deltaError = error
       }
@@ -1105,14 +1125,34 @@ export class SyncEngine {
         return
       }
       await this.raiseNewMailNotifications(created)
-      // Cache policy runs at the END of a SUCCESSFUL pass (M3.4): the replica is at its freshest, so
-      // the horizon, the orphan set and the watched windows are all accurate. It is interval-gated,
-      // so the 60 s safety sweep does not evict every minute.
       await this.runMaintenance()
       this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), error: null })
     } catch (error) {
       this.reportError(error)
     }
+  }
+
+  /** The delta half of a sync pass, factored out so the `cannotCalculateChanges` recovery can re-run it. */
+  private async runDeltaBlock(forceFull: boolean): Promise<EmailEnvelopeInput[]> {
+    const mailboxWrites = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
+    // The folder badges an unsent intent has already moved (M3.10, gap B7). `syncMailboxes`
+    // writes the server's ABSOLUTE count, and it runs BEFORE the replay in `runSyncPass` — so a
+    // mailbox the server reports as changed for an UNRELATED reason (new mail in the Inbox, another
+    // client) silently reverts the optimistic badge to the pre-mutation number, and it stays
+    // reverted until the intent lands. Re-applying is scoped to the count fields this pass actually
+    // wrote and to intents that have provably NEVER BEEN DISPATCHED — which is NOT the same as
+    // `status === 'pending'`, since several paths return an already-dispatched row to `pending`.
+    // See {@link reapplyPendingCounts} and `unsentOutbox`.
+    await reapplyPendingCounts(this.db, this.accountId, mailboxWrites)
+    if (!this.identitiesSynced) {
+      await syncIdentities(this.port, this.db, this.accountId, this.clock)
+      this.identitiesSynced = true // only after success, so an offline first pass retries
+    }
+    await this.ensureInboxWindow()
+    await syncThreads(this.port, this.db, this.accountId, this.clock)
+    const created = await syncEmails(this.port, this.db, this.accountId, this.clock)
+    await this.reconcileWatched(forceFull)
+    return created
   }
 
   /**
