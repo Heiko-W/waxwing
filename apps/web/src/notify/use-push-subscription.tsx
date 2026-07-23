@@ -59,8 +59,17 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
   const client = connected?.client ?? null
   const session = connected?.client.session ?? null
 
-  const wanted =
-    prefs.enabled && permission.state === 'granted' && serverSupports && client !== null
+  /**
+   * **Deliberately NOT collapsed into one boolean.** Collapsing them is exactly what destroyed
+   * working subscriptions in a loop: three of these are TRANSIENT — `client` is null while the
+   * session reconnects, `serverSupports` is false until the session document has loaded, and the
+   * permission is `default` before it has been read — and a single `wanted === false` made the
+   * reconciler tear the subscription down. `push-reconcile.ts` decides which of them is an explicit
+   * "no" (the master switch, a `denied` permission) and which merely means "not yet", and that
+   * distinction cannot survive an `&&`.
+   */
+  const enabled = prefs.enabled
+  const permissionState = permission.state
 
   // Each of these travels INTO the worker's handover record, so a change to any of them has to
   // rewrite it. They are listed as individual dependencies rather than as `prefs`, which is a fresh
@@ -79,7 +88,9 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
         registration,
         client,
         session,
-        wanted,
+        enabled,
+        permission: permissionState,
+        serverSupports,
         // Exactly what the live channel says with preview OFF. A closed-app banner is contentless by
         // construction (ADR-017), so both paths use one wording — there is nothing here to drift.
         title: productName,
@@ -106,7 +117,18 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
     // hands back a new `t` on `languageChanged`, which is what re-runs this. A test pins it, because
     // if that ever stopped holding the symptom would be a German user getting English banners with
     // nothing anywhere to explain why.
-  }, [wanted, client, session, productName, t, quietFrom, quietTo, sound])
+  }, [
+    enabled,
+    permissionState,
+    serverSupports,
+    client,
+    session,
+    productName,
+    t,
+    quietFrom,
+    quietTo,
+    sound,
+  ])
 
   // The worker relays a verification code the moment it arrives — the fast path, which saves a
   // reload. It is NOT the reliable one: the worker also parks every code in `waxwing-push`, and the

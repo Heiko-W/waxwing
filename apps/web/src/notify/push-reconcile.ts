@@ -31,8 +31,13 @@ import type { QuietHours } from './quiet-hours'
 export type ReconcileOutcome =
   /** No service worker at all: the dev server, an insecure context, a failed registration. */
   | 'noServiceWorker'
-  /** The user does not want it, or is signed out — the subscription is torn down. */
+  /** The user switched it off (or the browser blocked it) — the subscription is torn down. */
   | 'unsubscribed'
+  /**
+   * We cannot act right now and must NOT guess: signed out, session still loading, capability not
+   * yet known. Distinct from `unsubscribed` on purpose — see {@link reconcilePushSubscription}.
+   */
+  | 'cannotAct'
   /** The server publishes no RFC 9749 key, so there is nothing to subscribe against. */
   | 'noServerKey'
   /** The browser refused (permission, no push service, iOS outside a Home-Screen install). */
@@ -45,15 +50,18 @@ export type ReconcileOutcome =
 export interface ReconcileDeps {
   /** `null` when the browser has no usable service-worker registration. */
   readonly registration: PushCapableRegistration | null
-  /** `null` when signed out. */
+  /** `null` when signed out OR while the session is (re)connecting — the two are indistinguishable. */
   readonly client: JmapClient | null
   readonly session: Session | null
   /**
-   * Does the user want background notifications right now? The master switch AND a granted browser
-   * permission AND a server that can sign a push — collapsed by the caller, because all three are
-   * React state and none of them belongs in here.
+   * The master switch (`localPrefs`) — the user's own, explicit answer. **Only this and a `denied`
+   * permission may tear a subscription down.**
    */
-  readonly wanted: boolean
+  readonly enabled: boolean
+  /** The browser permission. `denied` is a decision; `default` is merely "not asked yet". */
+  readonly permission: 'unsupported' | 'default' | 'granted' | 'denied'
+  /** Does the SERVER advertise RFC 9749? Unknown (false) while the session is still loading. */
+  readonly serverSupports: boolean
   /** Already translated — the worker cannot run i18next (ADR-017). */
   readonly title: string
   readonly body: string
@@ -69,21 +77,41 @@ export interface ReconcileDeps {
  * Run one pass. Never throws: a subscription that cannot be established is a feature that does not
  * work, not an app that should break, and everything the live channel does keeps working regardless.
  *
- * **Order is the part worth reading.** The teardown branch comes before the capability check, so
- * switching notifications off tears the subscription down even on a server that has since stopped
- * advertising RFC 9749 — otherwise a capability that disappeared would strand a live subscription
- * the user can no longer turn off, and the server would go on pushing to it.
+ * **Tearing down and being unable to act are DIFFERENT, and conflating them destroyed working
+ * subscriptions in a loop.** The first version collapsed the master switch, the permission, the
+ * server capability and the client into one `wanted` boolean and tore the subscription down whenever
+ * it was false. But three of those four are *transient*: `client` is null while the session
+ * reconnects, `serverSupports` is false until the session document has loaded, and `permission` is
+ * `default` before it is read. So an ordinary reconnect — or the re-render that follows a push —
+ * destroyed a healthy subscription, the next pass built a new one, and the verification code the
+ * service worker had just parked now belonged to a subscription that no longer existed. The
+ * handshake could never complete, and each round did it again. Observed live in Chrome's
+ * `gcm-internals` (2026-07-23, B29): message received at 22:17:15, unregistration in the same
+ * second, re-registration 44 s later.
+ *
+ * So the rule is: **only an explicit "no" tears anything down.** The master switch being off is the
+ * user's own answer; a `denied` permission is the browser's. Everything else — no client, no
+ * session, capability not yet known — means *we do not know yet*, and the honest response to not
+ * knowing is to leave the subscription alone.
  */
 export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<ReconcileOutcome> {
   const idb = deps.idb ?? null
   if (deps.registration === null) return 'noServiceWorker'
 
-  if (!deps.wanted || deps.client === null) {
+  // An explicit "no" — the only thing that may destroy a subscription. `denied` is a decision the
+  // browser has recorded; `default`/`unsupported` are not, and must not be read as one.
+  if (!deps.enabled || deps.permission === 'denied') {
     await unsubscribePush({ registration: deps.registration, client: deps.client, idb })
     return 'unsubscribed'
   }
 
-  const vapid = deps.session === null ? null : getWebPushVapidCapability(deps.session)
+  // Everything below needs a live client and a loaded session. Not having them is a "come back
+  // later", never a teardown.
+  if (deps.client === null || deps.session === null) return 'cannotAct'
+  if (deps.permission !== 'granted') return 'cannotAct'
+  if (!deps.serverSupports) return 'cannotAct'
+
+  const vapid = getWebPushVapidCapability(deps.session)
   if (vapid === null) return 'noServerKey'
 
   const deviceClientId = await ensureDeviceClientId(newDeviceClientId, idb)

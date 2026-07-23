@@ -118,7 +118,9 @@ function deps(over: Record<string, unknown> = {}) {
     registration: fakeRegistration(),
     client: fakeClient(),
     session: session(),
-    wanted: true,
+    enabled: true,
+    permission: 'granted' as const,
+    serverSupports: true,
     title: 'Waxwing',
     body: 'New message',
     iconUrl: 'https://mail.example/branding/icon-192.png',
@@ -151,7 +153,7 @@ describe('reconcilePushSubscription', () => {
 
     expect(
       await reconcilePushSubscription(
-        deps({ wanted: false, registration: fakeRegistration(existing) }),
+        deps({ enabled: false, registration: fakeRegistration(existing) }),
       ),
     ).toBe('unsubscribed')
 
@@ -159,11 +161,72 @@ describe('reconcilePushSubscription', () => {
     expect(await readPushRegistration(idb)).toBeNull()
   })
 
-  it('tears it down on sign-out, when there is no client left to destroy it with', async () => {
+  /**
+   * **The regression test for the defect that made the whole feature impossible.**
+   *
+   * A null client means "signed out OR reconnecting" — and the two are indistinguishable from here.
+   * The first version treated it as "the user does not want this" and DESTROYED the subscription.
+   * Observed live in Chrome's `gcm-internals` (B29): the verification push arrived at 22:17:15, the
+   * subscription was unregistered in the SAME second, and a new one was created 44 s later — so the
+   * code the service worker had just parked belonged to a subscription that no longer existed, and
+   * the handshake could never complete. Every round repeated it.
+   *
+   * A real sign-out is handled explicitly by `tearDownPushSubscription` in the session provider,
+   * where the intent is known. Here, not knowing means: leave it alone.
+   */
+  it('does NOT tear down while the session is merely reconnecting', async () => {
+    await writePushRegistration(
+      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      idb,
+    )
     const existing = fakeSubscription()
+
     expect(
       await reconcilePushSubscription(
         deps({ client: null, registration: fakeRegistration(existing) }),
+      ),
+    ).toBe('cannotAct')
+
+    expect(existing.unsubscribed).toBe(false)
+    expect(await readPushRegistration(idb)).not.toBeNull()
+  })
+
+  it('does NOT tear down while the capability is not yet known', async () => {
+    // `serverSupports` is false until the session document has loaded — a transient state, not an
+    // answer. Reading it as one destroyed a healthy subscription on every reconnect.
+    await writePushRegistration(
+      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      idb,
+    )
+    const existing = fakeSubscription()
+
+    expect(
+      await reconcilePushSubscription(
+        deps({ serverSupports: false, registration: fakeRegistration(existing) }),
+      ),
+    ).toBe('cannotAct')
+
+    expect(existing.unsubscribed).toBe(false)
+    expect(await readPushRegistration(idb)).not.toBeNull()
+  })
+
+  it('does NOT tear down before the permission has been read', async () => {
+    // `default` means "not asked yet", never "no". Only `denied` is the browser's decision.
+    const existing = fakeSubscription()
+    expect(
+      await reconcilePushSubscription(
+        deps({ permission: 'default', registration: fakeRegistration(existing) }),
+      ),
+    ).toBe('cannotAct')
+    expect(existing.unsubscribed).toBe(false)
+  })
+
+  it('DOES tear down when the browser has denied the permission', async () => {
+    // A recorded decision, unlike `default` — the subscription can never deliver, so it goes.
+    const existing = fakeSubscription()
+    expect(
+      await reconcilePushSubscription(
+        deps({ permission: 'denied', registration: fakeRegistration(existing) }),
       ),
     ).toBe('unsubscribed')
     expect(existing.unsubscribed).toBe(true)
@@ -178,7 +241,7 @@ describe('reconcilePushSubscription', () => {
     const existing = fakeSubscription()
     expect(
       await reconcilePushSubscription(
-        deps({ wanted: false, session: session(false), registration: fakeRegistration(existing) }),
+        deps({ enabled: false, session: session(false), registration: fakeRegistration(existing) }),
       ),
     ).toBe('unsubscribed')
     expect(existing.unsubscribed).toBe(true)
@@ -192,8 +255,8 @@ describe('reconcilePushSubscription', () => {
     expect(client.calls).toHaveLength(0)
   })
 
-  it('does not subscribe when the session is gone', async () => {
-    expect(await reconcilePushSubscription(deps({ session: null }))).toBe('noServerKey')
+  it('does not act when the session is gone — and does not tear down either', async () => {
+    expect(await reconcilePushSubscription(deps({ session: null }))).toBe('cannotAct')
   })
 
   /**
