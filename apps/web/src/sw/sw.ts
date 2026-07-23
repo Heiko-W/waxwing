@@ -217,10 +217,24 @@ async function handlePush(text: string | null): Promise<void> {
       pushSubscriptionId: frame.pushSubscriptionId,
       verificationCode: frame.verificationCode,
     }
+
+    // **PARK IT FIRST, AND ALWAYS — before telling anyone.**
+    //
+    // This used to park only when no window was open, treating `postMessage` as the primary route
+    // and the store as a fallback. That is backwards, and the B29 hand-check proved it on the first
+    // run: a window WAS open, the message went out, nothing was listening yet, and the code was
+    // gone for good. The subscription then sits unverified forever — the server pushes nothing but
+    // the verification it is still waiting for — and there is no error anywhere to say so.
+    //
+    // A `postMessage` is best-effort by nature: the page may be mid-navigation, may not have
+    // attached its listener, may be a client we cannot even see. The store is the durable half, so
+    // it happens unconditionally and the message below is only an optimisation that saves a reload.
+    await putPendingVerification(message)
+
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    const ours = windows.filter((client) => isAppClient(client.url, self.location.href))
-    for (const client of ours) client.postMessage(message)
-    if (ours.length === 0) await putPendingVerification(message)
+    for (const client of windows) {
+      if (isAppClient(client.url, self.location.href)) client.postMessage(message)
+    }
     return
   }
 

@@ -13,7 +13,11 @@
 
 import type { JmapClient, Session } from '@waxwing/jmap'
 import { getWebPushVapidCapability } from '@waxwing/jmap'
-import { ensureDeviceClientId, takePendingVerification } from './push-store'
+import {
+  clearPendingVerification,
+  ensureDeviceClientId,
+  peekPendingVerification,
+} from './push-store'
 import {
   ensurePushSubscription,
   newDeviceClientId,
@@ -99,11 +103,21 @@ export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<Re
   })
   if (result.status !== 'subscribed') return result.status
 
-  // A code the worker parked because no window was open when the server verified. Normally there is
-  // none — the page is open when a subscription is created — but a subscription stuck unverified is
-  // silent FOREVER, with nothing anywhere to say why, so the recovery path is not optional.
-  const pending = await takePendingVerification(idb)
+  // The verification the worker parked (RFC 8620 §7.2.2). The worker parks it on EVERY verification
+  // push, not only when no window was open — so this is the reliable path, and the `postMessage` the
+  // page also receives is only what saves a reload. A subscription stuck unverified is silent
+  // forever with nothing anywhere to say why; it is the failure this whole branch exists for.
+  const pending = await peekPendingVerification(idb)
   if (pending === null) return 'subscribed'
-  await submitPushVerification(deps.client, pending.pushSubscriptionId, pending.verificationCode)
-  return 'subscribedAndVerified'
+
+  const accepted = await submitPushVerification(
+    deps.client,
+    pending.pushSubscriptionId,
+    pending.verificationCode,
+  )
+  // Consumed only once the SERVER has taken it. A write-back can fail because the device is offline,
+  // and then the code is still good — dropping it would strand the subscription until something
+  // recreated it.
+  if (accepted) await clearPendingVerification(idb)
+  return accepted ? 'subscribedAndVerified' : 'subscribed'
 }

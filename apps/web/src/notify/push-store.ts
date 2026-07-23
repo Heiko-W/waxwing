@@ -199,14 +199,16 @@ export async function putPendingVerification(
 }
 
 /**
- * The page takes the parked code — read AND delete, in that order.
+ * Read the parked code WITHOUT consuming it.
  *
- * Deleting after the read rather than after the JMAP call is deliberate: a code that fails to write
- * back is worthless, because the server only accepts the code for the subscription it belongs to and
- * the recovery is to re-subscribe, not to retry an old code. Keeping it would just make the next
- * start retry something already known to be dead.
+ * It used to be a read-and-delete, on the reasoning that a code which fails to write back is
+ * worthless anyway. That was wrong in the one case that matters: the write-back can fail because the
+ * device is offline, and then the code is still perfectly good — deleting it turns a retryable
+ * situation into a subscription that stays unverified until something recreates it. So the delete
+ * is now explicit, and only happens once the server has accepted it (or the subscription it belongs
+ * to has been replaced).
  */
-export async function takePendingVerification(
+export async function peekPendingVerification(
   factory: IDBFactory | null = null,
 ): Promise<PendingVerification | null> {
   try {
@@ -218,10 +220,18 @@ export async function takePendingVerification(
     if (typeof v.pushSubscriptionId !== 'string' || typeof v.verificationCode !== 'string') {
       return null
     }
-    await withStore('readwrite', factory, (store) => store.delete(VERIFICATION_KEY))
     return { pushSubscriptionId: v.pushSubscriptionId, verificationCode: v.verificationCode }
   } catch {
     return null
+  }
+}
+
+/** Forget the parked code: the server accepted it, or its subscription no longer exists. */
+export async function clearPendingVerification(factory: IDBFactory | null = null): Promise<void> {
+  try {
+    await withStore('readwrite', factory, (store) => store.delete(VERIFICATION_KEY))
+  } catch {
+    /* a stale code costs one redundant update on the next start, nothing more */
   }
 }
 

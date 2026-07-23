@@ -18,10 +18,10 @@ import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ensureDeviceClientId,
+  peekPendingVerification,
   putPendingVerification,
   readPushRegistration,
   readPushState,
-  takePendingVerification,
   writePushRegistration,
   writePushState,
 } from './push-store'
@@ -460,7 +460,7 @@ describe('tearDownPushSubscription (sign-out)', () => {
     expect(existing.unsubscribed).toBe(true)
     expect(await readPushState(idb)).toBeNull()
     expect(await readPushRegistration(idb)).toBeNull()
-    expect(await takePendingVerification(idb)).toBeNull()
+    expect(await peekPendingVerification(idb)).toBeNull()
     // The identity goes too: the next user of a shared machine must not re-register as the last one.
     expect(await ensureDeviceClientId(() => 'device-after', idb)).not.toBe(deviceId)
   })

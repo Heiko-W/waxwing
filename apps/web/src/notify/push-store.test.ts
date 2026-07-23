@@ -11,14 +11,15 @@
 import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  clearPendingVerification,
   clearPushState,
   deletePushRegistration,
   ensureDeviceClientId,
   type PushWorkerState,
+  peekPendingVerification,
   putPendingVerification,
   readPushRegistration,
   readPushState,
-  takePendingVerification,
   writePushRegistration,
   writePushState,
 } from './push-store'
@@ -159,19 +160,25 @@ describe('the registration record', () => {
 })
 
 describe('the parked verification', () => {
-  it('is taken exactly once', async () => {
+  /**
+   * **Reading no longer consumes it, and that is a bug fix.** The first version deleted on read,
+   * reasoning that a code which fails to write back is worthless. That is wrong in the one case
+   * that matters: the write-back fails when the device is OFFLINE, and the code is then still
+   * perfectly good — dropping it strands the subscription unverified until something recreates it.
+   */
+  it('survives being read, and is only consumed on an explicit clear', async () => {
     await putPendingVerification({ pushSubscriptionId: 'sub-1', verificationCode: 'code' }, idb)
-    expect(await takePendingVerification(idb)).toEqual({
-      pushSubscriptionId: 'sub-1',
-      verificationCode: 'code',
-    })
-    // Deleted on read: a code that failed to write back is worthless — the server only accepts it
-    // for the subscription it belongs to — so retrying it forever would just be noise.
-    expect(await takePendingVerification(idb)).toBeNull()
+    const expected = { pushSubscriptionId: 'sub-1', verificationCode: 'code' }
+    expect(await peekPendingVerification(idb)).toEqual(expected)
+    // Still there — an offline write-back must be retryable.
+    expect(await peekPendingVerification(idb)).toEqual(expected)
+
+    await clearPendingVerification(idb)
+    expect(await peekPendingVerification(idb)).toBeNull()
   })
 
   it('is null when the worker never parked one', async () => {
-    expect(await takePendingVerification(idb)).toBeNull()
+    expect(await peekPendingVerification(idb)).toBeNull()
   })
 
   it('never throws when there is no IndexedDB', async () => {
@@ -197,7 +204,7 @@ describe('clearPushState', () => {
 
     expect(await readPushState(idb)).toBeNull()
     expect(await readPushRegistration(idb)).toBeNull()
-    expect(await takePendingVerification(idb)).toBeNull()
+    expect(await peekPendingVerification(idb)).toBeNull()
   })
 
   it('resolves rather than throwing when there is no IndexedDB — a sign-out is never blocked', async () => {

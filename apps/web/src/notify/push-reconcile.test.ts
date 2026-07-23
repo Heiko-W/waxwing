@@ -11,10 +11,10 @@ import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { reconcilePushSubscription } from './push-reconcile'
 import {
+  peekPendingVerification,
   putPendingVerification,
   readPushRegistration,
   readPushState,
-  takePendingVerification,
   writePushRegistration,
 } from './push-store'
 import type { BrowserPushSubscription, PushCapableRegistration } from './push-subscribe'
@@ -65,7 +65,8 @@ function fakeRegistration(
 
 type Call = [string, Record<string, unknown>, string]
 
-function fakeClient(): JmapClient & { calls: Call[] } {
+/** `offline: true` makes every UPDATE throw — the create still works, as after a reconnect. */
+function fakeClient(options: { offline?: boolean } = {}): JmapClient & { calls: Call[] } {
   const calls: Call[] = []
   let list: Record<string, unknown>[] = []
   const client = {
@@ -84,6 +85,7 @@ function fakeClient(): JmapClient & { calls: Call[] } {
           list = [{ id: 'sub-1', deviceClientId: body.deviceClientId, expires: FAR }]
           responses.push([name, { created: { sub: { id: 'sub-1', expires: FAR } } }, id])
         } else {
+          if (options.offline === true) throw new TypeError('Failed to fetch')
           responses.push([name, { updated: { 'sub-1': null } }, id])
         }
       }
@@ -210,8 +212,34 @@ describe('reconcilePushSubscription', () => {
     expect(
       (update?.[1].update as Record<string, Record<string, unknown>>)['sub-1']?.verificationCode,
     ).toBe('code-1')
-    // Taken exactly once — a code that failed is worthless, and retrying it forever would be noise.
-    expect(await takePendingVerification(idb)).toBeNull()
+    // Consumed, because the server took it. See the offline case below for why that condition is
+    // not "we tried".
+    expect(await peekPendingVerification(idb)).toBeNull()
+  })
+
+  /**
+   * **The code must survive a failed write-back**, and this is the case that decides it.
+   *
+   * The first version deleted the parked code on read, reasoning that a code which cannot be written
+   * back is worthless. That is true when the SERVER rejects it — and false in the case that actually
+   * happens, which is the device being offline. Dropping it there turns a situation that fixes
+   * itself on the next start into a subscription that stays unverified until something recreates
+   * it: the server pushes nothing but the verification, and nothing anywhere says so.
+   */
+  it('keeps the parked code when the write-back fails, so the next pass can retry', async () => {
+    await putPendingVerification({ pushSubscriptionId: 'sub-1', verificationCode: 'code-1' }, idb)
+
+    const offline = fakeClient({ offline: true })
+    expect(await reconcilePushSubscription(deps({ client: offline }))).toBe('subscribed')
+    expect(await peekPendingVerification(idb)).toEqual({
+      pushSubscriptionId: 'sub-1',
+      verificationCode: 'code-1',
+    })
+
+    // Back online: the very next pass completes the handshake, with no user action at all.
+    const online = fakeClient()
+    expect(await reconcilePushSubscription(deps({ client: online }))).toBe('subscribedAndVerified')
+    expect(await peekPendingVerification(idb)).toBeNull()
   })
 
   it('reports `unsupported` when the browser refuses, without recording anything', async () => {

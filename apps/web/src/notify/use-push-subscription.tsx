@@ -29,6 +29,7 @@ import {
 } from './notify-model'
 import { isPushVerificationMessage } from './push-frame'
 import { reconcilePushSubscription } from './push-reconcile'
+import { clearPendingVerification } from './push-store'
 import { submitPushVerification } from './push-subscribe'
 import { getPushRegistration } from './registration'
 import { useNotificationPermission } from './use-notification-permission'
@@ -107,8 +108,10 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
     // nothing anywhere to explain why.
   }, [wanted, client, session, productName, t, quietFrom, quietTo, sound])
 
-  // The worker relays a verification code the moment it arrives, which is the normal path: the page
-  // is open when a subscription is created, so the handshake completes in the same session.
+  // The worker relays a verification code the moment it arrives — the fast path, which saves a
+  // reload. It is NOT the reliable one: the worker also parks every code in `waxwing-push`, and the
+  // reconcile pass above picks it up. Both exist because a `postMessage` can arrive before this
+  // listener is attached, and that is exactly what happened on the first hand-check.
   useEffect(() => {
     if (client === null) return
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
@@ -118,10 +121,17 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
       (event: MessageEvent) => {
         const data: unknown = event.data
         if (!isPushVerificationMessage(data)) return
-        void submitPushVerification(client, data.pushSubscriptionId, data.verificationCode)
+        void submitPushVerification(client, data.pushSubscriptionId, data.verificationCode).then(
+          (accepted) => (accepted ? clearPendingVerification() : undefined),
+        )
       },
       { signal: listeners.signal },
     )
+    // **Mandatory with `addEventListener`, and easy to miss.** A ServiceWorkerContainer only starts
+    // dispatching messages once `onmessage` is assigned OR `startMessages()` is called; anything the
+    // worker posted before that sits in a queue that is never drained. Assigning `onmessage` would
+    // have hidden the problem — and would also have clobbered any other listener on the container.
+    navigator.serviceWorker.startMessages()
     return () => {
       listeners.abort()
     }
