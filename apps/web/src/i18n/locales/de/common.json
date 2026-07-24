@@ -809,6 +809,7 @@
       "messageGone": "Diese Nachricht gibt es auf dem Server nicht mehr.",
       "folderGone": "Diesen Ordner gibt es nicht mehr.",
       "folderNotEmpty": "Der Ordner ist nicht leer.",
+      "contactGone": "Diesen Kontakt gibt es auf dem Server nicht mehr.",
       "forbidden": "Dazu fehlt die Berechtigung.",
       "quota": "Speicherkontingent überschritten.",
       "tooLarge": "Zu groß für den Server.",

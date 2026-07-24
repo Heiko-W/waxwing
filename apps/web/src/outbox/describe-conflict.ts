@@ -37,6 +37,7 @@ const TITLE_KEY: Readonly<Record<ConflictCode, string>> = {
   messageGone: 'outbox.conflict.messageGone',
   folderGone: 'outbox.conflict.folderGone',
   folderNotEmpty: 'outbox.conflict.folderNotEmpty',
+  contactGone: 'outbox.conflict.contactGone',
   forbidden: 'outbox.conflict.forbidden',
   quota: 'outbox.conflict.quota',
   tooLarge: 'outbox.conflict.tooLarge',

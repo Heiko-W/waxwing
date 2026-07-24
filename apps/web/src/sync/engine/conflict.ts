@@ -82,7 +82,14 @@ function conflict(code: ConflictCode, detail: string | null): ReplayVerdict {
 
 /** A DESTROY intent — for these, `notFound` means the goal is already met (never a rollback). */
 function isDestroy(kind: IntentKind): boolean {
-  return kind === 'destroyEmails' || kind === 'discardDraft' || kind === 'deleteMailbox'
+  return (
+    kind === 'destroyEmails' ||
+    kind === 'discardDraft' ||
+    kind === 'deleteMailbox' ||
+    // Deleting a contact card the server already dropped is a SUCCESS ("already gone"), exactly like a
+    // message/folder destroy — restoring it would resurrect a card the user (or another client) removed.
+    kind === 'deleteContactCard'
+  )
 }
 
 function isMailboxIntent(kind: IntentKind): boolean {
@@ -110,6 +117,9 @@ export function classifySetError(intentKind: IntentKind, error: PortSetError): R
     case SetErrorTypes.notFound:
       if (isDestroy(intentKind)) return { kind: 'satisfied' }
       if (isMailboxIntent(intentKind)) return conflict('folderGone', detail)
+      // An `update` to a card that was deleted elsewhere: a "gone" notice with its own noun, not the
+      // mail-worded `messageGone`. Non-retryable — retrying the patch could only fail `notFound` again.
+      if (intentKind === 'updateContactCard') return conflict('contactGone', detail)
       return conflict('messageGone', detail)
 
     case SetErrorTypes.invalidProperties:

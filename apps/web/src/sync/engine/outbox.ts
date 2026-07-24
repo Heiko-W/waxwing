@@ -36,6 +36,8 @@
  */
 
 import type {
+  AddressBook,
+  ContactCard,
   EmailComparator,
   EmailCreate,
   EmailFilter,
@@ -46,6 +48,7 @@ import type {
 } from '@waxwing/jmap'
 import {
   type ConflictCode,
+  type ContactCardRow,
   type EmailEnvelopeInput,
   type EmailRow,
   type OutboxConflict,
@@ -57,6 +60,8 @@ import {
   toMailboxRow,
 } from '../db'
 import {
+  deleteAddressBooks,
+  deleteContactCards,
   deleteDraft,
   deleteEmails,
   deleteMailbox,
@@ -64,6 +69,8 @@ import {
   enqueue,
   failedOutbox,
   pendingOutbox,
+  putAddressBooks,
+  putContactCards,
   putEmails,
   unsentOutbox,
 } from '../repo'
@@ -128,13 +135,48 @@ export type OutboxIntent =
       readonly onSuccessUpdateEmail: PatchObject
       readonly source: { readonly emailId: Id; readonly keyword: '$answered' | '$forwarded' } | null
     }
+  // ── Contacts (M4.2, RFC 9610) ──────────────────────────────────────────────────────────────
+  // A ContactCard is a standalone object with create/update/destroy over `ContactCard/set`, exactly
+  // like a Mailbox over `Mailbox/set` — so these MIRROR `createMailbox`/`renameMailbox`/`deleteMailbox`
+  // (creation-id flow for the create, prior-state undo for update/delete). AddressBook create is the
+  // Mailbox-create analogue; AddressBook update/delete are deliberately NOT part of this stage (5a).
+  | {
+      /** Create a card in one or more address books; the full JSContact card rides along with its `id`
+       *  set to `creationId` until the server acks (then {@link reconcileContactCardCreate} swaps it). */
+      readonly kind: 'createContactCard'
+      readonly creationId: string
+      readonly card: ContactCard
+    }
+  | { readonly kind: 'updateContactCard'; readonly id: Id; readonly patch: PatchObject }
+  | { readonly kind: 'deleteContactCard'; readonly id: Id }
+  | {
+      readonly kind: 'createAddressBook'
+      readonly creationId: string
+      readonly props: { readonly name: string; readonly description?: string | null }
+    }
 
-/** The mailbox intents dispatched with an `ifInState` guard (M3.3, Q3) — `Email/set` stays unguarded. */
-export const STATE_GUARDED_INTENTS: ReadonlySet<OutboxIntent['kind']> = new Set([
-  'renameMailbox',
-  'moveMailbox',
-  'deleteMailbox',
-])
+/**
+ * The JMAP type whose `state` string guards an intent's `/set` with `ifInState` (M3.3, Q3), or `null`
+ * for an unguarded intent. `Email/set` stays unguarded (its state is account-global and advances on
+ * every inbound message); a `create` is unguarded too (appending a new object depends on no prior
+ * state). Update/delete of a rarely-churning object ARE guarded, so a concurrent edit by another
+ * client surfaces as a gentle notice rather than a silent last-writer-wins — the FR-OFF-03 case.
+ */
+export type GuardedType = 'Mailbox' | 'ContactCard' | 'AddressBook'
+
+export function stateGuardType(kind: OutboxIntent['kind']): GuardedType | null {
+  switch (kind) {
+    case 'renameMailbox':
+    case 'moveMailbox':
+    case 'deleteMailbox':
+      return 'Mailbox'
+    case 'updateContactCard':
+    case 'deleteContactCard':
+      return 'ContactCard'
+    default:
+      return null
+  }
+}
 
 /** Full permissive rights for an optimistically-created folder (the server corrects them on sync). */
 const OPTIMISTIC_RIGHTS = {
@@ -147,6 +189,69 @@ const OPTIMISTIC_RIGHTS = {
   mayRename: true,
   mayDelete: true,
   maySubmit: true,
+}
+
+/** Full permissive rights for an optimistically-created address book (M4.2; server corrects on sync). */
+const OPTIMISTIC_BOOK_RIGHTS = {
+  mayRead: true,
+  mayWrite: true,
+  mayShare: true,
+  mayDelete: true,
+}
+
+/** The card fields for a `ContactCard/set create` — the stored row minus its (server-assigned) `id`
+ *  and the derived replica columns (`accountId`, `abk`, recomputed by {@link toContactCardRow}). */
+function cardCreateProps(card: ContactCard): Partial<ContactCard> {
+  const props: Record<string, unknown> = { ...card }
+  delete props.id
+  return props as Partial<ContactCard>
+}
+
+/** Strip a stored {@link ContactCardRow} back to its JMAP {@link ContactCard} (drops `accountId`/`abk`). */
+function rowToCard(row: ContactCardRow): ContactCard {
+  const card: Record<string, unknown> = { ...row }
+  delete card.accountId
+  delete card.abk
+  return card as unknown as ContactCard
+}
+
+/**
+ * Apply a JMAP {@link PatchObject} (RFC 8620 §5.3) to a copy of `target`, for the OPTIMISTIC preview
+ * of a `ContactCard/set update`. Keys are `/`-separated RFC 6901 JSON Pointers into the object;
+ * a `null` value REMOVES the pointed-at property (§5.3). This is a best-effort local render — the
+ * next `ContactCard/changes` delta reconciles the canonical server form, and the exact rollback is
+ * the persisted prior row, not a re-derivation — so it need only be faithful for the common patch
+ * shapes an edit form produces (top-level replace, map-entry set, map-entry remove).
+ */
+function applyPatchObject<T extends object>(target: T, patch: PatchObject): T {
+  const root = structuredClone(target) as unknown as Record<string, unknown>
+  for (const [pointer, value] of Object.entries(patch)) {
+    const tokens = pointer.split('/').map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~'))
+    let node: Record<string, unknown> = root
+    let ok = true
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      const token = tokens[i] as string
+      const next = node[token]
+      if (next === null || typeof next !== 'object' || Array.isArray(next)) {
+        // The parent is missing or not an object map: `null` removal is already a no-op, otherwise
+        // create the intermediate map so a set can land (JSContact sub-objects are id-keyed maps).
+        if (value === null) {
+          ok = false
+          break
+        }
+        const created: Record<string, unknown> = {}
+        node[token] = created
+        node = created
+      } else {
+        node = next as Record<string, unknown>
+      }
+    }
+    if (!ok) continue
+    const leaf = tokens[tokens.length - 1] as string
+    if (value === null) delete node[leaf]
+    else node[leaf] = value
+  }
+  return root as unknown as T
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -943,9 +1048,10 @@ function countDeltasFor(
       return removalCountDeltas(before)
     default:
       // `createMailbox` seeds 0/0; `renameMailbox`/`moveMailbox` do not move mail; `deleteMailbox`
-      // removes the row entirely; drafts are not envelopes; and `sendEmail` writes no synthetic Sent
-      // row (the real copy arrives via delta — patching here would DOUBLE it), its only replica edit
-      // being an `$answered`/`$forwarded` flag, which is not `$seen`.
+      // removes the row entirely; drafts are not envelopes; the contact intents (M4.2) touch cards, not
+      // mail, so no `Mailbox` badge moves; and `sendEmail` writes no synthetic Sent row (the real copy
+      // arrives via delta — patching here would DOUBLE it), its only replica edit being an
+      // `$answered`/`$forwarded` flag, which is not `$seen`.
       return new Map()
   }
 }
@@ -1327,6 +1433,40 @@ export async function applyOptimistic(
       }
       return { kind: 'mailbox', id: intent.id, prior }
     }
+    case 'createContactCard': {
+      // The card carries its `id === creationId` already; write it verbatim (the derived `abk` index
+      // is computed by `putContactCards`). The undo is a plain delete — mirror of `createMailbox`.
+      await putContactCards(db, accountId, [intent.card])
+      return { kind: 'contactCard', id: intent.creationId, prior: null }
+    }
+    case 'updateContactCard': {
+      const prior = (await db.contactCards.get([accountId, intent.id])) ?? null
+      // Only patch a card we actually hold; a card past the cached window is left to the server (its
+      // update still replays), and the undo (`prior: null`) then has nothing to restore.
+      if (prior !== null) {
+        const patched = applyPatchObject(rowToCard(prior), intent.patch)
+        await putContactCards(db, accountId, [patched])
+      }
+      return { kind: 'contactCard', id: intent.id, prior }
+    }
+    case 'deleteContactCard': {
+      const prior = (await db.contactCards.get([accountId, intent.id])) ?? null
+      await deleteContactCards(db, accountId, [intent.id])
+      return { kind: 'contactCard', id: intent.id, prior }
+    }
+    case 'createAddressBook': {
+      const book: AddressBook = {
+        id: intent.creationId,
+        name: intent.props.name,
+        description: intent.props.description ?? null,
+        sortOrder: 0,
+        isDefault: false,
+        isSubscribed: true,
+        myRights: OPTIMISTIC_BOOK_RIGHTS,
+      }
+      await putAddressBooks(db, accountId, [book])
+      return { kind: 'addressBook', id: intent.creationId, prior: null }
+    }
     case 'saveDraft':
     case 'discardDraft':
       // Drafts are edit-state, not envelope cache: the local `drafts` row is written durably by the
@@ -1560,6 +1700,18 @@ export async function applyUndo(
       else await deleteMailbox(db, accountId, undo.id)
       return
     }
+    case 'contactCard': {
+      // The prior row is stored whole (`abk` included), so the restore is exact — a rejected update
+      // reinstates the pre-edit card, a rejected create removes it, a rejected delete brings it back.
+      if (undo.prior !== null) await db.contactCards.put(undo.prior)
+      else await deleteContactCards(db, accountId, [undo.id])
+      return
+    }
+    case 'addressBook': {
+      if (undo.prior !== null) await db.addressBooks.put(undo.prior)
+      else await deleteAddressBooks(db, accountId, [undo.id])
+      return
+    }
   }
 }
 
@@ -1647,6 +1799,20 @@ function executeIntent(
       })
     case 'deleteMailbox':
       return port.setMailboxes({ destroy: [intent.id], ifInState })
+    case 'createContactCard':
+      return port.setContactCards({
+        create: { [intent.creationId]: cardCreateProps(intent.card) },
+        ifInState,
+      })
+    case 'updateContactCard':
+      return port.setContactCards({ update: { [intent.id]: intent.patch }, ifInState })
+    case 'deleteContactCard':
+      return port.setContactCards({ destroy: [intent.id], ifInState })
+    case 'createAddressBook': {
+      const props: Partial<AddressBook> = { name: intent.props.name }
+      if (intent.props.description != null) props.description = intent.props.description
+      return port.setAddressBooks({ create: { [intent.creationId]: props }, ifInState })
+    }
     case 'saveDraft':
       // create-new + destroy-old in one call — RFC 8620 §5.3 processes create before destroy, so the
       // new draft exists before the prior one is removed (gap-free).
@@ -1706,6 +1872,18 @@ function rejections(intent: OutboxIntent, result: PortSetResult): Map<string, Po
       break
     case 'deleteMailbox':
       collect(result.notDestroyed, [intent.id])
+      break
+    case 'createContactCard':
+      collect(result.notCreated, [intent.creationId])
+      break
+    case 'updateContactCard':
+      collect(result.notUpdated, [intent.id])
+      break
+    case 'deleteContactCard':
+      collect(result.notDestroyed, [intent.id])
+      break
+    case 'createAddressBook':
+      collect(result.notCreated, [intent.creationId])
       break
     case 'saveDraft':
       collect(result.notCreated, [intent.creationId])
@@ -1778,6 +1956,123 @@ async function reconcileCreate(
       await db.outbox.update([accountId, queuedRow.id], { payload: rewritten })
     }
   }
+}
+
+/**
+ * Rewrite every still-QUEUED intent whose payload references `tempId`, swapping in `serverId` (M4.2).
+ * The contact analogue of the queued-rewrite loop inside {@link reconcileCreate}: an `inflight` row is
+ * executing against the id it was built with and must be left alone. `rewrite` returns a NEW intent or
+ * `null` (this row does not reference the temp id).
+ */
+async function rewriteQueued(
+  db: ReplicaDb,
+  accountId: Id,
+  rewrite: (intent: OutboxIntent) => OutboxIntent | null,
+): Promise<void> {
+  const queued = await db.outbox.where('accountId').equals(accountId).toArray()
+  for (const queuedRow of queued) {
+    if (queuedRow.status === 'inflight') continue
+    const rewritten = rewrite(queuedRow.payload as OutboxIntent)
+    if (rewritten) await db.outbox.update([accountId, queuedRow.id], { payload: rewritten })
+  }
+}
+
+/** A queued update/delete of a card created in the same session: re-point its id at the server id. */
+function rewriteContactCardTarget(intent: OutboxIntent, fromId: Id, toId: Id): OutboxIntent | null {
+  switch (intent.kind) {
+    case 'updateContactCard':
+    case 'deleteContactCard':
+      return intent.id === fromId ? { ...intent, id: toId } : null
+    default:
+      return null
+  }
+}
+
+/**
+ * A queued intent referencing an address book created in the same session: re-point the book id.
+ * Two carriers — a card CREATED into the fresh book (`addressBookIds`), and an UPDATE patch that
+ * files a card into it (`addressBookIds/<tempId>` pointer) — both of which would otherwise dangle and
+ * be answered with a bogus `notFound` (the D5 defect, contacts edition).
+ */
+function rewriteAddressBookTarget(intent: OutboxIntent, fromId: Id, toId: Id): OutboxIntent | null {
+  if (intent.kind === 'createContactCard') {
+    if (intent.card.addressBookIds[fromId] !== true) return null
+    const addressBookIds = { ...intent.card.addressBookIds }
+    delete addressBookIds[fromId]
+    addressBookIds[toId] = true
+    return { ...intent, card: { ...intent.card, addressBookIds } }
+  }
+  if (intent.kind === 'updateContactCard') {
+    const fromKey = `addressBookIds/${fromId}`
+    if (!(fromKey in intent.patch)) return null
+    const patch: PatchObject = {}
+    for (const [key, value] of Object.entries(intent.patch)) {
+      if (key === fromKey) patch[`addressBookIds/${toId}`] = value
+      else patch[key] = value
+    }
+    return { ...intent, patch }
+  }
+  return null
+}
+
+/**
+ * On a confirmed card create, swap the optimistic creation id for the server id (M4.2) — on the card
+ * row AND on any still-queued update/delete of that card. The direct analogue of the mailbox half of
+ * {@link reconcileCreate}; a card has no dependents filed UNDER it (group membership is by JSContact
+ * `uid`, not JMAP id), so only the row and the queued intents move.
+ */
+async function reconcileContactCardCreate(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  result: PortSetResult,
+): Promise<void> {
+  if (intent.kind !== 'createContactCard') return
+  const created = result.created[intent.creationId]
+  if (!created) return
+  const tempId = intent.creationId
+  const serverId = created.id
+  const temp = await db.contactCards.get([accountId, tempId])
+  await deleteContactCards(db, accountId, [tempId])
+  if (temp) await putContactCards(db, accountId, [{ ...rowToCard(temp), id: serverId }])
+  await rewriteQueued(db, accountId, (queued) => rewriteContactCardTarget(queued, tempId, serverId))
+}
+
+/**
+ * On a confirmed address-book create, swap the optimistic creation id for the server id (M4.2) — on
+ * the book row, on every card optimistically filed into the temp book (`abk` membership index → the
+ * server id, exactly as {@link reconcileCreate} re-files emails via `amb`), and on any still-queued
+ * intent that referenced the temp book.
+ */
+async function reconcileAddressBookCreate(
+  db: ReplicaDb,
+  accountId: Id,
+  intent: OutboxIntent,
+  result: PortSetResult,
+): Promise<void> {
+  if (intent.kind !== 'createAddressBook') return
+  const created = result.created[intent.creationId]
+  if (!created) return
+  const tempId = intent.creationId
+  const serverId = created.id
+  const temp = await db.addressBooks.get([accountId, tempId])
+  await deleteAddressBooks(db, accountId, [tempId])
+  if (temp) await db.addressBooks.put({ ...temp, id: serverId })
+
+  const affected = await db.contactCards.where('abk').equals(scopeKey(accountId, tempId)).toArray()
+  if (affected.length > 0) {
+    await putContactCards(
+      db,
+      accountId,
+      affected.map((row) => {
+        const addressBookIds = { ...row.addressBookIds }
+        delete addressBookIds[tempId]
+        addressBookIds[serverId] = true
+        return { ...rowToCard(row), addressBookIds }
+      }),
+    )
+  }
+  await rewriteQueued(db, accountId, (queued) => rewriteAddressBookTarget(queued, tempId, serverId))
 }
 
 /** On a confirmed draft save, record the new server Email id on the local drafts row (M2.6). */
@@ -1902,8 +2197,9 @@ export interface ReplayOptions {
   readonly now?: number
   /** Injected jitter source for the backoff curve (tests pass `() => 0`); defaults to `Math.random`. */
   readonly random?: () => number
-  /** Re-sync the given type and return its FRESH state string — the bounded `stateMismatch` recovery. */
-  readonly refreshState?: (type: 'Mailbox') => Promise<string | null>
+  /** Re-sync the given type and return its FRESH state string — the bounded `stateMismatch` recovery.
+   *  Typed over every {@link GuardedType} so a guarded contact intent refreshes ContactCard, not Mailbox. */
+  readonly refreshState?: (type: GuardedType) => Promise<string | null>
   /** `false` skips the pass entirely (the engine's `isOnline()` guard). Defaults to `true`. */
   readonly online?: boolean
   readonly backoff?: OutboxBackoff
@@ -2112,8 +2408,10 @@ export async function replayOutbox(
         await db.outbox.update([accountId, row.id], { refreshes })
         // Re-execute against the FRESH state; the server's answer to that re-run IS the re-check of
         // the precondition (its per-object SetError is authoritative — a locally-derived predicate
-        // could disagree with it).
-        ifInState = await options.refreshState('Mailbox')
+        // could disagree with it). Refresh the type that guards THIS intent — a guarded contact intent
+        // re-syncs ContactCard, not Mailbox. (`?? 'Mailbox'` is unreachable: only a guarded intent, one
+        // with a non-null `stateGuardType`, can carry the `ifInState` that yields a `stateMismatch`.)
+        ifInState = await options.refreshState(stateGuardType(intent.kind) ?? 'Mailbox')
       }
     }
 
@@ -2183,6 +2481,8 @@ export async function replayOutbox(
     const failures = rejections(intent, result)
     if (failures.size === 0) {
       await reconcileCreate(db, accountId, intent, result)
+      await reconcileContactCardCreate(db, accountId, intent, result)
+      await reconcileAddressBookCreate(db, accountId, intent, result)
       await reconcileDraftSave(db, accountId, intent, result)
       await reconcileSend(db, accountId, intent, result)
       await db.outbox.delete([accountId, row.id])
@@ -2253,6 +2553,12 @@ function rejectionKeys(intent: OutboxIntent): string[] {
     case 'renameMailbox':
     case 'moveMailbox':
     case 'deleteMailbox':
+      return [intent.id]
+    case 'createContactCard':
+    case 'createAddressBook':
+      return [intent.creationId]
+    case 'updateContactCard':
+    case 'deleteContactCard':
       return [intent.id]
     case 'saveDraft':
       return [intent.creationId]

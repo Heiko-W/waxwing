@@ -24,6 +24,14 @@ export {
   SetErrorTypes,
 } from './conflict'
 export {
+  type ContactMutationDispatcher,
+  enqueueCreateAddressBook,
+  enqueueCreateContactCard,
+  enqueueDeleteContactCard,
+  enqueueUpdateContactCard,
+  type IdSource,
+} from './contact-mutations'
+export {
   createSyncEngine,
   getActiveEngine,
   MAINTENANCE_INTERVAL_MS,
@@ -55,7 +63,7 @@ export {
   runMaintenance,
   withQuotaRecovery,
 } from './maintenance'
-export type { OutboxIntent } from './outbox'
+export { type GuardedType, type OutboxIntent, stateGuardType } from './outbox'
 export { createJmapPort } from './port'
 export { SyncEngineHost, useActiveEngine } from './react'
 export { getEngineStatus, useEngineStatus } from './status'

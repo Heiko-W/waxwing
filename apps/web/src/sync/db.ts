@@ -342,6 +342,8 @@ export type ConflictCode =
   | 'messageGone'
   | 'folderGone'
   | 'folderNotEmpty'
+  /** A ContactCard `update` was rejected `notFound` — the card was deleted elsewhere while we edited it (M4.2). */
+  | 'contactGone'
   | 'forbidden'
   | 'quota'
   | 'tooLarge'
@@ -411,6 +413,14 @@ export type OutboxUndo =
   /** `destroyEmails`: re-fetch the rejected ids from the server (they still exist there). */
   | { readonly kind: 'refetchEmails'; readonly prunedKeys?: string[] }
   | { readonly kind: 'mailbox'; readonly id: Id; readonly prior: MailboxRow | null }
+  /**
+   * A ContactCard create/update/delete (M4.2). `prior` is the pre-mutation row (null for a create) —
+   * the full stored row, so a rollback is exact regardless of how the optimistic patch was applied.
+   * The mirror of the `mailbox` variant for the contact-card object.
+   */
+  | { readonly kind: 'contactCard'; readonly id: Id; readonly prior: ContactCardRow | null }
+  /** An AddressBook create (M4.2) — `prior` is always null this stage (no book update/delete yet). */
+  | { readonly kind: 'addressBook'; readonly id: Id; readonly prior: AddressBookRow | null }
 
 /** Why an outbox row is `error` (M3.3). Drives the conflict notice + the problems dialog. */
 export interface OutboxConflict {

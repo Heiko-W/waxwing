@@ -809,6 +809,7 @@
       "messageGone": "That message no longer exists on the server.",
       "folderGone": "That folder no longer exists.",
       "folderNotEmpty": "The folder isn't empty.",
+      "contactGone": "That contact no longer exists on the server.",
       "forbidden": "You don't have permission for that.",
       "quota": "Your mailbox is over quota.",
       "tooLarge": "That's too large for the server.",

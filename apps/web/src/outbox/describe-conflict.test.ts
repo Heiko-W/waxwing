@@ -7,6 +7,7 @@ const ALL_CODES: ConflictCode[] = [
   'messageGone',
   'folderGone',
   'folderNotEmpty',
+  'contactGone',
   'forbidden',
   'quota',
   'tooLarge',

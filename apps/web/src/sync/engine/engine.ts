@@ -82,7 +82,7 @@ import {
   type OutboxIntent,
   reapplyPendingCounts,
   replayOutbox,
-  STATE_GUARDED_INTENTS,
+  stateGuardType,
 } from './outbox'
 import { setEngineStatus } from './status'
 import {
@@ -352,7 +352,7 @@ export class SyncEngine {
    */
   async dispatch(intent: OutboxIntent, options: Omit<EnqueueOptions, 'now'>): Promise<void> {
     const ifInState =
-      options.ifInState !== undefined ? options.ifInState : await this.mailboxGuard(intent)
+      options.ifInState !== undefined ? options.ifInState : await this.stateGuard(intent)
     await enqueueAction(this.db, this.accountId, intent, {
       ...options,
       ifInState,
@@ -363,15 +363,17 @@ export class SyncEngine {
   }
 
   /**
-   * The `ifInState` guard for a `Mailbox/set` (M3.3): folder state churns rarely and a concurrent
-   * folder mutation by another client is exactly the "gentle notice" case. `Email/set` stays
-   * UNGUARDED on purpose — the Email state is account-global and advances on every inbound message,
-   * so a guard would turn every offline replay into a bogus conflict (and the auto-chunker cannot
-   * split a state-guarded set, which would break every bulk cleanup chunk).
+   * The `ifInState` guard for a guarded `Foo/set` (M3.3; M4.2 for contacts): a Mailbox or ContactCard
+   * state churns rarely, so a concurrent mutation by another client is exactly the "gentle notice"
+   * case. `Email/set` stays UNGUARDED on purpose — the Email state is account-global and advances on
+   * every inbound message, so a guard would turn every offline replay into a bogus conflict (and the
+   * auto-chunker cannot split a state-guarded set, which would break every bulk cleanup chunk). Which
+   * intents are guarded, and against which type's state, is decided by {@link stateGuardType}.
    */
-  private async mailboxGuard(intent: OutboxIntent): Promise<string | null> {
-    if (!STATE_GUARDED_INTENTS.has(intent.kind)) return null
-    return getSyncState(this.db, this.accountId, 'Mailbox')
+  private async stateGuard(intent: OutboxIntent): Promise<string | null> {
+    const type = stateGuardType(intent.kind)
+    if (type === null) return null
+    return getSyncState(this.db, this.accountId, type)
   }
 
   /**
@@ -1106,10 +1108,21 @@ export class SyncEngine {
         random: this.random,
         online: true,
         refreshState: async (type) => {
-          const writes = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
-          // Same hazard as in `runSyncPass` (gap B7): this refresh writes the server's ABSOLUTE
-          // counts mid-replay, over mailboxes that unsent intents have already patched.
-          await reapplyPendingCounts(this.db, this.accountId, writes)
+          if (type === 'Mailbox') {
+            const writes = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
+            // Same hazard as in `runSyncPass` (gap B7): this refresh writes the server's ABSOLUTE
+            // counts mid-replay, over mailboxes that unsent intents have already patched.
+            await reapplyPendingCounts(this.db, this.accountId, writes)
+          } else if (type === 'ContactCard') {
+            // A guarded contact update/delete lost the `stateMismatch` race: re-pull the ContactCard
+            // delta so the re-execute carries the fresh state (M4.2). No badge hazard — cards move no
+            // `Mailbox` counts.
+            await syncContactCards(this.port, this.db, this.accountId, this.clock)
+          } else {
+            // AddressBook: no guarded book intent ships this stage (update/delete are 5b), but keep the
+            // refresh total so the seam is honest if one is added later.
+            await syncAddressBooks(this.port, this.db, this.accountId, this.clock)
+          }
           return getSyncState(this.db, this.accountId, type)
         },
       })
