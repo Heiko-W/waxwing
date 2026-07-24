@@ -14,8 +14,9 @@
  * preference), so the mode is fixed to `right`.
  */
 
+import type { Id } from '@waxwing/jmap'
 import { ChevronLeft, PanelLeft, Plus } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate, useRoute } from '../app/route'
 import { computePaneLayout, useLayoutTier } from '../app/shell/layout'
@@ -25,8 +26,19 @@ import { AddressBookList } from './AddressBookList'
 import { ContactDetail } from './ContactDetail'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
 import { ContactList } from './ContactList'
+import { groupMemberUids, isGroupCard } from './contact-group-mapping'
 import styles from './contacts.module.css'
+import { indexCardsByUid } from './expand-group'
+import { GroupForm, type GroupFormSubmit } from './GroupForm'
+import { GroupRail } from './GroupRail'
+import { GroupView } from './GroupView'
 import { useContactActions } from './use-contact-actions'
+import {
+  resolveMembers,
+  selectGroups,
+  selectMemberCandidates,
+  useAccountContactCards,
+} from './use-contact-groups'
 
 const BOOKS_REGION_ID = 'waxwing-books-region'
 const BOOKS_TOGGLE_ID = 'waxwing-books-toggle'
@@ -74,16 +86,41 @@ export function ContactsScreen() {
   const actions = useContactActions()
 
   const [editor, setEditor] = useState<EditorMode>(null)
-  // Close any open editor when the route's card changes (navigated away) — the effect is deliberately
-  // keyed on `cardId` even though its body only resets, which is what biome flags below.
+  // The group selected in the rail (LOCAL, not the route): filters the list pane to its members.
+  const [selectedGroupId, setSelectedGroupId] = useState<Id | null>(null)
+  const [groupEditor, setGroupEditor] = useState<EditorMode>(null)
+  // Close any open editor (contact OR group) when the route's card changes (navigated away). The
+  // group SELECTION is kept — opening a member from a group's list keeps the group in view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on cardId change, not on mount only.
   useEffect(() => {
     setEditor(null)
+    setGroupEditor(null)
   }, [cardId])
 
+  const allCards = useAccountContactCards()
+  const groups = useMemo(
+    () => (allCards === undefined ? undefined : selectGroups(allCards, bookId)),
+    [allCards, bookId],
+  )
+  const candidates = useMemo(() => selectMemberCandidates(allCards ?? []), [allCards])
+  const cardsByUid = useMemo(() => indexCardsByUid(allCards ?? []), [allCards])
+  const selectedGroup = useMemo(
+    () =>
+      selectedGroupId === null
+        ? undefined
+        : (allCards ?? []).find((card) => card.id === selectedGroupId && isGroupCard(card)),
+    [allCards, selectedGroupId],
+  )
+  const groupMembers = useMemo(
+    () =>
+      selectedGroup === undefined ? [] : resolveMembers(groupMemberUids(selectedGroup), cardsByUid),
+    [selectedGroup, cardsByUid],
+  )
+
   const canEditSelected = cardIsWritable(selectedCard, books)
+  const canEditGroup = cardIsWritable(selectedGroup, books)
   const targetBook = pickTargetBook(bookId, books)
-  const editing = editor !== null
+  const editing = editor !== null || groupEditor !== null
 
   const onSubmit = useCallback(
     async (submit: ContactFormSubmit): Promise<void> => {
@@ -99,6 +136,20 @@ export function ContactsScreen() {
     [actions, navigate, bookId, books],
   )
 
+  const onGroupSubmit = useCallback(
+    async (submit: GroupFormSubmit): Promise<void> => {
+      setGroupEditor(null)
+      if (submit.kind === 'update') {
+        actions.update(submit.cardId, submit.patch)
+        return
+      }
+      // The optimistic row carries the creation id; select it so the rail highlights the new group.
+      const newGroupId = await actions.create(submit.card)
+      setSelectedGroupId(newGroupId)
+    },
+    [actions],
+  )
+
   // The pane must show the editor whenever one is open — even a create with no card selected (so it
   // takes over the single pane on a phone). Otherwise the reading pane follows the route as before.
   const layout = computePaneLayout(tier, 'right', cardId !== undefined || editing)
@@ -110,6 +161,21 @@ export function ContactsScreen() {
     setBooksOpen(false)
     document.getElementById(BOOKS_TOGGLE_ID)?.focus()
   }, [])
+
+  // Selecting a group in the rail is a LOCAL selection (no route change); close any open editor and,
+  // on a narrow screen, the drawer so the member list is visible.
+  const onSelectGroup = useCallback(
+    (groupId: Id): void => {
+      setSelectedGroupId(groupId)
+      setEditor(null)
+      setGroupEditor(null)
+      if (drawerCapable) closeBooks()
+    },
+    [drawerCapable, closeBooks],
+  )
+
+  // Choosing a book (or "All Contacts") leaves the group's member view.
+  const onSelectBook = useCallback(() => setSelectedGroupId(null), [])
 
   // Escape closes the address-book drawer (narrow screens only), restoring focus to its toggle.
   useEffect(() => {
@@ -171,13 +237,48 @@ export function ContactsScreen() {
         </IconButton>
       </div>
       <div className={styles.paneBody}>
-        <ContactList bookId={bookId} selectedCardId={cardId} />
+        {selectedGroup !== undefined ? (
+          <GroupView
+            group={selectedGroup}
+            members={groupMembers}
+            bookId={bookId}
+            selectedCardId={cardId}
+            canWrite={canEditGroup}
+            onEdit={() => setGroupEditor('edit')}
+            onDelete={() => {
+              actions.remove(selectedGroup.id)
+              setSelectedGroupId(null)
+            }}
+            onClose={() => setSelectedGroupId(null)}
+          />
+        ) : (
+          <ContactList bookId={bookId} selectedCardId={cardId} />
+        )}
       </div>
     </section>
   )
 
   const detailContent =
-    editor === 'create' && targetBook !== undefined ? (
+    groupEditor === 'create' && targetBook !== undefined ? (
+      <GroupForm
+        mode="create"
+        bookId={targetBook.id}
+        candidates={candidates}
+        canWrite
+        onSubmit={onGroupSubmit}
+        onCancel={() => setGroupEditor(null)}
+      />
+    ) : groupEditor === 'edit' && selectedGroup !== undefined ? (
+      <GroupForm
+        mode="edit"
+        card={selectedGroup}
+        bookId={bookId ?? Object.keys(selectedGroup.addressBookIds)[0] ?? ''}
+        candidates={candidates}
+        canWrite={canEditGroup}
+        onSubmit={onGroupSubmit}
+        onCancel={() => setGroupEditor(null)}
+      />
+    ) : editor === 'create' && targetBook !== undefined ? (
       <ContactForm
         mode="create"
         bookId={targetBook.id}
@@ -232,7 +333,13 @@ export function ContactsScreen() {
   return (
     <div className={styles.contactsScreen}>
       <nav id={BOOKS_REGION_ID} className={booksRegionClass} aria-label={t('contacts.books.title')}>
-        <AddressBookList selectedBookId={bookId} />
+        <AddressBookList selectedBookId={bookId} onSelectBook={onSelectBook} />
+        <GroupRail
+          groups={groups}
+          selectedGroupId={selectedGroupId}
+          onSelect={onSelectGroup}
+          {...(targetBook !== undefined ? { onNew: () => setGroupEditor('create') } : {})}
+        />
       </nav>
       {drawerCapable && booksOpen && (
         <button

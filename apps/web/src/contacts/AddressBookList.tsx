@@ -21,9 +21,15 @@ import styles from './contacts.module.css'
 export interface AddressBookListProps {
   /** The address book the route currently selects (`undefined` = the "All Contacts" view). */
   readonly selectedBookId: string | undefined
+  /**
+   * Fired when the user picks a book (or "All Contacts"). The screen uses it to drop any local group
+   * selection, since choosing a book means leaving the group's member view — a book is a route change,
+   * a group is not, so the two selections cannot both be the route.
+   */
+  readonly onSelectBook?: () => void
 }
 
-export function AddressBookList({ selectedBookId }: AddressBookListProps) {
+export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookListProps) {
   const { t } = useTranslation()
   const books = useAddressBooks()
 
@@ -35,6 +41,7 @@ export function AddressBookList({ selectedBookId }: AddressBookListProps) {
           <Link
             to={contactsPath()}
             className={styles.bookItem}
+            {...(onSelectBook ? { onClick: onSelectBook } : {})}
             {...(selectedBookId === undefined ? { 'aria-current': 'page' as const } : {})}
           >
             <Users aria-hidden="true" className={styles.bookIcon} />
@@ -49,7 +56,12 @@ export function AddressBookList({ selectedBookId }: AddressBookListProps) {
           <li className={styles.railEmpty}>{t('contacts.books.empty')}</li>
         ) : (
           books.map((book) => (
-            <AddressBookItem key={book.id} book={book} selected={book.id === selectedBookId} />
+            <AddressBookItem
+              key={book.id}
+              book={book}
+              selected={book.id === selectedBookId}
+              {...(onSelectBook ? { onSelect: onSelectBook } : {})}
+            />
           ))
         )}
       </ul>
@@ -62,7 +74,15 @@ function isShared(book: AddressBookRow): boolean {
   return shareWith != null && Object.keys(shareWith).length > 0
 }
 
-function AddressBookItem({ book, selected }: { book: AddressBookRow; selected: boolean }) {
+function AddressBookItem({
+  book,
+  selected,
+  onSelect,
+}: {
+  book: AddressBookRow
+  selected: boolean
+  onSelect?: () => void
+}) {
   const { t } = useTranslation()
   const readOnly = book.myRights.mayWrite === false
   return (
@@ -70,6 +90,7 @@ function AddressBookItem({ book, selected }: { book: AddressBookRow; selected: b
       <Link
         to={contactsPath(book.id)}
         className={styles.bookItem}
+        {...(onSelect ? { onClick: onSelect } : {})}
         {...(selected ? { 'aria-current': 'page' as const } : {})}
       >
         <BookOpen aria-hidden="true" className={styles.bookIcon} />

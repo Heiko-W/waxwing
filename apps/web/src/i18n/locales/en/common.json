@@ -410,6 +410,33 @@
       "body": "Are you sure you want to delete {{name}}?",
       "confirm": "Delete",
       "cancel": "Cancel"
+    },
+    "groups": {
+      "title": "Groups",
+      "new": "New group",
+      "loading": "Loading groups",
+      "empty": "No groups.",
+      "newTitle": "New group",
+      "editTitle": "Edit group",
+      "name": "Group name",
+      "sections": {
+        "name": "Name"
+      },
+      "membersCount_one": "{{count}} member",
+      "membersCount_other": "{{count}} members",
+      "membersLabel": "Group members",
+      "noMembers": "No members yet.",
+      "addMembers": "Add members",
+      "searchMembers": "Search contacts to add",
+      "noCandidates": "No contacts to add.",
+      "removeMember": "Remove {{name}} from group",
+      "addNamed": "Add {{name}}",
+      "unknownMember": "Unknown contact",
+      "edit": "Edit group",
+      "delete": "Delete group",
+      "backToContacts": "All contacts",
+      "deleteTitle": "Delete group",
+      "deleteBody": "Delete the group {{name}}? The contacts in it are not deleted."
     }
   },
   "footer": {

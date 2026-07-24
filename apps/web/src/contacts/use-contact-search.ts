@@ -59,6 +59,15 @@ function definedCards(list: (ContactCardRow | undefined)[] | undefined): Contact
   return (list ?? []).filter((card): card is ContactCardRow => card !== undefined)
 }
 
+/**
+ * Drop group cards (`kind: 'group'`) — they belong in the rail, not the individual list (Apple
+ * Contacts convention). An undefined placeholder (a not-yet-synced row) is kept: its kind is unknown,
+ * and dropping the skeleton would shorten the window; a group that resolves later simply disappears.
+ */
+function withoutGroups(list: (ContactCardRow | undefined)[]): (ContactCardRow | undefined)[] {
+  return list.filter((card) => card === undefined || card.kind !== 'group')
+}
+
 /** Alphabetical by display name (Apple Contacts order), regardless of the server's window collation. */
 function sortForDisplay(cards: (ContactCardRow | undefined)[]): (ContactCardRow | undefined)[] {
   return [...cards].sort((a, b) => {
@@ -106,17 +115,19 @@ export function useContactSearch(bookId: Id | undefined): ContactSearchState {
 
   const cards = useMemo(() => {
     if (baseCards === undefined) return undefined
-    if (trimmed === '') return sortForDisplay(baseCards)
+    if (trimmed === '') return sortForDisplay(withoutGroups(baseCards))
 
     const needle = trimmed.toLowerCase()
     // Instant local pass, filtered by the CURRENT text (not the debounced one) for zero-latency,
-    // offline-complete feedback.
-    const local = definedCards(baseCards).filter((card) => contactMatches(card, needle))
+    // offline-complete feedback. Groups never appear in the individual list.
+    const local = definedCards(baseCards).filter(
+      (card) => card.kind !== 'group' && contactMatches(card, needle),
+    )
     const seen = new Set(local.map((card) => card.id))
     // Server-only matches (a partially-replicated book). Re-filtered by the CURRENT needle so a stale
     // echo for the previous query cannot leak a card that no longer matches.
     const serverOnly = definedCards(serverCards).filter(
-      (card) => !seen.has(card.id) && contactMatches(card, needle),
+      (card) => card.kind !== 'group' && !seen.has(card.id) && contactMatches(card, needle),
     )
     return sortForDisplay([...local, ...serverOnly])
   }, [baseCards, serverCards, trimmed])

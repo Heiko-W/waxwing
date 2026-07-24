@@ -585,6 +585,122 @@
   margin-block-start: var(--waxwing-space-1);
 }
 
+/* ---- Groups (rail section, editor member picker, member view) ---- */
+
+.railHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--waxwing-space-2);
+}
+
+.groupMembers,
+.groupPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.groupMemberRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-md);
+}
+
+.groupMemberName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupMemberEmpty {
+  margin: 0;
+  padding: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.groupPickerItem {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  inline-size: 100%;
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border: 0;
+  border-radius: var(--waxwing-radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.groupPickerItem:hover {
+  background-color: var(--waxwing-surface-2);
+}
+
+.groupPickerItem:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
+}
+
+.groupViewHead {
+  padding: var(--waxwing-space-3) var(--waxwing-space-3) var(--waxwing-space-1);
+}
+
+.groupViewTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-lg);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.groupViewCount {
+  margin: var(--waxwing-space-1) 0 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.groupMemberList {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 2px;
+  min-block-size: 0;
+  overflow: auto;
+  margin: 0;
+  padding: var(--waxwing-space-2);
+  list-style: none;
+}
+
+.groupMemberLink {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-md);
+  color: var(--waxwing-text);
+  text-decoration: none;
+}
+
+.groupMemberLink:hover {
+  background-color: var(--waxwing-surface-hover);
+}
+
+.groupMemberLinkSelected,
+.groupMemberLinkSelected:hover {
+  background-color: var(--waxwing-surface-selected);
+}
+
 /* ---- Tablet+ : the address-book rail loses its drawer chrome on desktop ---- */
 
 @media (min-width: 64em) {

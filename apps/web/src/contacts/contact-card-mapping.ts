@@ -620,8 +620,12 @@ function omitKey<T>(
   return out
 }
 
-/** Structural equality over plain JSON-ish values (ignores object key order). */
-function deepEqual(a: unknown, b: unknown): boolean {
+/**
+ * Structural equality over plain JSON-ish values (ignores object key order). Exported so the group
+ * mapping ({@link ./contact-group-mapping}) computes its minimal `name`/`members` patch on the SAME
+ * comparison this module's {@link diffCardPatch} uses, rather than duplicating the recursion.
+ */
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
   const arrayA = Array.isArray(a)

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../app/route'
@@ -194,7 +194,10 @@ describe('ContactsScreen', () => {
     renderScreen('/contacts/personal/c1')
 
     const edit = await screen.findByRole('button', { name: /Edit/ })
-    expect(edit).toBeEnabled()
+    // The write guard depends on two live queries (the card AND its books). The button appears with
+    // the card; wait for the books query to settle before asserting it is enabled, so the assertion
+    // does not race the load order under parallel test load.
+    await waitFor(() => expect(edit).toBeEnabled())
     await user.click(edit)
     expect(screen.getByRole('heading', { name: 'Edit contact' })).toBeInTheDocument()
   })

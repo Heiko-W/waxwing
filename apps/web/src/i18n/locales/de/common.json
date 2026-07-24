@@ -410,6 +410,33 @@
       "body": "Möchten Sie {{name}} wirklich löschen?",
       "confirm": "Löschen",
       "cancel": "Abbrechen"
+    },
+    "groups": {
+      "title": "Gruppen",
+      "new": "Neue Gruppe",
+      "loading": "Gruppen werden geladen",
+      "empty": "Keine Gruppen.",
+      "newTitle": "Neue Gruppe",
+      "editTitle": "Gruppe bearbeiten",
+      "name": "Gruppenname",
+      "sections": {
+        "name": "Name"
+      },
+      "membersCount_one": "{{count}} Mitglied",
+      "membersCount_other": "{{count}} Mitglieder",
+      "membersLabel": "Gruppenmitglieder",
+      "noMembers": "Noch keine Mitglieder.",
+      "addMembers": "Mitglieder hinzufügen",
+      "searchMembers": "Kontakte zum Hinzufügen suchen",
+      "noCandidates": "Keine Kontakte zum Hinzufügen.",
+      "removeMember": "{{name}} aus der Gruppe entfernen",
+      "addNamed": "{{name}} hinzufügen",
+      "unknownMember": "Unbekannter Kontakt",
+      "edit": "Gruppe bearbeiten",
+      "delete": "Gruppe löschen",
+      "backToContacts": "Alle Kontakte",
+      "deleteTitle": "Gruppe löschen",
+      "deleteBody": "Die Gruppe {{name}} löschen? Die enthaltenen Kontakte werden nicht gelöscht."
     }
   },
   "footer": {
