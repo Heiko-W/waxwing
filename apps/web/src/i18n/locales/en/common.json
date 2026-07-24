@@ -301,7 +301,60 @@
   },
   "contacts": {
     "title": "Contacts",
-    "placeholder": "Contacts arrive in a later milestone."
+    "noName": "No name",
+    "books": {
+      "title": "Address books",
+      "all": "All Contacts",
+      "default": "Default",
+      "shared": "Shared",
+      "readOnly": "Read only",
+      "show": "Show address books",
+      "hide": "Hide address books",
+      "loading": "Loading address books",
+      "empty": "No address books."
+    },
+    "list": {
+      "title": "Contacts",
+      "resize": "Resize the contact list",
+      "empty": "No contacts.",
+      "loading": "Loading contacts",
+      "count_one": "{{count}} contact",
+      "count_other": "{{count}} contacts"
+    },
+    "search": {
+      "label": "Search contacts",
+      "placeholder": "Search contacts",
+      "clear": "Clear search",
+      "empty": "No contacts match your search."
+    },
+    "detail": {
+      "title": "Contact",
+      "empty": "Select a contact to see their details.",
+      "loading": "Loading contact",
+      "back": "Back to contacts",
+      "edit": "Edit",
+      "sections": {
+        "email": "Email",
+        "phone": "Phone",
+        "address": "Address",
+        "birthday": "Birthday",
+        "note": "Notes"
+      }
+    },
+    "labels": {
+      "work": "Work",
+      "private": "Home",
+      "home": "Home",
+      "mobile": "Mobile",
+      "fax": "Fax",
+      "pager": "Pager",
+      "voice": "Voice",
+      "video": "Video",
+      "text": "Text",
+      "main-number": "Main",
+      "textphone": "Textphone",
+      "other": "Other"
+    }
   },
   "footer": {
     "label": "Legal and support",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CONTACTS_PATH,
+  contactsPath,
   deriveBase,
   mailPath,
   matchRoute,
@@ -74,6 +75,20 @@ describe('matchRoute (empty base)', () => {
   it('maps contacts and settings (with a splat rest)', () => {
     expect(matchRoute('', loc('/contacts')).id).toBe('contacts')
 
+    const bare = matchRoute('', loc('/contacts'))
+    expect(bare.params.bookId).toBeUndefined()
+    expect(bare.params.cardId).toBeUndefined()
+
+    const book = matchRoute('', loc('/contacts/book1'))
+    expect(book.id).toBe('contacts')
+    expect(book.params.bookId).toBe('book1')
+    expect(book.params.cardId).toBeUndefined()
+
+    const card = matchRoute('', loc('/contacts/book1/c42'))
+    expect(card.id).toBe('contacts')
+    expect(card.params.bookId).toBe('book1')
+    expect(card.params.cardId).toBe('c42')
+
     const settings = matchRoute('', loc('/settings'))
     expect(settings.id).toBe('settings')
     expect(settings.rest).toBe('')
@@ -116,5 +131,13 @@ describe('path builders', () => {
 
   it('exposes the contacts path', () => {
     expect(CONTACTS_PATH).toBe('/contacts')
+  })
+
+  it('builds contacts paths', () => {
+    expect(contactsPath()).toBe('/contacts')
+    expect(contactsPath('book1')).toBe('/contacts/book1')
+    expect(contactsPath('book1', 'c42')).toBe('/contacts/book1/c42')
+    // A card without a book has no addressable list to hang off, so the book segment wins.
+    expect(contactsPath(undefined, 'c42')).toBe('/contacts')
   })
 })

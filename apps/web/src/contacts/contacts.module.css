@@ -1,26 +1,419 @@
-.page {
+/*
+ * Contacts area (M4.2). Mirrors the mail shell's pane machinery (app/shell/shell.module.css) so
+ * contacts and mail read as one app: a phone-first base (single pane + off-canvas book drawer) with
+ * the same two `min-width` breakpoints (40em tablet, 64em desktop) that BP in layout.ts drives — keep
+ * them in sync. The one structural JS decision (SplitPane vs. single pane) lives in ContactsScreen.tsx.
+ */
+
+.contactsScreen {
   display: flex;
-  flex-direction: column;
-  gap: var(--waxwing-space-3);
-  padding: var(--waxwing-space-6);
-  max-inline-size: 60ch;
+  block-size: 100%;
+  min-block-size: 0;
 }
 
-.title {
+/* ---- Address-book rail (folder-region analogue) ---- */
+
+.booksRegion {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(80vw, 18rem);
+  padding: var(--waxwing-space-3);
+  border-inline-end: 1px solid var(--waxwing-border);
+  background-color: var(--waxwing-surface);
+  overflow: auto;
+}
+
+@media (max-width: 63.999em) {
+  .booksRegion {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 15;
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: var(--waxwing-shadow-2);
+    transition:
+      transform var(--waxwing-duration-base) var(--waxwing-ease-standard),
+      visibility 0s linear var(--waxwing-duration-base);
+  }
+
+  .booksRegionOpen {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--waxwing-duration-base) var(--waxwing-ease-standard);
+  }
+
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 14;
+    border: 0;
+    padding: 0;
+    background-color: var(--waxwing-overlay);
+  }
+}
+
+.books {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.railTitle {
+  margin: 0;
+  padding-inline: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bookList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookItem {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-md);
+  color: var(--waxwing-text);
+  text-decoration: none;
+}
+
+.bookItem:hover {
+  background-color: var(--waxwing-surface-2);
+}
+
+.bookItem[aria-current="page"] {
+  background-color: var(--waxwing-surface-2);
+  color: var(--waxwing-accent);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.bookIcon {
+  flex: none;
+  inline-size: 1.15rem;
+  block-size: 1.15rem;
+}
+
+.bookName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readOnly {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.readOnlyIcon {
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+}
+
+.railLoading,
+.railEmpty {
+  padding: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* ---- Pane area (list | detail) ---- */
+
+.paneArea {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  block-size: 100%;
+}
+
+.paneToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.paneBody {
+  flex: 1;
+  min-block-size: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Contact list ---- */
+
+.contactListPane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+}
+
+.searchBox {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.searchIcon {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-text-muted);
+}
+
+.searchInput {
+  flex: 1;
+  min-inline-size: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.searchInput:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 1px;
+}
+
+.listScroll {
+  position: relative;
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.listScroll:focus-visible {
+  outline: 2px solid var(--waxwing-accent);
+  outline-offset: -2px;
+}
+
+.listSpacer {
+  position: relative;
+  inline-size: 100%;
+}
+
+.listLoading {
+  display: flex;
+  justify-content: center;
+  padding: var(--waxwing-space-4);
+}
+
+.contactRow {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  padding-inline: var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+  cursor: default;
+}
+
+.contactRow:hover {
+  background-color: var(--waxwing-surface-hover);
+}
+
+.contactRowSelected,
+.contactRowSelected:hover {
+  background-color: var(--waxwing-surface-selected);
+}
+
+.contactRowName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listEmpty {
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-align: center;
+}
+
+/* ---- Detail ---- */
+
+.detailEmpty,
+.detailLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 100%;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-align: center;
+}
+
+.detail {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  padding: var(--waxwing-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-5);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-4);
+}
+
+.detailIdentity {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.detailName {
   margin: 0;
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
 }
 
-.placeholder {
-  margin: 0;
+.detailOrg {
+  margin: var(--waxwing-space-1) 0 0;
   color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-lg);
 }
 
-@media (max-width: 40em) {
-  .page {
-    padding: var(--waxwing-space-4);
+.detailPhoto {
+  inline-size: 5rem;
+  block-size: 5rem;
+  border-radius: var(--waxwing-radius-full);
+  object-fit: cover;
+}
+
+.detailAvatar {
+  inline-size: 5rem;
+  block-size: 5rem;
+  font-size: var(--waxwing-text-xl);
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.detailSectionTitle {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detailSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.fieldRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--waxwing-space-3);
+}
+
+.fieldIcon {
+  flex: none;
+  inline-size: 1.05rem;
+  block-size: 1.05rem;
+  margin-block-start: 2px;
+  color: var(--waxwing-text-muted);
+}
+
+.fieldMain {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.fieldLabel {
+  display: block;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.fieldValue {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.fieldLink {
+  color: var(--waxwing-accent);
+  text-decoration: none;
+}
+
+.fieldLink:hover {
+  text-decoration: underline;
+}
+
+.fieldAddress {
+  display: flex;
+  flex-direction: column;
+  font-style: normal;
+}
+
+.fieldAddressLine {
+  display: block;
+}
+
+.fieldNote {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* ---- Tablet+ : the address-book rail loses its drawer chrome on desktop ---- */
+
+@media (min-width: 64em) {
+  .booksRegion {
+    position: static;
+    transform: none;
+    visibility: visible;
+    inline-size: 16rem;
+    box-shadow: none;
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booksRegion {
+    transition: none;
   }
 }

@@ -91,7 +91,11 @@ export function matchRoute(
     return { id: 'mail', path, params, rest: '', search }
   }
   if (head === 'contacts') {
-    return { id: 'contacts', path, params: {}, rest: '', search }
+    const params: Record<string, string | undefined> = {
+      bookId: parts[1],
+      cardId: parts[2],
+    }
+    return { id: 'contacts', path, params, rest: '', search }
   }
   if (head === 'settings') {
     return { id: 'settings', path, params: {}, rest: parts.slice(1).join('/'), search }
@@ -112,3 +116,14 @@ export function settingsPath(sub?: string): string {
 }
 
 export const CONTACTS_PATH = '/contacts'
+
+/**
+ * Build the base-relative contacts route path for an address-book / card selection (M4.2). Mirrors
+ * {@link mailPath}: `/contacts`, `/contacts/:bookId`, `/contacts/:bookId/:cardId`. A `cardId` is
+ * ignored without a `bookId`, since the card is addressed relative to the book that owns the list.
+ */
+export function contactsPath(bookId?: string, cardId?: string): string {
+  if (bookId === undefined) return CONTACTS_PATH
+  if (cardId === undefined) return `${CONTACTS_PATH}/${bookId}`
+  return `${CONTACTS_PATH}/${bookId}/${cardId}`
+}

@@ -6,6 +6,7 @@ export { Link, type LinkProps } from './Link'
 export { RouterProvider, type RouterProviderProps } from './RouterProvider'
 export {
   CONTACTS_PATH,
+  contactsPath,
   deriveBase,
   HOME_PATH,
   mailPath,

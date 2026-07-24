@@ -301,7 +301,60 @@
   },
   "contacts": {
     "title": "Kontakte",
-    "placeholder": "Kontakte folgen in einem späteren Meilenstein."
+    "noName": "Kein Name",
+    "books": {
+      "title": "Adressbücher",
+      "all": "Alle Kontakte",
+      "default": "Standard",
+      "shared": "Geteilt",
+      "readOnly": "Schreibgeschützt",
+      "show": "Adressbücher anzeigen",
+      "hide": "Adressbücher ausblenden",
+      "loading": "Adressbücher werden geladen",
+      "empty": "Keine Adressbücher."
+    },
+    "list": {
+      "title": "Kontakte",
+      "resize": "Größe der Kontaktliste anpassen",
+      "empty": "Keine Kontakte.",
+      "loading": "Kontakte werden geladen",
+      "count_one": "{{count}} Kontakt",
+      "count_other": "{{count}} Kontakte"
+    },
+    "search": {
+      "label": "Kontakte durchsuchen",
+      "placeholder": "Kontakte durchsuchen",
+      "clear": "Suche löschen",
+      "empty": "Keine Kontakte entsprechen Ihrer Suche."
+    },
+    "detail": {
+      "title": "Kontakt",
+      "empty": "Wählen Sie einen Kontakt aus, um die Details zu sehen.",
+      "loading": "Kontakt wird geladen",
+      "back": "Zurück zu den Kontakten",
+      "edit": "Bearbeiten",
+      "sections": {
+        "email": "E-Mail",
+        "phone": "Telefon",
+        "address": "Adresse",
+        "birthday": "Geburtstag",
+        "note": "Notizen"
+      }
+    },
+    "labels": {
+      "work": "Geschäftlich",
+      "private": "Privat",
+      "home": "Privat",
+      "mobile": "Mobil",
+      "fax": "Fax",
+      "pager": "Pager",
+      "voice": "Telefon",
+      "video": "Video",
+      "text": "SMS",
+      "main-number": "Hauptnummer",
+      "textphone": "Schreibtelefon",
+      "other": "Sonstige"
+    }
   },
   "footer": {
     "label": "Rechtliches und Support",
