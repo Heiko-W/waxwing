@@ -57,6 +57,7 @@ export { CallHandle, creationRef, defineMethod, MethodResponses, RequestBuilder 
 // Session discovery + helpers.
 export type { GetSessionOptions } from './session'
 export {
+  getContactsCapability,
   getCoreCapability,
   getMailCapability,
   getSession,

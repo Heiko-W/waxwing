@@ -16,6 +16,24 @@
 
 import { defineMethod, type MethodDef } from './request'
 import type {
+  AddressBookChangesRequest,
+  AddressBookChangesResponse,
+  AddressBookGetRequest,
+  AddressBookGetResponse,
+  AddressBookSetRequest,
+  AddressBookSetResponse,
+  ContactCardChangesRequest,
+  ContactCardChangesResponse,
+  ContactCardGetRequest,
+  ContactCardGetResponse,
+  ContactCardQueryChangesRequest,
+  ContactCardQueryChangesResponse,
+  ContactCardQueryRequest,
+  ContactCardQueryResponse,
+  ContactCardSetRequest,
+  ContactCardSetResponse,
+} from './types/contacts'
+import type {
   EmailChangesRequest,
   EmailChangesResponse,
   EmailGetRequest,
@@ -108,6 +126,27 @@ export const Methods = {
 
   /** RFC 9425 — Quota (read-only; M3.7, FR-QTA-01). */
   quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
+
+  /** RFC 9610 — AddressBook (M4.2). No `/query`: an account's address books are always fetched whole. */
+  addressBookGet: defineMethod<AddressBookGetRequest, AddressBookGetResponse>('AddressBook/get'),
+  addressBookChanges: defineMethod<AddressBookChangesRequest, AddressBookChangesResponse>(
+    'AddressBook/changes',
+  ),
+  addressBookSet: defineMethod<AddressBookSetRequest, AddressBookSetResponse>('AddressBook/set'),
+
+  /** RFC 9610 — ContactCard (M4.2). */
+  contactCardGet: defineMethod<ContactCardGetRequest, ContactCardGetResponse>('ContactCard/get'),
+  contactCardChanges: defineMethod<ContactCardChangesRequest, ContactCardChangesResponse>(
+    'ContactCard/changes',
+  ),
+  contactCardQuery: defineMethod<ContactCardQueryRequest, ContactCardQueryResponse>(
+    'ContactCard/query',
+  ),
+  contactCardQueryChanges: defineMethod<
+    ContactCardQueryChangesRequest,
+    ContactCardQueryChangesResponse
+  >('ContactCard/queryChanges'),
+  contactCardSet: defineMethod<ContactCardSetRequest, ContactCardSetResponse>('ContactCard/set'),
 
   /**
    * RFC 8620 §7.2 — Web Push subscriptions (M4.0, FR-NOTIF-02).

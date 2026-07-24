@@ -21,6 +21,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
+    "@waxwing/jscontact": "workspace:*",
     "tsup": "8.5.1"
   }
 }

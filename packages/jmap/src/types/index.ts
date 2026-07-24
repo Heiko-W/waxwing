@@ -7,8 +7,10 @@
  *
  *   export * from './blob'        // RFC 9404  — Blob/upload, Blob/get, Blob/lookup
  *   export * from './sieve'       // RFC 9661  — SieveScript
- *   export * from './contacts'    // RFC 9610  — AddressBook, ContactCard
  */
+// RFC 9610 — AddressBook, ContactCard (M4.2). Types only; ContactCard extends the JSContact
+// `Card` from `@waxwing/jscontact` via an erased `import type`, so no runtime edge is added.
+export * from './contacts'
 export * from './core'
 export * from './mail'
 // RFC 8620 §7 push + RFC 8887 WebSocket wire frames (StateChange, Request/Response, …).

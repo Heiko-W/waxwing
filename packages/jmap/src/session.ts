@@ -3,6 +3,7 @@ import { Capabilities } from './capabilities'
 import { errorFromResponse } from './errors'
 import type { FetchLike } from './transport'
 import { getWithAuth, resolveFetch } from './transport'
+import type { ContactsCapability } from './types/contacts'
 import type {
   CoreCapability,
   Id,
@@ -143,6 +144,24 @@ function isMailCapability(value: unknown): value is MailCapability {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
   return typeof v.maxSizeAttachmentsPerEmail === 'number' && Array.isArray(v.emailQuerySortOptions)
+}
+
+/**
+ * Reads the per-account contacts-capability limits from a Session (RFC 9610 §1.5) — notably
+ * `maxAddressBooksPerCard` and `mayCreateAddressBook`. Returns `null` if the account is unknown or
+ * did not advertise `urn:ietf:params:jmap:contacts`. Mirrors {@link getMailCapability}, and like it
+ * reads the ACCOUNT-level capability object (Stalwart leaves the session-level twin empty).
+ */
+export function getContactsCapability(session: Session, accountId: Id): ContactsCapability | null {
+  const account = session.accounts[accountId]
+  if (account === undefined) return null
+  const value = account.accountCapabilities[Capabilities.contacts]
+  return isContactsCapability(value) ? value : null
+}
+
+function isContactsCapability(value: unknown): value is ContactsCapability {
+  if (typeof value !== 'object' || value === null) return false
+  return typeof (value as Record<string, unknown>).mayCreateAddressBook === 'boolean'
 }
 
 /**
