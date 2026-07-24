@@ -54,6 +54,10 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
   const serverSupports = useBackgroundPushSupport()
   const stored = useLocalPref<unknown>(NOTIFY_PREF_KEY)
 
+  // `useLocalPref` hands back `undefined` for a beat on every start, before the liveQuery resolves.
+  // That is NOT "the user switched it off" — and reading it as such tore the subscription down on
+  // every load (B29, 2026-07-24). `prefsLoaded` lets the reconciler tell "off" from "not yet".
+  const prefsLoaded = stored !== undefined
   const prefs = stored === undefined ? DEFAULT_NOTIFICATION_PREFS : coerceNotificationPrefs(stored)
   const productName = config.branding.productName
   const client = connected?.client ?? null
@@ -89,6 +93,7 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
         client,
         session,
         enabled,
+        prefsLoaded,
         permission: permissionState,
         serverSupports,
         // Exactly what the live channel says with preview OFF. A closed-app banner is contentless by
@@ -119,6 +124,7 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
     // nothing anywhere to explain why.
   }, [
     enabled,
+    prefsLoaded,
     permissionState,
     serverSupports,
     client,

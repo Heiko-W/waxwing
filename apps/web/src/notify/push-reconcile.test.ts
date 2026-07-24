@@ -124,6 +124,7 @@ function deps(over: Record<string, unknown> = {}) {
     client: fakeClient(),
     session: session(),
     enabled: true,
+    prefsLoaded: true,
     permission: 'granted' as const,
     serverSupports: true,
     title: 'Waxwing',
@@ -164,6 +165,32 @@ describe('reconcilePushSubscription', () => {
 
     expect(existing.unsubscribed).toBe(true)
     expect(await readPushRegistration(idb)).toBeNull()
+  })
+
+  /**
+   * **The regression test for the sixth B29 defect (2026-07-24 hand-test).**
+   *
+   * `useLocalPref` returns `undefined` for a beat on every start, which the host reads as the default
+   * `enabled: false`. That default is NOT the user's "off", and treating it as one tore the working
+   * subscription down on every single load — reopening the tab unregistered the live endpoint and
+   * minted a fresh one, churning through subscriptions and device ids. While the pref is still
+   * loading (`prefsLoaded: false`) an `enabled: false` must be a "come back later", never a teardown.
+   */
+  it('does NOT tear down while the master switch is still loading', async () => {
+    await writePushRegistration(
+      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      idb,
+    )
+    const existing = fakeSubscription()
+
+    expect(
+      await reconcilePushSubscription(
+        deps({ enabled: false, prefsLoaded: false, registration: fakeRegistration(existing) }),
+      ),
+    ).toBe('cannotAct')
+
+    expect(existing.unsubscribed).toBe(false) // the subscription is left exactly alone
+    expect(await readPushRegistration(idb)).not.toBeNull()
   })
 
   /**

@@ -32,7 +32,12 @@ import { freshDb } from '../sync/test-utils'
 import { NOTIFY_PREF_KEY, type NotificationPrefs } from './notify-model'
 import { publishPermission, resetPermissionStore } from './permission-store'
 import { resetReconcileSerialisation } from './push-reconcile'
-import { clearPushState, peekPendingVerification, putPendingVerification } from './push-store'
+import {
+  clearPushState,
+  peekPendingVerification,
+  putPendingVerification,
+  writePushRegistration,
+} from './push-store'
 import type { BrowserPushSubscription, PushCapableRegistration } from './push-subscribe'
 import { PushSubscriptionHost } from './use-push-subscription'
 
@@ -398,5 +403,35 @@ describe('PushSubscriptionHost lifecycle', () => {
     )
     await waitFor(() => expect(destroys(client)).toHaveLength(1))
     expect(sub?.unsubscribed).toBe(true)
+  })
+
+  it('L7: does not tear down while the master switch is still loading', async () => {
+    // The SIXTH B29 defect, found by the 2026-07-24 hand-test — the one every other test missed
+    // because they all seeded the pref BEFORE mount. `useLocalPref` returns `undefined` for a beat on
+    // every real start, which the host reads as the default `enabled: false`. Treating that as the
+    // user's "off" tore the working subscription down on every load: reopening the tab unregistered
+    // the live endpoint and minted a fresh one. Here the pref is NEVER seeded (stays "loading"), and a
+    // subscription that already exists must be left completely alone.
+    const unseeded = freshDb() // NOT seeded → useLocalPref stays undefined → prefsLoaded false
+    const client = fakeClient(makeSession())
+    const existing = fakeSubscription()
+    registration.current = existing // a subscription already exists in this browser
+    await writePushRegistration({
+      subscriptionId: 'sub-1',
+      endpoint: ENDPOINT,
+      applicationServerKey: KEY,
+      expires: FAR,
+    }) // ...and in our own bookkeeping, so a teardown would issue a server destroy too
+
+    render(
+      <Providers db={unseeded} session={connectedValue(client)}>
+        <PushSubscriptionHost />
+      </Providers>,
+    )
+    await settle()
+    await settle()
+
+    expect(destroys(client)).toHaveLength(0) // nothing destroyed server-side
+    expect(existing.unsubscribed).toBe(false) // the browser subscription left exactly alone
   })
 })

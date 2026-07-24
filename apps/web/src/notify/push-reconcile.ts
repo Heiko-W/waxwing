@@ -54,10 +54,19 @@ export interface ReconcileDeps {
   readonly client: JmapClient | null
   readonly session: Session | null
   /**
-   * The master switch (`localPrefs`) — the user's own, explicit answer. **Only this and a `denied`
-   * permission may tear a subscription down.**
+   * The master switch (`localPrefs`) — the user's own, explicit answer. **Only this (once loaded)
+   * and a `denied` permission may tear a subscription down.**
    */
   readonly enabled: boolean
+  /**
+   * Has the master switch actually LOADED from IndexedDB? `useLocalPref` returns `undefined` for a
+   * beat on every start, which the host reads as the default (`enabled: false`) — and that default
+   * is NOT the user's "off". `false` here means "still loading, do not act yet"; only a LOADED
+   * `enabled === false` is a decision. Conflating the two tore the subscription down on every single
+   * app start (B29, 2026-07-24 hand-test): reopening the tab unregistered the working endpoint and
+   * minted a fresh one, over and over.
+   */
+  readonly prefsLoaded: boolean
   /** The browser permission. `denied` is a decision; `default` is merely "not asked yet". */
   readonly permission: 'unsupported' | 'default' | 'granted' | 'denied'
   /** Does the SERVER advertise RFC 9749? Unknown (false) while the session is still loading. */
@@ -162,14 +171,18 @@ export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<Re
   if (deps.registration === null) return 'noServiceWorker'
 
   // An explicit "no" — the only thing that may destroy a subscription. `denied` is a decision the
-  // browser has recorded; `default`/`unsupported` are not, and must not be read as one.
-  if (!deps.enabled || deps.permission === 'denied') {
+  // browser has recorded. A master switch that is off is the user's decision — but ONLY once the
+  // pref has loaded: while `prefsLoaded` is false the switch merely reads as its default (off), which
+  // is not a decision and must not tear anything down. `default`/`unsupported` permission are not
+  // decisions either. (See `prefsLoaded` — this conflation destroyed the subscription on every start.)
+  if (deps.permission === 'denied' || (deps.prefsLoaded && !deps.enabled)) {
     await unsubscribePush({ registration: deps.registration, client: deps.client, idb })
     return 'unsubscribed'
   }
 
-  // Everything below needs a live client and a loaded session. Not having them is a "come back
-  // later", never a teardown.
+  // Everything below needs the pref loaded, a live client and a loaded session. Not having them is a
+  // "come back later", never a teardown.
+  if (!deps.prefsLoaded) return 'cannotAct'
   if (deps.client === null || deps.session === null) return 'cannotAct'
   if (deps.permission !== 'granted') return 'cannotAct'
   if (!deps.serverSupports) return 'cannotAct'
