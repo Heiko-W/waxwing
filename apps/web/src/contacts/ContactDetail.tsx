@@ -4,16 +4,18 @@
  * organization / title, birthday, notes) the way Apple Contacts groups them. The photo comes from the
  * card's media blob ({@link useContactPhoto}) with an initials fallback.
  *
- * READ-ONLY this stage: the Edit affordance is present but disabled — the seam for stage 5 (create /
- * edit), which is where its handler and the field editors land. Nothing here writes.
+ * Edit / Delete are RIGHTS-GATED (M4.2, stage 5b): the buttons are enabled only when the parent passes
+ * `canWrite` (the card sits in at least one writable book) together with the handlers. Edit hands off
+ * to the parent (which swaps in {@link ContactForm}); Delete raises an in-place confirmation and, on
+ * confirm, calls `onDelete` — the enqueue itself lives in the parent, not here.
  */
 
 import type { ContactCardMedia, Id } from '@waxwing/jmap'
-import { Mail as MailIcon, Pencil, Phone as PhoneIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { Mail as MailIcon, Pencil, Phone as PhoneIcon, Trash2 } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type ContactCardRow, useContactCard, useReplica } from '../sync'
-import { Avatar, Button, Spinner } from '../ui'
+import { Avatar, Button, Dialog, Spinner } from '../ui'
 import {
   communicationTypeKey,
   contactBirthday,
@@ -31,9 +33,15 @@ import { useContactPhoto } from './use-contact-photo'
 export interface ContactDetailProps {
   /** The card to show, or `undefined` when nothing is selected (renders the empty state). */
   readonly cardId: Id | undefined
+  /** Enter edit mode. Enabled only alongside `canWrite`; omitted → the Edit button stays disabled. */
+  readonly onEdit?: () => void
+  /** Delete the card (after the in-place confirmation). Enabled only alongside `canWrite`. */
+  readonly onDelete?: () => void
+  /** True when the card sits in at least one writable book; gates Edit and Delete. Default `false`. */
+  readonly canWrite?: boolean
 }
 
-export function ContactDetail({ cardId }: ContactDetailProps) {
+export function ContactDetail({ cardId, onEdit, onDelete, canWrite = false }: ContactDetailProps) {
   const { t } = useTranslation()
   const card = useContactCard(cardId ?? '')
 
@@ -47,11 +55,29 @@ export function ContactDetail({ cardId }: ContactDetailProps) {
       </div>
     )
   }
-  return <ContactCardView card={card} />
+  return (
+    <ContactCardView
+      card={card}
+      canWrite={canWrite}
+      {...(onEdit ? { onEdit } : {})}
+      {...(onDelete ? { onDelete } : {})}
+    />
+  )
 }
 
-function ContactCardView({ card }: { card: ContactCardRow }) {
+function ContactCardView({
+  card,
+  canWrite,
+  onEdit,
+  onDelete,
+}: {
+  card: ContactCardRow
+  canWrite: boolean
+  onEdit?: () => void
+  onDelete?: () => void
+}) {
   const { t, i18n } = useTranslation()
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const name = contactDisplayName(card) || t('contacts.noName')
   const organization = contactOrganization(card)
   const title = contactTitle(card)
@@ -71,12 +97,47 @@ function ContactCardView({ card }: { card: ContactCardRow }) {
             <p className={styles.detailOrg}>{[title, organization].filter(Boolean).join(' · ')}</p>
           )}
         </div>
-        {/* Read-only this stage: the create/edit editors (and this button's handler) land in stage 5. */}
-        <Button variant="ghost" disabled>
-          <Pencil aria-hidden="true" />
-          {t('contacts.detail.edit')}
-        </Button>
+        <div className={styles.detailActions}>
+          {onDelete && (
+            <Button variant="ghost" disabled={!canWrite} onClick={() => setConfirmOpen(true)}>
+              <Trash2 aria-hidden="true" />
+              {t('contacts.detail.delete')}
+            </Button>
+          )}
+          {/* Disabled without write rights (read-only book) or when the parent wires no handler. */}
+          <Button variant="ghost" disabled={!canWrite || onEdit === undefined} onClick={onEdit}>
+            <Pencil aria-hidden="true" />
+            {t('contacts.detail.edit')}
+          </Button>
+        </div>
       </header>
+
+      {onDelete && (
+        <Dialog
+          open={confirmOpen}
+          onClose={() => setConfirmOpen(false)}
+          title={t('contacts.delete.title')}
+          size="sm"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setConfirmOpen(false)}>
+                {t('contacts.delete.cancel')}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setConfirmOpen(false)
+                  onDelete()
+                }}
+              >
+                {t('contacts.delete.confirm')}
+              </Button>
+            </>
+          }
+        >
+          <p>{t('contacts.delete.body', { name })}</p>
+        </Dialog>
+      )}
 
       {emails.length > 0 && (
         <DetailSection title={t('contacts.detail.sections.email')}>

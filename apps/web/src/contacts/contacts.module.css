@@ -159,6 +159,10 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+.toolbarSpacer {
+  flex: 1;
+}
+
 .paneBody {
   flex: 1;
   min-block-size: 0;
@@ -311,6 +315,11 @@
   color: var(--waxwing-text-muted);
 }
 
+.detailActions {
+  display: flex;
+  gap: var(--waxwing-space-2);
+}
+
 .detailPhoto {
   inline-size: 5rem;
   block-size: 5rem;
@@ -397,6 +406,183 @@
 .fieldNote {
   margin: 0;
   white-space: pre-wrap;
+}
+
+/* ---- Contact form (create / edit) ---- */
+
+.form {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  padding: var(--waxwing-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-5);
+}
+
+.formToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  position: sticky;
+  inset-block-start: calc(-1 * var(--waxwing-space-5));
+  padding-block: var(--waxwing-space-2);
+  margin-block-start: calc(-1 * var(--waxwing-space-2));
+  background-color: var(--waxwing-surface);
+  z-index: 1;
+}
+
+.formTitle {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  font-size: var(--waxwing-text-lg);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.formNotice {
+  margin: 0;
+  color: var(--waxwing-danger-text, var(--waxwing-text));
+  font-size: var(--waxwing-text-sm);
+}
+
+.formHint {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.formSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.formLabel {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.nameGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--waxwing-space-2);
+}
+
+.commRow,
+.addressHead {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.commType {
+  flex: none;
+  inline-size: 7.5rem;
+}
+
+.commValue {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.addRow {
+  align-self: flex-start;
+}
+
+.addressRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+.addressHead {
+  justify-content: space-between;
+}
+
+.addressGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--waxwing-space-2);
+}
+
+.noteRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--waxwing-space-2);
+}
+
+.noteInput {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 4rem;
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.noteInput:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 1px;
+}
+
+.photoField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.photoActions {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.photoPick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  cursor: pointer;
+}
+
+.photoImg {
+  inline-size: 5rem;
+  block-size: 5rem;
+  border-radius: var(--waxwing-radius-full);
+  object-fit: cover;
+}
+
+.addField {
+  margin: 0;
+  padding: var(--waxwing-space-2) 0 0;
+  border: 0;
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
+.addFieldLegend {
+  padding: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.addFieldButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+  margin-block-start: var(--waxwing-space-1);
 }
 
 /* ---- Tablet+ : the address-book rail loses its drawer chrome on desktop ---- */

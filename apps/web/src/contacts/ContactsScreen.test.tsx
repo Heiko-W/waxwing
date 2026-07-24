@@ -161,4 +161,41 @@ describe('ContactsScreen', () => {
     await screen.findByRole('option', { name: 'Alice Anderson' })
     await expectNoA11yViolations(container)
   })
+
+  it('opens (and cancels) the create form from the New contact button', async () => {
+    const user = userEvent.setup()
+    renderScreen('/contacts/personal')
+    await screen.findByRole('option', { name: 'Alice Anderson' })
+
+    await user.click(screen.getByRole('button', { name: 'New contact' }))
+    expect(screen.getByRole('heading', { name: 'New contact' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('heading', { name: 'New contact' })).not.toBeInTheDocument()
+  })
+
+  it('disables New contact in a read-only address book (read-only guard)', async () => {
+    await putAddressBooks(db, 'a', [
+      addressBook('ro', {
+        name: 'Shared',
+        myRights: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: false },
+      }),
+    ])
+    renderScreen('/contacts/ro')
+    expect(screen.getByRole('button', { name: 'New contact' })).toBeDisabled()
+  })
+
+  it('opens the edit form for a card in a writable book', async () => {
+    // Re-home c1 into the writable "personal" book so the write guard permits editing.
+    await putContactCards(db, 'a', [
+      contactCard('c1', { name: { full: 'Alice Anderson' }, addressBookIds: { personal: true } }),
+    ])
+    const user = userEvent.setup()
+    renderScreen('/contacts/personal/c1')
+
+    const edit = await screen.findByRole('button', { name: /Edit/ })
+    expect(edit).toBeEnabled()
+    await user.click(edit)
+    expect(screen.getByRole('heading', { name: 'Edit contact' })).toBeInTheDocument()
+  })
 })

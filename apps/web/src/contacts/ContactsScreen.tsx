@@ -14,19 +14,51 @@
  * preference), so the mode is fixed to `right`.
  */
 
-import { ChevronLeft, PanelLeft } from 'lucide-react'
+import { ChevronLeft, PanelLeft, Plus } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate, useRoute } from '../app/route'
 import { computePaneLayout, useLayoutTier } from '../app/shell/layout'
+import { type AddressBookRow, type ContactCardRow, useAddressBooks, useContactCard } from '../sync'
 import { Button, IconButton, SplitPane } from '../ui'
 import { AddressBookList } from './AddressBookList'
 import { ContactDetail } from './ContactDetail'
+import { ContactForm, type ContactFormSubmit } from './ContactForm'
 import { ContactList } from './ContactList'
 import styles from './contacts.module.css'
+import { useContactActions } from './use-contact-actions'
 
 const BOOKS_REGION_ID = 'waxwing-books-region'
 const BOOKS_TOGGLE_ID = 'waxwing-books-toggle'
+
+/** True when `card` sits in at least one book the user may write to. */
+function cardIsWritable(
+  card: ContactCardRow | undefined,
+  books: AddressBookRow[] | undefined,
+): boolean {
+  if (card === undefined || books === undefined) return false
+  return Object.keys(card.addressBookIds).some(
+    (id) => books.find((book) => book.id === id)?.myRights.mayWrite === true,
+  )
+}
+
+/** The book a new contact should be created in: the selected one if writable, else the default/first. */
+function pickTargetBook(
+  bookId: string | undefined,
+  books: AddressBookRow[] | undefined,
+): AddressBookRow | undefined {
+  if (books === undefined) return undefined
+  if (bookId !== undefined) {
+    const selected = books.find((book) => book.id === bookId)
+    return selected?.myRights.mayWrite === true ? selected : undefined
+  }
+  return (
+    books.find((book) => book.isDefault && book.myRights.mayWrite) ??
+    books.find((book) => book.myRights.mayWrite)
+  )
+}
+
+type EditorMode = 'create' | 'edit' | null
 
 export function ContactsScreen() {
   const { t } = useTranslation()
@@ -36,8 +68,40 @@ export function ContactsScreen() {
 
   const bookId = route.params.bookId
   const cardId = route.params.cardId
-  // Contacts has no reading-pane preference — always list beside detail on wide screens.
-  const layout = computePaneLayout(tier, 'right', cardId !== undefined)
+
+  const books = useAddressBooks()
+  const selectedCard = useContactCard(cardId ?? '')
+  const actions = useContactActions()
+
+  const [editor, setEditor] = useState<EditorMode>(null)
+  // Close any open editor when the route's card changes (navigated away) — the effect is deliberately
+  // keyed on `cardId` even though its body only resets, which is what biome flags below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on cardId change, not on mount only.
+  useEffect(() => {
+    setEditor(null)
+  }, [cardId])
+
+  const canEditSelected = cardIsWritable(selectedCard, books)
+  const targetBook = pickTargetBook(bookId, books)
+  const editing = editor !== null
+
+  const onSubmit = useCallback(
+    async (submit: ContactFormSubmit): Promise<void> => {
+      setEditor(null)
+      if (submit.kind === 'update') {
+        actions.update(submit.cardId, submit.patch)
+        return
+      }
+      const newCardId = await actions.create(submit.card)
+      const targetId = pickTargetBook(bookId, books)?.id ?? bookId
+      navigate(contactsPath(targetId, newCardId))
+    },
+    [actions, navigate, bookId, books],
+  )
+
+  // The pane must show the editor whenever one is open — even a create with no card selected (so it
+  // takes over the single pane on a phone). Otherwise the reading pane follows the route as before.
+  const layout = computePaneLayout(tier, 'right', cardId !== undefined || editing)
 
   const drawerCapable = tier !== 'desktop'
   const [booksOpen, setBooksOpen] = useState(false)
@@ -83,8 +147,8 @@ export function ContactsScreen() {
       ref={listRef}
       tabIndex={-1}
     >
-      {drawerCapable && (
-        <div className={styles.paneToolbar}>
+      <div className={styles.paneToolbar}>
+        {drawerCapable && (
           <IconButton
             id={BOOKS_TOGGLE_ID}
             label={t('contacts.books.show')}
@@ -95,13 +159,56 @@ export function ContactsScreen() {
           >
             <PanelLeft />
           </IconButton>
-        </div>
-      )}
+        )}
+        <span className={styles.toolbarSpacer} />
+        <IconButton
+          label={t('contacts.new')}
+          variant="ghost"
+          disabled={targetBook === undefined}
+          onClick={() => setEditor('create')}
+        >
+          <Plus />
+        </IconButton>
+      </div>
       <div className={styles.paneBody}>
         <ContactList bookId={bookId} selectedCardId={cardId} />
       </div>
     </section>
   )
+
+  const detailContent =
+    editor === 'create' && targetBook !== undefined ? (
+      <ContactForm
+        mode="create"
+        bookId={targetBook.id}
+        canWrite
+        onSubmit={onSubmit}
+        onCancel={() => setEditor(null)}
+      />
+    ) : editor === 'edit' && selectedCard !== undefined ? (
+      <ContactForm
+        mode="edit"
+        card={selectedCard}
+        bookId={bookId ?? Object.keys(selectedCard.addressBookIds)[0] ?? ''}
+        canWrite={canEditSelected}
+        onSubmit={onSubmit}
+        onCancel={() => setEditor(null)}
+      />
+    ) : (
+      <ContactDetail
+        cardId={cardId}
+        canWrite={canEditSelected}
+        {...(canEditSelected ? { onEdit: () => setEditor('edit') } : {})}
+        {...(canEditSelected && cardId !== undefined
+          ? {
+              onDelete: () => {
+                actions.remove(cardId)
+                navigate(contactsPath(bookId))
+              },
+            }
+          : {})}
+      />
+    )
 
   const detailPane = (
     <section
@@ -110,7 +217,7 @@ export function ContactsScreen() {
       ref={detailRef}
       tabIndex={-1}
     >
-      {singleDetail && (
+      {singleDetail && !editing && (
         <div className={styles.paneToolbar}>
           <Button variant="ghost" onClick={() => navigate(contactsPath(bookId))}>
             <ChevronLeft aria-hidden="true" />
@@ -118,9 +225,7 @@ export function ContactsScreen() {
           </Button>
         </div>
       )}
-      <div className={styles.paneBody}>
-        <ContactDetail cardId={cardId} />
-      </div>
+      <div className={styles.paneBody}>{detailContent}</div>
     </section>
   )
 

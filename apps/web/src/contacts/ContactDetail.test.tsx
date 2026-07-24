@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { putContactCards, type ReplicaDb, ReplicaProvider } from '../sync'
 import { contactCard, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
-import { ContactDetail } from './ContactDetail'
+import { ContactDetail, type ContactDetailProps } from './ContactDetail'
 
 // The photo hook fetches a blob through the authenticated session — out of scope here. Stub it so the
 // detail renders without a SessionProvider: a card with a photo blob gets a URL, one without gets none.
@@ -50,10 +51,10 @@ afterEach(async () => {
   await db.delete()
 })
 
-function renderDetail(cardId?: string) {
+function renderDetail(cardId?: string, props: Partial<ContactDetailProps> = {}) {
   return render(
     <ReplicaProvider accountId="a" db={db}>
-      <ContactDetail cardId={cardId} />
+      <ContactDetail cardId={cardId} {...props} />
     </ReplicaProvider>,
   )
 }
@@ -94,10 +95,49 @@ describe('ContactDetail', () => {
     expect(img).toHaveAttribute('src', 'blob:test-photo')
   })
 
-  it('offers a disabled Edit affordance (read-only this stage)', async () => {
-    renderDetail('c1')
+  it('disables Edit and hides Delete without write rights (read-only guard)', async () => {
+    const onEdit = vi.fn()
+    // canWrite defaults to false; even a wired onEdit must not enable Edit, and Delete is absent.
+    renderDetail('c1', { onEdit, canWrite: false })
     await screen.findByRole('heading', { name: 'Alice Anderson' })
     expect(screen.getByRole('button', { name: /Edit/ })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+
+  it('enables Edit and calls onEdit when the book is writable', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn()
+    renderDetail('c1', { onEdit, canWrite: true })
+    await screen.findByRole('heading', { name: 'Alice Anderson' })
+    const edit = screen.getByRole('button', { name: /Edit/ })
+    expect(edit).toBeEnabled()
+    await user.click(edit)
+    expect(onEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it('confirms before deleting and only then calls onDelete', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+    renderDetail('c1', { onDelete, canWrite: true })
+    await screen.findByRole('heading', { name: 'Alice Anderson' })
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    const dialog = screen.getByRole('dialog', { name: 'Delete contact' })
+    expect(onDelete).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    expect(onDelete).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not delete when the confirmation is cancelled', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+    renderDetail('c1', { onDelete, canWrite: true })
+    await screen.findByRole('heading', { name: 'Alice Anderson' })
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+    expect(onDelete).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shows an empty state when nothing is selected', () => {
