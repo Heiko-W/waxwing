@@ -1563,9 +1563,17 @@ describe('MessageList', () => {
       renderList('trash')
       await screen.findByText('InTrash')
       // The pref is its own liveQuery: until it lands the default (archive) is live, and
-      // Trash → Archive is a perfectly legal move. Wait for that layer to GO, or this test swipes in
-      // the gap and proves nothing.
-      await waitFor(() => expect(screen.queryByText('Archive')).toBeNull())
+      // Trash → Archive is a perfectly legal move. Wait for the SETTLED state, not merely for the
+      // Archive strip to GO — the same latent race the "no Archive account" test carries: the bare
+      // negative also goes true for a row not yet hydrated, so under load the gate can pass before
+      // the left pref lands and the synchronous swipe below arms an Archive strip in the gap. Gate on
+      // the row being HYDRATED (its right-direction `read` reveal, which the left pref does not
+      // touch) AND no Archive strip in that same render: together they hold only once left has become
+      // the inert self-move, and neither regresses.
+      await waitFor(() => {
+        expect(screen.getByText('Mark as read')).toBeInTheDocument()
+        expect(screen.queryByText('Archive')).toBeNull()
+      })
 
       swipe(rowWrap('InTrash'), -150)
 
@@ -1650,7 +1658,21 @@ describe('MessageList', () => {
       // is for.
       await screen.findAllByText('Archive')
       await deleteMailbox(db, 'a', 'archive')
-      await waitFor(() => expect(screen.queryByText('Archive')).toBeNull())
+      // Gate on the NEW state being fully live, not merely on the Archive strip having vanished. That
+      // negative alone is too weak: it also goes true for a render where a row is not yet hydrated
+      // (`resolveSwipe` returns null for every direction then), so under parallel load it can win the
+      // race against `useMailboxes()` actually dropping the role — the gate passes on a render where
+      // the left direction still resolves to `archive`, the synchronous swipe below arms a strip, and
+      // `expectInert` fails at exactly this line. So wait for the airtight shape the "Nothing" test
+      // uses: all three rows HYDRATED (their right-direction `read` reveal is present, and `read`
+      // returns before the `useMailboxes()` gate so it depends on hydration ALONE, not the role) AND
+      // no Archive strip in that same render. Both hold only once the account genuinely has no
+      // Archive, and neither can regress — the folder stays deleted, the rows stay hydrated — so the
+      // swipe that follows is guaranteed to see the settled state.
+      await waitFor(() => {
+        expect(screen.getAllByText('Mark as read')).toHaveLength(3)
+        expect(screen.queryByText('Archive')).toBeNull()
+      })
 
       swipe(rowWrap('First'), -150)
 
