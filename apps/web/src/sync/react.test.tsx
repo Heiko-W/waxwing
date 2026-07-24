@@ -3,13 +3,21 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from './db'
 import {
   ReplicaProvider,
+  useAddressBooks,
+  useContactWindow,
   useLocalPref,
   useLocalPrefOptional,
   useMailboxes,
   useReplica,
 } from './react'
-import { putMailboxes, setPref } from './repo'
-import { freshDb, mailbox } from './test-utils'
+import {
+  putAddressBooks,
+  putContactCards,
+  putContactQueryCache,
+  putMailboxes,
+  setPref,
+} from './repo'
+import { addressBook, contactCard, freshDb, mailbox } from './test-utils'
 
 let db: ReplicaDb
 const ACC = 'acc'
@@ -87,5 +95,53 @@ describe('ReplicaProvider + hooks', () => {
       return null
     }
     expect(() => render(<Bad />)).toThrow(/ReplicaProvider/)
+  })
+
+  it('useAddressBooks lists the account address books live (M4.2)', async () => {
+    function Books() {
+      const books = useAddressBooks()
+      return (
+        <ul aria-label="books">
+          {books?.map((b) => (
+            <li key={b.id}>{b.name}</li>
+          ))}
+        </ul>
+      )
+    }
+    wrap(<Books />)
+    await putAddressBooks(db, ACC, [addressBook('book1', { name: 'Personal' })])
+    expect(await screen.findByText('Personal')).toBeDefined()
+  })
+
+  it('useContactWindow hydrates the cached id window in server order (M4.2)', async () => {
+    const KEY = 'ck'
+    function Window() {
+      const cards = useContactWindow(KEY)
+      return (
+        <ol aria-label="cards">
+          {cards?.map((card, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the window is a positional slice
+            <li key={index}>{card ? card.uid : 'gap'}</li>
+          ))}
+        </ol>
+      )
+    }
+    await putContactCards(db, ACC, [contactCard('c1'), contactCard('c2')])
+    await putContactQueryCache(db, {
+      accountId: ACC,
+      key: KEY,
+      ids: ['c2', 'missing', 'c1'],
+      queryState: 'cqs',
+      total: 3,
+      upToId: 'c1',
+      filter: null,
+      sort: null,
+      lastUsedAt: 1,
+    })
+    wrap(<Window />)
+    // Order preserved (c2, gap, c1); the absent id renders as a skeleton gap.
+    expect(await screen.findByText('uid-c2')).toBeDefined()
+    const items = screen.getByLabelText('cards').textContent
+    expect(items).toBe('uid-c2gapuid-c1')
   })
 })

@@ -9,15 +9,35 @@
  * backfill/query path ({@link fullRequery}), and {@link syncEmails} only advances an existing state.
  */
 
-import type { EmailComparator, EmailFilter, Id, Mailbox } from '@waxwing/jmap'
-import type { EmailEnvelopeInput, MailboxRow, QueryCacheRow, ReplicaDb } from '../db'
+import type {
+  ContactCardComparator,
+  ContactCardFilter,
+  EmailComparator,
+  EmailFilter,
+  Id,
+  Mailbox,
+} from '@waxwing/jmap'
+import type {
+  ContactQueryCacheRow,
+  EmailEnvelopeInput,
+  MailboxRow,
+  QueryCacheRow,
+  ReplicaDb,
+} from '../db'
 import {
+  contactCardsByIds,
+  deleteAddressBooks,
+  deleteContactCards,
   deleteEmails,
   deleteMailbox,
   deleteThreads,
   emailsByIds,
+  getContactQueryCache,
   getQueryCache,
   getSyncState,
+  putAddressBooks,
+  putContactCards,
+  putContactQueryCache,
   putEmails,
   putIdentities,
   putMailboxes,
@@ -401,4 +421,190 @@ async function hydrateMissing(
   if (missing.length === 0) return
   const envelopes = await port.getEmailEnvelopes(missing)
   await putEmails(db, accountId, envelopes.list)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Contacts delta (M4.2, RFC 9610). AddressBooks mirror {@link syncMailboxes} (small, pulled whole);
+// ContactCards mirror {@link syncEmails} (delta only, initial population via {@link fullRequeryContacts});
+// {@link reconcileContactQuery} mirrors {@link reconcileQuery} incl. the `cannotCalculateChanges` recovery.
+// ---------------------------------------------------------------------------------------------
+
+/** The `{filter, sort}` a watched `ContactCard/query` is defined by (no `collapseThreads`). */
+export interface ContactQuerySpecInput {
+  readonly filter?: ContactCardFilter | null
+  readonly sort?: ContactCardComparator[] | null
+}
+
+/**
+ * AddressBook sync (mirror of {@link syncMailboxes}, minus the mailbox count bookkeeping — address
+ * books carry no unread/total counts). Initial (no state) pulls every book; delta applies
+ * `AddressBook/changes` (whole-row put on the changed set — `AddressBook/changes` reports no
+ * `updatedProperties`).
+ */
+export async function syncAddressBooks(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const sinceState = await getSyncState(db, accountId, 'AddressBook')
+  if (sinceState === null) {
+    const { list, state } = await port.getAddressBooks(null)
+    await putAddressBooks(db, accountId, list)
+    await setSyncState(db, accountId, 'AddressBook', state, clock.now())
+    return
+  }
+
+  const acc = await drainChanges((s) => port.addressBookChanges(s), sinceState)
+  if (acc.changed.length > 0) {
+    const { list } = await port.getAddressBooks(acc.changed)
+    await putAddressBooks(db, accountId, list)
+  }
+  if (acc.destroyed.length > 0) await deleteAddressBooks(db, accountId, acc.destroyed)
+  await setSyncState(db, accountId, 'AddressBook', acc.newState, clock.now())
+}
+
+/**
+ * ContactCard sync — delta only (no-op from a null state; initial population is
+ * {@link fullRequeryContacts}). Advances the ContactCard state by applying `ContactCard/changes` into
+ * the card table. Mirror of {@link syncEmails}, without the new-mail return (contacts have no notifier).
+ */
+export async function syncContactCards(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const sinceState = await getSyncState(db, accountId, 'ContactCard')
+  if (sinceState === null) return
+
+  const acc = await drainChanges((s) => port.contactCardChanges(s), sinceState)
+  if (acc.changed.length > 0) {
+    const { list } = await port.getContactCards(acc.changed)
+    await putContactCards(db, accountId, list)
+  }
+  if (acc.destroyed.length > 0) await deleteContactCards(db, accountId, acc.destroyed)
+  await setSyncState(db, accountId, 'ContactCard', acc.newState, clock.now())
+}
+
+/**
+ * Keep one watched `ContactCard/query` window current (mirror of {@link reconcileQuery}). Prefers
+ * `ContactCard/queryChanges` (cheap delta) and falls back to a full re-query on
+ * `cannotCalculateChanges`. `forceFull` skips the delta entirely — the same SP.4 "absence of the
+ * error is not proof of freshness" re-probe as the mail path.
+ */
+export async function reconcileContactQuery(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  queryKey: string,
+  spec: ContactQuerySpecInput,
+  clock: EngineClock,
+  forceFull = false,
+): Promise<void> {
+  const row = await getContactQueryCache(db, accountId, queryKey)
+  // Same window-floor reasoning as {@link reconcileQuery}: never re-materialize SMALLER than the
+  // window every query starts with, or a removal would ratchet the window down one row at a time.
+  const windowLimit = Math.max(row?.ids.length ?? 0, DEFAULT_WINDOW_LIMIT)
+  if (forceFull || row === undefined || row.queryState === null) {
+    await fullRequeryContacts(port, db, accountId, queryKey, spec, clock, windowLimit)
+    return
+  }
+
+  let changes: Awaited<ReturnType<JmapPort['queryContactCardChanges']>>
+  try {
+    changes = await port.queryContactCardChanges({
+      filter: spec.filter ?? null,
+      sort: spec.sort ?? null,
+      sinceQueryState: row.queryState,
+      // Bound the delta to THIS window (RFC 8620 §5.6) — without upToId the server reports adds past
+      // our window whose indexes corrupt the id order.
+      upToId: row.upToId,
+    })
+  } catch (error) {
+    if (error instanceof CannotCalculateChangesError) {
+      await fullRequeryContacts(port, db, accountId, queryKey, spec, clock, windowLimit)
+      return
+    }
+    throw error
+  }
+
+  const removed = new Set(changes.removed)
+  const ids = row.ids.filter((id) => !removed.has(id))
+  // `added` is index-ascending: splice each into place in order; drop any landing past the window.
+  for (const item of changes.added) {
+    if (item.index <= ids.length) ids.splice(item.index, 0, item.id)
+  }
+
+  await hydrateMissingContacts(
+    port,
+    db,
+    accountId,
+    changes.added.map((item) => item.id),
+  )
+
+  await putContactQueryCache(db, {
+    ...row,
+    ids,
+    queryState: changes.newQueryState,
+    total: changes.total ?? row.total,
+    upToId: ids.length > 0 ? (ids[ids.length - 1] ?? null) : null,
+    lastUsedAt: clock.now(),
+  })
+}
+
+/**
+ * Replace a watched contact query window wholesale via `ContactCard/query` (mirror of
+ * {@link fullRequery}). Seeds the ContactCard sync state from the card fetch when none exists yet, so
+ * subsequent {@link syncContactCards} deltas have a cursor.
+ */
+export async function fullRequeryContacts(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  queryKey: string,
+  spec: ContactQuerySpecInput,
+  clock: EngineClock,
+  limit?: number,
+): Promise<void> {
+  const query = await port.queryContactCards({
+    filter: spec.filter ?? null,
+    sort: spec.sort ?? null,
+    calculateTotal: true,
+    ...(limit === undefined ? {} : { limit }),
+  })
+  const cards = await port.getContactCards(query.ids)
+  await putContactCards(db, accountId, cards.list)
+
+  if ((await getSyncState(db, accountId, 'ContactCard')) === null) {
+    await setSyncState(db, accountId, 'ContactCard', cards.state, clock.now())
+  }
+
+  const row: ContactQueryCacheRow = {
+    accountId,
+    key: queryKey,
+    ids: query.ids,
+    queryState: query.queryState,
+    total: query.total ?? null,
+    upToId: query.ids.length > 0 ? (query.ids[query.ids.length - 1] ?? null) : null,
+    filter: spec.filter ?? null,
+    sort: spec.sort ?? null,
+    lastUsedAt: clock.now(),
+  }
+  await putContactQueryCache(db, row)
+}
+
+/** Fetch + store cards for any of `ids` not already in the replica (mirror of {@link hydrateMissing}). */
+async function hydrateMissingContacts(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  ids: Id[],
+): Promise<void> {
+  if (ids.length === 0) return
+  const present = await contactCardsByIds(db, accountId, ids)
+  const missing = ids.filter((_, index) => present[index] === undefined)
+  if (missing.length === 0) return
+  const cards = await port.getContactCards(missing)
+  await putContactCards(db, accountId, cards.list)
 }

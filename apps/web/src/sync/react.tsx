@@ -12,6 +12,8 @@ import type { Id } from '@waxwing/jmap'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
 import {
+  type AddressBookRow,
+  type ContactCardRow,
   getReplica,
   type IdentityRow,
   type LocalPrefRow,
@@ -19,7 +21,15 @@ import {
   type QueryCacheRow,
   type ReplicaDb,
 } from './db'
-import { emailsByIds, identitiesForAccount, mailboxByRole, mailboxesForAccount } from './repo'
+import {
+  addressBooksForAccount,
+  contactCardsByIds,
+  emailsByIds,
+  getContactQueryCache,
+  identitiesForAccount,
+  mailboxByRole,
+  mailboxesForAccount,
+} from './repo'
 
 export interface ReplicaContextValue {
   readonly db: ReplicaDb
@@ -146,6 +156,36 @@ export function useEmailBody(id: Id) {
 /** A thread row (live; ordered `emailIds` for the conversation view, M1.8). */
 export function useThread(id: Id) {
   return useReplicaQuery(({ db, accountId }) => db.threads.get([accountId, id]), [id])
+}
+
+// ── Contacts (M4.2) ───────────────────────────────────────────────────────────────────────────
+
+/** The contact-source tree: all address books for the account, ordered (M4.2). */
+export function useAddressBooks(): AddressBookRow[] | undefined {
+  return useReplicaQuery(({ db, accountId }) => addressBooksForAccount(db, accountId))
+}
+
+/**
+ * A virtualizable window over a watched contact query (M4.2; key from `canonicalContactQueryKey`):
+ * the cards for the query's cached id window, in server order (`undefined` = not yet synced). Combines
+ * the window-row lookup and the card hydration in one live query — the contacts analogue of
+ * `useEmailWindow`, taking the query KEY (a contact card is fetched whole, so there is no separate
+ * envelope/body split to hydrate).
+ */
+export function useContactWindow(key: string): (ContactCardRow | undefined)[] | undefined {
+  return useReplicaQuery(
+    async ({ db, accountId }) => {
+      const row = await getContactQueryCache(db, accountId, key)
+      if (row === undefined) return []
+      return contactCardsByIds(db, accountId, row.ids)
+    },
+    [key],
+  )
+}
+
+/** A single contact card row (live; M4.2). `undefined` until the engine syncs it into the replica. */
+export function useContactCard(id: Id) {
+  return useReplicaQuery(({ db, accountId }) => db.contactCards.get([accountId, id]), [id])
 }
 
 /** A local preference value (FR-MBX-04), typed by the caller. */

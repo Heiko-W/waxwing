@@ -2,15 +2,26 @@ import type { Mailbox } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { EmailEnvelopeInput, ReplicaDb } from '../db'
 import {
+  getContactQueryCache,
   getQueryCache,
   getSyncState,
+  putAddressBooks,
+  putContactCards,
+  putContactQueryCache,
   putEmails,
   putMailboxes,
   putQueryCache,
   setSyncState,
 } from '../repo'
-import { email, freshDb, mailbox } from '../test-utils'
-import { reconcileQuery, syncEmails, syncMailboxes } from './delta'
+import { addressBook, contactCard, email, freshDb, mailbox } from '../test-utils'
+import {
+  reconcileContactQuery,
+  reconcileQuery,
+  syncAddressBooks,
+  syncContactCards,
+  syncEmails,
+  syncMailboxes,
+} from './delta'
 import {
   CannotCalculateChangesError,
   type ChangesResult,
@@ -67,6 +78,24 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
     setMailboxes: async () => emptySet(),
     submitEmail: async () => emptySet(),
     getSearchSnippets: async () => ({ list: [], notFound: [] }),
+    getAddressBooks: async () => ({ list: [], notFound: [], state: 's' }),
+    addressBookChanges: async () => emptyChanges('s'),
+    setAddressBooks: async () => emptySet(),
+    getContactCards: async () => ({ list: [], notFound: [], state: 's' }),
+    contactCardChanges: async () => emptyChanges('s'),
+    queryContactCards: async (): Promise<QueryResult> => ({
+      ids: [],
+      queryState: 'q',
+      canCalculateChanges: true,
+      position: 0,
+    }),
+    queryContactCardChanges: async (): Promise<QueryChangesResult> => ({
+      oldQueryState: 'q',
+      newQueryState: 'q',
+      removed: [],
+      added: [],
+    }),
+    setContactCards: async () => emptySet(),
     ...overrides,
   }
 }
@@ -453,6 +482,228 @@ describe('reconcileQuery', () => {
     await reconcileQuery(port, db, ACC, KEY, spec, clock)
 
     expect(await getSyncState(db, ACC, 'Email')).toBe('estate')
+  })
+})
+
+// ── Contacts (M4.2, RFC 9610) — mirror of the mail delta suites above ─────────────────────────
+
+describe('syncAddressBooks', () => {
+  it('does an initial full pull and records the state when there is none', async () => {
+    const port = fakePort({
+      getAddressBooks: async () => ({
+        list: [addressBook('book1'), addressBook('book2')],
+        notFound: [],
+        state: 'ab1',
+      }),
+    })
+
+    await syncAddressBooks(port, db, ACC, clock)
+
+    expect(await db.addressBooks.count()).toBe(2)
+    expect(await getSyncState(db, ACC, 'AddressBook')).toBe('ab1')
+  })
+
+  it('applies a created/destroyed delta and advances the state', async () => {
+    await putAddressBooks(db, ACC, [addressBook('gone')])
+    await setSyncState(db, ACC, 'AddressBook', 'ab0', 1)
+
+    const port = fakePort({
+      addressBookChanges: async (): Promise<ChangesResult> => ({
+        newState: 'ab1',
+        hasMoreChanges: false,
+        created: ['fresh'],
+        updated: [],
+        destroyed: ['gone'],
+      }),
+      getAddressBooks: async () => ({ list: [addressBook('fresh')], notFound: [], state: 'ab1' }),
+    })
+
+    await syncAddressBooks(port, db, ACC, clock)
+
+    expect(await db.addressBooks.get([ACC, 'fresh'])).toBeDefined()
+    expect(await db.addressBooks.get([ACC, 'gone'])).toBeUndefined()
+    expect(await getSyncState(db, ACC, 'AddressBook')).toBe('ab1')
+  })
+})
+
+describe('syncContactCards', () => {
+  it('is a no-op when there is no ContactCard state (initial population is the query path)', async () => {
+    let called = false
+    const port = fakePort({
+      contactCardChanges: async () => {
+        called = true
+        return emptyChanges('cc1')
+      },
+    })
+
+    await syncContactCards(port, db, ACC, clock)
+
+    expect(called).toBe(false)
+    expect(await db.contactCards.count()).toBe(0)
+  })
+
+  it('applies a ContactCard/changes delta and advances the state', async () => {
+    await putContactCards(db, ACC, [contactCard('c2')])
+    await setSyncState(db, ACC, 'ContactCard', 'cc0', 1)
+
+    const port = fakePort({
+      contactCardChanges: async (): Promise<ChangesResult> => ({
+        newState: 'cc1',
+        hasMoreChanges: false,
+        created: ['c1'],
+        updated: [],
+        destroyed: ['c2'],
+      }),
+      getContactCards: async () => ({ list: [contactCard('c1')], notFound: [], state: 'cc1' }),
+    })
+
+    await syncContactCards(port, db, ACC, clock)
+
+    expect(await db.contactCards.get([ACC, 'c1'])).toBeDefined()
+    expect(await db.contactCards.get([ACC, 'c2'])).toBeUndefined()
+    expect(await getSyncState(db, ACC, 'ContactCard')).toBe('cc1')
+  })
+
+  it('folds created+destroyed across a hasMoreChanges page boundary', async () => {
+    await setSyncState(db, ACC, 'ContactCard', 'cc0', 1)
+    const pages: ChangesResult[] = [
+      {
+        newState: 'cc1',
+        hasMoreChanges: true,
+        created: ['gone', 'kept'],
+        updated: [],
+        destroyed: [],
+      },
+      { newState: 'cc2', hasMoreChanges: false, created: [], updated: [], destroyed: ['gone'] },
+    ]
+    let page = 0
+    const requested: string[][] = []
+    const port = fakePort({
+      contactCardChanges: async () => pages[page++] as ChangesResult,
+      getContactCards: async (ids) => {
+        requested.push([...ids])
+        return { list: ids.map((id) => contactCard(id)), notFound: [], state: 'cc2' }
+      },
+    })
+
+    await syncContactCards(port, db, ACC, clock)
+
+    expect(requested).toEqual([['kept']]) // the created-then-destroyed id is never even fetched
+    expect(await db.contactCards.get([ACC, 'kept'])).toBeDefined()
+    expect(await getSyncState(db, ACC, 'ContactCard')).toBe('cc2')
+  })
+})
+
+describe('reconcileContactQuery', () => {
+  const KEY = 'ck'
+  const spec = { filter: null, sort: null }
+
+  async function seedWindow(ids: string[], queryState: string) {
+    await putContactQueryCache(db, {
+      accountId: ACC,
+      key: KEY,
+      ids,
+      queryState,
+      total: ids.length,
+      upToId: ids[ids.length - 1] ?? null,
+      filter: null,
+      sort: null,
+      lastUsedAt: 1,
+    })
+  }
+
+  it('applies removed-then-added splices and hydrates missing cards', async () => {
+    await putContactCards(db, ACC, [contactCard('c1'), contactCard('c2'), contactCard('c3')])
+    await seedWindow(['c1', 'c2', 'c3'], 'cq0')
+
+    let hydrated: string[] = []
+    const port = fakePort({
+      queryContactCardChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'cq0',
+        newQueryState: 'cq1',
+        removed: ['c2'],
+        added: [{ id: 'c9', index: 1 }],
+      }),
+      getContactCards: async (ids) => {
+        hydrated = ids
+        return { list: ids.map((id) => contactCard(id)), notFound: [], state: 'cc1' }
+      },
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock)
+
+    const row = await getContactQueryCache(db, ACC, KEY)
+    expect(row?.ids).toEqual(['c1', 'c9', 'c3'])
+    expect(row?.queryState).toBe('cq1')
+    expect(hydrated).toEqual(['c9'])
+    expect(await db.contactCards.get([ACC, 'c9'])).toBeDefined()
+  })
+
+  // The correctness-critical path: Stalwart does not always raise `cannotCalculateChanges` reliably
+  // (SP.4), but WHEN it does, the window must recover via a full re-query rather than strand the list.
+  it('recovers via a full re-query on cannotCalculateChanges', async () => {
+    await seedWindow(['c1', 'c2'], 'cq0')
+
+    const port = fakePort({
+      queryContactCardChanges: async () => {
+        throw new CannotCalculateChangesError()
+      },
+      queryContactCards: async (): Promise<QueryResult> => ({
+        ids: ['c5'],
+        queryState: 'cq2',
+        canCalculateChanges: true,
+        position: 0,
+        total: 1,
+      }),
+      getContactCards: async () => ({ list: [contactCard('c5')], notFound: [], state: 'cc5' }),
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock)
+
+    const row = await getContactQueryCache(db, ACC, KEY)
+    expect(row?.ids).toEqual(['c5'])
+    expect(row?.queryState).toBe('cq2')
+    expect(await db.contactCards.get([ACC, 'c5'])).toBeDefined()
+  })
+
+  it('forceFull skips queryChanges entirely and re-materializes the window', async () => {
+    await seedWindow(['c1'], 'cq0')
+
+    let deltaCalled = false
+    const port = fakePort({
+      queryContactCardChanges: async () => {
+        deltaCalled = true
+        return { oldQueryState: 'cq0', newQueryState: 'cq0', removed: [], added: [] }
+      },
+      queryContactCards: async (): Promise<QueryResult> => ({
+        ids: ['c7'],
+        queryState: 'cq3',
+        canCalculateChanges: true,
+        position: 0,
+      }),
+      getContactCards: async () => ({ list: [contactCard('c7')], notFound: [], state: 'cc7' }),
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock, true)
+
+    expect(deltaCalled).toBe(false)
+    expect((await getContactQueryCache(db, ACC, KEY))?.ids).toEqual(['c7'])
+  })
+
+  it('seeds the ContactCard state on a full re-query when none exists', async () => {
+    const port = fakePort({
+      queryContactCards: async (): Promise<QueryResult> => ({
+        ids: ['c1'],
+        queryState: 'cq9',
+        canCalculateChanges: true,
+        position: 0,
+      }),
+      getContactCards: async () => ({ list: [contactCard('c1')], notFound: [], state: 'ccstate' }),
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock)
+
+    expect(await getSyncState(db, ACC, 'ContactCard')).toBe('ccstate')
   })
 })
 

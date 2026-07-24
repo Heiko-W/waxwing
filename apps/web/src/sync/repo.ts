@@ -6,7 +6,7 @@
  * liveQuery hooks in `./react`).
  */
 
-import type { Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
+import type { AddressBook, ContactCard, Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
 import Dexie from 'dexie'
 import { LABELS_PREF_KEY, type LabelPref } from '../mail/labels/label-model'
 import { PINNED_PREF_KEY, type PinnedPref } from '../mail/pinned/pinned-model'
@@ -19,8 +19,11 @@ import {
 } from '../notify/notify-model'
 import {
   type AccountRecord,
+  type AddressBookRow,
   type AddressStatRow,
   type BlobMetaRow,
+  type ContactCardRow,
+  type ContactQueryCacheRow,
   collectBodyBlobIds,
   type DraftRow,
   type EmailBodyRow,
@@ -37,6 +40,8 @@ import {
   type SyncStateRow,
   scopeKey,
   type ThreadRow,
+  toAddressBookRow,
+  toContactCardRow,
   toEmailRow,
   toIdentityRow,
   toMailboxRow,
@@ -836,4 +841,81 @@ export function listDrafts(db: ReplicaDb, accountId: Id): Promise<DraftRow[]> {
 
 export function deleteDraft(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
   return db.drafts.delete([accountId, localId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Contacts (M4.2, RFC 9610). Address books mirror the folder-tree pattern (fetched whole, sorted in
+// memory); contact cards mirror the email pattern (the ordered list renders from a query-cache id
+// window, membership queries served off the `abk` multiEntry index).
+// ---------------------------------------------------------------------------------------------
+
+export async function putAddressBooks(
+  db: ReplicaDb,
+  accountId: Id,
+  books: AddressBook[],
+): Promise<void> {
+  await db.addressBooks.bulkPut(books.map((book) => toAddressBookRow(accountId, book)))
+}
+
+/** Every address book for an account, ordered by `sortOrder` then name — the tree source (M4.2). */
+export async function addressBooksForAccount(
+  db: ReplicaDb,
+  accountId: Id,
+): Promise<AddressBookRow[]> {
+  const rows = await db.addressBooks.where('accountId').equals(accountId).toArray()
+  return rows.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+}
+
+export function deleteAddressBooks(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.addressBooks.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
+export async function putContactCards(
+  db: ReplicaDb,
+  accountId: Id,
+  cards: ContactCard[],
+): Promise<void> {
+  await db.contactCards.bulkPut(cards.map((card) => toContactCardRow(accountId, card)))
+}
+
+/**
+ * Hydrate a window of the contact list: rows for `ids` in the SAME order (server collation), with
+ * `undefined` for any id not yet in the replica (rendered as a skeleton row) — mirrors {@link emailsByIds}.
+ */
+export function contactCardsByIds(
+  db: ReplicaDb,
+  accountId: Id,
+  ids: Id[],
+): Promise<(ContactCardRow | undefined)[]> {
+  return db.contactCards.bulkGet(ids.map((id) => [accountId, id]))
+}
+
+/** All cards in an address book (offline filtering / counts) via the account-scoped membership index. */
+export function contactCardsInBook(
+  db: ReplicaDb,
+  accountId: Id,
+  bookId: Id,
+): Promise<ContactCardRow[]> {
+  return db.contactCards.where('abk').equals(scopeKey(accountId, bookId)).toArray()
+}
+
+export function deleteContactCards(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.contactCards.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
+// Contact query cache (watched ContactCard/query windows — the list source; mirrors `queryCache`).
+
+export async function putContactQueryCache(
+  db: ReplicaDb,
+  row: ContactQueryCacheRow,
+): Promise<void> {
+  await db.contactQueryCache.put(row)
+}
+
+export function getContactQueryCache(
+  db: ReplicaDb,
+  accountId: Id,
+  key: string,
+): Promise<ContactQueryCacheRow | undefined> {
+  return db.contactQueryCache.get([accountId, key])
 }

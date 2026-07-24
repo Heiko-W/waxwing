@@ -301,4 +301,155 @@ describe('createJmapPort', () => {
 
     expect(result.created).toEqual({ 'sub-1': { id: 'srv-sub' } }) // returns the submission result
   })
+
+  // ── Contacts (M4.2, RFC 9610) ────────────────────────────────────────────────────────────────
+
+  it('fetches all address books with ids: null and maps the response', async () => {
+    const { client, calls } = fakeClient((method) =>
+      method === Methods.addressBookGet
+        ? {
+            accountId: ACC,
+            state: 'abk-1',
+            list: [{ id: 'book1', name: 'Personal' }],
+            notFound: [],
+          }
+        : {},
+    )
+    const result = await createJmapPort(client, ACC).getAddressBooks(null)
+
+    expect(result).toEqual({
+      list: [{ id: 'book1', name: 'Personal' }],
+      notFound: [],
+      state: 'abk-1',
+    })
+    expect(calls[0]?.args).toEqual({ accountId: ACC, ids: null })
+  })
+
+  it('maps AddressBook/changes (no updatedProperties on this type)', async () => {
+    const { client, calls } = fakeClient(() => ({
+      accountId: ACC,
+      oldState: '0',
+      newState: '2',
+      hasMoreChanges: false,
+      created: ['book2'],
+      updated: [],
+      destroyed: ['book0'],
+    }))
+    const result = await createJmapPort(client, ACC).addressBookChanges('0')
+
+    expect(result).toEqual({
+      newState: '2',
+      hasMoreChanges: false,
+      created: ['book2'],
+      updated: [],
+      destroyed: ['book0'],
+    })
+    expect(result).not.toHaveProperty('updatedProperties')
+    expect(calls[0]?.args).toEqual({ accountId: ACC, sinceState: '0' })
+  })
+
+  it('fetches contact cards with the full card property set (incl. vCardProps, for losslessness)', async () => {
+    const { client, calls } = fakeClient((method) =>
+      method === Methods.contactCardGet
+        ? { accountId: ACC, state: 'cc-1', list: [{ id: 'c1' }], notFound: ['gone'] }
+        : {},
+    )
+    const result = await createJmapPort(client, ACC).getContactCards(['c1', 'gone'])
+
+    expect(result.state).toBe('cc-1')
+    expect(result.list).toEqual([{ id: 'c1' }])
+    expect(result.notFound).toEqual(['gone'])
+    const properties = calls[0]?.args.properties as string[]
+    expect(properties).toContain('addressBookIds')
+    expect(properties).toContain('emails')
+    expect(properties).toContain('vCardProps')
+  })
+
+  it('maps ContactCard/query results', async () => {
+    const { client, calls } = fakeClient(() => ({
+      accountId: ACC,
+      queryState: 'cq1',
+      canCalculateChanges: true,
+      position: 0,
+      ids: ['c1', 'c2'],
+      total: 2,
+    }))
+    const result = await createJmapPort(client, ACC).queryContactCards({
+      filter: { inAddressBook: 'book1' },
+      sort: [{ property: 'name/surname' }],
+    })
+
+    expect(result).toEqual({
+      ids: ['c1', 'c2'],
+      queryState: 'cq1',
+      canCalculateChanges: true,
+      position: 0,
+      total: 2,
+    })
+    expect(calls[0]?.args).toMatchObject({
+      accountId: ACC,
+      filter: { inAddressBook: 'book1' },
+      sort: [{ property: 'name/surname' }],
+    })
+  })
+
+  it('maps ContactCard/queryChanges (removed then added)', async () => {
+    const { client } = fakeClient(() => ({
+      accountId: ACC,
+      oldQueryState: 'cq1',
+      newQueryState: 'cq2',
+      removed: ['c9'],
+      added: [{ id: 'c1', index: 0 }],
+    }))
+    const result = await createJmapPort(client, ACC).queryContactCardChanges({
+      sinceQueryState: 'cq1',
+    })
+
+    expect(result).toEqual({
+      oldQueryState: 'cq1',
+      newQueryState: 'cq2',
+      removed: ['c9'],
+      added: [{ id: 'c1', index: 0 }],
+    })
+  })
+
+  it('rethrows a contact-card cannotCalculateChanges as CannotCalculateChangesError', async () => {
+    const { client } = fakeClient(
+      () =>
+        new JmapMethodError(
+          { type: MethodErrorTypes.cannotCalculateChanges },
+          'c0',
+          'ContactCard/queryChanges',
+        ),
+    )
+    await expect(
+      createJmapPort(client, ACC).queryContactCardChanges({ sinceQueryState: 'stale' }),
+    ).rejects.toBeInstanceOf(CannotCalculateChangesError)
+  })
+
+  it('normalizes ContactCard/set nullable maps', async () => {
+    const { client } = fakeClient(() => ({
+      accountId: ACC,
+      oldState: '0',
+      newState: '1',
+      created: { '#new': { id: 'c-srv' } },
+      updated: null,
+      destroyed: null,
+      notCreated: null,
+      notUpdated: null,
+      notDestroyed: { c2: { type: 'notFound' } },
+    }))
+    const result = await createJmapPort(client, ACC).setContactCards({ destroy: ['c2'] })
+
+    expect(result).toEqual({
+      oldState: '0',
+      newState: '1',
+      created: { '#new': { id: 'c-srv' } },
+      updated: [],
+      destroyed: [],
+      notCreated: {},
+      notUpdated: {},
+      notDestroyed: { c2: { type: 'notFound' } },
+    })
+  })
 })

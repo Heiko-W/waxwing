@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from './db'
 import {
+  addressBooksForAccount,
+  contactCardsByIds,
+  deleteAddressBooks,
+  deleteContactCards,
   emailIdsInMailbox,
   emailsByIds,
   emailsInThread,
   emailsWithKeyword,
   enqueue,
   failedOutbox,
+  getContactQueryCache,
   getEmailBody,
   getPref,
   getQueryCache,
@@ -16,6 +21,9 @@ import {
   mailboxByRole,
   mailboxesForAccount,
   pendingOutbox,
+  putAddressBooks,
+  putContactCards,
+  putContactQueryCache,
   putEmailBody,
   putEmails,
   putMailboxes,
@@ -25,7 +33,7 @@ import {
   setPref,
   setSyncState,
 } from './repo'
-import { email, freshDb, mailbox, thread } from './test-utils'
+import { addressBook, contactCard, email, freshDb, mailbox, thread } from './test-utils'
 
 let db: ReplicaDb
 const ACC = 'acc'
@@ -262,5 +270,51 @@ describe('threads helper', () => {
     await putThreads(db, ACC, [thread('t1', ['e1', 'e2'])])
     expect((await getThread(db, ACC, 't1'))?.emailIds).toEqual(['e1', 'e2'])
     expect(await getThread(db, ACC, 'no-such-thread')).toBeUndefined()
+  })
+})
+
+describe('contacts repo (M4.2)', () => {
+  it('orders address books by sortOrder then name, and deletes by id', async () => {
+    await putAddressBooks(db, ACC, [
+      addressBook('personal', { sortOrder: 0, name: 'Personal' }),
+      addressBook('zeta', { sortOrder: 5, name: 'Zeta' }),
+      addressBook('alpha', { sortOrder: 5, name: 'Alpha' }),
+    ])
+    expect((await addressBooksForAccount(db, ACC)).map((b) => b.id)).toEqual([
+      'personal',
+      'alpha',
+      'zeta',
+    ])
+
+    await deleteAddressBooks(db, ACC, ['alpha'])
+    expect((await addressBooksForAccount(db, ACC)).map((b) => b.id)).toEqual(['personal', 'zeta'])
+  })
+
+  it('hydrates a contact window in order, marking gaps, and deletes by id', async () => {
+    await putContactCards(db, ACC, [contactCard('c1'), contactCard('c2'), contactCard('c3')])
+
+    const rows = await contactCardsByIds(db, ACC, ['c2', 'missing', 'c1'])
+    expect(rows.map((r) => r?.id)).toEqual(['c2', undefined, 'c1'])
+
+    await deleteContactCards(db, ACC, ['c2'])
+    expect((await contactCardsByIds(db, ACC, ['c2']))[0]).toBeUndefined()
+  })
+
+  it('round-trips a contact query-cache window', async () => {
+    await putContactQueryCache(db, {
+      accountId: ACC,
+      key: 'ck',
+      ids: ['c1', 'c2'],
+      queryState: 'cqs',
+      total: 2,
+      upToId: 'c2',
+      filter: { inAddressBook: 'book1' },
+      sort: [{ property: 'name/surname' }],
+      lastUsedAt: 1,
+    })
+    const row = await getContactQueryCache(db, ACC, 'ck')
+    expect(row?.ids).toEqual(['c1', 'c2'])
+    expect(row?.filter).toEqual({ inAddressBook: 'book1' })
+    expect(await getContactQueryCache(db, ACC, 'missing')).toBeUndefined()
   })
 })

@@ -52,6 +52,10 @@
  */
 
 import type {
+  AddressBook,
+  ContactCard,
+  ContactCardComparator,
+  ContactCardFilter,
   EmailAddress,
   EmailBodyPart,
   EmailBodyValue,
@@ -537,6 +541,56 @@ export interface IdentityRow extends Identity {
   accountId: Id
 }
 
+// ---------------------------------------------------------------------------------------------
+// Contacts (M4.2, RFC 9610) — the AddressBook tree + the ContactCard replica, mirrored on the
+// Mailbox/Email pattern. An account has few address books (fetched whole, no `/query`); cards can
+// be many, so their windowed list renders from an ordered id window in `contactQueryCache`.
+// ---------------------------------------------------------------------------------------------
+
+/** RFC 9610 §2 AddressBook mirror — the contact-source tree (analogue of {@link MailboxRow}). */
+export interface AddressBookRow extends AddressBook {
+  accountId: Id
+}
+
+/**
+ * RFC 9610 §3 ContactCard mirror. Holds the FULL JSContact `Card` (RFC 9553) plus the JMAP object
+ * layer (`id`, `addressBookIds`) losslessly — every unmapped property and the `vCardProps` bag ride
+ * through untouched — so a later edit/export round-trips (see `@waxwing/jmap` `ContactCard`).
+ *
+ * A card belongs to many address books (`addressBookIds`), the same many-valued membership problem
+ * the email row solves with `amb`: IndexedDB has no compound-multiEntry index, so book membership is
+ * carried in a derived, account-scoped multiEntry array — `abk` = `"<accountId>\0<bookId>"` — kept in
+ * sync by {@link toContactCardRow}. That makes "cards in book X for account A" one indexed range with
+ * no cross-account bleed. The ORDERED list still comes from {@link ContactQueryCacheRow.ids}.
+ */
+export interface ContactCardRow extends ContactCard {
+  accountId: Id
+  /** Derived, account-scoped address-book membership: `["<accountId>\0<bookId>", …]` (multiEntry). */
+  abk: string[]
+}
+
+/**
+ * A watched `ContactCard/query`: canonical key → the server-ordered id window + its queryState cursor
+ * (the analogue of {@link QueryCacheRow}). A SEPARATE store rather than a reused `queryCache` row: the
+ * contact filter/sort are contact-typed (`ContactCardFilter`/`ContactCardComparator`) and there is no
+ * `collapseThreads`, so folding them into the strongly-typed, Email-shaped {@link QueryCacheRow} would
+ * force type-lying casts and a meaningless required field. A dedicated store keeps both paths honest.
+ */
+export interface ContactQueryCacheRow {
+  accountId: Id
+  /** {@link canonicalContactQueryKey} of `{filter, sort}`. */
+  key: string
+  /** Server-ordered ids (respecting the query's collation); the list renders from this order. */
+  ids: Id[]
+  queryState: string | null
+  total: number | null
+  /** Oldest id currently held — the backfill/"load more" window cursor. */
+  upToId: Id | null
+  filter: ContactCardFilter | null
+  sort: ContactCardComparator[] | null
+  lastUsedAt: number
+}
+
 export class ReplicaDb extends Dexie {
   accounts!: Table<AccountRecord, Id>
   mailboxes!: Table<MailboxRow, [Id, Id]>
@@ -551,6 +605,9 @@ export class ReplicaDb extends Dexie {
   localPrefs!: Table<LocalPrefRow, [Id, string]>
   addressStats!: Table<AddressStatRow, [Id, string]>
   drafts!: Table<DraftRow, [Id, string]>
+  addressBooks!: Table<AddressBookRow, [Id, Id]>
+  contactCards!: Table<ContactCardRow, [Id, Id]>
+  contactQueryCache!: Table<ContactQueryCacheRow, [Id, string]>
 
   constructor(name: string = REPLICA_DB_NAME) {
     super(name)
@@ -619,6 +676,18 @@ export class ReplicaDb extends Dexie {
             }
           })
       })
+    // v6 (M4.2) — additive: the contacts replica (AddressBook tree + ContactCard cards + their watched
+    // query windows). Three brand-new stores, so no `.upgrade()` (no data transform); Dexie carries
+    // every unspecified store forward unchanged. `contactCards` carries the derived `abk` multiEntry
+    // index for account-scoped book membership, mirroring `emails`' `amb`.
+    this.version(6).stores({
+      // No index on `isSubscribed`: a boolean is not a valid IndexedDB key, so an index on it would
+      // silently drop every row. Address books are few and assembled/sorted in memory (see
+      // `addressBooksForAccount`), the same as the folder tree.
+      addressBooks: '[accountId+id], accountId',
+      contactCards: '[accountId+id], accountId, *abk',
+      contactQueryCache: '[accountId+key], accountId, [accountId+lastUsedAt]',
+    })
   }
 }
 
@@ -660,6 +729,22 @@ export function toThreadRow(accountId: Id, thread: Thread): ThreadRow {
 /** Map a JMAP identity to its stored row (M2.5). */
 export function toIdentityRow(accountId: Id, identity: Identity): IdentityRow {
   return { ...identity, accountId }
+}
+
+/** Map a JMAP AddressBook to its stored row (M4.2). */
+export function toAddressBookRow(accountId: Id, book: AddressBook): AddressBookRow {
+  return { ...book, accountId }
+}
+
+/** Map a JMAP ContactCard to its stored row (M4.2), computing the account-scoped book-membership index. */
+export function toContactCardRow(accountId: Id, card: ContactCard): ContactCardRow {
+  const addressBookIds = card.addressBookIds ?? {}
+  return {
+    ...card,
+    accountId,
+    addressBookIds,
+    abk: Object.keys(addressBookIds).map((bookId) => scopeKey(accountId, bookId)),
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

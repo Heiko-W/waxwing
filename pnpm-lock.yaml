@@ -38,6 +38,9 @@ importers:
       '@waxwing/jmap':
         specifier: workspace:*
         version: link:../../packages/jmap
+      '@waxwing/jscontact':
+        specifier: workspace:*
+        version: link:../../packages/jscontact
       '@waxwing/mail-html':
         specifier: workspace:*
         version: link:../../packages/mail-html

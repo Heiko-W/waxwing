@@ -51,6 +51,14 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     setMailboxes: unused,
     submitEmail: unused,
     getSearchSnippets: unused,
+    getAddressBooks: unused,
+    addressBookChanges: unused,
+    setAddressBooks: unused,
+    getContactCards: unused,
+    contactCardChanges: unused,
+    queryContactCards: unused,
+    queryContactCardChanges: unused,
+    setContactCards: unused,
   }
   return { ...base, ...overrides }
 }

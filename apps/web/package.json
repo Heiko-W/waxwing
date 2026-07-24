@@ -14,6 +14,7 @@
   "dependencies": {
     "@tanstack/react-virtual": "^3.14.5",
     "@waxwing/jmap": "workspace:*",
+    "@waxwing/jscontact": "workspace:*",
     "@waxwing/mail-html": "workspace:*",
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",

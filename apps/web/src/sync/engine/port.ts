@@ -6,7 +6,7 @@
  * against a plain fake port.
  */
 
-import type { Id, PatchObject } from '@waxwing/jmap'
+import type { ContactCard, Id, PatchObject } from '@waxwing/jmap'
 import {
   creationRef,
   isMethodErrorType,
@@ -21,6 +21,9 @@ import {
   BODY_PART_PROPERTIES,
   CannotCalculateChangesError,
   type ChangesResult,
+  CONTACT_CARD_PROPERTIES,
+  type ContactQueryChangesSpec,
+  type ContactQuerySpec,
   EMAIL_BODY_PROPERTIES,
   EMAIL_ENVELOPE_PROPERTIES,
   type EmailBodyInput,
@@ -292,6 +295,142 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       // rejection path can adopt the newly-created draft (which committed regardless of the submission).
       const emailCreated = toSetResult(responses.get(emailHandle)).created[args.emailCreationId]
       return { ...toSetResult(responses.get(submission)), emailCreated: emailCreated ?? null }
+    },
+
+    // ── Contacts (M4.2, RFC 9610) ────────────────────────────────────────────────────────────
+
+    async getAddressBooks(ids) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.addressBookGet, { accountId, ids })
+      const response = (await builder.send()).get(handle)
+      return { list: response.list, notFound: response.notFound, state: response.state }
+    },
+
+    async addressBookChanges(sinceState, maxChanges) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.addressBookChanges, {
+        accountId,
+        sinceState,
+        ...(maxChanges === undefined ? {} : { maxChanges }),
+      })
+      const response = (await builder.send()).get(handle)
+      return {
+        newState: response.newState,
+        hasMoreChanges: response.hasMoreChanges,
+        created: response.created,
+        updated: response.updated,
+        destroyed: response.destroyed,
+      }
+    },
+
+    async setAddressBooks(args): Promise<PortSetResult> {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.addressBookSet, {
+        accountId,
+        ...(args.create === undefined ? {} : { create: args.create }),
+        ...(args.update === undefined ? {} : { update: args.update }),
+        ...(args.destroy === undefined ? {} : { destroy: args.destroy }),
+        ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
+      })
+      return toSetResult((await builder.send()).get(handle))
+    },
+
+    async getContactCards(ids) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.contactCardGet, {
+        accountId,
+        ids,
+        properties: [...CONTACT_CARD_PROPERTIES] as string[],
+      })
+      const response = (await builder.send()).get(handle)
+      // A partial /get returns Partial<ContactCard>; the requested properties cover every modeled field.
+      return {
+        list: response.list as unknown as ContactCard[],
+        notFound: response.notFound,
+        state: response.state,
+      }
+    },
+
+    async contactCardChanges(sinceState, maxChanges) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.contactCardChanges, {
+        accountId,
+        sinceState,
+        ...(maxChanges === undefined ? {} : { maxChanges }),
+      })
+      const response = (await builder.send()).get(handle)
+      return {
+        newState: response.newState,
+        hasMoreChanges: response.hasMoreChanges,
+        created: response.created,
+        updated: response.updated,
+        destroyed: response.destroyed,
+      }
+    },
+
+    async queryContactCards(spec: ContactQuerySpec): Promise<QueryResult> {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.contactCardQuery, {
+        accountId,
+        ...(spec.filter === undefined ? {} : { filter: spec.filter }),
+        ...(spec.sort === undefined ? {} : { sort: spec.sort }),
+        ...(spec.position === undefined ? {} : { position: spec.position }),
+        ...(spec.limit === undefined ? {} : { limit: spec.limit }),
+        ...(spec.calculateTotal === undefined ? {} : { calculateTotal: spec.calculateTotal }),
+      })
+      const response = (await builder.send()).get(handle)
+      const result: QueryResult = {
+        ids: response.ids,
+        queryState: response.queryState,
+        canCalculateChanges: response.canCalculateChanges,
+        position: response.position,
+        ...(response.total === undefined ? {} : { total: response.total }),
+      }
+      return result
+    },
+
+    async queryContactCardChanges(spec: ContactQueryChangesSpec): Promise<QueryChangesResult> {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.contactCardQueryChanges, {
+        accountId,
+        sinceQueryState: spec.sinceQueryState,
+        ...(spec.filter === undefined ? {} : { filter: spec.filter }),
+        ...(spec.sort === undefined ? {} : { sort: spec.sort }),
+        ...(spec.upToId === undefined ? {} : { upToId: spec.upToId }),
+        ...(spec.maxChanges === undefined ? {} : { maxChanges: spec.maxChanges }),
+        ...(spec.calculateTotal === undefined ? {} : { calculateTotal: spec.calculateTotal }),
+      })
+      try {
+        const response = (await builder.send()).get(handle)
+        const result: QueryChangesResult = {
+          oldQueryState: response.oldQueryState,
+          newQueryState: response.newQueryState,
+          removed: response.removed,
+          added: response.added,
+          ...(response.total === undefined ? {} : { total: response.total }),
+        }
+        return result
+      } catch (error) {
+        if (
+          error instanceof JmapMethodError &&
+          isMethodErrorType(error, MethodErrorTypes.cannotCalculateChanges)
+        ) {
+          throw new CannotCalculateChangesError()
+        }
+        throw error
+      }
+    },
+
+    async setContactCards(args): Promise<PortSetResult> {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.contactCardSet, {
+        accountId,
+        ...(args.create === undefined ? {} : { create: args.create }),
+        ...(args.update === undefined ? {} : { update: args.update }),
+        ...(args.destroy === undefined ? {} : { destroy: args.destroy }),
+        ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
+      })
+      return toSetResult((await builder.send()).get(handle))
     },
   }
 }

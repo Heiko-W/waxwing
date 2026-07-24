@@ -19,7 +19,12 @@
  * the compound primary key, and the same logical query shares one key string across accounts.
  */
 
-import type { EmailComparator, EmailFilter } from '@waxwing/jmap'
+import type {
+  ContactCardComparator,
+  ContactCardFilter,
+  EmailComparator,
+  EmailFilter,
+} from '@waxwing/jmap'
 
 export interface QuerySpec {
   filter?: EmailFilter | null
@@ -33,6 +38,25 @@ export function canonicalQueryKey(spec: QuerySpec): string {
     filter: normalizeFilter(spec.filter ?? null),
     sort: normalizeSort(spec.sort ?? null),
     collapseThreads: spec.collapseThreads ?? false,
+  })
+}
+
+/**
+ * The contacts analogue of {@link canonicalQueryKey} (M4.2), keyed on `{filter, sort}` (a contact
+ * query has no `collapseThreads`). Reuses the same structural normalization —
+ * {@link normalizeFilter}/{@link normalizeSort} read only `operator`/`conditions` and
+ * `property`/`isAscending`/`collation`, all of which a contact filter/comparator shares — so the
+ * casts are safe. A `kind: 'contact'` discriminator keeps a contact key from ever colliding with an
+ * email key even though the two live in separate stores.
+ */
+export function canonicalContactQueryKey(spec: {
+  filter?: ContactCardFilter | null
+  sort?: ContactCardComparator[] | null
+}): string {
+  return stableStringify({
+    kind: 'contact',
+    filter: normalizeFilter((spec.filter ?? null) as unknown as EmailFilter | null),
+    sort: normalizeSort((spec.sort ?? null) as unknown as EmailComparator[] | null),
   })
 }
 

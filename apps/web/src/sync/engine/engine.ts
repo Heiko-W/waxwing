@@ -35,14 +35,16 @@ import {
   type ReplicaDb,
   scopeKey,
 } from '../db'
-import { canonicalQueryKey, type QuerySpec } from '../query-key'
+import { canonicalContactQueryKey, canonicalQueryKey, type QuerySpec } from '../query-key'
 import {
   failedOutbox,
+  getContactQueryCache,
   getQueryCache,
   getSyncState,
   mailboxByRole,
   newestReceivedAt,
   pendingOutbox,
+  putContactQueryCache,
   putEmailBody,
   putEmails,
   putQueryCache,
@@ -59,7 +61,17 @@ import {
 import { STUCK_AFTER_ATTEMPTS } from './backoff'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { isAuthExpiry } from './conflict'
-import { reconcileQuery, syncEmails, syncIdentities, syncMailboxes, syncThreads } from './delta'
+import {
+  type ContactQuerySpecInput,
+  reconcileContactQuery,
+  reconcileQuery,
+  syncAddressBooks,
+  syncContactCards,
+  syncEmails,
+  syncIdentities,
+  syncMailboxes,
+  syncThreads,
+} from './delta'
 import { type LockManagerLike, startLeaderElection } from './leader'
 import { type MaintenanceResult, runMaintenance, withQuotaRecovery } from './maintenance'
 import {
@@ -82,7 +94,7 @@ import {
 } from './types'
 
 /** Data types we ask push to notify on and delta-sync. */
-const WATCHED_TYPES = ['Mailbox', 'Thread', 'Email']
+const WATCHED_TYPES = ['Mailbox', 'Thread', 'Email', 'AddressBook', 'ContactCard']
 
 /**
  * The push transports a *browser* may use (decision D2, ratified at G1; ADR-005).
@@ -194,6 +206,11 @@ export class SyncEngine {
   private readonly watched = new Set<string>()
   /** Query keys with a backfill in flight — dedups a search's watch-effect unwatch→rewatch churn. */
   private readonly inFlightBackfills = new Set<string>()
+
+  /** Canonical keys of the CONTACT queries kept fresh (M4.2); specs live in the ContactQueryCacheRow. */
+  private readonly watchedContacts = new Set<string>()
+  /** Contact query keys with a backfill in flight — same unwatch→rewatch dedup as {@link inFlightBackfills}. */
+  private readonly inFlightContactBackfills = new Set<string>()
 
   /** Identities are pulled once per leadership session (M2.5; Identity/changes deferred). */
   private identitiesSynced = false
@@ -613,6 +630,61 @@ export class SyncEngine {
       })
     } finally {
       this.inFlightBackfills.delete(key)
+    }
+  }
+
+  /**
+   * Register a watched `ContactCard/query` (M4.2) — the contacts analogue of {@link watchQuery}.
+   * Returns the canonical key SYNCHRONOUSLY so the caller can subscribe to `contactQueryCache[key]`
+   * immediately; the initial backfill runs in the background. `reconcileWatchedContacts` keeps it
+   * fresh (incl. the forced full re-query re-probe). The caller MUST {@link unwatchContactQuery} on
+   * unmount / when the query changes, or `watchedContacts` grows unbounded.
+   */
+  watchContactQuery(spec: ContactQuerySpecInput): string {
+    const key = canonicalContactQueryKey(spec)
+    if (this.watchedContacts.has(key)) return key
+    this.watchedContacts.add(key)
+    void this.backfillContactQueryIfAbsent(key, spec)
+    return key
+  }
+
+  /** Stop keeping a contact query window fresh. */
+  unwatchContactQuery(key: string): void {
+    this.watchedContacts.delete(key)
+  }
+
+  private async backfillContactQueryIfAbsent(
+    key: string,
+    spec: ContactQuerySpecInput,
+  ): Promise<void> {
+    // Same in-flight guard as {@link backfillQueryIfAbsent}: a watch effect that unwatches then
+    // re-watches on a source-ref churn must not re-issue the whole query before the first lands.
+    if (this.inFlightContactBackfills.has(key)) return
+    if ((await getContactQueryCache(this.db, this.accountId, key)) !== undefined) {
+      if (this.isLeader) void this.sync()
+      return
+    }
+    this.inFlightContactBackfills.add(key)
+    try {
+      // A brand-new window has no cached row, so `forceFull` here is the initial full materialization.
+      await reconcileContactQuery(this.port, this.db, this.accountId, key, spec, this.clock, true)
+    } catch {
+      if (this.stopController.signal.aborted) return
+      // A rejected contact filter must not leave the list spinning forever: write an empty window so it
+      // shows "no results", and — the key stays watched — the next reconcile self-heals a transient error.
+      await putContactQueryCache(this.db, {
+        accountId: this.accountId,
+        key,
+        ids: [],
+        queryState: '',
+        total: 0,
+        upToId: null,
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        lastUsedAt: this.clock.now(),
+      })
+    } finally {
+      this.inFlightContactBackfills.delete(key)
     }
   }
 
@@ -1152,6 +1224,11 @@ export class SyncEngine {
     await syncThreads(this.port, this.db, this.accountId, this.clock)
     const created = await syncEmails(this.port, this.db, this.accountId, this.clock)
     await this.reconcileWatched(forceFull)
+    // Contacts (M4.2): the address-book tree (pulled whole) + the ContactCard delta + the watched
+    // contact query windows. Independent of mail; the same `forceFull` SP.4 re-probe applies.
+    await syncAddressBooks(this.port, this.db, this.accountId, this.clock)
+    await syncContactCards(this.port, this.db, this.accountId, this.clock)
+    await this.reconcileWatchedContacts(forceFull)
     return created
   }
 
@@ -1286,6 +1363,32 @@ export class SyncEngine {
         // would starve the keys after it. A server-rejected search filter (e.g. free-text on an
         // FTS-less server) would otherwise re-throw on every sweep. Re-throw ONLY auth-expiry so the
         // pass can still route to re-auth (FR-AUTH-06); swallow the rest (it self-heals next sweep).
+        if (isAuthExpiry(error)) throw error
+      }
+    }
+  }
+
+  /**
+   * Keep the watched CONTACT query windows fresh (M4.2) — the contacts analogue of
+   * {@link reconcileWatched}. No `onlyVoided` path: there is no contact outbox in this stage, so no
+   * window is ever locally voided. Per-key isolation + auth-expiry re-throw as on the mail side.
+   */
+  private async reconcileWatchedContacts(forceFull: boolean): Promise<void> {
+    for (const key of this.watchedContacts) {
+      const row = await getContactQueryCache(this.db, this.accountId, key)
+      if (!row) continue
+      const spec: ContactQuerySpecInput = { filter: row.filter, sort: row.sort }
+      try {
+        await reconcileContactQuery(
+          this.port,
+          this.db,
+          this.accountId,
+          key,
+          spec,
+          this.clock,
+          forceFull,
+        )
+      } catch (error) {
         if (isAuthExpiry(error)) throw error
       }
     }

@@ -19,11 +19,14 @@ export {
 } from './cache-usage'
 export {
   type AccountRecord,
+  type AddressBookRow,
   type AddressStatRow,
   BLOB_META_OVERHEAD_BYTES,
   type BlobMetaRow,
   BODY_OVERHEAD_BYTES,
   type ConflictCode,
+  type ContactCardRow,
+  type ContactQueryCacheRow,
   clearAccount,
   collectBodyBlobIds,
   type DraftAttachmentLike,
@@ -50,18 +53,23 @@ export {
   type SyncStateRow,
   scopeKey,
   type ThreadRow,
+  toAddressBookRow,
+  toContactCardRow,
   toEmailRow,
   toIdentityRow,
   toMailboxRow,
   toThreadRow,
   wipeReplica,
 } from './db'
-export { canonicalQueryKey, type QuerySpec } from './query-key'
+export { canonicalContactQueryKey, canonicalQueryKey, type QuerySpec } from './query-key'
 export {
   getActiveReplica,
   type ReplicaContextValue,
   ReplicaProvider,
   type ReplicaProviderProps,
+  useAddressBooks,
+  useContactCard,
+  useContactWindow,
   useEmail,
   useEmailBody,
   useEmailWindow,

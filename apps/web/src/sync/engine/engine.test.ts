@@ -233,6 +233,32 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
     async getSearchSnippets() {
       return { list: [], notFound: [] }
     },
+    // Contacts (M4.2): safe no-op defaults — runDeltaBlock now pulls address books + cards on every
+    // pass, but no engine test here watches a contact query, so an empty replica is the whole story.
+    async getAddressBooks() {
+      return { list: [], notFound: [], state: 'abk-1' }
+    },
+    async addressBookChanges(s) {
+      return emptyChanges(s)
+    },
+    async setAddressBooks() {
+      return emptySet()
+    },
+    async getContactCards() {
+      return { list: [], notFound: [], state: 'cc-1' }
+    },
+    async contactCardChanges(s) {
+      return emptyChanges(s)
+    },
+    async queryContactCards() {
+      return { ids: [], queryState: 'cq-1', canCalculateChanges: true, position: 0, total: 0 }
+    },
+    async queryContactCardChanges() {
+      return { oldQueryState: 'cq-1', newQueryState: 'cq-1', removed: [], added: [] }
+    },
+    async setContactCards() {
+      return emptySet()
+    },
   }
 }
 

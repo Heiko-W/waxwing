@@ -7,6 +7,10 @@
  */
 
 import type {
+  AddressBook,
+  ContactCard,
+  ContactCardComparator,
+  ContactCardFilter,
   Email,
   EmailAddress,
   EmailBodyPart,
@@ -111,6 +115,25 @@ export interface EmailQueryChangesSpec {
   readonly calculateTotal?: boolean
 }
 
+/** A `ContactCard/query` (one page) — the Mail {@link EmailQuerySpec} analogue (no `collapseThreads`). */
+export interface ContactQuerySpec {
+  readonly filter?: ContactCardFilter | null
+  readonly sort?: ContactCardComparator[] | null
+  readonly position?: number
+  readonly limit?: number
+  readonly calculateTotal?: boolean
+}
+
+/** A `ContactCard/queryChanges` — the Mail {@link EmailQueryChangesSpec} analogue. */
+export interface ContactQueryChangesSpec {
+  readonly filter?: ContactCardFilter | null
+  readonly sort?: ContactCardComparator[] | null
+  readonly sinceQueryState: string
+  readonly upToId?: Id | null
+  readonly maxChanges?: number
+  readonly calculateTotal?: boolean
+}
+
 /**
  * The narrow JMAP surface the engine uses. All calls are implicitly scoped to {@link accountId}.
  * `queryEmailChanges` REJECTS with {@link CannotCalculateChangesError} when the server cannot
@@ -171,6 +194,33 @@ export interface JmapPort {
     sourceUpdate?: { id: Id; patch: PatchObject } | null
     ifInState?: string | null
   }): Promise<PortSetResult>
+
+  // ── Contacts (M4.2, RFC 9610) ──────────────────────────────────────────────────────────────
+  // AddressBooks mirror the Mailbox surface (whole-account pull, no `/query`); ContactCards mirror
+  // the Email surface (delta + windowed query). `queryContactCardChanges` REJECTS with
+  // {@link CannotCalculateChangesError} when the server cannot compute the delta.
+
+  /** `ids === null` fetches all address books (the initial + reconciliation pull). */
+  getAddressBooks(ids: Id[] | null): Promise<GetResult<AddressBook>>
+  addressBookChanges(sinceState: string, maxChanges?: number): Promise<ChangesResult>
+  setAddressBooks(args: {
+    create?: Record<string, Partial<AddressBook>>
+    update?: Record<Id, PatchObject>
+    destroy?: Id[]
+    ifInState?: string | null
+  }): Promise<PortSetResult>
+
+  /** Fetches the full JSContact card ({@link CONTACT_CARD_PROPERTIES}) for the given ids. */
+  getContactCards(ids: Id[]): Promise<GetResult<ContactCard>>
+  contactCardChanges(sinceState: string, maxChanges?: number): Promise<ChangesResult>
+  queryContactCards(spec: ContactQuerySpec): Promise<QueryResult>
+  queryContactCardChanges(spec: ContactQueryChangesSpec): Promise<QueryChangesResult>
+  setContactCards(args: {
+    create?: Record<string, Partial<ContactCard>>
+    update?: Record<Id, PatchObject>
+    destroy?: Id[]
+    ifInState?: string | null
+  }): Promise<PortSetResult>
 }
 
 /** The property set fetched for an email envelope row (kept in one place so port + tests agree). */
@@ -193,6 +243,38 @@ export const EMAIL_ENVELOPE_PROPERTIES: readonly (keyof Email | string)[] = [
   'references',
   'preview',
   'hasAttachment',
+]
+
+/**
+ * The `ContactCard/get` property set fetched for a card row (M4.2). Enumerates the JMAP object fields
+ * (`id`, `addressBookIds`) plus every JSContact `Card` property this client models, INCLUDING
+ * `vCardProps` — the bag by which unmapped vCard properties survive a round-trip. It is the "default
+ * to fetch" set (kept here so port + tests agree, mirroring {@link EMAIL_ENVELOPE_PROPERTIES}); a
+ * fetch restricted to it stays lossless for every property the app knows about.
+ */
+export const CONTACT_CARD_PROPERTIES: readonly (keyof ContactCard | string)[] = [
+  'id',
+  'addressBookIds',
+  '@type',
+  'version',
+  'uid',
+  'kind',
+  'created',
+  'updated',
+  'name',
+  'nicknames',
+  'emails',
+  'phones',
+  'addresses',
+  'organizations',
+  'titles',
+  'anniversaries',
+  'notes',
+  'media',
+  'links',
+  'keywords',
+  'members',
+  'vCardProps',
 ]
 
 /**

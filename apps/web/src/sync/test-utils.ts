@@ -4,7 +4,14 @@
  * `fake-indexeddb/auto` preloaded, so `new ReplicaDb(name)` uses the in-memory IndexedDB.
  */
 
-import type { EmailAddress, Mailbox, MailboxRights, Thread } from '@waxwing/jmap'
+import type {
+  AddressBook,
+  ContactCard,
+  EmailAddress,
+  Mailbox,
+  MailboxRights,
+  Thread,
+} from '@waxwing/jmap'
 import { type EmailEnvelopeInput, ReplicaDb } from './db'
 
 let seq = 0
@@ -71,4 +78,30 @@ export function email(id: string, over: Partial<EmailEnvelopeInput> = {}): Email
 
 export function thread(id: string, emailIds: string[]): Thread {
   return { id, emailIds }
+}
+
+// ── Contacts (M4.2) ──────────────────────────────────────────────────────────────────────────
+
+export function addressBook(id: string, over: Partial<AddressBook> = {}): AddressBook {
+  return {
+    id,
+    name: id,
+    description: null,
+    sortOrder: 0,
+    isDefault: false,
+    isSubscribed: true,
+    myRights: { mayRead: true, mayWrite: true, mayShare: false, mayDelete: false },
+    ...over,
+  }
+}
+
+export function contactCard(id: string, over: Partial<ContactCard> = {}): ContactCard {
+  return {
+    '@type': 'Card',
+    version: '1.0',
+    uid: `uid-${id}`,
+    id,
+    addressBookIds: { book1: true },
+    ...over,
+  }
 }
