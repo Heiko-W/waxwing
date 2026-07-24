@@ -19,7 +19,7 @@ import { getPref, putMailboxes, type ReplicaDb, ReplicaProvider, setPref } from 
 import { freshDb, mailbox } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
-import { NotificationsSection } from './NotificationsSection'
+import { NotificationsSection, QuietBoundInput } from './NotificationsSection'
 
 const ACC = 'a'
 const INBOX = 'mb-inbox'
@@ -208,6 +208,27 @@ describe('NotificationsSection — the preferences', () => {
 
     // 00:00 would be a silent, wrong window the user never asked for.
     await waitFor(async () => expect((await prefs()).quietHours?.fromMinutes).toBe(22 * 60))
+  })
+
+  it('QuietBoundInput keeps a typed time when the stale pref echo re-renders (segment race)', () => {
+    // The 2026-07-24 hand-test defect: a controlled `<input type="time">` bound straight to the async
+    // `useLocalPref` was reset BETWEEN the two digits of an hour by the liveQuery echo, so typing "18"
+    // landed as "08". jsdom cannot drive segment editing, but the fix is structural — local editing
+    // state — and this pins it: a re-render with the STILL-STALE minutes must not eat the edit.
+    const onCommit = vi.fn()
+    const { container, rerender } = render(
+      <QuietBoundInput id="q" minutes={22 * 60} onCommit={onCommit} />,
+    )
+    const input = container.querySelector('#q') as HTMLInputElement
+    expect(input.value).toBe('22:00')
+
+    fireEvent.change(input, { target: { value: '18:00' } })
+    expect(onCommit).toHaveBeenCalledWith(18 * 60)
+
+    // The write is async; the section re-renders with the old minutes before Dexie catches up. A
+    // field bound to the prop would snap back to 22:00 here — exactly how "18" became "08".
+    rerender(<QuietBoundInput id="q" minutes={22 * 60} onCommit={onCommit} />)
+    expect(input.value).toBe('18:00')
   })
 
   it('the preview and sound switches write their preferences', async () => {

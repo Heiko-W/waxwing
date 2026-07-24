@@ -52,6 +52,42 @@ export interface NotificationsSectionProps {
   readonly backgroundPush?: boolean
 }
 
+/**
+ * One bound of the quiet-hours range, holding its OWN editing state.
+ *
+ * A plain controlled `<input type="time">` bound straight to `useLocalPref` is unusable: the pref is
+ * written on every keystroke and the Dexie liveQuery re-emits BETWEEN the two digits of an hour,
+ * resetting the sub-field mid-edit — typing "18" landed as "08" (2026-07-24 hand-test, no automated
+ * test could see it: the race is between the human's second keystroke and the async round-trip). The
+ * displayed value therefore has to be local. The only external change to a bound is the user's own
+ * echo (which must be ignored) or toggling quiet hours off (which unmounts this), so the value is
+ * initialised once and never re-synced from the prop.
+ */
+export function QuietBoundInput({
+  id,
+  minutes,
+  onCommit,
+}: {
+  readonly id: string
+  readonly minutes: number
+  readonly onCommit: (minutes: number) => void
+}) {
+  const [value, setValue] = useState(() => minutesToTimeValue(minutes))
+  return (
+    <TextInput
+      id={id}
+      type="time"
+      value={value}
+      onChange={(event) => {
+        setValue(event.target.value)
+        const next = timeValueToMinutes(event.target.value)
+        // A cleared field is not a new time — keep the local value, write nothing.
+        if (next !== null) onCommit(next)
+      }}
+    />
+  )
+}
+
 export function NotificationsSection(props: NotificationsSectionProps) {
   const { t } = useTranslation()
   const config = useConfig()
@@ -130,9 +166,7 @@ export function NotificationsSection(props: NotificationsSectionProps) {
     write((current) => ({ ...current, quietHours: next ? DEFAULT_QUIET_HOURS : null }))
   }
 
-  function setQuietBound(bound: 'fromMinutes' | 'toMinutes', value: string): void {
-    const minutes = timeValueToMinutes(value)
-    if (minutes === null) return // the field can be CLEARED; that is not a new time, so ignore it
+  function setQuietBound(bound: 'fromMinutes' | 'toMinutes', minutes: number): void {
     write((current) => ({
       ...current,
       quietHours: { ...(current.quietHours ?? DEFAULT_QUIET_HOURS), [bound]: minutes },
@@ -217,20 +251,18 @@ export function NotificationsSection(props: NotificationsSectionProps) {
                 <label htmlFor={ids.quietFrom} className={styles.label}>
                   {t('notify.quiet.from')}
                 </label>
-                <TextInput
+                <QuietBoundInput
                   id={ids.quietFrom}
-                  type="time"
-                  value={minutesToTimeValue(prefs.quietHours.fromMinutes)}
-                  onChange={(event) => setQuietBound('fromMinutes', event.target.value)}
+                  minutes={prefs.quietHours.fromMinutes}
+                  onCommit={(minutes) => setQuietBound('fromMinutes', minutes)}
                 />
                 <label htmlFor={ids.quietTo} className={styles.label}>
                   {t('notify.quiet.to')}
                 </label>
-                <TextInput
+                <QuietBoundInput
                   id={ids.quietTo}
-                  type="time"
-                  value={minutesToTimeValue(prefs.quietHours.toMinutes)}
-                  onChange={(event) => setQuietBound('toMinutes', event.target.value)}
+                  minutes={prefs.quietHours.toMinutes}
+                  onCommit={(minutes) => setQuietBound('toMinutes', minutes)}
                 />
               </div>
             )}
