@@ -130,6 +130,25 @@
 }
 
 /*
+ * The sender avatar doubles as the hover-card trigger (M4.3-b, FR-CON-05). A bare button so the
+ * avatar keeps its size and shape; the focus ring is the app's standard outline (WCAG 2.4.7).
+ */
+.senderTrigger {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--waxwing-radius-full);
+  background: none;
+  cursor: pointer;
+}
+
+.senderTrigger:focus-visible {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
  * The sender's real address (M3.9, FR-RD-08). Always rendered, never hover-gated — hover does not
  * exist on a phone. Dimmed and smaller so it stays out of the way of reading, but it is never
  * hidden, and the @media print block below deliberately does NOT strip it.

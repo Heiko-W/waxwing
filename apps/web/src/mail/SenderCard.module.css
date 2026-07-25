@@ -1,0 +1,49 @@
+/* Sender hover-card popover (M4.3-b, FR-CON-05) — the interactive surface raised from the reading
+   pane's sender avatar. Positioned `fixed` against the trigger (coords set from its rect), on the same
+   raised surface as the label/menu popovers. */
+
+.senderCard {
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+  inline-size: min(20rem, 90vw);
+  padding: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+.head {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  min-inline-size: 0;
+}
+
+.name {
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text);
+  overflow-wrap: anywhere;
+}
+
+.email {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--waxwing-space-1);
+}

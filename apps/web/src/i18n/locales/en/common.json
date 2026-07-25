@@ -595,6 +595,13 @@
     "noRecipients": "(No recipients)",
     "actions": "Message actions",
     "markUnread": "Mark as unread",
+    "senderCard": {
+      "trigger": "Show contact card for {{name}}",
+      "add": "Add to Contacts",
+      "edit": "Edit Contact",
+      "lastConversation": "Last conversation",
+      "added": "Added to Contacts"
+    },
     "collapse": "Collapse message",
     "reply": "Reply",
     "replyAll": "Reply all",

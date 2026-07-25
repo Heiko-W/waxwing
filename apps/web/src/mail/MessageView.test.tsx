@@ -187,6 +187,17 @@ describe('MessageView', () => {
     expect(screen.getByRole('article', { name: 'Hello' })).toBeInTheDocument()
   })
 
+  it('opens the sender hover-card from the header avatar (FR-CON-05)', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'hello'))
+    const user = userEvent.setup()
+    renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }], subject: 'Hello' }))
+    const trigger = await screen.findByRole('button', { name: 'Show contact card for Alice' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+    await user.click(trigger)
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('alice@x.test')).toBeInTheDocument()
+  })
+
   it('reply seeds a draft addressed to the sender with a Re: subject and threading', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()

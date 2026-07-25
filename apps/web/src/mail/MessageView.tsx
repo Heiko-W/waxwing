@@ -63,6 +63,8 @@ import {
   useRemoteContentDefault,
 } from './reading-prefs'
 import { type ReadingHandlers, useReadingStore } from './reading-store'
+import { SenderCard } from './SenderCard'
+import type { SenderIdentity } from './sender-contact'
 import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useTriage } from './use-triage'
@@ -139,6 +141,9 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
    */
   const [labelsOpen, setLabelsOpen] = useState(false)
   const labelButtonRef = useRef<HTMLButtonElement>(null)
+  /** The sender hover-card (FR-CON-05), anchored to the sender avatar in the header. */
+  const [senderCardOpen, setSenderCardOpen] = useState(false)
+  const senderButtonRef = useRef<HTMLButtonElement>(null)
 
   // Remote content: deployment default, sender allowlist, or an explicit "Load images" this session.
   const remoteAllow = useRemoteAllowList()
@@ -363,6 +368,13 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
 
   const name = senderName(email.from, t('list.noSender'))
   /**
+   * The sender the hover-card acts on (FR-CON-05): the first `from` mailbox, or `null` when the
+   * message carries no sender address — there is nothing to add, edit or search on without one, so the
+   * avatar stays a plain (non-interactive) image in that case.
+   */
+  const senderIdentity: SenderIdentity | null =
+    fromAddress !== null ? { email: fromAddress, name: email.from?.[0]?.name ?? null } : null
+  /**
    * The sender's real address, shown ALWAYS — dimmed, next to the name, never on hover. The spec
    * says "on hover/tap"; a phone has no hover, and phishing friction a phone user cannot get is not
    * friction. Suppressed only when it would be a literal duplicate of the name (a sender with no
@@ -510,7 +522,21 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   return (
     <article className={styles.message} aria-label={email.subject || t('list.noSubject')}>
       <header className={styles.header}>
-        <Avatar name={name} size="md" />
+        {senderIdentity !== null ? (
+          <button
+            ref={senderButtonRef}
+            type="button"
+            className={styles.senderTrigger}
+            aria-haspopup="dialog"
+            aria-expanded={senderCardOpen}
+            aria-label={t('reading.senderCard.trigger', { name })}
+            onClick={() => setSenderCardOpen((open) => !open)}
+          >
+            <Avatar name={name} size="md" />
+          </button>
+        ) : (
+          <Avatar name={name} size="md" />
+        )}
         <div className={styles.headerMain}>
           <div className={styles.headerTop}>
             {/* Not inside the action bar or any other @media print-hidden chrome: the address is
@@ -772,6 +798,16 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           ids={[email.id]}
           anchorRef={labelButtonRef}
           onClose={() => setLabelsOpen(false)}
+        />
+      )}
+
+      {senderCardOpen && senderIdentity !== null && (
+        <SenderCard
+          from={senderIdentity}
+          accountId={accountId}
+          mailboxId={mailboxId}
+          anchorRef={senderButtonRef}
+          onClose={() => setSenderCardOpen(false)}
         />
       )}
 

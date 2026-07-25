@@ -595,6 +595,13 @@
     "noRecipients": "(Keine Empfänger)",
     "actions": "Nachrichtenaktionen",
     "markUnread": "Als ungelesen markieren",
+    "senderCard": {
+      "trigger": "Kontaktkarte von {{name}} anzeigen",
+      "add": "Zu Kontakten hinzufügen",
+      "edit": "Kontakt bearbeiten",
+      "lastConversation": "Letzte Konversation",
+      "added": "Zu Kontakten hinzugefügt"
+    },
     "collapse": "Nachricht einklappen",
     "reply": "Antworten",
     "replyAll": "Allen antworten",
