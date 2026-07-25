@@ -143,6 +143,18 @@ export interface SyncEngineDeps {
   /** Origin storage estimate (M3.4); defaults to {@link browserEstimate}. Injected in tests. */
   readonly estimate?: EstimateFn
   readonly locks: LockManagerLike
+  /**
+   * The exclusive leader lock name (M4.4). Omitted ⇒ the shared {@link SYNC_LOCK} — the historical
+   * single-account name. A per-account engine passes `${SYNC_LOCK}:${accountId}` so two tabs never
+   * elect two leaders for the SAME account, while the primary keeps the bare name unchanged.
+   */
+  readonly lockName?: string
+  /**
+   * Where this engine publishes its {@link EngineStatus} (M4.4). Omitted ⇒ the global
+   * {@link setEngineStatus} store the chrome badge reads. A SECONDARY (shared-account) engine passes a
+   * sink that discards it, so a background account's sync never flickers the primary's status badge.
+   */
+  readonly publishStatus?: (status: EngineStatus) => void
   readonly createBus: () => BroadcastChannelLike
   readonly createPush: (
     session: Session,
@@ -185,6 +197,8 @@ export class SyncEngine {
   private readonly accountId: Id
   private readonly clock: EngineClock
   private readonly random: () => number
+  /** Where {@link setStatus} publishes; the global store by default (M4.4). */
+  private readonly publishStatus: (status: EngineStatus) => void
 
   private readonly stopController = new AbortController()
   private bus: EngineBus | undefined
@@ -261,6 +275,7 @@ export class SyncEngine {
     this.clock = deps.clock
     this.random = deps.random ?? Math.random
     this.estimate = deps.estimate ?? browserEstimate
+    this.publishStatus = deps.publishStatus ?? setEngineStatus
     this.status = { ...INITIAL_ENGINE_STATUS, online: deps.isOnline() }
   }
 
@@ -308,6 +323,8 @@ export class SyncEngine {
       locks: this.deps.locks,
       signal: this.stopController.signal,
       onLeadership: (isLeader) => this.onLeadership(isLeader),
+      // Omitted ⇒ startLeaderElection defaults to the bare SYNC_LOCK (the primary's historical name).
+      ...(this.deps.lockName === undefined ? {} : { lockName: this.deps.lockName }),
     })
   }
 
@@ -339,7 +356,7 @@ export class SyncEngine {
     await this.leaderPromise?.catch(() => {})
     // Reset the shared status store so a fresh login never inherits this session's phase.
     this.status = { ...INITIAL_ENGINE_STATUS, online: this.deps.isOnline() }
-    setEngineStatus(this.status)
+    this.publishStatus(this.status)
   }
 
   /**
@@ -1430,7 +1447,7 @@ export class SyncEngine {
 
   private setStatus(next: EngineStatus, broadcast: boolean): void {
     this.status = next
-    setEngineStatus(next)
+    this.publishStatus(next)
     if (broadcast) this.bus?.postStatus(next)
   }
 }
@@ -1492,6 +1509,20 @@ export function createSyncEngine(deps: {
   safetyIntervalMs?: number
   /** M3.6's notifier. Omitted ⇒ no notifications (an unconnected shell, a test). */
   notify?: NotifyNewMail
+  /**
+   * Per-account overrides for the multi-account host (M4.4). All default to the historical
+   * single-account wiring, so the primary engine (which passes none of them) is byte-for-byte the
+   * pre-M4.4 engine:
+   *  - `lockName` — the leader lock; omitted ⇒ the bare {@link SYNC_LOCK}.
+   *  - `createBus` — the cross-tab channel; omitted ⇒ a real {@link defaultBroadcast}.
+   *  - `createPush` — the push channel; omitted ⇒ a fresh {@link createPushChannel} (a shared-account
+   *    engine passes a shared-mux handle so N accounts share ONE SSE connection).
+   *  - `publishStatus` — the status sink; omitted ⇒ the global badge store.
+   */
+  lockName?: string
+  createBus?: () => BroadcastChannelLike
+  createPush?: SyncEngineDeps['createPush']
+  publishStatus?: (status: EngineStatus) => void
 }): SyncEngine {
   const clock: EngineClock = deps.clock ?? {
     now: () => Date.now(),
@@ -1507,8 +1538,8 @@ export function createSyncEngine(deps: {
     clock,
     random: () => Math.random(),
     locks: navigator.locks as unknown as LockManagerLike,
-    createBus: () => defaultBroadcast(),
-    createPush: (session, options) => createPushChannel(session, options),
+    createBus: deps.createBus ?? (() => defaultBroadcast()),
+    createPush: deps.createPush ?? ((session, options) => createPushChannel(session, options)),
     isOnline: () => navigator.onLine,
     onOnlineChange: (listener) => {
       const on = () => listener(true)
@@ -1524,5 +1555,7 @@ export function createSyncEngine(deps: {
     ...(deps.onAuthExpired === undefined ? {} : { onAuthExpired: deps.onAuthExpired }),
     ...(deps.safetyIntervalMs === undefined ? {} : { safetyIntervalMs: deps.safetyIntervalMs }),
     ...(deps.notify === undefined ? {} : { notify: deps.notify }),
+    ...(deps.lockName === undefined ? {} : { lockName: deps.lockName }),
+    ...(deps.publishStatus === undefined ? {} : { publishStatus: deps.publishStatus }),
   })
 }

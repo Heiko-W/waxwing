@@ -54,6 +54,14 @@ export {
   QUERY_WINDOW_TTL_MS,
   QUOTA_SAFETY,
 } from './eviction'
+export {
+  createPushMux,
+  type EngineSpec,
+  type FleetAccount,
+  type FleetDeps,
+  type PushMux,
+  startEngineFleet,
+} from './fleet'
 export { SYNC_LOCK, startLeaderElection } from './leader'
 export {
   EVICT_CHUNK,
