@@ -21,6 +21,7 @@ import { DOMAIN } from './fixture.mjs'
 
 const CORE = 'urn:ietf:params:jmap:core'
 const CONTACTS = 'urn:ietf:params:jmap:contacts'
+const MAIL = 'urn:ietf:params:jmap:mail'
 
 export { DOMAIN } from './fixture.mjs'
 /** Re-exported so the spec has a single import surface. */
@@ -184,6 +185,97 @@ export async function seedMemberContact(client, accountId, bookId, token) {
   const [card] = await getCards(client, accountId, [created.id], ['uid', 'name'])
   if (!card) throw new Error('seedMemberContact: created card not readable back')
   return { id: created.id, uid: card.uid, name: card.name }
+}
+
+/**
+ * Seed a message into `client`'s Inbox FROM a dedicated, token-tagged sender, so the sender-to-contact
+ * flow (FR-CON-05) has a message to act on. A DIRECT `Email/set` injection (the `seedReplySource`
+ * idiom from seed-write.mjs), not a real send — which is the whole point: the `from` can then be an
+ * address that carries the `wwcon` token in BOTH its local-part AND its display name. So the card the
+ * app creates from it is disposable (`resetContacts` destroys it) and findable
+ * (`findContactsByToken` matches the token in the card's email + name) — unlike a card built from a
+ * real `bob@` sender, whose untagged leftover would flip the popover to "Edit Contact" on the next run
+ * and break the test. `token` MUST be a `contactsToken(...)` so the created card is auto-reset.
+ *
+ * Uses the MAIL account (`client.account()` / `client.mailboxes()`), not the contacts accountId — on
+ * this fixture they coincide, but this stays honest about which is which. Returns the sender's email +
+ * display name (the reading-pane trigger is named after the display name) and the seeded subject.
+ */
+export async function seedSenderMessage(client, token) {
+  const acc = await client.account()
+  const inbox = (await client.mailboxes()).find((box) => box.role === 'inbox')
+  if (!inbox) throw new Error(`${client.login} has no inbox to seed a sender message into`)
+  const senderEmail = `${token}@${DOMAIN}`
+  const senderName = `Contact ${token}`
+  const subject = `${token} sender-to-contact`
+  const res = await client.call(
+    [CORE, MAIL],
+    [
+      [
+        'Email/set',
+        {
+          accountId: acc,
+          create: {
+            src: {
+              mailboxIds: { [inbox.id]: true },
+              keywords: {},
+              from: [{ name: senderName, email: senderEmail }],
+              to: [{ email: client.login }],
+              subject,
+              htmlBody: [{ partId: 'h', type: 'text/html' }],
+              bodyValues: {
+                h: {
+                  value: '<p>Please add me to your contacts.</p>',
+                  isEncodingProblem: false,
+                  isTruncated: false,
+                },
+              },
+            },
+          },
+        },
+        '0',
+      ],
+    ],
+  )
+  const created = res.methodResponses[0][1].created?.src
+  if (!created) {
+    throw new Error(
+      `seedSenderMessage failed: ${JSON.stringify(res.methodResponses[0][1].notCreated)}`,
+    )
+  }
+  return { emailId: created.id, senderEmail, senderName, subject }
+}
+
+/**
+ * Destroy any `wwcon`-tagged mail across `client`'s account (the sender-to-contact seed), so a rerun
+ * starts clean. Idempotent. Filters on a subject SUBSTRING in JS (like `resetWriteMail`), never a
+ * tokenized JMAP `subject` filter, because the marker sits in the subject and cannot be trusted to
+ * tokenize to a reliable match term. Scoped to the account's newest 200 messages — ample on a fixture.
+ */
+export async function resetSenderMail(client) {
+  const acc = await client.account()
+  const q = await client.call(
+    [CORE, MAIL],
+    [
+      [
+        'Email/query',
+        { accountId: acc, sort: [{ property: 'receivedAt', isAscending: false }], limit: 200 },
+        '0',
+      ],
+    ],
+  )
+  const ids = q.methodResponses[0][1].ids
+  if (ids.length === 0) return 0
+  const g = await client.call(
+    [CORE, MAIL],
+    [['Email/get', { accountId: acc, ids, properties: ['subject'] }, '0']],
+  )
+  const doomed = g.methodResponses[0][1].list
+    .filter((mail) => (mail.subject ?? '').includes(CONTACTS_TOKEN_PREFIX))
+    .map((mail) => mail.id)
+  if (doomed.length === 0) return 0
+  await client.call([CORE, MAIL], [['Email/set', { accountId: acc, destroy: doomed }, '0']])
+  return doomed.length
 }
 
 /**

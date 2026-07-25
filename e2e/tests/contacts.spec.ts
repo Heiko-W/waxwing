@@ -13,9 +13,11 @@ import {
   jmapAs,
   readOnlyBook,
   resetContacts,
+  resetSenderMail,
   seedMemberContact,
+  seedSenderMessage,
 } from '../stalwart/seed-contacts.mjs'
-import { CREDENTIALS, login } from './helpers'
+import { CREDENTIALS, login, messageList } from './helpers'
 
 /**
  * M4.2 contacts suite — the REAL production bundle against the live Stalwart fixture (it runs in the
@@ -52,14 +54,16 @@ test.beforeAll(async () => {
   roBook = await readOnlyBook(alice, aliceAccountId)
 })
 
-// Destroy any leftover `wwcon`-tagged cards so each test — and each rerun — starts from a clean book.
+// Destroy any leftover `wwcon`-tagged cards AND mail so each test — and each rerun — starts clean.
 test.beforeEach(async () => {
   await resetContacts(alice, aliceAccountId)
+  await resetSenderMail(alice)
 })
 
 // Backstop: leave the fixture as we found it, whatever the last test did.
 test.afterAll(async () => {
   await resetContacts(alice, aliceAccountId)
+  await resetSenderMail(alice)
 })
 
 /** Open the Contacts area the way a user does — via the primary nav — and wait for the rail. */
@@ -149,6 +153,96 @@ test.describe('M4.2 contacts suite', () => {
     expect(group?.kind).toBe('group')
     expect(group?.members?.[memberUid]).toBe(true)
     expect(group?.name?.full ?? '').toContain(groupToken)
+  })
+
+  test('adds a message sender to Contacts, round-tripping to the server (FR-CON-05)', async ({
+    page,
+  }) => {
+    const token = contactsToken('s')
+    // A DEDICATED, token-tagged sender injected straight into alice's Inbox (the seedReplySource
+    // idiom). The card the app builds from it carries the token in BOTH email and name, so it is
+    // findable and `resetContacts`-disposable — unlike a card from a real `bob@` sender, whose
+    // untagged leftover would flip the popover to "Edit Contact" on the next run.
+    const seeded = await seedSenderMessage(alice, token)
+
+    await login(page, CREDENTIALS.alice)
+    // `login()` lands on the Inbox; wait for the seeded message to sync into the list, then open it.
+    const row = messageList(page).getByText(seeded.subject)
+    await expect(row).toBeVisible({ timeout: 30_000 })
+    await row.click()
+
+    // The reading-pane sender trigger is named after the sender's DISPLAY name
+    // (`reading.senderCard.trigger` = "Show contact card for {{name}}"), which carries the token.
+    await page
+      .getByRole('button', { name: new RegExp(`Show contact card for.*${escapeRe(token)}`) })
+      .click()
+    // The popover is an APG dialog; its "Add to Contacts" action appears once the cards liveQuery
+    // resolves (the add-vs-edit choice is withheld until then — see SenderCard).
+    const add = page.getByRole('button', { name: 'Add to Contacts', exact: true })
+    await expect(add).toBeVisible({ timeout: 15_000 })
+    await add.click()
+
+    // The SERVER is the assertion — a card whose email is the sender's address — not the toast.
+    const cards = await pollContacts(() => findContactsByToken(alice, aliceAccountId, token))
+    expect(cards.length, 'exactly one card was added for the sender').toBe(1)
+    const addresses = Object.values(cards[0]?.emails ?? {}).map((entry) => entry.address)
+    expect(addresses).toContain(seeded.senderEmail)
+    // The card is left for `resetContacts`, the seeded mail for `resetSenderMail`, to clean up.
+  })
+
+  test('imports a vCard whose contacts round-trip to the server (FR-CON-06)', async ({ page }) => {
+    // One base token, two derived tokens: `contactsToken()` keys off `Date.now()`, so two calls in
+    // the same millisecond would collide — deriving `a`/`b` guarantees two distinct, `wwcon`-tagged
+    // (hence resettable) markers that each match exactly one imported card.
+    const base = contactsToken('i')
+    const token1 = `${base}a`
+    const token2 = `${base}b`
+    const vcard = `${[
+      'BEGIN:VCARD',
+      'VERSION:4.0',
+      `FN:Import ${token1}`,
+      `EMAIL:${token1}@${DOMAIN}`,
+      'END:VCARD',
+      'BEGIN:VCARD',
+      'VERSION:4.0',
+      `FN:Import ${token2}`,
+      `EMAIL:${token2}@${DOMAIN}`,
+      'END:VCARD',
+    ].join('\r\n')}\r\n`
+
+    await login(page, CREDENTIALS.alice)
+    await openContacts(page)
+
+    await page.getByRole('button', { name: 'Import or export', exact: true }).click()
+    // The import file input carries its own aria-label (`contacts.io.import.choose`); `setInputFiles`
+    // drives it directly with an in-memory .vcf (no temp file).
+    await page.getByLabel('Choose a file (.vcf or .json)').setInputFiles({
+      name: 'roundtrip.vcf',
+      mimeType: 'text/vcard',
+      buffer: Buffer.from(vcard),
+    })
+
+    // Once parsed, the confirm button carries the plural count; each imported card is one Outbox
+    // intent (`contacts.io.import.confirm` / `contacts.io.result.imported`).
+    const confirm = page.getByRole('button', { name: 'Import 2 contacts', exact: true })
+    await expect(confirm).toBeVisible({ timeout: 15_000 })
+    await confirm.click()
+    await expect(page.getByText('2 contacts imported.', { exact: true })).toBeVisible({
+      timeout: 15_000,
+    })
+
+    // The SERVER is the assertion: both tagged cards reached alice's account with their addresses.
+    const first = await pollContacts(() => findContactsByToken(alice, aliceAccountId, token1))
+    expect(first.length, 'the first imported contact reached the server').toBe(1)
+    expect(Object.values(first[0]?.emails ?? {}).map((entry) => entry.address)).toContain(
+      `${token1}@${DOMAIN}`,
+    )
+    const second = await pollContacts(() => findContactsByToken(alice, aliceAccountId, token2))
+    expect(second.length, 'the second imported contact reached the server').toBe(1)
+    expect(Object.values(second[0]?.emails ?? {}).map((entry) => entry.address)).toContain(
+      `${token2}@${DOMAIN}`,
+    )
+    // Both cards are left for `resetContacts` (`wwcon` prefix) to destroy.
   })
 
   test('a read-only shared book gates writes (FR-CON-01)', async ({ page }) => {

@@ -48,6 +48,18 @@ export interface MemberSeed {
   readonly name?: JsContactName
 }
 
+/** A message seeded into the Inbox from a token-tagged sender (the sender-to-contact fixture). */
+export interface SeededSenderMessage {
+  /** The JMAP id of the seeded message. */
+  readonly emailId: string
+  /** The sender's address — the email the app writes onto the created card. */
+  readonly senderEmail: string
+  /** The sender's display name — the reading-pane trigger is named after it. */
+  readonly senderName: string
+  /** The seeded subject (carries the token, for finding it in the list and for cleanup). */
+  readonly subject: string
+}
+
 export function contactsToken(kind?: string): string
 export function contactsAccountId(client: JmapClient): Promise<string>
 export function listAddressBooks(client: JmapClient, accountId: string): Promise<AddressBookLike[]>
@@ -74,4 +86,6 @@ export function seedMemberContact(
   bookId: string,
   token: string,
 ): Promise<MemberSeed>
+export function seedSenderMessage(client: JmapClient, token: string): Promise<SeededSenderMessage>
+export function resetSenderMail(client: JmapClient): Promise<number>
 export function resetContacts(client: JmapClient, accountId: string): Promise<number>
