@@ -5,17 +5,20 @@
  * available; a "did you mean …?" hint appears under To for a domain typo in the last address.
  */
 
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useReplicaOptional } from '../sync'
+import { type ContactCardRow, useReplicaOptional } from '../sync'
 import {
   type DraftWindow,
   type RecipientField as RecipientFieldName,
   useComposerStore,
 } from './composer-store'
+import { createContactSuggestionSource } from './contact-suggestion-source'
 import { RecipientField } from './RecipientField'
 import styles from './recipient-field.module.css'
 import {
+  combineSuggestionSources,
   createRecentsSuggestionSource,
   EMPTY_SUGGESTION_SOURCE,
   type RecipientSuggestionSource,
@@ -41,12 +44,32 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
   const moveRecipient = useComposerStore((state) => state.moveRecipient)
   const replica = useReplicaOptional()
 
+  // The account's contact cards, provider-SAFE (mirrors `useLocalPrefOptional`): the composer is
+  // unit-tested WITHOUT a `ReplicaProvider`, where the throwing `useAccountContactCards` (M4.2) would
+  // crash it. `undefined` while the first query resolves OR when there is no replica — the source then
+  // falls back to recents only, never a blank/broken field. Deps are the stable db+accountId, so a
+  // keystroke does not re-run this and a `contactCards` write is the ONLY thing that re-emits.
+  const cards = useLiveQuery<ContactCardRow[] | undefined>(
+    () =>
+      replica === null
+        ? Promise.resolve(undefined)
+        : replica.db.contactCards.where('accountId').equals(replica.accountId).toArray(),
+    [replica?.db, replica?.accountId],
+  )
+
   const source = useMemo<RecipientSuggestionSource>(() => {
     if (suggestionSource !== undefined) return suggestionSource
-    return replica !== null
-      ? createRecentsSuggestionSource(replica.db, replica.accountId)
-      : EMPTY_SUGGESTION_SOURCE
-  }, [suggestionSource, replica])
+    if (replica === null) return EMPTY_SUGGESTION_SOURCE
+    const recents = createRecentsSuggestionSource(replica.db, replica.accountId)
+    if (cards === undefined || cards.length === 0) return recents
+    // Contacts FIRST: the merge dedups by lowercased email keeping the first, so a contact wins over a
+    // stale recent for the same address (proper name + photo instead of a harvested envelope name).
+    const contacts = createContactSuggestionSource(cards, {
+      db: replica.db,
+      accountId: replica.accountId,
+    })
+    return combineSuggestionSources([contacts, recents])
+  }, [suggestionSource, replica, cards])
 
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
@@ -59,6 +82,7 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
       label={t(LABEL_KEY[field])}
       value={draft[field]}
       source={source}
+      accountId={replica?.accountId}
       onChange={(addrs) => setRecipients(draft.id, field, addrs)}
       onMove={(index, to) => moveRecipient(draft.id, field, to, index)}
       otherFields={ALL_FIELDS.filter((candidate) => candidate !== field)}

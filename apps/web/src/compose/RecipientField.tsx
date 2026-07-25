@@ -7,15 +7,16 @@
  * Keyboard-only operable is a hard requirement.
  */
 
-import type { EmailAddress } from '@waxwing/jmap'
+import type { EmailAddress, Id } from '@waxwing/jmap'
 import { Ellipsis, X } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Menu, VisuallyHidden } from '../ui'
+import { useContactPhoto } from '../contacts/use-contact-photo'
+import { Avatar, Menu, VisuallyHidden } from '../ui'
 import { formatAddress, isPlausibleEmail, parseAddressList } from './address-validation'
 import type { RecipientField as RecipientFieldName } from './composer-store'
 import styles from './recipient-field.module.css'
-import type { RecipientSuggestionSource } from './recipient-suggestions'
+import type { RecipientSuggestion, RecipientSuggestionSource } from './recipient-suggestions'
 
 const SUGGEST_DEBOUNCE_MS = 120
 const SUGGEST_LIMIT = 6
@@ -31,6 +32,8 @@ export interface RecipientFieldProps {
   readonly label: string
   readonly value: EmailAddress[]
   readonly source: RecipientSuggestionSource
+  /** Account for loading a suggestion's contact photo (M4.3); absent → initials-only (e.g. tests). */
+  readonly accountId?: Id | undefined
   readonly onChange: (addrs: EmailAddress[]) => void
   readonly onMove: (index: number, to: RecipientFieldName) => void
   readonly otherFields: readonly RecipientFieldName[]
@@ -41,6 +44,7 @@ export function RecipientField({
   label,
   value,
   source,
+  accountId,
   onChange,
   onMove,
   otherFields,
@@ -49,7 +53,7 @@ export function RecipientField({
   const [text, setText] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
-  const [suggestions, setSuggestions] = useState<EmailAddress[]>([])
+  const [suggestions, setSuggestions] = useState<RecipientSuggestion[]>([])
   const [activePill, setActivePill] = useState(-1)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -116,8 +120,9 @@ export function RecipientField({
     clearInput()
   }
 
-  const commitSuggestion = (address: EmailAddress): void => {
-    commitAddresses([address])
+  const commitSuggestion = (suggestion: RecipientSuggestion): void => {
+    // Commit the bare address only — the `photo` reference is display-only and never stored.
+    commitAddresses([{ name: suggestion.name, email: suggestion.email }])
     clearInput()
     inputRef.current?.focus()
   }
@@ -308,13 +313,38 @@ export function RecipientField({
                 commitSuggestion(suggestion)
               }}
             >
-              <span className={styles.optionName}>{suggestion.name || suggestion.email}</span>
-              {suggestion.name !== null && suggestion.name !== '' && (
-                <span className={styles.optionEmail}>{suggestion.email}</span>
+              {accountId !== undefined && suggestion.photo !== undefined ? (
+                <OptionAvatar accountId={accountId} suggestion={suggestion} />
+              ) : (
+                <Avatar name={suggestion.name || suggestion.email} size="sm" />
               )}
+              <span className={styles.optionText}>
+                <span className={styles.optionName}>{suggestion.name || suggestion.email}</span>
+                {suggestion.name !== null && suggestion.name !== '' && (
+                  <span className={styles.optionEmail}>{suggestion.email}</span>
+                )}
+              </span>
             </div>
           ))}
       </div>
     </div>
   )
+}
+
+/**
+ * The avatar for a suggestion that carries a contact photo. A separate component because the photo
+ * load is a HOOK ({@link useContactPhoto}) and hooks cannot run inside the options `.map`; it is
+ * mounted only when there is a photo to load, so a plain recents suggestion never touches the blob
+ * cache. Falls back to initials while the blob resolves (or if it fails).
+ */
+function OptionAvatar({
+  accountId,
+  suggestion,
+}: {
+  accountId: Id
+  suggestion: RecipientSuggestion
+}) {
+  const photoSrc = useContactPhoto(accountId, suggestion.photo)
+  const name = suggestion.name || suggestion.email
+  return <Avatar name={name} size="sm" {...(photoSrc !== undefined ? { photoSrc } : {})} />
 }

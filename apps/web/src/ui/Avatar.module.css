@@ -12,6 +12,12 @@
   user-select: none;
 }
 
+.image {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
 .sm {
   inline-size: 1.75rem;
   block-size: 1.75rem;

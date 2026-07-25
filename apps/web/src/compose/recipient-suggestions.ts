@@ -5,11 +5,22 @@
  * with {@link combineSuggestionSources}, so the field never changes.
  */
 
-import type { EmailAddress, Id } from '@waxwing/jmap'
+import type { ContactCardMedia, EmailAddress, Id } from '@waxwing/jmap'
 import { type AddressStatRow, type ReplicaDb, suggestAddresses } from '../sync'
 
+/**
+ * A ranked recipient suggestion. It IS an {@link EmailAddress} (`{ name, email }` — the shape that
+ * commits to a pill), plus an OPTIONAL local `photo` reference used only for the option avatar. The
+ * photo is display-only: {@link import('./RecipientField').RecipientField} strips it back to
+ * `{ name, email }` on commit, so a stored recipient never carries it. The contacts source (M4.3) is
+ * the only producer that sets it; the recents source leaves it absent.
+ */
+export interface RecipientSuggestion extends EmailAddress {
+  readonly photo?: ContactCardMedia
+}
+
 export interface RecipientSuggestionSource {
-  query(prefix: string, limit: number): Promise<EmailAddress[]>
+  query(prefix: string, limit: number): Promise<RecipientSuggestion[]>
 }
 
 /** Rank = frequency (sent weighted 3×) × recency with a 30-day half-life. Pure, unit-tested. */
@@ -46,7 +57,7 @@ export function combineSuggestionSources(
     async query(prefix, limit) {
       const results = await Promise.all(sources.map((source) => source.query(prefix, limit)))
       const seen = new Set<string>()
-      const out: EmailAddress[] = []
+      const out: RecipientSuggestion[] = []
       for (const address of results.flat()) {
         const key = address.email.toLowerCase()
         if (seen.has(key)) continue
