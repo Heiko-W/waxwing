@@ -33,7 +33,7 @@
     "webpush:deliver": "node scripts/webpush-deliver.mjs",
     "webpush:status": "node scripts/webpush-status.mjs",
     "build": "pnpm -r --if-present build",
-    "build:libs": "pnpm --filter @waxwing/jmap --filter @waxwing/mail-html run build",
+    "build:libs": "pnpm --filter @waxwing/jmap --filter @waxwing/mail-html --filter @waxwing/jscontact run build",
     "size": "pnpm --filter @waxwing/web build && size-limit",
     "check:dist": "node scripts/check-dist-contract.mjs",
     "verify": "pnpm build:libs && pnpm typecheck && pnpm lint && pnpm test && pnpm size && pnpm check:dist",

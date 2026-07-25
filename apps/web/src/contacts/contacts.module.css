@@ -719,3 +719,54 @@
     transition: none;
   }
 }
+
+/* ── Import / export dialog (M4.3, FR-CON-06) ──────────────────────────────────────────────── */
+
+.io {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-5);
+}
+
+.ioSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.ioSectionTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-base);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
+.ioDivider {
+  block-size: 1px;
+  border: 0;
+  margin: 0;
+  background-color: var(--waxwing-border);
+}
+
+.ioSummary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ioActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+  align-items: center;
+}
+
+.ioFilePick {
+  display: inline-flex;
+}
+
+.ioFilePick input[type="file"] {
+  font-size: var(--waxwing-text-sm);
+}

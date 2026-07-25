@@ -340,7 +340,8 @@
         "address": "Adresse",
         "birthday": "Geburtstag",
         "note": "Notizen"
-      }
+      },
+      "more": "Weitere Aktionen"
     },
     "labels": {
       "work": "Geschäftlich",
@@ -437,6 +438,52 @@
       "backToContacts": "Alle Kontakte",
       "deleteTitle": "Gruppe löschen",
       "deleteBody": "Die Gruppe {{name}} löschen? Die enthaltenen Kontakte werden nicht gelöscht."
+    },
+    "io": {
+      "open": "Importieren oder exportieren",
+      "title": "Kontakte importieren und exportieren",
+      "exportTitle": "Kontakt exportieren",
+      "exportContact": "Kontakt exportieren…",
+      "format": {
+        "label": "Format",
+        "vcard": "vCard 4.0",
+        "jscontact": "JSContact (JSON)"
+      },
+      "book": {
+        "label": "Zum Adressbuch hinzufügen",
+        "none": "Kein Adressbuch mit Schreibrecht vorhanden."
+      },
+      "import": {
+        "heading": "Importieren",
+        "choose": "Datei auswählen (.vcf oder .json)",
+        "parsing": "Datei wird gelesen…",
+        "confirm_one": "{{count}} Kontakt importieren",
+        "confirm_other": "{{count}} Kontakte importieren"
+      },
+      "export": {
+        "heading": "Exportieren",
+        "button": "Herunterladen",
+        "empty": "Es sind keine Kontakte zum Exportieren vorhanden.",
+        "scope_one": "{{count}} Kontakt wird exportiert.",
+        "scope_other": "{{count}} Kontakte werden exportiert."
+      },
+      "keepBoth": "Duplikate trotzdem importieren (beide behalten)",
+      "result": {
+        "willImport_one": "{{count}} Kontakt zum Importieren",
+        "willImport_other": "{{count}} Kontakte zum Importieren",
+        "duplicates_one": "{{count}} Duplikat gefunden",
+        "duplicates_other": "{{count}} Duplikate gefunden",
+        "skipped_one": "{{count}} Zeile konnte nicht gelesen werden",
+        "skipped_other": "{{count}} Zeilen konnten nicht gelesen werden",
+        "imported_one": "{{count}} Kontakt importiert.",
+        "imported_other": "{{count}} Kontakte importiert.",
+        "empty": "In der Datei wurden keine Kontakte gefunden.",
+        "capped": "Es werden nur die ersten {{max}} Kontakte importiert."
+      },
+      "error": {
+        "invalid": "Die Datei konnte nicht gelesen werden. Prüfen Sie, ob es eine gültige vCard- oder JSON-Datei ist.",
+        "failed": "Die Datei konnte nicht importiert werden."
+      }
     }
   },
   "footer": {

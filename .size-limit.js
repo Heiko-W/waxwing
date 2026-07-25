@@ -47,6 +47,17 @@ export default [
       // Lazy dialogs.
       '!apps/web/dist/assets/OutboxProblemsDialog-*.js',
       '!apps/web/dist/assets/InstallDialog-*.js',
+      // The contacts import/export dialog (contacts/, M4.3, FR-CON-06) and the jscontact conversion
+      // RUNTIME it drives — the latter split into a chunk of its OWN via contact-io's
+      // `import('./jscontact-runtime')`, so the ~26 KB vCard⇄JSContact converter is fetched only when
+      // a user imports/exports and never touches the entry OR the ContactsPage read chunk.
+      '!apps/web/dist/assets/ContactImportExportDialog-*.js',
+      '!apps/web/dist/assets/jscontact-runtime-*.js',
+      // The contacts CSS-module class map, split into a shared chunk the day a SECOND lazy chunk (the
+      // import/export dialog) started importing `contacts.module.css` alongside `ContactsPage`. It is a
+      // dependency of those two lazy chunks only — never modulepreloaded by index.html — so it loads
+      // with the contacts area, not at first paint.
+      '!apps/web/dist/assets/contacts.module-*.js',
       // The raw .eml source view (mail/, M3.9) — opened from the reading pane's overflow menu.
       '!apps/web/dist/assets/MessageSourceDialog-*.js',
       // The phishing-friction interstitial (mail/, M3.9, FR-RD-08) — raised only by a link whose

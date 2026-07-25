@@ -340,7 +340,8 @@
         "address": "Address",
         "birthday": "Birthday",
         "note": "Notes"
-      }
+      },
+      "more": "More actions"
     },
     "labels": {
       "work": "Work",
@@ -437,6 +438,52 @@
       "backToContacts": "All contacts",
       "deleteTitle": "Delete group",
       "deleteBody": "Delete the group {{name}}? The contacts in it are not deleted."
+    },
+    "io": {
+      "open": "Import or export",
+      "title": "Import and export contacts",
+      "exportTitle": "Export contact",
+      "exportContact": "Export contact…",
+      "format": {
+        "label": "Format",
+        "vcard": "vCard 4.0",
+        "jscontact": "JSContact (JSON)"
+      },
+      "book": {
+        "label": "Add to address book",
+        "none": "No address book you can write to."
+      },
+      "import": {
+        "heading": "Import",
+        "choose": "Choose a file (.vcf or .json)",
+        "parsing": "Reading file…",
+        "confirm_one": "Import {{count}} contact",
+        "confirm_other": "Import {{count}} contacts"
+      },
+      "export": {
+        "heading": "Export",
+        "button": "Download",
+        "empty": "There are no contacts to export.",
+        "scope_one": "{{count}} contact will be exported.",
+        "scope_other": "{{count}} contacts will be exported."
+      },
+      "keepBoth": "Import duplicates anyway (keep both)",
+      "result": {
+        "willImport_one": "{{count}} contact to import",
+        "willImport_other": "{{count}} contacts to import",
+        "duplicates_one": "{{count}} duplicate found",
+        "duplicates_other": "{{count}} duplicates found",
+        "skipped_one": "{{count}} line could not be read",
+        "skipped_other": "{{count}} lines could not be read",
+        "imported_one": "{{count}} contact imported.",
+        "imported_other": "{{count}} contacts imported.",
+        "empty": "No contacts found in the file.",
+        "capped": "Only the first {{max}} contacts will be imported."
+      },
+      "error": {
+        "invalid": "The file could not be read. Check that it is a valid vCard or JSON file.",
+        "failed": "The file could not be imported."
+      }
     }
   },
   "footer": {

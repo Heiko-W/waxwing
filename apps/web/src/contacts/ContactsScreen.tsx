@@ -15,8 +15,8 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { ChevronLeft, PanelLeft, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDownUp, ChevronLeft, PanelLeft, Plus } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate, useRoute } from '../app/route'
 import { computePaneLayout, useLayoutTier } from '../app/shell/layout'
@@ -26,6 +26,7 @@ import { AddressBookList } from './AddressBookList'
 import { ContactDetail } from './ContactDetail'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
 import { ContactList } from './ContactList'
+import { contactDisplayName } from './contact-fields'
 import { groupMemberUids, isGroupCard } from './contact-group-mapping'
 import styles from './contacts.module.css'
 import { indexCardsByUid } from './expand-group'
@@ -39,6 +40,11 @@ import {
   selectMemberCandidates,
   useAccountContactCards,
 } from './use-contact-groups'
+
+// The import/export dialog (and, transitively, only via `contact-io`'s dynamic import, the jscontact
+// conversion runtime in a chunk of its OWN) is loaded on demand — nobody opens it on the way to
+// browsing contacts (NFR-PERF-03).
+const ContactImportExportDialog = lazy(() => import('./ContactImportExportDialog'))
 
 const BOOKS_REGION_ID = 'waxwing-books-region'
 const BOOKS_TOGGLE_ID = 'waxwing-books-toggle'
@@ -89,6 +95,9 @@ export function ContactsScreen() {
   // The group selected in the rail (LOCAL, not the route): filters the list pane to its members.
   const [selectedGroupId, setSelectedGroupId] = useState<Id | null>(null)
   const [groupEditor, setGroupEditor] = useState<EditorMode>(null)
+  // The import/export dialog: 'full' = import + export of the visible list (toolbar); 'single' =
+  // export the open card only (detail overflow); null = closed (and never mounted).
+  const [ioMode, setIoMode] = useState<'full' | 'single' | null>(null)
   // Close any open editor (contact OR group) when the route's card changes (navigated away). The
   // group SELECTION is kept — opening a member from a group's list keeps the group in view.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on cardId change, not on mount only.
@@ -121,6 +130,30 @@ export function ContactsScreen() {
   const canEditGroup = cardIsWritable(selectedGroup, books)
   const targetBook = pickTargetBook(bookId, books)
   const editing = editor !== null || groupEditor !== null
+
+  // The currently visible list — the export scope for the toolbar's Export (FR-CON-06): the selected
+  // group's members when a group is open, otherwise every non-group card of the selected book (or all
+  // books = "All Contacts"). A single-card export from the detail overflow uses `selectedCard`.
+  const visibleCards = useMemo(
+    () =>
+      (allCards ?? []).filter(
+        (card) =>
+          !isGroupCard(card) && (bookId === undefined || card.addressBookIds[bookId] === true),
+      ),
+    [allCards, bookId],
+  )
+  const exportCards =
+    ioMode === 'single'
+      ? selectedCard === undefined
+        ? []
+        : [selectedCard]
+      : selectedGroup !== undefined
+        ? groupMembers
+        : visibleCards
+  const exportStem =
+    ioMode === 'single' && selectedCard !== undefined
+      ? contactDisplayName(selectedCard) || t('contacts.noName')
+      : t('contacts.title')
 
   const onSubmit = useCallback(
     async (submit: ContactFormSubmit): Promise<void> => {
@@ -227,6 +260,9 @@ export function ContactsScreen() {
           </IconButton>
         )}
         <span className={styles.toolbarSpacer} />
+        <IconButton label={t('contacts.io.open')} variant="ghost" onClick={() => setIoMode('full')}>
+          <ArrowDownUp />
+        </IconButton>
         <IconButton
           label={t('contacts.new')}
           variant="ghost"
@@ -300,6 +336,7 @@ export function ContactsScreen() {
         cardId={cardId}
         canWrite={canEditSelected}
         {...(canEditSelected ? { onEdit: () => setEditor('edit') } : {})}
+        {...(cardId !== undefined ? { onExport: () => setIoMode('single') } : {})}
         {...(canEditSelected && cardId !== undefined
           ? {
               onDelete: () => {
@@ -368,6 +405,21 @@ export function ContactsScreen() {
           listPane
         )}
       </div>
+      {ioMode !== null && (
+        <Suspense fallback={null}>
+          <ContactImportExportDialog
+            open
+            onClose={() => setIoMode(null)}
+            books={books}
+            existingCards={allCards}
+            exportCards={exportCards}
+            exportFilenameStem={exportStem}
+            allowImport={ioMode === 'full'}
+            defaultBookId={targetBook?.id}
+            createCard={actions.create}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

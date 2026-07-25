@@ -11,11 +11,11 @@
  */
 
 import type { ContactCardMedia, Id } from '@waxwing/jmap'
-import { Mail as MailIcon, Pencil, Phone as PhoneIcon, Trash2 } from 'lucide-react'
+import { Mail as MailIcon, MoreHorizontal, Pencil, Phone as PhoneIcon, Trash2 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type ContactCardRow, useContactCard, useReplica } from '../sync'
-import { Avatar, Button, Dialog, Spinner } from '../ui'
+import { Avatar, Button, Dialog, Menu, Spinner } from '../ui'
 import {
   communicationTypeKey,
   contactBirthday,
@@ -37,11 +37,19 @@ export interface ContactDetailProps {
   readonly onEdit?: () => void
   /** Delete the card (after the in-place confirmation). Enabled only alongside `canWrite`. */
   readonly onDelete?: () => void
+  /** Export the card (opens the import/export dialog for this one card). Not rights-gated. */
+  readonly onExport?: () => void
   /** True when the card sits in at least one writable book; gates Edit and Delete. Default `false`. */
   readonly canWrite?: boolean
 }
 
-export function ContactDetail({ cardId, onEdit, onDelete, canWrite = false }: ContactDetailProps) {
+export function ContactDetail({
+  cardId,
+  onEdit,
+  onDelete,
+  onExport,
+  canWrite = false,
+}: ContactDetailProps) {
   const { t } = useTranslation()
   const card = useContactCard(cardId ?? '')
 
@@ -61,6 +69,7 @@ export function ContactDetail({ cardId, onEdit, onDelete, canWrite = false }: Co
       canWrite={canWrite}
       {...(onEdit ? { onEdit } : {})}
       {...(onDelete ? { onDelete } : {})}
+      {...(onExport ? { onExport } : {})}
     />
   )
 }
@@ -70,11 +79,13 @@ function ContactCardView({
   canWrite,
   onEdit,
   onDelete,
+  onExport,
 }: {
   card: ContactCardRow
   canWrite: boolean
   onEdit?: () => void
   onDelete?: () => void
+  onExport?: () => void
 }) {
   const { t, i18n } = useTranslation()
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -109,6 +120,20 @@ function ContactCardView({
             <Pencil aria-hidden="true" />
             {t('contacts.detail.edit')}
           </Button>
+          {onExport && (
+            <Menu
+              triggerLabel={t('contacts.detail.more')}
+              trigger={<MoreHorizontal aria-hidden="true" />}
+              align="end"
+              items={[
+                {
+                  id: 'export',
+                  label: t('contacts.io.exportContact'),
+                  onSelect: onExport,
+                },
+              ]}
+            />
+          )}
         </div>
       </header>
 
