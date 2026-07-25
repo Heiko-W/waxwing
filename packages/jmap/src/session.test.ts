@@ -7,6 +7,7 @@ import {
   getWebPushVapidCapability,
   hasCapability,
   normalizeSession,
+  secondaryMailAccounts,
   sessionStateChanged,
   toWellKnownUrl,
 } from './session'
@@ -170,6 +171,58 @@ describe('hasCapability (M3.7)', () => {
     const session = makeSession()
     expect(hasCapability(session, 'toString', 'a')).toBe(false)
     expect(hasCapability(session, 'constructor', 'a')).toBe(false)
+  })
+})
+
+describe('secondaryMailAccounts (M4.4)', () => {
+  const MAIL = 'urn:ietf:params:jmap:mail'
+
+  it('returns [] when the primary mail account is the only one', () => {
+    // makeSession() ships a single personal account 'a' — the primary.
+    expect(secondaryMailAccounts(makeSession(), 'a')).toEqual([])
+  })
+
+  it('lifts a delegated account that carries account-level mail', () => {
+    const session = makeSession()
+    session.accounts.b = {
+      name: 'team@waxwing.test',
+      isPersonal: false,
+      isReadOnly: true,
+      accountCapabilities: { [MAIL]: {} },
+    }
+    expect(secondaryMailAccounts(session, 'a')).toEqual([
+      { id: 'b', name: 'team@waxwing.test', isPersonal: false, isReadOnly: true },
+    ])
+  })
+
+  it('excludes a shared account without account-level mail — even though the SESSION advertises mail', () => {
+    // makeSession() advertises `mail` at SESSION level, so a hasCapability()-based filter would
+    // wrongly keep this contacts-only share. Only the per-account object says mail is usable here.
+    const session = makeSession()
+    session.accounts.c = {
+      name: 'contacts@waxwing.test',
+      isPersonal: false,
+      isReadOnly: false,
+      accountCapabilities: { 'urn:ietf:params:jmap:contacts': {} },
+    }
+    expect(secondaryMailAccounts(session, 'a')).toEqual([])
+  })
+
+  it('excludes the primary by id and preserves account order', () => {
+    const session = makeSession()
+    session.accounts.b = {
+      name: 'team@waxwing.test',
+      isPersonal: false,
+      isReadOnly: true,
+      accountCapabilities: { [MAIL]: {} },
+    }
+    session.accounts.d = {
+      name: 'ops@waxwing.test',
+      isPersonal: false,
+      isReadOnly: false,
+      accountCapabilities: { [MAIL]: {} },
+    }
+    expect(secondaryMailAccounts(session, 'a').map((a) => a.id)).toEqual(['b', 'd'])
   })
 })
 

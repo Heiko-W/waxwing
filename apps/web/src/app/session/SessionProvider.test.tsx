@@ -8,7 +8,12 @@ import { DEFAULT_CONFIG, type WaxwingConfig } from '../config'
 import { ServicesProvider } from '../services'
 import { useSession } from './context'
 import { SessionProvider } from './SessionProvider'
-import { type FakeServicesOptions, fakeAuthSession, makeFakeServices } from './test-fakes'
+import {
+  type FakeServicesOptions,
+  fakeAuthSession,
+  fakeJmapSession,
+  makeFakeServices,
+} from './test-fakes'
 
 function Consumer() {
   const s = useSession()
@@ -18,6 +23,7 @@ function Consumer() {
       <span data-testid="step">{s.onboarding?.step ?? 'none'}</span>
       <span data-testid="reauth">{s.reauth?.method ?? 'none'}</span>
       <span data-testid="account">{s.connected?.username ?? ''}</span>
+      <span data-testid="accounts">{s.connected?.accounts.map((a) => a.id).join(',') ?? ''}</span>
       <span data-testid="error">{s.onboarding?.error?.key ?? ''}</span>
       <button type="button" onClick={() => s.submitBasic('alice', 'pw', true)}>
         basic
@@ -83,6 +89,26 @@ describe('SessionProvider', () => {
       expect.objectContaining({ method: 'basic', username: 'alice' }),
     )
     expect(fake.spies.connect).toHaveBeenCalledTimes(1)
+  })
+
+  it('lifts delegated mail accounts into the connected session, own first (M4.4)', async () => {
+    const user = userEvent.setup()
+    renderSession({
+      probePresent: true,
+      session: fakeJmapSession('acc-1', 'alice@waxwing.test', {
+        shared: [
+          { id: 'shared-1', name: 'team@waxwing.test', isReadOnly: true },
+          // A contacts-only share must NOT be lifted into the mail-account list.
+          { id: 'cal-1', name: 'calendars@waxwing.test', mail: false },
+        ],
+      }),
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    // Own account first, then the mail-capable share; the calendars-only share is excluded.
+    expect(screen.getByTestId('accounts').textContent).toBe('acc-1,shared-1')
   })
 
   it('surfaces a connect failure as an onboarding error without leaving the login step', async () => {

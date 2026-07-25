@@ -22,6 +22,7 @@ function conn(id: string): ConnectedSession {
     client: {} as ConnectedSession['client'],
     jmapSession: {} as ConnectedSession['jmapSession'],
     accountId: id,
+    accounts: [{ id, name: id, isPersonal: true, isReadOnly: false }],
     username: id,
     method: 'basic',
   }

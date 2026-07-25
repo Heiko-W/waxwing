@@ -12,8 +12,8 @@
  * hermetically testable with no network and no real WebCrypto.
  */
 
-import type { AuthProvider, JmapClient } from '@waxwing/jmap'
-import { JmapHttpError } from '@waxwing/jmap'
+import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
+import { JmapHttpError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthExpiredError } from '../../auth'
@@ -177,10 +177,23 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       controllerRef.current = controller
       targetRef.current = target
       writeStored(local(), DURABLE_TARGET_KEY, target)
+      // Lift EVERY mail account this session grants into the model (M4.4): the user's own account
+      // first, then any delegated/shared mailboxes. Etappe 3 reads this; today nothing renders it.
+      const own = jmapSession.accounts[accountId]
+      const accounts: readonly MailAccount[] = [
+        {
+          id: accountId,
+          name: own?.name ?? (jmapSession.username || accountId),
+          isPersonal: own?.isPersonal ?? true,
+          isReadOnly: own?.isReadOnly ?? false,
+        },
+        ...secondaryMailAccounts(jmapSession, accountId),
+      ]
       return {
         client,
         jmapSession,
         accountId,
+        accounts,
         username: jmapSession.username || accountId,
         method,
       }

@@ -55,7 +55,7 @@ export * from './push'
 export type { BackReferenceArgs, MethodDef, TypedCallHandle } from './request'
 export { CallHandle, creationRef, defineMethod, MethodResponses, RequestBuilder } from './request'
 // Session discovery + helpers.
-export type { GetSessionOptions } from './session'
+export type { GetSessionOptions, MailAccount } from './session'
 export {
   getContactsCapability,
   getCoreCapability,
@@ -65,6 +65,7 @@ export {
   hasCapability,
   normalizeSession,
   resolveUrl,
+  secondaryMailAccounts,
   sessionStateChanged,
   toWellKnownUrl,
   WELL_KNOWN_PATH,

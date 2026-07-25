@@ -5,7 +5,7 @@
  * LoginForm, ReauthDialog, AccountMenu) import types without importing the provider.
  */
 
-import type { AuthProvider, JmapClient } from '@waxwing/jmap'
+import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
 import type { AuthMethod } from '../../auth'
 
 /** A JMAP `Session` as the client exposes it (avoids naming the wire type directly). */
@@ -54,8 +54,14 @@ export interface OnboardingView {
 export interface ConnectedSession {
   readonly client: JmapClient
   readonly jmapSession: JmapSession
-  /** `session.primaryAccounts['urn:ietf:params:jmap:mail']`. */
+  /** `session.primaryAccounts['urn:ietf:params:jmap:mail']` — the user's own account. */
   readonly accountId: string
+  /**
+   * Every mail account this session grants, the user's own ({@link accountId}) FIRST followed by
+   * the delegated/shared mailboxes (M4.4). Use {@link secondaryMailAccounts} to read just the
+   * shared tail. `[accountId]` alone when the server shares nothing.
+   */
+  readonly accounts: readonly MailAccount[]
   readonly username: string
   readonly method: AuthMethod
 }

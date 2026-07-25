@@ -147,6 +147,45 @@ function isMailCapability(value: unknown): value is MailCapability {
 }
 
 /**
+ * A mail account lifted out of a {@link Session}, carrying only the fields a client needs to
+ * list and route to it (M4.4). Both the user's own account and any delegated/shared mailbox are
+ * this shape; `isPersonal` tells them apart, `isReadOnly` gates write actions (RFC 8620 §2).
+ */
+export interface MailAccount {
+  readonly id: Id
+  readonly name: string
+  readonly isPersonal: boolean
+  readonly isReadOnly: boolean
+}
+
+/**
+ * The delegated/shared mail accounts a Session exposes: every entry of `session.accounts` that
+ * (a) is NOT the primary mail account `primaryId` and (b) advertises `urn:ietf:params:jmap:mail`
+ * in its OWN `accountCapabilities`. Insertion order of `session.accounts` is preserved.
+ *
+ * The mail URN is read from the ACCOUNT object, deliberately NOT via {@link hasCapability}: that
+ * predicate short-circuits on the session-level `capabilities`, which only announce what the
+ * SERVER implements and are present for every account of a mail-capable server. It therefore
+ * cannot tell a mail-capable account from one shared for calendars/contacts alone — only the
+ * per-account object says mail may be invoked on THAT account (see {@link hasCapability}'s note on
+ * why both levels exist). Filtering on it would wrongly include a non-mail share.
+ */
+export function secondaryMailAccounts(session: Session, primaryId: Id): MailAccount[] {
+  const result: MailAccount[] = []
+  for (const [id, account] of Object.entries(session.accounts ?? {})) {
+    if (id === primaryId) continue
+    if (!has(account.accountCapabilities, Capabilities.mail)) continue
+    result.push({
+      id,
+      name: account.name,
+      isPersonal: account.isPersonal,
+      isReadOnly: account.isReadOnly,
+    })
+  }
+  return result
+}
+
+/**
  * Reads the per-account contacts-capability limits from a Session (RFC 9610 §1.5) — notably
  * `maxAddressBooksPerCard` and `mayCreateAddressBook`. Returns `null` if the account is unknown or
  * did not advertise `urn:ietf:params:jmap:contacts`. Mirrors {@link getMailCapability}, and like it

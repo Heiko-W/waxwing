@@ -19,28 +19,50 @@ const JMAP_MAIL = 'urn:ietf:params:jmap:mail'
  * (RFC 8620 §2), and a fake that omits them tests the app against a server that cannot exist.
  * Pass `capabilities` to make a feature appear (M3.7: quota, vacation).
  */
+/** A delegated/shared account to add alongside the primary in {@link fakeJmapSession} (M4.4). */
+export interface FakeSharedAccount {
+  readonly id: string
+  readonly name?: string
+  readonly isReadOnly?: boolean
+  /** Whether the share carries the mail capability at ACCOUNT level (default true). */
+  readonly mail?: boolean
+}
+
 export function fakeJmapSession(
   accountId = 'acc-1',
   username = 'alice@waxwing.test',
   options: {
     readonly capabilities?: Record<string, unknown>
     readonly accountCapabilities?: Record<string, unknown>
+    /** Delegated accounts to expose beyond the user's own (M4.4). */
+    readonly shared?: readonly FakeSharedAccount[]
   } = {},
 ) {
+  const accounts: Record<string, unknown> = {
+    [accountId]: {
+      name: username,
+      isPersonal: true,
+      isReadOnly: false,
+      accountCapabilities: options.accountCapabilities ?? {},
+    },
+  }
+  for (const share of options.shared ?? []) {
+    accounts[share.id] = {
+      name: share.name ?? share.id,
+      isPersonal: false,
+      isReadOnly: share.isReadOnly ?? false,
+      // A calendars/contacts-only share (`mail: false`) carries no mail capability, so the
+      // account-level filter must exclude it (M4.4).
+      accountCapabilities: (share.mail ?? true) ? { [JMAP_MAIL]: {} } : {},
+    }
+  }
   return {
     username,
     state: 'state-0',
     apiUrl: 'https://mail.waxwing.test/jmap/',
     capabilities: options.capabilities ?? {},
     primaryAccounts: { [JMAP_MAIL]: accountId },
-    accounts: {
-      [accountId]: {
-        name: username,
-        isPersonal: true,
-        isReadOnly: false,
-        accountCapabilities: options.accountCapabilities ?? {},
-      },
-    },
+    accounts,
   } as unknown as JmapClient['session']
 }
 
@@ -59,6 +81,8 @@ export interface FakeServicesOptions {
   readonly oauthAvailable?: boolean
   /** When set, `connect()` rejects with it (login/connect error paths). */
   readonly connectError?: Error
+  /** The session `connect()` resolves to. Default: {@link fakeJmapSession} (single account). */
+  readonly session?: JmapClient['session']
 }
 
 export interface FakeServices {
@@ -95,7 +119,7 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
   const connect = vi.fn(async (_input: string, provider: AuthProvider) => {
     captured = provider
     if (options.connectError) throw options.connectError
-    return fakeJmapClient()
+    return fakeJmapClient(options.session ?? fakeJmapSession())
   })
 
   const provider: AuthProvider = {
