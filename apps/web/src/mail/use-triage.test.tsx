@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { putMailboxes, type ReplicaDb, ReplicaProvider, useMailboxByRole } from '../sync'
 import { setActiveEngine } from '../sync/engine'
-import { freshDb, mailbox } from '../sync/test-utils'
+import { FULL_RIGHTS, freshDb, mailbox } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
 import { useTriage } from './use-triage'
 
@@ -109,6 +109,26 @@ describe('useTriage', () => {
       from: 'archive', // out of Archive again…
       to: 'inbox', // …and back where it came from
     })
+  })
+
+  it('offers no Undo when the way BACK is not permitted (B34)', async () => {
+    // Rights that allow a move do not imply the inverse: here the Inbox accepts nothing new, so the
+    // forward archive is legal and the undo would be refused. An Undo that cannot execute fails at
+    // the worst possible moment — when the user is already trying to take something back.
+    await putMailboxes(db, 'a', [
+      mailbox('inbox', { role: 'inbox', myRights: { ...FULL_RIGHTS, mayAddItems: false } }),
+      mailbox('archive', { role: 'archive' }),
+      mailbox('trash', { role: 'trash' }),
+    ])
+    const user = userEvent.setup()
+    await renderProbe()
+    await user.click(screen.getByRole('button', { name: 'probe-archive' }))
+
+    // The move itself still happens and is still announced …
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('Moved to Archive')).toBeInTheDocument()
+    // … but no Undo is offered, rather than one that would be rejected.
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
   })
 
   it('offers no Undo when the source mailbox is unknown (a cross-folder search selection)', async () => {

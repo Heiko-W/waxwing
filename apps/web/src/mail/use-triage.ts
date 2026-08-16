@@ -99,10 +99,16 @@ export function useTriage(): Triage {
       // so moving OUT of a read-only shared folder was offered, dispatched and toasted as done.
       if (rights.moveReason(from, to) !== null) return false
       actions.move(ids, from, to)
+      // The Undo is offered only when the INVERSE is itself permitted (B34). Rights that allow a
+      // move do not imply the way back: `to` must grant `mayRemoveItems` and `from` must grant
+      // `mayAddItems`, which is the mirror of the forward check and not implied by it. An Undo that
+      // cannot execute is the exact "looks like it worked" failure this whole seam exists to
+      // prevent — and it would fail at the worst moment, when the user is trying to undo.
+      const undoable = from !== null && rights.moveReason(to, from) === null
       toast({
         title,
         // Without a known source there is no inverse move — offer no Undo rather than a broken one.
-        ...(from !== null
+        ...(undoable
           ? { action: { label: t('list.undo'), onAction: () => actions.move(ids, to, from) } }
           : {}),
       })
