@@ -26,7 +26,7 @@ export default defineConfig({
   workers: 1,
   // A cold sync of a 100 k mailbox's first window is not instant, and the point of the suite is what
   // happens AFTER that — so the timeout is generous and the budgets inside the tests are not.
-  timeout: 180_000,
+  timeout: 300_000,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [['list']],

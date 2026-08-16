@@ -2095,13 +2095,36 @@ Done when: WCAG 2.2 AA self-assessment documented; core flows SR-tested with iss
 
 Spec: NFR-PERF-01/02/03. Size: M.
 
-- [ ] Bundle audit: route-level code splitting verified (contacts/settings/composer lazy);
-      dependency weight review; initial JS ≤ 300 KB gz **with margin**.
-- [ ] Measured on target hardware profiles (mid-range laptop, throttled 4G phone
-      emulation): cold interactive < 2 s / < 4 s; SW-cached < 1 s (NFR-PERF-01).
-- [ ] 100 k-message list re-verified end-to-end (NFR-PERF-02); memory profile of long
-      sessions (leak check: open/close 100 conversations).
-- [ ] Lighthouse CI (or equivalent) added as non-blocking trend report.
+- [x] Bundle audit. **250.69 KB gz of a 300 KB budget — 16.4 % headroom**, over the ≥ 15 %
+      the Done-when asks for. Route-level splitting verified against the emitted chunks:
+      `ContactsPage` (10.0 KB gz), `SettingsPage` (7.0), `squire-adapter` (28.4),
+      `jscontact-runtime` (4.5) and the lazy dialogs are all excluded from the initial set by
+      `.size-limit.js`, whose rule is inverted so a NEW eager chunk counts automatically.
+- [x] Measured (`e2e/tests/perf.spec.ts`), median of 5 runs against the SHIPPING bundle:
+      **cold desktop 94 ms** (budget 2000), **service-worker cached on a throttled 4G phone
+      850 ms** (budget 1000), **cold on that same phone 2492 ms** (budget 4000) — so the
+      precache is worth 66 % of a cold start. Two measurement bugs were fixed before any of
+      this was trusted: the HTTP cache is not reachable from page script (a "cold" sample came
+      in at 850 ms against 1500 for its neighbours) and the precache case had been running on
+      a full-speed CPU against the cold case's 4× throttle.
+- [~] 100 k-message list (`e2e/tests/perf-large.spec.ts`, `pnpm e2e:large`). **Three of four
+      green:** opening the 100 k folder **238–348 ms** with **50 rows in the DOM**; select-all
+      over 100 000 messages **27 ms**, still 50 rows; the leak check — 100 open/close cycles —
+      leaves the heap at **×1.22** of its post-first-open baseline (8515 → 10361 KB), so no
+      leak. **One OPEN DEFECT, see B42:** fast scrolling in the 100 k folder grows the rendered
+      row count without bound (50 → 600 → 3350 and still climbing 20 s later). Measured cause:
+      the virtualizer's scroll element reports `clientHeight === scrollHeight` (3800 px for 50
+      rows), i.e. it is not viewport-bounded, so TanStack Virtual believes the whole list is on
+      screen. `message-list.module.css` `.scroll` is correct (`overflow: auto`, `flex: 1 1
+      auto`, `min-block-size: 0`), so the broken link is higher in the height chain.
+- [x] Trend reporting — **without Lighthouse**, consistent with the owner decision of
+      2026-07-20 that already rejected it for PWA installability (heavyweight dependency, a
+      second maintained runner, and it re-reports what CDP already establishes). The "or
+      equivalent" is `e2e/tests/perf.spec.ts` + `perf-large.spec.ts`: real Chromium, the
+      shipping bundle, throttled phone profiles, every median logged with its samples so a
+      failure can be read rather than guessed at. The numbers go in this plan the way M1.9's
+      did — a per-run JSON committed to the repo would be diff noise and, being
+      machine-dependent, would not be a trend anyone could compare across machines.
 
 Done when: numbers recorded in docs; budgets green with ≥ 15 % headroom.
 
@@ -2241,6 +2264,7 @@ explicit owner decision:
 | **B39** | **Open (2026-08-16, seen once and not reproduced): opening a SHARED mailbox before the own account's window has ever loaded, then switching back, timed out waiting for the own list.** Observed exactly once, in the `verify:e2e` gate, against a freshly created volume immediately after a cold Stalwart boot and two preceding suites' load; the same assertion passed in 12 targeted repeats afterwards and in every standalone run. The suspicion is the list window's watch on a first, cold sync racing the account switch (`use-message-list` re-registers on the acting account's engine — M4.4 stage 4), not the switch itself: the reverse order (own first, then shared) has never failed. `e2e/tests/shared.spec.ts` now loads the own window first and states why, so the round trip is still asserted without also asserting a cold sync — **it is deliberately not "fixed" by widening a timeout**, and this row exists so the observation is not lost. Reproducing it needs a cold volume plus load; the honest next step is a deterministic unit-level test of a watch re-registration across an engine switch. |
 | **B40** | **Open (2026-08-16, filed while closing B32): the positive end-to-end proof that a server refusal becomes VISIBLE cannot be staged through the UI.** B32's fix is unit-proven (three mutation-checked tests: a shared account's dead letter is counted, listed, and retried through its OWN engine), but the live-server half is not reachable from the outside: B34 now gates the affordance BEFORE the request, and alice only ever sees the one mailbox each owner shared — so there is no target whose `mayAddItems` she lacks and no control that will dispatch a doomed write. That is the fix working, and it is also why the refusal path cannot be provoked by clicking. Reaching it needs a dev-only dispatch seam (the shape `VITE_WAXWING_DEMO` already establishes: gated on `import.meta.env.DEV`, dead-code-eliminated from every production build) so a spec can enqueue an intent straight onto a named account's engine and assert the problems button appears. Worth doing — Stalwart genuinely answers `notUpdated[id] = {type:'forbidden'}` here, so this is the one M4.4 failure path a real server can demonstrate. |
 | **B41** | **Open (2026-08-16, filed by the M4.6 RTL audit): three surfaces mix a LOGICAL anchor with a PHYSICAL movement, and each half reads correctly on its own.** (1) The message-row swipe: `--swipe-x` is a raw physical pointer delta while the reveal layers are anchored `inset-inline-start`/`-end`, so under RTL the coloured action paints on the side the row did NOT vacate. The unresolved question is a product one — does the reveal follow the finger or the writing direction? — which is why it is exempted with a stated reason rather than guessed at. (2) `ui/Menu.tsx` takes a logically-NAMED `align: 'start' \| 'end'` and implements it with physical `rect.left`/`rect.right` plus a physical `translate: -100% 0`, so `align='start'` anchors to the trigger's inline-END under RTL. (3) `ui/SplitPane.tsx` measures the drag as `clientX - rect.left` and applies it as `inlineSize`, so the pane sits on the right under RTL while the maths measures from the left — the drag inverts. All three need an RTL locale to verify, which is post-V1 by FR-I18N-02; the CSS half of the audit is clean and the two off-canvas drawers ARE fixed (signed by `--waxwing-flip`), so what remains is exactly the class no logical property can express. |
+| **B42** | **Open (2026-08-16, found by the M4.8 100 k perf suite): fast scrolling in a very large folder grows the rendered row count without bound.** At rest the virtualized list holds **50 rows** for a 100 000-message folder, which is the whole design. Send 40 wheel events with no pause between them — a trackpad flick — and the count climbs to 600 immediately, 950 after 2 s, 1600 after 5 s, **3350 after 20 s, still rising**, and it does not come back down. Measured cause: the element TanStack Virtual is given as its scroll element (`scrollRef`, the `role="grid"` div) reports **`clientHeight === scrollHeight`** — 3800 px for 50 comfortable rows — so it is not viewport-bounded and the virtualizer believes the entire list is on screen. `message-list.module.css` `.scroll` is itself correct (`overflow: auto`, `flex: 1 1 auto`, `min-block-size: 0`), so the broken link is higher in the height chain (a flex ancestor without `min-block-size: 0`, or a missing height constraint on the pane). NOT reproducible with pauses between wheel events, which is why every existing suite misses it and why it took a 100 k fixture to surface: with a normal folder the list runs out of rows long before the growth is visible. `e2e/tests/perf-large.spec.ts` "stays responsive scrolling deep into the list" is the failing test and is deliberately left failing — it is not in `pnpm gate` (the 100 k fixture takes ~8 minutes to seed), so the gate stays green while the defect stays visible. | M1.6 (virtualization) | M4.8 | open |
 | D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **signed off 2026-07-10.** Owner approved after two revisions: calmer accent (orange → blue `#2f6fe0`/`#5e93f0`, warm colors reserved for signals) and responsive compact controls (34px pointer / 44px touch via `--waxwing-control-min`, tightened spacing) — both WCAG-AA-verified. Broad UI build-out (M1.4+) unblocked. |
 
 ## 14. Appendix — Requirements Coverage Matrix
