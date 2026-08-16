@@ -6,6 +6,7 @@
  * Only ever reached from the lazy `/settings` chunk, so it costs the entry bundle nothing.
  */
 
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatBytes, formatNumber } from '../i18n/formatters'
 import styles from '../settings/settings.module.css'
@@ -21,13 +22,17 @@ export interface QuotaPanelProps {
 export function QuotaPanel(props: QuotaPanelProps) {
   const { t } = useTranslation()
   const quotas = useQuota(props.client ? { client: props.client } : {})
+  // Before the early return: a quota arriving later must not change the hook count (B20.6).
+  const labelId = useId()
 
   if (quotas === null || quotas.length === 0) return null
 
   return (
     <div className={styles.field}>
-      <span className={styles.label}>{t('quota.label')}</span>
-      <dl className={styles.breakdown}>
+      <span id={labelId} className={styles.label}>
+        {t('quota.label')}
+      </span>
+      <dl className={styles.breakdown} aria-labelledby={labelId}>
         {quotas.map((quota) => {
           const view = toQuotaView(quota)
           const amount =

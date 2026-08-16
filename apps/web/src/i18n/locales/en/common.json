@@ -526,7 +526,7 @@
       "close": "Close"
     },
     "toast": {
-      "region": "Notifications",
+      "region": "Status messages",
       "dismiss": "Dismiss"
     },
     "spinner": {
@@ -856,7 +856,10 @@
       "empty": "No messages match your search.",
       "count_one": "{{count}} result",
       "count_other": "{{count}} results"
-    }
+    },
+    "chipsLabel": "Active filters",
+    "chipsCount_one": "{{count}} filter active",
+    "chipsCount_other": "{{count}} filters active"
   },
   "labels": {
     "title": "Labels",

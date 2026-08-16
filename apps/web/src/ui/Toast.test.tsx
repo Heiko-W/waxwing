@@ -54,6 +54,19 @@ function withProvider() {
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('Toast', () => {
+  // B13. The settings screen renders a landmark called "Notifications" (the push preferences), so a
+  // toast region by that name gave a rotor two entries it could not tell apart — and the name was
+  // wrong anyway: this region is the app reporting what just happened, not a notification feed.
+  it('names its region "Status messages", not "Notifications"', () => {
+    render(
+      <ToastProvider>
+        <span />
+      </ToastProvider>,
+    )
+    expect(screen.getByRole('region', { name: 'Status messages' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Notifications' })).toBeNull()
+  })
+
   it('mounts persistent polite and assertive live regions even with no toasts', () => {
     render(
       <ToastProvider>

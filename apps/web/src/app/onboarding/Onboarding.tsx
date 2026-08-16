@@ -54,10 +54,13 @@ export function Onboarding() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.stack}>
+      {/* A <main>, because sign-in is a full page and not a fragment of one. Without it the screen
+          has no main landmark at all — `landmark-one-main` — so landmark navigation has nothing to
+          jump to, on the one screen every single user passes through. */}
+      <main className={styles.stack}>
         {form}
         <BrandLinks className={styles.footer} />
-      </div>
+      </main>
     </div>
   )
 }

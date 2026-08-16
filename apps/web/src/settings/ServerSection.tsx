@@ -11,6 +11,7 @@
  * a refresh button would imply a freshness we do not actually have.
  */
 
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import type { JmapSession } from '../app/session/types'
@@ -28,7 +29,11 @@ export interface ServerSectionProps {
   readonly quotaClient?: QuotaClient
 }
 
-function LimitList(props: { readonly rows: readonly LimitRow[] }) {
+function LimitList(props: {
+  readonly rows: readonly LimitRow[]
+  /** The heading above this list — a `<dl>` has no name of its own (B20.6). */
+  readonly labelledBy: string
+}) {
   const { t } = useTranslation()
 
   function render(value: LimitValue): string {
@@ -47,7 +52,7 @@ function LimitList(props: { readonly rows: readonly LimitRow[] }) {
   }
 
   return (
-    <dl className={styles.breakdown}>
+    <dl className={styles.breakdown} aria-labelledby={props.labelledBy}>
       {props.rows.map((row) => (
         <div key={row.key} className={styles.breakdownRow}>
           <dt>{t(`settings.server.limit.${row.key}`)}</dt>
@@ -64,14 +69,24 @@ export function ServerSection(props: ServerSectionProps) {
   const session = props.session ?? connected?.jmapSession ?? null
   const accountId = props.accountId ?? connected?.accountId ?? null
 
+  // Hooks BEFORE the early return — they cannot sit after it, or a session arriving mid-session
+  // changes the hook count between renders.
+  const connectionId = useId()
+  const coreId = useId()
+  const mailId = useId()
+  const capsId = useId()
+  const extraId = useId()
+
   if (session === null || accountId === null) return null
   const view = buildCapabilitiesView(session, accountId)
 
   return (
     <div className={styles.controls}>
-      <p className={styles.hint}>{t('settings.server.description')}</p>
+      <p id={connectionId} className={styles.hint}>
+        {t('settings.server.description')}
+      </p>
 
-      <dl className={styles.breakdown}>
+      <dl className={styles.breakdown} aria-labelledby={connectionId}>
         <div className={styles.breakdownRow}>
           <dt>{t('settings.server.connection.url')}</dt>
           <dd>{view.apiOrigin}</dd>
@@ -91,27 +106,36 @@ export function ServerSection(props: ServerSectionProps) {
 
       <QuotaPanel {...(props.quotaClient ? { client: props.quotaClient } : {})} />
 
+      {/* Each group's heading is a plain <span>, so the <dl> below it had no accessible name at all
+          — four unlabelled description lists in a row, which is what B20.6 reported. Pointing each
+          list at its own heading keeps the visual design and gives the structure its names. */}
       <div className={styles.field}>
-        <span className={styles.label}>{t('settings.server.core.title')}</span>
+        <span id={coreId} className={styles.label}>
+          {t('settings.server.core.title')}
+        </span>
         {view.core === null ? (
           <p className={styles.hint}>{t('settings.server.coreMissing')}</p>
         ) : (
-          <LimitList rows={view.core} />
+          <LimitList rows={view.core} labelledBy={coreId} />
         )}
       </div>
 
       <div className={styles.field}>
-        <span className={styles.label}>{t('settings.server.mail.title')}</span>
+        <span id={mailId} className={styles.label}>
+          {t('settings.server.mail.title')}
+        </span>
         {view.mail === null ? (
           <p className={styles.hint}>{t('settings.server.mailMissing')}</p>
         ) : (
-          <LimitList rows={view.mail} />
+          <LimitList rows={view.mail} labelledBy={mailId} />
         )}
       </div>
 
       <div className={styles.field}>
-        <span className={styles.label}>{t('settings.server.capabilities.title')}</span>
-        <dl className={styles.breakdown}>
+        <span id={capsId} className={styles.label}>
+          {t('settings.server.capabilities.title')}
+        </span>
+        <dl className={styles.breakdown} aria-labelledby={capsId}>
           {view.known.map((row) => (
             <div key={row.urn} className={styles.breakdownRow}>
               <dt>{t(`settings.server.cap.${row.key}`)}</dt>
@@ -124,8 +148,10 @@ export function ServerSection(props: ServerSectionProps) {
 
       {view.extra.length > 0 && (
         <div className={styles.field}>
-          <span className={styles.label}>{t('settings.server.extra.title')}</span>
-          <ul className={styles.urnList}>
+          <span id={extraId} className={styles.label}>
+            {t('settings.server.extra.title')}
+          </span>
+          <ul className={styles.urnList} aria-labelledby={extraId}>
             {view.extra.map((urn) => (
               <li key={urn}>{urn}</li>
             ))}

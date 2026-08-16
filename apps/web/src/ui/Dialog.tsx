@@ -78,16 +78,20 @@ export function Dialog({
           tabIndex={-1}
           className={cx(styles.panel, styles[size], className)}
         >
-          <header className={styles.header}>
+          {/* <div>, NOT <header>/<footer>. A `role="dialog"` container is not sectioning content,
+              so an HTML <header> inside it still maps to the `banner` LANDMARK — giving the page a
+              second banner alongside the shell's, both unnamed and indistinguishable. Measured by
+              the browser sweep as `landmark-unique` on every screen with a dialog open. */}
+          <div className={styles.header}>
             <h2 id={titleId} className={styles.title}>
               {title}
             </h2>
             <IconButton label={closeLabel ?? t('ui.dialog.close')} onClick={onClose}>
               <X aria-hidden="true" />
             </IconButton>
-          </header>
+          </div>
           <div className={styles.body}>{children}</div>
-          {footer ? <footer className={styles.footer}>{footer}</footer> : null}
+          {footer ? <div className={styles.footer}>{footer}</div> : null}
         </div>
       </div>
     </Portal>

@@ -526,7 +526,7 @@
       "close": "Schließen"
     },
     "toast": {
-      "region": "Benachrichtigungen",
+      "region": "Statusmeldungen",
       "dismiss": "Verwerfen"
     },
     "spinner": {
@@ -856,7 +856,10 @@
       "empty": "Keine Nachrichten entsprechen Ihrer Suche.",
       "count_one": "{{count}} Treffer",
       "count_other": "{{count}} Treffer"
-    }
+    },
+    "chipsLabel": "Aktive Filter",
+    "chipsCount_one": "{{count}} Filter aktiv",
+    "chipsCount_other": "{{count}} Filter aktiv"
   },
   "labels": {
     "title": "Labels",

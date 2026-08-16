@@ -74,4 +74,31 @@ describe('SearchBox', () => {
     )
     await expectNoA11yViolations(document.body)
   })
+
+  // B20.7. The chip strip carried `aria-label={t('search.label')}` — the SAME name as the input —
+  // and was pulled into that input's `aria-describedby`, so focusing the field read out every
+  // active filter in full and two different things answered to "Search".
+  it('names the chip strip separately and describes the field with a COUNT', async () => {
+    render(
+      <SearchBox
+        search={mockSearch({
+          active: true,
+          q: 'from:bob is:unread',
+          chips: [
+            { index: 0, label: 'From: bob' },
+            { index: 1, label: 'Unread' },
+          ],
+        })}
+      />,
+    )
+
+    const input = screen.getByRole('searchbox', { name: 'Search' })
+    const strip = screen.getByRole('list', { name: 'Active filters' })
+    expect(strip).toBeInTheDocument()
+
+    const described = (input.getAttribute('aria-describedby') ?? '').split(' ')
+    expect(described, 'the chip strip is still the description').not.toContain(strip.id)
+    const text = described.map((id) => document.getElementById(id)?.textContent ?? '').join(' ')
+    expect(text).toContain('2 filters active')
+  })
 })

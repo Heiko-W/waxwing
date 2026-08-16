@@ -141,4 +141,20 @@ describe('Dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Open' }))
     await expectNoA11yViolations(document.body)
   })
+
+  // A `role="dialog"` container is not sectioning content, so an HTML <header> inside it still maps
+  // to the `banner` landmark — a second, unnamed banner alongside the shell's. The browser sweep
+  // reported it as `landmark-unique` on every screen that could open a dialog.
+  it('contributes no banner or contentinfo landmark', () => {
+    render(
+      <Dialog open onClose={() => {}} title="Settings" footer={<button type="button">OK</button>}>
+        <p>body</p>
+      </Dialog>,
+    )
+    expect(screen.queryByRole('banner')).toBeNull()
+    expect(screen.queryByRole('contentinfo')).toBeNull()
+    // …while the title and the footer content are still there, so this is not just an empty dialog.
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument()
+  })
 })

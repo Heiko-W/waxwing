@@ -64,6 +64,17 @@ function describe(violations: readonly Violation[]): string[] {
   )
 }
 
+/**
+ * Rules run IN ADDITION to the WCAG tags. Both are axe "best-practice" rules, so the tag filter
+ * excludes them — and both describe defects this app has actually shipped:
+ *
+ * - `landmark-unique` — B13: the toast region and the settings push-preferences section were both
+ *   called "Notifications", which is two indistinguishable entries in a screen-reader rotor.
+ * - `landmark-one-main` — a shell that loses its `<main>` in one route and not another is exactly
+ *   the kind of drift a per-screen sweep is for.
+ */
+const EXTRA_RULES = ['landmark-unique', 'landmark-one-main']
+
 async function scan(page: Page): Promise<string[]> {
   const results = await new AxeBuilder({ page }).withTags(WCAG_AA_TAGS).analyze()
   // B22: axe silently reports zero violations if it never ran against anything. A page that produced
@@ -71,7 +82,10 @@ async function scan(page: Page): Promise<string[]> {
   expect(results.passes.length, 'axe found nothing to check — the scan is broken').toBeGreaterThan(
     5,
   )
-  return describe(results.violations)
+  // A SECOND run, because `withRules` REPLACES the tag selection rather than adding to it — chaining
+  // them silently reduced the sweep to two rules, which the guard above caught.
+  const extra = await new AxeBuilder({ page }).withRules(EXTRA_RULES).analyze()
+  return [...describe(results.violations), ...describe(extra.violations)]
 }
 
 /** Every screen worth scanning, as a name and the navigation that reaches it. */

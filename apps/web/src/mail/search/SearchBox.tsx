@@ -23,8 +23,13 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
   const timerRef = useRef<number | undefined>(undefined)
   const chipsId = useId()
   const hintId = useId()
-  // Always describe the box with the operator hint; add the chips list when present.
-  const describedBy = [hintId, search.chips.length > 0 ? chipsId : undefined]
+  // Always describe the box with the operator hint, plus a COUNT of the active filters when there
+  // are any (B20.7). The chips list itself used to be the description, so focusing the field read
+  // out every filter in full — and the list carried the field's own name on top of that, leaving
+  // two different things answering to "Search". The list is navigable in its own right; a
+  // description only needs to say that it is there.
+  const countId = useId()
+  const describedBy = [hintId, search.chips.length > 0 ? countId : undefined]
     .filter(Boolean)
     .join(' ')
 
@@ -73,6 +78,11 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
           onChange={(event) => onInput(event.target.value)}
         />
         <VisuallyHidden id={hintId}>{t('search.hint')}</VisuallyHidden>
+        {search.chips.length > 0 && (
+          <VisuallyHidden id={countId}>
+            {t('search.chipsCount', { count: search.chips.length })}
+          </VisuallyHidden>
+        )}
         <Select
           className={styles.scope}
           aria-label={t('search.scope.label')}
@@ -97,7 +107,7 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
         )}
       </form>
       {search.chips.length > 0 && (
-        <ul id={chipsId} className={styles.chips} aria-label={t('search.label')}>
+        <ul id={chipsId} className={styles.chips} aria-label={t('search.chipsLabel')}>
           {search.chips.map((chip) => (
             <li key={chip.index} className={styles.chip}>
               <span className={styles.chipLabel}>{chip.label}</span>

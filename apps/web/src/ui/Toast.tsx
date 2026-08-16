@@ -112,6 +112,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <Portal>
+        {/* "Status messages", NOT "Notifications" (B13): the settings screen renders a landmark
+            called Notifications for the push preferences, and two landmarks with the same name are
+            indistinguishable in a rotor. This region is also not about notifications — it is the
+            app talking about what just happened. */}
         <section className={styles.region} aria-label={t('ui.toast.region')}>
           <div className={styles.stack} aria-live="assertive">
             {assertive.map((record) => (

@@ -163,6 +163,27 @@ describe('buildCapabilitiesView', () => {
 })
 
 describe('<ServerSection>', () => {
+  // B20.6. Four groups in a row rendered their heading as a plain <span> and their body as a <dl>,
+  // with nothing joining the two — so a screen reader announced four unnamed description lists and
+  // the headings floated free of the data they introduced.
+  it('names every breakdown list after the heading above it', () => {
+    const { container } = render(<ServerSection session={stalwartSession()} accountId={ACC} />)
+
+    // Queried through the DOM rather than by role: `<dl>` has no `list` role in the HTML-AAM
+    // mapping, which is precisely why its accessible NAME is the only handle a screen reader gets.
+    const lists = [...container.querySelectorAll('dl, ul')]
+    expect(lists.length, 'no breakdown lists rendered — the assertion would be vacuous').toBe(5)
+
+    for (const list of lists) {
+      const labelledBy = list.getAttribute('aria-labelledby')
+      expect(labelledBy, `an unnamed ${list.tagName.toLowerCase()}`).not.toBeNull()
+      const heading = container.querySelector(`#${CSS.escape(labelledBy ?? '')}`)
+      expect(heading?.textContent ?? '', 'points at a heading that is empty or missing').not.toBe(
+        '',
+      )
+    }
+  })
+
   it('states availability in WORDS — a colour is not an answer for everyone', async () => {
     const { container } = render(<ServerSection session={stalwartSession()} accountId={ACC} />)
 
