@@ -48,7 +48,16 @@ export function AccountTrees({ accounts, primaryAccountId }: AccountTreesProps) 
         resetMailScopedStores()
         useActiveAccountStore.getState().setActiveAccount(accountId)
       }
-      navigate(mailPath(mailboxId))
+      // Qualify the route with the account (B37): mailbox ids are per-account and short, so a bare
+      // `/mail/a` reloaded or followed from a notification resolves against the user's OWN account,
+      // where `a` is very likely a real but different mailbox.
+      //
+      // EVERY link in this grouped rail names its account, the primary's included — an explicit id
+      // is what lets a switch BACK clear the parameter, because the router carries an existing
+      // `?account=` forward and cannot tell "no opinion" from "the user's own". This code path only
+      // exists when something is shared; the single-account sidebar is the pass-through below and
+      // its links are untouched.
+      navigate(mailPath(mailboxId, undefined, accountId))
     },
     [activeAccountId, navigate],
   )

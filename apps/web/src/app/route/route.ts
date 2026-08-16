@@ -103,11 +103,27 @@ export function matchRoute(
   return { id: 'notFound', path, params: {}, rest: '', search }
 }
 
-/** Build the base-relative mail route path for a mailbox/email selection. */
-export function mailPath(mailboxId?: string, emailId?: string): string {
-  if (mailboxId === undefined) return '/mail'
-  if (emailId === undefined) return `/mail/${mailboxId}`
-  return `/mail/${mailboxId}/${emailId}`
+/** The search key naming the account a mail route acts in (B37). Absent ⇒ the user's own account. */
+export const ACCOUNT_PARAM = 'account'
+
+/**
+ * Build the base-relative mail route path for a mailbox/email selection.
+ *
+ * `accountId` qualifies the route with `?account=` when it names a DELEGATED account (B37). JMAP
+ * mailbox and email ids are per-account and short, so `/mail/a/e1` alone is ambiguous: reloaded, or
+ * followed from a notification, it would resolve against the user's OWN account — where `a` is very
+ * likely a real, different mailbox. The route would then show the wrong mail while looking entirely
+ * correct, which is the same collision class M4.4 stage 4 closed for writes.
+ *
+ * A query parameter rather than a path segment, and additively: every existing link stays valid and
+ * keeps meaning "my own account", so the single-account path is byte-for-byte unchanged. (Bulwark
+ * reaches the same conclusion for the same reason — its `?account=` carries exactly this.)
+ */
+export function mailPath(mailboxId?: string, emailId?: string, accountId?: string): string {
+  const suffix = accountId === undefined ? '' : `?${ACCOUNT_PARAM}=${encodeURIComponent(accountId)}`
+  if (mailboxId === undefined) return `/mail${suffix}`
+  if (emailId === undefined) return `/mail/${mailboxId}${suffix}`
+  return `/mail/${mailboxId}/${emailId}${suffix}`
 }
 
 /** Build the base-relative settings route path for an optional sub-section. */

@@ -5,6 +5,7 @@ export { useNavigate, useRoute, useRouter } from './hooks'
 export { Link, type LinkProps } from './Link'
 export { RouterProvider, type RouterProviderProps } from './RouterProvider'
 export {
+  ACCOUNT_PARAM,
   CONTACTS_PATH,
   contactsPath,
   deriveBase,

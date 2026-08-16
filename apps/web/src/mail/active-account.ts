@@ -19,6 +19,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { create } from 'zustand'
+import { ACCOUNT_PARAM, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
 // Deliberately the module, not the `../shortcuts` barrel: the barrel re-exports `ShortcutProvider`,
 // whose subtree now depends on this module (AppShell wraps it in `ActiveAccountScope`), so the barrel
@@ -62,9 +63,17 @@ export function useActiveAccountId(): Id | null {
 export function useActiveMailAccountId(): Id | null {
   const connected = useSessionOptional()
   const stored = useActiveAccountId()
+  // The URL wins over the in-memory store (B37). The store does not survive a reload, so on a cold
+  // start — a refresh, a restored PWA, a notification tap — it is empty and would silently resolve
+  // back to the user's own account while the path still names a DELEGATED account's mailbox. Per-
+  // account ids are short, so that mailbox id very likely exists in the primary too: the pane would
+  // show the wrong mail and look right doing it. `resolveActiveAccount` still vets whatever comes
+  // out of the URL against the granted set, so a stale or hostile `?account=` falls back, never
+  // through.
+  const fromRoute = useRoute().search.get(ACCOUNT_PARAM)
   return connected === null
     ? null
-    : resolveActiveAccount(stored, connected.accounts, connected.accountId)
+    : resolveActiveAccount(fromRoute ?? stored, connected.accounts, connected.accountId)
 }
 
 /**

@@ -12,7 +12,31 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { type NavigateOptions, type Router, RouterContext } from './context'
-import { deriveBase, matchRoute, type RouteMatch, toHref } from './route'
+import { ACCOUNT_PARAM, deriveBase, matchRoute, type RouteMatch, toHref } from './route'
+
+/**
+ * Carry `?account=` across a navigation inside the mail area (B37).
+ *
+ * The parameter names which account a mailbox/email id belongs to, and those ids are per-account and
+ * short — so losing it on the first click would put the app back where it started: a URL that reads
+ * as the user's OWN mailbox `a` while the pane shows a delegated one. Done here, once, rather than
+ * at each `mailPath` call site, because most of them build their own query string and would have to
+ * remember; forgetting would be silent.
+ *
+ * Only for `/mail` targets, only when the destination does not name an account itself (an explicit
+ * choice wins), and never for a link that leaves the mail area — settings and contacts are the user's
+ * own by definition.
+ */
+export function carryAccount(to: string, currentSearch: string): string {
+  if (!to.startsWith('/mail')) return to
+  const [path, query = ''] = to.split('?', 2)
+  const target = new URLSearchParams(query)
+  if (target.has(ACCOUNT_PARAM)) return to
+  const account = new URLSearchParams(currentSearch).get(ACCOUNT_PARAM)
+  if (account === null) return to
+  target.set(ACCOUNT_PARAM, account)
+  return `${path}?${target.toString()}`
+}
 
 export interface RouterProviderProps {
   /** Overrides the `<base href>` lookup (tests / non-default mounts). */
@@ -31,7 +55,7 @@ export function RouterProvider({ baseUri, children }: RouterProviderProps) {
 
   const navigate = useCallback(
     (to: string, options?: NavigateOptions) => {
-      const url = toHref(base, to)
+      const url = toHref(base, carryAccount(to, window.location.search))
       if (options?.replace) {
         window.history.replaceState(null, '', url)
       } else {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { carryAccount } from './RouterProvider'
 import {
   CONTACTS_PATH,
   contactsPath,
@@ -139,5 +140,56 @@ describe('path builders', () => {
     expect(contactsPath('book1', 'c42')).toBe('/contacts/book1/c42')
     // A card without a book has no addressable list to hang off, so the book segment wins.
     expect(contactsPath(undefined, 'c42')).toBe('/contacts')
+  })
+})
+
+describe('mailPath — account qualification (B37)', () => {
+  it('omits the account entirely when none is named', () => {
+    // Every existing link keeps its exact shape and its meaning ("my own account"), so the
+    // single-account path is byte-for-byte unchanged.
+    expect(mailPath('inbox')).toBe('/mail/inbox')
+    expect(mailPath('inbox', 'e1')).toBe('/mail/inbox/e1')
+    expect(mailPath()).toBe('/mail')
+  })
+
+  it('qualifies the route when a delegated account is named', () => {
+    // Without this, `/mail/a/e1` reloaded resolves against the user's OWN account — where `a` is
+    // very likely a real but different mailbox, so the pane shows the wrong mail and looks right.
+    expect(mailPath('a', undefined, 'acctS')).toBe('/mail/a?account=acctS')
+    expect(mailPath('a', 'e1', 'acctS')).toBe('/mail/a/e1?account=acctS')
+  })
+
+  it('encodes an account id that needs it', () => {
+    expect(mailPath('a', undefined, 'x/y z')).toBe('/mail/a?account=x%2Fy%20z')
+  })
+})
+
+describe('carryAccount — the parameter survives a navigation (B37)', () => {
+  it('carries the current account onto a mail route that does not name one', () => {
+    // Losing it on the first click would undo the whole fix: most call sites build their own query
+    // string, so this is done once in the router rather than remembered N times.
+    expect(carryAccount('/mail/a/e1', '?account=acctS')).toBe('/mail/a/e1?account=acctS')
+  })
+
+  it('merges with a query the caller already built', () => {
+    const carried = new URLSearchParams(
+      carryAccount('/mail/a?q=hi', '?account=acctS').split('?')[1],
+    )
+    expect(carried.get('q')).toBe('hi')
+    expect(carried.get('account')).toBe('acctS')
+  })
+
+  it('lets an EXPLICIT account win over the current one', () => {
+    expect(carryAccount('/mail/a?account=other', '?account=acctS')).toBe('/mail/a?account=other')
+  })
+
+  it('does not leak the account out of the mail area', () => {
+    // Settings and contacts are the user's own by definition.
+    expect(carryAccount('/settings', '?account=acctS')).toBe('/settings')
+    expect(carryAccount('/contacts', '?account=acctS')).toBe('/contacts')
+  })
+
+  it('is a no-op when no account is in play', () => {
+    expect(carryAccount('/mail/a/e1', '')).toBe('/mail/a/e1')
   })
 })

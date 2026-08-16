@@ -201,3 +201,25 @@ describe('AccountTrees', () => {
     await expectNoA11yViolations(container)
   })
 })
+
+describe('the route names the account (B37)', () => {
+  it('links a shared tree with ?account=, and the primary without it', async () => {
+    // The cold-start hole this closes: the active-account store is in-memory, so a reload, a restored
+    // PWA or a notification tap resolves back to the PRIMARY while the path still names a delegated
+    // account's mailbox — and per-account ids are short, so `a` is very likely a real but different
+    // mailbox there. The pane would show the wrong mail and look entirely right doing it.
+    const user = userEvent.setup()
+    renderTrees([PRIMARY, SHARED])
+
+    const shared = await screen.findByRole('region', { name: SHARED.name })
+    await user.click(await within(shared).findByText('Team Folder'))
+    expect(window.location.search).toContain(`account=${SHARED.id}`)
+
+    // Switching BACK names the primary explicitly rather than dropping the parameter: the router
+    // carries an existing `?account=` forward and cannot tell "no opinion" from "the user's own", so
+    // an implicit link would leave the URL pointing at the shared account it just left.
+    const primary = screen.getByRole('region', { name: PRIMARY.name })
+    await user.click(await within(primary).findByText('Work'))
+    expect(window.location.search).toContain(`account=${PRIMARY.id}`)
+  })
+})

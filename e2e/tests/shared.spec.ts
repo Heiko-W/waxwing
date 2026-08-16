@@ -20,10 +20,13 @@ const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' 
 /** One account's section of the grouped sidebar — a named region per account (M4.4 stage 3). */
 const accountSection = (page: Page, name: string) => page.getByRole('region', { name })
 
-async function login(page: Page): Promise<void> {
+async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
+  // A reload only tests the ROUTE when the session survives it; without this the app would land on
+  // the sign-in step and the assertion would be about auth, not about the account in the URL.
+  if (options.stay) await page.getByLabel('Stay signed in').check()
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
 }
@@ -111,5 +114,33 @@ test.describe('M4.4 shared accounts', () => {
     // Archived out of the Inbox, and the undo toast names it.
     await expect(page.getByText('Moved to Archive')).toBeVisible()
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0)
+  })
+
+  test('a RELOAD stays in the shared account — the URL names it (B37)', async ({ page }) => {
+    // The cold-start hole: the active-account store is in-memory, so before B37 a reload resolved
+    // back to the PRIMARY while the path still named the shared account's mailbox. Both inboxes are
+    // literally mailbox `a` here, so the pane would have shown alice's own mail under a URL that
+    // meant bob's — wrong content, entirely plausible appearance.
+    await login(page, { stay: true })
+    await openInboxOf(page, SHARED_RW)
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0)
+    expect(page.url()).toContain('account=')
+
+    await page.reload()
+
+    // Same URL, same account: still bob's inbox, so alice's seeded corpus is still absent.
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0)
+    expect(page.url()).toContain('account=')
+  })
+
+  test('a reload of the OWN account stays there too', async ({ page }) => {
+    await login(page, { stay: true })
+    await openInboxOf(page, OWN)
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+
+    await page.reload()
+
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
   })
 })
