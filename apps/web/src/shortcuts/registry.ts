@@ -109,7 +109,11 @@ function canMove(context: ShortcutContext, role: Id | undefined): boolean {
     context.targetIds.length > 0 &&
     role !== undefined &&
     context.sourceMailboxId !== null &&
-    role !== context.sourceMailboxId
+    role !== context.sourceMailboxId &&
+    // B34: the same two-sided verdict the buttons use — the source must permit removal and the
+    // target must accept. A chord that refused differently from the button beside it would be two
+    // answers to one question.
+    context.rights.moveReason(context.sourceMailboxId, role) === null
   )
 }
 
@@ -129,6 +133,22 @@ function canMove(context: ShortcutContext, role: Id | undefined): boolean {
  */
 function missingRole(context: ShortcutContext, role: Id | undefined, key: string): string | null {
   return context.rolesReady && role === undefined ? key : null
+}
+
+/**
+ * Why a move chord cannot fire: the account has no such folder, or the acting account denies the
+ * move (B34). The rights answer comes second because a missing folder is the more specific thing to
+ * say — and it is the only one of the two that a different account would fix.
+ */
+function moveUnavailable(
+  context: ShortcutContext,
+  role: Id | undefined,
+  key: string,
+): string | null {
+  const missing = missingRole(context, role, key)
+  if (missing !== null) return missing
+  if (context.sourceMailboxId === null || role === undefined) return null
+  return context.rights.moveReason(context.sourceMailboxId, role)
 }
 
 /**
@@ -253,7 +273,7 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     group: 'triage',
     enabled: (context) => canMove(context, context.roles.archive),
     unavailable: (context) =>
-      missingRole(context, context.roles.archive, 'shortcuts.unavailable.archive'),
+      moveUnavailable(context, context.roles.archive, 'shortcuts.unavailable.archive'),
     run: (context) => runMove(context, 'archive'),
   },
   {
@@ -264,14 +284,15 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     group: 'triage',
     enabled: (context) =>
       context.inTrash
-        ? context.reading !== null // in Trash the chord means DESTROY — only from the open message
+        ? // in Trash the chord means DESTROY — only from the open message, and only if permitted
+          context.reading !== null && context.rights.reason('destroy') === null
         : canMove(context, context.roles.trash),
     // Inside Trash the chord means DESTROY and needs no role mailbox at all, so there is nothing an
     // account could be missing — its only refusal there is "no message open", which is ordinary.
     unavailable: (context) =>
       context.inTrash
-        ? null
-        : missingRole(context, context.roles.trash, 'shortcuts.unavailable.trash'),
+        ? context.rights.reason('destroy')
+        : moveUnavailable(context, context.roles.trash, 'shortcuts.unavailable.trash'),
     run: (context) => {
       // Already in Trash: "delete" can only mean permanently — go through the existing confirmation.
       if (context.inTrash) {
@@ -289,7 +310,7 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     group: 'triage',
     enabled: (context) => canMove(context, context.roles.junk),
     unavailable: (context) =>
-      missingRole(context, context.roles.junk, 'shortcuts.unavailable.junk'),
+      moveUnavailable(context, context.roles.junk, 'shortcuts.unavailable.junk'),
     run: (context) => runMove(context, 'junk'),
   },
   {
@@ -298,7 +319,10 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     keys: ['u'],
     scopes: ['list'],
     group: 'triage',
-    enabled: (context) => context.targetIds.length > 0,
+    enabled: (context) => context.targetIds.length > 0 && context.rights.reason('seen') === null,
+    // No hint: `shortcuts.unavailable.hint` points at the folder picker, and there is no picker that
+    // grants a permission. A refusal with a way forward and one without must not read alike.
+    unavailable: (context) => context.rights.reason('seen'),
     run: (context) => context.triage.setSeen([...context.targetIds], false),
   },
   {
@@ -307,7 +331,9 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     keys: ['s'],
     scopes: ['list', 'reading'],
     group: 'triage',
-    enabled: (context) => context.targetIds.length > 0,
+    enabled: (context) =>
+      context.targetIds.length > 0 && context.rights.reason('keywords') === null,
+    unavailable: (context) => context.rights.reason('keywords'),
     // A TOGGLE, like the star button it shares a seam with (Gmail's `s` toggles too): flag, unless
     // every target already is — then unflag. A key that can only ever set a flag, next to a button
     // that toggles it, is exactly the drift `useTriage` exists to prevent.
@@ -326,6 +352,8 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     keys: ['l'],
     scopes: ['list', 'reading'],
     group: 'triage',
+    // Deliberately NOT rights-gated (B34): it only opens a picker, exactly like `v`. The picker
+    // explains its own refusal, and gating the opener would hide the explanation.
     enabled: (context) => context.targetIds.length > 0,
     run: (context) => {
       const reading = context.reading

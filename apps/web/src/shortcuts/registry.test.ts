@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import de from '../i18n/locales/de/common.json'
 import en from '../i18n/locales/en/common.json'
+import { ALL_GRANTED } from '../mail/rights'
 import { type ChordEvent, matchesChord, parseChord } from './keys'
 import { SHORTCUTS } from './registry'
 import { GROUP_ORDER, type ShortcutContext, type ShortcutScope } from './types'
@@ -80,6 +81,9 @@ describe('SHORTCUTS registry', () => {
       inTrash: false,
       targetIds: ['m1'],
       sourceMailboxId: 'inbox',
+      // Granted, so the keys this collects are the ACCOUNT-SHAPE reasons this test is about; the
+      // rights reasons have their own coverage. Omitted it would be `undefined` and throw.
+      rights: ALL_GRANTED,
     } as unknown as ShortcutContext
     const keys = SHORTCUTS.map((action) => action.unavailable?.(noRoles)).filter(
       (key): key is string => typeof key === 'string',

@@ -16,6 +16,7 @@ import type { Id } from '@waxwing/jmap'
 import type { RouteMatch } from '../app/route'
 import type { ListStore } from '../mail/list-store'
 import type { ReadingHandlers } from '../mail/reading-store'
+import type { MessageRights } from '../mail/rights'
 import type { Triage } from '../mail/use-triage'
 
 /** Where a chord is allowed to fire. Recomputed from the route on every keystroke. */
@@ -64,6 +65,14 @@ export interface ShortcutContext {
   readonly hasSelection: boolean
   /** True when EVERY target already carries `$flagged` — so `s` knows to unflag rather than flag. */
   readonly targetsAllFlagged: boolean
+  /**
+   * What the acting account permits on {@link ShortcutContext.targetIds} (B34).
+   *
+   * A chord must refuse exactly what its button refuses, or the two entry points to one action
+   * disagree — and a keystroke that silently does nothing is defect B3 all over again, which is why
+   * every rights-gated action here pairs `enabled` with an `unavailable` message.
+   */
+  readonly rights: MessageRights
 
   readonly roles: RoleMailboxes
   /**

@@ -18,6 +18,7 @@ import { useComposerStore } from '../compose'
 import { useListStore } from '../mail/list-store'
 import { useReadingStore } from '../mail/reading-store'
 import { SEARCH_INPUT_ID } from '../mail/search/SearchBox'
+import { useMessageRightsFor } from '../mail/use-message-rights'
 import { useTriage } from '../mail/use-triage'
 import { useEmailWindow, useMailboxes } from '../sync'
 import type { RoleMailboxes, ShortcutContext, ShortcutScope } from './types'
@@ -89,6 +90,9 @@ export function useShortcutContext(notify: (messageKey: string) => void): Shortc
   // would be vacuously TRUE and the toggle would read "already all flagged"; keeping it, and keeping
   // it shaped like the bar's, is what stops the two predicates drifting.
   const targetRows = useEmailWindow(useMemo(() => [...targetIds], [targetIds]))
+  // B34, at ZERO cost: both inputs are already subscribed here — `targetRows` above and `mailboxes`
+  // at the top — so the keyboard learns what it may do without opening a single new liveQuery.
+  const rights = useMessageRightsFor(targetRows, targetIds.length, mailboxes)
   const targetsAllFlagged =
     targetIds.length > 0 &&
     targetRows !== undefined &&
@@ -107,6 +111,7 @@ export function useShortcutContext(notify: (messageKey: string) => void): Shortc
       focusedEmailId,
       hasSelection,
       targetsAllFlagged,
+      rights,
       roles,
       rolesReady,
       inTrash,
@@ -134,6 +139,7 @@ export function useShortcutContext(notify: (messageKey: string) => void): Shortc
       focusedEmailId,
       hasSelection,
       targetsAllFlagged,
+      rights,
       roles,
       rolesReady,
       inTrash,

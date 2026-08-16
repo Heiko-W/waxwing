@@ -112,6 +112,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const rightsIds = useMemo(() => [email.id], [email.id])
   const rights = useMessageRights(rightsIds)
   const seenDenied = rights.reason('seen') !== null
+  /** A refusal key from {@link rights} as the finished sentence a control announces; `undefined` = allowed. */
+  const reasonText = (key: string | null): string | undefined => (key === null ? undefined : t(key))
   const openDraft = useComposerStore((state) => state.openDraft)
   const { connected } = useSession()
   const own = useMemo(
@@ -664,10 +666,15 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       </header>
 
       <div className={styles.actionBar} role="toolbar" aria-label={t('reading.actions')}>
+        {/* B34: `disabled` stays for the STRUCTURAL refusals (no such folder, already there) and
+            `unavailableReason` carries the RIGHTS refusal — a permission the user should be told
+            about, on a control that stays focusable so they can hear it. A move needs the source's
+            `mayRemoveItems` and the target's `mayAddItems`; the source half is the gap B34 names. */}
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
           disabled={archiveBox === undefined || inArchive}
+          unavailableReason={reasonText(rights.moveReason(inThisMailbox, archiveBox?.id))}
           onClick={handlers.archive}
         >
           <Archive />
@@ -676,6 +683,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           label={t('list.actions.junk')}
           variant="ghost"
           disabled={junkBox === undefined || inJunk}
+          unavailableReason={reasonText(rights.moveReason(inThisMailbox, junkBox?.id))}
           onClick={handlers.junk}
         >
           <MailWarning />
@@ -684,6 +692,10 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           label={inTrash ? t('list.actions.delete') : t('list.actions.trash')}
           variant="ghost"
           disabled={!inTrash && trashBox === undefined}
+          // In Trash this button DESTROYS rather than moves, so it takes the destroy verdict.
+          unavailableReason={reasonText(
+            inTrash ? rights.reason('destroy') : rights.moveReason(inThisMailbox, trashBox?.id),
+          )}
           onClick={() => (inTrash ? handlers.requestDelete() : handlers.trash())}
         >
           <Trash2 />
@@ -693,11 +705,17 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag')
           }
           variant="ghost"
+          unavailableReason={reasonText(rights.reason('keywords'))}
           onClick={handlers.toggleFlag}
         >
           <Star className={email.keywords.$flagged === true ? styles.flagOn : undefined} />
         </IconButton>
-        <IconButton label={t('reading.markUnread')} variant="ghost" onClick={handlers.markUnread}>
+        <IconButton
+          label={t('reading.markUnread')}
+          variant="ghost"
+          unavailableReason={reasonText(rights.reason('seen'))}
+          onClick={handlers.markUnread}
+        >
           <MailMinus />
         </IconButton>
         {/* Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
@@ -719,6 +737,9 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           size="sm"
           variant="ghost"
           disabled={inThisMailbox === null}
+          // Only the SOURCE half here: the picker filters targets by `mayAddItems` already, and its
+          // empty state covers "nothing left to file into".
+          unavailableReason={reasonText(rights.removeReason(inThisMailbox))}
           onClick={handlers.openMove}
         >
           {t('list.actions.move')}

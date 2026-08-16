@@ -26,7 +26,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * For a control that is structurally absent — no such folder, a self-move — keep hiding it.
    * This is for a refusal the user should be TOLD about, chiefly a permission they lack.
    */
-  unavailableReason?: string
+  unavailableReason?: string | undefined
   ref?: Ref<HTMLButtonElement>
 }
 

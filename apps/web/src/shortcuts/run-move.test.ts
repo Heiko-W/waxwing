@@ -16,6 +16,7 @@ import type { Id } from '@waxwing/jmap'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EMPTY_LIST_STATE, type ListStore } from '../mail/list-store'
 import type { ReadingHandlers } from '../mail/reading-store'
+import { ALL_GRANTED, type MessageRights } from '../mail/rights'
 import type { Triage } from '../mail/use-triage'
 import { isRunnable, SHORTCUTS, unavailableNow } from './registry'
 import type { ShortcutAction, ShortcutContext } from './types'
@@ -79,6 +80,7 @@ function readingContext(options: {
   readingDispatches: boolean
   triageDispatches: boolean
   list?: ListStore
+  rights?: MessageRights
 }): Ctx {
   const navigate = vi.fn()
   const context = {
@@ -96,6 +98,10 @@ function readingContext(options: {
     focusedEmailId: 'm1',
     hasSelection: false,
     targetsAllFlagged: false,
+    // Everything permitted unless a test says otherwise — the shape of the user's own account, and
+    // the same reason `rolesReady` is set below: omitted, it would be `undefined` and every rights
+    // gate would throw or wave everything through.
+    rights: options.rights ?? ALL_GRANTED,
     roles: { archive: 'arch', junk: 'junk', trash: 'trash' },
     // The mailbox liveQuery HAS resolved. Not decoration: these stubs are `as unknown as
     // ShortcutContext`, so an omitted field compiles happily as `undefined` — and `undefined` here
@@ -361,5 +367,71 @@ describe('the `v` move chord — the non-pointer path WCAG 2.2 SC 2.5.7 requires
     const { context } = readingContext({ readingDispatches: true, triageDispatches: true })
     const empty = { ...context, targetIds: [] } as unknown as ShortcutContext
     expect(moveAction && isRunnable(moveAction, empty)).toBe(false)
+  })
+})
+
+describe('rights gate every chord that writes (B34)', () => {
+  /** A verdict that denies exactly `op`, granting everything else — the mixed-rights shared account. */
+  function denying(op: 'seen' | 'keywords' | 'destroy' | 'move'): MessageRights {
+    return {
+      ...ALL_GRANTED,
+      maySetSeen: op !== 'seen',
+      maySetKeywords: op !== 'keywords',
+      mayDestroy: op !== 'destroy',
+      reason: (asked) => (asked === op ? `rights.unavailable.${asked}` : null),
+      removeReason: () => (op === 'move' ? 'rights.unavailable.remove' : null),
+      addReason: () => null,
+      moveReason: () => (op === 'move' ? 'rights.unavailable.remove' : null),
+    }
+  }
+
+  const action = (id: string): ShortcutAction => {
+    const found = SHORTCUTS.find((candidate) => candidate.id === id)
+    if (!found) throw new Error(`no such action: ${id}`)
+    return found
+  }
+
+  function ctx(rights: MessageRights, over: Partial<ShortcutContext> = {}): ShortcutContext {
+    const { context } = readingContext({ readingDispatches: true, triageDispatches: true, rights })
+    return { ...context, ...over } as unknown as ShortcutContext
+  }
+
+  it('refuses `u` and says why — a keystroke that does nothing silently is defect B3 again', () => {
+    const denied = ctx(denying('seen'), { scope: 'list' })
+    expect(isRunnable(action('triage.unread'), denied)).toBe(false)
+    expect(unavailableNow(action('triage.unread'), denied)).toBe('rights.unavailable.seen')
+  })
+
+  it('refuses `s` and says why', () => {
+    const denied = ctx(denying('keywords'))
+    expect(isRunnable(action('triage.flag'), denied)).toBe(false)
+    expect(unavailableNow(action('triage.flag'), denied)).toBe('rights.unavailable.keywords')
+  })
+
+  it('refuses `e` when the SOURCE denies removal, though the account has an Archive', () => {
+    // The half every pre-existing check missed: rights were only ever consulted for move TARGETS.
+    const denied = ctx(denying('move'))
+    expect(isRunnable(action('triage.archive'), denied)).toBe(false)
+    expect(unavailableNow(action('triage.archive'), denied)).toBe('rights.unavailable.remove')
+  })
+
+  it('refuses `#` inside Trash when destroy is denied — there the chord DESTROYS', () => {
+    const denied = ctx(denying('destroy'), { inTrash: true })
+    expect(isRunnable(action('triage.trash'), denied)).toBe(false)
+    expect(unavailableNow(action('triage.trash'), denied)).toBe('rights.unavailable.destroy')
+  })
+
+  it('still runs every chord on an account that grants everything', () => {
+    // The single-account no-regression pin: the user's own account grants all rights everywhere, so
+    // nothing above may cost the ordinary case anything.
+    const allowed = ctx(ALL_GRANTED, { scope: 'list' })
+    expect(isRunnable(action('triage.unread'), allowed)).toBe(true)
+    expect(isRunnable(action('triage.flag'), allowed)).toBe(true)
+    expect(isRunnable(action('triage.archive'), allowed)).toBe(true)
+    expect(unavailableNow(action('triage.unread'), allowed)).toBeNull()
+  })
+
+  it('leaves `l` runnable — it only opens a picker, which explains itself', () => {
+    expect(isRunnable(action('triage.label'), ctx(denying('keywords')))).toBe(true)
   })
 })
