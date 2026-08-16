@@ -224,7 +224,19 @@
   background-color: var(--waxwing-surface-hover);
 }
 
-.row:focus-visible {
+/*
+ * The roving row (M4.7, WCAG 2.4.7). Shown only while the grid itself has focus, so a list sitting
+ * idle beside an open message does not compete with the reading pane for attention.
+ *
+ * This replaces a `.row:focus-visible` rule that could never match: rows carry `tabIndex={-1}` and
+ * nothing ever calls `.focus()` on one — the grid keeps focus on its scroller and moves
+ * `aria-activedescendant`. So a screen reader was told which row was current and a SIGHTED keyboard
+ * user was not: j/k changed nothing on screen unless the row happened to also be selected or open.
+ *
+ * An outline rather than a background, deliberately: `.selected` and `[aria-current]` already own
+ * the background, and the roving row is frequently neither of them.
+ */
+.scroll:focus-visible .rowFocused {
   outline: 2px solid var(--waxwing-focus-ring);
   outline-offset: -2px;
 }

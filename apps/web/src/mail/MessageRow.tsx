@@ -38,6 +38,15 @@ export interface MessageRowProps {
   readonly email: EmailRow | undefined
   readonly selected: boolean
   readonly active: boolean
+  /**
+   * The roving row — where the keyboard is (M4.7, WCAG 2.4.7).
+   *
+   * Distinct from both neighbours and needed as its own signal: `selected` is the checkbox set and
+   * `active` is the message currently OPEN, and a keyboard user can be on a row that is neither.
+   * `aria-activedescendant` already tells a screen reader; this is what tells a SIGHTED keyboard
+   * user which row Enter is about to act on.
+   */
+  readonly focused: boolean
   readonly density: Density
   readonly style?: CSSProperties
   /** Registry name+color per keyword, so this row can render its label swatches (M3.2). */
@@ -62,6 +71,7 @@ export function MessageRow({
   email,
   selected,
   active,
+  focused,
   density,
   style,
   labels,
@@ -136,7 +146,7 @@ export function MessageRow({
       aria-selected={selected}
       aria-current={active ? 'page' : undefined}
       tabIndex={-1}
-      className={`${rowClass}${unread ? ` ${styles.unread}` : ''}${selected ? ` ${styles.selected}` : ''}`}
+      className={`${rowClass}${unread ? ` ${styles.unread}` : ''}${selected ? ` ${styles.selected}` : ''}${focused ? ` ${styles.rowFocused}` : ''}`}
       style={style}
       onClick={onRowClick}
     >

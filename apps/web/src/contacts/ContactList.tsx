@@ -171,6 +171,7 @@ export function ContactList({ bookId, selectedCardId }: ContactListProps) {
                   id={optionDomId(item.index)}
                   card={card}
                   selected={card !== undefined && card.id === selectedCardId}
+                  focused={item.index === activeIndex}
                   offset={item.start}
                   height={item.size}
                   onOpen={() => open(card)}
@@ -192,6 +193,8 @@ interface ContactOptionProps {
   readonly id: string
   readonly card: ContactCardRow | undefined
   readonly selected: boolean
+  /** The roving option — where the keyboard is (M4.7, WCAG 2.4.7), distinct from the OPEN contact. */
+  readonly focused: boolean
   readonly offset: number
   readonly height: number
   readonly onOpen: () => void
@@ -202,6 +205,7 @@ function ContactOption({
   id,
   card,
   selected,
+  focused,
   offset,
   height,
   onOpen,
@@ -230,7 +234,7 @@ function ContactOption({
       // Name the option explicitly so its accessible name is the display name once — the avatar's own
       // label plus the visible span would otherwise announce the name twice.
       aria-label={name}
-      className={`${styles.contactRow}${selected ? ` ${styles.contactRowSelected}` : ''}`}
+      className={`${styles.contactRow}${selected ? ` ${styles.contactRowSelected}` : ''}${focused ? ` ${styles.contactRowFocused}` : ''}`}
       style={style}
       onClick={() => {
         onActivate()

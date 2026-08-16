@@ -771,3 +771,14 @@
 .ioFilePick input[type="file"] {
   font-size: var(--waxwing-text-sm);
 }
+
+/*
+ * The roving option (M4.7, WCAG 2.4.7) — the same rule the message list uses, and for the same
+ * reason: the container holds focus and moves `aria-activedescendant`, so a screen reader knows
+ * which option is current while a sighted keyboard user saw nothing change. Shown only while the
+ * listbox has focus; an outline, because `.contactRowSelected` already owns the background.
+ */
+.listScroll:focus-visible .contactRowFocused {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
+}

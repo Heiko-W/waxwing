@@ -21,6 +21,7 @@ const baseProps = {
   rowIndex: 1,
   selected: false,
   active: false,
+  focused: false,
   density: 'comfortable' as const,
   onOpen: noop,
   onSelectToggle: noop,
@@ -135,5 +136,31 @@ describe('MessageRow', () => {
       </div>,
     )
     await expectNoA11yViolations(container)
+  })
+})
+
+describe('the roving row is visible, not just announced (M4.7, WCAG 2.4.7)', () => {
+  it('marks the focused row, and does not confuse it with selected or open', () => {
+    // The grid keeps focus on its scroller and moves `aria-activedescendant`, so a screen reader is
+    // told which row is current. Before this, a SIGHTED keyboard user was not: j/k changed nothing
+    // on screen unless the row happened to also be checked or open. The three states are
+    // independent — this pins that they render independently too.
+    const { container, rerender } = grid(
+      <MessageRow {...baseProps} email={row()} focused={true} selected={false} active={false} />,
+    )
+    const rendered = container.querySelector('[role="row"]')
+    const focusedClass = rendered?.className.split(' ').find((c) => c.includes('rowFocused'))
+    expect(focusedClass, 'a focused row carries its own class').toBeDefined()
+
+    rerender(
+      <div role="grid">
+        <MessageRow {...baseProps} email={row()} focused={false} selected={true} active={true} />
+      </div>,
+    )
+    const other = container.querySelector('[role="row"]')
+    expect(other?.className).not.toContain('rowFocused')
+    // …and the two states it must not be mistaken for are still expressed.
+    expect(other?.getAttribute('aria-selected')).toBe('true')
+    expect(other?.getAttribute('aria-current')).toBe('page')
   })
 })

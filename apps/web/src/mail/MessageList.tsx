@@ -658,6 +658,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
                     email={rowById.get(id)}
                     selected={selection.selected.has(id)}
                     active={id === route.params.emailId}
+                    focused={item.index === focusIndex}
                     density={density}
                     labels={labelLookup}
                     highlight={highlights.get(id)}
