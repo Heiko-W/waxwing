@@ -2130,9 +2130,14 @@ Done when: numbers recorded in docs; budgets green with ≥ 15 % headroom.
 
 Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
 
-- [ ] Release workflow (tag-triggered): build → `waxwing-web-vX.Y.Z.tar.gz` (static
-      files) + `waxwing-stalwart-vX.Y.Z.zip` (Stalwart Applications bundle, `index.html`
-      at zip root, relative paths) → GitHub release with checksums (FR-DEP-01/02).
+- [~] `pnpm release` (`scripts/release.mjs`) builds both artefacts + `SHA256SUMS`, and
+      `--check` asserts the five things a deployer would otherwise discover the hard way (the
+      `.zip` extension, `index.html` at the zip root, the 100 MiB cap, the `<base href="/">`
+      token, `manifest.json` not `.webmanifest`). Packs with `archiver` rather than system
+      `tar`/`zip` — `zip` is not installed here, and artefacts whose shape depends on which
+      build of a binary a machine carries are not reproducible. **The tag-triggered GitHub
+      workflow is NOT written**: there is no repository yet (ADR-003), and a workflow that
+      cannot be run is a design exercise. It will be a thin caller of this script.
       **SP.5 prerequisite for the Applications bundle — DONE in M3.5:** the built `index.html`
       emits the literal `<base href="/">` (double quotes, root path) — Stalwart rewrites *that
       exact token* to `<base href="/{prefix}/">`, and without it deep-link reloads under
@@ -2143,10 +2148,16 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
       serves `.webmanifest`/`.woff2`
       as `application/octet-stream` (ship the PWA manifest as `.json`, FR-DEP-06), and it caps
       the bundle at 100 MiB / fetches `resourceUrl` over 60 s.
-- [ ] SRI documentation for deployments where files/config could diverge (NFR-SEC-03).
-- [ ] Deployment guides in docs/: (1) Stalwart Application (recommended), (2) reverse
-      proxy same-origin, (3) CDN cross-origin incl. the `usePermissiveCors` trade-off
-      from SP.5 (FR-DEP-05). **SP.5 verified the Stalwart-Application path (v0.16.x):** there
+- [x] SRI documented in `SECURITY.md` §4.1 — including the part such documents usually omit:
+      SRI is worth using where the entry document and its assets come from DIFFERENT places,
+      and is worth **nothing** where both come from the same one, because an attacker who can
+      change an asset can change the `index.html` that names its hash. Waxwing therefore emits
+      no SRI attributes by default; adding them would look like security and be theatre.
+- [x] `docs/deployment.md` — the three paths, framed as the *origin* question they actually
+      are, with the cross-origin trade-off stated rather than softened (Stalwart v0.16.11 emits
+      no CORS headers at all by default, so cross-origin Waxwing does not work until the server
+      is configured; `usePermissiveCors` lets ANY origin make credentialed requests, and a
+      proxy echoing one named origin is strictly better). **SP.5 verified the Stalwart-Application path (v0.16.x):** there
       is no `/api/settings` REST surface anymore — an Application is a JMAP registry object
       created by `POST /jmap/` with method `x:Application/set` (WebUI *Settings › Web
       Applications* or `stalwart-cli` are equivalents). Recovery-admin HTTP Basic suffices
@@ -2154,8 +2165,12 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
       URL (accepts `http://`, not HTTPS-only; keep the `.zip` extension), `urlPrefix` is an
       **object** `{"mail": true}` (single path segment), `enabled: true`; `autoUpdateFrequency`
       optional. Example: `{"using":["urn:ietf:params:jmap:core"],"methodCalls":[["x:Application/set",{"create":{"app1":{"enabled":true,"resourceUrl":"https://…/waxwing-stalwart-vX.Y.Z.zip","urlPrefix":{"mail":true}}}},"c1"]]}`.
-- [ ] `SECURITY.md` (reporting process) + threat-model document: malicious mail content,
-      malicious network, shared device, hostile CDN (NFR-SEC-04).
+- [x] `SECURITY.md` — reporting process + threat model over all four surfaces, plus Waxwing's
+      own dependencies. Four claims written from memory turned out wrong against the code and
+      are corrected there: the reading frame is `sandbox="allow-same-origin"` (the SAFE half of
+      the pair, without `allow-scripts`) rather than no-same-origin; plain *Sign out* does NOT
+      clear the replica, only *Sign out & remove data* does; IndexedDB is not encrypted and
+      cannot be; and the SRI point above.
       **Owner decision B19 (Gate G2, 2026-07-23) lands here.** The threat-model document must
       state what the FR-RD-08 link check is and is not: it compares the host a link's text
       claims against the host it opens, both written by the attacker (the CSS included), so it
@@ -2166,8 +2181,13 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
       the list, which would age into a false floor the day one is closed.
 - [ ] Compat smoke: Cyrus IMAP (JMAP) E2E smoke job to keep "any JMAP server" honest
       (NFR-QUAL-02); document known deviations.
-- [ ] CONTRIBUTING.md, issue templates, `config.json` reference doc finalized against
-      spec §9.
+- [x] `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/{bug,feature}.yml`, and
+      `docs/configuration.md` — the `config.json` reference, key by key, checked against the
+      code rather than against spec §9 alone. That check found two things: the shipped
+      `public/config.json` set `undoSendSeconds: 10` against 15 in both `DEFAULT_CONFIG` and
+      the spec (drift from an unrelated remediation commit, now corrected), and `cacheDays: 0`
+      is IGNORED rather than honoured. `config.shipped.test.ts` now holds the shipped file to
+      the defaults key for key, so this cannot recur silently.
 - [ ] Publish `@waxwing/jmap` and `@waxwing/jscontact` to npm (after D1 confirmation);
       README + API docs for both.
 - [ ] Tag **v1.0.0**; project site/demo on GitHub Pages (decision log #1: no paid

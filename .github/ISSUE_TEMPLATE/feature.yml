@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest something Waxwing should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Waxwing has a functional specification (`docs/functional-specification.md`) and a
+        roadmap (`docs/implementation-plan.md` §11). Worth a look first — the answer may
+        already be "yes, in V1.x".
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: |
+        The problem, not the solution. "I cannot find mail from last summer" leads somewhere
+        better than "add a date filter", because the problem might have a better answer than
+        the one you had in mind.
+    validations: { required: true }
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you handle it today?
+      description: A workaround tells us how much this costs you, which is what ranks it.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This belongs in a mail CLIENT, not in the mail server
+          required: true

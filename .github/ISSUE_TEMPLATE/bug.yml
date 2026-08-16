@@ -1,0 +1,59 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security issues do not belong here.** Read `SECURITY.md` in the repository root and
+        report privately instead.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what happened, and what you expected instead.
+      placeholder: |
+        1. Opened a message with three attachments
+        2. Pressed z
+        3. Expected the archive to be undone; nothing happened
+    validations: { required: true }
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Firefox 141 on Fedora 42
+    validations: { required: true }
+
+  - type: input
+    id: server
+    attributes:
+      label: Mail server and version
+      description: The JMAP server Waxwing is talking to.
+      placeholder: Stalwart 0.16.14
+    validations: { required: true }
+
+  - type: input
+    id: deployment
+    attributes:
+      label: How is Waxwing deployed?
+      description: Stalwart Application, reverse proxy, CDN, or `pnpm dev`.
+      placeholder: Stalwart Application at /mail
+    validations: { required: true }
+
+  - type: textarea
+    id: eml
+    attributes:
+      label: A .eml file, if this involves a message
+      description: |
+        Anything about how a message RENDERS — layout, sanitizing, links, attachments — is
+        usually impossible to reproduce without the message itself. Attach the `.eml`
+        (Message ▸ ⋯ ▸ View source ▸ Save) with anything private removed.
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Anything red in the browser's developer console.
+      render: text

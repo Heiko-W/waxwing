@@ -210,16 +210,21 @@ rarely a good trade.
 ## Configuration
 
 `config.json` sits next to `index.html` and is read at startup, so a hoster can change it
-**without rebuilding**. See [`docs/theming.md`](theming.md) for branding and
-[the spec's §9](functional-specification.md) for the full reference.
+**without rebuilding**. Every key is optional — the shipped file is the full set with its
+defaults, and a deployment that only needs to point somewhere else can be three lines:
 
 ```json
 {
-  "jmapUrl": "https://mail.example.com/.well-known/jmap",
-  "offline": { "cacheDays": 30, "maxStorageMB": 512 },
-  "undoSendSeconds": 15
+  "server": { "sessionUrl": "https://mail.example.com/.well-known/jmap" }
 }
 ```
+
+`null` (the shipped value) means same-origin `/.well-known/jmap`, which is what both
+recommended deployments produce — so most installations need not set this at all.
+
+**[`configuration.md`](configuration.md) is the full reference**, key by key, with the ranges
+and the reasoning. [`theming.md`](theming.md) covers branding, `theme.css` and the replaceable
+assets.
 
 Keep `config.json` out of long-lived caches (the nginx block above does). Otherwise a change
 here reaches returning users whenever their cache happens to expire.

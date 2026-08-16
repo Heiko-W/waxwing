@@ -29,6 +29,10 @@ export default defineConfig({
             // walks every *.css under apps/web with plain node:fs.
             'apps/web/src/ui/**/*.contrast.test.ts',
             'apps/web/src/ui/**/*.css.test.ts',
+            // `*.shipped.test.ts` — assertions about DEPLOYMENT files (public/config.json and
+            // friends) read from disk. Same reason as the CSS family: the jsdom project cannot
+            // read them, and what ships is the thing worth checking.
+            'apps/web/src/**/*.shipped.test.ts',
           ],
           setupFiles: ['fake-indexeddb/auto'],
           // No passWithNoTests: this project spans all packages/* and jmap always

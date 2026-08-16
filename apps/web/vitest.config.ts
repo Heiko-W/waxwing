@@ -15,14 +15,17 @@ export default mergeConfig(
       globals: false,
       setupFiles: ['./vitest.setup.ts', 'fake-indexeddb/auto'],
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
-      // The auth module (SP.2) and the stylesheet checks (contrast, and the B5 `*.css.test.ts`
-      // family) run in the root "unit" (node) project — see the note in ../../vitest.config.ts.
-      // Excluding them here keeps each file to a single project.
+      // The auth module (SP.2), the stylesheet checks (contrast, and the B5 `*.css.test.ts`
+      // family) and the deployment-file checks (`*.shipped.test.ts`) run in the root "unit"
+      // (node) project — see the note in ../../vitest.config.ts. Excluding them here keeps each
+      // file to a single project: they read from disk with `node:fs`, which does not work under
+      // jsdom, so a file collected by BOTH projects passes in one and fails in the other.
       exclude: [
         ...configDefaults.exclude,
         'src/auth/**',
         'src/ui/**/*.contrast.test.ts',
         'src/ui/**/*.css.test.ts',
+        'src/**/*.shipped.test.ts',
       ],
       restoreMocks: true,
       // No passWithNoTests: the App example tests always exist, so a zero-test

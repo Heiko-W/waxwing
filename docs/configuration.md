@@ -1,0 +1,188 @@
+# `config.json` reference
+
+One file, sitting next to `index.html`, read once at startup. A hoster edits it in place — **no
+rebuild**, no environment variables, no template step (FR-DEP-04).
+
+Everything in it is optional. Missing keys fall back to the values below, so a deployment that
+only needs to point at a different server can be three lines. Unknown keys are ignored, which
+means a typo is silent — check a change took effect rather than assuming it did.
+
+`apps/web/src/app/config.shipped.test.ts` asserts the shipped file matches these defaults key
+for key, so this page cannot quietly go stale.
+
+```json
+{
+  "server": {
+    "sessionUrl": null,
+    "allowCustomServer": true,
+    "auth": ["oauth", "basic"]
+  },
+  "branding": {
+    "productName": "Waxwing",
+    "logo": "branding/logo.svg",
+    "accentColor": null,
+    "accentPalettes": null,
+    "accentLocked": false,
+    "defaultTheme": "auto",
+    "links": { "imprint": null, "support": null, "privacy": null }
+  },
+  "features": {
+    "sieveEditor": true,
+    "remoteContentDefault": "block",
+    "imageProxyUrl": null,
+    "undoSendSeconds": 15
+  },
+  "offline": { "cacheDays": 30, "maxStorageMB": 512 }
+}
+```
+
+## `server`
+
+### `sessionUrl` — `string | null`, default `null`
+
+Where the JMAP session document lives. `null` means **same origin**,
+`/.well-known/jmap` — which is what the two recommended deployments produce, so most
+installations leave this alone.
+
+Set it to an absolute URL only for a cross-origin deployment, and read
+[`deployment.md` §3](deployment.md#3-cdn-or-separate-web-server-cross-origin) first: Stalwart
+sends no CORS headers by default, so a cross-origin `sessionUrl` fails in the browser until
+the server is configured for it.
+
+### `allowCustomServer` — `boolean`, default `true`
+
+Whether the sign-in screen offers a server field. Leave it on for a general-purpose
+deployment; turn it off when the app is bound to one server and a field would only invite
+mistakes.
+
+### `auth` — `("oauth" | "basic")[]`, default `["oauth", "basic"]`
+
+Enabled authentication methods, **in order of preference**. The first one the server supports
+is the one offered.
+
+Dropping `"basic"` is the harder-edged choice and often the right one: HTTP Basic sends the
+password on every request, and Waxwing's own live-update path cannot use it (a WebSocket or
+SSE handshake carries no `Authorization` header, so a Basic session falls back to a 60-second
+polling sweep instead of instant push).
+
+## `branding`
+
+See [`theming.md`](theming.md) for the full white-label story, including `theme.css` and
+replaceable assets under `branding/`.
+
+### `productName` — `string`, default `"Waxwing"`
+
+Shown in the header, the window title and the sign-in screen.
+
+### `logo` — `string`, default `"branding/logo.svg"`
+
+Path relative to the app root. SVG or PNG.
+
+### `accentColor` — `string | null`, default `null`
+
+A CSS colour that overrides the accent. `null` keeps the built-in blue.
+
+**If you set this, check its contrast.** Waxwing's six built-in palettes are each proved
+against WCAG 1.4.3 as *text* and 1.4.11 as a *fill*, on four different surfaces, in both
+themes — a custom colour has had none of that. The app derives a readable label colour for it
+automatically, but it cannot make an accent legible against the page it sits on. A mid-tone
+that looks right on white can fail on the selected-row tint, which is exactly the defect the
+default blue shipped with until it was measured (3.95:1).
+
+### `accentPalettes` — `string[] | null`, default `null`
+
+Narrow the accent picker to a subset: `["blue", "teal"]`. `null` offers all six. A list naming
+no valid palette is ignored rather than honoured — an empty picker would leave the user with
+no accent and no way to tell that from a bug.
+
+You cannot add a palette here. Every built-in one is contrast-proved; an invented one would
+not be.
+
+### `accentLocked` — `boolean`, default `false`
+
+Remove the accent choice entirely, for a deployment with a mandated brand colour. This beats
+a value a user already chose — otherwise existing users would keep overriding a brand the
+hoster has since pinned.
+
+### `defaultTheme` — `"auto" | "light" | "dark"`, default `"auto"`
+
+`auto` follows the operating system. A user's own choice, once made, wins over this.
+
+### `links` — `{ imprint, support, privacy }`, each `string | null`
+
+Footer links on the sign-in screen. `null` hides that link. Useful where an imprint is a
+legal requirement.
+
+## `features`
+
+### `sieveEditor` — `boolean`, default `true`
+
+Whether to offer the Sieve filter UI. Turn it off where the server does not support
+ManageSieve, or where filters are managed centrally.
+
+### `remoteContentDefault` — `"block" | "allow"`, default `"block"`
+
+Whether message bodies may load remote images before the reader asks.
+
+**`"block"` is the privacy default and changing it has a real cost:** a remote image in a
+message is a read receipt the sender gets without asking, and it is how tracking pixels work.
+Set `"allow"` only where the organisation has decided that trade deliberately. Note the
+second-order effect documented in [`SECURITY.md`](../SECURITY.md) §1.1: blocking remote images
+is what *guarantees* an `<img alt>` renders, which is one of the ways the link-phishing check
+can be misled.
+
+### `imageProxyUrl` — `string | null`, default `null`
+
+An external privacy proxy for remote images. When set, remote images are fetched through it
+rather than directly, so the sender sees the proxy rather than the reader.
+
+### `undoSendSeconds` — `number`, default `15`
+
+How long Waxwing holds a message before actually sending it, during which "Undo" retracts it.
+`0` sends immediately.
+
+This is the **hoster default only**. Each user can change it in Settings (off / 5 / 15 / 30 s)
+and their choice wins — FR-CMP-08 is deliberate that this is a grace period the user controls,
+never a lock.
+
+## `offline`
+
+### `cacheDays` — `number`, default `30`
+
+How much recent mail is kept locally, in days. This is the single setting with the widest
+reach in the app: the sync engine queries `inMailbox AND receivedAt >= now − cacheDays`, so it
+decides what is searchable offline, what a folder shows, and how much of a shared machine's
+disk holds someone's mail.
+
+A folder whose mail is all older than this shows an empty list — with an explanation naming
+this setting, rather than the flat "no messages" it used to give.
+
+**Range: 1–3650 days.** A value above the range is clamped; a value of `0` or below is
+**ignored** and the default used instead. That asymmetry is deliberate: `windowFilter` builds
+`receivedAt >= now − cacheDays`, so `0` puts the boundary at today and a negative one in the
+future — every mailbox would render permanently empty. An operator typo must not silently
+become "keep one day of mail", so it is refused rather than approximated.
+
+There is no way to ask for no local history at all. Waxwing is offline-first; a zero window is
+not a supported deployment.
+
+### `maxStorageMB` — `number`, default `512`
+
+The local storage budget. Clamped to **50–4096 MB**, because outside that range the eviction
+planner cannot honour it: below 50 MB there is not enough room for a usable window, and above
+4096 MB browsers begin refusing the quota anyway.
+
+When the budget is reached, the oldest cached bodies and attachments are evicted first —
+message metadata is kept far longer, so the list stays complete while the bodies thin out.
+
+A value outside 50–4096 is clamped to the nearest end rather than ignored (unlike `cacheDays`
+above): any number in that range is a workable budget, so the nearest workable one is a fair
+reading of the intent.
+
+## Changing configuration after deployment
+
+`config.json` is fetched at startup, so a change reaches users on their next load — **provided
+it is not sitting in a cache**. Serve it with `Cache-Control: no-cache`; the nginx block in
+[`deployment.md`](deployment.md#nginx) does this.
+
+The service worker deliberately does not precache `config.json`, for the same reason.
