@@ -243,7 +243,13 @@ export function RecipientField({
                 <Menu
                   triggerLabel={t('compose.recipientMoveMenu')}
                   trigger={<Ellipsis aria-hidden="true" className={styles.pillIcon} />}
-                  triggerTabIndex={-1}
+                  // Roving with the remove button beside it, NOT fixed at -1 (M4.7, WCAG 2.1.1).
+                  // Hard-wired to -1 the trigger sat in no tab order and nothing ever focused it —
+                  // `focusPill` walks only `pillRefs`, which are the remove buttons — so "move this
+                  // recipient to another field" was pointer-only, contradicting this file's own
+                  // docstring. The active pill now offers both its actions to Tab; the arrow keys
+                  // keep moving BETWEEN pills.
+                  triggerTabIndex={activePill === index ? 0 : -1}
                   items={otherFields.map((other) => ({
                     id: other,
                     label: t('compose.recipientMoveTo', { field: t(FIELD_LABEL_KEY[other]) }),

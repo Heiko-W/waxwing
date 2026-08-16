@@ -131,3 +131,36 @@ describe('RecipientField', () => {
     await expectNoA11yViolations(document.body)
   })
 })
+
+describe('every pill action is reachable by keyboard (M4.7, WCAG 2.1.1)', () => {
+  const one = [{ email: 'a@x.test', name: 'Ann' }]
+
+  it('puts the move menu in the tab order once the keyboard reaches its pill', async () => {
+    // The trigger was hard-wired to tabIndex=-1 and nothing else ever focused it, so "move this
+    // recipient to Cc/Bcc" was pointer-only — while this component's own docstring calls keyboard
+    // operation a hard requirement. It rovs with the remove button beside it: out of the tab order
+    // until the keyboard is on that pill, in it afterwards. Guards restoring the fixed -1.
+    const user = userEvent.setup()
+    const { input } = setup(one)
+    const menu = screen.getByRole('button', { name: 'Recipient options' })
+    expect(menu).toHaveAttribute('tabindex', '-1')
+
+    input.focus()
+    await user.keyboard('{ArrowLeft}') // step from the input back onto the pill
+
+    expect(menu).toHaveAttribute('tabindex', '0')
+  })
+
+  it('reaches the move menu by keyboard and moves the recipient', async () => {
+    const user = userEvent.setup()
+    const { onMove } = setup(one)
+
+    await user.tab() // into the field's first stop
+    const menu = screen.getByRole('button', { name: 'Recipient options' })
+    menu.focus()
+    await user.keyboard('{Enter}')
+    await user.click(await screen.findByRole('menuitem', { name: /Cc/ }))
+
+    expect(onMove).toHaveBeenCalledWith(0, 'cc')
+  })
+})
