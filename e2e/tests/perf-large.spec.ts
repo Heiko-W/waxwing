@@ -124,10 +124,10 @@ test.describe('M4.8 — a 100 000-message mailbox (NFR-PERF-02)', () => {
     await grid(page).click()
     const started = Date.now()
     await page.keyboard.press('ControlOrMeta+a')
-    // The bulk bar appearing is the app acknowledging the selection.
-    await expect(page.getByRole('button', { name: /Archive/ }).first()).toBeVisible({
-      timeout: 30_000,
-    })
+    // The COUNT is the app acknowledging the selection — the same signal `keyboard.spec.ts` uses.
+    // Not the bulk bar's Archive button: `getByRole('button', {name: /Archive/})` also matches the
+    // Archive FOLDER's row menu, so it would pass whether or not anything was selected.
+    await expect(page.getByText(/\d+ selected/)).toBeVisible({ timeout: 30_000 })
     const elapsed = Date.now() - started
 
     const rows = await renderedRows(page)
