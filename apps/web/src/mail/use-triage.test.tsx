@@ -11,6 +11,28 @@ import { useTriage } from './use-triage'
 const dispatch = vi.fn()
 let db: ReplicaDb
 
+/**
+ * Wraps the REAL `useToast` rather than replacing it: the toasts still render (several tests below
+ * click their Undo button), while the options they were raised with stay inspectable.
+ */
+const toastSpy = vi.fn()
+vi.mock('../ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../ui')>()
+  return {
+    ...actual,
+    useToast: () => {
+      const api = actual.useToast()
+      return {
+        ...api,
+        toast: (options: Parameters<typeof api.toast>[0]) => {
+          toastSpy(options)
+          return api.toast(options)
+        },
+      }
+    },
+  }
+})
+
 /** A probe whose buttons call the seam exactly the way the bulk bar / action bar do. */
 function Probe({ from }: { readonly from: string | null }) {
   const triage = useTriage()
@@ -64,6 +86,7 @@ async function renderProbe(from: string | null = 'inbox') {
 beforeEach(async () => {
   db = freshDb()
   dispatch.mockReset()
+  toastSpy.mockReset()
   setActiveEngine({ dispatch } as unknown as Parameters<typeof setActiveEngine>[0])
   // No Junk mailbox on purpose — the missing-role case is one of the assertions.
   await putMailboxes(db, 'a', [
@@ -240,5 +263,31 @@ describe('useTriage', () => {
     expect(await screen.findByText('Moved to Projects')).toBeInTheDocument()
     // There is nowhere to put it back — a broken Undo would be worse than none.
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  // M4.7 / WCAG 2.2.1. The five-second default made Undo effectively pointer-only, so an UNDOABLE
+  // toast must be raised with `duration: 0`. Asserted on the options passed to `toast` rather than by
+  // waiting out five real seconds — the coupling is what matters, and `Toast.test.tsx` separately
+  // proves that `duration: 0` is what keeps a toast on screen.
+  it('raises an undoable toast that does not expire, and lets a plain one keep the default', async () => {
+    const user = userEvent.setup()
+    await renderProbe()
+
+    await user.click(screen.getByRole('button', { name: 'probe-archive' }))
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled())
+    const undoable = toastSpy.mock.calls.at(-1)?.[0]
+    expect(undoable.action).toBeDefined()
+    expect(undoable.duration).toBe(0)
+  })
+
+  it('leaves a toast with nothing to undo on the default duration', async () => {
+    const user = userEvent.setup()
+    await renderProbe(null) // no source mailbox ⇒ no inverse move ⇒ no Undo to miss
+
+    await user.click(screen.getByRole('button', { name: 'probe-archive' }))
+    await waitFor(() => expect(toastSpy).toHaveBeenCalled())
+    const plain = toastSpy.mock.calls.at(-1)?.[0]
+    expect(plain.action).toBeUndefined()
+    expect(plain.duration).toBeUndefined()
   })
 })

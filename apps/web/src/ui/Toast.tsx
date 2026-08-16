@@ -36,6 +36,16 @@ interface ToastApi {
   /** Show a toast; returns its id. */
   toast: (options: ToastOptions) => string
   dismiss: (id: string) => void
+  /**
+   * Run the newest pending toast action and dismiss it; `false` when there is none (M4.7).
+   *
+   * The keyboard route to Undo. The toast region is portalled to the END of the document, so
+   * reaching an Undo button by Tab means traversing the rest of the shell — and before this it
+   * meant doing so within five seconds. WCAG 2.2.1 either way; this is the half that makes the
+   * action reachable at all, and `duration: 0` on action-bearing toasts is the half that removes
+   * the time limit.
+   */
+  runNewestAction: () => boolean
 }
 
 const ToastContext = createContext<ToastApi | null>(null)
@@ -72,7 +82,28 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return id
   }, [])
 
-  const api = useMemo<ToastApi>(() => ({ toast, dismiss }), [toast, dismiss])
+  /**
+   * Newest first: with several toasts on screen the last one raised is the one the user just caused,
+   * and so the one an Undo means. Read from a ref rather than state so the shortcut layer can call
+   * it without subscribing to every toast render.
+   */
+  const toastsRef = useRef<ToastRecord[]>([])
+  toastsRef.current = toasts
+
+  const runNewestAction = useCallback(() => {
+    const withAction = [...toastsRef.current]
+      .reverse()
+      .find((record) => record.action !== undefined)
+    if (withAction?.action === undefined) return false
+    withAction.action.onAction()
+    dismiss(withAction.id)
+    return true
+  }, [dismiss])
+
+  const api = useMemo<ToastApi>(
+    () => ({ toast, dismiss, runNewestAction }),
+    [toast, dismiss, runNewestAction],
+  )
 
   const assertive = toasts.filter((toast) => toast.tone === 'danger')
   const polite = toasts.filter((toast) => toast.tone !== 'danger')

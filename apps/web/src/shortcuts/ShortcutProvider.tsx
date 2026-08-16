@@ -29,7 +29,7 @@ const ShortcutHelp = lazy(() => import('./ShortcutHelp'))
 
 export function ShortcutProvider() {
   const { t } = useTranslation()
-  const { toast } = useToast()
+  const { toast, runNewestAction } = useToast()
   // `t` changes identity on every i18n event, and `notify` is a dependency of the context object the
   // whole registry is memoised on — listing `t` there would churn that object, and every consumer of
   // it, on a language change. So `t` is read through a ref, the same trick `contextRef` below plays on
@@ -54,7 +54,7 @@ export function ShortcutProvider() {
     [toast],
   )
 
-  const context = useShortcutContext(notify)
+  const context = useShortcutContext(notify, runNewestAction)
   const contextRef = useRef<ShortcutContext>(context)
   const paletteOpen = usePaletteUi((state) => state.paletteOpen)
   const helpOpen = usePaletteUi((state) => state.helpOpen)

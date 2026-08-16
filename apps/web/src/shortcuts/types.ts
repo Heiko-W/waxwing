@@ -73,6 +73,13 @@ export interface ShortcutContext {
    * every rights-gated action here pairs `enabled` with an `unavailable` message.
    */
   readonly rights: MessageRights
+  /**
+   * Run the newest pending toast action (the Undo offer) — `false` when there is none (M4.7).
+   *
+   * The keyboard route to Undo. Without it the button is reachable only by tabbing to the end of the
+   * document, which is where the toast region is portalled.
+   */
+  runNewestToastAction(): boolean
 
   readonly roles: RoleMailboxes
   /**

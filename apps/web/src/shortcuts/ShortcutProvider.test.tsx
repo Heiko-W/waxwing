@@ -500,6 +500,38 @@ describe('ShortcutProvider — the guards (this is the work package)', () => {
     expect(await screen.findAllByText('This account has no Archive folder.')).toHaveLength(1)
   })
 
+  // M4.7 / WCAG 2.1.1. Undo used to be reachable by pointer only: the toast region is portalled to
+  // the END of the document, so Tabbing to it means crossing the whole shell — and the toast expired
+  // long before anyone got there. `z` is the keyboard's route to the same button.
+  describe('z — Undo', () => {
+    it('runs the Undo of the toast the last action raised', async () => {
+      await mounted()
+      press('e') // archive the focused message
+      await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+      expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+
+      press('z')
+
+      await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2))
+      // The INVERSE move — the same thing clicking Undo would have dispatched.
+      expect(dispatch.mock.calls[1]?.[0]).toMatchObject({
+        kind: 'move',
+        from: 'archive',
+        to: 'inbox',
+      })
+      expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+    })
+
+    it('says so when there is nothing to undo, rather than doing nothing', async () => {
+      await mounted()
+
+      press('z')
+
+      expect(await screen.findByText('Nothing to undo.')).toBeInTheDocument()
+      expect(dispatch).not.toHaveBeenCalled()
+    })
+  })
+
   // `/` preventDefaults BEFORE it runs, so an always-enabled `/` eats the key on Settings/Contacts —
   // where there is no search box — and with it the browser's own Quick Find, to then do nothing.
   it('/ does not swallow the key when there is no search box on screen', async () => {

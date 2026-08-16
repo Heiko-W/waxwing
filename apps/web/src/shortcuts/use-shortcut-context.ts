@@ -6,9 +6,10 @@
  * (`useTriage` → `useMessageActions`, the composer store). The sync engine is never reachable from a
  * shortcut: that is the invariant this file exists to hold.
  *
- * `notify` is the one thing this file does NOT read: it is passed in by `ShortcutProvider`, which
- * already sits inside the `ToastProvider`. Calling `useToast()` here would make a pure reader throw
- * wherever no toast host is mounted, and would be the first line in this file that OUTPUTS anything.
+ * `notify` and `runNewestToastAction` are the two things this file does NOT read: both are passed in
+ * by `ShortcutProvider`, which already sits inside the `ToastProvider`. Calling `useToast()` here
+ * would make a pure reader throw wherever no toast host is mounted, and would be the first line in
+ * this file that OUTPUTS anything.
  */
 
 import type { Id } from '@waxwing/jmap'
@@ -31,7 +32,10 @@ function isRoleKey(role: string | null): role is RoleKey {
   return role !== null && (ROLE_KEYS as readonly string[]).includes(role)
 }
 
-export function useShortcutContext(notify: (messageKey: string) => void): ShortcutContext {
+export function useShortcutContext(
+  notify: (messageKey: string) => void,
+  runNewestToastAction: () => boolean,
+): ShortcutContext {
   const router = useRouter()
   const route = router.match
   const list = useListStore()
@@ -112,6 +116,7 @@ export function useShortcutContext(notify: (messageKey: string) => void): Shortc
       hasSelection,
       targetsAllFlagged,
       rights,
+      runNewestToastAction,
       roles,
       rolesReady,
       inTrash,
@@ -140,6 +145,7 @@ export function useShortcutContext(notify: (messageKey: string) => void): Shortc
       hasSelection,
       targetsAllFlagged,
       rights,
+      runNewestToastAction,
       roles,
       rolesReady,
       inTrash,

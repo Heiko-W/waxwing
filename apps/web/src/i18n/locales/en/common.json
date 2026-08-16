@@ -1070,7 +1070,8 @@
       "archive": "This account has no Archive folder.",
       "junk": "This account has no Junk folder.",
       "trash": "This account has no Trash folder.",
-      "hint": "Press V to pick a folder instead."
+      "hint": "Press V to pick a folder instead.",
+      "undo": "Nothing to undo."
     },
     "groups": {
       "navigation": "Navigation",
@@ -1100,7 +1101,8 @@
         "unread": "Mark as unread",
         "flag": "Flag or unflag",
         "label": "Apply labels",
-        "move": "Move to folder"
+        "move": "Move to folder",
+        "undo": "Undo the last action"
       },
       "compose": {
         "new": "New message",

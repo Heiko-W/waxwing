@@ -1070,7 +1070,8 @@
       "archive": "Dieses Konto hat keinen Archiv-Ordner.",
       "junk": "Dieses Konto hat keinen Spam-Ordner.",
       "trash": "Dieses Konto hat keinen Papierkorb.",
-      "hint": "Drücken Sie V, um stattdessen einen Ordner auszuwählen."
+      "hint": "Drücken Sie V, um stattdessen einen Ordner auszuwählen.",
+      "undo": "Nichts rückgängig zu machen."
     },
     "groups": {
       "navigation": "Navigation",
@@ -1100,7 +1101,8 @@
         "unread": "Als ungelesen markieren",
         "flag": "Markierung setzen oder entfernen",
         "label": "Labels anwenden",
-        "move": "In Ordner verschieben"
+        "move": "In Ordner verschieben",
+        "undo": "Letzte Aktion rückgängig machen"
       },
       "compose": {
         "new": "Neue Nachricht",

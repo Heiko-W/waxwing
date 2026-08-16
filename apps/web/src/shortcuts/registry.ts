@@ -347,6 +347,20 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     },
   },
   {
+    id: 'triage.undo',
+    titleKey: 'shortcuts.actions.triage.undo',
+    keys: ['z'],
+    scopes: ['list', 'reading'],
+    group: 'triage',
+    // Always offered: whether an undo is PENDING is not knowable from the context (the toasts live
+    // in their own provider), and a chord that appeared and vanished with a five-second timer would
+    // be worse than one that occasionally does nothing. `run` reports honestly instead.
+    enabled: () => true,
+    run: (context) => {
+      if (!context.runNewestToastAction()) context.notify('shortcuts.unavailable.undo')
+    },
+  },
+  {
     id: 'triage.label',
     titleKey: 'shortcuts.actions.triage.label',
     keys: ['l'],

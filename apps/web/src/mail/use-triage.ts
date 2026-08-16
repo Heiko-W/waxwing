@@ -107,9 +107,16 @@ export function useTriage(): Triage {
       const undoable = from !== null && rights.moveReason(to, from) === null
       toast({
         title,
-        // Without a known source there is no inverse move — offer no Undo rather than a broken one.
+        // An UNDOABLE toast does not expire (M4.7, WCAG 2.2.1). The five-second default made Undo
+        // effectively pointer-only: the toast region is portalled to the end of the document, so
+        // reaching the button by Tab means crossing the rest of the shell — not something anyone
+        // does in five seconds. A toast with nothing to act on keeps the default; there is nothing
+        // to miss.
         ...(undoable
-          ? { action: { label: t('list.undo'), onAction: () => actions.move(ids, to, from) } }
+          ? {
+              duration: 0,
+              action: { label: t('list.undo'), onAction: () => actions.move(ids, to, from) },
+            }
           : {}),
       })
       return true

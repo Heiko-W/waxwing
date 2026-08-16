@@ -1,12 +1,14 @@
 import { render, screen, waitForElementToBeRemoved, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import { Button } from './Button'
 import { ToastProvider, useToast } from './Toast'
 
 function Trigger() {
-  const { toast } = useToast()
+  const { toast, runNewestAction } = useToast()
+  const [ran, setRan] = useState<boolean | null>(null)
   return (
     <>
       <Button onClick={() => toast({ title: 'Saved', tone: 'success' })}>Notify</Button>
@@ -21,11 +23,25 @@ function Trigger() {
       >
         Undoable
       </Button>
+      <Button
+        onClick={() =>
+          toast({
+            title: 'Second undoable',
+            duration: 0,
+            action: { label: 'Redo', onAction: onRedo },
+          })
+        }
+      >
+        Undoable 2
+      </Button>
+      <Button onClick={() => setRan(runNewestAction())}>Run newest</Button>
+      <output>{ran === null ? 'idle' : String(ran)}</output>
     </>
   )
 }
 
 const onUndo = vi.fn()
+const onRedo = vi.fn()
 
 function withProvider() {
   return render(
@@ -114,5 +130,49 @@ describe('Toast', () => {
     withProvider()
     await user.click(screen.getByRole('button', { name: 'Sticky' }))
     await expectNoA11yViolations(document.body)
+  })
+
+  // M4.7, WCAG 2.1.1: the toast region is portalled to the END of the document, so reaching Undo by
+  // Tab means crossing the whole shell. `runNewestAction` is the keyboard's route to it — the `z`
+  // chord in the registry calls exactly this.
+  describe('runNewestAction (the keyboard route to Undo)', () => {
+    it('runs the NEWEST action-bearing toast and dismisses only that one', async () => {
+      onUndo.mockClear()
+      onRedo.mockClear()
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      await user.click(screen.getByRole('button', { name: 'Undoable 2' }))
+
+      await user.click(screen.getByRole('button', { name: 'Run newest' }))
+
+      expect(onRedo).toHaveBeenCalledTimes(1)
+      expect(onUndo).not.toHaveBeenCalled()
+      expect(screen.queryByText('Second undoable')).toBeNull()
+      expect(screen.getByText('Sending…')).toBeInTheDocument() // the older offer survives
+      expect(screen.getByRole('status')).toHaveTextContent('true')
+    })
+
+    it('skips toasts that carry no action rather than reporting success', async () => {
+      onUndo.mockClear()
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Undoable' }))
+      await user.click(screen.getByRole('button', { name: 'Sticky' })) // newer, but no action
+
+      await user.click(screen.getByRole('button', { name: 'Run newest' }))
+
+      // Reaching PAST the plain toast is the point: a status message pushed on top of an undo offer
+      // must not swallow the chord, or `z` silently does nothing exactly when it is needed.
+      expect(onUndo).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('Persistent toast')).toBeInTheDocument()
+    })
+
+    it('reports false when there is nothing to run, so the caller can say so', async () => {
+      const user = userEvent.setup()
+      withProvider()
+      await user.click(screen.getByRole('button', { name: 'Run newest' }))
+      expect(screen.getByRole('status')).toHaveTextContent('false')
+    })
   })
 })

@@ -219,7 +219,7 @@ describe('M4.4 · a delegated account grants mailboxes, not sending (ADR-020)', 
       expect(sharedAccountId).toBeNull()
       return
     }
-    const account = (client.session.accounts ?? {})[sharedAccountId]
+    const account = client.session.accounts?.[sharedAccountId]
     // The trap in one assertion: the capability IS there.
     expect(Object.keys(account?.accountCapabilities ?? {})).toContain(Capabilities.submission)
 

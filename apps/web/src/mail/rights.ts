@@ -112,7 +112,7 @@ export function messageRights(input: RightsInput): MessageRights {
 
   /** Does EVERY mailbox in the account grant `key`? Then no unhydrated row can change the verdict. */
   const floor = (key: RightKey): boolean =>
-    mailboxes !== undefined && mailboxes.every((mailbox) => mailbox.myRights[key])
+    mailboxes?.every((mailbox) => mailbox.myRights[key]) ?? false
 
   /** Every subject row present, and as many as were asked for. */
   const hydrated =
