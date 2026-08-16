@@ -2,8 +2,10 @@ import type { Id } from '@waxwing/jmap'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MailboxRow } from '../sync'
 import {
+  canDropMailbox,
   canDropMessages,
   clearActiveDrag,
+  type DragSubject,
   draggedMessageIds,
   getActiveDrag,
   setActiveDrag,
@@ -59,21 +61,56 @@ describe('draggedMessageIds — what a drag actually carries', () => {
   })
 })
 
+/** A message drag out of `a`'s inbox — the account `row()` builds its mailboxes under. */
+const messageDrag = (over: Partial<Extract<DragSubject, { kind: 'messages' }>> = {}) =>
+  ({ kind: 'messages', accountId: 'a', ids: ['m1'], from: 'inbox', ...over }) as Extract<
+    DragSubject,
+    { kind: 'messages' }
+  >
+
 describe('canDropMessages — the gate the write path does not have', () => {
   it('refuses a mailbox we may not add to', () => {
     // `triage.moveTo` dispatches unconditionally, so without this the drop renders as success and
     // the server reverts it a round-trip later.
     expect(
-      canDropMessages(row('t', { myRights: { ...RIGHTS, mayAddItems: false } }), 'inbox'),
+      canDropMessages(row('t', { myRights: { ...RIGHTS, mayAddItems: false } }), messageDrag()),
     ).toBe(false)
   })
 
   it('refuses the folder the messages are already in', () => {
-    expect(canDropMessages(row('inbox'), 'inbox')).toBe(false)
+    expect(canDropMessages(row('inbox'), messageDrag())).toBe(false)
   })
 
   it('accepts an ordinary target', () => {
-    expect(canDropMessages(row('archive'), 'inbox')).toBe(true)
+    expect(canDropMessages(row('archive'), messageDrag())).toBe(true)
+  })
+
+  it('refuses a target in ANOTHER account, rights or not (M4.4)', () => {
+    // Newly reachable in M4.4: the grouped sidebar shows the primary's folders beside a shared
+    // account's list, so this drop can be attempted. The ids are short and per-account, so without
+    // the account gate `archive` names a real primary folder and the drop looks perfectly legal.
+    expect(canDropMessages(row('archive', { accountId: 'shared' }), messageDrag())).toBe(false)
+  })
+})
+
+describe('canDropMailbox — same account, then the legality oracle (M4.4)', () => {
+  const folderDrag = {
+    kind: 'mailbox',
+    accountId: 'a',
+    id: 'child',
+    legal: new Set(['other']),
+  } as Extract<DragSubject, { kind: 'mailbox' }>
+
+  it('accepts a legal parent in the same account', () => {
+    expect(canDropMailbox(row('other'), folderDrag)).toBe(true)
+  })
+
+  it('refuses a parent legalParents did not name', () => {
+    expect(canDropMailbox(row('elsewhere'), folderDrag)).toBe(false)
+  })
+
+  it('refuses a same-id parent in another account', () => {
+    expect(canDropMailbox(row('other', { accountId: 'shared' }), folderDrag)).toBe(false)
   })
 })
 
@@ -85,8 +122,13 @@ describe('the active drag subject', () => {
   })
 
   it('round-trips a subject and clears', () => {
-    setActiveDrag({ kind: 'messages', ids: ['m1'], from: 'inbox' })
-    expect(getActiveDrag()).toEqual({ kind: 'messages', ids: ['m1'], from: 'inbox' })
+    setActiveDrag({ kind: 'messages', accountId: 'a', ids: ['m1'], from: 'inbox' })
+    expect(getActiveDrag()).toEqual({
+      kind: 'messages',
+      accountId: 'a',
+      ids: ['m1'],
+      from: 'inbox',
+    })
     clearActiveDrag()
     expect(getActiveDrag()).toBeNull()
   })
@@ -106,7 +148,7 @@ describe('the active drag subject', () => {
     const legal = new Set(
       legalParents(mailboxes, 'child', limits).filter((p): p is string => p !== null),
     )
-    setActiveDrag({ kind: 'mailbox', id: 'child', legal })
+    setActiveDrag({ kind: 'mailbox', accountId: 'a', id: 'child', legal })
 
     const drag = getActiveDrag()
     expect(drag?.kind).toBe('mailbox')

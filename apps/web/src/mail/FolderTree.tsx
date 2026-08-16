@@ -14,7 +14,13 @@ import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from
 import { Button, Dialog, IconButton, TextInput, useToast } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
 import { useCleanupActions } from './cleanup/use-cleanup-actions'
-import { canDropMessages, clearActiveDrag, getActiveDrag, setActiveDrag } from './dnd'
+import {
+  canDropMailbox,
+  canDropMessages,
+  clearActiveDrag,
+  getActiveDrag,
+  setActiveDrag,
+} from './dnd'
 import { FolderMoveDialog } from './FolderMoveDialog'
 import { FolderTreeView } from './FolderTreeView'
 import { buildFolderTree, folderDisplayName, legalParents } from './folder-tree'
@@ -39,7 +45,23 @@ type DialogState =
   | { readonly kind: 'empty'; readonly mailbox: MailboxRow }
   | { readonly kind: 'deleteOlder'; readonly mailbox: MailboxRow }
 
-export function FolderTree() {
+export interface FolderTreeProps {
+  /**
+   * What selecting a mailbox does. Defaults to a plain route change to that mailbox — today's, and
+   * the pass-through sidebar's, behaviour. The account-grouped sidebar (M4.4) overrides it to ALSO
+   * switch the active account before navigating.
+   */
+  readonly onSelectMailbox?: (mailboxId: string) => void
+  /**
+   * Whether this tree owns the current route selection (M4.4). In the account-grouped sidebar only
+   * the ACTIVE account's tree highlights the open mailbox: the per-account short mailbox ids collide,
+   * so without this every account's matching row would show as selected. Defaults to `true` — the
+   * single tree of the pass-through sidebar always owns the selection.
+   */
+  readonly active?: boolean
+}
+
+export function FolderTree({ onSelectMailbox, active = true }: FolderTreeProps = {}) {
   const { t } = useTranslation()
   const mailboxes = useMailboxes()
   const { db, accountId } = useReplica()
@@ -130,10 +152,10 @@ export function FolderTree() {
 
       <FolderTreeView
         tree={tree}
-        selectedMailboxId={route.params.mailboxId}
+        selectedMailboxId={active ? route.params.mailboxId : undefined}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}
-        onSelect={(id) => navigate(mailPath(id))}
+        onSelect={onSelectMailbox ?? ((id) => navigate(mailPath(id)))}
         onRequestCreate={(parentId) => setDialog({ kind: 'create', parentId })}
         onRequestRename={(mailbox) => setDialog({ kind: 'rename', mailbox })}
         onRequestMove={(mailbox) => setDialog({ kind: 'move', mailbox })}
@@ -143,6 +165,7 @@ export function FolderTree() {
         onDragStartMailbox={(mailbox) =>
           setActiveDrag({
             kind: 'mailbox',
+            accountId,
             id: mailbox.id,
             // Compute the legal parents ONCE at dragstart — `legalParents` runs `buildFolderTree`
             // per candidate, and `dragover` fires continuously. `null` (top level) is dropped: the
@@ -154,8 +177,8 @@ export function FolderTree() {
         }
         canDropOn={(mailbox) => {
           const drag = getActiveDrag()
-          if (drag?.kind === 'messages') return canDropMessages(mailbox, drag.from)
-          if (drag?.kind === 'mailbox') return drag.legal.has(mailbox.id)
+          if (drag?.kind === 'messages') return canDropMessages(mailbox, drag)
+          if (drag?.kind === 'mailbox') return canDropMailbox(mailbox, drag)
           return false
         }}
         onDropOn={(mailbox) => {

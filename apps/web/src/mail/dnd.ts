@@ -15,6 +15,12 @@
  *    and is reverted a round-trip later — exactly the bug 5a closed when the picker was offering
  *    `mayAddItems: false` targets.
  *
+ * 3. **The same-account gate (M4.4 Etappe 4).** Newly reachable in this milestone: the grouped
+ *    sidebar puts the primary's folder nodes and a shared account's message list on screen at the
+ *    same time, so dragging shared messages onto a primary folder is physically possible. The
+ *    pre-M4.4 predicates ACCEPT it, because per-account ids are short and collide. A cross-account
+ *    drop is not a permission question but a category error, so same-account is checked FIRST.
+ *
  * Folder legality is NOT re-implemented here: {@link legalParents} is the whole oracle (no cycle,
  * `mayCreateChild` on the target, depth, top-level right), and a drag holds the Set it returned.
  */
@@ -30,12 +36,16 @@ export const MAILBOX_MIME = 'application/x-waxwing-mailbox'
 export type DragSubject =
   | {
       readonly kind: 'messages'
+      /** The account the dragged messages belong to — a drop outside it is refused (M4.4). */
+      readonly accountId: Id
       readonly ids: readonly Id[]
       /** Never null: a move without a source is a COPY, so the drag is not offered at all. */
       readonly from: Id
     }
   | {
       readonly kind: 'mailbox'
+      /** The account this folder belongs to — it can only be re-parented within it (M4.4). */
+      readonly accountId: Id
       readonly id: Id
       /** Legal target ids, from {@link legalParents} at dragstart — `null` (top level) dropped:
        *  the tree has no node to drop onto for it, and the picker owns that target. */
@@ -76,6 +86,21 @@ export function draggedMessageIds(selected: ReadonlySet<Id>, rowId: Id): readonl
  * cannot drift apart — a target we may not add to is one the server rejects after the optimistic
  * apply has already shown the move as done.
  */
-export function canDropMessages(target: MailboxRow, from: Id): boolean {
-  return target.myRights.mayAddItems && target.id !== from
+export function canDropMessages(
+  target: MailboxRow,
+  subject: Extract<DragSubject, { kind: 'messages' }>,
+): boolean {
+  return (
+    target.accountId === subject.accountId &&
+    target.myRights.mayAddItems &&
+    target.id !== subject.from
+  )
+}
+
+/** May this folder be re-parented onto `target`? Same account first, then the legality oracle. */
+export function canDropMailbox(
+  target: MailboxRow,
+  subject: Extract<DragSubject, { kind: 'mailbox' }>,
+): boolean {
+  return target.accountId === subject.accountId && subject.legal.has(target.id)
 }

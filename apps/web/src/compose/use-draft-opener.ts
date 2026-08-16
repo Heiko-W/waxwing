@@ -9,7 +9,7 @@ import type { Id } from '@waxwing/jmap'
 import { useCallback } from 'react'
 import { pickHtmlBody } from '../mail/message-body'
 import { getDraftByServerId, useReplicaOptional } from '../sync'
-import { useActiveEngine } from '../sync/engine'
+import { useAccountEngine } from '../sync/engine'
 import { useComposerStore } from './composer-store'
 import { deserializeDraft, toDraftInit } from './draft-email'
 
@@ -20,7 +20,7 @@ export interface DraftOpener {
 
 export function useDraftOpener(): DraftOpener {
   const replica = useReplicaOptional()
-  const engine = useActiveEngine()
+  const engine = useAccountEngine()
   const open = useCallback(
     async (emailId: Id): Promise<void> => {
       if (replica === null) return

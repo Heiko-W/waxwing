@@ -186,7 +186,7 @@ describe('FolderTree (container)', () => {
       expect(await screen.findByText('Couldn’t clean up “Work”')).toBeInTheDocument()
     })
 
-    // `useCleanupActions` returns `undefined` when no engine is running (`getActiveEngine()?.…`).
+    // `useCleanupActions` returns `undefined` when no engine serves this account (`getEngineFor(…)?.`).
     // From the user's side that is the same outcome — the folder was not emptied — so it owes the
     // same report; a bare `void undefined` is exactly as silent as a swallowed rejection.
     it('reports a cleanup that could not even start (no engine running)', async () => {
@@ -401,7 +401,7 @@ describe('FolderTree (container)', () => {
         let sel = selectionReducer(EMPTY_SELECTION, { type: 'selectOne', id: 'm1' })
         sel = selectionReducer(sel, { type: 'toggle', id: 'm2' })
         useListStore.setState({ selection: sel })
-        setActiveDrag({ kind: 'messages', ids: ['m1', 'm2'], from: 'inbox' })
+        setActiveDrag({ kind: 'messages', accountId: 'a', ids: ['m1', 'm2'], from: 'inbox' })
       })
 
       const work = row(/Work/)
@@ -423,7 +423,7 @@ describe('FolderTree (container)', () => {
       // Drop onto the Inbox (a role folder). The toast must read "Inbox", not the raw name.
       renderTree()
       await screen.findByText('Work')
-      act(() => setActiveDrag({ kind: 'messages', ids: ['m1'], from: 'work' }))
+      act(() => setActiveDrag({ kind: 'messages', accountId: 'a', ids: ['m1'], from: 'work' }))
 
       const inbox = row(/Inbox/)
       fireEvent.dragOver(inbox, { dataTransfer: dataTransfer(['application/x-waxwing-messages']) })
@@ -437,7 +437,9 @@ describe('FolderTree (container)', () => {
       await screen.findByText('Work')
       // Drag 'sub' — legal targets are inbox and work's siblings, NOT work (its current parent) and
       // NOT itself. Drop onto inbox.
-      act(() => setActiveDrag({ kind: 'mailbox', id: 'sub', legal: new Set(['inbox']) }))
+      act(() =>
+        setActiveDrag({ kind: 'mailbox', accountId: 'a', id: 'sub', legal: new Set(['inbox']) }),
+      )
 
       const inbox = row(/Inbox/)
       fireEvent.dragOver(inbox, { dataTransfer: dataTransfer(['application/x-waxwing-mailbox']) })
@@ -454,7 +456,9 @@ describe('FolderTree (container)', () => {
       renderTree()
       await screen.findByText('Work')
       // 'sub' may not move under 'work' (its current parent). The tree must refuse the drop.
-      act(() => setActiveDrag({ kind: 'mailbox', id: 'sub', legal: new Set(['inbox']) }))
+      act(() =>
+        setActiveDrag({ kind: 'mailbox', accountId: 'a', id: 'sub', legal: new Set(['inbox']) }),
+      )
 
       const work = row(/Work/)
       fireEvent.dragOver(work, { dataTransfer: dataTransfer(['application/x-waxwing-mailbox']) })

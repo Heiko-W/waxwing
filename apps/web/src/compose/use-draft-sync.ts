@@ -18,7 +18,7 @@ import {
   type ReplicaDb,
   useReplicaOptional,
 } from '../sync'
-import { getActiveEngine } from '../sync/engine'
+import { getEngineFor } from '../sync/engine'
 import { useComposerStore } from './composer-store'
 import { deserializeDraft, isEmptyDraft, serializeDraft, toEmailCreate } from './draft-email'
 import { revokeInlineObjectUrls } from './inline-image-registry'
@@ -78,6 +78,16 @@ async function resolveFrom(
   return identity ? { name: identity.name, email: identity.email } : null
 }
 
+/**
+ * The engine everywhere in this module is `getEngineFor(accountId)` — the account the composer's own
+ * replica scope names (M4.4 Etappe 4). That is the primary today, and deliberately so: the composer
+ * mounts ABOVE the acting-account scope, because there is no send-as from a delegated account yet
+ * (`FromField` lists only the provider account's identities). Making it follow the ACTIVE account
+ * would be a regression — the draft would be created in a shared account's Drafts under a primary
+ * identity, and its outbox row would desync from that account's engine. The value here is that the
+ * engine can no longer disagree with the `putDraft` / `getDraft` / `mailboxByRole(db, accountId, …)`
+ * calls surrounding it, whatever the scope later becomes.
+ */
 async function flushDraft(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
   const draft = useComposerStore.getState().drafts.get(localId)
   if (draft === undefined || isEmptyDraft(draft)) return
@@ -101,7 +111,7 @@ async function flushDraft(db: ReplicaDb, accountId: Id, localId: string): Promis
   if (draftsBox === undefined) return
   const from = await resolveFrom(db, accountId, content.fromIdentityId)
   const email = toEmailCreate({ draft: content, draftsMailboxId: draftsBox.id, from })
-  void getActiveEngine()?.dispatch(
+  void getEngineFor(accountId)?.dispatch(
     {
       kind: 'saveDraft',
       localId,
@@ -162,7 +172,7 @@ export function useDraftSync(): DraftSync {
         const row = await getDraft(db, accountId, localId)
         await deleteDraft(db, accountId, localId)
         if (row?.serverEmailId != null) {
-          void getActiveEngine()?.dispatch(
+          void getEngineFor(accountId)?.dispatch(
             { kind: 'discardDraft', localId, serverEmailId: row.serverEmailId },
             { id: outboxId(localId) },
           )
@@ -188,7 +198,8 @@ export function useDraftSync(): DraftSync {
         // BroadcastChannel, or a teardown window) the dispatch below would be a silent no-op while
         // we'd already have marked the draft `sending` (which restore skips) — a silent send loss
         // with a false "sent". Bail cleanly instead, leaving the draft intact for a later retry.
-        const engine = getActiveEngine()
+        // Also covers "no engine serves this account" — refusing a send is exactly right there.
+        const engine = getEngineFor(accountId)
         if (engine === null) return { ok: false, reason: 'engineUnavailable' }
 
         const content = serializeDraft(draft)
@@ -256,7 +267,7 @@ export function useDraftSync(): DraftSync {
         return { ok: true, undoMs: opts.undoMs }
       },
       undoSend: async (localId) => {
-        const engine = getActiveEngine()
+        const engine = getEngineFor(accountId)
         if (engine === null) return
         if (!(await engine.cancelSend(sendOutboxId(localId)))) return // already sent — too late
         const row = await getDraft(db, accountId, localId)

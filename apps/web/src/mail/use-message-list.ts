@@ -15,7 +15,7 @@ import type { EmailComparator, Id } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo } from 'react'
 import { useConfig } from '../app/config-context'
 import { canonicalQueryKey, type QuerySpec, useQueryWindow } from '../sync'
-import { getActiveEngine, useActiveEngine, type WindowSpec, windowQueryKey } from '../sync/engine'
+import { useAccountEngine, type WindowSpec, windowQueryKey } from '../sync/engine'
 
 export type MessageSort = 'date' | 'from' | 'subject' | 'size'
 
@@ -86,7 +86,15 @@ export function useMessageList(
   // SyncEngineHost's effect, which can commit AFTER this child's) — otherwise a deep-linked/reloaded
   // non-default window would never backfill and would spin forever. A search is EPHEMERAL: unwatch it
   // on unmount / when the query changes so `watched` does not grow unbounded.
-  const engine = useActiveEngine()
+  //
+  // The engine of THIS pane's account (M4.4 Etappe 4). The watch has to run on the same engine whose
+  // account the window is read back under (`useQueryWindow` → `queryCache[[accountId, key]]`), and
+  // `windowQueryKey` carries no account. On the primary engine a shared account's Inbox happened to
+  // work by accident — the shared engine's own `ensureInboxWindow` produces a byte-identical key at
+  // the default sort — but any other folder, sort, unread-first, flat, search or label view backfills
+  // under the wrong account's key and spins forever, and `loadMoreFor` pages the PRIMARY's
+  // identically-keyed window.
+  const engine = useAccountEngine()
   useEffect(() => {
     if (source === undefined) return
     if (source.kind === 'search') {
@@ -101,8 +109,8 @@ export function useMessageList(
 
   const window = useQueryWindow(key)
   const loadMore = useCallback(() => {
-    if (key !== '') void getActiveEngine()?.loadMoreFor(key, PAGE_SIZE)
-  }, [key])
+    if (key !== '') void engine?.loadMoreFor(key, PAGE_SIZE)
+  }, [key, engine])
 
   return {
     key,

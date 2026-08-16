@@ -15,7 +15,7 @@ import type { Id } from '@waxwing/jmap'
 import { useCallback } from 'react'
 import { useSession } from '../app/session/context'
 import { type BlobRef, getOrFetchBlob, useReplicaOptional } from '../sync'
-import { useActiveEngine } from '../sync/engine'
+import { useAccountEngine } from '../sync/engine'
 
 /** Fetches a blob's bytes: replica cache first, then the authenticated download. `null` = no client. */
 export type BlobFetcher = (ref: BlobRef) => Promise<Blob | null>
@@ -23,7 +23,11 @@ export type BlobFetcher = (ref: BlobRef) => Promise<Blob | null>
 export function useBlobFetcher(accountId: Id): BlobFetcher {
   const { getClient } = useSession()
   const replica = useReplicaOptional()
-  const engine = useActiveEngine()
+  // Named explicitly, because the account arrives as a prop rather than through the provider (M4.4
+  // Etappe 4). The engine is only used to make room on a full disk, and `runMaintenance` evicts ITS
+  // account's rows only: on the primary, a large shared-mailbox attachment would evict the primary's
+  // cache and then hit `QuotaExceededError` again while the shared account's megabytes sit untouched.
+  const engine = useAccountEngine(accountId)
 
   return useCallback(
     async (ref: BlobRef): Promise<Blob | null> => {

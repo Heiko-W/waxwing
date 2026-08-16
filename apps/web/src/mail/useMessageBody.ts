@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { type EmailBodyRow, useEmailBody } from '../sync'
-import { useActiveEngine } from '../sync/engine'
+import { useAccountEngine } from '../sync/engine'
 import { type BodyText, pickHtmlBody, pickTextBody } from './message-body'
 
 export interface MessageBody {
@@ -17,7 +17,12 @@ export interface MessageBody {
 }
 
 export function useMessageBody(emailId: string): MessageBody {
-  const engine = useActiveEngine()
+  // The engine of THIS pane's account (M4.4 Etappe 4). `fetchBody` writes `emailBodies[[accountId,
+  // id]]` under ITS OWN account, so on the wrong engine two things go wrong at once: the row never
+  // lands under the account this pane reads, leaving it loading forever — and the `Email/get` runs
+  // against the PRIMARY carrying the shared account's short id, caching a DIFFERENT message's body
+  // into the primary's replica, where the reader will later show it as that message's content.
+  const engine = useAccountEngine()
 
   // The body the engine fetched but could NOT cache (the disk is full, M3.4). This pane is
   // local-first — it renders from a liveQuery over `emailBodies` — so a body that never lands in the
@@ -62,7 +67,7 @@ export function useMessageBody(emailId: string): MessageBody {
  * @param idsKey the comma-joined member ids (a stable dependency; the array identity is not)
  */
 export function useEnsureEnvelopes(idsKey: string): { settled: boolean } {
-  const engine = useActiveEngine()
+  const engine = useAccountEngine()
   const [settled, setSettled] = useState(false)
   useEffect(() => {
     const ids = idsKey === '' ? [] : idsKey.split(',')

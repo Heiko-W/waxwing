@@ -16,7 +16,7 @@ import { Check, Minus, Plus } from 'lucide-react'
 import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type EmailRow, emailsByIds, useReplicaQuery } from '../../sync'
-import { getActiveEngine } from '../../sync/engine'
+import { useAccountEngine } from '../../sync/engine'
 import { Portal } from '../../ui'
 import { useMessageActions } from '../use-message-actions'
 import { LabelFormDialog } from './LabelFormDialog'
@@ -46,14 +46,20 @@ function membership(known: EmailRow[], total: number, keyword: string): CheckSta
 
 export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
   const { t } = useTranslation()
+  const engine = useAccountEngine()
   const idsKey = ids.join(',')
   // Membership must reflect ALL selected messages, not just the visible/hydrated slice — a large
   // select-all can include ids whose envelopes aren't loaded. Pull the missing ones into the replica,
   // then compute the three-state over the complete set (the live query refines it as they land).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the stable idsKey, not the array ref.
+  //
+  // Through THIS account's engine (M4.4 Etappe 4): membership below is computed from
+  // `emailsByIds(db, accountId, ids)`, so hydrating via the primary left those rows under the wrong
+  // account — every unhydrated shared message read as "no label", and the checkmark then misreported
+  // what the `setKeyword` behind it would actually do.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the stable idsKey, not the array ref; `engine` is a real dep.
   useEffect(() => {
-    void getActiveEngine()?.fetchEnvelopes(ids)
-  }, [idsKey])
+    void engine?.fetchEnvelopes(ids)
+  }, [idsKey, engine])
   const known = (
     useReplicaQuery(({ db, accountId }) => emailsByIds(db, accountId, ids), [idsKey]) ?? []
   ).filter((row): row is EmailRow => row !== undefined)

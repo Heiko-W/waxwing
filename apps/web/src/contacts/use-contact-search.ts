@@ -19,7 +19,7 @@
 import type { ContactCardFilterCondition, Id } from '@waxwing/jmap'
 import { useEffect, useMemo, useState } from 'react'
 import { type ContactCardRow, canonicalContactQueryKey, useContactWindow } from '../sync'
-import { useActiveEngine } from '../sync/engine'
+import { useAccountEngine } from '../sync/engine'
 import { contactMatches, contactSortKey } from './contact-fields'
 
 /** Mirrors the mail search debounce ({@link ../mail/search/SearchBox}) so the two feel identical. */
@@ -81,7 +81,7 @@ export function useContactSearch(bookId: Id | undefined): ContactSearchState {
   const [query, setQuery] = useState('')
   const trimmed = query.trim()
   const debounced = useDebounced(trimmed, SEARCH_DEBOUNCE_MS)
-  const engine = useActiveEngine()
+  const engine = useAccountEngine()
 
   // Base window: every card in the book (or across all books). The instant local filter reads from
   // it, and it is the whole-list view when the box is empty.

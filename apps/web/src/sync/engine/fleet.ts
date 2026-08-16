@@ -15,7 +15,17 @@
  *    global status badge, the active-engine handle. The single-account path is exactly today's.
  *  - **Secondary engines never touch the primary's UX.** They hold their own `${SYNC_LOCK}:${id}`
  *    lock, a no-op status sink (no badge flicker) and a no-op bus (no cross-tab status/foreground
- *    crosstalk), carry no notifier, and never become the `activeEngine` the UI dispatches through.
+ *    crosstalk), and carry no notifier. That isolation is untouched — but every engine IS published
+ *    under its own account id ({@link FleetDeps.publish}), because the UI dispatches through the
+ *    engine matching the acting subtree's `useReplica().accountId`, not through one global pointer.
+ *    Only the PRIMARY additionally becomes the `activeEngine` handle, which now means exactly "the
+ *    user's own account" for the few account-global consumers.
+ *
+ * That last point is Etappe 4, and it closes the defect Etappe 3 made reachable: the grouped sidebar
+ * put shared mailboxes on screen while every write still went to the single `activeEngine`. Because
+ * JMAP mailbox ids are per-account and SHORT (`a`, `b`, …), an archive/move/empty performed in a
+ * shared folder carried that account's id to the PRIMARY's engine — where it names a real but
+ * DIFFERENT mailbox. Silent, and destructive in `emptyMailbox`'s case.
  */
 
 import type {
@@ -64,8 +74,13 @@ export interface FleetDeps {
   readonly createEngine: (spec: EngineSpec) => SyncEngine
   /** Create the ONE shared push channel that fans a single StateChange out to every engine. */
   readonly createPushMux: () => PushMux
-  /** Publish/clear the active-engine handle the UI dispatches through (primary only). */
+  /** Publish/clear the PRIMARY handle, for the account-global consumers (primary only). */
   readonly setActive: (engine: SyncEngine | null) => void
+  /**
+   * Publish (or, with `null`, withdraw) the per-account engine the acting UI dispatches through —
+   * EVERY account, the primary included (M4.4 Etappe 4).
+   */
+  readonly publish: (accountId: Id, engine: SyncEngine | null) => void
   /** Record an account in the replica registry so Etappe 3 can enumerate it offline. */
   readonly register: (account: FleetAccount) => void
 }
@@ -100,6 +115,10 @@ export function startEngineFleet(accounts: readonly FleetAccount[], deps: FleetD
     }
     const engine = deps.createEngine(spec)
     engines.push(engine)
+    // Published BEFORE start(): a tree can be clicked the instant it renders, and an engine that is
+    // starting still enqueues correctly (the outbox is durable) — whereas an unpublished one resolves
+    // to `null` and the click is silently dropped.
+    deps.publish(account.id, engine)
     if (account.isPrimary) {
       deps.setActive(engine)
     } else {
@@ -115,7 +134,10 @@ export function startEngineFleet(accounts: readonly FleetAccount[], deps: FleetD
   }
 
   return () => {
+    // Withdraw every handle BEFORE stopping anything: an engine that is releasing its lock must no
+    // longer be reachable, or a click landing in this window enqueues onto a dying engine.
     deps.setActive(null)
+    for (const account of accounts) deps.publish(account.id, null)
     for (const engine of engines) void engine.stop()
     // Belt-and-braces: each leader engine's stop() already released its mux ref (closing the real
     // channel at ref 0). This force-closes anything a never-elected follower or a mid-election

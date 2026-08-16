@@ -35,6 +35,11 @@ export interface StorageSectionProps {
 
 /** Free space now: a forced pass (allowed on any tab — the deletes are idempotent and transactional). */
 async function forcedMaintenance(): Promise<number | null> {
+  // The PRIMARY engine, deliberately (M4.4 Etappe 4): this is a DEVICE-level screen. It is also not
+  // yet honest with shared accounts — `runMaintenance` evicts only its own engine's account and the
+  // usage figure sums only the primary, so a device holding mostly shared-account cache can be told
+  // "freed 0 bytes". The fix is global on both halves (fan a forced pass over `getRunningEngines()`,
+  // sum usage across accounts) and is a reporting change, not a dispatch one; filed under M4.4.
   const engine = getActiveEngine()
   if (engine === null) return null
   const result = await engine.runMaintenance({ force: true })

@@ -157,3 +157,51 @@
   color: var(--waxwing-danger);
   font-size: var(--waxwing-text-sm);
 }
+
+/* ── Account groups (M4.4 Etappe 3) ──────────────────────────────────────────────────────────────
+   Only rendered when ≥1 account is shared; with none, the tree is exactly the pass-through single
+   FolderTree above and none of this applies. Each account is a labelled section (a named region). */
+.accountSection {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.accountSection + .accountSection {
+  margin-block-start: var(--waxwing-space-3);
+}
+
+.accountHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-2);
+  padding-block-end: var(--waxwing-space-1);
+}
+
+.accountName {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.accountReadOnly {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.accountReadOnlyIcon {
+  inline-size: 0.85rem;
+  block-size: 0.85rem;
+}

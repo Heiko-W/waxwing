@@ -9,7 +9,7 @@ import type { Id } from '@waxwing/jmap'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRoute } from '../../app/route'
-import { type QuerySpec, useMailboxes } from '../../sync'
+import { type QuerySpec, useMailboxesFor } from '../../sync'
 import { folderDisplayName } from '../folder-tree'
 import { type ChipTranslate, type SearchChip, searchChips } from './search-chips'
 import {
@@ -39,11 +39,19 @@ export interface SearchState {
 
 const SEARCH_SORT = [{ property: 'receivedAt', isAscending: false }]
 
-export function useSearch(currentMailboxId: Id | undefined): SearchState {
+/**
+ * `accountId` is passed in, not taken from context (M4.4 Etappe 4): this hook runs in `MailScreen`'s
+ * BODY, above the acting-account scope it feeds, so context here is always the primary's. Its output
+ * reaches two account-sensitive places — the `in:` filter term, and `moveSource`, which becomes the
+ * `from` of a bulk move. Resolving folder names against the primary while the list dispatches for a
+ * shared account yields either a silently dropped token or a FOREIGN mailbox id used as a move
+ * source; and that gets strictly worse now that the engine itself routes correctly.
+ */
+export function useSearch(currentMailboxId: Id | undefined, accountId: Id): SearchState {
   const { t } = useTranslation()
   const route = useRoute()
   const navigate = useNavigate()
-  const mailboxes = useMailboxes()
+  const mailboxes = useMailboxesFor(accountId)
 
   const q = route.search.get('q') ?? ''
   const scope: SearchScope = route.search.get('scope') === 'all' ? 'all' : 'folder'

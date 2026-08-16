@@ -11,9 +11,10 @@ import {
   type MailboxRow,
   type OutboxRow,
   useMailboxes,
+  useReplica,
   useReplicaQuery,
 } from '../sync'
-import { getActiveEngine } from '../sync/engine'
+import { getEngineFor } from '../sync/engine'
 
 export interface OutboxProblems {
   /** Dead letters, oldest first. Empty (never `undefined`) while the first query resolves. */
@@ -38,18 +39,33 @@ function nameMap(mailboxes: MailboxRow[] | undefined): ReadonlyMap<Id, string> {
 }
 
 export function useOutboxProblems(): OutboxProblems {
-  const rows = useReplicaQuery(({ db, accountId }) => failedOutbox(db, accountId))
+  // Read and write must name the SAME account (M4.4 Etappe 4, B33). The rows come from
+  // `failedOutbox(db, accountId)` while `retryFailed`/`discardFailed`/`discardAllFailed` key on the
+  // engine's own account — so the moment a shared-account dead letter can exist, Retry/Discard on one
+  // would be a silent no-op and Discard-all would clear only the primary's. Unchanged today: both
+  // consumers mount above the acting-account scope, so this resolves to the primary either way.
+  //
+  // The remaining half is B32: a shared account's dead letters are still not LISTED anywhere, because
+  // these surfaces sit outside the scope and shared engines have a discarding status sink.
+  const { accountId } = useReplica()
+  const rows = useReplicaQuery(({ db, accountId: id }) => failedOutbox(db, id))
   const mailboxes = useMailboxes()
 
-  const retry = useCallback(async (id: Id) => {
-    await getActiveEngine()?.retryFailed(id)
-  }, [])
-  const discard = useCallback(async (id: Id) => {
-    await getActiveEngine()?.discardFailed(id)
-  }, [])
+  const retry = useCallback(
+    async (id: Id) => {
+      await getEngineFor(accountId)?.retryFailed(id)
+    },
+    [accountId],
+  )
+  const discard = useCallback(
+    async (id: Id) => {
+      await getEngineFor(accountId)?.discardFailed(id)
+    },
+    [accountId],
+  )
   const discardAll = useCallback(async () => {
-    await getActiveEngine()?.discardAllFailed()
-  }, [])
+    await getEngineFor(accountId)?.discardAllFailed()
+  }, [accountId])
 
   const folderNames = useMemo(() => nameMap(mailboxes), [mailboxes])
 

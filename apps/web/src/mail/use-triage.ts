@@ -11,6 +11,10 @@
  * This is a thin layer over {@link useMessageActions} — still the ONLY email-write seam — and both the
  * on-screen buttons (bulk bar, reading action bar) and the shortcut registry go through it, so a click
  * and a keystroke are the same action.
+ *
+ * Account (M4.4 Etappe 4): the undo closure captures `actions`, and therefore the ACCOUNT it was
+ * created for, at dispatch time. Switching account inside the five-second toast window cannot
+ * re-point the inverse move — it goes back to where the mail came from, by construction.
  */
 
 import type { Id } from '@waxwing/jmap'
@@ -77,6 +81,10 @@ export function useTriage(): Triage {
       title: string,
     ): boolean => {
       if (to === undefined || to === from || ids.length === 0) return false
+      // And no engine serves this account (M4.4 Etappe 4) ⇒ nothing is queued, so claim nothing. The
+      // same "filed or silently dropped?" contract the boolean above exists for: a toast reading
+      // "Moved to Archive" over mail that is still in the list is the failure this seam prevents.
+      if (!actions.available) return false
       actions.move(ids, from, to)
       toast({
         title,

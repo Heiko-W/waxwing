@@ -57,6 +57,16 @@ export interface ReplicaProviderProps {
 // A module-level accessor is the same shape the engine (`setActiveEngine`) and the storage-full
 // signal (`storage.ts`) already use for live sync state, and it is deliberately NOT reactive: the one
 // caller reads it once, inside an event handler, at the moment the user accepts a reload.
+//
+// ONLY THE OUTERMOST PROVIDER CLAIMS IT (M4.4 Etappe 4). Since Etappe 3 the providers NEST: the shell
+// re-scopes the mail panes to the acting account, and the sidebar gives every account's tree its own.
+// On an account switch only the INNER provider's effect re-runs, so an unconditional claim would
+// leave `activeReplica` pointing at the SHARED account permanently — the outer primary provider's
+// effect does not re-run to restore it. `flushActiveDraft` (`compose/use-draft-sync.ts`), which is
+// M3.5's "open drafts are saved first" promise, would then `putDraft` into `drafts[sharedAccountId]`
+// while `useDraftSync` reads `drafts[primaryAccountId]`: the exact data loss M3.10 fixed, reintroduced
+// by nesting. `getActiveReplica()` means THE APP's replica, and only the outermost provider is that —
+// a nested provider is a SCOPE, not the app.
 // ---------------------------------------------------------------------------------------------
 
 let activeReplica: ReplicaContextValue | null = null
@@ -73,11 +83,14 @@ export function getActiveReplica(): ReplicaContextValue | null {
 }
 
 export function ReplicaProvider({ accountId, db, children }: ReplicaProviderProps): ReactNode {
+  const parent = useContext(ReplicaContext)
   const value = useMemo<ReplicaContextValue>(
     () => ({ db: db ?? getReplica(), accountId }),
     [db, accountId],
   )
   useEffect(() => {
+    // Nested providers are scopes, not the app — see the block above.
+    if (parent !== null) return
     activeReplica = value
     return () => {
       // Only clear it if it is still OURS. React can mount a replacement tree before unmounting the
@@ -85,7 +98,7 @@ export function ReplicaProvider({ accountId, db, children }: ReplicaProviderProp
       // let the departing provider blank its own successor's entry.
       if (activeReplica === value) activeReplica = null
     }
-  }, [value])
+  }, [value, parent])
   return <ReplicaContext.Provider value={value}>{children}</ReplicaContext.Provider>
 }
 
@@ -116,6 +129,16 @@ export function useReplicaQuery<T>(
 /** The folder tree source: all mailboxes for the account, ordered (M1.5). */
 export function useMailboxes(): MailboxRow[] | undefined {
   return useReplicaQuery(({ db, accountId }) => mailboxesForAccount(db, accountId))
+}
+
+/**
+ * Mailboxes for an account the caller names explicitly, because it sits ABOVE that account's
+ * provider (M4.4 Etappe 4) — `useSearch` runs in `MailScreen`'s body, outside the account scope it
+ * feeds. Same query as {@link useMailboxes}; it just does not take the account from context.
+ */
+export function useMailboxesFor(accountId: Id): MailboxRow[] | undefined {
+  const { db } = useReplica()
+  return useLiveQuery(() => mailboxesForAccount(db, accountId), [db, accountId])
 }
 
 /** The From-selector source: all send identities for the account (M2.5). */

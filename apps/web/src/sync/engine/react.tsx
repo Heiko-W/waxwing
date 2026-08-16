@@ -5,8 +5,9 @@
  * it degrades gracefully — the UI still reads the replica, sync just does not run.
  */
 
+import type { Id } from '@waxwing/jmap'
 import { createPushChannel } from '@waxwing/jmap'
-import { type ReactNode, useEffect, useSyncExternalStore } from 'react'
+import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
 import { secondaryMailAccounts } from '../../app/session/accounts'
 import { useSession } from '../../app/session/context'
@@ -14,25 +15,42 @@ import type { ConnectedSession } from '../../app/session/types'
 import { createMailNotifier } from '../../notify/notifier'
 import { PushSubscriptionHost } from '../../notify/use-push-subscription'
 import { getReplica } from '../db'
-import { ReplicaProvider } from '../react'
+import { ReplicaProvider, useReplicaOptional } from '../react'
 import { upsertAccount } from '../repo'
 import {
   createSyncEngine,
-  getActiveEngine,
+  getEngineFor,
   type SyncEngine,
   setActiveEngine,
-  subscribeActiveEngine,
+  setEngineFor,
+  subscribeEngines,
 } from './engine'
 import { createPushMux, type EngineSpec, type FleetAccount, startEngineFleet } from './fleet'
 import { createJmapPort } from './port'
 
 /**
- * The running {@link SyncEngine} for this tab, or `null` before it starts (or where it cannot run).
- * Reactive: components re-render the moment {@link setActiveEngine} sets it, so a watch registered on
- * mount is not lost to the start-order race with {@link SyncEngineHost}.
+ * The engine of the account the CALLING SUBTREE acts in (M4.4 Etappe 4) — the one whose account
+ * matches the enclosing {@link ReplicaProvider}. With no provider it degrades to the primary handle,
+ * which happens in component tests only; in the shell every mail pane runs inside one.
+ *
+ * The ONLY way a component may reach an engine. There is deliberately no ambient
+ * `useActiveEngine()` any more: it was how every mail pane came to hold the primary's engine
+ * regardless of the account it was rendering, and removing it means the compiler enumerates any
+ * future attempt to go back. Out-of-React callers use `getActiveEngine()` (the primary, for
+ * device-global work) or `getEngineFor(accountId)`.
+ *
+ * Reactive: a pane can mount before {@link SyncEngineHost}'s effect commits, and a one-shot `null`
+ * read would leave its watch unregistered for the life of the pane — a list window that never
+ * resolves.
+ *
+ * `accountId` is for callers that already hold the account explicitly (it arrived as a prop) rather
+ * than through the provider.
  */
-export function useActiveEngine(): SyncEngine | null {
-  return useSyncExternalStore(subscribeActiveEngine, getActiveEngine, () => null)
+export function useAccountEngine(accountId?: Id): SyncEngine | null {
+  const replica = useReplicaOptional()
+  const id = accountId ?? replica?.accountId ?? null
+  const getSnapshot = useCallback(() => getEngineFor(id), [id])
+  return useSyncExternalStore(subscribeEngines, getSnapshot, () => null)
 }
 
 /** True when the runtime primitives the single-writer engine needs are present. */
@@ -111,6 +129,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
       createEngine,
       createPushMux: () => createPushMux((session, options) => createPushChannel(session, options)),
       setActive: setActiveEngine,
+      publish: setEngineFor,
       register: (account) => {
         const now = Date.now()
         void upsertAccount(getReplica(), {

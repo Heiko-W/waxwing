@@ -17,14 +17,12 @@ import { JmapHttpError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthExpiredError } from '../../auth'
-import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
-import { useReadingStore } from '../../mail/reading-store'
+import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
 import { getPushRegistration } from '../../notify/registration'
-import { usePaletteUi } from '../../shortcuts'
 import { getReplica, resetStorageFull, wipeReplica } from '../../sync'
-import { getActiveEngine, setActiveEngine } from '../../sync/engine'
+import { stopAllEngines } from '../../sync/engine'
 import type { WaxwingConfig } from '../config'
 import { useServices } from '../services'
 import { SessionContext } from './context'
@@ -397,13 +395,12 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const endSession = useCallback(
     (wipeData: boolean) => {
       void (async () => {
-        // FR-AUTH-05 / FR-AUTH-06. Stop the sync engine and release the Web Lock BEFORE any wipe —
-        // otherwise `deleteDatabase` blocks on the engine's open Dexie/IndexedDB connection (M1.3).
-        const engine = getActiveEngine()
-        if (engine) {
-          setActiveEngine(null)
-          await engine.stop().catch(() => {})
-        }
+        // FR-AUTH-05 / FR-AUTH-06. Stop the sync engines and release their Web Locks BEFORE any wipe —
+        // otherwise `deleteDatabase` blocks on an open Dexie/IndexedDB connection (M1.3). EVERY engine
+        // (M4.4 Etappe 4): since the fleet, each shared account's engine holds a handle of its own, and
+        // `SyncEngineHost`'s effect cleanup cannot run before this function awaits the wipe in the same
+        // tick — so stopping only the primary left the wipe hanging on still-writing shared engines.
+        await stopAllEngines()
         if (wipeData) await wipeReplica(getReplica()).catch(() => {})
         // A notification is local data this app put on the OPERATING SYSTEM's screen, and the OS keeps
         // it there across sign-out, reload and browser restart. Wiping IndexedDB while three banners
@@ -428,10 +425,12 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // account's list window: its selected email ids, its roving row, its open message's action
         // handlers. JMAP ids are per-account and short (`a`, `b`, …) and the window key carries no
         // account, so account B's Inbox key can be byte-identical to account A's — and one `e` would
-        // then dispatch a move for account A's ids against account B's mailbox.
-        useListStore.setState(EMPTY_LIST_STATE)
-        useReadingStore.setState({ handlers: null })
-        usePaletteUi.getState().closeOverlays()
+        // then dispatch a move for account A's ids against account B's mailbox. The M4.4 account
+        // SWITCH runs the very same reset for the identical reason, so both share one definition.
+        resetMailScopedStores()
+        // And the active-account pointer itself (M4.4): the next session's granted accounts may differ,
+        // so a stale shared-account id must not carry over.
+        useActiveAccountStore.getState().reset()
         await controllerRef.current?.logout(wipeData ? { wipeData: true } : {}).catch(() => {})
         clientRef.current = null
         authProviderRef.current = null

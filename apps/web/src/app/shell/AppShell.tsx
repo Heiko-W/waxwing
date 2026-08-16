@@ -9,6 +9,7 @@
 import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
+import { ActiveAccountScope } from '../../mail/ActiveAccountScope'
 import { useNotificationClickNavigation } from '../../notify'
 import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { ChunkErrorBoundary } from '../../pwa/ChunkErrorBoundary'
@@ -136,8 +137,21 @@ export function AppShell({ config }: AppShellProps) {
         {reauth && <ReauthDialog />}
         {/* The keyboard layer (M3.8): one window listener + the lazy ⌘K palette / `?` cheat-sheet.
             It renders no chrome, and it sits INSIDE the router, the replica and the toast provider —
-            exactly the contexts its action context is assembled from. */}
-        <ShortcutProvider />
+            exactly the contexts its action context is assembled from.
+
+            And inside the ACTING ACCOUNT (M4.4 Etappe 4), because `useShortcutContext` pairs role
+            mailbox ids resolved from `useMailboxes()` (`e` archive, `#` trash, `!` junk) with target
+            ids taken from `useListStore` — which holds the ACTIVE account's list. Mounted under the
+            primary provider, `e` on a shared selection would resolve the PRIMARY's Archive id, so
+            routing the engine correctly would not save it: the ids themselves would be foreign. A
+            keystroke fires with no per-row confirmation, which makes this the purest form of that
+            path. Pass-through when nothing is shared.
+
+            `useConflictNotifier()` (above), `<QueuedSends/>` and `<ComposerHost/>` stay OUTSIDE the
+            scope deliberately — see `ActiveAccountScope`'s header for the split. */}
+        <ActiveAccountScope>
+          <ShortcutProvider />
+        </ActiveAccountScope>
         <QueuedSends />
         {hasDrafts && (
           <Suspense fallback={null}>

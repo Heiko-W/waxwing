@@ -194,7 +194,12 @@ const FOREGROUND_ACK_MS = 100
 export class SyncEngine {
   private readonly db: ReplicaDb
   private readonly port: JmapPort
-  private readonly accountId: Id
+  /**
+   * The account this engine speaks for — every write it enqueues and every row it reads is keyed on
+   * it. Readable so a consumer or a test can prove the engine it holds is the one for its replica's
+   * account: that pairing is the invariant the engine registry carries (see `getEngineFor`).
+   */
+  readonly accountId: Id
   private readonly clock: EngineClock
   private readonly random: () => number
   /** Where {@link setStatus} publishes; the global store by default (M4.4). */
@@ -1461,21 +1466,93 @@ function olderFilter(mailboxId: Id, beforeIso: string): EmailFilter {
   return { operator: 'AND', conditions: [{ inMailbox: mailboxId }, { before: beforeIso }] }
 }
 
-// The single running engine for this tab, so the out-of-React sign-out path can stop it (release
-// the Web Lock + close push) BEFORE wiping the replica — deleting IndexedDB blocks on open handles.
-// Observable so React consumers (the message list) re-run their watch effect the moment the engine
-// appears, rather than racing the SyncEngineHost effect that sets it (a null read = a stuck window).
+// ---------------------------------------------------------------------------------------------
+// The running engines of this tab (M4.4 Etappe 4).
+//
+// WHY A KEYED MAP, NOT A SECOND POINTER. The sidebar renders one `FolderTree` per account AT ONCE
+// (`mail/AccountTrees.tsx`), each under its own `ReplicaProvider` — a shared account's tree the user
+// is not currently "in" is still on screen and still clickable (rename, delete, empty-folder). So
+// "which engine is active?" is not a well-formed question: at any instant there are N right answers.
+// The engine a call uses is the one whose account matches the `useReplica().accountId` of the
+// SUBTREE the call is made in, which is what `getEngineFor` resolves.
+//
+// WHAT `getActiveEngine()` MEANS NOW: the PRIMARY engine, i.e. the user's own account. Three callers
+// are entitled to it and no others should reach for the familiar name — `settings/StorageSection`
+// (device-level maintenance), the `accountId === null` degrade below (a component rendered with no
+// ReplicaProvider, which happens in component tests only), and the empty-registry fallback.
+//
+// WHY THE FALLBACK IS KEYED ON *EMPTY* AND NEVER ON A *MISS*. An empty registry means no fleet has
+// published yet: the pre-M4.4 world, and the many component tests that call `setActiveEngine(fake)`
+// with no account attached — answer with the primary and the single-account path stays byte-for-byte
+// what it was. A MISS on a POPULATED registry means something else entirely: this account has no
+// running engine (a share revoked mid-session, a teardown window). Then the answer is `null`, never a
+// substitute, because JMAP mailbox ids are per-account and SHORT (`a`, `b`, …) — the primary almost
+// always holds a real but DIFFERENT mailbox under the id the caller meant. Answering a miss with the
+// primary IS the corruption this stage closes: changing that line back to `?? activeEngine` silently
+// reopens it.
+//
+// Observable, and through the ONE listener set both mutators notify: React consumers (the message
+// list's watch) must re-render the moment an engine appears, rather than racing the SyncEngineHost
+// effect that publishes it — a null read would leave a watch unregistered and the window stuck.
+// ---------------------------------------------------------------------------------------------
+
 let activeEngine: SyncEngine | null = null
+const engines = new Map<Id, SyncEngine>()
 const activeEngineListeners = new Set<() => void>()
 
-export function setActiveEngine(engine: SyncEngine | null): void {
-  activeEngine = engine
+function notifyEngineListeners(): void {
   for (const listener of activeEngineListeners) listener()
 }
+
+/** Publish/clear the PRIMARY handle — the account-global consumers named in the block above. */
+export function setActiveEngine(engine: SyncEngine | null): void {
+  activeEngine = engine
+  notifyEngineListeners()
+}
+/** The PRIMARY account's engine. For an acting subtree use {@link getEngineFor} instead. */
 export function getActiveEngine(): SyncEngine | null {
   return activeEngine
 }
-export function subscribeActiveEngine(listener: () => void): () => void {
+/** Publish (or, with `null`, withdraw) the engine serving `accountId` — every account, primary too. */
+export function setEngineFor(accountId: Id, engine: SyncEngine | null): void {
+  if (engine === null) engines.delete(accountId)
+  else engines.set(accountId, engine)
+  notifyEngineListeners()
+}
+/** The engine serving `accountId` — see the resolution rule in the block above. */
+export function getEngineFor(accountId: Id | null): SyncEngine | null {
+  if (accountId === null) return activeEngine
+  const owned = engines.get(accountId)
+  if (owned !== undefined) return owned
+  return engines.size === 0 ? activeEngine : null
+}
+/** Every engine this tab runs, primary first (Map order = fleet order). */
+export function getRunningEngines(): readonly SyncEngine[] {
+  if (engines.size > 0) return [...engines.values()]
+  return activeEngine === null ? [] : [activeEngine]
+}
+/** Drop every handle without stopping anything — the withdraw half of {@link stopAllEngines}. */
+export function clearEngines(): void {
+  engines.clear()
+  activeEngine = null
+  notifyEngineListeners()
+}
+/**
+ * Stop every running engine, handles withdrawn FIRST.
+ *
+ * `wipeReplica` deletes the IndexedDB database, which blocks on any open handle — and since M4.4
+ * every shared account's engine holds one too. `SyncEngineHost`'s effect cleanup cannot run before
+ * the sign-out path awaits the wipe in the same tick, so stopping only the primary left the wipe
+ * hanging on still-writing shared engines. Withdrawing before stopping also closes the window in
+ * which a click could still enqueue onto an engine that is releasing its lock. `stop()` is
+ * re-entrant-safe, so the fleet's own later teardown calling it again is harmless.
+ */
+export async function stopAllEngines(): Promise<void> {
+  const running = getRunningEngines()
+  clearEngines()
+  await Promise.all(running.map((engine) => engine.stop().catch(() => {})))
+}
+export function subscribeEngines(listener: () => void): () => void {
   activeEngineListeners.add(listener)
   return () => {
     activeEngineListeners.delete(listener)

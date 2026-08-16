@@ -14,6 +14,10 @@
       "title": "Ordner",
       "empty": "Hier erscheinen Ihre Ordner."
     },
+    "accounts": {
+      "shared": "Geteilt",
+      "readOnly": "Nur Lesen"
+    },
     "list": {
       "title": "Nachrichten",
       "empty": "Nachrichten erscheinen hier, sobald die Synchronisation folgt.",

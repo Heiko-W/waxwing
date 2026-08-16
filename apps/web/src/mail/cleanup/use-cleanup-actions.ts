@@ -1,13 +1,24 @@
 /**
- * Folder-cleanup actions (M3.2) — the seam from the folder UI to the engine's chunked destroy. Reads
- * the running engine lazily via {@link getActiveEngine} so a handler always sees the current one (and
- * is a safe no-op before it starts). {@link daysAgoIso} is pure (UTC-midnight, matching the
- * search-query date math) so the "older than N days" boundary is deterministic and unit-testable.
+ * Folder-cleanup actions (M3.2) — the seam from the folder UI to the engine's chunked destroy.
+ * {@link daysAgoIso} is pure (UTC-midnight, matching the search-query date math) so the "older than N
+ * days" boundary is deterministic and unit-testable.
+ *
+ * The engine is the one for `useReplica().accountId` — the account THIS tree belongs to (M4.4
+ * Etappe 4) — resolved lazily inside each handler, so a handler always sees the current one and is a
+ * safe no-op before it starts.
+ *
+ * This is the highest-severity of the dispatch sites, because it is the one that destroys without a
+ * per-message step: `emptyMailbox` pages `Email/query` against ITS engine's account, so run on the
+ * primary with a shared account's short mailbox id it permanently destroys the contents of a
+ * DIFFERENT account's folder. The `undefined`-on-no-engine contract is unchanged, and it is now also
+ * the affordance for an account with no running engine — the desired failure mode: refuse, and let
+ * the UI report a cleanup that could not start.
  */
 
 import type { Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
-import { getActiveEngine } from '../../sync/engine'
+import { getEngineFor } from '../../sync/engine'
+import { useReplicaOptional } from '../../sync/react'
 
 const DAY_MS = 86_400_000
 
@@ -31,14 +42,19 @@ export interface CleanupActions {
 }
 
 export function useCleanupActions(): CleanupActions {
+  const accountId = useReplicaOptional()?.accountId ?? null
   return useMemo(
     () => ({
-      emptyMailbox: (mailboxId) => getActiveEngine()?.emptyMailbox(mailboxId),
+      emptyMailbox: (mailboxId) => getEngineFor(accountId)?.emptyMailbox(mailboxId),
       deleteOlderThan: (mailboxId, days) =>
-        getActiveEngine()?.deleteOlderThan(mailboxId, daysAgoIso(days, Date.now())),
+        getEngineFor(accountId)?.deleteOlderThan(mailboxId, daysAgoIso(days, Date.now())),
       trashOlderThan: (mailboxId, toMailboxId, days) =>
-        getActiveEngine()?.trashOlderThan(mailboxId, toMailboxId, daysAgoIso(days, Date.now())),
+        getEngineFor(accountId)?.trashOlderThan(
+          mailboxId,
+          toMailboxId,
+          daysAgoIso(days, Date.now()),
+        ),
     }),
-    [],
+    [accountId],
   )
 }

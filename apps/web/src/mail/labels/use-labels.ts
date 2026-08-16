@@ -22,7 +22,7 @@ import {
   useReplica,
   useReplicaQuery,
 } from '../../sync'
-import { getActiveEngine } from '../../sync/engine'
+import { getEngineFor } from '../../sync/engine'
 import {
   type DisplayLabel,
   LABELS_PREF_KEY,
@@ -75,9 +75,15 @@ export interface LabelActions {
   remove(keyword: string, options?: { alsoStrip?: boolean }): void
 }
 
-/** Dispatch chunked `setKeywords(value:false)` intents over every replica-known carrier of `keyword`. */
+/**
+ * Dispatch chunked `setKeywords(value:false)` intents over every replica-known carrier of `keyword`.
+ *
+ * The engine must be the one for the `accountId` this function was handed (M4.4 Etappe 4) — the very
+ * account whose carriers the query below reads. On any other engine the strip would clear the keyword
+ * from a DIFFERENT account's identically-id'd messages, since JMAP email ids are per-account.
+ */
 async function stripKeyword(db: ReplicaDb, accountId: Id, keyword: string): Promise<void> {
-  const engine = getActiveEngine()
+  const engine = getEngineFor(accountId)
   if (engine === null) return
   const rows = await emailsWithKeyword(db, accountId, keyword)
   const ids = rows.map((row) => row.id)

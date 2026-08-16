@@ -14,6 +14,10 @@
       "title": "Folders",
       "empty": "Your folders will appear here."
     },
+    "accounts": {
+      "shared": "Shared",
+      "readOnly": "Read only"
+    },
     "list": {
       "title": "Messages",
       "empty": "Messages appear here once syncing lands.",

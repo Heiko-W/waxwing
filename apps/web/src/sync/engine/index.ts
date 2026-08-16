@@ -32,13 +32,18 @@ export {
   type IdSource,
 } from './contact-mutations'
 export {
+  clearEngines,
   createSyncEngine,
   getActiveEngine,
+  getEngineFor,
+  getRunningEngines,
   MAINTENANCE_INTERVAL_MS,
   SyncEngine,
   type SyncEngineDeps,
   setActiveEngine,
-  subscribeActiveEngine,
+  setEngineFor,
+  stopAllEngines,
+  subscribeEngines,
 } from './engine'
 export {
   chooseBudget,
@@ -73,7 +78,7 @@ export {
 } from './maintenance'
 export { type GuardedType, type OutboxIntent, stateGuardType } from './outbox'
 export { createJmapPort } from './port'
-export { SyncEngineHost, useActiveEngine } from './react'
+export { SyncEngineHost, useAccountEngine } from './react'
 export { getEngineStatus, useEngineStatus } from './status'
 export {
   type EnginePhase,

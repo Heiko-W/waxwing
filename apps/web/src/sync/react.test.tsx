@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from './db'
 import {
+  getActiveReplica,
   ReplicaProvider,
   useAddressBooks,
   useContactWindow,
@@ -143,5 +144,61 @@ describe('ReplicaProvider + hooks', () => {
     expect(await screen.findByText('uid-c2')).toBeDefined()
     const items = screen.getByLabelText('cards').textContent
     expect(items).toBe('uid-c2gapuid-c1')
+  })
+})
+
+describe('getActiveReplica — only the OUTERMOST provider claims it (M4.4 Etappe 4)', () => {
+  // The app-wide handle is what `flushActiveDraft` uses to keep M3.5's "open drafts are saved first"
+  // promise. Since Etappe 3 the providers nest, and a nested one claiming it would leave the handle
+  // pointing at a SHARED account for good — the outer provider's effect does not re-run to restore
+  // it — so a flush would `putDraft` under the wrong account while the composer reads the primary's.
+  const SHARED = 'shared-acc'
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('keeps the outer account when a nested provider re-scopes a subtree', () => {
+    render(
+      <ReplicaProvider accountId={ACC} db={db}>
+        <ReplicaProvider accountId={SHARED} db={db}>
+          <span>nested</span>
+        </ReplicaProvider>
+      </ReplicaProvider>,
+    )
+
+    expect(getActiveReplica()?.accountId).toBe(ACC)
+  })
+
+  it('still keeps the outer account after the nested scope switches account', () => {
+    const { rerender } = render(
+      <ReplicaProvider accountId={ACC} db={db}>
+        <ReplicaProvider accountId={SHARED} db={db}>
+          <span>nested</span>
+        </ReplicaProvider>
+      </ReplicaProvider>,
+    )
+    rerender(
+      <ReplicaProvider accountId={ACC} db={db}>
+        <ReplicaProvider accountId="other-acc" db={db}>
+          <span>nested</span>
+        </ReplicaProvider>
+      </ReplicaProvider>,
+    )
+
+    expect(getActiveReplica()?.accountId).toBe(ACC)
+  })
+
+  it('is null once the outermost provider unmounts', () => {
+    const { unmount } = render(
+      <ReplicaProvider accountId={ACC} db={db}>
+        <span>only</span>
+      </ReplicaProvider>,
+    )
+    expect(getActiveReplica()?.accountId).toBe(ACC)
+
+    unmount()
+
+    expect(getActiveReplica()).toBeNull()
   })
 })

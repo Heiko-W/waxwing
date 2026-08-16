@@ -388,6 +388,7 @@ describe('startEngineFleet — two accounts', () => {
           return push
         }),
       setActive: (engine) => setActiveCalls.push(engine),
+      publish: () => {},
       register: (account) => {
         registered.push(account.id)
         void upsertAccount(db, recordFor(account))
@@ -447,6 +448,7 @@ describe('startEngineFleet — two accounts', () => {
         },
         createPushMux: () => createPushMux(() => new FakePush()),
         setActive: () => {},
+        publish: () => {},
         register: () => {},
       })
       return { engines, teardown }
@@ -507,6 +509,7 @@ describe('startEngineFleet — single account is unchanged', () => {
         return { handle: () => new FakePush(), closeAll() {} } satisfies PushMux
       },
       setActive: (engine) => setActiveCalls.push(engine),
+      publish: () => {},
       register: () => {
         registerCalls += 1
       },
@@ -552,6 +555,7 @@ describe('startEngineFleet — single account is unchanged', () => {
         return { handle: () => new FakePush(), closeAll() {} }
       },
       setActive: () => {},
+      publish: () => {},
       // A real writer, so "registry stays empty" proves the fleet never CALLED register (not that the
       // fake was a no-op).
       register: (account) => {
@@ -607,6 +611,7 @@ describe('startEngineFleet — 0→1→0 shared-account lifecycle', () => {
         }
       },
       setActive: (engine) => setActiveCalls.push(engine),
+      publish: () => {},
       register: () => {},
     }
 
@@ -635,5 +640,84 @@ describe('startEngineFleet — 0→1→0 shared-account lifecycle', () => {
     // Every started engine was stopped (no orphan), and every mux built was closed (no leaked SSE).
     expect(stopped).toEqual(['acc1', 'acc1', 'acc2', 'acc1'])
     expect(muxClosed).toBe(1)
+  })
+})
+
+describe('startEngineFleet — per-account publication (M4.4 Etappe 4)', () => {
+  /** Records `publish` in order, so both WHAT was published and WHEN can be asserted. */
+  function recordingDeps(): {
+    deps: FleetDeps
+    published: [string, SyncEngine | null][]
+    order: string[]
+  } {
+    const published: [string, SyncEngine | null][] = []
+    const order: string[] = []
+    const stubEngine = (id: string) =>
+      ({
+        start() {
+          order.push(`start:${id}`)
+        },
+        stop: () => Promise.resolve(),
+      }) as unknown as SyncEngine
+    return {
+      published,
+      order,
+      deps: {
+        createEngine: (spec) => stubEngine(spec.account.id),
+        createPushMux: (): PushMux => ({ handle: () => new FakePush(), closeAll() {} }),
+        setActive: () => {},
+        publish: (accountId, engine) => {
+          published.push([accountId, engine])
+          order.push(`${engine === null ? 'withdraw' : 'publish'}:${accountId}`)
+        },
+        register: () => {},
+      },
+    }
+  }
+
+  it('publishes EVERY account, the primary included', () => {
+    const { deps, published } = recordingDeps()
+
+    startEngineFleet([primary('acc1'), shared('acc2'), shared('acc3')], deps)
+
+    expect(published.map(([id]) => id)).toEqual(['acc1', 'acc2', 'acc3'])
+    // Each account gets its OWN engine object — the pairing the registry relies on.
+    const engines = published.map(([, engine]) => engine)
+    expect(new Set(engines).size).toBe(3)
+    expect(engines.every((engine) => engine !== null)).toBe(true)
+  })
+
+  it('publishes an engine BEFORE starting it, so a click at first paint is not dropped', () => {
+    const { deps, order } = recordingDeps()
+
+    startEngineFleet([primary('acc1'), shared('acc2')], deps)
+
+    expect(order).toEqual(['publish:acc1', 'start:acc1', 'publish:acc2', 'start:acc2'])
+  })
+
+  it('withdraws every handle on teardown, before anything is stopped', () => {
+    const { deps, published } = recordingDeps()
+
+    const teardown = startEngineFleet([primary('acc1'), shared('acc2')], deps)
+    published.length = 0
+    teardown()
+
+    // An engine releasing its lock must no longer be reachable — a click landing in that window
+    // would otherwise enqueue onto a dying engine.
+    expect(published).toEqual([
+      ['acc1', null],
+      ['acc2', null],
+    ])
+  })
+
+  it('publishes the lone primary in the single-account case too', () => {
+    // The registry is then non-empty with exactly one entry, so `getEngineFor(primary)` is an exact
+    // hit rather than the empty-registry fallback — and any OTHER account resolves to null.
+    const { deps, published } = recordingDeps()
+
+    startEngineFleet([primary('acc1')], deps)
+
+    expect(published).toHaveLength(1)
+    expect(published[0]?.[0]).toBe('acc1')
   })
 })

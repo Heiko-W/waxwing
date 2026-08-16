@@ -7,7 +7,7 @@
 
 import type { EmailFilter, Id } from '@waxwing/jmap'
 import { useEffect, useRef, useState } from 'react'
-import { getActiveEngine } from '../../sync/engine'
+import { useAccountEngine } from '../../sync/engine'
 import { sanitizeSnippet } from './snippet'
 
 export interface Snippet {
@@ -21,6 +21,7 @@ export function useSnippets(
   filter: EmailFilter | null | undefined,
   visibleIds: Id[],
 ): Map<Id, Snippet> {
+  const engine = useAccountEngine()
   const [snippets, setSnippets] = useState<Map<Id, Snippet>>(EMPTY)
   const idsKey = visibleIds.join(',')
   // Depend on the filter's VALUE, not its object identity: a mailbox-table write re-derives an
@@ -31,14 +32,16 @@ export function useSnippets(
 
   // The effect reads the live filter via ref and re-runs on the value-stable filterKey (not the
   // churn-prone filter object identity); dropping filterKey would stop it re-fetching on a real change.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: filterKey is the intended re-fetch trigger.
+  // The engine is THIS pane's account's (M4.4 Etappe 4) — snippets are highlights for ITS results.
+  // Lowest-risk of the account-scoped reads: this is transient VIEW data, so the wrong engine costs
+  // missing highlights, never a wrong write.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filterKey is the intended re-fetch trigger; `engine` is a real dep.
   useEffect(() => {
     const activeFilter = filterRef.current
     if (activeFilter === undefined || activeFilter === null || idsKey === '') {
       setSnippets((prev) => (prev.size === 0 ? prev : EMPTY))
       return
     }
-    const engine = getActiveEngine()
     if (engine === null) return
     let cancelled = false
     void engine.fetchSnippets(idsKey.split(','), activeFilter).then((raw) => {
@@ -55,7 +58,7 @@ export function useSnippets(
     return () => {
       cancelled = true
     }
-  }, [filterKey, idsKey])
+  }, [filterKey, idsKey, engine])
 
   return snippets
 }

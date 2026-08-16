@@ -596,7 +596,12 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
                     // Dragging a row outside the selection makes IT the subject — the same rule
                     // `open()` applies below, and the opposite of `targetIds`' selection-first one.
                     if (!selection.selected.has(id)) dispatchSelection({ type: 'selectOne', id })
-                    setActiveDrag({ kind: 'messages', ids: dragged, from: sourceMailboxId })
+                    setActiveDrag({
+                      kind: 'messages',
+                      accountId,
+                      ids: dragged,
+                      from: sourceMailboxId,
+                    })
                     // The value is unreadable until `drop`; the TYPE is what `dragover` may consult.
                     event.dataTransfer.setData(MESSAGES_MIME, dragged.join(','))
                     event.dataTransfer.effectAllowed = 'move'

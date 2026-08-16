@@ -17,16 +17,20 @@
 import { ChevronLeft, PanelLeft } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AccountTrees } from '../../mail/AccountTrees'
+import { ActiveAccountScope } from '../../mail/ActiveAccountScope'
+import { useActiveMailAccountId } from '../../mail/active-account'
 import { Conversation } from '../../mail/Conversation'
-import { FolderTree } from '../../mail/FolderTree'
 import { Labels } from '../../mail/labels/Labels'
 import { useLabelView } from '../../mail/labels/use-label-view'
 import { MessageList } from '../../mail/MessageList'
 import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
 import { QuotaBar } from '../../quota'
+import { useReplica } from '../../sync'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { mailPath, useNavigate, useRoute } from '../route'
+import { useSession } from '../session/context'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
 import styles from './shell.module.css'
 
@@ -40,9 +44,19 @@ export function MailScreen() {
   const route = useRoute()
   const navigate = useNavigate()
 
+  // The account picture (M4.4). `connected` is guaranteed here — the shell only mounts once ready —
+  // and the ambient replica is the primary's. The acting account has ONE definition
+  // (`useActiveMailAccountId`); the list/reading panes are re-scoped to it by `ActiveAccountScope`
+  // below, which is a pass-through when nothing is shared.
+  const { connected } = useSession()
+  const { accountId: ambientAccountId } = useReplica()
+  const activeAccountId = useActiveMailAccountId()
+
   const mailboxId = route.params.mailboxId
   const emailId = route.params.emailId
-  const search = useSearch(mailboxId)
+  // Handed the account explicitly: this hook runs in the BODY, above the scope it feeds, so it cannot
+  // take the acting account from context the way the panes below it do.
+  const search = useSearch(mailboxId, activeAccountId ?? ambientAccountId)
   const layout = computePaneLayout(tier, mode, emailId !== undefined)
 
   // A STABLE search-descriptor for the list — a fresh object each render would re-fire the list's
@@ -148,6 +162,23 @@ export function MailScreen() {
     </section>
   )
 
+  const paneArea = layout.split ? (
+    <SplitPane
+      orientation={layout.splitOrientation}
+      label={t('shell.list.resize')}
+      defaultPrimarySize={360}
+      minPrimarySize={260}
+      maxPrimarySize={640}
+    >
+      {listPane}
+      {readingPane}
+    </SplitPane>
+  ) : singleReading ? (
+    readingPane
+  ) : (
+    listPane
+  )
+
   return (
     <div className={styles.mailScreen}>
       <nav
@@ -155,7 +186,9 @@ export function MailScreen() {
         className={folderRegionClass}
         aria-label={t('shell.folders.title')}
       >
-        <FolderTree />
+        {connected && (
+          <AccountTrees accounts={connected.accounts} primaryAccountId={connected.accountId} />
+        )}
         <Labels />
         <QuotaBar />
       </nav>
@@ -172,22 +205,10 @@ export function MailScreen() {
         />
       )}
       <div className={styles.paneArea}>
-        {layout.split ? (
-          <SplitPane
-            orientation={layout.splitOrientation}
-            label={t('shell.list.resize')}
-            defaultPrimarySize={360}
-            minPrimarySize={260}
-            maxPrimarySize={640}
-          >
-            {listPane}
-            {readingPane}
-          </SplitPane>
-        ) : singleReading ? (
-          readingPane
-        ) : (
-          listPane
-        )}
+        {/* The list/reading panes operate on the ACTIVE account — and so does the engine every action
+            in them dispatches to, because the scope is what `useAccountEngine`/`getEngineFor` resolve
+            against. With nothing shared it is a pass-through: byte-for-byte the pre-M4.4 single tree. */}
+        <ActiveAccountScope>{paneArea}</ActiveAccountScope>
       </div>
     </div>
   )
