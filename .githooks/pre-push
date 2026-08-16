@@ -1,0 +1,20 @@
+#!/bin/sh
+# Waxwing pre-push gate — the hermetic half of the pipeline (no Docker, no browser).
+#
+# ADR-003 accepted that "correctness relies on contributors running `pnpm verify`". This is the
+# smallest thing that stops relying on it. It deliberately runs `--fast` and NOT the full gate: a
+# push must not wait five minutes on Docker and six Playwright suites. Run `pnpm gate` yourself before
+# a release, or after touching sync, the fixture or the e2e suites.
+#
+# Enable (once per clone):  git config core.hooksPath .githooks
+# Bypass (and mean it):     git push --no-verify
+#
+# The hook is version-controlled precisely so it is reviewable — a gate nobody can read is a gate
+# nobody trusts.
+
+echo "[pre-push] pnpm gate --fast  (skip with --no-verify)"
+if ! pnpm gate:fast; then
+  echo ""
+  echo "[pre-push] REFUSED — the gate failed. Fix it, or push with --no-verify if you know why."
+  exit 1
+fi

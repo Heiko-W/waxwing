@@ -1,0 +1,76 @@
+# Waxwing CI — NOT ACTIVE YET, and deliberately so.
+#
+# There is no GitHub repository for this project (ADR-003). This file exists so that the day one is
+# created, CI is a `git push` away rather than a design exercise — and so the local pipeline and the
+# eventual hosted one are provably the same list of stages: both call `scripts/ci.mjs`, which calls
+# the same pnpm scripts. ADR-003 requires exactly that ("a thin wrapper that simply calls these same
+# scripts, so the checks do not diverge between local and CI").
+#
+# Until then the gate is local:
+#   pnpm gate        the full pipeline (Docker + browser)
+#   pnpm gate:fast     the hermetic half — also wired to .githooks/pre-push
+#
+# Cost note, because it is the usual reason to hesitate: GitHub-hosted runners are FREE with no
+# minute cap on PUBLIC repositories, on every plan, and that survived the January 2026 repricing.
+# Waxwing is AGPL-3.0 and intended to be published, so this workflow is expected to cost nothing.
+# A private repo would draw on the plan's monthly free minutes instead (~5 min per full run here).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The hermetic half: typecheck, Biome, ~2900 Vitest tests, the production build and the
+  # size-limit budget. No Docker, no browser — so it fails in ~2 minutes on anything broken,
+  # before the expensive job is worth starting.
+  verify:
+    name: verify (typecheck, lint, tests, size)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          # From .nvmrc, never a floating major. On node >= 25 a global `localStorage` shadows
+          # jsdom's and fails 22 tests for reasons unrelated to the code — the same trap
+          # scripts/ci.mjs refuses to run into locally.
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+
+  # The Docker + browser half: the Stalwart fixture, the jmap integration suites (which fail OPEN
+  # when the fixture is down — defect B22 — so `pnpm gate` asserts they were not skipped), and the six
+  # Playwright suites. Ubuntu runners ship a working Docker daemon, so the fixture's compose file
+  # and its fixed host port work unchanged.
+  e2e:
+    name: e2e (Stalwart fixture + Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # verify-e2e.mjs installs the pinned Chromium itself and always tears the fixture down.
+      - run: pnpm verify:e2e
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7

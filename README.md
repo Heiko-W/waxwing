@@ -71,6 +71,8 @@ Common scripts, run from the repo root:
 | `pnpm verify` | **Run before committing** — the fast gate: `typecheck` → `lint` → `test` → `size` (no Docker/browser) |
 | `pnpm verify:e2e` | The E2E gate (needs Docker): install chromium, bring the Stalwart fixture up + smoke, run Playwright, always tear down |
 | `pnpm verify:all` | `pnpm verify` then `pnpm verify:e2e` |
+| `pnpm gate` | **The local pipeline** — preflight (pins the Node major) → `verify` → the `@waxwing/jmap` integration suites against a live fixture → the E2E suites, with a per-stage summary |
+| `pnpm gate:fast` | The hermetic half of the pipeline; what `.githooks/pre-push` runs |
 | `pnpm e2e:server` | Start a local Stalwart JMAP server with test accounts (Docker) |
 | `pnpm e2e:server:down` | Stop it and wipe its ephemeral data |
 | `pnpm demo` | Dev-only raw end-to-end demo: Stalwart fixture + seeded mail + a throwaway login/read UI at `http://localhost:5173` (Docker) |
@@ -81,6 +83,32 @@ scripts are the pre-merge gate: they run the same checks a CI would (typecheck, 
 build, `size-limit` budget, the Stalwart fixture smoke, and the Playwright suite). GitHub
 Actions CI is deliberately deferred while the project is local ([ADR-003](docs/adr/003-local-verify-first-ci-later.md));
 the future workflow will simply wrap these scripts.
+
+### The local pipeline (`pnpm gate`)
+
+`pnpm gate` sequences those scripts and adds the three things a gate you run by hand cannot give you:
+
+- **A Node preflight.** `.nvmrc` pins 24 while `engines` says `>=22`, so a newer major satisfies the
+  manifest and still breaks the suite — on Node ≥ 25 a global `localStorage` shadows jsdom's and
+  ~22 tests fail for reasons unrelated to the code. The pipeline refuses to run rather than hand you
+  results you would have to distrust.
+- **The `@waxwing/jmap` integration suites, actually run** (defect B22). They `describe.skipIf`
+  themselves away when the fixture is unreachable, so a skip was indistinguishable from a pass; the
+  stage brings a fixture up and then asserts nothing was skipped.
+- **Automation.** Enable the versioned hook once per clone:
+
+  ```sh
+  git config core.hooksPath .githooks   # pre-push runs `pnpm gate:fast`
+  ```
+
+  Push anyway with `git push --no-verify` when you mean to.
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) is written and **not active** — there is no
+GitHub repository yet. It runs the same stages by calling the same scripts, so the local and hosted
+gates cannot drift apart. Running that workflow locally with [`act`](https://github.com/nektos/act)
+was evaluated and rejected: act mounts the host Docker socket instead of nesting a daemon, so the
+fixture's compose bind mounts resolve to non-existent host paths and are silently replaced with empty
+directories — Stalwart then boots with no config and no diagnostic. Details in ADR-019.
 
 Need a real mail server to develop against? `pnpm e2e:server` brings up a pinned, local,
 plain-HTTP [Stalwart](https://stalw.art) instance with ready-made test accounts in one
