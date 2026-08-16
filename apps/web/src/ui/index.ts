@@ -44,4 +44,5 @@ export {
   useToast,
 } from './Toast'
 export { Tooltip, type TooltipPlacement, type TooltipProps } from './Tooltip'
+export { useToolbarRoving } from './use-toolbar-roving'
 export { VisuallyHidden, type VisuallyHiddenProps } from './VisuallyHidden'

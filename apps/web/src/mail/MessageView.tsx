@@ -41,7 +41,16 @@ import {
 } from '../compose'
 import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useMailboxByRole, useReplica } from '../sync'
-import { Avatar, Button, Dialog, IconButton, Menu, type MenuItemSpec, Spinner } from '../ui'
+import {
+  Avatar,
+  Button,
+  Dialog,
+  IconButton,
+  Menu,
+  type MenuItemSpec,
+  Spinner,
+  useToolbarRoving,
+} from '../ui'
 import { AttachmentList } from './AttachmentList'
 import { topmostAuthResults } from './auth-results'
 import { LabelMenu } from './labels/LabelMenu'
@@ -148,6 +157,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
    */
   const [labelsOpen, setLabelsOpen] = useState(false)
   const labelButtonRef = useRef<HTMLButtonElement>(null)
+  const { ref: actionBarRef, containerProps: actionBarKeys } = useToolbarRoving<HTMLDivElement>()
   /** The sender hover-card (FR-CON-05), anchored to the sender avatar in the header. */
   const [senderCardOpen, setSenderCardOpen] = useState(false)
   const senderButtonRef = useRef<HTMLButtonElement>(null)
@@ -665,7 +675,16 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         </div>
       </header>
 
-      <div className={styles.actionBar} role="toolbar" aria-label={t('reading.actions')}>
+      {/* B20.2: the role was here with none of the keyboard model behind it, so a screen reader
+          announced "toolbar" and arrow keys did nothing — while eleven controls each took their own
+          tab stop. `useToolbarRoving` supplies the model the role promises. */}
+      <div
+        ref={actionBarRef}
+        className={styles.actionBar}
+        role="toolbar"
+        aria-label={t('reading.actions')}
+        {...actionBarKeys}
+      >
         {/* B34: `disabled` stays for the STRUCTURAL refusals (no such folder, already there) and
             `unavailableReason` carries the RIGHTS refusal — a permission the user should be told
             about, on a control that stays focusable so they can hear it. A move needs the source's

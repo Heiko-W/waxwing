@@ -10,9 +10,9 @@
  */
 
 import { Bold, Italic, Link2, List, ListOrdered, Quote, Type, Underline } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconButton } from '../ui'
+import { IconButton, useToolbarRoving } from '../ui'
 import styles from './editor.module.css'
 import type { ActiveFormats } from './editor-engine'
 
@@ -119,61 +119,27 @@ export function EditorToolbar({
         modeButton,
       ]
 
-  const refs = useRef<Array<HTMLButtonElement | null>>([])
-  const [focusIndex, setFocusIndex] = useState(0)
-  useEffect(() => {
-    if (focusIndex > buttons.length - 1) setFocusIndex(0)
-  }, [buttons.length, focusIndex])
-
-  function focusAt(index: number): void {
-    const clamped = (index + buttons.length) % buttons.length
-    setFocusIndex(clamped)
-    refs.current[clamped]?.focus()
-  }
-
-  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
-    switch (event.key) {
-      case 'ArrowRight':
-        event.preventDefault()
-        focusAt(focusIndex + 1)
-        break
-      case 'ArrowLeft':
-        event.preventDefault()
-        focusAt(focusIndex - 1)
-        break
-      case 'Home':
-        event.preventDefault()
-        focusAt(0)
-        break
-      case 'End':
-        event.preventDefault()
-        focusAt(buttons.length - 1)
-        break
-      default:
-        break
-    }
-  }
+  // The APG model lives in `useToolbarRoving` (B20.2). It used to be inline here, and the
+  // reading-pane action bar declared `role="toolbar"` with none of it — two call sites, one
+  // implementation, so they cannot drift apart again.
+  const { ref: toolbarRef, containerProps } = useToolbarRoving<HTMLDivElement>()
 
   return (
     <div
+      ref={toolbarRef}
       className={styles.toolbar}
       role="toolbar"
       aria-label={t('compose.toolbar')}
-      onKeyDown={onKeyDown}
+      {...containerProps}
     >
-      {buttons.map((button, index) => (
+      {buttons.map((button) => (
         <IconButton
           key={button.key}
-          ref={(element) => {
-            refs.current[index] = element
-          }}
           label={button.label}
           variant="ghost"
           size="sm"
           aria-pressed={button.pressed}
           disabled={busy && button.key !== 'mode'}
-          tabIndex={index === focusIndex ? 0 : -1}
-          onFocus={() => setFocusIndex(index)}
           onClick={button.onClick}
         >
           {button.icon}
