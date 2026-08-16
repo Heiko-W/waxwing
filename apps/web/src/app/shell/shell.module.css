@@ -192,7 +192,8 @@
     inset-block: 0;
     inset-inline-start: 0;
     z-index: 15;
-    transform: translateX(-100%);
+    /* Signed, so it slides off the inline-START edge in both directions (FR-I18N-02). */
+    transform: translateX(calc(-100% * var(--waxwing-flip)));
     visibility: hidden;
     box-shadow: var(--waxwing-shadow-2);
     transition:

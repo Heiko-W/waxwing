@@ -63,6 +63,20 @@ const RULES: readonly {
 const sources = collectSources('src', ['.module.css'])
 
 /**
+ * A directional `translateX` that is not signed by `--waxwing-flip` (FR-I18N-02).
+ *
+ * Its own family, because it is not a theming question: logical properties cover every box-model
+ * side, but CSS has no logical transform, so a physical `translateX` is the one place a layout can
+ * be right-to-left-broken while every declaration around it reads correctly. That is precisely how
+ * it happened — an off-canvas drawer anchored with `inset-inline-start` (which flips) and moved with
+ * `translateX(-100%)` (which does not), so under RTL it slid INTO the content instead of off-screen.
+ * Both halves were individually correct.
+ *
+ * Only flags NEGATIVE or variable offsets: `translateX(0)` has no direction to get wrong.
+ */
+const UNSIGNED_TRANSLATE = /transform:\s*translateX\(\s*(?!0\s*\))(?![^)]*--waxwing-flip)([^)]+)\)/g
+
+/**
  * The comment governing the declaration at `offset` — the one directly above it, or the one above
  * the RULE it sits in.
  *
@@ -139,6 +153,22 @@ describe('token literals', () => {
     const { findings } = scan()
     const report = findings.map((f) => `${f.where} — ${f.what} \`${f.value}\`, use ${f.token}`)
     expect(report, 'un-tokenised literals (M4.5, FR-THEME-01)').toEqual([])
+  })
+
+  it('signs every directional translateX, so RTL cannot slide the wrong way', () => {
+    const unsigned: string[] = []
+    for (const file of sources) {
+      UNSIGNED_TRANSLATE.lastIndex = 0
+      for (const match of file.text.matchAll(UNSIGNED_TRANSLATE)) {
+        const at = match.index ?? 0
+        if (EXEMPT_MARKER.test(governingComment(file.text, at))) continue
+        unsigned.push(`${file.path}:${lineOf(file.text, at)} — translateX(${match[1]?.trim()})`)
+      }
+    }
+    expect(
+      unsigned,
+      'multiply by var(--waxwing-flip), or state a waxwing-literal-exempt reason',
+    ).toEqual([])
   })
 
   it('keeps every exemption honest — each one states a reason and still guards something', () => {

@@ -135,6 +135,12 @@
     --waxwing-control-min: 2.125rem;
 
     /* ---- Motion ---- */
+    /* Writing-direction sign, for the one thing logical CSS has no property for: a directional
+     `translateX`. Multiply a physical offset by this and it follows `dir` — an off-canvas drawer
+     that slides out to the inline-start edge slides the other way under RTL, instead of sliding
+     INTO the content (FR-I18N-02). Logical properties cover everything else; this covers transforms. */
+    --waxwing-flip: 1;
+
     --waxwing-duration-fast: 120ms;
     --waxwing-duration-base: 200ms;
     --waxwing-duration-slow: 320ms;
@@ -260,5 +266,11 @@
     --waxwing-overlay: rgba(0, 0, 0, 0.32);
     --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
     --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
+  }
+
+  /* The only RTL-specific rule in the app: it flips the sign above, and every directional transform
+     follows. Kept here beside the token rather than in the components that use it. */
+  [dir="rtl"] {
+    --waxwing-flip: -1;
   }
 }

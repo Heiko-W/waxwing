@@ -37,6 +37,21 @@ function detectLanguage(): SupportedLanguage {
   return isSupported(first) ? first : DEFAULT_LANGUAGE
 }
 
+/**
+ * Languages written right-to-left. Empty today — Waxwing ships `en` and `de` — and that is exactly
+ * why it exists as a list rather than as an inline condition: FR-I18N-02 asks for RTL READINESS, and
+ * readiness means the day a locale is added, adding its tag here is the whole change. Without it the
+ * one `[dir='rtl']` rule in tokens.css (which signs every directional transform) could never apply,
+ * and the gap would only surface once someone had already translated the app.
+ */
+const RTL_LANGUAGES: readonly string[] = []
+
+/** Apply a language to the document: what it IS, and which way it runs. */
+function applyLanguage(lng: string): void {
+  document.documentElement.lang = lng
+  document.documentElement.dir = RTL_LANGUAGES.includes(lng) ? 'rtl' : 'ltr'
+}
+
 export async function initI18n(): Promise<void> {
   const lng = detectLanguage()
   const bundle = await loadLocale(lng)
@@ -55,7 +70,7 @@ export async function initI18n(): Promise<void> {
       interpolation: { escapeValue: false },
     })
 
-  document.documentElement.lang = lng
+  applyLanguage(lng)
 }
 
 export async function changeLanguage(lng: SupportedLanguage): Promise<void> {
@@ -64,7 +79,7 @@ export async function changeLanguage(lng: SupportedLanguage): Promise<void> {
     i18next.addResourceBundle(lng, NAMESPACE, bundle, true, true)
   }
   await i18next.changeLanguage(lng)
-  document.documentElement.lang = lng
+  applyLanguage(lng)
 }
 
 export default i18next

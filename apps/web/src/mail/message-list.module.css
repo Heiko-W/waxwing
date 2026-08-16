@@ -198,6 +198,12 @@
    * That last part holds only because nothing calls `measureElement`; adding one would start
    * measuring a transformed row.
    */
+  /* waxwing-literal-exempt: a swipe is PHYSICAL — a finger moving left is moving left, in any writing
+     direction — so this offset must not be signed by `--waxwing-flip`. What is unresolved is the
+     other half: the reveal layers behind it are anchored LOGICALLY (`.actionLeft` uses
+     `inset-inline-end`), so under RTL the colour would paint on the side the row did not vacate.
+     Fixing that means deciding whether the reveal follows the finger or the writing direction, and
+     it cannot be verified without an RTL locale — filed as B41 rather than guessed at here. */
   transform: translateX(var(--swipe-x, 0px));
   transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
