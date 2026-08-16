@@ -39,7 +39,7 @@
      themes at once and let CSS pick — no JS on a system theme change, and the choice survives one.
      The fallback IS the built-in accent, so an app that never sets a palette is byte-for-byte
      unchanged. */
-    --waxwing-accent: var(--waxwing-accent-light, #2f6fe0);
+    --waxwing-accent: var(--waxwing-accent-light, #2761c4);
     --waxwing-accent-contrast: var(--waxwing-accent-contrast-light, #ffffff);
     --waxwing-bg: #f5f5f7;
     --waxwing-surface: #ffffff;
@@ -56,10 +56,10 @@
     --waxwing-text-muted: #636366;
     --waxwing-border: #d2d2d7;
     --waxwing-border-strong: #86868b;
-    --waxwing-focus-ring: #2f6fe0;
+    --waxwing-focus-ring: #2761c4;
     --waxwing-danger: #c10016;
     --waxwing-danger-contrast: #ffffff;
-    --waxwing-success: #1e7b34;
+    --waxwing-success: #1c722f;
     --waxwing-success-contrast: #ffffff;
     --waxwing-warning: #8a5d00;
     --waxwing-warning-contrast: #ffffff;
@@ -71,7 +71,7 @@
     --waxwing-label-orange: #cb6008;
     --waxwing-label-yellow: #b8860b;
     --waxwing-label-green: #1f8a3b;
-    --waxwing-label-blue: #2f6fe0;
+    --waxwing-label-blue: #2761c4;
     --waxwing-label-purple: #7d3ac0;
     --waxwing-label-gray: #86868b;
 
@@ -158,7 +158,7 @@
   /* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --waxwing-accent: var(--waxwing-accent-dark, #5e93f0);
+      --waxwing-accent: var(--waxwing-accent-dark, #82acf5);
       --waxwing-accent-contrast: var(--waxwing-accent-contrast-dark, #1d1d1f);
       --waxwing-bg: #1c1c1e;
       --waxwing-surface: #2c2c2e;
@@ -170,8 +170,8 @@
       --waxwing-text-muted: #a5a5ad;
       --waxwing-border: #48484a;
       --waxwing-border-strong: #939398;
-      --waxwing-focus-ring: #5e93f0;
-      --waxwing-danger: #ff6b60;
+      --waxwing-focus-ring: #82acf5;
+      --waxwing-danger: #ff8078;
       --waxwing-danger-contrast: #1d1d1f;
       --waxwing-success: #30d158;
       --waxwing-success-contrast: #1d1d1f;
@@ -184,7 +184,7 @@
       --waxwing-label-orange: #ff9f0a;
       --waxwing-label-yellow: #ffd60a;
       --waxwing-label-green: #30d158;
-      --waxwing-label-blue: #5e93f0;
+      --waxwing-label-blue: #82acf5;
       --waxwing-label-purple: #bf5af2;
       --waxwing-label-gray: #98989d;
 
@@ -196,7 +196,7 @@
 
   /* ---- Color + elevation: dark (explicit user override) ---- */
   :root[data-theme="dark"] {
-    --waxwing-accent: var(--waxwing-accent-dark, #5e93f0);
+    --waxwing-accent: var(--waxwing-accent-dark, #82acf5);
     --waxwing-accent-contrast: var(--waxwing-accent-contrast-dark, #1d1d1f);
     --waxwing-bg: #1c1c1e;
     --waxwing-surface: #2c2c2e;
@@ -208,8 +208,8 @@
     --waxwing-text-muted: #a5a5ad;
     --waxwing-border: #48484a;
     --waxwing-border-strong: #939398;
-    --waxwing-focus-ring: #5e93f0;
-    --waxwing-danger: #ff6b60;
+    --waxwing-focus-ring: #82acf5;
+    --waxwing-danger: #ff8078;
     --waxwing-danger-contrast: #1d1d1f;
     --waxwing-success: #30d158;
     --waxwing-success-contrast: #1d1d1f;
@@ -222,7 +222,7 @@
     --waxwing-label-orange: #ff9f0a;
     --waxwing-label-yellow: #ffd60a;
     --waxwing-label-green: #30d158;
-    --waxwing-label-blue: #5e93f0;
+    --waxwing-label-blue: #82acf5;
     --waxwing-label-purple: #bf5af2;
     --waxwing-label-gray: #98989d;
 
@@ -233,7 +233,7 @@
 
   /* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */
   :root[data-theme="light"] {
-    --waxwing-accent: var(--waxwing-accent-light, #2f6fe0);
+    --waxwing-accent: var(--waxwing-accent-light, #2761c4);
     --waxwing-accent-contrast: var(--waxwing-accent-contrast-light, #ffffff);
     --waxwing-bg: #f5f5f7;
     --waxwing-surface: #ffffff;
@@ -245,10 +245,10 @@
     --waxwing-text-muted: #636366;
     --waxwing-border: #d2d2d7;
     --waxwing-border-strong: #86868b;
-    --waxwing-focus-ring: #2f6fe0;
+    --waxwing-focus-ring: #2761c4;
     --waxwing-danger: #c10016;
     --waxwing-danger-contrast: #ffffff;
-    --waxwing-success: #1e7b34;
+    --waxwing-success: #1c722f;
     --waxwing-success-contrast: #ffffff;
     --waxwing-warning: #8a5d00;
     --waxwing-warning-contrast: #ffffff;
@@ -259,7 +259,7 @@
     --waxwing-label-orange: #cb6008;
     --waxwing-label-yellow: #b8860b;
     --waxwing-label-green: #1f8a3b;
-    --waxwing-label-blue: #2f6fe0;
+    --waxwing-label-blue: #2761c4;
     --waxwing-label-purple: #7d3ac0;
     --waxwing-label-gray: #86868b;
 

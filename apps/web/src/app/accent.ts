@@ -40,8 +40,8 @@ export const DEFAULT_ACCENT: AccentId = 'blue'
 export const ACCENT_PALETTES: readonly AccentPalette[] = [
   {
     id: 'blue',
-    light: { accent: '#2f6fe0', contrast: '#ffffff' },
-    dark: { accent: '#5e93f0', contrast: '#1d1d1f' },
+    light: { accent: '#2761c4', contrast: '#ffffff' },
+    dark: { accent: '#82acf5', contrast: '#1d1d1f' },
   },
   {
     id: 'teal',
@@ -50,7 +50,7 @@ export const ACCENT_PALETTES: readonly AccentPalette[] = [
   },
   {
     id: 'green',
-    light: { accent: '#1e7b34', contrast: '#ffffff' },
+    light: { accent: '#1c722f', contrast: '#ffffff' },
     dark: { accent: '#4fc06a', contrast: '#1d1d1f' },
   },
   {

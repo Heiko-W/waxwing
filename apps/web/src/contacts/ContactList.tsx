@@ -119,7 +119,11 @@ export function ContactList({ bookId, selectedCardId }: ContactListProps) {
           value={query}
           placeholder={t('contacts.search.placeholder')}
           aria-label={t('contacts.search.label')}
-          aria-controls={listId}
+          // Only while the listbox EXISTS. The empty branch below renders a <p> instead, so a
+          // constant `aria-controls` points at nothing — a dangling IDREF that axe reports as
+          // `aria-valid-attr-value` (critical) and that a screen reader follows into nowhere.
+          // This is the state a new account starts in and the one a no-match search lands in.
+          aria-controls={empty ? undefined : listId}
           onChange={(event) => setQuery(event.target.value)}
         />
         {query !== '' && (

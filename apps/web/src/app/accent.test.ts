@@ -26,10 +26,17 @@ const TEXT_AA = 4.5
 /** WCAG 1.4.11 non-text UI — the accent as a fill against the page it sits on. */
 const UI_AA = 3.0
 
-/** The page and surface colours each theme puts an accent on, from tokens.css. */
+/**
+ * The page and surface colours each theme puts an accent on, from tokens.css.
+ *
+ * `raised` and `selected` were missing here until the browser axe sweep found the accent failing on
+ * them (3.95:1 for the selected folder in the tree). They are the ones that fail FIRST — both are
+ * darker than the page in light mode and lighter than it in dark mode — so a list without them
+ * checks the two easiest backgrounds and calls the palette accessible.
+ */
 const SURFACES = {
-  light: { bg: '#f5f5f7', surface: '#ffffff' },
-  dark: { bg: '#1c1c1e', surface: '#2c2c2e' },
+  light: { bg: '#f5f5f7', surface: '#ffffff', raised: '#ebebef', selected: '#dbe7fa' },
+  dark: { bg: '#1c1c1e', surface: '#2c2c2e', raised: '#3a3a3c', selected: '#28394f' },
 } as const
 
 beforeEach(() => {
@@ -54,6 +61,23 @@ describe('accent palettes are accessible by construction', () => {
     }
   })
 
+  it('keeps every accent readable as TEXT on every surface it can land on', () => {
+    // A palette is not only a fill: the selected folder, the active nav item and several links
+    // render `color: var(--waxwing-accent)` directly on a surface, which is WCAG 1.4.3 normal text
+    // at 4.5:1 — a full 1.5× stricter than the 3:1 the fill assertion below applies. Checking only
+    // the fill is exactly how the default blue shipped at 3.95:1 against the selected row.
+    for (const palette of ACCENT_PALETTES) {
+      for (const theme of ['light', 'dark'] as const) {
+        for (const [name, background] of Object.entries(SURFACES[theme])) {
+          const ratio = roundRatio(contrastRatio(palette[theme].accent, background))
+          expect(ratio, `${palette.id} ${theme}: accent TEXT on ${name}`).toBeGreaterThanOrEqual(
+            TEXT_AA,
+          )
+        }
+      }
+    }
+  })
+
   it('keeps every accent distinguishable as a FILL against page and surface', () => {
     // The accent is also drawn as a solid block (the brand mark, a primary button) on both the page
     // background and a card. WCAG 1.4.11 governs that, and it is the assertion a palette chosen only
@@ -72,8 +96,8 @@ describe('accent palettes are accessible by construction', () => {
     // "blue" must be a no-op: selecting it, or never selecting anything, has to render identically
     // to the shipped tokens, or the default install changes appearance for no reason.
     const blue = ACCENT_PALETTES.find((p) => p.id === DEFAULT_ACCENT)
-    expect(blue?.light).toEqual({ accent: '#2f6fe0', contrast: '#ffffff' })
-    expect(blue?.dark).toEqual({ accent: '#5e93f0', contrast: '#1d1d1f' })
+    expect(blue?.light).toEqual({ accent: '#2761c4', contrast: '#ffffff' })
+    expect(blue?.dark).toEqual({ accent: '#82acf5', contrast: '#1d1d1f' })
   })
 })
 

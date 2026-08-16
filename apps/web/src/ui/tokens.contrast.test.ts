@@ -72,14 +72,26 @@ const PAIRS: Pair[] = [
   { fg: 'text', bg: 'surface-selected', min: TEXT_AA, note: 'text on the selected row' },
   { fg: 'text-muted', bg: 'surface-selected', min: TEXT_AA, note: 'preview on the selected row' },
   { fg: 'accent-contrast', bg: 'accent', min: TEXT_AA, note: 'label on default accent fill' },
+  // The accent as TEXT, which is a different question from the accent as a fill and was missing
+  // here for four milestones. The browser axe sweep (e2e/tests/a11y.spec.ts) found it: the selected
+  // folder in the tree renders `color: var(--waxwing-accent)` on `--waxwing-surface-2` and measured
+  // 3.95:1. `surface-2` is the one that fails first — it is the raised fill the selected row uses —
+  // so leaving it out of this list is what let the defect ship.
+  { fg: 'accent', bg: 'bg', min: TEXT_AA, note: 'accent text on page' },
+  { fg: 'accent', bg: 'surface', min: TEXT_AA, note: 'accent text on card' },
+  { fg: 'accent', bg: 'surface-2', min: TEXT_AA, note: 'accent text on raised (the selected row)' },
+  { fg: 'accent', bg: 'surface-selected', min: TEXT_AA, note: 'accent text on the selected row' },
   { fg: 'danger', bg: 'bg', min: TEXT_AA, note: 'error text on page' },
   { fg: 'danger', bg: 'surface', min: TEXT_AA, note: 'error text on card' },
+  { fg: 'danger', bg: 'surface-2', min: TEXT_AA, note: 'error text on raised' },
   { fg: 'danger-contrast', bg: 'danger', min: TEXT_AA, note: 'label on danger fill' },
   { fg: 'success', bg: 'bg', min: TEXT_AA, note: 'success text on page' },
   { fg: 'success', bg: 'surface', min: TEXT_AA, note: 'success text on card' },
+  { fg: 'success', bg: 'surface-2', min: TEXT_AA, note: 'success text on raised' },
   { fg: 'success-contrast', bg: 'success', min: TEXT_AA, note: 'label on success fill' },
   { fg: 'warning', bg: 'bg', min: TEXT_AA, note: 'warning text on page' },
   { fg: 'warning', bg: 'surface', min: TEXT_AA, note: 'warning text on card' },
+  { fg: 'warning', bg: 'surface-2', min: TEXT_AA, note: 'warning text on raised' },
   { fg: 'warning-contrast', bg: 'warning', min: TEXT_AA, note: 'label on warning fill' },
   { fg: 'border-strong', bg: 'bg', min: UI_AA, note: 'control boundary on page' },
   { fg: 'border-strong', bg: 'surface', min: UI_AA, note: 'control boundary on card' },

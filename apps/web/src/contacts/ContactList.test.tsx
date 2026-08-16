@@ -136,4 +136,15 @@ describe('ContactList', () => {
     await screen.findByRole('option', { name: 'Alice Anderson' })
     await expectNoA11yViolations(container)
   })
+
+  // The EMPTY state needed its own scan, and the populated one above is why: the search box carries
+  // `aria-controls` pointing at the listbox, and the empty branch renders a <p> instead of that
+  // listbox. Scanning only the populated tree checks the one case where the IDREF resolves. The
+  // browser sweep (e2e/tests/a11y.spec.ts) found it as `aria-valid-attr-value` — critical — in the
+  // state a brand-new account starts in.
+  it('has no axe violations while EMPTY (the dangling aria-controls case)', async () => {
+    const { container } = renderContactList('empty')
+    await screen.findByText('No contacts.')
+    await expectNoA11yViolations(container)
+  })
 })
