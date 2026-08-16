@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './app/App'
+import { initAccent } from './app/accent'
 import { loadConfig } from './app/config'
 import { applyBranding, initTheme, loadThemeOverride } from './app/theme'
 import { initI18n } from './i18n'
@@ -21,6 +22,9 @@ async function boot(): Promise<void> {
   loadThemeOverride()
   applyBranding(config)
   initTheme(config.branding.defaultTheme)
+  // After the theme, before first paint: the palette writes per-theme slots that `initTheme`'s
+  // `data-theme` then selects between (FR-THEME-03). A locked deployment clears any stale choice.
+  initAccent({ locked: config.branding.accentLocked })
   await initI18n()
 
   const container = document.getElementById('root')

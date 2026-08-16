@@ -35,8 +35,12 @@
 @layer waxwing.tokens {
   :root {
     /* ---- Color: light ---- */
-    --waxwing-accent: #2f6fe0;
-    --waxwing-accent-contrast: #ffffff;
+    /* The accent indirects through a per-theme slot so a selected palette (FR-THEME-03) can set BOTH
+     themes at once and let CSS pick — no JS on a system theme change, and the choice survives one.
+     The fallback IS the built-in accent, so an app that never sets a palette is byte-for-byte
+     unchanged. */
+    --waxwing-accent: var(--waxwing-accent-light, #2f6fe0);
+    --waxwing-accent-contrast: var(--waxwing-accent-contrast-light, #ffffff);
     --waxwing-bg: #f5f5f7;
     --waxwing-surface: #ffffff;
     --waxwing-surface-2: #ebebef;
@@ -148,8 +152,8 @@
   /* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --waxwing-accent: #5e93f0;
-      --waxwing-accent-contrast: #1d1d1f;
+      --waxwing-accent: var(--waxwing-accent-dark, #5e93f0);
+      --waxwing-accent-contrast: var(--waxwing-accent-contrast-dark, #1d1d1f);
       --waxwing-bg: #1c1c1e;
       --waxwing-surface: #2c2c2e;
       --waxwing-surface-2: #3a3a3c;
@@ -186,8 +190,8 @@
 
   /* ---- Color + elevation: dark (explicit user override) ---- */
   :root[data-theme="dark"] {
-    --waxwing-accent: #5e93f0;
-    --waxwing-accent-contrast: #1d1d1f;
+    --waxwing-accent: var(--waxwing-accent-dark, #5e93f0);
+    --waxwing-accent-contrast: var(--waxwing-accent-contrast-dark, #1d1d1f);
     --waxwing-bg: #1c1c1e;
     --waxwing-surface: #2c2c2e;
     --waxwing-surface-2: #3a3a3c;
@@ -223,8 +227,8 @@
 
   /* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */
   :root[data-theme="light"] {
-    --waxwing-accent: #2f6fe0;
-    --waxwing-accent-contrast: #ffffff;
+    --waxwing-accent: var(--waxwing-accent-light, #2f6fe0);
+    --waxwing-accent-contrast: var(--waxwing-accent-contrast-light, #ffffff);
     --waxwing-bg: #f5f5f7;
     --waxwing-surface: #ffffff;
     --waxwing-surface-2: #ebebef;

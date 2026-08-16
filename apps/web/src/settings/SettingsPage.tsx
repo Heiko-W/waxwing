@@ -1,7 +1,9 @@
 import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { type AccentId, availablePalettes, getAccent, isAccentId, setAccent } from '../app/accent'
 import { BrandLinks } from '../app/BrandLinks'
 import type { ThemeSetting } from '../app/config'
+import { useConfig } from '../app/config-context'
 import { useSessionOptional } from '../app/session/context'
 import {
   READING_PANE_MODES,
@@ -116,13 +118,27 @@ export default function SettingsPage() {
   const [theme, setThemeState] = useState<ThemeSetting>(() => getTheme())
   const readingPane = useReadingPaneMode()
   const activeLanguage = i18n.resolvedLanguage ?? i18n.language
-  const ids = { theme: useId(), language: useId(), readingPane: useId(), density: useId() }
+  const ids = {
+    theme: useId(),
+    language: useId(),
+    readingPane: useId(),
+    density: useId(),
+    accent: useId(),
+  }
+  const config = useConfig()
+  const [accent, setAccentState] = useState<AccentId>(() => getAccent())
   const replica = useReplicaOptional()
   const connected = useSessionOptional()
   const vacationAvailable = serverSupportsVacation(
     connected?.jmapSession ?? null,
     connected?.accountId ?? null,
   )
+
+  function handleAccent(value: string): void {
+    if (!isAccentId(value)) return
+    setAccent(value)
+    setAccentState(value)
+  }
 
   function handleTheme(value: string): void {
     const next = value as ThemeSetting
@@ -157,6 +173,18 @@ export default function SettingsPage() {
           options={THEME_OPTIONS.map((value) => ({ value, label: t(`theme.${value}`) }))}
           onChange={handleTheme}
         />
+        {!config.branding.accentLocked && (
+          <SelectField
+            id={ids.accent}
+            label={t('settings.appearance.accent.label')}
+            value={accent}
+            options={availablePalettes(config.branding.accentPalettes).map((palette) => ({
+              value: palette.id,
+              label: t(`settings.appearance.accent.${palette.id}`),
+            }))}
+            onChange={handleAccent}
+          />
+        )}
         {replica !== null && <DensityField id={ids.density} />}
         <SelectField
           id={ids.readingPane}

@@ -145,6 +145,34 @@ specific label colour, set the token yourself in `theme.css` and it wins. Note t
 route makes: it applies as an inline style, so it is one value for both themes and it overrides
 `theme.css`. Set the tokens in CSS if you want a different accent in dark mode.
 
+## 2a. Accent palettes (what your users can change)
+
+Waxwing ships six accent palettes — blue (the default), teal, green, amber, rose and purple — and
+users pick one under **Settings → Appearance → Accent colour**. Each palette carries a light and a
+dark value plus its own label colour, and **every one is contrast-proved in both themes by a test**
+(`accent.test.ts`: the label meets 4.5:1 on the fill, and the fill meets 3:1 against page and
+surface). That proof is the whole reason it is a fixed list and not a colour picker.
+
+Two config keys shape what a deployment offers:
+
+```json
+{
+  "branding": {
+    "accentPalettes": ["blue", "teal", "rose"],
+    "accentLocked": false
+  }
+}
+```
+
+- `accentPalettes` — narrow the list. `null` (the default) offers all six. A list naming nothing
+  valid is ignored rather than leaving an empty picker.
+- `accentLocked` — remove the choice entirely, for a deployment with a mandated brand colour. It also
+  clears any palette a user had already chosen, so pinning cannot be overruled by an old setting.
+
+You cannot ADD a palette here: an invented colour would not be contrast-proved, which is exactly what
+this avoids. Set `--waxwing-accent` in `theme.css` instead — that is the unrestricted route, and §4
+is where you check it yourself.
+
 ## 3. Replacing the artwork
 
 Under `branding/`, keeping the filenames or updating the references in `config.json` and

@@ -122,6 +122,15 @@
         "label": "List density",
         "comfortable": "Comfortable",
         "compact": "Compact"
+      },
+      "accent": {
+        "label": "Accent colour",
+        "blue": "Blue",
+        "teal": "Teal",
+        "green": "Green",
+        "amber": "Amber",
+        "rose": "Rose",
+        "purple": "Purple"
       }
     },
     "offline": {

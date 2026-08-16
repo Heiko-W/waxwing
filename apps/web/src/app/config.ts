@@ -26,6 +26,12 @@ export interface WaxwingConfig {
     /** Hoster accent override applied to both themes. `null` keeps the built-in theme-aware
      *  accent (recommended); a custom value is not contrast-guaranteed. */
     accentColor: string | null
+    /** Which built-in accent palettes to offer (FR-THEME-03); `null` offers all of them. A hoster
+     *  can narrow the list but cannot add to it — every palette is contrast-proved, and an invented
+     *  one would not be. */
+    accentPalettes: readonly string[] | null
+    /** Remove the accent choice entirely — for a deployment with a mandated brand colour. */
+    accentLocked: boolean
     defaultTheme: ThemeSetting
     links: {
       imprint: string | null
@@ -55,6 +61,8 @@ export const DEFAULT_CONFIG: WaxwingConfig = {
     productName: 'Waxwing',
     logo: 'branding/logo.svg',
     accentColor: null,
+    accentPalettes: null,
+    accentLocked: false,
     defaultTheme: 'auto',
     links: { imprint: null, support: null, privacy: null },
   },

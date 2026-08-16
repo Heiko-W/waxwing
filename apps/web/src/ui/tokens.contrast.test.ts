@@ -29,7 +29,13 @@ function parseBlock(selectorSource: string): Record<string, string> {
   if (!match) throw new Error(`token block not found: ${selectorSource}`)
   const tokens: Record<string, string> = {}
   for (const line of (match[1] ?? '').split('\n')) {
-    const decl = line.match(/--waxwing-([\w-]+):\s*(#[0-9a-fA-F]{3,8})\s*;/)
+    // A plain colour, or one behind a per-theme slot: `var(--waxwing-accent-light, #2f6fe0)`.
+    // The FALLBACK is the effective value whenever no accent palette is selected (FR-THEME-03), so
+    // it is what these assertions are about — the shipped default. The palettes themselves are
+    // proved separately, over the same pairs, in `accent.test.ts`.
+    const decl = line.match(
+      /--waxwing-([\w-]+):\s*(?:var\(--waxwing-[\w-]+,\s*)?(#[0-9a-fA-F]{3,8})\s*\)?\s*;/,
+    )
     if (decl?.[1] && decl[2]) tokens[decl[1]] = decl[2]
   }
   return tokens

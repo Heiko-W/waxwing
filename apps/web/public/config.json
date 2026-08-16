@@ -8,6 +8,8 @@
     "productName": "Waxwing",
     "logo": "branding/logo.svg",
     "accentColor": null,
+    "accentPalettes": null,
+    "accentLocked": false,
     "defaultTheme": "auto",
     "links": {
       "imprint": null,

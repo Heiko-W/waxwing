@@ -122,6 +122,15 @@
         "label": "Listendichte",
         "comfortable": "Komfortabel",
         "compact": "Kompakt"
+      },
+      "accent": {
+        "label": "Akzentfarbe",
+        "blue": "Blau",
+        "teal": "Türkis",
+        "green": "Grün",
+        "amber": "Bernstein",
+        "rose": "Rosé",
+        "purple": "Violett"
       }
     },
     "offline": {
