@@ -188,3 +188,48 @@ describe('SP.1 · @waxwing/jmap ↔ live Stalwart fixture', () => {
     expect(Array.from(downloaded)).toEqual(Array.from(payload))
   })
 })
+
+/**
+ * ADR-020's evidence, kept executable (M4.4).
+ *
+ * The finding that decided send-as is a SERVER behaviour, so a document cannot keep it true: it is
+ * exactly the kind of claim that quietly becomes false on a version bump and is then argued from an
+ * out-of-date ADR. This suite runs against the pinned image, so a Stalwart that starts granting
+ * submission on a delegated account makes it fail — which is the signal to revisit the decision.
+ *
+ * Skips itself when nothing is shared: delegation is opt-in in the fixture, so this is dead in a
+ * plain `pnpm e2e:server`. That is deliberate — see `ensureDelegations`.
+ */
+describe('M4.4 · a delegated account grants mailboxes, not sending (ADR-020)', () => {
+  let sharedAccountId: string | null = null
+
+  beforeAll(() => {
+    const accounts = client.session.accounts ?? {}
+    sharedAccountId =
+      Object.entries(accounts).find(
+        ([id, account]) => id !== accountId && !account.isPersonal,
+      )?.[0] ?? null
+  })
+
+  it('advertises submission on the shared account — and that advertisement is not permission', async () => {
+    if (sharedAccountId === null) {
+      // Not `return`: a silently skipped test is indistinguishable from a passing one, which is the
+      // very failure mode B22 is about. Say it, so a run without delegation reads as what it is.
+      console.warn('[ADR-020] no delegated account in this session — probe not exercised')
+      expect(sharedAccountId).toBeNull()
+      return
+    }
+    const account = (client.session.accounts ?? {})[sharedAccountId]
+    // The trap in one assertion: the capability IS there.
+    expect(Object.keys(account?.accountCapabilities ?? {})).toContain(Capabilities.submission)
+
+    // …and the submission-shaped call is refused all the same. `call` surfaces a METHOD-level error
+    // in the response rather than throwing, so the refusal is read from the invocation itself.
+    const responses = await client.call([
+      ['Identity/get', { accountId: sharedAccountId, ids: null }, '0'],
+    ])
+    const [name, args] = responses.responses[0] ?? ['', {}]
+    expect(name).toBe('error')
+    expect(JSON.stringify(args)).toMatch(/forbidden/i)
+  })
+})

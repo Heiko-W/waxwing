@@ -169,6 +169,13 @@ export interface MailAccount {
  * cannot tell a mail-capable account from one shared for calendars/contacts alone — only the
  * per-account object says mail may be invoked on THAT account (see {@link hasCapability}'s note on
  * why both levels exist). Filtering on it would wrongly include a non-mail share.
+ *
+ * The limit of that reasoning, measured against Stalwart v0.16.14 and recorded in ADR-020: a
+ * per-account capability announces what the SERVER implements for the account, not what THIS user
+ * may do with it. A delegated account advertises `urn:ietf:params:jmap:submission` and then answers
+ * both `Identity/get` and `EmailSubmission/set` with `forbidden — "You are not an owner"`. So this
+ * predicate is sound for deciding "is there mail here to show", and no capability is sound for
+ * deciding "may I write/send here" — only `myRights` per mailbox, and ultimately the attempt.
  */
 export function secondaryMailAccounts(session: Session, primaryId: Id): MailAccount[] {
   const result: MailAccount[] = []

@@ -127,14 +127,26 @@ function preflight() {
  * is why they have never failed: a skipped suite is a green suite. Running them is not enough — the
  * pipeline has to assert they RAN. Vitest reports skips in its summary, so the count is the check.
  */
-function integration() {
+async function integration() {
   stage('fixture up (for the integration suites)', ['e2e:server'])
+
+  // Grant the delegated shares for the duration of this stage (M4.4). The suites include ADR-020's
+  // executable evidence — that a shared account advertises `submission` and then refuses both
+  // `Identity/get` and `EmailSubmission/set` — and that probe is dead without a share: it would
+  // report itself skipped and the gate would prove nothing about the very finding it exists to keep
+  // honest. Revoked again below, because the fixture's default is single-account and `smoke()`
+  // asserts it (a leaked share reshapes every later suite's sidebar).
+  const fixture = await import(new URL('../e2e/stalwart/fixture.mjs', import.meta.url).href)
+  await fixture.ensureDelegations()
   const output = stage(
     'jmap integration suites (B22)',
     ['--filter', '@waxwing/jmap', 'run', 'test:integration'],
     { capture: true },
   )
 
+  // No revoke here on purpose: the very next stage is `down -v`, which removes the volume and takes
+  // the shares with it. (`shared.teardown.mjs` DOES revoke, because it may keep the fixture up.)
+  //
   // Hand the next stage a CLEAN fixture. `verify:e2e` brings its own up, and `up` is idempotent —
   // so without this teardown it would inherit THIS stage's container: same volume, same seeded
   // state, and an origin advertised for a different consumer. Measured: leaving it up failed two
@@ -176,7 +188,7 @@ try {
   stage('verify (typecheck, lint, tests, build, size budget)', ['verify'])
 
   if (!FAST) {
-    integration()
+    await integration()
     if (NO_E2E) {
       console.log('\n[ci] --no-e2e: skipping the Playwright suites; tearing the fixture down.')
       spawnSync('pnpm', ['e2e:server:down'], { cwd: ROOT, stdio: 'inherit' })
