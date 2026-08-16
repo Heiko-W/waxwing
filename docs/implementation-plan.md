@@ -2067,7 +2067,17 @@ Spec: FR-A11Y-01. Size: M.
       fixed.
 - [ ] Keyboard-only walkthrough of every flow incl. DnD alternatives, focus management in
       dialogs/palette/composer.
-- [ ] `prefers-reduced-motion` honored in every animation; touch targets ≥ 44 px verified.
+- [x] `prefers-reduced-motion` honored in every animation (one universal CSS reset in
+      `global.css`; `ui/reduced-motion.css.test.ts` guards both the reset's `!important` and
+      the absence of JS-driven motion the cascade cannot reach).
+- [x] Target size measured in a real engine (`e2e/tests/target-size.spec.ts`, five screens).
+      **The AA bar is 24 px, not 44** — this line still carried the pre-D5 figure that the
+      2026-07-10 entry below already corrected: SC 2.5.8 (Minimum) asks for 24, and 44 is
+      SC 2.5.5 (Enhanced), Level AAA. Measured: all five screens meet 24 px (the SC's spacing
+      exception is implemented, not skipped), and `--waxwing-control-min` ships 34 px on
+      pointer and 44 px on touch, so AAA is met where it matters most. The spacing exception alone is broad enough to exonerate a 16 px button, so the
+      spec also asserts every `<button>` against the token itself — verified by shrinking the
+      token, which turns all five red.
 - [ ] Record known limitations honestly in docs/accessibility.md.
 
 Done when: WCAG 2.2 AA self-assessment documented; core flows SR-tested with issues fixed.

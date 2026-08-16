@@ -25,6 +25,7 @@ export default defineConfig({
     '**/push.spec.ts',
     '**/pwa.spec.ts',
     '**/notify.spec.ts',
+    '**/target-size.spec.ts',
   ],
   // One seeded account, stateful mutations (flag/move/delete/live-deliver) → keep it serial and
   // reseed per test (see read.spec.ts beforeEach), so ordering never makes a test flaky.
