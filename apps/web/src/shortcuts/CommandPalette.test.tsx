@@ -191,9 +191,19 @@ describe('CommandPalette', () => {
     const user = userEvent.setup()
     await mountAndOpen()
     await waitFor(() => expect(options().length).toBeGreaterThan(0))
+    const input = screen.getByRole('combobox')
+    expect(input).toHaveAttribute('aria-expanded', 'true')
+
     await user.keyboard('zzzzzz')
+
     expect(await screen.findByText('No matches.')).toBeInTheDocument()
     expect(screen.queryAllByRole('option')).toHaveLength(0)
+    // B20.4, both halves. The message has to be ANNOUNCED — it was a plain <p>, so a screen-reader
+    // user typed into a silence indistinguishable from a broken palette — and `aria-expanded` has to
+    // stop claiming there are options to arrow through, right as `aria-activedescendant` vanishes.
+    expect(screen.getByRole('status')).toHaveTextContent('No matches.')
+    expect(input).toHaveAttribute('aria-expanded', 'false')
+    expect(input).not.toHaveAttribute('aria-activedescendant')
   })
 
   it('has no a11y violations', async () => {

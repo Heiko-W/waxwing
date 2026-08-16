@@ -85,7 +85,7 @@ describe('FolderTree (container)', () => {
     renderTree()
     const work = await screen.findByRole('treeitem', { name: /Work/ })
     // Open the folder's action menu (revealed within the row) and choose Delete.
-    await user.click(within(work).getByRole('button', { name: 'Folder actions' }))
+    await user.click(within(work).getByRole('button', { name: /^Folder actions/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
     // Confirm in the destructive dialog.
     await user.click(screen.getByRole('button', { name: 'Delete' }))
@@ -99,7 +99,7 @@ describe('FolderTree (container)', () => {
     renderTree()
     const work = await screen.findByRole('treeitem', { name: /Work/ })
 
-    await user.click(within(work).getByRole('button', { name: 'Folder actions' }))
+    await user.click(within(work).getByRole('button', { name: /^Folder actions/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Keep offline' }))
 
     await waitFor(async () =>
@@ -107,7 +107,7 @@ describe('FolderTree (container)', () => {
     )
     // The row now announces the state, and the action flips to its inverse.
     expect(await screen.findByRole('treeitem', { name: /Work/ })).toHaveTextContent('Kept offline')
-    await user.click(within(work).getByRole('button', { name: 'Folder actions' }))
+    await user.click(within(work).getByRole('button', { name: /^Folder actions/ }))
     expect(screen.getByRole('menuitem', { name: 'Stop keeping offline' })).toBeInTheDocument()
   })
 
@@ -129,7 +129,7 @@ describe('FolderTree (container)', () => {
     /** Open a folder's action menu and pick one of its cleanup entries. */
     async function chooseCleanup(user: UserEvent, folder: RegExp, item: string): Promise<void> {
       const row = await screen.findByRole('treeitem', { name: folder })
-      await user.click(within(row).getByRole('button', { name: 'Folder actions' }))
+      await user.click(within(row).getByRole('button', { name: /^Folder actions/ }))
       await user.click(await screen.findByRole('menuitem', { name: item }))
     }
 
@@ -254,7 +254,7 @@ describe('FolderTree (container)', () => {
 
     async function chooseDeleteOlder(user: UserEvent, folder: RegExp): Promise<void> {
       const row = await screen.findByRole('treeitem', { name: folder })
-      await user.click(within(row).getByRole('button', { name: 'Folder actions' }))
+      await user.click(within(row).getByRole('button', { name: /^Folder actions/ }))
       await user.click(await screen.findByRole('menuitem', { name: 'Delete older than…' }))
     }
 
@@ -353,7 +353,7 @@ describe('FolderTree (container)', () => {
       renderTree()
 
       const row = await screen.findByRole('treeitem', { name: /Junk/ })
-      await user.click(within(row).getByRole('button', { name: 'Folder actions' }))
+      await user.click(within(row).getByRole('button', { name: /^Folder actions/ }))
       await user.click(await screen.findByRole('menuitem', { name: 'Empty Junk' }))
       await user.click(screen.getByRole('button', { name: 'Empty folder' }))
 

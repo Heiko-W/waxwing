@@ -546,7 +546,7 @@
     "expand": "Expand {{name}}",
     "collapse": "Collapse {{name}}",
     "actions": {
-      "menu": "Folder actions",
+      "menu": "Folder actions: {{name}}",
       "newSubfolder": "New subfolder",
       "newFolder": "New folder",
       "rename": "Rename",
@@ -686,7 +686,9 @@
       "unnamed": "(Unnamed)",
       "preview": "Preview",
       "hidePreview": "Hide preview",
-      "download": "Download {{name}}"
+      "download": "Download {{name}}",
+      "previewNamed": "Preview: {{name}}",
+      "hidePreviewNamed": "Hide preview: {{name}}"
     },
     "editDraft": "Edit draft",
     "draftLead": "This is a draft you haven't sent yet.",
@@ -729,7 +731,9 @@
         "failed": "This attached message couldn't be opened."
       },
       "subjectLabel": "Subject",
-      "truncated": "Showing the beginning of this message only. Download the attachment to see all of it."
+      "truncated": "Showing the beginning of this message only. Download the attachment to see all of it.",
+      "openNamed": "Open message: {{name}}",
+      "closeNamed": "Hide message: {{name}}"
     }
   },
   "compose": {
@@ -868,7 +872,7 @@
     "moreLabels_one": "{{count}} more label",
     "moreLabels_other": "{{count}} more labels",
     "actions": {
-      "menu": "Label actions",
+      "menu": "Label actions: {{name}}",
       "rename": "Rename",
       "recolor": "Change color",
       "delete": "Delete",

@@ -42,8 +42,11 @@ describe('AttachmentList — attached message/rfc822 (FR-RD-07)', () => {
         ]}
       />,
     )
-    // Exactly one Open message button — for the .eml, not the PDF.
-    expect(await screen.findAllByRole('button', { name: 'Open message' })).toHaveLength(1)
+    // Exactly one Open message button — for the .eml, not the PDF. Matched by the accessible name,
+    // which NAMES THE FILE (B20.1): three attachments used to render three buttons all called
+    // "Open message", indistinguishable to anyone listening rather than looking.
+    expect(await screen.findAllByRole('button', { name: /^Open message/ })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Open message: fwd.eml' })).toBeInTheDocument()
   })
 
   it('expands the nested view on click and collapses it again', async () => {
@@ -56,10 +59,11 @@ describe('AttachmentList — attached message/rfc822 (FR-RD-07)', () => {
     )
     expect(screen.queryByTestId('nested-b2')).not.toBeInTheDocument()
 
-    await user.click(await screen.findByRole('button', { name: 'Open message' }))
+    await user.click(await screen.findByRole('button', { name: 'Open message: fwd.eml' }))
     expect(screen.getByTestId('nested-b2')).toBeInTheDocument()
-    // Label flips to the collapse action.
-    await user.click(screen.getByRole('button', { name: 'Hide message' }))
+    // Label flips to the collapse action — still naming the file, and still PREFIXED by the visible
+    // text so voice control can say what it reads (WCAG 2.5.3).
+    await user.click(screen.getByRole('button', { name: 'Hide message: fwd.eml' }))
     expect(screen.queryByTestId('nested-b2')).not.toBeInTheDocument()
   })
 })

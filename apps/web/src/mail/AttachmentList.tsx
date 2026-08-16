@@ -145,6 +145,15 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
                     size="sm"
                     variant="ghost"
                     aria-expanded={open}
+                    // A message with three attachments renders three buttons all called "Preview"
+                    // (B20.1). The visible text stays short; the accessible name carries the
+                    // filename, PREFIXED by that visible text so voice control still matches it
+                    // (WCAG 2.5.3 Label in Name).
+                    aria-label={
+                      open
+                        ? t('reading.attachments.hidePreviewNamed', { name: label })
+                        : t('reading.attachments.previewNamed', { name: label })
+                    }
                     onClick={() => void togglePreview(part)}
                   >
                     {open ? t('reading.attachments.hidePreview') : t('reading.attachments.preview')}
@@ -156,6 +165,11 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
                     size="sm"
                     variant="ghost"
                     aria-expanded={openMessage === part.blobId}
+                    aria-label={
+                      openMessage === part.blobId
+                        ? t('reading.nested.closeNamed', { name: label })
+                        : t('reading.nested.openNamed', { name: label })
+                    }
                     onClick={() =>
                       setOpenMessage((current) => (current === part.blobId ? null : part.blobId))
                     }

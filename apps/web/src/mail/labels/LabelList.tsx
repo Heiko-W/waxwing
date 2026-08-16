@@ -131,7 +131,10 @@ export function LabelList({
               >
                 <Menu
                   align="end"
-                  triggerLabel={t('labels.actions.menu')}
+                  // Named after its ROW (B20.5). Without the name, a list of twelve labels exposes
+                  // twelve buttons all called "Label actions" — a screen reader's rotor shows a
+                  // column of identical entries and voice control has nothing to disambiguate on.
+                  triggerLabel={t('labels.actions.menu', { name: label.name })}
                   trigger={<MoreHorizontal aria-hidden="true" className={styles.check} />}
                   items={menuItems}
                   triggerTabIndex={label.keyword === tabbable ? 0 : -1}

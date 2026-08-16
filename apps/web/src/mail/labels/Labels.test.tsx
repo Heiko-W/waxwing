@@ -66,11 +66,29 @@ describe('Labels', () => {
     expect(await screen.findByRole('treeitem', { name: /Projects/ })).toBeInTheDocument()
   })
 
+  // B20.3. Submitting an invalid name left focus on the Create button and rendered the reason as a
+  // plain <p> wired only through `aria-describedby` — which is read when the INPUT has focus. So the
+  // dialog appeared to ignore the click, and the explanation sat where the user had not gone.
+  it('announces a rejected label name and puts focus back on the field', async () => {
+    const user = userEvent.setup()
+    renderLabels()
+    await user.click(await screen.findByRole('button', { name: 'New label' }))
+    const field = screen.getByLabelText('Label name')
+
+    await user.click(screen.getByRole('button', { name: 'Create' })) // empty name
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Enter a label name.')
+    expect(field).toHaveFocus()
+    expect(field).toHaveAttribute('aria-describedby', alert.id)
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+  })
+
   it('deletes a label and, when opted in, strips the keyword from known messages', async () => {
     const user = userEvent.setup()
     renderLabels()
     const work = await screen.findByRole('treeitem', { name: /Work/ })
-    await user.click(within(work).getByRole('button', { name: 'Label actions' }))
+    await user.click(within(work).getByRole('button', { name: /^Label actions/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
     // The optional strip checkbox reports the known-carrier count (e1 carries 'work').
     const strip = await screen.findByRole('checkbox', { name: /Also remove it from 1/ })
@@ -88,7 +106,7 @@ describe('Labels', () => {
     const user = userEvent.setup()
     renderLabels()
     const item = await screen.findByRole('treeitem', { name: /Follow_Up/ })
-    await user.click(within(item).getByRole('button', { name: 'Label actions' }))
+    await user.click(within(item).getByRole('button', { name: /^Label actions/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Add to labels' }))
     await waitFor(async () => {
       const row = await db.localPrefs.get(['a', 'labels'])

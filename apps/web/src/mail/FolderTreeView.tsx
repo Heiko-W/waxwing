@@ -289,7 +289,11 @@ export function FolderTreeView({
                 >
                   <Menu
                     align="end"
-                    triggerLabel={t('mailbox.actions.menu')}
+                    // Named after its ROW (B20.5) — a tree of eight folders otherwise exposes eight
+                    // buttons all called "Folder actions".
+                    triggerLabel={t('mailbox.actions.menu', {
+                      name: folderDisplayName(mailbox, t),
+                    })}
                     trigger={<MoreHorizontal aria-hidden="true" className={styles.icon} />}
                     items={menuItems}
                     // Keep the tree a single tab stop: only the active row's action button is tabbable.

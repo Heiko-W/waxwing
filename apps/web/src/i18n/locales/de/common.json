@@ -546,7 +546,7 @@
     "expand": "{{name}} aufklappen",
     "collapse": "{{name}} zuklappen",
     "actions": {
-      "menu": "Ordneraktionen",
+      "menu": "Ordner-Aktionen: {{name}}",
       "newSubfolder": "Neuer Unterordner",
       "newFolder": "Neuer Ordner",
       "rename": "Umbenennen",
@@ -686,7 +686,9 @@
       "unnamed": "(Ohne Namen)",
       "preview": "Vorschau",
       "hidePreview": "Vorschau ausblenden",
-      "download": "{{name}} herunterladen"
+      "download": "{{name}} herunterladen",
+      "previewNamed": "Vorschau: {{name}}",
+      "hidePreviewNamed": "Vorschau ausblenden: {{name}}"
     },
     "editDraft": "Entwurf bearbeiten",
     "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben.",
@@ -729,7 +731,9 @@
         "failed": "Diese angehängte Nachricht konnte nicht geöffnet werden."
       },
       "subjectLabel": "Betreff",
-      "truncated": "Es wird nur der Anfang dieser Nachricht angezeigt. Laden Sie den Anhang herunter, um sie vollständig zu sehen."
+      "truncated": "Es wird nur der Anfang dieser Nachricht angezeigt. Laden Sie den Anhang herunter, um sie vollständig zu sehen.",
+      "openNamed": "Nachricht öffnen: {{name}}",
+      "closeNamed": "Nachricht ausblenden: {{name}}"
     }
   },
   "compose": {
@@ -868,7 +872,7 @@
     "moreLabels_one": "{{count}} weiteres Label",
     "moreLabels_other": "{{count}} weitere Labels",
     "actions": {
-      "menu": "Label-Aktionen",
+      "menu": "Label-Aktionen: {{name}}",
       "rename": "Umbenennen",
       "recolor": "Farbe ändern",
       "delete": "Löschen",

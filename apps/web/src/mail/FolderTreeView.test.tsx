@@ -106,7 +106,7 @@ describe('FolderTreeView', () => {
   it('gates the action menu by myRights (no Delete when mayDelete is false)', async () => {
     const user = userEvent.setup()
     renderTree([row('inbox', { role: 'inbox', myRights: { ...RIGHTS, mayDelete: false } })])
-    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
     expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
   })
@@ -118,7 +118,7 @@ describe('FolderTreeView', () => {
         myRights: { ...RIGHTS, mayCreateChild: false, mayRename: false, mayDelete: false },
       }),
     ])
-    expect(screen.queryByRole('button', { name: 'Folder actions' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Folder actions/ })).not.toBeInTheDocument()
   })
 
   it('toggles collapse when the disclosure chevron is clicked', async () => {
@@ -164,7 +164,7 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
     const onTogglePin = vi.fn()
     renderTree([row('inbox', { role: 'inbox' })], { pinned: new Set(), onTogglePin })
 
-    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
     await user.click(screen.getByRole('menuitem', { name: 'Keep offline' }))
 
     expect(onTogglePin).toHaveBeenCalledTimes(1)
@@ -178,7 +178,7 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
       onTogglePin: noop,
     })
 
-    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
     expect(screen.getByRole('menuitem', { name: 'Stop keeping offline' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Keep offline' })).not.toBeInTheDocument()
   })
@@ -198,7 +198,7 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
       pinned: new Set(),
       onTogglePin: noop,
     })
-    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
     expect(screen.queryByRole('menuitem', { name: 'Keep offline' })).not.toBeInTheDocument()
   })
 
@@ -212,13 +212,26 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
 
   // "Move to…" (M3.9, FR-MBX-03) — the keyboard route to a re-parent, and the one WCAG 2.2 SC 2.5.7
   // makes a prerequisite of the drag rather than a companion to it.
+  // B20.5: every row rendered a menu button called exactly "Folder actions", so a tree of eight
+  // folders exposed eight indistinguishable buttons — a screen-reader rotor shows a column of
+  // identical entries, and voice control ("click Folder actions") has nothing to pick between.
+  it('names each row menu after its folder, so no two are alike', async () => {
+    renderTree([row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })])
+
+    const names = screen
+      .getAllByRole('button', { name: /^Folder actions/ })
+      .map((button) => button.getAttribute('aria-label'))
+    expect(names).toEqual(['Folder actions: Inbox', 'Folder actions: Work'])
+    expect(new Set(names).size, 'two menu buttons share a name').toBe(names.length)
+  })
+
   it('offers Move to… and raises it with the clicked mailbox', async () => {
     const user = userEvent.setup()
     const onRequestMove = vi.fn()
     const rows = [row('inbox', { role: 'inbox' }), row('work', { name: 'Work' })]
     renderTree(rows, { onRequestMove })
 
-    const menus = screen.getAllByRole('button', { name: 'Folder actions' })
+    const menus = screen.getAllByRole('button', { name: /^Folder actions/ })
     await user.click(menus[1] as HTMLElement)
     await user.click(screen.getByRole('menuitem', { name: 'Move to…' }))
     expect(onRequestMove).toHaveBeenCalledWith(expect.objectContaining({ id: 'work' }))
@@ -230,14 +243,14 @@ describe('FolderTreeView — keep offline (M3.4)', () => {
     renderTree([row('inbox', { role: 'inbox', myRights: { ...RIGHTS, mayRename: false } })], {
       onRequestMove: noop,
     })
-    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
     expect(screen.queryByRole('menuitem', { name: 'Move to…' })).not.toBeInTheDocument()
   })
 
   it('hides Move to… when no handler is passed', async () => {
     const user = userEvent.setup()
     renderTree([row('inbox', { role: 'inbox' })])
-    await user.click(screen.getByRole('button', { name: 'Folder actions' }))
+    await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
     expect(screen.queryByRole('menuitem', { name: 'Move to…' })).not.toBeInTheDocument()
   })
 })

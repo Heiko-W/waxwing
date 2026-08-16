@@ -103,6 +103,10 @@ export function LabelFormDialog({
           : validateLabelName(name, existingKeywords)
       if (failure !== null) {
         setError(t(`labels.error.${failure}`))
+        // Focus goes back to the field that is wrong (B20.3). Submitting leaves focus on the button,
+        // and `aria-describedby` is only read when the INPUT is focused — so without this the dialog
+        // simply appeared not to react, and the explanation sat somewhere the user never went.
+        inputRef.current?.focus()
         return
       }
     }
@@ -146,7 +150,9 @@ export function LabelFormDialog({
               }}
             />
             {error !== null && (
-              <p id={errorId} className={styles.formError}>
+              // `alert` so it is spoken the moment it appears — the focus move above lands on the
+              // input, whose description this is, but an alert does not depend on that ordering.
+              <p id={errorId} role="alert" className={styles.formError}>
                 {error}
               </p>
             )}

@@ -239,7 +239,11 @@ export default function CommandPalette({ context, onClose }: CommandPaletteProps
           type="text"
           className={styles.paletteInput}
           role="combobox"
-          aria-expanded={true}
+          // NOT a constant (B20.4). `aria-expanded` describes whether the listbox is showing
+          // options; a query that matches nothing leaves an empty listbox, and claiming it is still
+          // expanded tells a screen reader there are results to arrow through when there are none —
+          // right as `aria-activedescendant` also disappears, so the user hears nothing at all.
+          aria-expanded={flat.length > 0}
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-label={t('palette.placeholder')}
@@ -305,7 +309,13 @@ export default function CommandPalette({ context, onClose }: CommandPaletteProps
             </Fragment>
           ))}
         </div>
-        {flat.length === 0 && <p className={styles.empty}>{t('palette.empty')}</p>}
+        {/* A live region, so "No matches." is SPOKEN. It used to be a plain <p>: sighted users saw
+            it, everyone else typed into a silence indistinguishable from a broken palette. */}
+        {flat.length === 0 && (
+          <p role="status" className={styles.empty}>
+            {t('palette.empty')}
+          </p>
+        )}
       </div>
     </Dialog>
   )
