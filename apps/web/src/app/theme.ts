@@ -8,6 +8,7 @@
  * (not a secret), so it is persisted in localStorage.
  */
 
+import { contrastRatio } from '../ui/contrast'
 import type { ThemeSetting, WaxwingConfig } from './config'
 
 const THEME_STORAGE_KEY = 'waxwing.theme'
@@ -20,7 +21,35 @@ export function applyBranding(config: WaxwingConfig): void {
   // Only a non-null hoster override touches the accent; otherwise the built-in theme-aware
   // accent from tokens.css stands (darker in light, lighter in dark).
   if (config.branding.accentColor) {
-    root.style.setProperty('--waxwing-accent', config.branding.accentColor)
+    const accent = config.branding.accentColor
+    root.style.setProperty('--waxwing-accent', accent)
+    // …and the LABEL on it, which is the half that was missing (M4.5). Setting only the fill leaves
+    // `--waxwing-accent-contrast` on the built-in value — white in light mode — so a hoster who
+    // picks a pale accent gets white-on-yellow: a WCAG-AA failure the app machine-verifies for its
+    // own accent and, until now, could not for theirs. `config.json` is read at runtime, so no test
+    // can check it; deriving the label is the only place the guarantee can live.
+    const label = readableOn(accent)
+    if (label !== null) root.style.setProperty('--waxwing-accent-contrast', label)
+  }
+}
+
+/**
+ * The better of black and white on `background`, or `null` if the colour cannot be parsed.
+ *
+ * Deliberately only those two: they are the extremes, so whichever wins is the best contrast any
+ * label could have on that fill. A cleverer tinted label could look nicer and would risk being the
+ * one that fails — and the point here is a floor, not a palette. Documented in docs/theming.md so a
+ * hoster knows their `accentColor` carries a legible label automatically.
+ */
+function readableOn(background: string): string | null {
+  try {
+    return contrastRatio('#ffffff', background) >= contrastRatio('#1d1d1f', background)
+      ? '#ffffff'
+      : '#1d1d1f'
+  } catch {
+    // An unparseable value (a CSS keyword, a gradient, a typo): leave the built-in label alone
+    // rather than guessing. The fill will still apply; the label stays whatever the theme says.
+    return null
   }
 }
 

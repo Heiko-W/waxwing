@@ -21,3 +21,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** The shipped app version, injected by vite from apps/web/package.json (M4.5). */
+declare const __WAXWING_VERSION__: string

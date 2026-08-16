@@ -128,3 +128,10 @@
     padding: var(--waxwing-space-4);
   }
 }
+
+/* The build identifier in About — present but quiet: needed on demand, not while reading settings. */
+.aboutVersion {
+  margin: 0 0 var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}

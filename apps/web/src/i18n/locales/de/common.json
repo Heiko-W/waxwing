@@ -300,7 +300,8 @@
       }
     },
     "about": {
-      "title": "Über"
+      "title": "Über",
+      "version": "Version {{version}}"
     }
   },
   "contacts": {

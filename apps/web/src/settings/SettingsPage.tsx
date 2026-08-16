@@ -23,6 +23,9 @@ import styles from './settings.module.css'
 import { VacationSection } from './VacationSection'
 import { serverSupportsVacation } from './vacation-client'
 
+/** Injected by vite from apps/web/package.json — see its `define` block. */
+const APP_VERSION = __WAXWING_VERSION__
+
 const THEME_OPTIONS: readonly ThemeSetting[] = ['auto', 'light', 'dark']
 const DENSITY_OPTIONS = ['comfortable', 'compact'] as const
 type Density = (typeof DENSITY_OPTIONS)[number]
@@ -211,6 +214,11 @@ export default function SettingsPage() {
       )}
 
       <Section title={t('settings.about.title')}>
+        {/* The version is not decoration: it is the first thing any support exchange needs, and a
+            static deployment has no other way to say which build it is running (M4.5). */}
+        <p className={styles.aboutVersion}>
+          {t('settings.about.version', { version: APP_VERSION })}
+        </p>
         <BrandLinks />
       </Section>
     </div>

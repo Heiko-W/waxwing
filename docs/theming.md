@@ -138,6 +138,13 @@ install prompt, the about section and every system notification. `accentColor` i
 setting `--waxwing-accent` from JSON when you do not want to touch CSS at all; leave it `null` if you
 set the token in `theme.css` (the CSS wins either way, so setting both is only confusing).
 
+**`accentColor` also derives its own label.** Waxwing picks black or white for
+`--waxwing-accent-contrast` — whichever reaches better contrast on your colour — so a pale brand
+colour cannot end up with a white label on it. That is a floor, not a palette: if you want a
+specific label colour, set the token yourself in `theme.css` and it wins. Note the trade the JSON
+route makes: it applies as an inline style, so it is one value for both themes and it overrides
+`theme.css`. Set the tokens in CSS if you want a different accent in dark mode.
+
 ## 3. Replacing the artwork
 
 Under `branding/`, keeping the filenames or updating the references in `config.json` and

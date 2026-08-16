@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type ProxyOptions } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -75,7 +76,14 @@ const DEV_CSP = [
 
 // base: './' emits relative asset URLs so the bundle works under any path prefix,
 // which is required for Stalwart's <base href> rewriting (FR-DEP-02).
+// The shipped version string, read from this package's manifest at build time (M4.5). A release
+// artefact has to be able to say what it is — "which version?" is the first question any support
+// exchange starts with, and a client that cannot answer it makes the second question guesswork.
+const APP_VERSION = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+  .version as string
+
 export default defineConfig({
+  define: { __WAXWING_VERSION__: JSON.stringify(APP_VERSION) },
   base: './',
   // The PWA plugin (M3.5) bundles src/sw/sw.ts and precaches the app shell. It does NOT emit the
   // manifest: that is a hoster-editable deployment file (public/manifest.json), for the reason
