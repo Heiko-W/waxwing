@@ -1120,5 +1120,16 @@
     "drag": {
       "over": "Drop on {{folder}}"
     }
+  },
+  "rights": {
+    "unavailable": {
+      "accountReadOnly": "This account is read-only.",
+      "seen": "You don't have permission to mark these messages read or unread.",
+      "keywords": "You don't have permission to flag or label these messages.",
+      "remove": "You don't have permission to move messages out of this folder.",
+      "add": "You don't have permission to file messages into that folder.",
+      "destroy": "You don't have permission to delete these messages.",
+      "unknown": "Still checking what you may do here — not all messages have loaded yet."
+    }
   }
 }

@@ -72,6 +72,39 @@ Everything shares one dev password: **`waxwing-e2e-Pw1!`**
 Domain: **`waxwing.test`** (the RFC 6761 reserved `.test` TLD — never resolves publicly).
 Note: Stalwart rejects `test.example`, so `waxwing.test` is used instead (see `docs/adr/002`).
 
+### Delegated (shared) mailboxes — opt-in (M4.4)
+
+`provision()` leaves the three accounts **standalone**. The shared-account suite calls
+`ensureDelegations()` itself and `revokeDelegations()` in its teardown:
+
+| Owner | Grantee | Mailbox | Access |
+|---|---|---|---|
+| `bob@waxwing.test` | `alice@waxwing.test` | Inbox | read-write (`mayReadItems`, `mayAddItems`, `mayRemoveItems`, `maySetSeen`, `maySetKeywords`) |
+| `carol@waxwing.test` | `alice@waxwing.test` | Inbox | read-only (`mayReadItems` only) |
+
+**Why it is not part of `provision()`.** A share changes what alice's UI *is*: the sidebar switches
+from one folder tree to account-grouped sections, which makes the plain `treeitem name=/Inbox/`
+locator that 19 call sites across 8 suites use ambiguous. Measured, not assumed — enabling it in
+`provision()` failed the entire read suite. It would also leave the single-account path (Waxwing's
+documented byte-for-byte invariant) with no end-to-end coverage at all.
+
+**`up` does not wipe the volume**, so a share left behind by an interrupted run persists and would
+silently reshape every later suite. `smoke()` therefore asserts the single-account default and fails
+with that explanation.
+
+How it works, established against the live fixture rather than assumed:
+
+- Sharing is `Mailbox/set` + `shareWith` (`urn:ietf:params:jmap:mail:share`, which Stalwart
+  advertises per account), keyed by the grantee's **principal** id from `Principal/get`.
+- The **grantor** performs it — the recovery admin cannot share on a user's behalf.
+- The grantee then sees the account in `/.well-known/jmap` with `isPersonal: false` and
+  `urn:ietf:params:jmap:mail` in that account's own `accountCapabilities` (what
+  `packages/jmap/src/session.ts` filters on), and sees **only the shared mailbox**, not the tree.
+- **`Account.isReadOnly` stays `false` even for a read-only share** — the truth is each mailbox's
+  `myRights`, so the account flag is not a usable permission signal (see defect B34).
+- Writes beyond the grant are rejected server-side **per id**:
+  `notUpdated[id] = { type: 'forbidden', description: … }`, never wholesale.
+
 ## Ports
 
 Only the plain-HTTP JMAP listener is mapped:

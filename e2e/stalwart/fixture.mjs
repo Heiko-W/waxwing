@@ -251,6 +251,148 @@ async function ensureQuota(accountId) {
   }
 }
 
+/**
+ * Delegation, so M4.4 (shared accounts) is testable at all (M4.4 stage 4).
+ *
+ * Without this the fixture provisions three STANDALONE users, `secondaryMailAccounts()` returns `[]`
+ * for every one of them, and every shared-account path in the app is dead code in every suite —
+ * M4.4's own "Done when" ("a fixture delegation setup shows the shared mailbox") is unprovable.
+ *
+ * Established against the live fixture (Stalwart v0.16.14) rather than assumed:
+ *
+ *  - **Sharing is `Mailbox/set` + `shareWith`** (JMAP Sharing / `urn:ietf:params:jmap:mail:share`,
+ *    which Stalwart advertises per account), keyed by the grantee's PRINCIPAL id. Principal ids and
+ *    account ids coincide here — `Principal/query` returns the same short ids as the session's
+ *    `accounts` map — but they are conceptually distinct, so we resolve principals explicitly.
+ *  - **The grantor shares; the admin cannot do it for them.** Each `Mailbox/set` runs as the owning
+ *    user, which is why this takes their Basic credentials rather than the recovery admin's.
+ *  - **The grantee then sees the account** in `/.well-known/jmap` with `isPersonal: false` and
+ *    `urn:ietf:params:jmap:mail` in that account's OWN `accountCapabilities` — which is exactly what
+ *    `packages/jmap/src/session.ts` filters on — and sees ONLY the shared mailbox, not the whole tree.
+ *  - **`Account.isReadOnly` stays `false` even for a read-only share.** The truth lives in each
+ *    mailbox's `myRights`; the account flag is not a usable signal (this is why B34 gates on rights
+ *    per mailbox, and why the account-level "Read only" badge cannot be trusted to mean anything).
+ *  - Writes beyond the grant are rejected server-side, PER ID, as
+ *    `notUpdated[id] = { type: 'forbidden', description: … }` — never wholesale.
+ *
+ * Two shares, so both halves are covered: bob grants alice READ-WRITE (triage must work), carol
+ * grants alice READ-ONLY (triage must be refused).
+ */
+const DELEGATIONS = [
+  { owner: 'bob', grantee: 'alice', access: 'rw' },
+  { owner: 'carol', grantee: 'alice', access: 'ro' },
+]
+
+/** The two right-sets a share is granted with. `mayShare` stays false: a grantee may not re-share. */
+const SHARE_RIGHTS = {
+  rw: {
+    mayReadItems: true,
+    mayAddItems: true,
+    mayRemoveItems: true,
+    maySetSeen: true,
+    maySetKeywords: true,
+    mayCreateChild: false,
+    mayRename: false,
+    mayDelete: false,
+    maySubmit: false,
+    mayShare: false,
+  },
+  ro: {
+    mayReadItems: true,
+    mayAddItems: false,
+    mayRemoveItems: false,
+    maySetSeen: false,
+    maySetKeywords: false,
+    mayCreateChild: false,
+    mayRename: false,
+    mayDelete: false,
+    maySubmit: false,
+    mayShare: false,
+  },
+}
+
+const SHARE_USING = [
+  'urn:ietf:params:jmap:core',
+  'urn:ietf:params:jmap:mail',
+  'urn:ietf:params:jmap:mail:share',
+  'urn:ietf:params:jmap:principals',
+]
+
+/** A JMAP request as a regular USER (sharing is the grantor's own act, not the admin's). */
+async function jmapAs(account, using, methodCalls) {
+  const res = await fetch(JMAP_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: basicAuth(account.login, account.password),
+    },
+    body: JSON.stringify({ using, methodCalls }),
+  })
+  if (!res.ok) throw new Error(`JMAP request failed: HTTP ${res.status} — ${await res.text()}`)
+  const [name, args] = (await res.json()).methodResponses[0]
+  if (name === 'error') throw new Error(`JMAP error: ${JSON.stringify(args)}`)
+  return args
+}
+
+/** The account id the OWNER's own session names — the one their `Mailbox/set` must be scoped to. */
+async function ownAccountId(account) {
+  const res = await fetch(SESSION_URL, {
+    headers: { authorization: basicAuth(account.login, account.password) },
+    redirect: 'follow',
+  })
+  if (!res.ok) throw new Error(`session for ${account.login}: HTTP ${res.status}`)
+  const doc = await res.json()
+  const id = Object.keys(doc.accounts ?? {}).find((key) => doc.accounts[key].isPersonal)
+  if (!id) throw new Error(`no personal account in ${account.login}'s session`)
+  return id
+}
+
+/** The grantee's principal id, as the OWNER's account can see it. */
+async function principalIdFor(owner, ownerAccountId, granteeLogin) {
+  const args = await jmapAs(owner, SHARE_USING, [
+    ['Principal/get', { accountId: ownerAccountId, ids: null }, '0'],
+  ])
+  const found = (args.list ?? []).find(
+    (principal) => principal.email === granteeLogin || principal.name === granteeLogin,
+  )
+  if (!found) throw new Error(`principal ${granteeLogin} not visible to ${owner.login}`)
+  return found.id
+}
+
+/** Idempotent: `shareWith` is a full replacement, so re-writing the same grant is a no-op update. */
+async function ensureDelegation({ owner, grantee, access }) {
+  const ownerAccount = ACCOUNTS.find((a) => a.name === owner)
+  const granteeAccount = ACCOUNTS.find((a) => a.name === grantee)
+  if (!ownerAccount || !granteeAccount)
+    throw new Error(`unknown delegation pair ${owner}/${grantee}`)
+
+  const ownerAccountId = await ownAccountId(ownerAccount)
+  const granteePrincipal = await principalIdFor(ownerAccount, ownerAccountId, granteeAccount.login)
+
+  const boxes = await jmapAs(ownerAccount, SHARE_USING, [
+    ['Mailbox/get', { accountId: ownerAccountId, ids: null, properties: ['id', 'role'] }, '0'],
+  ])
+  const inbox = (boxes.list ?? []).find((box) => box.role === 'inbox')
+  if (!inbox) throw new Error(`${ownerAccount.login} has no inbox to share`)
+
+  const args = await jmapAs(ownerAccount, SHARE_USING, [
+    [
+      'Mailbox/set',
+      {
+        accountId: ownerAccountId,
+        update: { [inbox.id]: { shareWith: { [granteePrincipal]: SHARE_RIGHTS[access] } } },
+      },
+      '0',
+    ],
+  ])
+  if (args.notUpdated?.[inbox.id]) {
+    throw new Error(
+      `share ${owner}->${grantee} rejected: ${JSON.stringify(args.notUpdated[inbox.id])}`,
+    )
+  }
+  return { ownerAccountId, inboxId: inbox.id, granteePrincipal }
+}
+
 // Idempotent: query-before-create, so it is safe to run on every `up`.
 export async function provision() {
   const domain = await ensureDomain()
@@ -260,6 +402,54 @@ export async function provision() {
     const state = result.created ? '(created)' : '(exists)'
     await ensureQuota(result.id)
     console.log(`  account ${result.login} -> ${result.id} ${state} quota=${ACCOUNT_QUOTA_BYTES}`)
+  }
+}
+
+/**
+ * Grant every {@link DELEGATIONS} share. **Opt-in, called by the shared-account suite's setup — NOT
+ * by `provision()`**, and that is a deliberate trade rather than tidiness.
+ *
+ * Delegation changes what alice's UI IS: with a shared account the sidebar switches from one folder
+ * tree to account-grouped sections, so `getByRole('treeitem', { name: /Inbox/ })` — which 19 call
+ * sites across 8 suites use — becomes ambiguous. Measured, not assumed: turning it on inside
+ * `provision()` failed the whole read suite. Rewriting those call sites would have cost more than it
+ * bought, and it would have cost something that matters more: the single-account path is Waxwing's
+ * documented byte-for-byte invariant, and with delegation always on it would have had NO end-to-end
+ * coverage left at all. So the default fixture stays single-account and the shared suite opts in.
+ *
+ * Pair it with {@link revokeDelegations} in that suite's teardown: `up` does not wipe the volume, so
+ * a share left behind would silently reshape every later suite's sidebar.
+ */
+export async function ensureDelegations() {
+  const granted = []
+  for (const delegation of DELEGATIONS) {
+    const { ownerAccountId, inboxId } = await ensureDelegation(delegation)
+    granted.push({ ...delegation, ownerAccountId, inboxId })
+    console.log(
+      `  share ${delegation.owner}(${ownerAccountId}) inbox -> ${delegation.grantee} [${delegation.access}]`,
+    )
+  }
+  return granted
+}
+
+/** Withdraw every share (`shareWith: {}`), returning the fixture to its single-account default. */
+export async function revokeDelegations() {
+  for (const { owner } of DELEGATIONS) {
+    const ownerAccount = ACCOUNTS.find((a) => a.name === owner)
+    if (!ownerAccount) continue
+    const ownerAccountId = await ownAccountId(ownerAccount)
+    const boxes = await jmapAs(ownerAccount, SHARE_USING, [
+      ['Mailbox/get', { accountId: ownerAccountId, ids: null, properties: ['id', 'role'] }, '0'],
+    ])
+    const inbox = (boxes.list ?? []).find((box) => box.role === 'inbox')
+    if (!inbox) continue
+    await jmapAs(ownerAccount, SHARE_USING, [
+      [
+        'Mailbox/set',
+        { accountId: ownerAccountId, update: { [inbox.id]: { shareWith: {} } } },
+        '0',
+      ],
+    ])
   }
 }
 
@@ -296,6 +486,19 @@ export async function smoke() {
   console.log('  unauth  /.well-known/jmap -> 200 anonymous (no accounts) [ADR-002]')
   console.log('  invalid Basic             -> 401')
   console.log(`  ${alice.login}  -> 200 session, accounts=${Object.keys(doc.accounts).join(',')}`)
+
+  // The fixture's DEFAULT is single-account (M4.4). Asserted, because a stray share left behind by an
+  // interrupted shared-account run would silently reshape every other suite's sidebar — the grouped
+  // rail makes `treeitem name=/Inbox/` ambiguous — and the failure would look like anything but its
+  // cause. `ensureDelegations()` is opt-in; `revokeDelegations()` puts it back.
+  const shared = Object.entries(doc.accounts).filter(([, account]) => !account.isPersonal)
+  assert(
+    shared.length === 0,
+    `fixture default: expected no shared accounts for ${alice.login}, got ${shared
+      .map(([id, a]) => `${a.name}(${id})`)
+      .join(', ')} — a previous shared-account run did not revoke`,
+  )
+  console.log(`  ${alice.login} sees no delegated account (fixture default)`)
 }
 
 function printReady() {

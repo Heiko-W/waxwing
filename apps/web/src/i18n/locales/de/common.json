@@ -1120,5 +1120,16 @@
     "drag": {
       "over": "Auf {{folder}} ablegen"
     }
+  },
+  "rights": {
+    "unavailable": {
+      "accountReadOnly": "Dieses Konto ist schreibgeschützt.",
+      "seen": "Ihnen fehlt die Berechtigung, diese Nachrichten als gelesen oder ungelesen zu markieren.",
+      "keywords": "Ihnen fehlt die Berechtigung, diese Nachrichten zu markieren oder ihre Labels zu ändern.",
+      "remove": "Ihnen fehlt die Berechtigung, Nachrichten aus diesem Ordner zu verschieben.",
+      "add": "Ihnen fehlt die Berechtigung, Nachrichten in diesen Ordner einzuordnen.",
+      "destroy": "Ihnen fehlt die Berechtigung, diese Nachrichten zu löschen.",
+      "unknown": "Ihre Berechtigungen werden noch geprüft — es sind noch nicht alle Nachrichten geladen."
+    }
   }
 }

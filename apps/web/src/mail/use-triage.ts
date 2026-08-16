@@ -23,6 +23,10 @@ import { useTranslation } from 'react-i18next'
 import { useMailboxByRole } from '../sync'
 import { useToast } from '../ui'
 import { useMessageActions } from './use-message-actions'
+import { useMessageRights } from './use-message-rights'
+
+/** A stable empty id list: the seam-level check asks about the ACCOUNT floor, not about subjects. */
+const EMPTY_IDS: Id[] = []
 
 export interface Triage {
   /**
@@ -70,6 +74,11 @@ export function useTriage(): Triage {
   const archiveBox = useMailboxByRole('archive')
   const junkBox = useMailboxByRole('junk')
   const trashBox = useMailboxByRole('trash')
+  // Defence in depth for B34. The surfaces gate their own controls — that is where a refusal can be
+  // EXPLAINED — but this seam is what both a click and a chord funnel through, so a write that got
+  // past an ungated surface still stops here. `useMessageRights` degrades to all-granted outside a
+  // ReplicaProvider, so component tests and the single-account path are untouched.
+  const rights = useMessageRights(EMPTY_IDS)
 
   return useMemo<Triage>(() => {
     // Takes the finished title, not a key: a folder move interpolates its target's name, and the
@@ -85,6 +94,10 @@ export function useTriage(): Triage {
       // same "filed or silently dropped?" contract the boolean above exists for: a toast reading
       // "Moved to Archive" over mail that is still in the list is the failure this seam prevents.
       if (!actions.available) return false
+      // B34: a move needs `mayRemoveItems` on the SOURCE and `mayAddItems` on the TARGET. The source
+      // half is the gap this closes — every pre-existing check in the app looked at the target only,
+      // so moving OUT of a read-only shared folder was offered, dispatched and toasted as done.
+      if (rights.moveReason(from, to) !== null) return false
       actions.move(ids, from, to)
       toast({
         title,
@@ -101,8 +114,17 @@ export function useTriage(): Triage {
       trash: (ids, from) => moveWithUndo(ids, from, trashBox?.id, t('list.moved.trash')),
       moveTo: (ids, from, to, toName) =>
         moveWithUndo(ids, from, to, t('list.moved.folder', { folder: toName })),
-      setSeen: (ids, seen) => actions.setSeen(ids, seen),
-      setFlagged: (ids, flagged) => actions.setFlagged(ids, flagged),
+      // Rights are checked against the account floor here (no subject rows), so this refuses only
+      // what is refused for EVERY message in the account — a read-only share, or a mailbox-wide
+      // denial. Per-message denials are caught by the calling surface, which has the rows.
+      setSeen: (ids, seen) => {
+        if (!rights.maySetSeen) return
+        actions.setSeen(ids, seen)
+      },
+      setFlagged: (ids, flagged) => {
+        if (!rights.maySetKeywords) return
+        actions.setFlagged(ids, flagged)
+      },
     }
-  }, [actions, toast, t, archiveBox, junkBox, trashBox])
+  }, [actions, toast, t, archiveBox, junkBox, trashBox, rights])
 }

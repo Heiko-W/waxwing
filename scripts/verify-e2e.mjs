@@ -75,6 +75,11 @@ try {
   run('mount e2e suite', ['e2e:mount'])
   run('read e2e suite', ['e2e:read'])
   run('write e2e suite', ['e2e:write'])
+  // The M4.4 shared-account suite. Its own config and its own fixture STATE: it grants two
+  // delegations in globalSetup and revokes them in teardown, because a share changes what the
+  // sidebar IS (account-grouped sections) and would make every other suite's `treeitem name=/Inbox/`
+  // ambiguous. Listed here or it is not gated — see the header.
+  run('shared-account e2e suite', ['e2e:shared'])
   // The M3.10 deploy suite runs LAST: it is the only one that builds the app TWICE (a staged second
   // deploy, e2e/pwa-stage.vite.config.mjs), so putting it earlier would make every other suite wait
   // on work none of them need. It self-manages the fixture like read/write.
