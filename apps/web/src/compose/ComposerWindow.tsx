@@ -83,6 +83,14 @@ export function ComposerWindow({
     isPlausibleEmail(address.email),
   )
   const windowRef = useRef<HTMLDivElement>(null)
+  const chipRef = useRef<HTMLButtonElement>(null)
+  /** Did focus live inside this window when it was collapsed? Decides whether the chip claims it. */
+  const heldFocusRef = useRef(false)
+
+  /** Record that focus was inside, so the minimized chip knows to take it. */
+  function rememberFocus(): void {
+    heldFocusRef.current = windowRef.current?.contains(document.activeElement) ?? false
+  }
   const subjectRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<RichTextEditorHandle>(null)
@@ -211,7 +219,12 @@ export function ComposerWindow({
       return
     }
     if (event.key !== 'Escape') return
+    // Belt-and-braces beside the listbox's `stopPropagation` (M4.7): honour a veto from anything
+    // nested that already handled this Escape, the same rule `ShortcutProvider` follows. A window
+    // that collapses on an Escape meant for an inner layer loses the user's place in the draft.
+    if (event.defaultPrevented) return
     event.preventDefault()
+    rememberFocus()
     setMode(draft.id, fullscreen ? 'docked' : 'minimized')
   }
 
@@ -251,10 +264,29 @@ export function ComposerWindow({
     }
   }
 
+  /**
+   * Focus the chip when a window the user was IN collapses (M4.7, WCAG 2.4.3).
+   *
+   * Minimizing unmounts the whole subtree — the subject input, the Squire body, or the Minimize
+   * button itself — and replaces it with this chip. Nothing focused it, so `document.activeElement`
+   * fell back to `<body>` and the next Tab restarted at the top of the document. Both routes hit
+   * this: the Escape handler and the Minimize button.
+   *
+   * Guarded on `heldFocus`, so a draft RESTORED as a chip on page load does not steal focus from
+   * whatever the user is actually doing — the fix must not become its own focus bug.
+   */
+  useEffect(() => {
+    if (minimized && heldFocusRef.current) {
+      heldFocusRef.current = false
+      chipRef.current?.focus()
+    }
+  }, [minimized])
+
   if (minimized) {
     return (
       <button
         type="button"
+        ref={chipRef}
         className={styles.chip}
         onClick={() => {
           setMode(draft.id, 'docked')
@@ -326,7 +358,10 @@ export function ComposerWindow({
               label={t('compose.minimize')}
               variant="ghost"
               size="sm"
-              onClick={() => setMode(draft.id, 'minimized')}
+              onClick={() => {
+                rememberFocus()
+                setMode(draft.id, 'minimized')
+              }}
             >
               <Minus />
             </IconButton>

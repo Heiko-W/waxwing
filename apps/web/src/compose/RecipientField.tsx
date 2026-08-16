@@ -173,6 +173,12 @@ export function RecipientField({
       case 'Escape':
         if (open) {
           event.preventDefault()
+          // The innermost dismissible layer CONSUMES Escape (APG). Without this the same event
+          // bubbles to the composer window, which minimizes unconditionally — so one Escape both
+          // dismissed the autocomplete and collapsed the window, in the middle of typing an address.
+          // The portalled Menu/Dialog overlays are immune because `useDismiss` stops the event in
+          // the capture phase; this listbox is a plain child and has to say so itself.
+          event.stopPropagation()
           setOpen(false)
         }
         break

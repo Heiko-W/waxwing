@@ -275,3 +275,36 @@ describe('ComposerWindow', () => {
     expect(await screen.findByText('No Sent folder — cannot send yet')).toBeInTheDocument()
   })
 })
+
+describe('focus survives a minimize (M4.7, WCAG 2.4.3)', () => {
+  it('moves focus to the chip when a window the user was IN collapses', async () => {
+    // Minimizing unmounts the whole subtree — the subject input, the body, the Minimize button
+    // itself — so before this focus fell back to <body> and the next Tab restarted at the top of the
+    // document, mid-draft. The existing Esc test asserts the MODE changed and never asked where
+    // focus went, which is how this survived.
+    openWindow('docked')
+    const user = userEvent.setup()
+    const subject = screen.getByLabelText('Subject')
+    await user.click(subject)
+    expect(subject).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+
+    const chip = await screen.findByRole('button', { name: /x|No subject/ })
+    expect(chip).toHaveFocus()
+  })
+
+  it('does NOT steal focus for a draft that mounts as a chip', async () => {
+    // The guard on the fix: a draft restored as a chip on page load must not pull focus away from
+    // whatever the user is doing. A focus fix that becomes its own focus bug is no fix.
+    const other = document.createElement('button')
+    document.body.append(other)
+    other.focus()
+
+    openWindow('minimized')
+    await screen.findByRole('button', { name: /No subject/ })
+
+    expect(other).toHaveFocus()
+    other.remove()
+  })
+})
