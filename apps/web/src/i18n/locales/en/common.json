@@ -640,7 +640,8 @@
       "junk": "Moved to Junk",
       "trash": "Moved to Trash",
       "folder": "Moved to {{folder}}"
-    }
+    },
+    "emptyOutsideWindow": "No messages from the last {{count}} days. Older mail is on the server — widen the offline window in Settings to see it here."
   },
   "reading": {
     "from": "From",

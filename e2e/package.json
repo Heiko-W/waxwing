@@ -18,7 +18,8 @@
     "server:down": "node stalwart/fixture.mjs down",
     "server:provision": "node stalwart/fixture.mjs provision",
     "server:smoke": "node stalwart/fixture.mjs smoke",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e:large": "playwright test -c playwright.large.config.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

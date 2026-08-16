@@ -14,6 +14,7 @@ import type { Id } from '@waxwing/jmap'
 import { Archive, Ban, FolderInput, Mail, MailOpen, Star, Trash2 } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useConfig } from '../app/config-context'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { useDraftOpener } from '../compose'
 import {
@@ -22,6 +23,7 @@ import {
   setPref,
   useEmailWindow,
   useLocalPref,
+  useMailbox,
   useMailboxByRole,
   useMailboxes,
   useReplica,
@@ -91,6 +93,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   const route = useRoute()
   const navigate = useNavigate()
   const { db, accountId } = useReplica()
+  const config = useConfig()
   const gridId = useId()
   const rowDomId = useCallback((id: Id) => `${gridId}-r-${id}`, [gridId])
 
@@ -144,6 +147,23 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
 
   // The move source: a cross-folder search has none (moves are gated off), a folder view is itself.
   const sourceMailboxId = search ? (search.scopeMailboxId ?? null) : (mailboxId ?? null)
+
+  // What an EMPTY list means, which is not always "this folder is empty".
+  //
+  // The replica holds a recent window — `backfill.ts` queries `inMailbox AND receivedAt >= now −
+  // offline.cacheDays` — so a folder full of older mail produces an empty window and used to render
+  // "No messages in this folder." while the sidebar beside it showed the folder's real unread count.
+  // Two parts of the same screen contradicting each other, with no way for the user to tell which
+  // was lying or why. Found by the 100 k perf fixture (M4.8), where the whole corpus sat outside the
+  // window and the app reported an empty folder against a server answering 100 000.
+  const openMailbox = useMailbox(sourceMailboxId ?? '')
+  const outsideWindow =
+    !search && openMailbox !== undefined && openMailbox.totalEmails > 0 && ids.length === 0
+  const emptyMessage = search
+    ? t('search.results.empty')
+    : outsideWindow
+      ? t('list.emptyOutsideWindow', { count: config.offline.cacheDays })
+      : t('list.empty')
 
   // Publish the window. A new key (mailbox/sort/search changed) resets focus + selection in the store.
   useEffect(() => {
@@ -564,7 +584,7 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       {retracted && <p className={styles.empty}>{t('list.stale')}</p>}
 
       {ids.length === 0 && !resolving ? (
-        <p className={styles.empty}>{search ? t('search.results.empty') : t('list.empty')}</p>
+        <p className={styles.empty}>{emptyMessage}</p>
       ) : (
         <div
           ref={scrollRef}

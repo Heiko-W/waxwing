@@ -41,7 +41,8 @@
     "verify:e2e": "node scripts/verify-e2e.mjs",
     "verify:all": "pnpm verify && pnpm verify:e2e",
     "gate": "node scripts/ci.mjs",
-    "gate:fast": "node scripts/ci.mjs --fast"
+    "gate:fast": "node scripts/ci.mjs --fast",
+    "e2e:large": "pnpm --filter @waxwing/e2e run e2e:large"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",

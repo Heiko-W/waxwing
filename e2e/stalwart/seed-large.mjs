@@ -22,6 +22,22 @@ export const LARGE_MAILBOX_NAME = 'Large'
 /** Conservative chunk under Stalwart's maxObjectsInSet (500, per SP.5). */
 const CHUNK = 500
 
+/**
+ * Spacing between consecutive messages, and the reason this seeder is not free to choose it.
+ *
+ * The app syncs a RECENT WINDOW, not a whole mailbox: `backfill.ts` queries
+ * `inMailbox AND receivedAt >= now − offline.cacheDays` (default 30 days). A corpus spread wider
+ * than that window is invisible to the client no matter how large it is.
+ *
+ * This bit, measured: at the original one-minute spacing, 100 000 messages spanned 69 days from a
+ * HARDCODED base of 2026-07-01 — so every single one fell outside the window, `Email/query` returned
+ * `total: 0`, and the perf suite reported an empty folder while the server happily answered 100 000
+ * to the same question. Test data with a pinned timestamp has an expiry date.
+ *
+ * 20 s × 100 000 = 23 days, comfortably inside a 30-day window with room for a slower default.
+ */
+const SPACING_MS = 20_000
+
 const alice = () => `alice@${DOMAIN}`
 const authHeader = () => `Basic ${Buffer.from(`${alice()}:${PASSWORD}`).toString('base64')}`
 
@@ -85,13 +101,16 @@ async function destroyExisting(accountId, mailboxId) {
   }
 }
 
-/** One deterministic email creation object. Newest-first: receivedAt decreases by a minute per index. */
+/**
+ * One deterministic email creation object. Newest-first: `receivedAt` decreases by
+ * {@link SPACING_MS} per index.
+ */
 function creation(mailboxId, index, baseMs) {
   const sender = ['bob', 'carol', 'dave'][index % 3]
   const keywords = { [LARGE_KEYWORD]: true }
   if (index % 3 === 0) keywords.$seen = true
   if (index % 11 === 0) keywords.$flagged = true
-  const receivedAt = `${new Date(baseMs - index * 60_000).toISOString().slice(0, 19)}Z`
+  const receivedAt = `${new Date(baseMs - index * SPACING_MS).toISOString().slice(0, 19)}Z`
   return {
     mailboxIds: { [mailboxId]: true },
     keywords,
@@ -114,8 +133,10 @@ export async function seedLargeMailbox(count = 100_000) {
   const mailboxId = await findOrCreateMailbox(accountId, LARGE_MAILBOX_NAME)
   const removed = await destroyExisting(accountId, mailboxId)
 
-  // A fixed base timestamp keeps receivedAt deterministic across reseeds.
-  const baseMs = Date.parse('2026-07-01T00:00:00Z')
+  // Midnight TODAY, not a pinned date: deterministic across reseeds within a day (so the corpus is
+  // stable while a suite runs) without going stale the way a hardcoded timestamp does — see
+  // SPACING_MS for what that cost the first time.
+  const baseMs = new Date(new Date().toISOString().slice(0, 10)).getTime()
   let created = 0
   for (let start = 0; start < count; start += CHUNK) {
     const create = {}

@@ -1956,4 +1956,49 @@ describe('MessageList', () => {
       })
     })
   })
+
+  /**
+   * An empty WINDOW is not an empty folder (M4.8).
+   *
+   * The replica holds `inMailbox AND receivedAt >= now − offline.cacheDays`, so a folder whose mail
+   * is all older than that syncs to an empty window. The list said "No messages in this folder."
+   * while the sidebar beside it showed the folder's real unread count — two parts of one screen
+   * contradicting each other with no way to tell which was wrong. Found against the 100 k perf
+   * fixture, where the whole corpus sat outside the window and the app reported an empty folder
+   * against a server answering 100 000 to the same query.
+   */
+  describe('the empty state distinguishes empty from out-of-window', () => {
+    async function renderEmpty(totalEmails: number) {
+      await putMailboxes(db, 'a', [mailbox('empty', { name: 'Empty', totalEmails })])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: folderKey('empty'),
+        ids: [],
+        queryState: 'q',
+        total: 0,
+        upToId: null,
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 1,
+      })
+      renderList('empty')
+    }
+
+    it('says the folder is empty when it really is', async () => {
+      await renderEmpty(0)
+      expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
+    })
+
+    it('explains the offline window when the folder has mail the window excludes', async () => {
+      await renderEmpty(100_000)
+
+      const note = await screen.findByText(/No messages from the last 30 days/)
+      expect(note).toBeInTheDocument()
+      // The old text would have been a flat contradiction of the sidebar's count.
+      expect(screen.queryByText('No messages in this folder.')).toBeNull()
+      // …and it names the setting that changes it, rather than leaving a dead end.
+      expect(note).toHaveTextContent(/Settings/)
+    })
+  })
 })

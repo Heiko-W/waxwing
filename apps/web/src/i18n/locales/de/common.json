@@ -640,7 +640,8 @@
       "junk": "In den Spam-Ordner verschoben",
       "trash": "In den Papierkorb verschoben",
       "folder": "Nach „{{folder}}“ verschoben"
-    }
+    },
+    "emptyOutsideWindow": "Keine Nachrichten aus den letzten {{count}} Tagen. Ältere Nachrichten liegen auf dem Server — erweitere den Offline-Zeitraum in den Einstellungen, um sie hier zu sehen."
   },
   "reading": {
     "from": "Von",
