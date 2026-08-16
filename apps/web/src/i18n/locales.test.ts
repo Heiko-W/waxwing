@@ -20,7 +20,10 @@ type Tree = { [key: string]: string | Tree }
  * makes for the manifest, and the one that works in the jsdom project (vitest resolves the import to
  * the very file the app bundles, while `node:fs` has no usable cwd there).
  */
-const BUNDLES: Record<string, Tree> = { en: en as Tree, de: de as Tree }
+const BUNDLES: Record<string, Tree> = {
+  en: en as unknown as Tree,
+  de: de as unknown as Tree,
+}
 
 function load(language: string): Tree {
   const tree = BUNDLES[language]
