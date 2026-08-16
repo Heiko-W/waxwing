@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 import { jmapAs } from '../stalwart/seed-write.mjs'
+import { setUndoGrace } from './helpers'
 
 /**
  * M3.10 offline suite (FR-OFF-01/03/04, and the G2 gap-B1/B2 payoffs) — the live counterpart the
@@ -228,6 +229,14 @@ test.describe('M3.10 offline', () => {
     // durable chip, which is the only one that survives a reload.
     const token = `wread-offline-${Date.now()}`
     const bob = jmapAs('bob@waxwing.test')
+
+    // PIN the undo grace instead of inheriting the deployment default. What this test asserts is
+    // that a queued send LEAVES on reconnect; how long the app waits before dispatching is a
+    // different question, answered by the "called back" test below (which deliberately waits the
+    // full grace out). Inheriting it made this test's 30 s reconnect budget a function of
+    // `public/config.json` — and it duly broke when that file was corrected from 10 s to the 15 s
+    // the spec and `DEFAULT_CONFIG` both state.
+    await setUndoGrace(page, 1)
 
     await login(page)
 
