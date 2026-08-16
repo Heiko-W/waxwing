@@ -58,15 +58,9 @@ describe('locale files', () => {
     expect(baseKeys.size).toBeGreaterThan(500)
   })
 
-  it.each(others)('%s declares exactly the keys en does — no gaps, no strays', (language) => {
-    const theirs = locales.get(language) ?? new Map<string, string>()
-    const missing = [...baseKeys.keys()].filter((key) => !theirs.has(key))
-    const extra = [...theirs.keys()].filter((key) => !baseKeys.has(key))
-    // Both directions: a key only in `de` is as broken as one only in `en` — it is either a typo
-    // (so the real key falls back to English) or a leftover from a renamed string.
-    expect(missing, `missing from ${language}`).toEqual([])
-    expect(extra, `present in ${language} only`).toEqual([])
-  })
+  // Key-set parity itself lives in `app/guards.test.ts` ("en and de expose the identical key set")
+  // and is deliberately not repeated here. What follows are the classes that a key-set comparison
+  // cannot see: a key can be present in both locales and still render wrongly.
 
   it.each(others)('%s never invents a placeholder en does not have', (language) => {
     const theirs = locales.get(language) ?? new Map<string, string>()

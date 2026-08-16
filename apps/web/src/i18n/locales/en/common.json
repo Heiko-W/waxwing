@@ -1113,7 +1113,8 @@
         "palette": "Command palette",
         "help": "Keyboard shortcuts"
       }
-    }
+    },
+    "modKey": "Ctrl"
   },
   "palette": {
     "title": "Command palette",

@@ -98,11 +98,17 @@ export function isApplePlatform(): boolean {
   return /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
 }
 
-/** A chord as display tokens, one `<kbd>` chip each: `['⌘', 'K']` / `['Ctrl', 'K']` / `['#']`. */
-export function formatChord(chord: string, apple: boolean): string[] {
+/**
+ * A chord as display tokens, one `<kbd>` chip each: `['⌘', 'K']` / `['Strg', 'K']` / `['#']`.
+ *
+ * `ctrlLabel` is passed in because the non-Apple modifier is the one key cap on this keyboard whose
+ * NAME is localised: a German keyboard is labelled **Strg**, and a cheat sheet that says "Ctrl" sends
+ * the reader looking for a key that is not there. ⌘ is a glyph and needs no translation.
+ */
+export function formatChord(chord: string, apple: boolean, ctrlLabel = 'Ctrl'): string[] {
   const { mod, key } = parseChord(chord)
   const parts: string[] = []
-  if (mod) parts.push(apple ? '⌘' : 'Ctrl')
+  if (mod) parts.push(apple ? '⌘' : ctrlLabel)
   parts.push(key.length === 1 ? key.toUpperCase() : key)
   return parts
 }

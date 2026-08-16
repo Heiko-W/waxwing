@@ -16,11 +16,11 @@
     },
     "accounts": {
       "shared": "Geteilt",
-      "readOnly": "Nur Lesen"
+      "readOnly": "Schreibgeschützt"
     },
     "list": {
       "title": "Nachrichten",
-      "empty": "Nachrichten erscheinen hier, sobald die Synchronisation folgt.",
+      "empty": "Sobald synchronisiert wurde, erscheinen hier Ihre Nachrichten.",
       "resize": "Nachrichtenliste anpassen"
     },
     "reading": {
@@ -31,7 +31,7 @@
     "notFound": {
       "title": "Seite nicht gefunden",
       "body": "Diese Seite existiert nicht.",
-      "home": "Zu E-Mail wechseln"
+      "home": "Zu den E-Mails"
     }
   },
   "onboarding": {
@@ -39,7 +39,7 @@
     "connect": {
       "title": "Mit Ihrem Postfach verbinden",
       "label": "E-Mail-Adresse oder Server",
-      "placeholder": "sie@example.com",
+      "placeholder": "name@example.com",
       "hint": "Geben Sie Ihre E-Mail-Adresse ein — {{product}} findet Ihren Server automatisch.",
       "submit": "Weiter",
       "discovering": "Server wird gesucht…"
@@ -85,7 +85,7 @@
     "signOutRemove": "Abmelden und Daten entfernen",
     "confirmRemove": {
       "title": "Alle lokalen Daten entfernen?",
-      "body": "Dies löscht die lokal gespeicherten E-Mails und Einstellungen von {{product}} auf diesem Gerät. E-Mails auf dem Server sind nicht betroffen.",
+      "body": "Damit werden die von {{product}} lokal gespeicherten E-Mails und Einstellungen auf diesem Gerät gelöscht.",
       "confirm": "Daten entfernen und abmelden",
       "cancel": "Abbrechen"
     }
@@ -94,10 +94,10 @@
     "offline": "Offline",
     "online": "Wieder online",
     "sync": {
-      "idle": "Aktuell",
-      "syncing": "Wird synchronisiert…",
+      "idle": "Auf dem neuesten Stand",
+      "syncing": "Synchronisiert…",
       "offline": "Offline",
-      "error": "Synchronisationsproblem"
+      "error": "Sync-Problem"
     },
     "outbox": {
       "stuck_one": "Server nicht erreichbar — es wird weiter versucht ({{count}})",
@@ -129,13 +129,13 @@
         "teal": "Türkis",
         "green": "Grün",
         "amber": "Bernstein",
-        "rose": "Rosé",
+        "rose": "Rosa",
         "purple": "Violett"
       }
     },
     "offline": {
       "title": "Offline & Speicher",
-      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sofort öffnen und offline verfügbar sind.",
+      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sich sofort öffnen lassen und offline verfügbar sind.",
       "meter": {
         "label": "Belegter Speicher"
       },
@@ -145,7 +145,7 @@
         "messages": "Nachrichtenindex (geschätzt)",
         "bodies": "Nachrichtentexte",
         "attachments": "Anhänge",
-        "other": "Sonstiges (App & Offline-Hülle)"
+        "other": "Sonstiges (App und Offline-Grundgerüst)"
       },
       "persist": {
         "label": "Daten auf diesem Gerät behalten",
@@ -155,7 +155,7 @@
       },
       "freeUp": "Jetzt Speicher freigeben",
       "freedToast": "{{size}} freigegeben",
-      "nothingToFree": "Nichts freizugeben",
+      "nothingToFree": "Es gibt nichts freizugeben.",
       "window_one": "E-Mails vom letzten Tag werden offline behalten.",
       "window_other": "E-Mails der letzten {{count}} Tage werden offline behalten.",
       "pinned_one": "{{count}} Ordner wird offline behalten",
@@ -168,7 +168,7 @@
       "title": "Lesen",
       "remote": {
         "label": "Externe Bilder automatisch laden",
-        "hint": "Externe Bilder verraten dem Absender, dass Sie die Nachricht geöffnet haben, und geben Ihre IP-Adresse preis. Aus ist die sichere Wahl."
+        "hint": "Ausgeschaltet ist die sichere Wahl."
       },
       "allowList_one": "Für {{count}} Absender werden externe Inhalte immer geladen.",
       "allowList_other": "Für {{count}} Absender werden externe Inhalte immer geladen.",
@@ -267,14 +267,14 @@
       "capabilities": {
         "title": "Optionale Funktionen"
       },
-      "available": "Vorhanden",
-      "absent": "Nicht vorhanden",
+      "available": "Unterstützt",
+      "absent": "Nicht unterstützt",
       "unlimited": "Unbegrenzt",
       "yes": "Ja",
       "no": "Nein",
       "none": "Keine",
-      "coreMissing": "Dieser Server nennt kein Standard-Funktionsobjekt. Das ist ungewöhnlich — einzelne Funktionen könnten nicht arbeiten.",
-      "mailMissing": "Dieses Konto nennt keine E-Mail-Funktion, daher lassen sich keine Grenzwerte anzeigen.",
+      "coreMissing": "Dieser Server gibt kein Standard-Capability-Objekt an. Das ist ungewöhnlich — einzelne Funktionen funktionieren möglicherweise nicht.",
+      "mailMissing": "Dieses Konto gibt keine E-Mail-Funktion an.",
       "extra": {
         "title": "Weitere Funktionen, die dieser Server nennt"
       },
@@ -397,7 +397,7 @@
       "jobTitle": "Position",
       "street": "Straße",
       "city": "Stadt",
-      "region": "Bundesland",
+      "region": "Bundesland / Region",
       "postcode": "Postleitzahl",
       "country": "Land",
       "type": "Typ",
@@ -578,7 +578,7 @@
       "nameTaken": "Ein Ordner mit diesem Namen existiert hier bereits."
     },
     "cancel": "Abbrechen",
-    "keptOffline": "Offline behalten",
+    "keptOffline": "Wird offline behalten",
     "move": {
       "title": "„{{name}}“ verschieben",
       "topLevel": "Oberste Ebene",
@@ -636,7 +636,7 @@
     "undo": "Rückgängig",
     "moved": {
       "archive": "Ins Archiv verschoben",
-      "junk": "In Spam verschoben",
+      "junk": "In den Spam-Ordner verschoben",
       "trash": "In den Papierkorb verschoben",
       "folder": "Nach „{{folder}}“ verschoben"
     }
@@ -776,13 +776,13 @@
     "forwardLabelSubject": "Betreff",
     "forwardLabelDate": "Datum",
     "bccLabel": "Blindkopie",
-    "showCcField": "Cc-Feld anzeigen",
-    "showBccField": "Bcc-Feld anzeigen",
+    "showCcField": "Feld „Kopie“ anzeigen",
+    "showBccField": "Feld „Blindkopie“ anzeigen",
     "recipientRemove": "{{address}} entfernen",
     "recipientInvalid": "Ungültige E-Mail-Adresse",
     "recipientDidYouMean": "Meinten Sie {{suggestion}}?",
     "recipientDidYouMeanApply": "{{suggestion}} verwenden",
-    "recipientMoveTo": "Verschieben nach {{field}}",
+    "recipientMoveTo": "In das Feld „{{field}}“ verschieben",
     "recipientMoveMenu": "Empfängeroptionen",
     "discard": "Entwurf verwerfen",
     "attach": "Datei anhängen",
@@ -805,7 +805,7 @@
     "sendCanceled": "Senden abgebrochen",
     "sendNoIdentity": "Bitte zuerst eine Absenderadresse wählen",
     "sendNoRecipients": "Mindestens einen Empfänger hinzufügen",
-    "sendNoSentMailbox": "Kein „Gesendet\"-Ordner — Senden noch nicht möglich",
+    "sendNoSentMailbox": "Kein „Gesendet“-Ordner — Senden noch nicht möglich",
     "sendUnavailable": "Noch nicht sendebereit — bitte gleich erneut versuchen",
     "sendWaitUploads": "Warten, bis die Uploads abgeschlossen sind",
     "sendTooLarge": "Anhänge sind zu groß zum Senden",
@@ -829,13 +829,13 @@
     "scope": {
       "label": "Suchen in",
       "folder": "Dieser Ordner",
-      "all": "Alle Postfächer"
+      "all": "Alle Ordner"
     },
     "chip": {
       "remove": "Filter {{filter}} entfernen",
       "from": "Von: {{value}}",
       "to": "An: {{value}}",
-      "cc": "Cc: {{value}}",
+      "cc": "Kopie: {{value}}",
       "subject": "Betreff: {{value}}",
       "body": "Text: {{value}}",
       "hasAttachment": "Mit Anhang",
@@ -847,7 +847,7 @@
       "after": "Nach {{value}}",
       "text": "Enthält: {{value}}"
     },
-    "hint": "Versuche from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
     "results": {
       "empty": "Keine Nachrichten entsprechen Ihrer Suche.",
       "count_one": "{{count}} Treffer",
@@ -900,7 +900,7 @@
       "yellow": "Gelb",
       "green": "Grün",
       "blue": "Blau",
-      "purple": "Lila",
+      "purple": "Violett",
       "gray": "Grau"
     },
     "error": {
@@ -913,7 +913,7 @@
     "cancel": "Abbrechen",
     "menu": {
       "emptyTrash": "Papierkorb leeren",
-      "emptyJunk": "Spam leeren",
+      "emptyJunk": "Spam-Ordner leeren",
       "deleteOlder": "Älter als … löschen"
     },
     "empty": {
@@ -938,7 +938,7 @@
     },
     "failed": {
       "title": "„{{name}}“ konnte nicht aufgeräumt werden",
-      "body": "Die Aktion ist nicht durchgegangen. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+      "body": "Die Aktion konnte nicht ausgeführt werden. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
     }
   },
   "outbox": {
@@ -965,7 +965,7 @@
       "quota": "Speicherkontingent überschritten.",
       "tooLarge": "Zu groß für den Server.",
       "invalid": "Der Server hat die Änderung abgelehnt.",
-      "stateConflict": "Jemand hat das gleichzeitig geändert.",
+      "stateConflict": "Jemand anderes hat das gleichzeitig geändert.",
       "serverRejected": "Der Server hat die Änderung abgelehnt."
     },
     "send": {
@@ -1008,7 +1008,7 @@
     }
   },
   "notify": {
-    "title": "Mitteilungen",
+    "title": "Benachrichtigungen",
     "description": "{{product}} benachrichtigt Sie über neue E-Mails, solange es läuft — auch in einem Hintergrund-Tab oder -Fenster.",
     "enable": {
       "label": "Über neue E-Mails benachrichtigen"
@@ -1040,8 +1040,8 @@
     "background": {
       "unavailable": "Mitteilungen bei vollständig geschlossenem {{product}} sind mit diesem Server nicht möglich. Sie setzen voraus, dass der Server einen Web-Push-Signaturschlüssel veröffentlicht (RFC 9749); dieser tut es nicht. Alles Obige funktioniert, solange {{product}} geöffnet ist.",
       "available": "Dieser Server kann Sie auch benachrichtigen, während {{product}} geschlossen ist.",
-      "contentless": "Diese Mitteilungen nennen nur, dass Post eingegangen ist – nie Absender oder Betreff –, und die Ordnerauswahl oben gilt für sie nicht.",
-      "renewal": "Öffnen Sie {{product}} mindestens einmal pro Woche, damit sie weiterlaufen: Dieser Server verlängert die Hintergrund-Anmeldung jeweils um sieben Tage, und nur {{product}} selbst kann sie erneuern."
+      "contentless": "Diese Mitteilungen melden nur, dass Post eingegangen ist – nie Absender oder Betreff –, und der Server erfährt nichts über den Inhalt.",
+      "renewal": "Dieser Server verlängert das Hintergrund-Abonnement jeweils um sieben Tage, solange {{product}} gelegentlich geöffnet wird."
     },
     "message": {
       "noSubject": "(kein Betreff)",
@@ -1054,7 +1054,7 @@
     }
   },
   "quota": {
-    "label": "Speicherkontingent",
+    "label": "Postfach-Speicher",
     "used": "{{used}} von {{total}}",
     "nearlyFull": "{{used}} von {{total}} — fast voll",
     "full": "Postfach voll",
@@ -1074,14 +1074,14 @@
     },
     "groups": {
       "navigation": "Navigation",
-      "triage": "Bearbeiten",
+      "triage": "Sortieren",
       "compose": "Verfassen",
       "application": "Anwendung"
     },
     "scopes": {
       "global": "Überall",
       "list": "Nachrichtenliste",
-      "reading": "Leseansicht"
+      "reading": "Lesebereich"
     },
     "actions": {
       "nav": {
@@ -1113,7 +1113,8 @@
         "palette": "Befehlspalette",
         "help": "Tastaturkürzel"
       }
-    }
+    },
+    "modKey": "Strg"
   },
   "palette": {
     "title": "Befehlspalette",

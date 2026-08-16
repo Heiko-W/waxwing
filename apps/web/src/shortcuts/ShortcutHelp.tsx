@@ -69,7 +69,7 @@ export default function ShortcutHelp({
                             {chordIndex > 0 && (
                               <span className={styles.chordOr}>{t('shortcuts.or')}</span>
                             )}
-                            {formatChord(chord, apple).map((part) => (
+                            {formatChord(chord, apple, t('shortcuts.modKey')).map((part) => (
                               <kbd key={part} className={styles.kbd}>
                                 {part}
                               </kbd>
