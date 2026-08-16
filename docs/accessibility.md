@@ -128,3 +128,11 @@ Recorded because "we fixed some a11y issues" is not a claim anyone can check.
   the sign-in screen had no `<main>`.
 - The reading-pane action bar declared `role="toolbar"` with none of the keyboard model.
 - The folder and label sidebars rendered nothing at all while loading.
+
+**M4.8 (2026-08-16)** — found while measuring, fixed here:
+
+- `u` (close the open message) navigated without moving focus, so the reading pane unmounted
+  out from under the focused element and focus fell to `<body>` (WCAG 2.4.3). The next Tab
+  restarted at the top of the document and a screen reader lost its place. It went unnoticed
+  because the chords keep working from `<body>` — the dispatcher is document-level — so
+  everything a sighted keyboard user tries still does something.

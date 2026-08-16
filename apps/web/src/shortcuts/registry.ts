@@ -246,7 +246,18 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     scopes: ['reading'],
     group: 'navigation',
     enabled: (context) => context.openEmailId !== undefined,
-    run: (context) => context.navigate(mailHref(context, context.route.params.mailboxId)),
+    run: (context) => {
+      context.navigate(mailHref(context, context.route.params.mailboxId))
+      // …and take FOCUS with it (WCAG 2.4.3). Navigating alone unmounts the reading pane out from
+      // under the focused element, so focus falls to <body>: the next Tab restarts at the top of the
+      // document and a screen reader loses its place. It went unnoticed because the chords keep
+      // working from <body> — the dispatcher is document-level — so everything a sighted keyboard
+      // user tries still does something.
+      //
+      // After the navigation, not before: the grid is the element being returned TO, and the list
+      // re-renders as the route changes.
+      queueMicrotask(() => context.list.grid?.focus())
+    },
   },
   {
     id: 'list.select',

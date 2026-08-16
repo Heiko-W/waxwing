@@ -5,10 +5,33 @@
  * is entirely CSS; the one structural JS decision (SplitPane vs. single pane) lives in the TSX.
  */
 
+/*
+ * A FIXED height, not a minimum (B42).
+ *
+ * `min-block-size: 100vh` is a floor: it guarantees the shell fills the viewport and says nothing
+ * about growing past it. Everything below is `flex: 1; min-block-size: 0`, which correctly hands the
+ * available height down — but there was no available height to hand down, because nothing up here
+ * capped it. So the message list's scroll container simply grew to fit its content: measured, 3800
+ * px tall for 50 rows in a 720 px viewport, with the whole PAGE scrolling instead of the list.
+ *
+ * That is worse than untidy, because the virtualizer sizes its window from that container's
+ * `clientHeight`. A container that reports 3800 px is told the viewport shows 50 rows, so it renders
+ * 50 — which makes the container taller, which shows more rows. Scroll fast in a 100 k folder and
+ * the feedback runs away: 50 → 600 → 3350 rendered rows and still climbing (B42).
+ *
+ * `100dvh` so a mobile browser's collapsing toolbar does not leave a gap, with `100vh` ahead of it
+ * as the fallback for engines that do not know `dvh`. `overflow: hidden` because the shell's panes
+ * scroll internally and the page itself never should — that is the whole layout.
+ */
 .app {
   display: flex;
   flex-direction: column;
-  min-block-size: 100vh;
+  block-size: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: deliberate progressive fallback — an engine
+     without `dvh` keeps the `vh` line above, one with it takes this. Not a mistake; the pair IS the
+     feature detection. */
+  block-size: 100dvh;
+  overflow: hidden;
 }
 
 /* Skip link: off-screen until focused (WCAG 2.4.1). */

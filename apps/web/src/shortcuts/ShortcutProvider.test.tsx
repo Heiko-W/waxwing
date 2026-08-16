@@ -667,6 +667,21 @@ describe('ShortcutProvider — reading scope', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  // WCAG 2.4.3 (Focus Order). `u` navigates and nothing moves focus, so the reading pane unmounts
+  // out from under it and focus falls to <body> — the next Tab starts from the top of the document
+  // and a screen reader loses its place entirely. The chords keep working (the dispatcher is
+  // document-level), which is exactly why this went unnoticed: everything a sighted keyboard user
+  // tries still does something.
+  it('u returns FOCUS to the list, not just the route', async () => {
+    await mounted()
+    openReading()
+
+    press('u')
+
+    await waitFor(() => expect(window.location.pathname).toBe('/mail/inbox'))
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('grid')))
+  })
+
   it('v opens the move dialog, l the label picker', async () => {
     await mounted()
     const spies = openReading()
