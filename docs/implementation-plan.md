@@ -2179,8 +2179,22 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
       which is exactly why this has to be written down somewhere the reader can find it. §13
       row B19 lists the twelve open bypasses; the document states the shape of the limit, not
       the list, which would age into a false floor the day one is closed.
-- [ ] Compat smoke: Cyrus IMAP (JMAP) E2E smoke job to keep "any JMAP server" honest
-      (NFR-QUAL-02); document known deviations.
+- [ ] Compat smoke: Cyrus IMAP (JMAP) E2E smoke job (NFR-QUAL-02, a *Should*).
+      **BLOCKED, and the blocker is worth recording rather than retrying: there is no Cyrus
+      container image to test against.** Probed 2026-08-16 — `cyrusimap/cyrus-imapd` (any tag),
+      `cyrusimapd/cyrus-imapd` and `ghcr.io/cyrusimap/cyrus-imapd` all 404. The project
+      publishes none. A smoke job therefore means building Cyrus from source with JMAP and
+      Xapian enabled and writing its configuration — a work package of its own, not a job
+      that rides along with this one, and one whose payoff is uncertain: Cyrus's JMAP is
+      partial in ways this repo has already measured (M3.6 found it has no `PushSubscription`
+      at all).
+      **What can be done without a second server, and is worth more per hour:** an audit of
+      where the client assumes Stalwart rather than reading `Session.capabilities`. A first
+      sweep found no such assumption in behaviour — every `stalwart` mention in the shipped
+      source is a COMMENT explaining observed server behaviour, not a branch on it — with two
+      spots that deserve a closer look when this is picked up: `auth/oauth.ts`'s default public
+      client id (Stalwart needs no pre-registration; another AS will) and the 7-day push TTL
+      assumption in `notify/push-subscribe.ts`.
 - [x] `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/{bug,feature}.yml`, and
       `docs/configuration.md` — the `config.json` reference, key by key, checked against the
       code rather than against spec §9 alone. That check found two things: the shipped
