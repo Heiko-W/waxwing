@@ -1970,12 +1970,16 @@ Spec: FR-AUTH-08. Size: M.
       `maySetSeen` — the only write nobody asks for, so silence is the right refusal; and
       "Empty Trash/Junk", the most destructive action in the app, which now gates on
       `mayRemoveItems` like its sibling entry always did. i18n keys in en + de.
-      **Still open: the surfaces that must EXPLAIN.** The reading-pane and bulk action bars, the
-      label menu, the swipe/drag affordances and the shortcut layer neither gate nor explain a
-      refusal — and explaining is the point, because a merely silent refusal is the same failure
-      wearing new clothes. The keyboard needs its own answer (a chord that does nothing is
-      defect B3 again), and the Undo in `useTriage` should only be offered when the INVERSE move
-      is permitted.
+      **The surfaces now refuse in the register each one can afford:** the reading-pane and bulk
+      action bars and the label menu EXPLAIN (`aria-disabled` + an accessible description, and the
+      control stays focusable); the swipe and the row drag go INERT, because there is nowhere under
+      a finger to put a sentence and the bulk bar's Move button is the pointer alternative that does
+      explain (SC 2.5.7); and the chords `u`/`s`/`e`/`!`/`#`-in-Trash gate on the same verdicts and
+      SAY so — a keystroke that silently does nothing is defect B3 again. `l` stays ungated on
+      purpose: it opens a picker, exactly like `v`, and the picker explains itself.
+      **Still open:** the Undo in `useTriage` is offered even when the INVERSE move is not
+      permitted (rights that allow a move do not imply the way back), and `MoveDialog`'s target
+      list still filters silently rather than saying when nothing is left.
 - [ ] Surface a shared account's sync status, queue and dead letters (**B32**) — today a
       failed write on a shared account is invisible.
 - [ ] Identity handling when sending from a shared account (send-as): `FromField` lists only

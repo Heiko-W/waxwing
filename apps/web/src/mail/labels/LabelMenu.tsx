@@ -19,6 +19,7 @@ import { type EmailRow, emailsByIds, useReplicaQuery } from '../../sync'
 import { useAccountEngine } from '../../sync/engine'
 import { Portal } from '../../ui'
 import { useMessageActions } from '../use-message-actions'
+import { useMessageRightsFor } from '../use-message-rights'
 import { LabelFormDialog } from './LabelFormDialog'
 import { LabelSwatch } from './LabelSwatch'
 import styles from './labels.module.css'
@@ -44,6 +45,9 @@ function membership(known: EmailRow[], total: number, keyword: string): CheckSta
   return count === total ? true : 'mixed'
 }
 
+/** The refusal note's id, so every inert item can point its description at the one visible line. */
+const NOTICE_ID = 'waxwing-label-menu-notice'
+
 export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
   const { t } = useTranslation()
   const engine = useAccountEngine()
@@ -64,6 +68,11 @@ export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
     useReplicaQuery(({ db, accountId }) => emailsByIds(db, accountId, ids), [idsKey]) ?? []
   ).filter((row): row is EmailRow => row !== undefined)
   const labels = useLabels()
+  // B34, over the rows this menu already reads. A label IS a keyword, so the whole picker is inert
+  // when the acting account denies `maySetKeywords` — and one visible line saying so beats seven
+  // rows that look pressable and are not.
+  const rights = useMessageRightsFor(known, ids.length)
+  const keywordsDenied = rights.reason('keywords')
   const actions = useMessageActions()
   const labelActions = useLabelActions()
   const menuRef = useRef<HTMLDivElement>(null)
@@ -120,6 +129,7 @@ export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
   }, [createOpen, anchorRef, onClose])
 
   function toggle(label: LabelSummary): void {
+    if (keywordsDenied !== null) return
     const state = membership(known, ids.length, label.keyword)
     actions.setKeyword(ids, label.keyword, state !== true)
   }
@@ -195,6 +205,11 @@ export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
         style={{ position: 'fixed', top: coords.top, left: coords.left }}
         onKeyDown={onKeyDown}
       >
+        {keywordsDenied !== null && (
+          <p className={styles.notice} id={NOTICE_ID}>
+            {t(keywordsDenied)}
+          </p>
+        )}
         {list.map((label, index) => {
           const state = membership(known, ids.length, label.keyword)
           return (
@@ -206,6 +221,8 @@ export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
               type="button"
               role="menuitemcheckbox"
               aria-checked={state === 'mixed' ? 'mixed' : state}
+              aria-disabled={keywordsDenied !== null || undefined}
+              aria-describedby={keywordsDenied !== null ? NOTICE_ID : undefined}
               tabIndex={-1}
               className={styles.menuItem}
               onClick={() => toggle(label)}

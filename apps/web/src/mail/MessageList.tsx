@@ -36,10 +36,12 @@ import type { Density, RowLabel } from './MessageRow'
 import { MessageRow } from './MessageRow'
 import { MoveDialog } from './MoveDialog'
 import styles from './message-list.module.css'
+import { messageRights } from './rights'
 import { useSnippets } from './search/use-snippets'
 import { useSwipeLeft, useSwipeRight } from './swipe-prefs'
 import { useMessageActions } from './use-message-actions'
 import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
+import { useAccountIsReadOnly, useMessageRightsFor } from './use-message-rights'
 import { type ResolvedSwipe, useRowSwipe } from './use-swipe'
 import { useTriage } from './use-triage'
 
@@ -162,6 +164,16 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
   const rolesReady = mailboxes !== undefined
   const archiveId = mailboxes?.find((box) => box.role === 'archive')?.id
   const trashId = mailboxes?.find((box) => box.role === 'trash')?.id
+  const accountReadOnly = useAccountIsReadOnly()
+  /**
+   * The per-ROW rights verdict (B34), computed rather than subscribed: both inputs are already here,
+   * and a gesture has to decide synchronously for the row under the finger.
+   */
+  const rowRights = useCallback(
+    (row: EmailRow | undefined) =>
+      messageRights({ rows: [row], total: 1, mailboxes, accountReadOnly }),
+    [mailboxes, accountReadOnly],
+  )
   const swipeLeftAction = useSwipeLeft()
   const swipeRightAction = useSwipeRight()
 
@@ -201,9 +213,16 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       if (row === undefined) return null
       const action = direction === 'left' ? swipeLeftAction : swipeRightAction
       if (action === 'none') return null
+      // B34: a denied gesture goes INERT — no reveal, no colour, nothing promised before the finger
+      // lifts. That is the right refusal here precisely because there is nowhere under a thumb to
+      // put an explanation; the bulk bar and the reading pane carry it instead.
+      const rights = rowRights(row)
       // Toggle, not "mark read": the gesture stays useful on a row that is already read, and it is
       // the same rule `triage.flag` follows. Read from the row's state at THIS moment.
-      if (action === 'read') return { kind: 'read', seen: row.keywords.$seen !== true }
+      if (action === 'read') {
+        if (rights.reason('seen') !== null) return null
+        return { kind: 'read', seen: row.keywords.$seen !== true }
+      }
       // A move needs a source: with `from: null` the message keeps its other memberships (a copy,
       // not a move) and gets no Undo, so a cross-folder search result cannot be swiped away.
       if (!rolesReady || sourceMailboxId === null) return null
@@ -219,11 +238,21 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
       // only mailbox it is in), and the seam refuses it anyway; this keeps the gesture honest about
       // it instead of revealing a colour and doing nothing.
       if (target === undefined || target === sourceMailboxId) return null
+      if (rights.moveReason(sourceMailboxId, target) !== null) return null
       // The source travels WITH the decision — see {@link ResolvedRowSwipe}. Everything else the move
       // needs is re-derived at commit; this one value cannot be, because by then it may have changed.
       return { kind: action, from: sourceMailboxId }
     },
-    [rowById, swipeLeftAction, swipeRightAction, rolesReady, archiveId, trashId, sourceMailboxId],
+    [
+      rowById,
+      swipeLeftAction,
+      swipeRightAction,
+      rolesReady,
+      archiveId,
+      trashId,
+      sourceMailboxId,
+      rowRights,
+    ],
   )
 
   const commitSwipe = useCallback(
@@ -577,7 +606,15 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
                   // `role="row"` with nothing to move; and without a source mailbox `move` keeps the
                   // other memberships — a copy, not a move — which is the same gate `canMove` and the
                   // `v` chord already apply.
-                  draggable={rowById.get(id) !== undefined && sourceMailboxId !== null}
+                  draggable={
+                    rowById.get(id) !== undefined &&
+                    sourceMailboxId !== null &&
+                    // B34: same reasoning as the swipe — a drag that cannot be dropped promises
+                    // something it cannot keep, and there is no room on a dragged row to say why.
+                    // SC 2.5.7's pointer alternative is the bulk bar's Move button, which DOES
+                    // explain itself.
+                    rowRights(rowById.get(id)).removeReason(sourceMailboxId) === null
+                  }
                   onPointerDown={swipe.onPointerDown(id)}
                   onDragStart={(event) => {
                     // ADR-012 (amended): a long-press on `draggable="true"` really does start an
@@ -934,6 +971,12 @@ function BulkBar({
    * exactly the value the label was rendered from.
    */
   const selectedRows = useEmailWindow(ids)
+  // B34, over exactly those rows: no new subscription, and the verdict is per-selection rather than
+  // the account floor — a selection spanning a writable and a read-only folder refuses as a whole,
+  // because a partly-applied bulk action is precisely what nothing can report (B32).
+  const rights = useMessageRightsFor(selectedRows, ids.length)
+  /** A refusal key as the finished sentence a control announces; `undefined` = allowed. */
+  const reasonText = (key: string | null): string | undefined => (key === null ? undefined : t(key))
   const allWithKeyword = (keyword: '$seen' | '$flagged'): boolean =>
     // DEFENSIVE, and unreachable today — recorded rather than left to look like coverage. This bar
     // mounts only under `selection.selected.size > 0` and `ids` is that selection, so `ids` is never
@@ -1039,6 +1082,7 @@ function BulkBar({
       <IconButton
         label={allSeen ? t('list.actions.unread') : t('list.actions.read')}
         variant="ghost"
+        unavailableReason={reasonText(rights.reason('seen'))}
         onClick={() => triage.setSeen(ids, !allSeen)}
       >
         {allSeen ? <Mail /> : <MailOpen />}
@@ -1054,6 +1098,7 @@ function BulkBar({
       <IconButton
         label={allFlagged ? t('list.actions.unflag') : t('list.actions.flag')}
         variant="ghost"
+        unavailableReason={reasonText(rights.reason('keywords'))}
         onClick={() => triage.setFlagged(ids, !allFlagged)}
       >
         <Star className={allFlagged ? styles.flagOn : undefined} />
@@ -1063,6 +1108,7 @@ function BulkBar({
         <Button
           size="sm"
           variant="ghost"
+          unavailableReason={reasonText(rights.reason('keywords'))}
           onClick={() => {
             actions.setKeyword(ids, activeLabel, false)
             onClear()
@@ -1075,6 +1121,7 @@ function BulkBar({
         <IconButton
           label={t('list.actions.archive')}
           variant="ghost"
+          unavailableReason={reasonText(rights.moveReason(fromMailbox ?? null, archive?.id))}
           onClick={() => moveThenClear(triage.archive)}
         >
           <Archive />
@@ -1084,6 +1131,7 @@ function BulkBar({
         <IconButton
           label={t('list.actions.junk')}
           variant="ghost"
+          unavailableReason={reasonText(rights.moveReason(fromMailbox ?? null, junk?.id))}
           onClick={() => moveThenClear(triage.junk)}
         >
           <Ban />
@@ -1130,7 +1178,12 @@ function BulkBar({
         destructive button, which is the same gate `canMove` already applies to every move here.
       */}
       {inTrash ? (
-        <IconButton label={t('list.actions.delete')} variant="ghost" onClick={onRequestDelete}>
+        <IconButton
+          label={t('list.actions.delete')}
+          variant="ghost"
+          unavailableReason={reasonText(rights.reason('destroy'))}
+          onClick={onRequestDelete}
+        >
           <Trash2 />
         </IconButton>
       ) : (
@@ -1138,6 +1191,7 @@ function BulkBar({
           <IconButton
             label={t('list.actions.trash')}
             variant="ghost"
+            unavailableReason={reasonText(rights.moveReason(fromMailbox ?? null, trash?.id))}
             onClick={() => moveThenClear(triage.trash)}
           >
             <Trash2 />
@@ -1148,7 +1202,12 @@ function BulkBar({
           SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
           button are one path. Clearing the selection is the picker's job, not this button's. */}
       {canMove && (
-        <IconButton label={t('list.actions.move')} variant="ghost" onClick={onRequestMove}>
+        <IconButton
+          label={t('list.actions.move')}
+          variant="ghost"
+          unavailableReason={reasonText(rights.removeReason(fromMailbox ?? null))}
+          onClick={onRequestMove}
+        >
           <FolderInput />
         </IconButton>
       )}

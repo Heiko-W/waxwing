@@ -20,7 +20,7 @@ import {
   setPref,
 } from '../sync'
 import { setActiveEngine, windowQueryKey } from '../sync/engine'
-import { email, freshDb, mailbox } from '../sync/test-utils'
+import { email, FULL_RIGHTS, freshDb, mailbox } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { EMPTY_LIST_STATE, useListStore } from './list-store'
@@ -1859,6 +1859,101 @@ describe('MessageList', () => {
       expect(layers[0]?.closest('[aria-hidden="true"]')).not.toBeNull()
       expect(screen.getAllByRole('row')).toHaveLength(3)
       await expectNoA11yViolations(container)
+    })
+  })
+
+  describe('rights refuse OUT LOUD, and gestures refuse silently (B34)', () => {
+    /** Re-seed the inbox with a right denied, so the bar renders against a real mixed account. */
+    async function denyInInbox(right: 'maySetSeen' | 'maySetKeywords' | 'mayRemoveItems') {
+      await putMailboxes(db, 'a', [
+        mailbox('inbox', { role: 'inbox', myRights: { ...FULL_RIGHTS, [right]: false } }),
+        mailbox('archive', { role: 'archive' }),
+        mailbox('trash', { role: 'trash' }),
+      ])
+    }
+
+    async function selectFirst(user: UserEvent): Promise<void> {
+      await screen.findByText('First')
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      await screen.findByText('1 selected')
+    }
+
+    it('marks the read button unavailable, explains it, and dispatches nothing', async () => {
+      // aria-disabled, NOT disabled: the control has to stay focusable or the explanation is
+      // unreachable by exactly the user who needs it (FR-A11Y-01).
+      const user = userEvent.setup()
+      await denyInInbox('maySetSeen')
+      renderList()
+      await selectFirst(user)
+
+      const button = await screen.findByRole('button', { name: 'Mark as read' })
+      await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'true'))
+      expect(button).not.toBeDisabled()
+      expect(button).toHaveAccessibleDescription(en.rights.unavailable.seen)
+
+      dispatch.mockClear()
+      await user.click(button)
+      expect(dispatch).not.toHaveBeenCalled()
+    })
+
+    it('marks the flag button unavailable when keywords are denied', async () => {
+      const user = userEvent.setup()
+      await denyInInbox('maySetKeywords')
+      renderList()
+      await selectFirst(user)
+
+      const button = await screen.findByRole('button', { name: 'Flag' })
+      await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'true'))
+      expect(button).toHaveAccessibleDescription(en.rights.unavailable.keywords)
+    })
+
+    it('marks Archive unavailable when the SOURCE denies removal', async () => {
+      // The half every pre-existing check missed: rights were consulted for move TARGETS only.
+      const user = userEvent.setup()
+      await denyInInbox('mayRemoveItems')
+      renderList()
+      await selectFirst(user)
+
+      const button = await screen.findByRole('button', { name: 'Archive' })
+      await waitFor(() => expect(button).toHaveAttribute('aria-disabled', 'true'))
+      expect(button).toHaveAccessibleDescription(en.rights.unavailable.remove)
+    })
+
+    it('leaves every bulk control operable on an account that grants everything', async () => {
+      // The single-account no-regression pin.
+      const user = userEvent.setup()
+      renderList()
+      await selectFirst(user)
+
+      for (const name of ['Mark as read', 'Flag', 'Archive', 'Move to Trash']) {
+        expect(screen.getByRole('button', { name })).not.toHaveAttribute('aria-disabled')
+      }
+    })
+
+    it('makes a row undraggable when it may not leave the folder', async () => {
+      // A gesture gets no words — there is nowhere under a finger to put them — so it goes inert
+      // instead of promising a drop it cannot keep. The bulk bar's Move button is the pointer
+      // alternative that DOES explain itself (SC 2.5.7).
+      await denyInInbox('mayRemoveItems')
+      const { container } = renderList()
+      await screen.findByText('First')
+
+      // `draggable` lives on the presentational wrapper around each row — the only node that owns
+      // both the drag and the swipe — so it is read from the DOM rather than through a role.
+      await waitFor(() => {
+        expect(container.querySelector('[draggable]')?.getAttribute('draggable')).toBe('false')
+      })
+    })
+
+    it('keeps rows draggable when removal is permitted', async () => {
+      const { container } = renderList()
+      await screen.findByText('First')
+
+      await waitFor(() => {
+        expect(container.querySelector('[draggable]')?.getAttribute('draggable')).toBe('true')
+      })
     })
   })
 })
