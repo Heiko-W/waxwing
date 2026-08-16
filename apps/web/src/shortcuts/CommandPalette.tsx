@@ -15,6 +15,7 @@ import {
   Fragment,
   type KeyboardEvent,
   type ReactNode,
+  useEffect,
   useId,
   useMemo,
   useRef,
@@ -163,6 +164,30 @@ export default function CommandPalette({ context, onClose }: CommandPaletteProps
     item.run()
     onClose()
   }
+
+  /**
+   * Keep the active option in view (M4.7, WCAG 2.4.7).
+   *
+   * The listbox is a clipped scroller, and with an empty query it lists recents plus every registry
+   * action, folder and label — far more than fits. Focus stays on the input, so the ONLY cue for
+   * what Enter will run is the highlighted row; arrowing past the fold (or wrapping from the top to
+   * the last item) left that highlight off-screen and the user looking at nothing.
+   *
+   * By id rather than a ref map: the options already carry stable ids for `aria-activedescendant`,
+   * so there is no second bookkeeping to keep in step. `block: 'nearest'` scrolls only when it must,
+   * and the default instant behaviour respects reduced motion by not animating at all.
+   *
+   * NOT unit-tested, deliberately: jsdom implements no layout, so nothing there can distinguish "in
+   * view" from "off-screen" — a test could only assert that `scrollIntoView` was called, which
+   * restates the line rather than checking it. Verifying this needs a real browser; it belongs with
+   * the browser-level a11y sweep ADR-015 already defers.
+   */
+  useEffect(() => {
+    if (activeIndex < 0) return
+    // Built inline from the stable `baseId` rather than through `optionId`, which is a fresh closure
+    // each render and would make this effect re-run for nothing.
+    document.getElementById(`${baseId}-o-${activeIndex}`)?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, baseId])
 
   function move(delta: number): void {
     if (flat.length === 0) return

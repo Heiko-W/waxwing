@@ -9,6 +9,14 @@ import { initI18n } from './src/i18n'
 // synchronously by initI18n, so there is no Suspense boundary to manage in tests.
 await initI18n()
 
+// jsdom implements no layout, so it ships no `scrollIntoView` — calling it throws. Components that
+// keep an active option in view (the command palette, the recipient combobox) legitimately call it,
+// so stub it as the no-op it effectively is without layout. A test that cares WHETHER it was called
+// spies on it locally; this only stops an unrelated render from crashing.
+if (typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 // React Testing Library does not auto-clean between tests when globals are disabled.
 afterEach(() => {
   cleanup()

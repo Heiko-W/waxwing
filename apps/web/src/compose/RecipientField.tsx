@@ -63,6 +63,19 @@ export function RecipientField({
   const listboxId = useId()
   const optionId = (index: number): string => `${listboxId}-opt-${index}`
 
+  /**
+   * Keep the active suggestion in view (M4.7, WCAG 2.4.7) — the listbox is a clipped scroller and
+   * focus stays on the input, so the highlight is the only cue for what Enter will commit. Same fix
+   * and same reasoning as the command palette; by id, because the options already carry stable ones
+   * for `aria-activedescendant`.
+   */
+  useEffect(() => {
+    if (!open || activeIndex < 0) return
+    // The id is built inline from the stable `listboxId` rather than through `optionId`, which is a
+    // fresh closure on every render and would make this effect re-run for nothing.
+    document.getElementById(`${listboxId}-opt-${activeIndex}`)?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIndex, listboxId])
+
   // Debounced suggestion query (guards against out-of-order resolves via `cancelled`).
   useEffect(() => {
     const needle = text.trim()
