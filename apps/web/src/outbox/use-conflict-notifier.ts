@@ -25,6 +25,9 @@ const ACTION_LABEL = {
   dismiss: 'outbox.action.dismiss',
 } as const
 
+/** A row whose account has no names loaded yet; `ready` normally keeps us out of this case. */
+const NO_NAMES: ReadonlyMap<string, string> = new Map()
+
 export function useConflictNotifier(): void {
   const { t } = useTranslation()
   const { toast } = useToast()
@@ -44,7 +47,8 @@ export function useConflictNotifier(): void {
       surfaced.current.add(row.id)
       // The server refused this write for lack of space — whatever the sidebar bar says is stale.
       if (row.conflict.code === 'quota') invalidateQuota()
-      const description = describeConflict(row, folderNames)
+      // The ROW's account names its folders (B32) — see `use-outbox-problems`'s header.
+      const description = describeConflict(row, folderNames.get(row.accountId) ?? NO_NAMES)
       if (description.action === 'none') continue // a send — the send notifier owns it
       const label = ACTION_LABEL[description.action]
       toast({

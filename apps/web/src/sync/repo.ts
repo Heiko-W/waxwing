@@ -671,6 +671,31 @@ export async function failedOutbox(db: ReplicaDb, accountId: Id): Promise<Outbox
   return rows.sort((a, b) => a.createdAt - b.createdAt)
 }
 
+/**
+ * Dead-lettered intents across SEVERAL accounts, oldest first (B32).
+ *
+ * A dead letter records the USER'S OWN action, wherever it was aimed — so the surface that lists
+ * them is device-global rather than scoped to the account it happened to hit. Since M4.4 stage 4 a
+ * triage action can be aimed at a delegated account and be refused there, and a per-account read
+ * simply never sees it.
+ *
+ * Queries the same `[accountId+status]` index as {@link failedOutbox}, once per account: a compound
+ * index cannot express "any of these accounts, that status" in one `anyOf`, and the account count is
+ * small (one per granted mailbox) while the rows are few by construction — a dead letter is a
+ * failure the user has yet to deal with.
+ */
+export async function failedOutboxForAccounts(
+  db: ReplicaDb,
+  accountIds: readonly Id[],
+): Promise<OutboxRow[]> {
+  const perAccount = await Promise.all(
+    accountIds.map((accountId) =>
+      db.outbox.where('[accountId+status]').equals([accountId, 'error']).toArray(),
+    ),
+  )
+  return perAccount.flat().sort((a, b) => a.createdAt - b.createdAt)
+}
+
 /** Queued (not yet dispatched) sends, oldest first — the durable "will send" surface (M3.3). */
 export async function queuedSends(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
   const rows = await db.outbox.where('[accountId+status]').equals([accountId, 'pending']).toArray()

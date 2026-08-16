@@ -15,6 +15,9 @@ import { describeConflict } from './describe-conflict'
 import styles from './outbox.module.css'
 import { useOutboxProblems } from './use-outbox-problems'
 
+/** A row whose account has no folder names loaded yet — `describeConflict` degrades to a plain offer. */
+const NO_NAMES: ReadonlyMap<string, string> = new Map()
+
 export interface OutboxProblemsDialogProps {
   /** Must be stable (useCallback) — the dialog closes itself once the last problem is resolved. */
   readonly onClose: () => void
@@ -62,7 +65,9 @@ export default function OutboxProblemsDialog({ onClose }: OutboxProblemsDialogPr
       ) : (
         <ul className={styles.problems}>
           {rows.map((row) => {
-            const description = describeConflict(row, folderNames)
+            // The ROW's account names its folders (B32): mailbox ids are per-account and short, so a
+            // flat map would confidently name the wrong folder for a shared account's row.
+            const description = describeConflict(row, folderNames.get(row.accountId) ?? NO_NAMES)
             const retryable = description.action === 'retry'
             return (
               <li key={row.id} className={styles.problem}>

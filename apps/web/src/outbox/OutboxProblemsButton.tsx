@@ -10,19 +10,24 @@
 import { TriangleAlert } from 'lucide-react'
 import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useEngineStatus } from '../sync/engine'
 import { Badge, IconButton } from '../ui'
 import styles from './outbox.module.css'
+import { useOutboxProblems } from './use-outbox-problems'
 
 const OutboxProblemsDialog = lazy(() => import('./OutboxProblemsDialog'))
 
 export function OutboxProblemsButton() {
   const { t } = useTranslation()
-  const { failedActions } = useEngineStatus()
+  // Counts the ROWS, not `useEngineStatus().failedActions` (B32). That counter is the PRIMARY
+  // engine's scalar — shared engines are handed a discarding status sink — so this one line was why
+  // the button stayed blind to a refused action on a delegated account. The rows are already in the
+  // replica, keyed by account; counting them needs no change to the status model at all.
+  const { rows } = useOutboxProblems()
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
 
-  if (failedActions === 0) return null
+  if (rows.length === 0) return null
+  const failedActions = rows.length
 
   return (
     <>
