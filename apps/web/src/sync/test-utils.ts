@@ -22,7 +22,7 @@ export function freshDb(): ReplicaDb {
   return new ReplicaDb(`test-replica-${seq}`)
 }
 
-const FULL_RIGHTS: MailboxRights = {
+export const FULL_RIGHTS: MailboxRights = {
   mayReadItems: true,
   mayAddItems: true,
   mayRemoveItems: true,

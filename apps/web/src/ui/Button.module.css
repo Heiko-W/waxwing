@@ -24,6 +24,13 @@
   opacity: 0.5;
 }
 
+/* Mirrors :disabled visually, but the button stays focusable and keeps its accessible description —
+   a refusal the user is meant to be able to READ has to be reachable by keyboard (see Button.tsx). */
+.button.unavailable {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .label {
   display: inline-flex;
   align-items: center;

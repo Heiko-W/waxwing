@@ -20,7 +20,7 @@ import {
   toEmailRow,
 } from '../sync'
 import { setActiveEngine } from '../sync/engine'
-import { email, freshDb, mailbox } from '../sync/test-utils'
+import { email, FULL_RIGHTS, freshDb, mailbox } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { AUTO_MARK_READ_DELAY_MS, MessageView } from './MessageView'
@@ -352,6 +352,25 @@ describe('MessageView', () => {
       expect.objectContaining({ kind: 'setKeywords', keyword: '$seen' }),
       expect.anything(),
     )
+  })
+
+  it('does NOT arm the dwell when the mailbox denies maySetSeen (B34)', async () => {
+    // The one write the user never asked for, in a mailbox they may not mark read: correct behaviour
+    // is silence — no dispatch, no toast, the message simply stays unread. Guards dropping the rights
+    // term from the arming guard, and dropping `rights` from its deps: the verdict is optimistic
+    // until the mailboxes load, so without the dep the guard only ever sees "allowed".
+    //
+    // REAL timers on purpose. Faking them stalls fake-indexeddb, so the mailbox liveQuery never
+    // resolves, the verdict stays optimistic and the test would pass against a broken guard.
+    await putMailboxes(db, 'a', [
+      mailbox('inbox', { role: 'inbox', myRights: { ...FULL_RIGHTS, maySetSeen: false } }),
+    ])
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    renderView(unseen())
+    await screen.findByRole('button', { name: /Archive/i })
+
+    await new Promise((resolve) => setTimeout(resolve, AUTO_MARK_READ_DELAY_MS + 400))
+    expect(seenIntents()).toEqual([])
   })
 
   it('auto-marks the message read after the dwell delay', async () => {

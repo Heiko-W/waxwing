@@ -369,7 +369,15 @@ function actionItems(
     })
   }
   // Cleanup (M3.2): empty a Trash/Junk mailbox, or delete older messages from any purgeable one.
-  if (handlers.onRequestEmpty && (mailbox.role === 'trash' || mailbox.role === 'junk')) {
+  // Both gate on `mayRemoveItems` (B34). Empty is the most destructive action in the app and it
+  // pages the server BEFORE enqueueing anything, so a refusal never even reaches an outbox row to be
+  // reported from — and the sibling entry below has always gated on that exact right. The
+  // inconsistency was inside this one function.
+  if (
+    handlers.onRequestEmpty &&
+    (mailbox.role === 'trash' || mailbox.role === 'junk') &&
+    mailbox.myRights.mayRemoveItems
+  ) {
     const onRequestEmpty = handlers.onRequestEmpty
     items.push({
       id: 'empty',

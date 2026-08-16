@@ -1960,16 +1960,22 @@ Spec: FR-AUTH-08. Size: M.
 - [x] **Account-aware dispatch (stage 4, ADR-018).** Engine selection keyed by account;
       the keyboard layer and `useSearch` moved inside the acting-account scope; the drag
       subject carries its account. Closed B33/B35/B36 and the sign-out fleet teardown.
-- [ ] Read/write per server-granted rights (**B34**) — **started, not finished.** The rule
-      exists and is tested (`mail/rights.ts`: which right governs which write, quantified over
-      the subjects' `mailboxIds` rather than the folder on screen; ALL rather than Stalwart's
-      ANY; an account-floor clause that keeps the single-account path provably unchanged), and
-      the triage seam enforces it as defence in depth. **Still open: the surfaces.** The
-      reading-pane and bulk bars, the label menu, the swipe/drag affordances and the shortcut
-      layer neither gate nor EXPLAIN a refusal yet — and explaining is the point, since a
-      refusal that is merely silent is the same failure in a new place. The auto-mark-read
-      dwell must also stop arming without `maySetSeen`. i18n keys (`rights.unavailable.*`)
-      are in place, en + de.
+- [ ] Read/write per server-granted rights (**B34**) — **partly done.** Landed: the rule
+      (`mail/rights.ts` — which right governs which write, quantified over the subjects'
+      `mailboxIds` rather than the folder on screen; ALL rather than Stalwart's ANY; an
+      account-floor clause that keeps the single-account path provably unchanged); the triage
+      seam as defence in depth; `Button`'s `unavailableReason` (`aria-disabled` + an accessible
+      description, and the control stays FOCUSABLE — `disabled` would hide the explanation from
+      the one user who needs it); the **auto-mark-read dwell**, which no longer arms without
+      `maySetSeen` — the only write nobody asks for, so silence is the right refusal; and
+      "Empty Trash/Junk", the most destructive action in the app, which now gates on
+      `mayRemoveItems` like its sibling entry always did. i18n keys in en + de.
+      **Still open: the surfaces that must EXPLAIN.** The reading-pane and bulk action bars, the
+      label menu, the swipe/drag affordances and the shortcut layer neither gate nor explain a
+      refusal — and explaining is the point, because a merely silent refusal is the same failure
+      wearing new clothes. The keyboard needs its own answer (a chord that does nothing is
+      defect B3 again), and the Undo in `useTriage` should only be offered when the INVERSE move
+      is permitted.
 - [ ] Surface a shared account's sync status, queue and dead letters (**B32**) — today a
       failed write on a shared account is invisible.
 - [ ] Identity handling when sending from a shared account (send-as): `FromField` lists only

@@ -67,6 +67,7 @@ import { SenderCard } from './SenderCard'
 import type { SenderIdentity } from './sender-contact'
 import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
+import { useMessageRights } from './use-message-rights'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
@@ -107,6 +108,10 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // Moves go through the shared triage seam (M3.8): same dispatch, plus the undo toast — and it is the
   // very seam the `e` / `#` / `!` chords call, so a click and a keystroke cannot drift apart.
   const triage = useTriage()
+  // B34. The subject is this one message, so the verdict is exact rather than the account floor.
+  const rightsIds = useMemo(() => [email.id], [email.id])
+  const rights = useMessageRights(rightsIds)
+  const seenDenied = rights.reason('seen') !== null
   const openDraft = useComposerStore((state) => state.openDraft)
   const { connected } = useSession()
   const own = useMemo(
@@ -274,6 +279,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // biome-ignore lint/correctness/useExhaustiveDependencies: `$seen` is read at arm time on purpose — see above.
   useEffect(() => {
     if (!autoMark || !autoMarkRead || email.keywords.$seen === true) return
+    // B34, and the highest-priority half of it: this is the ONE write the user never asked for, so
+    // a refusal here has nothing to explain and nobody to explain it to — silence is the correct
+    // behaviour, not a toast. Reading a message in a mailbox you may not mark read must simply
+    // leave it unread. A pending → denied transition re-runs this effect and cancels the timer.
+    if (seenDenied) return
     const timer = window.setTimeout(() => {
       dwellTimer.current = null
       if (!seenNow.current.seen) actions.setSeen([email.id], true)
@@ -288,7 +298,14 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       // nothing the suite can see; it is kept so the ref's stated meaning holds on every path.
       dwellTimer.current = null
     }
-  }, [autoMark, autoMarkRead, email.id, actions])
+    // The VERDICT is a dependency (unlike `$seen` above, and for the opposite reason): it is
+    // optimistic until the mailboxes load, so a denial arrives after this effect first runs, and
+    // without the dep the guard would only ever see "allowed". A re-run is safe — the cleanup
+    // cancels the pending timer and re-arms from the same opening.
+    //
+    // The BOOLEAN, never the `rights` object: that object is rebuilt whenever its liveQuery emits,
+    // so depending on it re-arms the timer on every emission and the dwell never reaches 1.5 s.
+  }, [autoMark, autoMarkRead, email.id, actions, seenDenied])
   /**
    * The `$seen` watcher: it carries the live value forward for the fire path (`seenNow` above) and,
    * on a true → false EDGE **on one and the same message**, cancels an armed dwell whatever issued
