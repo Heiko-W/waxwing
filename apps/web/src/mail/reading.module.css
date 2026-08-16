@@ -279,6 +279,10 @@
   min-height: 3rem;
 }
 
+/* waxwing-literal-exempt: a mail body is foreign HTML that routinely sets a dark text colour and no
+   background of its own, so on a themed dark surface it renders black-on-black. This frame is pinned
+   light — `color-scheme: light` tells the embedded document the same — and must NOT follow the app's
+   theme. Themable here would mean unreadable. */
 .frame {
   display: block;
   width: 100%;
@@ -416,6 +420,8 @@
   margin: 0 auto;
 }
 
+/* waxwing-literal-exempt: an attachment preview is foreign content, same as the body frame above —
+   pinned light so a document that brings dark text and no background of its own stays readable. */
 .previewFrame {
   display: block;
   width: 100%;
@@ -518,7 +524,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--waxwing-text-muted);
-  font-weight: 400;
+  font-weight: var(--waxwing-weight-regular);
 }
 
 .collapsedTime {

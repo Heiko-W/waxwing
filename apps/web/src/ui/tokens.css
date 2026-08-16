@@ -9,6 +9,15 @@
  * `:root[data-theme='light']`. Theme-invariant tokens (spacing, radius, type, motion,
  * tap-target) live once on :root.
  *
+ * WHY THE WHOLE FILE IS IN A CASCADE LAYER (M4.5). The white-label promise is that a hoster
+ * re-declares a token on `:root` in theme.css and it wins. Without a layer it does not: the dark
+ * blocks below are `:root:not([data-theme="light"])` and `:root[data-theme="dark"]`, both
+ * specificity (0,2,0), against a hoster's bare `:root` at (0,1,0) — so their override applied in
+ * light mode and was SILENTLY IGNORED in dark, whatever the load order. Unlayered CSS beats layered
+ * CSS regardless of specificity, so putting these declarations in a layer (and leaving theme.css
+ * unlayered, which it is by default) makes the contract true for every selector a hoster might
+ * write, without asking them to guess ours.
+ *
  * Contrast (FR-A11Y-01, machine-verified by tokens.contrast.test.ts):
  *  - Text pairs meet WCAG 2.2 AA (>= 4.5:1) in both themes.
  *  - `--waxwing-border-strong` and `--waxwing-focus-ring` meet non-text UI contrast
@@ -23,112 +32,160 @@
  *    replaces it with a single value for both themes and is not contrast-guaranteed.
  */
 
-:root {
-  /* ---- Color: light ---- */
-  --waxwing-accent: #2f6fe0;
-  --waxwing-accent-contrast: #ffffff;
-  --waxwing-bg: #f5f5f7;
-  --waxwing-surface: #ffffff;
-  --waxwing-surface-2: #ebebef;
-  /* ---- Row states (M1.6; defined M3.9). `surface-hover` is the transient one (a pointer over a
-     row); `surface-selected` marks the row the reader is ON — an accent tint, per Apple Mail. Both
-     were referenced by the message list from M1.6 and DEFINED NOWHERE for eight milestones, so an
-     opened or ticked row computed to `transparent` and looked like every other row (measured live in
-     a browser, not inferred). Nothing could catch it: CSS custom properties are not typechecked, and
-     the E2E assert `aria-current`, never colour. Text stays dark on both — tokens.contrast.test.ts. */
-  --waxwing-surface-hover: #ebebef;
-  --waxwing-surface-selected: #dbe7fa;
-  --waxwing-text: #1d1d1f;
-  --waxwing-text-muted: #636366;
-  --waxwing-border: #d2d2d7;
-  --waxwing-border-strong: #86868b;
-  --waxwing-focus-ring: #2f6fe0;
-  --waxwing-danger: #c10016;
-  --waxwing-danger-contrast: #ffffff;
-  --waxwing-success: #1e7b34;
-  --waxwing-success-contrast: #ffffff;
-  --waxwing-warning: #8a5d00;
-  --waxwing-warning-contrast: #ffffff;
-  --waxwing-switch-thumb: #ffffff;
-
-  /* ---- Label swatch fills: light (M3.2). Decorative dots ringed by --waxwing-border-strong;
-     the label name is always the non-color signal, so these are not contrast-guaranteed. ---- */
-  --waxwing-label-red: #d70015;
-  --waxwing-label-orange: #cb6008;
-  --waxwing-label-yellow: #b8860b;
-  --waxwing-label-green: #1f8a3b;
-  --waxwing-label-blue: #2f6fe0;
-  --waxwing-label-purple: #7d3ac0;
-  --waxwing-label-gray: #86868b;
-
-  /* ---- Elevation: light ---- */
-  --waxwing-overlay: rgba(0, 0, 0, 0.32);
-  --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
-  --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
-
-  /* ---- Spacing: 8-pt grid ---- */
-  --waxwing-space-1: 0.25rem; /* 4px */
-  --waxwing-space-2: 0.5rem; /* 8px */
-  --waxwing-space-3: 0.75rem; /* 12px */
-  --waxwing-space-4: 1rem; /* 16px */
-  --waxwing-space-5: 1.5rem; /* 24px */
-  --waxwing-space-6: 2rem; /* 32px */
-  --waxwing-space-7: 3rem; /* 48px */
-  --waxwing-space-8: 4rem; /* 64px */
-
-  /* ---- Radius ---- */
-  --waxwing-radius-sm: 0.375rem;
-  --waxwing-radius-md: 0.625rem;
-  --waxwing-radius-lg: 1rem;
-  --waxwing-radius-full: 9999px;
-
-  /* ---- Typography ---- */
-  --waxwing-font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji",
-    "Segoe UI Emoji", sans-serif;
-  --waxwing-font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-
-  --waxwing-text-xs: 0.75rem;
-  --waxwing-text-sm: 0.875rem;
-  --waxwing-text-base: 1rem;
-  --waxwing-text-lg: 1.125rem;
-  --waxwing-text-xl: 1.375rem;
-  --waxwing-text-2xl: 1.75rem;
-
-  --waxwing-leading-tight: 1.2;
-  --waxwing-leading-normal: 1.5;
-  --waxwing-leading-relaxed: 1.7;
-
-  --waxwing-weight-regular: 400;
-  --waxwing-weight-medium: 500;
-  --waxwing-weight-semibold: 600;
-  --waxwing-weight-bold: 700;
-
-  /* ---- Interaction ---- */
-  /* Minimum size of interactive controls. 34px on pointer devices (compact, and well above
-     WCAG 2.2 AA SC 2.5.8's 24px minimum); raised to 44px on touch by the pointer:coarse rule
-     below (SC 2.5.5 AAA) so it stays finger-friendly where screen space is tight. */
-  --waxwing-control-min: 2.125rem;
-
-  /* ---- Motion ---- */
-  --waxwing-duration-fast: 120ms;
-  --waxwing-duration-base: 200ms;
-  --waxwing-duration-slow: 320ms;
-  --waxwing-ease-standard: cubic-bezier(0.2, 0, 0, 1);
-}
-
-/* Touch devices: raise the interactive-control minimum to a finger-friendly 44px (SC 2.5.5),
-   independent of theme. */
-@media (pointer: coarse) {
+@layer waxwing.tokens {
   :root {
-    --waxwing-control-min: 2.75rem;
-  }
-}
+    /* ---- Color: light ---- */
+    --waxwing-accent: #2f6fe0;
+    --waxwing-accent-contrast: #ffffff;
+    --waxwing-bg: #f5f5f7;
+    --waxwing-surface: #ffffff;
+    --waxwing-surface-2: #ebebef;
+    /* ---- Row states (M1.6; defined M3.9). `surface-hover` is the transient one (a pointer over a
+       row); `surface-selected` marks the row the reader is ON — an accent tint, per Apple Mail. Both
+       were referenced by the message list from M1.6 and DEFINED NOWHERE for eight milestones, so an
+       opened or ticked row computed to `transparent` and looked like every other row (measured live in
+       a browser, not inferred). Nothing could catch it: CSS custom properties are not typechecked, and
+       the E2E assert `aria-current`, never colour. Text stays dark on both — tokens.contrast.test.ts. */
+    --waxwing-surface-hover: #ebebef;
+    --waxwing-surface-selected: #dbe7fa;
+    --waxwing-text: #1d1d1f;
+    --waxwing-text-muted: #636366;
+    --waxwing-border: #d2d2d7;
+    --waxwing-border-strong: #86868b;
+    --waxwing-focus-ring: #2f6fe0;
+    --waxwing-danger: #c10016;
+    --waxwing-danger-contrast: #ffffff;
+    --waxwing-success: #1e7b34;
+    --waxwing-success-contrast: #ffffff;
+    --waxwing-warning: #8a5d00;
+    --waxwing-warning-contrast: #ffffff;
+    --waxwing-switch-thumb: #ffffff;
 
-/* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+    /* ---- Label swatch fills: light (M3.2). Decorative dots ringed by --waxwing-border-strong;
+       the label name is always the non-color signal, so these are not contrast-guaranteed. ---- */
+    --waxwing-label-red: #d70015;
+    --waxwing-label-orange: #cb6008;
+    --waxwing-label-yellow: #b8860b;
+    --waxwing-label-green: #1f8a3b;
+    --waxwing-label-blue: #2f6fe0;
+    --waxwing-label-purple: #7d3ac0;
+    --waxwing-label-gray: #86868b;
+
+    /* ---- Elevation: light ---- */
+    --waxwing-overlay: rgba(0, 0, 0, 0.32);
+    --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
+    --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
+
+    /* ---- Spacing: 8-pt grid ---- */
+    /* A HAIRLINE gap, below the 8-pt grid on purpose: the optical separation between a label and the
+     mark beside it (an unread dot, a swatch, a chip), where a 4px step reads as a gap rather than as
+     one unit. Named rather than repeated as a literal so a hoster can retune it with the rest. */
+    --waxwing-space-hair: 0.125rem; /* 2px */
+    --waxwing-space-1: 0.25rem; /* 4px */
+    --waxwing-space-2: 0.5rem; /* 8px */
+    --waxwing-space-3: 0.75rem; /* 12px */
+    --waxwing-space-4: 1rem; /* 16px */
+    --waxwing-space-5: 1.5rem; /* 24px */
+    --waxwing-space-6: 2rem; /* 32px */
+    --waxwing-space-7: 3rem; /* 48px */
+    --waxwing-space-8: 4rem; /* 64px */
+
+    /* ---- Radius ---- */
+    --waxwing-radius-sm: 0.375rem;
+    --waxwing-radius-md: 0.625rem;
+    --waxwing-radius-lg: 1rem;
+    --waxwing-radius-full: 9999px;
+
+    /* ---- Typography ---- */
+    --waxwing-font-sans:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji",
+      "Segoe UI Emoji", sans-serif;
+    --waxwing-font-mono:
+      ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --waxwing-text-xs: 0.75rem;
+    --waxwing-text-sm: 0.875rem;
+    --waxwing-text-base: 1rem;
+    --waxwing-text-lg: 1.125rem;
+    --waxwing-text-xl: 1.375rem;
+    --waxwing-text-2xl: 1.75rem;
+
+    --waxwing-leading-tight: 1.2;
+    --waxwing-leading-normal: 1.5;
+    --waxwing-leading-relaxed: 1.7;
+
+    /* Tracking for the small uppercase labels (section headers, account names, kbd caps). Uppercase at
+     small sizes needs opening up; the value is the same everywhere it appears, so it is a token —
+     and a hoster shipping their own typeface will want to retune it. */
+    --waxwing-tracking-caps: 0.04em;
+
+    --waxwing-weight-regular: 400;
+    --waxwing-weight-medium: 500;
+    --waxwing-weight-semibold: 600;
+    --waxwing-weight-bold: 700;
+
+    /* ---- Interaction ---- */
+    /* Minimum size of interactive controls. 34px on pointer devices (compact, and well above
+       WCAG 2.2 AA SC 2.5.8's 24px minimum); raised to 44px on touch by the pointer:coarse rule
+       below (SC 2.5.5 AAA) so it stays finger-friendly where screen space is tight. */
+    --waxwing-control-min: 2.125rem;
+
+    /* ---- Motion ---- */
+    --waxwing-duration-fast: 120ms;
+    --waxwing-duration-base: 200ms;
+    --waxwing-duration-slow: 320ms;
+    --waxwing-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* Touch devices: raise the interactive-control minimum to a finger-friendly 44px (SC 2.5.5),
+     independent of theme. */
+  @media (pointer: coarse) {
+    :root {
+      --waxwing-control-min: 2.75rem;
+    }
+  }
+
+  /* ---- Color + elevation: dark (system preference, unless a light override is forced) ---- */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --waxwing-accent: #5e93f0;
+      --waxwing-accent-contrast: #1d1d1f;
+      --waxwing-bg: #1c1c1e;
+      --waxwing-surface: #2c2c2e;
+      --waxwing-surface-2: #3a3a3c;
+      /* ---- Row states: dark (see the light block for why these exist). ---- */
+      --waxwing-surface-hover: #3a3a3c;
+      --waxwing-surface-selected: #28394f;
+      --waxwing-text: #f5f5f7;
+      --waxwing-text-muted: #a5a5ad;
+      --waxwing-border: #48484a;
+      --waxwing-border-strong: #939398;
+      --waxwing-focus-ring: #5e93f0;
+      --waxwing-danger: #ff6b60;
+      --waxwing-danger-contrast: #1d1d1f;
+      --waxwing-success: #30d158;
+      --waxwing-success-contrast: #1d1d1f;
+      --waxwing-warning: #ffd60a;
+      --waxwing-warning-contrast: #1d1d1f;
+      --waxwing-switch-thumb: #f5f5f7;
+
+      /* ---- Label swatch fills: dark (system preference) ---- */
+      --waxwing-label-red: #ff453a;
+      --waxwing-label-orange: #ff9f0a;
+      --waxwing-label-yellow: #ffd60a;
+      --waxwing-label-green: #30d158;
+      --waxwing-label-blue: #5e93f0;
+      --waxwing-label-purple: #bf5af2;
+      --waxwing-label-gray: #98989d;
+
+      --waxwing-overlay: rgba(0, 0, 0, 0.6);
+      --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+      --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
+    }
+  }
+
+  /* ---- Color + elevation: dark (explicit user override) ---- */
+  :root[data-theme="dark"] {
     --waxwing-accent: #5e93f0;
     --waxwing-accent-contrast: #1d1d1f;
     --waxwing-bg: #1c1c1e;
@@ -150,7 +207,7 @@
     --waxwing-warning-contrast: #1d1d1f;
     --waxwing-switch-thumb: #f5f5f7;
 
-    /* ---- Label swatch fills: dark (system preference) ---- */
+    /* ---- Label swatch fills: dark (explicit user override) ---- */
     --waxwing-label-red: #ff453a;
     --waxwing-label-orange: #ff9f0a;
     --waxwing-label-yellow: #ffd60a;
@@ -163,78 +220,41 @@
     --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
     --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
   }
-}
 
-/* ---- Color + elevation: dark (explicit user override) ---- */
-:root[data-theme="dark"] {
-  --waxwing-accent: #5e93f0;
-  --waxwing-accent-contrast: #1d1d1f;
-  --waxwing-bg: #1c1c1e;
-  --waxwing-surface: #2c2c2e;
-  --waxwing-surface-2: #3a3a3c;
-  /* ---- Row states: dark (see the light block for why these exist). ---- */
-  --waxwing-surface-hover: #3a3a3c;
-  --waxwing-surface-selected: #28394f;
-  --waxwing-text: #f5f5f7;
-  --waxwing-text-muted: #a5a5ad;
-  --waxwing-border: #48484a;
-  --waxwing-border-strong: #939398;
-  --waxwing-focus-ring: #5e93f0;
-  --waxwing-danger: #ff6b60;
-  --waxwing-danger-contrast: #1d1d1f;
-  --waxwing-success: #30d158;
-  --waxwing-success-contrast: #1d1d1f;
-  --waxwing-warning: #ffd60a;
-  --waxwing-warning-contrast: #1d1d1f;
-  --waxwing-switch-thumb: #f5f5f7;
+  /* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */
+  :root[data-theme="light"] {
+    --waxwing-accent: #2f6fe0;
+    --waxwing-accent-contrast: #ffffff;
+    --waxwing-bg: #f5f5f7;
+    --waxwing-surface: #ffffff;
+    --waxwing-surface-2: #ebebef;
+    /* ---- Row states: light (see the :root block). ---- */
+    --waxwing-surface-hover: #ebebef;
+    --waxwing-surface-selected: #dbe7fa;
+    --waxwing-text: #1d1d1f;
+    --waxwing-text-muted: #636366;
+    --waxwing-border: #d2d2d7;
+    --waxwing-border-strong: #86868b;
+    --waxwing-focus-ring: #2f6fe0;
+    --waxwing-danger: #c10016;
+    --waxwing-danger-contrast: #ffffff;
+    --waxwing-success: #1e7b34;
+    --waxwing-success-contrast: #ffffff;
+    --waxwing-warning: #8a5d00;
+    --waxwing-warning-contrast: #ffffff;
+    --waxwing-switch-thumb: #ffffff;
 
-  /* ---- Label swatch fills: dark (explicit user override) ---- */
-  --waxwing-label-red: #ff453a;
-  --waxwing-label-orange: #ff9f0a;
-  --waxwing-label-yellow: #ffd60a;
-  --waxwing-label-green: #30d158;
-  --waxwing-label-blue: #5e93f0;
-  --waxwing-label-purple: #bf5af2;
-  --waxwing-label-gray: #98989d;
+    /* ---- Label swatch fills: light re-asserted ---- */
+    --waxwing-label-red: #d70015;
+    --waxwing-label-orange: #cb6008;
+    --waxwing-label-yellow: #b8860b;
+    --waxwing-label-green: #1f8a3b;
+    --waxwing-label-blue: #2f6fe0;
+    --waxwing-label-purple: #7d3ac0;
+    --waxwing-label-gray: #86868b;
 
-  --waxwing-overlay: rgba(0, 0, 0, 0.6);
-  --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
-}
-
-/* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */
-:root[data-theme="light"] {
-  --waxwing-accent: #2f6fe0;
-  --waxwing-accent-contrast: #ffffff;
-  --waxwing-bg: #f5f5f7;
-  --waxwing-surface: #ffffff;
-  --waxwing-surface-2: #ebebef;
-  /* ---- Row states: light (see the :root block). ---- */
-  --waxwing-surface-hover: #ebebef;
-  --waxwing-surface-selected: #dbe7fa;
-  --waxwing-text: #1d1d1f;
-  --waxwing-text-muted: #636366;
-  --waxwing-border: #d2d2d7;
-  --waxwing-border-strong: #86868b;
-  --waxwing-focus-ring: #2f6fe0;
-  --waxwing-danger: #c10016;
-  --waxwing-danger-contrast: #ffffff;
-  --waxwing-success: #1e7b34;
-  --waxwing-success-contrast: #ffffff;
-  --waxwing-warning: #8a5d00;
-  --waxwing-warning-contrast: #ffffff;
-  --waxwing-switch-thumb: #ffffff;
-
-  /* ---- Label swatch fills: light re-asserted ---- */
-  --waxwing-label-red: #d70015;
-  --waxwing-label-orange: #cb6008;
-  --waxwing-label-yellow: #b8860b;
-  --waxwing-label-green: #1f8a3b;
-  --waxwing-label-blue: #2f6fe0;
-  --waxwing-label-purple: #7d3ac0;
-  --waxwing-label-gray: #86868b;
-
-  --waxwing-overlay: rgba(0, 0, 0, 0.32);
-  --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
-  --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
+    --waxwing-overlay: rgba(0, 0, 0, 0.32);
+    --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.1);
+    --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.14);
+  }
 }

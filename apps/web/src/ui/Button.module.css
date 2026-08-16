@@ -76,13 +76,17 @@
 /* Hover only on devices that truly hover, so a tap on touch does not stick a hover style. */
 @media (hover: hover) {
   .primary:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--waxwing-accent) 88%, black);
-    border-color: color-mix(in srgb, var(--waxwing-accent) 88%, black);
+    /* Mixed toward `--waxwing-text`, not toward literal `black` (M4.5): the hover step has to move
+       AWAY from the surface, and in dark mode that is lighter rather than darker. `text` is the
+       far end of the theme's own contrast axis in both themes, so this is one expression that is
+       correct in each — and it is a token, so a hoster's palette carries it. */
+    background-color: color-mix(in srgb, var(--waxwing-accent) 88%, var(--waxwing-text));
+    border-color: color-mix(in srgb, var(--waxwing-accent) 88%, var(--waxwing-text));
   }
 
   .destructive:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--waxwing-danger) 88%, black);
-    border-color: color-mix(in srgb, var(--waxwing-danger) 88%, black);
+    background-color: color-mix(in srgb, var(--waxwing-danger) 88%, var(--waxwing-text));
+    border-color: color-mix(in srgb, var(--waxwing-danger) 88%, var(--waxwing-text));
   }
 
   .secondary:hover:not(:disabled),

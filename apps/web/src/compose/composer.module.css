@@ -144,7 +144,7 @@
   border-radius: inherit;
   background: color-mix(in srgb, var(--waxwing-surface) 85%, transparent);
   color: var(--waxwing-text);
-  font-weight: 600;
+  font-weight: var(--waxwing-weight-semibold);
   pointer-events: none;
 }
 

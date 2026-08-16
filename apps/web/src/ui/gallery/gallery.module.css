@@ -46,7 +46,7 @@
   font-size: var(--waxwing-text-sm);
   font-weight: var(--waxwing-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--waxwing-tracking-caps);
   color: var(--waxwing-text-muted);
 }
 

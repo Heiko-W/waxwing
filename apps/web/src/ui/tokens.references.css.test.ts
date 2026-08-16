@@ -40,12 +40,16 @@ const css = readFileSync(fileURLToPath(new URL('./tokens.css', import.meta.url))
  * base block from the media-nested ones, and the distinct-offset assertion below proves all
  * five matches really are five different blocks.
  */
+// Indentation is load-bearing here: it is what separates a top-level block from a media-nested one.
+// Since M4.5 the whole file sits inside `@layer waxwing.tokens { … }` (so an unlayered hoster
+// override wins on any selector), which adds one level to every depth below — top-level blocks are
+// at 2 spaces, media-nested ones at 4.
 const BLOCK_PATTERNS = {
-  root: /^:root \{([^}]*)\}/m,
-  coarse: /^ {2}:root \{([^}]*)\}/m,
-  mediaDark: /^ {2}:root:not\(\[data-theme="light"\]\) \{([^}]*)\}/m,
-  dataDark: /^:root\[data-theme="dark"\] \{([^}]*)\}/m,
-  dataLight: /^:root\[data-theme="light"\] \{([^}]*)\}/m,
+  root: /^ {2}:root \{([^}]*)\}/m,
+  coarse: /^ {4}:root \{([^}]*)\}/m,
+  mediaDark: /^ {4}:root:not\(\[data-theme="light"\]\) \{([^}]*)\}/m,
+  dataDark: /^ {2}:root\[data-theme="dark"\] \{([^}]*)\}/m,
+  dataLight: /^ {2}:root\[data-theme="light"\] \{([^}]*)\}/m,
 } as const
 
 type BlockName = keyof typeof BLOCK_PATTERNS
@@ -203,6 +207,24 @@ describe('token contracts outside tokens.css', () => {
     expect([...labelTokens].sort(), 'tokens.css label family vs LABEL_COLORS').toEqual(
       [...colors].sort(),
     )
+  })
+
+  it('keeps every token name docs/theming.md names in its worked example', () => {
+    // The operator-facing contract (M4.5, FR-THEME-01). It is a full worked theme, so it names far
+    // more tokens than `theme.css`'s three-line sample — and a hoster copies it wholesale. A renamed
+    // token turns a whole pasted theme into a silent partial no-op: some colours change, some do
+    // not, and nothing anywhere says why. The same failure `theme.css` is guarded against, at the
+    // scale people actually use.
+    const doc = readFileSync(
+      fileURLToPath(new URL('../../../../docs/theming.md', import.meta.url)),
+      'utf8',
+    )
+    const documented = [...doc.matchAll(/(--waxwing-[\w-]+)/g)].map((m) => m[1] ?? '')
+    expect(documented.length, 'the worked example should name many tokens').toBeGreaterThan(20)
+    expect(
+      [...new Set(documented.filter((name) => !defined.has(name)))],
+      'docs/theming.md names a token that tokens.css does not define',
+    ).toEqual([])
   })
 
   it('keeps the token names public/theme.css documents by example', () => {

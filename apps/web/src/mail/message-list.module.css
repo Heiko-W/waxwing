@@ -254,7 +254,7 @@
   inset-inline-start: -4px;
   inline-size: 0.5rem;
   block-size: 0.5rem;
-  border-radius: 50%;
+  border-radius: var(--waxwing-radius-full);
   background-color: var(--waxwing-accent);
 }
 
@@ -263,7 +263,7 @@
   min-inline-size: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--waxwing-space-hair);
 }
 
 .rowTop {
@@ -334,7 +334,7 @@
 /* Unread emphasis. */
 .unread .sender,
 .unread .subject {
-  font-weight: 600;
+  font-weight: var(--waxwing-weight-semibold);
 }
 
 /*

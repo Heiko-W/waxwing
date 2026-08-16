@@ -349,6 +349,9 @@
   background-color: var(--waxwing-surface-2);
 }
 
+/* waxwing-literal-exempt: the SP.4 dev-only demo, gated behind a build flag and dead-code-eliminated
+   from every production bundle. It renders raw HTML mail on a pinned light frame for the same reason
+   the real reader does, and it is not part of the themed app. */
 .htmlFrame {
   inline-size: 100%;
   min-block-size: 20rem;

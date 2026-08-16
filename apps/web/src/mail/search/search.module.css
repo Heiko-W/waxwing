@@ -54,7 +54,7 @@
   gap: var(--waxwing-space-1);
   padding-inline-start: var(--waxwing-space-2);
   border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-full, 999px);
+  border-radius: var(--waxwing-radius-full);
   background: var(--waxwing-surface-2);
   font-size: var(--waxwing-text-sm);
 }

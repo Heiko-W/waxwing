@@ -55,7 +55,7 @@
   font-size: var(--waxwing-text-xs);
   font-weight: var(--waxwing-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .option {
@@ -114,7 +114,7 @@
   font-weight: var(--waxwing-weight-semibold);
   color: var(--waxwing-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .helpList {

@@ -66,13 +66,13 @@
   font-size: var(--waxwing-text-xs);
   font-weight: var(--waxwing-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .bookList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--waxwing-space-hair);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -116,7 +116,7 @@
 .readOnly {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--waxwing-space-hair);
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-xs);
 }
@@ -345,7 +345,7 @@
   font-size: var(--waxwing-text-xs);
   font-weight: var(--waxwing-weight-semibold);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .detailSectionBody {
@@ -364,7 +364,7 @@
   flex: none;
   inline-size: 1.05rem;
   block-size: 1.05rem;
-  margin-block-start: 2px;
+  margin-block-start: var(--waxwing-space-hair);
   color: var(--waxwing-text-muted);
 }
 
@@ -598,7 +598,7 @@
 .groupPicker {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--waxwing-space-hair);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -673,7 +673,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 2px;
+  gap: var(--waxwing-space-hair);
   min-block-size: 0;
   overflow: auto;
   margin: 0;

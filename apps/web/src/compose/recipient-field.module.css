@@ -34,8 +34,9 @@
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px 2px 2px var(--waxwing-space-2);
+  gap: var(--waxwing-space-hair);
+  padding: var(--waxwing-space-hair) var(--waxwing-space-hair) var(--waxwing-space-hair)
+    var(--waxwing-space-2);
   border: 1px solid var(--waxwing-border-strong);
   border-radius: var(--waxwing-radius-full);
   background-color: var(--waxwing-surface-2);
