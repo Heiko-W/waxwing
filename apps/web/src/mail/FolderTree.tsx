@@ -11,7 +11,7 @@ import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'rea
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
-import { Button, Dialog, IconButton, TextInput, useToast } from '../ui'
+import { Button, Dialog, IconButton, Spinner, TextInput, useToast } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
 import { useCleanupActions } from './cleanup/use-cleanup-actions'
 import {
@@ -127,7 +127,16 @@ export function FolderTree({ onSelectMailbox, active = true }: FolderTreeProps =
     void started.catch(report)
   }
 
-  if (mailboxes === undefined) return null
+  // B20.8: `null` while the liveQuery is in flight rendered NOTHING — the sidebar looked like an
+  // account with no folders, and said nothing at all, while the message list beside it showed a
+  // spinner. Same affordance as the list, so the two panes explain themselves the same way.
+  if (mailboxes === undefined) {
+    return (
+      <div className={styles.loading}>
+        <Spinner size="sm" label={t('shell.folders.loading')} />
+      </div>
+    )
+  }
   if (mailboxes.length === 0) {
     return <p className={styles.empty}>{t('shell.folders.empty')}</p>
   }

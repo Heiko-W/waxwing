@@ -51,6 +51,20 @@ function renderTree() {
 }
 
 describe('FolderTree (container)', () => {
+  // B20.8. The liveQuery starts `undefined` and the tree used to render `null` for it — so on every
+  // cold start the sidebar was blank and silent, indistinguishable from an account with no folders,
+  // while the message list beside it showed a spinner for the same wait.
+  it('says it is loading before the liveQuery lands, rather than showing nothing', async () => {
+    renderTree()
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading folders')
+    expect(screen.queryByText('Your folders will appear here.')).toBeNull()
+
+    // …and it goes away once there is something to show, rather than sitting there forever.
+    expect(await screen.findByText('Inbox')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
   it('renders the folders from the replica', async () => {
     renderTree()
     expect(await screen.findByText('Inbox')).toBeInTheDocument()

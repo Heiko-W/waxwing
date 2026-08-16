@@ -12,7 +12,8 @@
       "show": "Ordner anzeigen",
       "hide": "Ordner ausblenden",
       "title": "Ordner",
-      "empty": "Hier erscheinen Ihre Ordner."
+      "empty": "Hier erscheinen Ihre Ordner.",
+      "loading": "Ordner werden geladen"
     },
     "accounts": {
       "shared": "Geteilt",
@@ -914,7 +915,8 @@
       "empty": "Bitte einen Label-Namen eingeben.",
       "tooLong": "Der Name ist zu lang.",
       "taken": "Ein Label mit diesem Namen existiert bereits."
-    }
+    },
+    "loading": "Labels werden geladen"
   },
   "cleanup": {
     "cancel": "Abbrechen",

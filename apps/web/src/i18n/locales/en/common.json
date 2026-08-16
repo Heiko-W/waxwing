@@ -12,7 +12,8 @@
       "show": "Show folders",
       "hide": "Hide folders",
       "title": "Folders",
-      "empty": "Your folders will appear here."
+      "empty": "Your folders will appear here.",
+      "loading": "Loading folders"
     },
     "accounts": {
       "shared": "Shared",
@@ -914,7 +915,8 @@
       "empty": "Enter a label name.",
       "tooLong": "The name is too long.",
       "taken": "A label with this name already exists."
-    }
+    },
+    "loading": "Loading labels"
   },
   "cleanup": {
     "cancel": "Cancel",

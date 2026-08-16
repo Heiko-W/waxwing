@@ -265,3 +265,11 @@
   color: var(--waxwing-danger);
   font-size: var(--waxwing-text-sm);
 }
+
+/* The loading state sits where the empty state does — same inset, so the sidebar does not shift
+   when the liveQuery lands (B20.8). */
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--waxwing-space-4);
+}

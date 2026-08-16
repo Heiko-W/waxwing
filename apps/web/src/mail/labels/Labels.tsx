@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRoute } from '../../app/route'
 import { emailsWithKeyword, useReplicaQuery } from '../../sync'
-import { Button, Checkbox, Dialog, IconButton } from '../../ui'
+import { Button, Checkbox, Dialog, IconButton, Spinner } from '../../ui'
 import { LabelFormDialog } from './LabelFormDialog'
 import { LabelList } from './LabelList'
 import styles from './labels.module.css'
@@ -32,7 +32,15 @@ export function Labels() {
   const [dialog, setDialog] = useState<LabelDialog | null>(null)
 
   const activeLabel = route.search.get('label') ?? undefined
-  if (labels === undefined) return null
+  // B20.8, as in `FolderTree`: nothing on screen and nothing announced is indistinguishable from
+  // an account with no labels.
+  if (labels === undefined) {
+    return (
+      <div className={styles.loading}>
+        <Spinner size="sm" label={t('labels.loading')} />
+      </div>
+    )
+  }
 
   // Only registered labels constrain a NEW slug (a discovered keyword becomes registered on "add").
   const existingKeywords = labels.filter((label) => !label.discovered).map((label) => label.keyword)
