@@ -42,12 +42,14 @@
     "verify:all": "pnpm verify && pnpm verify:e2e",
     "gate": "node scripts/ci.mjs",
     "gate:fast": "node scripts/ci.mjs --fast",
-    "e2e:large": "pnpm --filter @waxwing/e2e run e2e:large"
+    "e2e:large": "pnpm --filter @waxwing/e2e run e2e:large",
+    "release": "node scripts/release.mjs --check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
     "@size-limit/file": "12.1.0",
     "@types/node": "24.13.2",
+    "archiver": "^8.0.0",
     "fake-indexeddb": "6.2.5",
     "size-limit": "12.1.0",
     "typescript": "6.0.3",
