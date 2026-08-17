@@ -2252,7 +2252,14 @@ unversioned asset name is what makes that work and is a byte-for-byte copy of th
 one, with an assertion that their hashes match — otherwise a deployer verifies one file and
 their server fetches another.
 
-**Three defects found by going public**, all of the same shape — things that only break on a
+**v0.9.0 is published and the documented install was executed against a clean Stalwart**, not
+merely written down: the exact curl from `docs/deployment.md`, pointed at
+`releases/latest/download/waxwing-stalwart.zip` with `autoUpdateFrequency`, produced a working
+mount at `/webmail/` — sign-in, folders, mail, and a deep-link reload of `/webmail/mail/a`
+surviving with `<base href="/webmail/">` rewritten. `sha256sum -c SHA256SUMS --ignore-missing`
+verifies as written, and the versioned and unversioned zips hash identically.
+
+**Four defects found by going public**, all of the same shape — things that only break on a
 machine that is not mine:
 
 1. `pnpm install --frozen-lockfile` failed on a fresh clone. `pnpm-workspace.yaml` carried
@@ -2267,6 +2274,18 @@ machine that is not mine:
    header puts `productName` beside it, so the top-left corner read "waxwing Waxwing". Found
    by taking screenshots for the README, i.e. the first time anyone looked at that corner
    instead of through it.
+4. **The B22 guard defeated itself.** The release gate failed with "jmap integration suites
+   reported no passing tests — they did not really run" about nine tests that had passed on
+   screen a second earlier: vitest colours its summary on a hosted runner, so escape sequences
+   sit between `Tests` and the number and the regex matches nothing. Locally the output goes
+   down a pipe and the colour never appears. A check written to stop a skip looking like a
+   pass had never run anywhere it could fail.
+
+**And one fix that had the wrong shape.** `verify:e2e` not building the workspace libraries
+(2 above) was patched at the call site; the release job then failed identically inside
+`scripts/release.mjs`. Seven places ran `vite build` without `build:libs`. `@waxwing/web`'s
+own `build` script now does it and every call site uses that script, so a new one cannot
+forget — the second occurrence is what showed that patching call sites was the wrong fix.
 
 Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_OF_CONDUCT,
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
