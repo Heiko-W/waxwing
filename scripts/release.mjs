@@ -7,6 +7,21 @@
 //   waxwing-web-vX.Y.Z.tar.gz       every static file, for a web server / CDN / reverse proxy
 //   waxwing-stalwart-vX.Y.Z.zip     the same files with `index.html` AT THE ZIP ROOT, which is
 //                                   what Stalwart's Applications registry requires (SP.5)
+//   waxwing-stalwart.zip            THE SAME BYTES under a name that never changes — this is
+//                                   what makes auto-update work (see below)
+//
+// ── WHY AN UNVERSIONED COPY ───────────────────────────────────────────────────────────────────
+//
+// Stalwart re-fetches an Application's `resourceUrl` on `autoUpdateFrequency`. Point that URL at
+// GitHub's `releases/latest/download/<asset>` and a deployment updates itself: publish a release,
+// and every Stalwart running Waxwing picks it up on its next cycle with nobody touching anything.
+//
+// That only works if the asset NAME is stable. `…/latest/download/waxwing-stalwart-v0.9.0.zip`
+// resolves today and 404s the moment v0.9.1 ships — the deployment then silently stops updating,
+// which is worse than never having offered it. So the release carries both: the versioned name for
+// people who pin, and `waxwing-stalwart.zip` for people who want it to keep itself current. It is
+// exactly what Stalwart does for its own WebUI
+// (`https://github.com/stalwartlabs/webui/releases/latest/download/webui.zip`).
 //
 // …plus `SHA256SUMS`, so a deployer can check what they downloaded is what was published
 // (NFR-SEC-03 documents the stronger, per-file SRI story for hosts where files could diverge).
@@ -33,6 +48,7 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
+  copyFileSync,
   createWriteStream,
   mkdirSync,
   readdirSync,
@@ -184,6 +200,8 @@ async function main() {
   const paths = {
     web: join(OUT, `waxwing-web-v${v}.tar.gz`),
     stalwart: join(OUT, `waxwing-stalwart-v${v}.zip`),
+    /** The stable name `releases/latest/download/…` can point at — see the header. */
+    stalwartLatest: join(OUT, 'waxwing-stalwart.zip'),
   }
 
   // No leading directory in EITHER archive: a deployer untars into a docroot, and Stalwart needs
@@ -194,9 +212,19 @@ async function main() {
   log(`packing → ${relative(ROOT, paths.stalwart)}`)
   await pack('zip', paths.stalwart, files)
 
+  // A byte-for-byte copy, not a second pack: the two must have the same checksum, or a deployer
+  // who verifies the versioned asset has verified nothing about the one their server actually
+  // fetches.
+  copyFileSync(paths.stalwart, paths.stalwartLatest)
+  log(`copied → ${relative(ROOT, paths.stalwartLatest)} (the auto-update name)`)
+
   const sums = Object.values(paths)
     .map((path) => `${sha256(path)}  ${relative(OUT, path)}`)
     .join('\n')
+  // Both zips must hash identically — see the copy above.
+  if (sha256(paths.stalwart) !== sha256(paths.stalwartLatest)) {
+    throw new Error('the versioned and unversioned zips differ — the copy did not happen')
+  }
   writeFileSync(join(OUT, 'SHA256SUMS'), `${sums}\n`)
   log('wrote SHA256SUMS')
 

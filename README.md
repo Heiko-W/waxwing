@@ -25,28 +25,110 @@ never meant for browsers. JMAP is: JSON over HTTPS, parsed and indexed by the ma
 server. That makes the extra webmail server obsolete — Waxwing is the client that follows
 through on that idea.
 
-## Highlights (planned for V1)
+## Install it
 
-- **Mail**: conversations, blazing-fast virtualized lists, full-text search, keywords/labels
-- **Compose**: rich text (Fastmail's Squire), drafts autosave, attachments, identities, undo send
-- **Contacts**: JMAP for Contacts (RFC 9610) address books, groups, composer autocomplete
-- **Live**: push via WebSocket (RFC 8887) / EventSource; system notifications via Web Push — even while closed
-- **Offline**: cached mail, offline outbox, installable PWA
-- **Self-service**: vacation responder right in settings; Sieve filter rules follow in V1.x
-- **Private & safe**: remote content blocked by default, sandboxed HTML rendering, zero telemetry
-- **Yours**: Apple-inspired minimalist design, dark/light, white-label via `config.json` + `theme.css`
+Stalwart can host Waxwing itself and keep it updated. One command, and it is done:
 
-## Documents
+```sh
+curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "using": ["urn:ietf:params:jmap:core"],
+    "methodCalls": [["x:Application/set", {
+      "create": {
+        "waxwing": {
+          "enabled": true,
+          "description": "Waxwing webmail",
+          "resourceUrl": "https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip",
+          "urlPrefix": { "/webmail": true },
+          "autoUpdateFrequency": 604800000
+        }
+      }
+    }, "c1"]]
+  }'
+```
 
-- [Functional specification](docs/functional-specification.md)
-- [Technology stack & architecture](docs/tech-stack.md)
-- [Implementation plan](docs/implementation-plan.md)
+Restart Stalwart and open `https://mail.example.com/webmail/`. That is the whole installation:
+no web server to run, no container, no database. `autoUpdateFrequency` makes Stalwart re-fetch
+the release weekly, so new versions arrive on their own — drop that field if you would rather
+update by hand, or point `resourceUrl` at a versioned asset to pin one.
+
+Not using Stalwart, or want it behind your own nginx? Two more paths — and the honest
+trade-off of the cross-origin one — are in the **[deployment guide](docs/deployment.md)**.
+
+## What it does
+
+- **Mail** — conversations, a virtualized list that stays smooth at 100 000 messages, full-text
+  search, labels, and triage that works entirely from the keyboard
+- **Compose** — rich text (Fastmail's Squire), draft autosave, attachments, identities, undo send
+- **Contacts** — JMAP for Contacts (RFC 9610) address books, groups, composer autocomplete
+- **Live** — push over WebSocket (RFC 8887) / EventSource, system notifications via Web Push
+- **Offline** — a local replica, an outbox that survives a reload and a reconnect, installable as a PWA
+- **Private** — remote content blocked by default, message bodies rendered in a script-free
+  sandboxed frame, zero telemetry
+- **Yours** — minimalist design, dark/light, white-label through `config.json` + `theme.css`
+  with no rebuild
 
 ## Status
 
-🚧 **Phase 0 (Foundation) in progress.** The repository is being bootstrapped — pnpm
-workspace, TypeScript, Biome, and the package skeleton are in place. Follow progress on the
-[implementation plan](docs/implementation-plan.md) status board.
+**v0.9.0 — feature-complete, and deliberately not 1.0 yet.**
+
+Every planned work package is done and the release gate is signed off: 2 997 unit tests, 9
+integration suites against a live Stalwart, and 99 end-to-end tests across six Playwright
+suites, all green. Performance and accessibility are measured rather than asserted — the
+numbers are in the [implementation plan](docs/implementation-plan.md).
+
+What 1.0 is waiting on is **use**. A mail client earns that number by being lived in for a
+while, against more than one server and more than one mailbox. That has not happened yet.
+
+Known gaps, stated plainly:
+
+- **No screen reader has been used on it by a person.** The accessibility work is automated and
+  thorough; nobody has listened to it. See [`docs/accessibility.md`](docs/accessibility.md).
+- **Stalwart is the only server it has been tested against.** JMAP is a standard and the client
+  reads the session capabilities rather than assuming, but "should work" is not "does work".
+- **Cached mail is not encrypted at rest** — a browser has nowhere to put a key. Not suitable
+  for an untrusted shared machine.
+- **The phishing link check is friction, not a boundary.** No warning means "nothing found",
+  not "checked and safe". [`SECURITY.md`](SECURITY.md) says why in detail.
+
+## Documentation
+
+**Running it**
+
+- [Deployment guide](docs/deployment.md) — three ways to host it, and which to pick
+- [`config.json` reference](docs/configuration.md) — every setting, with its range and reasoning
+- [Theming](docs/theming.md) — white-labelling without a rebuild
+- [Accessibility](docs/accessibility.md) — what is verified, how, and what is not
+- [Security & threat model](SECURITY.md) — including where a defence is only friction
+
+**Building on it**
+
+- [Contributing](CONTRIBUTING.md) — start here; the test discipline is the part worth reading
+- [Functional specification](docs/functional-specification.md) — what it does, by requirement id
+- [Technology stack & architecture](docs/tech-stack.md) — how, and why those choices
+- [Implementation plan](docs/implementation-plan.md) — the work-package history and defect log
+- [Architecture decisions](docs/adr/) — every deviation, with its reasoning
+
+## Contributing
+
+Contributions are welcome, and the project is unusually explicit about what it expects — see
+[CONTRIBUTING.md](CONTRIBUTING.md). The short version: `pnpm gate` has to be green, and **a
+test has to fail when your fix is removed.** That second one is the house rule; the guide
+illustrates it with three real cases where a green test was measuring nothing.
+
+Good places to start are in the issue tracker. Bug reports are genuinely useful — especially
+with a `.eml` attached for anything about how a message renders, which is the only way to
+reproduce those exactly.
+
+## Licence
+
+The app is **AGPL-3.0-only**: run it, modify it, host it for others — and if you modify it and
+let people use it over a network, they get your changes too.
+
+Two packages are **MIT** so that clients which are not themselves AGPL can use them:
+[`@waxwing/jmap`](packages/jmap) (a typed JMAP client, no runtime dependencies) and
+[`@waxwing/jscontact`](packages/jscontact) (JSContact ⇆ vCard). Neither is on npm yet.
 
 ## Development
 
@@ -79,10 +161,10 @@ Common scripts, run from the repo root:
 | `pnpm demo --lan` | Same, served on your LAN IP so another machine can open it (Basic sign-in only — see below) |
 
 **Before committing, run `pnpm verify`** (and `pnpm verify:e2e` when you have Docker). These
-scripts are the pre-merge gate: they run the same checks a CI would (typecheck, Biome, tests,
-build, `size-limit` budget, the Stalwart fixture smoke, and the Playwright suite). GitHub
-Actions CI is deliberately deferred while the project is local ([ADR-003](docs/adr/003-local-verify-first-ci-later.md));
-the future workflow will simply wrap these scripts.
+scripts are the pre-merge gate: typecheck, Biome, tests, build, the `size-limit` budget, the
+Stalwart fixture smoke and the Playwright suites. [CI](.github/workflows/ci.yml) runs the very
+same scripts — it was written that way on purpose ([ADR-003](docs/adr/003-local-verify-first-ci-later.md)),
+so the local and hosted gates cannot drift apart.
 
 ### The local pipeline (`pnpm gate`)
 
@@ -103,9 +185,8 @@ the future workflow will simply wrap these scripts.
 
   Push anyway with `git push --no-verify` when you mean to.
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) is written and **not active** — there is no
-GitHub repository yet. It runs the same stages by calling the same scripts, so the local and hosted
-gates cannot drift apart. Running that workflow locally with [`act`](https://github.com/nektos/act)
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same stages by calling the same
+scripts. Running it locally with [`act`](https://github.com/nektos/act)
 was evaluated and rejected: act mounts the host Docker socket instead of nesting a daemon, so the
 fixture's compose bind mounts resolve to non-existent host paths and are silently replaced with empty
 directories — Stalwart then boots with no config and no diagnostic. Details in ADR-019.
@@ -148,8 +229,3 @@ This is a **pnpm workspace**:
 - `packages/mail-html` — `@waxwing/mail-html`, HTML-mail sanitizer + sandboxed renderer (AGPL-3.0)
 - `e2e` — Playwright suites + the Stalwart Docker fixture
 - `docs` — specification, tech stack, implementation plan, and ADRs
-
-## License
-
-- App: **AGPL-3.0**
-- `@waxwing/jmap` client library: MIT (planned, to seed the JMAP ecosystem)

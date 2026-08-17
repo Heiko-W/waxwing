@@ -1,9 +1,9 @@
 {
   "name": "@waxwing/web",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
-  "description": "Waxwing — the serverless webmail SPA (JMAP).",
+  "description": "Waxwing \u2014 the serverless webmail SPA (JMAP).",
   "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "vite",

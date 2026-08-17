@@ -1,6 +1,6 @@
 {
   "name": "@waxwing/jmap",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Typed JMAP client (RFC 8620/8621 and extensions) \u2014 the JMAP core for Waxwing.",
   "keywords": [
@@ -14,14 +14,14 @@
   ],
   "license": "MIT",
   "author": "Heiko Wilke",
-  "homepage": "https://github.com/OWNER/waxwing",
+  "homepage": "https://github.com/Heiko-W/waxwing",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OWNER/waxwing.git",
+    "url": "git+https://github.com/Heiko-W/waxwing.git",
     "directory": "packages/jmap"
   },
   "bugs": {
-    "url": "https://github.com/OWNER/waxwing/issues"
+    "url": "https://github.com/Heiko-W/waxwing/issues"
   },
   "type": "module",
   "sideEffects": false,

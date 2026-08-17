@@ -16,18 +16,13 @@ question is really an *origin* question, and the three options below are three a
 | [2. Reverse proxy](#2-reverse-proxy-same-origin) | yes | no | you already run nginx/Caddy |
 | [3. CDN / separate host](#3-cdn-or-separate-web-server-cross-origin) | **no** | `usePermissiveCors` | a CDN you already pay for |
 
-Release artefacts are built by `pnpm release`, which writes them into `dist-release/` together
-with a `SHA256SUMS`. Verify what you downloaded before you deploy it:
+**In a hurry?** [One command](#the-whole-installation-in-one-command) installs Waxwing on
+Stalwart and keeps it updated. The rest of this page is for everyone else.
 
-```sh
-sha256sum -c SHA256SUMS
-```
-
-> **There is no published release yet.** Waxwing has no GitHub repository at the time of
-> writing (ADR-003), so "download the release" means "build it": `pnpm install && pnpm release`
-> produces both artefacts from a clean checkout. This document is written for the published
-> case because that is what it will be — but it would be dishonest to link a page that does not
-> exist.
+Releases live at
+[github.com/Heiko-W/waxwing/releases](https://github.com/Heiko-W/waxwing/releases). You can
+also build them yourself from a clean checkout with `pnpm install && pnpm release` — the same
+script the release workflow runs, so the output is the same shape.
 
 ---
 
@@ -37,17 +32,10 @@ Stalwart can serve a static bundle from its own origin. Nothing else has to exis
 second web server, no proxy, no CORS — and the app and the JMAP endpoint are same-origin by
 construction.
 
-Take **`waxwing-stalwart-vX.Y.Z.zip`**. It differs from the tarball in exactly one way that
-matters: `index.html` sits at the zip root. Stalwart serves the archive as it finds it, so
-one wrapping directory puts every path off by a segment.
+### The whole installation, in one command
 
-**Step 1 — put the zip somewhere Stalwart can fetch it.** Any HTTP URL it can reach. It does
-not have to be HTTPS, and it does not have to be public — a URL on your own network is fine.
-Keep the `.zip` extension; Stalwart keys off it.
-
-**Step 2 — register it.** There is no REST settings API in v0.16.x. An Application is a JMAP
-registry object, created with a `POST` to `/jmap/`. Recovery-admin HTTP Basic is enough (it
-holds `SysApplicationCreate`):
+Stalwart fetches the app itself, straight from GitHub. Nothing to download, nothing to unpack,
+nothing to host:
 
 ```sh
 curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
@@ -59,15 +47,58 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
         "waxwing": {
           "enabled": true,
           "description": "Waxwing webmail",
-          "resourceUrl": "https://files.example.com/waxwing-stalwart-v1.0.0.zip",
-          "urlPrefix": { "/webmail": true }
+          "resourceUrl": "https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip",
+          "urlPrefix": { "/webmail": true },
+          "autoUpdateFrequency": 604800000
         }
       }
     }, "c1"]]
   }'
 ```
 
-The WebUI (*Settings › Web Applications*) and `stalwart-cli` do the same thing.
+Restart Stalwart, open `https://mail.example.com/webmail/`, sign in. That is the installation.
+
+### …and it keeps itself up to date
+
+The two fields that do it:
+
+- **`resourceUrl` points at `releases/latest/download/`**, whose asset name never changes.
+  Every release publishes `waxwing-stalwart.zip` alongside the versioned
+  `waxwing-stalwart-vX.Y.Z.zip`, precisely so this URL keeps resolving.
+- **`autoUpdateFrequency`** is milliseconds. `604800000` is a week; use `86400000` for daily.
+  Stalwart re-fetches on that cycle and serves the new build.
+
+So a Waxwing release reaches your users without you doing anything. **Omit
+`autoUpdateFrequency` if you would rather not have that** — then Stalwart fetches once and
+holds still until you change `resourceUrl` yourself. Pinning a version is the same idea:
+point `resourceUrl` at `…/download/waxwing-stalwart-v0.9.0.zip` and it stays there.
+
+Users are not interrupted by an update. The service worker installs the new build in the
+background and Waxwing offers a reload; nobody loses a half-written message.
+
+### Verifying what you installed
+
+Auto-update means your server fetches a file you have not personally checked, which is worth
+being deliberate about. Every release carries `SHA256SUMS`:
+
+```sh
+curl -LO https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip
+curl -LO https://github.com/Heiko-W/waxwing/releases/latest/download/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+The versioned and unversioned zips are byte-identical — the release script copies rather than
+re-packs, and refuses to publish if their hashes differ — so checking one checks the other.
+
+If that trust is more than you want to extend, host the zip yourself: download it, verify it,
+put it on your own server and point `resourceUrl` there. Everything above still works; only
+the fetch moves.
+
+### Installing from a file instead
+
+If your Stalwart cannot reach GitHub, `resourceUrl` takes any HTTP URL it *can* reach —
+including one on your own network. It does not have to be HTTPS and does not have to be
+public. Keep the `.zip` extension; Stalwart keys off it.
 
 **Verified end to end** against a clean Stalwart v0.16.14 with the real release artefact:
 `/webmail/` serves the app, `/webmail/inbox` serves it too (deep-link reload), `sw.js` arrives

@@ -2206,12 +2206,11 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
       the defaults key for key, so this cannot recur silently.
 - [~] npm metadata for `@waxwing/jmap` and `@waxwing/jscontact` complete (version, keywords,
       repository/homepage/bugs, `engines`, `publishConfig`), READMEs carry the API docs and a
-      publishing checklist. **NOT published, by owner decision (2026-08-17): prepare
-      everything, release nothing.** Three things are deliberately left: **D1 is unconfirmed**
-      (publishing under a licence nobody confirmed is not a quiet step), the repository fields
-      carry a literal `OWNER` placeholder — obviously wrong rather than a plausible-looking
-      guess, so it fails review instead of shipping a dead link — and **`"private": true`
-      stays**, as the one thing between a stray `pnpm publish -r` and an unintended release.
+      publishing checklist. **NOT published to npm.** Two things are deliberately
+      left: **D1 is unconfirmed** (publishing under a licence nobody confirmed is not a quiet
+      step) and **`"private": true` stays**, as the one thing between a stray
+      `pnpm publish -r` and an unintended release. Repository URLs now point at
+      `github.com/Heiko-W/waxwing`.
 - [~] Project site written (`docs/site/index.html`, one hand-written page, no generator) with
       `.github/workflows/pages.yml` to publish it — both inactive, same reason as above.
       **No live demo**, deliberately: a demo needs a mail server, and the only honest options
