@@ -321,13 +321,49 @@ describe('MessageView', () => {
       for (const name of ['Reply', 'Reply all', 'Forward']) {
         expect(screen.getByRole('button', { name })).toBeDisabled()
       }
+      // Inside the same `waitFor`, deliberately: the store is written by an effect, so reading it
+      // after the DOM has settled assumes a commit order that holds on a fast machine and not on a
+      // loaded one. The button and the chord must agree — polling for that is the assertion.
+      expect(useReadingStore.getState().handlers?.bodyReady).toBe(false)
     })
-    expect(useReadingStore.getState().handlers?.bodyReady).toBe(false)
 
     await act(async () => {
       release()
     })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reply' })).toBeEnabled())
+  })
+
+  it('never claims the body is quotable for even one commit before the images resolve', async () => {
+    // The assertion above polls, so it can only see states that PERSIST. This one records every
+    // value the store passes through, which is what catches a single-commit lie — and there was
+    // one: `useInlineImages` set `ready` to true while the body was still loading ("no body" read
+    // as "no images"), so on the commit where the body landed, `loading` went false against a stale
+    // `ready` and `bodyReady` was true for exactly one render. Reply in that window and the draft
+    // is seeded from an unsanitized body, which is the whole point of the gate.
+    //
+    // CI found it as a flake in the test above and it took a full-suite run under load to even see
+    // once. A subscription is the honest instrument here: a poll cannot observe a state that lasts
+    // one commit.
+    const seenValues: (boolean | undefined)[] = []
+    const unsubscribe = useReadingStore.subscribe((state) =>
+      seenValues.push(state.handlers?.bodyReady),
+    )
+    const release = pendingBlob()
+    await putEmailBody(db, htmlCidRow('e1'))
+    renderView(seen())
+
+    await waitFor(() => expect(screen.getByText('doc.pdf')).toBeInTheDocument())
+    await act(async () => {})
+
+    expect(seenValues).not.toContain(true)
+
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reply' })).toBeEnabled())
+    // …and the counter-test, so "never true" is a gate and not a permanently closed door.
+    expect(seenValues).toContain(true)
+    unsubscribe()
   })
 
   /**

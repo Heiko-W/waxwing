@@ -24,7 +24,20 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
   const parts = useMemo(() => (body ? collectCidParts(body) : []), [body])
 
   useEffect(() => {
-    if (body === undefined || parts.length === 0) {
+    // "No body yet" is not "no images to load", and conflating the two produced a real transient.
+    // `ready` used to be set TRUE here while the body was still being fetched; on the commit where
+    // the body arrives, `loading` flips false while `ready` is still that stale true — so for one
+    // commit `bodyReady` (`!loading && ready`, MessageView) claimed the message was quotable before
+    // this effect had even looked for a `cid:` part. That is precisely the window the compose gate
+    // exists to close: reply in it and the draft is seeded from an unsanitized body. Caught by CI as
+    // a one-in-many flake in the gate's own test, which is the only way a single-commit state gets
+    // noticed at all.
+    if (body === undefined) {
+      mapRef.current = new Map()
+      setReady(false)
+      return
+    }
+    if (parts.length === 0) {
       mapRef.current = new Map()
       setReady(true)
       return
