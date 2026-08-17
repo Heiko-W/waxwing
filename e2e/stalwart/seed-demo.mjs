@@ -13,6 +13,7 @@
 // and would not be reachable from here.
 
 import { BASE_URL, DOMAIN, PASSWORD } from './fixture.mjs'
+import { fetchThrottled } from './http.mjs'
 
 const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
@@ -39,7 +40,7 @@ const carol = () => `carol@${DOMAIN}`
 const authHeader = () => `Basic ${Buffer.from(`${alice()}:${PASSWORD}`).toString('base64')}`
 
 async function getSession() {
-  const res = await fetch(`${BASE_URL}/.well-known/jmap`, {
+  const res = await fetchThrottled(`${BASE_URL}/.well-known/jmap`, {
     headers: { Authorization: authHeader(), Accept: 'application/json' },
     redirect: 'follow',
   })
@@ -50,7 +51,7 @@ async function getSession() {
 }
 
 async function jmap(methodCalls) {
-  const res = await fetch(`${BASE_URL}/jmap/`, {
+  const res = await fetchThrottled(`${BASE_URL}/jmap/`, {
     method: 'POST',
     headers: {
       Authorization: authHeader(),
@@ -64,7 +65,7 @@ async function jmap(methodCalls) {
 }
 
 async function uploadBlob(accountId, contentType, body) {
-  const res = await fetch(`${BASE_URL}/jmap/upload/${accountId}/`, {
+  const res = await fetchThrottled(`${BASE_URL}/jmap/upload/${accountId}/`, {
     method: 'POST',
     headers: { Authorization: authHeader(), 'Content-Type': contentType },
     body,

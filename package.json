@@ -37,13 +37,14 @@
     "build:libs": "pnpm --filter @waxwing/jmap --filter @waxwing/mail-html --filter @waxwing/jscontact run build",
     "size": "pnpm --filter @waxwing/web build && size-limit",
     "check:dist": "node scripts/check-dist-contract.mjs",
-    "verify": "pnpm build:libs && pnpm typecheck && pnpm lint && pnpm test && pnpm size && pnpm check:dist",
+    "verify": "pnpm build:libs && pnpm typecheck && pnpm lint && pnpm test && pnpm size && pnpm check:dist && pnpm check:actions",
     "verify:e2e": "node scripts/verify-e2e.mjs",
     "verify:all": "pnpm verify && pnpm verify:e2e",
     "gate": "node scripts/ci.mjs",
     "gate:fast": "node scripts/ci.mjs --fast",
     "e2e:large": "pnpm --filter @waxwing/e2e run e2e:large",
-    "release": "node scripts/release.mjs --check"
+    "release": "node scripts/release.mjs --check",
+    "check:actions": "node scripts/ci.mjs --check-actions"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",

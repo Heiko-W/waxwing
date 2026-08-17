@@ -18,6 +18,7 @@
 // the state change it triggers drives the same push notification an SMTP delivery would.)
 
 import { BASE_URL, DOMAIN, PASSWORD } from './fixture.mjs'
+import { fetchThrottled } from './http.mjs'
 
 const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
@@ -139,30 +140,6 @@ const bob = () => `bob@${DOMAIN}`
 const carol = () => `carol@${DOMAIN}`
 const authHeader = () => `Basic ${Buffer.from(`${alice()}:${PASSWORD}`).toString('base64')}`
 
-/**
- * `fetch` with a bounded retry on 429.
- *
- * This seeder runs before EVERY test in the read suite — thirty-odd reseeds per run, each one a
- * session fetch, three blob uploads, an `Email/set` and an `Email/import`. Stalwart applies its
- * default request throttle to all of it, and on a slow two-core CI runner the burst crosses it:
- * the suite then fails with `HTTP 429` from the FIXTURE, which looks exactly like a product defect
- * in the report and is not one.
- *
- * Retrying rather than raising the server's limit is deliberate. The limit is Stalwart's real
- * behaviour, an app that trips it has to cope, and a fixture configured to be more permissive than
- * production would hide precisely the class of bug worth finding. What the seeder needs is not more
- * headroom but patience: it is scaffolding, not the thing under test.
- */
-async function fetchThrottled(url, init, attempt = 0) {
-  const res = await fetch(url, init)
-  if (res.status !== 429 || attempt >= 5) return res
-  // Honour `Retry-After` when it is sent; otherwise back off 250ms, 500ms, 1s, 2s, 4s.
-  const header = Number.parseInt(res.headers.get('retry-after') ?? '', 10)
-  const waitMs = Number.isFinite(header) ? header * 1000 : 250 * 2 ** attempt
-  await new Promise((resolve) => setTimeout(resolve, waitMs))
-  return fetchThrottled(url, init, attempt + 1)
-}
-
 async function getSession() {
   const res = await fetchThrottled(`${BASE_URL}/.well-known/jmap`, {
     headers: { Authorization: authHeader(), Accept: 'application/json' },
@@ -226,8 +203,35 @@ async function destroyExisting(accountId) {
   return ids.length
 }
 
-/** Upload raw bytes and return the blobId (the `.eml` and nested-message vectors). */
+/**
+ * Upload raw bytes ONCE per process and reuse the blobId (the `.eml`, nested-message and PDF
+ * vectors).
+ *
+ * The three payloads never change, and this seeder runs before EVERY test in the read suite — so
+ * without the cache one run performs ninety identical uploads. That is the largest single source of
+ * request pressure in the whole rig, and it is pressure that buys nothing: Stalwart then throttles,
+ * the APP's own first sync is what gets the 429, and the failure surfaces thirty seconds later as
+ * "the inbox never appeared" in whichever suite happened to be running. Diagnosed exactly that way
+ * — the notify suite failing at its post-sign-in wait while the same suite passed repeatedly on a
+ * fresh fixture.
+ *
+ * Cached by content, not by call site, so two callers asking for the same bytes share one upload.
+ * If Stalwart ever collects an unreferenced blob between reseeds the next `Email/set` fails loudly
+ * with `blobNotFound` rather than producing a wrong corpus — a visible error, which is the right
+ * failure mode for scaffolding.
+ */
+const blobCache = new Map()
+
 async function uploadBlob(accountId, contentType, body) {
+  const key = `${accountId}\u0000${contentType}\u0000${body}`
+  const cached = blobCache.get(key)
+  if (cached !== undefined) return cached
+  const blobId = await uploadBlobUncached(accountId, contentType, body)
+  blobCache.set(key, blobId)
+  return blobId
+}
+
+async function uploadBlobUncached(accountId, contentType, body) {
   const res = await fetchThrottled(`${BASE_URL}/jmap/upload/${accountId}/`, {
     method: 'POST',
     headers: { Authorization: authHeader(), 'Content-Type': contentType },

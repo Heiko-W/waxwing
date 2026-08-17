@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const args = new Set(process.argv.slice(2))
 const FAST = args.has('--fast')
+const ONLY_ACTIONS = args.has('--check-actions')
 const NO_E2E = args.has('--no-e2e')
 
 const results = []
@@ -136,6 +137,17 @@ function checkWorkflowActionPins() {
     process.exit(1)
   }
   console.log(`  ${pinned} workflow actions pinned to commit SHAs`)
+}
+
+// `pnpm check:actions` — the pin check on its own, so the HOSTED pull-request job enforces it too.
+//
+// It used to run only inside `preflight()`, i.e. only under `pnpm gate` and the pre-push hook. Both
+// are local, and neither is what guards a contribution: ci.yml runs `pnpm verify`, so a pull request
+// that unpinned an action back to a mutable tag would have gone green. A check that cannot fail
+// where the change actually arrives is decoration.
+if (ONLY_ACTIONS) {
+  checkWorkflowActionPins()
+  process.exit(0)
 }
 
 function preflight() {

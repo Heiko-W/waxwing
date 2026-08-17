@@ -234,7 +234,7 @@ per-sender allowlist would be keyed on the spoofable `From` this warning exists 
 — but the target is a node from the *frame's* document, and a frame is its own realm with its own
 `Element`. Cross-realm `instanceof` is always false, so from M1.8 until M3.9 clicking any link in an
 HTML mail did not open a tab: it navigated the frame, and the reader's message was replaced by a
-browser error page. (No data leaked — the app's own `frame-src 'self'` CSP blocked the load, which is
+browser error page. (No data leaked — the app's own `frame-src` CSP blocked the load, which is
 defence-in-depth doing its job.) Nothing caught it because **no test ever asserted `onLink` fired**;
 `git grep onLink` over the pre-M3.9 tree returns the definition, the wiring, and the call. It is
 duck-typed now, and `frame.test.ts` pins `doc.querySelector('b') instanceof Element === false` so the
