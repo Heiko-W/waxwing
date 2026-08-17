@@ -9,7 +9,13 @@
 
 export type { AuthControllerOptions } from './controller'
 export { AuthController, computeRedirectUri, isLoopbackHttp } from './controller'
-export { AuthConfigError, AuthError, AuthExpiredError, OAuthCallbackError } from './errors'
+export {
+  AuthConfigError,
+  AuthError,
+  AuthExpiredError,
+  OAuthCallbackError,
+  SecretStoreBlockedError,
+} from './errors'
 export type {
   AuthorizationUrlInput,
   OAuthDeps,

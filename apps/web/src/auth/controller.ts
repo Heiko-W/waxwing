@@ -39,6 +39,9 @@ import type {
 } from './types'
 import { type WipeEnvironment, wipeLocalData } from './wipe'
 
+/** How long a stashed PKCE transaction stays usable. Long enough for a slow IdP login. */
+const PKCE_MAX_AGE_MS = 30 * 60_000
+
 /** Persisted descriptor of the last session, used by {@link AuthController.restore}. */
 interface AuthRecord {
   method: AuthMethod
@@ -89,6 +92,13 @@ export class AuthController {
   private as: AuthorizationServer | null = null
   /** De-dupes concurrent {@link refresh} calls into one in-flight token grant. */
   private refreshInFlight: Promise<void> | null = null
+  /**
+   * Bumped by {@link logout}. A token grant that was already in flight when the user signed out
+   * must not write its result: {@link SecretStore.put} re-creates the wiped database and a fresh
+   * wrapping key, so a refresh landing a few hundred ms after the wipe used to resurrect a fully
+   * valid credential at rest while the app showed a clean login form.
+   */
+  private generation = 0
 
   constructor(options: AuthControllerOptions = {}) {
     this.oauthConfig = options.oauth
@@ -120,22 +130,44 @@ export class AuthController {
     return this.session.authProvider
   }
 
-  /** Heuristic: does the current URL look like an OAuth redirect callback? */
-  isRedirectCallback(): boolean {
+  /**
+   * Is the current URL a callback for an authorization WE started?
+   *
+   * Both halves are required. The URL shape alone is not evidence: `?code=` and `?error=` are
+   * ordinary query parameters that anyone can put in a link, and a mail containing
+   * `https://mail.example.com/?code=x` used to send the recipient's own client down the callback
+   * branch — where `completeRedirect` failed, `boot()` never reached `restore()`, and a signed-in
+   * user landed on a login form. Self-healing (a reload fixed it) but entirely attacker-triggered,
+   * and it consumed a genuinely pending PKCE transaction if one existed.
+   *
+   * So the pending single-use transaction is what decides. Asynchronous for that reason.
+   */
+  async isRedirectCallback(): Promise<boolean> {
     const params = new URL(this.getHref()).searchParams
-    return params.has('code') || params.has('error')
+    if (!params.has('code') && !params.has('error')) return false
+    const pending = await this.store.get(SecretName.PkceTransaction).catch(() => null)
+    return pending !== null
   }
 
   /** Starts a login. OAuth navigates away (`redirect`); Basic returns a `session`. */
   startLogin(request: LoginRequest): Promise<StartLoginResult> {
-    return request.method === 'basic' ? this.startBasicLogin(request) : this.startOAuthLogin()
+    return request.method === 'basic'
+      ? this.startBasicLogin(request)
+      : this.startOAuthLogin(request)
   }
 
-  private async startOAuthLogin(): Promise<StartLoginResult> {
+  private async startOAuthLogin(
+    request: Extract<LoginRequest, { method: 'oauth' }>,
+  ): Promise<StartLoginResult> {
     const config = this.requireResolvedOAuth()
     const as = await this.ensureDiscovery(config)
     const { url, transaction } = await beginAuthorization(as, config)
-    await this.store.put(SecretName.PkceTransaction, JSON.stringify(transaction))
+    const stored: PkceTransaction = {
+      ...transaction,
+      createdAt: this.now(),
+      ...(request.publicComputer === true ? { ephemeral: true } : {}),
+    }
+    await this.store.put(SecretName.PkceTransaction, JSON.stringify(stored))
     this.navigate(url.href)
     return { kind: 'redirect', url: url.href }
   }
@@ -170,6 +202,17 @@ export class AuthController {
       const raw = await this.store.get(SecretName.PkceTransaction)
       if (!raw) throw new OAuthCallbackError('No pending authorization request')
       const transaction = JSON.parse(raw) as PkceTransaction
+      // An authorization the user walked away from days ago is not one they are completing now.
+      // Hygiene rather than a credential control (a code without its state is worthless), but it
+      // keeps a verifier from lying around indefinitely.
+      if (
+        transaction.createdAt !== undefined &&
+        this.now() - transaction.createdAt > PKCE_MAX_AGE_MS
+      ) {
+        throw new OAuthCallbackError('Authorization request expired')
+      }
+      // BEFORE the exchange: `apply()` below must already know not to persist anything.
+      if (transaction.ephemeral === true) this.tokens.setEphemeral()
       const config = transaction.config
       const as = await this.ensureDiscovery(config)
       let result: TokenResult
@@ -184,10 +227,15 @@ export class AuthController {
       }
       this.resolvedOAuth = config
       await this.tokens.apply(result)
-      await this.store.put(
-        SecretName.AuthRecord,
-        JSON.stringify({ method: 'oauth', username: null, oauth: config } satisfies AuthRecord),
-      )
+      // The AuthRecord is what `restore()` keys off on a cold start. Writing one for a
+      // public-computer session would sign the NEXT person at this machine in as this user, which
+      // is the failure the mode exists to prevent (FR-AUTH-07).
+      if (transaction.ephemeral !== true) {
+        await this.store.put(
+          SecretName.AuthRecord,
+          JSON.stringify({ method: 'oauth', username: null, oauth: config } satisfies AuthRecord),
+        )
+      }
       const session = this.buildOAuthSession(null, result.expiresAt)
       this.session = session
       return session
@@ -231,6 +279,7 @@ export class AuthController {
   }
 
   private async doRefresh(): Promise<void> {
+    const generation = this.generation
     const config = this.requireResolvedOAuth()
     const refreshToken = await this.tokens.getRefreshToken()
     if (!refreshToken) throw new AuthExpiredError('No refresh token available')
@@ -246,6 +295,13 @@ export class AuthController {
       // token so a brief offline blip is not a permanent logout.
       if (isPermanentRefreshError(error)) await this.tokens.clear()
       throw new AuthExpiredError('Token refresh failed', { cause: error })
+    }
+    // Signed out while this grant was on the wire: the store has just been wiped, and persisting
+    // the new token would rebuild it — database, wrapping key and a valid refresh token — behind a
+    // login screen. Drop the result on the floor instead. The access token is in-memory only, so
+    // nothing durable is lost by discarding it either.
+    if (generation !== this.generation) {
+      throw new AuthExpiredError('Signed out during token refresh')
     }
     await this.tokens.apply(result)
     if (this.session?.method === 'oauth') {
@@ -285,6 +341,8 @@ export class AuthController {
    * data") it additionally clears all IndexedDB, Cache Storage and service-worker state.
    */
   async logout(options: LogoutOptions = {}): Promise<void> {
+    // FIRST, before any await: an in-flight refresh checks this before it persists anything.
+    this.generation += 1
     if (this.resolvedOAuth && this.as) {
       const refreshToken = await this.tokens.getRefreshToken().catch(() => null)
       if (refreshToken) {
@@ -340,8 +398,18 @@ export class AuthController {
     }
   }
 
+  /**
+   * Memoized RFC 8414 discovery, keyed by the issuer it was performed for.
+   *
+   * The issuer comparison is the load-bearing part: `as` feeds BOTH the RFC 9207 `iss` check in
+   * `validateAuthResponse` and the token endpoint a code is exchanged at. Returning a cached
+   * document for a DIFFERENT issuer would validate one server's callback against another server's
+   * metadata. Today `SessionProvider.ensureController` builds a new controller whenever the issuer
+   * changes, so the unkeyed version was unreachable rather than wrong — but that is an invariant
+   * held one layer up, and the multi-account work (ADR-004) is exactly what would break it.
+   */
   private async ensureDiscovery(config: ResolvedOAuthConfig): Promise<AuthorizationServer> {
-    if (this.as) return this.as
+    if (this.as && this.as.issuer === config.issuer) return this.as
     this.as = await discover(config)
     return this.as
   }

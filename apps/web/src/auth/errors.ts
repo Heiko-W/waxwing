@@ -27,6 +27,18 @@ export class AuthExpiredError extends AuthError {
   }
 }
 
+/**
+ * The encrypted secret store could not be destroyed because another connection held it open
+ * (FR-AUTH-05). The credentials are STILL AT REST — this is a failed sign-out, not a warning, and
+ * the UI has to say so rather than show a login form over a live session.
+ */
+export class SecretStoreBlockedError extends AuthError {
+  constructor(dbName: string, options?: ErrorOptions) {
+    super(`Could not delete "${dbName}": another connection is holding it open`, options)
+    this.name = 'SecretStoreBlockedError'
+  }
+}
+
 /** The OAuth redirect callback could not be processed (state mismatch, provider error, …). */
 export class OAuthCallbackError extends AuthError {
   constructor(message: string, options?: ErrorOptions) {

@@ -25,6 +25,8 @@ import {
   currentReplicaName,
   getReplica,
   newEphemeralDbName,
+  releaseEphemeralClaim,
+  resetReplica,
   resetStorageFull,
   setReplicaName,
   sweepEphemeral,
@@ -48,6 +50,13 @@ const JMAP_MAIL = 'urn:ietf:params:jmap:mail'
 /** One-shot OAuth handshake stash (tab-scoped, auto-clears): survives the redirect leg. */
 const STASH_TARGET_KEY = 'waxwing.onboard.target'
 const STASH_ROUTE_KEY = 'waxwing.onboard.route'
+/**
+ * The public-computer choice across the OAuth redirect leg (FR-AUTH-07). Not a credential — a
+ * boolean the user ticked — and it has to survive a full-page navigation that destroys every ref in
+ * this component, which is exactly what `sessionStorage` is for. The AUTH side of the same choice
+ * travels separately, inside the PKCE transaction, because only the controller can act on it.
+ */
+const STASH_PUBLIC_KEY = 'waxwing.onboard.publicComputer'
 /** Durable last-connected target so a reload/restore reconnects to a manual server too. */
 const DURABLE_TARGET_KEY = 'waxwing.connect.target'
 
@@ -144,6 +153,21 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
    */
   const ephemeralRef = useRef(false)
 
+  /**
+   * Switch this session to a throwaway replica (FR-AUTH-07). Shared by BOTH sign-in paths — the
+   * checkbox used to be wired to Basic alone, so on a default deployment (where OAuth is the
+   * primary button) ticking it produced a durable replica and a persisted refresh token while the
+   * hint underneath promised the opposite.
+   *
+   * The ref is set only AFTER `setReplicaName` succeeded. The old order left `ephemeralRef` true
+   * after a throw, which then wiped the NEXT — ordinary — session's mail on sign-out.
+   */
+  const markEphemeral = useCallback((): void => {
+    if (ephemeralRef.current) return
+    setReplicaName(newEphemeralDbName())
+    ephemeralRef.current = true
+  }, [])
+
   const fallbackTarget = useCallback((): ConnectTarget => {
     if (config.server.sessionUrl !== null) return pinnedTarget(config.server.sessionUrl)
     const durable = readStored<ConnectTarget>(local(), DURABLE_TARGET_KEY)
@@ -236,9 +260,15 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       const controller = ensureController((stashed ?? fallbackTarget()).issuer)
 
       // A. OAuth redirect callback — highest priority (single-use PKCE transaction).
-      if (controller.isRedirectCallback()) {
+      if (await controller.isRedirectCallback()) {
         dispatch({ type: 'connecting' })
         removeStored(session(), STASH_TARGET_KEY)
+        // BEFORE `connectSession` opens the replica (FR-AUTH-07). The redirect wiped every ref in
+        // this component, so the choice is re-read from the tab-scoped stash rather than remembered.
+        if (readStored<boolean>(session(), STASH_PUBLIC_KEY) === true) {
+          markEphemeral()
+        }
+        removeStored(session(), STASH_PUBLIC_KEY)
         await controller.completeRedirect()
         // Restore the pre-redirect route BEFORE the router mounts (dispatch 'connected'),
         // since the OAuth redirect_uri strips back to the app root.
@@ -294,7 +324,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     } catch (error) {
       goToLogin(targetRef.current ?? fallbackTarget(), errToOnboard(error))
     }
-  }, [config, ensureController, connectSession, goToLogin, fallbackTarget, services])
+  }, [config, ensureController, connectSession, goToLogin, fallbackTarget, services, markEphemeral])
 
   // Boot exactly once. The ref guard is load-bearing: React 19 StrictMode double-invokes the
   // effect, and `completeRedirect()` consumes the single-use PKCE transaction, so a second run
@@ -320,20 +350,29 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     [goToLogin],
   )
 
-  const chooseOAuth = useCallback(() => {
-    void (async () => {
-      const current = stateRef.current
-      const target = current.status === 'onboarding' ? current.view.target : null
-      if (!target) return
-      dispatch({ type: 'submitBusy' })
-      try {
-        writeStored(session(), STASH_TARGET_KEY, target)
-        await ensureController(target.issuer).startLogin({ method: 'oauth' })
-      } catch (error) {
-        dispatch({ type: 'loginError', error: errToOnboard(error) })
-      }
-    })()
-  }, [ensureController])
+  const chooseOAuth = useCallback(
+    (publicComputer = false) => {
+      void (async () => {
+        const current = stateRef.current
+        const target = current.status === 'onboarding' ? current.view.target : null
+        if (!target) return
+        dispatch({ type: 'submitBusy' })
+        try {
+          writeStored(session(), STASH_TARGET_KEY, target)
+          // Two halves, because they are consumed by different owners after the redirect: the
+          // controller needs it to keep the refresh token out of storage (it rides in the PKCE
+          // transaction), and THIS component needs it to name the replica when the callback lands.
+          if (publicComputer) writeStored(session(), STASH_PUBLIC_KEY, true)
+          else removeStored(session(), STASH_PUBLIC_KEY)
+          await ensureController(target.issuer).startLogin({ method: 'oauth', publicComputer })
+        } catch (error) {
+          removeStored(session(), STASH_PUBLIC_KEY)
+          dispatch({ type: 'loginError', error: errToOnboard(error) })
+        }
+      })()
+    },
+    [ensureController],
+  )
 
   // The crash guard and the tab-close attempt (FR-AUTH-07).
   //
@@ -363,10 +402,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           // BEFORE any replica work (FR-AUTH-07). `setReplicaName` throws once a replica is open,
           // and the first `getReplica()` happens inside `connectSession` below — so this is the one
           // window in which the choice can still be honoured.
-          if (publicComputer) {
-            ephemeralRef.current = true
-            setReplicaName(newEphemeralDbName())
-          }
+          if (publicComputer) markEphemeral()
           basicStayRef.current = staySignedIn
           const controller = ensureController(target.issuer)
           await controller.startLogin({ method: 'basic', username, password, staySignedIn })
@@ -379,7 +415,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         }
       })()
     },
-    [ensureController, connectSession],
+    [ensureController, connectSession, markEphemeral],
   )
 
   const editServer = useCallback(() => {
@@ -439,10 +475,18 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // `SyncEngineHost`'s effect cleanup cannot run before this function awaits the wipe in the same
         // tick — so stopping only the primary left the wipe hanging on still-writing shared engines.
         await stopAllEngines()
+        // Whether any part of "remove my data" failed. A sign-out always proceeds — the in-memory
+        // session must go regardless — but the user is told when the local copy outlived it, rather
+        // than being shown a login form that implies everything was cleaned up (FR-AUTH-05).
+        let incomplete = false
         // An EPHEMERAL session always wipes, whichever sign-out was chosen (FR-AUTH-07). The whole
         // promise of public-computer mode is that leaving does not depend on picking the right menu
         // item on the way out — that is precisely the step someone in a hurry skips.
-        if (wipeData || ephemeralRef.current) await wipeReplica(getReplica()).catch(() => {})
+        if (wipeData || ephemeralRef.current) {
+          await wipeReplica(getReplica()).catch(() => {
+            incomplete = true
+          })
+        }
         // A notification is local data this app put on the OPERATING SYSTEM's screen, and the OS keeps
         // it there across sign-out, reload and browser restart. Wiping IndexedDB while three banners
         // reading "Alice Weber — Kündigung Arbeitsvertrag" sit in the notification centre would make a
@@ -472,13 +516,28 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // And the active-account pointer itself (M4.4): the next session's granted accounts may differ,
         // so a stale shared-account id must not carry over.
         useActiveAccountStore.getState().reset()
-        await controllerRef.current?.logout(wipeData ? { wipeData: true } : {}).catch(() => {})
+        // A rejected logout means the credential store is STILL on disk — another connection blocked
+        // the delete. That is the one outcome this used to swallow entirely, and it is precisely the
+        // one the user must hear about: the next cold start would restore the session they just
+        // ended (SecretStoreBlockedError).
+        await controllerRef.current?.logout(wipeData ? { wipeData: true } : {}).catch(() => {
+          incomplete = true
+        })
         clientRef.current = null
         authProviderRef.current = null
         controllerRef.current = null
         controllerIssuerRef.current = null
+        // Back to the durable default, and give up the ephemeral claim, so the next sign-in in this
+        // page load starts from a clean slate in BOTH directions (FR-AUTH-07).
+        ephemeralRef.current = false
+        releaseEphemeralClaim()
+        resetReplica()
         removeStored(local(), DURABLE_TARGET_KEY)
-        goToLogin(targetRef.current ?? fallbackTarget())
+        removeStored(session(), STASH_PUBLIC_KEY)
+        goToLogin(
+          targetRef.current ?? fallbackTarget(),
+          incomplete ? { key: 'auth.error.signOutIncomplete' } : undefined,
+        )
       })()
     },
     [goToLogin, fallbackTarget],

@@ -57,6 +57,15 @@ export interface PkceTransaction {
   verifier: string
   state: string
   config: ResolvedOAuthConfig
+  /**
+   * The user ticked "public or shared computer" before being sent to the authorization server
+   * (FR-AUTH-07). A full-page redirect destroys every bit of in-memory state, and this transaction
+   * is the only thing that survives it — so the choice travels here, and the callback honours it by
+   * keeping the refresh token in memory and writing no AuthRecord.
+   */
+  ephemeral?: boolean
+  /** Epoch ms the transaction was created, so a stale one can be refused (see completeRedirect). */
+  createdAt?: number
 }
 
 /** Pure inputs for {@link buildAuthorizationUrl}. */
