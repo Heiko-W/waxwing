@@ -8,6 +8,11 @@
 Just static files and your mail server — no middleware, no database, no container.</p>
 
 <p align="center">
+  <a href="https://github.com/Heiko-W/waxwing/actions/workflows/ci.yml"><img src="https://github.com/Heiko-W/waxwing/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPL--3.0-blue" alt="AGPL-3.0"/></a>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/reading-light.png" width="820" alt="Waxwing reading a message: folder rail, message list, and reading pane with the remote-content banner"/>
 </p>
 
