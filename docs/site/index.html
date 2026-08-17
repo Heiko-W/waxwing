@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Waxwing — a serverless webmail client for JMAP</title>
+    <meta
+      name="description"
+      content="Waxwing is a webmail client that runs entirely in the browser and talks JMAP directly to your mail server. Static files only — no middleware, no database, no container."
+    />
+    <link rel="icon" href="waxwing-icon.svg" type="image/svg+xml" />
+    <style>
+      /*
+       * One file, no build step, no theme dependency — see the note in .github/workflows/pages.yml.
+       * The tokens mirror the app's so the site and the product do not look like strangers.
+       */
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f5f7;
+        --surface: #ffffff;
+        --text: #1d1d1f;
+        --muted: #55555c;
+        --accent: #2761c4;
+        --border: #d6d6db;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1c1c1e;
+          --surface: #2c2c2e;
+          --text: #f5f5f7;
+          --muted: #a1a1a8;
+          --accent: #82acf5;
+          --border: #3a3a3c;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 46rem;
+        margin-inline: auto;
+        padding: 2rem 1.25rem 4rem;
+      }
+      header {
+        text-align: center;
+        padding-block: 3rem 1rem;
+      }
+      header img {
+        inline-size: 84px;
+      }
+      h1 {
+        font-size: 2.5rem;
+        margin: 0.5rem 0 0.25rem;
+        letter-spacing: -0.02em;
+      }
+      .tagline {
+        font-size: 1.2rem;
+        color: var(--muted);
+        margin: 0;
+      }
+      h2 {
+        margin-block: 2.5rem 0.75rem;
+        font-size: 1.35rem;
+      }
+      a {
+        color: var(--accent);
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+      }
+      pre {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+      }
+      .cards {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+        margin-block: 1rem;
+      }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem 1.1rem;
+      }
+      .card h3 {
+        margin: 0 0 0.35rem;
+        font-size: 1rem;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      .note {
+        border-inline-start: 3px solid var(--accent);
+        padding: 0.75rem 1rem;
+        background: var(--surface);
+        border-radius: 0 8px 8px 0;
+      }
+      footer {
+        border-block-start: 1px solid var(--border);
+        margin-block-start: 3rem;
+        padding-block-start: 1.5rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img src="waxwing-icon.svg" alt="" />
+      <h1>Waxwing</h1>
+      <p class="tagline">A serverless webmail client for JMAP.</p>
+    </header>
+
+    <main>
+      <p>
+        Waxwing runs entirely in your browser and talks
+        <a href="https://jmap.io">JMAP</a> straight to your mail server. It ships as plain
+        static files: <strong>no middleware, no database, no container.</strong>
+        <a href="https://stalw.art">Stalwart</a> can host it itself, or any web server can.
+      </p>
+
+      <div class="note">
+        <strong>Status: pre-1.0, not yet released.</strong> The code is written and the gate is
+        green, but there is no published build and no public repository yet. Nothing on this page
+        can be downloaded today — it describes what the release will be, because writing it as if
+        it already existed would be a lie you would only discover after clicking.
+      </div>
+
+      <h2>Why a client with no server</h2>
+      <p>
+        Classic webmail needs its own server-side stack because IMAP was never meant for
+        browsers. JMAP is: JSON over HTTPS, parsed and indexed by the mail server. That makes the
+        extra webmail server redundant — Waxwing is the client that follows through on the idea.
+      </p>
+      <p>
+        The practical difference is what you operate. There is no Waxwing process to run, patch,
+        monitor or back up. An upgrade is a new zip file. If Waxwing disappeared tomorrow, your
+        mail would be exactly where it was, because it was never anywhere else.
+      </p>
+
+      <h2>What it does</h2>
+      <div class="cards">
+        <div class="card">
+          <h3>Mail</h3>
+          <p>
+            Conversations, a virtualized list that stays smooth at 100 000 messages, full-text
+            search, labels, and triage that works entirely from the keyboard.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Offline</h3>
+          <p>
+            A local replica of a configurable recent window, an outbox that survives a reload and
+            a reconnect, and undo that does not depend on the network.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Installable</h3>
+          <p>
+            A Progressive Web App with push notifications, an offline shell, and deep links that
+            survive a reload.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Accessible</h3>
+          <p>
+            WCAG 2.2 AA self-assessed, contrast and target size measured in a real browser, and
+            the gaps written down rather than glossed over.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Yours to brand</h3>
+          <p>
+            Product name, logo, colours and theme come from files next to
+            <code>index.html</code> — edited in place, with no rebuild.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Free software</h3>
+          <p>
+            AGPL-3.0. The JMAP and JSContact packages are MIT so other clients can use them.
+          </p>
+        </div>
+      </div>
+
+      <h2>Deploying it</h2>
+      <p>The recommended path has Stalwart serve the app from its own origin:</p>
+      <pre><code>curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
+  -H 'Content-Type: application/json' \
+  -d '{"using":["urn:ietf:params:jmap:core"],"methodCalls":[["x:Application/set",
+       {"create":{"waxwing":{"enabled":true,
+        "resourceUrl":"https://…/waxwing-stalwart-v1.0.0.zip",
+        "urlPrefix":{"mail":true}}}},"c1"]]}'</code></pre>
+      <p>
+        Same origin, so no CORS and nothing else to run. Two other paths — a reverse proxy, and a
+        CDN with the trade-off it carries — are in the deployment guide.
+      </p>
+
+      <h2>Honest limitations</h2>
+      <p>
+        Because a project page that lists only strengths tells you nothing about the ones it left
+        out:
+      </p>
+      <ul>
+        <li>
+          <strong>Cached mail is not encrypted at rest.</strong> It cannot be — a browser has
+          nowhere to put a key that an attacker with the same profile could not also reach.
+          Waxwing is not appropriate for an untrusted shared machine.
+        </li>
+        <li>
+          <strong>The phishing link check is friction, not a boundary.</strong> It compares text
+          the attacker wrote against a URL the attacker wrote. The absence of a warning means
+          "nothing found", not "checked and safe".
+        </li>
+        <li>
+          <strong>No screen reader has been used on it by a person.</strong> The accessibility
+          work is automated and thorough; nobody has listened to it yet.
+        </li>
+        <li>
+          <strong>Cross-origin hosting needs your mail server reconfigured</strong>, and the usual
+          way of doing that opens it to every origin. The guide recommends against it.
+        </li>
+      </ul>
+
+      <footer>
+        <p>
+          Waxwing is free software under the AGPL-3.0. Built by Heiko Wilke.
+          <br />
+          The bird is named for the sealing-wax-red tips of its wing feathers — the one that
+          carries a wax seal.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

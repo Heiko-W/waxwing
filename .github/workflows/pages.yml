@@ -1,0 +1,48 @@
+# Waxwing project site — NOT ACTIVE YET, and deliberately so.
+#
+# There is no GitHub repository (ADR-003), so nothing has ever run this. It exists for the same
+# reason `ci.yml` and `release.yml` do: the day a repository is created, the site is a push away.
+#
+# ── WHAT IT PUBLISHES, AND WHAT IT DELIBERATELY DOES NOT ──────────────────────────────────────
+#
+# It publishes `docs/site/` — one hand-written page, no generator, no theme dependency. The
+# alternative (Jekyll, Docusaurus, VitePress) buys navigation and search for a site with four
+# sections, in exchange for a build toolchain that has to be kept alive.
+#
+# It does NOT publish a live demo. A demo needs a mail server, and the only honest ones are
+# either a real account (which nobody should hand to a demo) or a fake JMAP backend — which
+# would be a second implementation of the server, maintained forever, that gradually stops
+# resembling any real one. Decision log #1 also rules out paid domains, so this lives at
+# github.io.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+      - id: deployment
+        uses: actions/deploy-pages@v4

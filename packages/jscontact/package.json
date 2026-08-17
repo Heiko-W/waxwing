@@ -1,24 +1,48 @@
 {
   "name": "@waxwing/jscontact",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "JSContact (RFC 9553) <-> vCard 4.0 (RFC 6350) conversion.",
+  "keywords": [
+    "jscontact",
+    "vcard",
+    "rfc9553",
+    "rfc6350",
+    "contacts",
+    "typescript"
+  ],
   "license": "MIT",
+  "author": "Heiko Wilke",
+  "homepage": "https://github.com/OWNER/waxwing",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/waxwing.git",
+    "directory": "packages/jscontact"
+  },
+  "bugs": {
+    "url": "https://github.com/OWNER/waxwing/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
-  "sideEffects": false,
-  "files": [
-    "dist"
-  ],
   "devDependencies": {
     "tsup": "8.5.1"
   }

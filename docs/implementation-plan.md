@@ -2130,14 +2130,16 @@ Done when: numbers recorded in docs; budgets green with ≥ 15 % headroom.
 
 Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
 
-- [~] `pnpm release` (`scripts/release.mjs`) builds both artefacts + `SHA256SUMS`, and
+- [x] `pnpm release` (`scripts/release.mjs`) builds both artefacts + `SHA256SUMS`, and
       `--check` asserts the five things a deployer would otherwise discover the hard way (the
       `.zip` extension, `index.html` at the zip root, the 100 MiB cap, the `<base href="/">`
       token, `manifest.json` not `.webmanifest`). Packs with `archiver` rather than system
       `tar`/`zip` — `zip` is not installed here, and artefacts whose shape depends on which
-      build of a binary a machine carries are not reproducible. **The tag-triggered GitHub
-      workflow is NOT written**: there is no repository yet (ADR-003), and a workflow that
-      cannot be run is a design exercise. It will be a thin caller of this script.
+      build of a binary a machine carries are not reproducible. `.github/workflows/release.yml`
+      is the tag-triggered half — inactive like `ci.yml` (no repository yet, ADR-003) and a
+      THIN CALLER of the same script, so the two cannot drift. It runs the full gate first
+      (a tag can be pushed from a tree that never ran it, and a bad release is permanent) and
+      refuses a tag that disagrees with `package.json`.
       **SP.5 prerequisite for the Applications bundle — DONE in M3.5:** the built `index.html`
       emits the literal `<base href="/">` (double quotes, root path) — Stalwart rewrites *that
       exact token* to `<base href="/{prefix}/">`, and without it deep-link reloads under
@@ -2202,10 +2204,22 @@ Spec: FR-DEP-01/02/05, NFR-SEC-03/04, NFR-QUAL-02, tech-stack §6. Size: L.
       the spec (drift from an unrelated remediation commit, now corrected), and `cacheDays: 0`
       is IGNORED rather than honoured. `config.shipped.test.ts` now holds the shipped file to
       the defaults key for key, so this cannot recur silently.
-- [ ] Publish `@waxwing/jmap` and `@waxwing/jscontact` to npm (after D1 confirmation);
-      README + API docs for both.
-- [ ] Tag **v1.0.0**; project site/demo on GitHub Pages (decision log #1: no paid
-      domains).
+- [~] npm metadata for `@waxwing/jmap` and `@waxwing/jscontact` complete (version, keywords,
+      repository/homepage/bugs, `engines`, `publishConfig`), READMEs carry the API docs and a
+      publishing checklist. **NOT published, by owner decision (2026-08-17): prepare
+      everything, release nothing.** Three things are deliberately left: **D1 is unconfirmed**
+      (publishing under a licence nobody confirmed is not a quiet step), the repository fields
+      carry a literal `OWNER` placeholder — obviously wrong rather than a plausible-looking
+      guess, so it fails review instead of shipping a dead link — and **`"private": true`
+      stays**, as the one thing between a stray `pnpm publish -r` and an unintended release.
+- [~] Project site written (`docs/site/index.html`, one hand-written page, no generator) with
+      `.github/workflows/pages.yml` to publish it — both inactive, same reason as above.
+      **No live demo**, deliberately: a demo needs a mail server, and the only honest options
+      are a real account (which nobody should hand to a demo) or a fake JMAP backend — a second
+      server implementation, maintained forever, drifting from any real one. The page states
+      the four honest limitations alongside the features, because a project page listing only
+      strengths says nothing about the ones it left out.
+      **v1.0.0 NOT tagged** — that is the owner's call and waits on the repository.
 
 Done when: a stranger can deploy Waxwing on their Stalwart from the release assets using
 only the guides.

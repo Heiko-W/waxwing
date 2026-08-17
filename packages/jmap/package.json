@@ -1,11 +1,33 @@
 {
   "name": "@waxwing/jmap",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "description": "Typed JMAP client (RFC 8620/8621 and extensions) — the JMAP core for Waxwing.",
+  "description": "Typed JMAP client (RFC 8620/8621 and extensions) \u2014 the JMAP core for Waxwing.",
+  "keywords": [
+    "jmap",
+    "rfc8620",
+    "rfc8621",
+    "email",
+    "mail",
+    "client",
+    "typescript"
+  ],
   "license": "MIT",
+  "author": "Heiko Wilke",
+  "homepage": "https://github.com/OWNER/waxwing",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OWNER/waxwing.git",
+    "directory": "packages/jmap"
+  },
+  "bugs": {
+    "url": "https://github.com/OWNER/waxwing/issues"
+  },
+  "type": "module",
   "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist"
   ],
@@ -14,6 +36,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup",

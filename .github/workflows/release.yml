@@ -1,0 +1,112 @@
+# Waxwing release — NOT ACTIVE YET, and deliberately so.
+#
+# There is no GitHub repository for this project (ADR-003). This file exists so that the day one is
+# created, a release is `git tag v1.0.0 && git push --tags` rather than a design exercise.
+#
+# ── THE ONE RULE THIS FILE FOLLOWS ────────────────────────────────────────────────────────────
+#
+# It is a THIN CALLER of `scripts/release.mjs`, which is the same script `pnpm release` runs
+# locally. It does not reimplement packing, naming or checksums. That is the same rule
+# `ci.yml` follows for `scripts/ci.mjs`, and for the same reason: a workflow that duplicates a
+# script drifts from it, and the drift is only ever discovered when a tag has already been pushed
+# and the artefact is already wrong.
+#
+# So: everything a release DOES is testable locally, today, with `pnpm release`. What this file
+# adds is only what a local run cannot do — attaching the result to a GitHub release.
+#
+# ── WHY IT RE-RUNS THE FULL GATE ──────────────────────────────────────────────────────────────
+#
+# A tag can be pushed from any working tree, including one that never ran `pnpm gate`. The gate is
+# ~10 minutes; a bad release is permanent (a deleted tag is worse than no tag, because someone has
+# already fetched it). The order is deliberate: gate first, artefacts second, publish last.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  # So the whole thing can be rehearsed against a branch without creating a tag. It builds and
+  # uploads artefacts to the run, and does NOT create a release — see the `if:` on that step.
+  workflow_dispatch:
+
+permissions:
+  contents: write # to create the release
+
+jobs:
+  gate:
+    name: gate (full pipeline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The same entry point the local gate uses: verify + fixture + integration + Playwright.
+      - run: pnpm gate
+
+  release:
+    name: build, check and publish the artefacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The tag names the release; `package.json` names the ARTEFACTS. If they disagree, the
+      # download is called something other than what was tagged and every checksum reference in
+      # the release notes is wrong. Cheaper to catch here than to explain afterwards.
+      - name: The tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match package.json version $pkg"
+            exit 1
+          fi
+
+      # Builds both artefacts + SHA256SUMS, then asserts the five things a deployer would
+      # otherwise discover the hard way (zip extension, index.html at the root, the 100 MiB cap,
+      # the <base href="/"> token, manifest.json rather than .webmanifest).
+      - run: pnpm release
+
+      # Always, so a workflow_dispatch rehearsal produces something to inspect.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: waxwing-release
+          path: dist-release/
+          retention-days: 14
+
+      - name: Publish the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-release/*
+          generate_release_notes: true
+          # A release is not a place to discover that the deployment guide was not updated.
+          body: |
+            ## Deploying
+
+            Three supported paths — see [`docs/deployment.md`](docs/deployment.md). The short
+            version: use **`waxwing-stalwart-${{ github.ref_name }}.zip`** for a Stalwart
+            Application (recommended, same-origin, no CORS), and
+            **`waxwing-web-${{ github.ref_name }}.tar.gz`** behind your own web server.
+
+            Verify what you downloaded before deploying it:
+
+            ```sh
+            sha256sum -c SHA256SUMS
+            ```
+
+            Configuration lives in `config.json` next to `index.html` and needs no rebuild —
+            [`docs/configuration.md`](docs/configuration.md) is the reference.

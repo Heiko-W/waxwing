@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Waxwing app icon">
+  <title>Waxwing app icon</title>
+  <defs>
+    <linearGradient id="waxwing-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F5911E"/>
+      <stop offset="1" stop-color="#D96A0A"/>
+    </linearGradient>
+    <mask id="waxwing-im">
+      <rect width="256" height="256" fill="black"/>
+      <g transform="translate(34,34) scale(0.73)">
+        <polygon points="72,170 20,208 32,228 86,196" fill="white"/>
+        <circle cx="120" cy="150" r="62" fill="white"/>
+        <circle cx="170" cy="104" r="40" fill="white"/>
+        <polygon points="148,80 103,36 184,70" fill="white"/>
+        <polygon points="204,92 238,106 204,120" fill="white"/>
+        <line x1="108" y1="208" x2="103" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
+        <line x1="134" y1="206" x2="131" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
+        <circle cx="180" cy="98" r="6.5" fill="black"/>
+      </g>
+    </mask>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#waxwing-bg)"/>
+  <rect width="256" height="256" fill="#ffffff" mask="url(#waxwing-im)"/>
+  <!-- the sealing-wax drop on the wing -->
+  <circle cx="104.8" cy="153.7" r="7.3" fill="#C4331D"/>
+</svg>

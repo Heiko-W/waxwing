@@ -82,3 +82,32 @@ belong to. Guessing would attach a timezone to the wrong one, so they are preser
   literal backslash followed by a separator rather than swallowing the next component.
 - A line that cannot be parsed is skipped and **reported** in `ImportResult.skipped` — a 400-contact
   export with one broken line imports 399 contacts and says so.
+
+## Publishing (not done yet — here is exactly what is left)
+
+This package is **not on npm**. Everything that can be prepared without a registry account is
+prepared; three things are deliberately not.
+
+**Blocked on a decision:** the MIT licence is recorded as decision **D1** in
+`docs/implementation-plan.md` §13 and is not confirmed. Publishing under a licence nobody
+confirmed is not a step to take quietly.
+
+**Blocked on a repository:** there is none yet (ADR-003). `repository`, `homepage` and `bugs`
+in `package.json` carry a literal `OWNER` placeholder — an obviously wrong value rather than a
+plausible-looking guess, so it fails a review instead of shipping a dead link.
+
+**Deliberately left in place:** `"private": true`. It is the one thing standing between a
+stray `pnpm publish -r` and an unintended release. Remove it as the LAST step, not the first.
+
+When all three clear:
+
+```sh
+# 1. Confirm D1, then remove "private": true from this package.json.
+# 2. Replace OWNER in repository/homepage/bugs with the real path.
+pnpm --filter @waxwing/jscontact --filter @waxwing/jscontact run build
+pnpm gate                       # the full pipeline, on the tree you are about to publish
+pnpm publish --filter @waxwing/jscontact --access public --dry-run   # inspect the file list first
+```
+
+The `files` field ships `dist/` only. `--dry-run` is not optional politeness: it prints the
+exact tarball contents, and an npm publish cannot be taken back.
