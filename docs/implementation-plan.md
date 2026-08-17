@@ -2290,6 +2290,57 @@ forget — the second occurrence is what showed that patching call sites was the
 Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_OF_CONDUCT,
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
+
+### v0.10.0 (2026-08-17) — the security review, and what it found
+
+A seven-dimension review of v0.9.0 (sanitizer, auth, ephemeral mode, app-origin XSS, service
+worker, JMAP library, supply chain), each dimension's findings adversarially verified before
+being accepted. **15 security findings and 22 implementation defects survived verification;
+eight further claims were refuted and dropped.** All are fixed, each pinned by a test that was
+verified to go red when the fix is reverted.
+
+The five worth remembering, because of what they say about where defects hide:
+
+1. **Sign-out did not sign out whenever a second tab was open.** `SecretStore` registered no
+   `onversionchange`, so the delete was blocked, and `wipe()` treated blocked as success on the
+   reasoning that dropping the key reference made the secrets unreachable. It did not: the
+   ciphertext and a usable wrapping key stayed on disk, and the next cold start signed the next
+   person at that machine in as the previous user. Two tabs is the ordinary state of webmail.
+   The code documented the opposite at that exact line.
+
+2. **The public-computer promise did not cover OAuth** — the primary button on a default
+   deployment. The checkbox lived inside the Basic form and reached one of the two sign-in
+   paths, under a hint that promised nothing would be kept. Renumbered FR-AUTH-09 in the same
+   pass, because it had been given an id the multi-account requirement already owned.
+
+3. **Two features had never worked in any shipped build.** "Load remote content" and the PDF
+   attachment preview were both blocked by the app's own CSP — a srcdoc frame inherits the
+   embedder's policy container, and `frame-src 'self'` does not cover `blob:`. Both had tests.
+   The remote-content test asserted the banner disappeared, which it did; nobody asserted an
+   image appeared. That is the lesson of this release: a test that watches the symptom instead
+   of the effect will hold a dead feature green indefinitely.
+
+4. **Reply and forward transplanted mail HTML into the app DOM.** The reading sanitizer filters
+   inline `style` only inside an anchor, justified by "the frame paints a known white canvas" —
+   true of the iframe, and the composer is not the iframe. A `position:fixed` overlay survived
+   into a reply addressed to the attacker, so a fake sign-in panel collected what the victim
+   typed and sent it to them. No script needed.
+
+5. **A C0 control character defeated the whole remote-content firewall.** `String.trim()` does
+   not remove U+0001, so a tracking pixel classified as "not remote": not blocked, and reported
+   to the reader as a mail containing no remote content.
+
+Two things are worth stating about the shape of this list. Three of the five are cases where a
+**comment or a document asserted the property the code did not have** — the review was
+instructed to treat that as a finding class of its own, and it was the most productive one.
+And the CSP pair was only findable in a browser: every unit test around them passed, because
+what they pinned was the policy string, not what the policy did.
+
+Supply chain in the same pass: actions pinned to commit SHAs with a gate check that refuses an
+unpinned one, job-level permissions, build-provenance attestation, and SECURITY.md corrected
+where it claimed more than it delivered — including the flatly wrong claim that an HTTP CSP
+header overrides a `<meta>` one.
+
 ---
 
 ## 11. Post-V1 Backlog (V1.x parking lot)

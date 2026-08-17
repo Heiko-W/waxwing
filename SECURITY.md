@@ -219,9 +219,9 @@ threat in this document, because a modified Waxwing sees everything the real one
 
   This is the one control here that a checksum is not, because the signature is made by the
   runner's OIDC identity and cannot be reproduced by someone holding release rights on their
-  own machine. It answers "who built it", never "is it good". **It arrived after v0.9.0**:
-  the v0.9.0 assets carry no attestation and `verify` fails on them with "no attestations
-  found", which is the correct answer and not a tampering signal.
+  own machine. It answers "who built it", never "is it good". **It starts with v0.10.0**: the
+  v0.9.0 assets carry no attestation and `verify` fails on them with "no attestations found",
+  which is the correct answer and not a tampering signal.
 - **AGPL-3.0** obliges a hoster who modifies Waxwing to publish the modification. That is a
   legal deterrent, not a technical control, and it deters exactly the honest.
 - **Reproducible-ish builds.** `pnpm release` packs a deterministic, sorted file list from a
@@ -249,7 +249,7 @@ threat in this document, because a modified Waxwing sees everything the real one
   at your site looking at it — including a release published by whoever compromises this
   project next. That is a real convenience and a real transfer of trust, and the trade is
   yours to make rather than ours. **If it is not a trade you want: pin
-  `resourceUrl` to a versioned asset** (`…/download/waxwing-stalwart-v0.9.0.zip`), drop
+  `resourceUrl` to a versioned asset** (`…/download/waxwing-stalwart-v0.10.0.zip`), drop
   `autoUpdateFrequency`, and upgrade deliberately — verifying the checksum and the
   attestation each time.
   [`docs/deployment.md`](docs/deployment.md#verifying-what-you-installed) spells out both

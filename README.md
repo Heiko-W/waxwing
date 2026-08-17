@@ -87,12 +87,19 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.9.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.10.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 2 997 unit tests, 9
-integration suites against a live Stalwart, and 99 end-to-end tests across six Playwright
+Every planned work package is done and the release gate is signed off: 3 217 unit tests, 9
+integration suites against a live Stalwart, and 101 end-to-end tests across six Playwright
 suites, all green. Performance and accessibility are measured rather than asserted — the
 numbers are in the [implementation plan](docs/implementation-plan.md).
+
+**v0.10.0 is a security release.** A multi-dimension review of v0.9.0 found 15 security
+findings and 22 implementation defects; all are fixed, each pinned by a test that was verified
+to fail when the fix is reverted. Two of them were features that had never worked in any
+shipped build — "load remote content" and the PDF attachment preview — both blocked by the
+app's own Content-Security-Policy, and both had tests that watched the wrong thing and stayed
+green. If you run v0.9.0, upgrade.
 
 What 1.0 is waiting on is **use**. A mail client earns that number by being lived in for a
 while, against more than one server and more than one mailbox. That has not happened yet.
