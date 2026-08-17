@@ -2239,6 +2239,38 @@ hardware; owner decision 2026-08-17 is to sign off with it named rather than blo
 
 **Phase 5 exit criteria = V1 shipped.**
 
+### Published (2026-08-17)
+
+Owner decision reversed the "prepare, do not publish" hold: the repository is public at
+[github.com/Heiko-W/waxwing](https://github.com/Heiko-W/waxwing) (public so Actions minutes
+cost nothing), CI and Pages are live, and **v0.9.0** is tagged — a 0 major because 1.0 is
+earned by use, not by a checklist, and this has only ever run against one server.
+
+**Installation is one JMAP call, and it keeps itself updated.** `resourceUrl` points at
+`releases/latest/download/waxwing-stalwart.zip` and `autoUpdateFrequency` does the rest. The
+unversioned asset name is what makes that work and is a byte-for-byte copy of the versioned
+one, with an assertion that their hashes match — otherwise a deployer verifies one file and
+their server fetches another.
+
+**Three defects found by going public**, all of the same shape — things that only break on a
+machine that is not mine:
+
+1. `pnpm install --frozen-lockfile` failed on a fresh clone. `pnpm-workspace.yaml` carried
+   `onlyBuiltDependencies`; **pnpm 11 renamed it to `allowBuilds` and ignores the old key
+   silently.** Every local run was fine because this checkout approved esbuild's postinstall
+   interactively, once, and pnpm remembered it in `node_modules`. Every new contributor would
+   have hit it at their first command.
+2. `verify:e2e` never ran `build:libs`, so every Playwright `webServer`'s `vite build` failed
+   to resolve `@waxwing/jmap` — which reads as an application bug, not a missing step. Local
+   runs worked because `pnpm verify` had left a `dist/` lying around.
+3. **The header rendered the product name twice** — `branding/logo.svg` is a wordmark and the
+   header puts `productName` beside it, so the top-left corner read "waxwing Waxwing". Found
+   by taking screenshots for the README, i.e. the first time anyone looked at that corner
+   instead of through it.
+
+Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_OF_CONDUCT,
+a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
+
 ---
 
 ## 11. Post-V1 Backlog (V1.x parking lot)
