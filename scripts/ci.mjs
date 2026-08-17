@@ -14,10 +14,14 @@
 //     `undefined` without `--localstorage-file`, which shadows jsdom's and fails 22 tests that have
 //     nothing wrong with them. Measured on this machine, 2026-08-16. A gate whose failures cannot be
 //     trusted is worse than no gate, so preflight refuses to run on the wrong major.
-//  2. **B22: the `@waxwing/jmap` integration suites run in NEITHER `verify` nor `verify:e2e`,** and
-//     they `describe.skipIf` themselves away when the fixture is unreachable — so they have never
-//     failed, because they have never run. This pipeline runs them against a live fixture AND
-//     asserts they were not skipped, which is the only way that class of hole stays closed.
+//  2. **B22: the `@waxwing/jmap` integration suites** `describe.skipIf` themselves away when the
+//     fixture is unreachable — so they had never failed, because they had never run. They are run
+//     against a live fixture AND asserted not to have been skipped, which is the only way that
+//     class of hole stays closed. That stage no longer lives HERE, though: it is
+//     `scripts/integration.mjs` behind `pnpm verify:integration`, and `verify:e2e` calls it. It had
+//     to move, because while it lived here it was reachable only through `pnpm gate` — and the only
+//     workflow that calls `pnpm gate` is `release.yml`. So on the hosted pipeline these nine tests
+//     ran once per RELEASE and not once on a pull request: B22 one layer up.
 //  3. **Nothing runs automatically.** `.githooks/pre-push` calls `--fast`.
 //  4. **Nothing enforces that the workflows' own `uses:` lines stay SHA-pinned.** A pin nobody
 //     checks is a pin someone re-tags away in a hurry; `release.yml` is the job that holds
@@ -200,65 +204,13 @@ function preflight() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The jmap integration suites, run for real (B22).
-// ---------------------------------------------------------------------------------------------
-
-/**
- * These suites `describe.skipIf(!AVAILABLE)` themselves away when the fixture is unreachable, which
- * is why they have never failed: a skipped suite is a green suite. Running them is not enough — the
- * pipeline has to assert they RAN. Vitest reports skips in its summary, so the count is the check.
- */
-async function integration() {
-  stage('fixture up (for the integration suites)', ['e2e:server'])
-
-  // Grant the delegated shares for the duration of this stage (M4.4). The suites include ADR-020's
-  // executable evidence — that a shared account advertises `submission` and then refuses both
-  // `Identity/get` and `EmailSubmission/set` — and that probe is dead without a share: it would
-  // report itself skipped and the gate would prove nothing about the very finding it exists to keep
-  // honest. Revoked again below, because the fixture's default is single-account and `smoke()`
-  // asserts it (a leaked share reshapes every later suite's sidebar).
-  const fixture = await import(new URL('../e2e/stalwart/fixture.mjs', import.meta.url).href)
-  await fixture.ensureDelegations()
-  const output = stage(
-    'jmap integration suites (B22)',
-    ['--filter', '@waxwing/jmap', 'run', 'test:integration'],
-    { capture: true },
-  )
-
-  // No revoke here on purpose: the very next stage is `down -v`, which removes the volume and takes
-  // the shares with it. (`shared.teardown.mjs` DOES revoke, because it may keep the fixture up.)
-  //
-  // Hand the next stage a CLEAN fixture. `verify:e2e` brings its own up, and `up` is idempotent —
-  // so without this teardown it would inherit THIS stage's container: same volume, same seeded
-  // state, and an origin advertised for a different consumer. Measured: leaving it up failed two
-  // offline specs that pass from a fresh fixture. A pipeline stage that changes the next stage's
-  // result is worse than no stage, so the ~20 s to recreate it is the right price.
-  stage('fixture down (isolate the e2e stage)', ['e2e:server:down'])
-
-  // STRIP ANSI FIRST. Vitest colours its summary when it believes something is watching, and
-  // GitHub's runner is one of those somethings — so in CI the line carries escape sequences
-  // BETWEEN the word `Tests` and the number, and `/Tests\s+(\d+)/` matches nothing. Locally the
-  // output goes down a pipe, vitest drops the colour, and the same regex works fine. The result
-  // was this check failing every hosted run with "they did not really run" about nine tests that
-  // had passed on screen a second earlier: the B22 guard defeating itself.
-  const plain = output.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
-  const skipped = /(\d+)\s+skipped/.exec(plain)
-  const passed = /Tests\s+(\d+)\s+passed/.exec(plain)
-  if (skipped !== null && Number(skipped[1]) > 0) {
-    failed = `jmap integration suites skipped ${skipped[1]} test(s) — the fixture was not reachable`
-    throw new Error(
-      `${failed}\n` +
-        '  This is defect B22: these suites fail OPEN, so a skip is indistinguishable from a pass\n' +
-        '  unless something asserts otherwise. That something is this check.',
-    )
-  }
-  if (passed === null || Number(passed[1]) === 0) {
-    failed = 'jmap integration suites reported no passing tests — they did not really run'
-    throw new Error(failed)
-  }
-  console.log(`  ${passed[1]} integration tests actually ran (not skipped)`)
-}
-
+//
+// The jmap integration suites (B22) used to live here as a private `integration()` function. They
+// now live in `scripts/integration.mjs` behind `pnpm verify:integration`, because a stage that only
+// `pnpm gate` can reach is a stage the hosted pull-request job never runs — and `pnpm gate` is
+// called by `release.yml` alone. `verify:e2e` runs it as one of its stages, so `ci.yml` picks it up
+// without a line of YAML changing.
+//
 // ---------------------------------------------------------------------------------------------
 
 function summarise() {
@@ -276,14 +228,14 @@ try {
   stage('verify (typecheck, lint, tests, build, size budget)', ['verify'])
 
   if (!FAST) {
-    await integration()
     if (NO_E2E) {
-      console.log('\n[ci] --no-e2e: skipping the Playwright suites; tearing the fixture down.')
-      spawnSync('pnpm', ['e2e:server:down'], { cwd: ROOT, stdio: 'inherit' })
+      // The integration suites on their own, because they are the half of the Docker work that is
+      // not Playwright. `verify:e2e` runs the same script as one of its stages, so the full gate
+      // must NOT also run it here or it would run twice.
+      stage('jmap integration suites (B22)', ['verify:integration'])
+      console.log('\n[ci] --no-e2e: skipping the Playwright suites.')
     } else {
-      // verify:e2e manages the fixture itself (and tears it down in a finally), so the container the
-      // integration stage brought up is simply reused and then removed by it.
-      stage('e2e (Docker fixture + six Playwright suites)', ['verify:e2e'])
+      stage('e2e (Docker fixture + jmap integration + six Playwright suites)', ['verify:e2e'])
     }
   }
 
