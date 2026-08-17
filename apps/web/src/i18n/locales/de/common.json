@@ -64,7 +64,9 @@
       "password": "Passwort",
       "staySignedIn": "Angemeldet bleiben",
       "appPasswordHint": "Bei Zwei-Faktor-Authentifizierung ein App-spezifisches Passwort verwenden.",
-      "submit": "Anmelden"
+      "submit": "Anmelden",
+      "publicComputer": "Öffentlicher oder gemeinsam genutzter Computer",
+      "publicComputerHint": "Es bleiben keine Nachrichten auf diesem Gerät. Sie werden beim Abmelden gelöscht, beim Schließen des Tabs und — falls der Browser vorher abstürzt — beim nächsten Start von {{product}} auf diesem Rechner."
     },
     "back": "Anderen Server verwenden",
     "error": {

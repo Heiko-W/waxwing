@@ -29,6 +29,7 @@ export {
   type ContactQueryCacheRow,
   clearAccount,
   collectBodyBlobIds,
+  currentReplicaName,
   type DraftAttachmentLike,
   type DraftRow,
   type DraftSyncStatus,
@@ -49,9 +50,11 @@ export {
   type QueryCacheRow,
   REPLICA_DB_NAME,
   ReplicaDb,
+  resetReplicaForTests,
   type SerializedDraft,
   type SyncStateRow,
   scopeKey,
+  setReplicaName,
   type ThreadRow,
   toAddressBookRow,
   toContactCardRow,
@@ -61,6 +64,12 @@ export {
   toThreadRow,
   wipeReplica,
 } from './db'
+export {
+  EPHEMERAL_DB_PREFIX,
+  EPHEMERAL_INDEX_KEY,
+  newEphemeralDbName,
+  sweepEphemeral,
+} from './ephemeral'
 export { canonicalContactQueryKey, canonicalQueryKey, type QuerySpec } from './query-key'
 export {
   getActiveReplica,

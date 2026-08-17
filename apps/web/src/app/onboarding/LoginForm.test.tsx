@@ -80,7 +80,47 @@ describe('LoginForm', () => {
     await user.click(screen.getByLabelText('Stay signed in'))
     await user.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    expect(onBasicSubmit).toHaveBeenCalledWith('alice', 'secret', true)
+    expect(onBasicSubmit).toHaveBeenCalledWith('alice', 'secret', true, false)
+  })
+
+  /**
+   * FR-AUTH-07. The two boxes make contradictory promises — one leaves a credential behind, the
+   * other is about leaving nothing behind — so ticking the public one has to turn the other off
+   * AND hold it off. Letting both be ticked would put a refresh token on precisely the machine the
+   * user just said was not theirs.
+   */
+  it('public-computer mode turns "stay signed in" off and keeps it off', async () => {
+    const user = userEvent.setup()
+    const onBasicSubmit = vi.fn()
+    render(
+      <LoginForm
+        target={target}
+        productName="Acme Mail"
+        methods={['basic']}
+        oauthAvailable={false}
+        canEditServer={false}
+        busy={false}
+        onOAuth={vi.fn()}
+        onBasicSubmit={onBasicSubmit}
+      />,
+    )
+
+    const stay = screen.getByLabelText('Stay signed in')
+    await user.click(stay)
+    expect(stay).toBeChecked()
+
+    await user.click(screen.getByLabelText('Public or shared computer'))
+
+    expect(stay).not.toBeChecked()
+    expect(stay).toBeDisabled()
+    // …and the warning names what this does and does not do, using the hoster's product name.
+    expect(screen.getByText(/Keeps no mail on this device/)).toHaveTextContent('Acme Mail')
+
+    await user.type(screen.getByLabelText('Username'), 'alice')
+    await user.type(screen.getByLabelText('Password'), 'secret')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(onBasicSubmit).toHaveBeenCalledWith('alice', 'secret', false, true)
   })
 
   it('offers a back link only when the server is editable', async () => {

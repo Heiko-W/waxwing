@@ -64,7 +64,9 @@
       "password": "Password",
       "staySignedIn": "Stay signed in",
       "appPasswordHint": "With two-factor authentication, use an app-specific password.",
-      "submit": "Sign in"
+      "submit": "Sign in",
+      "publicComputer": "Public or shared computer",
+      "publicComputerHint": "Keeps no mail on this device. It is removed when you sign out, when you close the tab, and — if the browser crashes first — the next time {{product}} is opened here."
     },
     "back": "Use a different server",
     "error": {

@@ -136,15 +136,37 @@ signed in.
   centre across a browser restart, and a live subscription keeps waking the machine to
   announce mail for an account nobody is signed into.
 
-**On a shared device, use *Sign out & remove data*.** Plain sign-out is the right default for
-your own machine and the wrong one for someone else's.
+**On a shared device, tick "Public or shared computer" when signing in** — see §3.1. If you did
+not, *Sign out & remove data* is the way out.
+
+### 3.1 Public-computer mode
+
+Ticking **"Public or shared computer"** on the sign-in screen (FR-AUTH-07) puts the local
+replica in a one-off database named `waxwing-replica-eph-<random>`, and removes it three ways:
+
+1. **Sign-out** — either menu item wipes it. There is no "keep my cache" variant in this mode,
+   because the whole point is not depending on the user picking the right item on the way out.
+2. **`pagehide`** — a best-effort delete when the tab closes. Browsers give a page very little
+   time here and `deleteDatabase` is not guaranteed to finish, which is why it is not alone.
+3. **The next start** — Waxwing deletes every leftover ephemeral database before opening a
+   session. This is the one that covers a crash, a killed browser or a power cut. Whoever opens
+   Waxwing next on that machine clears the previous person's mail before they could look at it.
+
+It also turns "Stay signed in" off and holds it off: the two make contradictory promises, and
+leaving both on would put a refresh token on the machine you just said was not yours.
+
+**The gap, stated rather than implied:** between a crash and that next start, the mail is on
+disk. There is no browser primitive for "delete this database when the tab dies", and IndexedDB
+offers no in-memory mode. The sign-in screen says as much where you tick the box.
 
 **Limits, and they matter more than the defences.**
 
 - **IndexedDB is not encrypted.** It cannot be: there is nowhere to put a key that an attacker
   with the same browser profile could not also reach. Anyone with access to the OS account can
-  read cached mail with developer tools. Waxwing is not appropriate for an untrusted shared
-  machine, and no setting makes it so.
+  read cached mail with developer tools.
+- **Public-computer mode reduces the exposure; it does not remove it.** See §3.1. Between a
+  browser crash and the next time Waxwing is opened on that machine, the data is on disk, and
+  someone who opens devtools in that window can read it. No browser API closes that gap.
 - **Plain sign-out does not remove cached mail** — see above. It is a session boundary, not a
   data one.
 - **No sign-out can clear memory** — an unlocked machine with the tab open is an open mailbox,

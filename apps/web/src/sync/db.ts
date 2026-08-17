@@ -703,8 +703,35 @@ export class ReplicaDb extends Dexie {
 
 /** Lazily-opened shared instance for the app and the M1.3 sync engine (tests construct their own). */
 let sharedDb: ReplicaDb | undefined
+
+/**
+ * The name the shared replica opens under. `undefined` = the durable default.
+ *
+ * Set once, before the first `getReplica()`, by the public-computer path (`sync/ephemeral.ts`).
+ * It is module state rather than a `getReplica(name)` argument because the replica has a dozen
+ * call sites that must all agree on WHICH database they are talking to — a parameter would let one
+ * of them quietly open the durable one and write a public-computer session's mail into it.
+ */
+let replicaName: string | undefined
+
+/**
+ * Point the shared replica at `name` (FR-AUTH-07). Throws if a replica is already open: switching
+ * databases underneath a running engine would leave half a session in each.
+ */
+export function setReplicaName(name: string | undefined): void {
+  if (sharedDb !== undefined) {
+    throw new Error('setReplicaName must be called before the replica is opened')
+  }
+  replicaName = name
+}
+
+/** The database name currently in force — the ephemeral sweep needs to know what to keep. */
+export function currentReplicaName(): string {
+  return replicaName ?? REPLICA_DB_NAME
+}
+
 export function getReplica(): ReplicaDb {
-  if (!sharedDb) sharedDb = new ReplicaDb()
+  if (!sharedDb) sharedDb = new ReplicaDb(replicaName)
   return sharedDb
 }
 
@@ -785,4 +812,10 @@ export async function wipeReplica(db: ReplicaDb): Promise<void> {
   // Drop the cached shared handle if it was the one wiped, so getReplica() rebuilds a fresh one
   // instead of reusing a deleted instance.
   if (db === sharedDb) sharedDb = undefined
+}
+
+/** Test seam: forget the shared handle AND the name, so a suite can start from the default. */
+export function resetReplicaForTests(): void {
+  sharedDb = undefined
+  replicaName = undefined
 }

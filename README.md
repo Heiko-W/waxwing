@@ -91,8 +91,11 @@ Known gaps, stated plainly:
   thorough; nobody has listened to it. See [`docs/accessibility.md`](docs/accessibility.md).
 - **Stalwart is the only server it has been tested against.** JMAP is a standard and the client
   reads the session capabilities rather than assuming, but "should work" is not "does work".
-- **Cached mail is not encrypted at rest** — a browser has nowhere to put a key. Not suitable
-  for an untrusted shared machine.
+- **Cached mail is not encrypted at rest** — a browser has nowhere to put a key. On someone
+  else's machine, tick "Public or shared computer" at sign-in: the cache is then removed on
+  sign-out, on closing the tab, and at the next start if the browser crashed first. The window
+  between a crash and that next start is the part no browser API can close, and the sign-in
+  screen says so.
 - **The phishing link check is friction, not a boundary.** No warning means "nothing found",
   not "checked and safe". [`SECURITY.md`](SECURITY.md) says why in detail.
 

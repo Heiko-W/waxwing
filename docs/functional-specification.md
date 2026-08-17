@@ -132,6 +132,12 @@ webmail is an open gap.
   The UI encourages app passwords when 2FA is active.
 - **FR-AUTH-05 (Must)** — Clean logout: revoke tokens where supported, wipe all local data
   (IndexedDB, caches, service-worker state) on request ("Sign out & remove data").
+- **FR-AUTH-07 (Should)** — **Public-computer mode:** an opt-in choice at sign-in that keeps the
+  local replica in a throwaway database, removed on sign-out (either variant), on `pagehide`, and
+  by a sweep at the next application start — the last covering a crash, which the other two
+  cannot. Mutually exclusive with "stay signed in". The UI must state the residual exposure
+  (between a crash and the next start the data is on disk) rather than implying a guarantee the
+  browser cannot give.
 - **FR-AUTH-06 (Should)** — Session expiry / password change is handled gracefully:
   re-auth prompt without losing unsent drafts.
 - **FR-AUTH-07 (Could)** — Multiple simultaneous accounts (different servers) with fast

@@ -18,7 +18,12 @@ export interface LoginFormProps {
   readonly busy: boolean
   readonly error?: OnboardError
   readonly onOAuth: () => void
-  readonly onBasicSubmit: (username: string, password: string, staySignedIn: boolean) => void
+  readonly onBasicSubmit: (
+    username: string,
+    password: string,
+    staySignedIn: boolean,
+    publicComputer: boolean,
+  ) => void
   readonly onBack?: () => void
 }
 
@@ -31,6 +36,7 @@ export interface LoginFormProps {
  */
 export function LoginForm({
   target,
+  productName,
   methods,
   oauthAvailable,
   canEditServer,
@@ -44,6 +50,7 @@ export function LoginForm({
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [staySignedIn, setStaySignedIn] = useState(false)
+  const [publicComputer, setPublicComputer] = useState(false)
 
   const id = useId()
   const headingId = `${id}-heading`
@@ -63,7 +70,7 @@ export function LoginForm({
 
   function handleBasicSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    onBasicSubmit(username, password, staySignedIn)
+    onBasicSubmit(username, password, staySignedIn, publicComputer)
   }
 
   return (
@@ -137,8 +144,25 @@ export function LoginForm({
           <Checkbox
             label={t('auth.basic.staySignedIn')}
             checked={staySignedIn}
+            disabled={publicComputer}
             onChange={(event) => setStaySignedIn(event.target.checked)}
           />
+          {/* FR-AUTH-07. Ticking this turns "stay signed in" off and holds it off: the two are
+              contradictory promises, and letting both be ticked would leave a credential behind on
+              exactly the machine the other box is about not leaving anything on. */}
+          <Checkbox
+            label={t('auth.basic.publicComputer')}
+            checked={publicComputer}
+            onChange={(event) => {
+              setPublicComputer(event.target.checked)
+              if (event.target.checked) setStaySignedIn(false)
+            }}
+          />
+          {publicComputer && (
+            <p className={styles.hint}>
+              {t('auth.basic.publicComputerHint', { product: productName })}
+            </p>
+          )}
           <p className={styles.hint}>{t('auth.basic.appPasswordHint')}</p>
           <Button
             type="submit"

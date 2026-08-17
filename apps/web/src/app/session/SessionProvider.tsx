@@ -21,7 +21,15 @@ import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
 import { getPushRegistration } from '../../notify/registration'
-import { getReplica, resetStorageFull, wipeReplica } from '../../sync'
+import {
+  currentReplicaName,
+  getReplica,
+  newEphemeralDbName,
+  resetStorageFull,
+  setReplicaName,
+  sweepEphemeral,
+  wipeReplica,
+} from '../../sync'
 import { stopAllEngines } from '../../sync/engine'
 import type { WaxwingConfig } from '../config'
 import { useServices } from '../services'
@@ -129,6 +137,12 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   // Remembers the Basic "stay signed in" opt-in so a later re-auth (FR-AUTH-06) preserves it
   // instead of wiping the persisted credentials (FR-AUTH-04).
   const basicStayRef = useRef(false)
+  /**
+   * True for a public-computer session (FR-AUTH-07). A ref, not state: it is read on the sign-out
+   * path and inside a `pagehide` listener, neither of which should re-render anything, and it must
+   * not be stale in either.
+   */
+  const ephemeralRef = useRef(false)
 
   const fallbackTarget = useCallback((): ConnectTarget => {
     if (config.server.sessionUrl !== null) return pinnedTarget(config.server.sessionUrl)
@@ -321,14 +335,38 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     })()
   }, [ensureController])
 
+  // The crash guard and the tab-close attempt (FR-AUTH-07).
+  //
+  // `sweepEphemeral` runs at startup, before anything opens a session, and deletes every ephemeral
+  // replica this profile knows about except the current one. That is what covers a crash, a killed
+  // browser or a power cut — the cases `pagehide` cannot, because a page gets very little time
+  // there and `deleteDatabase` is not guaranteed to finish. Both, therefore, not either.
+  useEffect(() => {
+    void sweepEphemeral(ephemeralRef.current ? currentReplicaName() : undefined).then((n) => {
+      if (n > 0) console.info(`[waxwing] removed ${n} leftover public-computer database(s)`)
+    })
+    const onHide = () => {
+      if (ephemeralRef.current) void wipeReplica(getReplica()).catch(() => {})
+    }
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
+  }, [])
+
   const submitBasic = useCallback(
-    (username: string, password: string, staySignedIn: boolean) => {
+    (username: string, password: string, staySignedIn: boolean, publicComputer = false) => {
       void (async () => {
         const current = stateRef.current
         const target = current.status === 'onboarding' ? current.view.target : null
         if (!target) return
         dispatch({ type: 'submitBusy' })
         try {
+          // BEFORE any replica work (FR-AUTH-07). `setReplicaName` throws once a replica is open,
+          // and the first `getReplica()` happens inside `connectSession` below — so this is the one
+          // window in which the choice can still be honoured.
+          if (publicComputer) {
+            ephemeralRef.current = true
+            setReplicaName(newEphemeralDbName())
+          }
           basicStayRef.current = staySignedIn
           const controller = ensureController(target.issuer)
           await controller.startLogin({ method: 'basic', username, password, staySignedIn })
@@ -401,7 +439,10 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // `SyncEngineHost`'s effect cleanup cannot run before this function awaits the wipe in the same
         // tick — so stopping only the primary left the wipe hanging on still-writing shared engines.
         await stopAllEngines()
-        if (wipeData) await wipeReplica(getReplica()).catch(() => {})
+        // An EPHEMERAL session always wipes, whichever sign-out was chosen (FR-AUTH-07). The whole
+        // promise of public-computer mode is that leaving does not depend on picking the right menu
+        // item on the way out — that is precisely the step someone in a hurry skips.
+        if (wipeData || ephemeralRef.current) await wipeReplica(getReplica()).catch(() => {})
         // A notification is local data this app put on the OPERATING SYSTEM's screen, and the OS keeps
         // it there across sign-out, reload and browser restart. Wiping IndexedDB while three banners
         // reading "Alice Weber — Kündigung Arbeitsvertrag" sit in the notification centre would make a

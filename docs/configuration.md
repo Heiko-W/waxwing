@@ -169,8 +169,11 @@ this setting, rather than the flat "no messages" it used to give.
 future — every mailbox would render permanently empty. An operator typo must not silently
 become "keep one day of mail", so it is refused rather than approximated.
 
-There is no way to ask for no local history at all. Waxwing is offline-first; a zero window is
-not a supported deployment.
+There is no way for a HOSTER to ask for no local history at all — Waxwing is offline-first and a
+zero window is not a supported deployment. A **user** can, per session: ticking "Public or
+shared computer" on the sign-in screen keeps the replica in a throwaway database that is removed
+on sign-out, on tab close, and at the next start after a crash. See
+[`SECURITY.md` §3.1](../SECURITY.md).
 
 ### `maxStorageMB` — `number`, default `512`
 
