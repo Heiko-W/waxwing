@@ -2,5 +2,19 @@ packages:
   - "apps/*"
   - "packages/*"
   - "e2e"
+
+# esbuild's postinstall fetches its platform binary, and pnpm refuses to run install scripts that
+# are not named here — under `--frozen-lockfile` it fails the whole install with
+# `ERR_PNPM_IGNORED_BUILDS`. So an existing checkout works (it approved the script interactively,
+# once, and pnpm remembered in node_modules) while a FRESH CLONE cannot install at all. That is
+# the shape of the defect the first CI run on this repository hit, and it is the shape every new
+# contributor would have hit.
+#
+# BOTH keys, deliberately: `engines.pnpm` allows >= 10, and pnpm 11 renamed the setting.
+# `allowBuilds` is what 11 reads — an object, not a list — and `onlyBuiltDependencies` is what 10
+# reads. pnpm 11 silently ignores the old key, which is why the old one alone looked correct in
+# the file and failed on a clean machine.
+allowBuilds:
+  esbuild: true
 onlyBuiltDependencies:
   - esbuild
