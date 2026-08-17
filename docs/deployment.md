@@ -60,7 +60,7 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
           "enabled": true,
           "description": "Waxwing webmail",
           "resourceUrl": "https://files.example.com/waxwing-stalwart-v1.0.0.zip",
-          "urlPrefix": { "/mail": true }
+          "urlPrefix": { "/webmail": true }
         }
       }
     }, "c1"]]
@@ -69,39 +69,41 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
 
 The WebUI (*Settings › Web Applications*) and `stalwart-cli` do the same thing.
 
-> **This path is NOT yet verified end to end (defect B43).** Probed against a clean Stalwart
-> v0.16.14 on 2026-08-17: the registration above is accepted, Stalwart fetches the archive —
-> and the app is still 404 at `/mail/`, while Stalwart's own WebUI at `/admin/` (the same
-> mechanism) serves 200. The cause is not yet known. **Until it is, use the reverse-proxy path
-> below**, which is verified. The two corrections already found are folded into the body above
-> and are worth knowing either way.
+**Verified end to end** against a clean Stalwart v0.16.14 with the real release artefact:
+`/webmail/` serves the app, `/webmail/inbox` serves it too (deep-link reload), `sw.js` arrives
+as `application/javascript` and `manifest.json` as `application/json`.
 
-Three details in that body are load-bearing, and two of them were wrong in this guide until
-they were probed:
+Four details in that body are load-bearing, and three of them were wrong in this guide until
+they were probed against a live server:
 
 - **`description` is REQUIRED.** Omit it and the call answers
-  `validationFailed / {"type":"Required","property":"description"}`. It appears in no
-  documentation we could find.
-- **`urlPrefix` is an object AND takes a leading slash**: `{"/mail": true}`. Stalwart's own
-  WebUI registers `{"/admin": true, "/account": true}`. Without the slash the call is accepted
-  without complaint and the mount does not work — the worst of both.
+  `validationFailed / {"type":"Required","property":"description"}` — nothing more. It appears
+  in no documentation we could find.
+- **`urlPrefix` takes a LEADING SLASH**: `{"/webmail": true}`. Stalwart's own WebUI registers
+  `{"/admin": true, "/account": true}`. Without the slash the call is accepted without
+  complaint and the mount does not work — the worst of both.
+- **Do not use `/mail`.** It is reserved: the Application registers, Stalwart fetches the
+  archive, and every path under it 404s silently — no log line, nothing unpacked. The same
+  artefact under `/webmail` works. (This cost a day; it is recorded as B43.)
+- **Stalwart fetches the archive at STARTUP**, not when you register it. Restart the server, or
+  wait for `autoUpdateFrequency`, before concluding that anything is wrong.
 - **`resourceUrl` keeps its `.zip` extension.** Stalwart fetches it with a 60 s timeout and
   refuses bundles over 100 MiB (Waxwing's is well under 1 MiB).
 - **`autoUpdateFrequency`** is optional. Set it and Stalwart re-fetches the URL on that
   schedule, which is how you ship an update without touching the registry again.
 
-**Step 3 — open `https://mail.example.com/mail/`.** Waxwing finds the JMAP session document
+**Step 3 — open `https://mail.example.com/webmail/`.** Waxwing finds the JMAP session document
 at the same origin and you sign in.
 
 ### What Stalwart rewrites, and why the app depends on it
 
 The built `index.html` contains the literal token `<base href="/">`. Stalwart rewrites *that
-exact string* to `<base href="/mail/">` when it serves the bundle under a prefix. Everything
+exact string* to `<base href="/webmail/">` when it serves the bundle under a prefix. Everything
 else in the app resolves relatively through `document.baseURI` — the asset URLs, the service
 worker's scope, the manifest's `start_url`, the offline navigation fallback.
 
 If that token is missing or written differently (single quotes, a non-root path), a deep-link
-reload under `/mail/inbox/…` resolves `./assets/*` against the route path and the app fails
+reload under `/webmail/inbox/…` resolves `./assets/*` against the route path and the app fails
 to load — while the first visit works fine, which makes it a confusing thing to debug. The
 release script asserts the token is present; you should not need to think about it.
 
@@ -259,10 +261,10 @@ Asset filenames are content-hashed, so an old page never loads a new chunk by ac
 curl -sI https://mail.example.com/.well-known/jmap
 
 # index.html must be served for a deep link, not a 404.
-curl -sI https://mail.example.com/mail/inbox
+curl -sI https://mail.example.com/webmail/inbox
 
 # The service worker must be served as JavaScript, not octet-stream.
-curl -sI https://mail.example.com/mail/sw.js | grep -i content-type
+curl -sI https://mail.example.com/webmail/sw.js | grep -i content-type
 ```
 
 Then sign in, open a message, and reload the page while it is open. That last step is the one
