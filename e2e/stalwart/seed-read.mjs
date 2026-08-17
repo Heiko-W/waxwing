@@ -139,8 +139,32 @@ const bob = () => `bob@${DOMAIN}`
 const carol = () => `carol@${DOMAIN}`
 const authHeader = () => `Basic ${Buffer.from(`${alice()}:${PASSWORD}`).toString('base64')}`
 
+/**
+ * `fetch` with a bounded retry on 429.
+ *
+ * This seeder runs before EVERY test in the read suite — thirty-odd reseeds per run, each one a
+ * session fetch, three blob uploads, an `Email/set` and an `Email/import`. Stalwart applies its
+ * default request throttle to all of it, and on a slow two-core CI runner the burst crosses it:
+ * the suite then fails with `HTTP 429` from the FIXTURE, which looks exactly like a product defect
+ * in the report and is not one.
+ *
+ * Retrying rather than raising the server's limit is deliberate. The limit is Stalwart's real
+ * behaviour, an app that trips it has to cope, and a fixture configured to be more permissive than
+ * production would hide precisely the class of bug worth finding. What the seeder needs is not more
+ * headroom but patience: it is scaffolding, not the thing under test.
+ */
+async function fetchThrottled(url, init, attempt = 0) {
+  const res = await fetch(url, init)
+  if (res.status !== 429 || attempt >= 5) return res
+  // Honour `Retry-After` when it is sent; otherwise back off 250ms, 500ms, 1s, 2s, 4s.
+  const header = Number.parseInt(res.headers.get('retry-after') ?? '', 10)
+  const waitMs = Number.isFinite(header) ? header * 1000 : 250 * 2 ** attempt
+  await new Promise((resolve) => setTimeout(resolve, waitMs))
+  return fetchThrottled(url, init, attempt + 1)
+}
+
 async function getSession() {
-  const res = await fetch(`${BASE_URL}/.well-known/jmap`, {
+  const res = await fetchThrottled(`${BASE_URL}/.well-known/jmap`, {
     headers: { Authorization: authHeader(), Accept: 'application/json' },
     redirect: 'follow',
   })
@@ -151,7 +175,7 @@ async function getSession() {
 }
 
 async function jmap(methodCalls) {
-  const res = await fetch(`${BASE_URL}/jmap/`, {
+  const res = await fetchThrottled(`${BASE_URL}/jmap/`, {
     method: 'POST',
     headers: {
       Authorization: authHeader(),
@@ -204,7 +228,7 @@ async function destroyExisting(accountId) {
 
 /** Upload raw bytes and return the blobId (the `.eml` and nested-message vectors). */
 async function uploadBlob(accountId, contentType, body) {
-  const res = await fetch(`${BASE_URL}/jmap/upload/${accountId}/`, {
+  const res = await fetchThrottled(`${BASE_URL}/jmap/upload/${accountId}/`, {
     method: 'POST',
     headers: { Authorization: authHeader(), 'Content-Type': contentType },
     body,
