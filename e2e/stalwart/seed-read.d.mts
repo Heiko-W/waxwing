@@ -6,6 +6,7 @@ export const READ_SUBJECTS: {
   readonly thread: string
   readonly phishing: string
   readonly rfc822: string
+  readonly pdf: string
 }
 export const READ_PHISHING: {
   readonly forgedAuthserv: string
@@ -29,6 +30,10 @@ export const READ_BODIES: {
   readonly threadOldest: string
   readonly threadMiddle: string
   readonly threadNewest: string
+}
+export const READ_PDF: {
+  readonly filename: string
+  readonly text: string
 }
 export const READ_REMOTE_HOST: string
 export function seedReadMail(): Promise<{

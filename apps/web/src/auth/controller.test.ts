@@ -439,14 +439,14 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
 })
 
 /**
- * Public-computer mode on the OAUTH path (FR-AUTH-07).
+ * Public-computer mode on the OAUTH path (FR-AUTH-09).
  *
  * Basic has always had "stay signed in" as an opt-IN, so declining it leaves nothing behind. OAuth
  * has no such switch: it persists a refresh token unconditionally, because that is what makes a
  * silent cold start work. On a machine that is not the user's, that durable credential is the whole
  * problem — worse than the cached mail, because it fetches the mail again.
  */
-describe('AuthController — public-computer OAuth (FR-AUTH-07)', () => {
+describe('AuthController — public-computer OAuth (FR-AUTH-09)', () => {
   function publicComputerController(store: SecretStore, hrefRef: { value: string }) {
     let navigated: string | null = null
     const controller = new AuthController({

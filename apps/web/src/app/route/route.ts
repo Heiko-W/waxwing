@@ -118,6 +118,12 @@ export const ACCOUNT_PARAM = 'account'
  * A query parameter rather than a path segment, and additively: every existing link stays valid and
  * keeps meaning "my own account", so the single-account path is byte-for-byte unchanged. (Bulwark
  * reaches the same conclusion for the same reason — its `?account=` carries exactly this.)
+ *
+ * Passing the PRIMARY account's id is allowed and is not a mistake: `resolveActiveAccount` vets the
+ * id against the granted set and the primary is in it, so the result is identical to omitting it.
+ * That matters for callers that cannot tell the two apart — the notification click path
+ * (`notify/click-route.ts`) qualifies unconditionally, because an omitted account is not "mine", it
+ * is "whatever `carryAccount` finds on the route the user happens to be looking at".
  */
 export function mailPath(mailboxId?: string, emailId?: string, accountId?: string): string {
   const suffix = accountId === undefined ? '' : `?${ACCOUNT_PARAM}=${encodeURIComponent(accountId)}`

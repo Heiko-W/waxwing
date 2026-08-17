@@ -31,7 +31,7 @@ export class TokenStore {
   private readonly skewMs: number
   private access: AccessToken | null = null
   /**
-   * Public-computer mode (FR-AUTH-07): hold the refresh token in memory instead of wrapping it into
+   * Public-computer mode (FR-AUTH-09): hold the refresh token in memory instead of wrapping it into
    * IndexedDB. The session then behaves normally for as long as the tab lives — silent refresh
    * included — and leaves NOTHING that a later page on this origin could restore from. Closing the
    * tab ends it, which is exactly the intent.
@@ -60,7 +60,7 @@ export class TokenStore {
   }
 
   /**
-   * Switch to memory-only refresh tokens (FR-AUTH-07). Must be called BEFORE the first
+   * Switch to memory-only refresh tokens (FR-AUTH-09). Must be called BEFORE the first
    * {@link apply}; the callback path does so as soon as it reads the flag off the PKCE transaction.
    */
   setEphemeral(): void {

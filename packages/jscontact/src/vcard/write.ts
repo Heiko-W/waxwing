@@ -1,6 +1,9 @@
 /**
  * vCard 4.0 serialisation (RFC 6350 §3.2) — content lines in, text out.
  *
+ * **A line break is the one character that can forge a whole card, so it is removed HERE**, in
+ * `renderLine`, and not in each caller — see {@link stripLineBreaking}.
+ *
  * **Folding is counted in OCTETS, and that is the whole reason this is not three lines of code.**
  * §3.2 says 75 octets; a naive `slice(0, 75)` counts UTF-16 code units, so a card containing `ü`,
  * `→` or an emoji folds in the wrong place — and worse, can split a multi-byte character or a
@@ -73,8 +76,40 @@ export interface WritableLine {
   readonly name: string
   /** Values are written verbatim — apply RFC 6868 escaping via {@link escapeParam} first. */
   readonly params?: ReadonlyMap<string, readonly string[]> | undefined
-  /** Already escaped and already joined. Use the value helpers to build it. */
+  /**
+   * Already escaped and already joined. Use the value helpers to build it — EXCEPT for URI values
+   * (`URL`, `PHOTO`, preserved properties), which are written unescaped by design and are made safe
+   * by {@link stripLineBreaking} in {@link renderLine} rather than by escaping.
+   */
   readonly value: string
+}
+
+/**
+ * Everything a reader could mistake for the end of this line, dropped.
+ *
+ * **Without this, one CRLF in a URI forges an entire second card.** TEXT values go through
+ * `escapeText` (CRLF → `\n`) and parameters through `escapeParam` (CRLF → `^n`), but a URI value is
+ * deliberately written raw — escaping a `data:` URI's base64 or a query string's `,` would corrupt
+ * it — so `URL`, `PHOTO`/`LOGO` and the verbatim `vCardProps` values had no defence at all. A
+ * `links.l1.uri` of `…\r\nEND:VCARD\r\nBEGIN:VCARD\r\nFN:Chief Exec\r\nEMAIL:attacker@evil.tld…`
+ * (reachable from a JSContact JSON import or a shared address book) exported a .vcf that Outlook and
+ * Apple Contacts read as TWO contacts, the second being the attacker's, autocompleted forever after.
+ *
+ * Dropped rather than percent-encoded: `renderLine` cannot know whether a slot is URI or TEXT, and
+ * `%0A` inside a NOTE would be visible corruption — whereas RFC 6350's ABNF (§3.3, `VALUE-CHAR =
+ * WSP / %x21-7E / NON-ASCII`) forbids these characters in BOTH slots, so removing them only ever
+ * removes something already invalid. HTAB stays: it is WSP, and legal in a value.
+ *
+ * Beyond C0/DEL this also drops NEL, LS and PS, because they are not line breaks to a vCard parser
+ * but ARE to `str.splitlines()` — the risk is the consumer's line splitter, not ours.
+ *
+ * What it does NOT do: sanitise property names or parameter KEYS beyond this (a `;` or `:` smuggled
+ * into a preserved property's name still garbles ITS line) — but with no line break available, the
+ * damage cannot escape the one line, and one card in stays one card out.
+ */
+function stripLineBreaking(value: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: removing control characters is the point
+  return value.replace(/[\u0000-\u0008\u000A-\u001F\u007F\u0085\u2028\u2029]/g, '')
 }
 
 /**
@@ -92,7 +127,14 @@ export function escapeParam(value: string): string {
   return /[;:,]/.test(escaped) ? `"${escaped}"` : escaped
 }
 
-/** Render one content line, unfolded. */
+/**
+ * Render one content line, unfolded.
+ *
+ * The whole line — group, name, parameter keys and value alike — passes through
+ * {@link stripLineBreaking} on the way out. Doing it here rather than in each caller is the point:
+ * `to-vcard.ts` has three slots that write a value raw today, and the next URI-bearing property
+ * added there would silently become a fourth.
+ */
 export function renderLine(line: WritableLine): string {
   let head =
     line.group === null || line.group === undefined ? line.name : `${line.group}.${line.name}`
@@ -100,7 +142,7 @@ export function renderLine(line: WritableLine): string {
     if (values.length === 0) continue
     head += `;${key}=${values.map(escapeParam).join(',')}`
   }
-  return `${head}:${line.value}`
+  return stripLineBreaking(`${head}:${line.value}`)
 }
 
 /**

@@ -29,17 +29,41 @@ describe('routeBase', () => {
 
 describe('notificationTargetPath', () => {
   it('opens the message', () => {
-    expect(notificationTargetPath(mailData)).toBe('/mail/inbox/42')
+    expect(notificationTargetPath(mailData)).toBe('/mail/inbox/42?account=acc-1')
   })
 
   it('opens the folder when there is no message (a summary)', () => {
     expect(notificationTargetPath({ ...mailData, kind: 'summary', emailId: null })).toBe(
-      '/mail/inbox',
+      '/mail/inbox?account=acc-1',
     )
   })
 
   it('falls back to the mail home when there is not even a folder', () => {
-    expect(notificationTargetPath({ ...mailData, mailboxId: null, emailId: null })).toBe('/mail')
+    expect(notificationTargetPath({ ...mailData, mailboxId: null, emailId: null })).toBe(
+      '/mail?account=acc-1',
+    )
+  })
+
+  /**
+   * The notification KNOWS which account the mail arrived in; dropping that on the way to the route
+   * is not a cosmetic loss. The path goes through `navigate()`, where `carryAccount` fills an absent
+   * `?account=` from the route the user is CURRENTLY on — so a banner for account `s2` tapped while
+   * reading the primary (or the reverse, below) would resolve `x`/`e9` in the wrong account, and
+   * per-account JMAP ids are short enough that they very likely exist there too.
+   */
+  it('pins the account into the path — a NON-primary one included, ids only are ambiguous', () => {
+    const shared = { ...mailData, accountId: 's2', mailboxId: 'x', emailId: 'e9' }
+    expect(notificationTargetPath(shared)).toBe('/mail/x/e9?account=s2')
+    expect(notificationTargetPath({ ...shared, emailId: null })).toBe('/mail/x?account=s2')
+    expect(notificationTargetPath({ ...shared, mailboxId: null, emailId: null })).toBe(
+      '/mail?account=s2',
+    )
+  })
+
+  it('encodes an account id that is not URL-safe rather than splicing it in raw', () => {
+    expect(notificationTargetPath({ ...mailData, accountId: 'a b&c=d' })).toBe(
+      '/mail/inbox/42?account=a%20b%26c%3Dd',
+    )
   })
 
   it('NEVER throws on malformed data — the shade outlives our schema', () => {
@@ -62,20 +86,31 @@ describe('notificationTargetPath', () => {
 
 describe('notificationTargetHref', () => {
   it('at the origin root', () => {
-    expect(notificationTargetHref('/', mailData)).toBe('/mail/inbox/42')
+    expect(notificationTargetHref('/', mailData)).toBe('/mail/inbox/42?account=acc-1')
   })
 
   it('under a /mail/ mount the prefix and the app’s own mail area BOTH appear — and must', () => {
     // They are different coordinate spaces: `/mail/` is where Stalwart serves the app, `/mail` is the
     // app's mail route. A "tidy-up" that collapses them 404s.
-    expect(notificationTargetHref('/mail/', mailData)).toBe('/mail/mail/inbox/42')
+    expect(notificationTargetHref('/mail/', mailData)).toBe('/mail/mail/inbox/42?account=acc-1')
     expect(notificationTargetHref('/mail/', { ...mailData, mailboxId: null, emailId: null })).toBe(
-      '/mail/mail',
+      '/mail/mail?account=acc-1',
     )
   })
 
   it('under an arbitrary subdirectory mount', () => {
-    expect(notificationTargetHref('/webmail/', mailData)).toBe('/webmail/mail/inbox/42')
+    expect(notificationTargetHref('/webmail/', mailData)).toBe(
+      '/webmail/mail/inbox/42?account=acc-1',
+    )
+  })
+
+  /**
+   * `clients.openWindow()` opens a cold tab: no in-memory active account, nothing to inherit from.
+   * The query has to survive the mount-prefix fold, or the deep link resolves against the primary.
+   */
+  it('carries the account through the mount fold, for a delegated account too', () => {
+    const shared = { ...mailData, accountId: 's2', mailboxId: 'x', emailId: 'e9' }
+    expect(notificationTargetHref('/webmail/', shared)).toBe('/webmail/mail/x/e9?account=s2')
   })
 })
 

@@ -1,7 +1,7 @@
-# Waxwing release — NOT ACTIVE YET, and deliberately so.
+# Waxwing release — live. It published v0.9.0 on 2026-08-17.
 #
-# There is no GitHub repository for this project (ADR-003). This file exists so that the day one is
-# created, a release is `git tag v1.0.0 && git push --tags` rather than a design exercise.
+# Written before the repository existed (ADR-003) so that a release would be
+# `git tag v1.0.0 && git push --tags` rather than a design exercise. It now is.
 #
 # ── THE ONE RULE THIS FILE FOLLOWS ────────────────────────────────────────────────────────────
 #
@@ -19,6 +19,35 @@
 # A tag can be pushed from any working tree, including one that never ran `pnpm gate`. The gate is
 # ~10 minutes; a bad release is permanent (a deleted tag is worse than no tag, because someone has
 # already fetched it). The order is deliberate: gate first, artefacts second, publish last.
+#
+# ── WHY THE `uses:` LINES ARE SHAs AND THE TOKEN IS SCOPED PER JOB ────────────────────────────
+#
+# This is the workflow that signs the project's name to a binary, so the two cheap mistakes are
+# expensive here specifically.
+#
+# 1. **SHA pins.** `@v2` / `@v4` are MUTABLE tags. Moving one is how tj-actions/changed-files
+#    (March 2025) turned thousands of repositories into a credential dump: the version string in
+#    every workflow file stayed the same while the code behind it changed. In THIS file the
+#    consequences are concrete — `pnpm/action-setup` runs BEFORE the build and can patch the tree
+#    it is about to build, and `softprops/action-gh-release` runs AFTER `dist-release/` exists and
+#    holds the token that uploads it, so it can swap the zip AND regenerate SHA256SUMS to match.
+#    A 40-hex pin cannot be moved; .github/dependabot.yml is what keeps it current.
+# 2. **Per-job `permissions:`.** `contents: write` used to sit at workflow level, so the `gate`
+#    job — which runs `pnpm gate`: Docker, Playwright, the whole dependency tree, none of it ours
+#    — held a token that can push to the repository and create releases, for forty-five minutes,
+#    for no reason. Permissions now sit on the job that needs them and nowhere else.
+#
+# ── WHAT THE ATTESTATION BUYS THAT SHA256SUMS DOES NOT ────────────────────────────────────────
+#
+# `SHA256SUMS` proves the file survived the network and the hoster intact. It proves NOTHING about
+# where the file came from, because whoever can replace the zip can also replace SHA256SUMS — and
+# an unpinned action, a stolen PAT or a compromised maintainer laptop is exactly that "whoever".
+# `actions/attest-build-provenance` records a Sigstore-signed SLSA provenance statement binding the
+# artefact digest to THIS repository, THIS workflow file and THIS commit, keyless (the runner's
+# OIDC identity, no key for a solo maintainer to lose). A deployer checks it with
+#   gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing
+# and it fails for a zip built anywhere else. What it still does not cover: a compromise of the
+# source this workflow builds. Provenance answers "who built it", never "is it good".
 
 name: Release
 
@@ -29,18 +58,19 @@ on:
   # uploads artefacts to the run, and does NOT create a release — see the `if:` on that step.
   workflow_dispatch:
 
-permissions:
-  contents: write # to create the release
-
 jobs:
   gate:
     name: gate (full pipeline)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Runs untrusted code (every dependency, a browser, a Docker fixture) and produces nothing but
+    # a pass/fail. It reads the tree; it must not be able to write one.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4 @ 2026-03-11 — see header
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -53,10 +83,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: gate
+    permissions:
+      contents: write # create the release and upload its assets
+      id-token: write # the runner's OIDC token — what makes the attestation keyless
+      attestations: write # write the provenance statement to this repository's attestation store
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4 @ 2026-03-11 — see header
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -80,8 +114,23 @@ jobs:
       # the <base href="/"> token, manifest.json rather than .webmanifest).
       - run: pnpm release
 
+      # Immediately after the build and before anything else touches `dist-release/`, so the
+      # digests in the provenance statement are the ones the packer just produced. Deliberately NOT
+      # gated on `refs/tags/v`: an attestation step whose first execution is the release it exists
+      # to protect is a step nobody has tested. A rehearsal's attestation is honest — it says a
+      # branch build happened — and `gh attestation verify` shows which ref it came from.
+      - name: Attest build provenance (SLSA, keyless — see the header)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          # The two zips are byte-identical (release.mjs copies rather than re-packs), so they
+          # share one digest and one attestation; both names are listed so either downloaded
+          # filename verifies.
+          subject-path: |
+            dist-release/*.zip
+            dist-release/*.tar.gz
+
       # Always, so a workflow_dispatch rehearsal produces something to inspect.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: waxwing-release
           path: dist-release/
@@ -89,7 +138,7 @@ jobs:
 
       - name: Publish the GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: dist-release/*
           generate_release_notes: true
@@ -102,10 +151,16 @@ jobs:
             Application (recommended, same-origin, no CORS), and
             **`waxwing-web-${{ github.ref_name }}.tar.gz`** behind your own web server.
 
-            Verify what you downloaded before deploying it:
+            Verify what you downloaded before deploying it. The two checks answer different
+            questions and the second is the stronger one:
 
             ```sh
+            # Did the file survive the network and the hoster intact?
             sha256sum -c SHA256SUMS
+
+            # Was it built by this repository's release workflow, from this commit?
+            # (SHA256SUMS cannot answer that: anyone who can replace the zip can regenerate it.)
+            gh attestation verify waxwing-stalwart-${{ github.ref_name }}.zip --repo ${{ github.repository }}
             ```
 
             Configuration lives in `config.json` next to `index.html` and needs no rebuild —

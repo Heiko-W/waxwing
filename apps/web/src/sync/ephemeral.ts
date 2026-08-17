@@ -1,5 +1,5 @@
 /**
- * Public-computer mode: a replica that is meant to leave nothing behind (FR-AUTH-07).
+ * Public-computer mode: a replica that is meant to leave nothing behind (FR-AUTH-09).
  *
  * ## The problem this exists for
  *

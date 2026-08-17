@@ -84,7 +84,7 @@ export interface SessionContextValue {
 
   // Onboarding (FR-AUTH-01/02/03/04).
   submitConnect(emailOrServer: string): void
-  /** `publicComputer` (FR-AUTH-07) applies to OAuth exactly as it does to Basic. */
+  /** `publicComputer` (FR-AUTH-09) applies to OAuth exactly as it does to Basic. */
   chooseOAuth(publicComputer?: boolean): void
   submitBasic(
     username: string,

@@ -3,6 +3,7 @@ import {
   deliverLiveMail,
   READ_BODIES,
   READ_NESTED,
+  READ_PDF,
   READ_PHISHING,
   READ_SUBJECTS,
   seedReadMail,
@@ -74,8 +75,62 @@ test.describe('M1.9 read suite', () => {
       bodyFrame(page, READ_SUBJECTS.newsletter).getByText(READ_BODIES.newsletterMarker),
     ).toBeVisible()
     // Loading images dismisses the banner (re-sanitized with remote content allowed).
+    const violations: string[] = []
+    page.on('console', (message) => {
+      if (/Content Security Policy/i.test(message.text())) violations.push(message.text())
+    })
     await page.getByRole('button', { name: 'Load images' }).click()
     await expect(page.getByText('Remote content blocked')).toHaveCount(0)
+
+    // …and the images are then actually ALLOWED to load. The banner disappearing proved only that
+    // we re-sanitized; it stayed green for months while the feature was dead. The frame's srcdoc
+    // inherits the APP's policy container, and the outer `img-src 'self' data: blob:` overrode the
+    // frame's own widened policy — both must allow, so every remote image was refused after the
+    // reader explicitly asked for it. The fixture host is unresolvable on purpose (no third-party
+    // request from a test), so what is asserted is the absence of a CSP refusal, not a pixel.
+    await page.waitForTimeout(1000)
+    expect(violations.filter((text) => /img-src/i.test(text))).toEqual([])
+  })
+
+  test('previews a PDF attachment — the frame really loads (F2)', async ({ page }) => {
+    // `frame-src 'self'` does not cover a `blob:` URL, so this preview was CSP-blocked in every
+    // build: an empty panel under `aria-expanded="true"`. `blob:` had been added to `img-src`
+    // deliberately, so the need was understood — image previews go through `<img>` and worked,
+    // which is exactly why the PDF path went unnoticed. Only a browser can tell the two apart.
+    await login(page)
+    await page.getByText(READ_SUBJECTS.pdf).click()
+    await expect(page.getByText(READ_PDF.filename)).toBeVisible({ timeout: 20_000 })
+
+    // Read the browser's own verdict rather than guessing from the outside. The preview frame is
+    // `sandbox=""`, i.e. an opaque origin, so the parent cannot inspect it and Playwright reports
+    // its URL as empty whether it loaded or was refused — the two states are indistinguishable from
+    // out here. `securitypolicyviolation` is not.
+    await page.evaluate(() => {
+      const seen: string[] = []
+      ;(window as unknown as { __csp: string[] }).__csp = seen
+      document.addEventListener('securitypolicyviolation', (event) => {
+        seen.push(`${event.violatedDirective} ${event.blockedURI}`)
+      })
+    })
+    await page.getByRole('button', { name: `Preview: ${READ_PDF.filename}` }).click()
+
+    // The object URL reaches the element…
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () =>
+            document
+              .querySelector('iframe[sandbox=""]')
+              ?.getAttribute('src')
+              ?.startsWith('blob:') ?? false,
+        ),
+      )
+      .toBe(true)
+    // …and the browser did not refuse it. Removing `blob:` from `frame-src` makes this line fail
+    // with `frame-src blob` — verified by reverting the policy and rebuilding.
+    await page.waitForTimeout(1000)
+    const violations = await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)
+    expect(violations.filter((entry) => entry.startsWith('frame-src'))).toEqual([])
   })
 
   test('shows a threaded conversation with expandable older messages', async ({ page }) => {

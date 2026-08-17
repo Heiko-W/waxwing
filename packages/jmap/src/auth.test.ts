@@ -21,9 +21,13 @@ describe('auth providers', () => {
   })
 
   it('basic builds a UTF-8 base64 header and has no query-token form', async () => {
-    const provider = basic('alice@waxwing.test', 'pw')
+    // Non-Latin1 password on purpose: `btoa()` alone throws InvalidCharacterError on any code
+    // point > U+00FF, so a password with a €, a Cyrillic letter or an emoji would make sign-in
+    // impossible. Only the TextEncoder → per-byte → btoa path in base64() encodes it, and only a
+    // non-ASCII credential can tell the two apart — an ASCII one passes either way.
+    const provider = basic('alice@waxwing.test', 'pw€ß')
     expect(await provider.authorization()).toBe(
-      `Basic ${Buffer.from('alice@waxwing.test:pw').toString('base64')}`,
+      `Basic ${Buffer.from('alice@waxwing.test:pw€ß', 'utf8').toString('base64')}`,
     )
     // Basic has no bare-token form (returns undefined, not implemented).
     expect(provider.token).toBeUndefined()

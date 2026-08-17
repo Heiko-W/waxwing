@@ -404,8 +404,8 @@ test.describe('M3.10 offline', () => {
       .toBe(READ_SUBJECTS.plain)
     const sorted = await rowSubjects(page)
     // Unread on top (`hasKeyword $seen` ascending), each group by date descending. The seeder marks
-    // the Q3 thread, the newsletter and the forwarded message as read; `plain` and the phishing
-    // sample are the only unread ones.
+    // the Q3 thread, the newsletter, the forwarded message and the PDF carrier as read; `plain` and
+    // the phishing sample are the only unread ones.
     expect(sorted.slice(0, 2)).toEqual([READ_SUBJECTS.plain, READ_SUBJECTS.phishing])
 
     await selectRow(page, READ_SUBJECTS.plain)
@@ -422,6 +422,8 @@ test.describe('M3.10 offline', () => {
       READ_SUBJECTS.plain,
       READ_SUBJECTS.newsletter,
       READ_SUBJECTS.rfc822,
+      // Oldest, and read: the PDF carrier the F2 preview test needs (seed-read.mjs `at(7)`).
+      READ_SUBJECTS.pdf,
     ])
   })
 

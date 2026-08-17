@@ -59,7 +59,7 @@ export interface PkceTransaction {
   config: ResolvedOAuthConfig
   /**
    * The user ticked "public or shared computer" before being sent to the authorization server
-   * (FR-AUTH-07). A full-page redirect destroys every bit of in-memory state, and this transaction
+   * (FR-AUTH-09). A full-page redirect destroys every bit of in-memory state, and this transaction
    * is the only thing that survives it — so the choice travels here, and the callback honours it by
    * keeping the refresh token in memory and writing no AuthRecord.
    */

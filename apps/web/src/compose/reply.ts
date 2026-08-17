@@ -3,13 +3,20 @@
  * source message into a draft: recipients, a normalized subject (`Re:`/`Fwd:`, no stacking),
  * threading headers (`In-Reply-To`/`References`), the quoted/forwarded HTML body seed, forwarded
  * attachment blob-references, and the best-guess From identity. No React, no network — fully unit
- * tested. The plain-text alternative + `>`-quoting come for free from {@link htmlToPlainText} at
- * send time; here we only emit the HTML `<blockquote>` the editor seeds with.
+ * tested (`DOMParser` only, via {@link sanitizeQuotedHtml}). The plain-text alternative + `>`-quoting
+ * come for free from {@link htmlToPlainText} at send time; here we only emit the HTML
+ * `<blockquote>` the editor seeds with.
+ *
+ * That seed is the one place attacker-controlled mail HTML crosses out of the sandboxed reading
+ * frame and into the app document, so every HTML body reaching {@link quoteBody}/{@link forwardBody}
+ * goes through {@link sanitizeQuotedHtml} first — read that module for what the reading sanitizer
+ * leaves standing and why it is not safe on this side.
  */
 
 import type { EmailAddress, Id } from '@waxwing/jmap'
 import type { EmailBodyRow } from '../sync'
 import { plainTextToHtml } from './html-to-text'
+import { sanitizeQuotedHtml } from './quoted-html'
 
 export type ReplyKind = 'reply' | 'replyAll' | 'forward'
 
@@ -104,12 +111,21 @@ function esc(text: string): string {
   return text.replace(/[&<>]/g, (character) => ESC[character] ?? character)
 }
 
+/**
+ * The HTML the quote/forward seeds with: the mail's own body through {@link sanitizeQuotedHtml}, or
+ * — when there is no HTML part — the plain text, which is escaped by {@link plainTextToHtml} and so
+ * cannot carry markup at all. Both branches, and only these two, produce the `inner` of a seed.
+ */
+function quotedInner(bodyHtml: string | null, textBody: string): string {
+  return bodyHtml !== null ? sanitizeQuotedHtml(bodyHtml) : plainTextToHtml(textBody)
+}
+
 export function quoteBody(input: {
   readonly bodyHtml: string | null
   readonly textBody: string
   readonly attribution: string
 }): string {
-  const inner = input.bodyHtml ?? plainTextToHtml(input.textBody)
+  const inner = quotedInner(input.bodyHtml, input.textBody)
   return `<p><br></p><p>${esc(input.attribution)}</p><blockquote>${inner}</blockquote>`
 }
 
@@ -119,7 +135,7 @@ export function forwardBody(input: {
   readonly separator: string
   readonly headerBlock: string
 }): string {
-  const inner = input.bodyHtml ?? plainTextToHtml(input.textBody)
+  const inner = quotedInner(input.bodyHtml, input.textBody)
   const headerLines = input.headerBlock
     .split('\n')
     .map((line) => `<div>${esc(line)}</div>`)

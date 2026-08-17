@@ -107,6 +107,19 @@ function generateUid(newUid: (() => string) | undefined): string {
   return `urn:uuid:${Math.random().toString(16).slice(2)}-${String(Date.now())}`
 }
 
+/**
+ * Keys an imported file may never set on a card.
+ *
+ * The first four are this account's identity, not the file's: `id` and `addressBookIds` are
+ * overwritten by {@link toContactCard} anyway, but `accountId` and `abk` are replica columns that
+ * would travel into the store and then into `Card.*` unnoticed. `__proto__` is the one that is not
+ * cosmetic — the copy below assigns per key, and `out['__proto__'] = …` REPLACES the object's
+ * prototype rather than adding a property, so a JSON file could hand every later `card.foo` lookup
+ * to attacker-chosen values. (`{ ...record }` would not have, which is exactly why the loop is the
+ * riskier form and needs the guard.)
+ */
+const REJECT_ON_IMPORT = new Set(['id', 'addressBookIds', 'accountId', 'abk', '__proto__'])
+
 function coerceJsonCard(value: unknown, newUid: (() => string) | undefined): Card | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const record = value as Record<string, unknown>
@@ -114,10 +127,23 @@ function coerceJsonCard(value: unknown, newUid: (() => string) | undefined): Car
   if (!looksLikeCard) return undefined
   const rawUid = record.uid
   const uid = typeof rawUid === 'string' && rawUid.trim() !== '' ? rawUid : generateUid(newUid)
-  // Force the JSContact envelope so the result is a valid Card even from a hand-written file; extra
-  // properties (a JMAP `id`/`addressBookIds` from another export) ride along harmlessly and are
-  // overwritten by {@link toContactCard} at create time.
-  return { ...record, '@type': 'Card', version: '1.0', uid } as unknown as Card
+  // Force the JSContact envelope so the result is a valid Card even from a hand-written file.
+  //
+  // **Everything else rides along unvalidated, and that is a deliberate trade, not an oversight**:
+  // JSContact allows vendor extension properties and this client is not the authority on them, so an
+  // allow-list would silently amputate a card on every import. What the file does NOT get is
+  // {@link REJECT_ON_IMPORT}. The remaining defence is at the seams — a hostile string cannot forge
+  // a second card on export (the jscontact writer strips line-breaking characters from every
+  // rendered line), and HTML/URI values are sanitised where they are rendered, not here.
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(record)) {
+    if (REJECT_ON_IMPORT.has(key)) continue
+    out[key] = entry
+  }
+  out['@type'] = 'Card'
+  out.version = '1.0'
+  out.uid = uid
+  return out as unknown as Card
 }
 
 function parseJsonImport(text: string, newUid: (() => string) | undefined): ParsedImport {

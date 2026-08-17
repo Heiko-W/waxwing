@@ -39,7 +39,11 @@ export interface SanitizeOptions {
 
 export interface SanitizeResult {
   readonly html: string
-  /** Remote resources stripped from the mail (empty when `allowRemote`). */
+  /**
+   * Remote resources stripped from the mail. Empty when `allowRemote` — with one exception that is
+   * not an oversight: the two FAIL-CLOSED style drops in {@link sanitizeStyle} throw the whole
+   * `style` away whatever `allowRemote` says, so they record whatever `allowRemote` says too.
+   */
   readonly blockedRemote: BlockedResource[]
   /** True when the ORIGINAL mail referenced any remote resource, whether blocked or kept. */
   readonly hasRemoteContent: boolean
@@ -67,16 +71,70 @@ const URL_ATTRS = new Set(['src', 'poster', 'background', 'longdesc', 'xlink:hre
 
 type UrlKind = 'cid' | 'remote' | 'dataImage' | 'dataOther' | 'other'
 
-function classifyUrl(raw: string): { kind: UrlKind; cid?: string } {
-  const url = raw.trim()
+/**
+ * Leading/trailing junk the URL parser removes before it ever looks at the scheme, and that
+ * `String.prototype.trim` does NOT: trim removes Unicode `White_Space` only, so U+0001-U+0008 and
+ * U+000E-U+001F survive it untouched. WHATWG URL §4.1 strips every leading and trailing C0 control
+ * OR SPACE, so `<img src="&#1;https://evil.tld/t.gif">` is the URL `https://evil.tld/t.gif` to a
+ * browser, while a `startsWith('https:')` on the trimmed string sees an unrecognised value and waves
+ * it through as `other`. That is the whole bypass: unrecognised means "not remote", so the resource
+ * was emitted verbatim, nothing reached the manifest, and `hasRemoteContent` stayed FALSE — the
+ * reader was told the mail contains no remote content while a tracking pixel sat in it. DOMPurify
+ * does not stop it either (its `IS_ALLOWED_URI` strips `ATTR_WHITESPACE` before matching and sees a
+ * clean `https:`), and in Chromium the request does go out from inside the `allow-same-origin`
+ * srcdoc frame; only the app's own CSP stood in front of it, and that CSP is being widened to admit
+ * `img-src https:` (F1), which would have made this a live, never-reported tracking pixel.
+ *
+ * The test is deliberately WIDER than the spec's — every `White_Space` on top of C0-and-space, so
+ * U+00A0 and U+FEFF go too, exactly as `trim()` already removed them. Stripping more can only make
+ * an unrecognised value look like a scheme we DO recognise, i.e. it can only move a URL INTO
+ * `remote`/`dataOther`, which is the fail-closed direction. It is a character scan rather than a
+ * regex because a control-character class is what `noControlCharactersInRegex` exists to reject.
+ */
+function isUrlEdgeJunk(ch: string): boolean {
+  return ch.charCodeAt(0) <= 0x20 || WHITESPACE.test(ch)
+}
+
+const WHITESPACE = /\s/
+
+/** Tab/LF/CR are removed ANYWHERE in a URL by the parser (WHATWG URL §4.1), not only at the edges. */
+const URL_INNER_JUNK = /[\t\n\r]/g
+
+function stripUrlJunk(raw: string): string {
+  const url = raw.replace(URL_INNER_JUNK, '')
+  let start = 0
+  let end = url.length
+  while (start < end && isUrlEdgeJunk(url[start] ?? '')) start += 1
+  while (end > start && isUrlEdgeJunk(url[end - 1] ?? '')) end -= 1
+  return url.slice(start, end)
+}
+
+/**
+ * Two or more leading slashes in either direction. For a special scheme (`http`/`https`/…) the URL
+ * parser treats `\` exactly as `/`, so `\\host`, `/\host` and `\/host` are all the authority form
+ * `//host` and all load cross-origin — a protocol-relative reference that a literal `startsWith('//')`
+ * does not see. Three or more also work (`///host`), because the parser skips the whole run.
+ */
+const PROTOCOL_RELATIVE = /^[/\\]{2}/
+
+interface ClassifiedUrl {
+  readonly kind: UrlKind
+  /** `raw` with the parser's own edge/inner junk removed — the form to RECORD and to match on. */
+  readonly url: string
+  readonly cid?: string
+}
+
+function classifyUrl(raw: string): ClassifiedUrl {
+  const url = stripUrlJunk(raw)
   const lower = url.toLowerCase()
-  if (lower.startsWith('cid:')) return { kind: 'cid', cid: url.slice(4) }
-  if (lower.startsWith('http:') || lower.startsWith('https:') || url.startsWith('//')) {
-    return { kind: 'remote' }
+  if (lower.startsWith('cid:')) return { kind: 'cid', url, cid: url.slice(4) }
+  if (lower.startsWith('http:') || lower.startsWith('https:') || PROTOCOL_RELATIVE.test(url)) {
+    return { kind: 'remote', url }
   }
-  if (/^data:image\/(png|jpe?g|gif|webp|avif|bmp)[;,]/i.test(lower)) return { kind: 'dataImage' }
-  if (lower.startsWith('data:')) return { kind: 'dataOther' }
-  return { kind: 'other' }
+  if (/^data:image\/(png|jpe?g|gif|webp|avif|bmp)[;,]/i.test(lower))
+    return { kind: 'dataImage', url }
+  if (lower.startsWith('data:')) return { kind: 'dataOther', url }
+  return { kind: 'other', url }
 }
 
 function kindForAttr(attrName: string, tagName: string): BlockedResource['kind'] {
@@ -103,20 +161,22 @@ function resolveUrl(
   options: SanitizeOptions,
   collector: Collector,
 ): string | null {
-  const { kind, cid } = classifyUrl(raw)
+  const { kind, url, cid } = classifyUrl(raw)
   switch (kind) {
     case 'cid': {
       const resolved = cid !== undefined ? (options.resolveCid?.(cid) ?? null) : null
       if (resolved === null) return null
       // Re-validate the resolver's OUTPUT: accept only a blob: URL or a raster data:image — never
       // trust a (buggy/compromised) resolver that hands back data:text/html, javascript:, http:, …
-      if (resolved.trim().toLowerCase().startsWith('blob:')) return resolved
+      if (stripUrlJunk(resolved).toLowerCase().startsWith('blob:')) return resolved
       return classifyUrl(resolved).kind === 'dataImage' ? resolved : null
     }
     case 'remote': {
       collector.hasRemote = true
+      // `raw`, not the junk-stripped form: what we keep here is what the mail wrote, and the browser
+      // applies the same §4.1 stripping to it that this file just applied for classification.
       if (options.allowRemote) return raw
-      collector.blocked.push({ url: raw.trim(), kind: kindForAttr(attrName, tagName) })
+      collector.blocked.push({ url, kind: kindForAttr(attrName, tagName) })
       return null
     }
     case 'dataImage':
@@ -140,8 +200,13 @@ const MAX_STYLE_LENGTH = 8192
 const STYLE_DANGER =
   /expression\(|behaviou?r\s*:|-moz-binding|@import|image-set|cross-fade|javascript:|vbscript:/i
 
-/** Any remaining remote scheme after `url()` rewriting → a malformed `url()` the parser missed. */
-const REMOTE_SCHEME = /https?:|\/\//i
+/**
+ * Any remaining remote scheme after `url()` rewriting → a malformed `url()` the parser missed. Both
+ * slash directions count, for the reason {@link PROTOCOL_RELATIVE} gives: an unterminated
+ * `url(\\evil.tld/x` is still a `<url-token>` to the CSS tokenizer (EOF inside one is a parse error,
+ * not a discard), and the browser's URL parser then reads that authority cross-origin.
+ */
+const REMOTE_SCHEME = /https?:|[/\\]{2}/i
 
 /** Decode CSS escapes (`\XXXXXX ` hex and `\<char>`) so obfuscated schemes can't hide from checks. */
 function cssUnescape(value: string): string {
@@ -188,28 +253,87 @@ export function sanitizeStyle(
   const residual = cssUnescape(rewritten).replace(/url\([^)]*\)/gi, '')
   if (REMOTE_SCHEME.test(residual)) {
     collector.hasRemote = true
+    // Record it, exactly as the STYLE_DANGER path above does. Both paths drop a whole style that the
+    // reader will notice is missing, so both owe the manifest an entry; this one silently did not,
+    // and a "0 blocked" manifest beside `hasRemoteContent: true` reads as a bug in the counter.
+    // Recorded under `allowRemote` too, and that is not the exception the `remote` branch makes: the
+    // resource is dropped here WHATEVER the setting, so it really was blocked.
+    collector.blocked.push({ url: css.trim().slice(0, 128), kind: 'style' })
     return { value: '', drop: true }
   }
   return { value: rewritten, drop: false }
 }
 
-/** Keep only the srcset candidates that survive {@link resolveUrl}; empty result → drop the attr. */
+/** ASCII whitespace as HTML defines it (§2.4.1) — the set the srcset grammar splits on. */
+const HTML_WHITESPACE = new Set([' ', '\t', '\n', '\f', '\r'])
+
+/**
+ * Split a `srcset` into its candidates per the HTML "parse a srcset attribute" algorithm, because a
+ * comma is NOT on its own a separator there.
+ *
+ * A candidate's URL is a run of non-whitespace, commas and all; the comma separates candidates only
+ * where the URL ENDS with one, or after a descriptor. Splitting on every `,` therefore tore apart the
+ * shape every image CDN emits — `https://cdn.test/w_100,h_50/a.png 1x` became the two candidates
+ * `https://cdn.test/w_100` and `h_50/a.png 1x`, of which the first was reported in
+ * {@link SanitizeResult.blockedRemote} as a URL that never appeared in the mail and the second was
+ * relative and kept — a manifest that lies in both directions at once.
+ *
+ * The descriptor scan tracks parens because the grammar reserves them for future descriptor syntax;
+ * everything else about a descriptor is opaque to us and is carried through untouched.
+ */
+function splitSrcsetCandidates(value: string): Array<{ url: string; descriptor: string }> {
+  const candidates: Array<{ url: string; descriptor: string }> = []
+  let i = 0
+  while (i < value.length) {
+    // Leading whitespace and the empty candidates that a `a.png 1x,,b.png` writes are skipped.
+    while (i < value.length && (HTML_WHITESPACE.has(value[i] ?? '') || value[i] === ',')) i += 1
+    if (i >= value.length) break
+    const urlStart = i
+    while (i < value.length && !HTML_WHITESPACE.has(value[i] ?? '')) i += 1
+    const rawUrl = value.slice(urlStart, i)
+    if (rawUrl.endsWith(',')) {
+      // A trailing comma ends the candidate right there: it takes no descriptor.
+      const url = rawUrl.replace(/,+$/, '')
+      if (url !== '') candidates.push({ url, descriptor: '' })
+      continue
+    }
+    const descriptorStart = i
+    let depth = 0
+    while (i < value.length) {
+      const ch = value[i]
+      if (ch === '(') depth += 1
+      else if (ch === ')') depth = Math.max(0, depth - 1)
+      else if (ch === ',' && depth === 0) break
+      i += 1
+    }
+    candidates.push({ url: rawUrl, descriptor: value.slice(descriptorStart, i).trim() })
+    i += 1 // the separating comma
+  }
+  return candidates
+}
+
+/**
+ * Keep only the srcset candidates that survive {@link resolveUrl}; empty result → drop the attr.
+ *
+ * `resolved` says a `cid:` became a `blob:`/`data:` URL, which is the ONLY reason the caller may
+ * force-keep the attribute past DOMPurify: dropping candidates never produces a value DOMPurify
+ * would refuse that it would not equally have refused before, so nothing else needs the override.
+ */
 function sanitizeSrcset(
   value: string,
   tagName: string,
   options: SanitizeOptions,
   collector: Collector,
-): string | null {
+): { value: string; resolved: boolean } | null {
   const kept: string[] = []
-  for (const candidate of value.split(',')) {
-    const trimmed = candidate.trim()
-    if (trimmed === '') continue
-    const [url, ...descriptor] = trimmed.split(/\s+/)
-    if (url === undefined) continue
+  let resolved = false
+  for (const { url, descriptor } of splitSrcsetCandidates(value)) {
     const replacement = resolveUrl(url, 'srcset', tagName, options, collector)
-    if (replacement !== null) kept.push([replacement, ...descriptor].join(' '))
+    if (replacement === null) continue
+    if (replacement !== url) resolved = true
+    kept.push(descriptor === '' ? replacement : `${replacement} ${descriptor}`)
   }
-  return kept.length > 0 ? kept.join(', ') : null
+  return kept.length > 0 ? { value: kept.join(', '), resolved } : null
 }
 
 /**
@@ -483,32 +607,34 @@ function isUnreadableSize(value: string): boolean {
  * declaration boundary that this splitter does NOT — that is how a property we believe we rejected
  * rides along inside a KEPT declaration's text and is applied by the browser anyway.
  *
- * ## That divergence EXISTS. A newline also ends a CSS string, and this closes one only on a quote.
- * Two earlier revisions of this comment said the opposite in as many words ("none of them diverges
- * that way", "never 'a rejected one is applied'"). Both sentences were wrong and have been deleted.
- *
+ * ## A NEWLINE also ends a CSS string, and the loop below now ends one on it too
  * CSS Syntax Level 3 §4.3.5 (consume a string token) ends a string at an unescaped newline as well
  * as at the matching quote: it is a parse error, the tokenizer emits a `<bad-string-token>` and stops
  * there. §3.3 preprocessing has already folded CR, CRLF and FF to LF, so all four spellings count.
- * An HTML attribute value carries raw newlines perfectly legally, so a `style` can hold one. Then:
+ * An HTML attribute value carries raw newlines perfectly legally, so a `style` can hold one. Closing
+ * only on the quote is exactly the divergence described above, and it was live:
  *
- *     font-family:'x⏎;display:none
- *     → HERE: one declaration. `font-family` is on the allowlist and nothing inspects its VALUE, so
- *       the whole run is kept verbatim — with `display:none` sitting inside it.
- *     → BROWSER: `font-family:<bad-string>`, invalid and dropped; then a TOP-LEVEL `;`; then a second
- *       declaration `display:none`, which is APPLIED.
+ *     font-family:'q⏎;direction:rtl;unicode-bidi:bidi-override
+ *     → WAS: one declaration. `font-family` is on the allowlist and nothing inspects its VALUE, so
+ *       the whole run was kept verbatim — with the two reordering declarations sitting inside it, and
+ *       the browser applying them. Inside an `<a>` that reverses the rendered link text while
+ *       `classifyLink` reads the WRITTEN order, finds nothing amiss and shows no interstitial.
+ *     → NOW: three pieces. The first keeps `font-family` with its unterminated string (the browser
+ *       drops that declaration as invalid, which is the harmless direction), and `direction` and
+ *       `unicode-bidi` are pieces of their own — neither is on the allowlist, so both are dropped.
  *
- * Confirmed against a spec tokenizer (`@csstools/css-tokenizer`), which emits
+ * The tokenizer's rule was confirmed against a spec tokenizer (`@csstools/css-tokenizer`), which emits
  * `bad-string-token | whitespace-token | semicolon-token | ident("display") | colon | ident("none")`
- * for exactly that input, and end-to-end through `sanitize` — the style survives untouched.
+ * for `font-family:'x⏎;display:none`. A backslash before the newline is a valid CSS line
+ * continuation and does NOT end the string — the escape branch below already consumes it, so that
+ * shape still fuses, in agreement with the browser.
  *
- * This is OPEN and is a tracked row, not a closed class. Teaching the loop that a newline ends a
- * string is a small change; it is not made here because this pass is documentation only. Until it is
- * made, the honest statement of the failure direction is: usually "a legitimate declaration is
- * dropped", and on this one input shape "a rejected one is applied".
+ * Rejoining is unaffected: the pieces are `;`-joined SUBSEQUENCES of the input's own text, so a kept
+ * piece carries its newline with it and the browser ends the same string in the same place we did.
  *
  * The three malformed shapes below were checked against a real CSS parser and none of THEM diverges
- * that way. That is the whole of what that check established — the newline case was never in it:
+ * that way either. That is the whole of what that check established — the newline case was never
+ * in it, which is why it had to be found separately:
  *
  *  - unclosed `(` — `background:url(a;color:#fff` parses as ONE declaration whose value is the whole
  *    remainder, so the browser fuses exactly where this fuses and applies nothing;
@@ -533,7 +659,11 @@ function splitDeclarations(css: string): string[] {
       continue
     }
     if (quote !== null) {
-      if (ch === quote) quote = null
+      // The matching quote closes the string; an unescaped newline ABORTS it (§4.3.5, and §3.3 has
+      // already folded CR/CRLF/FF to LF for the browser — we see the unfolded attribute text, so all
+      // three characters are tested). Either way the string is over and the `;`s after it separate
+      // declarations again, which is the only reading that agrees with the browser.
+      if (ch === quote || ch === '\n' || ch === '\r' || ch === '\f') quote = null
       continue
     }
     if (ch === '"' || ch === "'") quote = ch
@@ -613,11 +743,18 @@ function filterAnchorStyle(css: string): string {
  *   The `<a>` has deceived by styling itself, which the clause says cannot happen.
  *
  * Neither `direction` nor `unicode-bidi` is on {@link ANCHOR_STYLE_ALLOWLIST}, so the SAME two
- * declarations on a `<span>` one level down are stripped. Verified both ways end-to-end through
- * `sanitize`. This is precisely the class the character-level rule in `link-host.ts` (U+202D/U+202E,
- * the bidi OVERRIDES) was added to defend against, reached through CSS instead of through a code
- * point — a third spelling alongside that one and `<bdo dir="rtl">`, and the only one of the three
- * that a rule already in this file would catch if the scope were widened by one element.
+ * declarations on a `<span>` one level down are stripped — and, since the newline fix in
+ * {@link splitDeclarations}, they can no longer be smuggled past that strip inside a `font-family`
+ * string either. Say plainly what that buys against THIS attack: nothing. The descendant rule is
+ * whole again, but the anchor's own `style` is not filtered AT ALL, so the attacker simply writes the
+ * two declarations on the `<a>` and reordering works exactly as it did. This paragraph used to end
+ * "Verified both ways end-to-end through `sanitize`", which reads as a mitigation; it is not one, it
+ * is a statement about where the rule's scope ends.
+ *
+ * This is precisely the class the character-level rule in `link-host.ts` (U+202D/U+202E, the bidi
+ * OVERRIDES) was added to defend against, reached through CSS instead of through a code point — a
+ * third spelling alongside that one and `<bdo dir="rtl">`, and the only one of the three that a rule
+ * already in this file would catch if the scope were widened by one element.
  *
  * NOT closed, NOT attempted here, and a tracked row. Widening the scope to the `<a>` itself is a
  * one-line change but it is not free, and the suite already objects to it as a mutation (ADR-016
@@ -674,8 +811,19 @@ export function sanitize(html: string, options: SanitizeOptions = {}): SanitizeR
       if (rewritten === null) {
         event.keepAttr = false
       } else {
-        node.setAttribute('srcset', rewritten)
-        event.attrValue = rewritten
+        node.setAttribute('srcset', rewritten.value)
+        event.attrValue = rewritten.value
+        if (rewritten.resolved) {
+          // Same reason as the URL_ATTRS branch below, and it was missing here: DOMPurify tests the
+          // WHOLE srcset value against its URI allowlist, which excludes `blob:`, so a resolved
+          // `cid:` candidate had the attribute stripped straight back off the element we had just
+          // rewritten and `<img srcset="cid:logo 1x">` rendered no image at all. Scoped to `resolved`
+          // rather than to "the value changed": every candidate has been through `resolveUrl`, but a
+          // candidate of unknown scheme is returned VERBATIM by design (`other`), and force-keeping
+          // is the one path that takes DOMPurify's own URI test out of the picture — so it is spent
+          // only where a `blob:`/`data:` replacement we minted ourselves needs it.
+          ;(event as { forceKeepAttr?: boolean }).forceKeepAttr = true
+        }
       }
       return
     }

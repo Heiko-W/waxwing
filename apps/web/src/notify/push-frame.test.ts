@@ -12,6 +12,7 @@ import {
   EMAIL_DELIVERY,
   isPushVerificationMessage,
   PUSH_VERIFICATION,
+  type PushBannerDecision,
   parsePushFrame,
   shouldRaisePushBanner,
 } from './push-frame'
@@ -182,14 +183,38 @@ describe('shouldRaisePushBanner', () => {
 
   /**
    * The live channel has already raised the RICHER banner, with sender and subject. Two banners for
-   * one message is worse than one — and this is the only case in which the worker may accept a push
-   * without showing anything, having promised `userVisibleOnly: true`.
+   * one message is worse than one — the most deliberate of the four cases in which the worker accepts
+   * a push and shows nothing, having promised `userVisibleOnly: true` (see the next test for the set).
    */
   it('stays silent while a window of ours is visible', () => {
     expect(shouldRaisePushBanner(input({ hasVisibleClient: true }))).toEqual({
       show: false,
       because: 'visible',
     })
+  })
+
+  /**
+   * The set of silences, stated rather than implied. `sw.ts` returns without `showNotification` for
+   * every `show: false`, so the `userVisibleOnly: true` promise is broken in FOUR ways, not one —
+   * and a comment claiming otherwise (this file used to) makes the next reader believe quiet hours
+   * pop something. They do not, by design: the only measured point is the B29 hand-check
+   * (Chrome/FCM, 2026-07-24), where quiet hours suppressed the banner with no generic
+   * "updated in the background" notice. If that ever has to change, `silent: true` is NOT the fix —
+   * it still pops on macOS and Windows.
+   */
+  it('accepts the push and shows NOTHING in every one of the four cases', () => {
+    // Keyed by the reason and typed as a TOTAL Record, so the set is exhaustive by construction: a
+    // fifth `because` added to `PushBannerDecision` fails to compile here until it is given a case.
+    type SilentReason = Extract<PushBannerDecision, { show: false }>['because']
+    const cases: Record<SilentReason, Parameters<typeof input>[0]> = {
+      notADelivery: { frame: { kind: 'stateChange' } },
+      noState: { hasState: false },
+      quietHours: { quietHours: { fromMinutes: 22 * 60, toMinutes: 7 * 60 }, minutesOfDay: 3 * 60 },
+      visible: { hasVisibleClient: true },
+    }
+    for (const [because, over] of Object.entries(cases)) {
+      expect(shouldRaisePushBanner(input(over)), because).toEqual({ show: false, because })
+    }
   })
 
   it('applies quiet hours, including a window that crosses midnight', () => {

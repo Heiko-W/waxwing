@@ -98,6 +98,11 @@ export class SseChannel extends BasePushChannel {
     }
     void this.run(handlers, controller.signal, () => disposed).catch((error: unknown) => {
       if (disposed || controller.signal.aborted) return
+      // Abort before reporting: `run` may have failed mid-stream (an oversized SSE frame, a decode
+      // error) with the response body still open, and `reportClosed` only schedules the reconnect
+      // — it never closes the handle. Without this the abandoned reader keeps the connection, and
+      // its buffers, alive for as long as the server holds it.
+      close()
       handlers.reportClosed(toError(error))
     })
     return { close }

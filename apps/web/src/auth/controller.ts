@@ -229,7 +229,7 @@ export class AuthController {
       await this.tokens.apply(result)
       // The AuthRecord is what `restore()` keys off on a cold start. Writing one for a
       // public-computer session would sign the NEXT person at this machine in as this user, which
-      // is the failure the mode exists to prevent (FR-AUTH-07).
+      // is the failure the mode exists to prevent (FR-AUTH-09).
       if (transaction.ephemeral !== true) {
         await this.store.put(
           SecretName.AuthRecord,

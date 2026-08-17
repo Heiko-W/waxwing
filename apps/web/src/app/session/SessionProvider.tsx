@@ -51,7 +51,7 @@ const JMAP_MAIL = 'urn:ietf:params:jmap:mail'
 const STASH_TARGET_KEY = 'waxwing.onboard.target'
 const STASH_ROUTE_KEY = 'waxwing.onboard.route'
 /**
- * The public-computer choice across the OAuth redirect leg (FR-AUTH-07). Not a credential — a
+ * The public-computer choice across the OAuth redirect leg (FR-AUTH-09). Not a credential — a
  * boolean the user ticked — and it has to survive a full-page navigation that destroys every ref in
  * this component, which is exactly what `sessionStorage` is for. The AUTH side of the same choice
  * travels separately, inside the PKCE transaction, because only the controller can act on it.
@@ -147,14 +147,14 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   // instead of wiping the persisted credentials (FR-AUTH-04).
   const basicStayRef = useRef(false)
   /**
-   * True for a public-computer session (FR-AUTH-07). A ref, not state: it is read on the sign-out
+   * True for a public-computer session (FR-AUTH-09). A ref, not state: it is read on the sign-out
    * path and inside a `pagehide` listener, neither of which should re-render anything, and it must
    * not be stale in either.
    */
   const ephemeralRef = useRef(false)
 
   /**
-   * Switch this session to a throwaway replica (FR-AUTH-07). Shared by BOTH sign-in paths — the
+   * Switch this session to a throwaway replica (FR-AUTH-09). Shared by BOTH sign-in paths — the
    * checkbox used to be wired to Basic alone, so on a default deployment (where OAuth is the
    * primary button) ticking it produced a durable replica and a persisted refresh token while the
    * hint underneath promised the opposite.
@@ -168,10 +168,29 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     ephemeralRef.current = true
   }, [])
 
+  /**
+   * Where to connect when nothing else decides: the pinned URL, the last one used, or this origin.
+   *
+   * It must not throw, and it used to. `pinnedTarget` runs `new URL()` on an operator-supplied
+   * string and a durable target is whatever is in `localStorage`, so a malformed value threw inside
+   * `boot()` — whose catch called this function AGAIN (with `targetRef` still null at boot), threw a
+   * second time, and left an unhandled rejection out of `void boot()`. No error rendered and no
+   * ErrorBoundary caught it (React boundaries do not see async rejections): the state stayed
+   * `booting` and the user watched a spinner forever.
+   *
+   * `config.ts` now rejects an unparseable `sessionUrl` before it ever gets here, which removes the
+   * known trigger. This removes the FAILURE MODE, which is the part that matters: a boot path whose
+   * only error handler can itself throw has no error handling.
+   */
   const fallbackTarget = useCallback((): ConnectTarget => {
-    if (config.server.sessionUrl !== null) return pinnedTarget(config.server.sessionUrl)
-    const durable = readStored<ConnectTarget>(local(), DURABLE_TARGET_KEY)
-    return durable ?? sameOriginTarget(window.location.origin)
+    try {
+      if (config.server.sessionUrl !== null) return pinnedTarget(config.server.sessionUrl)
+      const durable = readStored<ConnectTarget>(local(), DURABLE_TARGET_KEY)
+      if (durable) return durable
+    } catch {
+      // Fall through to the origin, which is always parseable in a browser.
+    }
+    return sameOriginTarget(window.location.origin)
   }, [config.server.sessionUrl])
 
   const ensureController = useCallback(
@@ -263,7 +282,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       if (await controller.isRedirectCallback()) {
         dispatch({ type: 'connecting' })
         removeStored(session(), STASH_TARGET_KEY)
-        // BEFORE `connectSession` opens the replica (FR-AUTH-07). The redirect wiped every ref in
+        // BEFORE `connectSession` opens the replica (FR-AUTH-09). The redirect wiped every ref in
         // this component, so the choice is re-read from the tab-scoped stash rather than remembered.
         if (readStored<boolean>(session(), STASH_PUBLIC_KEY) === true) {
           markEphemeral()
@@ -374,7 +393,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     [ensureController],
   )
 
-  // The crash guard and the tab-close attempt (FR-AUTH-07).
+  // The crash guard and the tab-close attempt (FR-AUTH-09).
   //
   // `sweepEphemeral` runs at startup, before anything opens a session, and deletes every ephemeral
   // replica this profile knows about except the current one. That is what covers a crash, a killed
@@ -399,7 +418,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         if (!target) return
         dispatch({ type: 'submitBusy' })
         try {
-          // BEFORE any replica work (FR-AUTH-07). `setReplicaName` throws once a replica is open,
+          // BEFORE any replica work (FR-AUTH-09). `setReplicaName` throws once a replica is open,
           // and the first `getReplica()` happens inside `connectSession` below — so this is the one
           // window in which the choice can still be honoured.
           if (publicComputer) markEphemeral()
@@ -479,7 +498,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // session must go regardless — but the user is told when the local copy outlived it, rather
         // than being shown a login form that implies everything was cleaned up (FR-AUTH-05).
         let incomplete = false
-        // An EPHEMERAL session always wipes, whichever sign-out was chosen (FR-AUTH-07). The whole
+        // An EPHEMERAL session always wipes, whichever sign-out was chosen (FR-AUTH-09). The whole
         // promise of public-computer mode is that leaving does not depend on picking the right menu
         // item on the way out — that is precisely the step someone in a hurry skips.
         if (wipeData || ephemeralRef.current) {
@@ -528,7 +547,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         controllerRef.current = null
         controllerIssuerRef.current = null
         // Back to the durable default, and give up the ephemeral claim, so the next sign-in in this
-        // page load starts from a clean slate in BOTH directions (FR-AUTH-07).
+        // page load starts from a clean slate in BOTH directions (FR-AUTH-09).
         ephemeralRef.current = false
         releaseEphemeralClaim()
         resetReplica()

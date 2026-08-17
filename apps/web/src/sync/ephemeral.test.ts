@@ -1,5 +1,5 @@
 /**
- * Public-computer mode (FR-AUTH-07).
+ * Public-computer mode (FR-AUTH-09).
  *
  * The promise is narrow and worth stating exactly: mail written on someone else's machine is gone
  * again. Three mechanisms deliver it — sign-out, `pagehide`, and a sweep at the next start — and the

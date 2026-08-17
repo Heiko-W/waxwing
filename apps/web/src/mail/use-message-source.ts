@@ -27,6 +27,7 @@ import { JmapHttpError, JmapProblemError } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from '../app/session/context'
 import type { EmailRow } from '../sync'
+import { safeFilenameStem } from './safe-filename'
 
 /** How much of the source is rendered. Beyond this the head is shown and `truncated` is set. */
 export const MAX_SOURCE_TEXT_BYTES = 1_000_000
@@ -54,38 +55,21 @@ export interface MessageSource {
 
 /**
  * Turn a subject into a safe `.eml` filename. The subject is attacker-supplied — it is a header the
- * SENDER wrote — and it ends up in a `download` attribute, so it is stripped rather than trusted:
+ * SENDER wrote — and it ends up in a `download` attribute, so it goes through the shared
+ * {@link safeFilenameStem}: control characters, bidi/zero-width format characters, the
+ * Windows-reserved set, every `..` and any leading dot, trailing dots/space. That strip moved to
+ * `safe-filename.ts` because the attachment strip needs exactly the same one and had none of it; its
+ * header carries the reasoning per rule, and the measurement of how much of the DOWNLOAD half the
+ * browsers already do for us.
  *
- * - the Windows-reserved set (`/ \ : * ? " < > |`) and control characters, which are also what a
- *   header-injection or path-traversal attempt is built from;
- * - **bidi and zero-width format characters.** A subject of `Report‮exe.` renders in the
- *   download shelf as `Reportlme.exe`: U+202E reverses everything after it, so the visible extension
- *   is a lie. And a leading `​` slips a dot past the strip below, landing a hidden dotfile. The
- *   BYTES are always safe — `.eml` is appended last, unconditionally, so the file can never *be*
- *   executable — but a name that reads as `.exe` is a trust problem regardless of what it is;
- * - every `..` sequence AND any leading dot, so nothing can climb a directory or land hidden;
- * - trailing dots/whitespace, which Windows silently strips (turning `a .eml` into `a`);
- * - a lone trailing surrogate left by the length clamp, which is not well-formed text.
- *
- * A Windows device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…) is deliberately left alone: those are
- * reserved only as a *bare* name, and the unconditional `.eml` suffix means we never emit one.
- *
- * Browsers sanitize `download` themselves, but that is a mitigation we do not control and it varies.
+ * Two things stay local. The clamp is {@link MAX_FILENAME_STEM}, tighter than the shared default,
+ * because a subject is prose rather than a filename and 100 characters of it is already more than
+ * any download shelf shows. And `.eml` is appended last, unconditionally: the BYTES are therefore
+ * always safe — the file can never *be* executable — while a name that merely READS as `.exe` is a
+ * trust problem regardless, which is what the bidi strip answers.
  */
 export function sourceFilename(subject: string | null): string {
-  const stem = (subject ?? '')
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
-    .replace(/[\u0000-\u001F\u007F]/g, '')
-    // Bidi overrides/embeddings/isolates, zero-width joiners/spaces, and the BOM.
-    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
-    .replace(/[/\\:*?"<>|]/g, '')
-    .replace(/\.{2,}/g, '')
-    .replace(/^\.+/, '')
-    .trim()
-    .slice(0, MAX_FILENAME_STEM)
-    // The clamp can cut a surrogate pair in half; a lone high surrogate is not well-formed text.
-    .replace(/[\uD800-\uDBFF]$/, '')
-    .replace(/[.\s]+$/, '')
+  const stem = safeFilenameStem(subject ?? '', MAX_FILENAME_STEM)
   return stem === '' ? FALLBACK_FILENAME : `${stem}.eml`
 }
 

@@ -129,7 +129,10 @@ function canMove(context: ShortcutContext, role: Id | undefined): boolean {
  * Deliberately NOT covered: the self-move (`role === context.sourceMailboxId` — "Archive while viewing
  * Archive"). That is arguably worth a word too, but it is a different message and a different
  * judgement call; it stays exactly as silent as it is today. Same for the transient
- * `bodyReady === false` refusal of `r`/`a`/`f`, which heals itself a tick later.
+ * `bodyReady === false` refusal of `r`/`a`/`f` — though "a tick" is now optimistic: since the
+ * quoting fix, `bodyReady` also waits for the message's inline `cid:` images to finish
+ * downloading, which on a slow link is long enough for a keypress to feel ignored. Still silent,
+ * because the buttons carry the same state visibly; revisit if it is ever reported.
  */
 function missingRole(context: ShortcutContext, role: Id | undefined, key: string): string | null {
   return context.rolesReady && role === undefined ? key : null

@@ -166,12 +166,20 @@ export interface PushBannerInput {
  * Should this push raise a banner? Pure, so the worker's handler stays glue and every branch of it
  * has a test — nothing in `src/sw/` can have one.
  *
- * The `visible` rule is the subtle one, and it is a deliberate, bounded exception rather than an
- * optimisation. `userVisibleOnly: true` was promised at subscribe time and browsers enforce it: a
- * push handled without showing anything earns a "this site was updated in the background" notice
- * from the browser itself, and repeated offences cost the subscription. What justifies it is that a
- * visible window means the live channel has ALREADY raised the richer banner, with sender and
- * subject — two banners for one message is worse than one.
+ * **Four of the five outcomes are silent, and it is worth saying so plainly rather than singling one
+ * out.** `userVisibleOnly: true` was promised at subscribe time, so EVERY `show: false` below is a
+ * push the worker accepts and answers with no notification: a frame that is not a delivery, no
+ * handover state to render from, quiet hours, and a visible window. `visible` is only the most
+ * deliberate of the four — a visible window means the live channel has ALREADY raised the richer
+ * banner, with sender and subject, and two banners for one message is worse than one.
+ *
+ * What a user agent does about an unanswered push is UA POLICY, not spec, and we have measured one
+ * point of it: the B29 hand-check (Chrome/FCM, app fully closed, 2026-07-24) recorded quiet hours
+ * suppressing the banner with no generic "site was updated in the background" notice and no
+ * observable demotion. Firefox, Safari and the effect of REPEATED silence are untested; the exposure
+ * there is a generic banner or a dropped subscription, not a wrong decision here. `silent: true` is
+ * not the escape hatch it looks like — it still pops a banner on macOS and Windows, i.e. it would be
+ * LOUDER than staying silent, which is precisely what quiet hours may not be.
  *
  * Order is load-bearing: `visible` is checked BEFORE quiet hours, because during quiet hours with
  * the app open the live channel is the one that decided to stay silent, and this path must not

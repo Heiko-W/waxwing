@@ -715,7 +715,7 @@ let sharedDb: ReplicaDb | undefined
 let replicaName: string | undefined
 
 /**
- * Point the shared replica at `name` (FR-AUTH-07). Throws if a replica is already open: switching
+ * Point the shared replica at `name` (FR-AUTH-09). Throws if a replica is already open: switching
  * databases underneath a running engine would leave half a session in each.
  */
 export function setReplicaName(name: string | undefined): void {
@@ -816,7 +816,7 @@ export async function wipeReplica(db: ReplicaDb): Promise<void> {
 
 /**
  * Drop the shared handle and the chosen name, so the NEXT `getReplica()` opens the durable default
- * again (FR-AUTH-07).
+ * again (FR-AUTH-09).
  *
  * Sign-out has to do this, and the omission bit both ways. A public-computer session left
  * `replicaName` pointing at its throwaway database, so the next ORDINARY sign-in in the same page

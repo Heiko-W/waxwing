@@ -4,6 +4,11 @@
  * preview for images/PDFs. A preview is rendered in a SEPARATE sandboxed surface (an `<img>` or a
  * script-free `<iframe sandbox>`) that is OUTSIDE the mail body frame, and every blob object URL is
  * revoked on unmount. Downloads go through the authenticated JMAP blob endpoint (never a bare URL).
+ *
+ * The filename is the SENDER's, in both places it appears: `safe-filename.ts` strips it for the
+ * `download` attribute and, separately, for the text — a `<bdi>` around the label completes the
+ * second half. The icon beside it is derived from the sender-DECLARED MIME type and is therefore a
+ * claim, not a fact; nothing here verifies the bytes.
  */
 
 import type { EmailBodyPart, Id } from '@waxwing/jmap'
@@ -15,6 +20,7 @@ import { Button, IconButton, Spinner } from '../ui'
 import { attachmentIcon } from './attachment-icon'
 import { NestedMessageView } from './NestedMessageView'
 import styles from './reading.module.css'
+import { displayFilename, safeDownloadName } from './safe-filename'
 import { useBlobFetcher } from './use-blob'
 
 export interface AttachmentListProps {
@@ -36,6 +42,13 @@ function isPreviewable(type: string): boolean {
 function isMessage(type: string): boolean {
   return type === 'message/rfc822'
 }
+
+/**
+ * The `download` value for a part whose name is missing or strips to nothing. Not localized on
+ * purpose: it becomes a file on disk, and a filename that changes with the UI language is a file the
+ * reader cannot find again. The visible label DOES use the localized "unnamed" string.
+ */
+const DOWNLOAD_FALLBACK = 'attachment'
 
 export function AttachmentList({ accountId, attachments }: AttachmentListProps) {
   const { t } = useTranslation()
@@ -80,7 +93,10 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
         if (url === null) return
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = part.name ?? 'attachment'
+        // Never `part.name` raw: it is the sender's string and this is a filesystem name. Chromium
+        // and WebKit sanitize `download` themselves (measured), but that is a mitigation this app
+        // neither controls nor can assume of every engine.
+        anchor.download = safeDownloadName(part.name, DOWNLOAD_FALLBACK)
         anchor.click()
       } finally {
         setBusy(null)
@@ -129,15 +145,25 @@ export function AttachmentList({ accountId, attachments }: AttachmentListProps) 
       <ul className={styles.attachmentItems}>
         {items.map((part) => {
           const Icon = attachmentIcon(part.type)
-          const label = part.name ?? t('reading.attachments.unnamed')
+          // Stripped, not raw: `Invoice<U+202E>gpj.exe` rendered as `Invoiceexe.jpg` is this app
+          // telling the reader the file is an image. Used for the visible text AND for every
+          // `aria-label` built from it, so the two cannot say different things.
+          // A name made ENTIRELY of stripped characters leaves nothing, which would render a
+          // nameless row and a control with no accessible name at all — that is "unnamed" too.
+          const shown = part.name !== null ? displayFilename(part.name) : ''
+          const label = shown === '' ? t('reading.attachments.unnamed') : shown
           const open = preview?.blobId === part.blobId
           return (
             <li key={part.blobId} className={styles.attachment}>
               <div className={styles.attachmentMain}>
                 <Icon aria-hidden="true" className={styles.attachmentIcon} />
-                <span className={styles.attachmentName} title={label}>
+                {/* `<bdi>` and not a plain span: the strip above removes the characters that
+                    REVERSE a name, but a filename in Hebrew or Arabic is legitimately RTL and would
+                    still drag the size and the buttons after it into its own direction. Isolation is
+                    the fix for that; it is not a second security measure. */}
+                <bdi className={styles.attachmentName} title={label}>
                   {label}
-                </span>
+                </bdi>
                 <span className={styles.attachmentSize}>{formatBytes(part.size)}</span>
                 {busy === part.blobId && <Spinner size="sm" label={t('ui.spinner.label')} />}
                 {isPreviewable(part.type) && (

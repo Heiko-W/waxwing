@@ -132,12 +132,6 @@ webmail is an open gap.
   The UI encourages app passwords when 2FA is active.
 - **FR-AUTH-05 (Must)** — Clean logout: revoke tokens where supported, wipe all local data
   (IndexedDB, caches, service-worker state) on request ("Sign out & remove data").
-- **FR-AUTH-07 (Should)** — **Public-computer mode:** an opt-in choice at sign-in that keeps the
-  local replica in a throwaway database, removed on sign-out (either variant), on `pagehide`, and
-  by a sweep at the next application start — the last covering a crash, which the other two
-  cannot. Mutually exclusive with "stay signed in". The UI must state the residual exposure
-  (between a crash and the next start the data is on disk) rather than implying a guarantee the
-  browser cannot give.
 - **FR-AUTH-06 (Should)** — Session expiry / password change is handled gracefully:
   re-auth prompt without losing unsent drafts.
 - **FR-AUTH-07 (Could)** — Multiple simultaneous accounts (different servers) with fast
@@ -146,6 +140,18 @@ webmail is an open gap.
 - **FR-AUTH-08 (Should)** — **Shared accounts:** accounts beyond the primary one exposed in
   the JMAP session (delegation/sharing, e.g. via Stalwart's JMAP Sharing support) appear as
   additional mailbox trees, read/write according to server-granted rights.
+- **FR-AUTH-09 (Should)** — **Public-computer mode:** an opt-in choice at sign-in, applying to
+  **both** sign-in methods, that keeps the local replica in a throwaway database and keeps the
+  credential out of storage entirely (Basic: no persisted credentials; OAuth: refresh token in
+  memory, no auth record — so a cold start cannot restore the session). The replica is removed on
+  sign-out (either variant), on `pagehide`, and by a sweep at the next application start — the last
+  covering a crash, which the other two cannot. Mutually exclusive with "stay signed in". The UI
+  must state the residual exposure (between a crash and the next start the data is on disk) rather
+  than implying a guarantee the browser cannot give.
+
+  > Numbered 09, not 07. It shipped as FR-AUTH-07 and collided with the multi-account requirement
+  > above, which is older and is referenced from ADR-004, ADR-008 and the data layer — an ambiguous
+  > ID is worse in the requirement that carries a security promise, so this one moved.
 
 ---
 

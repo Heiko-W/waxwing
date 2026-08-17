@@ -84,7 +84,7 @@ describe('LoginForm', () => {
   })
 
   /**
-   * FR-AUTH-07. The two boxes make contradictory promises — one leaves a credential behind, the
+   * FR-AUTH-09. The two boxes make contradictory promises — one leaves a credential behind, the
    * other is about leaving nothing behind — so ticking the public one has to turn the other off
    * AND hold it off. Letting both be ticked would put a refresh token on precisely the machine the
    * user just said was not theirs.
@@ -123,7 +123,7 @@ describe('LoginForm', () => {
     expect(onBasicSubmit).toHaveBeenCalledWith('alice', 'secret', false, true)
   })
 
-  it('carries public-computer mode into the OAUTH path too (FR-AUTH-07)', async () => {
+  it('carries public-computer mode into the OAUTH path too (FR-AUTH-09)', async () => {
     // The regression this pins is not hypothetical: the checkbox used to live inside the Basic
     // <form> and reach `onBasicSubmit` alone. On the shipped default config OAuth is the PRIMARY
     // button sitting directly above it, so ticking the box and clicking that button produced a
@@ -176,7 +176,7 @@ describe('LoginForm', () => {
 
   it('offers the public-computer option even when the server allows OAuth ONLY', async () => {
     // `auth: ["oauth"]` is a supported deployment, and it renders no Basic form at all — which is
-    // where the option used to live, so FR-AUTH-07 simply did not exist on such a server.
+    // where the option used to live, so FR-AUTH-09 simply did not exist on such a server.
     render(
       <LoginForm
         target={target}

@@ -44,7 +44,11 @@ export interface ReconnectLoopConfig {
   scheduler: SchedulerLike
   onStatus: (status: PushStatus) => void
   onError: (error: Error) => void
-  /** Optional floor (ms) for the next reconnect delay — e.g. an SSE `retry:` hint. */
+  /**
+   * Optional floor (ms) for the next reconnect delay — e.g. an SSE `retry:` hint. Attacker-
+   * controlled in practice, so it is only honoured when finite and positive, and never above
+   * {@link MAX_RETRY_HINT_MS}.
+   */
   retryHint?: () => number | undefined
   /**
    * How long (ms) a connection must stay open before it is deemed stable and the backoff is
@@ -56,6 +60,17 @@ export interface ReconnectLoopConfig {
 
 /** Default {@link ReconnectLoopConfig.stableAfter}: 5s of uptime marks a connection stable. */
 export const DEFAULT_STABLE_AFTER_MS = 5000
+
+/**
+ * Ceiling (5 min) for a {@link ReconnectLoopConfig.retryHint} — a server-supplied number that is
+ * applied as a FLOOR on the reconnect delay, i.e. one the capped, jittered backoff can never win
+ * against. Unbounded, it is a remote off-switch in both directions: `retry: 2000000000` (~23 days)
+ * silences push for the session, while anything past 2^31-1 overflows the host timer and fires in
+ * ~1 ms, giving a hot reconnect loop that re-sends the Authorization header on every attempt.
+ * Five minutes is far below both and still longer than any backoff step, so a server asking for
+ * genuine breathing room gets it. Mirrors `clampRetryAfter` on the HTTP path.
+ */
+export const MAX_RETRY_HINT_MS = 300_000
 
 export class ReconnectLoop {
   private generation = 0
@@ -148,7 +163,12 @@ export class ReconnectLoop {
     if (!this.active) return
     let delay = this.config.backoff.next()
     const hint = this.config.retryHint?.()
-    if (hint !== undefined) delay = Math.max(delay, hint)
+    // Applied as a floor, so a bogus hint cannot be out-waited by the backoff — it must be bounded
+    // here rather than merely preferred against (see {@link MAX_RETRY_HINT_MS}). A hint of 0, a
+    // negative, or a NaN is not a delay at all and leaves the backoff alone.
+    if (hint !== undefined && Number.isFinite(hint) && hint > 0) {
+      delay = Math.max(delay, Math.min(hint, MAX_RETRY_HINT_MS))
+    }
     this.cancelTimer = this.config.scheduler.setTimeout(() => {
       this.cancelTimer = undefined
       if (!this.active) return

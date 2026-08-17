@@ -43,25 +43,34 @@ rather than letting the browser navigate.
 ## Content Security Policy
 
 The production CSP ships as a `<meta http-equiv="Content-Security-Policy">` in
-`index.html` (no inline script, no `eval` — NFR-SEC-01):
+`index.html` (no inline script, no `eval` — NFR-SEC-01). **`index.html` is the text**; it is
+not repeated here, because a second copy is a copy that goes stale silently. The load-bearing
+values are `default-src 'self'`, `script-src 'self'`, `object-src 'none'`, `base-uri 'self'`
+and `form-action 'self'`, and `scripts/check-dist-contract.mjs` fails the build if any of them
+is missing from the *built* `dist/index.html`.
 
-```
-default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self';
-form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline';
-font-src 'self'; connect-src 'self' https: wss:; frame-src 'self'
-```
-
+- **A response header does NOT override this policy — the two intersect.** CSP3 enforces
+  every delivered policy *independently*: a resource must satisfy all of them. So a
+  deployment can only ever **tighten** what ships here, never loosen it, and a directive
+  omitted from the header falls back to the *header's* `default-src` (or is unenforced by
+  that policy if it has none) rather than to the `<meta>` one. Practical consequence: a
+  header should name **only** the directives it wants to change and carry no `default-src`,
+  or it silently forbids the `data:`/`blob:` images and frames this policy allows.
+  `docs/deployment.md` §"Content Security Policy" has the nginx and Caddy form.
 - **`frame-ancestors` must be set by the server** via an HTTP response header — it
   cannot be expressed in a `<meta>` CSP. Deployments should send it (e.g.
-  `frame-ancestors 'self'`) to control who may frame the app.
+  `frame-ancestors 'self'`) to control who may frame the app. The **Stalwart Application**
+  path has no hook for response headers at all, so there it simply goes unset.
 - **`connect-src 'self' https: wss:` is intentionally broad.** The JMAP server origin
   comes from runtime `config.json`, so it cannot be pinned in a static `<meta>` CSP at
   build time. The trade-off is that an injected script could open connections to any
-  `https`/`wss` host. **Narrow this at deploy time** by sending an HTTP
-  `Content-Security-Policy` response header — which takes precedence over the `<meta>`
-  policy — with `connect-src` pinned to the specific JMAP origin. This is expected for
-  same-origin (Stalwart Application) and reverse-proxy deployments. `script-src` stays
-  fully strict (`'self'`), so this does not open a script-injection path.
+  `https`/`wss` host. **Narrow it at deploy time** with a `Content-Security-Policy` response
+  header naming `connect-src` alone (see the intersection rule above) — expected for
+  reverse-proxy deployments, and impossible for the Stalwart Application path.
+  Be honest about the ceiling: no shipped browser implements `navigate-to`, so a script on
+  this origin exfiltrates through `window.location` regardless of `connect-src`. Narrowing
+  raises the cost; it does not close the path. `script-src` stays fully strict (`'self'`),
+  and *that* is the boundary this relaxation does not touch.
 - **`style-src 'unsafe-inline'` is required, not accidental.** Branding sets the accent
   custom property via `element.style` (`theme.ts`) and React/CSS Modules emit inline
   styles. It is a lower-severity vector than script injection and is intentionally **not**

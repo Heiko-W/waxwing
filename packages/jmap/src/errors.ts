@@ -107,6 +107,31 @@ export class JmapRequestError extends JmapError {
   }
 }
 
+/**
+ * A Session that points one of its four `*Url` fields at a foreign origin (S7).
+ *
+ * Every consumer attaches the `Authorization` header to those URLs unconditionally, so a session
+ * document naming another host would hand the credential to that host on the next request. The
+ * session is rejected whole rather than partially used: the fields are not independent (a client
+ * that kept `apiUrl` and dropped `downloadUrl` would still be a broken client), and there is no
+ * legitimate case for it against Stalwart.
+ */
+export class JmapSessionOriginError extends JmapError {
+  override name = 'JmapSessionOriginError'
+  constructor(
+    /** Which session field carried the foreign URL (`apiUrl`, `downloadUrl`, …). */
+    readonly field: string,
+    /** The offending (already resolved) URL. */
+    readonly url: string,
+    /** The origin the credential was sent to, and the only one it may be sent to. */
+    readonly expectedOrigin: string,
+  ) {
+    super(
+      `Session field ${field} points at "${url}", which is not on the connected origin ${expectedOrigin}; refusing to send credentials there.`,
+    )
+  }
+}
+
 /** Standard request-level problem URNs (RFC 8620 §3.6.1). */
 export const ProblemTypes = {
   unknownCapability: 'urn:ietf:params:jmap:error:unknownCapability',

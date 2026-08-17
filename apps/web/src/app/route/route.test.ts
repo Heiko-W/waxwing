@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { notificationTargetPath } from '../../notify/click-route'
 import { carryAccount } from './RouterProvider'
 import {
   CONTACTS_PATH,
@@ -191,5 +192,24 @@ describe('carryAccount — the parameter survives a navigation (B37)', () => {
 
   it('is a no-op when no account is in play', () => {
     expect(carryAccount('/mail/a/e1', '')).toBe('/mail/a/e1')
+  })
+
+  /**
+   * The seam this function is most dangerous at. A notification click arrives through the same
+   * `navigate()` as any in-app link, but it comes from OUTSIDE the current route's frame of
+   * reference: the banner names the account the mail arrived in, which need not be the one the user
+   * is reading. Unqualified, the primary account's message id `e1` would be looked up in the shared
+   * account `acctS`, where an id that short very likely exists as well — wrong mail, right-looking
+   * URL. `notificationTargetPath` therefore qualifies unconditionally, and this pins the two halves
+   * together, in both directions.
+   */
+  it('cannot hijack a notification target — it names its own account (F3)', () => {
+    const readingShared = '?account=acctS'
+    const primaryBanner = { kind: 'mail', accountId: 'p1', mailboxId: 'a', emailId: 'e1' } as const
+    expect(carryAccount(notificationTargetPath(primaryBanner), readingShared)).toBe(
+      '/mail/a/e1?account=p1',
+    )
+    const sharedBanner = { ...primaryBanner, accountId: 'acctS' }
+    expect(carryAccount(notificationTargetPath(sharedBanner), '')).toBe('/mail/a/e1?account=acctS')
   })
 })

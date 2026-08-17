@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { bearer } from './auth'
 import { JmapClient } from './client'
+import { JmapError } from './errors'
 import { at, autoRespond, jmapPostMock, makeSession } from './test-support'
 import type { FetchLike } from './transport'
 import type {
@@ -81,6 +82,41 @@ describe('JmapClient — transparent auto-chunking', () => {
     const merged = result.get<GetResponse<{ id: string }>>(get)
     expect(merged.list).toEqual(ids.map((id) => ({ id })))
     expect(merged.notFound).toEqual([])
+  })
+
+  it('survives a server advertising maxObjectsInSet: 0 — the first write used to hang (F4)', async () => {
+    // `??` in resolveLimits does not replace 0, so the value reached the splitter verbatim and its
+    // `i += max` loop never advanced: connect and read worked, then mark-as-read/move/send froze
+    // the main thread until the tab was OOM-killed. Sanitizing sends the write at the fallback.
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({
+      session: makeSession({ maxObjectsInSet: 0 }),
+      auth: bearer('t'),
+      fetch,
+    })
+
+    const builder = client.request()
+    builder.call('Email/set', { accountId: 'a', destroy: ['x', 'y'] })
+    await builder.send()
+
+    expect(calls).toHaveLength(1)
+    expect(at(at(calls, 0).body.methodCalls, 0)[1]).toEqual({ accountId: 'a', destroy: ['x', 'y'] })
+  })
+
+  it('sanitizes an explicit caller override too, not just what the server advertised', async () => {
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({
+      session: makeSession(),
+      auth: bearer('t'),
+      fetch,
+      limits: { maxObjectsInSet: -1 },
+    })
+
+    const builder = client.request()
+    builder.call('Email/set', { accountId: 'a', destroy: ['x', 'y'] })
+    await builder.send()
+
+    expect(calls).toHaveLength(1)
   })
 })
 
@@ -169,4 +205,54 @@ it('autoRespond returns a well-formed JmapResponse', () => {
     methodCalls: [['Core/echo', { a: 1 }, 'c0']],
   })
   expect(at(response.methodResponses, 0)).toEqual(['Core/echo', { a: 1 }, 'c0'])
+})
+
+describe('JmapClient — malformed / oversized responses (F22)', () => {
+  const bodies = [
+    'null',
+    '[]',
+    '{"methodResponses":null,"sessionState":"s0"}',
+    '{"methodResponses":{},"sessionState":"s0"}',
+    '{"methodResponses":[]}', // sessionState missing — mandatory per RFC 8620 §3.4
+    'this is not json',
+  ]
+
+  it('rejects a malformed envelope with a JmapError rather than a TypeError', async () => {
+    // The `as JmapResponse` cast meant these reached the caller as a TypeError out of
+    // `push(...response.methodResponses)` — which the sync layer reads as TRANSIENT and retries,
+    // so a server answering 200 with rubbish got hammered instead of reported.
+    for (const body of bodies) {
+      const fetch: FetchLike = async () =>
+        new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+      const builder = client.request()
+      builder.call('Core/echo', {})
+      const error = await builder.send().then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect(error, body).toBeInstanceOf(JmapError)
+      expect(error, body).not.toBeInstanceOf(TypeError)
+    }
+  })
+
+  it('accumulates a response array far larger than the spread-argument limit', async () => {
+    // `push(...methodResponses)` passes one argument per element and blows the call stack somewhere
+    // above ~125k. A server can put the whole account in one /get response, so this is reachable
+    // without anything malicious — and it crashed the batch, not just the oversized call.
+    const count = 150_000
+    const fetch: FetchLike = async () =>
+      new Response(
+        JSON.stringify({
+          methodResponses: Array.from({ length: count }, () => ['Core/echo', {}, 'c0']),
+          sessionState: 's0',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    const builder = client.request()
+    builder.call('Core/echo', {}, 'c0')
+    const result = await builder.send()
+    expect(result.responses).toHaveLength(count)
+  })
 })

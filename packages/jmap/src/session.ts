@@ -1,6 +1,6 @@
 import type { AuthProvider } from './auth'
 import { Capabilities } from './capabilities'
-import { errorFromResponse } from './errors'
+import { errorFromResponse, JmapSessionOriginError } from './errors'
 import type { FetchLike } from './transport'
 import { getWithAuth, resolveFetch } from './transport'
 import type { ContactsCapability } from './types/contacts'
@@ -35,6 +35,9 @@ export interface GetSessionOptions {
  * The four `*Url` fields MAY be relative and are resolved against the final response URL
  * (after any redirect), per the RFC. Relative bases that cannot be resolved (e.g. in
  * unit tests with a mock fetch) are left verbatim.
+ *
+ * Each resolved URL must sit on the origin `input` addressed, or the whole session is rejected
+ * with a {@link JmapSessionOriginError} — see {@link normalizeSession}.
  */
 export async function getSession(
   input: string,
@@ -47,7 +50,27 @@ export async function getSession(
   if (!response.ok) throw await errorFromResponse(response)
   const raw = (await response.json()) as Session
   const base = response.url || url
-  return normalizeSession(raw, base)
+  return normalizeSession(raw, base, connectionOrigin(url))
+}
+
+/**
+ * The origin the caller configured — `url` resolved against the document, where there is one.
+ *
+ * Deliberately derived from the REQUEST URL, never from `response.url`: the *Url fields are
+ * resolved against the final (post-redirect) response URL, so validating against that same value
+ * would let an open redirect on `/.well-known/jmap` nominate its own origin and pass.
+ *
+ * `null` — check disabled — only where the connection URL is relative AND there is no document to
+ * resolve it against: an SSR/worker caller, or a unit test with a mock fetch. A browser always has
+ * `location`, so the deployed client always gets an origin to enforce.
+ */
+function connectionOrigin(url: string): string | null {
+  const here = typeof globalThis.location?.href === 'string' ? globalThis.location.href : undefined
+  try {
+    return new URL(url, here).origin
+  } catch {
+    return null
+  }
 }
 
 /** Builds the well-known URL from an origin/base, or returns `input` if it already is a session URL. */
@@ -61,17 +84,53 @@ export function toWellKnownUrl(input: string): string {
 }
 
 /**
- * Returns a copy of `session` with the four `*Url` fields resolved to absolute URLs
- * against `base`. Values that are already absolute are kept; unresolvable ones (relative
- * value + relative base) are preserved verbatim.
+ * Returns a copy of `session` with the four `*Url` fields resolved to absolute URLs against
+ * `base`, and REJECTS the session (throwing {@link JmapSessionOriginError}) if any of them lands
+ * on an origin other than `expectedOrigin`.
+ *
+ * The origin check is what makes "credentials go to the configured JMAP origin and nowhere else"
+ * true rather than merely intended: `transport`, `blob` and every push transport attach the
+ * `Authorization` header to these URLs unconditionally, so an altered `/.well-known/jmap` response
+ * — a MITM, a compromised reverse proxy, an open redirect on the way to it — could otherwise name
+ * a foreign host and be handed the credential on the next API call, upload or SSE connect. A
+ * differing port or scheme is a differing origin and is treated the same way; Stalwart serves all
+ * four endpoints from the origin the session itself was fetched from.
+ *
+ * What it does NOT do: protect against a hostile JMAP server. That server has already received the
+ * credential in the request that produced this session. This closes only the narrower path where
+ * an actor can alter the session RESPONSE without reading the credential-bearing request.
+ *
+ * `expectedOrigin: null` skips the check entirely — see {@link getSession}'s `connectionOrigin`,
+ * which produces it only outside a browser. A field that cannot be parsed as an absolute URL
+ * (relative value + relative base) fails the check: nothing proves it same-origin.
  */
-export function normalizeSession(session: Session, base: string): Session {
-  return {
-    ...session,
+export function normalizeSession(
+  session: Session,
+  base: string,
+  expectedOrigin: string | null,
+): Session {
+  const resolved = {
     apiUrl: resolveUrl(session.apiUrl, base),
     downloadUrl: resolveUrl(session.downloadUrl, base),
     uploadUrl: resolveUrl(session.uploadUrl, base),
     eventSourceUrl: resolveUrl(session.eventSourceUrl, base),
+  }
+  if (expectedOrigin !== null) {
+    for (const [field, value] of Object.entries(resolved)) {
+      if (originOf(value) !== expectedOrigin) {
+        throw new JmapSessionOriginError(field, value, expectedOrigin)
+      }
+    }
+  }
+  return { ...session, ...resolved }
+}
+
+/** The origin of an absolute URL, or `null` if it is not one. */
+function originOf(url: string): string | null {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
   }
 }
 

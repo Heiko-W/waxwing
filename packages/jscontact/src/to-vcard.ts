@@ -245,6 +245,8 @@ function nicknameLines(nicknames: Readonly<Record<Id, Nickname>> | undefined, ou
 function linkLines(links: Readonly<Record<Id, Link>> | undefined, out: WritableLine[]) {
   for (const [id, link] of Object.entries(links ?? {})) {
     // A URI value, unescaped — the same rule as PHOTO. Escaping a query string's `,` breaks it.
+    // Unescaped is not unchecked: `renderLine` drops the control characters (CR/LF above all) that
+    // an unescaped slot would otherwise let through as a forged second card.
     out.push({
       name: 'URL',
       params: entryParams({ id, pref: link.pref, label: link.label }),
@@ -265,7 +267,8 @@ function mediaLines(media: Readonly<Record<Id, Media>> | undefined, out: Writabl
     const params = entryParams({ id, pref: item.pref })
     if (item.mediaType !== undefined) params.set('MEDIATYPE', [item.mediaType])
     // A URI value is NOT text-escaped in vCard 4.0 — escaping a `data:` URI would corrupt its
-    // base64 payload wherever it contains a comma.
+    // base64 payload wherever it contains a comma. `renderLine` still strips control characters
+    // from it, which no legal `data:` or `https:` URI contains.
     out.push({ name: item.kind === 'photo' ? 'PHOTO' : 'LOGO', params, value: item.uri })
   }
 }
@@ -276,6 +279,11 @@ function mediaLines(media: Readonly<Record<Id, Media>> | undefined, out: Writabl
  * The value is used verbatim: it was captured verbatim on import, still escaped, so escaping it
  * again would double every backslash on each round trip — a corruption that compounds silently, one
  * export at a time.
+ *
+ * Verbatim is the escaping, not the syntax: `vCardProps` is the one part of a Card that carries
+ * attacker-shaped property NAMES, parameter keys and raw values straight from a JSON import, and
+ * `renderLine` removes the line breaks that would otherwise let any of the three end this card and
+ * begin another.
  */
 function preservedLines(props: readonly JCardProp[] | undefined, out: WritableLine[]) {
   for (const prop of props ?? []) {

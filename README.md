@@ -53,9 +53,21 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
 ```
 
 Restart Stalwart and open `https://mail.example.com/webmail/`. That is the whole installation:
-no web server to run, no container, no database. `autoUpdateFrequency` makes Stalwart re-fetch
-the release weekly, so new versions arrive on their own — drop that field if you would rather
-update by hand, or point `resourceUrl` at a versioned asset to pin one.
+no web server to run, no container, no database.
+
+`autoUpdateFrequency` makes Stalwart re-fetch the release weekly, so new versions arrive on
+their own. Say plainly what that means: it is a standing decision to run whatever this project
+publishes next, in your users' browsers, against their mailboxes. If you would rather not,
+point `resourceUrl` at a versioned asset and drop the field — then upgrading is deliberate, and
+you can check what you are upgrading to:
+
+```sh
+sha256sum -c SHA256SUMS                                        # arrived intact
+gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing   # built here, from this repo
+```
+
+The [deployment guide](docs/deployment.md#verifying-what-you-installed) has both forms, and
+[`SECURITY.md`](SECURITY.md) §4 says what each check does and does not cover.
 
 Not using Stalwart, or want it behind your own nginx? Two more paths — and the honest
 trade-off of the cross-origin one — are in the **[deployment guide](docs/deployment.md)**.

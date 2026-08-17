@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildFrameDocument, linkTextOf, type MailLinkInfo, mountMailFrame } from './frame'
 
 /**
@@ -59,9 +59,132 @@ describe('mountMailFrame', () => {
     expect(sandbox).not.toContain('allow-top-navigation')
     expect(iframe.srcdoc).toContain('<p>hi</p>')
 
-    // The height wiring only runs on a real 'load' with a live ResizeObserver (a browser); here we
-    // assert teardown is safe to call. Link interception IS covered — see below.
+    // Teardown is safe to call even when nothing was wired (no ResizeObserver in this environment
+    // unless a test installs one — the height guard has its own describe below).
     expect(() => controller.destroy()).not.toThrow()
+  })
+})
+
+/**
+ * The auto-height guard. jsdom has no `ResizeObserver` and computes no layout, so both halves are
+ * supplied: a stub observer whose callback the test fires by hand, and a `scrollHeight` the test
+ * sets. Everything between the two — the 2px dead band, the clamp, the rate guard, the disconnect —
+ * is the real `mountMailFrame` code path.
+ *
+ * `disconnect()` stops the stub from delivering, exactly as a real one does; that is what makes a
+ * frozen height VISIBLE to these tests rather than silently identical to a working one.
+ */
+function mountObserved(): {
+  fire: (height: number) => void
+  heights: number[]
+  isDisconnected: () => boolean
+  destroy: () => void
+} {
+  const heights: number[] = []
+  let notify: (() => void) | undefined
+  let disconnected = false
+  let scrollHeight = 0
+
+  class StubResizeObserver {
+    constructor(callback: () => void) {
+      notify = callback
+    }
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {
+      disconnected = true
+    }
+  }
+  vi.stubGlobal('ResizeObserver', StubResizeObserver)
+
+  const iframe = document.createElement('iframe')
+  document.body.append(iframe)
+  const controller = mountMailFrame(iframe, buildFrameDocument('<p>hi</p>'), {
+    onHeight: (px) => heights.push(px),
+  })
+  iframe.dispatchEvent(new Event('load'))
+  const doc = iframe.contentDocument
+  if (doc === null) throw new Error('no contentDocument')
+  Object.defineProperty(doc.documentElement, 'scrollHeight', {
+    configurable: true,
+    get: () => scrollHeight,
+  })
+
+  return {
+    fire: (height) => {
+      scrollHeight = height
+      if (!disconnected) notify?.()
+    },
+    heights,
+    isDisconnected: () => disconnected,
+    destroy: () => controller.destroy(),
+  }
+}
+
+describe('mountMailFrame — the height guard is an OSCILLATION guard, not a lifetime cap', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps resizing for as long as the updates stay settled', () => {
+    // What the counter this replaced actually did: it counted every legitimate resize and never
+    // reset, so update 51 disconnected the observer and the iframe height froze for the rest of the
+    // message. `text.ts` emits a `<details>` per quote level and the frame is script-free, so ~25
+    // open/close cycles of ordinary reading — or 50 images decoding one after another — spent the
+    // whole budget on a message that never oscillated at all.
+    const frame = mountObserved()
+    for (let i = 0; i < 200; i += 1) {
+      vi.advanceTimersByTime(100) // 10 per window, far below the rate a feedback loop delivers
+      frame.fire(100 + i * 10)
+    }
+    expect(frame.heights).toHaveLength(200)
+    expect(frame.heights.at(-1)).toBe(2090)
+    expect(frame.isDisconnected()).toBe(false)
+    frame.destroy()
+  })
+
+  it('still terminates a genuine feedback loop', () => {
+    // The case the cap existed for: content whose height depends on the frame's height (a
+    // `min-height:100vh` block) delivers an update every frame and never settles. Nothing here
+    // advances the clock, so the whole burst lands in one window and the guard disconnects.
+    const frame = mountObserved()
+    for (let i = 0; i < 200; i += 1) frame.fire(i % 2 === 0 ? 300 : 600)
+    expect(frame.isDisconnected()).toBe(true)
+    expect(frame.heights.length).toBeLessThan(40)
+    frame.destroy()
+  })
+
+  it('does not carry a spent burst into the next window', () => {
+    // The difference between a rate guard and the lifetime cap, stated as a fixture: a burst that
+    // stops short of the budget must leave no debt behind. 25 + 25 is over the old cap and under
+    // this one, twice.
+    const frame = mountObserved()
+    for (let i = 0; i < 25; i += 1) frame.fire(100 + i * 10)
+    vi.advanceTimersByTime(1000)
+    for (let i = 0; i < 25; i += 1) frame.fire(1000 + i * 10)
+    expect(frame.isDisconnected()).toBe(false)
+    expect(frame.heights).toHaveLength(50)
+    frame.destroy()
+  })
+
+  it('clamps the height itself, whatever the rate', () => {
+    const frame = mountObserved()
+    frame.fire(999999)
+    expect(frame.heights).toEqual([20000])
+    frame.destroy()
+  })
+
+  it('ignores a change smaller than the 2px dead band', () => {
+    const frame = mountObserved()
+    frame.fire(400)
+    frame.fire(401)
+    expect(frame.heights).toEqual([400])
+    frame.destroy()
   })
 })
 

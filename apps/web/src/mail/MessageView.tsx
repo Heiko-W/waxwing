@@ -448,7 +448,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // Open a reply / reply-all / forward draft seeded from this message (M2.3, FR-CMP-02/10).
   const onCompose = useCallback(
     (kind: ReplyKind): void => {
-      const bodyHtml = isHtml ? (sanitized?.html ?? joinedHtml) : null
+      /**
+       * `?? null`, NEVER `?? joinedHtml` — quoting nothing beats quoting the raw mail. `sanitized`
+       * is null for the whole inline-image window (`!ready`, i.e. every `cid:` blob download), and
+       * the fallback used to hand the composer the message body exactly as it arrived. Nothing
+       * downstream repairs that: the draft is persisted to IndexedDB and PUT to the server by
+       * `use-draft-autosave` as-is, a remote `<img src="https://tracker…">` travels into the mail the
+       * victim then sends, and if the send beats the lazy Squire engine mounting
+       * (`RichTextEditor`'s pre-mount `setHTML` is a no-op) the raw body is what goes out. The
+       * action bar and `bodyReady` now gate on `ready` as well, so this branch should be
+       * unreachable from the UI — it is the value that makes it harmless if it ever is not.
+       */
+      const bodyHtml = isHtml ? (sanitized?.html ?? null) : null
       const forwardHeaderBlock = [
         `${t('compose.forwardLabelFrom')}: ${formatAddressList(email.from, t('list.noSender'))}`,
         `${t('compose.forwardLabelDate')}: ${dateLabel}`,
@@ -473,7 +484,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         sourceFlag: init.sourceKind === 'forward' ? '$forwarded' : '$answered',
       })
     },
-    [isHtml, sanitized, joinedHtml, email, textBody, own, t, dateLabel, name, body, openDraft],
+    [isHtml, sanitized, email, textBody, own, t, dateLabel, name, body, openDraft],
   )
 
   // Both overflow actions route through the SAME lazy dialog: it is the only place that holds the
@@ -513,7 +524,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     () => ({
       emailId: email.id,
       mailboxId: inThisMailbox,
-      bodyReady: !loading,
+      // `ready` and not just `!loading`: `loading` is the BODY fetch, `ready` the inline-image
+      // downloads that `sanitized` waits on. Between the two there is a body but no sanitized body,
+      // and a reply seeded there quotes nothing (see `onCompose`) — a silently empty quote is worse
+      // than a chord that refuses for the length of a blob download. Same gate on the buttons.
+      bodyReady: !loading && ready,
       compose: onCompose,
       archive: () => triage.archive([email.id], inThisMailbox),
       junk: () => triage.junk([email.id], inThisMailbox),
@@ -534,7 +549,16 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       openLabels: () => setLabelsOpen(true),
       requestDelete: () => setConfirmDelete(true),
     }),
-    [email.id, email.keywords.$flagged, inThisMailbox, loading, onCompose, triage, cancelDwell],
+    [
+      email.id,
+      email.keywords.$flagged,
+      inThisMailbox,
+      loading,
+      ready,
+      onCompose,
+      triage,
+      cancelDwell,
+    ],
   )
 
   // Only the message the reader actually OPENED registers — `autoMark` already means precisely that
@@ -764,10 +788,14 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           {t('list.actions.move')}
         </Button>
         <span className={styles.actionSpacer} />
+        {/* All three gate on `handlers.bodyReady` — `!loading && ready` — and not on `loading`
+            alone: the body arrives before its inline images do, and in that window `sanitized` is
+            still null and a seeded quote would be empty. One expression for button and chord, read
+            off the same handlers object the shortcut layer gets. */}
         <IconButton
           label={t('reading.reply')}
           variant="ghost"
-          disabled={loading}
+          disabled={!handlers.bodyReady}
           onClick={() => onCompose('reply')}
         >
           <Reply />
@@ -775,7 +803,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         <IconButton
           label={t('reading.replyAll')}
           variant="ghost"
-          disabled={loading}
+          disabled={!handlers.bodyReady}
           onClick={() => onCompose('replyAll')}
         >
           <ReplyAll />
@@ -783,7 +811,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         <IconButton
           label={t('reading.forward')}
           variant="ghost"
-          disabled={loading}
+          disabled={!handlers.bodyReady}
           onClick={() => onCompose('forward')}
         >
           <Forward />

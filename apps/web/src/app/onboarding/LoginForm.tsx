@@ -159,7 +159,7 @@ export function LoginForm({
         </form>
       ) : null}
 
-      {/* FR-AUTH-07, and deliberately OUTSIDE the Basic form: it governs whichever way the user
+      {/* FR-AUTH-09, and deliberately OUTSIDE the Basic form: it governs whichever way the user
           signs in. While it lived inside the form it reached `onBasicSubmit` only, so on a default
           deployment — where OAuth is the primary button sitting right above it — ticking the box
           and clicking that button produced a durable replica and a persisted refresh token, with

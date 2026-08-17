@@ -38,6 +38,49 @@ export interface ChunkLimits {
   maxSizeRequest: number
 }
 
+/**
+ * Conservative fallback limits, used for any limit a server omits — or advertises as a value that
+ * cannot be honoured (see {@link sanitizeLimits}). Real numbers are always read from the Session.
+ */
+export const FALLBACK_LIMITS: ChunkLimits = {
+  maxObjectsInGet: 128,
+  maxObjectsInSet: 128,
+  maxCallsInRequest: 16,
+  maxSizeRequest: 1_000_000,
+}
+
+/**
+ * Replaces every limit that is not a finite integer > 0 with its {@link FALLBACK_LIMITS} value.
+ *
+ * Zero or negative is not a *stricter* limit, it is an unusable one, and each of the four fails
+ * differently: `maxObjectsInSet: 0` made {@link splitSet}'s `i += max` loop never advance and
+ * allocate chunk objects until the tab was OOM-killed — hit on the first write of a session
+ * (mark-as-read, move, send), so a server advertising it let you connect and read and then froze
+ * the main thread, every restart. `maxCallsInRequest`/`maxSizeRequest` of 0 are merely
+ * unsatisfiable (every unit throws {@link JmapError}), which is a truthful failure but still an
+ * app that cannot send a single request. RFC 8620 §2 requires positive integers here; JSON
+ * guarantees nothing, and `session.ts`'s core-capability probe only tests `typeof === 'number'`,
+ * which 0, -1, 1.5 and NaN all pass. Callers' explicit overrides are sanitized too — a limit is
+ * not more trustworthy for having come from application code.
+ */
+export function sanitizeLimits(
+  limits: {
+    [K in keyof ChunkLimits]?: number | undefined
+  },
+): ChunkLimits {
+  return {
+    maxObjectsInGet: usable(limits.maxObjectsInGet, FALLBACK_LIMITS.maxObjectsInGet),
+    maxObjectsInSet: usable(limits.maxObjectsInSet, FALLBACK_LIMITS.maxObjectsInSet),
+    maxCallsInRequest: usable(limits.maxCallsInRequest, FALLBACK_LIMITS.maxCallsInRequest),
+    maxSizeRequest: usable(limits.maxSizeRequest, FALLBACK_LIMITS.maxSizeRequest),
+  }
+}
+
+/** `value` if it is a limit that can actually be honoured (integer > 0), else `fallback`. */
+function usable(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isInteger(value) && value > 0 ? value : fallback
+}
+
 interface LogicalCall {
   /** Original `methodCallId`; also the physical id when the call is not split. */
   id: string
@@ -64,16 +107,18 @@ export interface ChunkPlan {
 }
 
 /**
- * Builds a {@link ChunkPlan} for `calls` under `limits`. `using` is included in size
+ * Builds a {@link ChunkPlan} for `calls` under `rawLimits` (run through {@link sanitizeLimits}
+ * first, so a server-advertised 0/-1/NaN cannot reach the splitters). `using` is included in size
  * estimates; pass `createdIds` (the seed `createdIds` map the request will carry, RFC 8620
  * §5.8) so the size check accounts for the envelope the client actually POSTs.
  */
 export function planRequest(
   calls: Invocation[],
   using: string[],
-  limits: ChunkLimits,
+  rawLimits: ChunkLimits,
   createdIds?: Record<string, string>,
 ): ChunkPlan {
+  const limits = sanitizeLimits(rawLimits)
   const logical: LogicalCall[] = calls.map((call, index) => ({
     id: call[2],
     name: call[0],
@@ -294,9 +339,13 @@ function expandCall(
     }
   }
 
+  // The `> 0` mirrors the /get twin above. {@link planRequest} already sanitizes, so this can
+  // only bite a future direct caller — but the failure it prevents is {@link splitSet} looping
+  // forever on `i += max`, which costs the whole tab, so the second door stays shut too.
   if (
     canSplit &&
     call.name.endsWith('/set') &&
+    limits.maxObjectsInSet > 0 &&
     countSetObjects(call.args) > limits.maxObjectsInSet
   ) {
     if (typeof call.args.ifInState === 'string') {
@@ -426,8 +475,10 @@ function mergeGetResponses(chunks: Invocation[]): Record<string, unknown> {
       if ('accountId' in args) merged.accountId = args.accountId
       if ('state' in args) merged.state = args.state
     }
-    if (Array.isArray(args.list)) list.push(...args.list)
-    if (Array.isArray(args.notFound)) notFound.push(...args.notFound)
+    // Appended element-wise for the same reason as in `JmapClient.call`: `push(...serverArray)`
+    // is a RangeError waiting for a server that answers with a few hundred thousand objects.
+    if (Array.isArray(args.list)) appendAll(list, args.list)
+    if (Array.isArray(args.notFound)) appendAll(notFound, args.notFound)
   })
   merged.list = list
   merged.notFound = notFound
@@ -488,7 +539,7 @@ function mergeSetResponses(chunks: SetChunk[]): Record<string, unknown> {
     }
     if (Array.isArray(args.destroyed)) {
       sawDestroyed = true
-      destroyed.push(...args.destroyed)
+      appendAll(destroyed, args.destroyed)
     }
   }
 
@@ -548,6 +599,11 @@ function requestByteSize(
 
 function chunkId(id: string, index: number): string {
   return index === 0 ? id : `${id}~${index}`
+}
+
+/** Appends every element of `items` to `target`. The spread form has an argument-count ceiling. */
+function appendAll<T>(target: T[], items: readonly T[]): void {
+  for (const item of items) target.push(item)
 }
 
 function chunk<T>(items: T[], size: number): T[][] {

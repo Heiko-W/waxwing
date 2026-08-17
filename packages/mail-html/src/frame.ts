@@ -346,18 +346,36 @@ export function mountMailFrame(
     const root = doc.documentElement
     if (typeof ResizeObserver === 'function' && root) {
       let lastHeight = 0
-      let updates = 0
+      let windowStart = 0
+      let updatesInWindow = 0
       observer = new ResizeObserver(() => {
-        // Clamp to a max and cap the number of updates so viewport-relative content (e.g.
-        // `min-height:100vh`, whose height feeds back on the iframe's own height) cannot spin the
-        // observer forever or grow the frame without bound.
+        // Clamp the height to a maximum so viewport-relative content (e.g. `min-height:100vh`, whose
+        // height feeds back on the iframe's own height) cannot grow the frame without bound.
         const height = Math.min(root.scrollHeight, MAX_FRAME_HEIGHT)
         if (Math.abs(height - lastHeight) < 2) return
         lastHeight = height
         iframe.style.height = `${height}px`
         callbacks.onHeight?.(height)
-        updates += 1
-        if (updates >= MAX_HEIGHT_UPDATES) observer?.disconnect()
+        // …and guard OSCILLATION by RATE, not by lifetime. The counter this replaced was a lifetime
+        // cap: it counted every legitimate resize and never reset, so after 50 the observer was
+        // disconnected for good and the frame's height froze for the rest of the message. `text.ts`
+        // emits a `<details>` per quote level and the frame is script-free, so ~25 open/close cycles
+        // of ordinary reading — or 50 images decoding one after another — spent the budget on a
+        // message that was never oscillating at all.
+        //
+        // A feedback loop is distinguished from reading by its RATE, not by its count and not by
+        // repeated heights: a `<details>` toggled back and forth revisits the same two heights too,
+        // and does so seconds apart, while a loop is delivered every frame. So the window resets as
+        // soon as one goes by without the budget being spent, and only a burst that keeps up
+        // ~one update per frame for a whole second disconnects. The disconnect stays permanent — a
+        // genuine loop does not settle, and a frozen height beats a spinning observer.
+        const now = Date.now()
+        if (now - windowStart >= OSCILLATION_WINDOW_MS) {
+          windowStart = now
+          updatesInWindow = 0
+        }
+        updatesInWindow += 1
+        if (updatesInWindow > MAX_UPDATES_PER_WINDOW) observer?.disconnect()
       })
       observer.observe(root)
     }
@@ -379,6 +397,15 @@ export function mountMailFrame(
   }
 }
 
-/** Hard cap on the auto-sized frame height (px), and on the number of height updates (loop guard). */
+/** Hard cap on the auto-sized frame height (px). Independent of the loop guard below. */
 const MAX_FRAME_HEIGHT = 20000
-const MAX_HEIGHT_UPDATES = 50
+
+/**
+ * The oscillation guard: more than {@link MAX_UPDATES_PER_WINDOW} height changes inside one
+ * {@link OSCILLATION_WINDOW_MS} window is a resize feedback loop, not a reader. 30/s is well above
+ * anything a human can produce by toggling a `<details>` or by images arriving, and well below the
+ * ~60/s a loop delivers. The window is a fixed one rather than a sliding one on purpose: a loop
+ * exceeds the budget in any window, so the coarser test costs nothing and holds no history.
+ */
+const OSCILLATION_WINDOW_MS = 1000
+const MAX_UPDATES_PER_WINDOW = 30

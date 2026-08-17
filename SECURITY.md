@@ -53,10 +53,36 @@ surrounding app.
 - **Remote content blocked by default.** Images and other remote resources do not load until
   the reader asks. This defeats the tracking pixel, and it defeats a body that phones home
   with the fact that a message was read.
-- **CSP.** The shipped `index.html` sets `default-src 'self'; script-src 'self'; object-src
-  'none'; base-uri 'self'; form-action 'self'` among others. `base-uri 'self'` matters more
-  than it looks: the app's asset resolution runs through `<base href>` (see the deployment
-  guide), so an injected `<base>` would repoint every relative URL.
+- **CSP.** The shipped `index.html` carries a `<meta http-equiv="Content-Security-Policy">`
+  whose current text is in that file — read it there rather than here, because a copy in
+  prose is a copy that goes stale. The load-bearing parts are `default-src 'self'`,
+  `script-src 'self'` (no `'unsafe-inline'`, no `'unsafe-eval'`), `object-src 'none'`,
+  `form-action 'self'` and `base-uri 'self'`. The last matters more than it looks: the app's
+  asset resolution runs through `<base href>` (see the deployment guide), so an injected
+  `<base>` would repoint every relative URL.
+
+  **The relaxations are each named next to the policy in `index.html`, with what they cost.
+  Two of them belong here.** `style-src` allows `'unsafe-inline'` (branding writes the accent
+  token through `element.style`; it is deliberately not granted to `script-src`), and
+  **`connect-src` is `'self' https: wss:`** — the JMAP origin comes from runtime
+  `config.json` and cannot be pinned in a static `<meta>` at build time. Narrowing
+  `connect-src` at deploy time is worth doing and
+  [`docs/deployment.md`](docs/deployment.md#content-security-policy) shows how, but be clear
+  about what it buys: **no shipped browser implements `navigate-to`**, so script running on
+  this origin can still exfiltrate through
+  `window.location`, a form post or a link. Tightening `connect-src` raises the cost of an
+  attack; it does not close it. The boundary is `script-src 'self'`, and the reason a
+  sanitizer miss is survivable is the script-free sandbox above, not the CSP.
+
+  **An HTTP CSP header cannot loosen this policy, only tighten it.** Contrary to the folklore
+  (and to what this project's own docs used to say), a header does not override a `<meta>`
+  policy: CSP Level 3 enforces every delivered policy *independently*, so a resource must
+  satisfy all of them and the effective policy is the intersection — verified in Chromium.
+  A deployment can therefore add
+  `frame-ancestors` or pin `connect-src` to one origin from a response header, and cannot
+  re-widen a directive the `<meta>` policy narrowed. The Stalwart Application path (the
+  recommended one) serves the zip with no hook for response headers at all, so on that path
+  the `<meta>` policy is the whole policy.
 - **Links open with `noopener,noreferrer`** — the opened page gets no `window.opener` handle
   and no referrer, so it cannot navigate the tab it came from or learn where it came from.
 
@@ -141,7 +167,7 @@ not, *Sign out & remove data* is the way out.
 
 ### 3.1 Public-computer mode
 
-Ticking **"Public or shared computer"** on the sign-in screen (FR-AUTH-07) puts the local
+Ticking **"Public or shared computer"** on the sign-in screen (FR-AUTH-09) puts the local
 replica in a one-off database named `waxwing-replica-eph-<random>`, and removes it three ways:
 
 1. **Sign-out** — either menu item wipes it. There is no "keep my cache" variant in this mode,
@@ -181,7 +207,21 @@ threat in this document, because a modified Waxwing sees everything the real one
 **Defences.**
 
 - **Verifiable artefacts.** Releases carry `SHA256SUMS`. A deployer can check what they
-  received matches what was published.
+  received matches what was published — that is a check on the *transport and the hoster*,
+  and it is the whole of what a checksum can do. See the Limits.
+- **Build provenance.** The release workflow emits a Sigstore-signed SLSA provenance
+  attestation (`actions/attest-build-provenance`) binding each artefact's digest to this
+  repository, this workflow file and the commit it was built from:
+
+  ```sh
+  gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing
+  ```
+
+  This is the one control here that a checksum is not, because the signature is made by the
+  runner's OIDC identity and cannot be reproduced by someone holding release rights on their
+  own machine. It answers "who built it", never "is it good". **It arrived after v0.9.0**:
+  the v0.9.0 assets carry no attestation and `verify` fails on them with "no attestations
+  found", which is the correct answer and not a tampering signal.
 - **AGPL-3.0** obliges a hoster who modifies Waxwing to publish the modification. That is a
   legal deterrent, not a technical control, and it deters exactly the honest.
 - **Reproducible-ish builds.** `pnpm release` packs a deterministic, sorted file list from a
@@ -194,6 +234,26 @@ threat in this document, because a modified Waxwing sees everything the real one
   document that names the hashes. See §4.1.
 - **A user cannot verify the app they are running.** No webmail client can offer this; it is
   the structural cost of shipping code from a server on every visit.
+- **`SHA256SUMS` is worth nothing against a compromised publisher.** It is a plain
+  `createHash('sha256')` over the artefacts, written by the same job that packs them; it is
+  not signed. Anyone who can upload a release asset — a stolen token, a compromised
+  maintainer machine, a moved action tag inside the release workflow — uploads the zip *and*
+  a freshly generated `SHA256SUMS` beside it, and every `sha256sum -c` on earth passes. Of
+  the three cases named in "The threat" above it covers the first two — the compromised CDN
+  and the hoster who edits the bundle — and not the third, the supply-chain attack on the
+  build. The attestation is what covers that one; verify it if the artefact matters.
+- **`autoUpdateFrequency` is a standing decision to run future code nobody has reviewed.**
+  The recommended Stalwart install points `resourceUrl` at
+  `releases/latest/download/waxwing-stalwart.zip` and re-fetches weekly, which means every
+  future release executes in your users' browsers, against their mailboxes, without anyone
+  at your site looking at it — including a release published by whoever compromises this
+  project next. That is a real convenience and a real transfer of trust, and the trade is
+  yours to make rather than ours. **If it is not a trade you want: pin
+  `resourceUrl` to a versioned asset** (`…/download/waxwing-stalwart-v0.9.0.zip`), drop
+  `autoUpdateFrequency`, and upgrade deliberately — verifying the checksum and the
+  attestation each time.
+  [`docs/deployment.md`](docs/deployment.md#verifying-what-you-installed) spells out both
+  forms and both commands.
 
 ### 4.1 Subresource Integrity (NFR-SEC-03)
 
@@ -216,13 +276,28 @@ content-hashed.
 
 **The threat.** A compromised npm package reaches the bundle.
 
-**Defences.** A deliberately small dependency list (the shipped bundle carries React,
-TanStack Virtual, Dexie, DOMPurify, i18next, Squire, zustand, lucide icons and two workspace
-packages). `pnpm-lock.yaml` is committed and installs are frozen in CI. No postinstall scripts
-in the shipped path.
+**Defences.** A deliberately small dependency list. **[`apps/web/package.json`](apps/web/package.json)
+is the list** — it is what the bundler reads, so it cannot drift the way a sentence here did. Two
+entries deserve naming here because they are the security-relevant ones: **`oauth4webapi`**
+is the OAuth/PKCE implementation (see Cryptography, below), and the four **`workbox-*`**
+packages are the service worker, which controls what the browser fetches and serves from
+cache for this origin. The rest is React, Dexie, DOMPurify, Squire, i18next, TanStack
+Virtual, zustand, lucide icons and three workspace packages (`@waxwing/jmap`,
+`@waxwing/jscontact`, `@waxwing/mail-html`). `pnpm-lock.yaml` is committed and installs are
+frozen in CI. The GitHub Actions used by the release workflow are pinned to commit SHAs and
+maintained by `.github/dependabot.yml` — see §4, where that pin actually matters.
+
+**No postinstall scripts in the shipped path** — true, and worth qualifying rather than
+leaving as a slogan: `pnpm-workspace.yaml` does allow exactly one install script,
+**esbuild's**, which fetches its platform binary. esbuild is a devDependency of the build
+toolchain and no esbuild code is in the bundle; the allowance exists because pnpm 11 fails a
+`--frozen-lockfile` install outright otherwise, so a fresh clone could not build at all. It
+is one named package in a reviewable file, not a blanket permission.
 
 **Limits.** No automated dependency-vulnerability scanning runs today. Adding one is
-worthwhile and is not done.
+worthwhile and is not done. `.github/dependabot.yml` is **not** it: it is scoped to
+`github-actions` and deliberately does not watch npm, so nothing here tells you a bundled
+package has a CVE.
 
 ---
 

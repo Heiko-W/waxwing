@@ -269,6 +269,45 @@ describe('rendering', () => {
     expect(lines[0]?.params.get('LABEL')).toEqual(['Haus\n1. Stock; hinten'])
   })
 
+  /**
+   * **The forgery.** A URI value is written unescaped by design, so a CRLF in it used to end the
+   * card and open another — an export the reader accepts as two contacts, the second the attacker's.
+   * Asserted through `renderCard` because that is the level where "one card in, one card out" is a
+   * statement about the FILE rather than about a string.
+   */
+  it('cannot end the card from inside a value', () => {
+    const injected =
+      'https://evil.test/\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:4.0\r\nFN:Chief Exec\r\nEMAIL:attacker@evil.tld\r\nUID:u2'
+    const card = renderCard([{ name: 'URL', value: injected }])
+    const { lines } = parseContentLines(card)
+    expect(lines.filter((l) => l.name === 'BEGIN')).toHaveLength(1)
+    expect(lines.filter((l) => l.name === 'END')).toHaveLength(1)
+    expect(lines.map((l) => l.name)).not.toContain('EMAIL')
+  })
+
+  /** Same forgery via the property name and the parameter key — both reach the wire unescaped. */
+  it('cannot end the card from inside a name, a group or a parameter', () => {
+    const { lines } = parseContentLines(
+      renderCard([
+        { group: 'item1\r\nFN:Forged', name: 'X-A\r\nEMAIL:a@evil.tld', value: 'x' },
+        { name: 'X-B', params: new Map([['X-K\r\nEMAIL:b@evil.tld', ['v']]]), value: 'y' },
+        { name: 'X-C', params: new Map([['TYPE', ['v\r\nEMAIL:c@evil.tld']]]), value: 'z' },
+      ]),
+    )
+    expect(lines.filter((l) => l.name === 'BEGIN')).toHaveLength(1)
+    expect(lines.map((l) => l.name)).not.toContain('EMAIL')
+  })
+
+  /**
+   * The characters a vCard parser does not treat as breaks but `str.splitlines()` does — dropped for
+   * the consumer's sake, not ours. HTAB is WSP and legal in a value, so it must SURVIVE.
+   */
+  it('drops the other line-breaking characters and keeps the tab', () => {
+    const breaking = 'a\u0085b\u2028c\u2029d\u0000e\u001Bf\u007Fg'
+    expect(renderLine({ name: 'NOTE', value: breaking })).toBe('NOTE:abcdefg')
+    expect(renderLine({ name: 'NOTE', value: 'a\tb' })).toBe('NOTE:a\tb')
+  })
+
   it('round-trips a structured value containing every separator', () => {
     const components = ['Meier; Anna', 'a,b', 'back\\slash', 'line\nbreak', '']
     const rendered = renderLine({ name: 'N', value: joinStructured(components) })

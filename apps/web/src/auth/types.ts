@@ -47,7 +47,7 @@ export interface BasicCredentials {
 /**
  * Discriminated login request passed to {@link AuthController.startLogin}.
  *
- * `publicComputer` (FR-AUTH-07) is the OAuth counterpart of Basic's `staySignedIn: false`, and it
+ * `publicComputer` (FR-AUTH-09) is the OAuth counterpart of Basic's `staySignedIn: false`, and it
  * has to be its own flag rather than an absence: OAuth persists a refresh token unconditionally,
  * because that is what makes a silent cold start work. On a machine that is not the user's, that
  * durable credential is the whole problem — so the flag rides across the redirect inside the PKCE
