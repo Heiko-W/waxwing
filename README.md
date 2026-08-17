@@ -7,6 +7,10 @@
 <p align="center"><b>A serverless webmail client for JMAP.</b><br/>
 Just static files and your mail server — no middleware, no database, no container.</p>
 
+<p align="center">
+  <img src="docs/screenshots/reading-light.png" width="820" alt="Waxwing reading a message: folder rail, message list, and reading pane with the remote-content banner"/>
+</p>
+
 ---
 
 Waxwing is a modern, minimalist webmail client that runs entirely in the browser and talks

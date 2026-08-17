@@ -68,6 +68,12 @@ export const NEVER_PRECACHE: readonly string[] = [...DEPLOYMENT_FILES, 'branding
  */
 export const BRANDING_FILES: readonly string[] = [
   'branding/favicon.svg',
+  // The DEFAULT `branding.logo` — keep this in step with `DEFAULT_CONFIG` and
+  // `public/config.json`, or the warm-up caches a file nothing renders while the one the header
+  // actually asks for waits on the network.
+  'branding/logo-icon.svg',
+  // The wordmark stays warmed too: it is what a hoster who wants their name in the image points
+  // `branding.logo` at, and it costs 2 KB.
   'branding/logo.svg',
   'branding/icon-192.png',
   'branding/icon-512.png',

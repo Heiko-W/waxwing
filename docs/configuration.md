@@ -19,7 +19,7 @@ for key, so this page cannot quietly go stale.
   },
   "branding": {
     "productName": "Waxwing",
-    "logo": "branding/logo.svg",
+    "logo": "branding/logo-icon.svg",
     "accentColor": null,
     "accentPalettes": null,
     "accentLocked": false,
@@ -74,9 +74,15 @@ replaceable assets under `branding/`.
 
 Shown in the header, the window title and the sign-in screen.
 
-### `logo` — `string`, default `"branding/logo.svg"`
+### `logo` — `string`, default `"branding/logo-icon.svg"`
 
 Path relative to the app root. SVG or PNG.
+
+**Use a mark, not a wordmark.** The header renders this image and then
+[`productName`](#productname--string-default-waxwing) beside it, so a logo that already
+contains your name renders it twice — which is exactly what Waxwing itself shipped with until
+a screenshot for the README made it obvious. `branding/logo.svg` is still there if you want
+the full wordmark; pair it with an empty `productName`.
 
 ### `accentColor` — `string | null`, default `null`
 

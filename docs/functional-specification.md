@@ -539,7 +539,7 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
   },
   "branding": {
     "productName": "Waxwing",
-    "logo": "branding/logo.svg",
+    "logo": "branding/logo-icon.svg",
     "accentColor": "#E8770E",
     "defaultTheme": "auto",      // auto | light | dark
     "links": { "imprint": null, "support": null, "privacy": null }

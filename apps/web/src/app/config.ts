@@ -59,7 +59,7 @@ export const DEFAULT_CONFIG: WaxwingConfig = {
   },
   branding: {
     productName: 'Waxwing',
-    logo: 'branding/logo.svg',
+    logo: 'branding/logo-icon.svg',
     accentColor: null,
     accentPalettes: null,
     accentLocked: false,
