@@ -8,6 +8,12 @@
 //   1. ensure the pinned Playwright chromium is installed
 //   2. run the self-contained placeholder suite (pnpm e2e — vite preview, no fixture)
 //   3. run the M3.10 /mail/ mount suite (pnpm e2e:mount — static mount server, no fixture)
+//   3b. run the `@waxwing/jmap` integration suites against a live fixture and ASSERT they were not
+//      skipped (defect B22, scripts/integration.mjs) — the first Docker-backed stage, and the
+//      cheapest one, so a broken JMAP layer fails in ~15s rather than after the five-minute read
+//      suite. It used to live in `scripts/ci.mjs`, which only `pnpm gate` reaches and only
+//      `release.yml` calls, so on the hosted pipeline these tests ran once per release and never
+//      on a pull request at all.
 //   4. run the M1.9 read, M2.9 write and M3.10 deploy suites (pnpm e2e:read / e2e:write /
 //      e2e:deploy) — they self-manage the Stalwart fixture: their Playwright globalSetup brings the
 //      fixture up advertising the app origin + seeds alice's inbox (self-smokes per ADR-002), and
@@ -29,6 +35,7 @@
 // and teardown lives in `finally`. Dependency-free: node: builtins only.
 
 import { spawnSync } from 'node:child_process'
+import { runIntegration } from './integration.mjs'
 
 const run = (label, args) => {
   console.log(`\n[verify:e2e] ${label} → pnpm ${args.join(' ')}`)
@@ -80,6 +87,12 @@ try {
   // Stalwart produces, and a bundle that cannot boot there should fail in seconds rather than
   // after two minutes of fixture work.
   run('mount e2e suite', ['e2e:mount'])
+  // The `@waxwing/jmap` integration suites (B22), before the Playwright suites that need the same
+  // Docker daemon. They live here rather than in `scripts/ci.mjs` because `ci.mjs` is only reached
+  // through `pnpm gate`, which only `release.yml` calls — so they used to run once per RELEASE and
+  // never on a pull request. See the header of scripts/integration.mjs. ~15s, and it hands the next
+  // stage a torn-down fixture, exactly as the read suite's globalSetup expects.
+  await runIntegration()
   run('read e2e suite', ['e2e:read'])
   run('write e2e suite', ['e2e:write'])
   // The M4.4 shared-account suite. Its own config and its own fixture STATE: it grants two

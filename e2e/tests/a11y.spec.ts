@@ -75,16 +75,48 @@ function describe(violations: readonly Violation[]): string[] {
  */
 const EXTRA_RULES = ['landmark-unique', 'landmark-one-main']
 
+/**
+ * The mail body frame, excluded from every scan below. `AxeBuilder` injects itself into EVERY frame,
+ * and this one is `sandbox="allow-same-origin"` with no `allow-scripts` — so axe cannot execute
+ * inside it and each pass waits out its own budget before giving up. That cost 39.0s per reading-pane
+ * test against 1.2–1.9s for every other screen.
+ *
+ * The exclusion is free of coverage, which was measured rather than assumed. A probe planted an
+ * `<img>` with no alt and an empty `<a href>` into the frame's document (reachable from the parent,
+ * since `allow-same-origin` keeps it same-origin) and then scanned:
+ *
+ *   with the frame     30.0s   33 passes   violations: []   incomplete: 0
+ *   without the frame   0.7s   31 passes   violations: []   incomplete: 0
+ *
+ * Two planted WCAG A failures, reported by NEITHER run. axe never sees inside this frame today; the
+ * only rules it loses are the two that differ above — `frame-title` and `frame-title-unique`, both of
+ * which are about the `<iframe>` element rather than its contents. `frame-title` is separately
+ * load-bearing in read.spec.ts:22/531, keyboard.spec.ts:131 and demo.spec.ts:82, which locate the
+ * frame BY that title and fail if it changes.
+ *
+ * So this is not the trade the old comment here anticipated ("narrows what the sweep covers and is a
+ * decision, not a timeout"). There was nothing to narrow: WCAG conformance for a stranger's HTML was
+ * never being checked, only paid for.
+ */
+const MAIL_BODY_FRAME = 'iframe[sandbox="allow-same-origin"]'
+
 async function scan(page: Page): Promise<string[]> {
-  const results = await new AxeBuilder({ page }).withTags(WCAG_AA_TAGS).analyze()
+  const results = await new AxeBuilder({ page })
+    .withTags(WCAG_AA_TAGS)
+    .exclude(MAIL_BODY_FRAME)
+    .analyze()
   // B22: axe silently reports zero violations if it never ran against anything. A page that produced
-  // no PASSES either is a broken scan, not a clean one.
+  // no PASSES either is a broken scan, not a clean one. Measured headroom on the thinnest screen the
+  // exclusion touches: 31 passes on the reading pane, against this floor of 5.
   expect(results.passes.length, 'axe found nothing to check — the scan is broken').toBeGreaterThan(
     5,
   )
   // A SECOND run, because `withRules` REPLACES the tag selection rather than adding to it — chaining
   // them silently reduced the sweep to two rules, which the guard above caught.
-  const extra = await new AxeBuilder({ page }).withRules(EXTRA_RULES).analyze()
+  const extra = await new AxeBuilder({ page })
+    .withRules(EXTRA_RULES)
+    .exclude(MAIL_BODY_FRAME)
+    .analyze()
   return [...describe(results.violations), ...describe(extra.violations)]
 }
 
@@ -148,19 +180,13 @@ test.describe('M4.7 axe sweep — real screens, both themes', () => {
   for (const theme of ['light', 'dark'] as const) {
     for (const screen of SCREENS) {
       test(`${screen.name} has no WCAG A/AA violations (${theme})`, async ({ page }) => {
-        // The reading pane costs ~39s locally against ~2s for every other screen, and the number is
-        // stable to a tenth in both themes — it is the scan's shape, not load. `AxeBuilder` injects
-        // into EVERY frame, and the mail body is a `sandbox="allow-same-origin"` frame with no
-        // `allow-scripts`: axe cannot execute there, so each of the two passes waits out its own
-        // budget before giving up. Verified pre-existing by re-running the sweep against the
-        // pre-branch `frame.ts` — identical 39.0s.
-        //
-        // That left ~20s of headroom under the 60s default, and a two-core CI runner spent it: the
-        // test failed three times at exactly 1.0m while the same test passed locally. `test.slow()`
-        // triples the budget rather than papering over a hang, because there is no hang to paper
-        // over. The real saving would be to exclude the mail frame from the sweep — WCAG
-        // conformance for a stranger's HTML is not ours to meet — but that narrows what the sweep
-        // covers and is a decision, not a timeout.
+        // `scan()` now excludes the mail body frame, which is what made this test cost 39.0s while
+        // every other screen cost ~2s; it runs in about a second like the rest. `test.slow()` stays
+        // anyway, and deliberately: the exclusion is a SELECTOR, so if the frame's sandbox attribute
+        // ever changes, it silently stops matching and the 39s comes straight back. That failure
+        // mode is a timeout on a two-core runner (this test failed three times at exactly 1.0m
+        // against the 60s default before the exclusion existed), and a tripled budget turns it into
+        // a slow green rather than a red that says nothing about accessibility.
         if (screen.name === 'reading pane') test.slow()
         await login(page)
         await setTheme(page, theme)
