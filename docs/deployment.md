@@ -58,8 +58,9 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
       "create": {
         "waxwing": {
           "enabled": true,
+          "description": "Waxwing webmail",
           "resourceUrl": "https://files.example.com/waxwing-stalwart-v1.0.0.zip",
-          "urlPrefix": { "mail": true }
+          "urlPrefix": { "/mail": true }
         }
       }
     }, "c1"]]
@@ -68,10 +69,22 @@ curl -u 'admin:PASSWORD' -X POST https://mail.example.com/jmap/ \
 
 The WebUI (*Settings › Web Applications*) and `stalwart-cli` do the same thing.
 
-Three details in that body are load-bearing:
+> **This path is NOT yet verified end to end (defect B43).** Probed against a clean Stalwart
+> v0.16.14 on 2026-08-17: the registration above is accepted, Stalwart fetches the archive —
+> and the app is still 404 at `/mail/`, while Stalwart's own WebUI at `/admin/` (the same
+> mechanism) serves 200. The cause is not yet known. **Until it is, use the reverse-proxy path
+> below**, which is verified. The two corrections already found are folded into the body above
+> and are worth knowing either way.
 
-- **`urlPrefix` is an object**, not a string: `{"mail": true}` mounts the app at `/mail`. It
-  is a single path segment.
+Three details in that body are load-bearing, and two of them were wrong in this guide until
+they were probed:
+
+- **`description` is REQUIRED.** Omit it and the call answers
+  `validationFailed / {"type":"Required","property":"description"}`. It appears in no
+  documentation we could find.
+- **`urlPrefix` is an object AND takes a leading slash**: `{"/mail": true}`. Stalwart's own
+  WebUI registers `{"/admin": true, "/account": true}`. Without the slash the call is accepted
+  without complaint and the mount does not work — the worst of both.
 - **`resourceUrl` keeps its `.zip` extension.** Stalwart fetches it with a 60 s timeout and
   refuses bundles over 100 MiB (Waxwing's is well under 1 MiB).
 - **`autoUpdateFrequency`** is optional. Set it and Stalwart re-fetches the URL on that
