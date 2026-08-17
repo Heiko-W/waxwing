@@ -3,6 +3,8 @@
 // The Docker + browser half of the "CI as a script" pair. `pnpm verify` is the fast gate
 // (typecheck, lint, test, size); this runner adds the slow, host-dependent E2E gate:
 //
+//   0. build the workspace libraries the app imports (their `dist/`, which every webServer's
+//      `vite build` needs to resolve `@waxwing/jmap` and friends)
 //   1. ensure the pinned Playwright chromium is installed
 //   2. run the self-contained placeholder suite (pnpm e2e — vite preview, no fixture)
 //   3. run the M3.10 /mail/ mount suite (pnpm e2e:mount — static mount server, no fixture)
@@ -59,6 +61,16 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 let failure
 
 try {
+  // The workspace libraries FIRST. Every Playwright config's webServer runs `vite build`, and the
+  // app imports `@waxwing/jmap` etc. through their `exports` → `dist/index.js`. Without a build
+  // those files do not exist and the bundle fails to resolve them.
+  //
+  // `pnpm verify` opens with the same step, which is exactly why this was missing here and why it
+  // was invisible locally: anyone who has ever run `verify` has a `dist/` lying around, so
+  // `verify:e2e` on its own appeared to work. On a clean checkout — CI, or a new contributor's
+  // first run — it fails inside a webServer with `Rolldown failed to resolve import`, which reads
+  // like an application bug rather than a missing build step.
+  run('build workspace libraries', ['build:libs'])
   run('install pinned chromium', [
     '--filter',
     '@waxwing/e2e',
