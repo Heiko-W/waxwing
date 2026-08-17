@@ -715,7 +715,7 @@ let sharedDb: ReplicaDb | undefined
 let replicaName: string | undefined
 
 /**
- * Point the shared replica at `name` (FR-AUTH-07). Throws if a replica is already open: switching
+ * Point the shared replica at `name` (FR-AUTH-09). Throws if a replica is already open: switching
  * databases underneath a running engine would leave half a session in each.
  */
 export function setReplicaName(name: string | undefined): void {
@@ -814,8 +814,22 @@ export async function wipeReplica(db: ReplicaDb): Promise<void> {
   if (db === sharedDb) sharedDb = undefined
 }
 
-/** Test seam: forget the shared handle AND the name, so a suite can start from the default. */
-export function resetReplicaForTests(): void {
+/**
+ * Drop the shared handle and the chosen name, so the NEXT `getReplica()` opens the durable default
+ * again (FR-AUTH-09).
+ *
+ * Sign-out has to do this, and the omission bit both ways. A public-computer session left
+ * `replicaName` pointing at its throwaway database, so the next ORDINARY sign-in in the same page
+ * load wrote into a database the following startup sweep then deleted. And because `sharedDb`
+ * survived a plain sign-out, `setReplicaName` threw for the next public-computer sign-in — the mode
+ * became unavailable for the rest of the page load, reported only as a generic connection error.
+ */
+export function resetReplica(): void {
   sharedDb = undefined
   replicaName = undefined
+}
+
+/** Test seam: forget the shared handle AND the name, so a suite can start from the default. */
+export function resetReplicaForTests(): void {
+  resetReplica()
 }

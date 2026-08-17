@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { basic, bearer } from './auth'
+import { JmapSessionOriginError } from './errors'
 import {
   getCoreCapability,
   getMailCapability,
@@ -35,25 +36,80 @@ describe('toWellKnownUrl', () => {
 })
 
 describe('normalizeSession', () => {
+  const ORIGIN = 'https://mail.example.com'
+  const BASE = `${ORIGIN}/.well-known/jmap`
+
   it('resolves relative *Url fields and preserves URI-template braces', () => {
     const raw = {
       ...makeSession(),
       apiUrl: '/jmap/api',
       // Root-relative template: resolves to origin root, braces intact.
       uploadUrl: '/jmap/upload/{accountId}',
-      // Absolute template (a different host): kept, and NOT percent-encoded.
-      downloadUrl: 'https://cdn.example.com/dl/{accountId}/{blobId}?type={type}',
+      // Absolute template on the connected origin: kept, and NOT percent-encoded.
+      downloadUrl: `${ORIGIN}/dl/{accountId}/{blobId}?type={type}`,
       eventSourceUrl: '/es?types={types}',
     }
-    const normalized = normalizeSession(raw, 'https://mail.example.com/.well-known/jmap')
+    const normalized = normalizeSession(raw, BASE, ORIGIN)
     expect(normalized.apiUrl).toBe('https://mail.example.com/jmap/api')
     expect(normalized.uploadUrl).toBe('https://mail.example.com/jmap/upload/{accountId}')
     expect(normalized.downloadUrl).toBe(
-      'https://cdn.example.com/dl/{accountId}/{blobId}?type={type}',
+      'https://mail.example.com/dl/{accountId}/{blobId}?type={type}',
     )
     expect(normalized.eventSourceUrl).toBe('https://mail.example.com/es?types={types}')
   })
+
+  it('rejects every *Url field that resolves off the connected origin (S7)', () => {
+    // This case used to be PINNED as "absolute template on a different host: kept". That
+    // expectation was wrong: transport/blob/push attach the Authorization header to whatever
+    // these fields say, so keeping a foreign host means shipping the credential to it the first
+    // time the app downloads an attachment or opens the event stream. Nothing but this check
+    // stood between an altered /.well-known/jmap response and that.
+    for (const field of ['apiUrl', 'downloadUrl', 'uploadUrl', 'eventSourceUrl'] as const) {
+      const raw = { ...makeSession(), [field]: 'https://cdn.evil.test/x/{accountId}' }
+      // The other three fields resolve on-origin, so only `field` can be what trips this.
+      raw.apiUrl = field === 'apiUrl' ? raw.apiUrl : `${ORIGIN}/jmap/api`
+      raw.downloadUrl = field === 'downloadUrl' ? raw.downloadUrl : `${ORIGIN}/dl/{blobId}`
+      raw.uploadUrl = field === 'uploadUrl' ? raw.uploadUrl : `${ORIGIN}/up/{accountId}`
+      raw.eventSourceUrl = field === 'eventSourceUrl' ? raw.eventSourceUrl : `${ORIGIN}/es`
+      const error = catchError(() => normalizeSession(raw, BASE, ORIGIN))
+      expect(error, field).toBeInstanceOf(JmapSessionOriginError)
+      expect((error as JmapSessionOriginError).field).toBe(field)
+    }
+  })
+
+  it('treats a differing port or scheme as a differing origin', () => {
+    // Same host, other port / other scheme — a distinct origin to the browser, and just as
+    // capable of being another server's listener.
+    for (const apiUrl of ['https://mail.example.com:8443/jmap', 'http://mail.example.com/jmap']) {
+      const raw = { ...makeSession(), apiUrl }
+      expect(() => normalizeSession(raw, BASE, ORIGIN), apiUrl).toThrow(JmapSessionOriginError)
+    }
+  })
+
+  it('rejects a field that stays relative — nothing proves it same-origin', () => {
+    // Relative value + relative base ⇒ resolveUrl gives up and passes it through verbatim. With
+    // an origin to enforce that is not "harmless", it is an unverified target.
+    const raw = { ...makeSession(), apiUrl: '/jmap/api' }
+    expect(() => normalizeSession(raw, '/.well-known/jmap', ORIGIN)).toThrow(JmapSessionOriginError)
+  })
+
+  it('skips the check when no origin could be determined (SSR / mock fetch)', () => {
+    // `null` is what getSession passes when the connect URL is relative and there is no document
+    // to resolve it against. Off-origin URLs then pass through — a browser never takes this path.
+    const raw = { ...makeSession(), apiUrl: 'https://cdn.evil.test/jmap' }
+    expect(normalizeSession(raw, BASE, null).apiUrl).toBe('https://cdn.evil.test/jmap')
+  })
 })
+
+/** Runs `fn` and returns whatever it threw (so a test can assert on the error's fields). */
+function catchError(fn: () => unknown): unknown {
+  try {
+    fn()
+    return undefined
+  } catch (error) {
+    return error
+  }
+}
 
 describe('getSession', () => {
   it('fetches /.well-known/jmap with the auth header and resolves relative URLs', async () => {
@@ -62,21 +118,48 @@ describe('getSession', () => {
     const fetch: FetchLike = async (url, init) => {
       seenUrl = url
       seenAuth = init?.headers?.Authorization ?? ''
+      // The fixture's *Url fields all sit on mail.waxwing.test — the host connected to below, as
+      // any real session's do; only `apiUrl` is made relative to exercise the resolution.
       const body = { ...makeSession(), apiUrl: '/jmap/api' }
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
     }
-    const session = await getSession('https://mail.example.com', bearer('abc'), { fetch })
-    expect(seenUrl).toBe('https://mail.example.com/.well-known/jmap')
+    const session = await getSession('https://mail.waxwing.test', bearer('abc'), { fetch })
+    expect(seenUrl).toBe('https://mail.waxwing.test/.well-known/jmap')
     expect(seenAuth).toBe('Bearer abc')
-    expect(session.apiUrl).toBe('https://mail.example.com/jmap/api')
+    expect(session.apiUrl).toBe('https://mail.waxwing.test/jmap/api')
   })
 
   it('surfaces an authentication failure as a thrown error', async () => {
     const fetch: FetchLike = async () => new Response('no', { status: 401 })
     await expect(getSession('https://mail.example.com', bearer('x'), { fetch })).rejects.toThrow()
+  })
+
+  it('validates against the CONNECT origin, not the redirected response URL (S7)', async () => {
+    // An open redirect (or a hijacked well-known path) lands the session fetch on another host,
+    // whose document names only relative URLs — they resolve against `response.url` and would
+    // silently become evil.test endpoints carrying the Authorization header. The expected origin
+    // is taken from the URL the caller configured, so the redirect cannot nominate its own.
+    const fetch: FetchLike = async () => {
+      const body = {
+        ...makeSession(),
+        apiUrl: '/jmap/api',
+        downloadUrl: '/dl/{blobId}',
+        uploadUrl: '/up/{accountId}',
+        eventSourceUrl: '/es',
+      }
+      const response = new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+      Object.defineProperty(response, 'url', { value: 'https://evil.test/.well-known/jmap' })
+      return response
+    }
+    await expect(
+      getSession('https://mail.example.com', bearer('abc'), { fetch }),
+    ).rejects.toBeInstanceOf(JmapSessionOriginError)
   })
 })
 
@@ -235,8 +318,13 @@ describe('sessionStateChanged', () => {
 })
 
 describe('auth schemes', () => {
-  it('basic() base64-encodes user:pass per RFC 7617', () => {
-    expect(basic('alice', 'secret').authorization()).toBe(`Basic ${btoa('alice:secret')}`)
+  it('basic() base64-encodes UTF-8 user:pass per RFC 7617', () => {
+    // Compared against a UTF-8 encoder, never against `btoa('alice:secret')` — that reference is
+    // the naive implementation, so it would keep passing after base64() was "simplified" to a bare
+    // btoa() and would then have blessed a client that cannot sign in with a non-Latin1 password.
+    expect(basic('alice', 'sécret✓').authorization()).toBe(
+      `Basic ${Buffer.from('alice:sécret✓', 'utf8').toString('base64')}`,
+    )
   })
   it('bearer() accepts an async token getter', async () => {
     const provider = bearer(async () => 'refreshed')

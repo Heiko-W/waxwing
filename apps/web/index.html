@@ -23,7 +23,7 @@
     <!--
       Production CSP (strict, NFR-SEC-01): no inline script, no eval.
 
-      Two deliberate, minimal relaxations (script-src stays fully strict — neither
+      Four deliberate, minimal relaxations (script-src stays fully strict — none of them
       applies to it):
       - connect-src 'self' https: wss': the JMAP server origin comes from runtime
         config.json and cannot be pinned in a static <meta> at build time, so the
@@ -36,13 +36,30 @@
         element.style (theme.ts) and React/CSS-Modules use inline styles. It is a
         lower-severity vector than script injection and is intentionally NOT granted to
         script-src.
+      - img-src … https': a srcdoc document INHERITS the embedder's policy container, so
+        the message frame is bound by this policy AND its own. Without https: here the
+        reader's "load remote content" decision (mail-html/frame.ts widens the inner
+        img-src to https: for exactly one message) could never take effect: every remote
+        image stayed at naturalWidth 0 and only the banner disappeared — FR-RD-02/-04
+        were dead in every build. State the trade-off plainly: this policy no longer
+        blocks remote images at all. What blocks them by default is the sanitizer's
+        remote-content firewall (mail-html/sanitize.ts strips remote src/srcset/CSS urls
+        before the HTML ever reaches the frame) plus the frame's own per-message CSP —
+        i.e. the two layers that can tell "reader said yes" from "reader said nothing".
+        An outer wall cannot make that distinction, so it only ever broke the yes case.
+      - frame-src 'self' blob:': the attachment preview frames a PDF from
+        URL.createObjectURL (AttachmentList.tsx), which is a blob: URL and NOT covered by
+        'self'; without it the panel is empty and the console shows a frame-src violation.
+        Deliberately no wider: the srcdoc mail frame is covered by 'self', and the frame
+        is sandboxed with an empty allow-list, so a blob it renders has no origin, no
+        script and no navigation.
 
       Servers should ALSO send `frame-ancestors` via an HTTP response header
       (cannot be expressed in a <meta> CSP) to control who may frame the app.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https: wss:; frame-src 'self'"
+      content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https: wss:; frame-src 'self' blob:"
     />
     <link rel="icon" type="image/svg+xml" href="branding/favicon.svg" />
     <!-- iOS ignores the manifest's icons for "Add to Home Screen" and reads this instead. -->

@@ -241,7 +241,7 @@ export function DemoApp() {
     let cancelled = false
     void (async () => {
       try {
-        if (controller.isRedirectCallback()) {
+        if (await controller.isRedirectCallback()) {
           setPhase('busy')
           setBusy(true)
           await controller.completeRedirect()

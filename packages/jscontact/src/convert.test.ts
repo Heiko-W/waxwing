@@ -30,6 +30,7 @@ import {
 import { fromVCard, parseVCardDate } from './from-vcard'
 import { formatVCardDate, toVCard, toVCards } from './to-vcard'
 import type { Card } from './types'
+import { parseContentLines } from './vcard/lex'
 
 /** Deterministic uids, so a round trip is comparable and a generated one is visible as `gen-N`. */
 function importOne(text: string): Card {
@@ -273,6 +274,83 @@ describe('JSContact → vCard', () => {
     const text = toVCards(cards)
     expect(text.match(/BEGIN:VCARD/g)).toHaveLength(2)
     expect(text.match(/END:VCARD/g)).toHaveLength(2)
+  })
+})
+
+/**
+ * A Card is not trustworthy input. It arrives from a JSContact JSON file the user picked, or from a
+ * shared address book on the server, and the vCard slots that are written UNESCAPED by design — URI
+ * values, and the verbatim `vCardProps` — are the ones a CRLF can walk straight out of.
+ *
+ * Counted after unfolding, deliberately: the 75-octet fold would otherwise hide a `BEGIN:VCARD`
+ * split across two physical lines, which the reader still unfolds back into a real card.
+ */
+describe('a hostile card cannot forge a second one', () => {
+  const FORGED =
+    '\r\nEND:VCARD\r\nBEGIN:VCARD\r\nVERSION:4.0\r\nFN:Chief Exec\r\nEMAIL:attacker@evil.tld\r\nUID:u2\r\nEND:VCARD\r\nBEGIN:VCARD\r\nUID:u3'
+
+  function beginCount(text: string): number {
+    return parseContentLines(text).lines.filter((line) => line.name === 'BEGIN').length
+  }
+
+  const hostile: Readonly<Record<string, Card>> = {
+    'a link uri': {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u1',
+      links: { l1: { '@type': 'Link', uri: `https://evil.test/${FORGED}` } },
+    },
+    'a photo uri': {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u1',
+      media: { m1: { '@type': 'Media', kind: 'photo', uri: `data:image/png;base64,AA${FORGED}` } },
+    },
+    'a preserved value': {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u1',
+      vCardProps: [['x-evil', {}, 'unknown', `harmless${FORGED}`]],
+    },
+    'a preserved property name': {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u1',
+      vCardProps: [[`x-evil${FORGED}`, {}, 'unknown', 'v']],
+    },
+    'a preserved parameter': {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u1',
+      vCardProps: [['x-evil', { [`x-k${FORGED}`]: `x-v${FORGED}`, group: `g${FORGED}` }, '', 'v']],
+    },
+    'the uid itself': { '@type': 'Card', version: '1.0', uid: `u1${FORGED}` },
+  }
+
+  it.each(Object.entries(hostile))('writes exactly one card for %s', (_name, card) => {
+    const text = toVCard(card)
+    expect(beginCount(text)).toBe(1)
+    expect(text).not.toContain('attacker@evil.tld\r\n')
+  })
+
+  /** The file-level invariant: one `BEGIN` per input card, whatever the cards contain. */
+  it('writes exactly one BEGIN per input card for a whole export', () => {
+    const cards = [...ALL_CARDS.map(({ text }) => importOne(text)), ...Object.values(hostile)]
+    expect(beginCount(toVCards(cards))).toBe(cards.length)
+  })
+
+  /**
+   * The forged FN survives as TEXT on the one line it was injected into — the URI is now nonsense,
+   * which is the honest outcome for a nonsensical URI. What must not survive is its LINE structure.
+   */
+  it('keeps the injected bytes inside the property they were smuggled into', () => {
+    const card = hostile['a link uri']
+    if (card === undefined) throw new Error('fixture')
+    const { lines } = parseContentLines(toVCard(card))
+    expect(lines.map((line) => line.name)).not.toContain('EMAIL')
+    expect(lines.find((line) => line.name === 'URL')?.value).toBe(
+      'https://evil.test/END:VCARDBEGIN:VCARDVERSION:4.0FN:Chief ExecEMAIL:attacker@evil.tldUID:u2END:VCARDBEGIN:VCARDUID:u3',
+    )
   })
 })
 

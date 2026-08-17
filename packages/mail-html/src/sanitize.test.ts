@@ -87,6 +87,124 @@ describe('sanitize — XSS corpus', () => {
   })
 })
 
+describe('sanitize — the URL forms the scheme test used to miss (S8)', () => {
+  // Every value here classified as `other` before the fix, which means: emitted verbatim, nothing in
+  // `blockedRemote`, and `hasRemoteContent` FALSE — so MessageView showed no remote-content banner at
+  // all and the reader was told the mail contains none. The URL a browser parses out of each one is
+  // an ordinary cross-origin URL (WHATWG URL §4.1 strips C0 controls at the edges and tab/LF/CR
+  // anywhere; a special scheme reads `\` as `/`), so each was a tracking pixel nothing ever reported.
+  //
+  // BOTH halves are asserted every time. "Blocked" alone would also be satisfied by a value that is
+  // merely unrecognised, and the banner is the half that was actually lying to the reader.
+
+  /** [label, attribute value, the URL the manifest should name] */
+  type Form = [label: string, value: string, parsed: string]
+
+  /** Junk at the EDGES, or slashes the parser folds — meaningful in every URL attribute. */
+  const edgeForms: Form[] = [
+    ['a leading U+0001 (&#1;)', '\u0001https://evil.tld/t.gif', 'https://evil.tld/t.gif'],
+    ['a leading U+001F (&#31;)', '\u001fhttps://evil.tld/t.gif', 'https://evil.tld/t.gif'],
+    ['a leading U+0008', '\bhttps://evil.tld/t.gif', 'https://evil.tld/t.gif'],
+    ['a trailing U+0001', 'https://evil.tld/t.gif\u0001', 'https://evil.tld/t.gif'],
+    ['a control character before //', '\u0001//evil.tld/t.gif', '//evil.tld/t.gif'],
+    ['backslashes for the authority', '\\\\evil.tld/t.gif', '\\\\evil.tld/t.gif'],
+    ['a mixed slash pair', '/\\evil.tld/t.gif', '/\\evil.tld/t.gif'],
+    ['a mixed slash pair the other way round', '\\/evil.tld/t.gif', '\\/evil.tld/t.gif'],
+    ['three slashes, one of them a backslash', '/\\/evil.tld/t.gif', '/\\/evil.tld/t.gif'],
+  ]
+
+  /** Tab/LF/CR INSIDE the URL. Not applicable to `srcset`, where whitespace separates candidates. */
+  const innerForms: Form[] = [
+    ['a tab inside the scheme', 'ht\ttps://evil.tld/t.gif', 'https://evil.tld/t.gif'],
+    ['a newline inside the scheme', 'htt\nps://evil.tld/t.gif', 'https://evil.tld/t.gif'],
+    ['a CR inside the host', 'https://evil\r.tld/t.gif', 'https://evil.tld/t.gif'],
+  ]
+
+  const allForms = [...edgeForms, ...innerForms]
+
+  it.each(allForms)('blocks %s in src, and says so', (_label, value, parsed) => {
+    const result = sanitize(`<img src="${value}">`)
+    expect(result.html).not.toContain('evil')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote).toEqual([{ url: parsed, kind: 'image' }])
+  })
+
+  it.each(allForms)('blocks %s in a video poster, and says so', (_label, value, parsed) => {
+    const result = sanitize(`<video poster="${value}"></video>`)
+    expect(result.html).not.toContain('evil')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote).toEqual([{ url: parsed, kind: 'media' }])
+  })
+
+  it.each(allForms)('blocks %s in a cell background, and says so', (_label, value, parsed) => {
+    const result = sanitize(`<table><tr><td background="${value}">x</td></tr></table>`)
+    expect(result.html).not.toContain('evil')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote).toEqual([{ url: parsed, kind: 'other' }])
+  })
+
+  it.each(edgeForms)('blocks %s in srcset, and says so', (_label, value, parsed) => {
+    // Only the edge forms: tab/LF/CR are candidate-SEPARATING whitespace in the srcset grammar, so
+    // `ht<tab>tps://…` is the relative URL `ht` plus a junk descriptor to the browser as well, and
+    // nothing cross-origin is ever requested from it.
+    const result = sanitize(`<img srcset="${value} 1x">`)
+    expect(result.html).not.toContain('evil')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote).toEqual([{ url: parsed, kind: 'image' }])
+  })
+
+  /**
+   * The same attack in a CSS `url()`, where one more layer sits in front of the URL parser: the CSS
+   * tokenizer consumes `\<char>` as an ESCAPE first. So the slash forms have to be written doubled to
+   * reach the URL parser as slashes at all, and the undoubled ones are deliberately absent from this
+   * list rather than forgotten — `url(\\evil.tld/x)` is the escape `\` plus `evil.tld/x`, i.e. the
+   * same-origin path `\evil.tld/x`, and `url(/\evil.tld/x)` escapes `e` into U+000E. Neither is
+   * cross-origin in a browser, and `cssUnescape` reproduces exactly that step before classifying,
+   * which is the reason this file sees the same string the browser does.
+   */
+  const cssForms: Array<[label: string, value: string]> = [
+    ['a leading U+0001', '\u0001https://evil.tld/t.gif'],
+    ['a leading U+001F', '\u001fhttps://evil.tld/t.gif'],
+    ['a control character before //', '\u0001//evil.tld/t.gif'],
+    ['DOUBLED backslashes, which the tokenizer folds to a real `\\\\`', '\\\\\\\\evil.tld/t.gif'],
+    ['`/\\/`, whose escape yields the second slash', '/\\/evil.tld/t.gif'],
+    ['a tab inside the scheme', 'ht\ttps://evil.tld/t.gif'],
+    ['a CR inside the host', 'https://evil\r.tld/t.gif'],
+  ]
+
+  it.each(cssForms)('blocks %s inside a CSS url(), and says so', (_label, value) => {
+    // The fail-closed residual check did not catch these either: the rewritten `url()` looked
+    // handled, so the whole style was kept with the remote URL still sitting in it.
+    const result = sanitize(`<div style="background:url(${value})">x</div>`)
+    expect(result.html).not.toContain('evil')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote.some((blocked) => blocked.kind === 'style')).toBe(true)
+  })
+
+  it('still resolves a cid: through the same normalisation', () => {
+    // The stripping is shared, so the legitimate cases have to keep working exactly as before.
+    const { html } = sanitize('<img src=" cid:logo@x ">', {
+      resolveCid: (id) => (id === 'logo@x' ? 'blob:https://app/abc' : null),
+    })
+    expect(html).toContain('blob:https://app/abc')
+  })
+
+  it('still keeps a raster data:image URL', () => {
+    const { html } = sanitize('<img src="data:image/png;base64,iVBORw0KGgo=">')
+    expect(html).toContain('data:image/png')
+  })
+
+  it('does not hand a junk-prefixed javascript: URL back to DOMPurify as force-kept', () => {
+    // Why the `other` branch returns the RAW value and not the normalised one: a replacement that
+    // DIFFERS from the input makes the hook call `setAttribute` + `forceKeepAttr`, which is exactly
+    // the path that bypasses DOMPurify's URI allowlist. Normalising an unrecognised scheme there
+    // would have turned this fix into an XSS.
+    const { html } = sanitize('<img src="\u0001javascript:alert(1)">')
+    expect(html).not.toContain('javascript:')
+    expect(html).not.toContain('alert(1)')
+  })
+})
+
 describe('sanitize — remote-content policy', () => {
   it('blocks remote images by default and records them', () => {
     const result = sanitize('<img src="https://tracker.example/pixel.gif">')
@@ -133,6 +251,18 @@ describe('sanitize — remote-content policy', () => {
     expect(result.hasRemoteContent).toBe(true)
   })
 
+  it('records a BlockedResource when the fail-closed residual check drops a whole style', () => {
+    // The residual branch set `hasRemote` and pushed nothing, so a mail with only this in it reported
+    // "remote content" beside an EMPTY manifest — which reads as a bug in the counter rather than as
+    // the fail-closed drop it is. The STYLE_DANGER branch above it always recorded; now both do.
+    const result = sanitize('<div style="background:url(https://evil.tld/x">y</div>')
+    expect(result.html).not.toContain('evil.tld')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote).toEqual([
+      { url: 'background:url(https://evil.tld/x', kind: 'style' },
+    ])
+  })
+
   it('rejects a cid resolver that returns a non-image data: URL (buggy/hostile resolver)', () => {
     const result = sanitize('<img src="cid:x">', {
       resolveCid: () => 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==',
@@ -143,6 +273,72 @@ describe('sanitize — remote-content policy', () => {
   it('keeps a cid resolver that returns a blob: URL', () => {
     const result = sanitize('<img src="cid:x">', { resolveCid: () => 'blob:https://app/abc' })
     expect(result.html).toContain('blob:https://app/abc')
+  })
+})
+
+describe('sanitize — srcset is a grammar, not a comma-separated list', () => {
+  it('keeps a cid-only srcset instead of dropping the attribute it just rewrote (F9)', () => {
+    // The URL_ATTRS branch force-keeps its rewritten value precisely because DOMPurify's URI
+    // allowlist excludes `blob:`; the srcset branch did not, so DOMPurify stripped the attribute
+    // straight back off and `<img srcset="cid:logo 1x">` rendered no image at all.
+    const { html } = sanitize('<img srcset="cid:logo 1x">', {
+      resolveCid: (id) => (id === 'logo' ? 'blob:https://app/l' : null),
+    })
+    expect(html).toContain('srcset="blob:https://app/l 1x"')
+  })
+
+  it('keeps the descriptorless spelling of the same thing', () => {
+    const { html } = sanitize('<img srcset="cid:logo">', { resolveCid: () => 'blob:https://app/l' })
+    expect(html).toContain('srcset="blob:https://app/l"')
+  })
+
+  it('leaves DOMPurify to refuse an unknown scheme, rather than force-keeping it along', () => {
+    // Why the force-keep is scoped to a RESOLVED cid and not to "the value changed": a candidate
+    // whose scheme this file does not recognise is returned verbatim by design, and force-keeping is
+    // the one path that takes DOMPurify's URI test out of the picture. A srcset cannot execute a
+    // `javascript:` URL in any browser, so this is not an XSS either way — it is the override being
+    // spent only where it is needed.
+    const { html } = sanitize('<img srcset="javascript:alert(1) 1x">')
+    expect(html).not.toContain('javascript:')
+    expect(html).not.toContain('alert(1)')
+  })
+
+  it('treats a comma inside a CDN transform path as part of the URL, not as a separator (F10)', () => {
+    // Splitting on every `,` turned ONE candidate into two bogus ones, and then reported
+    // `https://cdn.test/w_100` — a URL that never appeared in the mail — in the manifest.
+    const result = sanitize('<img srcset="https://cdn.test/w_100,h_50/a.png 1x">')
+    expect(result.blockedRemote).toEqual([
+      { url: 'https://cdn.test/w_100,h_50/a.png', kind: 'image' },
+    ])
+  })
+
+  it('carries that URL through unchanged when remote content is allowed', () => {
+    const { html } = sanitize(
+      '<img srcset="https://cdn.test/w_100,h_50/a.png 1x, https://cdn.test/b.png 2x">',
+      { allowRemote: true },
+    )
+    expect(html).toContain(
+      'srcset="https://cdn.test/w_100,h_50/a.png 1x, https://cdn.test/b.png 2x"',
+    )
+  })
+
+  it('still separates candidates at a comma that ENDS a URL', () => {
+    // The other half of the grammar: a comma the URL run ends with IS a separator, and the candidate
+    // it closes takes no descriptor. Without that branch the two would fuse into one URL that
+    // exists nowhere — the same manifest lie as F10, in the opposite direction.
+    const result = sanitize('<img srcset="https://cdn.test/a.png, https://cdn.test/b.png 2x">')
+    expect(result.blockedRemote).toEqual([
+      { url: 'https://cdn.test/a.png', kind: 'image' },
+      { url: 'https://cdn.test/b.png', kind: 'image' },
+    ])
+  })
+
+  it('keeps the candidates that survive and drops only the blocked ones', () => {
+    const result = sanitize('<img srcset="cid:logo 1x, https://cdn.test/b.png 2x">', {
+      resolveCid: () => 'blob:https://app/l',
+    })
+    expect(result.html).toContain('srcset="blob:https://app/l 1x"')
+    expect(result.blockedRemote).toEqual([{ url: 'https://cdn.test/b.png', kind: 'image' }])
   })
 })
 
@@ -503,6 +699,42 @@ describe('sanitize — the inline-style ALLOWLIST inside anchors (ADR-016, wave 
     expect(span?.style.display).toBe('')
   })
 
+  // ---- S14: a NEWLINE also ends a CSS string, so the `;`s after it separate declarations ----
+
+  it('does not let a newline-terminated string smuggle a reordering pair past the allowlist', () => {
+    // The one shape where this splitter's divergence ran in the dangerous direction: the browser ends
+    // the string at the newline (§4.3.5, `<bad-string-token>`) and reads `direction`/`unicode-bidi`
+    // as declarations of their own, while the splitter kept the whole run as one allowlisted
+    // `font-family` whose value nothing inspects. Inside an `<a>` that reverses the RENDERED link
+    // text while `classifyLink` reads the written order, so no interstitial ever appears.
+    const { html } = sanitize(
+      '<a href="https://evil.tld/s"><span style="font-family:\'q\n' +
+        ';direction:rtl;unicode-bidi:bidi-override">bank.test/login</span></a>',
+    )
+    expect(html.toLowerCase()).not.toContain('direction')
+    expect(html.toLowerCase()).not.toContain('unicode-bidi')
+    expect(html).toContain('bank.test/login')
+  })
+
+  it.each(['\n', '\r', '\f'])('ends the string on %j, which CSS folds to a newline', (nl) => {
+    // §3.3 preprocessing folds CR, CRLF and FF to LF before the tokenizer runs, so all three end a
+    // string. The attribute text reaches us unfolded, which is why the loop tests all three. The
+    // `font-family` piece itself is KEPT — it is allowlisted, and the browser drops it as an invalid
+    // declaration on its own; the claim here is only that `display:none` is no longer inside it.
+    expect(styledSpan(`font-family:'q${nl};display:none`).toLowerCase()).not.toContain('display')
+  })
+
+  it('still treats a BACKSLASH-escaped newline as a line continuation inside the string', () => {
+    // The one place a newline does not end a string: escaped, it is a CSS line continuation, and the
+    // browser fuses to the end of the value exactly as the splitter's escape branch does. Dropping
+    // `display` here would be the false-positive direction, and `display` is unset either way.
+    const { html } = sanitize(
+      '<a href="https://x.test/"><span style="font-family:\'a\\\n;b\';color:#000">j</span></a>',
+    )
+    expect(html).toMatch(/color:\s*#000/i)
+    expect(html).toContain(';b')
+  })
+
   it.each([
     ['an unclosed paren', 'background:url(a;display:none'],
     ['an unterminated string', "font-family:'a;display:none"],
@@ -597,6 +829,20 @@ describe('sanitize — the inline-style ALLOWLIST inside anchors (ADR-016, wave 
       '<a href="https://x.test/"><span style="color:#ffffff">invisible on white</span></a>',
     )
     expect(html).toMatch(/color:\s*#ffffff/i)
+  })
+
+  it('keeps a reordering pair on the ANCHOR ITSELF — the descendant rule stops one element short', () => {
+    // Read beside the S14 fixture above: closing the newline smuggle made the DESCENDANT rule whole,
+    // and it buys nothing against this attack, because the anchor's own style is not filtered at all
+    // (see `isInsideAnchor`). The rendered text reads `nigol/tset.knab` reversed into
+    // `bank.test/login` while `classifyLink` reads the written order and finds nothing to warn about.
+    // Pinned as KEPT so that nothing in this file can be read as having closed CSS-driven reordering.
+    const { html } = sanitize(
+      '<a href="https://evil.tld/s" style="direction:rtl;unicode-bidi:bidi-override">' +
+        'nigol/tset.knab</a>',
+    )
+    expect(html).toMatch(/direction:\s*rtl/i)
+    expect(html).toMatch(/unicode-bidi:\s*bidi-override/i)
   })
 
   it('does not constrain a large POSITIVE length, which displaces a run just as well', () => {

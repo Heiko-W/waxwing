@@ -30,6 +30,14 @@ export class TokenStore {
   private readonly now: () => number
   private readonly skewMs: number
   private access: AccessToken | null = null
+  /**
+   * Public-computer mode (FR-AUTH-09): hold the refresh token in memory instead of wrapping it into
+   * IndexedDB. The session then behaves normally for as long as the tab lives — silent refresh
+   * included — and leaves NOTHING that a later page on this origin could restore from. Closing the
+   * tab ends it, which is exactly the intent.
+   */
+  private ephemeral = false
+  private ephemeralRefresh: string | null = null
 
   constructor(store: SecretStore, options: TokenStoreOptions = {}) {
     this.store = store
@@ -43,9 +51,20 @@ export class TokenStore {
    */
   async apply(result: TokenResult): Promise<void> {
     this.access = { token: result.accessToken, expiresAt: result.expiresAt }
-    if (result.refreshToken !== undefined) {
-      await this.store.put(SecretName.RefreshToken, result.refreshToken)
+    if (result.refreshToken === undefined) return
+    if (this.ephemeral) {
+      this.ephemeralRefresh = result.refreshToken
+      return
     }
+    await this.store.put(SecretName.RefreshToken, result.refreshToken)
+  }
+
+  /**
+   * Switch to memory-only refresh tokens (FR-AUTH-09). Must be called BEFORE the first
+   * {@link apply}; the callback path does so as soon as it reads the flag off the PKCE transaction.
+   */
+  setEphemeral(): void {
+    this.ephemeral = true
   }
 
   /** The current in-memory access token, or `null` if none is cached. */
@@ -66,6 +85,7 @@ export class TokenStore {
 
   /** The persisted (wrapped) refresh token, or `null` — the basis for offline start. */
   getRefreshToken(): Promise<string | null> {
+    if (this.ephemeral) return Promise.resolve(this.ephemeralRefresh)
     return this.store.get(SecretName.RefreshToken)
   }
 
@@ -77,6 +97,7 @@ export class TokenStore {
   /** Clears the access token and deletes the persisted refresh token. */
   async clear(): Promise<void> {
     this.access = null
+    this.ephemeralRefresh = null
     await this.store.delete(SecretName.RefreshToken)
   }
 }

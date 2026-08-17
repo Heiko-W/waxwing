@@ -128,6 +128,55 @@ describe('isBrandingAsset', () => {
     expect(isBrandingAsset(at('/branding/logo.svg'), true, '/mail/')).toBe(false)
     expect(isBrandingAsset(at('/brandingx/logo.svg'), true, '/')).toBe(false)
   })
+
+  /**
+   * The anchor is a `startsWith` over the RAW pathname, and `URL` neither decodes `%2f`/`%2e` nor
+   * collapses the dot segments they hide — while a reverse proxy in front (the nginx recipe in
+   * docs/deployment.md decodes and normalises before it matches a location) does. Left alone, the
+   * escaped traversals below stay "inside branding/" for us and are `/jmap/download/**` for the
+   * server: authenticated mail written into Cache Storage, keyed by the encoded URL. Both mounts,
+   * because the prefix is the only thing that differs between them.
+   */
+  it('does not let a percent-encoded traversal out of the branding directory', () => {
+    for (const root of ROOTS) {
+      for (const tail of [
+        '%2e%2e%2f%2e%2e%2fjmap/download/acc/b1/x.pdf',
+        '..%2f..%2fjmap/download/acc/b1/x.pdf',
+        '%2E%2E%2Fjmap/download/acc/b1/x.pdf', // upper case decodes identically
+        '%2fjmap/download/acc/b1/x.pdf', // a separator we never wrote
+        'sub%2f..%2f..%2fjmap/x.pdf',
+        '%252e%252e%252fjmap/x.pdf', // double-encoded: one decode leaves a `%` behind
+        '%zz.svg', // malformed — nobody can say what a proxy makes of it
+      ]) {
+        expect(isBrandingAsset(at(`${root}branding/${tail}`), true, root), `${root}${tail}`).toBe(
+          false,
+        )
+      }
+    }
+  })
+
+  it('still caches an ordinary asset, including one in a subdirectory a hoster added', () => {
+    for (const root of ROOTS) {
+      expect(isBrandingAsset(at(`${root}branding/logo.svg`), true, root)).toBe(true)
+      expect(isBrandingAsset(at(`${root}branding/custom/logo-dark.svg`), true, root)).toBe(true)
+      // The directory itself is not an asset, and neither is a doubled separator.
+      expect(isBrandingAsset(at(`${root}branding/`), true, root)).toBe(false)
+      expect(isBrandingAsset(at(`${root}branding//logo.svg`), true, root)).toBe(false)
+    }
+  })
+
+  /**
+   * The sibling predicate needs none of this, and saying so keeps someone from "hardening" it into a
+   * prefix test: an exact-equality comparison against a fixed list cannot be lengthened into a match
+   * by any escape sequence.
+   */
+  it('isDeploymentConfig is immune by construction — it compares the WHOLE pathname', () => {
+    for (const root of ROOTS) {
+      expect(isDeploymentConfig(at(`${root}config.json%2f%2e%2e%2fjmap`), true, root)).toBe(false)
+      expect(isDeploymentConfig(at(`${root}%2e%2e%2fconfig.json`), true, root)).toBe(false)
+      expect(isDeploymentConfig(at(`${root}config.json`), true, root)).toBe(true)
+    }
+  })
 })
 
 describe('navigateDenylist', () => {

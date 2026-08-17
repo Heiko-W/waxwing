@@ -148,6 +148,20 @@ test.describe('M4.7 axe sweep — real screens, both themes', () => {
   for (const theme of ['light', 'dark'] as const) {
     for (const screen of SCREENS) {
       test(`${screen.name} has no WCAG A/AA violations (${theme})`, async ({ page }) => {
+        // The reading pane costs ~39s locally against ~2s for every other screen, and the number is
+        // stable to a tenth in both themes — it is the scan's shape, not load. `AxeBuilder` injects
+        // into EVERY frame, and the mail body is a `sandbox="allow-same-origin"` frame with no
+        // `allow-scripts`: axe cannot execute there, so each of the two passes waits out its own
+        // budget before giving up. Verified pre-existing by re-running the sweep against the
+        // pre-branch `frame.ts` — identical 39.0s.
+        //
+        // That left ~20s of headroom under the 60s default, and a two-core CI runner spent it: the
+        // test failed three times at exactly 1.0m while the same test passed locally. `test.slow()`
+        // triples the budget rather than papering over a hang, because there is no hang to paper
+        // over. The real saving would be to exclude the mail frame from the sweep — WCAG
+        // conformance for a stranger's HTML is not ours to meet — but that narrows what the sweep
+        // covers and is a decision, not a timeout.
+        if (screen.name === 'reading pane') test.slow()
         await login(page)
         await setTheme(page, theme)
         await screen.open(page)

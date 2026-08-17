@@ -1,5 +1,5 @@
 /**
- * Public-computer mode (FR-AUTH-07).
+ * Public-computer mode (FR-AUTH-09).
  *
  * The promise is narrow and worth stating exactly: mail written on someone else's machine is gone
  * again. Three mechanisms deliver it — sign-out, `pagehide`, and a sweep at the next start — and the
@@ -8,7 +8,7 @@
  */
 
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   EPHEMERAL_DB_PREFIX,
   EPHEMERAL_INDEX_KEY,
@@ -120,5 +120,113 @@ describe('the startup sweep', () => {
     // durable replica would turn every public-computer sign-in into a month of lost offline mail
     // for everyone else using that browser.
     expect((await existingNames()).toSorted()).toEqual(['waxwing-auth', 'waxwing-replica'])
+  })
+})
+
+describe('the sweep does not collect a database that is still in use', () => {
+  /** A Web Locks stand-in: `held` names behave as locked by another tab. */
+  function stubLocks(held: ReadonlySet<string>): void {
+    const locks = {
+      request: async (
+        name: string,
+        optionsOrCallback: unknown,
+        maybeCallback?: (lock: unknown) => unknown,
+      ) => {
+        const callback = (maybeCallback ?? optionsOrCallback) as (lock: unknown) => unknown
+        const available = !held.has(name)
+        // `ifAvailable` hands the callback `null` when the lock could not be granted.
+        return callback(available ? { name } : null)
+      },
+    }
+    vi.stubGlobal('navigator', { ...globalThis.navigator, locks })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('skips one another tab currently holds', async () => {
+    // Two tabs is where this bites. Tab 2 starts, sweeps, and sees tab 1's LIVE ephemeral replica
+    // — which looks exactly like the leftovers of a session that crashed last week. Dexie closes
+    // on `versionchange`, so the delete SUCCEEDS: tab 1 keeps running against a silently emptied
+    // database and loses its cache, its drafts, and any message still inside the undo-send window.
+    const live = newEphemeralDbName()
+    const abandoned = newEphemeralDbName()
+    await createDb(live)
+    await createDb(abandoned)
+    stubLocks(new Set([`waxwing.ephemeral.${live}`]))
+
+    const removed = await sweepEphemeral()
+
+    expect(removed).toBe(1)
+    expect(await existingNames()).toEqual([live])
+    // …and it stays in the index, so the sweep AFTER that tab closes still finds it.
+    expect(JSON.parse(localStorage.getItem(EPHEMERAL_INDEX_KEY) ?? '[]')).toEqual([live])
+  })
+
+  it('still collects one whose tab has gone — the counter-test', async () => {
+    // Without this, "never delete anything claimed" would look identical to "never delete
+    // anything", and the crash guard — the whole point of the mode — would be gone.
+    const abandoned = newEphemeralDbName()
+    await createDb(abandoned)
+    stubLocks(new Set())
+
+    expect(await sweepEphemeral()).toBe(1)
+    expect(await existingNames()).toEqual([])
+  })
+})
+
+describe('the index survives what happens around a sweep', () => {
+  it('keeps a name that appeared while the sweep was running', async () => {
+    // `sweepEphemeral` used to end with a blind `writeIndex([])` against the state it read at the
+    // start. Signing in during the deletes appended a new name, which that overwrite then dropped —
+    // leaving a live ephemeral database that no later sweep looks for by name.
+    const old = newEphemeralDbName()
+    await createDb(old)
+
+    // Interleave a sign-in: `deleteDatabase` is async, so this lands between the read and the write.
+    const sweeping = sweepEphemeral()
+    const signedInMeanwhile = newEphemeralDbName()
+    await sweeping
+
+    expect(JSON.parse(localStorage.getItem(EPHEMERAL_INDEX_KEY) ?? '[]')).toContain(
+      signedInMeanwhile,
+    )
+  })
+
+  it('keeps a name whose database could not be deleted', async () => {
+    // `blocked` and `error` mean the data is STILL THERE. Forgetting the name would retire the one
+    // record that says so, on exactly the database that most needs a second attempt.
+    const stuck = newEphemeralDbName()
+    await createDb(stuck)
+    const holdOpen = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(stuck, 1)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+
+    const removed = await sweepEphemeral()
+
+    expect(removed).toBe(0)
+    expect(JSON.parse(localStorage.getItem(EPHEMERAL_INDEX_KEY) ?? '[]')).toEqual([stuck])
+    holdOpen.close()
+  })
+})
+
+describe('the name generator works where the mode is offered', () => {
+  it('does not need a secure context', () => {
+    // `crypto.randomUUID` is secure-context-only, and a plain-HTTP deployment is explicitly
+    // supported — the sign-in form says so, offering Basic when OAuth's PKCE cannot run. There the
+    // throw surfaced as "Could not reach the server", so the user unticked the box, tried again,
+    // and got a durable replica on a machine they had just told us was not theirs.
+    vi.spyOn(crypto, 'randomUUID').mockImplementation(() => {
+      throw new TypeError('crypto.randomUUID is not available in insecure contexts')
+    })
+
+    const name = newEphemeralDbName()
+
+    expect(name.startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+    expect(name).not.toBe(newEphemeralDbName())
+    vi.restoreAllMocks()
   })
 })

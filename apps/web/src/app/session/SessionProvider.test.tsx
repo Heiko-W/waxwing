@@ -4,6 +4,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
 import { usePaletteUi } from '../../shortcuts'
+import {
+  currentReplicaName,
+  EPHEMERAL_DB_PREFIX,
+  getReplica,
+  REPLICA_DB_NAME,
+  resetReplicaForTests,
+} from '../../sync'
 import { DEFAULT_CONFIG, type WaxwingConfig } from '../config'
 import { ServicesProvider } from '../services'
 import { useSession } from './context'
@@ -27,6 +34,15 @@ function Consumer() {
       <span data-testid="error">{s.onboarding?.error?.key ?? ''}</span>
       <button type="button" onClick={() => s.submitBasic('alice', 'pw', true)}>
         basic
+      </button>
+      <button type="button" onClick={() => s.submitBasic('alice', 'pw', false, true)}>
+        basic-public
+      </button>
+      <button type="button" onClick={() => s.chooseOAuth(true)}>
+        oauth-public
+      </button>
+      <button type="button" onClick={() => s.chooseOAuth()}>
+        oauth-plain
       </button>
       <button type="button" onClick={() => s.reportAuthExpired()}>
         expire
@@ -59,6 +75,7 @@ function renderSession(options: FakeServicesOptions = {}, config: WaxwingConfig 
 afterEach(() => {
   sessionStorage.clear()
   localStorage.clear()
+  resetReplicaForTests()
   useListStore.setState(EMPTY_LIST_STATE)
   useReadingStore.setState({ handlers: null })
   usePaletteUi.getState().closeOverlays()
@@ -226,5 +243,142 @@ describe('SessionProvider', () => {
     expect(useListStore.getState().sourceMailboxId).toBeNull()
     expect(useReadingStore.getState().handlers).toBeNull()
     expect(usePaletteUi.getState().paletteOpen).toBe(false)
+  })
+})
+
+/**
+ * Public-computer mode at the session level (FR-AUTH-09).
+ *
+ * The unit tests around `sync/ephemeral.ts` cover the sweep and the naming; these cover the wiring,
+ * which is where the mode was actually broken: the choice reached the Basic path only, so on the
+ * shipped default config — where OAuth is the primary button — it did nothing at all.
+ */
+describe('SessionProvider — public-computer mode', () => {
+  it('routes a Basic sign-in into a throwaway replica', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(currentReplicaName().startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+  })
+
+  it('carries the choice through the OAuth redirect, on BOTH halves', async () => {
+    // Two halves with different owners, and each is load-bearing: the controller needs the flag to
+    // keep the refresh token out of storage, and this component needs it to name the replica when
+    // the callback lands. A full-page redirect destroys every ref in between, so the app half rides
+    // in sessionStorage and the auth half rides inside the PKCE transaction.
+    const user = userEvent.setup()
+    const fake = renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('oauth-public'))
+
+    await waitFor(() =>
+      expect(fake.spies.startLogin).toHaveBeenCalledWith({ method: 'oauth', publicComputer: true }),
+    )
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBe('true')
+  })
+
+  it('leaves an ordinary OAuth sign-in durable — the counter-test', async () => {
+    const user = userEvent.setup()
+    const fake = renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('oauth-plain'))
+
+    await waitFor(() =>
+      expect(fake.spies.startLogin).toHaveBeenCalledWith({
+        method: 'oauth',
+        publicComputer: false,
+      }),
+    )
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+  })
+
+  it('names the replica BEFORE connecting when the callback comes back', async () => {
+    // Ordering is the whole fix here. `setReplicaName` throws once the replica is open, and the
+    // first `getReplica()` happens as the session goes ready — so if this ran after connect, the
+    // public-computer session would have written its mail into the durable database already.
+    sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    renderSession({ isRedirectCallback: true })
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(currentReplicaName().startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+    // Single-use: a later ordinary sign-in must not inherit it.
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+  })
+
+  it('an ordinary callback stays on the durable replica — the counter-test', async () => {
+    renderSession({ isRedirectCallback: true })
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(currentReplicaName()).toBe(REPLICA_DB_NAME)
+  })
+
+  it('sign-out puts the next session back on the durable replica', async () => {
+    // Both directions used to leak. The name survived sign-out, so the NEXT ordinary sign-in wrote
+    // into a throwaway database that the following startup sweep deleted; and `sharedDb` survived
+    // too, so `setReplicaName` threw for the next public-computer sign-in — the mode became
+    // unavailable for the rest of the page load, reported only as a generic connection error.
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    // Open it, the way the sync engine does once a session is ready.
+    getReplica()
+    expect(currentReplicaName().startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    expect(currentReplicaName()).toBe(REPLICA_DB_NAME)
+
+    // And the mode still works afterwards — this is the half that threw.
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(currentReplicaName().startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+    expect(screen.getByTestId('error')).toHaveTextContent('')
+  })
+
+  it('reports a failed data wipe instead of showing a clean login form', async () => {
+    // A rejected logout means the credential store is still on disk — another connection blocked
+    // the delete. That outcome used to be swallowed by `.catch(() => {})` and followed by an
+    // unconditional login screen, which is exactly the impression the user must not be given.
+    const user = userEvent.setup()
+    const fake = renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    fake.spies.logout.mockRejectedValueOnce(new Error('another connection is holding it open'))
+    await user.click(screen.getByText('signout'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('auth.error.signOutIncomplete'),
+    )
+  })
+})
+
+describe('SessionProvider — the boot path cannot hang', () => {
+  it('renders a login step even when the configured server URL is unusable', async () => {
+    // `config.ts` now rejects an unparseable `sessionUrl` before it reaches here, so this config is
+    // constructed by hand — on purpose. The defect was never the bad value; it was that `boot()`'s
+    // only error handler called the very function that had just thrown, so the second throw escaped
+    // as an unhandled rejection out of `void boot()`. React error boundaries do not see async
+    // rejections, so nothing rendered: the app sat on `status: 'booting'` — a spinner, forever.
+    const broken: WaxwingConfig = {
+      ...DEFAULT_CONFIG,
+      server: { ...DEFAULT_CONFIG.server, sessionUrl: 'mail.example.com/.well-known/jmap' },
+    }
+
+    renderSession({ probePresent: true }, broken)
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('onboarding'))
+    expect(screen.getByTestId('step')).toHaveTextContent('login')
   })
 })

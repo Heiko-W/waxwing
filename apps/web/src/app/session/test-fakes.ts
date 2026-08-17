@@ -131,7 +131,7 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
   }
 
   const controller = {
-    isRedirectCallback: () => options.isRedirectCallback ?? false,
+    isRedirectCallback: async () => options.isRedirectCallback ?? false,
     completeRedirect,
     restore,
     getAuthProvider: () => provider,

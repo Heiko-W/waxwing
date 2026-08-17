@@ -25,15 +25,17 @@ export {
   type ConnectionHandlers,
   type Connector,
   DEFAULT_STABLE_AFTER_MS,
+  MAX_RETRY_HINT_MS,
   ReconnectLoop,
   type ReconnectLoopConfig,
 } from './reconnect'
 // SSE transport + parser.
 export { type SseAuthMode, SseChannel, type SseChannelOptions } from './sse'
-export { type SseEvent, SseParser, type SseStreamState } from './sse-parser'
+export { MAX_SSE_BUFFER_CHARS, type SseEvent, SseParser, type SseStreamState } from './sse-parser'
 // Runtime types (channel/observable surface + injection points).
 export {
   defaultScheduler,
+  MAX_TIMEOUT_MS,
   type PushChannel,
   type PushChannelEvents,
   type PushErrorListener,

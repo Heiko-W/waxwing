@@ -71,7 +71,7 @@ The two fields that do it:
 So a Waxwing release reaches your users without you doing anything. **Omit
 `autoUpdateFrequency` if you would rather not have that** — then Stalwart fetches once and
 holds still until you change `resourceUrl` yourself. Pinning a version is the same idea:
-point `resourceUrl` at `…/download/waxwing-stalwart-v0.9.0.zip` and it stays there.
+point `resourceUrl` at `…/download/waxwing-stalwart-v0.10.0.zip` and it stays there.
 
 Users are not interrupted by an update. The service worker installs the new build in the
 background and Waxwing offers a reload; nobody loses a half-written message.
@@ -79,7 +79,9 @@ background and Waxwing offers a reload; nobody loses a half-written message.
 ### Verifying what you installed
 
 Auto-update means your server fetches a file you have not personally checked, which is worth
-being deliberate about. Every release carries `SHA256SUMS`:
+being deliberate about. There are two checks and they answer **different** questions.
+
+**1. Did the file arrive intact?** Every release carries `SHA256SUMS`:
 
 ```sh
 curl -LO https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip
@@ -90,9 +92,34 @@ sha256sum -c SHA256SUMS --ignore-missing
 The versioned and unversioned zips are byte-identical — the release script copies rather than
 re-packs, and refuses to publish if their hashes differ — so checking one checks the other.
 
-If that trust is more than you want to extend, host the zip yourself: download it, verify it,
-put it on your own server and point `resourceUrl` there. Everything above still works; only
-the fetch moves.
+**2. Was it built here?** `SHA256SUMS` cannot tell you that: it is unsigned, and whoever can
+replace the zip can replace the checksum file next to it. Releases therefore carry a
+Sigstore-signed build-provenance attestation, made by the GitHub runner's own identity:
+
+```sh
+gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing
+```
+
+It passes only for a file built by this repository's release workflow, from a commit in this
+repository. It starts with v0.10.0 — on the v0.9.0 assets it reports "no attestations found",
+which is the truthful answer and not a tampering signal.
+
+Neither check says the code is *good*; both say where it came from. See
+[`SECURITY.md`](../SECURITY.md) §4.
+
+**If you would rather not accept future builds sight unseen**, do not use
+`releases/latest/download/` plus `autoUpdateFrequency`. That combination is a standing decision
+to run whatever this project publishes next, in your users' browsers, against their mailboxes.
+Pin instead:
+
+```jsonc
+"resourceUrl": "https://github.com/Heiko-W/waxwing/releases/download/v0.10.0/waxwing-stalwart-v0.10.0.zip"
+// and omit autoUpdateFrequency entirely
+```
+
+Then upgrading is a deliberate act: verify the new artefact with both checks above, change the
+URL, restart. Or go further and host the zip yourself — download it, verify it, put it on your
+own server and point `resourceUrl` there. Everything above still works; only the fetch moves.
 
 ### Installing from a file instead
 
@@ -274,6 +301,76 @@ assets.
 
 Keep `config.json` out of long-lived caches (the nginx block above does). Otherwise a change
 here reaches returning users whenever their cache happens to expire.
+
+## Content Security Policy
+
+Waxwing ships its own CSP as a `<meta http-equiv="Content-Security-Policy">` in `index.html`,
+so **every deployment has one** — including the Stalwart Application path, where you never
+touch a web server. Nothing below is required to make the app safe; it is what a deployment can
+add on top.
+
+### A response header can only tighten it — never loosen it
+
+This is the part that surprises people, and it is the opposite of what "the header overrides the
+meta tag" would suggest. CSP3 enforces multiple policies **independently**: a resource has to
+satisfy *all* of them, so the effective policy is the intersection (verified in Chromium).
+Consequences, both directions:
+
+- You **can** narrow `connect-src`, or add a directive the `<meta>` policy does not name.
+- You **cannot** widen anything. If a future Waxwing release ships a CSP that is too strict for
+  your setup, a response header will not repair it — the only fixes are editing the `index.html`
+  you serve, or an upstream release.
+
+The practical trap: **do not restate the whole policy in the header.** Any fetch directive you
+omit from a policy falls back to that policy's `default-src`, so a header reading
+`default-src 'self'; connect-src …` silently forbids the `data:`/`blob:` images and the frames
+the app's own policy permits — and the app breaks in ways that look like a caching bug. A header
+that names **only** the directives it wants to change, with no `default-src`, leaves every other
+directive to the `<meta>` policy and is the form that keeps working across upgrades.
+
+### The two things only a header can do
+
+`frame-ancestors` is not permitted in a `<meta>` policy at all, and `connect-src` cannot be
+pinned at build time because the JMAP origin comes from runtime `config.json`. So:
+
+**nginx** — add to the `server` block from [§2](#2-reverse-proxy-same-origin):
+
+```nginx
+add_header Content-Security-Policy "connect-src 'self' https://mail.example.com wss://mail.example.com; frame-ancestors 'self'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "no-referrer" always;
+```
+
+**Caddy** — inside the `handle` block that serves the app:
+
+```caddy
+header {
+    Content-Security-Policy "connect-src 'self' https://mail.example.com wss://mail.example.com; frame-ancestors 'self'"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+}
+```
+
+Both list `wss:` explicitly: Waxwing's live channel is a JMAP WebSocket (RFC 8887), and
+`connect-src` governs it. Drop the `wss://` entry only if you have disabled WebSocket push.
+
+### What narrowing `connect-src` actually buys
+
+Less than it looks, and it is worth knowing before you count on it. It stops a hypothetical
+injected script from `fetch()`ing your users' mail to an attacker's server. It does **not** stop
+that script exfiltrating: no shipped browser implements `navigate-to`, so `window.location`, a
+form submission or a generated link still reaches any origin, and `form-action 'self'` only
+covers the second of those. Narrowing `connect-src` raises the cost of an attack; it is not a
+boundary. The boundary is `script-src 'self'` in the app's own policy.
+
+### The Stalwart Application path cannot do this today
+
+Stalwart serves the zip's contents directly and exposes no hook for adding response headers to
+an Application's routes. On that path the `<meta>` policy is the entire policy: `frame-ancestors`
+is unset and `connect-src` stays `'self' https: wss:`. If either matters to you, put a reverse
+proxy in front ([§2](#2-reverse-proxy-same-origin)) and add the headers there, or edit the
+`<meta>` tag in the `index.html` inside the zip before you host it yourself — and re-do that edit
+on every upgrade, which is the usual reason not to.
 
 ## Upgrading
 

@@ -3,7 +3,7 @@ import type { BlobData, DownloadOptions, UploadOptions, UploadResult } from './b
 import { downloadBlob, uploadBlob } from './blob'
 import { usingForMethods } from './capabilities'
 import type { ChunkLimits } from './chunking'
-import { planRequest, reassembleResponses } from './chunking'
+import { planRequest, reassembleResponses, sanitizeLimits } from './chunking'
 import { MethodResponses, RequestBuilder } from './request'
 import type { GetSessionOptions } from './session'
 import { getCoreCapability, getSession } from './session'
@@ -11,16 +11,9 @@ import type { FetchLike, Transport } from './transport'
 import { postApi, resolveFetch } from './transport'
 import type { CreationId, Id, Invocation, JmapRequest, Session } from './types/core'
 
-/**
- * Conservative fallback limits, used only when the server omits a value from its core
- * capability (a non-conformant server). Real numbers are always read from the Session.
- */
-export const FALLBACK_LIMITS: ChunkLimits = {
-  maxObjectsInGet: 128,
-  maxObjectsInSet: 128,
-  maxCallsInRequest: 16,
-  maxSizeRequest: 1_000_000,
-}
+// Re-exported from its definition site next to `ChunkLimits`/`sanitizeLimits` — the fallbacks are
+// now also what an unusable (0/-1/NaN) advertised limit falls back to, not just a missing one.
+export { FALLBACK_LIMITS } from './chunking'
 
 /** Options for constructing a {@link JmapClient}. */
 export interface JmapClientOptions {
@@ -116,7 +109,10 @@ export class JmapClient {
         this.transport,
         options.signal,
       )
-      physicalResponses.push(...response.methodResponses)
+      // Appended one by one, not spread: `push(...array)` passes every element as an argument and
+      // a server-sized array (hundreds of thousands of invocations) overflows the call stack with
+      // a RangeError. The loop has no such ceiling.
+      for (const methodResponse of response.methodResponses) physicalResponses.push(methodResponse)
       sessionState = response.sessionState
       if (response.createdIds) createdIds = { ...(createdIds ?? {}), ...response.createdIds }
     }
@@ -176,20 +172,20 @@ export class JmapClient {
     return session
   }
 
+  /**
+   * Override > session core capability > fallback, then sanitized. `??` alone would not do: it
+   * only replaces null/undefined, so a server advertising `maxObjectsInSet: 0` (or -1, or NaN)
+   * passed straight through to the chunker — {@link sanitizeLimits} is what turns those into the
+   * fallback rather than into a frozen tab.
+   */
   private resolveLimits(): ChunkLimits {
     const cap = getCoreCapability(this.currentSession)
-    return {
-      maxObjectsInGet:
-        this.overrides.maxObjectsInGet ?? cap?.maxObjectsInGet ?? FALLBACK_LIMITS.maxObjectsInGet,
-      maxObjectsInSet:
-        this.overrides.maxObjectsInSet ?? cap?.maxObjectsInSet ?? FALLBACK_LIMITS.maxObjectsInSet,
-      maxCallsInRequest:
-        this.overrides.maxCallsInRequest ??
-        cap?.maxCallsInRequest ??
-        FALLBACK_LIMITS.maxCallsInRequest,
-      maxSizeRequest:
-        this.overrides.maxSizeRequest ?? cap?.maxSizeRequest ?? FALLBACK_LIMITS.maxSizeRequest,
-    }
+    return sanitizeLimits({
+      maxObjectsInGet: this.overrides.maxObjectsInGet ?? cap?.maxObjectsInGet,
+      maxObjectsInSet: this.overrides.maxObjectsInSet ?? cap?.maxObjectsInSet,
+      maxCallsInRequest: this.overrides.maxCallsInRequest ?? cap?.maxCallsInRequest,
+      maxSizeRequest: this.overrides.maxSizeRequest ?? cap?.maxSizeRequest,
+    })
   }
 }
 

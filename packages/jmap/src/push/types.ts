@@ -65,10 +65,22 @@ export interface SchedulerLike {
   setTimeout(handler: () => void, ms: number): () => void
 }
 
-/** Default scheduler backed by the host `setTimeout`/`clearTimeout`. */
+/**
+ * The largest delay a host timer can actually hold: `setTimeout` stores its delay in a signed
+ * 32-bit int, and anything larger silently wraps and fires almost immediately — so an unchecked
+ * "wait 4000000000 ms" is not a long wait but a busy loop.
+ */
+export const MAX_TIMEOUT_MS = 2_147_483_647
+
+/**
+ * Default scheduler backed by the host `setTimeout`/`clearTimeout`, with the delay clamped to
+ * {@link MAX_TIMEOUT_MS}. Callers already bound their own delays (the reconnect loop caps the
+ * backoff and the server's retry hint); this is the last line, so no arithmetic slip anywhere
+ * upstream can turn into an immediate-fire reconnect loop.
+ */
 export const defaultScheduler: SchedulerLike = {
   setTimeout(handler, ms) {
-    const id = setTimeout(handler, ms)
+    const id = setTimeout(handler, Math.min(ms, MAX_TIMEOUT_MS))
     return () => {
       clearTimeout(id)
     }

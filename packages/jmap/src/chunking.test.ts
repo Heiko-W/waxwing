@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { type ChunkLimits, JmapError, planRequest, reassembleResponses } from './index'
+import {
+  type ChunkLimits,
+  FALLBACK_LIMITS,
+  JmapError,
+  planRequest,
+  reassembleResponses,
+  sanitizeLimits,
+} from './index'
 import { at } from './test-support'
 import type { Invocation } from './types/core'
 
@@ -431,5 +438,80 @@ describe('reassembleResponses — errors', () => {
     ]
     const merged = reassembleResponses(plan, physical)
     expect(at(merged, 0)).toEqual(['error', { type: 'serverFail', description: 'boom' }, 'c0'])
+  })
+})
+
+describe('planRequest — unusable session limits (F4)', () => {
+  // A limit that is not an integer > 0 cannot be honoured by anything here, and one of them used
+  // to be fatal: with maxObjectsInSet: 0 the splitter's `i += max` never advanced, so the first
+  // write of a session (mark-as-read, move, send) allocated chunk objects until the tab was
+  // OOM-killed — read-only use looked fine, so the server was reachable right up to that point.
+  const destroyer: Invocation[] = [['Email/set', { accountId: 'a', destroy: ['x', 'y'] }, 'c0']]
+
+  it('does not hang or split on maxObjectsInSet 0 / -1 — it falls back', () => {
+    for (const max of [0, -1]) {
+      const plan = planRequest(destroyer, USING, limits({ maxObjectsInSet: max }))
+      // FALLBACK_LIMITS.maxObjectsInSet (128) > 2 objects ⇒ one unsplit call.
+      expect(at(plan.logical, 0).kind, String(max)).toBe('single')
+      expect(flat(plan.requests), String(max)).toHaveLength(1)
+    }
+  })
+
+  it('splits a /set normally once the advertised limit is usable again', () => {
+    // Pins that the fallback is a fallback and not a bypass: a real limit of 1 still splits.
+    const plan = planRequest(destroyer, USING, limits({ maxObjectsInSet: 1 }))
+    expect(at(plan.logical, 0).kind).toBe('set')
+    expect(flat(plan.requests)).toHaveLength(2)
+  })
+
+  it('falls back for every non-integer / non-positive limit, and keeps the usable ones', () => {
+    expect(
+      sanitizeLimits({
+        maxObjectsInGet: 0,
+        maxObjectsInSet: -1,
+        maxCallsInRequest: Number.NaN,
+        maxSizeRequest: 1.5,
+      }),
+    ).toEqual(FALLBACK_LIMITS)
+    expect(
+      sanitizeLimits({
+        maxObjectsInGet: Number.POSITIVE_INFINITY,
+        maxObjectsInSet: undefined,
+        maxCallsInRequest: 4,
+        maxSizeRequest: 2_000,
+      }),
+    ).toEqual({ ...FALLBACK_LIMITS, maxCallsInRequest: 4, maxSizeRequest: 2_000 })
+  })
+
+  it('chunks a /get at the fallback when maxObjectsInGet is 0 rather than not at all', () => {
+    // The /get path already refused to divide by a non-positive limit, but by silently not
+    // chunking at all — a 200-id get then went out whole and the server answered requestTooLarge.
+    const plan = planRequest(
+      [['Email/get', { accountId: 'a', ids: ids(200) }, 'c0']],
+      USING,
+      limits({ maxObjectsInGet: 0 }),
+    )
+    expect(at(plan.logical, 0).kind).toBe('get')
+    expect(flat(plan.requests)).toHaveLength(2) // ceil(200 / 128)
+  })
+})
+
+describe('reassembleResponses — oversized server arrays (F22)', () => {
+  it('merges /get chunks whose lists exceed the spread-argument limit', () => {
+    // Same hazard as in JmapClient.call: `list.push(...args.list)` passes one argument per element
+    // and overflows the call stack somewhere above ~125k. The list sizes here are the server's
+    // claim, not ours — a chunk may answer with far more than it was asked for.
+    const plan = planRequest(
+      [['Email/get', { accountId: 'a', ids: ids(4) }, 'c0']],
+      USING,
+      limits({ maxObjectsInGet: 2 }),
+    )
+    const big = (n: number, from: number) => Array.from({ length: n }, (_, i) => ({ id: from + i }))
+    const merged = reassembleResponses(plan, [
+      ['Email/get', { accountId: 'a', state: 's', list: big(150_000, 0), notFound: [] }, 'c0'],
+      ['Email/get', { accountId: 'a', state: 's', list: big(1, 150_000), notFound: [] }, 'c0~1'],
+    ])
+    const args = at(merged, 0)[1] as { list: unknown[] }
+    expect(args.list).toHaveLength(150_001)
   })
 })

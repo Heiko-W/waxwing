@@ -18,6 +18,7 @@
 // the state change it triggers drives the same push notification an SMTP delivery would.)
 
 import { BASE_URL, DOMAIN, PASSWORD } from './fixture.mjs'
+import { fetchThrottled } from './http.mjs'
 
 const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
@@ -28,6 +29,7 @@ export const READ_KEYWORD = 'wread'
 /** Stable subjects the read spec asserts against. */
 export const READ_SUBJECTS = {
   newsletter: 'Waxwing Weekly — issue 42',
+  pdf: 'Quarterly report (PDF)',
   plain: 'Lunch on Thursday?',
   thread: 'Q3 planning sync',
   phishing: 'Your account needs verification',
@@ -61,6 +63,58 @@ export const READ_PHISHING = {
   benignTarget: 'https://example.invalid/handbook',
 }
 
+/**
+ * A minimal but genuinely valid PDF, carried as an ordinary attachment.
+ *
+ * It exists for one assertion the rest of the corpus cannot make: the attachment PREVIEW renders a
+ * `blob:` URL inside an `<iframe sandbox="">`, and `frame-src 'self'` does not cover `blob:` — so
+ * the preview was CSP-blocked in every build, showing an empty panel under `aria-expanded="true"`.
+ * Only a real browser sees that; a policy-string unit test pins the fix but would never have found
+ * the defect. `image/*` previews go through `<img>` and were unaffected, which is why nobody noticed.
+ */
+export const READ_PDF = { filename: 'quarterly-report.pdf', text: 'Waxwing preview probe' }
+
+/** 1-page PDF, hand-assembled so the xref offsets are right. Rendered by the browser's viewer. */
+function pdfBytes() {
+  const objects = [
+    '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n',
+    '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n',
+    '3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]/Contents 4 0 R' +
+      '/Resources<</Font<</F1 5 0 R>>>>>>endobj\n',
+    `4 0 obj<</Length 63>>stream\nBT /F1 12 Tf 20 50 Td (${READ_PDF.text}) Tj ET\nendstream endobj\n`,
+    '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = []
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  pdf += `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`
+  return pdf
+}
+
+/** The carrier message whose attachment is that PDF. */
+function pdfCreation(inboxId, receivedAt, blobId) {
+  return {
+    mailboxIds: { [inboxId]: true },
+    keywords: { [READ_KEYWORD]: true, $seen: true },
+    receivedAt,
+    messageId: ['pdf-report@waxwing.test'],
+    from: [{ name: 'Bob Baker', email: bob() }],
+    to: [{ name: 'Alice Anderson', email: alice() }],
+    subject: READ_SUBJECTS.pdf,
+    textBody: [{ partId: 't', type: 'text/plain' }],
+    bodyValues: { t: { value: 'The quarterly report is attached.' } },
+    attachments: [
+      { blobId, type: 'application/pdf', name: READ_PDF.filename, disposition: 'attachment' },
+    ],
+  }
+}
+
 /** Subject/body of the inner message carried as a `message/rfc822` attachment (FR-RD-07). */
 export const READ_NESTED = {
   subject: 'Quarterly figures Q2',
@@ -87,7 +141,7 @@ const carol = () => `carol@${DOMAIN}`
 const authHeader = () => `Basic ${Buffer.from(`${alice()}:${PASSWORD}`).toString('base64')}`
 
 async function getSession() {
-  const res = await fetch(`${BASE_URL}/.well-known/jmap`, {
+  const res = await fetchThrottled(`${BASE_URL}/.well-known/jmap`, {
     headers: { Authorization: authHeader(), Accept: 'application/json' },
     redirect: 'follow',
   })
@@ -98,7 +152,7 @@ async function getSession() {
 }
 
 async function jmap(methodCalls) {
-  const res = await fetch(`${BASE_URL}/jmap/`, {
+  const res = await fetchThrottled(`${BASE_URL}/jmap/`, {
     method: 'POST',
     headers: {
       Authorization: authHeader(),
@@ -149,9 +203,36 @@ async function destroyExisting(accountId) {
   return ids.length
 }
 
-/** Upload raw bytes and return the blobId (the `.eml` and nested-message vectors). */
+/**
+ * Upload raw bytes ONCE per process and reuse the blobId (the `.eml`, nested-message and PDF
+ * vectors).
+ *
+ * The three payloads never change, and this seeder runs before EVERY test in the read suite — so
+ * without the cache one run performs ninety identical uploads. That is the largest single source of
+ * request pressure in the whole rig, and it is pressure that buys nothing: Stalwart then throttles,
+ * the APP's own first sync is what gets the 429, and the failure surfaces thirty seconds later as
+ * "the inbox never appeared" in whichever suite happened to be running. Diagnosed exactly that way
+ * — the notify suite failing at its post-sign-in wait while the same suite passed repeatedly on a
+ * fresh fixture.
+ *
+ * Cached by content, not by call site, so two callers asking for the same bytes share one upload.
+ * If Stalwart ever collects an unreferenced blob between reseeds the next `Email/set` fails loudly
+ * with `blobNotFound` rather than producing a wrong corpus — a visible error, which is the right
+ * failure mode for scaffolding.
+ */
+const blobCache = new Map()
+
 async function uploadBlob(accountId, contentType, body) {
-  const res = await fetch(`${BASE_URL}/jmap/upload/${accountId}/`, {
+  const key = `${accountId}\u0000${contentType}\u0000${body}`
+  const cached = blobCache.get(key)
+  if (cached !== undefined) return cached
+  const blobId = await uploadBlobUncached(accountId, contentType, body)
+  blobCache.set(key, blobId)
+  return blobId
+}
+
+async function uploadBlobUncached(accountId, contentType, body) {
+  const res = await fetchThrottled(`${BASE_URL}/jmap/upload/${accountId}/`, {
     method: 'POST',
     headers: { Authorization: authHeader(), 'Content-Type': contentType },
     body,
@@ -359,6 +440,7 @@ export async function seedReadMail() {
       at(5),
       await uploadBlob(accountId, 'message/rfc822', nestedRaw()),
     ),
+    pdf: pdfCreation(inboxId, at(7), await uploadBlob(accountId, 'application/pdf', pdfBytes())),
   }
 
   const response = await jmap([['Email/set', { accountId, create }, '0']])

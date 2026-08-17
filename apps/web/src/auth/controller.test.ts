@@ -437,3 +437,197 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
     expect(cacheTouched).toBe(false)
   })
 })
+
+/**
+ * Public-computer mode on the OAUTH path (FR-AUTH-09).
+ *
+ * Basic has always had "stay signed in" as an opt-IN, so declining it leaves nothing behind. OAuth
+ * has no such switch: it persists a refresh token unconditionally, because that is what makes a
+ * silent cold start work. On a machine that is not the user's, that durable credential is the whole
+ * problem — worse than the cached mail, because it fetches the mail again.
+ */
+describe('AuthController — public-computer OAuth (FR-AUTH-09)', () => {
+  function publicComputerController(store: SecretStore, hrefRef: { value: string }) {
+    let navigated: string | null = null
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => 1_000_000_000,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => hrefRef.value,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        hrefRef.value = url
+      },
+    })
+    return { controller, navigatedUrl: () => navigated }
+  }
+
+  it('persists NEITHER the refresh token NOR an auth record, but still refreshes silently', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    const href = { value: 'http://localhost:5173/' }
+    const { controller, navigatedUrl } = publicComputerController(store, href)
+
+    await controller.startLogin({ method: 'oauth', publicComputer: true })
+    const state = new URL(navigatedUrl() as unknown as string).searchParams.get('state')
+    href.value = `http://localhost:5173/?code=c&state=${state}`
+    await controller.completeRedirect()
+
+    // Nothing a later page on this origin could restore from.
+    expect(await store.get(SecretName.RefreshToken)).toBeNull()
+    expect(await store.get(SecretName.AuthRecord)).toBeNull()
+    expect(await new AuthController({ store }).restore()).toBeNull()
+
+    // …and yet the LIVE session is fully functional, refresh included: the token is in memory.
+    // Without this the mode would be a session that dies at the first hour boundary.
+    const refreshed = new AuthController({ store })
+    expect(refreshed).toBeDefined()
+    expect(await controller.getAccessToken()).toBe('access-1')
+  })
+
+  it('an ORDINARY OAuth sign-in still persists both — the counter-test', async () => {
+    // Without this, a fix that simply stopped persisting for everyone would look identical above,
+    // and would silently end offline cold start for every normal user.
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    const href = { value: 'http://localhost:5173/' }
+    const { controller, navigatedUrl } = publicComputerController(store, href)
+
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(navigatedUrl() as unknown as string).searchParams.get('state')
+    href.value = `http://localhost:5173/?code=c&state=${state}`
+    await controller.completeRedirect()
+
+    expect(await store.get(SecretName.RefreshToken)).toBe('refresh-1')
+    expect(await store.get(SecretName.AuthRecord)).not.toBeNull()
+  })
+})
+
+describe('AuthController — sign-out is final', () => {
+  it('a refresh in flight during logout does not resurrect the credential store', async () => {
+    // The store self-heals: `put()` re-creates the database and a fresh wrapping key. So a token
+    // grant that lands a few hundred ms AFTER the wipe used to write a perfectly valid refresh
+    // token back to disk, behind a login screen that said the user was signed out.
+    let releaseRefresh: (() => void) | undefined
+    const idp = fakeIdp()
+    const gatedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url
+      if (url.includes('/token') && String(init?.body ?? '').includes('refresh_token')) {
+        await new Promise<void>((resolve) => {
+          releaseRefresh = resolve
+        })
+      }
+      return idp.fetchImpl(input, init)
+    }
+    vi.stubGlobal('fetch', gatedFetch)
+    const { store } = freshStore()
+    let clock = 1_000_000_000
+    const href = { value: 'http://localhost:5173/' }
+    let navigated: string | null = null
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => href.value,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        href.value = url
+      },
+    })
+
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(navigated as unknown as string).searchParams.get('state')
+    href.value = `http://localhost:5173/?code=c&state=${state}`
+    await controller.completeRedirect()
+    expect(await store.get(SecretName.RefreshToken)).toBe('refresh-1')
+
+    // Expire the access token and start a refresh that we hold open on the wire.
+    clock += 3_600_001
+    const pending = controller.getAccessToken()
+    await vi.waitFor(() => expect(releaseRefresh).toBeDefined())
+
+    // Sign out while it is still in flight, then let the grant land.
+    await controller.logout()
+    releaseRefresh?.()
+    await expect(pending).rejects.toThrow()
+
+    // THE assertion: nothing came back. A resurrected token here means the next person at this
+    // machine gets a working session out of a sign-out the user watched complete.
+    expect(await store.get(SecretName.RefreshToken)).toBeNull()
+    expect(await store.get(SecretName.AuthRecord)).toBeNull()
+  })
+})
+
+describe('AuthController — redirect-callback detection', () => {
+  it('ignores a ?code= that belongs to no authorization of ours', async () => {
+    // `https://mail.example.com/?code=x` is a link anyone can put in an email. Treating the URL
+    // shape alone as a callback sent a signed-in reader down the OAuth branch, where it failed and
+    // never reached restore() — a mail-triggered sign-out, and it consumed a genuinely pending
+    // transaction if one existed.
+    const { store } = freshStore()
+    const controller = new AuthController({
+      store,
+      getHref: () => 'http://localhost:5173/?code=attacker-supplied&state=whatever',
+    })
+    expect(await controller.isRedirectCallback()).toBe(false)
+  })
+
+  it('recognises one that does — the counter-test', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    const href = { value: 'http://localhost:5173/' }
+    let navigated: string | null = null
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => href.value,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        href.value = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(navigated as unknown as string).searchParams.get('state')
+    href.value = `http://localhost:5173/?code=c&state=${state}`
+    expect(await controller.isRedirectCallback()).toBe(true)
+  })
+
+  it('refuses a transaction that has gone stale', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    const href = { value: 'http://localhost:5173/' }
+    let navigated: string | null = null
+    let clock = 1_000_000_000
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => href.value,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        href.value = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(navigated as unknown as string).searchParams.get('state')
+    href.value = `http://localhost:5173/?code=c&state=${state}`
+    clock += 31 * 60_000
+    await expect(controller.completeRedirect()).rejects.toThrow(/expired/i)
+  })
+})

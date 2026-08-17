@@ -26,6 +26,12 @@ import { ACCOUNT_PARAM, deriveBase, matchRoute, type RouteMatch, toHref } from '
  * Only for `/mail` targets, only when the destination does not name an account itself (an explicit
  * choice wins), and never for a link that leaves the mail area — settings and contacts are the user's
  * own by definition.
+ *
+ * "An explicit choice wins" is load-bearing for anything that navigates from OUTSIDE the current
+ * route's frame of reference: a notification click carries its own account and arrives through this
+ * same `navigate`, so an unqualified target would silently adopt the account the user is currently
+ * reading (`notify/click-route.ts` qualifies for exactly that reason). This function cannot tell the
+ * two apart, which is why the qualifying happens at the source rather than being special-cased here.
  */
 export function carryAccount(to: string, currentSearch: string): string {
   if (!to.startsWith('/mail')) return to

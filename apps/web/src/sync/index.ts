@@ -50,6 +50,7 @@ export {
   type QueryCacheRow,
   REPLICA_DB_NAME,
   ReplicaDb,
+  resetReplica,
   resetReplicaForTests,
   type SerializedDraft,
   type SyncStateRow,
@@ -68,6 +69,7 @@ export {
   EPHEMERAL_DB_PREFIX,
   EPHEMERAL_INDEX_KEY,
   newEphemeralDbName,
+  releaseEphemeralClaim,
   sweepEphemeral,
 } from './ephemeral'
 export { canonicalContactQueryKey, canonicalQueryKey, type QuerySpec } from './query-key'

@@ -102,3 +102,99 @@ describe('loadConfig — the boot deadline (M3.5)', () => {
     await expect(loadConfig({ timeoutMs: 10 })).resolves.toEqual(DEFAULT_CONFIG)
   })
 })
+
+/** Serve `body` as config.json, and capture what the loader complained about. */
+function serveConfig(body: unknown): { readonly warnings: string[] } {
+  const warnings: string[] = []
+  vi.spyOn(console, 'warn').mockImplementation((message: unknown) => {
+    warnings.push(String(message))
+  })
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
+    ),
+  )
+  return { warnings }
+}
+
+describe('loadConfig — validating the operator-supplied config.json', () => {
+  it('rejects a schemeless sessionUrl instead of letting it kill the boot', async () => {
+    // The exact failure this exists for: `new URL('mail.example.com/.well-known/jmap')` throws a
+    // TypeError, which used to escape `void boot()` as an unhandled rejection — no ErrorBoundary
+    // catches an async rejection, so the app stayed on the booting spinner with no error and no
+    // recovery. Falling back to the same-origin default at least boots something the reader can see.
+    const { warnings } = serveConfig({
+      server: { sessionUrl: 'mail.example.com/.well-known/jmap' },
+    })
+
+    const config = await loadConfig()
+
+    expect(config.server.sessionUrl).toBeNull()
+    expect(warnings.join('\n')).toContain('server.sessionUrl')
+  })
+
+  it('rejects a non-http(s) sessionUrl — this field decides who receives the password', async () => {
+    serveConfig({ server: { sessionUrl: 'javascript:alert(1)' } })
+    await expect(loadConfig()).resolves.toHaveProperty('server.sessionUrl', null)
+
+    serveConfig({ server: { sessionUrl: 42 } })
+    await expect(loadConfig()).resolves.toHaveProperty('server.sessionUrl', null)
+  })
+
+  it('keeps a valid sessionUrl, and still merges everything around it', async () => {
+    serveConfig({
+      server: { sessionUrl: 'https://mail.example.com/.well-known/jmap', allowCustomServer: false },
+      branding: { productName: 'Acme Mail', defaultTheme: 'dark' },
+      features: { remoteContentDefault: 'allow', imageProxyUrl: 'https://proxy.example.com/i' },
+    })
+
+    const config = await loadConfig()
+
+    expect(config.server.sessionUrl).toBe('https://mail.example.com/.well-known/jmap')
+    expect(config.server.allowCustomServer).toBe(false)
+    expect(config.branding.productName).toBe('Acme Mail')
+    expect(config.branding.defaultTheme).toBe('dark')
+    expect(config.features.remoteContentDefault).toBe('allow')
+    expect(config.features.imageProxyUrl).toBe('https://proxy.example.com/i')
+    // Untouched nested keys keep their defaults — validation must not flatten the merge.
+    expect(config.server.auth).toEqual(DEFAULT_CONFIG.server.auth)
+    expect(config.branding.links).toEqual(DEFAULT_CONFIG.branding.links)
+    expect(config.offline).toEqual(DEFAULT_CONFIG.offline)
+  })
+
+  it('never lets a junk auth list become an EMPTY one (a login form with no way in)', async () => {
+    const { warnings } = serveConfig({ server: { auth: ['oidc', 'password'] } })
+
+    const config = await loadConfig()
+
+    expect(config.server.auth).toEqual(DEFAULT_CONFIG.server.auth)
+    expect(warnings.join('\n')).toContain('server.auth')
+  })
+
+  it('filters a partly-valid auth list, keeping the operator preference order', async () => {
+    serveConfig({ server: { auth: ['basic', 'saml', 'basic'] } })
+    await expect(loadConfig()).resolves.toHaveProperty('server.auth', ['basic'])
+
+    serveConfig({ server: { auth: 'basic' } })
+    await expect(loadConfig()).resolves.toHaveProperty('server.auth', DEFAULT_CONFIG.server.auth)
+  })
+
+  it('rejects an enum typo and NAMES it — the only feedback a static deployment has', async () => {
+    const { warnings } = serveConfig({
+      branding: { defaultTheme: 'Dark' },
+      features: { remoteContentDefault: 'always', imageProxyUrl: 'proxy.example.com' },
+    })
+
+    const config = await loadConfig()
+
+    expect(config.branding.defaultTheme).toBe('auto')
+    expect(config.features.remoteContentDefault).toBe('block')
+    expect(config.features.imageProxyUrl).toBeNull()
+    const text = warnings.join('\n')
+    expect(text).toContain('branding.defaultTheme')
+    expect(text).toContain('features.remoteContentDefault')
+    expect(text).toContain('features.imageProxyUrl')
+  })
+})

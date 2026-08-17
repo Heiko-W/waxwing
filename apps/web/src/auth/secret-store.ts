@@ -13,6 +13,8 @@
  * Nothing here ever touches `localStorage`/`sessionStorage` (NFR-SEC-02).
  */
 
+import { SecretStoreBlockedError } from './errors'
+
 /** IndexedDB database + object-store names. Namespaced so the wipe is precise. */
 const DB_NAME = 'waxwing-auth'
 const DB_VERSION = 1
@@ -101,7 +103,24 @@ export class SecretStore {
         if (!db.objectStoreNames.contains(KEY_STORE)) db.createObjectStore(KEY_STORE)
         if (!db.objectStoreNames.contains(SECRET_STORE)) db.createObjectStore(SECRET_STORE)
       }
-      request.onsuccess = () => resolve(request.result)
+      request.onsuccess = () => {
+        const db = request.result
+        // ANOTHER TAB IS TRYING TO DELETE THIS DATABASE — get out of its way.
+        //
+        // This connection is memoized for the lifetime of the page and every tab opens it at boot
+        // (`restore()` reads the AuthRecord). Without this handler, a sign-out in tab A fires
+        // `deleteDatabase`, tab B's live connection BLOCKS it, and `wipe()` below used to treat
+        // `blocked` as success — so the ciphertext AND the still-usable wrapping key survived a
+        // sign-out the UI had already confirmed. The next cold start then found the AuthRecord and
+        // signed the next person at that machine in as the previous user. Closing here is what makes
+        // the delete actually complete; `wipe()` reporting `blocked` as an error is the second half.
+        db.onversionchange = () => {
+          db.close()
+          this.dbPromise = null
+          this.keyPromise = null
+        }
+        resolve(db)
+      }
       request.onerror = () => reject(request.error)
     })
     return this.dbPromise
@@ -176,6 +195,13 @@ export class SecretStore {
   /**
    * Destroys the entire auth database — every secret and the wrapping key itself. Part of
    * the FR-AUTH-05 logout primitive: after this, nothing decryptable remains at rest.
+   *
+   * Rejects with {@link SecretStoreBlockedError} when another connection prevented the delete.
+   * That case used to resolve silently, on the reasoning that "the secrets are already unreachable
+   * once this tab drops its key reference" — which is false. The reference is not what protects
+   * them: the ciphertext and the (non-extractable but perfectly usable) wrapping key both stay in
+   * IndexedDB, and any later page on this origin can decrypt with them. A blocked delete is a
+   * FAILED sign-out and the caller has to be able to say so.
    */
   async wipe(): Promise<void> {
     if (this.dbPromise) {
@@ -188,9 +214,9 @@ export class SecretStore {
       const request = this.idb.deleteDatabase(this.dbName)
       request.onsuccess = () => resolve()
       request.onerror = () => reject(request.error)
-      // A concurrent connection (another tab) can block deletion; resolve rather than hang —
-      // the secrets are already unreachable once this tab drops its key reference.
-      request.onblocked = () => resolve()
+      // Other tabs close on `versionchange` (see openDb), so this is now the genuinely stuck case:
+      // a frozen/bfcached page that never ran its handler. Surface it instead of pretending.
+      request.onblocked = () => reject(new SecretStoreBlockedError(this.dbName))
     })
   }
 }

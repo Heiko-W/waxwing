@@ -2290,6 +2290,57 @@ forget — the second occurrence is what showed that patching call sites was the
 Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_OF_CONDUCT,
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
+
+### v0.10.0 (2026-08-17) — the security review, and what it found
+
+A seven-dimension review of v0.9.0 (sanitizer, auth, ephemeral mode, app-origin XSS, service
+worker, JMAP library, supply chain), each dimension's findings adversarially verified before
+being accepted. **15 security findings and 22 implementation defects survived verification;
+eight further claims were refuted and dropped.** All are fixed, each pinned by a test that was
+verified to go red when the fix is reverted.
+
+The five worth remembering, because of what they say about where defects hide:
+
+1. **Sign-out did not sign out whenever a second tab was open.** `SecretStore` registered no
+   `onversionchange`, so the delete was blocked, and `wipe()` treated blocked as success on the
+   reasoning that dropping the key reference made the secrets unreachable. It did not: the
+   ciphertext and a usable wrapping key stayed on disk, and the next cold start signed the next
+   person at that machine in as the previous user. Two tabs is the ordinary state of webmail.
+   The code documented the opposite at that exact line.
+
+2. **The public-computer promise did not cover OAuth** — the primary button on a default
+   deployment. The checkbox lived inside the Basic form and reached one of the two sign-in
+   paths, under a hint that promised nothing would be kept. Renumbered FR-AUTH-09 in the same
+   pass, because it had been given an id the multi-account requirement already owned.
+
+3. **Two features had never worked in any shipped build.** "Load remote content" and the PDF
+   attachment preview were both blocked by the app's own CSP — a srcdoc frame inherits the
+   embedder's policy container, and `frame-src 'self'` does not cover `blob:`. Both had tests.
+   The remote-content test asserted the banner disappeared, which it did; nobody asserted an
+   image appeared. That is the lesson of this release: a test that watches the symptom instead
+   of the effect will hold a dead feature green indefinitely.
+
+4. **Reply and forward transplanted mail HTML into the app DOM.** The reading sanitizer filters
+   inline `style` only inside an anchor, justified by "the frame paints a known white canvas" —
+   true of the iframe, and the composer is not the iframe. A `position:fixed` overlay survived
+   into a reply addressed to the attacker, so a fake sign-in panel collected what the victim
+   typed and sent it to them. No script needed.
+
+5. **A C0 control character defeated the whole remote-content firewall.** `String.trim()` does
+   not remove U+0001, so a tracking pixel classified as "not remote": not blocked, and reported
+   to the reader as a mail containing no remote content.
+
+Two things are worth stating about the shape of this list. Three of the five are cases where a
+**comment or a document asserted the property the code did not have** — the review was
+instructed to treat that as a finding class of its own, and it was the most productive one.
+And the CSP pair was only findable in a browser: every unit test around them passed, because
+what they pinned was the policy string, not what the policy did.
+
+Supply chain in the same pass: actions pinned to commit SHAs with a gate check that refuses an
+unpinned one, job-level permissions, build-provenance attestation, and SECURITY.md corrected
+where it claimed more than it delivered — including the flatly wrong claim that an HTTP CSP
+header overrides a `<meta>` one.
+
 ---
 
 ## 11. Post-V1 Backlog (V1.x parking lot)
@@ -2373,6 +2424,7 @@ explicit owner decision:
 | **B41** | **Open (2026-08-16, filed by the M4.6 RTL audit): three surfaces mix a LOGICAL anchor with a PHYSICAL movement, and each half reads correctly on its own.** (1) The message-row swipe: `--swipe-x` is a raw physical pointer delta while the reveal layers are anchored `inset-inline-start`/`-end`, so under RTL the coloured action paints on the side the row did NOT vacate. The unresolved question is a product one — does the reveal follow the finger or the writing direction? — which is why it is exempted with a stated reason rather than guessed at. (2) `ui/Menu.tsx` takes a logically-NAMED `align: 'start' \| 'end'` and implements it with physical `rect.left`/`rect.right` plus a physical `translate: -100% 0`, so `align='start'` anchors to the trigger's inline-END under RTL. (3) `ui/SplitPane.tsx` measures the drag as `clientX - rect.left` and applies it as `inlineSize`, so the pane sits on the right under RTL while the maths measures from the left — the drag inverts. All three need an RTL locale to verify, which is post-V1 by FR-I18N-02; the CSS half of the audit is clean and the two off-canvas drawers ARE fixed (signed by `--waxwing-flip`), so what remains is exactly the class no logical property can express. |
 | **B42** | **FIXED (2026-08-16, M4.8), found by the 100 k perf suite: the app shell had no height, so the virtualizer had no viewport.** `shell.module.css .app` used `min-block-size: 100vh` — a FLOOR, which guarantees the shell fills the viewport and says nothing about growing past it. Everything below is `flex: 1; min-block-size: 0` and correctly hands the available height down; there simply was no available height to hand down. Measured: the message list's scroll container was **3800 px tall in a 720 px viewport** and `document.body` was **4057 px**, i.e. the PAGE scrolled rather than the list. Worse, TanStack Virtual sizes its window from that container's `clientHeight`, so a container reporting 3800 px was told the viewport shows 50 rows — which made the container taller, which showed more rows. A trackpad flick in a 100 k folder ran the feedback away: **50 → 600 → 950 → 1600 → 3350 rendered rows over 20 s and still climbing**, never coming back down. Fix: `block-size: 100dvh` (with a `100vh` fallback line) + `overflow: hidden` on `.app` — the shell's panes scroll internally and the page never should. After: **15 rows at rest** (was 50), **23 after the same flick and stable** (was 3350), `body` back to 720 px. The win is not limited to huge folders — every folder rendered ~3× the rows it needed. | M1.6 (virtualization) | M4.8 | fixed |
 | **B43** | **FIXED (2026-08-17): `/mail` is a reserved path prefix on Stalwart — an Application registered there is accepted and never served.** Found by the Gate G3 artefact verification against a clean `stalwartlabs/stalwart:v0.16.14-alpine`. The registration succeeds, Stalwart fetches the archive, and every path under the mount answers `404 application/problem+json` with nothing in the log and nothing unpacked. **The same artefact under `/webmail` answers 200**, deep links included, with the `<base href>` correctly rewritten to `/webmail/`. Two documentation defects were found on the way and are also fixed: **(1) `description` is REQUIRED** — every example this repo has written since SP.5 answers `validationFailed / {"type":"Required","property":"description"}`, so the guide's copy-pasteable curl failed for every reader at the first step; **(2) `urlPrefix` takes a LEADING SLASH** (`{"/webmail": true}`), as Stalwart's own WebUI registers `{"/admin": true, "/account": true}` — without it the call is accepted silently and does not work. **A false cause was published and retracted, which is the part worth keeping.** The zips this repo produces carry general-purpose flag bit 3 (data descriptors, because `archiver` streams) where Stalwart's `webui.zip` does not, and that difference was measured, believed, and shipped as the explanation — the release script was switched to `jszip` and given a flag assertion. It was wrong: the two variables were never separated, because every `/mail` attempt used an `archiver` zip and every working prefix used a `jszip` one. Isolating them settles it — **an `archiver` zip WITH data descriptors serves 200 under a free prefix.** The `jszip` change and its assertion are reverted; `archiver` writes both artefacts again. | M4.9 | Gate G3 | fixed |
+| **B44** | **Open (2026-08-17, seen ONCE on a hosted CI runner and NOT reproduced since): `MessageList.test.tsx` "a direction set to Archive is INERT on an account with no Archive" failed with `data-swipe === 'left'`, i.e. the gesture locked where it must go inert.** The test deletes the Archive mailbox and gates on "3 × Mark as read present AND no Archive layer" before swiping. That gate is a conjunction of one positive and one NEGATIVE signal, and the test's own comment records an earlier race of the same shape — so the suspicion is that the negative half is satisfied by a render in which `useMailboxes()` has not settled, letting the swipe resolve against a mailbox list that still has an Archive. **That is a hypothesis, not a finding.** It survived 6 targeted runs and 5 full-suite runs under 12-way CPU load locally, and the immediately following CI re-run of the same commit was green; the run it failed in coincided with a GitHub incident (repeated 429/502/503 from codeload and the API), so a starved 2-core runner is at least as likely an explanation as the component. Recorded rather than "fixed" because nothing was changed: neither `MessageList.tsx`, `use-swipe.ts` nor that test file is touched by the v0.10.0 branch. What a real fix needs is a POSITIVE readiness signal — something rendered only when `mailboxes` is resolved AND lacks an Archive — since every absence-based gate here is also satisfied by "not resolved yet". | M3.9 | — | open |
 | D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **signed off 2026-07-10.** Owner approved after two revisions: calmer accent (orange → blue `#2f6fe0`/`#5e93f0`, warm colors reserved for signals) and responsive compact controls (34px pointer / 44px touch via `--waxwing-control-min`, tightened spacing) — both WCAG-AA-verified. Broad UI build-out (M1.4+) unblocked. |
 
 ## 14. Appendix — Requirements Coverage Matrix

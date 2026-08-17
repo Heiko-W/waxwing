@@ -11,6 +11,7 @@
 // Talks to the container at BASE_URL (127.0.0.1:18080), never the advertised (browser-origin) URLs.
 
 import { BASE_URL, DOMAIN, PASSWORD } from './fixture.mjs'
+import { fetchThrottled } from './http.mjs'
 
 const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
@@ -30,7 +31,7 @@ const authHeader = (login) => `Basic ${Buffer.from(`${login}:${PASSWORD}`).toStr
 /** A tiny per-account JMAP client against the container (Basic auth). */
 export function jmapAs(login) {
   async function session() {
-    const res = await fetch(`${BASE_URL}/.well-known/jmap`, {
+    const res = await fetchThrottled(`${BASE_URL}/.well-known/jmap`, {
       headers: { Authorization: authHeader(login), Accept: 'application/json' },
       redirect: 'follow',
     })
@@ -41,7 +42,7 @@ export function jmapAs(login) {
     return (await session()).primaryAccounts[MAIL]
   }
   async function call(using, methodCalls) {
-    const res = await fetch(`${BASE_URL}/jmap/`, {
+    const res = await fetchThrottled(`${BASE_URL}/jmap/`, {
       method: 'POST',
       headers: {
         Authorization: authHeader(login),

@@ -180,9 +180,12 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
  * Three frames, three answers, and the classification is a tested pure function
  * (`notify/push-frame.ts`) because nothing in this directory can have a test:
  *
- *  - **`delivery`** — mail arrived. Raise ONE contentless banner, unless a window of ours is already
- *    visible: in that case the live push channel is running and has already raised the richer banner
- *    with sender and subject, and a second one beside it is worse than none.
+ *  - **`delivery`** — mail arrived. Raise ONE contentless banner, unless `shouldRaisePushBanner` says
+ *    otherwise: a visible window (the live push channel has already raised the richer banner with
+ *    sender and subject, and a second one beside it is worse than none), quiet hours, or no handover
+ *    state to render text from. All three return here with NO `showNotification` — the promise made
+ *    at subscribe time was `userVisibleOnly: true`, and push-frame.ts records what that costs and
+ *    what has actually been measured about it.
  *  - **`verification`** — RFC 8620 §7.2.2. Hand it to the page, which alone can write it back;
  *    park it in the database when no page is running, so the next start completes the handshake
  *    rather than leaving a subscription that is silent forever with nothing to say why.
@@ -253,6 +256,9 @@ async function handlePush(text: string | null): Promise<void> {
     quietHours: state?.quietHours ?? null,
     minutesOfDay: localMinutesOfDay(Date.now()),
   })
+  // Silent for ALL FOUR of `shouldRaisePushBanner`'s reasons, not just the visible-window one — the
+  // `state === null` half is `noState` again, restated because TypeScript cannot narrow it from the
+  // decision. push-frame.ts states the set and what is known about the `userVisibleOnly` cost.
   if (!decision.show || state === null) return
 
   // Via a typed local, not inline: an object LITERAL is excess-property-checked against

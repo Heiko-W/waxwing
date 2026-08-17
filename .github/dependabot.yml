@@ -1,0 +1,37 @@
+# What this file exists for, and what it deliberately does NOT do.
+#
+# Every `uses:` in .github/workflows/ is pinned to a 40-hex commit SHA rather than `@v4`, because a
+# tag is a mutable pointer and moving one runs foreign code inside a job that, in release.yml,
+# holds `contents: write` over the published artefacts. The pin closes that. It also FREEZES the
+# action: a security fix upstream never arrives, and the trailing `# v4.4.0` comment slowly becomes
+# a lie about what the SHA actually is. A pin with nothing maintaining it trades a live risk for a
+# quiet one.
+#
+# So this is the other half of the pin, not an optional extra. Dependabot understands the
+# `sha # comment` form: it rewrites BOTH the SHA and the version comment in one PR, which is the
+# only reason SHA pinning is workable by hand at all.
+#
+# ── SCOPE: github-actions ONLY ────────────────────────────────────────────────────────────────
+#
+# The npm ecosystem is deliberately absent. `pnpm-lock.yaml` is the reproducibility contract for
+# the shipped bundle, `pnpm install --frozen-lockfile` is what CI runs, and a bot opening a dozen
+# lockfile PRs a week against a one-maintainer project produces exactly one behaviour: they get
+# merged unread. Waxwing's dependency posture is stated in SECURITY.md §5 — a small list, reviewed
+# by a person — and automated bumping of it is a separate decision, not a side effect of wanting
+# maintained action pins. Workflow actions are different in kind: there are eight of them, they
+# change rarely, and each one is code that runs with a token.
+#
+# Verify a pin by hand at any time with:
+#   gh api repos/<owner>/<action>/git/ref/tags/<tag> --jq .object.sha
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      # Conventional Commits, scope `ci` — the same convention CLAUDE.md requires of humans.
+      prefix: 'chore(ci)'
+    labels:
+      - dependencies

@@ -17,7 +17,7 @@ export interface LoginFormProps {
   readonly canEditServer: boolean
   readonly busy: boolean
   readonly error?: OnboardError
-  readonly onOAuth: () => void
+  readonly onOAuth: (publicComputer: boolean) => void
   readonly onBasicSubmit: (
     username: string,
     password: string,
@@ -65,7 +65,7 @@ export function LoginForm({
 
   function handleOAuth(): void {
     if (!oauthAvailable || busy) return
-    onOAuth()
+    onOAuth(publicComputer)
   }
 
   function handleBasicSubmit(event: FormEvent<HTMLFormElement>): void {
@@ -147,22 +147,6 @@ export function LoginForm({
             disabled={publicComputer}
             onChange={(event) => setStaySignedIn(event.target.checked)}
           />
-          {/* FR-AUTH-07. Ticking this turns "stay signed in" off and holds it off: the two are
-              contradictory promises, and letting both be ticked would leave a credential behind on
-              exactly the machine the other box is about not leaving anything on. */}
-          <Checkbox
-            label={t('auth.basic.publicComputer')}
-            checked={publicComputer}
-            onChange={(event) => {
-              setPublicComputer(event.target.checked)
-              if (event.target.checked) setStaySignedIn(false)
-            }}
-          />
-          {publicComputer && (
-            <p className={styles.hint}>
-              {t('auth.basic.publicComputerHint', { product: productName })}
-            </p>
-          )}
           <p className={styles.hint}>{t('auth.basic.appPasswordHint')}</p>
           <Button
             type="submit"
@@ -174,6 +158,31 @@ export function LoginForm({
           </Button>
         </form>
       ) : null}
+
+      {/* FR-AUTH-09, and deliberately OUTSIDE the Basic form: it governs whichever way the user
+          signs in. While it lived inside the form it reached `onBasicSubmit` only, so on a default
+          deployment — where OAuth is the primary button sitting right above it — ticking the box
+          and clicking that button produced a durable replica and a persisted refresh token, with
+          the hint below still promising that nothing would be kept.
+
+          Ticking it also turns "stay signed in" off and holds it off: the two make contradictory
+          promises, and letting both be ticked would leave a credential behind on exactly the
+          machine the other box is about not leaving anything on. */}
+      <div className={styles.publicComputer}>
+        <Checkbox
+          label={t('auth.basic.publicComputer')}
+          checked={publicComputer}
+          onChange={(event) => {
+            setPublicComputer(event.target.checked)
+            if (event.target.checked) setStaySignedIn(false)
+          }}
+        />
+        {publicComputer && (
+          <p className={styles.hint}>
+            {t('auth.basic.publicComputerHint', { product: productName })}
+          </p>
+        )}
+      </div>
 
       {canEditServer && onBack ? (
         <Button type="button" variant="ghost" onClick={onBack} className={styles.back}>

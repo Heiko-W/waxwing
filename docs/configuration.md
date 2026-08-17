@@ -4,8 +4,14 @@ One file, sitting next to `index.html`, read once at startup. A hoster edits it 
 rebuild**, no environment variables, no template step (FR-DEP-04).
 
 Everything in it is optional. Missing keys fall back to the values below, so a deployment that
-only needs to point at a different server can be three lines. Unknown keys are ignored, which
-means a typo is silent — check a change took effect rather than assuming it did.
+only needs to point at a different server can be three lines.
+
+An **unknown key** is ignored silently, so a misspelt key name still needs checking by hand. An
+**invalid value** for one of the five keys that are validated — `server.sessionUrl`, `server.auth`,
+`branding.defaultTheme`, `features.remoteContentDefault`, `features.imageProxyUrl` — is rejected,
+named on the browser console, and falls back to its default. `sessionUrl` is the one that earned
+this: a value without a scheme used to throw inside the boot path and leave the app on a spinner
+forever, with nothing rendered and nothing logged.
 
 `apps/web/src/app/config.shipped.test.ts` asserts the shipped file matches these defaults key
 for key, so this page cannot quietly go stale.

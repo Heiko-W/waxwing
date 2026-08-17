@@ -25,6 +25,7 @@ import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { AUTO_MARK_READ_DELAY_MS, MessageView } from './MessageView'
 import { useReadingStore } from './reading-store'
+import { useBlobFetcher } from './use-blob'
 
 function part(over: Partial<EmailBodyPart> = {}): EmailBodyPart {
   return {
@@ -59,6 +60,48 @@ function textBodyRow(id: string, text: string): EmailBodyRow & { authResults: st
     htmlBody: [part({ partId: 't1', type: 'text/plain' })],
     attachments: [],
     hasAttachment: false,
+    authResults: [],
+    fetchedAt: 1,
+    lastAccessedAt: 1,
+    bytes: 0,
+    ablob: [],
+  }
+}
+
+/**
+ * The reader's only blob I/O. Mocked so a test can keep a `cid:` download PENDING:
+ * `useInlineImages` awaits this fetcher before it flips `ready`, and `ready` is what gates the
+ * sanitize pass, so a promise parked here IS the window S13 lives in. The default resolves to
+ * `null`, which is what this suite already got from the real hook (the session's `getClient()`
+ * returns null). One stable fetcher identity per test, because the hook's effect depends on it.
+ */
+vi.mock('./use-blob', () => ({ useBlobFetcher: vi.fn() }))
+
+/** Park the inline-image download; the returned function completes it. */
+function pendingBlob(): () => void {
+  let release: () => void = () => {}
+  const pending = new Promise<Blob | null>((resolve) => {
+    release = () => resolve(null)
+  })
+  vi.mocked(useBlobFetcher).mockReturnValue(async () => await pending)
+  return release
+}
+
+/** An HTML body with one inline `cid:` image, one remote tracker, and one real attachment. */
+function htmlCidRow(id: string): EmailBodyRow & { authResults: string[] } {
+  const html = '<p>Hi</p><img src="cid:c1" alt=""><img src="https://tracker.test/p.gif" alt="">'
+  return {
+    accountId: 'a',
+    id,
+    bodyValues: { h1: val(html) },
+    bodyStructure: part({ partId: 'h1', type: 'text/html' }),
+    textBody: [],
+    htmlBody: [part({ partId: 'h1', type: 'text/html' })],
+    attachments: [
+      part({ blobId: 'inline1', cid: 'c1', type: 'image/png', disposition: 'inline' }),
+      part({ blobId: 'b9', name: 'doc.pdf', type: 'application/pdf', size: 10 }),
+    ],
+    hasAttachment: true,
     authResults: [],
     fetchedAt: 1,
     lastAccessedAt: 1,
@@ -103,6 +146,7 @@ let openSpy: MockInstance<typeof window.open>
 beforeEach(async () => {
   db = freshDb()
   dispatch.mockReset()
+  vi.mocked(useBlobFetcher).mockReturnValue(async () => null)
   openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
   useComposerStore.setState({ drafts: new Map(), focusedId: undefined })
   setActiveEngine({
@@ -255,6 +299,103 @@ describe('MessageView', () => {
     expect(draft?.subject).toBe('Fwd: Hi')
     expect(draft?.attachments).toHaveLength(1)
     expect(draft?.inReplyTo).toBeNull()
+  })
+
+  /**
+   * The window between "body fetched" and "inline images fetched". `sanitized` is null throughout
+   * it, so a draft seeded here used to be seeded with the RAW mail — which `use-draft-autosave` then
+   * persists and uploads, and which a fast send puts on the wire. The attachment strip is the probe
+   * for `loading === false`: it renders off `body`, so its presence means the body fetch is done and
+   * only the `cid:` download is outstanding.
+   */
+  it('refuses reply/reply-all/forward while a cid: image is still downloading', async () => {
+    const release = pendingBlob()
+    await putEmailBody(db, htmlCidRow('e1'))
+    renderView(seen())
+
+    // BOTH conditions in one `waitFor`, and that is the whole assertion: the attachment strip
+    // renders off `body`, so its presence means `loading === false`. A gate on `loading` alone can
+    // therefore never satisfy this — once the strip is there, such a button is enabled for good.
+    await waitFor(() => {
+      expect(screen.getByText('doc.pdf')).toBeInTheDocument()
+      for (const name of ['Reply', 'Reply all', 'Forward']) {
+        expect(screen.getByRole('button', { name })).toBeDisabled()
+      }
+      // Inside the same `waitFor`, deliberately: the store is written by an effect, so reading it
+      // after the DOM has settled assumes a commit order that holds on a fast machine and not on a
+      // loaded one. The button and the chord must agree — polling for that is the assertion.
+      expect(useReadingStore.getState().handlers?.bodyReady).toBe(false)
+    })
+
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reply' })).toBeEnabled())
+  })
+
+  it('never claims the body is quotable for even one commit before the images resolve', async () => {
+    // The assertion above polls, so it can only see states that PERSIST. This one records every
+    // value the store passes through, which is what catches a single-commit lie — and there was
+    // one: `useInlineImages` set `ready` to true while the body was still loading ("no body" read
+    // as "no images"), so on the commit where the body landed, `loading` went false against a stale
+    // `ready` and `bodyReady` was true for exactly one render. Reply in that window and the draft
+    // is seeded from an unsanitized body, which is the whole point of the gate.
+    //
+    // CI found it as a flake in the test above and it took a full-suite run under load to even see
+    // once. A subscription is the honest instrument here: a poll cannot observe a state that lasts
+    // one commit.
+    const seenValues: (boolean | undefined)[] = []
+    const unsubscribe = useReadingStore.subscribe((state) =>
+      seenValues.push(state.handlers?.bodyReady),
+    )
+    const release = pendingBlob()
+    await putEmailBody(db, htmlCidRow('e1'))
+    renderView(seen())
+
+    await waitFor(() => expect(screen.getByText('doc.pdf')).toBeInTheDocument())
+    await act(async () => {})
+
+    expect(seenValues).not.toContain(true)
+
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reply' })).toBeEnabled())
+    // …and the counter-test, so "never true" is a gate and not a permanently closed door.
+    expect(seenValues).toContain(true)
+    unsubscribe()
+  })
+
+  /**
+   * The value behind that gate. The keyboard layer reaches `compose` through the store rather than
+   * through the button, so this calls it the way a chord would — bypassing `disabled`, which is a UI
+   * affordance and not a boundary — and pins that the seed in this window is EMPTY rather than the
+   * unsanitized mail. Quoting nothing is a cosmetic loss; quoting `<img src=https://tracker…>` is a
+   * beacon in the mail the victim sends back.
+   */
+  it('seeds no quoted body at all if compose is reached before the images resolve', async () => {
+    const release = pendingBlob()
+    await putEmailBody(db, htmlCidRow('e1'))
+    renderView(seen({ subject: 'Hi' }))
+    // Same two-condition wait as above: body in, images not. Then FLUSH — `waitFor` can observe the
+    // DOM one commit before the effect that re-registers the handlers, and the store would still be
+    // handing out the previous render's `compose`, whose `sanitized` is a different value entirely.
+    await waitFor(() => {
+      expect(screen.getByText('doc.pdf')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Reply' })).toBeDisabled()
+    })
+    await act(async () => {})
+    const handlers = useReadingStore.getState().handlers
+    expect(handlers?.bodyReady).toBe(false)
+
+    act(() => handlers?.compose('reply'))
+    const body = [...useComposerStore.getState().drafts.values()][0]?.body ?? ''
+    expect(body).not.toContain('tracker.test')
+    expect(body).not.toContain('<img')
+
+    await act(async () => {
+      release()
+    })
   })
 
   it('archives by dispatching a move to the archive mailbox', async () => {

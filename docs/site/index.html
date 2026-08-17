@@ -135,10 +135,13 @@
       </p>
 
       <div class="note">
-        <strong>Status: pre-1.0, not yet released.</strong> The code is written and the gate is
-        green, but there is no published build and no public repository yet. Nothing on this page
-        can be downloaded today — it describes what the release will be, because writing it as if
-        it already existed would be a lie you would only discover after clicking.
+        <strong>Status: v0.10.0, pre-1.0.</strong> The source is at
+        <a href="https://github.com/Heiko-W/waxwing">github.com/Heiko-W/waxwing</a> and the
+        release carries a checksum file and a build-provenance attestation. A 0 major because
+        1.0 should be earned by being used, not by a feature list. v0.10.0 is a security release
+        — read the
+        <a href="https://github.com/Heiko-W/waxwing/blob/main/SECURITY.md">threat model</a>
+        before deciding it fits your situation, including the parts that say what it does not do.
       </div>
 
       <h2>Why a client with no server</h2>
@@ -204,7 +207,7 @@
   -H 'Content-Type: application/json' \
   -d '{"using":["urn:ietf:params:jmap:core"],"methodCalls":[["x:Application/set",
        {"create":{"waxwing":{"enabled":true,
-        "resourceUrl":"https://…/waxwing-stalwart-v1.0.0.zip",
+        "resourceUrl":"https://…/waxwing-stalwart-v0.10.0.zip",
         "urlPrefix":{"mail":true}}}},"c1"]]}'</code></pre>
       <p>
         Same origin, so no CORS and nothing else to run. Two other paths — a reverse proxy, and a
@@ -220,7 +223,10 @@
         <li>
           <strong>Cached mail is not encrypted at rest.</strong> It cannot be — a browser has
           nowhere to put a key that an attacker with the same profile could not also reach.
-          Waxwing is not appropriate for an untrusted shared machine.
+          There is a "public or shared computer" option that keeps the replica in a throwaway
+          database and the credential out of storage entirely, removed on sign-out, on tab close
+          and by a sweep at the next start. Between a crash and that next start the data is on
+          disk, and no browser API closes that window.
         </li>
         <li>
           <strong>The phishing link check is friction, not a boundary.</strong> It compares text

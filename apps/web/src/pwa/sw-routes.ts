@@ -18,13 +18,19 @@
  *    strategy that awaits the response body would hang push forever.
  * Unmatched requests fall through with no `respondWith`, i.e. straight to the network.
  *
- * **The invariant is structural, not a denylist of guessed paths.** Every cache predicate is anchored
+ * **The invariant is an anchor, not a denylist of guessed paths.** Every cache predicate is anchored
  * to the app's OWN deployment directory — the service worker's scope, which it reads from its own
  * location — so a URL can only be cached if it *is* one of our deployment files. The path of a JMAP
  * download is chosen by the SERVER and its last segment is the attachment filename, chosen by whoever
  * sent the mail; a basename test ("does it end in config.json?") would hand a mail attachment named
  * `config.json` straight into the cache on any server that does not happen to serve downloads under
  * `/jmap/`. FR-SRV-01 promises "any JMAP server", so that is not a guarantee we get to assume.
+ *
+ * An anchor is only as good as the string it is anchored in, which is the part that took a second
+ * pass: {@link isDeploymentConfig} compares the whole pathname for equality and no escape sequence
+ * can defeat that, but a `startsWith` sees the RAW, un-normalised pathname — `%2e%2e%2f` is not `../`
+ * to `URL` and is to a decoding proxy. {@link isBrandingAsset} therefore decodes its tail and
+ * requires a plain relative path; the test file carries the traversal cases under both mounts.
  *
  * This also bounds `CACHE_URLS`: workbox-routing's default router installs its own `message` listener
  * (`Router.addCacheListener`), so ANY same-origin script can hand the worker a list of URLs to fetch
@@ -96,9 +102,41 @@ export function isDeploymentConfig(url: URL, sameOrigin: boolean, root: string):
   return DEPLOYMENT_FILES.some((file) => url.pathname === root + file)
 }
 
-/** Logo, favicon and app icons from the hoster-editable `branding/` directory — StaleWhileRevalidate. */
+/**
+ * Logo, favicon and app icons from the hoster-editable `branding/` directory — StaleWhileRevalidate.
+ *
+ * A prefix test on the RAW pathname is not enough, and this is the one predicate where that bites.
+ * `URL` leaves percent-escapes alone and does not collapse dot segments hidden inside them, so
+ * `/branding/%2e%2e%2f%2e%2e%2fjmap/download/a/b/x.pdf` starts with the prefix while a reverse proxy
+ * that decodes before matching (the nginx recipe in docs/deployment.md does) serves Stalwart's JMAP
+ * download — into our cache, under the encoded key. So the tail is DECODED once and then required to
+ * be an ordinary relative path: every segment a plain name, no `.`/`..`, no empty segment (a `//`),
+ * and no `%` left over (a double-encoded escape, or a filename we cannot reason about — it stays
+ * uncached and is simply fetched from the network, which costs a request and no correctness).
+ *
+ * {@link isDeploymentConfig} needs none of this: it compares the whole pathname for EQUALITY against
+ * a fixed list, and no escape sequence can make a longer string equal `${root}config.json`.
+ */
 export function isBrandingAsset(url: URL, sameOrigin: boolean, root: string): boolean {
-  return sameOrigin && url.pathname.startsWith(`${root}branding/`)
+  if (!sameOrigin) return false
+  const prefix = `${root}branding/`
+  if (!url.pathname.startsWith(prefix)) return false
+  const tail = decodeOnce(url.pathname.slice(prefix.length))
+  if (tail === null || tail === '') return false
+  return !tail.includes('%') && tail.split('/').every((s) => s !== '' && s !== '.' && s !== '..')
+}
+
+/**
+ * One `decodeURIComponent` round, or `null` for a malformed escape (`%zz`). A malformed sequence is
+ * not a filename we can normalise — different proxies do different things with it — so the caller
+ * treats "cannot decode" the same as "not ours".
+ */
+function decodeOnce(text: string): string | null {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return null
+  }
 }
 
 /** Server paths that are NOT the app: JMAP, RFC 8414/OIDC discovery, the OAuth endpoints, Stalwart's login SPA. */

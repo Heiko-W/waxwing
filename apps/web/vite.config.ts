@@ -61,17 +61,24 @@ const DEV_STALWART_ORIGIN = 'http://localhost:18080'
 // to production: the built bundle is governed by the strict <meta> CSP in index.html
 // (no inline script, no eval — NFR-SEC-01). Keeping dev as close to prod as HMR allows
 // surfaces genuine CSP violations early instead of at release time.
+//
+// `img-src … https:` and `frame-src … blob:` are NOT dev relaxations — they mirror the
+// production policy verbatim, and the reason each one exists is documented there. Keep the
+// two in step: a srcdoc mail frame and a blob: PDF preview are governed by whichever policy
+// the document was served under, so a divergence here means "load remote content" or the
+// attachment preview works in dev and is silently dead in the shipped bundle, or vice versa
+// (csp.shipped.test.ts asserts exactly that pairing).
 const DEV_CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https:",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self'",
   `connect-src 'self' ws: wss: https: ${DEV_STALWART_ORIGIN}`,
-  "frame-src 'self'",
+  "frame-src 'self' blob:",
 ].join('; ')
 
 // base: './' emits relative asset URLs so the bundle works under any path prefix,

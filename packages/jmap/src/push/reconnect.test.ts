@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Backoff } from './backoff'
-import { type ConnectionHandlers, ReconnectLoop } from './reconnect'
+import { type ConnectionHandlers, MAX_RETRY_HINT_MS, ReconnectLoop } from './reconnect'
 import { FakeScheduler } from './test-support'
 import type { PushStatus } from './types'
 
@@ -169,6 +169,33 @@ describe('ReconnectLoop', () => {
     loop.start()
     connector.attempts[0]?.handlers.reportClosed(new Error('x'))
     expect(scheduler.delays).toEqual([2500])
+  })
+
+  it('caps an over-large retry hint instead of letting it dictate the delay (F5)', () => {
+    // The hint is a floor, so the capped, jittered backoff can never win against it: 4e9 ms is
+    // truncated by setTimeout to a signed 32-bit int and fires in ~1 ms (a hot reconnect loop
+    // re-sending the credential), while 2e9 (~23 days) silences push for the session. Neither is
+    // a delay the loop may adopt.
+    for (const hint of [4_000_000_000, 2_000_000_000]) {
+      const backoff = new Backoff({ initialDelay: 100, factor: 2, random: () => 0 })
+      const { loop, connector, scheduler } = makeLoop({ backoff, retryHint: () => hint })
+      loop.start()
+      connector.attempts[0]?.handlers.reportClosed(new Error('x'))
+      expect(scheduler.delays, String(hint)).toEqual([MAX_RETRY_HINT_MS])
+    }
+  })
+
+  it('ignores a hint that is not a delay (0, negative, NaN) and keeps the backoff', () => {
+    // `Math.max(backoff, 0)` was already harmless, but a negative or NaN one is not: NaN poisons
+    // the max and setTimeout then fires immediately, reconnecting with no backoff at all.
+    for (const hint of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      // random → 1 so the jittered window is its full 100 ms and a lost backoff would show.
+      const backoff = new Backoff({ initialDelay: 100, factor: 2, random: () => 1 })
+      const { loop, connector, scheduler } = makeLoop({ backoff, retryHint: () => hint })
+      loop.start()
+      connector.attempts[0]?.handlers.reportClosed(new Error('x'))
+      expect(scheduler.delays, String(hint)).toEqual([100])
+    }
   })
 
   it('stop() closes the live connection, cancels the timer and goes to closed', () => {

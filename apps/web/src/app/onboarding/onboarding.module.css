@@ -92,6 +92,20 @@
   flex-direction: column;
 }
 
+/*
+ * The public-computer option (FR-AUTH-07). It sits below BOTH sign-in methods because it governs
+ * both, separated by a rule so it reads as a property of the sign-in rather than as one more field
+ * of the password form it used to live in.
+ */
+.publicComputer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin-block-start: var(--waxwing-space-4);
+  padding-block-start: var(--waxwing-space-4);
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
 /* A subtle, decorative divider between the OAuth and Basic options. */
 .separator {
   block-size: 1px;

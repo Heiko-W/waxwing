@@ -139,6 +139,59 @@ describe('body seeds', () => {
   })
 })
 
+/**
+ * The seed is where mail HTML leaves the sandboxed reading frame for the app document, so BOTH seed
+ * builders — and `buildReplyDraft`, the only entry point the app actually calls — have to run the
+ * quote pass. `quoted-html.test.ts` covers what that pass does; these pin that it is wired to every
+ * path a body can take, which is the half a unit test of the pass alone cannot see.
+ */
+describe('body seeds — quoted mail HTML is re-sanitized for the app DOM', () => {
+  const draft = (kind: ReplyKind, bodyHtml: string) =>
+    buildReplyDraft({
+      kind,
+      source: source({ id: 'm1' }),
+      bodyHtml,
+      textBody: '',
+      ownAddresses: [],
+      attribution: 'On X, A wrote:',
+      forwardSeparator: '--',
+      forwardHeaderBlock: 'From: A',
+    })
+  const overlay =
+    '<div style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:2147483647;background:#fff">' +
+    '<form><input name="password"></form></div>'
+
+  it.each([
+    [
+      'quoteBody',
+      () => quoteBody({ bodyHtml: overlay, textBody: '', attribution: 'On X, A wrote:' }),
+    ],
+    [
+      'forwardBody',
+      () =>
+        forwardBody({ bodyHtml: overlay, textBody: '', separator: '--', headerBlock: 'From: A' }),
+    ],
+    ['buildReplyDraft(reply)', () => draft('reply', overlay).body],
+    ['buildReplyDraft(forward)', () => draft('forward', overlay).body],
+  ])('%s strips position/inset/z-index and the input widget', (_name, build) => {
+    const html = build()
+    expect(html).not.toMatch(/position|z-index|100vw|100vh|top:|left:/)
+    expect(html).not.toContain('<input')
+    expect(html).not.toContain('<form')
+  })
+
+  it('still carries ordinary quoted formatting into the seed', () => {
+    const html = quoteBody({
+      bodyHtml: '<p style="color:#c00"><b>bold</b> <a href="https://e.test/x">link</a></p>',
+      textBody: '',
+      attribution: 'a',
+    })
+    expect(html).toContain('style="color:#c00"')
+    expect(html).toContain('<b>bold</b>')
+    expect(html).toContain('href="https://e.test/x"')
+  })
+})
+
 describe('identity', () => {
   it('infers From from the addressed own address', () => {
     const src = source({ to: [addr('other@x.test')], cc: [addr('ME@x.test')] })

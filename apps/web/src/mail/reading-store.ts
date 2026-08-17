@@ -20,7 +20,12 @@ export interface ReadingHandlers {
   readonly emailId: Id
   /** The mailbox the message is being read in — the `from` of a move; `null` when unknown. */
   readonly mailboxId: Id | null
-  /** Reply/forward need the loaded body; false while it is still fetching (the buttons are disabled). */
+  /**
+   * Reply/forward need the SANITIZED body, so this covers both fetches: the body itself and the
+   * inline `cid:` images the sanitize pass waits on. False through either (the buttons carry the
+   * same condition). Seeding a draft in the second window used to quote the raw mail; it now quotes
+   * nothing, and this is what keeps the reader from meeting that empty quote.
+   */
   readonly bodyReady: boolean
   compose(kind: ReplyKind): void
   /**

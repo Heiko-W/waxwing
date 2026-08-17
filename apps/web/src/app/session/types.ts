@@ -84,8 +84,14 @@ export interface SessionContextValue {
 
   // Onboarding (FR-AUTH-01/02/03/04).
   submitConnect(emailOrServer: string): void
-  chooseOAuth(): void
-  submitBasic(username: string, password: string, staySignedIn: boolean): void
+  /** `publicComputer` (FR-AUTH-09) applies to OAuth exactly as it does to Basic. */
+  chooseOAuth(publicComputer?: boolean): void
+  submitBasic(
+    username: string,
+    password: string,
+    staySignedIn: boolean,
+    publicComputer?: boolean,
+  ): void
   editServer(): void
 
   // Re-auth without losing state (FR-AUTH-06). `reportAuthExpired` is idempotent.

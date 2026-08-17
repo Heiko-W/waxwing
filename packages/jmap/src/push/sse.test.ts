@@ -3,6 +3,7 @@ import type { AuthProvider } from '../auth'
 import { basic, bearer } from '../auth'
 import type { StateChange } from '../types/push'
 import { SseChannel } from './sse'
+import { MAX_SSE_BUFFER_CHARS } from './sse-parser'
 import { FakeScheduler, sseFetchMock, tick } from './test-support'
 import type { PushStatus } from './types'
 
@@ -149,6 +150,26 @@ describe('SseChannel', () => {
     connections[0]?.end()
     await tick()
     expect(scheduler.delays).toEqual([2500])
+    channel.close()
+  })
+
+  it('drops the connection when the stream overruns the parse buffer (F19)', async () => {
+    // A stream that never terminates its line: the parser used to buffer it whole (and rescan it
+    // from 0 on every read), so the tab died with no request outstanding and nothing logged. The
+    // overrun is now an ordinary connection error — reported, backed off, retried.
+    const { channel, connections, scheduler, statuses, errors } = harness()
+    channel.open()
+    await tick()
+    connections[0]?.push(`data: ${'x'.repeat(MAX_SSE_BUFFER_CHARS)}`)
+    await tick()
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0]?.message).toContain('parse buffer')
+    expect(statuses.at(-1)).toBe('reconnecting')
+    expect(scheduler.pending).toBe(1)
+    // The response body is aborted rather than left open for the server to keep feeding: the
+    // stream is errored, so the mock can no longer enqueue into it.
+    expect(() => connections[0]?.push('data: more\n\n')).toThrow()
     channel.close()
   })
 

@@ -12,6 +12,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { fetchThrottled } from './http.mjs'
 
 const COMPOSE_FILE = fileURLToPath(new URL('./docker-compose.yml', import.meta.url))
 
@@ -153,7 +154,7 @@ async function waitForReady(timeoutMs = 120_000) {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     try {
-      const res = await fetch(SESSION_URL, { redirect: 'follow' })
+      const res = await fetchThrottled(SESSION_URL, { redirect: 'follow' })
       if (res.status === 200) return
     } catch {
       // Listener not accepting connections yet — keep polling.
@@ -165,7 +166,7 @@ async function waitForReady(timeoutMs = 120_000) {
 
 // A single-call JMAP management request, authenticated as the recovery admin.
 async function jmap(methodCalls) {
-  const res = await fetch(JMAP_URL, {
+  const res = await fetchThrottled(JMAP_URL, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -320,7 +321,7 @@ const SHARE_USING = [
 
 /** A JMAP request as a regular USER (sharing is the grantor's own act, not the admin's). */
 async function jmapAs(account, using, methodCalls) {
-  const res = await fetch(JMAP_URL, {
+  const res = await fetchThrottled(JMAP_URL, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -336,7 +337,7 @@ async function jmapAs(account, using, methodCalls) {
 
 /** The account id the OWNER's own session names — the one their `Mailbox/set` must be scoped to. */
 async function ownAccountId(account) {
-  const res = await fetch(SESSION_URL, {
+  const res = await fetchThrottled(SESSION_URL, {
     headers: { authorization: basicAuth(account.login, account.password) },
     redirect: 'follow',
   })
@@ -461,19 +462,19 @@ export async function revokeDelegations() {
 export async function smoke() {
   const [alice] = ACCOUNTS
 
-  const anon = await fetch(SESSION_URL, { redirect: 'follow' })
+  const anon = await fetchThrottled(SESSION_URL, { redirect: 'follow' })
   assert(anon.status === 200, `unauth session: expected 200, got ${anon.status}`)
   const anonDoc = await anon.json()
   assert(isNonEmptyObject(anonDoc.capabilities), 'unauth session: missing capabilities')
   assert(Object.keys(anonDoc.accounts ?? {}).length === 0, 'unauth session leaked accounts')
   assert(!anonDoc.username, 'unauth session leaked a username')
 
-  const badRes = await fetch(`${BASE_URL}/jmap/session`, {
+  const badRes = await fetchThrottled(`${BASE_URL}/jmap/session`, {
     headers: { authorization: basicAuth('nobody', 'wrong-password') },
   })
   assert(badRes.status === 401, `invalid credentials: expected 401, got ${badRes.status}`)
 
-  const okRes = await fetch(SESSION_URL, {
+  const okRes = await fetchThrottled(SESSION_URL, {
     headers: { authorization: basicAuth(alice.login, alice.password) },
     redirect: 'follow',
   })

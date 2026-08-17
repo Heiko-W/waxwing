@@ -39,7 +39,12 @@ export const NOTIFY_CLICK = 'NOTIFY_CLICK'
 
 export interface NotifyClickMessage {
   readonly type: typeof NOTIFY_CLICK
-  /** A base-relative ROUTE path, e.g. `/mail/inbox/42` — never an href. */
+  /**
+   * A base-relative ROUTE path, e.g. `/mail/inbox/42?account=s2` — never an href. It carries the
+   * `?account=` query whenever the notification named an account (see
+   * {@link notificationTargetPath}), so the page must treat it as a path *and* search, not just a
+   * pathname.
+   */
   readonly path: string
 }
 
@@ -68,12 +73,26 @@ export function routeBase(root: string): string {
  * throws — the `data` came back through structured clone from the OS notification shade, and a
  * notification that survived a browser restart with a shape we no longer recognise must still open
  * the app rather than kill the click handler.
+ *
+ * **The `accountId` is always passed through to `mailPath`, including when it names the user's own
+ * account** (B37). It is not decoration and it is not only about delegation: without it the path
+ * arrives at `navigate()` unqualified, and `carryAccount` (RouterProvider.tsx) then fills the gap
+ * from whatever the CURRENT route says. So a user reading a shared account at `/mail/x?account=s2`
+ * who taps a banner for their OWN inbox would inherit `?account=s2` — and the short, per-account
+ * JMAP ids in the banner would very likely hit a real, different mailbox/message over there. Wrong
+ * mail, in a URL that reads as correct. Qualifying unconditionally also means the app never has to
+ * know here which of the accounts is primary; `resolveActiveAccount` vets the id against the granted
+ * set anyway, so naming the primary explicitly is a no-op rather than a second code path.
+ *
+ * The unrecognised-shape fallback is the one path left unqualified, deliberately: there is no id to
+ * qualify it with, and `/mail` names no mailbox and no message, so inheriting the current account
+ * lands the user on a mail home rather than on the wrong message.
  */
 export function notificationTargetPath(data: unknown): string {
   if (!isMailNotificationData(data)) return mailPath()
-  if (data.mailboxId === null) return mailPath()
-  if (data.emailId === null) return mailPath(data.mailboxId)
-  return mailPath(data.mailboxId, data.emailId)
+  if (data.mailboxId === null) return mailPath(undefined, undefined, data.accountId)
+  if (data.emailId === null) return mailPath(data.mailboxId, undefined, data.accountId)
+  return mailPath(data.mailboxId, data.emailId, data.accountId)
 }
 
 /** The same target as a real href under the deployment root — for `clients.openWindow()`. */
