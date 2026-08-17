@@ -33,9 +33,39 @@ pnpm gate:fast      # the hermetic half only (also wired to .githooks/pre-push)
 `pnpm verify` is the inner loop and takes a couple of minutes. `pnpm gate` is what a change
 must pass before it is proposed; it takes about ten.
 
-There is no hosted CI today (ADR-003). `.github/workflows/ci.yml` exists and calls the same
-`scripts/ci.mjs` the local gate does, so the two cannot drift — it is not active because
-there is no repository yet.
+Hosted CI runs on every pull request and every push to `main`, in two jobs that start together:
+
+| Job | Runs | Takes |
+| --- | --- | --- |
+| `verify (typecheck, lint, tests, size)` | `pnpm verify` — the hermetic half | ~2 min |
+| `e2e (Stalwart fixture + Playwright)` | `pnpm verify:e2e` — Docker, the JMAP integration suites, six Playwright suites | ~7 min |
+
+Both call the same pnpm scripts the local gate does, which is ADR-003's rule: a workflow that
+reimplements a script drifts from it. So there is nothing CI runs that you cannot run here, and
+`pnpm gate` is still what a change should pass before it is proposed.
+
+`verify` is a **required check** — a pull request cannot merge while it is red. `e2e` is not
+required yet, and that is a deliberate, temporary asymmetry: it touches Docker, a real mail
+server and a browser, so it is the job that flakes, and a required check that flakes teaches
+people to ignore it. Read it anyway. It is the job that catches what the unit tests
+structurally cannot.
+
+## Proposing a change
+
+1. **Fork** and branch from `main`. Branch names are free-form; the commit messages carry the
+   meaning here.
+2. Run `pnpm gate` (about ten minutes). If it cannot pass locally, say so in the pull request
+   and why — a change that needs a second pair of eyes on a failure is welcome; a change that
+   quietly hopes CI disagrees is not.
+3. Open the pull request. **No approving review is required** — this is a one-maintainer
+   project and a mandatory approval would only ever be theatre — but the required check is not
+   optional, and a change that touches behaviour without a test that fails when it is reverted
+   will be sent back.
+4. Describe **what was wrong**, not what you changed. The diff already says what you changed.
+
+For anything large or architectural, open an issue first. Not for permission — to find out
+early whether a decision already exists in [`docs/adr/`](docs/adr/) that would send the change
+in a different direction.
 
 ## What "done" means here
 

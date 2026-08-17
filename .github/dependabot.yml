@@ -29,7 +29,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    # 10, not the default 5. There are nine pinned actions, and at 5 the bot silently stopped
+    # proposing anything once five PRs sat open: `actions/checkout` (v4 → v7),
+    # `actions/setup-node` (v4 → v7) and `pnpm/action-setup` (v4 → v6) were all behind that cap
+    # and invisible. A limit lower than the number of things being watched turns "Dependabot
+    # maintains the pins" into "Dependabot maintains whichever pins moved first" — which is the
+    # quiet rot this file exists to prevent.
+    #
+    # NOT `groups`, deliberately: one grouped PR spanning eight majors fails as a unit, and then
+    # nothing moves at all.
+    open-pull-requests-limit: 10
     commit-message:
       # Conventional Commits, scope `ci` — the same convention CLAUDE.md requires of humans.
       prefix: 'chore(ci)'
