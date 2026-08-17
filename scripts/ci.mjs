@@ -154,8 +154,15 @@ async function integration() {
   // result is worse than no stage, so the ~20 s to recreate it is the right price.
   stage('fixture down (isolate the e2e stage)', ['e2e:server:down'])
 
-  const skipped = /(\d+)\s+skipped/.exec(output)
-  const passed = /Tests\s+(\d+)\s+passed/.exec(output)
+  // STRIP ANSI FIRST. Vitest colours its summary when it believes something is watching, and
+  // GitHub's runner is one of those somethings — so in CI the line carries escape sequences
+  // BETWEEN the word `Tests` and the number, and `/Tests\s+(\d+)/` matches nothing. Locally the
+  // output goes down a pipe, vitest drops the colour, and the same regex works fine. The result
+  // was this check failing every hosted run with "they did not really run" about nine tests that
+  // had passed on screen a second earlier: the B22 guard defeating itself.
+  const plain = output.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
+  const skipped = /(\d+)\s+skipped/.exec(plain)
+  const passed = /Tests\s+(\d+)\s+passed/.exec(plain)
   if (skipped !== null && Number(skipped[1]) > 0) {
     failed = `jmap integration suites skipped ${skipped[1]} test(s) — the fixture was not reachable`
     throw new Error(
