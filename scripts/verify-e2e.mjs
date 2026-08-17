@@ -61,15 +61,10 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 let failure
 
 try {
-  // The workspace libraries FIRST. Every Playwright config's webServer runs `vite build`, and the
-  // app imports `@waxwing/jmap` etc. through their `exports` → `dist/index.js`. Without a build
-  // those files do not exist and the bundle fails to resolve them.
-  //
-  // `pnpm verify` opens with the same step, which is exactly why this was missing here and why it
-  // was invisible locally: anyone who has ever run `verify` has a `dist/` lying around, so
-  // `verify:e2e` on its own appeared to work. On a clean checkout — CI, or a new contributor's
-  // first run — it fails inside a webServer with `Rolldown failed to resolve import`, which reads
-  // like an application bug rather than a missing build step.
+  // The workspace libraries FIRST. Kept even though `@waxwing/web`'s own `build` script now does
+  // it too: this fails in four seconds with a clear label, where the same missing build inside a
+  // Playwright webServer surfaces as `Rolldown failed to resolve import` two minutes in and reads
+  // like an application bug. Belt and braces, cheap ones.
   run('build workspace libraries', ['build:libs'])
   run('install pinned chromium', [
     '--filter',

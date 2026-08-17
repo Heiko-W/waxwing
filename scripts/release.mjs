@@ -189,7 +189,11 @@ async function main() {
   const v = version()
 
   log(`building apps/web for v${v}`)
-  run('pnpm', ['--filter', '@waxwing/web', 'exec', 'vite', 'build'])
+  // `build`, not `exec vite build`: that script builds the workspace libraries first. The app
+  // imports `@waxwing/jmap` and its siblings through their `exports` → `dist/index.js`, which do
+  // not exist in a clean checkout — so a bare `vite build` fails to resolve them. This bit twice
+  // (once in `verify-e2e.mjs`, once here) before the dependency moved into the script that owns it.
+  run('pnpm', ['--filter', '@waxwing/web', 'build'])
 
   rmSync(OUT, { recursive: true, force: true })
   mkdirSync(OUT, { recursive: true })

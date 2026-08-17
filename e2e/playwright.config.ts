@@ -47,7 +47,7 @@ export default defineConfig({
   webServer: {
     // Build the static bundle, then serve it with `vite preview` on the single PORT
     // constant that also drives BASE_URL / use.baseURL above (one source of truth).
-    command: `pnpm --filter @waxwing/web exec vite build && pnpm --filter @waxwing/web exec vite preview --port ${PORT} --strictPort`,
+    command: `pnpm --filter @waxwing/web build && pnpm --filter @waxwing/web exec vite preview --port ${PORT} --strictPort`,
     url: BASE_URL,
     // Reuse tradeoff: locally (non-CI) an already-running preview on this port is reused
     // as-is, so the `vite build` step above is skipped and a STALE bundle can be tested.

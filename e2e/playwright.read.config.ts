@@ -99,7 +99,7 @@ export default defineConfig({
   webServer: {
     // Build the shipping bundle, then preview it with the same-origin Stalwart proxy switched on.
     command:
-      'pnpm --filter @waxwing/web exec vite build && ' +
+      'pnpm --filter @waxwing/web build && ' +
       `pnpm --filter @waxwing/web exec vite preview --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

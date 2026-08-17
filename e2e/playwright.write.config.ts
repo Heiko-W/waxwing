@@ -27,7 +27,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command:
-      'pnpm --filter @waxwing/web exec vite build && ' +
+      'pnpm --filter @waxwing/web build && ' +
       `pnpm --filter @waxwing/web exec vite preview --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

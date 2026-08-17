@@ -34,7 +34,7 @@ export default defineConfig({
   ],
   webServer: {
     // Build the shipping bundle, then serve it under the mount instead of at the root.
-    command: `pnpm --filter @waxwing/web exec vite build && node mount-server.mjs --port ${PORT}`,
+    command: `pnpm --filter @waxwing/web build && node mount-server.mjs --port ${PORT}`,
     // The mount server 302s `/` to the mount, so the readiness probe on the origin root
     // resolves without needing the prefix here.
     url: BASE_URL,
