@@ -39,7 +39,7 @@ body:
     attributes:
       label: How is Waxwing deployed?
       description: Stalwart Application, reverse proxy, CDN, or `pnpm dev`.
-      placeholder: Stalwart Application at /mail
+      placeholder: Stalwart Application at /webmail
     validations: { required: true }
 
   - type: textarea

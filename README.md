@@ -154,9 +154,10 @@ Contributions are welcome, and the project is unusually explicit about what it e
 test has to fail when your fix is removed.** That second one is the house rule; the guide
 illustrates it with three real cases where a green test was measuring nothing.
 
-Good places to start are in the issue tracker. Bug reports are genuinely useful — especially
-with a `.eml` attached for anything about how a message renders, which is the only way to
-reproduce those exactly.
+The issue tracker is empty at the time of writing, so there is no curated starter list — pick
+something that bothers you. Bug reports are genuinely useful on their own, especially with a
+`.eml` attached for anything about how a message renders, which is the only way to reproduce
+those exactly.
 
 ## Licence
 
@@ -165,12 +166,28 @@ let people use it over a network, they get your changes too.
 
 Two packages are **MIT** so that clients which are not themselves AGPL can use them:
 [`@waxwing/jmap`](packages/jmap) (a typed JMAP client, no runtime dependencies) and
-[`@waxwing/jscontact`](packages/jscontact) (JSContact ⇆ vCard). Neither is on npm yet.
+[`@waxwing/jscontact`](packages/jscontact) (JSContact ⇆ vCard). Neither is on npm yet. The cut is
+enforced by the dependency direction: neither MIT package imports AGPL code.
+
+Everything else — `apps/web`, `packages/mail-html`, `e2e`, `scripts`, `docs` — is AGPL-3.0-only.
+
+This explanation used to sit at the top of [`LICENSE`](LICENSE), which cost the project its licence
+badge: GitHub reads that file to identify the licence, ten lines of preamble made it
+`NOASSERTION`, and a `license:agpl-3.0` search did not return this repository at all. `LICENSE` is
+now the verbatim AGPL-3.0 text — `diff` against gnu.org's copy is empty — and the scope note lives
+here, where a reader was going to look anyway.
 
 ## Development
 
-**Prerequisites:** [Node.js](https://nodejs.org) ≥ 22 and [pnpm](https://pnpm.io) ≥ 10
-(`corepack enable` picks up the version pinned in `package.json`).
+**Prerequisites:** [Node.js](https://nodejs.org) **24** — the version in `.nvmrc`, and not just a
+recommendation — and [pnpm](https://pnpm.io) ≥ 10 (`corepack enable` picks up the version pinned in
+`package.json`). `nvm use` is enough.
+
+This line used to say "≥ 22", which `engines` still allowed and which is how a newcomer ends up on
+Node 26: install succeeds, the dev server runs, and then `pnpm verify` fails **54 tests** with
+nothing in eighteen thousand lines of output mentioning the Node version. Node ≥ 25 defines a
+global `localStorage` that shadows jsdom's. `pnpm verify` now refuses to start on the wrong major
+and says so.
 
 ```sh
 pnpm install

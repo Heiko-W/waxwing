@@ -45,6 +45,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const args = new Set(process.argv.slice(2))
 const FAST = args.has('--fast')
 const ONLY_ACTIONS = args.has('--check-actions')
+const ONLY_NODE = args.has('--check-node')
 const NO_E2E = args.has('--no-e2e')
 
 const results = []
@@ -179,26 +180,52 @@ if (ONLY_ACTIONS) {
   process.exit(0)
 }
 
-function preflight() {
-  heading('preflight')
-  const started = Date.now()
-
+/**
+ * `.nvmrc` is the only Node version this repository's tests are known good on, and `engines` is
+ * advisory — so nothing stopped a newcomer following README's old "≥ 22" onto node 26.
+ *
+ * What that costs, measured on a fresh clone: `pnpm install --frozen-lockfile` exits 0 without a
+ * warning, the dev server runs, and then `pnpm verify` fails 54 tests across eighteen thousand
+ * lines of output that never once name the Node version. On node >= 25 a global `localStorage`
+ * exists but is `undefined` without --localstorage-file, and it shadows jsdom's.
+ *
+ * This used to live inside `preflight()`, i.e. only under `pnpm gate` — the command CONTRIBUTING
+ * puts at step 2, after the one that breaks. `pnpm verify` calls it directly now
+ * (`pnpm check:node`), so the first thing a contributor runs is also the first thing that checks.
+ */
+function checkNodeVersion(next) {
   const want = readFileSync(new URL('../.nvmrc', import.meta.url), 'utf8').trim()
   const have = process.versions.node
-  const haveMajor = have.split('.')[0]
-  if (haveMajor !== want) {
+  if (have.split('.')[0] !== want) {
     console.error(
       `\n[ci] REFUSING TO RUN — node ${have}, but .nvmrc pins ${want}.\n` +
         '\n' +
         '  This is not pedantry. On node >= 25 a global `localStorage` exists but is `undefined`\n' +
-        "  without --localstorage-file, and it shadows jsdom's: 22 tests then fail for reasons that\n" +
-        '  have nothing to do with the code under test. A gate you cannot trust is worse than none.\n' +
+        "  without --localstorage-file, and it shadows jsdom's: dozens of tests then fail for\n" +
+        '  reasons that have nothing to do with the code under test, and nothing in the output\n' +
+        '  says so. A gate you cannot trust is worse than none.\n' +
         '\n' +
         `  Fix:  nvm use ${want}     (or: nvm install ${want})\n` +
-        `  Then: pnpm gate${FAST ? ' --fast' : ''}\n`,
+        `  Then: ${next}\n`,
     )
     process.exit(1)
   }
+  return { want, have }
+}
+
+// `pnpm check:node` — the version guard on its own, so `pnpm verify` fails in a second with a
+// sentence a newcomer can act on, rather than in two minutes with 54 unrelated red tests.
+if (ONLY_NODE) {
+  const { want, have } = checkNodeVersion('pnpm verify')
+  console.log(`[ci] node ${have} matches .nvmrc (${want})`)
+  process.exit(0)
+}
+
+function preflight() {
+  heading('preflight')
+  const started = Date.now()
+
+  const { want, have } = checkNodeVersion(`pnpm gate${FAST ? ' --fast' : ''}`)
   console.log(`  node ${have} matches .nvmrc (${want})`)
 
   const pnpmVersion = execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim()
