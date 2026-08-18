@@ -12,6 +12,9 @@ coverage/
 # Screenshot capture output. Only the converted WebP files in docs/site/shots/ are committed —
 # see scripts/shots-convert.mjs for why both would be a mistake.
 e2e/shots/out/
+# UI-audit capture output (screenshots + the measurement JSON behind docs/ui-audit.md). Evidence for
+# a review, not a build input: regenerate it with playwright.audit.config.ts rather than commit it.
+e2e/audit/out/
 test-results/
 playwright-report/
 blob-report/
