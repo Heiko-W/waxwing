@@ -51,10 +51,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # `persist-credentials: false` — checkout's DEFAULT is to leave the job's token in
-      # `.git/config`, where every later step can read it. Nothing here pushes, so nothing here
-      # needs it. See release.yml, where the same default hands a `contents: write` token to a job
-      # that then runs `pnpm install` with an allowed postinstall script.
+      # `persist-credentials: false` — checkout's DEFAULT is to leave the job's token on the
+      # runner, where every later step can read it. Nothing here pushes, so nothing here needs it.
+      # See release.yml, where the same default hands a `contents: write` token to a job that then
+      # runs `pnpm install` with an allowed postinstall script.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

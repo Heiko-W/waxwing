@@ -36,13 +36,20 @@
 #    job — which runs `pnpm gate`: Docker, Playwright, the whole dependency tree, none of it ours
 #    — held a token that can push to the repository and create releases, for forty-five minutes,
 #    for no reason. Permissions now sit on the job that needs them and nowhere else.
-# 3. **`persist-credentials: false` on every checkout.** The default is `true`, which writes the
-#    job's token into `.git/config` on the runner — so it outlives the checkout step and is
-#    readable by everything after it. In the `release` job that token is `contents: write`, and the
-#    steps after it include `pnpm install` (which is allowed to run esbuild's postinstall) and
-#    `pnpm release`. Neither job pushes with git, so neither needs the credential to persist at all.
-#    This is the same class of reasoning as the pins above: shrink what a step could do, not just
-#    what it does.
+# 3. **`persist-credentials: false` on every checkout.** The default is `true`, which leaves the
+#    job's token on the RUNNER after the checkout step is over, readable by everything that comes
+#    after it. In the `release` job that token is `contents: write`, and the steps after it include
+#    `pnpm install` (which is allowed to run esbuild's postinstall) and `pnpm release`. Neither job
+#    pushes with git, so neither needs the credential to persist at all. Same class of reasoning as
+#    the pins above: shrink what a step COULD do, not only what it does.
+#
+#    WHERE the token is left changed under us, and the earlier wording did not survive it. Up to
+#    checkout v5 the default wrote the credential into the repository's own `.git/config`; from
+#    v6.0.0 it writes `$RUNNER_TEMP/git-credentials-<uuid>.config` and pulls that in through an
+#    `includeIf` (see `credentialsConfigPath` in src/git-auth-helper.ts at the pinned SHA). That is
+#    tidier — it stops the credential travelling with the checked-out tree — but it does not change
+#    the fact this bullet is about: `RUNNER_TEMP` is readable by every later step in the same job.
+#    So `false` stays right at all five call sites, and the sentence naming `.git/config` did not.
 #
 # ── WHAT THE ATTESTATION BUYS THAT SHA256SUMS DOES NOT ────────────────────────────────────────
 #
