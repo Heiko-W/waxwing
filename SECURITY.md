@@ -214,12 +214,22 @@ threat in this document, because a modified Waxwing sees everything the real one
   repository, this workflow file and the commit it was built from:
 
   ```sh
-  gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing
+  gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
+    --source-ref refs/tags/v0.10.0
   ```
 
   This is the one control here that a checksum is not, because the signature is made by the
   runner's OIDC identity and cannot be reproduced by someone holding release rights on their
-  own machine. It answers "who built it", never "is it good". **It starts with v0.10.0**: the
+  own machine. It answers "who built it", never "is it good".
+
+  **`--source-ref` is not optional here, and this document used to omit it.** The release
+  workflow can be dispatched against a branch, and does that deliberately as a rehearsal — so
+  attestations exist that name `refs/heads/main`. Without `--source-ref` the check accepts them:
+  measured, exit 0 on a rehearsal artefact, and exit 1 with
+  `expected SourceRepositoryRef to be refs/tags/v0.10.0, got refs/heads/main` once the flag is
+  given. Whoever can push a branch here can therefore produce a zip that passes the unqualified
+  command — and "whoever can push a branch" is a strictly weaker position than the release
+  rights this control exists to constrain. **It starts with v0.10.0**: the
   v0.9.0 assets carry no attestation and `verify` fails on them with "no attestations found",
   which is the correct answer and not a tampering signal.
 - **AGPL-3.0** obliges a hoster who modifies Waxwing to publish the modification. That is a

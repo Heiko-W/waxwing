@@ -67,9 +67,15 @@ point `resourceUrl` at a versioned asset and drop the field — then upgrading i
 you can check what you are upgrading to:
 
 ```sh
-sha256sum -c SHA256SUMS                                        # arrived intact
-gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing   # built here, from this repo
+sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
+gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
+  --source-ref refs/tags/v0.10.0                               # built here, from THAT TAG
 ```
+
+`--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
+without it the command fails on the two you did not fetch. `--source-ref` because without it
+the check also passes for a build from any branch of this repository — including the rehearsal
+builds the release workflow makes on purpose. Name the tag you are installing.
 
 The [deployment guide](docs/deployment.md#verifying-what-you-installed) has both forms, and
 [`SECURITY.md`](SECURITY.md) §4 says what each check does and does not cover.

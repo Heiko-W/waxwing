@@ -207,8 +207,9 @@
   -H 'Content-Type: application/json' \
   -d '{"using":["urn:ietf:params:jmap:core"],"methodCalls":[["x:Application/set",
        {"create":{"waxwing":{"enabled":true,
+        "description":"Waxwing webmail",
         "resourceUrl":"https://…/waxwing-stalwart-v0.10.0.zip",
-        "urlPrefix":{"mail":true}}}},"c1"]]}'</code></pre>
+        "urlPrefix":{"/webmail":true}}}},"c1"]]}'</code></pre>
       <p>
         Same origin, so no CORS and nothing else to run. Two other paths — a reverse proxy, and a
         CDN with the trade-off it carries — are in the deployment guide.
