@@ -97,11 +97,16 @@ replace the zip can replace the checksum file next to it. Releases therefore car
 Sigstore-signed build-provenance attestation, made by the GitHub runner's own identity:
 
 ```sh
-gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing
+gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
+  --source-ref refs/tags/v0.10.0
 ```
 
-It passes only for a file built by this repository's release workflow, from a commit in this
-repository. It starts with v0.10.0 — on the v0.9.0 assets it reports "no attestations found",
+**Give `--source-ref`, and name the tag you are installing.** Without it the check passes for
+anything this workflow built from *any* ref, branches included — and branch builds exist, because
+the workflow is dispatched as a rehearsal on purpose. With it, a rehearsal artefact is rejected:
+`expected SourceRepositoryRef to be refs/tags/v0.10.0, got refs/heads/main`.
+
+It then passes only for a file built by this repository's release workflow, from that tag. It starts with v0.10.0 — on the v0.9.0 assets it reports "no attestations found",
 which is the truthful answer and not a tampering signal.
 
 Neither check says the code is *good*; both say where it came from. See

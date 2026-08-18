@@ -59,8 +59,10 @@
 # `actions/attest-build-provenance` records a Sigstore-signed SLSA provenance statement binding the
 # artefact digest to THIS repository, THIS workflow file and THIS commit, keyless (the runner's
 # OIDC identity, no key for a solo maintainer to lose). A deployer checks it with
-#   gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing
-# and it fails for a zip built anywhere else. What it still does not cover: a compromise of the
+#   gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
+#     --source-ref refs/tags/vX.Y.Z
+# and it fails for a zip built anywhere else. `--source-ref` is load-bearing and this file used to
+# omit it: see the note on the attest step below. What it still does not cover: a compromise of the
 # source this workflow builds. Provenance answers "who built it", never "is it good".
 
 name: Release
@@ -135,8 +137,19 @@ jobs:
       # Immediately after the build and before anything else touches `dist-release/`, so the
       # digests in the provenance statement are the ones the packer just produced. Deliberately NOT
       # gated on `refs/tags/v`: an attestation step whose first execution is the release it exists
-      # to protect is a step nobody has tested. A rehearsal's attestation is honest — it says a
-      # branch build happened — and `gh attestation verify` shows which ref it came from.
+      # to protect is a step nobody has tested. That reasoning still holds, and the rehearsal has
+      # since paid for itself twice.
+      #
+      # WHAT DID NOT HOLD is the sentence that used to end this paragraph: "a rehearsal's
+      # attestation is honest — it says a branch build happened — and `gh attestation verify` shows
+      # which ref it came from". It does not. The ref is in the statement, but the command neither
+      # prints it (nothing on stdout without a TTY) nor checks it, so the verification this project
+      # published accepted a rehearsal artefact as a release. Measured on the artefact of run
+      # 32134052465: `--repo` alone exits 0; adding `--source-ref refs/tags/v0.10.0` exits 1 with
+      # `expected SourceRepositoryRef to be refs/tags/v0.10.0, got refs/heads/main`.
+      #
+      # The rehearsal stays. Every deployer-facing recipe now carries `--source-ref`, which is
+      # where the check belonged in the first place.
       - name: Attest build provenance (SLSA, keyless — see the header)
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -174,11 +187,16 @@ jobs:
 
             ```sh
             # Did the file survive the network and the hoster intact?
-            sha256sum -c SHA256SUMS
+            # (--ignore-missing: SHA256SUMS lists all three artefacts, you downloaded one.)
+            sha256sum -c SHA256SUMS --ignore-missing
 
-            # Was it built by this repository's release workflow, from this commit?
-            # (SHA256SUMS cannot answer that: anyone who can replace the zip can regenerate it.)
-            gh attestation verify waxwing-stalwart-${{ github.ref_name }}.zip --repo ${{ github.repository }}
+            # Was it built by this repository's release workflow, from THIS TAG?
+            # (SHA256SUMS cannot answer that: anyone who can replace the zip can regenerate it.
+            #  --source-ref is required: without it a build from any branch of this repository
+            #  passes too, and this workflow makes those deliberately as rehearsals.)
+            gh attestation verify waxwing-stalwart-${{ github.ref_name }}.zip \
+              --repo ${{ github.repository }} \
+              --source-ref refs/tags/${{ github.ref_name }}
             ```
 
             Configuration lives in `config.json` next to `index.html` and needs no rebuild —
