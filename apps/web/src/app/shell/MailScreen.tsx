@@ -90,6 +90,28 @@ export function MailScreen() {
     return () => window.removeEventListener('keydown', onKey)
   }, [foldersOpen, closeFolders])
 
+  // Picking a folder or a label closes the drawer too. Until this existed, Escape and the backdrop
+  // were the ONLY two ways out — so on a phone, tapping Inbox left the drawer (`min(80vw, 18rem)`)
+  // sitting on top of the list it had just loaded, and the way out was a second tap aimed at the
+  // strip of backdrop beside it. Every mail client on a phone closes here; this one did not.
+  //
+  // Keyed on the SELECTION rather than wired into the tree's own callback, because the drawer holds
+  // two independent navigators — the account trees and the label list — and a selection change is
+  // the one thing both of them produce. It also means "New folder" and the per-row menus, which
+  // change nothing, correctly leave the drawer open.
+  //
+  // The ref guard is what keeps this from firing on the state change that OPENS the drawer: the
+  // effect re-runs when `foldersOpen` flips, sees the selection is unchanged, and returns. Without
+  // it the drawer would close in the same frame it opened.
+  const selectionKey = `${mailboxId ?? ''}\u0000${labelView?.activeLabel ?? ''}`
+  const lastSelectionRef = useRef(selectionKey)
+  useEffect(() => {
+    if (lastSelectionRef.current === selectionKey) return
+    lastSelectionRef.current = selectionKey
+    if (!foldersOpen) return
+    closeFolders()
+  }, [selectionKey, foldersOpen, closeFolders])
+
   // Move focus to the newly shown pane when the single-pane view swaps (e.g. Back from reading
   // to list), but never on the initial mount — a deep-loaded page must not steal focus from the
   // skip link.

@@ -302,6 +302,12 @@
 
 .remoteBanner {
   display: flex;
+  /* Wrap, because the actions cannot shrink and one of them is `Always allow {{sender}}` — a
+     button whose width is the sender's display name, i.e. unbounded. Without wrapping, the row
+     gave the text whatever was left: at 390 px that was ~40 px, so the explanation of WHY remote
+     content is blocked rendered one word per line behind the buttons. The banner is the visible
+     half of a privacy decision the README makes a claim about; unreadable is not an option. */
+  flex-wrap: wrap;
   gap: var(--waxwing-space-3);
   align-items: center;
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
@@ -316,7 +322,10 @@
 }
 
 .remoteText {
-  flex: 1;
+  /* Basis, not just `flex: 1`: below ~12rem of text the actions drop to their own line instead of
+     squeezing it further. This is a content-driven threshold, so it also covers a narrow reading
+     pane on a wide screen — the split can be dragged there too. */
+  flex: 1 1 12rem;
   min-width: 0;
 }
 
@@ -335,6 +344,7 @@
 
 .remoteActions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--waxwing-space-1);
   flex-shrink: 0;
 }

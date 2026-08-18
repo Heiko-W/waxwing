@@ -29,6 +29,7 @@ export default defineConfig({
     '**/a11y.spec.ts',
     '**/perf.spec.ts',
     '**/public-computer.spec.ts',
+    '**/narrow.spec.ts',
   ],
   // One seeded account, stateful mutations (flag/move/delete/live-deliver) → keep it serial and
   // reseed per test (see read.spec.ts beforeEach), so ordering never makes a test flaky.
@@ -58,7 +59,7 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       // The swipe suite needs a touchscreen; a desktop context cannot dispatch a touch at all, and
       // the notify suite needs a browser build that can show a notification at all (see below).
-      testIgnore: ['**/swipe.spec.ts', '**/notify.spec.ts'],
+      testIgnore: ['**/swipe.spec.ts', '**/notify.spec.ts', '**/narrow.spec.ts'],
     },
     {
       // M3.9 step 5 (FR-LST-06). A phone-shaped context with a real touchscreen, because the two
@@ -68,6 +69,20 @@ export default defineConfig({
       // Input.dispatchTouchEvent — Playwright has no swipe primitive, and page.touchscreen only taps.
       name: 'chromium-touch',
       testMatch: '**/swipe.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        hasTouch: true,
+        isMobile: true,
+        viewport: { width: 390, height: 844 },
+      },
+    },
+    {
+      // The narrow layout (390 × 844, touch). Same viewport as `chromium-touch` above, separate
+      // project because these are not gesture tests and should not silently inherit the swipe
+      // suite's matcher: this one asserts that the phone LAYOUT holds together, which nothing did
+      // before it. See tests/narrow.spec.ts for what was found by not having it.
+      name: 'chromium-phone',
+      testMatch: '**/narrow.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
         hasTouch: true,

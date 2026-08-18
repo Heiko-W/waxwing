@@ -13,7 +13,7 @@ Just static files and your mail server — no middleware, no database, no contai
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/reading-light.png" width="820" alt="Waxwing reading a message: folder rail, message list, and reading pane with the remote-content banner"/>
+  <img src="docs/site/shots/desktop-reading.webp" width="820" alt="Waxwing reading a message: folder rail, message list, and reading pane with the remote-content banner"/>
 </p>
 
 ---

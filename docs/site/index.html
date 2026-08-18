@@ -104,6 +104,39 @@
         color: var(--muted);
         font-size: 0.95rem;
       }
+      /* Screenshots. `width`/`height` are on every <img> as well, so the browser reserves the box
+         before the image arrives and the text below it does not jump (CLS). */
+      figure {
+        margin: 0;
+      }
+      figure img {
+        display: block;
+        inline-size: 100%;
+        block-size: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+      figcaption {
+        margin-block-start: 0.5rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .hero {
+        margin-block: 2rem 0;
+      }
+      /* Two phones per row on the 46rem content column, one on an actual phone. 16rem is chosen
+         so a screenshot lands at ~360 px here: below about 250 px the subject lines in the list
+         stop being readable and the picture stops making its point. */
+      .phones {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+        gap: 1rem;
+        margin-block: 1rem;
+      }
+      .phones figure img {
+        border-radius: 14px;
+      }
       .note {
         border-inline-start: 3px solid var(--accent);
         padding: 0.75rem 1rem;
@@ -133,6 +166,25 @@
         static files: <strong>no middleware, no database, no container.</strong>
         <a href="https://stalw.art">Stalwart</a> can host it itself, or any web server can.
       </p>
+
+      <figure class="hero">
+        <picture>
+          <!-- The site already follows the visitor's colour scheme; the screenshot may as well.
+               Waxwing's theme setting defaults to "match system", so a dark visitor is seeing the
+               app the way it would open for them. -->
+          <source srcset="shots/desktop-reading-dark.webp" media="(prefers-color-scheme: dark)" />
+          <img
+            src="shots/desktop-reading.webp"
+            width="1472"
+            height="920"
+            alt="Waxwing reading a newsletter: a folder rail on the left, the message list in the middle, and the message on the right with a banner saying remote content was blocked."
+            fetchpriority="high"
+          />
+        </picture>
+        <figcaption>
+          Reading a message. Light and dark both ship; this one follows your system setting.
+        </figcaption>
+      </figure>
 
       <div class="note">
         <strong>Status: v0.10.0, pre-1.0.</strong> The source is at
@@ -200,6 +252,87 @@
           </p>
         </div>
       </div>
+
+      <h2>On a phone</h2>
+      <p>
+        The same static files. Below 40rem the folder rail becomes a drawer, navigation moves to
+        the bottom, and reading takes the whole screen with a way back to the list.
+      </p>
+      <div class="phones">
+        <figure>
+          <img
+            src="shots/phone-list.webp"
+            width="585"
+            height="1266"
+            loading="lazy"
+            decoding="async"
+            alt="Waxwing on a phone: the message list, with Mail, Contacts and Settings along the bottom."
+          />
+          <figcaption>The list</figcaption>
+        </figure>
+        <figure>
+          <img
+            src="shots/phone-reading.webp"
+            width="585"
+            height="1266"
+            loading="lazy"
+            decoding="async"
+            alt="A message open on a phone, filling the screen, with a Back to messages link and the remote-content banner above the body."
+          />
+          <figcaption>Reading</figcaption>
+        </figure>
+        <figure>
+          <img
+            src="shots/phone-folders.webp"
+            width="585"
+            height="1266"
+            loading="lazy"
+            decoding="async"
+            alt="The folder drawer open over the message list on a phone, showing Inbox, Drafts, Sent, Archive, Junk and Trash."
+          />
+          <figcaption>Folders</figcaption>
+        </figure>
+        <figure>
+          <img
+            src="shots/phone-compose.webp"
+            width="585"
+            height="1266"
+            loading="lazy"
+            decoding="async"
+            alt="Writing a message on a phone: recipient, subject, a formatting toolbar and an editor filling the rest of the screen."
+          />
+          <figcaption>Writing</figcaption>
+        </figure>
+      </div>
+
+      <h2>A closer look</h2>
+      <figure>
+        <img
+          src="shots/desktop-compose.webp"
+          width="1472"
+          height="920"
+          loading="lazy"
+          decoding="async"
+          alt="A reply being written in a composer window docked over the message list, with a rich-text toolbar."
+        />
+        <figcaption>
+          Writing a reply. The composer docks over the list so the conversation stays in view.
+        </figcaption>
+      </figure>
+      <figure style="margin-block-start: 1.5rem">
+        <img
+          src="shots/desktop-phishing.webp"
+          width="1472"
+          height="920"
+          loading="lazy"
+          decoding="async"
+          alt="A suspicious message open in Waxwing. Under the sender's name a red warning reads: the name shown is not the sender's real address."
+        />
+        <figcaption>
+          A message whose display name is an address it does not own. Waxwing says so — and see
+          the limitations below for what that check does not cover.
+        </figcaption>
+      </figure>
 
       <h2>Deploying it</h2>
       <p>The recommended path has Stalwart serve the app from its own origin:</p>

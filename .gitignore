@@ -9,6 +9,9 @@ build/
 
 # Test / coverage artifacts
 coverage/
+# Screenshot capture output. Only the converted WebP files in docs/site/shots/ are committed —
+# see scripts/shots-convert.mjs for why both would be a mistake.
+e2e/shots/out/
 test-results/
 playwright-report/
 blob-report/

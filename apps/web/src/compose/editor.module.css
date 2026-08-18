@@ -6,6 +6,9 @@
 .editor {
   display: flex;
   flex-direction: column;
+  /* Fill a flex parent when there is one. Inert everywhere else, which is why this is safe: until
+     `.editorWrap` became a flex column (composer.module.css) this had no effect at all. */
+  flex: 1;
   min-block-size: 0;
   border: 1px solid var(--waxwing-border-strong);
   border-radius: var(--waxwing-radius-md);
