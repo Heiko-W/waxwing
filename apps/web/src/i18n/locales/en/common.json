@@ -41,7 +41,7 @@
       "title": "Connect to your mailbox",
       "label": "Email address or server",
       "placeholder": "you@example.com",
-      "hint": "Enter your email address and {{product}} finds your server automatically.",
+      "hint": "Enter your email address — {{product}} will try your email domain. If your mail server is at a different address, enter that instead.",
       "submit": "Continue",
       "discovering": "Finding your server…"
     },
@@ -50,7 +50,10 @@
       "network": "Could not reach the server. Check your connection and try again.",
       "noAccount": "This server has no mail account for you.",
       "config": "This deployment has no server configured to connect to.",
-      "generic": "Something went wrong. Please try again."
+      "generic": "Something went wrong. Please try again.",
+      "networkHost": "Could not reach {{host}}. If your mail server is at a different address, enter it above.",
+      "oauthUnavailable": "This server does not offer secure sign-in. Use your email address and password below.",
+      "oauthUnavailableNoFallback": "This server does not offer secure sign-in, and this deployment allows no other method. Ask whoever runs it."
     }
   },
   "auth": {

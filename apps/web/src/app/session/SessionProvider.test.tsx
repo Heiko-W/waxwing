@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
+import { AuthConfigError } from '../../auth'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
 import { usePaletteUi } from '../../shortcuts'
@@ -139,6 +140,58 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.generic'),
     )
     expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+  })
+
+  it('names the host it could not reach, instead of blaming the connection', async () => {
+    // A failed fetch is a TypeError. The message used to be "check your connection", which is the
+    // wrong advice for the common case: Waxwing guesses the server from the email domain, so the
+    // connection is fine and the ADDRESS is wrong. The host is the one fact that lets a reader fix
+    // it, and the server field is right above the error.
+    const user = userEvent.setup()
+    renderSession({ probePresent: true, connectError: new TypeError('Failed to fetch') })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.networkHost'),
+    )
+  })
+
+  it('says the server has no OAuth rather than "something went wrong" (FR-SRV-02)', async () => {
+    // The sign-in screen offers whatever config.server.auth lists; the server is never asked. On a
+    // deployment without OAuth the primary button therefore throws AuthConfigError on click, and
+    // the reader used to get "Something went wrong. Please try again." — advice that repeats the
+    // same failure forever. Basic is enabled here, so the message points at it.
+    const user = userEvent.setup()
+    renderSession({ startLoginError: new AuthConfigError('no discovery document') })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('oauth-plain'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.oauthUnavailable'),
+    )
+  })
+
+  it('does not point at a password form the deployment has disabled', async () => {
+    const user = userEvent.setup()
+    renderSession(
+      { startLoginError: new AuthConfigError('no discovery document') },
+      {
+        ...DEFAULT_CONFIG,
+        server: { ...DEFAULT_CONFIG.server, auth: ['oauth'] },
+      },
+    )
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('oauth-plain'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent(
+        'onboarding.error.oauthUnavailableNoFallback',
+      ),
+    )
   })
 
   it('restores a persisted session on cold boot (FR-AUTH-03)', async () => {
