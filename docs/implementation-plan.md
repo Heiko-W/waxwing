@@ -2291,10 +2291,11 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
-### v0.11.0-dev (2026-08-18) — the pipelines, and what a review of them found
+### v0.11.0-dev (2026-08-18) — the pipelines, then the phone
 
-No application code. A review of the CI/release pipelines and the repository settings, then the
-findings closed. Recorded because two of them were holes rather than tuning.
+Two rounds. First a review of the CI/release pipelines and the repository settings, then the narrow
+layout — which a request for screenshots of the phone view turned into a bug report. Recorded
+because in both rounds the findings were holes rather than tuning.
 
 **The jmap integration suites ran once per release and never on a pull request.** B22's guard —
 these suites `describe.skipIf` themselves away and something must assert they RAN — existed and
@@ -2337,9 +2338,27 @@ actions on current majors; `sha_pinning_required` on, verified against both comp
 `# vX.Y.Z` after `pnpm/action-setup` moved two majors while its decorated comment kept reading `v4`
 — Dependabot only maintains the bare form, and the old regex certified the result.
 
-**Open:** B44 unchanged. esbuild `GHSA-g7r4-m6w7-qqqr` deliberately unfixed (Windows-only, dev
-server, unreachable here, unfixable without breaking `tsup@8.5.1`'s `^0.27.0`). `e2e` is not yet a
-required check — pending ~15 green PR runs.
+**The narrow layout had never been rendered by anything that could report on it.** Taking phone
+screenshots for the project site found: the header measuring 412 px against a 390 px viewport, so
+the account button sat off-screen on EVERY screen and the shell could be dragged sideways; the
+remote-content banner squeezing its explanatory text into ~40 px, one word per line, behind the
+buttons; the search input at 18 px, narrower than one character; a folder tap leaving the 80 vw
+drawer on top of the list it had just loaded; two composer buttons inert by construction
+(`fullscreen` is `tier === 'phone' || …`, `minimized` is `… && tier !== 'phone'`, so both stored a
+mode that was then ignored); and the editor stopping at its 8 rem minimum with over half the
+full-screen window left blank. The cause of all of it being still there is one line: of the nine
+Playwright configs, exactly one ran on a phone viewport — the swipe suite, which drives a gesture in
+the message list. axe, target size, read, keyboard, settings and perf all run at 1280 × 720. The
+same structural blindness CONTRIBUTING.md describes for jsdom, one level up. `tests/narrow.spec.ts`
+and the `chromium-phone` project are the fix that matters; its `noOverflow` walks every rendered
+element and fails on any box that is partly on screen and partly off, which would have caught the
+header on the day it landed. All six assertions were checked against the unfixed build. Measured
+over eleven screens with WCAG 2.2's spacing exception applied and backdrop-covered targets
+excluded: **127 raw findings before, 0 after.**
+
+**Open:** B44 and B45 unchanged. esbuild `GHSA-g7r4-m6w7-qqqr` deliberately unfixed (Windows-only,
+dev server, unreachable here, unfixable without breaking `tsup@8.5.1`'s `^0.27.0`). `e2e` is not yet
+a required check — pending ~15 green PR runs.
 
 ### v0.10.0 (2026-08-17) — the security review, and what it found
 
@@ -2475,6 +2494,7 @@ explicit owner decision:
 | **B42** | **FIXED (2026-08-16, M4.8), found by the 100 k perf suite: the app shell had no height, so the virtualizer had no viewport.** `shell.module.css .app` used `min-block-size: 100vh` — a FLOOR, which guarantees the shell fills the viewport and says nothing about growing past it. Everything below is `flex: 1; min-block-size: 0` and correctly hands the available height down; there simply was no available height to hand down. Measured: the message list's scroll container was **3800 px tall in a 720 px viewport** and `document.body` was **4057 px**, i.e. the PAGE scrolled rather than the list. Worse, TanStack Virtual sizes its window from that container's `clientHeight`, so a container reporting 3800 px was told the viewport shows 50 rows — which made the container taller, which showed more rows. A trackpad flick in a 100 k folder ran the feedback away: **50 → 600 → 950 → 1600 → 3350 rendered rows over 20 s and still climbing**, never coming back down. Fix: `block-size: 100dvh` (with a `100vh` fallback line) + `overflow: hidden` on `.app` — the shell's panes scroll internally and the page never should. After: **15 rows at rest** (was 50), **23 after the same flick and stable** (was 3350), `body` back to 720 px. The win is not limited to huge folders — every folder rendered ~3× the rows it needed. | M1.6 (virtualization) | M4.8 | fixed |
 | **B43** | **FIXED (2026-08-17): `/mail` is a reserved path prefix on Stalwart — an Application registered there is accepted and never served.** Found by the Gate G3 artefact verification against a clean `stalwartlabs/stalwart:v0.16.14-alpine`. The registration succeeds, Stalwart fetches the archive, and every path under the mount answers `404 application/problem+json` with nothing in the log and nothing unpacked. **The same artefact under `/webmail` answers 200**, deep links included, with the `<base href>` correctly rewritten to `/webmail/`. Two documentation defects were found on the way and are also fixed: **(1) `description` is REQUIRED** — every example this repo has written since SP.5 answers `validationFailed / {"type":"Required","property":"description"}`, so the guide's copy-pasteable curl failed for every reader at the first step; **(2) `urlPrefix` takes a LEADING SLASH** (`{"/webmail": true}`), as Stalwart's own WebUI registers `{"/admin": true, "/account": true}` — without it the call is accepted silently and does not work. **A false cause was published and retracted, which is the part worth keeping.** The zips this repo produces carry general-purpose flag bit 3 (data descriptors, because `archiver` streams) where Stalwart's `webui.zip` does not, and that difference was measured, believed, and shipped as the explanation — the release script was switched to `jszip` and given a flag assertion. It was wrong: the two variables were never separated, because every `/mail` attempt used an `archiver` zip and every working prefix used a `jszip` one. Isolating them settles it — **an `archiver` zip WITH data descriptors serves 200 under a free prefix.** The `jszip` change and its assertion are reverted; `archiver` writes both artefacts again. | M4.9 | Gate G3 | fixed |
 | **B44** | **Open (2026-08-17, seen ONCE on a hosted CI runner and NOT reproduced since): `MessageList.test.tsx` "a direction set to Archive is INERT on an account with no Archive" failed with `data-swipe === 'left'`, i.e. the gesture locked where it must go inert.** The test deletes the Archive mailbox and gates on "3 × Mark as read present AND no Archive layer" before swiping. That gate is a conjunction of one positive and one NEGATIVE signal, and the test's own comment records an earlier race of the same shape — so the suspicion is that the negative half is satisfied by a render in which `useMailboxes()` has not settled, letting the swipe resolve against a mailbox list that still has an Archive. **That is a hypothesis, not a finding.** It survived 6 targeted runs and 5 full-suite runs under 12-way CPU load locally, and the immediately following CI re-run of the same commit was green; the run it failed in coincided with a GitHub incident (repeated 429/502/503 from codeload and the API), so a starved 2-core runner is at least as likely an explanation as the component. Recorded rather than "fixed" because nothing was changed: neither `MessageList.tsx`, `use-swipe.ts` nor that test file is touched by the v0.10.0 branch. What a real fix needs is a POSITIVE readiness signal — something rendered only when `mailboxes` is resolved AND lacks an Archive — since every absence-based gate here is also satisfied by "not resolved yet". | M3.9 | — | open |
+| **B45** | **Open (2026-08-18, seen ONCE in a local `verify:e2e` run and NOT reproduced): `notify.spec.ts` "a live delivery raises a banner while the tab is in the background" polled 30 s and saw zero banners.** It is test 79 of 84 in the read config, so it runs after ~3 minutes of Docker, a live Stalwart, six suites and the full chromium build. Re-run on its own immediately afterwards it passed in **10.8 s** against the same commit, and the next full `verify:e2e` was green end to end — the same 84 tests, same machine. **That is an observation, not a diagnosis.** The suspicion is load: the assertion is a 30 s poll on a service-worker notification that depends on a push arriving, a hidden tab, and the leader election in `sync/engine`, and every one of those is a timing question rather than a logic one. Recorded rather than "fixed" because nothing was changed and nothing in the branch it appeared on touches the notifier, the service worker or that spec — the changes are layout CSS, one effect in `MailScreen.tsx` that is inert unless the folder drawer is open, and two phone-only composer buttons. What a real fix needs is the same thing B44 needs: a positive readiness signal to gate on instead of a timeout. | M3.10 | — | open |
 | D5 | Design-system sign-off (M1.1 doc: look, tokens, motion) before broad UI build-out | Heiko | during M1.1 | **signed off 2026-07-10.** Owner approved after two revisions: calmer accent (orange → blue `#2f6fe0`/`#5e93f0`, warm colors reserved for signals) and responsive compact controls (34px pointer / 44px touch via `--waxwing-control-min`, tightened spacing) — both WCAG-AA-verified. Broad UI build-out (M1.4+) unblocked. |
 
 ## 14. Appendix — Requirements Coverage Matrix

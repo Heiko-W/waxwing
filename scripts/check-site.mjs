@@ -12,8 +12,7 @@
 // Deliberately NOT a regex for "valid HTML" — it extracts src/href/srcset values and asks one
 // question of each: if this is a local path, is the file there?
 
-import { existsSync } from 'node:fs'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const SITE = fileURLToPath(new URL('../docs/site/', import.meta.url))
@@ -39,7 +38,8 @@ const problems = []
 for (const reference of references(html)) {
   // Off-site, in-page and data: references are not this check's business.
   if (/^(https?:)?\/\//.test(reference)) continue
-  if (reference.startsWith('#') || reference.startsWith('data:') || reference.startsWith('mailto:')) continue
+  if (reference.startsWith('#') || reference.startsWith('data:') || reference.startsWith('mailto:'))
+    continue
 
   if (reference.startsWith('/') || reference.startsWith('../')) {
     problems.push(
