@@ -129,8 +129,17 @@ function checkWorkflowActionPins() {
       const where = `${file}:${index + 1}`
       if (!/@[0-9a-f]{40}$/.test(reference)) {
         problems.push(`${where}  ${reference} — not a commit SHA (a tag can be moved under you)`)
-      } else if (!/#\s*v/.test(rest)) {
-        problems.push(`${where}  ${reference} — no trailing \`# vX.Y.Z\` comment`)
+      } else if (!/^\s*#\s*v\d+\.\d+\.\d+\s*$/.test(rest)) {
+        // The form is EXACT on purpose. It used to be `/#\s*v/` — "contains a v somewhere" — and
+        // that passed `# v4 @ 2026-03-11 — see header` sitting next to a SHA that Dependabot later
+        // moved two majors, to v6.0.10, without touching the comment. Dependabot only rewrites the
+        // bare `# vX.Y.Z`; a decorated comment silently opts that line out of the maintenance the
+        // pin depends on, and the loose regex then certified the result as correct. A comment that
+        // names the wrong version is worse than none: it is the thing a reviewer reads instead of
+        // resolving the SHA.
+        problems.push(
+          `${where}  ${reference} —${rest.trim() === '' ? ' no' : ` \`${rest.trim()}\` is not a`} bare \`# vX.Y.Z\` comment`,
+        )
       } else {
         pinned += 1
       }

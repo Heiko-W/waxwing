@@ -8,8 +8,15 @@
 # quiet one.
 #
 # So this is the other half of the pin, not an optional extra. Dependabot understands the
-# `sha # comment` form: it rewrites BOTH the SHA and the version comment in one PR, which is the
+# `sha # comment` form and rewrites BOTH the SHA and the version comment in one PR, which is the
 # only reason SHA pinning is workable by hand at all.
+#
+# BUT ONLY FOR THE EXACT FORM `# vX.Y.Z`. This was written as an unconditional promise and it is
+# not one. `pnpm/action-setup` carried `# v4 @ 2026-03-11 — see header`, and the bump to v6.0.10
+# (PR #11) moved the SHA two majors while leaving that comment reading `v4`. The bot does not
+# recognise a decorated comment, does not touch it, and does not warn. Anything other than a bare
+# `# vX.Y.Z` opts that line out of the maintenance this file exists to provide — so it is a
+# defect, not a style choice, and `checkWorkflowActionPins` in scripts/ci.mjs now rejects it.
 #
 # ── SCOPE: github-actions ONLY ────────────────────────────────────────────────────────────────
 #
@@ -18,11 +25,17 @@
 # lockfile PRs a week against a one-maintainer project produces exactly one behaviour: they get
 # merged unread. Waxwing's dependency posture is stated in SECURITY.md §5 — a small list, reviewed
 # by a person — and automated bumping of it is a separate decision, not a side effect of wanting
-# maintained action pins. Workflow actions are different in kind: there are eight of them, they
+# maintained action pins. Workflow actions are different in kind: there are nine of them, they
 # change rarely, and each one is code that runs with a token.
 #
 # Verify a pin by hand at any time with:
-#   gh api repos/<owner>/<action>/git/ref/tags/<tag> --jq .object.sha
+#   gh api repos/<owner>/<action>/commits/<tag> --jq .sha
+#
+# NOT `git/ref/tags/<tag> --jq .object.sha`, which is what this said until it was checked against a
+# real bump. Most action tags are ANNOTATED, so that endpoint answers with the tag OBJECT rather
+# than the commit — for pnpm/action-setup v6.0.10 it returns ff378ebe…, while the commit Dependabot
+# correctly pins is 0977fd99…. The recipe therefore reported a mismatch on a pin that was right,
+# which is the worst way for a verification step to fail. `commits/<tag>` dereferences for you.
 version: 2
 updates:
   - package-ecosystem: github-actions

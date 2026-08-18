@@ -26,10 +26,11 @@
 // A 40-hex pin in pages.yml, and one `git tag -f v4` away from running someone else's code in a
 // job holding `pages: write` + `id-token: write`. The first-level check reads only
 // .github/workflows/, so it saw nothing wrong — and said so, in a comment that carefully lists
-// where its coverage is uneven without listing this. Of the nine actions used here, seven are
-// `node20` with no dependencies at all and two are composite; only that one carried a tag. It is
-// gone as of upload-pages-artifact v5.0.0, which pins its own dependency. This stage is what
-// keeps it gone.
+// where its coverage is uneven without listing this. Of the nine actions used here, two are
+// composite and the rest declare no `uses:` of their own; only that one carried a tag. It is gone
+// as of upload-pages-artifact v5.0.0, which pins its own dependency. This stage is what keeps it
+// gone. (The count is deliberately not broken down by runtime: `node20` vs `node24` is what most
+// of the pending major bumps change, and a number here would be stale within the week.)
 //
 // It RECURSES rather than descending one fixed level, because a composite action may call another.
 //
