@@ -28,7 +28,7 @@ import {
   useMailboxes,
   useReplica,
 } from '../sync'
-import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden } from '../ui'
+import { Button, Checkbox, Dialog, IconButton, Select, Spinner } from '../ui'
 import { clearActiveDrag, draggedMessageIds, MESSAGES_MIME, setActiveDrag } from './dnd'
 import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
@@ -590,14 +590,27 @@ export function MessageList({
         />
       ) : null}
 
+      {/*
+        One node, two presentations. The hit count used to be announced and never SHOWN, so a
+        sighted user had no way to tell "these are all the matches" from "the list is still filling
+        in" — while the identical information was already being spoken. It is now visible whenever
+        there is a count to give.
+
+        The empty case stays visually hidden because the list renders its own empty state right
+        below; showing both would say the same sentence twice on one screen. Keeping it in the SAME
+        live region matters — a second region would announce the transition twice.
+      */}
       {search && (
-        <VisuallyHidden aria-live="polite">
+        <p
+          className={ids.length === 0 ? styles.resultCountHidden : styles.resultCount}
+          aria-live="polite"
+        >
           {resolving
             ? ''
             : ids.length === 0
               ? t('search.results.empty')
               : t('search.results.count', { count: total ?? ids.length })}
-        </VisuallyHidden>
+        </p>
       )}
 
       {/* Outside the grid on purpose: `role="grid"` owes its accessible tree rows, and this note is

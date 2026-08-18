@@ -288,7 +288,12 @@ export function MailScreen() {
     <SplitPane
       orientation={layout.splitOrientation}
       label={t('shell.list.resize')}
-      defaultPrimarySize={360}
+      // 420, not 360. The list column carries the search field, the folder title and the view
+      // toggle; at 360 px those were competing for the width of a phone while ~930 px of header sat
+      // empty beside them. Widening the column is the half of that imbalance worth fixing here —
+      // moving search into the shell header would put a mail-only control on the Contacts and
+      // Settings screens too.
+      defaultPrimarySize={420}
       minPrimarySize={260}
       maxPrimarySize={640}
     >
