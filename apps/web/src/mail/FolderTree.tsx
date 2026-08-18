@@ -7,7 +7,7 @@
  */
 
 import { FolderPlus } from 'lucide-react'
-import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
@@ -59,9 +59,19 @@ export interface FolderTreeProps {
    * single tree of the pass-through sidebar always owns the selection.
    */
   readonly active?: boolean
+  /**
+   * Fired whenever the user picks a folder — INCLUDING the one that is already open.
+   *
+   * The narrow layout uses it to close the drawer. That used to be inferred in `MailScreen` from a
+   * change in the selected mailbox, which is not the same question: tapping the folder you are
+   * already in produces no change, so the drawer stayed open with no visible way out (no close
+   * button, Escape needs a keyboard, and the backdrop is a 102 px strip beside a full-height panel).
+   * A user opening the drawer to check where they are, then tapping the highlighted row, was stuck.
+   */
+  readonly onNavigate?: (() => void) | undefined
 }
 
-export function FolderTree({ onSelectMailbox, active = true }: FolderTreeProps = {}) {
+export function FolderTree({ onSelectMailbox, active = true, onNavigate }: FolderTreeProps = {}) {
   const { t } = useTranslation()
   const mailboxes = useMailboxes()
   const { db, accountId } = useReplica()
@@ -80,6 +90,24 @@ export function FolderTree({ onSelectMailbox, active = true }: FolderTreeProps =
   const { toast } = useToast()
 
   const [dialog, setDialog] = useState<DialogState | null>(null)
+
+  /**
+   * Picking a folder. Two things the bare `navigate(mailPath(id))` this replaces did not do:
+   *
+   *  - it pushed a history entry even when the target was the folder already open, so using the
+   *    drawer to check where you are left a duplicate entry the back gesture then appeared to
+   *    ignore;
+   *  - it told nobody, so the drawer could only guess from the resulting state change (see
+   *    {@link FolderTreeProps.onNavigate}).
+   */
+  const selectMailbox = useCallback(
+    (id: string) => {
+      if (onSelectMailbox !== undefined) onSelectMailbox(id)
+      else if (id !== route.params.mailboxId) navigate(mailPath(id))
+      onNavigate?.()
+    },
+    [onSelectMailbox, navigate, route.params.mailboxId, onNavigate],
+  )
 
   const tree = useMemo(() => buildFolderTree(mailboxes ?? []), [mailboxes])
   const collapsed = useMemo(() => new Set(collapsedList ?? []), [collapsedList])
@@ -164,7 +192,7 @@ export function FolderTree({ onSelectMailbox, active = true }: FolderTreeProps =
         selectedMailboxId={active ? route.params.mailboxId : undefined}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapse}
-        onSelect={onSelectMailbox ?? ((id) => navigate(mailPath(id)))}
+        onSelect={selectMailbox}
         onRequestCreate={(parentId) => setDialog({ kind: 'create', parentId })}
         onRequestRename={(mailbox) => setDialog({ kind: 'rename', mailbox })}
         onRequestMove={(mailbox) => setDialog({ kind: 'move', mailbox })}

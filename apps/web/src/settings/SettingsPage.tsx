@@ -1,9 +1,10 @@
-import { type ReactNode, useId, useState } from 'react'
+import { type ReactNode, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type AccentId, availablePalettes, getAccent, isAccentId, setAccent } from '../app/accent'
 import { BrandLinks } from '../app/BrandLinks'
 import type { ThemeSetting } from '../app/config'
 import { useConfig } from '../app/config-context'
+import { useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
 import {
   READING_PANE_MODES,
@@ -73,9 +74,21 @@ function SelectField(props: {
   )
 }
 
-function Section(props: { title: string; children: ReactNode }) {
+/** The DOM id a `/settings/<slug>` deep link resolves to. */
+export function settingsSectionDomId(slug: string): string {
+  return `waxwing-settings-${slug}`
+}
+
+function Section(props: { slug: string; title: string; children: ReactNode }) {
   return (
-    <section className={styles.section} aria-label={props.title}>
+    // `tabIndex={-1}` so a deep link can put focus here, not merely scroll — otherwise a keyboard
+    // user lands at the top of the page and has to travel back down to what they asked for.
+    <section
+      id={settingsSectionDomId(props.slug)}
+      className={styles.section}
+      aria-label={props.title}
+      tabIndex={-1}
+    >
       <h2 className={styles.sectionTitle}>{props.title}</h2>
       <div className={styles.controls}>{props.children}</div>
     </section>
@@ -126,6 +139,27 @@ export default function SettingsPage() {
     accent: useId(),
   }
   const config = useConfig()
+
+  /**
+   * `/settings/<slug>` jumps to that section.
+   *
+   * The router has computed `rest` for this route since M1.4 and `settingsPath(sub)` has been able
+   * to BUILD such a path just as long — but nothing ever read it, so `/settings/notifications`
+   * silently rendered the top of a ten-section page. Dead infrastructure that looks like a feature:
+   * a link, a help reference or a notification could point at a section and appear to work.
+   *
+   * Focus as well as scroll, or a keyboard user arrives at the top of the page and has to travel
+   * back down to the thing they asked for.
+   */
+  const route = useRoute()
+  useEffect(() => {
+    if (route.rest === '') return
+    const target = document.getElementById(settingsSectionDomId(route.rest))
+    if (target === null) return
+    target.scrollIntoView({ block: 'start' })
+    target.focus({ preventScroll: true })
+  }, [route.rest])
+
   const [accent, setAccentState] = useState<AccentId>(() => getAccent())
   const replica = useReplicaOptional()
   const connected = useSessionOptional()
@@ -150,7 +184,7 @@ export default function SettingsPage() {
     <div className={styles.page}>
       <h1 className={styles.title}>{t('settings.title')}</h1>
 
-      <Section title={t('settings.general.title')}>
+      <Section slug="general" title={t('settings.general.title')}>
         <SelectField
           id={ids.language}
           label={t('language.label')}
@@ -165,7 +199,7 @@ export default function SettingsPage() {
         />
       </Section>
 
-      <Section title={t('settings.appearance.title')}>
+      <Section slug="appearance" title={t('settings.appearance.title')}>
         <SelectField
           id={ids.theme}
           label={t('theme.label')}
@@ -200,48 +234,48 @@ export default function SettingsPage() {
       </Section>
 
       {replica !== null && (
-        <Section title={t('settings.reading.title')}>
+        <Section slug="reading" title={t('settings.reading.title')}>
           <ReadingSection />
         </Section>
       )}
 
       {replica !== null && (
-        <Section title={t('settings.swipe.title')}>
+        <Section slug="swipe" title={t('settings.swipe.title')}>
           <SwipeSection />
         </Section>
       )}
 
       {replica !== null && (
-        <Section title={t('settings.compose.title')}>
+        <Section slug="compose" title={t('settings.compose.title')}>
           <ComposeSection />
         </Section>
       )}
 
       {replica !== null && vacationAvailable && (
-        <Section title={t('settings.vacation.title')}>
+        <Section slug="vacation" title={t('settings.vacation.title')}>
           <VacationSection />
         </Section>
       )}
 
       {replica !== null && (
-        <Section title={t('notify.title')}>
+        <Section slug="notifications" title={t('notify.title')}>
           <NotificationsSection />
         </Section>
       )}
 
       {replica !== null && (
-        <Section title={t('settings.offline.title')}>
+        <Section slug="offline" title={t('settings.offline.title')}>
           <StorageSection />
         </Section>
       )}
 
       {connected !== null && (
-        <Section title={t('settings.server.title')}>
+        <Section slug="server" title={t('settings.server.title')}>
           <ServerSection />
         </Section>
       )}
 
-      <Section title={t('settings.about.title')}>
+      <Section slug="about" title={t('settings.about.title')}>
         {/* The version is not decoration: it is the first thing any support exchange needs, and a
             static deployment has no other way to say which build it is running (M4.5). */}
         <p className={styles.aboutVersion}>

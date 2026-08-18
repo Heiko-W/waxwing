@@ -12,7 +12,7 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { mailPath } from '../app/route'
+import { mailHrefKeepingQuery } from '../app/route'
 import { SEARCH_INPUT_ID } from '../mail/search/SearchBox'
 import type { ShortcutAction, ShortcutContext } from './types'
 
@@ -57,14 +57,15 @@ function routeMailboxId(context: ShortcutContext): Id | undefined {
 }
 
 /**
- * A mail URL that KEEPS the current query string. `?q=` (search) and `?label=` are what the list is
- * showing; `MessageList.open()` preserves them for a click, and `j`/`k`/`u`/auto-advance must too —
- * dropping them snaps the list back to the plain folder, which changes the window key and therefore
- * resets the focus and the selection out from under the user mid-triage.
+ * A mail URL that keeps the current query string. The rule and its reasoning now live in
+ * `app/route` as {@link mailHrefKeepingQuery} — this is a thin binding to the shortcut context.
+ *
+ * It moved because keeping it private here is how the two "back to the list" paths came to
+ * disagree: `u` kept the query, while the on-screen Back button called `mailPath()` bare and dropped
+ * it. One rule, one place, both callers.
  */
 function mailHref(context: ShortcutContext, mailboxId: Id | undefined, emailId?: Id): string {
-  const qs = context.route.search.toString()
-  return mailPath(mailboxId, emailId) + (qs ? `?${qs}` : '')
+  return mailHrefKeepingQuery(context.route.search, mailboxId, emailId)
 }
 
 /**

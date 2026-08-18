@@ -251,6 +251,14 @@
   background-color: var(--waxwing-surface);
 }
 
+/* The drawer's own close affordance. Rendered only below 64em — where this region IS an overlay —
+   so it needs no media query of its own. */
+.drawerHeader {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-end: var(--waxwing-space-1);
+}
+
 /* Narrow screens: the folder region is an off-canvas drawer. */
 @media (max-width: 63.999em) {
   /* Closed drawer: off-screen AND visibility:hidden, so it leaves the accessibility tree and

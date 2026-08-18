@@ -19,7 +19,7 @@ import type { Id, MailAccount } from '@waxwing/jmap'
 import { Lock } from 'lucide-react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { mailPath, useNavigate } from '../app/route'
+import { mailPath, useNavigate, useRoute } from '../app/route'
 import { type ReplicaDb, ReplicaProvider, useReplica } from '../sync'
 import { Badge } from '../ui'
 import { resetMailScopedStores, useActiveAccountId, useActiveAccountStore } from './active-account'
@@ -31,11 +31,14 @@ export interface AccountTreesProps {
   readonly accounts: readonly MailAccount[]
   /** The user's own account id: the primary the pass-through sidebar renders alone. */
   readonly primaryAccountId: Id
+  /** Fired on every folder pick, including a re-pick of the open one — see FolderTreeProps. */
+  readonly onNavigate?: (() => void) | undefined
 }
 
-export function AccountTrees({ accounts, primaryAccountId }: AccountTreesProps) {
+export function AccountTrees({ accounts, primaryAccountId, onNavigate }: AccountTreesProps) {
   const { db } = useReplica()
   const navigate = useNavigate()
+  const route = useRoute()
   const stored = useActiveAccountId()
   const activeAccountId = stored ?? primaryAccountId
 
@@ -57,16 +60,23 @@ export function AccountTrees({ accounts, primaryAccountId }: AccountTreesProps) 
       // `?account=` forward and cannot tell "no opinion" from "the user's own". This code path only
       // exists when something is shared; the single-account sidebar is the pass-through below and
       // its links are untouched.
+      // Same folder, same account, nothing to do but tell the drawer. Navigating anyway pushed a
+      // duplicate history entry, which made the back gesture look broken.
+      if (accountId === activeAccountId && mailboxId === route.params.mailboxId) {
+        onNavigate?.()
+        return
+      }
       navigate(mailPath(mailboxId, undefined, accountId))
+      onNavigate?.()
     },
-    [activeAccountId, navigate],
+    [activeAccountId, navigate, route.params.mailboxId, onNavigate],
   )
 
   const shared = accounts.filter((account) => account.id !== primaryAccountId)
 
   // Pass-through: nothing shared ⇒ exactly today's single tree under the ambient (primary) provider.
   if (shared.length === 0) {
-    return <FolderTree />
+    return <FolderTree onNavigate={onNavigate} />
   }
 
   const primary = accounts.find((account) => account.id === primaryAccountId)

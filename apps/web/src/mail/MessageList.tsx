@@ -15,7 +15,7 @@ import { Archive, Ban, FolderInput, Mail, MailOpen, Star, Trash2 } from 'lucide-
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
-import { mailPath, useNavigate, useRoute } from '../app/route'
+import { mailHrefKeepingQuery, READING_HISTORY_MARK, useNavigate, useRoute } from '../app/route'
 import { useDraftOpener } from '../compose'
 import {
   type EmailRow,
@@ -381,8 +381,11 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
             ? Object.keys(row.mailboxIds)[0]
             : undefined
       if (targetMailbox === undefined) return
-      const qs = route.search.toString()
-      navigate(mailPath(targetMailbox, id) + (qs ? `?${qs}` : ''))
+      // Stamped, so the reading pane's Back button can pop this entry instead of pushing a third
+      // one on top of it (see READING_HISTORY_MARK).
+      navigate(mailHrefKeepingQuery(route.search, targetMailbox, id), {
+        state: { waxwing: READING_HISTORY_MARK },
+      })
     },
     [mailboxId, navigate, rowById, draftOpener, route.search, dispatchSelection],
   )
