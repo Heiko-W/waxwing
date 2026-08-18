@@ -13,7 +13,11 @@
   text-decoration: none;
 }
 
-.link:hover {
-  color: var(--waxwing-text);
-  text-decoration: underline;
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .link:hover {
+    color: var(--waxwing-text);
+    text-decoration: underline;
+  }
 }

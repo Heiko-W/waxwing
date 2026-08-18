@@ -69,8 +69,12 @@
   cursor: pointer;
 }
 
-.pillRemove:hover {
-  background-color: var(--waxwing-surface);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .pillRemove:hover {
+    background-color: var(--waxwing-surface);
+  }
 }
 
 .pillIcon {
@@ -180,6 +184,10 @@
   cursor: pointer;
 }
 
-.fieldToggle:hover {
-  color: var(--waxwing-text);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .fieldToggle:hover {
+    color: var(--waxwing-text);
+  }
 }

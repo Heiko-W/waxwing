@@ -220,8 +220,12 @@
   transition: none;
 }
 
-.row:hover {
-  background-color: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .row:hover {
+    background-color: var(--waxwing-surface-hover);
+  }
 }
 
 /*
@@ -241,7 +245,8 @@
   outline-offset: -2px;
 }
 
-.row[aria-current="page"] {
+.row[aria-current="page"],
+.row[aria-current="page"]:hover {
   background-color: var(--waxwing-surface-selected);
 }
 

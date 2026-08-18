@@ -187,13 +187,38 @@
   text-decoration: none;
 }
 
-.primaryNavItem[aria-current="page"] {
+/* Hover is a POINTER affordance. Behind `hover: hover` for the reason Button.module.css spells out:
+   on a touchscreen a tap leaves the hovered style stuck to the row it landed on, which then reads as
+   a second selection. */
+@media (hover: hover) {
+  .primaryNavItem:hover {
+    background-color: var(--waxwing-surface-2);
+    color: var(--waxwing-text);
+  }
+}
+
+/*
+ * The current section, and it has to out-rank the hover rule above.
+ *
+ * `[aria-current="page"]` and `:hover` are BOTH (0,2,0) — identical specificity — so source order
+ * alone decided the winner, and `:hover` came second. Pointing at the tab you are already on erased
+ * its accent colour: the one moment the user asks "where am I", the answer disappeared. Naming the
+ * hovered state explicitly makes this (0,3,0), so it no longer depends on which rule is written
+ * last.
+ */
+.primaryNavItem[aria-current="page"],
+.primaryNavItem[aria-current="page"]:hover {
   color: var(--waxwing-accent);
 }
 
-.primaryNavItem:hover {
-  background-color: var(--waxwing-surface-2);
-  color: var(--waxwing-text);
+/* The label can never escape its own box, whatever a translator writes. German is what exposed this
+   (see the rail sizing at the tablet breakpoint), but the guard is language-agnostic: the full name
+   stays the link's accessible name either way. */
+.primaryNavItem span {
+  max-inline-size: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .primaryNavIcon {
@@ -345,13 +370,31 @@
     flex-direction: row;
   }
 
+  /*
+   * 6rem, not 4.5rem — the rail has to hold its own labels.
+   *
+   * At 4.5rem (72px) the item box is 56px and its text area 40px, while the German "Einstellungen"
+   * measures 72px at `--waxwing-text-xs`. The span is centred, so it spilled 8px past each edge of
+   * the item and started at x = -1: the top-level navigation was clipped by the viewport in the
+   * second shipped language. English ("Settings", 48px) fits, which is why it went unseen — and no
+   * suite could have caught it, because the only overflow sweep in the repo runs at 390px, where
+   * this nav is a bottom bar.
+   *
+   * 96px gives an 80px item; dropping the item's own inline padding here (the rail already supplies
+   * 8px on each side) leaves ~76px of text — enough for the longest of the three labels with room to
+   * spare, and the ellipsis guard above catches anything longer.
+   */
   .primaryNav {
     flex-direction: column;
     justify-content: flex-start;
-    inline-size: 4.5rem;
+    inline-size: 6rem;
     padding: var(--waxwing-space-2);
     border-block-start: none;
     border-inline-end: 1px solid var(--waxwing-border);
+  }
+
+  .primaryNavItem {
+    padding-inline: var(--waxwing-space-hair);
   }
 }
 

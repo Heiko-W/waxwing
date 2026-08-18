@@ -47,6 +47,25 @@ button {
   color: inherit;
 }
 
+/*
+ * Search-hit highlighting, app-wide.
+ *
+ * Without a rule here the user agent's default applies — `#ffff00` on black. That breaks three
+ * promises at once: design-system §1 ("no more than one saturated color on screen at rest", next to
+ * a blue accent), FR-UI-02 (it is not theme-aware, and in the dark theme it is a searchlight), and
+ * FR-THEME-01 (a hoster cannot restyle it from `theme.css`, because the value is declared nowhere).
+ *
+ * The command palette already had the right treatment (`shortcuts.module.css`); this is that rule,
+ * lifted to every `<mark>` the app renders. Weight carries the emphasis alongside colour, so the
+ * highlight is never colour alone (tokens.css §"never a sole indicator"). Message bodies are
+ * unaffected either way — they render inside a sandboxed iframe with its own document.
+ */
+mark {
+  background-color: transparent;
+  color: var(--waxwing-accent);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
 /* Respect reduced-motion (FR-UI-01, FR-A11Y-01). */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -47,9 +47,16 @@
   cursor: pointer;
 }
 
-.item:hover:not([aria-disabled="true"]),
 .item:focus-visible {
   background-color: var(--waxwing-surface-2);
+}
+
+/* Split out of the rule above rather than sharing its selector list: keyboard focus must keep
+   working everywhere, and only the pointer half belongs behind `hover: hover`. */
+@media (hover: hover) {
+  .item:hover:not([aria-disabled="true"]) {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 .item[aria-disabled="true"] {

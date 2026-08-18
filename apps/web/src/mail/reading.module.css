@@ -465,8 +465,12 @@
   transition: background var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.moveItem:hover {
-  background: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .moveItem:hover {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 .moveItem:focus-visible {
@@ -502,8 +506,12 @@
   transition: background var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.collapsed:hover {
-  background: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .collapsed:hover {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 .collapsed:focus-visible {
