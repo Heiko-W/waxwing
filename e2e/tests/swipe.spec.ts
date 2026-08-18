@@ -18,13 +18,13 @@ import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 
 const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
 
   // This viewport is a phone, so the shell is single-pane (FR-UI-03): the folder tree lives behind
   // a disclosure instead of beside the list, which is why this suite cannot reuse read.spec's

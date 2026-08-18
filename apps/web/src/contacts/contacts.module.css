@@ -90,12 +90,17 @@
   text-decoration: none;
 }
 
-.bookItem:hover {
-  background-color: var(--waxwing-surface-2);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .bookItem:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
-.bookItem[aria-current="page"] {
-  background-color: var(--waxwing-surface-2);
+.bookItem[aria-current="page"],
+.bookItem[aria-current="page"]:hover {
+  background-color: var(--waxwing-surface-selected);
   color: var(--waxwing-accent);
   font-weight: var(--waxwing-weight-medium);
 }
@@ -123,8 +128,8 @@
 }
 
 .readOnlyIcon {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .railLoading,
@@ -191,8 +196,8 @@
 
 .searchIcon {
   flex: none;
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   color: var(--waxwing-text-muted);
 }
 
@@ -245,8 +250,12 @@
   cursor: default;
 }
 
-.contactRow:hover {
-  background-color: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .contactRow:hover {
+    background-color: var(--waxwing-surface-hover);
+  }
 }
 
 .contactRowSelected,
@@ -390,8 +399,12 @@
   text-decoration: none;
 }
 
-.fieldLink:hover {
-  text-decoration: underline;
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .fieldLink:hover {
+    text-decoration: underline;
+  }
 }
 
 .fieldAddress {
@@ -645,8 +658,12 @@
   cursor: pointer;
 }
 
-.groupPickerItem:hover {
-  background-color: var(--waxwing-surface-2);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .groupPickerItem:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 .groupPickerItem:focus-visible {
@@ -693,8 +710,12 @@
   text-decoration: none;
 }
 
-.groupMemberLink:hover {
-  background-color: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .groupMemberLink:hover {
+    background-color: var(--waxwing-surface-hover);
+  }
 }
 
 .groupMemberLinkSelected,

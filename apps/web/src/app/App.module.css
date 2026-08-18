@@ -22,8 +22,8 @@
 }
 
 .brandIcon {
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
+  inline-size: var(--waxwing-icon-lg);
+  block-size: var(--waxwing-icon-lg);
   color: var(--waxwing-accent);
 }
 
@@ -72,11 +72,16 @@
     color var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.switchButton:hover {
-  color: var(--waxwing-text);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .switchButton:hover {
+    color: var(--waxwing-text);
+  }
 }
 
-.switchButton[aria-pressed="true"] {
+.switchButton[aria-pressed="true"],
+.switchButton[aria-pressed="true"]:hover {
   background-color: var(--waxwing-accent);
   color: var(--waxwing-accent-contrast);
   /*

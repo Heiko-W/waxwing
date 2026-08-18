@@ -175,8 +175,8 @@
 
 .nameWarningIcon {
   flex-shrink: 0;
-  inline-size: 0.875rem;
-  block-size: 0.875rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .date {
@@ -237,13 +237,44 @@
 
 /* ---- action bar ---- */
 
+/*
+ * The gap here is BETWEEN groups; `.actionGroup` sets the tighter one within each. That difference
+ * is the whole mechanism — ten equally spaced, equally weighted glyphs in one run gave the eye
+ * nothing to hold, and the six on the left came from four different verbs (file, delete, report,
+ * flag) with no more distance between "archive" and "delete" than between "archive" and itself.
+ * Distance does the grouping; no separators, no labels.
+ */
 .actionBar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--waxwing-space-1);
+  gap: var(--waxwing-space-4);
   align-items: center;
   padding-bottom: var(--waxwing-space-2);
   border-bottom: 1px solid var(--waxwing-border);
+}
+
+.actionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+}
+
+/*
+ * Tighter on a phone, because the grouping is a RATIO, not a pair of fixed numbers.
+ *
+ * 16 px between groups and 4 px within reads well at 420 px of pane; at 390 px of viewport it cost a
+ * third row — three strips of icons is worse than the two ungrouped ones it replaced. 12 px against
+ * 2 px keeps the same visual relationship (six times, rather than four) and brings the six filing
+ * and state actions back onto one line, with the reply group on the next.
+ */
+@media (max-width: 39.999em) {
+  .actionBar {
+    gap: var(--waxwing-space-3);
+  }
+
+  .actionGroup {
+    gap: var(--waxwing-space-hair);
+  }
 }
 
 .actionSpacer {
@@ -342,11 +373,34 @@
   color: var(--waxwing-text-muted);
 }
 
+/*
+ * `flex-shrink: 0` was right for the ROW and wrong for the button inside it.
+ *
+ * Wrapping rescued the explanatory text, but one action is `Always allow {{sender}}` — a button
+ * whose width is a display name, i.e. unbounded — so once it exceeded the pane it simply left the
+ * viewport. Measured at 834 px (the tablet tier, where the reading pane is a split column and no
+ * suite had ever looked): 853 px against an 834 px viewport, 19 px of a privacy control off-screen.
+ *
+ * The row may now shrink, and the label truncates rather than pushing. A truncated
+ * "Always allow Waxwing Week…" is worse than the full name and far better than a button the user
+ * cannot reach; the accessible name is unaffected.
+ */
 .remoteActions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--waxwing-space-1);
-  flex-shrink: 0;
+  min-inline-size: 0;
+}
+
+.remoteActions button {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.remoteActions button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ---- attachments ---- */
@@ -465,8 +519,12 @@
   transition: background var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.moveItem:hover {
-  background: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .moveItem:hover {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 .moveItem:focus-visible {
@@ -502,8 +560,12 @@
   transition: background var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.collapsed:hover {
-  background: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .collapsed:hover {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 .collapsed:focus-visible {
@@ -589,8 +651,8 @@
 
 .linkWarnIcon {
   flex-shrink: 0;
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
   color: var(--waxwing-danger);
 }
 

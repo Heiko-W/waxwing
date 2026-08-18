@@ -33,8 +33,8 @@
   inset-inline-end: var(--waxwing-space-3);
   inset-block-start: 50%;
   translate: 0 -50%;
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   color: var(--waxwing-text-muted);
   pointer-events: none;
 }

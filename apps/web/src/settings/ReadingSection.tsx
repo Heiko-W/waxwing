@@ -35,6 +35,7 @@ export function ReadingSection() {
     <div className={styles.controls}>
       <div className={styles.field}>
         <Switch
+          block
           checked={remoteContent === 'allow'}
           label={t('settings.reading.remote.label')}
           aria-describedby={ids.remote}
@@ -67,6 +68,7 @@ export function ReadingSection() {
 
       <div className={styles.field}>
         <Switch
+          block
           checked={autoMarkRead}
           label={t('settings.reading.autoMarkRead.label')}
           aria-describedby={ids.autoMark}

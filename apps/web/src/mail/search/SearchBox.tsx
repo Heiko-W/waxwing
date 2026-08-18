@@ -21,6 +21,8 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
   const { t } = useTranslation()
   const [input, setInput] = useState(search.q)
   const timerRef = useRef<number | undefined>(undefined)
+  const scopeId = useId()
+  const [focused, setFocused] = useState(false)
   const chipsId = useId()
   const hintId = useId()
   // Always describe the box with the operator hint, plus a COUNT of the active filters when there
@@ -52,6 +54,9 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
     )
   }
 
+  /** The scope picker earns its row once a query exists, or while the user is composing one. */
+  const scopeVisible = search.active || focused || input !== ''
+
   const submit = (): void => {
     if (timerRef.current !== undefined) window.clearTimeout(timerRef.current)
     search.setQuery(input)
@@ -76,24 +81,27 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
           aria-label={t('search.label')}
           aria-describedby={describedBy}
           onChange={(event) => onInput(event.target.value)}
+          onFocus={() => setFocused(true)}
+          // A blur INTO the scope picker must not collapse the row the user is reaching for.
+          onBlur={(event) => {
+            const next = event.relatedTarget
+            if (next instanceof Node && event.currentTarget.closest('search')?.contains(next))
+              return
+            setFocused(false)
+          }}
         />
-        <VisuallyHidden id={hintId}>{t('search.hint')}</VisuallyHidden>
         {search.chips.length > 0 && (
           <VisuallyHidden id={countId}>
             {t('search.chipsCount', { count: search.chips.length })}
           </VisuallyHidden>
         )}
-        <Select
-          className={styles.scope}
-          aria-label={t('search.scope.label')}
-          value={search.scope}
-          onChange={(event) => search.setScope(event.target.value as SearchScope)}
-        >
-          <option value="folder">{t('search.scope.folder')}</option>
-          <option value="all">{t('search.scope.all')}</option>
-        </Select>
+        {/* Inside the field, not after it. As a sibling it was pushed onto a line of its own by the
+            wrapping row — a full-width strip holding one unlabelled ✕, which reads as "close this
+            bar" rather than "clear this query". `.clear` positions it over the input's trailing
+            edge, where the native cancel button it replaces used to sit. */}
         {search.active && (
           <IconButton
+            className={styles.clear}
             label={t('search.clear')}
             variant="ghost"
             size="sm"
@@ -106,6 +114,35 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
           </IconButton>
         )}
       </form>
+      {/*
+        The scope picker only exists once there is something to scope.
+        It used to render unconditionally — a full-width "This folder" dropdown sitting above every
+        folder, 52 px on a phone, filtering nothing while the field was empty. Only the clear button
+        beside it was ever gated on `search.active`; this now follows the same rule, plus focus so
+        the choice is reachable before submitting.
+      */}
+      {scopeVisible && (
+        <div className={styles.scopeRow}>
+          <label className={styles.scopeLabel} htmlFor={scopeId}>
+            {t('search.scope.label')}
+          </label>
+          <Select
+            id={scopeId}
+            className={styles.scope}
+            value={search.scope}
+            onChange={(event) => search.setScope(event.target.value as SearchScope)}
+          >
+            <option value="folder">{t('search.scope.folder')}</option>
+            <option value="all">{t('search.scope.all')}</option>
+          </Select>
+        </div>
+      )}
+      {/* The operator hint was `VisuallyHidden`, so the one group that could have discovered this
+          syntax by reading it never saw it. Shown while the field has focus: no cost at rest, and
+          it is on screen exactly when someone is deciding what to type. */}
+      <p id={hintId} className={focused ? styles.hint : styles.hintHidden}>
+        {t('search.hint')}
+      </p>
       {search.chips.length > 0 && (
         <ul id={chipsId} className={styles.chips} aria-label={t('search.chipsLabel')}>
           {search.chips.map((chip) => (

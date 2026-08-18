@@ -18,6 +18,9 @@ import { AccountMenu } from './AccountMenu'
 import { StatusRegion } from './StatusRegion'
 import styles from './shell.module.css'
 
+/** The element an active screen portals its own bar into — see the comment at its render site. */
+export const SCREEN_BAR_ID = 'waxwing-screen-bar'
+
 export interface HeaderProps {
   readonly config: WaxwingConfig
   readonly username: string
@@ -45,6 +48,19 @@ export function Header({ config, username }: HeaderProps) {
         <img className={styles.brandLogo} src={logoSrc} alt="" />
         <span className={styles.brandName}>{branding.productName}</span>
       </Link>
+      {/*
+        Where the active screen puts its own bar on a phone.
+
+        Below 40em the brand is hidden entirely and the mail screen renders its folder toggle, folder
+        title and view-options button in HERE instead of in a second strip below — so one row carries
+        both the screen's controls and the shell's, where there used to be two. It was the last
+        obvious waste on that viewport: the upper row held a logo and two buttons and nothing else,
+        61 px for what fits beside the title.
+
+        An empty div on tablet and desktop, where the brand is on screen and each pane keeps its own
+        toolbar; the mail screen decides which of the two it is (see `screenBarSlot`).
+      */}
+      <div id={SCREEN_BAR_ID} className={styles.screenBar} />
       <div className={styles.spacer} />
       <div className={styles.headerControls}>
         {/* Discoverability (and the only way to reach the palette on a touch device, where there is

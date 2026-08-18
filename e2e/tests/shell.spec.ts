@@ -39,7 +39,9 @@ test.describe('placeholder shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Sign in to')
 
     // An interactive control is present, so the card is the real form and not an error fallback.
-    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Sign in with a password', exact: true }),
+    ).toBeVisible()
 
     // The production CSP forbids inline script and eval. A violation here means the shipped
     // bundle would be dead on any correctly-served deployment, which is exactly the class of

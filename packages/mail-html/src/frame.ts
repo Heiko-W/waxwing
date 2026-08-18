@@ -21,6 +21,33 @@ import { joinLinkText, type LinkText } from './link-host'
 export interface FrameOptions {
   /** Allow remote `https:` images in the inner CSP (paired with a remote-allowing sanitize pass). */
   readonly allowRemote?: boolean
+  /**
+   * Colours for the frame's reset, when the caller knows the message brings none of its own.
+   *
+   * Omit it and the frame is forced to black-on-white, which is the only safe default for arbitrary
+   * mail: a message that sets `color:#eee` and no background is unreadable on anything but white,
+   * and the frame cannot know what it will be dropped onto. But that safety has a cost the caller
+   * CAN measure — a message with no colour declarations at all is the common case, and forcing it
+   * white punched a 670x150 px sheet of `#ffffff` into the middle of a `#2c2c2e` card in the dark
+   * theme, at a contrast of about 12.8:1 against its surroundings. Passing the app's own surface and
+   * text tokens for that case is what makes the dark theme first-class here (FR-UI-02).
+   */
+  readonly palette?: FramePalette
+  /**
+   * Cap the text measure. Only for bodies that carry no layout of their own: a plain-text message
+   * rendered into the frame otherwise runs the full width of the reading pane — measured at 87
+   * characters per line on a 1440 px desktop, well past the 45–75 that is comfortable, and the app
+   * applies exactly this rule to its own prose (`.screenLead { max-inline-size: 60ch }`). A designed
+   * HTML mail is left alone, because its author already chose a width.
+   */
+  readonly constrainWidth?: boolean
+}
+
+/** Frame colours. Hex or any CSS colour — they are interpolated into the frame's own stylesheet. */
+export interface FramePalette {
+  readonly background: string
+  readonly text: string
+  readonly link: string
 }
 
 export interface MailLinkInfo {
@@ -73,10 +100,26 @@ export interface MailFrameController {
   readonly destroy: () => void
 }
 
-const RESET_STYLE =
-  'html,body{margin:0;padding:8px;background:#ffffff;color:#111111;' +
-  'font-family:system-ui,-apple-system,sans-serif;overflow-wrap:break-word}' +
-  'img{max-width:100%;height:auto}a{color:#2f6fe0}'
+/**
+ * Black on white, and a link colour that was `#2f6fe0` — the app's accent as it stood when this line
+ * was written, and a fossil of it ever since: the token moved to `#2761c4` (light) / `#82acf5`
+ * (dark) and nothing here noticed. That is also why a hoster's `accentColor` reached every link in
+ * the app EXCEPT the ones inside a message (FR-THEME-01). Callers that know better pass a palette.
+ */
+const DEFAULT_PALETTE: FramePalette = {
+  background: '#ffffff',
+  text: '#111111',
+  link: '#2f6fe0',
+}
+
+function resetStyle(palette: FramePalette, constrainWidth: boolean): string {
+  const measure = constrainWidth ? 'max-width:68ch;margin-inline:auto;' : ''
+  return (
+    `html,body{margin:0;padding:8px;background:${palette.background};color:${palette.text};` +
+    `${measure}font-family:system-ui,-apple-system,sans-serif;overflow-wrap:break-word}` +
+    `img{max-width:100%;height:auto}a{color:${palette.link}}`
+  )
+}
 
 function framePolicy(allowRemote: boolean): string {
   const img = allowRemote ? 'blob: data: https:' : 'blob: data:'
@@ -98,7 +141,7 @@ export function buildFrameDocument(bodyHtml: string, options: FrameOptions = {})
   return (
     '<!doctype html><html><head><meta charset="utf-8">' +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
-    `<style>${RESET_STYLE}</style>` +
+    `<style>${resetStyle(options.palette ?? DEFAULT_PALETTE, options.constrainWidth === true)}</style>` +
     `</head><body>${bodyHtml}</body></html>`
   )
 }

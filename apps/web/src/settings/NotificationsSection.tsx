@@ -207,6 +207,7 @@ export function NotificationsSection(props: NotificationsSectionProps) {
 
       <div className={styles.field}>
         <Switch
+          block
           id={ids.enable}
           checked={prefs.enabled && permission.state === 'granted'}
           disabled={!supported || blocked}
@@ -240,6 +241,7 @@ export function NotificationsSection(props: NotificationsSectionProps) {
 
           <div className={styles.field}>
             <Switch
+              block
               id={ids.quiet}
               checked={prefs.quietHours !== null}
               label={t('notify.quiet.label')}
@@ -273,6 +275,7 @@ export function NotificationsSection(props: NotificationsSectionProps) {
 
           <div className={styles.field}>
             <Switch
+              block
               id={ids.preview}
               checked={prefs.preview}
               label={t('notify.preview.label')}
@@ -286,6 +289,7 @@ export function NotificationsSection(props: NotificationsSectionProps) {
 
           <div className={styles.field}>
             <Switch
+              block
               id={ids.sound}
               checked={prefs.sound}
               label={t('notify.sound.label')}

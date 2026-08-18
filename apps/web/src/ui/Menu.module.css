@@ -15,6 +15,15 @@
   cursor: pointer;
 }
 
+/* See `MenuProps.triggerVariant`: for a menu that lives inside a list row, where six bordered
+   tiles in a column outweigh the names they belong to. */
+.triggerGhost {
+  padding-inline: var(--waxwing-space-1);
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--waxwing-text-muted);
+}
+
 .menu {
   z-index: 50;
   min-inline-size: 12rem;
@@ -47,9 +56,16 @@
   cursor: pointer;
 }
 
-.item:hover:not([aria-disabled="true"]),
 .item:focus-visible {
   background-color: var(--waxwing-surface-2);
+}
+
+/* Split out of the rule above rather than sharing its selector list: keyboard focus must keep
+   working everywhere, and only the pointer half belongs behind `hover: hover`. */
+@media (hover: hover) {
+  .item:hover:not([aria-disabled="true"]) {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 .item[aria-disabled="true"] {

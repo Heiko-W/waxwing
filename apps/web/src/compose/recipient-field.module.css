@@ -8,27 +8,52 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/*
+ * A GRID, so the label column and the entry column each have exactly one edge.
+ *
+ * As a flex row the alignment was maintained by hand: `.label` carried `min-inline-size: 2.5rem`
+ * and the Cc/Bcc toggles below re-stated that same 2.5rem as `padding-inline-start` — but the row's
+ * 8 px gap was not in either number, so the toggles started 8 px to the left of the field they
+ * belong under. Two hardcoded copies of one measurement, and both wrong by the part neither of them
+ * knew about. With a grid the column IS the measurement.
+ */
 .field {
   position: relative;
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  align-items: start;
   gap: var(--waxwing-space-2);
 }
 
 .label {
-  flex: none;
-  min-inline-size: 2.5rem;
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
+  /* Sits on the first text line of the entry box beside it, not on the box's top edge. */
+  padding-block-start: var(--waxwing-space-2);
 }
 
+/*
+ * The entry box: recipient chips and the text input share one bordered container.
+ *
+ * It had no border, no background and no padding, so the "To" line was an empty patch of surface
+ * with a label beside it — 318x32 px of nothing that gave no sign it could be typed into, directly
+ * above a Subject field that DID look like a field. The two most important lines of the form used
+ * two different idioms, and the more important one used the invisible idiom.
+ *
+ * The input inside keeps its own focus ring (see `.input:focus-visible`): a ring on this container
+ * as well would draw two, and that ring is load-bearing for WCAG 2.4.7 exactly as its comment says.
+ */
 .pills {
   display: flex;
-  flex: 1;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--waxwing-space-1);
   min-inline-size: 0;
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
 }
 
 .pill {
@@ -69,13 +94,17 @@
   cursor: pointer;
 }
 
-.pillRemove:hover {
-  background-color: var(--waxwing-surface);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .pillRemove:hover {
+    background-color: var(--waxwing-surface);
+  }
 }
 
 .pillIcon {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .input {
@@ -165,21 +194,46 @@
   text-decoration: underline;
 }
 
+/* Aligned with the entry column above by RE-USING its grid, rather than restating 2.5rem and
+   forgetting the gap — which is how these ended up 8 px to the left of the field they belong to. */
 .fieldToggles {
-  display: flex;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
   gap: var(--waxwing-space-2);
-  padding-inline-start: 2.5rem;
 }
 
+.fieldToggleGroup {
+  grid-column: 2;
+  display: flex;
+  gap: var(--waxwing-space-2);
+}
+
+/*
+ * They are buttons, so they look like buttons.
+ *
+ * Borderless, unpadded, muted and unadorned, they read as static captions next to the field — the
+ * same file's `.didYouMeanApply` already showed the right treatment (accent colour, underline).
+ * They were also 21 px tall, the only two targets in the whole app below WCAG 2.2 AA's 24 px
+ * minimum, in a form the design system promises 44 px on touch.
+ */
 .fieldToggle {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
   border: 0;
-  padding: 0;
+  border-radius: var(--waxwing-radius-sm);
   background: transparent;
-  color: var(--waxwing-text-muted);
+  color: var(--waxwing-accent);
   font-size: var(--waxwing-text-sm);
+  text-decoration: underline;
   cursor: pointer;
 }
 
-.fieldToggle:hover {
-  color: var(--waxwing-text);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .fieldToggle:hover {
+    color: var(--waxwing-text);
+  }
 }

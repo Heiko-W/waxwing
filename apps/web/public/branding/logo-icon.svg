@@ -1,10 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Waxwing app icon">
   <title>Waxwing app icon</title>
+  <!--
+    The IN-APP mark (config.json `branding.logo`), and deliberately flatter than the PWA icons
+    beside it.
+
+    It used to be a two-stop orange gradient, which broke both halves of one sentence in the design
+    system's first principle: "no gradients-as-decoration, no more than one saturated color on
+    screen at rest". At rest this app shows a blue accent; the mark was a saturated orange next to
+    it, on every screen, and in the dark theme it was the strongest colour present.
+
+    One flat fill now, and the wax drop keeps its own colour because it IS the logo's idea (a waxwing
+    is named for the red tips on its wing) rather than decoration. The launcher icons —
+    icon-192/512, maskable, apple-touch — keep their gradient: a home-screen icon is a badge on
+    someone else's canvas, not a persistent element of this UI, and there the convention is the
+    opposite one.
+  -->
   <defs>
-    <linearGradient id="waxwing-bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#F5911E"/>
-      <stop offset="1" stop-color="#D96A0A"/>
-    </linearGradient>
     <mask id="waxwing-im">
       <rect width="256" height="256" fill="black"/>
       <g transform="translate(34,34) scale(0.73)">
@@ -19,7 +30,7 @@
       </g>
     </mask>
   </defs>
-  <rect width="256" height="256" rx="58" fill="url(#waxwing-bg)"/>
+  <rect width="256" height="256" rx="58" fill="#E07C12"/>
   <rect width="256" height="256" fill="#ffffff" mask="url(#waxwing-im)"/>
   <!-- the sealing-wax drop on the wing -->
   <circle cx="104.8" cy="153.7" r="7.3" fill="#C4331D"/>

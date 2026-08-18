@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
+import { RouterProvider } from '../app/route'
 import { getReadingPaneMode, setReadingPaneMode } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
 import { formatBytes } from '../i18n/formatters'
@@ -26,15 +27,21 @@ let db: ReplicaDb
 
 // SettingsPage renders BrandLinks, which reads the config context; provide it (DEFAULT_CONFIG
 // has no branding links, so none render — the reading-pane/theme/axe assertions are unaffected).
+//
+// The RouterProvider is not decoration either: the page reads `route.rest` to resolve a
+// `/settings/<section>` deep link, and it is a route screen — testing it outside a router would be
+// testing a shape the app never renders.
 function renderSettings() {
   return render(
-    <ConfigProvider config={DEFAULT_CONFIG}>
-      <ToastProvider>
-        <ReplicaProvider accountId={ACC} db={db}>
-          <SettingsPage />
-        </ReplicaProvider>
-      </ToastProvider>
-    </ConfigProvider>,
+    <RouterProvider>
+      <ConfigProvider config={DEFAULT_CONFIG}>
+        <ToastProvider>
+          <ReplicaProvider accountId={ACC} db={db}>
+            <SettingsPage />
+          </ReplicaProvider>
+        </ToastProvider>
+      </ConfigProvider>
+    </RouterProvider>,
   )
 }
 

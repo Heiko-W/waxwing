@@ -131,7 +131,7 @@ function renderList(mailboxId = 'inbox') {
       <ConfigProvider config={DEFAULT_CONFIG}>
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
-            <MessageList mailboxId={mailboxId} />
+            <MessageList mailboxId={mailboxId} viewOptionsOpen />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -146,7 +146,7 @@ function renderSearch(spec: QuerySpec, scopeMailboxId?: string) {
       <ConfigProvider config={DEFAULT_CONFIG}>
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
-            <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId }} />
+            <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId }} viewOptionsOpen />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -171,7 +171,7 @@ function renderFolderSearch(spec: QuerySpec, mailboxId = 'inbox', scopeMailboxId
       <ConfigProvider config={DEFAULT_CONFIG}>
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
-            <MessageList mailboxId={mailboxId} search={{ spec, scopeMailboxId }} />
+            <MessageList mailboxId={mailboxId} search={{ spec, scopeMailboxId }} viewOptionsOpen />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -347,6 +347,13 @@ describe('MessageList', () => {
     await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
     await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
     expect(await screen.findByText('30 selected')).toBeInTheDocument()
+
+    // Once everything IS selected, the same control clears — so it must stop announcing "Select
+    // all". It did not: the name was static while `onChange` branched, i.e. a control naming one
+    // action and performing the opposite, and for a screen-reader user the name is all there is.
+    // `list.clearSelection` was already translated in both languages and had no caller.
+    expect(await screen.findByRole('checkbox', { name: 'Clear selection' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select all' })).toBeNull()
 
     // Every one of the 30 is flagged AND read, so both buttons must offer to CLEAR — exactly what
     // `s` and `u` would do over the same selection.
@@ -569,14 +576,14 @@ describe('MessageList', () => {
       // query that matched seven is worse than saying nothing, because a screen-reader user has no
       // rowcount to contradict it with.
       await screen.findByText('This list is out of date and will refresh on the next sync.')
-      expect(screen.queryAllByText('No messages match your search.')).toHaveLength(0)
+      expect(screen.queryAllByText(/No messages match your search/)).toHaveLength(0)
       unmount()
 
       // Positive control: a search that really found nothing still announces it.
       await seedSearch(0)
       render(ui)
       // Twice over, and both matter: the visible empty state AND the live region's announcement.
-      expect(await screen.findAllByText('No messages match your search.')).toHaveLength(2)
+      expect(await screen.findAllByText(/No messages match your search/)).toHaveLength(2)
     })
   })
 
@@ -893,7 +900,7 @@ describe('MessageList', () => {
       renderList()
       await screen.findByText('First')
       expect(screen.getByLabelText('Sort')).toBeEnabled()
-      expect(screen.getByLabelText('Conversations')).toBeEnabled()
+      expect(screen.getByLabelText('View')).toBeEnabled()
       expect(screen.getByRole('checkbox', { name: 'Unread first' })).toBeEnabled()
       expect(screen.queryByText(/apply to folders only/)).toBeNull()
       // …and no control points at a reason that is not on screen. The note only renders on the
@@ -902,7 +909,7 @@ describe('MessageList', () => {
       // render alone (it never renders this branch).
       for (const control of [
         screen.getByLabelText('Sort'),
-        screen.getByLabelText('Conversations'),
+        screen.getByLabelText('View'),
         screen.getByRole('checkbox', { name: 'Unread first' }),
       ]) {
         expect(control).not.toHaveAttribute('aria-describedby')
@@ -927,13 +934,15 @@ describe('MessageList', () => {
       const reason = screen.getByText('Sorting and conversation view apply to folders only.')
       for (const control of [
         screen.getByLabelText('Sort'),
-        screen.getByLabelText('Conversations'),
+        screen.getByLabelText('View'),
         screen.getByRole('checkbox', { name: 'Unread first' }),
       ]) {
         expect(control).toBeDisabled()
         expect(control).toHaveAttribute('aria-describedby', reason.id)
       }
-      expect(screen.getByLabelText('Density')).toBeEnabled()
+      // Density is no longer here at all: Settings → Appearance already wrote the same
+      // `list.density` key, so the toolbar copy was a second door onto one room.
+      expect(screen.queryByLabelText('Density')).toBeNull()
     })
 
     // The persisting half, on that same route. A folder-scoped search is precisely where a written
@@ -945,7 +954,7 @@ describe('MessageList', () => {
       await screen.findByText('First')
 
       fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'subject' } })
-      fireEvent.change(screen.getByLabelText('Conversations'), { target: { value: 'flat' } })
+      fireEvent.change(screen.getByLabelText('View'), { target: { value: 'flat' } })
       fireEvent.click(screen.getByRole('checkbox', { name: 'Unread first' }))
 
       await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument())
@@ -962,7 +971,7 @@ describe('MessageList', () => {
       const reason = screen.getByText('Sorting and conversation view apply to folders only.')
       for (const control of [
         screen.getByLabelText('Sort'),
-        screen.getByLabelText('Conversations'),
+        screen.getByLabelText('View'),
         screen.getByRole('checkbox', { name: 'Unread first' }),
       ]) {
         expect(control).toBeDisabled()
@@ -970,8 +979,10 @@ describe('MessageList', () => {
         // sighted proximity.
         expect(control).toHaveAttribute('aria-describedby', reason.id)
       }
-      // Density still works on this seam — it is pure presentation — so it stays live.
-      expect(screen.getByLabelText('Density')).toBeEnabled()
+      // Density used to live here too, ungated, because it is pure presentation. It has moved out
+      // altogether: Settings → Appearance offered the identical control writing the identical
+      // `list.density` key, and one setting with two doors is one door too many.
+      expect(screen.queryByLabelText('Density')).toBeNull()
     })
 
     // The other half of the promise, and the half that persists: a setting the user cannot see take
@@ -983,7 +994,7 @@ describe('MessageList', () => {
       await screen.findByText('First')
 
       fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'subject' } })
-      fireEvent.change(screen.getByLabelText('Conversations'), { target: { value: 'flat' } })
+      fireEvent.change(screen.getByLabelText('View'), { target: { value: 'flat' } })
       fireEvent.click(screen.getByRole('checkbox', { name: 'Unread first' }))
 
       await waitFor(() => expect(screen.getByText('First')).toBeInTheDocument())
@@ -1450,7 +1461,7 @@ describe('MessageList', () => {
           <ConfigProvider config={DEFAULT_CONFIG}>
             <ToastProvider>
               <ReplicaProvider accountId="a" db={db}>
-                <MessageList mailboxId={mailboxId} />
+                <MessageList mailboxId={mailboxId} viewOptionsOpen />
               </ReplicaProvider>
             </ToastProvider>
           </ConfigProvider>
@@ -1997,8 +2008,13 @@ describe('MessageList', () => {
       expect(note).toBeInTheDocument()
       // The old text would have been a flat contradiction of the sidebar's count.
       expect(screen.queryByText('No messages in this folder.')).toBeNull()
-      // …and it names the setting that changes it, rather than leaving a dead end.
-      expect(note).toHaveTextContent(/Settings/)
+      // …and it must NOT send the user to Settings. This assertion used to demand the opposite —
+      // it required the sentence to name "the setting that changes it" — but no such setting
+      // exists: `offline.cacheDays` comes from the deployment's config.json and StorageSection only
+      // PRINTS it. So the copy promised a control the user would then hunt for and never find,
+      // which is worse than saying nothing, and the test was holding that promise in place.
+      expect(note).not.toHaveTextContent(/Settings/)
+      expect(note).toHaveTextContent(/this device only keeps the last 30 days/)
     })
   })
 })

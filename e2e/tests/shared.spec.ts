@@ -15,7 +15,7 @@ const OWN = 'alice@waxwing.test'
 const SHARED_RW = 'bob@waxwing.test'
 const SHARED_RO = 'carol@waxwing.test'
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 /** One account's section of the grouped sidebar — a named region per account (M4.4 stage 3). */
 const accountSection = (page: Page, name: string) => page.getByRole('region', { name })
@@ -27,7 +27,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   // A reload only tests the ROUTE when the session survives it; without this the app would land on
   // the sign-in step and the assertion would be about auth, not about the account in the URL.
   if (options.stay) await page.getByLabel('Stay signed in').check()
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
 }
 

@@ -11,6 +11,15 @@ export interface SwitchProps {
   /** Id of the element describing the switch (a hint/consequence line) — announced after its name. */
   'aria-describedby'?: string
   disabled?: boolean
+  /**
+   * Fill the available width and push the control to the trailing edge.
+   *
+   * A list of switches is read by scanning DOWN the control column, and by default each row sized
+   * itself from its own label — so in one Settings section two switches began 86 px apart and the
+   * column the eye follows did not exist. `block` gives them all the same edge (the iOS pattern this
+   * design takes after), and the same idiom `Button` already has.
+   */
+  block?: boolean
   id?: string
   className?: string
   ref?: Ref<HTMLButtonElement>
@@ -26,6 +35,7 @@ export function Switch({
   checked,
   onCheckedChange,
   label,
+  block,
   disabled,
   id,
   className,
@@ -58,7 +68,7 @@ export function Switch({
   if (label === undefined) return button
 
   return (
-    <span className={styles.row}>
+    <span className={cx(styles.row, block === true && styles.rowBlock)}>
       <span id={labelId} className={styles.label}>
         {label}
       </span>

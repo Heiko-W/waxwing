@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { noOverflow } from './no-overflow'
 
 /**
  * The narrow (phone) layout — 390 × 844, touch, below both shell breakpoints.
@@ -33,7 +34,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(messageList(page)).toBeVisible({ timeout: 30_000 })
 })
 
@@ -42,41 +43,6 @@ async function openInbox(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Show folders' }).click()
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
   await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
-}
-
-/**
- * Nothing rendered may cross the viewport's edges.
- *
- * Measured over every element rather than a named few, because the defect this replaces was in the
- * header — a component no phone test would have thought to name. An element ENTIRELY outside is
- * fine and is how the closed drawer works (`transform: translateX(-100%)`); the failure is a box
- * that is partly on screen and partly not, which is what a cut-off control is.
- */
-async function noOverflow(page: Page, where: string): Promise<void> {
-  // Transitions move boxes. A rect read mid-slide is neither where it was nor where it is going.
-  await page.waitForTimeout(400)
-  const escaping = await page.evaluate(() => {
-    window.scrollTo(0, 0)
-    const w = window.innerWidth
-    const out: string[] = []
-    for (const el of Array.from(document.querySelectorAll('*'))) {
-      const style = getComputedStyle(el)
-      if (style.visibility === 'hidden' || style.display === 'none' || style.opacity === '0')
-        continue
-      const r = el.getBoundingClientRect()
-      if (r.width === 0 || r.height === 0) continue
-      if (r.right <= 0 || r.left >= w) continue // entirely off-canvas: by design
-      if (r.right > w + 1 || r.left < -1) {
-        const cls = typeof el.className === 'string' ? el.className.split(/\s+/)[0] : ''
-        const label = el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 30) ?? ''
-        out.push(
-          `${el.tagName.toLowerCase()}.${cls} "${label}" [${Math.round(r.left)}…${Math.round(r.right)}]`,
-        )
-      }
-    }
-    return [...new Set(out)]
-  })
-  expect(escaping, `${where}: elements cross the 390px viewport edge`).toEqual([])
 }
 
 test('the shell fits the viewport on every screen', async ({ page }) => {
@@ -97,9 +63,13 @@ test('the shell fits the viewport on every screen', async ({ page }) => {
 
 test('the account name gives up its pixels but not its meaning', async ({ page }) => {
   // It is the one thing in the header that is not a control, and at 390 px it was ~180 px of the
-  // 390 available — enough to push the account button off-screen. It is visually hidden here, NOT
-  // removed: `display: none` would take it out of the accessibility tree as well, so a screen
-  // reader user on a phone would lose which account they are in.
+  // 390 available — enough to push the account button off-screen.
+  //
+  // The construction changed and this assertion outlived it, which is the point: the sentence is no
+  // longer a visually-hidden copy of a visible span, it is now the ONLY carrier of that statement
+  // (AccountMenu renders it in a `VisuallyHidden` on every viewport, with a separate `aria-hidden`
+  // span showing just the address where there is room). What must hold either way is what is
+  // written here — the meaning stays reachable, the pixels do not.
   const name = page.getByText(/Signed in as/)
   await expect(name).toHaveCount(1)
   const box = await name.boundingBox()
@@ -137,6 +107,51 @@ test('choosing a folder closes the drawer', async ({ page }) => {
   // Until this was wired up, Escape and the backdrop were the only ways out — so a tap on a folder
   // left the drawer (min(80vw, 18rem)) sitting on top of the list it had just loaded.
   await expect(folders(page), 'the drawer stayed open over the list').toBeHidden()
+})
+
+/**
+ * The half the test above could not see.
+ *
+ * It picks ARCHIVE — a different folder from the open one — and for a long time that was the only
+ * case exercised, because the close was inferred from a CHANGE in the selected mailbox. Tapping the
+ * folder you are already in produces no change, so the effect returned early and the drawer stayed
+ * up: no close button, Escape needing a keyboard, and 102 px of backdrop beside a full-height panel.
+ * And it is the likeliest tap of all — you open the drawer to check where you are, see the
+ * highlighted row, and touch it.
+ */
+test('re-choosing the folder already open closes the drawer too', async ({ page }) => {
+  await openInbox(page)
+  await page.getByRole('button', { name: 'Show folders' }).click()
+  await expect(folders(page)).toBeVisible()
+
+  const inbox = page.getByRole('treeitem', { name: /Inbox/ })
+  await expect(inbox).toHaveAttribute('aria-selected', 'true')
+  await inbox.click()
+
+  await expect(folders(page), 'tapping the open folder left the drawer up').toBeHidden()
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible()
+})
+
+/**
+ * The drawer is an overlay, so it has to behave like one: focus goes in, Tab does not walk out
+ * under the scrim, and there is a visible way to close it. Before, focus stayed on the toggle
+ * BEHIND the drawer, and the first Tab landed in the search field the scrim was covering.
+ */
+test('the drawer takes focus and offers a way out', async ({ page }) => {
+  await openInbox(page)
+  await page.getByRole('button', { name: 'Show folders' }).click()
+  await expect(folders(page)).toBeVisible()
+
+  const insideDrawer = await page.evaluate(() => {
+    const drawer = document.getElementById('waxwing-folder-region')
+    return drawer !== null && drawer.contains(document.activeElement)
+  })
+  expect(insideDrawer, 'focus stayed outside the drawer it opened').toBe(true)
+
+  // Scoped to the drawer: the BACKDROP carries the same accessible name (it is the other way to
+  // dismiss), so an unscoped query is a strict-mode violation rather than a missing button.
+  await folders(page).getByRole('button', { name: 'Hide folders' }).click()
+  await expect(folders(page)).toBeHidden()
 })
 
 test('the composer offers no controls that do nothing here', async ({ page }) => {

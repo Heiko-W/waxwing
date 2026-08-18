@@ -45,13 +45,16 @@ interface Target {
   readonly inline: boolean
 }
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+// `exact` is load-bearing: the default substring match also matches the live region labelled
+// "Status messages", so the loose form is a strict-mode violation the moment anything asks for this
+// region while both are mounted. Same collision CONTRIBUTING.md documents for /Archive/.
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
   await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
@@ -244,12 +247,25 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
   // alone would call the screen conformant while a one-click preference makes it not.
   test('the list still meets 24 px at COMPACT density', async ({ page }) => {
     await login(page)
-    await page.getByLabel('Density').selectOption('compact')
+
+    // Density is set in Settings now, not in the list toolbar. It used to be offered in BOTH, both
+    // writing `list.density` — one setting behind two doors — and the toolbar copy was the one that
+    // cost 156 px above every folder on a phone. Going through the real surface also means this
+    // test exercises the path a user actually takes.
+    await page.getByRole('link', { name: 'Settings', exact: true }).click()
+    await page.getByLabel('List density').selectOption('compact')
+    await expect(page.getByLabel('List density')).toHaveValue('compact')
+    await page.getByRole('link', { name: 'Mail', exact: true }).click()
+
     // The row pitch is what the exception depends on, so wait for the LIST to actually reflow
     // rather than for the control to report its new value.
-    await expect(page.getByLabel('Density')).toHaveValue('compact')
+    await expect(messageList(page)).toBeVisible()
     const found = await targets(page)
-    expect(found.length).toBeGreaterThan(10)
+    // The floor is a "did the sweep run at all" guard, not a control count — and the count
+    // legitimately dropped to exactly 10 when the list toolbar's four permanently visible controls
+    // moved (three behind a disclosure, density into Settings), which is what left 156 px of a
+    // phone back to the mail. Still far from empty: eight seeded rows and their checkboxes are here.
+    expect(found.length, 'no interactive targets found — the sweep is broken').toBeGreaterThan(5)
     report('list (compact)', found)
     expect(belowToken(found, await controlMin(page))).toEqual([])
     expect(undersized(found), 'compact density collapses the spacing exemption').toEqual([])

@@ -289,6 +289,7 @@ export function FolderTreeView({
                 >
                   <Menu
                     align="end"
+                    triggerVariant="ghost"
                     // Named after its ROW (B20.5) — a tree of eight folders otherwise exposes eight
                     // buttons all called "Folder actions".
                     triggerLabel={t('mailbox.actions.menu', {

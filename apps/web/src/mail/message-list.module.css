@@ -5,21 +5,53 @@
   min-block-size: 0;
 }
 
-/* Toolbar + bulk bar share the header row. */
-.toolbar,
+/*
+ * The view options, disclosed from the pane toolbar above.
+ *
+ * A GRID, not a wrapping flex row. As a flex row each label+field pair sized itself from its own
+ * content, so the three fields came out 110 / 183 / 126 px wide with right edges scattered across
+ * 114 px — and two of them landing 1 px apart, which reads as a mistake rather than a decision. One
+ * label column and one field column give every row the same two edges, at any width and in any
+ * language.
+ */
+.toolbar {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+/*
+ * The bulk bar keeps the flex row: it is a run of icon buttons, not label/field pairs.
+ *
+ * It SCROLLS rather than wraps. Wrapping put four icons on one line and three on the next, each
+ * line starting from a different x — the first after the count, the second hard against the edge —
+ * so seven controls that are one tool group read as two unrelated ones. One row keeps the group
+ * intact and the origin fixed; on a 390 px phone the tail is a swipe away, which is the same
+ * gesture the rows underneath already answer to.
+ */
 .bulkBar {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   border-block-end: 1px solid var(--waxwing-border);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* The bar is 44 px tall; a scrollbar inside it would eat a quarter of that. */
+  scrollbar-width: none;
 }
 
+.bulkBar > * {
+  flex: none;
+}
+
+/* `display: contents` so the label and the field become direct grid items of `.toolbar` and land in
+   its two columns, while the pair keeps its own element for the DOM/label relationship. */
 .control {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--waxwing-space-1);
+  display: contents;
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
 }
@@ -31,7 +63,8 @@
 /* Why the sort/threading/unread-first controls beside it are disabled (the search seam cannot
    honour them). It wraps to its own line on a narrow toolbar rather than squeezing the controls. */
 .toolbarNote {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: var(--waxwing-text-xs);
   color: var(--waxwing-text-muted);
 }
@@ -142,8 +175,8 @@
 
 .actionIcon {
   flex: 0 0 auto;
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
   transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
@@ -220,8 +253,12 @@
   transition: none;
 }
 
-.row:hover {
-  background-color: var(--waxwing-surface-hover);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .row:hover {
+    background-color: var(--waxwing-surface-hover);
+  }
 }
 
 /*
@@ -241,7 +278,8 @@
   outline-offset: -2px;
 }
 
-.row[aria-current="page"] {
+.row[aria-current="page"],
+.row[aria-current="page"]:hover {
   background-color: var(--waxwing-surface-selected);
 }
 
@@ -266,7 +304,15 @@
   align-items: center;
 }
 
+/*
+ * The unread mark. A RING as well as a fill, because the label swatch two columns over is the same
+ * 0.5rem circle and the only thing telling them apart was hue — which tokens.css rules out in so
+ * many words ("never a sole indicator"), and which disappears entirely in greyscale or for a
+ * red-green deficiency. Unread is also carried by the semibold sender and subject, so this is the
+ * third signal, not the first.
+ */
 .unreadDot {
+  box-shadow: 0 0 0 2px var(--waxwing-surface);
   position: absolute;
   inset-block-start: -2px;
   inset-inline-start: -4px;
@@ -308,8 +354,8 @@
 }
 
 .icon {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .flag {
@@ -369,4 +415,25 @@
 
 .compact {
   gap: var(--waxwing-space-1);
+}
+
+/* The visible hit count above search results. */
+.resultCount {
+  margin: 0;
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* The same live region with nothing to show — the list's own empty state carries that sentence. */
+.resultCountHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

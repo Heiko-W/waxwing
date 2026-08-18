@@ -46,6 +46,42 @@ describe('buildFrameDocument', () => {
     const doc = buildFrameDocument('<p>hi</p>', { allowRemote: true })
     expect(doc).toContain('img-src blob: data: https:')
   })
+
+  /**
+   * Forcing black-on-white is the only safe default for arbitrary mail — a message that sets
+   * `color:#eee` and no background is unreadable on anything else — but applying it to messages
+   * that declare no colour at all put a sheet of `#ffffff` inside a `#2c2c2e` card in the dark
+   * theme, at roughly 12.8:1 against its own surroundings. The caller decides; the frame obeys.
+   */
+  it('takes the caller’s palette when one is given', () => {
+    const doc = buildFrameDocument('<p>hi</p>', {
+      palette: { background: '#2c2c2e', text: '#f5f5f7', link: '#82acf5' },
+    })
+    expect(doc).toContain('background:#2c2c2e')
+    expect(doc).toContain('color:#f5f5f7')
+    expect(doc).toContain('a{color:#82acf5}')
+    expect(doc).not.toContain('#ffffff')
+  })
+
+  it('still forces black-on-white with no palette, and never smuggles a stale accent in', () => {
+    const doc = buildFrameDocument('<p>hi</p>')
+    expect(doc).toContain('background:#ffffff')
+    // The default link colour is the ONLY place `#2f6fe0` may still appear: it is the fallback for
+    // callers that cannot resolve a token, and the app always can.
+    expect(doc).toContain('a{color:#2f6fe0}')
+  })
+
+  /**
+   * A plain-text body has no measure of its own and ran the full width of the reading pane — 87
+   * characters a line on a 1440 px desktop. A designed HTML mail is never given this, because its
+   * author already chose a width.
+   */
+  it('caps the text measure only when asked', () => {
+    expect(buildFrameDocument('<p>hi</p>', { constrainWidth: true })).toContain('max-width:68ch')
+    // Not a bare `max-width`: `img{max-width:100%}` is in the reset unconditionally, so the loose
+    // form asserted nothing. The measure cap is the one on the body.
+    expect(buildFrameDocument('<p>hi</p>')).not.toContain('max-width:68ch')
+  })
 })
 
 describe('mountMailFrame', () => {

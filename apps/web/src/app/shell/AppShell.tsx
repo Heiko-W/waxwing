@@ -24,6 +24,7 @@ import { MailScreen } from './MailScreen'
 import { PrimaryNav } from './PrimaryNav'
 import { ReauthDialog } from './ReauthDialog'
 import styles from './shell.module.css'
+import { useDocumentTitle } from './use-document-title'
 import { useStorageFullNotifier } from './use-storage-notifier'
 
 const ContactsPage = lazy(() => import('../../contacts/ContactsPage'))
@@ -55,6 +56,8 @@ export function AppShell({ config }: AppShellProps) {
   useQuotaNotifier()
   // The service worker focused this tab after a notification click — go where it says (M3.6).
   useNotificationClickNavigation()
+  // Name the screen in the tab, the history menu and the OS task switcher.
+  useDocumentTitle(config.branding.productName)
 
   // (The service worker is registered in <App>, above the auth gate, and the browser's install offer
   // is captured in main.tsx before the first await — see those files for why neither belongs here.)

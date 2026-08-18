@@ -63,7 +63,7 @@ test.describe('SP.4 raw demo', () => {
 
     await basicLogin(page)
 
-    const list = page.getByRole('region', { name: 'Messages' })
+    const list = page.getByRole('region', { name: 'Messages', exact: true })
     // Inbox auto-loads the first page: 25 seeded mails, 10 per page.
     await expect(list.getByText('1–10 of 25')).toBeVisible()
 

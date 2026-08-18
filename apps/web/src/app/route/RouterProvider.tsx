@@ -62,10 +62,11 @@ export function RouterProvider({ baseUri, children }: RouterProviderProps) {
   const navigate = useCallback(
     (to: string, options?: NavigateOptions) => {
       const url = toHref(base, carryAccount(to, window.location.search))
+      const state = options?.state ?? null
       if (options?.replace) {
-        window.history.replaceState(null, '', url)
+        window.history.replaceState(state, '', url)
       } else {
-        window.history.pushState(null, '', url)
+        window.history.pushState(state, '', url)
       }
       setMatch(matchRoute(base, window.location))
     },

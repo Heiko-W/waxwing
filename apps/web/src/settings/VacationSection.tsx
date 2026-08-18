@@ -188,6 +188,7 @@ export function VacationSection(props: VacationSectionProps) {
 
       <div className={styles.field}>
         <Switch
+          block
           checked={draft.isEnabled}
           label={t('settings.vacation.enable.label')}
           aria-describedby={ids.enable}

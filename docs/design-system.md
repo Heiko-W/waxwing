@@ -4,6 +4,10 @@
 > Spec anchors: FR-UI-01/02, FR-THEME-01, FR-A11Y-01. Decision **D5** (design-system
 > sign-off) is taken against this document.
 
+The colour table below is checked against `tokens.css` by `tokens.doc.css.test.ts` — it drifted
+once (four values, including the accent this whole palette is built around) and nobody noticed,
+because a table in a document cannot fail. Now it can.
+
 Source of truth for the values below:
 - Tokens: `apps/web/src/ui/tokens.css` (restylable at runtime via `theme.css`, FR-THEME-01).
 - Contrast: `apps/web/src/ui/tokens.contrast.test.ts` — a test, not a claim (see §3).
@@ -53,12 +57,12 @@ declared once.
 | `--waxwing-text-muted` | `#636366` | `#a5a5ad` | Secondary text (AA as text) |
 | `--waxwing-border` | `#d2d2d7` | `#48484a` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
 | `--waxwing-border-strong` | `#86868b` | `#939398` | **Interactive control boundary** (≥ 3:1) |
-| `--waxwing-focus-ring` | `#2f6fe0` | `#5e93f0` | Focus + selection ring (≥ 3:1) |
-| `--waxwing-accent` | `#2f6fe0` | `#5e93f0` | Brand fill — a calm blue, theme-aware; config-overridable, **never a sole indicator** |
+| `--waxwing-focus-ring` | `#2761c4` | `#82acf5` | Focus + selection ring (≥ 3:1) |
+| `--waxwing-accent` | `#2761c4` | `#82acf5` | Brand fill — a calm blue, theme-aware; config-overridable, **never a sole indicator** |
 | `--waxwing-accent-contrast` | `#ffffff` | `#1d1d1f` | Label on the default accent fill |
-| `--waxwing-danger` | `#c10016` | `#ff6b60` | Error text/icon; destructive fill |
+| `--waxwing-danger` | `#c10016` | `#ff8078` | Error text/icon; destructive fill |
 | `--waxwing-danger-contrast` | `#ffffff` | `#1d1d1f` | Label on a danger fill |
-| `--waxwing-success` | `#1e7b34` | `#30d158` | Success text/icon; fill |
+| `--waxwing-success` | `#1c722f` | `#30d158` | Success text/icon; fill |
 | `--waxwing-success-contrast` | `#ffffff` | `#1d1d1f` | Label on a success fill |
 | `--waxwing-warning` | `#8a5d00` | `#ffd60a` | Warning text/icon; fill |
 | `--waxwing-warning-contrast` | `#ffffff` | `#1d1d1f` | Label on a warning fill |

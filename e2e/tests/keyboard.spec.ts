@@ -7,14 +7,14 @@ import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 
 const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 const grid = (page: Page) => page.getByRole('grid', { name: 'Messages' })
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
   await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })

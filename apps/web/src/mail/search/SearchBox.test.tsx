@@ -22,11 +22,25 @@ function mockSearch(over: Partial<SearchState> = {}): SearchState {
 }
 
 describe('SearchBox', () => {
-  it('renders the search field, scope control and no chips when empty', () => {
+  it('renders the field, and no chips, when empty', () => {
     render(<SearchBox search={mockSearch()} />)
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: 'Search in' })).toBeInTheDocument()
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  /**
+   * The scope picker is not chrome — it is part of composing a query, and it used to render
+   * unconditionally: a full-width "This folder" dropdown above every folder, 52 px on a phone,
+   * scoping nothing while the field was empty. Only the clear button beside it was ever gated on
+   * `search.active`; this follows the same rule now, plus focus, so the choice is still reachable
+   * before the query is submitted.
+   */
+  it('shows the scope control only once a search is being composed', async () => {
+    render(<SearchBox search={mockSearch()} />)
+    expect(screen.queryByRole('combobox', { name: 'Search in' })).not.toBeInTheDocument()
+
+    await userEvent.setup().click(screen.getByRole('searchbox', { name: 'Search' }))
+    expect(screen.getByRole('combobox', { name: 'Search in' })).toBeInTheDocument()
   })
 
   it('debounces typing into a replace setQuery', async () => {

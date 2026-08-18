@@ -23,7 +23,12 @@ type LabelDialog =
   | { readonly kind: 'recolor'; readonly label: LabelSummary }
   | { readonly kind: 'delete'; readonly label: LabelSummary }
 
-export function Labels() {
+export interface LabelsProps {
+  /** Fired on every label pick, including a re-pick of the active one — see FolderTreeProps. */
+  readonly onNavigate?: (() => void) | undefined
+}
+
+export function Labels({ onNavigate }: LabelsProps = {}) {
   const { t } = useTranslation()
   const labels = useLabels()
   const actions = useLabelActions()
@@ -65,7 +70,12 @@ export function Labels() {
         <LabelList
           labels={labels}
           activeKeyword={activeLabel}
-          onSelect={(keyword) => navigate(`/mail?label=${encodeURIComponent(keyword)}`)}
+          onSelect={(keyword) => {
+            // Re-picking the active label changes nothing, so it must not push a duplicate history
+            // entry — but it still has to close the drawer on a narrow screen.
+            if (keyword !== activeLabel) navigate(`/mail?label=${encodeURIComponent(keyword)}`)
+            onNavigate?.()
+          }}
           onRename={(label) => setDialog({ kind: 'rename', label })}
           onRecolor={(label) => setDialog({ kind: 'recolor', label })}
           onDelete={(label) => setDialog({ kind: 'delete', label })}

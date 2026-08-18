@@ -201,13 +201,19 @@
   min-block-size: var(--waxwing-control-min);
 }
 
-.mailboxButton:hover,
-.messageRow:hover {
-  background-color: var(--waxwing-surface-2);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .mailboxButton:hover,
+  .messageRow:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 .mailboxButton[aria-current="true"],
-.messageRow[aria-current="true"] {
+.messageRow[aria-current="true"],
+.mailboxButton[aria-current="true"]:hover,
+.messageRow[aria-current="true"]:hover {
   border-color: var(--waxwing-focus-ring);
   background-color: var(--waxwing-surface-2);
 }

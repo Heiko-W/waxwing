@@ -28,7 +28,7 @@ import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 
 const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 /**
  * Stalwart's paths, which live at the ORIGIN ROOT and are not the app's own resources. Offline, the
@@ -42,7 +42,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
   await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })

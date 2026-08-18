@@ -38,7 +38,7 @@ export async function signIn(page: Page): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(messageList(page)).toBeVisible({ timeout: 30_000 })
 }
 

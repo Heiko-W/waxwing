@@ -130,6 +130,7 @@ export function LabelList({
                 onKeyDown={(event) => event.stopPropagation()}
               >
                 <Menu
+                  triggerVariant="ghost"
                   align="end"
                   // Named after its ROW (B20.5). Without the name, a list of twelve labels exposes
                   // twelve buttons all called "Label actions" — a screen reader's rotor shows a

@@ -148,6 +148,7 @@ export function StorageSection(props: StorageSectionProps) {
       {persisted !== null && (
         <div className={styles.field}>
           <Switch
+            block
             checked={persisted}
             disabled={persisted}
             label={t('settings.offline.persist.label')}

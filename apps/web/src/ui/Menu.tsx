@@ -33,6 +33,15 @@ export interface MenuProps {
   className?: string
   /** Trigger `tabIndex`, e.g. to make the button part of a parent roving-focus widget (APG tree). */
   triggerTabIndex?: number
+  /**
+   * Drop the trigger's border and fill, matching `IconButton`'s ghost variant.
+   *
+   * For menus that sit INSIDE a list row rather than beside content. The folder tree reveals its
+   * per-row menu on hover, which is right — but touch has no hover, so the fallback shows all of
+   * them at once, and with the default bordered trigger that turned the drawer into a column of six
+   * identical framed tiles, visually louder than the folder names they belong to.
+   */
+  triggerVariant?: 'default' | 'ghost'
 }
 
 /**
@@ -48,6 +57,7 @@ export function Menu({
   align = 'start',
   className,
   triggerTabIndex,
+  triggerVariant = 'default',
 }: MenuProps) {
   const triggerId = useId()
   const menuId = useId()
@@ -196,7 +206,7 @@ export function Menu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
-        className={cx(styles.trigger, className)}
+        className={cx(styles.trigger, triggerVariant === 'ghost' && styles.triggerGhost, className)}
         onClick={() => (open ? close() : openMenu(firstEnabled))}
         onKeyDown={onTriggerKeyDown}
       >

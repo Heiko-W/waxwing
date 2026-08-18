@@ -7,20 +7,20 @@
 }
 
 .field {
+  /* `relative`, because the clear button is positioned inside the field now. The scope select has
+     moved out of this row entirely (it renders below, and only while a search is being composed),
+     so the wrap that used to rescue an 18 px input from it is no longer needed — and it was that
+     same wrap that pushed the clear button onto a line of its own. */
+  position: relative;
   display: flex;
-  /* The scope select ("This folder" / "All mailboxes") is `flex: none`, so on a narrow pane it
-     took its full width and left the search input 18 px — a text field too small to show a single
-     character, and below the WCAG 2.2 target-size minimum as well. Wrapping puts the scope on its
-     own line instead. */
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--waxwing-space-2);
 }
 
 .icon {
   flex: none;
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   color: var(--waxwing-text-muted);
 }
 
@@ -28,7 +28,14 @@
   /* 12rem basis: narrower than this and the scope select wraps rather than eating the field. */
   flex: 1 1 12rem;
   min-inline-size: 0;
-  padding: var(--waxwing-space-2) var(--waxwing-space-2);
+  /* The house component (`ui/TextInput`) sets this and SearchBox styled its own field instead, so
+     the one input a phone user touches most stayed 34 px tall where every other control grew to 44
+     (tokens.css raises `--waxwing-control-min` under `pointer: coarse`). WCAG AA was met either
+     way; the design system's own 44 px touch promise was not. */
+  min-block-size: var(--waxwing-control-min);
+  /* Room for the clear button, which now sits INSIDE the field. */
+  padding-inline: var(--waxwing-space-2) var(--waxwing-space-8);
+  padding-block: var(--waxwing-space-2);
   border: 1px solid var(--waxwing-border-strong);
   border-radius: var(--waxwing-radius-md);
   background: var(--waxwing-surface);
@@ -67,4 +74,55 @@
 
 .chipLabel {
   white-space: nowrap;
+}
+
+/*
+ * Chromium draws its own ✕ inside `input[type="search"]`. With the app's clear button now in the
+ * same corner that is two crosses side by side doing the same job — so the user-agent one goes.
+ * The app's version stays because it also resets the scope and the chips, which the native one
+ * knows nothing about.
+ */
+.input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* The clear button, over the field's trailing edge. */
+.clear {
+  position: absolute;
+  inset-inline-end: var(--waxwing-space-2);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+}
+
+/* The scope picker's own row, shown only while a search is being composed or is active. */
+.scopeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  margin-block-start: var(--waxwing-space-2);
+}
+
+.scopeLabel {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+  white-space: nowrap;
+}
+
+/* The operator hint: on screen while the field has focus, in the accessibility tree always. */
+.hint {
+  margin: var(--waxwing-space-1) 0 0;
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-text-muted);
+}
+
+.hintHidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

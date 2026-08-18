@@ -58,8 +58,12 @@
   color: var(--waxwing-text);
 }
 
-.item:hover {
-  background-color: var(--waxwing-surface-2);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .item:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 .item:focus-visible {
@@ -67,8 +71,9 @@
   outline-offset: -2px;
 }
 
-.item[aria-selected="true"] {
-  background-color: var(--waxwing-surface-2);
+.item[aria-selected="true"],
+.item[aria-selected="true"]:hover {
+  background-color: var(--waxwing-surface-selected);
   font-weight: var(--waxwing-weight-medium);
 }
 
@@ -139,6 +144,9 @@
   opacity: 0.5;
 }
 
+/* waxwing-hover-exempt: this SUPPRESSES a hover affordance on a disabled row rather than offering
+   one, so it must keep applying on every device — behind `hover: hover` it would stop defending
+   exactly where the pointer rules it overrides are still capable of matching. */
 .menuItem[aria-disabled="true"]:hover {
   background-color: transparent;
 }
@@ -160,8 +168,12 @@
   cursor: pointer;
 }
 
-.menuItem:hover {
-  background-color: var(--waxwing-surface-2);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .menuItem:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 /* WCAG 2.4.7. These two states used to share one rule that set `outline: none`, so keyboard

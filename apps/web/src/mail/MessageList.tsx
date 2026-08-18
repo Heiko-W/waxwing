@@ -4,8 +4,8 @@
  * hydrating ONLY the visible slice from the replica. It is an APG `grid` — the CONTAINER holds
  * focus and moves an `aria-activedescendant` across virtualized rows (so focus is never lost when a
  * row scrolls out and unmounts), with container-delegated keyboard (arrows/space/enter/shift-range/
- * ctrl-a/escape). It has a toolbar (sort / unread-first / density / threaded) whose choices persist
- * locally, a selection-driven bulk-actions bar (read/flag/archive/junk/trash/delete → the engine
+ * ctrl-a/escape). It has a disclosed view-options strip (sort / threading / unread-first) whose
+ * choices persist locally, a selection-driven bulk-actions bar (read/flag/archive/junk/trash/delete → the engine
  * outbox), and infinite scroll that pages older messages via `loadMore`.
  */
 
@@ -15,7 +15,7 @@ import { Archive, Ban, FolderInput, Mail, MailOpen, Star, Trash2 } from 'lucide-
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
-import { mailPath, useNavigate, useRoute } from '../app/route'
+import { mailHrefKeepingQuery, READING_HISTORY_MARK, useNavigate, useRoute } from '../app/route'
 import { useDraftOpener } from '../compose'
 import {
   type EmailRow,
@@ -28,7 +28,7 @@ import {
   useMailboxes,
   useReplica,
 } from '../sync'
-import { Button, Checkbox, Dialog, IconButton, Select, Spinner, VisuallyHidden } from '../ui'
+import { Button, Checkbox, Dialog, IconButton, Select, Spinner } from '../ui'
 import { clearActiveDrag, draggedMessageIds, MESSAGES_MIME, setActiveDrag } from './dnd'
 import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
@@ -86,9 +86,27 @@ export interface MessageListProps {
     | undefined
   /** The active label keyword when browsing `/mail?label=…` (M3.2) — enables "Remove from label". */
   readonly activeLabel?: string | undefined
+  /**
+   * Whether the view options (sort / threading / unread-first) are disclosed, and the DOM id the
+   * pane's toggle points its `aria-controls` at.
+   *
+   * The toggle lives in `MailScreen`'s pane toolbar rather than here, because that row also carries
+   * the folder title and the drawer button: one strip for "which list is this and how is it shown",
+   * instead of the two rows plus a permanently visible four-control block this replaces. Collapsed
+   * by default — the block measured 156 px on a phone, more than two message rows, for settings a
+   * user changes about as often as they change their signature.
+   */
+  readonly viewOptionsOpen?: boolean
+  readonly viewOptionsId?: string
 }
 
-export function MessageList({ mailboxId, search, activeLabel }: MessageListProps) {
+export function MessageList({
+  mailboxId,
+  search,
+  activeLabel,
+  viewOptionsOpen = false,
+  viewOptionsId,
+}: MessageListProps) {
   const { t } = useTranslation()
   const route = useRoute()
   const navigate = useNavigate()
@@ -381,8 +399,11 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
             ? Object.keys(row.mailboxIds)[0]
             : undefined
       if (targetMailbox === undefined) return
-      const qs = route.search.toString()
-      navigate(mailPath(targetMailbox, id) + (qs ? `?${qs}` : ''))
+      // Stamped, so the reading pane's Back button can pop this entry instead of pushing a third
+      // one on top of it (see READING_HISTORY_MARK).
+      navigate(mailHrefKeepingQuery(route.search, targetMailbox, id), {
+        state: { waxwing: READING_HISTORY_MARK },
+      })
     },
     [mailboxId, navigate, rowById, draftOpener, route.search, dispatchSelection],
   )
@@ -555,10 +576,10 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           onRequestDelete={() => setConfirmDelete(true)}
           onRequestMove={() => requestMove(selectedIds)}
         />
-      ) : (
+      ) : viewOptionsOpen ? (
         <Toolbar
+          id={viewOptionsId}
           sort={sort}
-          density={density}
           unreadFirst={unreadFirst}
           flat={flat}
           // Sort / threading / unread-first are folder-window options; the search seam cannot honour
@@ -567,16 +588,29 @@ export function MessageList({ mailboxId, search, activeLabel }: MessageListProps
           viewOptionsApply={search === undefined}
           onChange={setPrefValue}
         />
-      )}
+      ) : null}
 
+      {/*
+        One node, two presentations. The hit count used to be announced and never SHOWN, so a
+        sighted user had no way to tell "these are all the matches" from "the list is still filling
+        in" — while the identical information was already being spoken. It is now visible whenever
+        there is a count to give.
+
+        The empty case stays visually hidden because the list renders its own empty state right
+        below; showing both would say the same sentence twice on one screen. Keeping it in the SAME
+        live region matters — a second region would announce the transition twice.
+      */}
       {search && (
-        <VisuallyHidden aria-live="polite">
+        <p
+          className={ids.length === 0 ? styles.resultCountHidden : styles.resultCount}
+          aria-live="polite"
+        >
           {resolving
             ? ''
             : ids.length === 0
               ? t('search.results.empty')
               : t('search.results.count', { count: total ?? ids.length })}
-        </VisuallyHidden>
+        </p>
       )}
 
       {/* Outside the grid on purpose: `role="grid"` owes its accessible tree rows, and this note is
@@ -807,7 +841,6 @@ function SwipeLayer({ side, resolved }: SwipeLayerProps) {
 
 interface ToolbarProps {
   readonly sort: MessageSort
-  readonly density: Density
   readonly unreadFirst: boolean
   readonly flat: boolean
   /**
@@ -827,18 +860,20 @@ interface ToolbarProps {
    * decision — search deliberately shows each MATCHING message rather than a thread anchor, which is
    * also what the `<mark>` snippets in each row are highlighting. Filed rather than guessed at.
    *
-   * Density is NOT gated by this: it is pure presentation (row height + the preview line) and works
-   * identically on both seams.
+   * (Density used to sit here too and was NOT gated by this, being pure presentation. It has moved
+   * out entirely — Settings → Appearance already offered the same control writing the same
+   * `list.density` key, so the toolbar copy was a second door onto one room.)
    */
   readonly viewOptionsApply: boolean
   readonly onChange: (key: string, value: unknown) => void
+  /** Target of the disclosure toggle's `aria-controls` (the toggle lives in the pane toolbar). */
+  readonly id?: string | undefined
 }
 
-function Toolbar({ sort, density, unreadFirst, flat, viewOptionsApply, onChange }: ToolbarProps) {
+function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: ToolbarProps) {
   const { t } = useTranslation()
   const sortId = useId()
   const viewId = useId()
-  const densityId = useId()
   const reasonId = useId()
   /**
    * One gate for both halves of the promise. `disabled` makes the control inoperable — and in a
@@ -854,7 +889,7 @@ function Toolbar({ sort, density, unreadFirst, flat, viewOptionsApply, onChange 
   // Only set when there is something to point at, so a folder view carries no dangling reference.
   const describedBy = viewOptionsApply ? undefined : reasonId
   return (
-    <div className={styles.toolbar}>
+    <div className={styles.toolbar} id={id}>
       <div className={styles.control}>
         <label htmlFor={sortId} className={styles.controlLabel}>
           {t('list.sort.label')}
@@ -873,8 +908,11 @@ function Toolbar({ sort, density, unreadFirst, flat, viewOptionsApply, onChange 
         </Select>
       </div>
       <div className={styles.control}>
+        {/* `list.view.label`, not `list.view.threaded` — the label used to be the same string as the
+            selected option, so the control read "Konversationen [Konversationen]" and gave the user
+            no way to tell a category from a state. */}
         <label htmlFor={viewId} className={styles.controlLabel}>
-          {t('list.view.threaded')}
+          {t('list.view.label')}
         </label>
         <Select
           id={viewId}
@@ -885,19 +923,6 @@ function Toolbar({ sort, density, unreadFirst, flat, viewOptionsApply, onChange 
         >
           <option value="threaded">{t('list.view.threaded')}</option>
           <option value="flat">{t('list.view.flat')}</option>
-        </Select>
-      </div>
-      <div className={styles.control}>
-        <label htmlFor={densityId} className={styles.controlLabel}>
-          {t('list.density.label')}
-        </label>
-        <Select
-          id={densityId}
-          value={density}
-          onChange={(event) => onChange('list.density', event.target.value)}
-        >
-          <option value="comfortable">{t('list.density.comfortable')}</option>
-          <option value="compact">{t('list.density.compact')}</option>
         </Select>
       </div>
       <Checkbox
@@ -1084,8 +1109,13 @@ function BulkBar({
 
   return (
     <div className={styles.bulkBar}>
+      {/* The name has to follow the action. Once everything is selected this control CLEARS the
+          selection (see `onChange` below), but it kept announcing "Select all" — a control naming
+          one action and performing the opposite, and for a screen-reader user the name is the only
+          information there is. `list.clearSelection` was already translated in both languages and
+          had no caller. */}
       <Checkbox
-        aria-label={t('list.selectAll')}
+        aria-label={allSelected ? t('list.clearSelection') : t('list.selectAll')}
         checked={allSelected}
         indeterminate={someSelected}
         onChange={(event) => (event.target.checked ? onSelectAll() : onClear())}

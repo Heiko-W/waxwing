@@ -1,8 +1,17 @@
+/*
+ * `flex: 0 1 auto`, not `block-size: 100%`.
+ *
+ * As a flex child of the sidebar column, `100%` made this tree claim the whole height whatever it
+ * contained — so with six folders it left one 358 px hole (40 % of the viewport) between "Trash" and
+ * the "LABELS" heading below, and the two blocks read as unrelated instead of as one navigator.
+ * Sizing to content puts them back together; only the storage bar is pushed to the bottom, by the
+ * rule on the region itself.
+ */
 .container {
   display: flex;
   flex-direction: column;
+  flex: 0 1 auto;
   min-block-size: 0;
-  block-size: 100%;
 }
 
 .header {
@@ -51,12 +60,17 @@
   user-select: none;
 }
 
-.item:hover {
-  background-color: var(--waxwing-surface-2);
+/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
+   landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .item:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
-.item[aria-selected="true"] {
-  background-color: var(--waxwing-surface-2);
+.item[aria-selected="true"],
+.item[aria-selected="true"]:hover {
+  background-color: var(--waxwing-surface-selected);
   color: var(--waxwing-accent);
   font-weight: var(--waxwing-weight-semibold);
 }
@@ -79,20 +93,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   flex: 0 0 auto;
   color: var(--waxwing-text-muted);
 }
 
 .chevron svg {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .icon {
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   flex: 0 0 auto;
 }
 
@@ -122,10 +136,18 @@
   transition: opacity var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.item:hover .rowMenu,
 .item:focus-within .rowMenu,
 .item[aria-selected="true"] .rowMenu {
   opacity: 1;
+}
+
+/* The hover half, split off so keyboard focus and selection keep revealing the menu on every
+   device. Behind `hover: hover` because a tap would otherwise leave it revealed on the row it
+   landed on — and on touch the `pointer: coarse` rule below shows it anyway. */
+@media (hover: hover) {
+  .item:hover .rowMenu {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -202,8 +224,8 @@
 }
 
 .accountReadOnlyIcon {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 /* The loading state sits where the empty state does — same inset, so the sidebar does not shift

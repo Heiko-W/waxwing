@@ -122,8 +122,8 @@
 }
 
 .statusIcon {
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .statusSpin {
@@ -187,18 +187,43 @@
   text-decoration: none;
 }
 
-.primaryNavItem[aria-current="page"] {
+/* Hover is a POINTER affordance. Behind `hover: hover` for the reason Button.module.css spells out:
+   on a touchscreen a tap leaves the hovered style stuck to the row it landed on, which then reads as
+   a second selection. */
+@media (hover: hover) {
+  .primaryNavItem:hover {
+    background-color: var(--waxwing-surface-2);
+    color: var(--waxwing-text);
+  }
+}
+
+/*
+ * The current section, and it has to out-rank the hover rule above.
+ *
+ * `[aria-current="page"]` and `:hover` are BOTH (0,2,0) — identical specificity — so source order
+ * alone decided the winner, and `:hover` came second. Pointing at the tab you are already on erased
+ * its accent colour: the one moment the user asks "where am I", the answer disappeared. Naming the
+ * hovered state explicitly makes this (0,3,0), so it no longer depends on which rule is written
+ * last.
+ */
+.primaryNavItem[aria-current="page"],
+.primaryNavItem[aria-current="page"]:hover {
   color: var(--waxwing-accent);
 }
 
-.primaryNavItem:hover {
-  background-color: var(--waxwing-surface-2);
-  color: var(--waxwing-text);
+/* The label can never escape its own box, whatever a translator writes. German is what exposed this
+   (see the rail sizing at the tablet breakpoint), but the guard is language-agnostic: the full name
+   stays the link's accessible name either way. */
+.primaryNavItem span {
+  max-inline-size: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .primaryNavIcon {
-  inline-size: 1.35rem;
-  block-size: 1.35rem;
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
 }
 
 .main {
@@ -224,6 +249,21 @@
   padding: var(--waxwing-space-3);
   border-inline-end: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface);
+}
+
+/* The storage bar, and only it, goes to the bottom — the folder tree and the labels above now size
+   to their content (see folder-tree.module.css), so the slack collects here instead of in a hole
+   between them. */
+.folderRegion > :last-child {
+  margin-block-start: auto;
+}
+
+/* The drawer's own close affordance. Rendered only below 64em — where this region IS an overlay —
+   so it needs no media query of its own. */
+.drawerHeader {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-end: var(--waxwing-space-1);
 }
 
 /* Narrow screens: the folder region is an off-canvas drawer. */
@@ -276,6 +316,29 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/* Where the active screen's bar lands inside the header (phone only — see Header.tsx). Empty and
+   inert on wider tiers, where each pane keeps its own toolbar. */
+.screenBar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* Which list this is. Takes the slack so the two buttons sit at the ends, and truncates rather than
+   wrapping — a folder name is user data with no length limit. */
+.paneTitle {
+  flex: 1;
+  min-inline-size: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--waxwing-text-base);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
 .pane {
   display: flex;
   flex-direction: column;
@@ -319,23 +382,38 @@
 
 /* ---- Phone (< 40em): the header keeps only what a 390 px viewport can hold. ---- */
 @media (max-width: 39.999em) {
-  /* "Signed in as alice@example.com" is ~180 px of the ~390 px available, and it is the one thing
-     in the header that is not a control — so on a phone it gives up its pixels.
-     `display: none` was the first attempt and it was wrong: that takes the name out of the
-     accessibility tree too, so a screen-reader user on a phone would lose which account they are
-     in. This is the standard visually-hidden technique (the same rules as
-     ui/VisuallyHidden.module.css, inlined because this is one media-query override rather than a
-     component swap): no pixels, still announced, still in the DOM order it belongs to. */
+  /*
+   * `display: none` is correct HERE, though it was wrong when this rule was written.
+   *
+   * Back then this span was the only place the signed-in account existed, so hiding it outright
+   * removed it from the accessibility tree and a screen-reader user on a phone lost track of which
+   * account they were in — hence the visually-hidden technique that used to live here. The span is
+   * now `aria-hidden` and purely visual, with a `VisuallyHidden` sibling carrying the full sentence
+   * on every viewport (AccountMenu.tsx), so there is nothing left to preserve and the simpler rule
+   * is the honest one.
+   */
   .accountName {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border: 0;
+    display: none;
+  }
+
+  /*
+   * The brand goes entirely — wordmark AND mark.
+   *
+   * Hiding the name alone left a 24 px logo and two buttons occupying a 61 px strip, with the
+   * screen's own bar in a second strip below it: two rows for what fits in one. The header now
+   * carries the active screen's controls (`.screenBar`), so the brand has no room to justify. It is
+   * still in the tab title, on the sign-in screen, in the account menu and on every notification —
+   * FR-THEME-02 asks for the name to be configurable, not to be permanently on screen.
+   */
+  .brand {
+    display: none;
+  }
+
+  /* The spacer had `flex: 1` and so did the screen bar beside it, so the two split the free space
+     and the folder title was squeezed to "I." between them. With the brand gone the bar IS the
+     flexible element; the spacer has nothing left to push apart. */
+  .spacer {
+    display: none;
   }
 }
 
@@ -345,13 +423,31 @@
     flex-direction: row;
   }
 
+  /*
+   * 6rem, not 4.5rem — the rail has to hold its own labels.
+   *
+   * At 4.5rem (72px) the item box is 56px and its text area 40px, while the German "Einstellungen"
+   * measures 72px at `--waxwing-text-xs`. The span is centred, so it spilled 8px past each edge of
+   * the item and started at x = -1: the top-level navigation was clipped by the viewport in the
+   * second shipped language. English ("Settings", 48px) fits, which is why it went unseen — and no
+   * suite could have caught it, because the only overflow sweep in the repo runs at 390px, where
+   * this nav is a bottom bar.
+   *
+   * 96px gives an 80px item; dropping the item's own inline padding here (the rail already supplies
+   * 8px on each side) leaves ~76px of text — enough for the longest of the three labels with room to
+   * spare, and the ellipsis guard above catches anything longer.
+   */
   .primaryNav {
     flex-direction: column;
     justify-content: flex-start;
-    inline-size: 4.5rem;
+    inline-size: 6rem;
     padding: var(--waxwing-space-2);
     border-block-start: none;
     border-inline-end: 1px solid var(--waxwing-border);
+  }
+
+  .primaryNavItem {
+    padding-inline: var(--waxwing-space-hair);
   }
 }
 

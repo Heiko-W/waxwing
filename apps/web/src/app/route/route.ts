@@ -132,6 +132,44 @@ export function mailPath(mailboxId?: string, emailId?: string, accountId?: strin
   return `/mail/${mailboxId}/${emailId}${suffix}`
 }
 
+/**
+ * A mail URL that KEEPS the current query string — `?q=` (search), `?label=` and `?account=` are
+ * what the list is currently showing.
+ *
+ * This lived as a private helper in the shortcut registry, which is how the two ways of going "back
+ * to the list" came to disagree: `u` kept the query, while the on-screen Back button called
+ * `mailPath()` bare and dropped it. Dropping it snaps the list back to the plain folder, which
+ * changes the window key and therefore resets focus and selection out from under the user
+ * mid-triage — the registry's own comment said so, next to the implementation that got it right.
+ * On a phone the button is the ONLY way back, so the wrong half was the one that mattered most.
+ */
+export function mailHrefKeepingQuery(
+  search: URLSearchParams,
+  mailboxId?: string,
+  emailId?: string,
+): string {
+  const qs = search.toString()
+  return mailPath(mailboxId, emailId) + (qs ? `?${qs}` : '')
+}
+
+/**
+ * The `history.state` stamp on the entry that opening a message pushes.
+ *
+ * It exists so the Back button can distinguish two situations the URL alone cannot: the user
+ * arrived here by opening a row (our push is on top of the stack — pop it, which restores the
+ * previous URL, its query string and its scroll position for free), or the user deep-linked /
+ * followed a notification straight into the message (nothing of ours to pop — replace, so the
+ * history does not grow a phantom entry pointing back at the message they just left).
+ */
+export const READING_HISTORY_MARK = 'waxwing:reading'
+
+/** True when `history.state` is the entry {@link READING_HISTORY_MARK} describes. */
+export function isReadingHistoryEntry(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'waxwing' in state
+    ? (state as { waxwing?: unknown }).waxwing === READING_HISTORY_MARK
+    : false
+}
+
 /** Build the base-relative settings route path for an optional sub-section. */
 export function settingsPath(sub?: string): string {
   return sub === undefined || sub === '' ? '/settings' : `/settings/${sub}`
