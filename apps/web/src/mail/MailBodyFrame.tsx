@@ -23,12 +23,17 @@ import styles from './reading.module.css'
  *  - **Width.** A designed HTML mail chose its own measure (typically 600 px); a plain-text message
  *    rendered here has none and ran to 87 characters a line on a desktop.
  *
- * `<table` and `width=` are in the list because they are what a designed mail is built from, not
- * because they carry colour: a newsletter laid out in tables must keep the width its author picked.
- * `class=` is deliberately NOT in it — `renderPlainText` stamps `class="waxwing-quote"` on collapsed
- * quotes, so including it would have excluded the very case this exists for.
+ * `<table` is in the list because it is what a designed mail is built from, not because it carries
+ * colour: a newsletter laid out in tables must keep the width its author picked.
+ *
+ * Two attributes are deliberately NOT in it, both because they fired on messages that declare
+ * nothing at all. `class=` — `renderPlainText` stamps `class="waxwing-quote"` on collapsed quotes,
+ * so it would have excluded the very case this exists for. And bare `width=`, which in the fixture's
+ * newsletter appears exactly once: on a 1x1 tracking pixel. The width of an image says nothing about
+ * the document's colours or its measure, and treating it as a layout signal forced a white sheet
+ * into the dark theme for the most ordinary kind of mail there is.
  */
-const AUTHORED = /(?:style\s*=|<table|width\s*=|bgcolor\s*=|<font)/i
+const AUTHORED = /(?:style\s*=|<table|bgcolor\s*=|<font)/i
 
 /** Read a design token off the document, so the frame follows the live theme and any `theme.css`. */
 function token(name: string, fallback: string): string {
