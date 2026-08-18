@@ -1,17 +1,23 @@
 # Waxwing CI — live on github.com/Heiko-W/waxwing since 2026-08-17.
 #
 # It was written before the repository existed (ADR-003) so that the day one was created, CI was a
-# `git push` away rather than a design exercise — and so the local pipeline and the hosted one are
-# provably the same list of stages: both call `scripts/ci.mjs`, which calls the same pnpm scripts.
-# ADR-003 requires exactly that ("a thin wrapper that simply calls these same scripts, so the checks
-# do not diverge between local and CI"). The local gate is unchanged and still the inner loop:
+# `git push` away rather than a design exercise — and so the local pipeline and the hosted one run
+# the same CHECKS: every step below is a pnpm script `scripts/ci.mjs` also calls. ADR-003 requires
+# exactly that ("a thin wrapper that simply calls these same scripts, so the checks do not diverge
+# between local and CI").
+#
+# Not the same list of STAGES, though, and that difference is deliberate — see the two places it is
+# argued below: the jobs run in PARALLEL rather than gated on each other, and `check:actions:deep`
+# is a step of its own because it is the one check that needs the network. The local gate is
+# unchanged and still the inner loop:
 #   pnpm gate        the full pipeline (Docker + browser)
 #   pnpm gate:fast     the hermetic half — also wired to .githooks/pre-push
 #
 # Cost note, because it is the usual reason to hesitate: GitHub-hosted runners are FREE with no
 # minute cap on PUBLIC repositories, on every plan, and that survived the January 2026 repricing.
 # Waxwing is AGPL-3.0 and public, so this workflow costs nothing. A private repo would draw on the
-# plan's monthly free minutes instead (~5 min per full run here).
+# plan's monthly free minutes instead (measured 2026-08-18: ~10 min wall-clock, ~12 job-minutes
+# for a full run, since the two jobs run in parallel).
 #
 # ── WHY EVERY `uses:` IS A 40-CHARACTER SHA ───────────────────────────────────────────────────
 #
@@ -43,7 +49,7 @@ permissions:
   contents: read
 
 jobs:
-  # The hermetic half: typecheck, Biome, ~2900 Vitest tests, the production build and the
+  # The hermetic half: typecheck, Biome, ~3200 Vitest tests, the production build and the
   # size-limit budget. No Docker, no browser — so it fails in ~2 minutes on anything broken,
   # before the expensive job is worth starting.
   verify:

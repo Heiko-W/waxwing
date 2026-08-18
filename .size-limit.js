@@ -1,5 +1,5 @@
 // Waxwing bundle-size budgets — enforced by `pnpm size` / `pnpm verify` (P0.5,
-// NFR-PERF-01 / NFR-PERF-03; GitHub Actions CI deferred per ADR-003).
+// NFR-PERF-01 / NFR-PERF-03), locally and in the hosted `verify` job since 2026-08-17.
 //
 // Run with `pnpm size`, which builds apps/web FIRST (size-limit only measures files,
 // it does not build) and then runs size-limit against the emitted bundle. A budget

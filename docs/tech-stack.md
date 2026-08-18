@@ -257,7 +257,7 @@ waxwing/
 | Unit | Vitest | sync engine (state strings, conflict/replay), JMAP client (chunking, back-refs), sanitizer pipeline, JSContact↔vCard |
 | Component | Vitest + Testing Library | composer, list virtualization, a11y (axe) |
 | E2E | Playwright + Stalwart in Docker | login (OAuth + Basic), send/receive round-trip, push updates, offline outbox (network throttling), PWA install/manifest |
-| Compat | scheduled CI matrix | latest Stalwart release + `main`; smoke tests vs. Cyrus (keeps the "any JMAP server" promise honest) |
+| Compat | **not built** | intended as a scheduled matrix (latest Stalwart + `main`, Cyrus smoke). The `main` fixture profile exists (`e2e/stalwart/`), no workflow has a `schedule:` trigger, and Cyrus is blocked on there being no container image. Recorded as unbuilt rather than planned, because it has read as planned since P0.5 |
 | CSS (static) | Vitest, Node project | token references resolve, theme blocks agree, focus outlines are never suppressed without a replacement or a reasoned exemption (ADR-015) |
 
 **Stylesheet tests read from disk, so they run in the Node project, not jsdom.**

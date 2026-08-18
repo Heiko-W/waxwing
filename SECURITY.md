@@ -304,10 +304,19 @@ toolchain and no esbuild code is in the bundle; the allowance exists because pnp
 `--frozen-lockfile` install outright otherwise, so a fresh clone could not build at all. It
 is one named package in a reviewable file, not a blanket permission.
 
-**Limits.** No automated dependency-vulnerability scanning runs today. Adding one is
-worthwhile and is not done. `.github/dependabot.yml` is **not** it: it is scoped to
-`github-actions` and deliberately does not watch npm, so nothing here tells you a bundled
-package has a CVE.
+**Scanning (since 2026-08-18).** Dependabot **alerts** are enabled, so a CVE in any of the 621
+packages in `pnpm-lock.yaml` is reported. Automated *fix PRs* are deliberately **off**, and
+`.github/dependabot.yml` still does not watch npm — that file's reasoning is about a bot opening
+lockfile PRs that get merged unread, which is an argument against unattended UPDATES, not against
+being told. Fixes are applied by hand; six currently sit as `overrides` in `pnpm-workspace.yaml`,
+each with the parent's declared range written next to it.
+
+**Limits.** Alerts are not a scan of what actually ships: they match the lockfile, so a
+build-time-only package counts the same as one in the bundle, and the triage of which is which is
+a person's job. One alert is open on purpose — esbuild `GHSA-g7r4-m6w7-qqqr`, a Windows-only path
+traversal in esbuild's own dev server, unreachable here (vite serves; CI is `ubuntu-latest`) and
+unfixable without breaking `tsup@8.5.1`'s declared `^0.27.0`. It stays visible rather than
+dismissed.
 
 ---
 

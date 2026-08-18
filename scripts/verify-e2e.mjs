@@ -24,8 +24,9 @@
 // Order is cheapest-first: the two fixture-free suites (2, 3) fail in seconds on a bundle that
 // cannot boot, so a broken build never pays for a Docker fixture to find out.
 //
-// This IS the E2E gate — ADR-003 realizes CI as `pnpm verify` + `pnpm verify:e2e` because no
-// GitHub repository exists yet. Every suite therefore has to be listed here or it is not gated
+// This IS the E2E gate — ADR-003 realizes CI as `pnpm verify` + `pnpm verify:e2e`, and the hosted
+// `ci.yml` (live since 2026-08-17) calls exactly those two. Every suite therefore has to be listed
+// here or it is not gated
 // at all; a suite that only ever runs when someone types its script by hand is not covered. M3.10
 // found this the hard way: the placeholder config had no `testMatch`, silently collected all five
 // fixture-backed spec files, and step 2 had been failing for a milestone (see the testMatch

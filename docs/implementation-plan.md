@@ -163,8 +163,8 @@ Single source of truth for progress. Statuses: `todo` · `in-progress` · `block
 | M4.6 | i18n completion (en + de), RTL readiness audit | M | all UI WPs | done | **2026-08-16.** Parity was already exact (815 keys each way), which is why the value was in READING rather than diffing: 37 German corrections, every one of which rendered and none of which showed up as missing. The worst were semantic — "Alle Postfächer" for "All folders" (*Postfach* is the account), a menu item that rendered "Verschieben nach An", two false friends (*arbeiten*, *durchgehen*), and **Ctrl → Strg**, which would have shipped as a real usability bug: a German keyboard has no Ctrl key, and it lived in a `.ts` file where no string sweep would look. Nine consistency fixes where one English concept had grown two German words. Enforcement now covers what key-set parity cannot see: a `t()` key that resolves in NEITHER locale (renders as itself on screen), placeholders one-directionally (a translation may drop `{{count}}` — "vom letzten Tag" is better German — but one it invents renders as literal braces), complete plural sets, no empty values. RTL: the box model is already logical (zero physical sides across 40 stylesheets); what the audit found was the class logical properties cannot express — a logical anchor with a physical `translateX`. Fixed with a `--waxwing-flip` sign, `dir` is now actually set (`RTL_LANGUAGES`, deliberately empty), and a static check keeps the pattern out. Three JS-side twins filed as **B41** — they need an RTL locale to verify, which is post-V1. |
 | M4.7 | Accessibility audit & fixes (WCAG 2.2 AA) | M | all UI WPs | done¹ | ¹ everything automatable is done and verified; the manual screen-reader passes need macOS/Windows hardware and are recorded as limitation #1 in docs/accessibility.md |
 | M4.8 | Performance hardening & budget verification | M | all UI WPs | done | **2026-08-16.** Budget **250.69 KB gz of 300 (16.4 % headroom)**, route splitting verified against the emitted chunks. Startup, median of 5 against the shipping bundle: cold desktop **94 ms**, SW-cached on a throttled 4G phone **850 ms**, cold on that phone **2492 ms** — the precache is worth 66 % of a cold start. 100 k mailbox: open **239 ms**, flick-to-new-row **679 ms**, select-all over 100 000 **9 ms**, all at **15 rendered rows**; heap after 100 open/close cycles **×1.34**, no leak. **The suite paid for itself twice over: B42** — the shell used `min-block-size: 100vh`, a floor, so nothing capped the height, the list's scroll container grew to 3800 px in a 720 px viewport, and the virtualizer (which sizes its window from that `clientHeight`) ran away to 3350 rendered rows under a trackpad flick. Fixed with `block-size: 100dvh` + `overflow: hidden`; every folder now renders ~⅓ the rows it did. **And a WCAG 2.4.3 defect**: `u` navigated without moving focus, dropping it to `<body>` — invisible because the chords keep working from there. Lighthouse deliberately not adopted (owner decision 2026-07-20). |
-| M4.9 | Release engineering: artifacts, guides, security docs, v1.0.0 | L | M4.1–M4.8, G2 | done¹ | ¹ **2026-08-17.** `pnpm release` builds both artefacts + `SHA256SUMS` and asserts five deployment traps; `docs/{deployment,configuration}.md`, `SECURITY.md` (reporting + threat model, with the B19 decision that the FR-RD-08 link check is friction and that no warning means "nothing found"), `CONTRIBUTING.md`, issue templates. Verified end to end on a clean Stalwart, which found **B43** (`/mail` is a reserved prefix) plus two documentation defects that had made the guide's curl fail at its first step since SP.5. Also fixed a shipped-config drift (`undoSendSeconds` 10 vs the spec's 15) now guarded by `config.shipped.test.ts`. **Per owner decision (2026-08-17), the four repository-dependent items are PREPARED, NOT PUBLISHED:** `release.yml`/`pages.yml` written and inactive, npm metadata complete with `private: true` deliberately left in place, project site written, v1.0.0 not tagged. Cyrus compat smoke blocked — no container image exists. |
-| **G3** | **Gate: release sign-off (a11y, perf, security, docs)** | — | M4.9 | todo | |
+| M4.9 | Release engineering: artifacts, guides, security docs, v1.0.0 | L | M4.1–M4.8, G2 | done¹ | ¹ **2026-08-17.** `pnpm release` builds both artefacts + `SHA256SUMS` and asserts five deployment traps; `docs/{deployment,configuration}.md`, `SECURITY.md` (reporting + threat model, with the B19 decision that the FR-RD-08 link check is friction and that no warning means "nothing found"), `CONTRIBUTING.md`, issue templates. Verified end to end on a clean Stalwart, which found **B43** (`/mail` is a reserved prefix) plus two documentation defects that had made the guide's curl fail at its first step since SP.5. Also fixed a shipped-config drift (`undoSendSeconds` 10 vs the spec's 15) now guarded by `config.shipped.test.ts`. **Per owner decision (2026-08-17), the four repository-dependent items were PREPARED, NOT PUBLISHED** — superseded the same day: the repository exists, `release.yml`/`pages.yml` are live, the project site is published, and v0.9.0/v0.10.0 are tagged. `private: true` and v1.0.0 still stand as written. Cyrus compat smoke blocked — no container image exists. |
+| **G3** | **Gate: release sign-off (a11y, perf, security, docs)** | — | M4.9 | done | **2026-08-17.** All four criteria met with one stated gap (the manual screen-reader pass, limitation #1 in `docs/accessibility.md`; owner decision: sign off with it named). Full record below under "Gate G3". This row read `todo` until 2026-08-18 while the section below recorded the sign-off and README announced it — a board that contradicts its own document is worse than a stale one. |
 
 ## 4. Phase Overview & Dependencies
 
@@ -2291,6 +2291,56 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
+### v0.11.0-dev (2026-08-18) — the pipelines, and what a review of them found
+
+No application code. A review of the CI/release pipelines and the repository settings, then the
+findings closed. Recorded because two of them were holes rather than tuning.
+
+**The jmap integration suites ran once per release and never on a pull request.** B22's guard —
+these suites `describe.skipIf` themselves away and something must assert they RAN — existed and
+worked. Where it lived did not: `integration()` was private to `scripts/ci.mjs`, reachable only
+through `pnpm gate`, and the only workflow calling `pnpm gate` is `release.yml`. Nine tests against
+a live Stalwart, first surfacing a break on a tag push. Lifted verbatim into
+`scripts/integration.mjs` behind `pnpm verify:integration`, called from `verify-e2e.mjs`. No stage
+moved into YAML; ADR-003 holds. Guard mutation-tested: with no fixture, vitest exits **0** with 5
+skipped and 0 passed, and the moved guard fires on it.
+
+**The action-pin check could not see what a pinned action itself calls.** `upload-pages-artifact`
+v3.0.1 is a composite action whose `action.yml` reached `actions/upload-artifact@v4` — a movable
+tag, resolved at run time, inside a job holding `pages: write`. The outer 40-hex pin freezes that
+repository's tree, not what the tree calls. `scripts/check-action-tree.mjs`
+(`pnpm check:actions:deep`) walks it, recursing, and fails closed when the API is unreachable.
+Deliberately network-bound and NOT in `preflight()`, so the pre-push hook stays hermetic.
+
+**CI 9:20 → ~6:20.** The a11y sweep paid 39.0s per reading-pane test to scan a `sandbox=
+"allow-same-origin"` frame axe cannot execute in. The old comment called excluding it a coverage
+trade; measured, there was nothing to trade — a planted alt-less `<img>` and empty `<a href>` inside
+the frame were reported by **neither** the scan with the frame nor without it (30.0s/33 passes vs
+0.7s/31 passes, violations `[]` both times). Only `frame-title`/`frame-title-unique` are lost, and
+`frame-title` is load-bearing in four E2E selectors. Plus `needs: verify` dropped (−125s on every
+green run) and the jmap stage added (+15s).
+
+**Published verification recipes that did not verify.** `gh attestation verify … --repo` accepts an
+artefact built from ANY ref, and this workflow makes branch builds on purpose as rehearsals —
+measured exit 0 on a rehearsal artefact, exit 1 once `--source-ref refs/tags/v0.10.0` is given. The
+comment justifying the ungated attest step claimed the command "shows which ref it came from"; it
+neither prints nor checks it. `sha256sum -c SHA256SUMS` failed for the single download the same
+paragraph recommends (missing `--ignore-missing`). And `docs/site/index.html` published an install
+`curl` carrying all three B43 defects — no `description`, no leading slash, and the reserved `mail`
+prefix — since v0.10.0.
+
+**Also:** `main` protected by a ruleset (0 approvals, required check `verify`, no bypass actors);
+Dependabot alerts on, 17 of 18 resolved (dompurify 3.4.13 the only one that ships — and this build
+was exposed to neither of its advisories, both needing options Waxwing does not set); all nine
+actions on current majors; `sha_pinning_required` on, verified against both composite actions;
+`persist-credentials: false` on all five checkouts. The pin-comment form was tightened to a bare
+`# vX.Y.Z` after `pnpm/action-setup` moved two majors while its decorated comment kept reading `v4`
+— Dependabot only maintains the bare form, and the old regex certified the result.
+
+**Open:** B44 unchanged. esbuild `GHSA-g7r4-m6w7-qqqr` deliberately unfixed (Windows-only, dev
+server, unreachable here, unfixable without breaking `tsup@8.5.1`'s `^0.27.0`). `e2e` is not yet a
+required check — pending ~15 green PR runs.
+
 ### v0.10.0 (2026-08-17) — the security review, and what it found
 
 A seven-dimension review of v0.9.0 (sanitizer, auth, ephemeral mode, app-origin XSS, service
@@ -2367,8 +2417,8 @@ explicit owner decision:
 | **Size budget** | `size-limit` CI gate from P0.5; every new dependency justified in the PR |
 | **i18n discipline** | en+de keys land with the feature (§2.4); extraction check automated in M4.6, applied retroactively never |
 | **A11y** | component-level axe tests from M1.1; APG patterns; audits in M4.7 |
-| **Security** | strict CSP from P0.2; sanitizer corpus grows with every HTML-mail bug; dependency audit (`pnpm audit`) in CI; threat model maintained from M4.9 on |
-| **Testing** | levels per tech-stack §7; E2E suites grow at the end of each phase (M1.9, M2.9, M3.10); Stalwart `main` + Cyrus smoke jobs scheduled |
+| **Security** | strict CSP from P0.2; sanitizer corpus grows with every HTML-mail bug; **Dependabot alerts** on the lockfile, triaged by hand (SECURITY.md §12) — there is no `pnpm audit` script and there never was; threat model maintained from M4.9 on |
+| **Testing** | levels per tech-stack §7; E2E suites grow at the end of each phase (M1.9, M2.9, M3.10); Stalwart `main` compat fixture **built but never wired to a schedule** — no workflow has a `schedule:` trigger; Cyrus smoke blocked, no container image exists |
 | **Docs & ADRs** | ADR per §2.3; deployment/config docs updated in the same PR as behavior changes |
 | **Capability gating** | every optional server feature checks the session capability and degrades to hidden-not-broken (FR-SRV-02) — review in every feature PR |
 
