@@ -99,12 +99,9 @@
   },
   "status": {
     "offline": "Offline",
-    "online": "Back online",
     "sync": {
-      "idle": "Up to date",
       "syncing": "Syncing…",
-      "offline": "Offline",
-      "error": "Sync problem"
+      "error": "Sync problem — retrying"
     },
     "outbox": {
       "stuck_one": "Still trying to reach the server ({{count}})",
@@ -260,7 +257,7 @@
       "title": "Server",
       "description": "What this JMAP server offers. Useful when reporting a problem.",
       "connection": {
-        "url": "Server",
+        "url": "Address",
         "username": "Signed in as",
         "account": "Account",
         "readOnly": "read-only"
@@ -337,7 +334,7 @@
     "list": {
       "title": "Contacts",
       "resize": "Resize the contact list",
-      "empty": "No contacts.",
+      "empty": "No contacts yet. Use + above to add your first.",
       "loading": "Loading contacts",
       "count_one": "{{count}} contact",
       "count_other": "{{count}} contacts"
@@ -437,7 +434,7 @@
       "title": "Groups",
       "new": "New group",
       "loading": "Loading groups",
-      "empty": "No groups.",
+      "empty": "No groups yet. Use + to group contacts together.",
       "newTitle": "New group",
       "editTitle": "Edit group",
       "name": "Group name",
@@ -630,7 +627,8 @@
     },
     "view": {
       "threaded": "Conversations",
-      "flat": "Individual messages"
+      "flat": "Individual messages",
+      "label": "View"
     },
     "viewOptionsUnavailable": "Sorting and conversation view apply to folders only.",
     "confirmDeleteBody_one": "This message will be permanently deleted. This can’t be undone.",
@@ -647,7 +645,7 @@
       "trash": "Moved to Trash",
       "folder": "Moved to {{folder}}"
     },
-    "emptyOutsideWindow": "No messages from the last {{count}} days. Older mail is on the server — widen the offline window in Settings to see it here."
+    "emptyOutsideWindow": "No messages from the last {{count}} days. Older mail is on the server — this device only keeps the last {{count}} days."
   },
   "reading": {
     "from": "From",
@@ -770,7 +768,6 @@
     "noSubject": "(No subject)",
     "fromLabel": "From",
     "subjectLabel": "Subject",
-    "subjectPlaceholder": "Subject",
     "minimize": "Minimize",
     "expand": "Full screen",
     "restore": "Exit full screen",
@@ -861,7 +858,7 @@
     },
     "hint": "Try from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
     "results": {
-      "empty": "No messages match your search.",
+      "empty": "No messages match your search. Try all mailboxes, or fewer words.",
       "count_one": "{{count}} result",
       "count_other": "{{count}} results"
     },
@@ -871,13 +868,13 @@
   },
   "labels": {
     "title": "Labels",
-    "empty": "No labels yet.",
+    "empty": "No labels yet. Use + to create one.",
     "new": "New label",
     "newEllipsis": "New label…",
     "assign": "Label",
     "menuTitle": "Apply labels",
     "removeFromLabel": "Remove from this label",
-    "discoveredHint": "Labels found on synced messages. Only messages in your offline window are shown.",
+    "discoveredHint": "Found automatically on your synced messages.",
     "unread": "{{count}} unread",
     "rowLabels": "Labels",
     "moreLabels_one": "{{count}} more label",

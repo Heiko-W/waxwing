@@ -127,7 +127,7 @@ describe('ContactList', () => {
 
   it('shows an empty state for a book with no contacts', async () => {
     renderContactList('empty')
-    expect(await screen.findByText('No contacts.')).toBeInTheDocument()
+    expect(await screen.findByText(/No contacts yet/)).toBeInTheDocument()
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 
@@ -144,7 +144,7 @@ describe('ContactList', () => {
   // state a brand-new account starts in.
   it('has no axe violations while EMPTY (the dangling aria-controls case)', async () => {
     const { container } = renderContactList('empty')
-    await screen.findByText('No contacts.')
+    await screen.findByText(/No contacts yet/)
     await expectNoA11yViolations(container)
   })
 })

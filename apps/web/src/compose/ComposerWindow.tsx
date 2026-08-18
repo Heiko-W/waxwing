@@ -406,11 +406,15 @@ export function ComposerWindow({
           <label className={styles.subjectLabel} htmlFor={subjectId}>
             {t('compose.subjectLabel')}
           </label>
+          {/* No placeholder. It used to repeat the label word for word — "Betreff" above an empty
+              box that also said "Betreff" — which costs a line of the narrowest screen for no
+              information. A placeholder earns its place by giving an EXAMPLE (as
+              `settings.vacation.subject.placeholder` does with "Nicht im Büro"); a subject has no
+              generic example, so the label carries it alone. */}
           <TextInput
             ref={subjectRef}
             id={subjectId}
             value={draft.subject}
-            placeholder={t('compose.subjectPlaceholder')}
             onChange={(event) => updateSubject(draft.id, event.target.value)}
           />
         </div>

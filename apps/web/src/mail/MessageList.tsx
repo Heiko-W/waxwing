@@ -873,8 +873,11 @@ function Toolbar({ sort, density, unreadFirst, flat, viewOptionsApply, onChange 
         </Select>
       </div>
       <div className={styles.control}>
+        {/* `list.view.label`, not `list.view.threaded` — the label used to be the same string as the
+            selected option, so the control read "Konversationen [Konversationen]" and gave the user
+            no way to tell a category from a state. */}
         <label htmlFor={viewId} className={styles.controlLabel}>
-          {t('list.view.threaded')}
+          {t('list.view.label')}
         </label>
         <Select
           id={viewId}
@@ -1084,8 +1087,13 @@ function BulkBar({
 
   return (
     <div className={styles.bulkBar}>
+      {/* The name has to follow the action. Once everything is selected this control CLEARS the
+          selection (see `onChange` below), but it kept announcing "Select all" — a control naming
+          one action and performing the opposite, and for a screen-reader user the name is the only
+          information there is. `list.clearSelection` was already translated in both languages and
+          had no caller. */}
       <Checkbox
-        aria-label={t('list.selectAll')}
+        aria-label={allSelected ? t('list.clearSelection') : t('list.selectAll')}
         checked={allSelected}
         indeterminate={someSelected}
         onChange={(event) => (event.target.checked ? onSelectAll() : onClear())}

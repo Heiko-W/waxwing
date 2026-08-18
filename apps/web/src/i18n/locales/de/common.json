@@ -92,19 +92,16 @@
     "signOutRemove": "Abmelden und Daten entfernen",
     "confirmRemove": {
       "title": "Alle lokalen Daten entfernen?",
-      "body": "Damit werden die von {{product}} lokal gespeicherten E-Mails und Einstellungen auf diesem Gerät gelöscht.",
+      "body": "Damit werden die von {{product}} lokal gespeicherten E-Mails und Einstellungen auf diesem Gerät gelöscht. Ihre Nachrichten auf dem Server bleiben unverändert.",
       "confirm": "Daten entfernen und abmelden",
       "cancel": "Abbrechen"
     }
   },
   "status": {
     "offline": "Offline",
-    "online": "Wieder online",
     "sync": {
-      "idle": "Auf dem neuesten Stand",
-      "syncing": "Synchronisiert…",
-      "offline": "Offline",
-      "error": "Sync-Problem"
+      "syncing": "Wird synchronisiert …",
+      "error": "Synchronisation gestört — wird erneut versucht"
     },
     "outbox": {
       "stuck_one": "Server nicht erreichbar — es wird weiter versucht ({{count}})",
@@ -175,7 +172,7 @@
       "title": "Lesen",
       "remote": {
         "label": "Externe Bilder automatisch laden",
-        "hint": "Ausgeschaltet ist die sichere Wahl."
+        "hint": "Externe Bilder verraten dem Absender, dass Sie die Nachricht geöffnet haben, und geben Ihre IP-Adresse preis. Ausgeschaltet ist die sichere Wahl."
       },
       "allowList_one": "Für {{count}} Absender werden externe Inhalte immer geladen.",
       "allowList_other": "Für {{count}} Absender werden externe Inhalte immer geladen.",
@@ -260,7 +257,7 @@
       "title": "Server",
       "description": "Was dieser JMAP-Server bietet. Nützlich, wenn Sie ein Problem melden.",
       "connection": {
-        "url": "Server",
+        "url": "Adresse",
         "username": "Angemeldet als",
         "account": "Konto",
         "readOnly": "schreibgeschützt"
@@ -281,7 +278,7 @@
       "no": "Nein",
       "none": "Keine",
       "coreMissing": "Dieser Server gibt kein Standard-Capability-Objekt an. Das ist ungewöhnlich — einzelne Funktionen funktionieren möglicherweise nicht.",
-      "mailMissing": "Dieses Konto gibt keine E-Mail-Funktion an.",
+      "mailMissing": "Dieses Konto gibt keine E-Mail-Funktion an, daher lassen sich keine Grenzwerte anzeigen.",
       "extra": {
         "title": "Weitere Funktionen, die dieser Server nennt"
       },
@@ -337,7 +334,7 @@
     "list": {
       "title": "Kontakte",
       "resize": "Größe der Kontaktliste anpassen",
-      "empty": "Keine Kontakte.",
+      "empty": "Noch keine Kontakte. Über „+“ oben legen Sie den ersten an.",
       "loading": "Kontakte werden geladen",
       "count_one": "{{count}} Kontakt",
       "count_other": "{{count}} Kontakte"
@@ -437,7 +434,7 @@
       "title": "Gruppen",
       "new": "Neue Gruppe",
       "loading": "Gruppen werden geladen",
-      "empty": "Keine Gruppen.",
+      "empty": "Noch keine Gruppen. Über „+“ fassen Sie Kontakte zusammen.",
       "newTitle": "Neue Gruppe",
       "editTitle": "Gruppe bearbeiten",
       "name": "Gruppenname",
@@ -514,7 +511,7 @@
     "support": "Support"
   },
   "theme": {
-    "label": "Darstellung",
+    "label": "Farbschema",
     "auto": "Systemdarstellung übernehmen",
     "light": "Helle Darstellung",
     "dark": "Dunkle Darstellung"
@@ -630,7 +627,8 @@
     },
     "view": {
       "threaded": "Konversationen",
-      "flat": "Einzelne Nachrichten"
+      "flat": "Einzelne Nachrichten",
+      "label": "Ansicht"
     },
     "viewOptionsUnavailable": "Sortierung und Konversationsansicht gelten nur für Ordner.",
     "confirmDeleteBody_one": "Diese Nachricht wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.",
@@ -647,7 +645,7 @@
       "trash": "In den Papierkorb verschoben",
       "folder": "Nach „{{folder}}“ verschoben"
     },
-    "emptyOutsideWindow": "Keine Nachrichten aus den letzten {{count}} Tagen. Ältere Nachrichten liegen auf dem Server — erweitere den Offline-Zeitraum in den Einstellungen, um sie hier zu sehen."
+    "emptyOutsideWindow": "Keine Nachrichten aus den letzten {{count}} Tagen. Ältere Nachrichten liegen auf dem Server — dieses Gerät hält nur die letzten {{count}} Tage bereit."
   },
   "reading": {
     "from": "Von",
@@ -770,7 +768,6 @@
     "noSubject": "(Kein Betreff)",
     "fromLabel": "Von",
     "subjectLabel": "Betreff",
-    "subjectPlaceholder": "Betreff",
     "minimize": "Minimieren",
     "expand": "Vollbild",
     "restore": "Vollbild verlassen",
@@ -861,7 +858,7 @@
     },
     "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
     "results": {
-      "empty": "Keine Nachrichten entsprechen Ihrer Suche.",
+      "empty": "Keine Nachrichten entsprechen Ihrer Suche. Versuchen Sie es in allen Ordnern oder mit weniger Wörtern.",
       "count_one": "{{count}} Treffer",
       "count_other": "{{count}} Treffer"
     },
@@ -871,13 +868,13 @@
   },
   "labels": {
     "title": "Labels",
-    "empty": "Noch keine Labels.",
+    "empty": "Noch keine Labels. Über „+“ legen Sie eines an.",
     "new": "Neues Label",
     "newEllipsis": "Neues Label…",
     "assign": "Label",
     "menuTitle": "Labels anwenden",
     "removeFromLabel": "Aus diesem Label entfernen",
-    "discoveredHint": "Auf synchronisierten Nachrichten gefundene Labels. Es werden nur Nachrichten aus dem Offline-Zeitraum angezeigt.",
+    "discoveredHint": "Automatisch auf Ihren synchronisierten Nachrichten gefunden.",
     "unread": "{{count}} ungelesen",
     "rowLabels": "Labels",
     "moreLabels_one": "{{count}} weiteres Label",
@@ -936,7 +933,7 @@
       "title": "„{{name}}“ leeren?",
       "message_one": "{{count}} Nachricht in „{{name}}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.",
       "message_other": "{{count}} Nachrichten in „{{name}}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.",
-      "retention": "{{product}} löscht diese auf dem Server. Dein Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
+      "retention": "{{product}} löscht diese auf dem Server. Ihr Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
       "confirm": "Ordner leeren"
     },
     "older": {
@@ -947,7 +944,7 @@
       "messageDestroy_one": "Nachrichten in „{{name}}“, die älter als {{count}} Tag sind, endgültig löschen? Das kann nicht rückgängig gemacht werden.",
       "messageDestroy_other": "Nachrichten in „{{name}}“, die älter als {{count}} Tage sind, endgültig löschen? Das kann nicht rückgängig gemacht werden.",
       "noteTrash": "Verschobene Nachrichten bleiben im Papierkorb, bis Sie ihn leeren.",
-      "retention": "{{product}} löscht diese auf dem Server. Dein Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
+      "retention": "{{product}} löscht diese auf dem Server. Ihr Anbieter kann außerhalb des Einflussbereichs von {{product}} eigene Sicherungen behalten.",
       "confirmTrash": "In den Papierkorb",
       "confirmDestroy": "Endgültig löschen",
       "invalid": "Bitte eine Anzahl von Tagen eingeben (1–3650)."
@@ -1056,8 +1053,8 @@
     "background": {
       "unavailable": "Mitteilungen bei vollständig geschlossenem {{product}} sind mit diesem Server nicht möglich. Sie setzen voraus, dass der Server einen Web-Push-Signaturschlüssel veröffentlicht (RFC 9749); dieser tut es nicht. Alles Obige funktioniert, solange {{product}} geöffnet ist.",
       "available": "Dieser Server kann Sie auch benachrichtigen, während {{product}} geschlossen ist.",
-      "contentless": "Diese Mitteilungen melden nur, dass Post eingegangen ist – nie Absender oder Betreff –, und der Server erfährt nichts über den Inhalt.",
-      "renewal": "Dieser Server verlängert das Hintergrund-Abonnement jeweils um sieben Tage, solange {{product}} gelegentlich geöffnet wird."
+      "contentless": "Diese Mitteilungen melden nur, dass Post eingegangen ist — nie Absender oder Betreff. Die Ordner-Auswahl oben gilt für sie nicht.",
+      "renewal": "Öffnen Sie {{product}} mindestens einmal pro Woche, damit sie weiter ankommen: Dieser Server verlängert das Hintergrund-Abonnement jeweils um sieben Tage, und nur {{product}} selbst kann es verlängern."
     },
     "message": {
       "noSubject": "(kein Betreff)",

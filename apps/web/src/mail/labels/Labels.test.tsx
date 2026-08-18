@@ -44,9 +44,7 @@ describe('Labels', () => {
     expect(await screen.findByRole('treeitem', { name: /Work/ })).toBeInTheDocument()
     // 'receipts' is a discovered (unregistered) keyword from cached mail.
     expect(screen.getByRole('treeitem', { name: /receipts/ })).toBeInTheDocument()
-    expect(
-      screen.getByText(/Labels found on synced messages|Only messages in your offline window/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Found automatically on your synced messages/)).toBeInTheDocument()
   })
 
   it('navigates to the label view on select (marks it active)', async () => {
