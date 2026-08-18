@@ -354,26 +354,41 @@ export function ComposerWindow({
             >
               <Trash2 />
             </IconButton>
-            <IconButton
-              label={t('compose.minimize')}
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                rememberFocus()
-                setMode(draft.id, 'minimized')
-              }}
-            >
-              <Minus />
-            </IconButton>
-            <IconButton
-              label={fullscreen ? t('compose.restore') : t('compose.expand')}
-              variant="ghost"
-              size="sm"
-              aria-pressed={fullscreen}
-              onClick={() => setMode(draft.id, fullscreen ? 'docked' : 'expanded')}
-            >
-              {fullscreen ? <Minimize2 /> : <Maximize2 />}
-            </IconButton>
+            {/* Also not on a phone, and for the same reason: line 129 defines `minimized` as
+                `draft.mode === 'minimized' && tier !== 'phone'`, so on a phone the mode is stored
+                and then ignored. ComposerHost picks the visible draft by `focusedId`, which this
+                button does not touch, so nothing moved — the window stayed exactly where it was.
+                On a phone the way to put a draft aside is Close: it is autosaved (M2.6) and waits
+                in Drafts, which is what every mail app on a phone does. */}
+            {tier !== 'phone' && (
+              <IconButton
+                label={t('compose.minimize')}
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  rememberFocus()
+                  setMode(draft.id, 'minimized')
+                }}
+              >
+                <Minus />
+              </IconButton>
+            )}
+            {/* Not on a phone, where this button was inert. `fullscreen` is
+                `tier === 'phone' || mode === 'expanded'`, so on a phone it stays true whatever the
+                mode is: the button rendered as "Restore", set the mode to `docked`, and the window
+                did not change — a control that reports a state it cannot leave. Removing it also
+                returns ~44 px to the title, which at 390 px was being truncated to "Thursd…". */}
+            {tier !== 'phone' && (
+              <IconButton
+                label={fullscreen ? t('compose.restore') : t('compose.expand')}
+                variant="ghost"
+                size="sm"
+                aria-pressed={fullscreen}
+                onClick={() => setMode(draft.id, fullscreen ? 'docked' : 'expanded')}
+              >
+                {fullscreen ? <Minimize2 /> : <Maximize2 />}
+              </IconButton>
+            )}
             <IconButton label={t('compose.close')} variant="ghost" size="sm" onClick={requestClose}>
               <X />
             </IconButton>

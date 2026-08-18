@@ -121,6 +121,12 @@
 }
 
 .editorWrap {
+  /* A flex COLUMN, so the editor inside can be told to take the height this wrapper already has.
+     Without it the wrapper filled the window and the editor did not fill the wrapper: the editor
+     was `min-block-size: 8rem` tall and everything below it was empty window. On a phone that was
+     more than half the screen — a full-screen composer offering a letterbox to type into. */
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-block-size: 0;
   overflow: auto;

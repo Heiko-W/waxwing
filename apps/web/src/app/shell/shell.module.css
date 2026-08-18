@@ -59,6 +59,12 @@
   padding-block: var(--waxwing-space-2);
   border-block-end: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface);
+  /* A flex row whose children cannot be shrunk pushes its overflow OUT of the viewport rather
+     than wrapping. That is what happened here: at 390 px the account name plus five controls
+     measured 412 px, so the account button sat 22 px off-screen on every screen in the app and
+     the whole shell could be scrolled sideways. `min-inline-size: 0` lets the shrinkable child
+     (the name) actually shrink; see `.accountName`. */
+  min-inline-size: 0;
 }
 
 .brand {
@@ -77,6 +83,11 @@
 .brandName {
   font-size: var(--waxwing-text-lg);
   font-weight: var(--waxwing-weight-semibold);
+  /* Same reasoning as `.accountName`: the product name is configurable (FR-THEME-02), so its
+     length is not something this layout gets to assume. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .spacer {
@@ -87,6 +98,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--waxwing-space-2);
+  /* The controls themselves must never shrink — a squashed icon button is a worse outcome than a
+     truncated name — but the group has to be allowed to be narrower than its content's ideal
+     width so the name inside it truncates instead of the group overflowing. */
+  min-inline-size: 0;
 }
 
 /* Status region (offline + sync). */
@@ -130,6 +145,12 @@
 .accountName {
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
+  /* Truncate rather than push. An address is user data of unbounded length, so without this a
+     long one breaks the header at ANY viewport width, not just on a phone. */
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Body: nav + main. Phone = column (bottom bar); tablet+ = row (left rail). */
@@ -294,6 +315,28 @@
   margin: 0;
   max-inline-size: 60ch;
   color: var(--waxwing-text-muted);
+}
+
+/* ---- Phone (< 40em): the header keeps only what a 390 px viewport can hold. ---- */
+@media (max-width: 39.999em) {
+  /* "Signed in as alice@example.com" is ~180 px of the ~390 px available, and it is the one thing
+     in the header that is not a control — so on a phone it gives up its pixels.
+     `display: none` was the first attempt and it was wrong: that takes the name out of the
+     accessibility tree too, so a screen-reader user on a phone would lose which account they are
+     in. This is the standard visually-hidden technique (the same rules as
+     ui/VisuallyHidden.module.css, inlined because this is one media-query override rather than a
+     component swap): no pixels, still announced, still in the DOM order it belongs to. */
+  .accountName {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 /* ---- Tablet (>= 40em): left icon rail. ---- */

@@ -8,6 +8,11 @@
 
 .field {
   display: flex;
+  /* The scope select ("This folder" / "All mailboxes") is `flex: none`, so on a narrow pane it
+     took its full width and left the search input 18 px — a text field too small to show a single
+     character, and below the WCAG 2.2 target-size minimum as well. Wrapping puts the scope on its
+     own line instead. */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--waxwing-space-2);
 }
@@ -20,7 +25,8 @@
 }
 
 .input {
-  flex: 1;
+  /* 12rem basis: narrower than this and the scope select wraps rather than eating the field. */
+  flex: 1 1 12rem;
   min-inline-size: 0;
   padding: var(--waxwing-space-2) var(--waxwing-space-2);
   border: 1px solid var(--waxwing-border-strong);
