@@ -1,15 +1,3 @@
-Waxwing is AGPL-3.0-only, EXCEPT for two workspace packages that carry their own MIT
-licence so that clients which are not themselves AGPL can use them:
-
-  packages/jmap        @waxwing/jmap       MIT  -- see packages/jmap/LICENSE
-  packages/jscontact   @waxwing/jscontact  MIT  -- see packages/jscontact/LICENSE
-
-Everything else -- apps/web, packages/mail-html, e2e, scripts, docs -- is covered by the
-GNU Affero General Public License v3.0 reproduced below. The cut is enforced by the
-dependency direction: neither MIT package imports AGPL code.
-
---------------------------------------------------------------------------------
-
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

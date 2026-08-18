@@ -208,11 +208,26 @@
   -d '{"using":["urn:ietf:params:jmap:core"],"methodCalls":[["x:Application/set",
        {"create":{"waxwing":{"enabled":true,
         "description":"Waxwing webmail",
-        "resourceUrl":"https://…/waxwing-stalwart-v0.10.0.zip",
-        "urlPrefix":{"/webmail":true}}}},"c1"]]}'</code></pre>
+        "resourceUrl":"https://github.com/Heiko-W/waxwing/releases/latest/download/waxwing-stalwart.zip",
+        "urlPrefix":{"/webmail":true},
+        "autoUpdateFrequency":604800000}}},"c1"]]}'</code></pre>
       <p>
-        Same origin, so no CORS and nothing else to run. Two other paths — a reverse proxy, and a
-        CDN with the trade-off it carries — are in the deployment guide.
+        Replace the host and the admin password; the rest is literal. Then <strong>restart
+        Stalwart</strong> — it fetches the archive on start — and open
+        <code>https://mail.example.com/webmail/</code>.
+      </p>
+      <p>
+        <code>autoUpdateFrequency</code> is a week in milliseconds, so new releases arrive on their
+        own. That is a standing decision to run whatever this project publishes next; the
+        <a href="https://github.com/Heiko-W/waxwing/blob/main/docs/deployment.md">deployment
+        guide</a> shows how to pin a version instead, and covers the two other paths — a reverse
+        proxy, and a CDN with the trade-off it carries. Downloads and checksums are on the
+        <a href="https://github.com/Heiko-W/waxwing/releases">releases page</a>.
+      </p>
+      <p>
+        <strong>Do not use <code>/mail</code> as the prefix.</strong> It is reserved: Stalwart
+        accepts the registration, fetches the archive, and then answers 404 for every path under it
+        without logging anything.
       </p>
 
       <h2>Honest limitations</h2>
