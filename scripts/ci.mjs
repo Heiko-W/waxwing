@@ -100,6 +100,16 @@ function stage(label, args, { capture = false } = {}) {
  * runs the full `pnpm gate` before publishing anything — rather than by the PR check. Moving it
  * into `verify` means a new script entry in the root `package.json`; it lives here because this is
  * the file that already owns the pipeline's own hygiene.
+ *
+ * AND WHAT IT STILL CANNOT SEE, which is the other half of the coverage story: it reads the files
+ * in `.github/workflows/` and nothing else. Pinning `actions/foo@<sha>` freezes THAT repository —
+ * it does not freeze what `foo` calls at run time, and a COMPOSITE action calls things. This
+ * repository shipped exactly that: `upload-pages-artifact` v3.0.1 reached
+ * `actions/upload-artifact@v4`, a movable tag, from inside a job holding `pages: write`, while
+ * this function reported every pin correct. `scripts/check-action-tree.mjs`
+ * (`pnpm check:actions:deep`) walks that second level. It is deliberately NOT called from here:
+ * it needs the GitHub API, and this function's whole value is that it is hermetic enough to sit
+ * in a pre-push hook.
  */
 function checkWorkflowActionPins() {
   const dir = new URL('../.github/workflows/', import.meta.url)

@@ -45,7 +45,8 @@
     "gate:fast": "node scripts/ci.mjs --fast",
     "e2e:large": "pnpm --filter @waxwing/e2e run e2e:large",
     "release": "node scripts/release.mjs --check",
-    "check:actions": "node scripts/ci.mjs --check-actions"
+    "check:actions": "node scripts/ci.mjs --check-actions",
+    "check:actions:deep": "node scripts/check-action-tree.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
