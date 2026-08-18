@@ -134,6 +134,16 @@
        below (SC 2.5.5 AAA) so it stays finger-friendly where screen space is tight. */
     --waxwing-control-min: 2.125rem;
 
+    /* ---- Icons ----
+       Icons are the app's most frequent visual element and were the only category outside the
+       token system: eleven distinct sizes across the stylesheets, two of them 0.4 px apart
+       (0.85rem and 0.875rem) — a difference nobody can see and nobody can maintain. Three steps
+       cover every real use; the genuine one-offs (a status dot, a colour swatch, a drag grip)
+       stay literal, because they are shapes rather than icons. */
+    --waxwing-icon-sm: 1rem;
+    --waxwing-icon-md: 1.25rem;
+    --waxwing-icon-lg: 1.5rem;
+
     /* ---- Motion ---- */
     /* Writing-direction sign, for the one thing logical CSS has no property for: a directional
      `translateX`. Multiply a physical offset by this and it follows `dir` — an off-canvas drawer

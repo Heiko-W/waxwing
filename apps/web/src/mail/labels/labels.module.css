@@ -73,7 +73,7 @@
 
 .item[aria-selected="true"],
 .item[aria-selected="true"]:hover {
-  background-color: var(--waxwing-surface-2);
+  background-color: var(--waxwing-surface-selected);
   font-weight: var(--waxwing-weight-medium);
 }
 

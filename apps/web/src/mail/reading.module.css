@@ -175,8 +175,8 @@
 
 .nameWarningIcon {
   flex-shrink: 0;
-  inline-size: 0.875rem;
-  block-size: 0.875rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .date {
@@ -237,13 +237,26 @@
 
 /* ---- action bar ---- */
 
+/*
+ * The gap here is BETWEEN groups; `.actionGroup` sets the tighter one within each. That difference
+ * is the whole mechanism — ten equally spaced, equally weighted glyphs in one run gave the eye
+ * nothing to hold, and the six on the left came from four different verbs (file, delete, report,
+ * flag) with no more distance between "archive" and "delete" than between "archive" and itself.
+ * Distance does the grouping; no separators, no labels.
+ */
 .actionBar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--waxwing-space-1);
+  gap: var(--waxwing-space-4);
   align-items: center;
   padding-bottom: var(--waxwing-space-2);
   border-bottom: 1px solid var(--waxwing-border);
+}
+
+.actionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
 }
 
 .actionSpacer {
@@ -597,8 +610,8 @@
 
 .linkWarnIcon {
   flex-shrink: 0;
-  inline-size: 1.25rem;
-  block-size: 1.25rem;
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
   color: var(--waxwing-danger);
 }
 

@@ -17,11 +17,12 @@ import { renderPlainText, sanitize } from '@waxwing/mail-html'
 import {
   AlertTriangle,
   Archive,
+  Ban,
   ChevronDown,
   ChevronUp,
+  FolderInput,
   Forward,
   MailMinus,
-  MailWarning,
   MoreHorizontal,
   Reply,
   ReplyAll,
@@ -713,80 +714,90 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             `unavailableReason` carries the RIGHTS refusal — a permission the user should be told
             about, on a control that stays focusable so they can hear it. A move needs the source's
             `mayRemoveItems` and the target's `mayAddItems`; the source half is the gap B34 names. */}
-        <IconButton
-          label={t('list.actions.archive')}
-          variant="ghost"
-          disabled={archiveBox === undefined || inArchive}
-          unavailableReason={reasonText(rights.moveReason(inThisMailbox, archiveBox?.id))}
-          onClick={handlers.archive}
-        >
-          <Archive />
-        </IconButton>
-        <IconButton
-          label={t('list.actions.junk')}
-          variant="ghost"
-          disabled={junkBox === undefined || inJunk}
-          unavailableReason={reasonText(rights.moveReason(inThisMailbox, junkBox?.id))}
-          onClick={handlers.junk}
-        >
-          <MailWarning />
-        </IconButton>
-        <IconButton
-          label={inTrash ? t('list.actions.delete') : t('list.actions.trash')}
-          variant="ghost"
-          disabled={!inTrash && trashBox === undefined}
-          // In Trash this button DESTROYS rather than moves, so it takes the destroy verdict.
-          unavailableReason={reasonText(
-            inTrash ? rights.reason('destroy') : rights.moveReason(inThisMailbox, trashBox?.id),
-          )}
-          onClick={() => (inTrash ? handlers.requestDelete() : handlers.trash())}
-        >
-          <Trash2 />
-        </IconButton>
-        <IconButton
-          label={
-            email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag')
-          }
-          variant="ghost"
-          unavailableReason={reasonText(rights.reason('keywords'))}
-          onClick={handlers.toggleFlag}
-        >
-          <Star className={email.keywords.$flagged === true ? styles.flagOn : undefined} />
-        </IconButton>
-        <IconButton
-          label={t('reading.markUnread')}
-          variant="ghost"
-          unavailableReason={reasonText(rights.reason('seen'))}
-          onClick={handlers.markUnread}
-        >
-          <MailMinus />
-        </IconButton>
-        {/* Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
+        {/* Three groups, because ten equally-weighted glyphs in one run gave the eye nothing to
+            hold on to: file it (archive, label, move) | get rid of it (junk, trash) | change its
+            state (flag, unread). The gap between groups is four times the gap within one, which is
+            the whole mechanism — no separators, no labels, just distance doing the grouping. */}
+        <span className={styles.actionGroup}>
+          <IconButton
+            label={t('list.actions.archive')}
+            variant="ghost"
+            disabled={archiveBox === undefined || inArchive}
+            unavailableReason={reasonText(rights.moveReason(inThisMailbox, archiveBox?.id))}
+            onClick={handlers.archive}
+          >
+            <Archive />
+          </IconButton>
+          {/* Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
             way to reach. The bulk bar still uses it — there, nothing but the mouse opens the picker. */}
-        <IconButton
-          ref={labelButtonRef}
-          label={t('labels.assign')}
-          variant="ghost"
-          aria-haspopup="menu"
-          aria-expanded={labelsOpen}
-          onClick={() => setLabelsOpen((open) => !open)}
-        >
-          <Tag />
-        </IconButton>
-        {/* Without a source mailbox `move` keeps the other memberships — that is a COPY, not the
+          <IconButton
+            ref={labelButtonRef}
+            label={t('labels.assign')}
+            variant="ghost"
+            aria-haspopup="menu"
+            aria-expanded={labelsOpen}
+            onClick={() => setLabelsOpen((open) => !open)}
+          >
+            <Tag />
+          </IconButton>
+          {/* Without a source mailbox `move` keeps the other memberships — that is a COPY, not the
             move this button promises. The `v` chord gates on the same value (the shortcut context
             reads this very `mailboxId` back off the registered handlers), so the two cannot drift. */}
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={inThisMailbox === null}
-          // Only the SOURCE half here: the picker filters targets by `mayAddItems` already, and its
-          // empty state covers "nothing left to file into".
-          unavailableReason={reasonText(rights.removeReason(inThisMailbox))}
-          onClick={handlers.openMove}
-        >
-          {t('list.actions.move')}
-        </Button>
+          <IconButton
+            label={t('list.actions.move')}
+            variant="ghost"
+            disabled={inThisMailbox === null}
+            // Only the SOURCE half here: the picker filters targets by `mayAddItems` already, and its
+            // empty state covers "nothing left to file into".
+            unavailableReason={reasonText(rights.removeReason(inThisMailbox))}
+            onClick={handlers.openMove}
+          >
+            <FolderInput />
+          </IconButton>
+        </span>
+        <span className={styles.actionGroup}>
+          <IconButton
+            label={t('list.actions.junk')}
+            variant="ghost"
+            disabled={junkBox === undefined || inJunk}
+            unavailableReason={reasonText(rights.moveReason(inThisMailbox, junkBox?.id))}
+            onClick={handlers.junk}
+          >
+            <Ban />
+          </IconButton>
+          <IconButton
+            label={inTrash ? t('list.actions.delete') : t('list.actions.trash')}
+            variant="ghost"
+            disabled={!inTrash && trashBox === undefined}
+            // In Trash this button DESTROYS rather than moves, so it takes the destroy verdict.
+            unavailableReason={reasonText(
+              inTrash ? rights.reason('destroy') : rights.moveReason(inThisMailbox, trashBox?.id),
+            )}
+            onClick={() => (inTrash ? handlers.requestDelete() : handlers.trash())}
+          >
+            <Trash2 />
+          </IconButton>
+        </span>
+        <span className={styles.actionGroup}>
+          <IconButton
+            label={
+              email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag')
+            }
+            variant="ghost"
+            unavailableReason={reasonText(rights.reason('keywords'))}
+            onClick={handlers.toggleFlag}
+          >
+            <Star className={email.keywords.$flagged === true ? styles.flagOn : undefined} />
+          </IconButton>
+          <IconButton
+            label={t('reading.markUnread')}
+            variant="ghost"
+            unavailableReason={reasonText(rights.reason('seen'))}
+            onClick={handlers.markUnread}
+          >
+            <MailMinus />
+          </IconButton>
+        </span>
         <span className={styles.actionSpacer} />
         {/* All three gate on `handlers.bodyReady` — `!loading && ready` — and not on `loading`
             alone: the body arrives before its inline images do, and in that window `sanitized` is

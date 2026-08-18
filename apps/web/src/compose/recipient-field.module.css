@@ -103,8 +103,8 @@
 }
 
 .pillIcon {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .input {

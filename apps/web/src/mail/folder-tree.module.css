@@ -1,8 +1,17 @@
+/*
+ * `flex: 0 1 auto`, not `block-size: 100%`.
+ *
+ * As a flex child of the sidebar column, `100%` made this tree claim the whole height whatever it
+ * contained — so with six folders it left one 358 px hole (40 % of the viewport) between "Trash" and
+ * the "LABELS" heading below, and the two blocks read as unrelated instead of as one navigator.
+ * Sizing to content puts them back together; only the storage bar is pushed to the bottom, by the
+ * rule on the region itself.
+ */
 .container {
   display: flex;
   flex-direction: column;
+  flex: 0 1 auto;
   min-block-size: 0;
-  block-size: 100%;
 }
 
 .header {
@@ -61,7 +70,7 @@
 
 .item[aria-selected="true"],
 .item[aria-selected="true"]:hover {
-  background-color: var(--waxwing-surface-2);
+  background-color: var(--waxwing-surface-selected);
   color: var(--waxwing-accent);
   font-weight: var(--waxwing-weight-semibold);
 }
@@ -84,20 +93,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   flex: 0 0 auto;
   color: var(--waxwing-text-muted);
 }
 
 .chevron svg {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .icon {
-  inline-size: 1rem;
-  block-size: 1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   flex: 0 0 auto;
 }
 
@@ -215,8 +224,8 @@
 }
 
 .accountReadOnlyIcon {
-  inline-size: 0.85rem;
-  block-size: 0.85rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 /* The loading state sits where the empty state does — same inset, so the sidebar does not shift

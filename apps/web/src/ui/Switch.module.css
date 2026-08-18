@@ -5,6 +5,13 @@
   min-block-size: var(--waxwing-control-min);
 }
 
+/* `block`: one edge for every switch in a list, so the column can be scanned. See SwitchProps. */
+.rowBlock {
+  display: flex;
+  inline-size: 100%;
+  justify-content: space-between;
+}
+
 .label {
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text);
