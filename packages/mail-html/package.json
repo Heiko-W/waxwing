@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "dompurify": "^3.4.11"
+    "dompurify": "^3.4.13"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",
