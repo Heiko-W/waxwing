@@ -198,7 +198,10 @@ server {
     server_name mail.example.com;
 
     # JMAP first — these paths belong to Stalwart, not to the app.
-    location /jmap/  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+    # `proxy_buffering off` is REQUIRED, not tuning: /jmap/eventsource/ is the live channel,
+    # and with nginx's default buffering the response never reaches the browser at all.
+    location /jmap/  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host;
+                       proxy_buffering off; proxy_read_timeout 1h; }
     location /auth/  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
     location /.well-known/jmap { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
 
@@ -215,9 +218,15 @@ server {
 }
 ```
 
-The SSE endpoint (`/jmap/eventsource/`) is a long-lived response. nginx buffers by default,
-which delays every push until the buffer fills — add `proxy_buffering off;` to the `/jmap/`
-block if live updates feel late.
+**Why `proxy_buffering off` is in that block and not offered as a tuning tip.** The live channel
+is `/jmap/eventsource/`, a response that never ends. With nginx's default buffering the browser
+does not get a *late* update — it gets **no response header at all**; measured against a real
+Stalwart, nothing after 12 seconds, where the direct connection answers 200 in under a
+millisecond. Waxwing then falls back to a 60-second polling sweep, so the deployment looks like it
+works and is simply always a minute stale. This page used to describe that as "delays every push
+until the buffer fills … if live updates feel late", which is both the wrong mechanism and the
+wrong severity. `proxy_read_timeout 1h` keeps nginx from cutting the idle stream at its 60-second
+default.
 
 ### Caddy
 
@@ -356,8 +365,18 @@ header {
 }
 ```
 
-Both list `wss:` explicitly: Waxwing's live channel is a JMAP WebSocket (RFC 8887), and
-`connect-src` governs it. Drop the `wss://` entry only if you have disabled WebSocket push.
+Both list `wss:` explicitly, and **for a browser deployment that is unnecessary** — the entry is
+harmless, so it is left in rather than churned, but the reason given here was wrong.
+
+Waxwing's live channel in a browser is **SSE**, not a JMAP WebSocket. `engine.ts` allowlists
+`['sse', 'polling']` and deliberately excludes WebSocket: a browser cannot set `Authorization` on a
+WS upgrade and Stalwart offers no token fallback, so RFC 8887 can never authenticate here (decision
+D2 at G1, ADR-005 — and the allowlist is a *restriction* rather than a `prefer`, so that a failing
+SSE never strands the session on a transport that is terminal by construction). SSE is an ordinary
+`fetch`, governed by the `https://` entry beside it.
+
+So there is no "disabled WebSocket push" setting to correspond to dropping `wss://` — that
+sentence described a switch this app does not have.
 
 ### What narrowing `connect-src` actually buys
 

@@ -235,9 +235,16 @@ function preflight() {
 
   // Docker is only needed by the stages that use it; report it here so a missing daemon is called
   // out at second 0 rather than after the multi-minute verify stage.
+  //
+  // `docker info` and NOT `docker compose version`, which is what this ran until it was tested
+  // against a stopped daemon: the compose plugin is a client-side binary and answers its version
+  // perfectly well with nothing listening on the socket. Preflight therefore printed "docker
+  // available", the gate ran verify to completion, and the fixture failed minutes later with a
+  // socket error — the exact outcome the comment above says this check exists to prevent. `info`
+  // is a round trip to the daemon; it costs about 30 ms.
   let docker = false
   try {
-    execFileSync('docker', ['compose', 'version'], { stdio: 'ignore' })
+    execFileSync('docker', ['info'], { stdio: 'ignore' })
     docker = true
   } catch {
     docker = false
