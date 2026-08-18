@@ -25,8 +25,9 @@ aus. Alle Zahlen hier sind mit `pointer: coarse` und 44-px-Bedienelementen erhob
 
 ## Stand der Umsetzung
 
-**50 der 52 Befunde sind behoben, 2 bewusst zurückgestellt** (unten benannt, mit Begründung). Was
-sich messbar geändert hat, auf einem 390 × 844-Telefon mit echter Touch-Bemaßung:
+**51 der 52 Befunde sind behoben, 1 bewusst zurückgestellt** (C17, unten begründet), plus ein
+benannter Rest innerhalb von B6. Was sich messbar geändert hat, auf einem 390 × 844-Telefon mit
+echter Touch-Bemaßung:
 
 | Zustand | Chrome über der Liste | Sichtbare Zeilen |
 |---|---|---|
@@ -48,7 +49,8 @@ zugehörigen Commit:
   wurde der Text: `offline.cacheDays` steuert das Sync-Fenster und gehört in die Betreiber-
   Konfiguration; ein Regler dafür ist ein Sync-Feature, kein Textfix.
 
-**Zwei Dinge bleiben offen und sind es wert, benannt zu werden:**
+**Zwei Dinge bleiben offen und sind es wert, benannt zu werden** — das erste ist ein Rest innerhalb
+eines ansonsten behobenen Befunds, das zweite ein ganzer:
 
 - **Die Android-Zurückgeste schließt den Ordner-Drawer noch nicht** (Teil von B6). Fokus, Fokusfalle,
   `aria-modal` und ein sichtbarer Schließen-Knopf sind da; ein eigener History-Eintrag für ein
