@@ -29,8 +29,11 @@
 //     `checkWorkflowActionPins` for what runs it and, honestly, what does not.
 //
 // It stays a thin sequencer over the same pnpm scripts, exactly as ADR-003 requires, so the local
-// gate and the eventual `.github/workflows/ci.yml` cannot diverge: both call these scripts, and the
-// workflow file is the same list of stages.
+// gate and `.github/workflows/ci.yml` (live since 2026-08-17) cannot diverge: both call these
+// scripts. Not literally the same list, and the difference is deliberate — ci.yml runs `verify` and
+// `verify:e2e` as two PARALLEL jobs plus one step that is not in either (`check:actions:deep`,
+// which needs the network). What ADR-003 requires is that the CHECKS do not drift, and they do not:
+// every one of them is a pnpm script this file also calls.
 //
 // No dependencies — Node globals only, like the other scripts here.
 
@@ -94,12 +97,15 @@ function stage(label, args, { capture = false } = {}) {
  * and it is the token Dependabot rewrites alongside the SHA (.github/dependabot.yml). No comment
  * means no version to compare against when the bot proposes a bump.
  *
- * WHERE THIS RUNS, stated because the coverage is uneven. `pnpm gate` and `pnpm gate:fast` (the
- * pre-push hook) run it; `pnpm verify` does NOT, and the hosted `ci.yml` calls `verify`, so a pull
- * request that unpins an action is caught on the contributor's push and by `release.yml` — which
- * runs the full `pnpm gate` before publishing anything — rather than by the PR check. Moving it
- * into `verify` means a new script entry in the root `package.json`; it lives here because this is
- * the file that already owns the pipeline's own hygiene.
+ * WHERE THIS RUNS. Everywhere that matters, since 90d8447: `pnpm gate`, `pnpm gate:fast` (the
+ * pre-push hook) and `pnpm verify` — which is what the hosted `ci.yml` calls, so a pull request
+ * that unpins an action fails its required check. The entry point is `pnpm check:actions`
+ * (`ci.mjs --check-actions`), and `package.json` puts it at the end of `verify`.
+ *
+ * This paragraph used to say the opposite — that `verify` does NOT run it — and went on to
+ * estimate the work of changing that, sixty lines above the `ONLY_ACTIONS` branch that had already
+ * made it possible. Left uncorrected it is worse than no comment: it describes a hole a reader
+ * would then go and re-fix.
  *
  * AND WHAT IT STILL CANNOT SEE, which is the other half of the coverage story: it reads the files
  * in `.github/workflows/` and nothing else. Pinning `actions/foo@<sha>` freezes THAT repository —

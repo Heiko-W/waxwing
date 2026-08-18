@@ -128,6 +128,32 @@ Write the body for someone who will read it in a year while wondering why a line
 is. What was wrong, what it cost, why this fix and not the obvious one. "Fix bug" is not a
 commit message; neither is a restatement of the diff.
 
+## Releasing
+
+Only the maintainer does this, and it is written down because getting it wrong is expensive:
+v0.9.0 took **three tag pushes and two tag deletions**, and a deleted tag is worse than no tag
+because someone has already fetched it.
+
+1. **Rehearse first.** `gh workflow run release.yml --ref main` runs the full gate, `pnpm release`
+   and the attestation, and skips only the two tag-gated steps. Both v0.9.0 failures — an ANSI
+   escape defeating the integration guard's regex, and a missing `build:libs` in the release build
+   — would have surfaced here. The workflow has been dispatchable since its first commit and this
+   was never used.
+2. **Bump `package.json`,** then the eight version strings the release does not touch:
+   `README.md` (×2), `docs/site/index.html` (×3), `docs/deployment.md` (×2), `SECURITY.md` (×1).
+   Two further mentions — `docs/deployment.md` and `SECURITY.md` on "It starts with v0.10.0" —
+   are historical and stay. There is no check for this; a mechanical one would fire on those two.
+3. **Add a changelog section** to `docs/implementation-plan.md`.
+4. **`pnpm gate`** locally. The workflow re-runs it, but ten minutes here beats ten there.
+5. **Tag annotated and push:** `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z`. Annotated,
+   because every existing tag is — and note that `gh api …/git/ref/tags/<tag>` then answers with the
+   tag object rather than the commit, which is why `.github/dependabot.yml` documents
+   `commits/<tag>` for verifying pins.
+6. **Verify the published artefacts** with the two commands in the release notes — including
+   `--source-ref refs/tags/vX.Y.Z`, without which a rehearsal build also passes.
+
+If the tagged run fails, fix forward with a new patch version. Do not delete and re-push a tag.
+
 ## Architecture decisions
 
 A deviation from the spec, the tech stack or the plan is recorded as an ADR in

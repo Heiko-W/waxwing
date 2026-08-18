@@ -41,6 +41,24 @@ skipped** (closing B22), and a per-stage summary. `.githooks/pre-push` runs the 
 calling the same scripts, with `node-version-file: .nvmrc` so the hosted runner cannot repeat the
 version trap. It activates the day a repository exists, with no design work left to do.
 
+> **Update 2026-08-17 — it is live**, on github.com/Heiko-W/waxwing. The prediction held: activating
+> it took a push, not a design. Two things about it have since changed and are recorded here rather
+> than in a new ADR, because ADR-019's own closing section asks for that.
+>
+> **The jobs run in PARALLEL, not `verify` then `e2e` (2026-08-18).** The staggering was to fail
+> cheap before paying for Docker. Measured against six months of runs it was the wrong trade: it
+> cost 2:02 on every GREEN run, the common case, and saved the expensive job in 2 of 6 failures —
+> free minutes on a public repository, and `.githooks/pre-push` already blocks that whole failure
+> class locally. CI wall-clock went 9:20 → ~6:20. Stated cost, in `ci.yml`: a build error now also
+> surfaces inside a Playwright webServer as `Rolldown failed to resolve import`.
+>
+> **One step is not a `pnpm verify` stage (2026-08-18).** `check:actions:deep` walks each pinned
+> action's own `action.yml` and asserts a COMPOSITE action pins what IT calls — the gap that let
+> `upload-pages-artifact` v3.0.1 reach `actions/upload-artifact@v4`, a movable tag, from a job
+> holding `pages: write`. It needs the GitHub API, so folding it into `verify` would put a network
+> call in the pre-push hook. It is a script (`scripts/check-action-tree.mjs`), not YAML logic, so
+> ADR-003's rule holds: the workflow still only calls pnpm scripts.
+
 **3. Running that workflow locally with `act` is rejected.** Not on taste — on a verified failure
 mode. `act` does not nest a Docker daemon; it bind-mounts the host socket, so `docker compose up`
 inside a job creates **sibling containers on the host daemon**. The fixture's `./config:/etc/stalwart:ro`

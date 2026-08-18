@@ -179,7 +179,9 @@ fixture-side hooks make the browser demo work:
 - **`dev`** — pinned `stalwartlabs/stalwart:v0.16.14-alpine`, the tested baseline. This is
   what `pnpm e2e:server` runs. **Changing this tag requires a `pnpm e2e:server:down` before the
   next `up`** — see “Upgrading the pinned image” above.
-- **`main`** — `stalwartlabs/stalwart:latest`, for the scheduled, **non-blocking** compat
+- **`main`** — `stalwartlabs/stalwart:latest`, intended for a scheduled, **non-blocking** compat
+  job. That job does not exist: no workflow carries a `schedule:` trigger. The profile is run by
+  hand (`pnpm e2e:server:main`). Compat
   job wired in **P0.5**. It never runs by default. Both share host port `18080`, so run
   only one at a time.
 

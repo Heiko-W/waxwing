@@ -100,8 +100,8 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 **v0.10.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 3 217 unit tests, 9
-integration suites against a live Stalwart, and 101 end-to-end tests across six Playwright
+Every planned work package is done and the release gate is signed off: ~3 200 unit tests, 9
+integration tests against a live Stalwart, and 107 end-to-end tests across six Playwright
 suites, all green. Performance and accessibility are measured rather than asserted — the
 numbers are in the [implementation plan](docs/implementation-plan.md).
 
