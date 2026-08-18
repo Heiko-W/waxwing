@@ -348,6 +348,13 @@ describe('MessageList', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
     expect(await screen.findByText('30 selected')).toBeInTheDocument()
 
+    // Once everything IS selected, the same control clears — so it must stop announcing "Select
+    // all". It did not: the name was static while `onChange` branched, i.e. a control naming one
+    // action and performing the opposite, and for a screen-reader user the name is all there is.
+    // `list.clearSelection` was already translated in both languages and had no caller.
+    expect(await screen.findByRole('checkbox', { name: 'Clear selection' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select all' })).toBeNull()
+
     // Every one of the 30 is flagged AND read, so both buttons must offer to CLEAR — exactly what
     // `s` and `u` would do over the same selection.
     expect(await screen.findByRole('button', { name: 'Unflag' })).toBeInTheDocument()

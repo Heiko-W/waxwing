@@ -24,7 +24,7 @@ const OPEN_BUDGET_MS = 2_000
 /** A scroll far into the list re-hydrates a new slice; that must stay interactive. */
 const SCROLL_BUDGET_MS = 1_000
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 const grid = (page: Page) => page.getByRole('grid', { name: 'Messages' })
 
 /**
@@ -42,7 +42,7 @@ async function login(page: Page): Promise<void> {
   await page.goto('/')
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('treeitem', { name: new RegExp(LARGE_MAILBOX_NAME) })).toBeVisible({
     timeout: 60_000,

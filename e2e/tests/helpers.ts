@@ -8,7 +8,8 @@ export const CREDENTIALS = {
   bob: { user: 'bob@waxwing.test', pass: 'waxwing-e2e-Pw1!' },
 }
 
-export const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+export const messageList = (page: Page) =>
+  page.getByRole('region', { name: 'Messages', exact: true })
 
 /**
  * Override the app's `undoSendSeconds` for this page by intercepting `config.json` (deep-merged over
@@ -33,7 +34,7 @@ export async function login(
   await page.getByLabel('Username', { exact: true }).fill(creds.user)
   await page.getByLabel('Password', { exact: true }).fill(creds.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
   await openFolder(page, /Inbox/)
 }

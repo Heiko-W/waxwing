@@ -218,6 +218,26 @@ export function useLocalPref<T>(key: string): T | undefined {
 }
 
 /**
+ * Like {@link useMailbox}, but yields `undefined` OUTSIDE a `ReplicaProvider` instead of throwing.
+ *
+ * `AppShell` needs this and cannot use the throwing form: `SyncEngineHost` returns its children
+ * WITHOUT a provider while `connected` is null, which happens on every reload for as long as the
+ * session takes to restore. A shell-level hook that assumes the provider therefore crashes the app
+ * during exactly that window — it did, and the symptom was a reload landing back on the sign-in
+ * screen with "Something went wrong".
+ */
+export function useMailboxOptional(id: Id | undefined): MailboxRow | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<MailboxRow | undefined>(
+    async () =>
+      context === null || id === undefined
+        ? undefined
+        : await context.db.mailboxes.get([context.accountId, id]),
+    [context?.db, context?.accountId, id],
+  )
+}
+
+/**
  * Like {@link useLocalPref}, but yields `undefined` OUTSIDE a `ReplicaProvider` instead of throwing
  * (M3.7).
  *

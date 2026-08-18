@@ -21,7 +21,7 @@ const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 const bodyFrame = (page: Page, subject: string) =>
   page.frameLocator(`iframe[title="Message: ${subject}"]`)
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
@@ -31,7 +31,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await openInbox(page)
 }
 

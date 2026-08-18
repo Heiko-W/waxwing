@@ -17,16 +17,19 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { folderDisplayName } from '../../mail/folder-tree'
-import { useMailbox } from '../../sync'
+import { useMailboxOptional } from '../../sync'
 import { useRoute } from '../route'
 
 export function useDocumentTitle(productName: string): void {
   const { t } = useTranslation()
   const route = useRoute()
   const mailboxId = route.params.mailboxId
-  // `useMailbox` needs an id; an empty one simply resolves to `undefined`, which is the same answer
-  // as "no folder in the route" and needs no branch of its own.
-  const mailbox = useMailbox(mailboxId ?? '')
+  // The OPTIONAL form, and that is not a nicety: `SyncEngineHost` renders its children without a
+  // `ReplicaProvider` while `connected` is null, which is every reload for as long as the session
+  // takes to restore. The throwing hook crashed the shell in exactly that window — a reload landed
+  // back on the sign-in screen reporting "Something went wrong", which is a plausible-looking way
+  // for a title to break an app.
+  const mailbox = useMailboxOptional(mailboxId)
 
   useEffect(() => {
     const section = ((): string | undefined => {

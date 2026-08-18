@@ -39,7 +39,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     await expect(page.getByLabel('Stay signed in')).toBeDisabled()
     await expect(page.getByLabel('Stay signed in')).not.toBeChecked()
 
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
     await page.getByRole('treeitem', { name: /Inbox/ }).click()
     // Wait for real mail to land, so the replica genuinely holds messages rather than nothing.
     await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
@@ -54,7 +54,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
     await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
     await page.getByLabel('Public or shared computer').check()
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
     await page.getByRole('treeitem', { name: /Inbox/ }).click()
     await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
 
@@ -151,7 +151,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     await page.goto('/')
     await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
     await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
     await page.getByRole('treeitem', { name: /Inbox/ }).click()
     await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
 

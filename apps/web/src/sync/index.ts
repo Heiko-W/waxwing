@@ -91,6 +91,7 @@ export {
   useMailboxByRole,
   useMailboxes,
   useMailboxesFor,
+  useMailboxOptional,
   useQueryWindow,
   useReplica,
   useReplicaOptional,

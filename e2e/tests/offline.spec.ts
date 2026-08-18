@@ -33,7 +33,7 @@ import { setUndoGrace } from './helpers'
 
 const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 
-const messageList = (page: Page) => page.getByRole('region', { name: 'Messages' })
+const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 /** The app's own connectivity chip — a polite live region, so `role=status` is the stable handle. */
 const offlineChip = (page: Page) => page.getByRole('status').filter({ hasText: 'Offline' })
@@ -43,7 +43,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
   await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
@@ -392,6 +392,10 @@ test.describe('M3.10 offline', () => {
     // `checked` comes from a pref that lives in Dexie, so the click's effect only lands after an
     // IndexedDB round-trip — until then React re-renders the box back to unchecked, and `.check()`'s
     // synchronous "did the state change?" verification fails outright rather than retrying.
+    // The view options live behind a disclosure in the pane toolbar now: they were four rows
+    // permanently above every folder (156 px on a phone) for settings a user changes about as often
+    // as their signature, so they are collapsed by default.
+    await page.getByRole('button', { name: 'Show view options' }).click()
     const unreadFirst = page.getByRole('checkbox', { name: 'Unread first' })
     await unreadFirst.click()
     await expect(unreadFirst).toBeChecked({ timeout: 15_000 })

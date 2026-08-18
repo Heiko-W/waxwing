@@ -23,6 +23,44 @@ Der Touch-Kontext ist nicht Kosmetik: ohne `hasTouch` meldet der Browser `pointe
 `tokens.css` lässt `--waxwing-control-min` bei 34 px stehen, und jede Messung fällt zu günstig
 aus. Alle Zahlen hier sind mit `pointer: coarse` und 44-px-Bedienelementen erhoben.
 
+## Stand der Umsetzung
+
+**50 der 52 Befunde sind behoben, 2 bewusst zurückgestellt** (unten benannt, mit Begründung). Was
+sich messbar geändert hat, auf einem 390 × 844-Telefon mit echter Touch-Bemaßung:
+
+| Zustand | Chrome über der Liste | Sichtbare Zeilen |
+|---|---|---|
+| Posteingang, vorher | 390 px (53 %) | 5,2 |
+| Posteingang, nachher | **183 px (29 %)** | **7,9** |
+| Suche aktiv, vorher | 492 px (65 %) | 3,9 |
+| Suche aktiv, nachher | **280 px (40 %)** | **6,7** |
+
+**Drei Befunde wurden bewusst anders gelöst als vorgeschlagen** — jeweils mit Begründung im
+zugehörigen Commit:
+
+- **A2** wollte den Ordner-Knopf in die Kopfzeile der Shell. Stattdessen teilt er sich jetzt eine
+  Zeile mit dem Ordnernamen (**B4**) und dem Ansichtsmenü (**A1**). Dieselbe Ersparnis, aber ein
+  mail-spezifisches Bedienelement bleibt im Mail-Bildschirm statt in der geteilten Kopfzeile.
+- **A5** wollte das Suchfeld in die Kopfzeile. Dort würde es den Nutzer auf die Kontakte- und
+  Einstellungsseite begleiten, wo es nichts zu suchen gibt. Stattdessen wurde die Listenspalte von
+  360 auf 420 px verbreitert; das Umbrechen in vier Zeilen ist damit ohnehin erledigt.
+- **D2** wollte wahlweise ein Bedienelement für den Offline-Zeitraum oder einen ehrlichen Text. Es
+  wurde der Text: `offline.cacheDays` steuert das Sync-Fenster und gehört in die Betreiber-
+  Konfiguration; ein Regler dafür ist ein Sync-Feature, kein Textfix.
+
+**Zwei Dinge bleiben offen und sind es wert, benannt zu werden:**
+
+- **Die Android-Zurückgeste schließt den Ordner-Drawer noch nicht** (Teil von B6). Fokus, Fokusfalle,
+  `aria-modal` und ein sichtbarer Schließen-Knopf sind da; ein eigener History-Eintrag für ein
+  transientes Overlay muss über den Auswahlpfad hinweg ausbalanciert bleiben, der selbst navigiert.
+  Das ist einen eigenen sorgfältigen Durchgang wert, nicht einen Beifang.
+- **C17** (zwei faktische Bedienelementhöhen, 34 px und 39 px) ist nicht angefasst. Auf Touch ist es
+  folgenlos — `pointer: coarse` hebt beide auf 44 px — und `--waxwing-control-min` zu verschieben
+  bewegt jedes Bedienelement der Anwendung. Kein Kandidat für denselben Durchgang wie 51 andere
+  Änderungen.
+
+---
+
 ## Überblick
 
 **52 Befunde** — 22 hoch, 25 mittel, 5 niedrig.

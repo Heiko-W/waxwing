@@ -5,8 +5,11 @@ import {
   CONTACTS_PATH,
   contactsPath,
   deriveBase,
+  isReadingHistoryEntry,
+  mailHrefKeepingQuery,
   mailPath,
   matchRoute,
+  READING_HISTORY_MARK,
   settingsPath,
   toHref,
   toPath,
@@ -124,6 +127,34 @@ describe('path builders', () => {
     expect(mailPath()).toBe('/mail')
     expect(mailPath('inbox')).toBe('/mail/inbox')
     expect(mailPath('inbox', '42')).toBe('/mail/inbox/42')
+  })
+
+  /**
+   * The rule the on-screen Back button broke while the `u` chord kept it: `?q=` and `?label=` are
+   * what the list is SHOWING, and dropping them snaps it back to the plain folder, changing the
+   * window key and resetting focus and selection mid-triage. Two implementations of one idea is how
+   * they came to disagree; there is one now, and this is it.
+   */
+  it('keeps the query string when returning to the list', () => {
+    const search = new URLSearchParams('q=report&account=b')
+    expect(mailHrefKeepingQuery(search, 'inbox')).toBe('/mail/inbox?q=report&account=b')
+    expect(mailHrefKeepingQuery(search, 'inbox', '42')).toBe('/mail/inbox/42?q=report&account=b')
+  })
+
+  it('adds no stray separator when there is no query', () => {
+    expect(mailHrefKeepingQuery(new URLSearchParams(), 'inbox')).toBe('/mail/inbox')
+    expect(mailHrefKeepingQuery(new URLSearchParams())).toBe('/mail')
+  })
+
+  /**
+   * The marker that lets Back tell "I pushed this" from "the user arrived here directly" — the
+   * difference between popping the entry and pushing a third one on top of it.
+   */
+  it('recognises only its own reading history entry', () => {
+    expect(isReadingHistoryEntry({ waxwing: READING_HISTORY_MARK })).toBe(true)
+    expect(isReadingHistoryEntry(null)).toBe(false)
+    expect(isReadingHistoryEntry({ waxwing: 'something-else' })).toBe(false)
+    expect(isReadingHistoryEntry('waxwing:reading')).toBe(false)
   })
 
   it('builds settings paths', () => {

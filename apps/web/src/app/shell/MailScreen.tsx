@@ -213,7 +213,13 @@ export function MailScreen() {
     : styles.folderRegion
 
   const listPane = (
-    <section className={styles.pane} aria-label={listTitle} ref={listRef} tabIndex={-1}>
+    // The landmark keeps its stable name ("Messages"); the folder is stated by the heading inside
+    // it. Naming the REGION after the folder was the first attempt and it was worse in two ways: a
+    // landmark called "Inbox" is indistinguishable from the folder tree when cycling landmarks, and
+    // it renamed the one handle fifteen suites use to address this pane. A heading answers "which
+    // list is this" for a screen reader just as well — headings are navigable — and it is visible,
+    // which the landmark name never was.
+    <section className={styles.pane} aria-label={t('shell.list.title')} ref={listRef} tabIndex={-1}>
       {/*
         One row, three jobs — it replaces a row that did exactly one.
         Before, this strip held the folder toggle ALONE (61 px on a phone, one 44 px button and
@@ -313,8 +319,14 @@ export function MailScreen() {
         `useFocusTrap` moves focus inside on open, wraps Tab at the ends, and restores focus to the
         toggle on close. Without it, Tab from the open drawer walked into the search field UNDER the
         scrim — the DOM order is drawer → backdrop → panes, so the first tab stop after the drawer
-        was a control the user could not see and was not supposed to reach. `aria-modal` tells a
-        screen reader the same thing the backdrop tells a sighted user.
+        was a control the user could not see and was not supposed to reach.
+
+        It stays a `<nav>`, deliberately. Switching it to `role="dialog"` with `aria-modal` while
+        open was the first attempt: it announces modality, but an element has ONE role, so it
+        destroyed the Folders landmark for exactly as long as the folders were on screen — the
+        moment a screen-reader user cycling landmarks would go looking for it. Focus containment is
+        what actually enforces modality here, and it costs no semantics; the backdrop and the close
+        button carry the rest.
 
         On desktop none of this applies: the region is a persistent rail, not an overlay.
       */}
@@ -324,7 +336,6 @@ export function MailScreen() {
         className={folderRegionClass}
         aria-label={t('shell.folders.title')}
         tabIndex={-1}
-        {...(drawerModal ? { 'aria-modal': true, role: 'dialog' as const } : {})}
       >
         {drawerCapable && (
           // A visible way out. Escape needs a keyboard and the backdrop is a 102 px strip beside a

@@ -355,11 +355,34 @@
   color: var(--waxwing-text-muted);
 }
 
+/*
+ * `flex-shrink: 0` was right for the ROW and wrong for the button inside it.
+ *
+ * Wrapping rescued the explanatory text, but one action is `Always allow {{sender}}` — a button
+ * whose width is a display name, i.e. unbounded — so once it exceeded the pane it simply left the
+ * viewport. Measured at 834 px (the tablet tier, where the reading pane is a split column and no
+ * suite had ever looked): 853 px against an 834 px viewport, 19 px of a privacy control off-screen.
+ *
+ * The row may now shrink, and the label truncates rather than pushing. A truncated
+ * "Always allow Waxwing Week…" is worse than the full name and far better than a button the user
+ * cannot reach; the accessible name is unaffected.
+ */
 .remoteActions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--waxwing-space-1);
-  flex-shrink: 0;
+  min-inline-size: 0;
+}
+
+.remoteActions button {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.remoteActions button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ---- attachments ---- */
