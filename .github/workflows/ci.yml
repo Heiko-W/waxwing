@@ -68,6 +68,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
+      # Its own step, and NOT part of `pnpm verify`, because it is the one check here that needs
+      # the network: it walks each pinned action's own action.yml and asserts that a COMPOSITE
+      # action pins what IT calls. `pnpm check:actions` cannot see that — it reads only the files
+      # in this directory — and the gap was real: upload-pages-artifact v3.0.1 reached
+      # `actions/upload-artifact@v4`, a movable tag, from inside a job holding `pages: write`.
+      # Kept out of `pnpm verify` so the local gate and the pre-push hook stay hermetic.
+      - name: Nested action pins (composite actions, needs the API)
+        run: pnpm check:actions:deep
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   # The Docker + browser half: the Stalwart fixture, the jmap integration suites (which fail OPEN
   # when the fixture is down — defect B22 — so the stage asserts they were not skipped), and the six
