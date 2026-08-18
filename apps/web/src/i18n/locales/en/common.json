@@ -22,7 +22,8 @@
     "list": {
       "title": "Messages",
       "empty": "Messages appear here once syncing lands.",
-      "resize": "Resize message list"
+      "resize": "Resize message list",
+      "searchTitle": "Search results"
     },
     "reading": {
       "title": "Reading",
@@ -645,7 +646,12 @@
       "trash": "Moved to Trash",
       "folder": "Moved to {{folder}}"
     },
-    "emptyOutsideWindow": "No messages from the last {{count}} days. Older mail is on the server — this device only keeps the last {{count}} days."
+    "emptyOutsideWindow": "No messages from the last {{count}} days. Older mail is on the server — this device only keeps the last {{count}} days.",
+    "viewOptions": {
+      "show": "Show view options",
+      "hide": "Hide view options",
+      "label": "View"
+    }
   },
   "reading": {
     "from": "From",

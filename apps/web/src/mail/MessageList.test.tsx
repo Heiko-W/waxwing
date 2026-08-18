@@ -131,7 +131,7 @@ function renderList(mailboxId = 'inbox') {
       <ConfigProvider config={DEFAULT_CONFIG}>
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
-            <MessageList mailboxId={mailboxId} />
+            <MessageList mailboxId={mailboxId} viewOptionsOpen />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -146,7 +146,7 @@ function renderSearch(spec: QuerySpec, scopeMailboxId?: string) {
       <ConfigProvider config={DEFAULT_CONFIG}>
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
-            <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId }} />
+            <MessageList mailboxId={undefined} search={{ spec, scopeMailboxId }} viewOptionsOpen />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -171,7 +171,7 @@ function renderFolderSearch(spec: QuerySpec, mailboxId = 'inbox', scopeMailboxId
       <ConfigProvider config={DEFAULT_CONFIG}>
         <ToastProvider>
           <ReplicaProvider accountId="a" db={db}>
-            <MessageList mailboxId={mailboxId} search={{ spec, scopeMailboxId }} />
+            <MessageList mailboxId={mailboxId} search={{ spec, scopeMailboxId }} viewOptionsOpen />
           </ReplicaProvider>
         </ToastProvider>
       </ConfigProvider>
@@ -933,7 +933,9 @@ describe('MessageList', () => {
         expect(control).toBeDisabled()
         expect(control).toHaveAttribute('aria-describedby', reason.id)
       }
-      expect(screen.getByLabelText('Density')).toBeEnabled()
+      // Density is no longer here at all: Settings → Appearance already wrote the same
+      // `list.density` key, so the toolbar copy was a second door onto one room.
+      expect(screen.queryByLabelText('Density')).toBeNull()
     })
 
     // The persisting half, on that same route. A folder-scoped search is precisely where a written
@@ -970,8 +972,10 @@ describe('MessageList', () => {
         // sighted proximity.
         expect(control).toHaveAttribute('aria-describedby', reason.id)
       }
-      // Density still works on this seam — it is pure presentation — so it stays live.
-      expect(screen.getByLabelText('Density')).toBeEnabled()
+      // Density used to live here too, ungated, because it is pure presentation. It has moved out
+      // altogether: Settings → Appearance offered the identical control writing the identical
+      // `list.density` key, and one setting with two doors is one door too many.
+      expect(screen.queryByLabelText('Density')).toBeNull()
     })
 
     // The other half of the promise, and the half that persists: a setting the user cannot see take
@@ -1450,7 +1454,7 @@ describe('MessageList', () => {
           <ConfigProvider config={DEFAULT_CONFIG}>
             <ToastProvider>
               <ReplicaProvider accountId="a" db={db}>
-                <MessageList mailboxId={mailboxId} />
+                <MessageList mailboxId={mailboxId} viewOptionsOpen />
               </ReplicaProvider>
             </ToastProvider>
           </ConfigProvider>

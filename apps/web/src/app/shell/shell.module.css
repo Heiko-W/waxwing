@@ -309,6 +309,19 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/* Which list this is. Takes the slack so the two buttons sit at the ends, and truncates rather than
+   wrapping — a folder name is user data with no length limit. */
+.paneTitle {
+  flex: 1;
+  min-inline-size: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--waxwing-text-base);
+  font-weight: var(--waxwing-weight-semibold);
+}
+
 .pane {
   display: flex;
   flex-direction: column;

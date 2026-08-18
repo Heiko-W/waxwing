@@ -22,7 +22,8 @@
     "list": {
       "title": "Nachrichten",
       "empty": "Sobald synchronisiert wurde, erscheinen hier Ihre Nachrichten.",
-      "resize": "Nachrichtenliste anpassen"
+      "resize": "Nachrichtenliste anpassen",
+      "searchTitle": "Suchergebnisse"
     },
     "reading": {
       "title": "Lesebereich",
@@ -645,7 +646,12 @@
       "trash": "In den Papierkorb verschoben",
       "folder": "Nach „{{folder}}“ verschoben"
     },
-    "emptyOutsideWindow": "Keine Nachrichten aus den letzten {{count}} Tagen. Ältere Nachrichten liegen auf dem Server — dieses Gerät hält nur die letzten {{count}} Tage bereit."
+    "emptyOutsideWindow": "Keine Nachrichten aus den letzten {{count}} Tagen. Ältere Nachrichten liegen auf dem Server — dieses Gerät hält nur die letzten {{count}} Tage bereit.",
+    "viewOptions": {
+      "show": "Ansichtsoptionen anzeigen",
+      "hide": "Ansichtsoptionen ausblenden",
+      "label": "Ansicht"
+    }
   },
   "reading": {
     "from": "Von",

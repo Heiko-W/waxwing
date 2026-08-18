@@ -14,20 +14,21 @@
  * keyboard/SR users are not stranded (WCAG 2.4.3).
  */
 
-import { ChevronLeft, PanelLeft, X } from 'lucide-react'
+import { ChevronLeft, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AccountTrees } from '../../mail/AccountTrees'
 import { ActiveAccountScope } from '../../mail/ActiveAccountScope'
 import { useActiveMailAccountId } from '../../mail/active-account'
 import { Conversation } from '../../mail/Conversation'
+import { folderDisplayName } from '../../mail/folder-tree'
 import { Labels } from '../../mail/labels/Labels'
 import { useLabelView } from '../../mail/labels/use-label-view'
 import { MessageList } from '../../mail/MessageList'
 import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
 import { QuotaBar } from '../../quota'
-import { useMailboxByRole, useReplica } from '../../sync'
+import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
 import {
@@ -44,6 +45,7 @@ import styles from './shell.module.css'
 
 const FOLDER_REGION_ID = 'waxwing-folder-region'
 const FOLDER_TOGGLE_ID = 'waxwing-folder-toggle'
+const VIEW_OPTIONS_ID = 'waxwing-view-options'
 
 export function MailScreen() {
   const { t } = useTranslation()
@@ -109,6 +111,15 @@ export function MailScreen() {
 
   const drawerCapable = tier !== 'desktop'
   const [foldersOpen, setFoldersOpen] = useState(false)
+  /**
+   * The list's sort / threading / unread-first controls, collapsed by default.
+   *
+   * They used to be four permanently visible rows — measured at 156 px on a phone and 192 px on the
+   * desktop, i.e. more than two message rows given up for settings a user touches perhaps monthly.
+   * Behind a disclosure they keep their real labels and their real `<select>` semantics (a popover
+   * of menu items would have cost both), and the strip above is a row this screen needed anyway.
+   */
+  const [viewOptionsOpen, setViewOptionsOpen] = useState(false)
 
   // No manual focus restore here any more: `useFocusTrap` below records where focus was when the
   // drawer opened and puts it back on close, which covers the toggle and every other entry point.
@@ -183,14 +194,36 @@ export function MailScreen() {
     ;(singleReading ? readingRef.current : listRef.current)?.focus()
   }, [layout.split, singleReading])
 
+  /**
+   * What this list is showing, as a heading — the answer to "where am I".
+   *
+   * On a phone nothing said it at all: the only indication of the active folder was the highlight
+   * inside the drawer, which is exactly the thing that is not on screen. The pane's landmark name
+   * was the constant "Messages", so a screen reader was no better off. It now names the folder, the
+   * label or the search, and the landmark takes the same string.
+   */
+  const openMailbox = useMailbox(mailboxId ?? '')
+  const listTitle = search.active
+    ? t('shell.list.searchTitle')
+    : (labelView?.activeLabel ??
+      (openMailbox === undefined ? t('shell.list.title') : folderDisplayName(openMailbox, t)))
+
   const folderRegionClass = foldersOpen
     ? `${styles.folderRegion} ${styles.folderRegionOpen}`
     : styles.folderRegion
 
   const listPane = (
-    <section className={styles.pane} aria-label={t('shell.list.title')} ref={listRef} tabIndex={-1}>
-      {drawerCapable && (
-        <div className={styles.paneToolbar}>
+    <section className={styles.pane} aria-label={listTitle} ref={listRef} tabIndex={-1}>
+      {/*
+        One row, three jobs — it replaces a row that did exactly one.
+        Before, this strip held the folder toggle ALONE (61 px on a phone, one 44 px button and
+        320 px of nothing) while the list's own view options took a further ~156 px underneath, and
+        nowhere on the whole screen did it say which folder you were looking at. Trash, Archive and
+        Inbox were indistinguishable — which matters, because swiping to archive means something
+        different in each.
+      */}
+      <div className={styles.paneToolbar}>
+        {drawerCapable && (
           <IconButton
             id={FOLDER_TOGGLE_ID}
             label={t('shell.folders.show')}
@@ -201,14 +234,26 @@ export function MailScreen() {
           >
             <PanelLeft />
           </IconButton>
-        </div>
-      )}
+        )}
+        <h1 className={styles.paneTitle}>{listTitle}</h1>
+        <IconButton
+          label={viewOptionsOpen ? t('list.viewOptions.hide') : t('list.viewOptions.show')}
+          variant="ghost"
+          aria-expanded={viewOptionsOpen}
+          aria-controls={VIEW_OPTIONS_ID}
+          onClick={() => setViewOptionsOpen((open) => !open)}
+        >
+          <SlidersHorizontal />
+        </IconButton>
+      </div>
       <SearchBox search={search} />
       <div className={styles.paneBody}>
         <MessageList
           mailboxId={mailboxId}
           search={effectiveSearch}
           activeLabel={labelView?.activeLabel}
+          viewOptionsId={VIEW_OPTIONS_ID}
+          viewOptionsOpen={viewOptionsOpen}
         />
       </div>
     </section>

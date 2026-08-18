@@ -5,8 +5,25 @@
   min-block-size: 0;
 }
 
-/* Toolbar + bulk bar share the header row. */
-.toolbar,
+/*
+ * The view options, disclosed from the pane toolbar above.
+ *
+ * A GRID, not a wrapping flex row. As a flex row each label+field pair sized itself from its own
+ * content, so the three fields came out 110 / 183 / 126 px wide with right edges scattered across
+ * 114 px — and two of them landing 1 px apart, which reads as a mistake rather than a decision. One
+ * label column and one field column give every row the same two edges, at any width and in any
+ * language.
+ */
+.toolbar {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+/* The bulk bar keeps the flex row: it is a run of icon buttons, not label/field pairs. */
 .bulkBar {
   display: flex;
   align-items: center;
@@ -16,10 +33,10 @@
   flex-wrap: wrap;
 }
 
+/* `display: contents` so the label and the field become direct grid items of `.toolbar` and land in
+   its two columns, while the pair keeps its own element for the DOM/label relationship. */
 .control {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--waxwing-space-1);
+  display: contents;
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
 }
@@ -31,7 +48,8 @@
 /* Why the sort/threading/unread-first controls beside it are disabled (the search seam cannot
    honour them). It wraps to its own line on a narrow toolbar rather than squeezing the controls. */
 .toolbarNote {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: var(--waxwing-text-xs);
   color: var(--waxwing-text-muted);
 }
