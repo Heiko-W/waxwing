@@ -81,6 +81,8 @@ export interface FakeServicesOptions {
   readonly oauthAvailable?: boolean
   /** When set, `connect()` rejects with it (login/connect error paths). */
   readonly connectError?: Error
+  /** When set, `startLogin()` rejects with it — the OAuth-discovery failure path. */
+  readonly startLoginError?: Error
   /** The session `connect()` resolves to. Default: {@link fakeJmapSession} (single account). */
   readonly session?: JmapClient['session']
 }
@@ -110,6 +112,7 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
   const completeRedirect = vi.fn(async () => fakeAuthSession('oauth'))
   const restore = vi.fn(async () => options.restore ?? null)
   const startLogin = vi.fn(async (request: { method: 'oauth' | 'basic' }) => {
+    if (options.startLoginError) throw options.startLoginError
     if (request.method === 'oauth') {
       navigate('oauth')
       return { kind: 'redirect', url: 'about:blank' }

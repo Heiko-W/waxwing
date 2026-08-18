@@ -41,7 +41,7 @@
       "title": "Mit Ihrem Postfach verbinden",
       "label": "E-Mail-Adresse oder Server",
       "placeholder": "name@example.com",
-      "hint": "Geben Sie Ihre E-Mail-Adresse ein — {{product}} findet Ihren Server automatisch.",
+      "hint": "Geben Sie Ihre E-Mail-Adresse ein — {{product}} versucht es mit Ihrer E-Mail-Domain. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese ein.",
       "submit": "Weiter",
       "discovering": "Server wird gesucht…"
     },
@@ -50,7 +50,10 @@
       "network": "Der Server ist nicht erreichbar. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
       "noAccount": "Dieser Server hat kein Postfach für Sie.",
       "config": "Für diese Installation ist kein Server zum Verbinden konfiguriert.",
-      "generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut."
+      "generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+      "networkHost": "{{host}} ist nicht erreichbar. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese oben ein.",
+      "oauthUnavailable": "Dieser Server bietet keine sichere Anmeldung an. Melden Sie sich unten mit E-Mail-Adresse und Passwort an.",
+      "oauthUnavailableNoFallback": "Dieser Server bietet keine sichere Anmeldung an, und diese Installation lässt keine andere Methode zu. Wenden Sie sich an den Betreiber."
     }
   },
   "auth": {

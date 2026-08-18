@@ -63,13 +63,25 @@ mistakes.
 
 ### `auth` — `("oauth" | "basic")[]`, default `["oauth", "basic"]`
 
-Enabled authentication methods, **in order of preference**. The first one the server supports
-is the one offered.
+Enabled authentication methods, **in order of preference**. The first one is the primary button
+on the sign-in screen.
+
+**This list is not checked against the server**, and this page used to claim it was ("the first
+one the server supports is the one offered"). Nothing asks the server what it supports: OAuth
+discovery happens when the user clicks, not before. So on a server without OAuth, leaving the
+default in place gives every user a prominent "Sign in securely" button that fails — it now says
+the server offers no secure sign-in and points at the password form, rather than the flat
+"Something went wrong" it used to, but **the operator is the one who decides**. Set
+`["basic"]` for such a server.
+
+Deliberately not auto-detected: OAuth runs through a redirect and needs no CORS, while probing the
+discovery document from the page does — so a probe would hide a working OAuth button on any server
+that omits CORS headers there. A wrong "unavailable" is worse than an honest failure.
 
 Dropping `"basic"` is the harder-edged choice and often the right one: HTTP Basic sends the
-password on every request, and Waxwing's own live-update path cannot use it (a WebSocket or
-SSE handshake carries no `Authorization` header, so a Basic session falls back to a 60-second
-polling sweep instead of instant push).
+password on every request, and Waxwing's own live-update path cannot use it (an SSE handshake
+carries no `Authorization` header, so a Basic session falls back to a 60-second polling sweep
+instead of instant push).
 
 ## `branding`
 

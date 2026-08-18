@@ -16,7 +16,7 @@ import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
 import { JmapHttpError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
-import { AuthExpiredError } from '../../auth'
+import { AuthConfigError, AuthExpiredError } from '../../auth'
 import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
@@ -33,7 +33,7 @@ import {
   wipeReplica,
 } from '../../sync'
 import { stopAllEngines } from '../../sync/engine'
-import type { WaxwingConfig } from '../config'
+import type { AuthMethod, WaxwingConfig } from '../config'
 import { useServices } from '../services'
 import { SessionContext } from './context'
 import {
@@ -105,7 +105,17 @@ function canEditServer(config: WaxwingConfig, target: ConnectTarget): boolean {
   return !target.fromProbe && config.server.allowCustomServer && config.server.sessionUrl === null
 }
 
-function errToOnboard(error: unknown): OnboardError {
+/**
+ * `host` names the server that was actually contacted, and it is worth threading through.
+ *
+ * A `TypeError` here is a failed fetch, and the message used to be "Check your connection and try
+ * again" — which blames the reader's network for what is most often a right connection to the wrong
+ * address. Waxwing derives the server from the email domain (`user@example.com` ->
+ * `https://example.com`), and for anyone whose mail lives somewhere else that guess is simply
+ * wrong. Naming the host turns an accusation into the one fact that lets the reader fix it, and the
+ * server field is already editable.
+ */
+function errToOnboard(error: unknown, host?: string): OnboardError {
   if (error instanceof NoAccountError) return { key: 'onboarding.error.noAccount' }
   if (error instanceof JmapHttpError) {
     if (error.status === 401 || error.status === 403) {
@@ -114,8 +124,35 @@ function errToOnboard(error: unknown): OnboardError {
     return { key: 'onboarding.error.generic' }
   }
   if (error instanceof AuthExpiredError) return { key: 'auth.error.generic' }
-  if (error instanceof TypeError) return { key: 'onboarding.error.network' }
+  if (error instanceof TypeError) {
+    return host === undefined
+      ? { key: 'onboarding.error.network' }
+      : { key: 'onboarding.error.networkHost', values: { host } }
+  }
   return { key: 'onboarding.error.generic' }
+}
+
+/**
+ * OAuth failures specifically, because one of them is not a failure the reader caused.
+ *
+ * The sign-in screen offers whatever `config.server.auth` lists — the SERVER is never asked. So on
+ * a deployment whose server has no OAuth, "Sign in securely" is the primary button, discovery
+ * throws `AuthConfigError` on the click, and the reader got "Something went wrong. Please try
+ * again." Trying again does the same thing, forever. (`docs/configuration.md` claimed "the first
+ * one the server supports is the one offered"; nothing supported that.)
+ *
+ * Probing discovery before rendering was considered and rejected: OAuth runs through a redirect and
+ * needs no CORS, while a `fetch` of the discovery document does — so a probe would hide a working
+ * OAuth button on any server that omits CORS headers there. Saying what happened costs nothing and
+ * cannot be wrong.
+ */
+function oauthErrToOnboard(error: unknown, methods: readonly AuthMethod[]): OnboardError {
+  if (error instanceof AuthConfigError) {
+    return methods.includes('basic')
+      ? { key: 'onboarding.error.oauthUnavailable' }
+      : { key: 'onboarding.error.oauthUnavailableNoFallback' }
+  }
+  return errToOnboard(error)
 }
 
 export interface SessionProviderProps {
@@ -386,11 +423,11 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           await ensureController(target.issuer).startLogin({ method: 'oauth', publicComputer })
         } catch (error) {
           removeStored(session(), STASH_PUBLIC_KEY)
-          dispatch({ type: 'loginError', error: errToOnboard(error) })
+          dispatch({ type: 'loginError', error: oauthErrToOnboard(error, config.server.auth) })
         }
       })()
     },
-    [ensureController],
+    [ensureController, config.server.auth],
   )
 
   // The crash guard and the tab-close attempt (FR-AUTH-09).
@@ -430,7 +467,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           const connected = await connectSession(controller, target, 'basic')
           dispatch({ type: 'connected', connected })
         } catch (error) {
-          dispatch({ type: 'loginError', error: errToOnboard(error) })
+          dispatch({ type: 'loginError', error: errToOnboard(error, target.displayHost) })
         }
       })()
     },
