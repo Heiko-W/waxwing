@@ -12,7 +12,7 @@ import { Download, LogOut, Trash2, User } from 'lucide-react'
 import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useInstallPrompt } from '../../pwa/install/use-install-prompt'
-import { Button, Dialog, Menu, type MenuItemSpec } from '../../ui'
+import { Button, Dialog, Menu, type MenuItemSpec, VisuallyHidden } from '../../ui'
 import { useSession } from '../session/context'
 import styles from './shell.module.css'
 
@@ -60,7 +60,20 @@ export function AccountMenu({ productName, username }: AccountMenuProps) {
   return (
     <>
       {username !== '' && (
-        <span className={styles.accountName}>{t('account.signedInAs', { name: username })}</span>
+        <>
+          {/*
+            The statement for assistive tech, on every viewport; the visible half is just the
+            address. The header used to carry the whole sentence — "Signed in as
+            alice@example.com", ~230 px of prose and the one thing in that band that is not a
+            control, in a strip the design system asks to recede. Splitting them also retires a
+            caveat: the phone rule below no longer has to keep the sentence in the accessibility
+            tree while hiding it, because this sibling always does.
+          */}
+          <VisuallyHidden>{t('account.signedInAs', { name: username })}</VisuallyHidden>
+          <span className={styles.accountName} aria-hidden="true">
+            {username}
+          </span>
+        </>
       )}
       <Menu
         triggerLabel={t('account.menu')}

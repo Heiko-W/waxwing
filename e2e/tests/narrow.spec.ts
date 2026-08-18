@@ -97,9 +97,13 @@ test('the shell fits the viewport on every screen', async ({ page }) => {
 
 test('the account name gives up its pixels but not its meaning', async ({ page }) => {
   // It is the one thing in the header that is not a control, and at 390 px it was ~180 px of the
-  // 390 available — enough to push the account button off-screen. It is visually hidden here, NOT
-  // removed: `display: none` would take it out of the accessibility tree as well, so a screen
-  // reader user on a phone would lose which account they are in.
+  // 390 available — enough to push the account button off-screen.
+  //
+  // The construction changed and this assertion outlived it, which is the point: the sentence is no
+  // longer a visually-hidden copy of a visible span, it is now the ONLY carrier of that statement
+  // (AccountMenu renders it in a `VisuallyHidden` on every viewport, with a separate `aria-hidden`
+  // span showing just the address where there is room). What must hold either way is what is
+  // written here — the meaning stays reachable, the pixels do not.
   const name = page.getByText(/Signed in as/)
   await expect(name).toHaveCount(1)
   const box = await name.boundingBox()
