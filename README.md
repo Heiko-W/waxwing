@@ -19,8 +19,8 @@ Just static files and your mail server — no middleware, no database, no contai
 ---
 
 Waxwing is a modern, minimalist webmail client that runs entirely in the browser and talks
-directly to a JMAP mail server such as [Stalwart](https://stalw.art) — over HTTPS and
-WebSocket. It ships as plain static files: Stalwart can host it itself (via its
+directly to a JMAP mail server such as [Stalwart](https://stalw.art) — over HTTPS, with live
+updates on an SSE stream. It ships as plain static files: Stalwart can host it itself (via its
 *Applications* feature), or you serve it from any web server or CDN. Installable as a
 Progressive Web App with real push notifications, offline reading, and an offline outbox.
 
@@ -89,7 +89,7 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
   search, labels, and triage that works entirely from the keyboard
 - **Compose** — rich text (Fastmail's Squire), draft autosave, attachments, identities, undo send
 - **Contacts** — JMAP for Contacts (RFC 9610) address books, groups, composer autocomplete
-- **Live** — push over WebSocket (RFC 8887) / EventSource, system notifications via Web Push
+- **Live** — push over EventSource (SSE), system notifications via Web Push
 - **Offline** — a local replica, an outbox that survives a reload and a reconnect, installable as a PWA
 - **Private** — remote content blocked by default, message bodies rendered in a script-free
   sandboxed frame, zero telemetry

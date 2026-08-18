@@ -31,7 +31,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: [['html', { open: 'never' }], ['list']],
+  // Pin the browser locale. Playwright does NOT default to en-US: with no `locale` it inherits the
+  // host, and on a German machine `navigator.language` comes back as `de` — bare, which even the
+  // old exact-match resolver accepted. So every suite here, which asserts English labels
+  // (`getByLabel('Username')`, `name: 'Sign in'`), has been quietly depending on the developer's
+  // system language. It passes on CI because the runners are en-US, which is the worst version of
+  // this: local and hosted disagree and only one of them is checked.
   use: {
+    locale: 'en-US',
     baseURL: BASE_URL,
     trace: 'on-first-retry',
   },

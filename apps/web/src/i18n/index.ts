@@ -24,6 +24,26 @@ function isSupported(value: string | undefined): value is SupportedLanguage {
   return value !== undefined && (SUPPORTED_LANGUAGES as readonly string[]).includes(value)
 }
 
+/**
+ * Resolve whatever the detector produced to a language we actually ship.
+ *
+ * `navigator.language` is a BCP-47 tag, so a German browser reports `de-DE` — or `de-AT`, or
+ * `de-CH` — and never a bare `de`. This used to be `isSupported(first) ? first : DEFAULT_LANGUAGE`,
+ * an exact-match test, so every one of those missed and every German speaker got English. The app
+ * ships a complete, tested German bundle that almost nobody was being shown.
+ *
+ * Split on the subtag separator rather than matching a prefix: `den` (Slave) starts with `de` and
+ * is not German. `-` and `_` both, because a value that came back out of localStorage need not be
+ * normalised.
+ */
+export function resolveLanguage(value: string | undefined): SupportedLanguage {
+  if (value === undefined) return DEFAULT_LANGUAGE
+  const normalised = value.toLowerCase()
+  if (isSupported(normalised)) return normalised
+  const base = normalised.split(/[-_]/)[0]
+  return isSupported(base) ? base : DEFAULT_LANGUAGE
+}
+
 async function loadLocale(lng: SupportedLanguage): Promise<Record<string, unknown>> {
   const module = await import(`./locales/${lng}/common.json`)
   return module.default as Record<string, unknown>
@@ -34,7 +54,7 @@ function detectLanguage(): SupportedLanguage {
   detector.init(undefined, { order: [...DETECTION_ORDER] })
   const detected = detector.detect()
   const first = Array.isArray(detected) ? detected[0] : detected
-  return isSupported(first) ? first : DEFAULT_LANGUAGE
+  return resolveLanguage(first)
 }
 
 /**
