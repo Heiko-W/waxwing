@@ -39,7 +39,7 @@ async function signIn(page: Page): Promise<void> {
   await page.getByLabel('Benutzername', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Passwort', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('checkbox', { name: 'Angemeldet bleiben' }).check()
-  await page.getByRole('button', { name: 'Anmelden', exact: true }).click()
+  await page.getByRole('button', { name: 'Mit Passwort anmelden', exact: true }).click()
   // NOT the folder navigation: on a phone it is an off-canvas drawer with `visibility: hidden`, so
   // it is absent from the accessibility tree and no role query can ever see it.
   await expect(page.getByRole('region', { name: 'Nachrichten' })).toBeVisible({ timeout: 30_000 })

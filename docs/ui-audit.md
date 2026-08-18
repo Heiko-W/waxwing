@@ -32,9 +32,16 @@ echter Touch-Bemaßung:
 | Zustand | Chrome über der Liste | Sichtbare Zeilen |
 |---|---|---|
 | Posteingang, vorher | 390 px (53 %) | 5,2 |
-| Posteingang, nachher | **183 px (29 %)** | **7,9** |
+| Posteingang, nachher | **122 px (21 %)** | **8,8** |
 | Suche aktiv, vorher | 492 px (65 %) | 3,9 |
-| Suche aktiv, nachher | **280 px (40 %)** | **6,7** |
+| Suche aktiv, nachher | **267 px (38 %)** | **6,8** |
+
+Übrig sind auf dem Telefon genau zwei Bänder: die Kopfzeile, die jetzt auch die Bedienelemente des
+aktiven Bildschirms trägt, und das Suchfeld. Der zweite Streifen — Logo und zwei Knöpfe in einer
+eigenen 61-px-Zeile über einer zweiten mit Ordner-Knopf und Titel — ist zusammengelegt, nachdem der
+Projektinhaber auf dem Screenshot markiert hatte, was dort noch verschenkt wird. Das war der
+richtige Einwand: A1 und A2 hatten die Optionen und den Ordner-Knopf verschlankt, aber die beiden
+Zeilen als solche stehen lassen.
 
 **Drei Befunde wurden bewusst anders gelöst als vorgeschlagen** — jeweils mit Begründung im
 zugehörigen Commit:

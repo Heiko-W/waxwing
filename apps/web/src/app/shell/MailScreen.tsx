@@ -15,7 +15,8 @@
  */
 
 import { ChevronLeft, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AccountTrees } from '../../mail/AccountTrees'
 import { ActiveAccountScope } from '../../mail/ActiveAccountScope'
@@ -40,6 +41,7 @@ import {
   useRouter,
 } from '../route'
 import { useSession } from '../session/context'
+import { SCREEN_BAR_ID } from './Header'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
 import styles from './shell.module.css'
 
@@ -108,6 +110,23 @@ export function MailScreen() {
     if (inbox === undefined) return
     navigate(mailPath(inbox.id), { replace: true })
   }, [mailboxId, browsingWithoutFolder, inbox, navigate])
+
+  /**
+   * On a phone the screen's bar lives in the shell header, not in a strip of its own.
+   *
+   * Looked up after mount rather than passed down: the header is a sibling several levels up, and
+   * threading a ref through `AppShell` would make the shell's layout depend on which screen is
+   * mounted. Re-queried when the tier changes, because the slot only exists below 40em — above it
+   * the panes keep their own toolbars, where there is room and where the brand still sits.
+   */
+  const [screenBarSlot, setScreenBarSlot] = useState<HTMLElement | null>(null)
+  // A LAYOUT effect, so the bar is in its final place before the first paint. With a passive effect
+  // the toolbar rendered once inside the pane and then moved into the header a frame later — a
+  // visible jump on the device, and in tests a node that is already detached by the time anything
+  // clicks it.
+  useLayoutEffect(() => {
+    setScreenBarSlot(tier === 'phone' ? document.getElementById(SCREEN_BAR_ID) : null)
+  }, [tier])
 
   const drawerCapable = tier !== 'desktop'
   const [foldersOpen, setFoldersOpen] = useState(false)
@@ -212,6 +231,48 @@ export function MailScreen() {
     ? `${styles.folderRegion} ${styles.folderRegionOpen}`
     : styles.folderRegion
 
+  /**
+   * The list's own controls, as content rather than as a strip.
+   *
+   * They render either in the pane's toolbar (tablet and desktop) or, on a phone, straight into the
+   * shell header — one row instead of two. Same nodes, same handlers, same ids either way; only the
+   * parent differs, so nothing about the drawer or the disclosure has to know which it is.
+   */
+  const listBar = (
+    <>
+      {drawerCapable && (
+        <IconButton
+          id={FOLDER_TOGGLE_ID}
+          label={t('shell.folders.show')}
+          variant="ghost"
+          onClick={() => setFoldersOpen(true)}
+          aria-expanded={foldersOpen}
+          aria-controls={FOLDER_REGION_ID}
+        >
+          <PanelLeft />
+        </IconButton>
+      )}
+      <h1 className={styles.paneTitle}>{listTitle}</h1>
+      <IconButton
+        label={viewOptionsOpen ? t('list.viewOptions.hide') : t('list.viewOptions.show')}
+        variant="ghost"
+        aria-expanded={viewOptionsOpen}
+        aria-controls={VIEW_OPTIONS_ID}
+        onClick={() => setViewOptionsOpen((open) => !open)}
+      >
+        <SlidersHorizontal />
+      </IconButton>
+    </>
+  )
+
+  /** The reading pane's way back, on the one tier where the list is not beside it. */
+  const readingBar = (
+    <Button variant="ghost" onClick={backToList}>
+      <ChevronLeft aria-hidden="true" />
+      {t('shell.reading.back')}
+    </Button>
+  )
+
   const listPane = (
     // The landmark keeps its stable name ("Messages"); the folder is stated by the heading inside
     // it. Naming the REGION after the folder was the first attempt and it was worse in two ways: a
@@ -220,38 +281,7 @@ export function MailScreen() {
     // list is this" for a screen reader just as well — headings are navigable — and it is visible,
     // which the landmark name never was.
     <section className={styles.pane} aria-label={t('shell.list.title')} ref={listRef} tabIndex={-1}>
-      {/*
-        One row, three jobs — it replaces a row that did exactly one.
-        Before, this strip held the folder toggle ALONE (61 px on a phone, one 44 px button and
-        320 px of nothing) while the list's own view options took a further ~156 px underneath, and
-        nowhere on the whole screen did it say which folder you were looking at. Trash, Archive and
-        Inbox were indistinguishable — which matters, because swiping to archive means something
-        different in each.
-      */}
-      <div className={styles.paneToolbar}>
-        {drawerCapable && (
-          <IconButton
-            id={FOLDER_TOGGLE_ID}
-            label={t('shell.folders.show')}
-            variant="ghost"
-            onClick={() => setFoldersOpen(true)}
-            aria-expanded={foldersOpen}
-            aria-controls={FOLDER_REGION_ID}
-          >
-            <PanelLeft />
-          </IconButton>
-        )}
-        <h1 className={styles.paneTitle}>{listTitle}</h1>
-        <IconButton
-          label={viewOptionsOpen ? t('list.viewOptions.hide') : t('list.viewOptions.show')}
-          variant="ghost"
-          aria-expanded={viewOptionsOpen}
-          aria-controls={VIEW_OPTIONS_ID}
-          onClick={() => setViewOptionsOpen((open) => !open)}
-        >
-          <SlidersHorizontal />
-        </IconButton>
-      </div>
+      {screenBarSlot === null && <div className={styles.paneToolbar}>{listBar}</div>}
       <SearchBox search={search} />
       <div className={styles.paneBody}>
         <MessageList
@@ -272,13 +302,8 @@ export function MailScreen() {
       ref={readingRef}
       tabIndex={-1}
     >
-      {singleReading && (
-        <div className={styles.paneToolbar}>
-          <Button variant="ghost" onClick={backToList}>
-            <ChevronLeft aria-hidden="true" />
-            {t('shell.reading.back')}
-          </Button>
-        </div>
+      {singleReading && screenBarSlot === null && (
+        <div className={styles.paneToolbar}>{readingBar}</div>
       )}
       <div className={styles.paneBody}>
         {emailId !== undefined ? (
@@ -314,6 +339,11 @@ export function MailScreen() {
 
   return (
     <div className={styles.mailScreen}>
+      {/* The phone's single bar. Portalled rather than lifted, so the shell header stays ignorant of
+          which screen is mounted and this component keeps its own state where it uses it. Whichever
+          pane is on screen supplies the content: the list's controls, or the way back from a
+          message. */}
+      {screenBarSlot !== null && createPortal(singleReading ? readingBar : listBar, screenBarSlot)}
       {/*
         While it is a drawer this is a MODAL surface, and it now behaves like one.
         `useFocusTrap` moves focus inside on open, wraps Tab at the ends, and restores focus to the

@@ -259,6 +259,24 @@
   gap: var(--waxwing-space-1);
 }
 
+/*
+ * Tighter on a phone, because the grouping is a RATIO, not a pair of fixed numbers.
+ *
+ * 16 px between groups and 4 px within reads well at 420 px of pane; at 390 px of viewport it cost a
+ * third row — three strips of icons is worse than the two ungrouped ones it replaced. 12 px against
+ * 2 px keeps the same visual relationship (six times, rather than four) and brings the six filing
+ * and state actions back onto one line, with the reply group on the next.
+ */
+@media (max-width: 39.999em) {
+  .actionBar {
+    gap: var(--waxwing-space-3);
+  }
+
+  .actionGroup {
+    gap: var(--waxwing-space-hair);
+  }
+}
+
 .actionSpacer {
   flex: 1;
 }

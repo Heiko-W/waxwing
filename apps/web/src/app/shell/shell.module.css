@@ -316,6 +316,16 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/* Where the active screen's bar lands inside the header (phone only — see Header.tsx). Empty and
+   inert on wider tiers, where each pane keeps its own toolbar. */
+.screenBar {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  flex: 1;
+  min-inline-size: 0;
+}
+
 /* Which list this is. Takes the slack so the two buttons sit at the ends, and truncates rather than
    wrapping — a folder name is user data with no length limit. */
 .paneTitle {
@@ -386,12 +396,23 @@
     display: none;
   }
 
-  /* The wordmark goes too. It is ~80 px of a 390 px strip for something the tab title, the sign-in
-     screen, the account menu and every notification already say — and on the one viewport where
-     each of those 80 px is a piece of somebody's mail. The logo stays: 24 px, and it is the only
-     thing identifying the app at a glance once the name is gone. FR-THEME-02 is unaffected — it
-     asks for the name to be configurable, not to be permanently on screen. */
-  .brandName {
+  /*
+   * The brand goes entirely — wordmark AND mark.
+   *
+   * Hiding the name alone left a 24 px logo and two buttons occupying a 61 px strip, with the
+   * screen's own bar in a second strip below it: two rows for what fits in one. The header now
+   * carries the active screen's controls (`.screenBar`), so the brand has no room to justify. It is
+   * still in the tab title, on the sign-in screen, in the account menu and on every notification —
+   * FR-THEME-02 asks for the name to be configurable, not to be permanently on screen.
+   */
+  .brand {
+    display: none;
+  }
+
+  /* The spacer had `flex: 1` and so did the screen bar beside it, so the two split the free space
+     and the folder title was squeezed to "I." between them. With the brand gone the bar IS the
+     flexible element; the spacer has nothing left to push apart. */
+  .spacer {
     display: none;
   }
 }
