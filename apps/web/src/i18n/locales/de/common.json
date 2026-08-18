@@ -58,7 +58,7 @@
     }
   },
   "auth": {
-    "signInTitle": "Bei {{host}} anmelden",
+    "signInTitle": "Bei {{product}} anmelden",
     "oauth": {
       "button": "Sicher anmelden",
       "unavailable": "Die sichere Anmeldung benötigt eine HTTPS-Verbindung. Nutzen Sie unten Benutzername und Passwort."
@@ -68,7 +68,7 @@
       "password": "Passwort",
       "staySignedIn": "Angemeldet bleiben",
       "appPasswordHint": "Bei Zwei-Faktor-Authentifizierung ein App-spezifisches Passwort verwenden.",
-      "submit": "Anmelden",
+      "submit": "Mit Passwort anmelden",
       "publicComputer": "Öffentlicher oder gemeinsam genutzter Computer",
       "publicComputerHint": "Es bleiben weder Nachrichten noch eine Anmeldung auf diesem Gerät — unabhängig davon, wie Sie sich anmelden. Beides wird beim Abmelden gelöscht, beim Schließen des Tabs und — falls der Browser vorher abstürzt — beim nächsten Start von {{product}} auf diesem Rechner."
     },
@@ -84,7 +84,9 @@
       "body": "Ihre Sitzung ist abgelaufen. Melden Sie sich erneut an — Ihr Stand bleibt erhalten.",
       "submit": "Anmelden",
       "cancel": "Abmelden"
-    }
+    },
+    "signInSubtitle": "Postfach auf {{host}}",
+    "separator": "oder mit Passwort:"
   },
   "account": {
     "menu": "Konto",

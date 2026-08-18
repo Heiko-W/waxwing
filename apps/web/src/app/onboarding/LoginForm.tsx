@@ -75,9 +75,15 @@ export function LoginForm({
 
   return (
     <section className={styles.card} aria-labelledby={headingId}>
+      {/* The PRODUCT, then the host. It used to read "Sign in to localhost:4183" — answering the
+          question the user is least likely to be asking, on the one screen everybody passes
+          through, while the configured product name (FR-THEME-02) appeared nowhere. The host is
+          still worth stating, because a user may hold accounts on several servers; it just is not
+          the headline. */}
       <h1 id={headingId} className={styles.heading}>
-        {t('auth.signInTitle', { host: target.displayHost })}
+        {t('auth.signInTitle', { product: productName })}
       </h1>
+      <p className={styles.subheading}>{t('auth.signInSubtitle', { host: target.displayHost })}</p>
 
       {/* Always mounted so the polite live region is already observed when the error text
           appears — a region inserted together with its content is not reliably announced. */}
@@ -110,7 +116,11 @@ export function LoginForm({
         </div>
       ) : null}
 
-      {hasOAuth && hasBasic ? <div className={styles.separator} aria-hidden="true" /> : null}
+      {/* A LABELLED separator. It was a bare decorative rule, so the screen offered "Sign in
+          securely" and "Sign in" with nothing between them but a line — and the implication that
+          the second one is insecure was left for the user to draw on their own. Naming the
+          difference (password) says what is actually different. */}
+      {hasOAuth && hasBasic ? <p className={styles.separator}>{t('auth.separator')}</p> : null}
 
       {hasBasic ? (
         <form className={styles.form} onSubmit={handleBasicSubmit}>

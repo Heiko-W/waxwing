@@ -107,9 +107,30 @@
 }
 
 /* A subtle, decorative divider between the OAuth and Basic options. */
+/* A labelled divider: hairline, caption, hairline. It carries text now, so it can no longer be a
+   1 px block — and it stops implying that the method below it is the unsafe one without saying so. */
 .separator {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.separator::before,
+.separator::after {
+  content: "";
+  flex: 1;
   block-size: 1px;
   background-color: var(--waxwing-border);
+}
+
+/* The host, under the product name in the heading. */
+.subheading {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
 }
 
 .errorRegion {

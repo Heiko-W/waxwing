@@ -117,16 +117,20 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
       )}
       {(!ccVisible || !bccVisible) && (
         <div className={styles.fieldToggles}>
-          {!ccVisible && (
-            <button type="button" className={styles.fieldToggle} onClick={() => setShowCc(true)}>
-              {t('compose.showCcField')}
-            </button>
-          )}
-          {!bccVisible && (
-            <button type="button" className={styles.fieldToggle} onClick={() => setShowBcc(true)}>
-              {t('compose.showBccField')}
-            </button>
-          )}
+          {/* Second grid column, so these line up under the entry box rather than under the label —
+              see `.fieldToggles` for why hardcoding the offset kept getting it wrong. */}
+          <div className={styles.fieldToggleGroup}>
+            {!ccVisible && (
+              <button type="button" className={styles.fieldToggle} onClick={() => setShowCc(true)}>
+                {t('compose.showCcField')}
+              </button>
+            )}
+            {!bccVisible && (
+              <button type="button" className={styles.fieldToggle} onClick={() => setShowBcc(true)}>
+                {t('compose.showBccField')}
+              </button>
+            )}
+          </div>
         </div>
       )}
       {ccVisible && renderField('cc')}

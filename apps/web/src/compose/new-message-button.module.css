@@ -1,0 +1,26 @@
+/*
+ * Compose, as a floating action button below 40em.
+ *
+ * The button itself is declared in the shell header, which is where it belongs on tablet and
+ * desktop. On a phone that put the app's most frequent writing action in the top-trailing corner —
+ * the furthest point from a thumb on an 844 px device — while FR-UI-03 asks for "bottom-reachable
+ * actions" and the reachable band at the bottom held nothing but section navigation.
+ *
+ * Positioned rather than re-rendered elsewhere: one node keeps one id (the composer host returns
+ * focus to it when the last draft closes), one shortcut target and one accessible name.
+ *
+ * It clears the bottom bar (59 px including the safe-area inset) plus a gap, and sits below the
+ * drawer's z-index so an open folder drawer is never punctured by it.
+ */
+@media (max-width: 39.999em) {
+  .newMessage {
+    position: fixed;
+    inset-inline-end: var(--waxwing-space-4);
+    inset-block-end: calc(var(--waxwing-space-4) + 3.75rem + env(safe-area-inset-bottom, 0px));
+    z-index: 12;
+    border-radius: var(--waxwing-radius-full);
+    background-color: var(--waxwing-accent);
+    color: var(--waxwing-accent-contrast);
+    box-shadow: var(--waxwing-shadow-2);
+  }
+}

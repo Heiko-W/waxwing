@@ -29,7 +29,10 @@ describe('LoginForm', () => {
       />,
     )
 
-    expect(screen.getByRole('heading', { name: 'Sign in to mail.example.com' })).toBeInTheDocument()
+    // The heading names the PRODUCT (FR-THEME-02's configured name); the host moved to a subline,
+    // because "which server" is not the question a user arrives with.
+    expect(screen.getByRole('heading', { name: 'Sign in to Acme Mail' })).toBeInTheDocument()
+    expect(screen.getByText('Mailbox on mail.example.com')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Sign in securely' }))
     expect(onOAuth).toHaveBeenCalledTimes(1)
@@ -78,7 +81,7 @@ describe('LoginForm', () => {
     await user.type(screen.getByLabelText('Username'), 'alice')
     await user.type(screen.getByLabelText('Password'), 'secret')
     await user.click(screen.getByLabelText('Stay signed in'))
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await user.click(screen.getByRole('button', { name: 'Sign in with a password' }))
 
     expect(onBasicSubmit).toHaveBeenCalledWith('alice', 'secret', true, false)
   })
@@ -118,7 +121,7 @@ describe('LoginForm', () => {
 
     await user.type(screen.getByLabelText('Username'), 'alice')
     await user.type(screen.getByLabelText('Password'), 'secret')
-    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    await user.click(screen.getByRole('button', { name: 'Sign in with a password' }))
 
     expect(onBasicSubmit).toHaveBeenCalledWith('alice', 'secret', false, true)
   })
