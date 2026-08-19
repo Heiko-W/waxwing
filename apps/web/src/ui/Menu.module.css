@@ -102,3 +102,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Opened upward: the menu's BOTTOM edge sits at the coordinate, which is the trigger's top. Only
+   `transform` — `.alignEnd` owns the `translate` property, and the two must not fight. */
+.flipped {
+  transform: translateY(-100%);
+  transform-origin: bottom center;
+}

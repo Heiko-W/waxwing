@@ -106,6 +106,13 @@ const PAIRS: Pair[] = [
   { fg: 'accent', bg: 'surface-sunken', min: TEXT_AA, note: 'the selected folder on the rail' },
   { fg: 'border-strong', bg: 'surface-sunken', min: UI_AA, note: 'control boundary on the rail' },
   { fg: 'focus-ring', bg: 'surface-sunken', min: UI_AA, note: 'focus ring on the rail' },
+  { fg: 'text', bg: 'surface-selected-idle', min: TEXT_AA, note: 'text on an unfocused selection' },
+  {
+    fg: 'text-muted',
+    bg: 'surface-selected-idle',
+    min: TEXT_AA,
+    note: 'preview on an unfocused selection',
+  },
 ]
 
 /**
@@ -137,6 +144,11 @@ const FILL_PAIRS: FillPair[] = [
     note: 'a row under the pointer, on the content plane',
   },
   { fill: 'surface-selected', under: 'surface', note: 'the row the reader is on' },
+  {
+    fill: 'surface-selected-idle',
+    under: 'surface',
+    note: 'the row the reader was on, while they are elsewhere',
+  },
   // On the rail a hover LIFTS to the content plane rather than darkening — a step further back is
   // imperceptible in light, which is how this check earned its keep the day it was written.
   { fill: 'surface', under: 'surface-sunken', note: 'a folder under the pointer, lifted' },

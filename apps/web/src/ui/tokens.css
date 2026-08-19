@@ -60,6 +60,10 @@
        the E2E assert `aria-current`, never colour. Text stays dark on both — tokens.contrast.test.ts. */
     --waxwing-surface-hover: #ebebef;
     --waxwing-surface-selected: #dbe7fa;
+    /* The same row, when the list does NOT have focus. An accent tint says "this is where you
+       are"; beside an open message it competes with the pane the reader is actually in, and two
+       surfaces claiming to be current is one too many. Apple Mail drops to a neutral grey. */
+    --waxwing-surface-selected-idle: #e3e3e8;
     --waxwing-text: #1d1d1f;
     --waxwing-text-muted: #636366;
     --waxwing-border: #d2d2d7;
@@ -197,6 +201,8 @@
       /* ---- Row states: dark (see the light block for why these exist). ---- */
       --waxwing-surface-hover: #3a3a3c;
       --waxwing-surface-selected: #28394f;
+      /* Neutral when the list is not focused — see the light block. */
+      --waxwing-surface-selected-idle: #3a3a3c;
       --waxwing-text: #f5f5f7;
       --waxwing-text-muted: #a5a5ad;
       --waxwing-border: #3a3a3c;
@@ -243,6 +249,8 @@
     /* ---- Row states: dark (see the light block for why these exist). ---- */
     --waxwing-surface-hover: #3a3a3c;
     --waxwing-surface-selected: #28394f;
+    /* Neutral when the list is not focused — see the light block. */
+    --waxwing-surface-selected-idle: #3a3a3c;
     --waxwing-text: #f5f5f7;
     --waxwing-text-muted: #a5a5ad;
     --waxwing-border: #3a3a3c;
@@ -285,6 +293,10 @@
     /* ---- Row states: light (see the :root block). ---- */
     --waxwing-surface-hover: #ebebef;
     --waxwing-surface-selected: #dbe7fa;
+    /* The same row, when the list does NOT have focus. An accent tint says "this is where you
+       are"; beside an open message it competes with the pane the reader is actually in, and two
+       surfaces claiming to be current is one too many. Apple Mail drops to a neutral grey. */
+    --waxwing-surface-selected-idle: #e3e3e8;
     --waxwing-text: #1d1d1f;
     --waxwing-text-muted: #636366;
     --waxwing-border: #d2d2d7;

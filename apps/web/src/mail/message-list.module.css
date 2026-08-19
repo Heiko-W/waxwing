@@ -354,6 +354,17 @@
   background-color: var(--waxwing-surface-selected);
 }
 
+/*
+ * Idle selection. While the reader is IN the reading pane, an accent-tinted row on the left is a
+ * second thing claiming to be current — the list is not where they are, it is where they were.
+ * A neutral fill keeps the place without competing for it, which is what every desktop list does
+ * when it loses focus.
+ */
+.scroll:not(:focus-within) .row[aria-current="page"],
+.scroll:not(:focus-within) .selected {
+  background-color: var(--waxwing-surface-selected-idle);
+}
+
 .skeletonRow {
   cursor: default;
 }

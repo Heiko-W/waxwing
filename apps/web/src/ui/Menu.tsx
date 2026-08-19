@@ -44,6 +44,16 @@ export interface MenuProps {
   triggerVariant?: 'default' | 'ghost'
 }
 
+/** The gap between trigger and menu, in px — matches the 4px this has always used. */
+const MENU_GAP = 4
+
+/**
+ * A rough menu height, for deciding whether one fits below its trigger. Deliberately an estimate:
+ * measuring would mean rendering the menu first and moving it afterwards, which is a visible jump.
+ * Roughly six items plus padding — enough that a genuinely cramped position is recognised.
+ */
+const MENU_ESTIMATED_BLOCK = 240
+
 /**
  * Menu button (APG menu-button pattern). The trigger carries `aria-haspopup`/`aria-expanded`;
  * the popup is a `role="menu"` of `role="menuitem"`s with roving focus. Keyboard: Down/Up to
@@ -70,7 +80,7 @@ export function Menu({
   })
 
   const [open, setOpen] = useState(false)
-  const [coords, setCoords] = useState({ top: 0, left: 0 })
+  const [coords, setCoords] = useState({ top: 0, left: 0, flipped: false })
   const [focusedIndex, setFocusedIndex] = useState(-1)
 
   const firstEnabled = items.findIndex((item) => !item.disabled)
@@ -83,7 +93,24 @@ export function Menu({
         // NOTE (FR-I18N-02): start/end here resolve to physical left/right, which is correct
         // for the LTR locales V1 ships (en, de). When an RTL locale is added, mirror this
         // against the trigger's writing direction.
-        setCoords({ top: rect.bottom + 4, left: align === 'end' ? rect.right : rect.left })
+        //
+        // FLIPPED UPWARD when there is no room below. The position was computed from the trigger
+        // alone and never consulted the viewport, so a menu opened near the bottom of the window —
+        // the last folder in the rail, a row action on a short screen — was drawn past the edge with
+        // its items unreachable by pointer. The menu is `position: fixed`, so viewport coordinates
+        // are the frame to reason in.
+        //
+        // An ESTIMATE rather than a measurement, deliberately: measuring means rendering first and
+        // moving afterwards, which is a visible jump. The estimate only has to answer "is there
+        // obviously not enough room", and the flip is additionally gated on the space above being
+        // larger — so a short menu in a short window stays where it was.
+        const below = window.innerHeight - rect.bottom
+        const flip = below < MENU_ESTIMATED_BLOCK && rect.top > below
+        setCoords({
+          top: flip ? rect.top - MENU_GAP : rect.bottom + MENU_GAP,
+          left: align === 'end' ? rect.right : rect.left,
+          flipped: flip,
+        })
       }
       setFocusedIndex(toIndex)
       setOpen(true)
@@ -219,7 +246,11 @@ export function Menu({
             id={menuId}
             role="menu"
             aria-labelledby={triggerId}
-            className={cx(styles.menu, align === 'end' && styles.alignEnd)}
+            className={cx(
+              styles.menu,
+              align === 'end' && styles.alignEnd,
+              coords.flipped && styles.flipped,
+            )}
             style={{ position: 'fixed', top: coords.top, left: coords.left }}
             onKeyDown={onMenuKeyDown}
           >
