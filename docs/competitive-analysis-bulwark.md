@@ -173,7 +173,7 @@ outcome against each entry, so what is left stays legible.
 | Rank | Status |
 |---|---|
 | 1 Sieve filter rules | **done** — M5.2, ADR-023 |
-| 2 Calendar | **done for single events** — M5.6 month + agenda, M5.11 create/edit/delete with an editor. Series are read-only BY DESIGN (see the note in `isEditable`); week/day grids remain |
+| 2 Calendar | **done** — month, week and agenda views (M5.6, M5.13); create/edit/delete for single events (M5.11). Series are read-only BY DESIGN — a recurrence scope editor is the one deliberate omission, see `isEditable` |
 | 3 Multi-account + unified inbox | **foundation done** (M5.10) — registry, derived scopes, per-account forget. The second sign-in flow, the switcher UI and the unified inbox remain |
 | 4 More languages | **pipeline done** (M5.9) — Weblate config, `docs/translating.md`, RTL scripts pre-listed. The strings themselves need speakers, not a machine |
 | 5 S/MIME / PGP read + verify | open |
