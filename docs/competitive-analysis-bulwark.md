@@ -174,7 +174,7 @@ outcome against each entry, so what is left stays legible.
 |---|---|
 | 1 Sieve filter rules | **done** — M5.2, ADR-023 |
 | 2 Calendar | **partly done** — M5.6 ships month + agenda, read-only. Week/day grids and editing remain |
-| 3 Multi-account + unified inbox | open |
+| 3 Multi-account + unified inbox | **foundation done** (M5.10) — registry, derived scopes, per-account forget. The second sign-in flow, the switcher UI and the unified inbox remain |
 | 4 More languages | **pipeline done** (M5.9) — Weblate config, `docs/translating.md`, RTL scripts pre-listed. The strings themselves need speakers, not a machine |
 | 5 S/MIME / PGP read + verify | open |
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
