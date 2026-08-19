@@ -323,6 +323,87 @@
         "generic": "Die Abwesenheitsnotiz konnte nicht gespeichert werden."
       }
     },
+    "filters": {
+      "title": "Filter",
+      "intro": "Regeln, die der Server auf eingehende Nachrichten anwendet, bevor sie bei Ihnen ankommen. Sie greifen auch, wenn diese App geschlossen ist.",
+      "empty": "Noch keine Filterregeln.",
+      "addRule": "Regel hinzufügen",
+      "saved": "Filter gespeichert",
+      "showSource": "Skript anzeigen",
+      "hideSource": "Skript ausblenden",
+      "sourceLabel": "Sieve-Skript",
+      "unsupportedExtensions": "Dieser Server nennt keine Unterstützung für: {{list}}. Regeln, die das benötigen, greifen möglicherweise nicht.",
+      "rule": {
+        "enabled": "Aktiv",
+        "edit": "Bearbeiten",
+        "delete": "Löschen"
+      },
+      "foreign": {
+        "explain": "Für dieses Postfach existiert bereits ein Filterskript, das nicht hier erstellt wurde. Es wird unverändert angezeigt und nicht angetastet.",
+        "adopt": "Filter zusätzlich hier verwalten",
+        "adoptHint": "Ihre vorhandenen Regeln bleiben erhalten und laufen weiter. Neue Regeln werden dahinter ergänzt."
+      },
+      "form": {
+        "createTitle": "Neue Regel",
+        "editTitle": "Regel bearbeiten",
+        "name": "Name",
+        "conditions": "Bedingungen",
+        "actions": "Aktionen",
+        "matchMode": "Anwenden, wenn",
+        "matchAll": "alle Bedingungen zutreffen",
+        "matchAny": "eine Bedingung zutrifft",
+        "field": "Bereich",
+        "match": "Vergleich",
+        "value": "Wert",
+        "sizeKb": "Größe in KB",
+        "action": "Aktion",
+        "mailbox": "Ordner",
+        "flag": "Markieren als",
+        "address": "Adresse",
+        "addCondition": "Bedingung hinzufügen",
+        "addAction": "Aktion hinzufügen",
+        "remove": "Entfernen",
+        "stop": "Weitere Regeln nicht mehr anwenden",
+        "cancel": "Abbrechen",
+        "submit": "Regel speichern"
+      },
+      "field": {
+        "from": "Absender",
+        "to": "An",
+        "cc": "Kopie",
+        "subject": "Betreff",
+        "body": "Nachrichtentext",
+        "size": "Größe",
+        "hasAttachment": "Hat Anhang"
+      },
+      "match": {
+        "contains": "enthält",
+        "is": "ist genau",
+        "startsWith": "beginnt mit",
+        "endsWith": "endet mit",
+        "matches": "entspricht Muster",
+        "over": "größer als",
+        "under": "kleiner als"
+      },
+      "action": {
+        "fileInto": "In Ordner verschieben",
+        "addFlag": "Markieren",
+        "redirect": "Weiterleiten an",
+        "discard": "Verwerfen"
+      },
+      "flag": {
+        "seen": "gelesen",
+        "flagged": "markiert"
+      },
+      "error": {
+        "loadFailed": "Die Filter konnten nicht geladen werden.",
+        "invalidSieve": "Der Server hat das Skript als ungültig abgelehnt. Ihre Regeln wurden nicht gespeichert.",
+        "tooLarge": "Das Skript ist für diesen Server zu groß.",
+        "offline": "Filter lassen sich nur online ändern.",
+        "rejected": "Der Server hat das Speichern der Filter abgelehnt.",
+        "generic": "Die Filter konnten nicht gespeichert werden."
+      }
+    },
     "server": {
       "title": "Server",
       "description": "Was dieser JMAP-Server bietet. Nützlich, wenn Sie ein Problem melden.",

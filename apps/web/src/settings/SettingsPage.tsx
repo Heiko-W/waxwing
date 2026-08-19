@@ -24,6 +24,7 @@ import { ServerSection } from './ServerSection'
 import { StorageSection } from './StorageSection'
 import { SwipeSection } from './SwipeSection'
 import styles from './settings.module.css'
+import { FiltersSection, filtersAvailable } from './sieve/FiltersSection'
 import { VacationSection } from './VacationSection'
 import { serverSupportsVacation } from './vacation-client'
 
@@ -176,6 +177,12 @@ export default function SettingsPage() {
     connected?.jmapSession ?? null,
     connected?.accountId ?? null,
   )
+  // Filters need BOTH the server capability and the hoster's switch (M5.2, FR-SIEVE-01).
+  const sieveAvailable = filtersAvailable(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+    config,
+  )
 
   function handleAccent(value: string): void {
     if (!isAccentId(value)) return
@@ -269,6 +276,12 @@ export default function SettingsPage() {
       {replica !== null && vacationAvailable && (
         <Section slug="vacation" title={t('settings.vacation.title')}>
           <VacationSection />
+        </Section>
+      )}
+
+      {replica !== null && sieveAvailable && (
+        <Section slug="filters" title={t('settings.filters.title')}>
+          <FiltersSection />
         </Section>
       )}
 

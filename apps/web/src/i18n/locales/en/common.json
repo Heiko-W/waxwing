@@ -323,6 +323,87 @@
         "generic": "The vacation responder could not be saved."
       }
     },
+    "filters": {
+      "title": "Filters",
+      "intro": "Rules the server runs on incoming mail, before it reaches you. They keep working when this app is closed.",
+      "empty": "No filter rules yet.",
+      "addRule": "Add rule",
+      "saved": "Filters saved",
+      "showSource": "Show script",
+      "hideSource": "Hide script",
+      "sourceLabel": "Sieve script",
+      "unsupportedExtensions": "This server did not list support for: {{list}}. Rules using them may not run.",
+      "rule": {
+        "enabled": "Active",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "foreign": {
+        "explain": "This mailbox already has a filter script that was not written here. It is shown as it is, and is left untouched.",
+        "adopt": "Manage filters alongside it",
+        "adoptHint": "Your existing rules are kept and go on running. New rules are added after them."
+      },
+      "form": {
+        "createTitle": "New rule",
+        "editTitle": "Edit rule",
+        "name": "Name",
+        "conditions": "Conditions",
+        "actions": "Actions",
+        "matchMode": "Apply when",
+        "matchAll": "all conditions match",
+        "matchAny": "any condition matches",
+        "field": "Part",
+        "match": "Comparison",
+        "value": "Value",
+        "sizeKb": "Size in KB",
+        "action": "Action",
+        "mailbox": "Folder",
+        "flag": "Mark as",
+        "address": "Address",
+        "addCondition": "Add condition",
+        "addAction": "Add action",
+        "remove": "Remove",
+        "stop": "Stop processing further rules",
+        "cancel": "Cancel",
+        "submit": "Save rule"
+      },
+      "field": {
+        "from": "Sender",
+        "to": "To",
+        "cc": "Cc",
+        "subject": "Subject",
+        "body": "Message text",
+        "size": "Size",
+        "hasAttachment": "Has attachment"
+      },
+      "match": {
+        "contains": "contains",
+        "is": "is exactly",
+        "startsWith": "starts with",
+        "endsWith": "ends with",
+        "matches": "matches pattern",
+        "over": "larger than",
+        "under": "smaller than"
+      },
+      "action": {
+        "fileInto": "Move to folder",
+        "addFlag": "Mark",
+        "redirect": "Forward to",
+        "discard": "Discard"
+      },
+      "flag": {
+        "seen": "read",
+        "flagged": "flagged"
+      },
+      "error": {
+        "loadFailed": "Filters could not be loaded.",
+        "invalidSieve": "The server rejected the script as invalid. Your rules were not saved.",
+        "tooLarge": "The script is too large for this server.",
+        "offline": "Filters can only be changed while online.",
+        "rejected": "The server declined to save the filters.",
+        "generic": "The filters could not be saved."
+      }
+    },
     "server": {
       "title": "Server",
       "description": "What this JMAP server offers. Useful when reporting a problem.",

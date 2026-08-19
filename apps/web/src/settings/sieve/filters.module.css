@@ -1,0 +1,99 @@
+/* Settings → Filters (M5.2, FR-SIEVE-01/02). Tokens only — no literal colours or sizes, so the
+   section follows the accent palette and both themes without a second definition. */
+
+.ruleList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ruleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.ruleName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: var(--waxwing-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+}
+
+/* A condition or action: its selects sit on one line on a wide dialog and stack on a phone. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--waxwing-space-2);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-2);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* The script itself. Monospace and allowed to wrap: truncating source is how a diagnostic becomes
+   useless, and this is the surface a user checks when they doubt what the server will do. */
+.source {
+  max-block-size: 24rem;
+  margin: 0;
+  overflow: auto;
+  padding: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface-2);
+  color: var(--waxwing-text);
+  font-family: var(--waxwing-font-mono);
+  font-size: var(--waxwing-text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sourceFigure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+}
+
+.foreign {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.error {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
+.warning {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
