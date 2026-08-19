@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect, type Page, test } from '@playwright/test'
 import { ACCOUNTS, type JmapClient, jmapAs } from '../stalwart/seed-write.mjs'
-import { CREDENTIALS, login, openSettings, typeInEditor } from './helpers'
+import { CREDENTIALS, login, openComposer, openSettings, typeInEditor } from './helpers'
 
 /**
  * M3.7 settings suite — the REAL production bundle against the live Stalwart fixture.
@@ -18,6 +18,7 @@ import { CREDENTIALS, login, openSettings, typeInEditor } from './helpers'
 const CORE = 'urn:ietf:params:jmap:core'
 const VACATION = 'urn:ietf:params:jmap:vacationresponse'
 const QUOTA = 'urn:ietf:params:jmap:quota'
+const SUBMISSION = 'urn:ietf:params:jmap:submission'
 const MAIL = 'urn:ietf:params:jmap:mail'
 const WEBPUSH_VAPID = 'urn:ietf:params:jmap:webpush-vapid'
 
@@ -285,5 +286,186 @@ test.describe('M3.7 settings suite', () => {
     const bar = page.getByRole('progressbar', { name: 'Mailbox storage' })
     await expect(bar).toBeVisible()
     await expect(bar).toHaveAttribute('max', String(octets?.hardLimit))
+  })
+})
+
+/**
+ * M5.1 — the identity editor, against the live server (FR-CMP-06, ADR-022).
+ *
+ * The point of these tests is the round trip, not the form: every assertion that matters reads
+ * `Identity/get` back off the SERVER, and the composer check proves the third leg — that a write
+ * here reaches the replica the From selector reads, without waiting for the next leadership session.
+ *
+ * Runs in the WRITE harness and mutates per-account state, so `afterEach` puts the account back:
+ * a leftover second identity would make `FromField` render a From selector in every other suite.
+ */
+interface WireIdentity {
+  readonly id: string
+  readonly name: string
+  readonly email: string
+  readonly textSignature: string
+  readonly htmlSignature: string
+  readonly mayDelete: boolean
+}
+
+/**
+ * The account's own address, and the one a created identity uses too.
+ *
+ * RFC 8621 §6 allows several identities on the SAME address — "to allow for different settings the
+ * user wants to pick between (for example, with different names/signatures)" — and that is exactly
+ * what a second signature is. It also avoids the alias route: Stalwart mints an Identity for every
+ * address an account owns, so provisioning an alias would give alice two identities in EVERY suite
+ * and make the composer's From selector appear where no test expects it.
+ */
+const PRIMARY = 'alice@waxwing.test'
+const SECOND_NAME = 'Alice (support)'
+
+async function identitiesOf(): Promise<WireIdentity[]> {
+  const args = await first<{ list: WireIdentity[]; state: string }>(
+    alice,
+    [CORE, SUBMISSION],
+    ['Identity/get', { accountId: aliceAccountId, ids: null }, '0'],
+  )
+  return args.list
+}
+
+/**
+ * Type into the HTML signature editor.
+ *
+ * NOT `typeInEditor(page, 'Signature', …)`: Playwright's `name` option matches a SUBSTRING, and this
+ * form has both "Signature" and "Plain-text signature" — the shared helper resolves to two elements
+ * and fails strict mode. Exactness is the whole point here.
+ */
+async function typeSignature(page: Page, text: string): Promise<void> {
+  await page.getByRole('textbox', { name: 'Signature', exact: true }).click()
+  await page.keyboard.type(text)
+}
+
+async function identityState(): Promise<string> {
+  const args = await first<{ state: string }>(
+    alice,
+    [CORE, SUBMISSION],
+    ['Identity/get', { accountId: aliceAccountId, ids: null }, '0'],
+  )
+  return args.state
+}
+
+test.describe('M5.1 identity editor', () => {
+  test.afterEach(async () => {
+    const list = await identitiesOf()
+    // The account starts with exactly one identity; anything past the first is this suite's doing.
+    const extra = list.slice(1).map((row) => row.id)
+    const primary = list[0]
+    await first(
+      alice,
+      [CORE, SUBMISSION],
+      [
+        'Identity/set',
+        {
+          accountId: aliceAccountId,
+          ifInState: await identityState(),
+          ...(extra.length > 0 ? { destroy: extra } : {}),
+          ...(primary
+            ? {
+                update: {
+                  [primary.id]: {
+                    name: 'Alice Anderson (Waxwing e2e)',
+                    htmlSignature: '',
+                    textSignature: '',
+                    replyTo: null,
+                    bcc: null,
+                  },
+                },
+              }
+            : {}),
+        },
+        '0',
+      ],
+    )
+  })
+
+  test('edits the signature of an existing identity (FR-CMP-06)', async ({ page }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page)
+
+    const section = page.getByRole('region', { name: 'Identities' })
+    await expect(section).toBeVisible()
+    await expect(section).toContainText(PRIMARY)
+
+    await section
+      .getByRole('button', { name: /^Edit / })
+      .first()
+      .click()
+    // The address of an existing identity is immutable (RFC 8621 §6) — the field says so by being
+    // read-only, and a regression that made it editable would be invisible without this.
+    await expect(page.getByLabel('Email address')).toHaveAttribute('readonly', '')
+
+    await page.getByLabel('Display name').fill('Alice Alternate')
+    await typeSignature(page, 'Kind regards, Alice')
+    await page.getByRole('button', { name: 'Save identity' }).click()
+
+    await expect
+      .poll(async () => (await identitiesOf())[0]?.htmlSignature ?? '', POLL)
+      .toContain('Kind regards, Alice')
+    expect((await identitiesOf())[0]?.name).toBe('Alice Alternate')
+  })
+
+  test('creates a second identity, the composer offers it, and delete removes it', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page)
+    const section = page.getByRole('region', { name: 'Identities' })
+
+    await section.getByRole('button', { name: 'Add identity' }).click()
+    await page.getByLabel('Email address').fill(PRIMARY)
+    await page.getByLabel('Display name').fill(SECOND_NAME)
+    await typeSignature(page, 'Sent from my other address')
+    await page.getByRole('button', { name: 'Create identity' }).click()
+
+    await expect
+      .poll(async () => (await identitiesOf()).map((identity) => identity.name), POLL)
+      .toContain(SECOND_NAME)
+    await expect(section).toContainText(SECOND_NAME)
+
+    // THE REPLICA LEG: the engine pulls identities once per leadership session, so without the
+    // mirror written by the editor this selector would not exist until the next sign-in. It is also
+    // the first time `FromField` renders at all — it stays hidden while there is only one identity.
+    await openComposer(page)
+    const from = page.getByLabel('From', { exact: true })
+    await expect(from).toBeVisible()
+    await expect(from).toContainText(SECOND_NAME)
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
+
+    await openSettings(page)
+    // Two identities share the address, so the row is identified by the button that names it.
+    await section
+      .getByRole('button', { name: `Delete ${PRIMARY}` })
+      .last()
+      .click()
+    await expect(page.getByRole('dialog', { name: 'Delete identity?' })).toBeVisible()
+    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+
+    await expect
+      .poll(async () => (await identitiesOf()).map((identity) => identity.name), POLL)
+      .not.toContain(SECOND_NAME)
+  })
+
+  test('refuses an address the account does not own, and says why (ADR-022)', async ({ page }) => {
+    const before = (await identitiesOf()).length
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page)
+    const section = page.getByRole('region', { name: 'Identities' })
+
+    await section.getByRole('button', { name: 'Add identity' }).click()
+    await page.getByLabel('Email address').fill('someone@example.com')
+    await page.getByRole('button', { name: 'Create identity' }).click()
+
+    // Stalwart answers `invalidProperties` + `properties: ["email"]` here, NOT the `forbiddenFrom`
+    // RFC 8621 §6.3 defines for it — measured, and the reason that shape gets its own message.
+    await expect(section).toContainText('not set up for your account')
+    // Counted rather than compared against a fixed list: a server may legitimately start with more
+    // than one identity (Stalwart mints one per address the account owns).
+    expect(await identitiesOf()).toHaveLength(before)
   })
 })
