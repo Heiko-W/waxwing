@@ -9,6 +9,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type ContactCardRow, useReplicaOptional } from '../sync'
+import { Button } from '../ui'
 import {
   type DraftWindow,
   type RecipientField as RecipientFieldName,
@@ -121,14 +122,24 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
               see `.fieldToggles` for why hardcoding the offset kept getting it wrong. */}
           <div className={styles.fieldToggleGroup}>
             {!ccVisible && (
-              <button type="button" className={styles.fieldToggle} onClick={() => setShowCc(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={styles.fieldToggle}
+                onClick={() => setShowCc(true)}
+              >
                 {t('compose.showCcField')}
-              </button>
+              </Button>
             )}
             {!bccVisible && (
-              <button type="button" className={styles.fieldToggle} onClick={() => setShowBcc(true)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={styles.fieldToggle}
+                onClick={() => setShowBcc(true)}
+              >
                 {t('compose.showBccField')}
-              </button>
+              </Button>
             )}
           </div>
         </div>

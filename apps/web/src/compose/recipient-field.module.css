@@ -209,25 +209,21 @@
 }
 
 /*
- * They are buttons, so they look like buttons.
+ * They are buttons, so they use the Button.
  *
- * Borderless, unpadded, muted and unadorned, they read as static captions next to the field — the
- * same file's `.didYouMeanApply` already showed the right treatment (accent colour, underline).
- * They were also 21 px tall, the only two targets in the whole app below WCAG 2.2 AA's 24 px
- * minimum, in a form the design system promises 44 px on touch.
+ * History worth keeping, because this rule has been wrong in both directions. Borderless, unpadded
+ * and unadorned, they first read as static CAPTIONS beside the field — and were 21px tall, the only
+ * two targets in the app under WCAG 2.2 AA's 24px floor. That was answered with accent colour and
+ * an underline, which fixed the affordance and introduced a different problem: underlined accent
+ * text is this app's LINK idiom, and these two were the only place it appeared outside a message
+ * body, in a window whose every other control is a button. They do not navigate; they reveal a
+ * field.
+ *
+ * `Button variant="ghost"` is the answer to both: unmistakably pressable, unmistakably not a link,
+ * and 34px by construction. Only the placement stays here.
  */
 .fieldToggle {
-  display: inline-flex;
-  align-items: center;
-  min-block-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-2);
-  border: 0;
-  border-radius: var(--waxwing-radius-sm);
-  background: transparent;
-  color: var(--waxwing-accent);
-  font-size: var(--waxwing-text-sm);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 /* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
