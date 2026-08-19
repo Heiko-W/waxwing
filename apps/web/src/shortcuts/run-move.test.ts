@@ -67,6 +67,7 @@ function readingStub(dispatched: boolean): ReadingHandlers {
     openMove: vi.fn(),
     openLabels: vi.fn(),
     requestDelete: vi.fn(),
+    print: vi.fn(),
   }
 }
 

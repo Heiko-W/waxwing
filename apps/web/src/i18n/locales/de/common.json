@@ -708,7 +708,8 @@
       "delete": "Löschen",
       "keepOffline": "Offline behalten",
       "keepOfflineOff": "Nicht mehr offline behalten",
-      "move": "Verschieben nach…"
+      "move": "Verschieben nach…",
+      "import": "EML-Dateien importieren…"
     },
     "create": {
       "title": "Neuer Ordner",
@@ -738,6 +739,25 @@
       "title": "„{{name}}“ verschieben",
       "topLevel": "Oberste Ebene",
       "empty": "Es gibt keinen Ordner, in den dieser verschoben werden kann."
+    },
+    "import": {
+      "title": "Import nach {{folder}}",
+      "pick": "EML-Dateien auswählen",
+      "hint": "Nachrichten werden unverändert gespeichert. Bis zu {{size}} MB je Datei.",
+      "progress": "{{done}} bisher importiert…",
+      "imported": "{{count}} Nachricht(en) importiert.",
+      "skipped": "Keine Nachrichten, übersprungen: {{files}}",
+      "close": "Fertig",
+      "cancel": "Abbrechen",
+      "error": {
+        "tooLarge": "zu groß",
+        "alreadyExists": "bereits in diesem Konto",
+        "invalidEmail": "keine gültige Nachricht",
+        "overQuota": "kein Speicherplatz mehr in diesem Konto",
+        "notFound": "der Upload war abgelaufen, bevor er abgelegt werden konnte",
+        "uploadFailed": "der Upload ist fehlgeschlagen",
+        "rejected": "der Server hat sie abgelehnt"
+      }
     }
   },
   "list": {
@@ -896,7 +916,18 @@
       "truncated": "Es wird nur der Anfang dieser Nachricht angezeigt. Laden Sie den Anhang herunter, um sie vollständig zu sehen.",
       "openNamed": "Nachricht öffnen: {{name}}",
       "closeNamed": "Nachricht ausblenden: {{name}}"
-    }
+    },
+    "print": "Drucken",
+    "unsubscribe": {
+      "title": "Mailingliste",
+      "note": "Diese Nachricht bietet an, sie abzubestellen.",
+      "sentNote": "Abmeldung abgeschickt. Wann sie wirkt, entscheidet die Liste.",
+      "failedNote": "Die Anfrage konnte nicht gesendet werden. Nutzen Sie die Seite der Liste.",
+      "oneClick": "Abbestellen",
+      "open": "Abmeldeseite",
+      "email": "Per E-Mail abbestellen"
+    },
+    "forwardAsAttachment": "Als Anhang weiterleiten"
   },
   "compose": {
     "toolbar": "Formatierung",
@@ -1283,6 +1314,9 @@
         "search": "Suchen",
         "palette": "Befehlspalette",
         "help": "Tastaturkürzel"
+      },
+      "reading": {
+        "print": "Nachricht drucken"
       }
     },
     "modKey": "Strg"

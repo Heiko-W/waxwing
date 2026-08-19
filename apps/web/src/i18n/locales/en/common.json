@@ -708,7 +708,8 @@
       "delete": "Delete",
       "keepOffline": "Keep offline",
       "keepOfflineOff": "Stop keeping offline",
-      "move": "Move to…"
+      "move": "Move to…",
+      "import": "Import .eml files…"
     },
     "create": {
       "title": "New folder",
@@ -738,6 +739,25 @@
       "title": "Move {{name}}",
       "topLevel": "Top level",
       "empty": "There is no folder this one can move into."
+    },
+    "import": {
+      "title": "Import into {{folder}}",
+      "pick": "Choose .eml files",
+      "hint": "Messages are stored exactly as they arrived. Up to {{size}} MB per file.",
+      "progress": "Imported {{done}} so far…",
+      "imported": "{{count}} message(s) imported.",
+      "skipped": "Not messages, skipped: {{files}}",
+      "close": "Done",
+      "cancel": "Cancel",
+      "error": {
+        "tooLarge": "too large",
+        "alreadyExists": "already in this account",
+        "invalidEmail": "not a valid message",
+        "overQuota": "no space left in this account",
+        "notFound": "the upload expired before it could be filed",
+        "uploadFailed": "the upload failed",
+        "rejected": "the server declined it"
+      }
     }
   },
   "list": {
@@ -896,7 +916,18 @@
       "truncated": "Showing the beginning of this message only. Download the attachment to see all of it.",
       "openNamed": "Open message: {{name}}",
       "closeNamed": "Hide message: {{name}}"
-    }
+    },
+    "print": "Print",
+    "unsubscribe": {
+      "title": "Mailing list",
+      "note": "This message offers a way to stop receiving it.",
+      "sentNote": "Unsubscribe request sent. The list decides when it takes effect.",
+      "failedNote": "The request could not be sent. Try the list's own page instead.",
+      "oneClick": "Unsubscribe",
+      "open": "Unsubscribe page",
+      "email": "Unsubscribe by email"
+    },
+    "forwardAsAttachment": "Forward as attachment"
   },
   "compose": {
     "toolbar": "Formatting",
@@ -1283,6 +1314,9 @@
         "search": "Search",
         "palette": "Command palette",
         "help": "Keyboard shortcuts"
+      },
+      "reading": {
+        "print": "Print message"
       }
     },
     "modKey": "Ctrl"

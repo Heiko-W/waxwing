@@ -36,10 +36,13 @@ import { useSession } from '../app/session/context'
 import {
   buildReplyDraft,
   forwardAttachments,
+  isForward,
+  messageAsAttachment,
   ownAddresses,
   type ReplyKind,
   useComposerStore,
 } from '../compose'
+import { mailtoBodyToHtml, parseMailto } from '../compose/mailto'
 import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useMailboxByRole, useReplica } from '../sync'
 import {
@@ -75,9 +78,12 @@ import {
 import { type ReadingHandlers, useReadingStore } from './reading-store'
 import { SenderCard } from './SenderCard'
 import type { SenderIdentity } from './sender-contact'
+import { UnsubscribeBanner } from './UnsubscribeBanner'
+import { hasUnsubscribeOffer, readUnsubscribeOffer, sendOneClickUnsubscribe } from './unsubscribe'
 import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useMessageRights } from './use-message-rights'
+import { sourceFilename } from './use-message-source'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
@@ -445,6 +451,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   }, [email.sentAt, email.receivedAt])
   // Reported, never judged — no verdict, no colour, no tick. See `auth-results.ts` for the why.
   const authReport = useMemo(() => topmostAuthResults(body?.authResults), [body?.authResults])
+  // What this message offers by way of getting off the list (FR-RD-09). Absent on a row written
+  // before M5.3 — the offer is then simply empty, and the next body fetch fills it in.
+  const unsubscribeOffer = useMemo(
+    () => readUnsubscribeOffer(body?.listUnsubscribe, body?.listUnsubscribePost),
+    [body?.listUnsubscribe, body?.listUnsubscribePost],
+  )
 
   // Open a reply / reply-all / forward draft seeded from this message (M2.3, FR-CMP-02/10).
   const onCompose = useCallback(
@@ -477,12 +489,19 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         forwardSeparator: t('compose.forwardSeparator'),
         forwardHeaderBlock,
       })
-      const attachments = kind === 'forward' && body !== undefined ? forwardAttachments(body) : []
+      const attachments =
+        kind === 'forwardAsAttachment'
+          ? // The whole message, by blob reference. No download, no re-upload: the server already
+            // holds these bytes under the Email's own blobId.
+            [messageAsAttachment(email, sourceFilename(email.subject))]
+          : kind === 'forward' && body !== undefined
+            ? forwardAttachments(body)
+            : []
       openDraft({
         ...init,
         attachments,
         sourceEmailId: init.sourceEmailId,
-        sourceFlag: init.sourceKind === 'forward' ? '$forwarded' : '$answered',
+        sourceFlag: isForward(init.sourceKind) ? '$forwarded' : '$answered',
       })
     },
     [isHtml, sanitized, email, textBody, own, t, dateLabel, name, body, openDraft],
@@ -492,10 +511,21 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // downloaded bytes, and a visible loading/error surface beats a save that fails silently.
   const overflowItems = useMemo<MenuItemSpec[]>(
     () => [
+      // Forwarding the message whole rather than quoted — the shape a recipient needs when the
+      // message ITSELF is the point (a bounce to diagnose, a phishing mail to hand to an admin).
+      {
+        id: 'forwardAsAttachment',
+        label: t('reading.forwardAsAttachment'),
+        onSelect: () => onCompose('forwardAsAttachment'),
+      },
+      // Print needs nothing but the browser: the print stylesheets already strip the chrome, and
+      // `[data-waxwing-portal]` is hidden in print, so this menu is gone by the time the dialog
+      // opens. The one thing it cannot do is print a message other than the one on screen.
+      { id: 'print', label: t('reading.print'), onSelect: () => window.print() },
       { id: 'viewSource', label: t('reading.source.view'), onSelect: () => setSourceOpen('view') },
       { id: 'saveEml', label: t('reading.source.save'), onSelect: () => setSourceOpen('save') },
     ],
-    [t],
+    [t, onCompose],
   )
 
   const onAlwaysAllow =
@@ -549,6 +579,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       openMove: () => setMoveOpen(true),
       openLabels: () => setLabelsOpen(true),
       requestDelete: () => setConfirmDelete(true),
+      print: () => window.print(),
     }),
     [
       email.id,
@@ -847,6 +878,26 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         />
       )}
 
+      {hasUnsubscribeOffer(unsubscribeOffer) && (
+        <UnsubscribeBanner
+          offer={unsubscribeOffer}
+          onOneClick={(endpoint) => sendOneClickUnsubscribe(endpoint)}
+          // Through the same host gate as any other link in a message (FR-RD-08). The href IS the
+          // link text here — it came from a header, not from anchor text — so the mismatch check
+          // has nothing to catch, but routing it anywhere else would be a second door into
+          // `window.open` that the check does not watch.
+          onOpen={(url) => links.onOpenLink(url, { href: url, text: url, raw: url })}
+          onCompose={(mailto) => {
+            const request = parseMailto(mailto)
+            openDraft({
+              to: request.to,
+              subject: request.subject,
+              body: mailtoBodyToHtml(request.body),
+            })
+          }}
+        />
+      )}
+
       <div className={styles.bodyWrap}>
         {loading || bodyHtml === null ? (
           <div className={styles.bodyLoading}>
@@ -874,7 +925,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
 
       {body !== undefined && (
-        <AttachmentList accountId={accountId} attachments={body.attachments} />
+        <AttachmentList
+          accountId={accountId}
+          attachments={body.attachments}
+          subject={email.subject}
+        />
       )}
 
       {moveOpen && (

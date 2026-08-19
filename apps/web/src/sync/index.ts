@@ -89,6 +89,7 @@ export {
   useLocalPrefOptional,
   useMailbox,
   useMailboxByRole,
+  useMailboxByRoleOptional,
   useMailboxes,
   useMailboxesFor,
   useMailboxOptional,

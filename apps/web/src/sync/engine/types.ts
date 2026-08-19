@@ -287,6 +287,19 @@ export const CONTACT_CARD_PROPERTIES: readonly (keyof ContactCard | string)[] = 
  */
 export const AUTH_RESULTS_PROPERTY = 'header:Authentication-Results:asText:all'
 
+/**
+ * The `Email/get` property names for the unsubscribe headers (M5.3, FR-RD-09).
+ *
+ * `:asURLs` is the form RFC 8621 §4.1.2 defines for exactly this header: it returns the bracketed
+ * `<mailto:…>, <https://…>` list already split, so no bracket parsing is needed here.
+ *
+ * `List-Unsubscribe-Post` is a plain text header whose only defined value is
+ * `List-Unsubscribe=One-Click` (RFC 8058 §3.1). Its presence is what distinguishes a list that
+ * accepts a silent POST from one that needs the reader to open a page.
+ */
+export const LIST_UNSUBSCRIBE_PROPERTY = 'header:List-Unsubscribe:asURLs'
+export const LIST_UNSUBSCRIBE_POST_PROPERTY = 'header:List-Unsubscribe-Post:asText'
+
 /** The full-body fields fetched for an opened message (mapped to an `EmailBodyRow` by the engine). */
 export interface EmailBodyInput {
   readonly id: Id
@@ -305,6 +318,16 @@ export interface EmailBodyInput {
    * escapes it.
    */
   readonly authResults?: string[]
+  /**
+   * The `List-Unsubscribe` URLs, already unbracketed ({@link LIST_UNSUBSCRIBE_PROPERTY}).
+   *
+   * Three states, and they are not the same: `undefined` means the row predates this feature (or a
+   * test port did not supply it), `null` means the header is absent, `[]` means it was present but
+   * empty. Only the first must not be read as "this message offers no unsubscribe".
+   */
+  readonly listUnsubscribe?: string[] | null
+  /** The raw `List-Unsubscribe-Post` value; `null` when absent ({@link LIST_UNSUBSCRIBE_POST_PROPERTY}). */
+  readonly listUnsubscribePost?: string | null
 }
 
 /** Email properties fetched for a full body. `bodyValues` MUST be named here (SP.4: the fetch flags
@@ -322,6 +345,8 @@ export const EMAIL_BODY_PROPERTIES: readonly string[] = [
   'bcc',
   'sender',
   AUTH_RESULTS_PROPERTY,
+  LIST_UNSUBSCRIBE_PROPERTY,
+  LIST_UNSUBSCRIBE_POST_PROPERTY,
 ]
 
 /** Per-part properties for the body/attachment `EmailBodyPart`s (incl. `cid` for inline-image mapping). */

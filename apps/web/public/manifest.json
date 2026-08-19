@@ -9,6 +9,12 @@
   "lang": "en",
   "dir": "auto",
   "categories": ["productivity"],
+  "protocol_handlers": [
+    {
+      "protocol": "mailto",
+      "url": "./?mailto=%s"
+    }
+  ],
   "theme_color": "#f5f5f7",
   "background_color": "#f5f5f7",
   "icons": [

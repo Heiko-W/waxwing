@@ -167,6 +167,11 @@ webmail is an open gap.
 - **FR-MBX-03 (Should)** — Drag & drop messages onto folders; drag folders to re-parent.
 - **FR-MBX-04 (Should)** — Collapsible tree state and per-folder display preferences
   persisted locally.
+- **FR-MBX-06 (Should — shipped M5.3)** — Import `.eml` files into a folder via
+  `Email/import` (RFC 8621 §4.8), gated on `myRights.mayAddItems`. `Email/import` rather
+  than `Email/set create` because it keeps the original bytes: headers, signatures and MIME
+  structure survive exactly, which is the entire point of restoring an archived message.
+  Files are imported one at a time so a partial failure names the file that failed.
 - **FR-MBX-05 (Could)** — "Unified inbox" virtual view across accounts (once FR-AUTH-07
   lands).
 
@@ -271,6 +276,15 @@ webmail is an open gap.
   the browser must be open at send time; implement client-side via outbox scheduling and
   document the limitation. Adopt a server-side mechanism when Stalwart exposes one
   (e.g. FUTURERELEASE semantics via JMAP).
+- **FR-CMP-13 (Should — shipped M5.3)** — Register as the system's `mailto:` handler
+  (`protocol_handlers` in the manifest) and open a seeded composer for a link clicked
+  anywhere on the device. The URI is untrusted input from another origin: only the header
+  fields RFC 6068 §5 calls safe are honoured (`to`, `cc`, `bcc`, `subject`, `body`), and
+  the body is inserted as escaped text, never as markup.
+- **FR-CMP-14 (Should — shipped M5.3)** — **Forward as attachment**: the original travels
+  whole as a `message/rfc822` part rather than quoted into the body, so headers, signatures
+  and MIME structure survive. Carried by blob reference (an Email's own `blobId` addresses
+  the entire message, RFC 8621 §4.1.1) — no download and no re-upload.
 - **FR-CMP-12 (Could)** — Templates / canned responses (stored as drafts in a dedicated
   folder or client-side).
 

@@ -786,3 +786,33 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/* The .eml import dialog (M5.3, FR-MBX-06). */
+.importBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.importPick {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.importHint {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* Per-file failures. Each names the file and what went wrong: a restore that half-succeeds is
+   exactly when a reader needs to know WHICH message did not make it. */
+.importFailures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding-inline-start: var(--waxwing-space-4);
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}

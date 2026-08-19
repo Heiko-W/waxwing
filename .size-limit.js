@@ -67,6 +67,9 @@ export default [
       // `?` cheat-sheet. The registry + dispatcher stay eager; these two surfaces do not.
       '!apps/web/dist/assets/CommandPalette-*.js',
       '!apps/web/dist/assets/ShortcutHelp-*.js',
+      // The attachment archiver (mail/, M5.3): `client-zip` plus the naming rules, fetched only when
+      // a reader asks to save a message's attachments as one file.
+      '!apps/web/dist/assets/attachment-zip-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],

@@ -186,6 +186,16 @@ export interface EmailBodyRow {
    * `fetchBody` re-fetches it), `[]` means "the message carries no such header".
    */
   authResults?: string[]
+  /**
+   * The `List-Unsubscribe` URLs (M5.3, FR-RD-09), already unbracketed by `:asURLs`.
+   *
+   * Same three-state contract as {@link authResults}, with one more distinction that matters:
+   * `undefined` = row written before M5.3, `null` = the message carries no such header, `[]` = the
+   * header was there but named no URL. Only `undefined` justifies a re-fetch.
+   */
+  listUnsubscribe?: string[] | null
+  /** `List-Unsubscribe-Post`; its presence is what makes a one-click POST legitimate (RFC 8058). */
+  listUnsubscribePost?: string | null
   fetchedAt: number
   lastAccessedAt: number
   /**
@@ -251,7 +261,10 @@ export const ENVELOPE_BYTES_ESTIMATE = 1_200
  * load again. A wrong byte estimate costs a slightly-off eviction; a throw costs the whole app.
  */
 export function estimateBodyBytes(
-  row: Pick<EmailBodyRow, 'bodyValues' | 'bcc' | 'sender' | 'authResults'>,
+  row: Pick<
+    EmailBodyRow,
+    'bodyValues' | 'bcc' | 'sender' | 'authResults' | 'listUnsubscribe' | 'listUnsubscribePost'
+  >,
 ): number {
   let payload = 0
   for (const value of Object.values(row.bodyValues ?? {})) {
@@ -268,6 +281,11 @@ export function estimateBodyBytes(
   for (const value of Array.isArray(row.authResults) ? row.authResults : []) {
     if (typeof value === 'string') payload += value.length * 2
   }
+  // M5.3's unsubscribe headers, under the same never-throws discipline.
+  for (const value of Array.isArray(row.listUnsubscribe) ? row.listUnsubscribe : []) {
+    if (typeof value === 'string') payload += value.length * 2
+  }
+  if (typeof row.listUnsubscribePost === 'string') payload += row.listUnsubscribePost.length * 2
   return payload + BODY_OVERHEAD_BYTES
 }
 

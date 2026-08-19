@@ -25,6 +25,7 @@ import type {
   QueryChangesResponse,
   QueryRequest,
   QueryResponse,
+  SetError,
   SetResponse,
   UnsignedInt,
   UTCDate,
@@ -500,6 +501,50 @@ export interface EmailSetRequest {
 }
 /** Response for `Email/set`. */
 export type EmailSetResponse = SetResponse<Email>
+
+/**
+ * One message to import (RFC 8621 §4.8).
+ *
+ * `mailboxIds` is required and must name at least one mailbox: an imported message that belongs to
+ * no mailbox would be invisible everywhere. `receivedAt` defaults to the time of import, which is
+ * rarely what an archive restore wants — pass the original `Date` header where it is known.
+ */
+export interface EmailImport {
+  blobId: Id
+  mailboxIds: Record<Id, boolean>
+  keywords?: Record<string, boolean>
+  receivedAt?: UTCDate
+}
+
+/**
+ * Arguments for `Email/import` (RFC 8621 §4.8): file already-uploaded RFC 5322 blobs into mailboxes.
+ *
+ * Distinct from `Email/set create`, which builds a message from structured parts: an import keeps
+ * the original bytes, so headers, signatures and MIME structure survive exactly. That is what makes
+ * it the right method for restoring an `.eml` — and the reason a client that fakes it through
+ * `Email/set` loses whatever it could not model.
+ */
+export interface EmailImportRequest {
+  accountId: Id
+  ifInState?: string | null
+  /** Keyed by a client-chosen creation id, echoed back in `created`/`notCreated`. */
+  emails: Record<CreationId, EmailImport>
+}
+
+/**
+ * Response for `Email/import` (RFC 8621 §4.8).
+ *
+ * The per-message `SetError` types worth handling: `alreadyExists` (carrying `existingId` — the
+ * server already has this exact message), `invalidEmail` (the blob is not a valid RFC 5322
+ * message), `tooLarge`, `overQuota` and `notFound` (the blob id does not resolve).
+ */
+export interface EmailImportResponse {
+  accountId: Id
+  oldState: string | null
+  newState: string
+  created: Record<CreationId, Email> | null
+  notCreated: Record<CreationId, SetError> | null
+}
 
 /** Arguments for `Email/parse` (RFC 8621 §4.9): parse uploaded RFC 5322 blobs without importing them. */
 export interface EmailParseRequest {

@@ -283,6 +283,7 @@ describe('SessionProvider', () => {
         openMove: () => {},
         openLabels: () => {},
         requestDelete: () => {},
+        print: () => {},
       })
       usePaletteUi.getState().openPalette()
     })

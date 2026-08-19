@@ -44,6 +44,7 @@ export {
   requestPermission,
 } from './permission'
 export { closeAllNotifications, getNotificationRegistration } from './registration'
+export { applyAppBadge, badgingSupported, useAppBadge } from './use-app-badge'
 export { useNotificationClickNavigation } from './use-notification-click'
 export {
   type NotificationPermissionApi,

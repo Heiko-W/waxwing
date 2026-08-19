@@ -39,6 +39,8 @@ import type {
   EmailChangesResponse,
   EmailGetRequest,
   EmailGetResponse,
+  EmailImportRequest,
+  EmailImportResponse,
   EmailParseRequest,
   EmailParseResponse,
   EmailQueryChangesRequest,
@@ -120,6 +122,14 @@ export const Methods = {
   ),
   emailSet: defineMethod<EmailSetRequest, EmailSetResponse>('Email/set'),
   emailParse: defineMethod<EmailParseRequest, EmailParseResponse>('Email/parse'),
+  /**
+   * RFC 8621 §4.8 — file an uploaded RFC 5322 blob into mailboxes (M5.3).
+   *
+   * Not the same as `Email/set create`: an import keeps the original bytes, so headers, signatures
+   * and MIME structure survive exactly. Rebuilding a message through `/set` loses whatever the
+   * client could not model.
+   */
+  emailImport: defineMethod<EmailImportRequest, EmailImportResponse>('Email/import'),
   searchSnippetGet: defineMethod<SearchSnippetGetRequest, SearchSnippetGetResponse>(
     'SearchSnippet/get',
   ),

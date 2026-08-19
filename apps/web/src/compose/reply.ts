@@ -18,7 +18,18 @@ import type { EmailBodyRow } from '../sync'
 import { plainTextToHtml } from './html-to-text'
 import { sanitizeQuotedHtml } from './quoted-html'
 
-export type ReplyKind = 'reply' | 'replyAll' | 'forward'
+/**
+ * `forwardAsAttachment` differs from `forward` in one way that matters: the original travels whole,
+ * as a `message/rfc822` part, instead of being quoted into the body. Headers, signatures and
+ * attachments survive intact, which is what a recipient needs when the message itself is the
+ * evidence — a bounce to report, a phishing mail to hand to an admin.
+ */
+export type ReplyKind = 'reply' | 'replyAll' | 'forward' | 'forwardAsAttachment'
+
+/** Whether `kind` is one of the two forward shapes. */
+export function isForward(kind: ReplyKind): boolean {
+  return kind === 'forward' || kind === 'forwardAsAttachment'
+}
 
 /** The message subset the reply/forward logic reads (an `EmailRow` is assignable to this). */
 export interface ReplySource {
@@ -61,7 +72,7 @@ export function deriveRecipients(
   kind: ReplyKind,
   ownAddresses: readonly string[],
 ): { to: EmailAddress[]; cc: EmailAddress[] } {
-  if (kind === 'forward') return { to: [], cc: [] }
+  if (isForward(kind)) return { to: [], cc: [] }
   const to = dedup([...(source.replyTo ?? source.from ?? [])])
   if (kind === 'reply') return { to, cc: [] }
   // reply-all: cc = original to + cc, minus own addresses and anyone already in the derived `to`.
@@ -90,7 +101,7 @@ export function stripSubjectPrefix(subject: string): string {
 /** Normalize to a single English `Re:`/`Fwd:` prefix (interop default). */
 export function replySubject(subject: string | null, kind: ReplyKind): string {
   const base = stripSubjectPrefix(subject ?? '')
-  const prefix = kind === 'forward' ? 'Fwd:' : 'Re:'
+  const prefix = isForward(kind) ? 'Fwd:' : 'Re:'
   return base === '' ? prefix : `${prefix} ${base}`
 }
 
@@ -186,6 +197,30 @@ export function forwardAttachments(body: Pick<EmailBodyRow, 'attachments'>): Dra
   return out
 }
 
+/**
+ * The whole message as one `message/rfc822` attachment (M5.3, FR-CMP-14).
+ *
+ * Built from the envelope alone — an Email's own `blobId` addresses the entire RFC 5322 message
+ * (RFC 8621 §4.1.1), so nothing is downloaded here and nothing is re-uploaded. The draft carries a
+ * reference to a blob the server already holds.
+ *
+ * The filename is derived from the subject rather than sent raw: it becomes a file on the
+ * recipient's disk, and the subject is the original sender's string.
+ */
+export function messageAsAttachment(
+  source: Pick<ReplySource, 'subject'> & { readonly blobId: string; readonly size: number },
+  filename: string,
+): DraftAttachment {
+  return {
+    blobId: source.blobId,
+    name: filename,
+    type: 'message/rfc822',
+    size: source.size,
+    // Not inline: this is a file the recipient opens, not an image the body refers to.
+    cid: null,
+  }
+}
+
 export interface ReplyDraftInit {
   readonly to: EmailAddress[]
   readonly cc: EmailAddress[]
@@ -213,21 +248,26 @@ export function buildReplyDraft(input: {
   const { kind, source } = input
   const { to, cc } = deriveRecipients(source, kind, input.ownAddresses)
   const body =
-    kind === 'forward'
-      ? forwardBody({
-          bodyHtml: input.bodyHtml,
-          textBody: input.textBody,
-          separator: input.forwardSeparator,
-          headerBlock: input.forwardHeaderBlock,
-        })
-      : quoteBody({
-          bodyHtml: input.bodyHtml,
-          textBody: input.textBody,
-          attribution: input.attribution,
-        })
+    kind === 'forwardAsAttachment'
+      ? // Empty: the message travels as an attachment, so quoting it into the body as well would
+        // send it twice. The composer adds the sender's signature on top of this.
+        ''
+      : kind === 'forward'
+        ? forwardBody({
+            bodyHtml: input.bodyHtml,
+            textBody: input.textBody,
+            separator: input.forwardSeparator,
+            headerBlock: input.forwardHeaderBlock,
+          })
+        : quoteBody({
+            bodyHtml: input.bodyHtml,
+            textBody: input.textBody,
+            attribution: input.attribution,
+          })
   // A forward starts a NEW thread; reply/reply-all thread to the source.
-  const { inReplyTo, references } =
-    kind === 'forward' ? { inReplyTo: null, references: null } : threadingHeaders(source)
+  const { inReplyTo, references } = isForward(kind)
+    ? { inReplyTo: null, references: null }
+    : threadingHeaders(source)
   return {
     to,
     cc,
