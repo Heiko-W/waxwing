@@ -90,6 +90,8 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 - **Compose** — rich text (Fastmail's Squire), draft autosave, attachments, undo send, and
   identities you can actually manage: add, edit or delete a send address and its signature
 - **Contacts** — JMAP for Contacts (RFC 9610) address books, groups, composer autocomplete
+- **Filters** — server-side rules over JMAP for Sieve (RFC 9661), so they keep sorting your mail
+  while the app is closed. A script you already had is preserved untouched, never rewritten
 - **Live** — push over EventSource (SSE), system notifications via Web Push
 - **Offline** — a local replica, an outbox that survives a reload and a reconnect, installable as a PWA
 - **Private** — remote content blocked by default, message bodies rendered in a script-free

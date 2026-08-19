@@ -431,13 +431,22 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
 
 - **FR-VAC-01 (Must)** — **Vacation responder** UI (`VacationResponse/set`): on/off,
   date range, subject, rich body, preview.
-- **FR-SIEVE-01 (V1.x)** — **Filter rules** editor on top of JMAP for Sieve (RFC 9661):
-  a visual rule builder (conditions → actions: move, flag, forward, discard, stop)
-  generating a managed Sieve script; round-trip-safe (foreign scripts are shown read-only
-  in a code view rather than destroyed). *Deliberately deferred out of V1 to contain
-  scope; `@waxwing/jmap` ships the Sieve types from the start.*
-- **FR-SIEVE-02 (V1.x, Could)** — Raw Sieve editor with syntax highlighting and
-  server-side validation feedback for power users.
+- **FR-SIEVE-01 (V1.x — shipped M5.2)** — **Filter rules** editor on top of JMAP for Sieve
+  (RFC 9661): a visual rule builder (conditions → actions: move, flag, forward, discard,
+  stop) generating a managed Sieve script; round-trip-safe (foreign scripts are shown
+  read-only in a code view rather than destroyed).
+
+  Round-trip safety is met by **not parsing Sieve at all** (ADR-023): the rule set is
+  carried as JSON in a marker comment and read back from there, and anything outside the
+  markers is preserved verbatim and in its original position. A foreign script is therefore
+  displayed but never edited in place — the offer is to manage rules *alongside* it.
+- **FR-SIEVE-02 (V1.x, Could — partially shipped M5.2)** — Raw Sieve editor with syntax
+  highlighting and server-side validation feedback for power users.
+
+  **Shipped read-only:** the generated script is viewable, and `SieveScript/validate` is
+  bound and used before a save, but the source cannot be edited by hand. An editable raw
+  view would have to re-parse the result to keep the rule list in sync, which is exactly the
+  round trip ADR-023 refuses. Syntax highlighting is not implemented.
 
 ---
 

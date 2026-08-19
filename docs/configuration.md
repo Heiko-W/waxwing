@@ -141,8 +141,17 @@ legal requirement.
 
 ### `sieveEditor` — `boolean`, default `true`
 
-Whether to offer the Sieve filter UI. Turn it off where the server does not support
-ManageSieve, or where filters are managed centrally.
+Whether to offer the Sieve filter UI (Settings → Filters).
+
+Turn it off where filters are managed centrally and a per-user editor would only invite
+support tickets. There is no need to turn it off for a server that cannot do filters: the
+section is already hidden unless the server advertises `urn:ietf:params:jmap:sieve`
+(FR-SRV-02 — an absent capability is hidden, never broken).
+
+This used to say "turn it off where the server does not support **ManageSieve**", which named
+the wrong protocol: ManageSieve runs on TCP port 4190 and is unreachable from a browser at
+all. What the section needs is JMAP for Sieve (RFC 9661). The key was also read by no code
+whatsoever until M5.2 — it was documentation for a feature that did not exist.
 
 ### `remoteContentDefault` — `"block" | "allow"`, default `"block"`
 
