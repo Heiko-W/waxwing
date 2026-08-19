@@ -7,7 +7,8 @@
       "mail": "E-Mail",
       "contacts": "Kontakte",
       "settings": "Einstellungen",
-      "calendar": "Kalender"
+      "calendar": "Kalender",
+      "files": "Dateien"
     },
     "folders": {
       "show": "Ordner anzeigen",
@@ -1420,5 +1421,31 @@
     "noEvents": "Nichts in Sicht.",
     "loadFailed": "Der Kalender konnte nicht geladen werden.",
     "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen."
+  },
+  "files": {
+    "title": "Dateien",
+    "root": "Dateien",
+    "breadcrumb": "Ordnerpfad",
+    "empty": "Dieser Ordner ist leer.",
+    "loadFailed": "Die Dateien konnten nicht geladen werden.",
+    "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
+    "upload": "Hochladen",
+    "newFolder": "Neuer Ordner",
+    "newFolderPlaceholder": "Ordnername",
+    "download": "{{name}} herunterladen",
+    "delete": "{{name}} löschen",
+    "error": {
+      "nameTaken": "Hier gibt es bereits etwas mit diesem Namen.",
+      "tooLarge": "Diese Datei ist für diesen Server zu groß.",
+      "overQuota": "Kein Speicherplatz mehr in diesem Konto.",
+      "forbidden": "Dafür fehlt Ihnen hier die Berechtigung.",
+      "rejected": "Der Server hat das abgelehnt."
+    },
+    "name": {
+      "empty": "Bitte einen Namen vergeben.",
+      "tooLong": "Dieser Name ist zu lang.",
+      "forbiddenCharacter": "Der Name enthält ein Zeichen, das der Server nicht erlaubt.",
+      "reservedName": "Dieser Name ist reserviert und kann nicht verwendet werden."
+    }
   }
 }

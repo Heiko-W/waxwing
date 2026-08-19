@@ -74,9 +74,10 @@ export {
 // Transport (injectable fetch).
 export type { FetchLike, Transport } from './transport'
 export { getWithAuth, postApi, resolveFetch } from './transport'
+// Runtime value(s) from the types modules (the type-only re-export above strips values).
+export { fileNodeNameProblem } from './types/filenode'
 // Wire types (RFC 8620 core + RFC 8621 mail).
 export type * from './types/index'
-// Runtime value(s) from the types modules (the type-only re-export above strips values).
 export { MailboxRoles } from './types/mail'
 export { EMAIL_DELIVERY_TYPE } from './types/push'
 export {

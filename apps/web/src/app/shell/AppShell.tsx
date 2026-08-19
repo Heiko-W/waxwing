@@ -30,6 +30,7 @@ import { useStorageFullNotifier } from './use-storage-notifier'
 
 const CalendarPage = lazy(() => import('../../calendar/CalendarPage'))
 const ContactsPage = lazy(() => import('../../contacts/ContactsPage'))
+const FilesPage = lazy(() => import('../../files/FilesPage'))
 const SettingsPage = lazy(() => import('../../settings/SettingsPage'))
 // The composer host (docked drafts + squire) loads only once a draft is open (keeps it out of the
 // entry chunk). It lives here — outside the route-swapped <main> — so drafts survive navigation.
@@ -86,6 +87,9 @@ export function AppShell({ config }: AppShellProps) {
       break
     case 'calendar':
       screen = <CalendarPage />
+      break
+    case 'files':
+      screen = <FilesPage />
       break
     case 'settings':
       screen = <SettingsPage />

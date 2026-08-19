@@ -11,6 +11,7 @@ export {
   calendarPath,
   contactsPath,
   deriveBase,
+  FILES_PATH,
   HOME_PATH,
   isReadingHistoryEntry,
   mailHrefKeepingQuery,

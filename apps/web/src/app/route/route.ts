@@ -15,7 +15,7 @@
  * the two spaces; `matchRoute` classifies a base-relative path into a {@link RouteMatch}.
  */
 
-export type RouteId = 'mail' | 'contacts' | 'calendar' | 'settings' | 'notFound'
+export type RouteId = 'mail' | 'contacts' | 'calendar' | 'files' | 'settings' | 'notFound'
 
 export interface RouteMatch {
   readonly id: RouteId
@@ -103,6 +103,11 @@ export function matchRoute(
     const params: Record<string, string | undefined> = { date: parts[1] }
     return { id: 'calendar', path, params, rest: '', search }
   }
+  if (head === 'files') {
+    // `/files` and `/files/:nodeId` — the folder being browsed (M5.7).
+    const params: Record<string, string | undefined> = { nodeId: parts[1] }
+    return { id: 'files', path, params, rest: '', search }
+  }
   if (head === 'settings') {
     return { id: 'settings', path, params: {}, rest: parts.slice(1).join('/'), search }
   }
@@ -182,6 +187,8 @@ export function settingsPath(sub?: string): string {
 }
 
 export const CONTACTS_PATH = '/contacts'
+
+export const FILES_PATH = '/files'
 
 export const CALENDAR_PATH = '/calendar'
 

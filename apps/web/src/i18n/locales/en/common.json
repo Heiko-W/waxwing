@@ -7,7 +7,8 @@
       "mail": "Mail",
       "contacts": "Contacts",
       "settings": "Settings",
-      "calendar": "Calendar"
+      "calendar": "Calendar",
+      "files": "Files"
     },
     "folders": {
       "show": "Show folders",
@@ -1420,5 +1421,31 @@
     "noEvents": "Nothing coming up.",
     "loadFailed": "The calendar could not be loaded.",
     "signedOut": "Sign in to see your calendar."
+  },
+  "files": {
+    "title": "Files",
+    "root": "Files",
+    "breadcrumb": "Folder path",
+    "empty": "This folder is empty.",
+    "loadFailed": "The files could not be loaded.",
+    "signedOut": "Sign in to see your files.",
+    "upload": "Upload",
+    "newFolder": "New folder",
+    "newFolderPlaceholder": "Folder name",
+    "download": "Download {{name}}",
+    "delete": "Delete {{name}}",
+    "error": {
+      "nameTaken": "Something with that name is already here.",
+      "tooLarge": "That file is too large for this server.",
+      "overQuota": "No space left in this account.",
+      "forbidden": "You do not have permission to do that here.",
+      "rejected": "The server declined that."
+    },
+    "name": {
+      "empty": "Give it a name.",
+      "tooLong": "That name is too long.",
+      "forbiddenCharacter": "That name contains a character the server does not allow.",
+      "reservedName": "That name is reserved and cannot be used."
+    }
   }
 }

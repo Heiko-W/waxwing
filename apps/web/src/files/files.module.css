@@ -1,0 +1,120 @@
+/* The files screen (M5.7, FR-FILE-01). Tokens only. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+  padding: var(--waxwing-space-4);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--waxwing-space-3);
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+/* The picker is driven by the Upload button; hiding it visually keeps it reachable to assistive
+   tech, which a `display: none` would not. */
+.fileInput {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.name {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-inline-size: 0;
+  /* 44 px touch target for the folder rows, which are buttons. */
+  min-block-size: 2.75rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.name:is(button) {
+  cursor: pointer;
+}
+
+.icon {
+  flex: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  color: var(--waxwing-text-muted);
+}
+
+.nameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.size {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowActions {
+  display: flex;
+  flex: none;
+  gap: var(--waxwing-space-1);
+}
+
+.loading,
+.empty {
+  margin: 0;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  text-align: center;
+}

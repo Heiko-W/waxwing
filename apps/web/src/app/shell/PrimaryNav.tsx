@@ -5,11 +5,12 @@
  * friendly).
  */
 
-import { CalendarDays, type LucideIcon, Mail, Settings, Users } from 'lucide-react'
+import { CalendarDays, FolderOpen, type LucideIcon, Mail, Settings, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   CALENDAR_PATH,
   CONTACTS_PATH,
+  FILES_PATH,
   HOME_PATH,
   Link,
   type RouteId,
@@ -29,6 +30,7 @@ const ITEMS: readonly NavItem[] = [
   { id: 'mail', to: HOME_PATH, icon: Mail, labelKey: 'shell.menu.mail' },
   { id: 'contacts', to: CONTACTS_PATH, icon: Users, labelKey: 'shell.menu.contacts' },
   { id: 'calendar', to: CALENDAR_PATH, icon: CalendarDays, labelKey: 'shell.menu.calendar' },
+  { id: 'files', to: FILES_PATH, icon: FolderOpen, labelKey: 'shell.menu.files' },
   { id: 'settings', to: settingsPath(), icon: Settings, labelKey: 'shell.menu.settings' },
 ]
 

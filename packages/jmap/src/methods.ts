@@ -51,6 +51,16 @@ import type {
   ContactCardSetResponse,
 } from './types/contacts'
 import type {
+  FileNodeChangesRequest,
+  FileNodeChangesResponse,
+  FileNodeGetRequest,
+  FileNodeGetResponse,
+  FileNodeQueryRequest,
+  FileNodeQueryResponse,
+  FileNodeSetRequest,
+  FileNodeSetResponse,
+} from './types/filenode'
+import type {
   EmailChangesRequest,
   EmailChangesResponse,
   EmailGetRequest,
@@ -221,6 +231,17 @@ export const Methods = {
   calendarEventSet: defineMethod<CalendarEventSetRequest, CalendarEventSetResponse>(
     'CalendarEvent/set',
   ),
+
+  /**
+   * `draft-ietf-jmap-filenode` — FileNode (M5.7, FR-FILE-01). No RFC number yet; the shapes are
+   * measured against Stalwart 0.16 rather than taken from the draft.
+   */
+  fileNodeGet: defineMethod<FileNodeGetRequest, FileNodeGetResponse>('FileNode/get'),
+  fileNodeChanges: defineMethod<FileNodeChangesRequest, FileNodeChangesResponse>(
+    'FileNode/changes',
+  ),
+  fileNodeQuery: defineMethod<FileNodeQueryRequest, FileNodeQueryResponse>('FileNode/query'),
+  fileNodeSet: defineMethod<FileNodeSetRequest, FileNodeSetResponse>('FileNode/set'),
 
   /** RFC 9610 — AddressBook (M4.2). No `/query`: an account's address books are always fetched whole. */
   addressBookGet: defineMethod<AddressBookGetRequest, AddressBookGetResponse>('AddressBook/get'),

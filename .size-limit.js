@@ -72,6 +72,8 @@ export default [
       '!apps/web/dist/assets/attachment-zip-*.js',
       // The calendar screen (calendar/, M5.6) — a route chunk, like contacts and settings.
       '!apps/web/dist/assets/CalendarPage-*.js',
+      // The files screen (files/, M5.7) — likewise.
+      '!apps/web/dist/assets/FilesPage-*.js',
       // The send-later picker (compose/, M5.4): presets plus the window validation.
       '!apps/web/dist/assets/ScheduleSendDialog-*.js',
       // The `.eml` import dialog (mail/, M5.3) — restoring an archived message is a rare, deliberate act.

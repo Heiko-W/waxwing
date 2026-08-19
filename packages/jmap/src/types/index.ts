@@ -13,6 +13,8 @@ export * from './calendar'
 // `Card` from `@waxwing/jscontact` via an erased `import type`, so no runtime edge is added.
 export * from './contacts'
 export * from './core'
+// `draft-ietf-jmap-filenode` (no RFC) — FileNode (M5.7).
+export * from './filenode'
 export * from './mail'
 // RFC 8620 §7 push + RFC 8887 WebSocket wire frames (StateChange, Request/Response, …).
 export * from './push'
