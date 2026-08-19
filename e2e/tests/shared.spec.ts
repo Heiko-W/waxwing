@@ -145,4 +145,59 @@ test.describe('M4.4 shared accounts', () => {
 
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
   })
+
+  /**
+   * B48. Reported from a real deployment: with the own mailbox expanded, the shared accounts below
+   * it could not be reached — their sections were squeezed to their headers and the rail itself did
+   * not scroll, so the only way down was to collapse the tree above first.
+   *
+   * The cause was one scroll container per TREE (`overflow-y: auto` in folder-tree.module.css) and
+   * none on the rail. The sections were shrinkable flex siblings of a fixed-height column, so what
+   * the reader got depended on the mailbox: a tall own tree squeezed the shared sections down to
+   * their headers, and past that the column simply ran off the bottom — measured against the old
+   * CSS this very test finds ZERO scrollable containers in the rail while its content does not
+   * fit, which is the precise statement of the bug. No suite could see it, because every
+   * fixture-backed spec runs at a viewport tall enough to fit all three accounts and `.click()`
+   * auto-scrolls the nearest scroller — the very thing that was in the wrong box.
+   *
+   * So this asserts both halves: the rail has exactly ONE scroller, and the LAST account's folders
+   * are really there and really clickable at a height where the content cannot all fit.
+   */
+  test('a shared account is reachable with the own tree expanded (B48)', async ({ page }) => {
+    // Short on purpose, and wide enough to stay off the drawer breakpoint (64em): the defect only
+    // exists when the rail's content outgrows the rail. Three accounts and the labels do not fit in
+    // 300 px, which is the same shape as a full mailbox on a laptop.
+    await page.setViewportSize({ width: 1280, height: 300 })
+    await login(page)
+
+    const rail = page.getByRole('navigation', { name: 'Folders' })
+    await expect(rail).toBeVisible({ timeout: 30_000 })
+
+    // Exactly one scroller, and it is the rail's own child — not one per tree, which is what put
+    // the scrollbars inside the sections and left them fighting over the height.
+    const scroll = await rail.evaluate((nav) => {
+      const scrollers = Array.from(nav.querySelectorAll('*')).filter((el) => {
+        const style = getComputedStyle(el)
+        const scrollable = style.overflowY === 'auto' || style.overflowY === 'scroll'
+        return scrollable && el.scrollHeight > el.clientHeight
+      })
+      return {
+        count: scrollers.length,
+        allDirectChildren: scrollers.every((el) => el.parentElement === nav),
+      }
+    })
+    expect(scroll).toEqual({ count: 1, allDirectChildren: true })
+
+    // The last section shows FOLDERS, not just its header: a header-only section is what the
+    // squeeze produced, and it looks like an empty account rather than a clipped one.
+    const last = accountSection(page, SHARED_RO)
+    const inbox = last.getByRole('treeitem', { name: /Inbox/ })
+    await inbox.scrollIntoViewIfNeeded()
+    const box = await inbox.boundingBox()
+    expect(box?.height ?? 0).toBeGreaterThan(20)
+
+    // And it works: clicking it switches accounts, so alice's own corpus is not what loads.
+    await inbox.click()
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0)
+  })
 })

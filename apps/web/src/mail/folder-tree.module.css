@@ -1,16 +1,18 @@
 /*
- * `flex: 0 1 auto`, not `block-size: 100%`.
+ * `flex: 0 0 auto`, not `block-size: 100%` and not `0 1 auto`.
  *
- * As a flex child of the sidebar column, `100%` made this tree claim the whole height whatever it
- * contained — so with six folders it left one 358 px hole (40 % of the viewport) between "Trash" and
- * the "LABELS" heading below, and the two blocks read as unrelated instead of as one navigator.
- * Sizing to content puts them back together; only the storage bar is pushed to the bottom, by the
- * rule on the region itself.
+ * `100%` made this tree claim the whole height whatever it contained — six folders left one 358 px
+ * hole (40 % of the viewport) between "Trash" and the "LABELS" heading below, and the two blocks
+ * read as unrelated instead of as one navigator. Sizing to content fixed that, but leaving the
+ * shrink factor at 1 kept a second failure: with a delegated account the sibling sections shrank
+ * to nothing, so an expanded own mailbox left the shared accounts as headers with no folders under
+ * them. A tree is now exactly as tall as its rows, and the rail scrolls around it
+ * (`.folderScroll` in shell.module.css).
  */
 .container {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-block-size: 0;
 }
 
@@ -31,10 +33,11 @@
   letter-spacing: var(--waxwing-tracking-caps);
 }
 
+/* No `overflow-y` here: the rail owns the one scroll container (see `.folderScroll`). A scroller
+   per tree divided the height between the accounts instead of letting them share it. */
 .tree {
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
   min-block-size: 0;
 }
 
@@ -186,6 +189,7 @@
 .accountSection {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   min-block-size: 0;
 }
 

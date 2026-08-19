@@ -245,17 +245,37 @@
 .folderRegion {
   display: flex;
   flex-direction: column;
+  min-block-size: 0;
   inline-size: min(80vw, 18rem);
   padding: var(--waxwing-space-3);
   border-inline-end: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface);
 }
 
-/* The storage bar, and only it, goes to the bottom — the folder tree and the labels above now size
-   to their content (see folder-tree.module.css), so the slack collects here instead of in a hole
-   between them. */
-.folderRegion > :last-child {
-  margin-block-start: auto;
+/*
+ * THE rail's scroll container — one, for everything that can grow.
+ *
+ * Each folder tree used to scroll inside itself (`overflow-y: auto` per tree), and the rail as a
+ * whole scrolled not at all. With a delegated account that arrangement has no room to give: the
+ * sections are flex siblings of a fixed-height column, so an expanded own mailbox took the height
+ * and every shared account below it was squeezed to its header — its folders reachable only by
+ * collapsing the tree above first. Nothing was clipped in a way the reader could scroll out of,
+ * because the scrollbars were in the wrong boxes.
+ *
+ * Hoisting the overflow here makes the rail behave the way a sidebar is expected to: the accounts,
+ * their trees and the labels are one column that scrolls as one, each section at its natural
+ * height (`flex: 0 0 auto` on the sections, see folder-tree.module.css). The storage bar stays
+ * outside it, pinned below, because a status readout that scrolls away stops being a status.
+ */
+.folderScroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  /* Scrolling must not cost the focus ring: the rows sit flush against this box's inline edges. */
+  padding-inline: 2px;
+  margin-inline: -2px;
 }
 
 /* The drawer's own close affordance. Rendered only below 64em — where this region IS an overlay —

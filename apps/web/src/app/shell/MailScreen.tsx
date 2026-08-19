@@ -376,14 +376,19 @@ export function MailScreen() {
             </IconButton>
           </div>
         )}
-        {connected && (
-          <AccountTrees
-            accounts={connected.accounts}
-            primaryAccountId={connected.accountId}
-            onNavigate={closeFolders}
-          />
-        )}
-        <Labels onNavigate={closeFolders} />
+        {/* Accounts, their trees and the labels are ONE scrolling column (`.folderScroll`), not a
+            stack of independently scrolling boxes. The storage bar stays outside it so it keeps its
+            place at the bottom of the rail; the drawer's close button, above, keeps its place too. */}
+        <div className={styles.folderScroll}>
+          {connected && (
+            <AccountTrees
+              accounts={connected.accounts}
+              primaryAccountId={connected.accountId}
+              onNavigate={closeFolders}
+            />
+          )}
+          <Labels onNavigate={closeFolders} />
+        </div>
         <QuotaBar />
       </nav>
       {drawerCapable && foldersOpen && (
