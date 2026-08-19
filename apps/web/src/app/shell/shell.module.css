@@ -169,7 +169,7 @@
   padding: var(--waxwing-space-1);
   padding-block-end: calc(var(--waxwing-space-1) + env(safe-area-inset-bottom, 0px));
   border-block-start: 1px solid var(--waxwing-border);
-  background-color: var(--waxwing-surface);
+  background-color: var(--waxwing-surface-sunken);
 }
 
 .primaryNavItem {
@@ -248,8 +248,10 @@
   min-block-size: 0;
   inline-size: min(80vw, 18rem);
   padding: var(--waxwing-space-3);
+  padding-block-start: 0;
   border-inline-end: 1px solid var(--waxwing-border);
-  background-color: var(--waxwing-surface);
+  /* Recessed, not raised. This rail frames the content; it is not the content. */
+  background-color: var(--waxwing-surface-sunken);
 }
 
 /*
@@ -334,11 +336,19 @@
   min-block-size: 0;
 }
 
+/*
+ * The pane's head band. Its height is stated rather than derived from whatever it happens to
+ * contain, because the rail's own header has to match it: measured on the shipped screenshot, the
+ * word "Inbox" sat at y=70–81 and "FOLDERS" at y=77–86 — a 6px stagger between the two column heads
+ * a reader sees side by side all day. Control height plus two space-2 is the same 50px both use.
+ */
 .paneToolbar {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
-  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  min-block-size: calc(var(--waxwing-control-min) + 2 * var(--waxwing-space-2));
+  padding-block: 0;
+  padding-inline: var(--waxwing-space-3);
   border-block-end: 1px solid var(--waxwing-border);
 }
 
@@ -365,6 +375,13 @@
   font-weight: var(--waxwing-weight-semibold);
 }
 
+/*
+ * The content plane. These panes used to set no background at all and inherit `--waxwing-bg` from
+ * `body`, which put the LIST and the READING pane behind the rail that frames them — inverted depth,
+ * and the reason the reading pane read as a card adrift on empty page rather than as the surface the
+ * mail is written on. `bg` is now what it should always have been: the colour of the seams (the
+ * splitter gutter, the space around a dialog), not of the content.
+ */
 .pane {
   display: flex;
   flex-direction: column;
@@ -372,6 +389,7 @@
   min-inline-size: 0;
   min-block-size: 0;
   block-size: 100%;
+  background-color: var(--waxwing-surface);
 }
 
 .paneBody {

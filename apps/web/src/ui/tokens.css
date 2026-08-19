@@ -43,6 +43,14 @@
     --waxwing-accent-contrast: var(--waxwing-accent-contrast-light, #ffffff);
     --waxwing-bg: #f5f5f7;
     --waxwing-surface: #ffffff;
+    /* The RECESSED plane — the folder rail and the nav rail. Waxwing used to put those two on
+       `surface` and leave the list and reading panes inheriting `bg`, which inverts the depth every
+       desktop mail client establishes: measured on the shipped screenshots, the rail was LIGHTER
+       than the content it frames. Apple Mail sets its sidebar back and brings the content forward.
+       Once the panes are `surface`, the row states finally sit on the plane they were designed
+       against — `surface-hover` measured 1.09:1 against `bg` in light and 1.50:1 in dark, the same
+       token producing two visibly different reactions depending on the theme. */
+    --waxwing-surface-sunken: #eeeef2;
     --waxwing-surface-2: #ebebef;
     /* ---- Row states (M1.6; defined M3.9). `surface-hover` is the transient one (a pointer over a
        row); `surface-selected` marks the row the reader is ON — an accent tint, per Apple Mail. Both
@@ -115,6 +123,10 @@
     --waxwing-text-2xl: 1.75rem;
 
     --waxwing-leading-tight: 1.2;
+    /* For dense multi-line rows. A message row stacks sender, subject and preview into a fixed
+       76 px: at `leading-normal` that is 67 px of text and 4.5 px of air, which is why the
+       separators read as though they were drawn ON the text rather than between the rows. */
+    --waxwing-leading-snug: 1.35;
     --waxwing-leading-normal: 1.5;
     --waxwing-leading-relaxed: 1.7;
 
@@ -122,6 +134,10 @@
      small sizes needs opening up; the value is the same everywhere it appears, so it is a token —
      and a hoster shipping their own typeface will want to retune it. */
     --waxwing-tracking-caps: 0.04em;
+
+    /* The counterpart, for display sizes. Type set at 1.375rem and up keeps the tracking it was
+       drawn with for body copy and reads loose; every system UI face tightens as it grows. */
+    --waxwing-tracking-tight: -0.012em;
 
     --waxwing-weight-regular: 400;
     --waxwing-weight-medium: 500;
@@ -172,13 +188,15 @@
       --waxwing-accent-contrast: var(--waxwing-accent-contrast-dark, #1d1d1f);
       --waxwing-bg: #1c1c1e;
       --waxwing-surface: #2c2c2e;
+      /* The recessed plane: rail and nav (see the light block). */
+      --waxwing-surface-sunken: #161618;
       --waxwing-surface-2: #3a3a3c;
       /* ---- Row states: dark (see the light block for why these exist). ---- */
       --waxwing-surface-hover: #3a3a3c;
       --waxwing-surface-selected: #28394f;
       --waxwing-text: #f5f5f7;
       --waxwing-text-muted: #a5a5ad;
-      --waxwing-border: #48484a;
+      --waxwing-border: #3a3a3c;
       --waxwing-border-strong: #939398;
       --waxwing-focus-ring: #82acf5;
       --waxwing-danger: #ff8078;
@@ -210,13 +228,15 @@
     --waxwing-accent-contrast: var(--waxwing-accent-contrast-dark, #1d1d1f);
     --waxwing-bg: #1c1c1e;
     --waxwing-surface: #2c2c2e;
+    /* The recessed plane: rail and nav (see the :root block). */
+    --waxwing-surface-sunken: #161618;
     --waxwing-surface-2: #3a3a3c;
     /* ---- Row states: dark (see the light block for why these exist). ---- */
     --waxwing-surface-hover: #3a3a3c;
     --waxwing-surface-selected: #28394f;
     --waxwing-text: #f5f5f7;
     --waxwing-text-muted: #a5a5ad;
-    --waxwing-border: #48484a;
+    --waxwing-border: #3a3a3c;
     --waxwing-border-strong: #939398;
     --waxwing-focus-ring: #82acf5;
     --waxwing-danger: #ff8078;
@@ -247,6 +267,8 @@
     --waxwing-accent-contrast: var(--waxwing-accent-contrast-light, #ffffff);
     --waxwing-bg: #f5f5f7;
     --waxwing-surface: #ffffff;
+    /* The recessed plane: rail and nav (see the :root block). */
+    --waxwing-surface-sunken: #eeeef2;
     --waxwing-surface-2: #ebebef;
     /* ---- Row states: light (see the :root block). ---- */
     --waxwing-surface-hover: #ebebef;

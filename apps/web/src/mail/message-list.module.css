@@ -220,8 +220,8 @@
   gap: var(--waxwing-space-2);
   block-size: 100%;
   padding-inline: var(--waxwing-space-3);
-  border-block-end: 1px solid var(--waxwing-border);
   cursor: pointer;
+  position: relative;
   color: var(--waxwing-text);
   /*
    * Driven imperatively by `use-swipe`, which writes `--swipe-x` on `.rowWrap` (custom properties
@@ -239,6 +239,28 @@
      it cannot be verified without an RTL locale — filed as B41 rather than guessed at here. */
   transform: translateX(var(--swipe-x, 0px));
   transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+/*
+ * The separator, inset to the text column — 5.5rem clears the padding, the checkbox and the avatar,
+ * which is where Apple Mail starts its own. It was a full-bleed `border-block-end` on every row: a
+ * continuous grid that ran through the selection tint as well, so the row the reader was ON came
+ * with a line drawn across it. A pseudo-element can be withdrawn per state; a border cannot.
+ */
+.row::after {
+  content: "";
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 5.5rem 0;
+  block-size: 1px;
+  background-color: var(--waxwing-border);
+}
+
+/* No line under the row you are on, or the one above it — a selection should read as one solid
+   block, the way a table's selected row loses its rules. */
+.row[aria-current="page"]::after,
+.selected::after {
+  display: none;
 }
 
 /*
@@ -343,14 +365,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--waxwing-text-sm);
+  line-height: var(--waxwing-leading-snug);
+  /* The sender anchors the row whether or not the mail is unread. Read rows were entirely regular
+     weight, so nothing in them stood first — the eye had to start at the left edge and read. */
+  font-weight: var(--waxwing-weight-medium);
 }
 
+/*
+ * A COLUMN, not a run. Measured on the shipped screenshot, the paperclip in one row sat at x=697
+ * and the unread dot in another at x=703 — every row started its metadata somewhere else, because
+ * the block is right-aligned and the relative time ("1 second ago" … "7 hours ago") changes width
+ * on every render. A fixed inline size and tabular figures make it a column the eye can scan down.
+ */
 .meta {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--waxwing-space-1);
   color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .icon {
@@ -377,6 +411,8 @@
 .time {
   font-size: var(--waxwing-text-xs);
   white-space: nowrap;
+  min-inline-size: 5.5rem;
+  text-align: end;
 }
 
 .subject,
@@ -385,14 +421,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--waxwing-text-sm);
+  line-height: var(--waxwing-leading-snug);
 }
 
 .subject {
   color: var(--waxwing-text);
 }
 
+/* One step down, so the row has three sizes and not two-and-a-half: sender and subject carry it,
+   the preview supports it. */
 .preview {
   color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
 }
 
 /* Unread emphasis. */

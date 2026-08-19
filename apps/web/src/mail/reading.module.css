@@ -5,13 +5,22 @@
  * print (FR-RD-05), and motion respects prefers-reduced-motion.
  */
 
+/*
+ * The conversation column. Its padding used to be `space-4` while each message card added another
+ * `space-3` plus a border, so the subject sat 16 px from the pane edge and the message body 29 px —
+ * two left edges in one column, 13 px apart, which the eye reads as a misalignment rather than as a
+ * hierarchy. One inline padding governs both now, and the messages inside it are plain blocks.
+ */
 .conversation {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-3);
-  padding: var(--waxwing-space-4);
+  padding-block: var(--waxwing-space-4);
+  padding-inline: var(--waxwing-space-5);
   overflow-y: auto;
   height: 100%;
+  /* Momentum stops at the pane instead of chaining into the shell behind it. */
+  overscroll-behavior: contain;
 }
 
 .subject {
@@ -19,8 +28,17 @@
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
   color: var(--waxwing-text);
   overflow-wrap: break-word;
+}
+
+/* On a phone, 28 px of subject takes two lines and 95 px of a 640 px screen before the mail starts.
+   One step down is still unmistakably the headline. */
+@media (max-width: 40em) {
+  .subject {
+    font-size: var(--waxwing-text-xl);
+  }
 }
 
 .threadCount {
@@ -83,14 +101,22 @@
 
 /* ---- one expanded message ---- */
 
+/*
+ * A message is a BLOCK, not a card. The border, radius and `surface` fill were what made a single
+ * open mail look like a receipt pinned to an empty page — with, on a tall window, several hundred
+ * pixels of bare background under it. Now that the pane itself is `surface` (shell.module.css), the
+ * card would be an invisible outline drawn on its own colour anyway. In a thread the messages are
+ * separated by a hairline instead, which is what carries a conversation in Apple Mail.
+ */
 .message {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-3);
-  padding: var(--waxwing-space-3);
-  background: var(--waxwing-surface);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-lg);
+}
+
+.message + .message {
+  padding-block-start: var(--waxwing-space-3);
+  border-block-start: 1px solid var(--waxwing-border);
 }
 
 .header {

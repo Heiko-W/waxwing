@@ -51,11 +51,12 @@ declared once.
 | Token | Light | Dark | Role |
 | --- | --- | --- | --- |
 | `--waxwing-bg` | `#f5f5f7` | `#1c1c1e` | Page background |
-| `--waxwing-surface` | `#ffffff` | `#2c2c2e` | Cards, panels, inputs |
+| `--waxwing-surface` | `#ffffff` | `#2c2c2e` | The content plane: list and reading panes, cards, overlays, inputs |
+| `--waxwing-surface-sunken` | `#eeeef2` | `#161618` | The recessed plane: folder rail, nav rail — behind the content, never in front of it |
 | `--waxwing-surface-2` | `#ebebef` | `#3a3a3c` | Raised/hover/inset |
 | `--waxwing-text` | `#1d1d1f` | `#f5f5f7` | Primary text |
 | `--waxwing-text-muted` | `#636366` | `#a5a5ad` | Secondary text (AA as text) |
-| `--waxwing-border` | `#d2d2d7` | `#48484a` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
+| `--waxwing-border` | `#d2d2d7` | `#3a3a3c` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
 | `--waxwing-border-strong` | `#86868b` | `#939398` | **Interactive control boundary** (≥ 3:1) |
 | `--waxwing-focus-ring` | `#2761c4` | `#82acf5` | Focus + selection ring (≥ 3:1) |
 | `--waxwing-accent` | `#2761c4` | `#82acf5` | Brand fill — a calm blue, theme-aware; config-overridable, **never a sole indicator** |
@@ -66,6 +67,14 @@ declared once.
 | `--waxwing-success-contrast` | `#ffffff` | `#1d1d1f` | Label on a success fill |
 | `--waxwing-warning` | `#8a5d00` | `#ffd60a` | Warning text/icon; fill |
 | `--waxwing-warning-contrast` | `#ffffff` | `#1d1d1f` | Label on a warning fill |
+
+**Three planes, in this order.** `--waxwing-surface-sunken` is behind, `--waxwing-surface` is the
+content, and `--waxwing-bg` is neither — it is the colour of the *seams*: the splitter gutter and the
+space around a dialog. The rail and the nav rail recede; the message list and the reading pane come
+forward. This was inverted until 2026-08-19 (rail on `surface`, panes inheriting `bg`), which is why
+a single open message read as a card adrift on empty page, and why `--waxwing-surface-hover` — drawn
+to sit one step above `surface` — measured 1.09:1 in light and 1.50:1 in dark against the plane it
+actually landed on.
 
 **Two borders on purpose.** `--waxwing-border` is a hairline for dividers and card edges
 (WCAG 1.4.11 exempts pure decoration), so it is intentionally below 3:1. Anything that is the
