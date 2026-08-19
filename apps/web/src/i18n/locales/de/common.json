@@ -952,6 +952,13 @@
       "tomorrow": "Morgen erinnern",
       "thisWeekend": "Am Wochenende erinnern",
       "nextWeek": "Nächste Woche erinnern"
+    },
+    "protection": {
+      "title": "Nachrichtenschutz",
+      "encrypted": "Diese Nachricht ist verschlüsselt",
+      "encryptedNote": "Sie kann hier noch nicht geöffnet werden. Nutzen Sie ein Mailprogramm mit S/MIME- oder OpenPGP-Unterstützung, oder fragen Sie Ihre Administration, ob für dieses Postfach die Verschlüsselung im Ruhezustand aktiv ist.",
+      "signed": "Diese Nachricht ist signiert",
+      "signedNote": "Sie trägt eine digitale Signatur. Signaturen werden hier noch nicht geprüft — das besagt also nur, dass eine vorhanden ist, nicht dass sie gültig ist."
     }
   },
   "compose": {

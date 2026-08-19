@@ -23,10 +23,12 @@ import {
   ChevronUp,
   FolderInput,
   Forward,
+  Lock,
   MailMinus,
   MoreHorizontal,
   Reply,
   ReplyAll,
+  ShieldCheck,
   Star,
   Tag,
   Trash2,
@@ -58,6 +60,7 @@ import {
 } from '../ui'
 import { AttachmentList } from './AttachmentList'
 import { topmostAuthResults } from './auth-results'
+import { detectProtection, type ProtectionPart } from './encrypted-message'
 import { LabelMenu } from './labels/LabelMenu'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
@@ -457,6 +460,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const authReport = useMemo(() => topmostAuthResults(body?.authResults), [body?.authResults])
   // What this message offers by way of getting off the list (FR-RD-09). Absent on a row written
   // before M5.3 — the offer is then simply empty, and the next body fetch fills it in.
+  /** What the message's MIME structure says it is (M5.15). No cryptography is performed. */
+  const protection = useMemo(
+    () => detectProtection(body?.bodyStructure as ProtectionPart | undefined),
+    [body?.bodyStructure],
+  )
   const unsubscribeOffer = useMemo(
     () => readUnsubscribeOffer(body?.listUnsubscribe, body?.listUnsubscribePost),
     [body?.listUnsubscribe, body?.listUnsubscribePost],
@@ -887,6 +895,33 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           onLoad={() => setLoadedOnce(true)}
           onAlwaysAllow={onAlwaysAllow}
         />
+      )}
+
+      {protection.kind !== 'none' && (
+        // Says what the message IS. For an encrypted one this is the difference between a blank
+        // body and an explanation the reader can act on — and on an account with Stalwart's
+        // encryption-at-rest switched on, EVERY message arrives this way.
+        <section className={styles.remoteBanner} aria-label={t('reading.protection.title')}>
+          {protection.kind === 'encrypted' ? (
+            <Lock aria-hidden="true" className={styles.remoteIcon} />
+          ) : (
+            <ShieldCheck aria-hidden="true" className={styles.remoteIcon} />
+          )}
+          <div className={styles.remoteText}>
+            <p className={styles.remoteTitle}>
+              {protection.kind === 'encrypted'
+                ? t('reading.protection.encrypted')
+                : t('reading.protection.signed')}
+            </p>
+            <p className={styles.remoteNote}>
+              {protection.kind === 'encrypted'
+                ? t('reading.protection.encryptedNote')
+                : // Deliberately NOT "verified": nothing here checked the signature. Saying so is
+                  // the whole point — a green tick this client has not earned would be a lie.
+                  t('reading.protection.signedNote')}
+            </p>
+          </div>
+        </section>
       )}
 
       {hasUnsubscribeOffer(unsubscribeOffer) && (

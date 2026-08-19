@@ -952,6 +952,13 @@
       "tomorrow": "Snooze until tomorrow",
       "thisWeekend": "Snooze until the weekend",
       "nextWeek": "Snooze until next week"
+    },
+    "protection": {
+      "title": "Message protection",
+      "encrypted": "This message is encrypted",
+      "encryptedNote": "It cannot be opened here yet. Use a mail client with S/MIME or OpenPGP support, or ask your administrator whether encryption at rest is switched on for this mailbox.",
+      "signed": "This message is signed",
+      "signedNote": "It carries a digital signature. Signatures are not verified here yet, so this says only that one is present — not that it is valid."
     }
   },
   "compose": {
