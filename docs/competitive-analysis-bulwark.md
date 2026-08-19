@@ -177,11 +177,19 @@ implementable in this architecture at all, and two are owner decisions rather th
 ones. Recording that here is the point: "everything possible and sensible" needs the *not
 sensible* half written down too.
 
-**Setup wizard — not possible as Bulwark has it.** Theirs writes a config file and an admin
-password to disk, which requires the Node process. A static client cannot write `config.json`; it
-can only read it. What *is* possible and would help a self-hoster is a **config generator**: a
-screen that probes the JMAP endpoint, checks OAuth discovery, and emits a `config.json` for the
-admin to save. That is a genuinely different feature from a wizard and should be scoped as one.
+**Setup wizard — not possible as Bulwark has it; the useful half now SHIPS.** Theirs writes a
+config file and an admin password to disk, which requires the Node process. A static client cannot
+write `config.json`; it can only read it. The half that *is* possible — a config generator — is
+M5.20, in Settings → Server: it describes the server the session is already connected to, checks
+OAuth discovery, shows the file, and saves it.
+
+It reads the live session rather than probing an address the admin types, and that is the design
+decision worth recording. CORS, redirects and the URLs the server advertises are exactly what the
+app has already proved by rendering at all; re-deriving them from a second unauthenticated request
+would describe a connection nobody has tested. What the session cannot answer — whether OAuth
+discovery responds — is one fetch, and "could not check" is carried through as its own answer.
+Flattening it into "no OAuth" would silently disable OAuth for a deployment that has it, from one
+failed request.
 
 **MDN / read receipts — possible, but against a stated principle.** Stalwart has no JMAP MDN
 (RFC 9007), so the client would have to build the `multipart/report` itself and submit it. The
@@ -226,7 +234,7 @@ outcome against each entry, so what is left stays legible.
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download, an inline preview (M5.17) on the reader's own policy, and RFC 9670 sharing (M5.18): a principal picker, three named roles, and grants written one at a time. Measured against the live server, which is how the `Principal/query` `name` filter was found to return nobody |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
-| 9 Setup wizard, theme upload, MDN, TNEF | **assessed, §5.0** — two not implementable as Bulwark has them, two owner decisions |
+| 9 Setup wizard, theme upload, MDN, TNEF | **partly done, rest assessed (§5.0)** — the setup wizard's achievable half ships as a config generator (M5.20). Theme upload is not implementable as Bulwark has it; MDN and TNEF are owner decisions |
 
 **On row 4.** The framework, the 882 keys and the switcher are all in place, so "add 23 languages"
 is a matter of producing 23 × 882 strings. Machine-translating them would produce text nobody has

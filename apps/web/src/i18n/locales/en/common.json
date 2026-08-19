@@ -465,6 +465,23 @@
         "webSocket": "WebSocket push",
         "principals": "Sharing",
         "webPushVapid": "Web Push signing (RFC 9749)"
+      },
+      "generate": {
+        "title": "Deployment configuration",
+        "intro": "Generate the config.json for this deployment, describing the server you are signed in to. Save it next to index.html.",
+        "action": "Generate config.json",
+        "checking": "Checking…",
+        "save": "Save config.json",
+        "warnLabel": "Check this:",
+        "infoLabel": "Note:",
+        "finding": {
+          "sameOrigin": "The mail server is on this same origin, so config.json leaves sessionUrl empty — the deployment keeps working if it moves to another hostname.",
+          "crossOrigin": "The mail server is on {{origin}}, a different origin from this app. Every request depends on that server sending CORS headers. It does today; the deployment will break if that changes.",
+          "basicOnly": "OAuth discovery did not answer, so only password sign-in is enabled. A password is sent on every request and cannot be revoked for one client alone — enable OAuth on the server if you can.",
+          "oauthUnknown": "OAuth discovery could not be checked from here, so the sign-in methods are left as they are. Verify them before deploying.",
+          "insecureOrigin": "This app is served over plain HTTP. Browsers then withhold crypto.subtle, so OAuth cannot run and the offline cache cannot be encrypted. Serve it over HTTPS.",
+          "brandingUntouched": "Branding, features and offline limits were carried over unchanged — no server can tell us what you want them to be. Edit them by hand."
+        }
       }
     },
     "about": {

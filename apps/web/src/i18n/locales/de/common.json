@@ -465,6 +465,23 @@
         "webSocket": "WebSocket-Push",
         "principals": "Freigaben",
         "webPushVapid": "Web-Push-Signatur (RFC 9749)"
+      },
+      "generate": {
+        "title": "Deployment-Konfiguration",
+        "intro": "Erzeugt die config.json für dieses Deployment anhand des Servers, an dem Sie angemeldet sind. Legen Sie sie neben index.html ab.",
+        "action": "config.json erzeugen",
+        "checking": "Wird geprüft …",
+        "save": "config.json speichern",
+        "warnLabel": "Bitte prüfen:",
+        "infoLabel": "Hinweis:",
+        "finding": {
+          "sameOrigin": "Der Mailserver liegt auf derselben Origin, deshalb bleibt sessionUrl in der config.json leer — das Deployment funktioniert weiter, wenn es auf einen anderen Hostnamen umzieht.",
+          "crossOrigin": "Der Mailserver liegt auf {{origin}}, also einer anderen Origin als diese App. Jede Anfrage hängt davon ab, dass dieser Server CORS-Header sendet. Heute tut er das; ändert sich das, ist das Deployment kaputt.",
+          "basicOnly": "OAuth-Discovery hat nicht geantwortet, deshalb ist nur die Anmeldung per Passwort aktiviert. Ein Passwort geht bei jeder Anfrage mit und lässt sich nicht für einen einzelnen Client zurückziehen — aktivieren Sie OAuth auf dem Server, wenn möglich.",
+          "oauthUnknown": "OAuth-Discovery ließ sich von hier aus nicht prüfen, deshalb bleiben die Anmeldeverfahren unverändert. Prüfen Sie sie vor dem Deployment.",
+          "insecureOrigin": "Diese App wird über einfaches HTTP ausgeliefert. Browser stellen dann crypto.subtle nicht bereit — OAuth funktioniert nicht und der Offline-Cache lässt sich nicht verschlüsseln. Liefern Sie sie über HTTPS aus.",
+          "brandingUntouched": "Branding, Funktionen und Offline-Grenzen wurden unverändert übernommen — kein Server kann uns sagen, wie Sie sie haben wollen. Bitte von Hand anpassen."
+        }
       }
     },
     "about": {

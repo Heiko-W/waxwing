@@ -18,6 +18,7 @@ import type { JmapSession } from '../app/session/types'
 import { formatBytes, formatNumber } from '../i18n/formatters'
 import type { QuotaClient } from '../quota'
 import { QuotaPanel } from '../quota/QuotaPanel'
+import { ConfigGeneratorPanel } from './ConfigGeneratorPanel'
 import { buildCapabilitiesView, type LimitRow, type LimitValue } from './capabilities-model'
 import styles from './settings.module.css'
 
@@ -158,6 +159,8 @@ export function ServerSection(props: ServerSectionProps) {
           </ul>
         </div>
       )}
+
+      <ConfigGeneratorPanel session={session} />
     </div>
   )
 }
