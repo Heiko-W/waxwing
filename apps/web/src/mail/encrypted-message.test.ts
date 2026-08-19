@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { detectProtection, isReadable, type ProtectionPart } from './encrypted-message'
+import {
+  detectProtection,
+  isProtectionPart,
+  isReadable,
+  type ProtectionPart,
+} from './encrypted-message'
 
 const part = (type: string, over: Partial<ProtectionPart> = {}): ProtectionPart => ({
   type,
@@ -119,5 +124,41 @@ describe('case and whitespace', () => {
   it('reads types the way servers actually emit them', () => {
     expect(detectProtection(part('  Multipart/Encrypted  ')).kind).toBe('encrypted')
     expect(detectProtection(part('APPLICATION/PKCS7-MIME')).kind).toBe('encrypted')
+  })
+})
+
+describe('telling machinery from content', () => {
+  it('names the S/MIME signature part, in both spellings', () => {
+    expect(isProtectionPart('application/pkcs7-signature')).toBe(true)
+    expect(isProtectionPart('application/x-pkcs7-signature')).toBe(true)
+  })
+
+  it('names the PGP signature and control parts', () => {
+    expect(isProtectionPart('application/pgp-signature')).toBe(true)
+    // Nine bytes reading "Version: 1" (RFC 3156 §4). Not a file.
+    expect(isProtectionPart('application/pgp-encrypted')).toBe(true)
+  })
+
+  it('does NOT name the encrypted payload itself', () => {
+    // `application/octet-stream` is the encrypted body of a PGP/MIME message. Hiding it would hide
+    // the message; it is content, even if this client cannot open it.
+    expect(isProtectionPart('application/octet-stream')).toBe(false)
+    expect(isProtectionPart('application/pkcs7-mime')).toBe(false)
+  })
+
+  it('leaves ordinary attachments alone', () => {
+    for (const type of ['application/pdf', 'image/png', 'text/plain', 'application/zip']) {
+      expect(isProtectionPart(type), type).toBe(false)
+    }
+  })
+
+  it('reads types the way servers emit them', () => {
+    expect(isProtectionPart('  Application/PKCS7-Signature ')).toBe(true)
+  })
+
+  it('says no for a missing type rather than hiding the part', () => {
+    expect(isProtectionPart(null)).toBe(false)
+    expect(isProtectionPart(undefined)).toBe(false)
+    expect(isProtectionPart('')).toBe(false)
   })
 })

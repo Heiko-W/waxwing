@@ -129,20 +129,46 @@ Worth stating, because these are the reasons to *not* switch to Bulwark:
 M5.15 ships the half that needs no cryptography — recognising a signed or encrypted message from
 its MIME structure and telling the reader so. That closes the worst symptom: on an account with
 Stalwart's encryption-at-rest switched on, every message previously rendered as an empty body with
-no explanation.
+no explanation. M5.19 adds the other crypto-free half: the signature part is no longer listed as an
+attachment. RFC 8621 puts `smime.p7s` in `attachments` because it has a blobId and no `cid`, so
+every signed message was growing a file nobody could open — and "save all" was archiving it.
 
-The remaining half is verification and decryption, and it is not a matter of more code. It needs:
+The remaining half is verification and decryption. Two things previously written here need
+correcting, because both were estimates presented as facts.
+
+**Bundle size is not the constraint.** `.size-limit.js` measures the EAGER chunks; every lazy
+route and dialog chunk is excluded by name. A verification stack behind `import()` — loaded only
+when a signed message is opened — would not touch the 300 KB budget at all. The cost is dependency
+weight and maintenance, not the budget.
+
+**The trust model is the constraint, and it is different for the two schemes.**
+
+- **S/MIME** needs a validated certificate chain, and the browser exposes neither its root store
+  nor a chain-validation API. Shipping a CA bundle is the only way to have one, and then this app
+  owns a PKI trust decision on the user's behalf. A tick that means "signed by a certificate we
+  could not check" reads to every user as "verified sender". That is the one failure mode worth
+  refusing outright.
+- **PGP** has no chain. Its answer is a key the user has accepted, which is a *public*-key store —
+  no private material, so none of the shared-computer or XSS-escalation questions below apply to
+  verification alone. This is genuinely buildable and is the more promising half; what it costs is
+  an OpenPGP packet parser (openpgp.js is ~300 KB, lazily loaded) plus a key-import and
+  key-acceptance UI.
+
+Decryption is the part that needs private keys, and there the original three points stand:
 
 - **A key store.** Private keys in IndexedDB as non-extractable `CryptoKey`s where the algorithm
   allows, a passphrase path where it does not, and a considered answer to what happens on a shared
   computer — the same question `FR-AUTH-09` already answers for the mail cache.
-- **A trust model.** A signature is only meaningful against a validated certificate chain (S/MIME)
-  or a web of trust (PGP). Showing a tick without one is worse than showing nothing.
 - **An XSS threat model.** Any script injected into the app document could reach the key material.
   The sandboxed body frame already isolates mail HTML; a key store raises what an escape would
   cost.
+- **A recovery story.** A user who loses the key loses the mail, and the app has to say so before
+  they rely on it rather than after.
 
-That is a milestone, not a follow-up commit, and it should be scoped as one.
+That is a milestone, not a follow-up commit, and it should be scoped as one. The honest ranking
+inside it: PGP signature verification first (public keys only, no new class of secret), then PGP
+decryption, then S/MIME — which stays blocked on the trust root until a browser exposes one or the
+project accepts owning a CA bundle.
 
 ### 5.0 Assessed and declined, with reasons (2026-08-19)
 
@@ -196,7 +222,7 @@ outcome against each entry, so what is left stays legible.
 | 2 Calendar | **done** — month, week and agenda views (M5.6, M5.13); create/edit/delete for single events (M5.11). Series are read-only BY DESIGN — a recurrence scope editor is the one deliberate omission, see `isEditable` |
 | 3 Multi-account | **done, by switching** (M5.10/M5.14/M5.16) — registry, derived scopes, per-account forget, add-account and a switcher. NOT concurrent sessions: one account is active at a time, so a unified inbox across accounts remains out of reach without reworking the session provider |
 | 4 More languages | **pipeline done** (M5.9) — Weblate config, `docs/translating.md`, RTL scripts pre-listed. The strings themselves need speakers, not a machine |
-| 5 S/MIME / PGP read + verify | **detection done** (M5.15) — signed and encrypted mail is recognised and explained, with no cryptography performed. Verification and decryption need a key store and are the remaining half; see §5.1 |
+| 5 S/MIME / PGP read + verify | **reading done** (M5.15, M5.19) — signed and encrypted mail is recognised and explained, and the signature part no longer appears as an attachment. No cryptography is performed. Verification and decryption remain, and §5.1 now says which parts are blocked on what: PGP verification is buildable (public keys only), S/MIME verification is blocked on a trust root the browser does not expose |
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download, an inline preview (M5.17) on the reader's own policy, and RFC 9670 sharing (M5.18): a principal picker, three named roles, and grants written one at a time. Measured against the live server, which is how the `Principal/query` `name` filter was found to return nobody |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |

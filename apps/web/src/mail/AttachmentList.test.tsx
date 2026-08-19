@@ -125,3 +125,64 @@ describe('AttachmentList — a hostile filename', () => {
     expect(names).toEqual(['Invoicegpj.exe'])
   })
 })
+
+describe('AttachmentList — a signed message (M5.19)', () => {
+  it('does not list the S/MIME signature part', () => {
+    // Left in, every signed message grows a `smime.p7s` nobody can open — and "save all" puts it
+    // in the archive. RFC 8621 calls it an attachment because it has a blobId and no cid; a reader
+    // does not.
+    render(
+      <AttachmentList
+        accountId="a"
+        attachments={[
+          part({ blobId: 'b1', name: 'report.pdf', type: 'application/pdf' }),
+          part({ blobId: 'b2', name: 'smime.p7s', type: 'application/pkcs7-signature' }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('smime.p7s')).not.toBeInTheDocument()
+    // The count in the heading must agree — one attachment, not two.
+    expect(screen.getByRole('heading', { name: /\(1\)/ })).toBeInTheDocument()
+  })
+
+  it('does not list the PGP signature part', () => {
+    render(
+      <AttachmentList
+        accountId="a"
+        attachments={[
+          part({ blobId: 'b1', name: 'notes.txt', type: 'text/plain' }),
+          part({ blobId: 'b2', name: 'signature.asc', type: 'application/pgp-signature' }),
+        ]}
+      />,
+    )
+    expect(screen.queryByText('signature.asc')).not.toBeInTheDocument()
+  })
+
+  it('renders NOTHING when the signature was the only part', () => {
+    // Not an empty strip with a "(0)" heading: a signed message with no files has no attachments.
+    const { container } = render(
+      <AttachmentList
+        accountId="a"
+        attachments={[
+          part({ blobId: 'b2', name: 'smime.p7s', type: 'application/pkcs7-signature' }),
+        ]}
+      />,
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('still lists the encrypted payload, which IS the message', () => {
+    // `application/octet-stream` is the ciphertext of a PGP/MIME message. Hiding it would hide the
+    // message itself — this client cannot open it, which is not the same as it not being there.
+    render(
+      <AttachmentList
+        accountId="a"
+        attachments={[
+          part({ blobId: 'b1', name: 'encrypted.asc', type: 'application/octet-stream' }),
+        ]}
+      />,
+    )
+    expect(screen.getByText('encrypted.asc')).toBeInTheDocument()
+  })
+})

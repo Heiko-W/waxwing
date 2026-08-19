@@ -76,6 +76,31 @@ export function detectProtection(part: ProtectionPart | null | undefined): Messa
   return NONE
 }
 
+/**
+ * Media types that are cryptographic machinery, not content.
+ *
+ * A `multipart/signed` message carries its signature as a sibling part with a blobId and no `cid`,
+ * which is exactly the shape RFC 8621 calls an attachment — so a reader that trusts `attachments`
+ * shows `smime.p7s` (or `signature.asc`) in the strip beside the real files. It is not a file the
+ * user has any use for: it cannot be opened, and this client cannot check it. Listing it turns
+ * every signed message into one with a mystery attachment, and puts that mystery into "save all".
+ *
+ * Hiding it loses nothing recoverable: the whole message, signature included, is still available
+ * through "Show source" and the `.eml` download.
+ */
+const PROTECTION_PART_TYPES: ReadonlySet<string> = new Set([
+  'application/pkcs7-signature',
+  'application/x-pkcs7-signature',
+  'application/pgp-signature',
+  // The control part of a PGP/MIME encrypted message (RFC 3156 §4). Nine bytes saying "Version: 1".
+  'application/pgp-encrypted',
+])
+
+/** Whether this part is a signature or control part rather than content. See the set above. */
+export function isProtectionPart(type: string | null | undefined): boolean {
+  return PROTECTION_PART_TYPES.has(normalise(type))
+}
+
 /** Whether this client can render the body at all. */
 export function isReadable(protection: MessageProtection): boolean {
   return protection.kind !== 'encrypted'
