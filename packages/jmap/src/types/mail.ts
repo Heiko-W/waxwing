@@ -466,6 +466,38 @@ export interface SearchSnippetGetResponse {
  * (`textBody`/`htmlBody`/`attachments`). Header values may be set via the convenience props
  * or arbitrary `header:{field}` keys (hence the index signature).
  */
+/**
+ * A body part as sent to `Email/set` (RFC 8621 §4.1.4).
+ *
+ * Two ways this differs from a body part as READ, and both are load-bearing:
+ *
+ * - It is partial. The server assigns `partId`, `size`, `headers` and the rest; a client that had
+ *   to supply them could not create anything.
+ * - It may carry `header:Name:form` properties. That is the ONLY way to set a Content-Type
+ *   parameter — there is no field for one — and it is what an RFC 8098 read receipt needs for
+ *   `multipart/report; report-type=disposition-notification`. Measured against Stalwart 0.16: the
+ *   header key must accompany `type`, and a `headers: [...]` array is refused outright
+ *   ("Headers have to be set individually").
+ */
+export type EmailBodyPartCreate = Omit<Partial<EmailBodyPart>, 'subParts'> & {
+  [header: `header:${string}`]: unknown
+  /** `Omit`ted above and restated: nested parts are being CREATED too, not read back. */
+  subParts?: EmailBodyPartCreate[] | null
+}
+
+/**
+ * A body value as sent to `Email/set`.
+ *
+ * `isEncodingProblem` and `isTruncated` are the SERVER's answers about a value it decoded and
+ * handed back; a client creating a message has nothing to say about either, and requiring them
+ * would make every create carry two meaningless falses.
+ */
+export interface EmailBodyValueCreate {
+  value: string
+  isEncodingProblem?: boolean
+  isTruncated?: boolean
+}
+
 export interface EmailCreate {
   /** Required: the mailboxes to file the new email in. */
   mailboxIds: Record<Id, true>
@@ -482,8 +514,8 @@ export interface EmailCreate {
   references?: string[] | null
   messageId?: string[] | null
   sentAt?: JmapDate | null
-  bodyStructure?: EmailBodyPart
-  bodyValues?: Record<string, EmailBodyValue>
+  bodyStructure?: EmailBodyPartCreate
+  bodyValues?: Record<string, EmailBodyValueCreate>
   textBody?: Partial<EmailBodyPart>[]
   htmlBody?: Partial<EmailBodyPart>[]
   attachments?: Partial<EmailBodyPart>[]

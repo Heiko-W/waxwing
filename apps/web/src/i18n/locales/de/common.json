@@ -982,6 +982,20 @@
       "encryptedNote": "Sie kann hier noch nicht geöffnet werden. Nutzen Sie ein Mailprogramm mit S/MIME- oder OpenPGP-Unterstützung, oder fragen Sie Ihre Administration, ob für dieses Postfach die Verschlüsselung im Ruhezustand aktiv ist.",
       "signed": "Diese Nachricht ist signiert",
       "signedNote": "Sie trägt eine digitale Signatur. Signaturen werden hier noch nicht geprüft — das besagt also nur, dass eine vorhanden ist, nicht dass sie gültig ist."
+    },
+    "receipt": {
+      "title": "Lesebestätigung",
+      "asked": "Der Absender möchte erfahren, wann Sie das lesen",
+      "note": "Es wurde nichts gesendet. Mit dem Bestätigen erfährt {{address}}, dass Sie diese Nachricht geöffnet haben.",
+      "noteElsewhere": "Es wurde nichts gesendet. Mit dem Bestätigen erfährt {{address}} — nicht die Absenderadresse dieser Nachricht —, dass Sie sie geöffnet haben.",
+      "confirm": "Gelesen bestätigen",
+      "sending": "Wird gesendet …",
+      "decline": "Nein",
+      "failed": "Das ließ sich nicht senden. Es wurde niemand benachrichtigt.",
+      "sent": "Sie haben das Lesen bestätigt",
+      "sentNote": "{{address}} wurde benachrichtigt.",
+      "body": "Ihre Nachricht wurde angezeigt. Das ist keine Zusicherung, dass sie gelesen oder verstanden wurde.\n",
+      "subject": "Gelesen: {{subject}}"
     }
   },
   "compose": {

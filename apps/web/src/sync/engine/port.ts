@@ -32,6 +32,7 @@ import {
   type JmapPort,
   LIST_UNSUBSCRIBE_POST_PROPERTY,
   LIST_UNSUBSCRIBE_PROPERTY,
+  MDN_REQUEST_PROPERTY,
   type PortSetError,
   type PortSetResult,
   type QueryChangesResult,
@@ -47,11 +48,12 @@ type WireSetErrors = Record<string, { type: string; description?: string | null 
  */
 type EmailBodyWire = Omit<
   EmailBodyInput,
-  'authResults' | 'listUnsubscribe' | 'listUnsubscribePost'
+  'authResults' | 'listUnsubscribe' | 'listUnsubscribePost' | 'mdnRequestTo'
 > & {
   readonly [AUTH_RESULTS_PROPERTY]?: string[] | null
   readonly [LIST_UNSUBSCRIBE_PROPERTY]?: string[] | null
   readonly [LIST_UNSUBSCRIBE_POST_PROPERTY]?: string | null
+  readonly [MDN_REQUEST_PROPERTY]?: string | null
 }
 
 /** Wire → port: rename the `header:…` keys to clean fields so the awkward names stop here. */
@@ -60,6 +62,7 @@ function toEmailBodyInput(wire: EmailBodyWire): EmailBodyInput {
     [AUTH_RESULTS_PROPERTY]: authResults,
     [LIST_UNSUBSCRIBE_PROPERTY]: listUnsubscribe,
     [LIST_UNSUBSCRIBE_POST_PROPERTY]: listUnsubscribePost,
+    [MDN_REQUEST_PROPERTY]: mdnRequestTo,
     ...rest
   } = wire
   return {
@@ -70,6 +73,7 @@ function toEmailBodyInput(wire: EmailBodyWire): EmailBodyInput {
     // indistinguishable from a row written before this feature existed.
     listUnsubscribe: listUnsubscribe ?? null,
     listUnsubscribePost: listUnsubscribePost ?? null,
+    mdnRequestTo: mdnRequestTo ?? null,
   }
 }
 

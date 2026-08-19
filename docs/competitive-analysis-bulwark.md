@@ -191,12 +191,29 @@ discovery responds — is one fetch, and "could not check" is carried through as
 Flattening it into "no OAuth" would silently disable OAuth for a deployment that has it, from one
 failed request.
 
-**MDN / read receipts — possible, but against a stated principle.** Stalwart has no JMAP MDN
-(RFC 9007), so the client would have to build the `multipart/report` itself and submit it. The
-mechanism is not the obstacle: NFR-PRIV-01 says the app makes no network request the reader did
-not ask for, and a read receipt is precisely a request the *sender* asked for on the reader's
-behalf. Requesting one on outgoing mail is unobjectionable; *answering* one silently is not. An
-owner decision, not an engineering one.
+**MDN / read receipts — done, on the owner's decision (M5.22).** The principle was never in doubt:
+NFR-PRIV-01 says the app makes no network request the reader did not ask for, and a read receipt is
+precisely a request the *sender* made on the reader's behalf. What that forbids is the automatic
+answer, not the feature. Waxwing shows a banner naming who would be told and sends only when the
+reader presses the button; the notification reports `manual-action/MDN-sent-manually`, which is the
+truth about how it came to exist.
+
+The banner names the ADDRESS rather than "the sender", because `Disposition-Notification-To` is a
+separate header that may point anywhere — a receipt addressed away from `From` is the shape used to
+confirm a live mailbox, and when the two differ the banner says so.
+
+There is deliberately no "never ask again for this sender": that would be a stored list of who the
+reader refuses, which is a worse thing to hold than the question is to see. `$mdnsent` (RFC 3503)
+records the ones that WERE answered, server-side, so no second device asks twice.
+
+Two things had to be measured rather than assumed, and both would have shipped broken. RFC 8098
+requires `Content-Type: multipart/report; report-type=disposition-notification`, and JMAP has no
+field for a content-type parameter: `type` alone drops it, a `headers: [...]` array is refused
+("Headers have to be set individually"), and only `type` together with `header:Content-Type:asText`
+produces it. And the receipt cannot be created outside a mailbox — Stalwart refuses both an absent
+and an empty `mailboxIds` — so it is created in Drafts and destroyed by `onSuccessDestroyEmail` in
+the same request. The whole flow was verified end to end against the fixture: created, submitted,
+destroyed, nothing left behind, and the receipt delivered.
 
 **TNEF (`winmail.dat`) — done (M5.21).** This was written off as a poor ratio, which was an
 estimate about cost, not a measurement. Measured: the attachment-extraction subset of MS-OXTNEF is
@@ -244,7 +261,7 @@ outcome against each entry, so what is left stays legible.
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download, an inline preview (M5.17) on the reader's own policy, and RFC 9670 sharing (M5.18): a principal picker, three named roles, and grants written one at a time. Measured against the live server, which is how the `Principal/query` `name` filter was found to return nobody |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
-| 9 Setup wizard, theme upload, MDN, TNEF | **three of four settled** — the setup wizard's achievable half ships as a config generator (M5.20), and TNEF unpacking ships (M5.21). Theme upload is not implementable as Bulwark has it. MDN is the one genuine owner decision: it contradicts NFR-PRIV-01 as Bulwark implements it, and §5.0 says which half would be unobjectionable |
+| 9 Setup wizard, theme upload, MDN, TNEF | **done, except the one that cannot be built** — config generator (M5.20), TNEF unpacking (M5.21) and read receipts (M5.22, confirmed by hand, never automatic). Theme upload is not implementable as Bulwark has it: it writes files to disk, which needs the Node process a static client does not have |
 
 **On row 4.** The framework, the 882 keys and the switcher are all in place, so "add 23 languages"
 is a matter of producing 23 × 882 strings. Machine-translating them would produce text nobody has

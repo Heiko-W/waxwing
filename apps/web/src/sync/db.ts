@@ -196,6 +196,13 @@ export interface EmailBodyRow {
   listUnsubscribe?: string[] | null
   /** `List-Unsubscribe-Post`; its presence is what makes a one-click POST legitimate (RFC 8058). */
   listUnsubscribePost?: string | null
+  /**
+   * `Disposition-Notification-To` (M5.22, RFC 8098) — where the sender asked to be told this was
+   * read. Same three-state contract as the two above: `undefined` = row written before M5.22,
+   * `null` = the sender asked for nothing. Storing it costs one string and saves re-fetching the
+   * body to answer a question the reading pane asks on every open.
+   */
+  mdnRequestTo?: string | null
   fetchedAt: number
   lastAccessedAt: number
   /**
@@ -263,7 +270,13 @@ export const ENVELOPE_BYTES_ESTIMATE = 1_200
 export function estimateBodyBytes(
   row: Pick<
     EmailBodyRow,
-    'bodyValues' | 'bcc' | 'sender' | 'authResults' | 'listUnsubscribe' | 'listUnsubscribePost'
+    | 'bodyValues'
+    | 'bcc'
+    | 'sender'
+    | 'authResults'
+    | 'listUnsubscribe'
+    | 'listUnsubscribePost'
+    | 'mdnRequestTo'
   >,
 ): number {
   let payload = 0
@@ -286,6 +299,7 @@ export function estimateBodyBytes(
     if (typeof value === 'string') payload += value.length * 2
   }
   if (typeof row.listUnsubscribePost === 'string') payload += row.listUnsubscribePost.length * 2
+  if (typeof row.mdnRequestTo === 'string') payload += row.mdnRequestTo.length * 2
   return payload + BODY_OVERHEAD_BYTES
 }
 

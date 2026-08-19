@@ -71,6 +71,7 @@ import {
   senderAddress,
   senderName,
 } from './message-body'
+import { ReadReceiptBanner } from './ReadReceiptBanner'
 import { RemoteContentBanner } from './RemoteContentBanner'
 import styles from './reading.module.css'
 import {
@@ -89,6 +90,7 @@ import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useMessageRights } from './use-message-rights'
 import { sourceFilename } from './use-message-source'
+import { useReadReceipt } from './use-read-receipt'
 import { useSnooze } from './use-snooze'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
@@ -461,6 +463,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // What this message offers by way of getting off the list (FR-RD-09). Absent on a row written
   // before M5.3 — the offer is then simply empty, and the next body fetch fills it in.
   /** What the message's MIME structure says it is (M5.15). No cryptography is performed. */
+  const readReceipt = useReadReceipt(email, body)
   const protection = useMemo(
     () => detectProtection(body?.bodyStructure as ProtectionPart | undefined),
     [body?.bodyStructure],
@@ -894,6 +897,15 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           sender={name}
           onLoad={() => setLoadedOnce(true)}
           onAlwaysAllow={onAlwaysAllow}
+        />
+      )}
+
+      {readReceipt !== null && (
+        // Never automatic. NFR-PRIV-01: opening a message is not consent to tell anyone.
+        <ReadReceiptBanner
+          request={readReceipt.request}
+          alreadySent={readReceipt.alreadySent}
+          onConfirm={readReceipt.send}
         />
       )}
 

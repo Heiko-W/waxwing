@@ -982,6 +982,20 @@
       "encryptedNote": "It cannot be opened here yet. Use a mail client with S/MIME or OpenPGP support, or ask your administrator whether encryption at rest is switched on for this mailbox.",
       "signed": "This message is signed",
       "signedNote": "It carries a digital signature. Signatures are not verified here yet, so this says only that one is present — not that it is valid."
+    },
+    "receipt": {
+      "title": "Read receipt",
+      "asked": "The sender asked to be told when you read this",
+      "note": "Nothing has been sent. Confirming tells {{address}} that you opened this message.",
+      "noteElsewhere": "Nothing has been sent. Confirming tells {{address}} — which is not the address this message came from — that you opened it.",
+      "confirm": "Confirm I read it",
+      "sending": "Sending…",
+      "decline": "No",
+      "failed": "That could not be sent. Nobody was told.",
+      "sent": "You confirmed you read this",
+      "sentNote": "{{address}} was told.",
+      "body": "Your message was displayed. This is no guarantee that it was read or understood.\n",
+      "subject": "Read: {{subject}}"
     }
   },
   "compose": {

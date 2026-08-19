@@ -300,6 +300,15 @@ export const AUTH_RESULTS_PROPERTY = 'header:Authentication-Results:asText:all'
 export const LIST_UNSUBSCRIBE_PROPERTY = 'header:List-Unsubscribe:asURLs'
 export const LIST_UNSUBSCRIBE_POST_PROPERTY = 'header:List-Unsubscribe-Post:asText'
 
+/**
+ * The `Email/get` property for the read-receipt request header (M5.22, RFC 8098 §2.1).
+ *
+ * The singular `:asText` is right here, unlike `Authentication-Results`: this header is the
+ * SENDER's own and a message carrying two of them is malformed. RFC 8621 §4.1.2 gives the last
+ * instance, which is the sender's final word either way.
+ */
+export const MDN_REQUEST_PROPERTY = 'header:Disposition-Notification-To:asText'
+
 /** The full-body fields fetched for an opened message (mapped to an `EmailBodyRow` by the engine). */
 export interface EmailBodyInput {
   readonly id: Id
@@ -328,6 +337,11 @@ export interface EmailBodyInput {
   readonly listUnsubscribe?: string[] | null
   /** The raw `List-Unsubscribe-Post` value; `null` when absent ({@link LIST_UNSUBSCRIBE_POST_PROPERTY}). */
   readonly listUnsubscribePost?: string | null
+  /**
+   * Where the sender asked to be told this was read ({@link MDN_REQUEST_PROPERTY}); `null` when
+   * they did not ask. Waxwing never answers it without the reader pressing a button — see `mdn.ts`.
+   */
+  readonly mdnRequestTo?: string | null
 }
 
 /** Email properties fetched for a full body. `bodyValues` MUST be named here (SP.4: the fetch flags
@@ -347,6 +361,7 @@ export const EMAIL_BODY_PROPERTIES: readonly string[] = [
   AUTH_RESULTS_PROPERTY,
   LIST_UNSUBSCRIBE_PROPERTY,
   LIST_UNSUBSCRIBE_POST_PROPERTY,
+  MDN_REQUEST_PROPERTY,
 ]
 
 /** Per-part properties for the body/attachment `EmailBodyPart`s (incl. `cid` for inline-image mapping). */
