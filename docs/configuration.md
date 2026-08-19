@@ -66,10 +66,18 @@ mistakes.
 Enabled authentication methods, **in order of preference**. The first one is the primary button
 on the sign-in screen.
 
+With `"oauth"` first and usable, the password form is **collapsed** behind a "Sign in with a
+password instead" disclosure — one obvious action, the fallback one click away. That is not
+cosmetic: Stalwart accepts a second factor only over OAuth, so on an account with 2FA the
+password form works exclusively with an [application password](https://stalw.art/docs/auth/authentication/2fa/),
+and presenting the two as equals sent 2FA users into the one path that could not work
+(ADR-024). Rank `"basic"` first, or drop `"oauth"`, and the form renders open with no
+disclosure at all.
+
 **This list is not checked against the server**, and this page used to claim it was ("the first
 one the server supports is the one offered"). Nothing asks the server what it supports: OAuth
 discovery happens when the user clicks, not before. So on a server without OAuth, leaving the
-default in place gives every user a prominent "Sign in securely" button that fails — it now says
+default in place gives every user a prominent "Sign in" button that fails — it now says
 the server offers no secure sign-in and points at the password form, rather than the flat
 "Something went wrong" it used to, but **the operator is the one who decides**. Set
 `["basic"]` for such a server.

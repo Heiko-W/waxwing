@@ -50,6 +50,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [021](021-undo-is-a-chord-and-a-toast-that-waits.md) | Undo is a chord (`z`) plus a toast that does not expire | accepted |
 | [022](022-identities-are-editable-in-the-client.md) | Identities and signatures are editable in the client, online-only | accepted |
 | [023](023-foreign-sieve-is-preserved-never-parsed.md) | A Sieve script we did not write is preserved verbatim, never parsed | accepted |
+| [024](024-password-sign-in-sits-behind-a-disclosure.md) | Password sign-in sits behind a disclosure; only OAuth can carry a second factor | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.
