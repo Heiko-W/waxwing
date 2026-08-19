@@ -22,6 +22,7 @@ import { getEngineFor } from '../sync/engine'
 import { useComposerStore } from './composer-store'
 import { deserializeDraft, isEmptyDraft, serializeDraft, toEmailCreate } from './draft-email'
 import { revokeInlineObjectUrls } from './inline-image-registry'
+import { holdUntilParameters } from './scheduled-send'
 
 /** Why a send could not start (surfaced by the composer as a toast). */
 export type SendFailure = 'noRecipients' | 'noIdentity' | 'noSentMailbox' | 'engineUnavailable'
@@ -57,8 +58,15 @@ export interface DraftSync {
   close(localId: string): Promise<void>
   /** Delete the local draft + destroy the server draft, then close the window. */
   discard(localId: string): Promise<void>
-  /** Queue the draft for send (create+submit, with an undo grace of `undoMs`). Preserves the draft. */
-  send(localId: string, opts: { undoMs: number }): Promise<SendResult>
+  /**
+   * Queue the draft for send (create+submit, with an undo grace of `undoMs`). Preserves the draft.
+   *
+   * `scheduleAt` asks the SERVER to hold the message until then (FR-CMP-11, SMTP FUTURERELEASE):
+   * the submission is created now and the message leaves the queue at that time, whether or not
+   * this app is running. Where the account cannot schedule, the caller must not pass it — the
+   * server would reject the whole envelope rather than send immediately.
+   */
+  send(localId: string, opts: { undoMs: number; scheduleAt?: Date }): Promise<SendResult>
   /** Cancel a queued send while still in its grace window and reopen the draft (M2.8 Undo). */
   undoSend(localId: string): Promise<void>
 }
@@ -246,7 +254,14 @@ export function useDraftSync(): DraftSync {
             email,
             identityId: identity.id,
             envelope: {
-              mailFrom: { email: identity.email },
+              mailFrom: {
+                email: identity.email,
+                // The scheduling request rides here, as an SMTP parameter — NOT as `sendAt`, which
+                // is server-set and immutable (RFC 8621 §7.1).
+                ...(opts.scheduleAt === undefined
+                  ? {}
+                  : { parameters: holdUntilParameters(opts.scheduleAt) }),
+              },
               rcptTo: dedupRecipients([
                 ...content.to,
                 ...content.cc,

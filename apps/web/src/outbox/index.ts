@@ -11,5 +11,6 @@ export {
 } from './describe-conflict'
 export { OutboxProblemsButton } from './OutboxProblemsButton'
 export { QueuedSends } from './QueuedSends'
+export { ScheduledSends } from './ScheduledSends'
 export { useConflictNotifier } from './use-conflict-notifier'
 export { type OutboxProblems, useOutboxProblems } from './use-outbox-problems'

@@ -1016,7 +1016,26 @@
     "attachMentionSend": "Send anyway",
     "attachMentionCancel": "Go back",
     "attachMentionKeywords": ["attach", "attached", "attachment", "enclosed", "see the file"],
-    "sendErrorInterrupted": "Interrupted before we could confirm — check Sent before resending"
+    "sendErrorInterrupted": "Interrupted before we could confirm — check Sent before resending",
+    "schedule": {
+      "open": "Send later",
+      "title": "Send later",
+      "custom": "Or pick a time",
+      "confirm": "Schedule",
+      "cancel": "Cancel",
+      "queued": "Scheduled for {{when}}",
+      "preset": {
+        "inOneHour": "In an hour",
+        "thisEvening": "This evening",
+        "tomorrowMorning": "Tomorrow morning",
+        "nextWeek": "Next week"
+      },
+      "error": {
+        "past": "Pick a time in the future.",
+        "tooFar": "That is further ahead than this server allows.",
+        "unsupported": "This server cannot hold messages for later delivery."
+      }
+    }
   },
   "search": {
     "placeholder": "Search mail",
@@ -1174,6 +1193,17 @@
       "retrying": "Retrying…",
       "cancel": "Cancel send",
       "label": "Queued messages"
+    },
+    "scheduled": {
+      "title": "Scheduled",
+      "description": "Messages the server is holding for later delivery. They go out whether or not this app is open.",
+      "loading": "Loading…",
+      "empty": "Nothing scheduled.",
+      "loadFailed": "The scheduled messages could not be loaded.",
+      "willSend": "Sends {{when}}",
+      "cancel": "Cancel send",
+      "cancelled": "Send cancelled",
+      "tooLate": "Already sent — it had left the queue."
     }
   },
   "pwa": {

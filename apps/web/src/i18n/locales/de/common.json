@@ -1016,7 +1016,26 @@
     "attachMentionSend": "Trotzdem senden",
     "attachMentionCancel": "Zurück",
     "attachMentionKeywords": ["anhang", "anbei", "angehängt", "beigefügt", "siehe datei"],
-    "sendErrorInterrupted": "Vor der Bestätigung unterbrochen — bitte „Gesendet“ prüfen, bevor Sie erneut senden"
+    "sendErrorInterrupted": "Vor der Bestätigung unterbrochen — bitte „Gesendet“ prüfen, bevor Sie erneut senden",
+    "schedule": {
+      "open": "Später senden",
+      "title": "Später senden",
+      "custom": "Oder Zeitpunkt wählen",
+      "confirm": "Planen",
+      "cancel": "Abbrechen",
+      "queued": "Geplant für {{when}}",
+      "preset": {
+        "inOneHour": "In einer Stunde",
+        "thisEvening": "Heute Abend",
+        "tomorrowMorning": "Morgen früh",
+        "nextWeek": "Nächste Woche"
+      },
+      "error": {
+        "past": "Bitte einen Zeitpunkt in der Zukunft wählen.",
+        "tooFar": "Das liegt weiter in der Zukunft, als dieser Server erlaubt.",
+        "unsupported": "Dieser Server kann Nachrichten nicht für später zurückhalten."
+      }
+    }
   },
   "search": {
     "placeholder": "E-Mails durchsuchen",
@@ -1174,6 +1193,17 @@
       "retrying": "Erneuter Versuch…",
       "cancel": "Senden abbrechen",
       "label": "Wartende Nachrichten"
+    },
+    "scheduled": {
+      "title": "Geplant",
+      "description": "Nachrichten, die der Server für später zurückhält. Sie gehen raus, ob diese App offen ist oder nicht.",
+      "loading": "Wird geladen…",
+      "empty": "Nichts geplant.",
+      "loadFailed": "Die geplanten Nachrichten konnten nicht geladen werden.",
+      "willSend": "Sendet {{when}}",
+      "cancel": "Senden abbrechen",
+      "cancelled": "Senden abgebrochen",
+      "tooLate": "Bereits gesendet — sie hatte die Warteschlange schon verlassen."
     }
   },
   "pwa": {

@@ -13,7 +13,9 @@ import {
   useReadingPaneMode,
 } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
+import { supportsScheduledSend } from '../compose/scheduled-send'
 import { changeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
+import { ScheduledSends } from '../outbox'
 import { setPref, useLocalPref, useReplica, useReplicaOptional } from '../sync'
 import { Select } from '../ui'
 import { ComposeSection } from './ComposeSection'
@@ -177,6 +179,11 @@ export default function SettingsPage() {
     connected?.jmapSession ?? null,
     connected?.accountId ?? null,
   )
+  // Messages the server is holding for later delivery (M5.4, FR-CMP-11) — only where it can.
+  const scheduleAvailable = supportsScheduledSend(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+  )
   // Filters need BOTH the server capability and the hoster's switch (M5.2, FR-SIEVE-01).
   const sieveAvailable = filtersAvailable(
     connected?.jmapSession ?? null,
@@ -282,6 +289,13 @@ export default function SettingsPage() {
       {replica !== null && sieveAvailable && (
         <Section slug="filters" title={t('settings.filters.title')}>
           <FiltersSection />
+        </Section>
+      )}
+
+      {connected !== null && scheduleAvailable && (
+        <Section slug="scheduled" title={t('outbox.scheduled.title')}>
+          <p className={styles.hint}>{t('outbox.scheduled.description')}</p>
+          <ScheduledSends />
         </Section>
       )}
 

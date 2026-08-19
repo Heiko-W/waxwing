@@ -10,10 +10,13 @@ import type {
   ChangesRequest,
   ChangesResponse,
   CreationId,
+  FilterOperator,
   GetRequest,
   GetResponse,
   Id,
   PatchObject,
+  QueryRequest,
+  QueryResponse,
   SetRequest,
   SetResponse,
   UTCDate,
@@ -119,3 +122,32 @@ export interface EmailSubmissionSetRequest {
 
 /** Response for `EmailSubmission/set` (RFC 8621 §7.5). */
 export type EmailSubmissionSetResponse = SetResponse<EmailSubmission>
+
+export type EmailSubmissionGetRequest = GetRequest
+export type EmailSubmissionGetResponse = GetResponse<EmailSubmission>
+
+/**
+ * Filter conditions for `EmailSubmission/query` (RFC 8621 §7.2).
+ *
+ * `undoStatus: 'pending'` plus an `after` in the future is how a client finds the messages a server
+ * is holding for later delivery — there is no "Scheduled" mailbox, because a submission is not an
+ * Email and lives in no folder.
+ */
+export interface EmailSubmissionFilterCondition {
+  identityIds?: Id[]
+  emailIds?: Id[]
+  threadIds?: Id[]
+  undoStatus?: UndoStatus
+  /** Submissions whose `sendAt` is at or after this date. */
+  after?: UTCDate
+  /** Submissions whose `sendAt` is before this date. */
+  before?: UTCDate
+}
+
+export type EmailSubmissionFilter = FilterOperator | EmailSubmissionFilterCondition
+
+export type EmailSubmissionQueryRequest = Omit<QueryRequest, 'filter'> & {
+  filter?: EmailSubmissionFilter | null
+}
+
+export type EmailSubmissionQueryResponse = QueryResponse

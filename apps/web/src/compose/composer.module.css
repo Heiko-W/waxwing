@@ -213,3 +213,33 @@
     padding-inline: 0;
   }
 }
+
+/* Send-later picker (M5.4, FR-CMP-11). */
+.scheduleBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+}
+
+.schedulePresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+.scheduleCustom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.scheduleLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.scheduleError {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}

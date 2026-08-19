@@ -84,6 +84,10 @@ import type {
   SieveScriptValidateResponse,
 } from './types/sieve'
 import type {
+  EmailSubmissionGetRequest,
+  EmailSubmissionGetResponse,
+  EmailSubmissionQueryRequest,
+  EmailSubmissionQueryResponse,
   EmailSubmissionSetRequest,
   EmailSubmissionSetResponse,
   IdentityGetRequest,
@@ -139,6 +143,17 @@ export const Methods = {
   identitySet: defineMethod<IdentitySetRequest, IdentitySetResponse>('Identity/set'),
   emailSubmissionSet: defineMethod<EmailSubmissionSetRequest, EmailSubmissionSetResponse>(
     'EmailSubmission/set',
+  ),
+  /**
+   * RFC 8621 §7 — read submissions (M5.4). The surface a "scheduled" view is built from: a
+   * submission is not an Email and lives in no mailbox, so `EmailSubmission/query` with
+   * `undoStatus: 'pending'` is the only way to find messages the server is holding.
+   */
+  emailSubmissionGet: defineMethod<EmailSubmissionGetRequest, EmailSubmissionGetResponse>(
+    'EmailSubmission/get',
+  ),
+  emailSubmissionQuery: defineMethod<EmailSubmissionQueryRequest, EmailSubmissionQueryResponse>(
+    'EmailSubmission/query',
   ),
 
   /** RFC 8621 §8 — the vacation-responder singleton (M3.7, FR-VAC-01). */
