@@ -15,7 +15,7 @@
  * the two spaces; `matchRoute` classifies a base-relative path into a {@link RouteMatch}.
  */
 
-export type RouteId = 'mail' | 'contacts' | 'settings' | 'notFound'
+export type RouteId = 'mail' | 'contacts' | 'calendar' | 'settings' | 'notFound'
 
 export interface RouteMatch {
   readonly id: RouteId
@@ -97,6 +97,12 @@ export function matchRoute(
     }
     return { id: 'contacts', path, params, rest: '', search }
   }
+  if (head === 'calendar') {
+    // `/calendar` and `/calendar/:isoDate` — the date the view is centred on (M5.6). A date is a
+    // param rather than a query so a link to a specific day is an ordinary URL.
+    const params: Record<string, string | undefined> = { date: parts[1] }
+    return { id: 'calendar', path, params, rest: '', search }
+  }
   if (head === 'settings') {
     return { id: 'settings', path, params: {}, rest: parts.slice(1).join('/'), search }
   }
@@ -176,6 +182,13 @@ export function settingsPath(sub?: string): string {
 }
 
 export const CONTACTS_PATH = '/contacts'
+
+export const CALENDAR_PATH = '/calendar'
+
+/** `/calendar`, or `/calendar/2026-08-20` for a specific day (M5.6). */
+export function calendarPath(isoDate?: string): string {
+  return isoDate === undefined ? CALENDAR_PATH : `${CALENDAR_PATH}/${isoDate}`
+}
 
 /**
  * Build the base-relative contacts route path for an address-book / card selection (M4.2). Mirrors

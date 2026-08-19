@@ -6,7 +6,8 @@
     "menu": {
       "mail": "Mail",
       "contacts": "Contacts",
-      "settings": "Settings"
+      "settings": "Settings",
+      "calendar": "Calendar"
     },
     "folders": {
       "show": "Show folders",
@@ -1402,5 +1403,22 @@
       "destroy": "You don't have permission to delete these messages.",
       "unknown": "Still checking what you may do here — not all messages have loaded yet."
     }
+  },
+  "calendar": {
+    "title": "Calendar",
+    "today": "Today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "viewLabel": "Calendar view",
+    "view": {
+      "month": "Month",
+      "agenda": "Agenda"
+    },
+    "untitled": "(no title)",
+    "allDay": "All day",
+    "more": "+{{count}} more",
+    "noEvents": "Nothing coming up.",
+    "loadFailed": "The calendar could not be loaded.",
+    "signedOut": "Sign in to see your calendar."
   }
 }

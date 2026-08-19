@@ -5,9 +5,17 @@
  * friendly).
  */
 
-import { type LucideIcon, Mail, Settings, Users } from 'lucide-react'
+import { CalendarDays, type LucideIcon, Mail, Settings, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { CONTACTS_PATH, HOME_PATH, Link, type RouteId, settingsPath, useRoute } from '../route'
+import {
+  CALENDAR_PATH,
+  CONTACTS_PATH,
+  HOME_PATH,
+  Link,
+  type RouteId,
+  settingsPath,
+  useRoute,
+} from '../route'
 import styles from './shell.module.css'
 
 interface NavItem {
@@ -20,6 +28,7 @@ interface NavItem {
 const ITEMS: readonly NavItem[] = [
   { id: 'mail', to: HOME_PATH, icon: Mail, labelKey: 'shell.menu.mail' },
   { id: 'contacts', to: CONTACTS_PATH, icon: Users, labelKey: 'shell.menu.contacts' },
+  { id: 'calendar', to: CALENDAR_PATH, icon: CalendarDays, labelKey: 'shell.menu.calendar' },
   { id: 'settings', to: settingsPath(), icon: Settings, labelKey: 'shell.menu.settings' },
 ]
 

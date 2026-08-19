@@ -70,6 +70,12 @@ export default [
       // The attachment archiver (mail/, M5.3): `client-zip` plus the naming rules, fetched only when
       // a reader asks to save a message's attachments as one file.
       '!apps/web/dist/assets/attachment-zip-*.js',
+      // The calendar screen (calendar/, M5.6) — a route chunk, like contacts and settings.
+      '!apps/web/dist/assets/CalendarPage-*.js',
+      // The send-later picker (compose/, M5.4): presets plus the window validation.
+      '!apps/web/dist/assets/ScheduleSendDialog-*.js',
+      // The `.eml` import dialog (mail/, M5.3) — restoring an archived message is a rare, deliberate act.
+      '!apps/web/dist/assets/EmlImportDialog-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],

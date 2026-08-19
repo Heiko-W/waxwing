@@ -28,6 +28,7 @@ import { useDocumentTitle } from './use-document-title'
 import { useMailtoHandler } from './use-mailto-handler'
 import { useStorageFullNotifier } from './use-storage-notifier'
 
+const CalendarPage = lazy(() => import('../../calendar/CalendarPage'))
 const ContactsPage = lazy(() => import('../../contacts/ContactsPage'))
 const SettingsPage = lazy(() => import('../../settings/SettingsPage'))
 // The composer host (docked drafts + squire) loads only once a draft is open (keeps it out of the
@@ -82,6 +83,9 @@ export function AppShell({ config }: AppShellProps) {
   switch (route.id) {
     case 'contacts':
       screen = <ContactsPage />
+      break
+    case 'calendar':
+      screen = <CalendarPage />
       break
     case 'settings':
       screen = <SettingsPage />

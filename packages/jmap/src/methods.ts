@@ -17,6 +17,22 @@
 
 import { defineMethod, type MethodDef } from './request'
 import type {
+  CalendarChangesRequest,
+  CalendarChangesResponse,
+  CalendarEventChangesRequest,
+  CalendarEventChangesResponse,
+  CalendarEventGetRequest,
+  CalendarEventGetResponse,
+  CalendarEventQueryRequest,
+  CalendarEventQueryResponse,
+  CalendarEventSetRequest,
+  CalendarEventSetResponse,
+  CalendarGetRequest,
+  CalendarGetResponse,
+  CalendarSetRequest,
+  CalendarSetResponse,
+} from './types/calendar'
+import type {
   AddressBookChangesRequest,
   AddressBookChangesResponse,
   AddressBookGetRequest,
@@ -179,6 +195,31 @@ export const Methods = {
   /** Compiles the blob without storing it; `error: null` means it parsed (RFC 9661 §2.6). */
   sieveScriptValidate: defineMethod<SieveScriptValidateRequest, SieveScriptValidateResponse>(
     'SieveScript/validate',
+  ),
+
+  /**
+   * `draft-ietf-jmap-calendars` + JSCalendar (RFC 8984) — Calendar, CalendarEvent (M5.6).
+   *
+   * `CalendarEvent/query` carries `expandRecurrences`, which is what makes a month view possible:
+   * the server returns one id per OCCURRENCE, so the client never has to expand a recurrence rule
+   * across DST in local time itself.
+   */
+  calendarGet: defineMethod<CalendarGetRequest, CalendarGetResponse>('Calendar/get'),
+  calendarChanges: defineMethod<CalendarChangesRequest, CalendarChangesResponse>(
+    'Calendar/changes',
+  ),
+  calendarSet: defineMethod<CalendarSetRequest, CalendarSetResponse>('Calendar/set'),
+  calendarEventGet: defineMethod<CalendarEventGetRequest, CalendarEventGetResponse>(
+    'CalendarEvent/get',
+  ),
+  calendarEventChanges: defineMethod<CalendarEventChangesRequest, CalendarEventChangesResponse>(
+    'CalendarEvent/changes',
+  ),
+  calendarEventQuery: defineMethod<CalendarEventQueryRequest, CalendarEventQueryResponse>(
+    'CalendarEvent/query',
+  ),
+  calendarEventSet: defineMethod<CalendarEventSetRequest, CalendarEventSetResponse>(
+    'CalendarEvent/set',
   ),
 
   /** RFC 9610 — AddressBook (M4.2). No `/query`: an account's address books are always fetched whole. */

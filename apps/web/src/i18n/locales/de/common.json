@@ -6,7 +6,8 @@
     "menu": {
       "mail": "E-Mail",
       "contacts": "Kontakte",
-      "settings": "Einstellungen"
+      "settings": "Einstellungen",
+      "calendar": "Kalender"
     },
     "folders": {
       "show": "Ordner anzeigen",
@@ -1402,5 +1403,22 @@
       "destroy": "Ihnen fehlt die Berechtigung, diese Nachrichten zu löschen.",
       "unknown": "Ihre Berechtigungen werden noch geprüft — es sind noch nicht alle Nachrichten geladen."
     }
+  },
+  "calendar": {
+    "title": "Kalender",
+    "today": "Heute",
+    "previousMonth": "Voriger Monat",
+    "nextMonth": "Nächster Monat",
+    "viewLabel": "Kalenderansicht",
+    "view": {
+      "month": "Monat",
+      "agenda": "Agenda"
+    },
+    "untitled": "(ohne Titel)",
+    "allDay": "Ganztägig",
+    "more": "+{{count}} weitere",
+    "noEvents": "Nichts in Sicht.",
+    "loadFailed": "Der Kalender konnte nicht geladen werden.",
+    "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen."
   }
 }

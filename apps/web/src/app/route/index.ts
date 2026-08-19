@@ -6,7 +6,9 @@ export { Link, type LinkProps } from './Link'
 export { RouterProvider, type RouterProviderProps } from './RouterProvider'
 export {
   ACCOUNT_PARAM,
+  CALENDAR_PATH,
   CONTACTS_PATH,
+  calendarPath,
   contactsPath,
   deriveBase,
   HOME_PATH,

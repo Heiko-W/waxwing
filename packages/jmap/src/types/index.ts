@@ -7,6 +7,8 @@
  *
  *   export * from './blob'        // RFC 9404  — Blob/upload, Blob/get, Blob/lookup
  */
+// `draft-ietf-jmap-calendars` + JSCalendar (RFC 8984) — Calendar, CalendarEvent (M5.6).
+export * from './calendar'
 // RFC 9610 — AddressBook, ContactCard (M4.2). Types only; ContactCard extends the JSContact
 // `Card` from `@waxwing/jscontact` via an erased `import type`, so no runtime edge is added.
 export * from './contacts'
