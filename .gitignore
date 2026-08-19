@@ -47,6 +47,10 @@ yarn-error.log*
 .env.*
 !.env.example
 
+# Claude Code's per-session git worktrees. Checkouts of this repo, not part of it — and a nested
+# checkout carries a second biome.json, which makes `biome check .` refuse to run at all.
+.claude/worktrees/
+
 # Editor / OS
 .DS_Store
 Thumbs.db
