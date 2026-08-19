@@ -10,6 +10,7 @@ import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
 import { ActiveAccountScope } from '../../mail/ActiveAccountScope'
+import { useSnoozeWaker } from '../../mail/use-snooze'
 import { useAppBadge, useNotificationClickNavigation } from '../../notify'
 import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { ChunkErrorBoundary } from '../../pwa/ChunkErrorBoundary'
@@ -63,6 +64,8 @@ export function AppShell({ config }: AppShellProps) {
   useAppBadge()
   // The OS handed us a `mailto:` link — open a composer for it (FR-CMP-13).
   useMailtoHandler()
+  // Bring snoozed messages back once their time has come (FR-ORG-03).
+  useSnoozeWaker()
   // Name the screen in the tab, the history menu and the OS task switcher.
   useDocumentTitle(config.branding.productName)
 

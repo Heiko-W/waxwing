@@ -945,7 +945,13 @@
       "open": "Abmeldeseite",
       "email": "Per E-Mail abbestellen"
     },
-    "forwardAsAttachment": "Als Anhang weiterleiten"
+    "forwardAsAttachment": "Als Anhang weiterleiten",
+    "snooze": {
+      "laterToday": "Später heute erinnern",
+      "tomorrow": "Morgen erinnern",
+      "thisWeekend": "Am Wochenende erinnern",
+      "nextWeek": "Nächste Woche erinnern"
+    }
   },
   "compose": {
     "toolbar": "Formatierung",

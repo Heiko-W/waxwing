@@ -7,6 +7,7 @@
  */
 
 import type { EmailComparator, EmailFilter, Id } from '@waxwing/jmap'
+import { SNOOZE_KEYWORD } from '../../mail/snooze'
 import type { EmailEnvelopeInput, QueryCacheRow, ReplicaDb } from '../db'
 import { canonicalQueryKey, type QuerySpec } from '../query-key'
 import {
@@ -34,7 +35,17 @@ export function windowFilter(mailboxId: Id, cacheDays: number, now: number): Ema
   const boundaryMs = now - cacheDays * DAY_MS
   const midnightMs = boundaryMs - (boundaryMs % DAY_MS)
   const after = new Date(midnightMs).toISOString()
-  return { operator: 'AND', conditions: [{ inMailbox: mailboxId }, { after }] }
+  return {
+    operator: 'AND',
+    conditions: [
+      { inMailbox: mailboxId },
+      { after },
+      // Snoozed messages are hidden until their time comes (M5.8, FR-ORG-03). Excluding them in
+      // the QUERY rather than after the fact is what keeps the window counts and the paging
+      // honest — a client-side filter would leave gaps in a page the server considers full.
+      { notKeyword: SNOOZE_KEYWORD },
+    ],
+  }
 }
 
 /** Sort + threading options that distinguish one watched window from another for the same mailbox. */

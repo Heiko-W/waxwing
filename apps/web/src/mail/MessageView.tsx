@@ -14,6 +14,7 @@
  */
 
 import { renderPlainText, sanitize } from '@waxwing/mail-html'
+import type { TFunction } from 'i18next'
 import {
   AlertTriangle,
   Archive,
@@ -78,12 +79,14 @@ import {
 import { type ReadingHandlers, useReadingStore } from './reading-store'
 import { SenderCard } from './SenderCard'
 import type { SenderIdentity } from './sender-contact'
+import { SNOOZE_PRESETS } from './snooze'
 import { UnsubscribeBanner } from './UnsubscribeBanner'
 import { hasUnsubscribeOffer, readUnsubscribeOffer, sendOneClickUnsubscribe } from './unsubscribe'
 import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useMessageRights } from './use-message-rights'
 import { sourceFilename } from './use-message-source'
+import { useSnooze } from './use-snooze'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
@@ -124,6 +127,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // Moves go through the shared triage seam (M3.8): same dispatch, plus the undo toast — and it is the
   // very seam the `e` / `#` / `!` chords call, so a click and a keystroke cannot drift apart.
   const triage = useTriage()
+  const { snooze } = useSnooze()
   // B34. The subject is this one message, so the verdict is exact rather than the account floor.
   const rightsIds = useMemo(() => [email.id], [email.id])
   const rights = useMessageRights(rightsIds)
@@ -511,6 +515,13 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // downloaded bytes, and a visible loading/error surface beats a save that fails silently.
   const overflowItems = useMemo<MenuItemSpec[]>(
     () => [
+      // Snooze (FR-ORG-03): hide it until the chosen time. In the overflow rather than the action
+      // bar because it is a deliberate act, not a triage reflex.
+      ...SNOOZE_PRESETS.map((preset) => ({
+        id: `snooze-${preset.id}`,
+        label: snoozeLabel(t, preset.id),
+        onSelect: () => snooze([email.id], preset.at(new Date())),
+      })),
       // Forwarding the message whole rather than quoted — the shape a recipient needs when the
       // message ITSELF is the point (a bounce to diagnose, a phishing mail to hand to an admin).
       {
@@ -525,7 +536,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       { id: 'viewSource', label: t('reading.source.view'), onSelect: () => setSourceOpen('view') },
       { id: 'saveEml', label: t('reading.source.save'), onSelect: () => setSourceOpen('save') },
     ],
-    [t, onCompose],
+    [t, onCompose, snooze, email.id],
   )
 
   const onAlwaysAllow =
@@ -1002,4 +1013,21 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
     </article>
   )
+}
+
+/**
+ * Spelled out rather than interpolated: `guards.test.ts` only sees LITERAL keys, so a computed one
+ * passes every gate and then renders the key itself on screen.
+ */
+function snoozeLabel(t: TFunction, id: (typeof SNOOZE_PRESETS)[number]['id']): string {
+  switch (id) {
+    case 'laterToday':
+      return t('reading.snooze.laterToday')
+    case 'tomorrow':
+      return t('reading.snooze.tomorrow')
+    case 'thisWeekend':
+      return t('reading.snooze.thisWeekend')
+    case 'nextWeek':
+      return t('reading.snooze.nextWeek')
+  }
 }

@@ -945,7 +945,13 @@
       "open": "Unsubscribe page",
       "email": "Unsubscribe by email"
     },
-    "forwardAsAttachment": "Forward as attachment"
+    "forwardAsAttachment": "Forward as attachment",
+    "snooze": {
+      "laterToday": "Snooze until later today",
+      "tomorrow": "Snooze until tomorrow",
+      "thisWeekend": "Snooze until the weekend",
+      "nextWeek": "Snooze until next week"
+    }
   },
   "compose": {
     "toolbar": "Formatting",
