@@ -124,6 +124,38 @@ Worth stating, because these are the reasons to *not* switch to Bulwark:
 
 ## 5. What should not be copied
 
+### 5.0 Assessed and declined, with reasons (2026-08-19)
+
+Rank 9 of the closing list was worked through item by item. Two of the four are not
+implementable in this architecture at all, and two are owner decisions rather than engineering
+ones. Recording that here is the point: "everything possible and sensible" needs the *not
+sensible* half written down too.
+
+**Setup wizard — not possible as Bulwark has it.** Theirs writes a config file and an admin
+password to disk, which requires the Node process. A static client cannot write `config.json`; it
+can only read it. What *is* possible and would help a self-hoster is a **config generator**: a
+screen that probes the JMAP endpoint, checks OAuth discovery, and emits a `config.json` for the
+admin to save. That is a genuinely different feature from a wizard and should be scoped as one.
+
+**MDN / read receipts — possible, but against a stated principle.** Stalwart has no JMAP MDN
+(RFC 9007), so the client would have to build the `multipart/report` itself and submit it. The
+mechanism is not the obstacle: NFR-PRIV-01 says the app makes no network request the reader did
+not ask for, and a read receipt is precisely a request the *sender* asked for on the reader's
+behalf. Requesting one on outgoing mail is unobjectionable; *answering* one silently is not. An
+owner decision, not an engineering one.
+
+**TNEF (`winmail.dat`) — possible, poor ratio.** A decoder for a Microsoft legacy container, in
+the initial bundle or a lazy chunk, for a case that is rare and shrinking. Worth doing only if
+someone actually reports it.
+
+**Theme upload — possible, with a security caveat that has to be answered first.** Bulwark accepts
+a ZIP of CSS variables. Arbitrary CSS is not inert: `background-image: url(https://…)` in a
+user-supplied stylesheet is an outbound request, and a selector can be used to leak the presence
+of content. A safe version restricts input to `--waxwing-*` custom properties with validated
+values — which is a parser and a validator, not an unzip.
+
+
+
 - **Plugin system.** It is the reason Bulwark needs a host-side HTTP proxy and a permission model,
   and the reason S/MIME had to become a "privileged tier". For Waxwing it would mean either giving
   up static-only or shipping an in-browser sandbox with the same key-isolation problem.
@@ -146,7 +178,7 @@ stays legible.
 | 4 More languages | open, and see the note below — the *pipeline* is the deliverable, not machine-translated strings |
 | 5 S/MIME / PGP read + verify | open |
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
-| 7 Templates, scheduled send, saved searches, snooze | **three done** — M5.4/M5.5; snooze remains |
+| 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
 | 9 Setup wizard, theme upload, MDN, TNEF | open |
 
