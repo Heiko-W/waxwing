@@ -70,6 +70,9 @@ export default [
       // The attachment archiver (mail/, M5.3): `client-zip` plus the naming rules, fetched only when
       // a reader asks to save a message's attachments as one file.
       '!apps/web/dist/assets/attachment-zip-*.js',
+      // The TNEF decoder (mail/, M5.21): fetched only when a reader opens a `winmail.dat`, which
+      // most mailboxes never see.
+      '!apps/web/dist/assets/tnef-*.js',
       // The calendar screen (calendar/, M5.6) — a route chunk, like contacts and settings.
       '!apps/web/dist/assets/CalendarPage-*.js',
       // The files screen (files/, M5.7) — likewise.

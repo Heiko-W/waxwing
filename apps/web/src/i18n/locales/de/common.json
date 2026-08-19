@@ -907,7 +907,12 @@
       "hidePreview": "Vorschau ausblenden",
       "download": "{{name}} herunterladen",
       "previewNamed": "Vorschau: {{name}}",
-      "hidePreviewNamed": "Vorschau ausblenden: {{name}}"
+      "hidePreviewNamed": "Vorschau ausblenden: {{name}}",
+      "unpack": "Inhalt von {{name}} anzeigen",
+      "unpackShort": "Inhalt anzeigen",
+      "unpackedHeading": "In {{name}} enthalten",
+      "unpackEmpty": "Aus dieser Datei ließ sich nichts lesen.",
+      "unpackNote": "Outlook hat diese Dateien in eine einzige gepackt. Sie werden so gezeigt, wie Ihr Gegenüber sie geschickt hat — geprüft wurde nichts."
     },
     "editDraft": "Entwurf bearbeiten",
     "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben.",

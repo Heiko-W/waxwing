@@ -198,9 +198,19 @@ not ask for, and a read receipt is precisely a request the *sender* asked for on
 behalf. Requesting one on outgoing mail is unobjectionable; *answering* one silently is not. An
 owner decision, not an engineering one.
 
-**TNEF (`winmail.dat`) — possible, poor ratio.** A decoder for a Microsoft legacy container, in
-the initial bundle or a lazy chunk, for a case that is rare and shrinking. Worth doing only if
-someone actually reports it.
+**TNEF (`winmail.dat`) — done (M5.21).** This was written off as a poor ratio, which was an
+estimate about cost, not a measurement. Measured: the attachment-extraction subset of MS-OXTNEF is
+one file with no dependency, and it lives in a lazy chunk that only a reader who actually opens a
+`winmail.dat` ever fetches. The reader gets the invoice instead of a file they cannot open.
+
+The ratio argument had also mis-stated the cost. Splitting it out required moving the *recognition*
+predicate into its own module: a file that is both statically and dynamically imported cannot be
+code-split at all, and with the two together the decoder sat in the eager bundle with no lazy chunk
+emitted. That is a one-line-looking mistake worth ~0.5 KB gz on first paint, and it is invisible
+without checking what the bundler actually emitted.
+
+What is NOT decoded is the RTF body and the MAPI property tables — a large surface for no
+reader-visible gain, since the message's own `text/plain` alternative already carries the text.
 
 **Theme upload — possible, with a security caveat that has to be answered first.** Bulwark accepts
 a ZIP of CSS variables. Arbitrary CSS is not inert: `background-image: url(https://…)` in a
@@ -234,7 +244,7 @@ outcome against each entry, so what is left stays legible.
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download, an inline preview (M5.17) on the reader's own policy, and RFC 9670 sharing (M5.18): a principal picker, three named roles, and grants written one at a time. Measured against the live server, which is how the `Principal/query` `name` filter was found to return nobody |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
-| 9 Setup wizard, theme upload, MDN, TNEF | **partly done, rest assessed (§5.0)** — the setup wizard's achievable half ships as a config generator (M5.20). Theme upload is not implementable as Bulwark has it; MDN and TNEF are owner decisions |
+| 9 Setup wizard, theme upload, MDN, TNEF | **three of four settled** — the setup wizard's achievable half ships as a config generator (M5.20), and TNEF unpacking ships (M5.21). Theme upload is not implementable as Bulwark has it. MDN is the one genuine owner decision: it contradicts NFR-PRIV-01 as Bulwark implements it, and §5.0 says which half would be unobjectionable |
 
 **On row 4.** The framework, the 882 keys and the switcher are all in place, so "add 23 languages"
 is a matter of producing 23 × 882 strings. Machine-translating them would produce text nobody has

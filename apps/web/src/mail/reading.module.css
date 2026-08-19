@@ -816,3 +816,42 @@
   color: var(--waxwing-danger);
   font-size: var(--waxwing-text-sm);
 }
+
+/* ---- unpacked winmail.dat (M5.21) ---- */
+
+.unpacked {
+  margin-block-start: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2);
+  border-inline-start: 3px solid var(--waxwing-border);
+  background: var(--waxwing-surface-2);
+  border-radius: var(--waxwing-radius-sm);
+}
+
+.unpackedNote {
+  margin: 0 0 var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.unpackedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unpackedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.unpackedName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

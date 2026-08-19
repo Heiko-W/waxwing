@@ -907,7 +907,12 @@
       "hidePreview": "Hide preview",
       "download": "Download {{name}}",
       "previewNamed": "Preview: {{name}}",
-      "hidePreviewNamed": "Hide preview: {{name}}"
+      "hidePreviewNamed": "Hide preview: {{name}}",
+      "unpack": "Show what is inside {{name}}",
+      "unpackShort": "Show contents",
+      "unpackedHeading": "Inside {{name}}",
+      "unpackEmpty": "Nothing could be read out of this file.",
+      "unpackNote": "Outlook packed these into one file. They are shown as your correspondent sent them; nothing here has been checked."
     },
     "editDraft": "Edit draft",
     "draftLead": "This is a draft you haven't sent yet.",

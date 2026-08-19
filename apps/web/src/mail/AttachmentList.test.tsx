@@ -186,3 +186,30 @@ describe('AttachmentList — a signed message (M5.19)', () => {
     expect(screen.getByText('encrypted.asc')).toBeInTheDocument()
   })
 })
+
+describe('AttachmentList — winmail.dat (M5.21)', () => {
+  it('offers to unpack a TNEF container, and still offers to download it', async () => {
+    // The container stays downloadable: a reader who cannot open it here may still need to forward
+    // it to someone whose client copes.
+    render(
+      <AttachmentList
+        accountId="a"
+        attachments={[part({ blobId: 'b1', name: 'winmail.dat', type: 'application/ms-tnef' })]}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: /Show what is inside winmail\.dat/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Download/ })).toBeInTheDocument()
+  })
+
+  it('offers nothing of the sort for an ordinary attachment', () => {
+    render(
+      <AttachmentList
+        accountId="a"
+        attachments={[part({ blobId: 'b1', name: 'report.pdf', type: 'application/pdf' })]}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Show what is inside/i })).not.toBeInTheDocument()
+  })
+})
