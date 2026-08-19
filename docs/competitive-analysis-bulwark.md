@@ -197,7 +197,7 @@ outcome against each entry, so what is left stays legible.
 | 3 Multi-account | **done, by switching** (M5.10/M5.14/M5.16) — registry, derived scopes, per-account forget, add-account and a switcher. NOT concurrent sessions: one account is active at a time, so a unified inbox across accounts remains out of reach without reworking the session provider |
 | 4 More languages | **pipeline done** (M5.9) — Weblate config, `docs/translating.md`, RTL scripts pre-listed. The strings themselves need speakers, not a machine |
 | 5 S/MIME / PGP read + verify | **detection done** (M5.15) — signed and encrypted mail is recognised and explained, with no cryptography performed. Verification and decryption need a key store and are the remaining half; see §5.1 |
-| 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
+| 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download, and an inline preview (M5.17) on the reader's own policy: images in an `<img>`, PDF and plain text in `<iframe sandbox="">`, everything else refused. RFC 9670 sharing remains — it needs a principal picker, which is a screen of its own |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
 | 9 Setup wizard, theme upload, MDN, TNEF | **assessed, §5.0** — two not implementable as Bulwark has them, two owner decisions |

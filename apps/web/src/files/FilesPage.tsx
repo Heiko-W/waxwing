@@ -1,9 +1,14 @@
 /**
  * The files screen (M5.7, FR-FILE-01) — a lazy route chunk.
  *
- * A single-pane browser: breadcrumbs, a list, upload, new folder, rename, delete, download. Not a
- * two-pane manager with drag-and-drop and previews — those are the parts that need a second
- * milestone, and a file list that reliably does six things beats one that half-does twelve.
+ * A single-pane browser: breadcrumbs, a list, upload, new folder, rename, delete, download and an
+ * inline preview (M5.17). Not a two-pane manager with drag-and-drop — that is the part that needs a
+ * second milestone, and a file list that reliably does seven things beats one that half-does twelve.
+ *
+ * The preview surface is the reader's, deliberately: `preview-policy.ts` decides what may be shown
+ * and where, so a file and an attachment of the same type are treated identically. Uploaded bytes
+ * are no more trustworthy than emailed ones, and a second, more relaxed answer here would be a way
+ * in that the stricter answer over there would not notice.
  *
  * Names are checked against the server's own rules BEFORE the round trip: a name containing `:`,
  * or called `AUX`, is refused for Windows-compatibility reasons that have nothing to do with what
@@ -12,11 +17,13 @@
 
 import type { FileNode } from '@waxwing/jmap'
 import { fileNodeNameProblem } from '@waxwing/jmap'
-import { Download, File as FileIcon, Folder, Trash2, Upload } from 'lucide-react'
+import { Download, Eye, File as FileIcon, Folder, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import { formatBytes } from '../i18n/formatters'
+import { isPreviewable, previewSurface } from '../mail/preview-policy'
+import { safeDownloadName } from '../mail/safe-filename'
 import { Button, IconButton, Spinner, TextInput, useToast } from '../ui'
 import styles from './files.module.css'
 import { FileSetError, type FilesClient, fileCapability, makeFilesClient } from './files-client'
@@ -25,6 +32,12 @@ export interface FilesPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
   readonly client?: FilesClient
 }
+
+/**
+ * The `download` value for a node whose name strips to nothing. Not localized: it becomes a file on
+ * disk, and a filename that changes with the UI language is one the reader cannot find again.
+ */
+const DOWNLOAD_FALLBACK = 'file'
 
 /** One step of the path the user has walked into. */
 interface Crumb {
@@ -43,6 +56,11 @@ export default function FilesPage(props: FilesPageProps) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const [newFolder, setNewFolder] = useState('')
+  // The open preview, or null. Holds the object URL so the render stays synchronous.
+  const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
+  // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
+  // preview neither downloads the file again nor leaks the superseded URL.
+  const urlCacheRef = useRef(new Map<string, string>())
 
   const injected = props.client
   const sessionClient = connected?.client ?? null
@@ -72,6 +90,16 @@ export default function FilesPage(props: FilesPageProps) {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Above the signed-out early return, because hooks must not be conditional. Revoking on unmount
+  // is the only place it can happen: an object URL outlives the render that made it.
+  useEffect(() => {
+    const cache = urlCacheRef.current
+    return () => {
+      for (const url of cache.values()) URL.revokeObjectURL(url)
+      cache.clear()
+    }
+  }, [])
 
   if (client === null) {
     return (
@@ -105,15 +133,35 @@ export default function FilesPage(props: FilesPageProps) {
     return false
   }
 
-  const download = async (node: FileNode): Promise<void> => {
+  const objectUrl = async (node: FileNode): Promise<string | null> => {
+    const cached = urlCacheRef.current.get(node.id)
+    if (cached !== undefined) return cached
     const blob = await client.download(node)
-    if (blob === null) return
+    if (blob === null) return null
     const url = URL.createObjectURL(blob)
+    urlCacheRef.current.set(node.id, url)
+    return url
+  }
+
+  const download = async (node: FileNode): Promise<void> => {
+    const url = await objectUrl(node)
+    if (url === null) return
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = node.name
+    // Never `node.name` raw. This app validates a name before it creates one, but the name on a
+    // node came from whatever wrote it — another client, or a server that does not agree with
+    // `fileNodeNameProblem` — and this value becomes a path on the reader's disk.
+    anchor.download = safeDownloadName(node.name, DOWNLOAD_FALLBACK)
     anchor.click()
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+
+  const togglePreview = async (node: FileNode): Promise<void> => {
+    if (preview?.id === node.id) {
+      setPreview(null)
+      return
+    }
+    const url = await objectUrl(node)
+    if (url !== null) setPreview({ id: node.id, type: node.type ?? '', url })
   }
 
   return (
@@ -215,6 +263,23 @@ export default function FilesPage(props: FilesPageProps) {
                 {node.nodeType === 'directory' ? '' : formatBytes(node.size)}
               </span>
               <span className={styles.rowActions}>
+                {node.nodeType !== 'directory' &&
+                  node.myRights.mayRead &&
+                  isPreviewable(node.type) && (
+                    <IconButton
+                      label={
+                        preview?.id === node.id
+                          ? t('files.hidePreview', { name: node.name })
+                          : t('files.preview', { name: node.name })
+                      }
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={preview?.id === node.id}
+                      onClick={() => void togglePreview(node)}
+                    >
+                      <Eye />
+                    </IconButton>
+                  )}
                 {node.nodeType !== 'directory' && node.myRights.mayRead && (
                   <IconButton
                     label={t('files.download', { name: node.name })}
@@ -237,6 +302,24 @@ export default function FilesPage(props: FilesPageProps) {
                   </IconButton>
                 )}
               </span>
+              {preview?.id === node.id && (
+                <div className={styles.preview}>
+                  {previewSurface(preview.type) === 'image' ? (
+                    // A blob: URL for the file just downloaded — no second network fetch, and no
+                    // `<img src={downloadUrl}>`, which would send the bytes without our credentials.
+                    <img src={preview.url} alt={node.name} className={styles.previewImage} />
+                  ) : (
+                    // `sandbox=""` denies everything, same-origin included: a blob: URL carries this
+                    // app's origin, and taking it away is the whole reason the frame is safe.
+                    <iframe
+                      src={preview.url}
+                      title={node.name}
+                      sandbox=""
+                      className={styles.previewFrame}
+                    />
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

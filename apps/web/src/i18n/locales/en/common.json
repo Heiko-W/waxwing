@@ -1477,6 +1477,8 @@
       "tooLong": "That name is too long.",
       "forbiddenCharacter": "That name contains a character the server does not allow.",
       "reservedName": "That name is reserved and cannot be used."
-    }
+    },
+    "preview": "Preview {{name}}",
+    "hidePreview": "Hide the preview of {{name}}"
   }
 }

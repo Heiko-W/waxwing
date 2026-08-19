@@ -58,6 +58,9 @@
 
 .row {
   display: flex;
+  /* So an open preview drops below the name and actions instead of squeezing in beside them. The
+     row itself never wraps without one: `.name` shrinks (min-inline-size: 0) and ellipsizes. */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--waxwing-space-3);
   padding: var(--waxwing-space-2);
@@ -117,4 +120,32 @@
   padding: var(--waxwing-space-6);
   color: var(--waxwing-text-muted);
   text-align: center;
+}
+
+/* ---- inline preview (M5.17) ---- */
+
+.preview {
+  /* The row is a flex line; a full-basis child is what puts the preview on its own line below. */
+  flex-basis: 100%;
+  padding: var(--waxwing-space-2);
+  background: var(--waxwing-surface-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+.previewImage {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+/* waxwing-literal-exempt: a previewed file is foreign content, same as an attachment preview —
+   pinned light so a document that brings dark text and no background of its own stays readable. */
+.previewFrame {
+  display: block;
+  width: 100%;
+  height: 24rem;
+  border: 0;
+  background: #ffffff;
 }
