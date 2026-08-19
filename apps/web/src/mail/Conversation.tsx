@@ -72,9 +72,13 @@ export function Conversation({ emailId, mailboxId }: ConversationProps) {
       )
     }
     return (
+      // Sized like the message it becomes: a subject line, a sender line, and a body block at the
+      // frame's own 8rem minimum. A shorter placeholder is not "lighter", it is one more height for
+      // the pane to pass through on the way to the real one.
       <div className={styles.conversation} aria-busy="true">
-        <Skeleton width="60%" height={20} />
-        <Skeleton width="100%" height={120} />
+        <Skeleton width="60%" height={28} />
+        <Skeleton width="35%" height={16} />
+        <Skeleton width="100%" height={128} />
       </div>
     )
   }

@@ -28,7 +28,7 @@ import {
   useMailboxes,
   useReplica,
 } from '../sync'
-import { Button, Checkbox, Dialog, IconButton, Select, Spinner } from '../ui'
+import { Button, Checkbox, Dialog, IconButton, Select, VisuallyHidden } from '../ui'
 import { clearActiveDrag, draggedMessageIds, MESSAGES_MIME, setActiveDrag } from './dnd'
 import { LabelMenu } from './labels/LabelMenu'
 import { LabelMenuButton } from './labels/LabelMenuButton'
@@ -49,6 +49,13 @@ import { useTriage } from './use-triage'
 
 const OVERSCAN = 8
 const ROW_HEIGHT: Record<Density, number> = { comfortable: 76, compact: 54 }
+
+/** Enough placeholder rows to fill a tall window; the container clips whatever does not fit. Stable
+    keys, because these are positions in a fixed grid rather than items with an identity. */
+const SKELETON_KEYS = Array.from({ length: 12 }, (_, index) => `skeleton-${index}`)
+
+/** The skeleton rows are inert: they exist to hold the grid's shape, not to be operated. */
+function noop(): void {}
 
 /**
  * Vite types a CSS module as an index signature, so every class reads `string | undefined` under
@@ -560,35 +567,48 @@ export function MessageList({
   const retracted = ids.length === 0 && total !== undefined && total > 0
   const resolving = loading || retracted
 
+  const barOpen = selection.selected.size > 0 || viewOptionsOpen
+
   return (
     <div className={styles.container} ref={containerRef}>
-      {selection.selected.size > 0 ? (
-        <BulkBar
-          count={selection.selected.size}
-          ids={selectedIds}
-          activeLabel={activeLabel}
-          fromMailbox={sourceMailboxId ?? undefined}
-          allSelected={allSelected}
-          someSelected={someSelected}
-          actions={actions}
-          onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
-          onClear={() => dispatchSelection({ type: 'clear' })}
-          onRequestDelete={() => setConfirmDelete(true)}
-          onRequestMove={() => requestMove(selectedIds)}
-        />
-      ) : viewOptionsOpen ? (
-        <Toolbar
-          id={viewOptionsId}
-          sort={sort}
-          unreadFirst={unreadFirst}
-          flat={flat}
-          // Sort / threading / unread-first are folder-window options; the search seam cannot honour
-          // them (see {@link ToolbarProps.viewOptionsApply}). Keyed off `search`, not off
-          // `mailboxId`: a scope=folder search has a mailbox AND goes through the search seam.
-          viewOptionsApply={search === undefined}
-          onChange={setPrefValue}
-        />
-      ) : null}
+      {/*
+        The bar OPENS rather than appearing. Selecting the first row mounted a 44px bar above the
+        list and pushed every row down by it — including the one the pointer had just landed on,
+        which is the row the reader is looking at. A grid whose single track goes 0fr → 1fr is a
+        pure-CSS disclosure: no JS, no measurement, and the reduced-motion reset collapses it like
+        everything else.
+      */}
+      <div className={`${styles.barSlot}${barOpen ? ` ${styles.barSlotOpen}` : ''}`}>
+        <div className={styles.barSlotInner}>
+          {selection.selected.size > 0 ? (
+            <BulkBar
+              count={selection.selected.size}
+              ids={selectedIds}
+              activeLabel={activeLabel}
+              fromMailbox={sourceMailboxId ?? undefined}
+              allSelected={allSelected}
+              someSelected={someSelected}
+              actions={actions}
+              onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
+              onClear={() => dispatchSelection({ type: 'clear' })}
+              onRequestDelete={() => setConfirmDelete(true)}
+              onRequestMove={() => requestMove(selectedIds)}
+            />
+          ) : viewOptionsOpen ? (
+            <Toolbar
+              id={viewOptionsId}
+              sort={sort}
+              unreadFirst={unreadFirst}
+              flat={flat}
+              // Sort / threading / unread-first are folder-window options; the search seam cannot
+              // honour them (see {@link ToolbarProps.viewOptionsApply}). Keyed off `search`, not off
+              // `mailboxId`: a scope=folder search has a mailbox AND goes through the search seam.
+              viewOptionsApply={search === undefined}
+              onChange={setPrefValue}
+            />
+          ) : null}
+        </div>
+      </div>
 
       {/*
         One node, two presentations. The hit count used to be announced and never SHOWN, so a
@@ -632,9 +652,45 @@ export function MessageList({
           onKeyDown={onKeyDown}
         >
           {loading && ids.length === 0 && (
-            <div role="presentation" className={styles.loading}>
-              <Spinner label={t('list.loading')} />
-            </div>
+            <>
+              {/*
+                Skeleton ROWS, not a spinner in an empty pane.
+                Changing folder used to blank the list and centre a spinner in the void, so the eye
+                lost the structure it had just been reading and had to find it again when the mail
+                arrived. Apple Mail and Bulwark both hold the row grid. These are the same skeletons
+                a not-yet-loaded row already renders, at the same `ROW_HEIGHT` the virtualizer uses,
+                so the layout does not move by a pixel when the real rows replace them.
+                Hidden from assistive tech, which is told what is happening in one sentence instead.
+              */}
+              <div role="presentation" aria-hidden="true" className={styles.skeletonList}>
+                {SKELETON_KEYS.map((key, index) => (
+                  <div
+                    key={key}
+                    role="presentation"
+                    className={styles.rowWrap}
+                    style={{ height: ROW_HEIGHT[density] }}
+                  >
+                    <MessageRow
+                      id={`skeleton-${index}`}
+                      rowIndex={index + 1}
+                      email={undefined}
+                      selected={false}
+                      active={false}
+                      focused={false}
+                      density={density}
+                      labels={labelLookup}
+                      onOpen={noop}
+                      onSelectToggle={noop}
+                      onSelectRange={noop}
+                      onActivate={noop}
+                    />
+                  </div>
+                ))}
+              </div>
+              <VisuallyHidden>
+                <span role="status">{t('list.loading')}</span>
+              </VisuallyHidden>
+            </>
           )}
           <div
             role="presentation"

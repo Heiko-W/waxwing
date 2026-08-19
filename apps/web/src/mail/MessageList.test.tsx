@@ -420,6 +420,29 @@ describe('MessageList', () => {
   // none should claim to: the recoverability argument belongs to `outbox.ts`'s and `delta.ts`'s
   // tests, and lives here only as the reason the WORDING defers to the next sync rather than
   // promising a refresh in progress.
+  /**
+   * The loading state holds the SHAPE of the list.
+   *
+   * It used to blank the grid and centre a spinner in the empty space, so changing folder threw away
+   * the structure the reader had just been looking at and made them find it again a moment later.
+   * The placeholder rows are the same skeletons a not-yet-hydrated row already renders, at the
+   * virtualizer's own row height, so nothing shifts when the real rows arrive — and they are hidden
+   * from assistive technology, which gets the one sentence instead.
+   */
+  it('renders placeholder rows while the window is loading, not an empty pane', async () => {
+    // Archive, because the shared setup seeds a window for the Inbox only — so this is the state a
+    // reader gets every time they change folder, which is the moment the old spinner appeared.
+    renderList('archive')
+
+    // The announcement survives the change; it is what a screen reader is told.
+    expect(await screen.findByText('Loading messages')).toBeInTheDocument()
+
+    const skeletons = screen.getAllByRole('row', { hidden: true })
+    expect(skeletons.length).toBeGreaterThanOrEqual(8)
+    // Hidden, so the grid does not claim a dozen rows that hold nothing.
+    expect(screen.queryAllByRole('row')).toHaveLength(0)
+  })
+
   describe('the empty state', () => {
     async function seedWindow(windowIds: string[], total: number) {
       await putQueryCache(db, {

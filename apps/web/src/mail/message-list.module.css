@@ -32,6 +32,23 @@
  * intact and the origin fixed; on a 390 px phone the tail is a swipe away, which is the same
  * gesture the rows underneath already answer to.
  */
+/* The disclosure track for the bulk bar / view options — see MessageList.tsx. `0fr → 1fr` is the
+   one way to transition a box to its own content height without measuring it in JS. */
+.barSlot {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--waxwing-duration-base) var(--waxwing-ease-standard);
+}
+
+.barSlotOpen {
+  grid-template-rows: 1fr;
+}
+
+.barSlotInner {
+  overflow: hidden;
+  min-block-size: 0;
+}
+
 .bulkBar {
   display: flex;
   align-items: center;
@@ -208,6 +225,14 @@
   display: flex;
   justify-content: center;
   padding: var(--waxwing-space-4);
+}
+
+/* The placeholder grid. Clips rather than scrolls: it is a picture of a list, and a scrollbar on it
+   would be a scrollbar on nothing. */
+.skeletonList {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .empty {

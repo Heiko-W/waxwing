@@ -383,10 +383,19 @@
   color-scheme: light;
 }
 
+/*
+ * The same height the frame will take (`.frame`'s 8rem minimum), so the body does not jump when it
+ * arrives. Opening a message used to step through THREE different heights: the conversation
+ * skeleton (140px), then this box with a centred spinner (whatever 32px of padding made it), then
+ * the frame at its 8rem minimum before the ResizeObserver grew it to the content. Two of those
+ * three steps were pure layout shift, which reads as slowness even when the data is already there.
+ */
 .bodyLoading {
   display: flex;
-  justify-content: center;
-  padding: var(--waxwing-space-6);
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  min-block-size: 8rem;
+  padding-block: var(--waxwing-space-2);
 }
 
 /* ---- remote content banner ---- */

@@ -55,8 +55,9 @@ import {
   IconButton,
   Menu,
   type MenuItemSpec,
-  Spinner,
+  Skeleton,
   useToolbarRoving,
+  VisuallyHidden,
 } from '../ui'
 import { AttachmentList } from './AttachmentList'
 import { topmostAuthResults } from './auth-results'
@@ -958,8 +959,17 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
 
       <div className={styles.bodyWrap}>
         {loading || bodyHtml === null ? (
-          <div className={styles.bodyLoading}>
-            <Spinner label={t('ui.spinner.label')} />
+          // Text-shaped placeholders rather than a spinner in a box: what is arriving is prose,
+          // and a spinner says only "wait" while these say what for. The block is the frame's own
+          // minimum height, so the pane holds still when the body lands.
+          <div className={styles.bodyLoading} aria-busy="true">
+            <VisuallyHidden>
+              <span role="status">{t('ui.spinner.label')}</span>
+            </VisuallyHidden>
+            <Skeleton width="92%" height={14} />
+            <Skeleton width="98%" height={14} />
+            <Skeleton width="84%" height={14} />
+            <Skeleton width="60%" height={14} />
           </div>
         ) : (
           <MailBodyFrame
