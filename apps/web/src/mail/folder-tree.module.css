@@ -76,6 +76,12 @@
   }
 }
 
+/* A POINTER-DOWN state rather than a hover affordance; on touch it lasts exactly as long as the
+   finger does, so it belongs outside `@media (hover: hover)`. */
+.item:active {
+  background-color: var(--waxwing-surface-2);
+}
+
 .item[aria-selected="true"],
 .item[aria-selected="true"]:hover {
   background-color: var(--waxwing-surface-selected);
@@ -97,6 +103,8 @@
   box-shadow: inset 0 0 0 2px var(--waxwing-accent);
 }
 
+/* Rotated, not exchanged. Swapping ChevronRight for ChevronDown says "something changed"; turning
+   the same glyph says WHAT changed, and it costs one transform. */
 .chevron {
   display: inline-flex;
   align-items: center;
@@ -105,6 +113,11 @@
   block-size: var(--waxwing-icon-sm);
   flex: 0 0 auto;
   color: var(--waxwing-text-muted);
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.item[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
 }
 
 .chevron svg {

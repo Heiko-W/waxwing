@@ -319,6 +319,15 @@
     transition: transform var(--waxwing-duration-base) var(--waxwing-ease-standard);
   }
 
+  /*
+   * The scrim fades with the panel instead of being mounted and unmounted around it. Conditionally
+   * rendered, it appeared and vanished in one frame while the drawer beside it took 200ms to slide
+   * — and the eye follows the hard cut, not the slide, so the whole gesture read as a snap.
+   *
+   * Same `visibility` trick as `.folderRegion` above, and for the same two reasons: it delays until
+   * the fade finishes, and `visibility: hidden` takes the button out of the accessibility tree and
+   * out of reach of the pointer, which is what the unmount used to do.
+   */
   .backdrop {
     position: absolute;
     inset: 0;
@@ -326,6 +335,28 @@
     border: 0;
     padding: 0;
     background-color: var(--waxwing-overlay);
+    opacity: 0;
+    visibility: hidden;
+    /*
+     * `pointer-events: none` as well as `visibility: hidden`, and the belt is not redundant with the
+     * braces — this was measured, not assumed. Mounted permanently with `visibility: hidden` alone,
+     * this scrim swallowed the first touch of every swipe on the message list: `--swipe-x` was never
+     * written, the row never moved, and three gesture specs went red while the drawer's own tests
+     * stayed green. Whatever the hit-testing subtlety is (the scrim sits at z-index 14 over the
+     * whole screen, and it is the transition on `visibility` that makes the state a moving target),
+     * a scrim that is not open must not be reachable by any means.
+     */
+    pointer-events: none;
+    transition:
+      opacity var(--waxwing-duration-base) var(--waxwing-ease-standard),
+      visibility 0s linear var(--waxwing-duration-base);
+  }
+
+  .backdropOpen {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity var(--waxwing-duration-base) var(--waxwing-ease-standard);
   }
 }
 

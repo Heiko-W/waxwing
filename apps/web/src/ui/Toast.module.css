@@ -21,7 +21,18 @@
   display: none;
 }
 
+/* Enter only — see Dialog.module.css. A toast rises into place rather than materialising on top of
+   the content it is reporting about; `translateY` needs no `--waxwing-flip`, since vertical motion
+   is the same in every writing direction. */
+@keyframes waxwing-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 .toast {
+  animation: waxwing-toast-in var(--waxwing-duration-base) var(--waxwing-ease-standard);
   display: flex;
   align-items: flex-start;
   gap: var(--waxwing-space-2);

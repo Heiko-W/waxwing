@@ -391,13 +391,14 @@ export function MailScreen() {
         </div>
         <QuotaBar />
       </nav>
-      {drawerCapable && foldersOpen && (
-        // A backdrop that closes the drawer on outside press. tabIndex=-1 keeps it out of the
-        // tab order (Escape already covers keyboard close) so focus can't strand on it when it
-        // unmounts.
+      {drawerCapable && (
+        // A backdrop that closes the drawer on outside press. Mounted for as long as the drawer
+        // COULD open, so it can fade with it — `.backdrop` keeps it hidden and untouchable until
+        // `.backdropOpen` is added, the same visibility handshake the panel itself uses. tabIndex=-1
+        // keeps it out of the tab order either way (Escape already covers keyboard close).
         <button
           type="button"
-          className={styles.backdrop}
+          className={`${styles.backdrop}${foldersOpen ? ` ${styles.backdropOpen}` : ''}`}
           aria-label={t('shell.folders.hide')}
           tabIndex={-1}
           onClick={closeFolders}

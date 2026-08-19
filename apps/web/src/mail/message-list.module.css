@@ -76,9 +76,12 @@
 }
 
 /* Virtual scroll container. */
+/* Momentum stops at the list rather than chaining into the pane and the shell behind it — three
+   nested `overflow: auto` boxes are what make a web app feel rubbery on a trackpad. */
 .scroll {
   position: relative;
   overflow: auto;
+  overscroll-behavior: contain;
   flex: 1 1 auto;
   min-block-size: 0;
 }
@@ -238,7 +241,18 @@
      Fixing that means deciding whether the reveal follows the finger or the writing direction, and
      it cannot be verified without an RTL locale — filed as B41 rather than guessed at here. */
   transform: translateX(var(--swipe-x, 0px));
-  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+  transition:
+    transform var(--waxwing-duration-fast) var(--waxwing-ease-standard),
+    /* Hovering a virtualised list without this switches a chain of rectangles on and off as the
+       pointer sweeps; a 120ms fade turns that into one moving highlight. */
+    background-color
+    var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+/* A POINTER-DOWN state, not a hover affordance: on touch it lasts exactly as long as the finger
+   does, which is the point of it, so it deliberately sits outside `@media (hover: hover)`. */
+.row:active {
+  background-color: var(--waxwing-surface-2);
 }
 
 /*
@@ -249,6 +263,9 @@
  */
 .row::after {
   content: "";
+  /* Decorative, and it sits on top of the row: without this it swallows the pointer, and the swipe
+     gesture bound to the row wrapper never starts. */
+  pointer-events: none;
   position: absolute;
   inset-block-end: 0;
   inset-inline: 5.5rem 0;

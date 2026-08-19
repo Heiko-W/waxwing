@@ -98,8 +98,8 @@ accent.
 | Token | Use |
 | --- | --- |
 | `--waxwing-overlay` | Modal scrim (Dialog backdrop) |
-| `--waxwing-shadow-1` | Resting lift (switch thumb, small raises) |
-| `--waxwing-shadow-2` | Overlays: Menu, Tooltip, Toast, Dialog |
+| `--waxwing-shadow-1` | Resting lift (switch thumb, small raises). In dark it leads with a 1px light edge — a black shadow on a near-black page raises nothing visible |
+| `--waxwing-shadow-2` | Overlays: Menu, Tooltip, Toast, Dialog. Same light edge in dark |
 
 ### 2.3 Spacing — 8-pt grid
 

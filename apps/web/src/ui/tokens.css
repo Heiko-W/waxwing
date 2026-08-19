@@ -167,6 +167,9 @@
      INTO the content (FR-I18N-02). Logical properties cover everything else; this covers transforms. */
     --waxwing-flip: 1;
 
+    /* A press has to answer within a frame or two, or it reads as lag rather than as feedback —
+       below the 120ms that suits a hover or a colour change. */
+    --waxwing-duration-instant: 60ms;
     --waxwing-duration-fast: 120ms;
     --waxwing-duration-base: 200ms;
     --waxwing-duration-slow: 320ms;
@@ -217,8 +220,14 @@
       --waxwing-label-gray: #98989d;
 
       --waxwing-overlay: rgba(0, 0, 0, 0.6);
-      --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-      --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
+      /* Dark elevation is a LIGHT EDGE, not a darker shadow. A black shadow on a near-black page
+         raises nothing anyone can see — a menu, a toast and a dialog all sat flat on `bg`. Apple
+         does the same thing: the hairline of light is what says "in front". The soft shadows stay,
+         because they still separate an overlay from a lighter surface underneath it. */
+      --waxwing-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
+      --waxwing-shadow-2:
+        0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 12px rgba(0, 0, 0, 0.5),
+        0 12px 32px rgba(0, 0, 0, 0.55);
     }
   }
 
@@ -257,8 +266,11 @@
     --waxwing-label-gray: #98989d;
 
     --waxwing-overlay: rgba(0, 0, 0, 0.6);
-    --waxwing-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --waxwing-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
+    /* A light edge rather than a darker shadow — see the media-query block above. */
+    --waxwing-shadow-1: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --waxwing-shadow-2:
+      0 0 0 1px rgba(255, 255, 255, 0.08), 0 4px 12px rgba(0, 0, 0, 0.5),
+      0 12px 32px rgba(0, 0, 0, 0.55);
   }
 
   /* ---- Color + elevation: light re-asserted (explicit user override wins over OS dark) ---- */

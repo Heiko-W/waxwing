@@ -24,7 +24,18 @@
   color: var(--waxwing-text-muted);
 }
 
+/* Enter only — see the note in Dialog.module.css for why nothing here waits on an exit. The menu
+   grows out of the control that opened it, so the origin is the top edge. */
+@keyframes waxwing-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 .menu {
+  animation: waxwing-menu-in var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+  transform-origin: top center;
   z-index: 50;
   min-inline-size: 12rem;
   max-inline-size: min(20rem, 90vw);

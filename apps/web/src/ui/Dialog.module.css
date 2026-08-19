@@ -1,4 +1,26 @@
+/*
+ * ENTER only, and deliberately so. An exit animation has to be waited on, and the one thing
+ * `reduced-motion.css.test.ts` forbids app-wide is JS-driven motion — under `prefers-reduced-motion`
+ * a `transitionend` arrives after 0.01ms, so anything that waits for one is a race in disguise.
+ * Appearing softly and leaving instantly is the honest half of the effect, and it is the half the
+ * reader actually notices: an overlay that pops IN reads as a glitch, one that vanishes reads as
+ * dismissed. The global reset collapses these durations to nothing under `reduce`.
+ */
+@keyframes waxwing-dialog-backdrop {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes waxwing-dialog-panel {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
 .backdrop {
+  animation: waxwing-dialog-backdrop var(--waxwing-duration-fast) linear;
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -11,6 +33,7 @@
 }
 
 .panel {
+  animation: waxwing-dialog-panel var(--waxwing-duration-base) var(--waxwing-ease-standard);
   display: flex;
   flex-direction: column;
   inline-size: 100%;

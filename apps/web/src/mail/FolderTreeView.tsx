@@ -14,7 +14,6 @@
 import {
   Archive,
   Ban,
-  ChevronDown,
   ChevronRight,
   FileText,
   Folder,
@@ -258,8 +257,11 @@ export function FolderTreeView({
               }}
             >
               {hasChildren ? (
+                // One glyph for both states; `folder-tree.module.css` turns it on
+                // `[aria-expanded="true"]`, so the disclosure reads as a movement rather than as a
+                // substitution — and the state stays where assistive tech reads it, on the row.
                 <span data-chevron className={styles.chevron} aria-hidden="true">
-                  {expanded ? <ChevronDown /> : <ChevronRight />}
+                  <ChevronRight />
                 </span>
               ) : (
                 <span className={styles.chevron} aria-hidden="true" />
