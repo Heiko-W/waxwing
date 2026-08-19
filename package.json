@@ -1,6 +1,6 @@
 {
   "name": "waxwing",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "description": "A serverless (static-only) webmail client for JMAP.",

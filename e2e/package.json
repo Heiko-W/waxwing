@@ -1,6 +1,6 @@
 {
   "name": "@waxwing/e2e",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "description": "Playwright end-to-end suites and the Stalwart JMAP dev/test fixture.",

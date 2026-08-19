@@ -106,12 +106,42 @@ export function deleteMailbox(db: ReplicaDb, accountId: Id, id: Id): Promise<voi
 // Identities (M2.5 — the From selector + per-identity signatures).
 // -------------------------------------------------------------------------------------------
 
+/**
+ * Write identities without removing any. **No production caller since M5.1** — the sync pass and the
+ * editor both use {@link replaceIdentities}, because neither can leave a destroyed identity behind.
+ * It stays as the seed helper the composer's tests use to stand up a From selector; anything that
+ * writes a SERVER list wants the replacing variant.
+ */
 export async function putIdentities(
   db: ReplicaDb,
   accountId: Id,
   identities: Identity[],
 ): Promise<void> {
   await db.identities.bulkPut(identities.map((identity) => toIdentityRow(accountId, identity)))
+}
+
+/**
+ * The account's identities, made to MATCH `next` exactly: rows the server no longer lists are
+ * deleted, the rest are written.
+ *
+ * `putIdentities` alone cannot do that — it is a `bulkPut`, so an identity destroyed anywhere (in
+ * Settings here, in another client, by the admin) would linger in the replica forever and keep
+ * appearing in the composer's From selector. That was harmless while `Identity/get` was read-only
+ * and nothing could disappear; M5.1 makes deletion a button, so the delete half has to exist.
+ */
+export async function replaceIdentities(
+  db: ReplicaDb,
+  accountId: Id,
+  next: readonly Identity[],
+): Promise<void> {
+  await db.transaction('rw', db.identities, async () => {
+    const keep = new Set(next.map((identity) => identity.id))
+    const stale = (await db.identities.where('accountId').equals(accountId).toArray())
+      .filter((row) => !keep.has(row.id))
+      .map((row) => [accountId, row.id] as [Id, Id])
+    if (stale.length > 0) await db.identities.bulkDelete(stale)
+    await db.identities.bulkPut(next.map((identity) => toIdentityRow(accountId, identity)))
+  })
 }
 
 /** Every send identity for an account, ordered by name then email — the From-selector source. */

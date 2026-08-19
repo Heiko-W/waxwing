@@ -121,10 +121,14 @@ describe('the settings shell (M3.7)', () => {
     ])
   })
 
-  it('hides the vacation responder and the server panel without a session', async () => {
+  it('hides the vacation responder, the identities and the server panel without a session', async () => {
     renderSettings()
     await screen.findByLabelText('Theme')
     expect(screen.queryByRole('heading', { name: 'Vacation responder' })).not.toBeInTheDocument()
+    // Identities are session- AND capability-gated (they live under the submission capability):
+    // without a session there is nothing to ask, so the section must not appear at all rather than
+    // render an editor that would immediately fail to load (FR-SRV-02).
+    expect(screen.queryByRole('heading', { name: 'Identities' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument()
   })
 })

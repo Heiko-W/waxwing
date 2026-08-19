@@ -48,6 +48,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [019](019-local-pipeline-before-hosted-ci.md) | A local pipeline now, the hosted workflow written but dormant; `act` rejected | accepted |
 | [020](020-no-send-as-from-a-delegated-account.md) | Send-as from a delegated account is not offered (the server does not allow it) | accepted |
 | [021](021-undo-is-a-chord-and-a-toast-that-waits.md) | Undo is a chord (`z`) plus a toast that does not expire | accepted |
+| [022](022-identities-are-editable-in-the-client.md) | Identities and signatures are editable in the client, online-only | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

@@ -39,11 +39,11 @@ import {
   putContactCards,
   putContactQueryCache,
   putEmails,
-  putIdentities,
   putMailboxes,
   putQueryCache,
   putThreads,
   recordAddressStats,
+  replaceIdentities,
   setSyncState,
 } from '../repo'
 import { CannotCalculateChangesError, type EngineClock, type JmapPort } from './types'
@@ -152,7 +152,7 @@ export async function syncIdentities(
   clock: EngineClock,
 ): Promise<void> {
   const { list, state } = await port.getIdentities()
-  await putIdentities(db, accountId, list)
+  await replaceIdentities(db, accountId, list)
   await setSyncState(db, accountId, 'Identity', state, clock.now())
 }
 

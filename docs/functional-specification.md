@@ -249,7 +249,13 @@ webmail is an open gap.
   external-looking typos ("did you mean …@gmail.com") — heuristic, local only.
 - **FR-CMP-06 (Must)** — **Identities** via `Identity/get`: selectable From (aliases),
   per-identity signature (HTML + text) and reply-to; default identity per folder
-  inferable from the message being replied to.
+  inferable from the message being replied to. **Manageable via `Identity/set`**
+  (M5.1, ADR-022): create, edit and delete identities in Settings — display name,
+  reply-to, automatic Bcc and both signatures. `email` is immutable per RFC 8621 §6
+  (create-only), delete is offered only where `mayDelete` allows it, and the whole
+  section is hidden without the submission capability. Without this the user cannot
+  change their own signature at all: a JMAP server's self-service console typically
+  covers credentials, not identities.
 - **FR-CMP-07 (Must)** — Sending via `EmailSubmission/set` with proper
   `onSuccessUpdateEmail` (move to Sent, set `$seen`), error surfacing (rejected
   recipients, quota, size).

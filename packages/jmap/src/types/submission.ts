@@ -1,7 +1,8 @@
 /**
  * RFC 8621 §6 — Identity (and the reserved EmailSubmission slot). An Identity is an address the
  * user may send from, with an optional reply-to/bcc and text/HTML signatures. Lives under the
- * `urn:ietf:params:jmap:submission` capability. M2.5 uses a one-shot `Identity/get`; the
+ * `urn:ietf:params:jmap:submission` capability. M2.5 uses a one-shot `Identity/get`; M5.1 adds
+ * `Identity/set` so the user can manage their own identities and signatures. The
  * `Identity/changes` bindings are kept for a later freshness milestone.
  */
 
@@ -13,6 +14,7 @@ import type {
   GetResponse,
   Id,
   PatchObject,
+  SetRequest,
   SetResponse,
   UTCDate,
 } from './core'
@@ -35,6 +37,31 @@ export type IdentityGetResponse = GetResponse<Identity>
 // Identity/changes is deferred (M2.5 uses a one-shot get); the bindings are kept for later.
 export type IdentityChangesRequest = ChangesRequest
 export type IdentityChangesResponse = ChangesResponse
+
+/**
+ * The properties a client may write on an Identity (RFC 8621 §6). Deliberately NOT
+ * `Partial<Identity>`: `id` and `mayDelete` are server-set and `email` is immutable, so a type that
+ * accepted them would let a caller send fields the server can only reject — and an `email` in an
+ * `update` fails as `invalidProperties`, which is a confusing way to learn that the address of an
+ * identity cannot be changed. Create a new identity and destroy the old one instead.
+ */
+export type IdentityWritable = Partial<
+  Pick<Identity, 'name' | 'replyTo' | 'bcc' | 'textSignature' | 'htmlSignature'>
+>
+
+/** A new Identity: the writable properties plus the immutable `email`, which only `create` sets. */
+export type IdentityCreate = IdentityWritable & Pick<Identity, 'email'>
+
+/**
+ * Arguments for `Identity/set` (RFC 8621 §6.3). A standard `/set` except that `create` is narrowed
+ * to {@link IdentityCreate}. Extra SetError types: `forbiddenFrom` on create (the user may not send
+ * from that address) and `forbidden` on destroy when `mayDelete` is false.
+ */
+export interface IdentitySetRequest extends Omit<SetRequest<Identity>, 'create'> {
+  create?: Record<CreationId, IdentityCreate> | null
+}
+
+export type IdentitySetResponse = SetResponse<Identity>
 
 // ── EmailSubmission (RFC 8621 §7) — the send pipeline (M2.8) ──────────────────────────────────
 

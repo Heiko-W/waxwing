@@ -135,3 +135,67 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/* ── Identities (M5.1) ───────────────────────────────────────────────────────────────────────
+   A list of records, which the rest of this file has no precedent for: every other section is a
+   column of single controls. It stays a plain <ul> with the list styling removed rather than a new
+   ui/ primitive — one screen uses it. */
+.identityList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  max-inline-size: 34rem;
+}
+
+/* Wraps rather than truncates: the row carries an address, and a cut-off address is a wrong one.
+   Below ~30em the actions drop under the text instead of squeezing it (the 390px sweep in
+   e2e/tests/narrow.spec.ts measures exactly this). */
+.identityRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.identityText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.identityName {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+/* Row-level actions, and the footer of the identity form. */
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+/* The plain-text signature. `TextInput` is an <input>; there is no multiline primitive in ui/, and
+   one screen does not justify adding one (ContactForm's note field takes the same route). */
+.textarea {
+  inline-size: 100%;
+  max-inline-size: 34rem;
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font-family: var(--waxwing-font-mono, monospace);
+  font-size: var(--waxwing-text-sm);
+  resize: vertical;
+}

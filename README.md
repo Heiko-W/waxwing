@@ -87,7 +87,8 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 - **Mail** — conversations, a virtualized list that stays smooth at 100 000 messages, full-text
   search, labels, and triage that works entirely from the keyboard
-- **Compose** — rich text (Fastmail's Squire), draft autosave, attachments, identities, undo send
+- **Compose** — rich text (Fastmail's Squire), draft autosave, attachments, undo send, and
+  identities you can actually manage: add, edit or delete a send address and its signature
 - **Contacts** — JMAP for Contacts (RFC 9610) address books, groups, composer autocomplete
 - **Live** — push over EventSource (SSE), system notifications via Web Push
 - **Offline** — a local replica, an outbox that survives a reload and a reconnect, installable as a PWA

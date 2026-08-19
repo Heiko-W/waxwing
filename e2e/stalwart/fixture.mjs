@@ -407,6 +407,19 @@ export async function provision() {
 }
 
 /**
+ * NOTE for anyone tempted to give a fixture account an ALIAS (M5.1 nearly did):
+ *
+ * Stalwart mints one Identity per address the account owns, aliases included — measured, and it is
+ * why the idea was dropped. A single alias therefore gives alice TWO identities, and `FromField`
+ * renders its From selector from two identities up: every suite that opens the composer would grow a
+ * control it has never had, which is the same trap `ensureDelegations` below documents for sharing.
+ *
+ * The identity editor does not need one anyway. RFC 8621 §6 explicitly allows several identities on
+ * the SAME address ("for example, with different names/signatures"), Stalwart accepts that, and the
+ * E2E suite creates one on alice's own address instead.
+ */
+
+/**
  * Grant every {@link DELEGATIONS} share. **Opt-in, called by the shared-account suite's setup — NOT
  * by `provision()`**, and that is a deliberate trade rather than tidiness.
  *
