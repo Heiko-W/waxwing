@@ -998,7 +998,9 @@
       "sentNote": "{{address}} was told.",
       "body": "Your message was displayed. This is no guarantee that it was read or understood.\n",
       "subject": "Read: {{subject}}"
-    }
+    },
+    "fullScreen": "Open full screen",
+    "exitFullScreen": "Exit full screen"
   },
   "compose": {
     "toolbar": "Formatting",
@@ -1399,7 +1401,8 @@
         "next": "Next message",
         "prev": "Previous message",
         "open": "Open message",
-        "back": "Back to the list"
+        "back": "Back to the list",
+        "full": "Open the message full screen"
       },
       "list": {
         "select": "Select or deselect message"

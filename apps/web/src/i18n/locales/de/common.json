@@ -998,7 +998,9 @@
       "sentNote": "{{address}} wurde benachrichtigt.",
       "body": "Ihre Nachricht wurde angezeigt. Das ist keine Zusicherung, dass sie gelesen oder verstanden wurde.\n",
       "subject": "Gelesen: {{subject}}"
-    }
+    },
+    "fullScreen": "Im Vollbild öffnen",
+    "exitFullScreen": "Vollbild verlassen"
   },
   "compose": {
     "toolbar": "Formatierung",
@@ -1399,7 +1401,8 @@
         "next": "Nächste Nachricht",
         "prev": "Vorherige Nachricht",
         "open": "Nachricht öffnen",
-        "back": "Zurück zur Liste"
+        "back": "Zurück zur Liste",
+        "full": "Nachricht im Vollbild öffnen"
       },
       "list": {
         "select": "Nachricht aus- oder abwählen"

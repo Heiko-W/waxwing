@@ -244,6 +244,25 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     },
   },
   {
+    /**
+     * The keyboard's half of the double-click. `Shift+O` beside `o` (open), because it is the same
+     * verb with more of it — and `o` alone is taken.
+     */
+    id: 'nav.full',
+    titleKey: 'shortcuts.actions.nav.full',
+    keys: ['Shift+o'],
+    scopes: ['list', 'reading'],
+    group: 'navigation',
+    enabled: (context) =>
+      context.focusedEmailId !== undefined || context.route.params.emailId !== undefined,
+    run: (context) => {
+      const mailboxId = routeMailboxId(context)
+      const id = context.route.params.emailId ?? context.focusedEmailId
+      if (mailboxId === undefined || id === undefined) return
+      context.navigate(mailHrefKeepingQuery(context.route.search, mailboxId, id, { full: true }))
+    },
+  },
+  {
     id: 'nav.back',
     titleKey: 'shortcuts.actions.nav.back',
     keys: ['u'],

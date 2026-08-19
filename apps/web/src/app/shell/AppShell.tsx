@@ -18,7 +18,7 @@ import { useQuotaNotifier } from '../../quota'
 import { ShortcutProvider } from '../../shortcuts'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
-import { HOME_PATH, useNavigate, useRoute } from '../route'
+import { FULL_PARAM, HOME_PATH, useNavigate, useRoute } from '../route'
 import { useSession } from '../session/context'
 import { Header } from './Header'
 import { MailScreen } from './MailScreen'
@@ -44,6 +44,9 @@ export interface AppShellProps {
 export function AppShell({ config }: AppShellProps) {
   const { t } = useTranslation()
   const route = useRoute()
+  // Read from the URL rather than passed down: the flag belongs to the route, and the mail screen
+  // reads the same source. A prop would be a second copy that can disagree with the address bar.
+  const fullScreen = route.id === 'mail' && route.search.get(FULL_PARAM) === '1'
   const navigate = useNavigate()
   const { connected, reauth } = useSession()
   const hasDrafts = useComposerStore((state) => state.drafts.size > 0)
@@ -135,7 +138,10 @@ export function AppShell({ config }: AppShellProps) {
         </a>
         <Header config={config} username={username} />
         <div className={styles.body}>
-          <PrimaryNav />
+          {/* Full screen (`?full=1`) drops the nav rail with the folder rail — a reader who asked for
+              one message and nothing else should not get a strip of app chrome anyway. The header
+              stays: it holds the way back, and a view with no exit is a trap, not a feature. */}
+          {!fullScreen && <PrimaryNav />}
           <main id="main" className={styles.main} tabIndex={-1}>
             {/* The INNER boundary keeps a broken screen from taking the chrome with it, and resets on
                 navigation — otherwise one failed route would leave the panel up forever and the nav

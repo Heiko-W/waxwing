@@ -39,3 +39,17 @@ test('the folder drawer', async ({ page }) => {
   await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible()
   await shot(page, 'tablet-folders')
 })
+
+test('one message, full screen', async ({ page }) => {
+  await signIn(page)
+  await page.getByRole('button', { name: 'Show folders' }).click()
+  await page.getByRole('treeitem', { name: /Inbox/ }).click()
+  await waitForCorpus(page, READ_SUBJECTS.plain)
+
+  // The width where it matters most: at 834px the reading pane is under 300px beside the list, and
+  // full screen gives the message all of it.
+  await page.getByText(READ_SUBJECTS.newsletter, { exact: true }).dblclick()
+  await expect(page.getByRole('heading', { name: READ_SUBJECTS.newsletter })).toBeVisible()
+  await waitForBody(page, READ_SUBJECTS.newsletter, 'Top story')
+  await shot(page, 'tablet-fullscreen')
+})

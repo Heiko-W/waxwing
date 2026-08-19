@@ -6,6 +6,7 @@ import {
   contactsPath,
   deriveBase,
   isReadingHistoryEntry,
+  mailFullPath,
   mailHrefKeepingQuery,
   mailPath,
   matchRoute,
@@ -242,5 +243,23 @@ describe('carryAccount — the parameter survives a navigation (B37)', () => {
     )
     const sharedBanner = { ...primaryBanner, accountId: 'acctS' }
     expect(carryAccount(notificationTargetPath(sharedBanner), '')).toBe('/mail/a/e1?account=acctS')
+  })
+})
+
+describe('the full-screen flag', () => {
+  it('hangs off the mail route, and keeps the account with it', () => {
+    expect(mailFullPath('inbox', 'e1')).toBe('/mail/inbox/e1?full=1')
+    // The account must survive: `carryAccount` only forwards `?account=` to `/mail` paths, so a
+    // route of its own would drop a delegated account and open the wrong mailbox's message.
+    expect(mailFullPath('inbox', 'e1', 'acctB')).toBe('/mail/inbox/e1?account=acctB&full=1')
+  })
+
+  it('does not follow the reader back to the list', () => {
+    // `q`, `label` and `account` describe the LIST and are carried; `full` describes the message
+    // view. Carried back it would produce a full-screen list — a state with no exit and no name.
+    const search = new URLSearchParams('q=hi&account=acctB&full=1')
+    expect(mailHrefKeepingQuery(search, 'inbox')).toBe('/mail/inbox?q=hi&account=acctB')
+    // …and the caller's own params are not mutated on the way.
+    expect(search.get('full')).toBe('1')
   })
 })

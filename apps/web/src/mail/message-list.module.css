@@ -245,6 +245,9 @@
 .row {
   display: flex;
   align-items: center;
+  /* A double-click opens the message; without this it also selects whatever word it landed on, and
+     the reader is left with a highlighted sender name they did not ask for. */
+  user-select: none;
   gap: var(--waxwing-space-2);
   block-size: 100%;
   padding-inline: var(--waxwing-space-3);

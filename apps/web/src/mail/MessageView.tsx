@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { FULL_PARAM, mailHrefKeepingQuery, useNavigate, useRoute } from '../app/route'
 import { useSession } from '../app/session/context'
 import {
   buildReplyDraft,
@@ -141,6 +142,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   /** A refusal key from {@link rights} as the finished sentence a control announces; `undefined` = allowed. */
   const reasonText = (key: string | null): string | undefined => (key === null ? undefined : t(key))
   const openDraft = useComposerStore((state) => state.openDraft)
+  /**
+   * Full screen is a property of the ROUTE (`?full=1`), read here rather than threaded down as a
+   * prop: the address bar is the single source of truth, and a prop would be a second copy able to
+   * disagree with it. In a thread each message offers the view for ITSELF — full screen on the third
+   * reply opens that reply, which is what the reader pointed at.
+   */
+  const route = useRoute()
+  const navigate = useNavigate()
+  const fullScreen = route.search.get(FULL_PARAM) === '1'
+  const onToggleFullScreen = useCallback(() => {
+    navigate(mailHrefKeepingQuery(route.search, mailboxId, email.id, { full: !fullScreen }))
+  }, [navigate, route.search, mailboxId, email.id, fullScreen])
   const { connected } = useSession()
   const own = useMemo(
     () => (connected ? ownAddresses(connected.jmapSession, accountId) : []),
@@ -544,11 +557,19 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       // Print needs nothing but the browser: the print stylesheets already strip the chrome, and
       // `[data-waxwing-portal]` is hidden in print, so this menu is gone by the time the dialog
       // opens. The one thing it cannot do is print a message other than the one on screen.
+      // The non-pointer half of the double-click gesture. Double-click cannot be reached from a
+      // keyboard at all, so the action has to exist somewhere that can (SC 2.5.7) — and a menu entry
+      // is also where a reader goes looking for a thing they saw once and cannot remember.
+      {
+        id: 'fullScreen',
+        label: fullScreen ? t('reading.exitFullScreen') : t('reading.fullScreen'),
+        onSelect: onToggleFullScreen,
+      },
       { id: 'print', label: t('reading.print'), onSelect: () => window.print() },
       { id: 'viewSource', label: t('reading.source.view'), onSelect: () => setSourceOpen('view') },
       { id: 'saveEml', label: t('reading.source.save'), onSelect: () => setSourceOpen('save') },
     ],
-    [t, onCompose, snooze, email.id],
+    [t, onCompose, snooze, email.id, fullScreen, onToggleFullScreen],
   )
 
   const onAlwaysAllow =

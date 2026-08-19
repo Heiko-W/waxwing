@@ -60,3 +60,13 @@ test('writing a message', async ({ page }) => {
   await page.keyboard.type('Thursday works. I have pencilled it in and moved the review to Friday.')
   await shot(page, 'desktop-compose')
 })
+
+test('one message, full screen', async ({ page }) => {
+  await openInbox(page)
+  // The double-click gesture itself, photographed: no list, no folder rail, no nav rail — the shape
+  // the reader gets when they ask for one message and nothing else.
+  await page.getByText(READ_SUBJECTS.newsletter, { exact: true }).dblclick()
+  await expect(page.getByRole('heading', { name: READ_SUBJECTS.newsletter })).toBeVisible()
+  await waitForBody(page, READ_SUBJECTS.newsletter, 'Top story')
+  await shot(page, 'desktop-fullscreen')
+})

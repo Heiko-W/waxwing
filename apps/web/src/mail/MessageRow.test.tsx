@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { type EmailRow, toEmailRow } from '../sync'
@@ -24,6 +25,7 @@ const baseProps = {
   focused: false,
   density: 'comfortable' as const,
   onOpen: noop,
+  onOpenFull: noop,
   onSelectToggle: noop,
   onSelectRange: noop,
   onActivate: noop,
@@ -162,5 +164,48 @@ describe('the roving row is visible, not just announced (M4.7, WCAG 2.4.7)', () 
     // …and the two states it must not be mistaken for are still expressed.
     expect(other?.getAttribute('aria-selected')).toBe('true')
     expect(other?.getAttribute('aria-current')).toBe('page')
+  })
+})
+
+describe('double-click opens the message on its own', () => {
+  it('opens full screen, and does not also open it in the pane twice', async () => {
+    const user = userEvent.setup()
+    const onOpen = vi.fn()
+    const onOpenFull = vi.fn()
+    const { container } = grid(
+      <MessageRow {...baseProps} email={row()} onOpen={onOpen} onOpenFull={onOpenFull} />,
+    )
+    const rendered = container.querySelector('[role="row"]') as HTMLElement
+
+    await user.dblClick(rendered)
+
+    expect(onOpenFull).toHaveBeenCalledTimes(1)
+    // The FIRST click still opens the message in the pane — that is what makes the second one feel
+    // like an escalation rather than a different gesture. The second must not open it again: two
+    // navigations to the same URL leave a duplicate history entry, and Back then appears dead.
+    expect(onOpen).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a modified double-click to selection', async () => {
+    const user = userEvent.setup()
+    const onOpenFull = vi.fn()
+    const onSelectToggle = vi.fn()
+    const { container } = grid(
+      <MessageRow
+        {...baseProps}
+        email={row()}
+        onOpenFull={onOpenFull}
+        onSelectToggle={onSelectToggle}
+      />,
+    )
+    const rendered = container.querySelector('[role="row"]') as HTMLElement
+
+    await user.keyboard('{Meta>}')
+    await user.dblClick(rendered)
+    await user.keyboard('{/Meta}')
+
+    // ⌘-click toggles the row; doing it twice must not throw the reader into full screen as well.
+    expect(onOpenFull).not.toHaveBeenCalled()
+    expect(onSelectToggle).toHaveBeenCalled()
   })
 })

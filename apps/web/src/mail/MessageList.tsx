@@ -381,7 +381,7 @@ export function MessageList({
 
   const draftOpener = useDraftOpener()
   const open = useCallback(
-    (id: Id) => {
+    (id: Id, options: { readonly full?: boolean } = {}) => {
       // Opening a message makes IT the subject: drop any leftover selection. `targetIds` puts the
       // selection first, so without this an `e` in the reading pane would archive a message that is
       // no longer on screen (on a narrow viewport the list is not even rendered) instead of the one
@@ -408,9 +408,12 @@ export function MessageList({
       if (targetMailbox === undefined) return
       // Stamped, so the reading pane's Back button can pop this entry instead of pushing a third
       // one on top of it (see READING_HISTORY_MARK).
-      navigate(mailHrefKeepingQuery(route.search, targetMailbox, id), {
-        state: { waxwing: READING_HISTORY_MARK },
-      })
+      navigate(
+        mailHrefKeepingQuery(route.search, targetMailbox, id, { full: options.full === true }),
+        {
+          state: { waxwing: READING_HISTORY_MARK },
+        },
+      )
     },
     [mailboxId, navigate, rowById, draftOpener, route.search, dispatchSelection],
   )
@@ -680,6 +683,7 @@ export function MessageList({
                       density={density}
                       labels={labelLookup}
                       onOpen={noop}
+                      onOpenFull={noop}
                       onSelectToggle={noop}
                       onSelectRange={noop}
                       onActivate={noop}
@@ -773,6 +777,7 @@ export function MessageList({
                     labels={labelLookup}
                     highlight={highlights.get(id)}
                     onOpen={() => open(id)}
+                    onOpenFull={() => open(id, { full: true })}
                     onSelectToggle={() => dispatchSelection({ type: 'toggle', id })}
                     onSelectRange={() => dispatchSelection({ type: 'range', id, ordered: ids })}
                     onActivate={() => {
