@@ -166,9 +166,9 @@ values — which is a parser and a validator, not an unzip.
 
 ## 6. Ranked closing list
 
-**Status as of 2026-08-19.** Rows 1, 7 (three of four) and 8 are done; row 2 is partly done. The
-table below is the original ranking with the outcome recorded against each entry, so what is left
-stays legible.
+**Status as of 2026-08-19.** Five rows are done, one is partly done, one is assessed and
+deliberately declined (§5.0), and two remain open. The table is the original ranking with the
+outcome against each entry, so what is left stays legible.
 
 | Rank | Status |
 |---|---|
@@ -180,7 +180,7 @@ stays legible.
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
-| 9 Setup wizard, theme upload, MDN, TNEF | open |
+| 9 Setup wizard, theme upload, MDN, TNEF | **assessed, §5.0** — two not implementable as Bulwark has them, two owner decisions |
 
 **On row 4.** The framework, the 882 keys and the switcher are all in place, so "add 23 languages"
 is a matter of producing 23 × 882 strings. Machine-translating them would produce text nobody has
