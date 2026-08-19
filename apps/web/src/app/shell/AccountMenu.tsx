@@ -8,9 +8,10 @@
  * chunk — nothing about installing is in the entry bundle.
  */
 
-import { Download, LogOut, Trash2, User } from 'lucide-react'
+import { Download, LogOut, Trash2, User, UserRound } from 'lucide-react'
 import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { switchAccount, useAccountRegistry } from '../../auth/use-account-registry'
 import { useInstallPrompt } from '../../pwa/install/use-install-prompt'
 import { Button, Dialog, Menu, type MenuItemSpec, VisuallyHidden } from '../../ui'
 import { useSession } from '../session/context'
@@ -26,6 +27,7 @@ export interface AccountMenuProps {
 export function AccountMenu({ productName, username }: AccountMenuProps) {
   const { t } = useTranslation()
   const { signOut, signOutAndWipe } = useSession()
+  const registry = useAccountRegistry()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const closeConfirm = useCallback(() => setConfirmOpen(false), [])
   const [installOpen, setInstallOpen] = useState(false)
@@ -36,7 +38,17 @@ export function AccountMenu({ productName, username }: AccountMenuProps) {
   // iOS, where the only route in is Share → "Add to Home Screen" and only instructions can help.
   const offerInstall = !isStandalone && (canPrompt || platform === 'ios')
 
+  // The other signed-in accounts (M5.14, FR-AUTH-07). Absent while only one is registered, so a
+  // single-account install sees exactly the menu it saw before.
+  const others = registry.accounts.filter((account) => account.scope !== registry.activeScope)
+
   const items: MenuItemSpec[] = [
+    ...others.map((account) => ({
+      id: `switch-${account.scope}`,
+      label: t('account.switchTo', { name: account.label }),
+      icon: UserRound,
+      onSelect: () => switchAccount(account.scope),
+    })),
     ...(offerInstall
       ? [
           {

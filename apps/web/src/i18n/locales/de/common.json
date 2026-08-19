@@ -100,7 +100,8 @@
       "body": "Damit werden die von {{product}} lokal gespeicherten E-Mails und Einstellungen auf diesem Gerät gelöscht. Ihre Nachrichten auf dem Server bleiben unverändert.",
       "confirm": "Daten entfernen und abmelden",
       "cancel": "Abbrechen"
-    }
+    },
+    "switchTo": "Zu {{name}} wechseln"
   },
   "status": {
     "offline": "Offline",

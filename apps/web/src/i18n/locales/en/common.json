@@ -100,7 +100,8 @@
       "body": "This deletes {{product}}'s locally stored mail and settings on this device. Mail on the server is not affected.",
       "confirm": "Remove data and sign out",
       "cancel": "Cancel"
-    }
+    },
+    "switchTo": "Switch to {{name}}"
   },
   "status": {
     "offline": "Offline",
