@@ -17,6 +17,8 @@ import { JmapHttpError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError } from '../../auth'
+import { deriveScope } from '../../auth/account-registry'
+import { registerAccount } from '../../auth/use-account-registry'
 import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
@@ -604,6 +606,36 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const cancelReauth = useCallback(() => endSession(false), [endSession])
   const getClient = useCallback(() => clientRef.current, [])
   const getAuthProvider = useCallback(() => authProviderRef.current, [])
+
+  /**
+   * Record the signed-in account in the registry (M5.14, FR-AUTH-07).
+   *
+   * An effect rather than part of the reducer: the registry is persisted state outside React, and
+   * a reducer that wrote to `localStorage` would do it twice under StrictMode. `registerAccount`
+   * is idempotent — the scope is derived from (issuer, username) — so a re-render, a reconnect or
+   * a second tab all land on the same row rather than accumulating duplicates.
+   *
+   * The issuer is the JMAP API's ORIGIN rather than the OAuth issuer: it is present for Basic
+   * sign-ins too, and it is what actually distinguishes two mailboxes with the same username.
+   */
+  const connectedForRegistry = state.status === 'ready' ? state.connected : null
+  useEffect(() => {
+    if (connectedForRegistry === null) return
+    let origin: string | null = null
+    try {
+      origin = new URL(connectedForRegistry.jmapSession.apiUrl, window.location.href).origin
+    } catch {
+      origin = null
+    }
+    const username = connectedForRegistry.username
+    registerAccount({
+      scope: deriveScope(origin, username),
+      issuer: origin,
+      username,
+      label: username,
+      addedAt: Date.now(),
+    })
+  }, [connectedForRegistry])
 
   const value = useMemo<SessionContextValue>(() => {
     const onboarding = state.status === 'onboarding' ? state.view : null
