@@ -505,6 +505,13 @@
       "save": "Save template",
       "cancel": "Cancel",
       "defaultSenderName": "me"
+    },
+    "groups": {
+      "general": "General",
+      "appearance": "Appearance",
+      "mail": "Mail",
+      "accounts": "Accounts & rules",
+      "system": "System"
     }
   },
   "contacts": {

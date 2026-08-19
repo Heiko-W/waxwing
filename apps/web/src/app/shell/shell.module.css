@@ -226,12 +226,18 @@
   block-size: var(--waxwing-icon-md);
 }
 
+/*
+ * Every screen that is not the mail panes — settings, contacts, calendar, files — lands here, and it
+ * belongs on the same content plane they do. Left inheriting `bg` it read as the page BEHIND the
+ * app: the mail screen came forward while settings stayed back, on the same visit.
+ */
 .main {
   position: relative;
   flex: 1;
   min-inline-size: 0;
   min-block-size: 0;
   overflow: auto;
+  background-color: var(--waxwing-surface);
 }
 
 /* ---- Mail screen: folders + panes ---- */

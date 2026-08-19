@@ -158,7 +158,7 @@ test.describe('M3.7 settings suite', () => {
   test('vacation responder round-trips against the server (FR-VAC-01)', async ({ page }) => {
     const subject = `Away ${Date.now()}`
     await login(page, CREDENTIALS.alice)
-    await openSettings(page)
+    await openSettings(page, 'Vacation responder')
 
     const enable = page.getByLabel('Send automatic replies')
     await expect(enable).toBeVisible()
@@ -189,7 +189,7 @@ test.describe('M3.7 settings suite', () => {
       Object.hasOwn(session.capabilities, urn) || Object.hasOwn(account.accountCapabilities, urn)
 
     await login(page, CREDENTIALS.alice)
-    await openSettings(page)
+    await openSettings(page, 'Server')
 
     const server = page.getByRole('region', { name: 'Server' })
     await expect(server).toBeVisible()
@@ -243,7 +243,7 @@ test.describe('M3.7 settings suite', () => {
     expect(usableVapidKey(session), premiseFailure(session)).toBe(true)
 
     await login(page, CREDENTIALS.alice)
-    await openSettings(page)
+    await openSettings(page, 'Notifications')
 
     // Two regions on this page answer to "Notifications" — the settings section and the toast live
     // region (`ui.toast.region`). Filtering on the master switch picks the settings one without
@@ -386,7 +386,7 @@ test.describe('M5.1 identity editor', () => {
 
   test('edits the signature of an existing identity (FR-CMP-06)', async ({ page }) => {
     await login(page, CREDENTIALS.alice)
-    await openSettings(page)
+    await openSettings(page, 'Identities')
 
     const section = page.getByRole('region', { name: 'Identities' })
     await expect(section).toBeVisible()
@@ -414,7 +414,7 @@ test.describe('M5.1 identity editor', () => {
     page,
   }) => {
     await login(page, CREDENTIALS.alice)
-    await openSettings(page)
+    await openSettings(page, 'Identities')
     const section = page.getByRole('region', { name: 'Identities' })
 
     await section.getByRole('button', { name: 'Add identity' }).click()
@@ -437,7 +437,7 @@ test.describe('M5.1 identity editor', () => {
     await expect(from).toContainText(SECOND_NAME)
     await page.getByRole('button', { name: 'Close', exact: true }).click()
 
-    await openSettings(page)
+    await openSettings(page, 'Identities')
     // Two identities share the address, so the row is identified by the button that names it.
     await section
       .getByRole('button', { name: `Delete ${PRIMARY}` })
@@ -454,7 +454,7 @@ test.describe('M5.1 identity editor', () => {
   test('refuses an address the account does not own, and says why (ADR-022)', async ({ page }) => {
     const before = (await identitiesOf()).length
     await login(page, CREDENTIALS.alice)
-    await openSettings(page)
+    await openSettings(page, 'Identities')
     const section = page.getByRole('region', { name: 'Identities' })
 
     await section.getByRole('button', { name: 'Add identity' }).click()

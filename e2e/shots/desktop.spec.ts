@@ -70,3 +70,19 @@ test('one message, full screen', async ({ page }) => {
   await waitForBody(page, READ_SUBJECTS.newsletter, 'Top story')
   await shot(page, 'desktop-fullscreen')
 })
+
+test('the settings rail', async ({ page }) => {
+  await signIn(page)
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  // The settings screen is a lazy chunk (NFR-PERF-03), so the first visit waits on a fetch — the
+  // default 5s expect timeout is a coin flip on a cold cache.
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible({
+    timeout: 30_000,
+  })
+  await page
+    .getByRole('navigation', { name: 'Settings' })
+    .getByRole('link', { name: 'Reading', exact: true })
+    .click()
+  await expect(page.getByRole('heading', { name: 'Reading', level: 2 })).toBeVisible()
+  await shot(page, 'desktop-settings')
+})

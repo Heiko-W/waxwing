@@ -68,9 +68,23 @@ export async function login(
  * cross-tab test, which passes `{ stay: true }` precisely because it depends on persistence).
  * Routing through the nav also exercises the lazy `/settings` chunk, which is the real path.
  */
-export async function openSettings(page: Page): Promise<void> {
+export async function openSettings(page: Page, section?: string): Promise<void> {
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+  if (section !== undefined) await openSettingsSection(page, section)
+}
+
+/**
+ * Choose a settings section from the rail.
+ *
+ * Settings is master/detail since the 2026-08-19 pass: fourteen sections behind five groups, one
+ * panel at a time. A test that wants a control has to say which panel it lives in — the same
+ * sentence the reader has to say to themselves.
+ */
+export async function openSettingsSection(page: Page, section: string): Promise<void> {
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  await rail.getByRole('link', { name: section, exact: true }).click()
+  await expect(page.getByRole('heading', { name: section, level: 2 })).toBeVisible()
 }
 
 /** Click a folder in the tree by name pattern. */

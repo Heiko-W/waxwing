@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { openSettingsSection, revealPasswordForm } from './helpers'
 
 /**
  * M4.7 — target size (WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA), against the live fixture.
@@ -255,6 +255,7 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
     // cost 156 px above every folder on a phone. Going through the real surface also means this
     // test exercises the path a user actually takes.
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
+    await openSettingsSection(page, 'Appearance')
     await page.getByLabel('List density').selectOption('compact')
     await expect(page.getByLabel('List density')).toHaveValue('compact')
     await page.getByRole('link', { name: 'Mail', exact: true }).click()
@@ -281,6 +282,9 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible({
       timeout: 30_000,
     })
+    // Master/detail: the rail is always on screen, and one panel with it. Offline & storage is the
+    // richest panel — a meter, a switch, a destructive button — so it is the one worth sweeping.
+    await openSettingsSection(page, 'Offline & storage')
     const found = await targets(page)
     expect(found.length).toBeGreaterThan(10)
     report('settings', found)

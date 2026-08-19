@@ -1,9 +1,122 @@
+/*
+ * Master/detail. It was one 42rem column holding fourteen stacked sections — everything present and
+ * nothing findable, several screen-heights of it on a phone, with no jump anywhere despite
+ * `/settings/<slug>` having been able to name a section since M1.4.
+ *
+ * Above the phone breakpoint the rail and the panel sit side by side; below it they are two screens,
+ * the same Master/Detail swap the folder drawer and the reading pane already make. The breakpoint is
+ * the one the shell already uses, so the app changes shape in one place rather than three.
+ */
 .page {
   display: flex;
-  flex-direction: column;
-  gap: var(--waxwing-space-5);
+  gap: var(--waxwing-space-6);
   padding: var(--waxwing-space-6);
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+  flex: 0 0 auto;
+  inline-size: 14rem;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.railGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.railGroupTitle {
+  margin: 0;
+  padding-inline: var(--waxwing-space-2);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--waxwing-tracking-caps);
+}
+
+.railList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.railItem {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  color: var(--waxwing-text);
+  font-size: var(--waxwing-text-sm);
+  text-decoration: none;
+  transition: background-color var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+/* Pointer-only affordance: on a touchscreen a tap would leave this stuck to whatever it landed on,
+   which then reads as a second selection. */
+@media (hover: hover) {
+  .railItem:hover {
+    background-color: var(--waxwing-surface-2);
+  }
+}
+
+.railItem:active {
+  background-color: var(--waxwing-surface-2);
+}
+
+.railItem[aria-current="page"],
+.railItem[aria-current="page"]:hover {
+  background-color: var(--waxwing-surface-selected);
+  color: var(--waxwing-accent);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: 0;
   max-inline-size: 42rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.detailBack {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  align-self: flex-start;
+  min-block-size: var(--waxwing-control-min);
+  color: var(--waxwing-accent);
+  font-size: var(--waxwing-text-sm);
+  text-decoration: none;
+}
+
+/* One screen at a time below the shell's phone breakpoint: the rail IS the screen until a section
+   is chosen, and then the section is. */
+@media (max-width: 39.999em) {
+  .page {
+    flex-direction: column;
+    padding: var(--waxwing-space-4);
+  }
+
+  .rail {
+    inline-size: auto;
+  }
 }
 
 .title {
@@ -11,6 +124,7 @@
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .section {

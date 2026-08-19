@@ -505,6 +505,13 @@
       "save": "Vorlage speichern",
       "cancel": "Abbrechen",
       "defaultSenderName": "ich"
+    },
+    "groups": {
+      "general": "Allgemein",
+      "appearance": "Darstellung",
+      "mail": "E-Mail",
+      "accounts": "Konten & Regeln",
+      "system": "System"
     }
   },
   "contacts": {

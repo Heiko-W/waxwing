@@ -1,4 +1,5 @@
 import { type BrowserContext, expect, type Page } from '@playwright/test'
+import { openSettingsSection } from './helpers'
 
 /**
  * The two instruments the M3.10 notification suite is built on, and the one lever that makes any of
@@ -212,6 +213,7 @@ export async function bringForeground(page: Page): Promise<void> {
 export async function enableNotifications(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+  await openSettingsSection(page, 'Notifications')
   const master = page.getByLabel('Notify me about new mail')
   await expect(master).toBeVisible({ timeout: 15_000 })
   await master.click()

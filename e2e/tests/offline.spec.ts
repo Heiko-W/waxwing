@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 import { jmapAs } from '../stalwart/seed-write.mjs'
-import { revealPasswordForm, setUndoGrace } from './helpers'
+import { openSettingsSection, revealPasswordForm, setUndoGrace } from './helpers'
 
 /**
  * M3.10 offline suite (FR-OFF-01/03/04, and the G2 gap-B1/B2 payoffs) — the live counterpart the
@@ -457,6 +457,7 @@ test.describe('M3.10 offline', () => {
 
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+    await openSettingsSection(page, 'Offline & storage')
 
     // A real `<progress>` against the browser's real quota API — the override supplies the numbers,
     // the element and its plumbing are the app's.
@@ -502,6 +503,7 @@ test.describe('M3.10 offline', () => {
 
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+    await openSettingsSection(page, 'Offline & storage')
 
     await expect(page.getByText('Your browser does not report a storage quota.')).toBeVisible({
       timeout: 15_000,
