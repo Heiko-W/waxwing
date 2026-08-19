@@ -79,4 +79,10 @@ export type * from './types/index'
 // Runtime value(s) from the types modules (the type-only re-export above strips values).
 export { MailboxRoles } from './types/mail'
 export { EMAIL_DELIVERY_TYPE } from './types/push'
+export {
+  isInvalidSieveError,
+  isSieveIsActiveError,
+  SIEVE_CONTENT_TYPE,
+  SieveSetErrors,
+} from './types/sieve'
 export { VACATION_SINGLETON_ID } from './types/vacation'

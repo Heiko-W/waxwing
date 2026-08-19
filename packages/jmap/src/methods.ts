@@ -11,7 +11,8 @@
  * ```
  *
  * SP.1 covers Core, Mailbox, Thread and Email. Later capabilities (Submission, Vacation,
- * Blob-as-method, Quota, Sieve, Contacts) append here as they land.
+ * Quota, Sieve, Contacts) have appended since; Blob-as-method (RFC 9404) has not landed —
+ * blobs go through the RFC 8620 §6 endpoints in `blob.ts`.
  */
 
 import { defineMethod, type MethodDef } from './request'
@@ -70,6 +71,16 @@ import type {
   PushSubscriptionSetResponse,
 } from './types/push'
 import type { QuotaGetRequest, QuotaGetResponse } from './types/quota'
+import type {
+  SieveScriptGetRequest,
+  SieveScriptGetResponse,
+  SieveScriptQueryRequest,
+  SieveScriptQueryResponse,
+  SieveScriptSetRequest,
+  SieveScriptSetResponse,
+  SieveScriptValidateRequest,
+  SieveScriptValidateResponse,
+} from './types/sieve'
 import type {
   EmailSubmissionSetRequest,
   EmailSubmissionSetResponse,
@@ -130,6 +141,20 @@ export const Methods = {
 
   /** RFC 9425 — Quota (read-only; M3.7, FR-QTA-01). */
   quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
+
+  /**
+   * RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02). The RFC defines these four and no more:
+   * there is no `/changes` and no `/queryChanges`, so scripts are re-read rather than synced.
+   */
+  sieveScriptGet: defineMethod<SieveScriptGetRequest, SieveScriptGetResponse>('SieveScript/get'),
+  sieveScriptSet: defineMethod<SieveScriptSetRequest, SieveScriptSetResponse>('SieveScript/set'),
+  sieveScriptQuery: defineMethod<SieveScriptQueryRequest, SieveScriptQueryResponse>(
+    'SieveScript/query',
+  ),
+  /** Compiles the blob without storing it; `error: null` means it parsed (RFC 9661 §2.6). */
+  sieveScriptValidate: defineMethod<SieveScriptValidateRequest, SieveScriptValidateResponse>(
+    'SieveScript/validate',
+  ),
 
   /** RFC 9610 — AddressBook (M4.2). No `/query`: an account's address books are always fetched whole. */
   addressBookGet: defineMethod<AddressBookGetRequest, AddressBookGetResponse>('AddressBook/get'),
