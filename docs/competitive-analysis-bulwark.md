@@ -194,7 +194,7 @@ outcome against each entry, so what is left stays legible.
 |---|---|
 | 1 Sieve filter rules | **done** — M5.2, ADR-023 |
 | 2 Calendar | **done** — month, week and agenda views (M5.6, M5.13); create/edit/delete for single events (M5.11). Series are read-only BY DESIGN — a recurrence scope editor is the one deliberate omission, see `isEditable` |
-| 3 Multi-account + unified inbox | **foundation done** (M5.10) — registry, derived scopes, per-account forget. The second sign-in flow, the switcher UI and the unified inbox remain |
+| 3 Multi-account | **done, by switching** (M5.10/M5.14/M5.16) — registry, derived scopes, per-account forget, add-account and a switcher. NOT concurrent sessions: one account is active at a time, so a unified inbox across accounts remains out of reach without reworking the session provider |
 | 4 More languages | **pipeline done** (M5.9) — Weblate config, `docs/translating.md`, RTL scripts pre-listed. The strings themselves need speakers, not a machine |
 | 5 S/MIME / PGP read + verify | **detection done** (M5.15) — signed and encrypted mail is recognised and explained, with no cryptography performed. Verification and decryption need a key store and are the remaining half; see §5.1 |
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
