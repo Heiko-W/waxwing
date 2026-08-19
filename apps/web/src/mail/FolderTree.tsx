@@ -7,9 +7,20 @@
  */
 
 import { FolderPlus } from 'lucide-react'
-import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
+import { useSessionOptional } from '../app/session/context'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
 import { Button, Dialog, IconButton, Spinner, TextInput, useToast } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
@@ -21,6 +32,10 @@ import {
   getActiveDrag,
   setActiveDrag,
 } from './dnd'
+import { makeEmlImporter } from './eml-import'
+
+const EmlImportDialog = lazy(() => import('./EmlImportDialog'))
+
 import { FolderMoveDialog } from './FolderMoveDialog'
 import { FolderTreeView } from './FolderTreeView'
 import { buildFolderTree, folderDisplayName, legalParents } from './folder-tree'
@@ -44,6 +59,7 @@ type DialogState =
   | { readonly kind: 'delete'; readonly mailbox: MailboxRow }
   | { readonly kind: 'empty'; readonly mailbox: MailboxRow }
   | { readonly kind: 'deleteOlder'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'import'; readonly mailbox: MailboxRow }
 
 export interface FolderTreeProps {
   /**
@@ -75,6 +91,13 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
   const { t } = useTranslation()
   const mailboxes = useMailboxes()
   const { db, accountId } = useReplica()
+  const connected = useSessionOptional()
+  // Memoized: an unmemoized importer would be a new object on every render, and the dialog holds it
+  // across an async loop.
+  const importer = useMemo(
+    () => (connected === null ? null : makeEmlImporter(connected.client, accountId)),
+    [connected, accountId],
+  )
   const route = useRoute()
   const navigate = useNavigate()
   const actions = useFolderActions()
@@ -197,6 +220,7 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
         onRequestRename={(mailbox) => setDialog({ kind: 'rename', mailbox })}
         onRequestMove={(mailbox) => setDialog({ kind: 'move', mailbox })}
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
+        onRequestImport={(mailbox) => setDialog({ kind: 'import', mailbox })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
         onDragStartMailbox={(mailbox) =>
@@ -319,6 +343,18 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
             setDialog(null)
           }}
         />
+      )}
+
+      {dialog?.kind === 'import' && importer !== null && (
+        // Lazy: restoring an archived message is a rare, deliberate act.
+        <Suspense fallback={null}>
+          <EmlImportDialog
+            folderName={folderDisplayName(dialog.mailbox, t)}
+            mailboxId={dialog.mailbox.id}
+            importer={importer}
+            onClose={() => setDialog(null)}
+          />
+        </Suspense>
       )}
     </div>
   )

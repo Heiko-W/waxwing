@@ -2291,6 +2291,64 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
+### v0.13.0 (2026-08-19) — closing the gap to Bulwark
+
+Bulwark is the other serverless JMAP client. The question that started this was whether there
+was any reason left to choose it; the answer is written down feature by feature in
+`docs/competitive-analysis-bulwark.md`, and this release is what closing that list looked like.
+
+Twenty-one work packages, M5.2 through M5.22. **Sieve filter rules** (M5.2, ADR-023 — foreign
+script content is preserved byte-for-byte AND in position, because order is semantics in
+Sieve). **A calendar** (M5.6/M5.11/M5.13): month, week/day and agenda views, create/edit/delete
+for single events, series read-only by design. **File storage** (M5.7/M5.17/M5.18): browse,
+upload, folders, download, an inline preview on the reader's own policy, and RFC 9670 sharing
+with three named roles. **Multiple accounts** (M5.10/M5.14/M5.16), as switching rather than
+concurrent sessions. **Scheduled send, templates, saved searches and snooze**
+(M5.4/M5.5/M5.8). **Seven small parity items** (M5.3). **A translation pipeline** (M5.9).
+**A deployment config generator** (M5.20). **`winmail.dat` unpacking** (M5.21). **Read
+receipts** (M5.22) — a button, never automatic.
+
+**What this release is really about is the difference between reading a specification and
+measuring a server.** Four things were built from the RFC, measured, and found to be wrong:
+
+- `Principal/query` defines a `name` filter (RFC 9670 §2.3). Stalwart answers it with an empty
+  list and a 200. A picker built from the RFC would have shipped as a search box that finds
+  nobody, with no error anywhere to say why. It sends `text` instead, and an integration test
+  asserts `name` still finds no one — so the day Stalwart implements it, that is visible.
+- RFC 8098 requires `Content-Type: multipart/report; report-type=disposition-notification`, and
+  JMAP has no field for a content-type parameter. `type` alone silently drops it; a `headers`
+  array is refused; only `type` together with `header:Content-Type:asText` produces it. The
+  read receipt would have gone out looking valid and been unparseable by the client that asked.
+- An email cannot be created outside a mailbox — "Message has to belong to at least one
+  mailbox", for both an absent and an empty `mailboxIds`.
+- Stalwart advertises `maxDelayedSend: 2592000` (30 days) and enforces seven.
+
+**Three estimates of my own were also wrong, and each was corrected by checking rather than
+arguing.** RFC 9670 sharing was written off as "needs a principal picker, a screen of its own"
+— measured, the data was already there and the screen was the easy part. TNEF was written off
+as "poor ratio" — measured, it is one file, no dependency, in a lazy chunk. And the bundle
+budget was cited as the reason S/MIME verification could not be built — measured,
+`.size-limit.js` excludes every lazy chunk by name, so size was never the constraint. The real
+one is the trust root, which is a different argument and now stated as such.
+
+**Defects found by tests during the work, not after it.** A scope-collision in
+`deriveScope` — two accounts could derive the same storage scope, share one `waxwing-auth-…`
+database and one wrapping key, and each read the other's refresh token. A `winmail.dat`
+signature part listed as a downloadable attachment. A read-receipt header built from the
+sender's own `Message-ID`, which could have closed its field and started a `Bcc:`. A
+`multipart/report` chunk that never split because the module was both statically and
+dynamically imported, adding ~1 KB gz to first paint with no warning but a build log line.
+
+Two package types were wrong and are fixed: `EmailCreate.bodyStructure` demanded a full
+`EmailBodyPart` including the fields the server assigns, and `bodyValues` demanded
+`isEncodingProblem`/`isTruncated`, which are the server's answers about a value it decoded.
+
+**Left open on purpose:** PGP and S/MIME verification (see §11), a unified inbox across
+accounts, a recurrence scope editor, and 23 × 882 translation strings that need speakers rather
+than a machine.
+
+`pnpm verify`: 3 720 tests, 270.36 KB gz of 300.
+
 ### v0.11.0-dev (2026-08-18) — the pipelines, then the phone
 
 Two rounds. First a review of the CI/release pipelines and the repository settings, then the narrow
@@ -2417,17 +2475,54 @@ header overrides a `<meta>` one.
 Per spec §10 and the Could/deferred items above — **do not implement pre-V1** without an
 explicit owner decision:
 
-- Sieve filter rules UI: visual builder + raw editor (FR-SIEVE-01/02) — the headline V1.x
-  feature; `@waxwing/jmap` Sieve types ship whenever first needed, at latest here.
-- Saved searches as virtual folders (FR-SRCH-03 remainder).
-- Snooze (FR-ORG-03), scheduled send client-side (FR-CMP-11), templates (FR-CMP-12).
+- ~~Sieve filter rules UI: visual builder + raw editor (FR-SIEVE-01/02)~~ — **shipped in M5.2**
+  (2026-08-19). The raw editor is read-only, which is a deliberate narrowing of FR-SIEVE-02: see
+  ADR-023 for why an editable one would have to re-parse Sieve.
+- ~~Saved searches as virtual folders (FR-SRCH-03 remainder)~~ — **shipped in M5.5**.
+- ~~Snooze (FR-ORG-03)~~ — **shipped in M5.8**. ~~Scheduled send (FR-CMP-11)~~ — **shipped in
+  M5.4**, and SERVER-side rather than the client-side fallback this line assumed. ~~Templates
+  (FR-CMP-12)~~ — **shipped in M5.5**.
 - Offline search over cached subset (FR-SRCH-04).
-- PWA badging (FR-NOTIF-04), notification actions (FR-NOTIF-05).
-- `List-Unsubscribe` one-click (FR-RD-09), sectioned list grouping (FR-LST-08).
-- Multi-account UI (FR-AUTH-07 full), unified inbox (FR-MBX-05).
+- ~~PWA badging (FR-NOTIF-04)~~ — **shipped in M5.3**; notification actions (FR-NOTIF-05)
+  remain (ADR-017 explains why they are harder than they look).
+- ~~`List-Unsubscribe` one-click (FR-RD-09)~~ — **shipped in M5.3**; sectioned list grouping
+  (FR-LST-08) remains.
+- ~~Multi-account UI (FR-AUTH-07 full)~~ — **shipped in M5.10/M5.14/M5.16**, as SWITCHING: a
+  registry, derived per-account scopes, add-account and a switcher. **Unified inbox (FR-MBX-05)
+  remains and is now the harder half**: the session provider holds ONE session, so a mailbox
+  spanning accounts needs that assumption reworked, not a new screen.
 - CSV contact import (FR-CON-06 remainder), auto-collected addresses (FR-CON-07).
 - Community theme gallery format (FR-THEME-04).
-- V2 per spec §10: Calendar, iTIP invitations, PGP, Files/Tasks integration.
+- V2 per spec §10: ~~Calendar~~ — **shipped in M5.6/M5.11/M5.13** (month, week/day and agenda
+  views; create, edit and delete for single events). **Recurring series stay read-only by
+  design** — a scope editor ("this event / this and following / all") is the one deliberate
+  omission, see `isEditable` in `calendar-client.ts`. iTIP invitations and Files/Tasks
+  integration remain; ~~Files~~ — **shipped in M5.7/M5.17/M5.18** (browse, upload, folders,
+  delete, download, inline preview and RFC 9670 sharing).
+
+**PGP and S/MIME verification (open, owner decision deferred 2026-08-19).** M5.15 and M5.19
+ship the half that needs no cryptography: signed and encrypted mail is recognised from its MIME
+structure and explained, and the signature part no longer shows up as an attachment nobody can
+open. Verification and decryption are not started, and §5.1 of
+`docs/competitive-analysis-bulwark.md` records which half is blocked on what:
+
+- **S/MIME verification is blocked on a trust root the browser does not expose.** There is no
+  chain-validation API and no access to the platform root store. Shipping a CA bundle would
+  make this app the owner of a PKI trust decision on the user's behalf, and a tick meaning
+  "signed by a certificate we could not check" reads to every user as "verified sender". That
+  is the failure worth refusing.
+- **PGP verification is buildable** and is the more promising half: no certificate chain, no
+  private key material, so none of the shared-computer or XSS-escalation questions apply.
+  What it costs is an OpenPGP packet parser (openpgp.js is ~300 KB, lazily loaded — the size
+  budget measures only eager chunks, so this is a dependency-weight question and not a budget
+  one) plus a public-key store and an acceptance workflow.
+- Decryption, either scheme, needs private keys and therefore a key store, a shared-computer
+  answer, a fresh XSS threat model and a recovery story. That is a milestone of its own.
+
+Measured 2026-08-19 against Stalwart 0.16: no key material is reachable over JMAP —
+`urn:stalwart:jmap` is absent from the session and its account capability is `{}`. The key
+Stalwart does hold is the user's OWN public key, for encryption at rest; verifying a signature
+needs the SENDER's, which no server in this architecture can supply.
 
 ## 12. Cross-cutting Workstreams (no start/end — enforced continuously)
 
@@ -2518,11 +2613,13 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | | FR-AUTH-08 | M4.4 |
 | Mailboxes | FR-MBX-01/02/04 | M1.5 |
 | | FR-MBX-03 | M3.9 |
+| | FR-MBX-06 | M5.3 |
 | List | FR-LST-01–05, 07 | M1.6, M1.4 (pane layouts) |
 | | FR-LST-06 | M3.9 |
 | Reading | FR-RD-01/02/03 | M1.7, M1.8 |
 | | FR-RD-04/05 | M1.8 |
 | | FR-RD-06/07/08 | M3.9 |
+| | FR-RD-09 | M5.3 |
 | Compose | FR-CMP-01 | M2.1 |
 | | FR-CMP-02 | M2.3 |
 | | FR-CMP-03 | M2.6 |
@@ -2531,11 +2628,16 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | | FR-CMP-06 | M2.5 (+M2.3 inference) |
 | | FR-CMP-07/08/10 | M2.8 |
 | | FR-CMP-09 | M2.2 |
+| | FR-CMP-13/14 | M5.3 |
+| | FR-CMP-11 | M5.4 |
+| | FR-CMP-12 | M5.5 |
 | Search | FR-SRCH-01/02, 03 (part) | M3.1 |
+| | FR-SRCH-03 (saved) | M5.5 |
 | Organization | FR-ORG-01 | M1.3/M1.6/M1.8 |
 | | FR-ORG-02/04 | M3.2 |
 | Notifications | FR-NOTIF-01 | SP.3, M1.3, M1.9 |
 | | FR-NOTIF-02/03 | M3.6 |
+| | FR-NOTIF-04 | M5.3 |
 | Offline | FR-OFF-01 | M3.5 |
 | | FR-OFF-02 | M1.2/M1.8, M3.4 |
 | | FR-OFF-03 | M1.3, M3.3 |
@@ -2544,7 +2646,8 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | Contacts | FR-CON-01/02/04 | M4.2 |
 | | FR-CON-03/05/06 | M4.3 (+M4.1) |
 | Self-service | FR-VAC-01 | M3.7 |
-| | FR-SIEVE-01/02 | backlog (V1.x) |
+| | FR-SIEVE-01/02 | M5.2 |
+| Calendar | FR-CAL-01 (part) | M5.6 |
 | UI | FR-UI-01/02 | M1.1 |
 | | FR-UI-03 | M1.4 |
 | | FR-UI-04 | M3.8 |
@@ -2638,3 +2741,6 @@ Every Must/Should FR mapped to its WP (Could items → §11 backlog unless liste
 | 2026-08-16 | **M4.5 — the white-label promise was not true, and the way it failed was the worst kind: silently and only in dark mode.** A hoster re-declaring `--waxwing-accent` on `:root` got it in light mode and not in dark, because the dark blocks are `:root:not([data-theme="light"])` and `:root[data-theme="dark"]` at specificity (0,2,0) against their (0,1,0) — no load order can fix that. The deployment then looked half-themed with nothing to explain why. A cascade layer around tokens.css settles it for every selector a hoster might write: unlayered CSS beats layered CSS regardless of specificity, so the contract is now true rather than nearly true. Alongside it, 25 literals had drifted back into the stylesheets — six font-weights, nine copies of one letter-spacing, twelve sub-grid gaps, `color-mix(…, black)` in a hover that is wrong in dark mode twice over — each tokenised, two new tokens named rather than pretending the values did not exist, and a check added for the class the existing three are blind to by construction (their only pattern is `var(--waxwing-…)`, so a declaration that never mentions a token is invisible to them). Three literals turned out to be RIGHT and are marked with reasons instead: the mail body frame is pinned light because foreign HTML that brings dark text and no background of its own renders black-on-black on a themed dark surface. Themable there means unreadable. FR-THEME-03 landed as six palettes rather than a colour picker, precisely so every one could be contrast-proved in both themes — as a label on its own fill AND as a fill against page and surface, which is the assertion a palette chosen only for its label would fail. A hoster can narrow or lock the list but not extend it; the unrestricted route is `theme.css`, where §4 of the new `docs/theming.md` says plainly that they must check the pairs themselves, because their file is read at runtime and no test here can see it. And `accentColor` now derives its own label, closing a WCAG-AA hole the app machine-verified for its own accent and could not for theirs. 2937 tests, 250.1 KB gz of 300. |
 | 2026-08-18 | **A UI audit, and the 52 findings it produced, fixed.** Four independent reviews of the running client against the live fixture, at three viewport tiers — prompted by the project owner reporting the UI felt "cluttered and overloaded" next to Bulwark. The headline was measurable: **53 % of a 390 × 844 phone was chrome before the first message, 65 % once a search was running**; it is now 29 % and 40 %, and the list grew from 5.2 visible rows to 7.9. Three things were spending it — a 61 px row holding one button, a permanently visible four-control view block (156 px on a phone, 192 px on the desktop, one of whose controls duplicated Settings), and a search scope picker that rendered whether or not anyone was searching. One row now carries the folder title, the drawer toggle and a disclosure for the view options; it also answers a question nothing on a phone answered before, since the only indication of the active folder was the highlight inside the drawer. **The app's own landing screen contained no mail**: `/mail` resolved no default folder, so the brand link, the bottom bar and the notification fallback all led to "choose a folder" — an instruction whose subject is behind a drawer. **Back pushed instead of popping** (`router.back()` had zero callers since M1.4), leaving `[list, message, list]` so the OS gesture reopened the message just left, and it discarded `?q=` while the keyboard's `u` kept it — one helper serves both now. **Four texts were factually wrong**, two only in German: the background-notification note claimed something the English one does not, and an empty state sent users to a setting that does not exist in either language — with a unit test holding that promise in place, now inverted. In CSS, `[aria-current]` and `:hover` are both (0,2,0), so pointing at the current section erased its accent; 27 of 30 hover rules latched on touch; search hits rendered in the user agent's `#ffff00`; and the German "Einstellungen" started at x = -1, clipped by the viewport, in a tier **no suite has ever asserted at** — of nine configs every project runs at 1280 × 720 except two at 390 × 844, so the 40em–64em band was unguarded. Four new static/E2E guards close those classes: hover-vs-state ordering, hover behind `hover: hover`, the doc's colour table against `tokens.css` (four rows had drifted, including the accent), and the overflow sweep at 834 px and 1440 px. The dark theme stopped punching a `#ffffff` hole in a `#2c2c2e` card for messages that declare no colour of their own, which also retired a link colour hardcoded to a superseded accent. Two items are deliberately left open and named in `docs/ui-audit.md`: the Android back gesture does not yet close the drawer, and the 34/39 px control-height split stands. |
 | 2026-08-19 | **M5.1 — identities became editable, and the reason is that nobody else could edit them.** FR-CMP-06 had shipped in M2.5 as `Identity/get` only, which meant a user could pick a From address and see its signature but never change either. Checked rather than assumed: Stalwart's own self-service console covers passwords, app passwords and 2FA — not identities — so on a Stalwart deployment a signature was an administrator's job, permanently. `Identity/set` closes that: list, create, edit and delete in Settings, online-only through a direct `client.call` (the outbox is Email-shaped; an identity queued offline would be offered in the From selector for an address the server does not have), `ifInState` on every write, and the fresh list mirrored into the replica after each one — without that mirror the composer would not see the change until the next sign-in, because the engine pulls identities exactly once per leadership session. **Three defects came out of the work rather than into it.** (1) `putIdentities` was a `bulkPut` with no delete half, so a destroyed identity would have lived in the replica forever and kept appearing in the composer; `replaceIdentities` fixes that for the sync pass too. (2) `htmlSignature` was written into the draft with `innerHTML` and sanitized NOWHERE — the same `position:fixed` overlay `quoted-html.ts` measured in Chromium, arriving through a different door; it now runs `sanitizeQuotedHtml` before its emptiness tests, in both directions. (3) An update sent every writable field, so renaming an identity silently wrote back the SANITIZED signature and deleted whatever the sanitizer had dropped — patches now carry only what changed, which also makes a no-op Save send nothing at all. **And four things the fixture answered that the RFC does not** (ADR-022): `created` carries only `{id}`; a create for an unowned address fails as `invalidProperties`/`email`, not the RFC's `forbiddenFrom`, and gets its own message; Stalwart mints an Identity per account address, so the alias route was tried and dropped in favour of a second identity on the same address (which RFC 8621 §6 explicitly allows); and Stalwart does not enforce `ifInState` here at all, so its conflict path is real code with no server to exercise it. 79 new tests (3312 total, 229 files), 7 write-suite E2E specs green against the live fixture, 256.35 KB gz of 300. |
+| 2026-08-19 | **M5.2 — filter rules, and a decision not to parse Sieve.** FR-SIEVE-01/02 were the headline V1.x item and the only self-service feature Stalwart offers that Waxwing did not: rules run server-side, so they keep filtering when the app is shut. The build is `SieveScript/get|set|query|validate` (RFC 9661) in `@waxwing/jmap`, a rule model that compiles to Sieve, and a Settings section that lists, edits and reorders rules. **The hard part is not the builder, it is the script that was already there.** Only one script per account can be active, so a builder that writes its own file silently stops whatever Roundcube, Nextcloud or an admin had running. Every client of this shape solves that by parsing the existing script back into rules, and that is where they break — the most developed open implementation carries an opaque-bail-out, an external-rules block and a Nextcloud special case, all added after an issue where editing a rule deleted the user's filters. This one does not parse Sieve at all (ADR-023): our rules round-trip as JSON in a marker comment, everything outside the markers is carried across byte for byte **and in its original position** (order is semantics in Sieve — a foreign `stop;` decides whether later rules run), and any doubt at all makes the whole script opaque and read-only. A foreign script is never edited in place; the one offer is to manage filters *alongside* it. **Five protocol details that each produce a plausible client that misbehaves**, none obvious from the RFC: content travels as a blob and never inline (the `content` string in drafts -01/-02 was reverted in -03, and no shipping server accepts it); `onSuccessActivateScript: null` does NOT deactivate — a conformant server must ignore an unknown id, so a client sending it leaves the old script filtering mail while its UI says filtering is off; Stalwart still emits the pre-RFC error spellings `invalidScript`/`scriptIsActive`, so both are matched; an activation-only `/set` comes back with an empty `updated`, so every mutation re-reads rather than trusting the echo; and `SieveScript/validate` does not check `require`, so a script can validate clean and fail at delivery — the section checks the extensions it needs against the account capability itself. **One documentation defect closed on the way:** `features.sieveEditor` had been documented since M4.5 as gating a Sieve UI that did not exist, and was read by no code at all; it now gates this section, and its description no longer names ManageSieve, a TCP protocol a browser cannot reach. 53 new tests (3365 total, 233 files), 256.41 KB gz of 300. |
+| 2026-08-19 | **M5.3 — the small parities, and two of them were not small.** Seven items from the Bulwark comparison's rank-8 list, each individually minor and collectively the difference between "nearly" and "yes": a **Print** entry (the print stylesheets had existed since M3.x with no way to reach them), a **`mailto:` handler** (`protocol_handlers` + an RFC 6068 parser), the **PWA unread badge** (FR-NOTIF-04), **`List-Unsubscribe`** one-click (FR-RD-09), a **ZIP** of all attachments, **forward as attachment** (FR-CMP-14) and **`.eml` import** (FR-MBX-06). **Three carried a decision worth recording.** (1) The `mailto:` URI arrives from another origin, so only the five header fields RFC 6068 §5 calls safe are honoured — a link that sets `from` or `in-reply-to` would otherwise choose the sender or forge a reply relationship — and the body is escaped into markup rather than inserted as it. (2) One-click unsubscribe has to be a `no-cors` POST, because the endpoint belongs to the sender and will not permit our origin; the request IS delivered but the response is opaque, so the UI says the request was **sent** and never that the reader is unsubscribed. `http:` endpoints are refused outright — the URL carries an opaque token and posting it in clear text is not the sender's decision to make. (3) Forward-as-attachment needs no download and no upload at all: an Email's own `blobId` addresses the whole RFC 5322 message, so the draft carries a reference to bytes the server already holds. **One replaced behaviour:** "save all attachments" fired n downloads in a loop, which Chromium gates behind a "multiple downloads" prompt and Safari truncates to the first — it is now one archive, via a lazily-loaded `client-zip` that stays out of the initial budget. 45 new tests (3410 total, 237 files), 260.48 KB gz of 300. |
+| 2026-08-19 | **M5.4–M5.6 — scheduled send, templates, saved searches, and a calendar.** Four more rows of the Bulwark comparison, and two of them landed better than the plan assumed. **Scheduled send is SERVER-side** (FR-CMP-11): the spec allowed for a client-side fallback needing the browser open at send time, but Stalwart implements SMTP FUTURERELEASE, so the message sits in the server's queue and goes out with the app closed — where Bulwark's own 'scheduled send' is a client-side outbox delay. Three protocol traps: `sendAt` is server-set and immutable, so the request rides as a `HOLDUNTIL` parameter on the envelope sender; the advertised `maxDelayedSend` (30 days) is not the enforced limit (7), so the picker caps at the smaller; and a past time is REFUSED rather than rounded to now, because a client that silently sent immediately would deliver a message the user believed they had deferred. Cancelling needs its own surface — a scheduled send has left the device, so there is no outbox row and no mailbox, only `EmailSubmission/query`. **The calendar** (FR-CAL-01) supersedes a V1 non-goal that rested on a false premise: it assumed calendars meant CalDAV, i.e. XML over WebDAV verbs a browser cannot send cross-origin. JMAP for Calendars removes that entirely, and the fixture advertises it. Every wire shape was MEASURED against Stalwart 0.16 rather than read out of a draft that still has no RFC number. The load-bearing detail is JSCalendar's local date-time: `start` carries no offset and `timeZone` sits beside it, so parsing it as UTC gets every timed event wrong by its offset while looking right to anyone testing in London in winter — the conversion is tested against Berlin in summer and winter, Auckland, and a half-hour offset. Recurrence expansion is the server's (`expandRecurrences`). **Deliberately not shipped:** week/day grids and all editing; a calendar that lets someone half-edit a recurring meeting loses other people's time. **Templates** are client-side and insertion is ADDITIVE — a mis-clicked template must not discard a half-written message — and an unknown placeholder is left standing rather than blanked. **Saved searches** store the query string, never a parsed filter, so a folder rename cannot invalidate one. Two CSS gates earned their keep on the way: a `:hover` outside `@media (hover: hover)` and an `aria-current` rule at equal specificity to it, which would have dropped the highlight the moment a pointer crossed the row. 73 new tests (3483 total, 244 files), 263.51 KB gz of 300. |

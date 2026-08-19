@@ -53,6 +53,8 @@ export interface FolderTreeViewProps {
   readonly onRequestDelete: (mailbox: MailboxRow) => void
   /** Re-parent a folder (M3.9, FR-MBX-03) — the non-pointer path SC 2.5.7 requires; omit to hide. */
   readonly onRequestMove?: (mailbox: MailboxRow) => void
+  /** Import `.eml` files into this folder (M5.3, FR-MBX-06); omit to hide the entry. */
+  readonly onRequestImport?: (mailbox: MailboxRow) => void
   /** May the drag in flight drop on this mailbox? Omit to disable drop entirely (M3.9 5b). */
   readonly canDropOn?: (mailbox: MailboxRow) => boolean
   /** A drag was dropped on this mailbox — carry out the move (M3.9 5b). */
@@ -79,6 +81,7 @@ export function FolderTreeView({
   onRequestRename,
   onRequestDelete,
   onRequestMove,
+  onRequestImport,
   canDropOn,
   onDropOn,
   onDragStartMailbox,
@@ -187,6 +190,7 @@ export function FolderTreeView({
             onRequestRename,
             onRequestDelete,
             onRequestMove,
+            onRequestImport,
             onRequestEmpty,
             onRequestDeleteOlder,
             onTogglePin,
@@ -330,6 +334,7 @@ function actionItems(
     onRequestRename: (mailbox: MailboxRow) => void
     onRequestDelete: (mailbox: MailboxRow) => void
     onRequestMove?: ((mailbox: MailboxRow) => void) | undefined
+    onRequestImport?: ((mailbox: MailboxRow) => void) | undefined
     onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
     onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
     onTogglePin?: ((mailbox: MailboxRow) => void) | undefined
@@ -371,6 +376,16 @@ function actionItems(
       label: isPinned ? t('mailbox.actions.keepOfflineOff') : t('mailbox.actions.keepOffline'),
       icon: Pin,
       onSelect: () => onTogglePin(mailbox),
+    })
+  }
+  // Import (M5.3): gated on `mayAddItems`, which is precisely the right this needs — the message
+  // is created IN this mailbox.
+  if (handlers.onRequestImport && mailbox.myRights.mayAddItems) {
+    const onRequestImport = handlers.onRequestImport
+    items.push({
+      id: 'import',
+      label: t('mailbox.actions.import'),
+      onSelect: () => onRequestImport(mailbox),
     })
   }
   // Cleanup (M3.2): empty a Trash/Junk mailbox, or delete older messages from any purgeable one.

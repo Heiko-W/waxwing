@@ -67,6 +67,20 @@ export default [
       // `?` cheat-sheet. The registry + dispatcher stay eager; these two surfaces do not.
       '!apps/web/dist/assets/CommandPalette-*.js',
       '!apps/web/dist/assets/ShortcutHelp-*.js',
+      // The attachment archiver (mail/, M5.3): `client-zip` plus the naming rules, fetched only when
+      // a reader asks to save a message's attachments as one file.
+      '!apps/web/dist/assets/attachment-zip-*.js',
+      // The TNEF decoder (mail/, M5.21): fetched only when a reader opens a `winmail.dat`, which
+      // most mailboxes never see.
+      '!apps/web/dist/assets/tnef-*.js',
+      // The calendar screen (calendar/, M5.6) — a route chunk, like contacts and settings.
+      '!apps/web/dist/assets/CalendarPage-*.js',
+      // The files screen (files/, M5.7) — likewise.
+      '!apps/web/dist/assets/FilesPage-*.js',
+      // The send-later picker (compose/, M5.4): presets plus the window validation.
+      '!apps/web/dist/assets/ScheduleSendDialog-*.js',
+      // The `.eml` import dialog (mail/, M5.3) — restoring an archived message is a rare, deliberate act.
+      '!apps/web/dist/assets/EmlImportDialog-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],

@@ -6,6 +6,8 @@ import {
   forwardAttachments,
   forwardBody,
   inferFromIdentity,
+  isForward,
+  messageAsAttachment,
   ownAddresses,
   quoteBody,
   type ReplyKind,
@@ -266,5 +268,58 @@ describe('buildReplyDraft — source threading (M2.8)', () => {
   it('marks a forward with its kind', () => {
     const init = buildReplyDraft({ kind: 'forward', source: source({ id: 'msg-9' }), ...base })
     expect(init.sourceKind).toBe('forward')
+  })
+})
+
+describe('forward as attachment (M5.3, FR-CMP-14)', () => {
+  const base = {
+    bodyHtml: '<p>hi</p>',
+    textBody: 'hi',
+    ownAddresses: [] as string[],
+    attribution: 'On X, Y wrote:',
+    forwardSeparator: '----',
+    forwardHeaderBlock: 'From: y',
+  }
+
+  it('leaves the body EMPTY — the message travels attached, not quoted', () => {
+    // Quoting it as well would send the same message twice, one of them mangled.
+    const init = buildReplyDraft({ kind: 'forwardAsAttachment', source: source(), ...base })
+    expect(init.body).toBe('')
+  })
+
+  it('still behaves like a forward everywhere else', () => {
+    const init = buildReplyDraft({
+      kind: 'forwardAsAttachment',
+      source: source({ subject: 'Report', messageId: ['<a@x>'], from: [addr('y@x.test')] }),
+      ...base,
+    })
+    expect(init.subject).toBe('Fwd: Report')
+    // A forward starts a new thread and addresses nobody by default.
+    expect(init.inReplyTo).toBeNull()
+    expect(init.references).toBeNull()
+    expect(init.to).toEqual([])
+  })
+
+  it('describes the whole message as one message/rfc822 part', () => {
+    // The Email's own blobId addresses the entire RFC 5322 message (RFC 8621 §4.1.1), so this needs
+    // no download and no re-upload.
+    const attachment = messageAsAttachment(
+      { subject: 'Report', blobId: 'blob-whole', size: 4096 },
+      'Report.eml',
+    )
+    expect(attachment).toEqual({
+      blobId: 'blob-whole',
+      name: 'Report.eml',
+      type: 'message/rfc822',
+      size: 4096,
+      cid: null,
+    })
+  })
+
+  it('isForward covers both forward shapes and neither reply', () => {
+    expect(isForward('forward')).toBe(true)
+    expect(isForward('forwardAsAttachment')).toBe(true)
+    expect(isForward('reply')).toBe(false)
+    expect(isForward('replyAll')).toBe(false)
   })
 })

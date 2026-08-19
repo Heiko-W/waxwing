@@ -14,6 +14,7 @@
  */
 
 import { renderPlainText, sanitize } from '@waxwing/mail-html'
+import type { TFunction } from 'i18next'
 import {
   AlertTriangle,
   Archive,
@@ -22,10 +23,12 @@ import {
   ChevronUp,
   FolderInput,
   Forward,
+  Lock,
   MailMinus,
   MoreHorizontal,
   Reply,
   ReplyAll,
+  ShieldCheck,
   Star,
   Tag,
   Trash2,
@@ -36,10 +39,13 @@ import { useSession } from '../app/session/context'
 import {
   buildReplyDraft,
   forwardAttachments,
+  isForward,
+  messageAsAttachment,
   ownAddresses,
   type ReplyKind,
   useComposerStore,
 } from '../compose'
+import { mailtoBodyToHtml, parseMailto } from '../compose/mailto'
 import { formatDate } from '../i18n/formatters'
 import { type EmailRow, setPref, useMailboxByRole, useReplica } from '../sync'
 import {
@@ -54,6 +60,7 @@ import {
 } from '../ui'
 import { AttachmentList } from './AttachmentList'
 import { topmostAuthResults } from './auth-results'
+import { detectProtection, type ProtectionPart } from './encrypted-message'
 import { LabelMenu } from './labels/LabelMenu'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
@@ -64,6 +71,7 @@ import {
   senderAddress,
   senderName,
 } from './message-body'
+import { ReadReceiptBanner } from './ReadReceiptBanner'
 import { RemoteContentBanner } from './RemoteContentBanner'
 import styles from './reading.module.css'
 import {
@@ -75,9 +83,15 @@ import {
 import { type ReadingHandlers, useReadingStore } from './reading-store'
 import { SenderCard } from './SenderCard'
 import type { SenderIdentity } from './sender-contact'
+import { SNOOZE_PRESETS } from './snooze'
+import { UnsubscribeBanner } from './UnsubscribeBanner'
+import { hasUnsubscribeOffer, readUnsubscribeOffer, sendOneClickUnsubscribe } from './unsubscribe'
 import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useMessageRights } from './use-message-rights'
+import { sourceFilename } from './use-message-source'
+import { useReadReceipt } from './use-read-receipt'
+import { useSnooze } from './use-snooze'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
@@ -118,6 +132,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // Moves go through the shared triage seam (M3.8): same dispatch, plus the undo toast — and it is the
   // very seam the `e` / `#` / `!` chords call, so a click and a keystroke cannot drift apart.
   const triage = useTriage()
+  const { snooze } = useSnooze()
   // B34. The subject is this one message, so the verdict is exact rather than the account floor.
   const rightsIds = useMemo(() => [email.id], [email.id])
   const rights = useMessageRights(rightsIds)
@@ -445,6 +460,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   }, [email.sentAt, email.receivedAt])
   // Reported, never judged — no verdict, no colour, no tick. See `auth-results.ts` for the why.
   const authReport = useMemo(() => topmostAuthResults(body?.authResults), [body?.authResults])
+  // What this message offers by way of getting off the list (FR-RD-09). Absent on a row written
+  // before M5.3 — the offer is then simply empty, and the next body fetch fills it in.
+  /** What the message's MIME structure says it is (M5.15). No cryptography is performed. */
+  const readReceipt = useReadReceipt(email, body)
+  const protection = useMemo(
+    () => detectProtection(body?.bodyStructure as ProtectionPart | undefined),
+    [body?.bodyStructure],
+  )
+  const unsubscribeOffer = useMemo(
+    () => readUnsubscribeOffer(body?.listUnsubscribe, body?.listUnsubscribePost),
+    [body?.listUnsubscribe, body?.listUnsubscribePost],
+  )
 
   // Open a reply / reply-all / forward draft seeded from this message (M2.3, FR-CMP-02/10).
   const onCompose = useCallback(
@@ -477,12 +504,19 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         forwardSeparator: t('compose.forwardSeparator'),
         forwardHeaderBlock,
       })
-      const attachments = kind === 'forward' && body !== undefined ? forwardAttachments(body) : []
+      const attachments =
+        kind === 'forwardAsAttachment'
+          ? // The whole message, by blob reference. No download, no re-upload: the server already
+            // holds these bytes under the Email's own blobId.
+            [messageAsAttachment(email, sourceFilename(email.subject))]
+          : kind === 'forward' && body !== undefined
+            ? forwardAttachments(body)
+            : []
       openDraft({
         ...init,
         attachments,
         sourceEmailId: init.sourceEmailId,
-        sourceFlag: init.sourceKind === 'forward' ? '$forwarded' : '$answered',
+        sourceFlag: isForward(init.sourceKind) ? '$forwarded' : '$answered',
       })
     },
     [isHtml, sanitized, email, textBody, own, t, dateLabel, name, body, openDraft],
@@ -492,10 +526,28 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   // downloaded bytes, and a visible loading/error surface beats a save that fails silently.
   const overflowItems = useMemo<MenuItemSpec[]>(
     () => [
+      // Snooze (FR-ORG-03): hide it until the chosen time. In the overflow rather than the action
+      // bar because it is a deliberate act, not a triage reflex.
+      ...SNOOZE_PRESETS.map((preset) => ({
+        id: `snooze-${preset.id}`,
+        label: snoozeLabel(t, preset.id),
+        onSelect: () => snooze([email.id], preset.at(new Date())),
+      })),
+      // Forwarding the message whole rather than quoted — the shape a recipient needs when the
+      // message ITSELF is the point (a bounce to diagnose, a phishing mail to hand to an admin).
+      {
+        id: 'forwardAsAttachment',
+        label: t('reading.forwardAsAttachment'),
+        onSelect: () => onCompose('forwardAsAttachment'),
+      },
+      // Print needs nothing but the browser: the print stylesheets already strip the chrome, and
+      // `[data-waxwing-portal]` is hidden in print, so this menu is gone by the time the dialog
+      // opens. The one thing it cannot do is print a message other than the one on screen.
+      { id: 'print', label: t('reading.print'), onSelect: () => window.print() },
       { id: 'viewSource', label: t('reading.source.view'), onSelect: () => setSourceOpen('view') },
       { id: 'saveEml', label: t('reading.source.save'), onSelect: () => setSourceOpen('save') },
     ],
-    [t],
+    [t, onCompose, snooze, email.id],
   )
 
   const onAlwaysAllow =
@@ -549,6 +601,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       openMove: () => setMoveOpen(true),
       openLabels: () => setLabelsOpen(true),
       requestDelete: () => setConfirmDelete(true),
+      print: () => window.print(),
     }),
     [
       email.id,
@@ -847,6 +900,62 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         />
       )}
 
+      {readReceipt !== null && (
+        // Never automatic. NFR-PRIV-01: opening a message is not consent to tell anyone.
+        <ReadReceiptBanner
+          request={readReceipt.request}
+          alreadySent={readReceipt.alreadySent}
+          onConfirm={readReceipt.send}
+        />
+      )}
+
+      {protection.kind !== 'none' && (
+        // Says what the message IS. For an encrypted one this is the difference between a blank
+        // body and an explanation the reader can act on — and on an account with Stalwart's
+        // encryption-at-rest switched on, EVERY message arrives this way.
+        <section className={styles.remoteBanner} aria-label={t('reading.protection.title')}>
+          {protection.kind === 'encrypted' ? (
+            <Lock aria-hidden="true" className={styles.remoteIcon} />
+          ) : (
+            <ShieldCheck aria-hidden="true" className={styles.remoteIcon} />
+          )}
+          <div className={styles.remoteText}>
+            <p className={styles.remoteTitle}>
+              {protection.kind === 'encrypted'
+                ? t('reading.protection.encrypted')
+                : t('reading.protection.signed')}
+            </p>
+            <p className={styles.remoteNote}>
+              {protection.kind === 'encrypted'
+                ? t('reading.protection.encryptedNote')
+                : // Deliberately NOT "verified": nothing here checked the signature. Saying so is
+                  // the whole point — a green tick this client has not earned would be a lie.
+                  t('reading.protection.signedNote')}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {hasUnsubscribeOffer(unsubscribeOffer) && (
+        <UnsubscribeBanner
+          offer={unsubscribeOffer}
+          onOneClick={(endpoint) => sendOneClickUnsubscribe(endpoint)}
+          // Through the same host gate as any other link in a message (FR-RD-08). The href IS the
+          // link text here — it came from a header, not from anchor text — so the mismatch check
+          // has nothing to catch, but routing it anywhere else would be a second door into
+          // `window.open` that the check does not watch.
+          onOpen={(url) => links.onOpenLink(url, { href: url, text: url, raw: url })}
+          onCompose={(mailto) => {
+            const request = parseMailto(mailto)
+            openDraft({
+              to: request.to,
+              subject: request.subject,
+              body: mailtoBodyToHtml(request.body),
+            })
+          }}
+        />
+      )}
+
       <div className={styles.bodyWrap}>
         {loading || bodyHtml === null ? (
           <div className={styles.bodyLoading}>
@@ -874,7 +983,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
 
       {body !== undefined && (
-        <AttachmentList accountId={accountId} attachments={body.attachments} />
+        <AttachmentList
+          accountId={accountId}
+          attachments={body.attachments}
+          subject={email.subject}
+        />
       )}
 
       {moveOpen && (
@@ -947,4 +1060,21 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
     </article>
   )
+}
+
+/**
+ * Spelled out rather than interpolated: `guards.test.ts` only sees LITERAL keys, so a computed one
+ * passes every gate and then renders the key itself on screen.
+ */
+function snoozeLabel(t: TFunction, id: (typeof SNOOZE_PRESETS)[number]['id']): string {
+  switch (id) {
+    case 'laterToday':
+      return t('reading.snooze.laterToday')
+    case 'tomorrow':
+      return t('reading.snooze.tomorrow')
+    case 'thisWeekend':
+      return t('reading.snooze.thisWeekend')
+    case 'nextWeek':
+      return t('reading.snooze.nextWeek')
+  }
 }

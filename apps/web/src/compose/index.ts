@@ -62,6 +62,8 @@ export {
   forwardAttachments,
   forwardBody,
   inferFromIdentity,
+  isForward,
+  messageAsAttachment,
   ownAddresses,
   quoteBody,
   type ReplyDraftInit,

@@ -11,10 +11,27 @@
  * ```
  *
  * SP.1 covers Core, Mailbox, Thread and Email. Later capabilities (Submission, Vacation,
- * Blob-as-method, Quota, Sieve, Contacts) append here as they land.
+ * Quota, Sieve, Contacts) have appended since; Blob-as-method (RFC 9404) has not landed —
+ * blobs go through the RFC 8620 §6 endpoints in `blob.ts`.
  */
 
 import { defineMethod, type MethodDef } from './request'
+import type {
+  CalendarChangesRequest,
+  CalendarChangesResponse,
+  CalendarEventChangesRequest,
+  CalendarEventChangesResponse,
+  CalendarEventGetRequest,
+  CalendarEventGetResponse,
+  CalendarEventQueryRequest,
+  CalendarEventQueryResponse,
+  CalendarEventSetRequest,
+  CalendarEventSetResponse,
+  CalendarGetRequest,
+  CalendarGetResponse,
+  CalendarSetRequest,
+  CalendarSetResponse,
+} from './types/calendar'
 import type {
   AddressBookChangesRequest,
   AddressBookChangesResponse,
@@ -34,10 +51,22 @@ import type {
   ContactCardSetResponse,
 } from './types/contacts'
 import type {
+  FileNodeChangesRequest,
+  FileNodeChangesResponse,
+  FileNodeGetRequest,
+  FileNodeGetResponse,
+  FileNodeQueryRequest,
+  FileNodeQueryResponse,
+  FileNodeSetRequest,
+  FileNodeSetResponse,
+} from './types/filenode'
+import type {
   EmailChangesRequest,
   EmailChangesResponse,
   EmailGetRequest,
   EmailGetResponse,
+  EmailImportRequest,
+  EmailImportResponse,
   EmailParseRequest,
   EmailParseResponse,
   EmailQueryChangesRequest,
@@ -64,6 +93,16 @@ import type {
   ThreadGetResponse,
 } from './types/mail'
 import type {
+  PrincipalGetRequest,
+  PrincipalGetResponse,
+  PrincipalQueryRequest,
+  PrincipalQueryResponse,
+  ShareNotificationGetRequest,
+  ShareNotificationGetResponse,
+  ShareNotificationSetRequest,
+  ShareNotificationSetResponse,
+} from './types/principal'
+import type {
   PushSubscriptionGetRequest,
   PushSubscriptionGetResponse,
   PushSubscriptionSetRequest,
@@ -71,6 +110,20 @@ import type {
 } from './types/push'
 import type { QuotaGetRequest, QuotaGetResponse } from './types/quota'
 import type {
+  SieveScriptGetRequest,
+  SieveScriptGetResponse,
+  SieveScriptQueryRequest,
+  SieveScriptQueryResponse,
+  SieveScriptSetRequest,
+  SieveScriptSetResponse,
+  SieveScriptValidateRequest,
+  SieveScriptValidateResponse,
+} from './types/sieve'
+import type {
+  EmailSubmissionGetRequest,
+  EmailSubmissionGetResponse,
+  EmailSubmissionQueryRequest,
+  EmailSubmissionQueryResponse,
   EmailSubmissionSetRequest,
   EmailSubmissionSetResponse,
   IdentityGetRequest,
@@ -109,6 +162,14 @@ export const Methods = {
   ),
   emailSet: defineMethod<EmailSetRequest, EmailSetResponse>('Email/set'),
   emailParse: defineMethod<EmailParseRequest, EmailParseResponse>('Email/parse'),
+  /**
+   * RFC 8621 §4.8 — file an uploaded RFC 5322 blob into mailboxes (M5.3).
+   *
+   * Not the same as `Email/set create`: an import keeps the original bytes, so headers, signatures
+   * and MIME structure survive exactly. Rebuilding a message through `/set` loses whatever the
+   * client could not model.
+   */
+  emailImport: defineMethod<EmailImportRequest, EmailImportResponse>('Email/import'),
   searchSnippetGet: defineMethod<SearchSnippetGetRequest, SearchSnippetGetResponse>(
     'SearchSnippet/get',
   ),
@@ -118,6 +179,17 @@ export const Methods = {
   identitySet: defineMethod<IdentitySetRequest, IdentitySetResponse>('Identity/set'),
   emailSubmissionSet: defineMethod<EmailSubmissionSetRequest, EmailSubmissionSetResponse>(
     'EmailSubmission/set',
+  ),
+  /**
+   * RFC 8621 §7 — read submissions (M5.4). The surface a "scheduled" view is built from: a
+   * submission is not an Email and lives in no mailbox, so `EmailSubmission/query` with
+   * `undoStatus: 'pending'` is the only way to find messages the server is holding.
+   */
+  emailSubmissionGet: defineMethod<EmailSubmissionGetRequest, EmailSubmissionGetResponse>(
+    'EmailSubmission/get',
+  ),
+  emailSubmissionQuery: defineMethod<EmailSubmissionQueryRequest, EmailSubmissionQueryResponse>(
+    'EmailSubmission/query',
   ),
 
   /** RFC 8621 §8 — the vacation-responder singleton (M3.7, FR-VAC-01). */
@@ -130,6 +202,69 @@ export const Methods = {
 
   /** RFC 9425 — Quota (read-only; M3.7, FR-QTA-01). */
   quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
+
+  /**
+   * RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02). The RFC defines these four and no more:
+   * there is no `/changes` and no `/queryChanges`, so scripts are re-read rather than synced.
+   */
+  sieveScriptGet: defineMethod<SieveScriptGetRequest, SieveScriptGetResponse>('SieveScript/get'),
+  sieveScriptSet: defineMethod<SieveScriptSetRequest, SieveScriptSetResponse>('SieveScript/set'),
+  sieveScriptQuery: defineMethod<SieveScriptQueryRequest, SieveScriptQueryResponse>(
+    'SieveScript/query',
+  ),
+  /** Compiles the blob without storing it; `error: null` means it parsed (RFC 9661 §2.6). */
+  sieveScriptValidate: defineMethod<SieveScriptValidateRequest, SieveScriptValidateResponse>(
+    'SieveScript/validate',
+  ),
+
+  /**
+   * `draft-ietf-jmap-calendars` + JSCalendar (RFC 8984) — Calendar, CalendarEvent (M5.6).
+   *
+   * `CalendarEvent/query` carries `expandRecurrences`, which is what makes a month view possible:
+   * the server returns one id per OCCURRENCE, so the client never has to expand a recurrence rule
+   * across DST in local time itself.
+   */
+  calendarGet: defineMethod<CalendarGetRequest, CalendarGetResponse>('Calendar/get'),
+  calendarChanges: defineMethod<CalendarChangesRequest, CalendarChangesResponse>(
+    'Calendar/changes',
+  ),
+  calendarSet: defineMethod<CalendarSetRequest, CalendarSetResponse>('Calendar/set'),
+  calendarEventGet: defineMethod<CalendarEventGetRequest, CalendarEventGetResponse>(
+    'CalendarEvent/get',
+  ),
+  calendarEventChanges: defineMethod<CalendarEventChangesRequest, CalendarEventChangesResponse>(
+    'CalendarEvent/changes',
+  ),
+  calendarEventQuery: defineMethod<CalendarEventQueryRequest, CalendarEventQueryResponse>(
+    'CalendarEvent/query',
+  ),
+  calendarEventSet: defineMethod<CalendarEventSetRequest, CalendarEventSetResponse>(
+    'CalendarEvent/set',
+  ),
+
+  /**
+   * `draft-ietf-jmap-filenode` — FileNode (M5.7, FR-FILE-01). No RFC number yet; the shapes are
+   * measured against Stalwart 0.16 rather than taken from the draft.
+   */
+  fileNodeGet: defineMethod<FileNodeGetRequest, FileNodeGetResponse>('FileNode/get'),
+  fileNodeChanges: defineMethod<FileNodeChangesRequest, FileNodeChangesResponse>(
+    'FileNode/changes',
+  ),
+  fileNodeQuery: defineMethod<FileNodeQueryRequest, FileNodeQueryResponse>('FileNode/query'),
+  fileNodeSet: defineMethod<FileNodeSetRequest, FileNodeSetResponse>('FileNode/set'),
+
+  /**
+   * RFC 9670 — JMAP Sharing (M5.18). `Principal/query` is the one a picker runs; note that the
+   * usable filter is `text`, not the RFC's `name` — see `types/principal.ts`.
+   */
+  principalGet: defineMethod<PrincipalGetRequest, PrincipalGetResponse>('Principal/get'),
+  principalQuery: defineMethod<PrincipalQueryRequest, PrincipalQueryResponse>('Principal/query'),
+  shareNotificationGet: defineMethod<ShareNotificationGetRequest, ShareNotificationGetResponse>(
+    'ShareNotification/get',
+  ),
+  shareNotificationSet: defineMethod<ShareNotificationSetRequest, ShareNotificationSetResponse>(
+    'ShareNotification/set',
+  ),
 
   /** RFC 9610 — AddressBook (M4.2). No `/query`: an account's address books are always fetched whole. */
   addressBookGet: defineMethod<AddressBookGetRequest, AddressBookGetResponse>('AddressBook/get'),

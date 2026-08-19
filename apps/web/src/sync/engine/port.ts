@@ -30,6 +30,9 @@ import {
   type EmailQueryChangesSpec,
   type EmailQuerySpec,
   type JmapPort,
+  LIST_UNSUBSCRIBE_POST_PROPERTY,
+  LIST_UNSUBSCRIBE_PROPERTY,
+  MDN_REQUEST_PROPERTY,
   type PortSetError,
   type PortSetResult,
   type QueryChangesResult,
@@ -43,14 +46,35 @@ type WireSetErrors = Record<string, { type: string; description?: string | null 
  * The wire shape of a body `/get` record: an {@link EmailBodyInput} whose Authentication-Results
  * arrive under the literal, colon-laden JMAP property name rather than a clean field.
  */
-type EmailBodyWire = Omit<EmailBodyInput, 'authResults'> & {
+type EmailBodyWire = Omit<
+  EmailBodyInput,
+  'authResults' | 'listUnsubscribe' | 'listUnsubscribePost' | 'mdnRequestTo'
+> & {
   readonly [AUTH_RESULTS_PROPERTY]?: string[] | null
+  readonly [LIST_UNSUBSCRIBE_PROPERTY]?: string[] | null
+  readonly [LIST_UNSUBSCRIBE_POST_PROPERTY]?: string | null
+  readonly [MDN_REQUEST_PROPERTY]?: string | null
 }
 
-/** Wire → port: rename `header:…:asText:all` to `authResults` so the awkward key stops here. */
+/** Wire → port: rename the `header:…` keys to clean fields so the awkward names stop here. */
 function toEmailBodyInput(wire: EmailBodyWire): EmailBodyInput {
-  const { [AUTH_RESULTS_PROPERTY]: authResults, ...rest } = wire
-  return { ...rest, authResults: authResults ?? [] }
+  const {
+    [AUTH_RESULTS_PROPERTY]: authResults,
+    [LIST_UNSUBSCRIBE_PROPERTY]: listUnsubscribe,
+    [LIST_UNSUBSCRIBE_POST_PROPERTY]: listUnsubscribePost,
+    [MDN_REQUEST_PROPERTY]: mdnRequestTo,
+    ...rest
+  } = wire
+  return {
+    ...rest,
+    authResults: authResults ?? [],
+    // `null` and `[]` are kept apart deliberately: the first means the header was absent, the
+    // second that it was present and empty. Collapsing them would make an absent header
+    // indistinguishable from a row written before this feature existed.
+    listUnsubscribe: listUnsubscribe ?? null,
+    listUnsubscribePost: listUnsubscribePost ?? null,
+    mdnRequestTo: mdnRequestTo ?? null,
+  }
 }
 
 function mapSetErrors(errors: WireSetErrors): Record<string, PortSetError> {

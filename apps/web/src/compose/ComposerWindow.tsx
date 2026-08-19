@@ -11,11 +11,23 @@
  * discards silently, a non-empty one asks first).
  */
 
-import { Maximize2, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react'
+import {
+  Clock,
+  FileText,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Paperclip,
+  Send,
+  Trash2,
+  X,
+} from 'lucide-react'
 import {
   type ChangeEvent,
   type DragEvent,
   type KeyboardEvent,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -23,11 +35,17 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSessionOptional } from '../app/session/context'
 import type { LayoutTier } from '../app/shell/layout'
-import { Button, Dialog, IconButton, TextInput, useFocusTrap, useToast } from '../ui'
+import { formatDate } from '../i18n/formatters'
+import { Button, Dialog, IconButton, Menu, TextInput, useFocusTrap, useToast } from '../ui'
 import { AttachmentChips } from './AttachmentChips'
 import { isPlausibleEmail } from './address-validation'
 import { mentionsAttachment } from './attachment-mention'
+import { maxScheduleMs } from './scheduled-send'
+
+const ScheduleSendDialog = lazy(() => import('./ScheduleSendDialog'))
+
 import type { BlobUploader } from './attachment-upload'
 import { useUndoSendSeconds } from './compose-prefs'
 import styles from './composer.module.css'
@@ -41,6 +59,7 @@ import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 import type { RecipientSuggestionSource } from './recipient-suggestions'
 import { useAttachmentUpload } from './use-attachment-upload'
 import { useDraftSync } from './use-draft-sync'
+import { useTemplates } from './use-templates'
 
 export interface ComposerWindowProps {
   readonly draft: DraftWindow
@@ -68,6 +87,11 @@ export function ComposerWindow({
   const focusDraft = useComposerStore((state) => state.focusDraft)
   const draftSync = useDraftSync()
   const undoSendSeconds = useUndoSendSeconds()
+  const connected = useSessionOptional()
+  /** How far ahead this account may schedule; `0` hides the control entirely (FR-CMP-11). */
+  const scheduleMaxMs = maxScheduleMs(connected?.jmapSession ?? null, connected?.accountId ?? null)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const templates = useTemplates()
   // Only an ACTIVE upload blocks Send — an errored chip must not wedge it (the user can send
   // without the failed file). Completed uploads have already left the slice for `draft.attachments`.
   const uploadsInFlight = useComposerStore((state) =>
@@ -163,40 +187,58 @@ export function ComposerWindow({
   }
 
   // Send: queue the message, close the window, and offer Undo for the grace window (M2.8, FR-CMP-07/08).
-  const doSend = useCallback(async (): Promise<void> => {
-    if (sendingRef.current) return // guard against a double ⌘Enter / double-click while awaiting
-    sendingRef.current = true
-    const result = await draftSync.send(draft.id, { undoMs: undoSendSeconds * 1000 })
-    if (!result.ok) {
-      sendingRef.current = false
-      const key =
-        result.reason === 'noIdentity'
-          ? 'compose.sendNoIdentity'
-          : result.reason === 'noSentMailbox'
-            ? 'compose.sendNoSentMailbox'
-            : result.reason === 'engineUnavailable'
-              ? 'compose.sendUnavailable'
-              : 'compose.sendNoRecipients'
-      toast({ tone: 'danger', title: t(key) })
-      return
-    }
-    useComposerStore.getState().closeDraft(draft.id) // do NOT flush (that would race the send)
-    // Offline the message is QUEUED, not sending: say so, and say it stickily (a 10 s toast that
-    // claims "Sending message…" and vanishes would be a lie the user never gets to correct). The
-    // durable QueuedSends chip carries it from there; Undo stays available either way.
-    const offline = !navigator.onLine
-    const undo = {
-      label: t('compose.sendUndo'),
-      onAction: () => void draftSync.undoSend(draft.id),
-    }
-    if (offline) {
-      toast({ title: t('outbox.send.queuedOffline'), duration: 0, action: undo })
-      return
-    }
-    if (result.undoMs > 0) {
-      toast({ title: t('compose.sendUndoToast'), duration: result.undoMs, action: undo })
-    }
-  }, [draftSync, draft.id, undoSendSeconds, toast, t])
+  const doSend = useCallback(
+    async (scheduleAt?: Date): Promise<void> => {
+      if (sendingRef.current) return // guard against a double ⌘Enter / double-click while awaiting
+      sendingRef.current = true
+      const result = await draftSync.send(draft.id, {
+        undoMs: undoSendSeconds * 1000,
+        ...(scheduleAt === undefined ? {} : { scheduleAt }),
+      })
+      if (!result.ok) {
+        sendingRef.current = false
+        const key =
+          result.reason === 'noIdentity'
+            ? 'compose.sendNoIdentity'
+            : result.reason === 'noSentMailbox'
+              ? 'compose.sendNoSentMailbox'
+              : result.reason === 'engineUnavailable'
+                ? 'compose.sendUnavailable'
+                : 'compose.sendNoRecipients'
+        toast({ tone: 'danger', title: t(key) })
+        return
+      }
+      useComposerStore.getState().closeDraft(draft.id) // do NOT flush (that would race the send)
+      // Offline the message is QUEUED, not sending: say so, and say it stickily (a 10 s toast that
+      // claims "Sending message…" and vanishes would be a lie the user never gets to correct). The
+      // durable QueuedSends chip carries it from there; Undo stays available either way.
+      const offline = !navigator.onLine
+      const undo = {
+        label: t('compose.sendUndo'),
+        onAction: () => void draftSync.undoSend(draft.id),
+      }
+      if (offline) {
+        toast({ title: t('outbox.send.queuedOffline'), duration: 0, action: undo })
+        return
+      }
+      if (scheduleAt !== undefined) {
+        // Says WHEN, because that is the whole promise being made — and the server keeps it whether
+        // or not this app is running.
+        toast({
+          title: t('compose.schedule.queued', {
+            when: formatDate(scheduleAt, { dateStyle: 'medium', timeStyle: 'short' }),
+          }),
+          duration: result.undoMs > 0 ? result.undoMs : 5000,
+          action: undo,
+        })
+        return
+      }
+      if (result.undoMs > 0) {
+        toast({ title: t('compose.sendUndoToast'), duration: result.undoMs, action: undo })
+      }
+    },
+    [draftSync, draft.id, undoSendSeconds, toast, t],
+  )
 
   const requestSend = useCallback((): void => {
     if (!canSend) return
@@ -337,6 +379,34 @@ export function ComposerWindow({
             >
               <Send />
             </IconButton>
+            {templates.templates.length > 0 && (
+              // Only shown once the account HAS templates — an empty menu is a control that
+              // teaches the user nothing except that it does nothing.
+              <Menu
+                trigger={<FileText />}
+                triggerLabel={t('compose.templates.insert')}
+                triggerVariant="ghost"
+                align="end"
+                items={templates.templates.map((entry) => ({
+                  id: entry.id,
+                  label: entry.name,
+                  onSelect: () => templates.insert(draft.id, entry),
+                }))}
+              />
+            )}
+            {scheduleMaxMs > 0 && (
+              // Offered only where the SERVER can hold the message (FR-CMP-11). Without
+              // FUTURERELEASE this would be a promise the app could not keep with its tab closed.
+              <IconButton
+                label={t('compose.schedule.open')}
+                variant="ghost"
+                size="sm"
+                disabled={!canSend}
+                onClick={() => setScheduleOpen(true)}
+              >
+                <Clock />
+              </IconButton>
+            )}
             <IconButton
               label={t('compose.attach')}
               variant="ghost"
@@ -496,6 +566,20 @@ export function ComposerWindow({
         >
           <p>{t('compose.attachMentionBody')}</p>
         </Dialog>
+      )}
+
+      {scheduleOpen && (
+        // Lazy: most messages go out now, and the picker carries its own presets and validation.
+        <Suspense fallback={null}>
+          <ScheduleSendDialog
+            maxMs={scheduleMaxMs}
+            onCancel={() => setScheduleOpen(false)}
+            onConfirm={(at) => {
+              setScheduleOpen(false)
+              void doSend(at)
+            }}
+          />
+        </Suspense>
       )}
     </>
   )

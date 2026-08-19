@@ -238,6 +238,20 @@ export function useMailboxOptional(id: Id | undefined): MailboxRow | undefined {
 }
 
 /**
+ * Like {@link useMailboxByRole}, but yields `undefined` outside a `ReplicaProvider` instead of
+ * throwing — for the same reason {@link useMailboxOptional} exists: `AppShell` mounts hooks while
+ * `SyncEngineHost` is still rendering its children without a provider.
+ */
+export function useMailboxByRoleOptional(role: string): MailboxRow | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<MailboxRow | undefined>(
+    async () =>
+      context === null ? undefined : await mailboxByRole(context.db, context.accountId, role),
+    [context?.db, context?.accountId, role],
+  )
+}
+
+/**
  * Like {@link useLocalPref}, but yields `undefined` OUTSIDE a `ReplicaProvider` instead of throwing
  * (M3.7).
  *

@@ -6,17 +6,25 @@
  * later phases only append:
  *
  *   export * from './blob'        // RFC 9404  — Blob/upload, Blob/get, Blob/lookup
- *   export * from './sieve'       // RFC 9661  — SieveScript
  */
+// `draft-ietf-jmap-calendars` + JSCalendar (RFC 8984) — Calendar, CalendarEvent (M5.6).
+export * from './calendar'
 // RFC 9610 — AddressBook, ContactCard (M4.2). Types only; ContactCard extends the JSContact
 // `Card` from `@waxwing/jscontact` via an erased `import type`, so no runtime edge is added.
 export * from './contacts'
 export * from './core'
+// `draft-ietf-jmap-filenode` (no RFC) — FileNode (M5.7).
+export * from './filenode'
 export * from './mail'
+// RFC 9670 — Principal, ShareNotification (M5.18). The filter shapes are measured, not
+// transcribed: Stalwart ignores the RFC's `name` condition.
+export * from './principal'
 // RFC 8620 §7 push + RFC 8887 WebSocket wire frames (StateChange, Request/Response, …).
 export * from './push'
 // RFC 9425 — Quota (M3.7, FR-QTA-01).
 export * from './quota'
+// RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02).
+export * from './sieve'
 // RFC 8621 §6 — EmailSubmission / Identity (M2.5 uses Identity).
 export * from './submission'
 // RFC 8621 §8 — VacationResponse (M3.7, FR-VAC-01).

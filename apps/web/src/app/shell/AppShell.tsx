@@ -10,7 +10,8 @@ import { lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useComposerStore, useDraftRestore, useSendErrorNotifier } from '../../compose'
 import { ActiveAccountScope } from '../../mail/ActiveAccountScope'
-import { useNotificationClickNavigation } from '../../notify'
+import { useSnoozeWaker } from '../../mail/use-snooze'
+import { useAppBadge, useNotificationClickNavigation } from '../../notify'
 import { QueuedSends, useConflictNotifier } from '../../outbox'
 import { ChunkErrorBoundary } from '../../pwa/ChunkErrorBoundary'
 import { useQuotaNotifier } from '../../quota'
@@ -25,9 +26,12 @@ import { PrimaryNav } from './PrimaryNav'
 import { ReauthDialog } from './ReauthDialog'
 import styles from './shell.module.css'
 import { useDocumentTitle } from './use-document-title'
+import { useMailtoHandler } from './use-mailto-handler'
 import { useStorageFullNotifier } from './use-storage-notifier'
 
+const CalendarPage = lazy(() => import('../../calendar/CalendarPage'))
 const ContactsPage = lazy(() => import('../../contacts/ContactsPage'))
+const FilesPage = lazy(() => import('../../files/FilesPage'))
 const SettingsPage = lazy(() => import('../../settings/SettingsPage'))
 // The composer host (docked drafts + squire) loads only once a draft is open (keeps it out of the
 // entry chunk). It lives here — outside the route-swapped <main> — so drafts survive navigation.
@@ -56,6 +60,12 @@ export function AppShell({ config }: AppShellProps) {
   useQuotaNotifier()
   // The service worker focused this tab after a notification click — go where it says (M3.6).
   useNotificationClickNavigation()
+  // Unread inbox count on the installed app icon, where the platform has the Badging API.
+  useAppBadge()
+  // The OS handed us a `mailto:` link — open a composer for it (FR-CMP-13).
+  useMailtoHandler()
+  // Bring snoozed messages back once their time has come (FR-ORG-03).
+  useSnoozeWaker()
   // Name the screen in the tab, the history menu and the OS task switcher.
   useDocumentTitle(config.branding.productName)
 
@@ -77,6 +87,12 @@ export function AppShell({ config }: AppShellProps) {
   switch (route.id) {
     case 'contacts':
       screen = <ContactsPage />
+      break
+    case 'calendar':
+      screen = <CalendarPage />
+      break
+    case 'files':
+      screen = <FilesPage />
       break
     case 'settings':
       screen = <SettingsPage />

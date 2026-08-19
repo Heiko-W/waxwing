@@ -786,3 +786,72 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/* The .eml import dialog (M5.3, FR-MBX-06). */
+.importBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.importPick {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.importHint {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* Per-file failures. Each names the file and what went wrong: a restore that half-succeeds is
+   exactly when a reader needs to know WHICH message did not make it. */
+.importFailures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding-inline-start: var(--waxwing-space-4);
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* ---- unpacked winmail.dat (M5.21) ---- */
+
+.unpacked {
+  margin-block-start: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2);
+  border-inline-start: 3px solid var(--waxwing-border);
+  background: var(--waxwing-surface-2);
+  border-radius: var(--waxwing-radius-sm);
+}
+
+.unpackedNote {
+  margin: 0 0 var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.unpackedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.unpackedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.unpackedName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

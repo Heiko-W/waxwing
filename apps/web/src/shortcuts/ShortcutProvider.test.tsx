@@ -560,6 +560,7 @@ describe('ShortcutProvider — reading scope', () => {
       openMove: vi.fn(),
       openLabels: vi.fn(),
       requestDelete: vi.fn(),
+      print: vi.fn(),
     }
     act(() =>
       useReadingStore.getState().set({

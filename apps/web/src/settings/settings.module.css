@@ -199,3 +199,39 @@
   font-size: var(--waxwing-text-sm);
   resize: vertical;
 }
+
+/* ---- deployment config generator (M5.20) ---- */
+
+.findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: var(--waxwing-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.findingWarn,
+.findingInfo {
+  padding: var(--waxwing-space-2);
+  border-inline-start: 3px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-2);
+  font-size: var(--waxwing-text-sm);
+}
+
+.findingWarn {
+  border-inline-start-color: var(--waxwing-danger);
+}
+
+.configPreview {
+  max-block-size: 20rem;
+  margin: var(--waxwing-space-3) 0;
+  padding: var(--waxwing-space-3);
+  overflow: auto;
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface-2);
+  font-family: var(--waxwing-font-mono);
+  font-size: var(--waxwing-text-sm);
+}

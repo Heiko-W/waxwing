@@ -118,3 +118,48 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/* Scheduled sends (M5.4, FR-CMP-11) — held by the SERVER, listed in Settings. */
+.scheduledList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scheduledRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.scheduledText {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.scheduledSubject {
+  margin: 0;
+  overflow: hidden;
+  font-weight: var(--waxwing-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduledWhen {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.scheduledEmpty {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}

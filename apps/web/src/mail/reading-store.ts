@@ -43,6 +43,8 @@ export interface ReadingHandlers {
   openLabels(): void
   /** Open the permanent-delete confirmation dialog (Trash → destroy). */
   requestDelete(): void
+  /** Hand the open message to the browser's print dialog. */
+  print(): void
 }
 
 export interface ReadingStore {

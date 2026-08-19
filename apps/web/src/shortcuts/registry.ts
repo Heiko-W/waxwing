@@ -458,6 +458,18 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     run: (context) => context.reading?.compose('forward'),
   },
   {
+    id: 'reading.print',
+    titleKey: 'shortcuts.actions.reading.print',
+    // The browser's own Ctrl/Cmd+P already prints whatever is on screen, and this cannot override
+    // it. `Mod+p` is registered anyway so the action appears in the cheat sheet and the palette —
+    // discovering that printing works at all is the point, not the chord.
+    keys: ['Mod+p'],
+    scopes: ['reading'],
+    group: 'application',
+    enabled: (context) => context.reading !== null,
+    run: (context) => context.reading?.print(),
+  },
+  {
     id: 'app.search',
     titleKey: 'shortcuts.actions.app.search',
     keys: ['/'],

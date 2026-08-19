@@ -49,12 +49,16 @@ const query = (ids: string[], queryState: string, total: number): QueryResult =>
 })
 
 describe('windowFilter', () => {
-  it('builds an AND(inMailbox, after) recent window', () => {
+  it('builds an AND(inMailbox, after, not snoozed) recent window', () => {
     expect(windowFilter('inbox', 30, NOW)).toEqual({
       operator: 'AND',
       conditions: [
         { inMailbox: 'inbox' },
         { after: new Date(NOW - 30 * 86_400_000).toISOString() },
+        // M5.8: snoozed messages are excluded in the QUERY, not after it — filtering client-side
+        // would leave gaps in a page the server considers full, and the counts would disagree
+        // with the list.
+        { notKeyword: '$snoozed' },
       ],
     })
   })

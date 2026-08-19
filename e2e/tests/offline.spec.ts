@@ -466,7 +466,9 @@ test.describe('M3.10 offline', () => {
 
     // The four-category breakdown, including the one that only exists when a quota IS reported.
     await expect(page.getByText('Message index (estimated)')).toBeVisible()
-    await expect(page.getByText('Message bodies')).toBeVisible()
+    // `exact` for the same reason as the line below: the templates section on this page
+    // describes a template as a "Reusable message bodies…", which substring-matches.
+    await expect(page.getByText('Message bodies', { exact: true })).toBeVisible()
     // `exact` matters: the same page carries an "Attachments per message" control further down.
     await expect(page.getByText('Attachments', { exact: true })).toBeVisible()
     await expect(page.getByText('Other (app & offline shell)')).toBeVisible()
@@ -508,7 +510,9 @@ test.describe('M3.10 offline', () => {
     // POSITIVE CONTROLS for those two absences. Without them a settings page that failed to render
     // at all would score two clean zeroes and call itself honest. The breakdown row that does NOT
     // depend on a quota is still there, and so is the fallback meter described above.
-    await expect(page.getByText('Message bodies')).toBeVisible()
+    // `exact` for the same reason as the line below: the templates section on this page
+    // describes a template as a "Reusable message bodies…", which substring-matches.
+    await expect(page.getByText('Message bodies', { exact: true })).toBeVisible()
     await expect(page.getByRole('progressbar', { name: 'Storage used' })).toBeVisible()
   })
 

@@ -6,7 +6,9 @@
     "menu": {
       "mail": "Mail",
       "contacts": "Contacts",
-      "settings": "Settings"
+      "settings": "Settings",
+      "calendar": "Calendar",
+      "files": "Files"
     },
     "folders": {
       "show": "Show folders",
@@ -98,7 +100,9 @@
       "body": "This deletes {{product}}'s locally stored mail and settings on this device. Mail on the server is not affected.",
       "confirm": "Remove data and sign out",
       "cancel": "Cancel"
-    }
+    },
+    "switchTo": "Switch to {{name}}",
+    "add": "Add another account"
   },
   "status": {
     "offline": "Offline",
@@ -323,6 +327,87 @@
         "generic": "The vacation responder could not be saved."
       }
     },
+    "filters": {
+      "title": "Filters",
+      "intro": "Rules the server runs on incoming mail, before it reaches you. They keep working when this app is closed.",
+      "empty": "No filter rules yet.",
+      "addRule": "Add rule",
+      "saved": "Filters saved",
+      "showSource": "Show script",
+      "hideSource": "Hide script",
+      "sourceLabel": "Sieve script",
+      "unsupportedExtensions": "This server did not list support for: {{list}}. Rules using them may not run.",
+      "rule": {
+        "enabled": "Active",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "foreign": {
+        "explain": "This mailbox already has a filter script that was not written here. It is shown as it is, and is left untouched.",
+        "adopt": "Manage filters alongside it",
+        "adoptHint": "Your existing rules are kept and go on running. New rules are added after them."
+      },
+      "form": {
+        "createTitle": "New rule",
+        "editTitle": "Edit rule",
+        "name": "Name",
+        "conditions": "Conditions",
+        "actions": "Actions",
+        "matchMode": "Apply when",
+        "matchAll": "all conditions match",
+        "matchAny": "any condition matches",
+        "field": "Part",
+        "match": "Comparison",
+        "value": "Value",
+        "sizeKb": "Size in KB",
+        "action": "Action",
+        "mailbox": "Folder",
+        "flag": "Mark as",
+        "address": "Address",
+        "addCondition": "Add condition",
+        "addAction": "Add action",
+        "remove": "Remove",
+        "stop": "Stop processing further rules",
+        "cancel": "Cancel",
+        "submit": "Save rule"
+      },
+      "field": {
+        "from": "Sender",
+        "to": "To",
+        "cc": "Cc",
+        "subject": "Subject",
+        "body": "Message text",
+        "size": "Size",
+        "hasAttachment": "Has attachment"
+      },
+      "match": {
+        "contains": "contains",
+        "is": "is exactly",
+        "startsWith": "starts with",
+        "endsWith": "ends with",
+        "matches": "matches pattern",
+        "over": "larger than",
+        "under": "smaller than"
+      },
+      "action": {
+        "fileInto": "Move to folder",
+        "addFlag": "Mark",
+        "redirect": "Forward to",
+        "discard": "Discard"
+      },
+      "flag": {
+        "seen": "read",
+        "flagged": "flagged"
+      },
+      "error": {
+        "loadFailed": "Filters could not be loaded.",
+        "invalidSieve": "The server rejected the script as invalid. Your rules were not saved.",
+        "tooLarge": "The script is too large for this server.",
+        "offline": "Filters can only be changed while online.",
+        "rejected": "The server declined to save the filters.",
+        "generic": "The filters could not be saved."
+      }
+    },
     "server": {
       "title": "Server",
       "description": "What this JMAP server offers. Useful when reporting a problem.",
@@ -380,11 +465,44 @@
         "webSocket": "WebSocket push",
         "principals": "Sharing",
         "webPushVapid": "Web Push signing (RFC 9749)"
+      },
+      "generate": {
+        "title": "Deployment configuration",
+        "intro": "Generate the config.json for this deployment, describing the server you are signed in to. Save it next to index.html.",
+        "action": "Generate config.json",
+        "checking": "Checking…",
+        "save": "Save config.json",
+        "warnLabel": "Check this:",
+        "infoLabel": "Note:",
+        "finding": {
+          "sameOrigin": "The mail server is on this same origin, so config.json leaves sessionUrl empty — the deployment keeps working if it moves to another hostname.",
+          "crossOrigin": "The mail server is on {{origin}}, a different origin from this app. Every request depends on that server sending CORS headers. It does today; the deployment will break if that changes.",
+          "basicOnly": "OAuth discovery did not answer, so only password sign-in is enabled. A password is sent on every request and cannot be revoked for one client alone — enable OAuth on the server if you can.",
+          "oauthUnknown": "OAuth discovery could not be checked from here, so the sign-in methods are left as they are. Verify them before deploying.",
+          "insecureOrigin": "This app is served over plain HTTP. Browsers then withhold crypto.subtle, so OAuth cannot run and the offline cache cannot be encrypted. Serve it over HTTPS.",
+          "brandingUntouched": "Branding, features and offline limits were carried over unchanged — no server can tell us what you want them to be. Edit them by hand."
+        }
       }
     },
     "about": {
       "title": "About",
       "version": "Version {{version}}"
+    },
+    "templates": {
+      "title": "Templates",
+      "description": "Reusable message bodies. Inserting one adds it to the draft you are writing — it never replaces what is already there.",
+      "placeholders": "Placeholders filled in on insert: {{list}}",
+      "empty": "No templates yet.",
+      "add": "New template",
+      "edit": "Edit",
+      "delete": "Delete",
+      "dialogTitle": "Template",
+      "name": "Name",
+      "subject": "Subject",
+      "body": "Message",
+      "save": "Save template",
+      "cancel": "Cancel",
+      "defaultSenderName": "me"
     }
   },
   "contacts": {
@@ -627,7 +745,8 @@
       "delete": "Delete",
       "keepOffline": "Keep offline",
       "keepOfflineOff": "Stop keeping offline",
-      "move": "Move to…"
+      "move": "Move to…",
+      "import": "Import .eml files…"
     },
     "create": {
       "title": "New folder",
@@ -657,6 +776,25 @@
       "title": "Move {{name}}",
       "topLevel": "Top level",
       "empty": "There is no folder this one can move into."
+    },
+    "import": {
+      "title": "Import into {{folder}}",
+      "pick": "Choose .eml files",
+      "hint": "Messages are stored exactly as they arrived. Up to {{size}} MB per file.",
+      "progress": "Imported {{done}} so far…",
+      "imported": "{{count}} message(s) imported.",
+      "skipped": "Not messages, skipped: {{files}}",
+      "close": "Done",
+      "cancel": "Cancel",
+      "error": {
+        "tooLarge": "too large",
+        "alreadyExists": "already in this account",
+        "invalidEmail": "not a valid message",
+        "overQuota": "no space left in this account",
+        "notFound": "the upload expired before it could be filed",
+        "uploadFailed": "the upload failed",
+        "rejected": "the server declined it"
+      }
     }
   },
   "list": {
@@ -769,7 +907,12 @@
       "hidePreview": "Hide preview",
       "download": "Download {{name}}",
       "previewNamed": "Preview: {{name}}",
-      "hidePreviewNamed": "Hide preview: {{name}}"
+      "hidePreviewNamed": "Hide preview: {{name}}",
+      "unpack": "Show what is inside {{name}}",
+      "unpackShort": "Show contents",
+      "unpackedHeading": "Inside {{name}}",
+      "unpackEmpty": "Nothing could be read out of this file.",
+      "unpackNote": "Outlook packed these into one file. They are shown as your correspondent sent them; nothing here has been checked."
     },
     "editDraft": "Edit draft",
     "draftLead": "This is a draft you haven't sent yet.",
@@ -815,6 +958,44 @@
       "truncated": "Showing the beginning of this message only. Download the attachment to see all of it.",
       "openNamed": "Open message: {{name}}",
       "closeNamed": "Hide message: {{name}}"
+    },
+    "print": "Print",
+    "unsubscribe": {
+      "title": "Mailing list",
+      "note": "This message offers a way to stop receiving it.",
+      "sentNote": "Unsubscribe request sent. The list decides when it takes effect.",
+      "failedNote": "The request could not be sent. Try the list's own page instead.",
+      "oneClick": "Unsubscribe",
+      "open": "Unsubscribe page",
+      "email": "Unsubscribe by email"
+    },
+    "forwardAsAttachment": "Forward as attachment",
+    "snooze": {
+      "laterToday": "Snooze until later today",
+      "tomorrow": "Snooze until tomorrow",
+      "thisWeekend": "Snooze until the weekend",
+      "nextWeek": "Snooze until next week"
+    },
+    "protection": {
+      "title": "Message protection",
+      "encrypted": "This message is encrypted",
+      "encryptedNote": "It cannot be opened here yet. Use a mail client with S/MIME or OpenPGP support, or ask your administrator whether encryption at rest is switched on for this mailbox.",
+      "signed": "This message is signed",
+      "signedNote": "It carries a digital signature. Signatures are not verified here yet, so this says only that one is present — not that it is valid."
+    },
+    "receipt": {
+      "title": "Read receipt",
+      "asked": "The sender asked to be told when you read this",
+      "note": "Nothing has been sent. Confirming tells {{address}} that you opened this message.",
+      "noteElsewhere": "Nothing has been sent. Confirming tells {{address}} — which is not the address this message came from — that you opened it.",
+      "confirm": "Confirm I read it",
+      "sending": "Sending…",
+      "decline": "No",
+      "failed": "That could not be sent. Nobody was told.",
+      "sent": "You confirmed you read this",
+      "sentNote": "{{address}} was told.",
+      "body": "Your message was displayed. This is no guarantee that it was read or understood.\n",
+      "subject": "Read: {{subject}}"
     }
   },
   "compose": {
@@ -904,7 +1085,29 @@
     "attachMentionSend": "Send anyway",
     "attachMentionCancel": "Go back",
     "attachMentionKeywords": ["attach", "attached", "attachment", "enclosed", "see the file"],
-    "sendErrorInterrupted": "Interrupted before we could confirm — check Sent before resending"
+    "sendErrorInterrupted": "Interrupted before we could confirm — check Sent before resending",
+    "schedule": {
+      "open": "Send later",
+      "title": "Send later",
+      "custom": "Or pick a time",
+      "confirm": "Schedule",
+      "cancel": "Cancel",
+      "queued": "Scheduled for {{when}}",
+      "preset": {
+        "inOneHour": "In an hour",
+        "thisEvening": "This evening",
+        "tomorrowMorning": "Tomorrow morning",
+        "nextWeek": "Next week"
+      },
+      "error": {
+        "past": "Pick a time in the future.",
+        "tooFar": "That is further ahead than this server allows.",
+        "unsupported": "This server cannot hold messages for later delivery."
+      }
+    },
+    "templates": {
+      "insert": "Insert template"
+    }
   },
   "search": {
     "placeholder": "Search mail",
@@ -939,7 +1142,13 @@
     },
     "chipsLabel": "Active filters",
     "chipsCount_one": "{{count}} filter active",
-    "chipsCount_other": "{{count}} filters active"
+    "chipsCount_other": "{{count}} filters active",
+    "saved": {
+      "title": "Saved searches",
+      "save": "Save this search",
+      "saved": "Search saved",
+      "forget": "Remove {{name}}"
+    }
   },
   "labels": {
     "title": "Labels",
@@ -1062,6 +1271,17 @@
       "retrying": "Retrying…",
       "cancel": "Cancel send",
       "label": "Queued messages"
+    },
+    "scheduled": {
+      "title": "Scheduled",
+      "description": "Messages the server is holding for later delivery. They go out whether or not this app is open.",
+      "loading": "Loading…",
+      "empty": "Nothing scheduled.",
+      "loadFailed": "The scheduled messages could not be loaded.",
+      "willSend": "Sends {{when}}",
+      "cancel": "Cancel send",
+      "cancelled": "Send cancelled",
+      "tooLate": "Already sent — it had left the queue."
     }
   },
   "pwa": {
@@ -1202,6 +1422,9 @@
         "search": "Search",
         "palette": "Command palette",
         "help": "Keyboard shortcuts"
+      },
+      "reading": {
+        "print": "Print message"
       }
     },
     "modKey": "Ctrl"
@@ -1231,6 +1454,96 @@
       "add": "You don't have permission to file messages into that folder.",
       "destroy": "You don't have permission to delete these messages.",
       "unknown": "Still checking what you may do here — not all messages have loaded yet."
+    }
+  },
+  "calendar": {
+    "title": "Calendar",
+    "today": "Today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "viewLabel": "Calendar view",
+    "view": {
+      "month": "Month",
+      "agenda": "Agenda",
+      "week": "Week"
+    },
+    "untitled": "(no title)",
+    "allDay": "All day",
+    "more": "+{{count}} more",
+    "noEvents": "Nothing coming up.",
+    "loadFailed": "The calendar could not be loaded.",
+    "signedOut": "Sign in to see your calendar.",
+    "event": {
+      "createTitle": "New event",
+      "editTitle": "Edit event",
+      "title": "Title",
+      "start": "Starts",
+      "day": "Day",
+      "allDay": "All day",
+      "duration": "Length in minutes",
+      "calendar": "Calendar",
+      "description": "Notes",
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it."
+    }
+  },
+  "files": {
+    "title": "Files",
+    "root": "Files",
+    "breadcrumb": "Folder path",
+    "empty": "This folder is empty.",
+    "loadFailed": "The files could not be loaded.",
+    "signedOut": "Sign in to see your files.",
+    "upload": "Upload",
+    "newFolder": "New folder",
+    "newFolderPlaceholder": "Folder name",
+    "download": "Download {{name}}",
+    "delete": "Delete {{name}}",
+    "error": {
+      "nameTaken": "Something with that name is already here.",
+      "tooLarge": "That file is too large for this server.",
+      "overQuota": "No space left in this account.",
+      "forbidden": "You do not have permission to do that here.",
+      "rejected": "The server declined that."
+    },
+    "name": {
+      "empty": "Give it a name.",
+      "tooLong": "That name is too long.",
+      "forbiddenCharacter": "That name contains a character the server does not allow.",
+      "reservedName": "That name is reserved and cannot be used."
+    },
+    "preview": "Preview {{name}}",
+    "hidePreview": "Hide the preview of {{name}}",
+    "share": {
+      "open": "Share {{name}}",
+      "title": "Share “{{name}}”",
+      "currentHeading": "Who has access",
+      "addHeading": "Give access to someone",
+      "none": "Only you.",
+      "search": "Search people",
+      "searchPlaceholder": "Name or address",
+      "noMatches": "Nobody matches that.",
+      "roleLabel": "They may",
+      "roleFor": "What {{name}} may do",
+      "grant": "Add",
+      "grantTo": "Give {{name}} access",
+      "revoke": "Remove",
+      "revokeFrom": "Remove {{name}}’s access",
+      "done": "Done",
+      "custom": "Custom access",
+      "failed": "That change was not saved. Nothing was altered.",
+      "role": {
+        "viewer": "View",
+        "editor": "Edit",
+        "manager": "Manage"
+      },
+      "explain": {
+        "viewer": "They can open and download it. They cannot change it.",
+        "editor": "They can open, change, rename and delete it. They cannot share it with anyone else.",
+        "manager": "They can do everything you can, including sharing it with other people — and you will not be told when they do."
+      }
     }
   }
 }

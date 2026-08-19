@@ -115,6 +115,9 @@ describe('the settings shell (M3.7)', () => {
       'Reading',
       'Swipe actions',
       'Compose',
+      // Next to Compose because that is what a template is for (M5.5, FR-CMP-12). Unlike the
+      // sections below it needs only a replica, not a session — templates are stored locally.
+      'Templates',
       'Notifications',
       'Offline & storage',
       'About',

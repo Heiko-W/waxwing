@@ -21,6 +21,10 @@ export const Capabilities = {
   sieve: 'urn:ietf:params:jmap:sieve',
   /** RFC 9610 — AddressBook + ContactCard. */
   contacts: 'urn:ietf:params:jmap:contacts',
+  /** `draft-ietf-jmap-calendars` (RFC Editor queue) — Calendar + CalendarEvent. */
+  calendars: 'urn:ietf:params:jmap:calendars',
+  /** `draft-ietf-jmap-filenode` (no RFC) — FileNode. */
+  fileNode: 'urn:ietf:params:jmap:filenode',
   /** RFC 8887 — JMAP over WebSocket. */
   webSocket: 'urn:ietf:params:jmap:websocket',
   /** RFC 8620 §8 (JMAP Sharing) — principals. */
@@ -56,6 +60,9 @@ const PREFIX_TO_CAPABILITY: Readonly<Record<string, string>> = {
   SieveScript: Capabilities.sieve,
   AddressBook: Capabilities.contacts,
   ContactCard: Capabilities.contacts,
+  Calendar: Capabilities.calendars,
+  CalendarEvent: Capabilities.calendars,
+  FileNode: Capabilities.fileNode,
   Principal: Capabilities.principals,
   ShareNotification: Capabilities.principals,
 }

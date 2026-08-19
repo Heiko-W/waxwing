@@ -6,7 +6,9 @@
     "menu": {
       "mail": "E-Mail",
       "contacts": "Kontakte",
-      "settings": "Einstellungen"
+      "settings": "Einstellungen",
+      "calendar": "Kalender",
+      "files": "Dateien"
     },
     "folders": {
       "show": "Ordner anzeigen",
@@ -98,7 +100,9 @@
       "body": "Damit werden die von {{product}} lokal gespeicherten E-Mails und Einstellungen auf diesem Gerät gelöscht. Ihre Nachrichten auf dem Server bleiben unverändert.",
       "confirm": "Daten entfernen und abmelden",
       "cancel": "Abbrechen"
-    }
+    },
+    "switchTo": "Zu {{name}} wechseln",
+    "add": "Weiteres Konto hinzufügen"
   },
   "status": {
     "offline": "Offline",
@@ -323,6 +327,87 @@
         "generic": "Die Abwesenheitsnotiz konnte nicht gespeichert werden."
       }
     },
+    "filters": {
+      "title": "Filter",
+      "intro": "Regeln, die der Server auf eingehende Nachrichten anwendet, bevor sie bei Ihnen ankommen. Sie greifen auch, wenn diese App geschlossen ist.",
+      "empty": "Noch keine Filterregeln.",
+      "addRule": "Regel hinzufügen",
+      "saved": "Filter gespeichert",
+      "showSource": "Skript anzeigen",
+      "hideSource": "Skript ausblenden",
+      "sourceLabel": "Sieve-Skript",
+      "unsupportedExtensions": "Dieser Server nennt keine Unterstützung für: {{list}}. Regeln, die das benötigen, greifen möglicherweise nicht.",
+      "rule": {
+        "enabled": "Aktiv",
+        "edit": "Bearbeiten",
+        "delete": "Löschen"
+      },
+      "foreign": {
+        "explain": "Für dieses Postfach existiert bereits ein Filterskript, das nicht hier erstellt wurde. Es wird unverändert angezeigt und nicht angetastet.",
+        "adopt": "Filter zusätzlich hier verwalten",
+        "adoptHint": "Ihre vorhandenen Regeln bleiben erhalten und laufen weiter. Neue Regeln werden dahinter ergänzt."
+      },
+      "form": {
+        "createTitle": "Neue Regel",
+        "editTitle": "Regel bearbeiten",
+        "name": "Name",
+        "conditions": "Bedingungen",
+        "actions": "Aktionen",
+        "matchMode": "Anwenden, wenn",
+        "matchAll": "alle Bedingungen zutreffen",
+        "matchAny": "eine Bedingung zutrifft",
+        "field": "Bereich",
+        "match": "Vergleich",
+        "value": "Wert",
+        "sizeKb": "Größe in KB",
+        "action": "Aktion",
+        "mailbox": "Ordner",
+        "flag": "Markieren als",
+        "address": "Adresse",
+        "addCondition": "Bedingung hinzufügen",
+        "addAction": "Aktion hinzufügen",
+        "remove": "Entfernen",
+        "stop": "Weitere Regeln nicht mehr anwenden",
+        "cancel": "Abbrechen",
+        "submit": "Regel speichern"
+      },
+      "field": {
+        "from": "Absender",
+        "to": "An",
+        "cc": "Kopie",
+        "subject": "Betreff",
+        "body": "Nachrichtentext",
+        "size": "Größe",
+        "hasAttachment": "Hat Anhang"
+      },
+      "match": {
+        "contains": "enthält",
+        "is": "ist genau",
+        "startsWith": "beginnt mit",
+        "endsWith": "endet mit",
+        "matches": "entspricht Muster",
+        "over": "größer als",
+        "under": "kleiner als"
+      },
+      "action": {
+        "fileInto": "In Ordner verschieben",
+        "addFlag": "Markieren",
+        "redirect": "Weiterleiten an",
+        "discard": "Verwerfen"
+      },
+      "flag": {
+        "seen": "gelesen",
+        "flagged": "markiert"
+      },
+      "error": {
+        "loadFailed": "Die Filter konnten nicht geladen werden.",
+        "invalidSieve": "Der Server hat das Skript als ungültig abgelehnt. Ihre Regeln wurden nicht gespeichert.",
+        "tooLarge": "Das Skript ist für diesen Server zu groß.",
+        "offline": "Filter lassen sich nur online ändern.",
+        "rejected": "Der Server hat das Speichern der Filter abgelehnt.",
+        "generic": "Die Filter konnten nicht gespeichert werden."
+      }
+    },
     "server": {
       "title": "Server",
       "description": "Was dieser JMAP-Server bietet. Nützlich, wenn Sie ein Problem melden.",
@@ -380,11 +465,44 @@
         "webSocket": "WebSocket-Push",
         "principals": "Freigaben",
         "webPushVapid": "Web-Push-Signatur (RFC 9749)"
+      },
+      "generate": {
+        "title": "Deployment-Konfiguration",
+        "intro": "Erzeugt die config.json für dieses Deployment anhand des Servers, an dem Sie angemeldet sind. Legen Sie sie neben index.html ab.",
+        "action": "config.json erzeugen",
+        "checking": "Wird geprüft …",
+        "save": "config.json speichern",
+        "warnLabel": "Bitte prüfen:",
+        "infoLabel": "Hinweis:",
+        "finding": {
+          "sameOrigin": "Der Mailserver liegt auf derselben Origin, deshalb bleibt sessionUrl in der config.json leer — das Deployment funktioniert weiter, wenn es auf einen anderen Hostnamen umzieht.",
+          "crossOrigin": "Der Mailserver liegt auf {{origin}}, also einer anderen Origin als diese App. Jede Anfrage hängt davon ab, dass dieser Server CORS-Header sendet. Heute tut er das; ändert sich das, ist das Deployment kaputt.",
+          "basicOnly": "OAuth-Discovery hat nicht geantwortet, deshalb ist nur die Anmeldung per Passwort aktiviert. Ein Passwort geht bei jeder Anfrage mit und lässt sich nicht für einen einzelnen Client zurückziehen — aktivieren Sie OAuth auf dem Server, wenn möglich.",
+          "oauthUnknown": "OAuth-Discovery ließ sich von hier aus nicht prüfen, deshalb bleiben die Anmeldeverfahren unverändert. Prüfen Sie sie vor dem Deployment.",
+          "insecureOrigin": "Diese App wird über einfaches HTTP ausgeliefert. Browser stellen dann crypto.subtle nicht bereit — OAuth funktioniert nicht und der Offline-Cache lässt sich nicht verschlüsseln. Liefern Sie sie über HTTPS aus.",
+          "brandingUntouched": "Branding, Funktionen und Offline-Grenzen wurden unverändert übernommen — kein Server kann uns sagen, wie Sie sie haben wollen. Bitte von Hand anpassen."
+        }
       }
     },
     "about": {
       "title": "Über",
       "version": "Version {{version}}"
+    },
+    "templates": {
+      "title": "Vorlagen",
+      "description": "Wiederverwendbare Nachrichtentexte. Beim Einfügen werden sie an den offenen Entwurf angehängt — Geschriebenes wird nie ersetzt.",
+      "placeholders": "Beim Einfügen ersetzte Platzhalter: {{list}}",
+      "empty": "Noch keine Vorlagen.",
+      "add": "Neue Vorlage",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "dialogTitle": "Vorlage",
+      "name": "Name",
+      "subject": "Betreff",
+      "body": "Nachricht",
+      "save": "Vorlage speichern",
+      "cancel": "Abbrechen",
+      "defaultSenderName": "ich"
     }
   },
   "contacts": {
@@ -627,7 +745,8 @@
       "delete": "Löschen",
       "keepOffline": "Offline behalten",
       "keepOfflineOff": "Nicht mehr offline behalten",
-      "move": "Verschieben nach…"
+      "move": "Verschieben nach…",
+      "import": "EML-Dateien importieren…"
     },
     "create": {
       "title": "Neuer Ordner",
@@ -657,6 +776,25 @@
       "title": "„{{name}}“ verschieben",
       "topLevel": "Oberste Ebene",
       "empty": "Es gibt keinen Ordner, in den dieser verschoben werden kann."
+    },
+    "import": {
+      "title": "Import nach {{folder}}",
+      "pick": "EML-Dateien auswählen",
+      "hint": "Nachrichten werden unverändert gespeichert. Bis zu {{size}} MB je Datei.",
+      "progress": "{{done}} bisher importiert…",
+      "imported": "{{count}} Nachricht(en) importiert.",
+      "skipped": "Keine Nachrichten, übersprungen: {{files}}",
+      "close": "Fertig",
+      "cancel": "Abbrechen",
+      "error": {
+        "tooLarge": "zu groß",
+        "alreadyExists": "bereits in diesem Konto",
+        "invalidEmail": "keine gültige Nachricht",
+        "overQuota": "kein Speicherplatz mehr in diesem Konto",
+        "notFound": "der Upload war abgelaufen, bevor er abgelegt werden konnte",
+        "uploadFailed": "der Upload ist fehlgeschlagen",
+        "rejected": "der Server hat sie abgelehnt"
+      }
     }
   },
   "list": {
@@ -769,7 +907,12 @@
       "hidePreview": "Vorschau ausblenden",
       "download": "{{name}} herunterladen",
       "previewNamed": "Vorschau: {{name}}",
-      "hidePreviewNamed": "Vorschau ausblenden: {{name}}"
+      "hidePreviewNamed": "Vorschau ausblenden: {{name}}",
+      "unpack": "Inhalt von {{name}} anzeigen",
+      "unpackShort": "Inhalt anzeigen",
+      "unpackedHeading": "In {{name}} enthalten",
+      "unpackEmpty": "Aus dieser Datei ließ sich nichts lesen.",
+      "unpackNote": "Outlook hat diese Dateien in eine einzige gepackt. Sie werden so gezeigt, wie Ihr Gegenüber sie geschickt hat — geprüft wurde nichts."
     },
     "editDraft": "Entwurf bearbeiten",
     "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben.",
@@ -815,6 +958,44 @@
       "truncated": "Es wird nur der Anfang dieser Nachricht angezeigt. Laden Sie den Anhang herunter, um sie vollständig zu sehen.",
       "openNamed": "Nachricht öffnen: {{name}}",
       "closeNamed": "Nachricht ausblenden: {{name}}"
+    },
+    "print": "Drucken",
+    "unsubscribe": {
+      "title": "Mailingliste",
+      "note": "Diese Nachricht bietet an, sie abzubestellen.",
+      "sentNote": "Abmeldung abgeschickt. Wann sie wirkt, entscheidet die Liste.",
+      "failedNote": "Die Anfrage konnte nicht gesendet werden. Nutzen Sie die Seite der Liste.",
+      "oneClick": "Abbestellen",
+      "open": "Abmeldeseite",
+      "email": "Per E-Mail abbestellen"
+    },
+    "forwardAsAttachment": "Als Anhang weiterleiten",
+    "snooze": {
+      "laterToday": "Später heute erinnern",
+      "tomorrow": "Morgen erinnern",
+      "thisWeekend": "Am Wochenende erinnern",
+      "nextWeek": "Nächste Woche erinnern"
+    },
+    "protection": {
+      "title": "Nachrichtenschutz",
+      "encrypted": "Diese Nachricht ist verschlüsselt",
+      "encryptedNote": "Sie kann hier noch nicht geöffnet werden. Nutzen Sie ein Mailprogramm mit S/MIME- oder OpenPGP-Unterstützung, oder fragen Sie Ihre Administration, ob für dieses Postfach die Verschlüsselung im Ruhezustand aktiv ist.",
+      "signed": "Diese Nachricht ist signiert",
+      "signedNote": "Sie trägt eine digitale Signatur. Signaturen werden hier noch nicht geprüft — das besagt also nur, dass eine vorhanden ist, nicht dass sie gültig ist."
+    },
+    "receipt": {
+      "title": "Lesebestätigung",
+      "asked": "Der Absender möchte erfahren, wann Sie das lesen",
+      "note": "Es wurde nichts gesendet. Mit dem Bestätigen erfährt {{address}}, dass Sie diese Nachricht geöffnet haben.",
+      "noteElsewhere": "Es wurde nichts gesendet. Mit dem Bestätigen erfährt {{address}} — nicht die Absenderadresse dieser Nachricht —, dass Sie sie geöffnet haben.",
+      "confirm": "Gelesen bestätigen",
+      "sending": "Wird gesendet …",
+      "decline": "Nein",
+      "failed": "Das ließ sich nicht senden. Es wurde niemand benachrichtigt.",
+      "sent": "Sie haben das Lesen bestätigt",
+      "sentNote": "{{address}} wurde benachrichtigt.",
+      "body": "Ihre Nachricht wurde angezeigt. Das ist keine Zusicherung, dass sie gelesen oder verstanden wurde.\n",
+      "subject": "Gelesen: {{subject}}"
     }
   },
   "compose": {
@@ -904,7 +1085,29 @@
     "attachMentionSend": "Trotzdem senden",
     "attachMentionCancel": "Zurück",
     "attachMentionKeywords": ["anhang", "anbei", "angehängt", "beigefügt", "siehe datei"],
-    "sendErrorInterrupted": "Vor der Bestätigung unterbrochen — bitte „Gesendet“ prüfen, bevor Sie erneut senden"
+    "sendErrorInterrupted": "Vor der Bestätigung unterbrochen — bitte „Gesendet“ prüfen, bevor Sie erneut senden",
+    "schedule": {
+      "open": "Später senden",
+      "title": "Später senden",
+      "custom": "Oder Zeitpunkt wählen",
+      "confirm": "Planen",
+      "cancel": "Abbrechen",
+      "queued": "Geplant für {{when}}",
+      "preset": {
+        "inOneHour": "In einer Stunde",
+        "thisEvening": "Heute Abend",
+        "tomorrowMorning": "Morgen früh",
+        "nextWeek": "Nächste Woche"
+      },
+      "error": {
+        "past": "Bitte einen Zeitpunkt in der Zukunft wählen.",
+        "tooFar": "Das liegt weiter in der Zukunft, als dieser Server erlaubt.",
+        "unsupported": "Dieser Server kann Nachrichten nicht für später zurückhalten."
+      }
+    },
+    "templates": {
+      "insert": "Vorlage einfügen"
+    }
   },
   "search": {
     "placeholder": "E-Mails durchsuchen",
@@ -939,7 +1142,13 @@
     },
     "chipsLabel": "Aktive Filter",
     "chipsCount_one": "{{count}} Filter aktiv",
-    "chipsCount_other": "{{count}} Filter aktiv"
+    "chipsCount_other": "{{count}} Filter aktiv",
+    "saved": {
+      "title": "Gespeicherte Suchen",
+      "save": "Diese Suche speichern",
+      "saved": "Suche gespeichert",
+      "forget": "{{name}} entfernen"
+    }
   },
   "labels": {
     "title": "Labels",
@@ -1062,6 +1271,17 @@
       "retrying": "Erneuter Versuch…",
       "cancel": "Senden abbrechen",
       "label": "Wartende Nachrichten"
+    },
+    "scheduled": {
+      "title": "Geplant",
+      "description": "Nachrichten, die der Server für später zurückhält. Sie gehen raus, ob diese App offen ist oder nicht.",
+      "loading": "Wird geladen…",
+      "empty": "Nichts geplant.",
+      "loadFailed": "Die geplanten Nachrichten konnten nicht geladen werden.",
+      "willSend": "Sendet {{when}}",
+      "cancel": "Senden abbrechen",
+      "cancelled": "Senden abgebrochen",
+      "tooLate": "Bereits gesendet — sie hatte die Warteschlange schon verlassen."
     }
   },
   "pwa": {
@@ -1202,6 +1422,9 @@
         "search": "Suchen",
         "palette": "Befehlspalette",
         "help": "Tastaturkürzel"
+      },
+      "reading": {
+        "print": "Nachricht drucken"
       }
     },
     "modKey": "Strg"
@@ -1231,6 +1454,96 @@
       "add": "Ihnen fehlt die Berechtigung, Nachrichten in diesen Ordner einzuordnen.",
       "destroy": "Ihnen fehlt die Berechtigung, diese Nachrichten zu löschen.",
       "unknown": "Ihre Berechtigungen werden noch geprüft — es sind noch nicht alle Nachrichten geladen."
+    }
+  },
+  "calendar": {
+    "title": "Kalender",
+    "today": "Heute",
+    "previousMonth": "Voriger Monat",
+    "nextMonth": "Nächster Monat",
+    "viewLabel": "Kalenderansicht",
+    "view": {
+      "month": "Monat",
+      "agenda": "Agenda",
+      "week": "Woche"
+    },
+    "untitled": "(ohne Titel)",
+    "allDay": "Ganztägig",
+    "more": "+{{count}} weitere",
+    "noEvents": "Nichts in Sicht.",
+    "loadFailed": "Der Kalender konnte nicht geladen werden.",
+    "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen.",
+    "event": {
+      "createTitle": "Neuer Termin",
+      "editTitle": "Termin bearbeiten",
+      "title": "Titel",
+      "start": "Beginnt",
+      "day": "Tag",
+      "allDay": "Ganztägig",
+      "duration": "Dauer in Minuten",
+      "calendar": "Kalender",
+      "description": "Notizen",
+      "save": "Speichern",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet."
+    }
+  },
+  "files": {
+    "title": "Dateien",
+    "root": "Dateien",
+    "breadcrumb": "Ordnerpfad",
+    "empty": "Dieser Ordner ist leer.",
+    "loadFailed": "Die Dateien konnten nicht geladen werden.",
+    "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
+    "upload": "Hochladen",
+    "newFolder": "Neuer Ordner",
+    "newFolderPlaceholder": "Ordnername",
+    "download": "{{name}} herunterladen",
+    "delete": "{{name}} löschen",
+    "error": {
+      "nameTaken": "Hier gibt es bereits etwas mit diesem Namen.",
+      "tooLarge": "Diese Datei ist für diesen Server zu groß.",
+      "overQuota": "Kein Speicherplatz mehr in diesem Konto.",
+      "forbidden": "Dafür fehlt Ihnen hier die Berechtigung.",
+      "rejected": "Der Server hat das abgelehnt."
+    },
+    "name": {
+      "empty": "Bitte einen Namen vergeben.",
+      "tooLong": "Dieser Name ist zu lang.",
+      "forbiddenCharacter": "Der Name enthält ein Zeichen, das der Server nicht erlaubt.",
+      "reservedName": "Dieser Name ist reserviert und kann nicht verwendet werden."
+    },
+    "preview": "{{name}} ansehen",
+    "hidePreview": "Vorschau von {{name}} schließen",
+    "share": {
+      "open": "{{name}} freigeben",
+      "title": "„{{name}}“ freigeben",
+      "currentHeading": "Wer Zugriff hat",
+      "addHeading": "Jemandem Zugriff geben",
+      "none": "Nur Sie.",
+      "search": "Personen suchen",
+      "searchPlaceholder": "Name oder Adresse",
+      "noMatches": "Dazu passt niemand.",
+      "roleLabel": "Darf",
+      "roleFor": "Was {{name}} darf",
+      "grant": "Hinzufügen",
+      "grantTo": "{{name}} Zugriff geben",
+      "revoke": "Entfernen",
+      "revokeFrom": "Zugriff von {{name}} entfernen",
+      "done": "Fertig",
+      "custom": "Eigene Rechte",
+      "failed": "Die Änderung wurde nicht gespeichert. Es hat sich nichts geändert.",
+      "role": {
+        "viewer": "Ansehen",
+        "editor": "Bearbeiten",
+        "manager": "Verwalten"
+      },
+      "explain": {
+        "viewer": "Öffnen und herunterladen. Ändern nicht.",
+        "editor": "Öffnen, ändern, umbenennen und löschen. Weitergeben an andere nicht.",
+        "manager": "Alles, was Sie auch dürfen — einschließlich der Weitergabe an andere, ohne dass Sie davon erfahren."
+      }
     }
   }
 }

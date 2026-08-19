@@ -1,0 +1,332 @@
+/* The calendar screen (M5.6, FR-CAL-01). Tokens only, so both themes and all six accent palettes
+   follow without a second definition. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+  padding: var(--waxwing-space-4);
+  min-block-size: 0;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--waxwing-space-3);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--waxwing-text-xl);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.views {
+  display: flex;
+  gap: var(--waxwing-space-1);
+}
+
+.month {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  min-block-size: 0;
+}
+
+.weekdays,
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--waxwing-space-hair);
+}
+
+.weekday {
+  padding-block: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  text-align: center;
+}
+
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  /* Tall enough for the date plus three chips; the six-row grid keeps the page height stable. */
+  min-block-size: 5.5rem;
+  padding: var(--waxwing-space-1);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .day:hover {
+    background: var(--waxwing-surface-hover);
+  }
+}
+
+/* Days of the neighbouring months: present for context, quieter than the month being read. */
+.outside {
+  color: var(--waxwing-text-muted);
+  background: var(--waxwing-surface-2);
+}
+
+/* Named alongside its hover state so source order cannot decide which wins. */
+.today,
+.today:hover {
+  border-color: var(--waxwing-accent);
+  box-shadow: inset 0 0 0 1px var(--waxwing-accent);
+}
+
+.dayNumber {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.dayEvents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  min-inline-size: 0;
+}
+
+.chip {
+  overflow: hidden;
+  padding-inline: var(--waxwing-space-1);
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-selected);
+  color: var(--waxwing-text);
+  font-size: var(--waxwing-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agendaRow {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.agendaWhen {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  inline-size: 6rem;
+}
+
+.agendaDate {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.agendaTime,
+.agendaZone {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.agendaWhat {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+.agendaTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agendaSpacer {
+  display: none;
+}
+
+.loading,
+.empty {
+  margin: 0;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  text-align: center;
+}
+
+.localeHint {
+  display: none;
+}
+
+/* The event dialog (M5.11). */
+.eventForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.fieldLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  font-size: var(--waxwing-text-sm);
+}
+
+.textarea {
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-2);
+}
+
+/* Shown instead of the editor for a recurring event — see `isEditable`. */
+.readOnlyNote {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* Week / day view (M5.13). The hour grid is drawn with absolutely-positioned lines rather than
+   168 cells: a cell per hour per day exists only to draw a border and means nothing to a reader. */
+.week {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.weekHead,
+.weekBody {
+  display: grid;
+  /* The gutter, then one equal column per day. */
+  grid-template-columns: 3.5rem repeat(var(--waxwing-week-days, 7), 1fr);
+}
+
+.weekHead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: var(--waxwing-surface);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.weekDayHead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+  padding-block: var(--waxwing-space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.weekDayName {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.weekDayNumber {
+  font-size: var(--waxwing-text-lg);
+}
+
+.weekBody {
+  position: relative;
+}
+
+.hourGutter {
+  position: relative;
+  border-inline-end: 1px solid var(--waxwing-border);
+}
+
+.hourLabel {
+  position: absolute;
+  inset-inline-end: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  /* Sits ON the line rather than below it. */
+  transform: translateY(-50%);
+}
+
+.weekColumn {
+  position: relative;
+  border-inline-end: 1px solid var(--waxwing-border);
+}
+
+.hourLine {
+  position: absolute;
+  inset-inline: 0;
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
+.weekEvent {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--waxwing-space-hair) var(--waxwing-space-1);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-selected);
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-xs);
+  text-align: start;
+  cursor: pointer;
+}
+
+.weekEventTime {
+  color: var(--waxwing-text-muted);
+}
+
+.weekEventTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

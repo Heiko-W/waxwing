@@ -61,7 +61,10 @@ webmail is an open gap.
 
 - No server-side component of any kind (no image proxy, no push relay, no search index).
 - No IMAP/SMTP/POP support — JMAP only.
-- No calendar UI in V1 (spec'd as V2, see §10).
+- ~~No calendar UI in V1~~ — **superseded (M5.6).** A read-only calendar (month + agenda)
+  ships against `urn:ietf:params:jmap:calendars`; see FR-CAL-01 in §6. The non-goal stood on
+  the assumption that calendars needed CalDAV, i.e. XML over WebDAV verbs a browser cannot
+  send cross-origin. JMAP for Calendars removed that obstacle entirely.
 - No server administration (Stalwart's own WebUI covers that).
 - No built-in AI features; no telemetry/analytics.
 - No support for non-evergreen browsers (see §8.4).
@@ -167,6 +170,11 @@ webmail is an open gap.
 - **FR-MBX-03 (Should)** — Drag & drop messages onto folders; drag folders to re-parent.
 - **FR-MBX-04 (Should)** — Collapsible tree state and per-folder display preferences
   persisted locally.
+- **FR-MBX-06 (Should — shipped M5.3)** — Import `.eml` files into a folder via
+  `Email/import` (RFC 8621 §4.8), gated on `myRights.mayAddItems`. `Email/import` rather
+  than `Email/set create` because it keeps the original bytes: headers, signatures and MIME
+  structure survive exactly, which is the entire point of restoring an archived message.
+  Files are imported one at a time so a partial failure names the file that failed.
 - **FR-MBX-05 (Could)** — "Unified inbox" virtual view across accounts (once FR-AUTH-07
   lands).
 
@@ -271,6 +279,15 @@ webmail is an open gap.
   the browser must be open at send time; implement client-side via outbox scheduling and
   document the limitation. Adopt a server-side mechanism when Stalwart exposes one
   (e.g. FUTURERELEASE semantics via JMAP).
+- **FR-CMP-13 (Should — shipped M5.3)** — Register as the system's `mailto:` handler
+  (`protocol_handlers` in the manifest) and open a seeded composer for a link clicked
+  anywhere on the device. The URI is untrusted input from another origin: only the header
+  fields RFC 6068 §5 calls safe are honoured (`to`, `cc`, `bcc`, `subject`, `body`), and
+  the body is inserted as escaped text, never as markup.
+- **FR-CMP-14 (Should — shipped M5.3)** — **Forward as attachment**: the original travels
+  whole as a `message/rfc822` part rather than quoted into the body, so headers, signatures
+  and MIME structure survive. Carried by blob reference (an Email's own `blobId` addresses
+  the entire message, RFC 8621 §4.1.1) — no download and no re-upload.
 - **FR-CMP-12 (Could)** — Templates / canned responses (stored as drafts in a dedicated
   folder or client-side).
 
@@ -431,13 +448,37 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
 
 - **FR-VAC-01 (Must)** — **Vacation responder** UI (`VacationResponse/set`): on/off,
   date range, subject, rich body, preview.
-- **FR-SIEVE-01 (V1.x)** — **Filter rules** editor on top of JMAP for Sieve (RFC 9661):
-  a visual rule builder (conditions → actions: move, flag, forward, discard, stop)
-  generating a managed Sieve script; round-trip-safe (foreign scripts are shown read-only
-  in a code view rather than destroyed). *Deliberately deferred out of V1 to contain
-  scope; `@waxwing/jmap` ships the Sieve types from the start.*
-- **FR-SIEVE-02 (V1.x, Could)** — Raw Sieve editor with syntax highlighting and
-  server-side validation feedback for power users.
+
+- **FR-CAL-01 (V2 — partially shipped M5.6)** — **Calendar** over JMAP for Calendars
+  (`draft-ietf-jmap-calendars`, JSCalendar/RFC 8984).
+
+  **Shipped:** a month grid and an agenda list, read-only, with recurrence expansion done
+  by the server (`expandRecurrences`) and correct local-time handling — a JSCalendar
+  `start` is a local date-time with its zone beside it, and the agenda shows that zone
+  whenever it is not the reader's.
+
+  **Not shipped, deliberately:** week and day grids (they need a time axis with overlap
+  resolution) and any form of editing (a recurrence editor plus an RSVP flow). A calendar
+  that lets someone half-edit a recurring meeting loses other people's time.
+
+  **Caveat to record:** the calendars draft has no RFC number yet. Every wire shape the
+  client relies on was measured against Stalwart 0.16 rather than taken from the draft.
+- **FR-SIEVE-01 (V1.x — shipped M5.2)** — **Filter rules** editor on top of JMAP for Sieve
+  (RFC 9661): a visual rule builder (conditions → actions: move, flag, forward, discard,
+  stop) generating a managed Sieve script; round-trip-safe (foreign scripts are shown
+  read-only in a code view rather than destroyed).
+
+  Round-trip safety is met by **not parsing Sieve at all** (ADR-023): the rule set is
+  carried as JSON in a marker comment and read back from there, and anything outside the
+  markers is preserved verbatim and in its original position. A foreign script is therefore
+  displayed but never edited in place — the offer is to manage rules *alongside* it.
+- **FR-SIEVE-02 (V1.x, Could — partially shipped M5.2)** — Raw Sieve editor with syntax
+  highlighting and server-side validation feedback for power users.
+
+  **Shipped read-only:** the generated script is viewable, and `SieveScript/validate` is
+  bound and used before a save, but the source cannot be edited by hand. An editable raw
+  view would have to re-parse the result to keep the rule list in sync, which is exactly the
+  round trip ADR-023 refuses. Syntax highlighting is not implemented.
 
 ---
 
