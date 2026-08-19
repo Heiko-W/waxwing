@@ -1,0 +1,149 @@
+# Competitive analysis: Bulwark
+
+**Date:** 2026-08-19 · **Waxwing:** v0.12.0 · **Bulwark:** v1.8.1 (2026-08-06)
+
+Bulwark (<https://bulwarkmail.org>, AGPL-3.0) is the closest thing Waxwing has to a direct
+competitor: a webmail client for Stalwart over JMAP. This document records what it does that
+Waxwing does not, what Waxwing does that it does not, and — the part that decides what is worth
+building — which of the gaps a static-only client can close at all.
+
+Sources are linked inline. Everything about Waxwing is cited to a path in this repository.
+
+## 1. The two projects are not the same shape
+
+| | Waxwing | Bulwark |
+|---|---|---|
+| Runtime | Static files. No process, no database, no container | **Next.js 16 server process** required — Node ≥ 18, port 3000, reverse proxy |
+| What the server does | — | Credential encryption, OAuth PKCE, runtime config, settings sync, admin/setup, plugin HTTP proxy ([architecture](https://bulwarkmail.org/docs/development/architecture)) |
+| Mail traffic | Browser → JMAP direct | Browser → JMAP direct (the Node process is not a mail proxy) |
+| Offline | Local Dexie replica, offline reading, offline outbox | **None.** "Mail data itself is always fetched fresh from the JMAP server" ([pwa docs](https://bulwarkmail.org/docs/features/pwa)) — the service worker caches the app shell only |
+| Web Push | Contentless, direct to the browser push service (ADR-017) | Routed through the **hosted Bulwark Relay** by default (self-hostable; build-time variable) |
+| Age / activity | — | Repo created 2026-03-13; 39 releases in 5 months; 136 open issues |
+| Contributors | — | 60, of which one author holds 1127 of ~1400 commits |
+| Third-party security audit | none | none |
+| Licence | AGPL-3.0-only (2 MIT packages) | AGPL-3.0-only (fork lineage from [root-fr/jmap-webmail](https://github.com/root-fr/jmap-webmail), MIT) |
+
+The runtime row is the whole disagreement. Several Bulwark features exist *because* there is a
+server to put them on. Copying the feature without copying the server is sometimes possible
+(§3), sometimes not (§5).
+
+## 2. Feasibility: what Stalwart actually offers a static client
+
+Verified against Stalwart `main` @ `9497a5d` (2026-08-18), release v0.16.18.
+
+| Capability | Standard | In Stalwart | Reachable from a static client |
+|---|---|---|---|
+| Mail | RFC 8621 | yes | yes — already used |
+| Contacts | **RFC 9610** | yes | yes — already used |
+| **Sieve scripts** | **RFC 9661** (Proposed Standard, 2024) | `SieveScript/get\|set\|query\|validate` | **yes** |
+| Vacation response | RFC 8621 §8 | yes | yes — already used |
+| **Calendars** | `draft-ietf-jmap-calendars-28` — RFC Editor queue, **no RFC number yet** | `Calendar/*`, `CalendarEvent/*`, `ParticipantIdentity/*`, `Principal/getAvailability` | **yes** |
+| iTIP/iMIP scheduling | RFC 5546 / 6047 | **server-side**, incl. HTTP RSVP links | yes — the client does not implement iMIP |
+| **Files** | `draft-ietf-jmap-filenode-14` — no RFC | `FileNode/*` (README claims draft-03) | yes, with draft-drift risk |
+| Sharing | **RFC 9670** | `Principal/*`, `ShareNotification/*` | yes |
+| Quota | RFC 9425 | yes | yes |
+| **MDN / read receipts** | RFC 9007 | **not implemented** | only by building the MIME part by hand |
+| CalDAV / CardDAV | RFC 4791 / 6352 | yes | same-origin only — cross-origin is structurally blocked (no `PROPFIND`/`REPORT` in `Access-Control-Allow-Methods`, no `Access-Control-Expose-Headers` so `ETag` is unreadable) |
+| ManageSieve | RFC 5804 | yes (port 4190) | no — no raw TCP in a browser. Irrelevant: JMAP Sieve replaces it |
+| S/MIME, PGP | — | **encryption at rest only**; the server never decrypts and does not verify signatures | client-side crypto only |
+
+**The conclusion that matters: not one of the missing features requires a server component of our
+own.** Everything Bulwark does with mail, calendars, contacts, files and filters goes over plain
+JMAP. Where Bulwark needs its Node process is auth storage, config, admin and plugins — not
+features.
+
+**The one trap:** Stalwart's encryption-at-rest encrypts *incoming plaintext* with the user's
+public PGP key or S/MIME certificate. On such an account a client without PGP/S/MIME **cannot
+read the mailbox at all**. That makes §4.3 a correctness issue for a class of deployments, not a
+comfort feature.
+
+## 3. Gaps — features Bulwark ships and Waxwing does not
+
+### 3.1 Whole subsystems missing
+
+| Feature | Bulwark | Waxwing | Waxwing's own position |
+|---|---|---|---|
+| **Calendar** — month/week/day/agenda, drag-to-reschedule, recurrence with scope editor, iMIP invitations, RSVP, `.ics` detection in mail, iCal/webcal subscriptions, birthday calendar, Jalali calendar | released | **nothing** — no `Calendar*` methods, no route (`apps/web/src/app/route/route.ts:18`) | spec §1.4 non-goal for V1, §10 roadmap V2 |
+| **Tasks** | released (due date, priority, status) | nothing | spec §10, V2+ |
+| **Files** — FileNode tree, streamed WebDAV PUT, previews, JMAP Sharing (RFC 9670), "shared with me" | released | nothing (blob transfer for attachments only, `packages/jmap/src/blob.ts`) | spec §10, V2+ |
+| **Sieve filter rules** — visual rule builder, raw editor with syntax validation, round-trip preservation of foreign rules | released | **nothing but capability detection** (`packages/jmap/src/capabilities.ts`) | backlog §11, "the headline V1.x feature" |
+| **S/MIME and PGP** | S/MIME released (privileged plugin since 1.7.6); PGP via community plugins; public-key management per account | nothing | spec NFR-SEC-05 (Could), V2+ |
+| **Plugin/extension system** — 10 UI slots, hooks, granular permissions, sandboxing, marketplace with 14 plugins | released | nothing, and not a goal | only `config.json` + `theme.css` |
+
+⚠️ `features.sieveEditor` is defined in `apps/web/src/app/config.ts:43` and documented in
+`docs/configuration.md:142` ("Whether to offer the Sieve filter UI") — **no code reads it.** A
+documented switch for a feature that does not exist.
+
+### 3.2 Mail and compose
+
+| Feature | Bulwark | Waxwing |
+|---|---|---|
+| **Multiple simultaneous accounts** | up to 5 concurrent logins, instant switching, several JMAP servers per deployment with auto-pick by domain | **one login**; delegated/shared accounts of that session do sync in parallel (`apps/web/src/sync/engine/fleet.ts`) but there is no "add account" |
+| **Unified inbox** | across accounts, plus a cross-account mode (admin-gated, off by default) | none — backlog §11 (FR-MBX-05) |
+| Scheduled send | released | backlog (FR-CMP-11) |
+| Templates with placeholders | released | backlog (FR-CMP-12) |
+| Read receipts (MDN) | released | none — and Stalwart has no JMAP MDN, so it means hand-built MIME |
+| Snooze | — | backlog (FR-ORG-03) — *neither has it* |
+| Pinned emails, category tabs | released | none |
+| Nested tags with parent | released | flat labels with colours (`apps/web/src/mail/labels/`) |
+| List-Unsubscribe one-click | released | backlog (FR-RD-09) |
+| TNEF (`winmail.dat`) extraction | released | none |
+| ZIP download of all attachments, `.eml`/ZIP import, forward-as-attachment | released | none |
+| Print menu item | released | print CSS exists, **no menu entry** — no `print` key in `apps/web/src/i18n/locales/en/common.json` |
+| `mailto:` / `webcal:` protocol handler | released | none — `apps/web/public/manifest.json` has no `protocol_handlers` |
+| Saved searches | filter panel | backlog (FR-SRCH-03 remainder) |
+
+### 3.3 Platform and ecosystem
+
+| | Bulwark | Waxwing |
+|---|---|---|
+| **Languages** | **25** locales | **2** — `en`, `de` (`apps/web/src/i18n/index.ts:15`), 882 keys each |
+| RTL | active for ar/he/fa with layout flip | prepared but empty: `RTL_LANGUAGES = []` |
+| Themes | bundled themes, **ZIP theme upload**, admin can force a theme, per-domain branding | 3-way theme switch, 6 accent palettes, `theme.css` override, `config.json` white-label |
+| Setup | **web setup wizard** since 1.6.4 — JMAP probe, OAuth discovery, branding uploads, admin password | hand-edited `config.json` |
+| Admin | Stalwart admin dashboard integration, audit log, policy pages | non-goal (spec §1.4) |
+| 2FA / MFA | TOTP, password & 2FA management via Stalwart admin API, structured MFA login | OAuth + Basic only |
+| Native mobile | React Native/Expo app (**beta**, "do not rely on this for primary email yet") | non-goal (FR-UI-03) — responsive PWA |
+| Legacy IMAP servers | Legacy Proxy (**pre-1.0**, "wire shapes can change without notice", CardDAV write path returns `forbidden`) | non-goal |
+
+## 4. Where Waxwing is ahead
+
+Worth stating, because these are the reasons to *not* switch to Bulwark:
+
+1. **No server process.** One `x:Application/set` call and Stalwart hosts it. Bulwark needs Node, a
+   port, a reverse proxy, four volumes and a process manager.
+2. **Real offline.** Local replica, offline reading, an outbox that survives reload and reconnect,
+   conflict UX. Bulwark has none of this — it caches the shell, not the mail.
+3. **Push without a third party.** Contentless Web Push straight to the browser's push service.
+   Bulwark's default path is the hosted Bulwark Relay, and its mobile app goes through Firebase.
+4. **Verifiable releases.** `SHA256SUMS` plus `gh attestation verify --source-ref`.
+5. **Test discipline as a stated rule** — a test must fail when the fix is removed (CONTRIBUTING.md);
+   ~3312 unit tests, integration suites that assert they were not skipped, E2E against a live fixture.
+6. **Size budget** — 256 KB gz against a 300 KB ceiling, enforced in CI.
+7. **Documented refusals.** 22 ADRs saying what was not built and why.
+
+## 5. What should not be copied
+
+- **Plugin system.** It is the reason Bulwark needs a host-side HTTP proxy and a permission model,
+  and the reason S/MIME had to become a "privileged tier". For Waxwing it would mean either giving
+  up static-only or shipping an in-browser sandbox with the same key-isolation problem.
+- **Relay.** A hosted push service is a server we said we would not run (spec §1.4).
+- **Legacy proxy.** IMAP/SMTP bridging is a separate product, not a client feature.
+- **Native app.** Explicit non-goal, and Bulwark's own is beta.
+- **Admin dashboard.** Stalwart's own WebUI covers it (spec §1.4).
+
+## 6. Ranked closing list
+
+Ordered by (reason to choose Bulwark) ÷ (cost, given §2).
+
+| # | Gap | Why it ranks here |
+|---|---|---|
+| 1 | **Sieve filter rules UI** | RFC 9661 is *final*, Stalwart implements `validate`, capability detection already exists, a dead config key already promises it, and the plan already calls it the headline V1.x feature. Highest value per unit of work in the list. |
+| 2 | **Calendar** | The single largest reason to pick Bulwark. Feasible over JMAP; the server does iMIP. But it is a subsystem, not a feature: route, views, recurrence, timezones, invitations. Caveat: the spec is still a draft in the RFC Editor queue. |
+| 3 | **Multi-account + unified inbox** | The data layer is already account-scoped (ADR-004, ADR-008) and the engine fleet already runs one engine per account. Mostly auth storage and UI. |
+| 4 | **More languages** | 2 → 25 is the most visible gap and the cheapest to close: the framework, the 882 keys and the switcher are all in place. Needs a translation pipeline (Weblate), not code. |
+| 5 | **S/MIME / PGP read + verify** | A *correctness* issue where Stalwart's encryption-at-rest is on: without it the mailbox is unreadable. Security-critical, and the plugin escape hatch is not available. |
+| 6 | **Files (FileNode)** | Straightforward over JMAP, but the draft is at -14 while Stalwart claims -03. Verify against a live session before committing. |
+| 7 | Templates, scheduled send, saved searches, snooze | Ordinary backlog items, each small. |
+| 8 | Small parity items | Print menu entry, `mailto:` protocol handler, ZIP-download of attachments, `.eml` import, forward-as-attachment, List-Unsubscribe, PWA badge. |
+| 9 | Setup wizard, theme upload, MDN, TNEF | Lowest ratio; MDN needs hand-built MIME, TNEF is a decoder for a Microsoft legacy format. |
