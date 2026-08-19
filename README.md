@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.10.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.13.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -101,19 +101,23 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.10.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.13.0 — feature-complete, and deliberately not 1.0 yet.**
 
 Every planned work package is done and the release gate is signed off: ~3 200 unit tests, 9
 integration tests against a live Stalwart, and 107 end-to-end tests across six Playwright
 suites, all green. Performance and accessibility are measured rather than asserted — the
 numbers are in the [implementation plan](docs/implementation-plan.md).
 
-**v0.10.0 is a security release.** A multi-dimension review of v0.9.0 found 15 security
-findings and 22 implementation defects; all are fixed, each pinned by a test that was verified
-to fail when the fix is reverted. Two of them were features that had never worked in any
-shipped build — "load remote content" and the PDF attachment preview — both blocked by the
-app's own Content-Security-Policy, and both had tests that watched the wrong thing and stayed
-green. If you run v0.9.0, upgrade.
+**v0.13.0 closes the gap to Bulwark**, the other serverless JMAP client, measured feature
+by feature in [the comparison](docs/competitive-analysis-bulwark.md). Sieve filter rules, a
+calendar, file storage with sharing, multiple accounts, scheduled send, saved searches,
+templates, snooze, `winmail.dat` unpacking and read receipts all arrived in this release. Every
+JMAP shape in it was measured against a live server rather than transcribed from a draft, which
+is how four of them turned out to differ from what the specification says.
+
+One gap is left open on purpose: **PGP and S/MIME signatures are recognised but not verified.**
+§5.1 of the comparison says which half is buildable and which is blocked, and why a tick this
+client has not earned would be worse than no tick at all.
 
 What 1.0 is waiting on is **use**. A mail client earns that number by being lived in for a
 while, against more than one server and more than one mailbox. That has not happened yet.

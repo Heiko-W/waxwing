@@ -2291,6 +2291,64 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
+### v0.13.0 (2026-08-19) — closing the gap to Bulwark
+
+Bulwark is the other serverless JMAP client. The question that started this was whether there
+was any reason left to choose it; the answer is written down feature by feature in
+`docs/competitive-analysis-bulwark.md`, and this release is what closing that list looked like.
+
+Twenty-one work packages, M5.2 through M5.22. **Sieve filter rules** (M5.2, ADR-023 — foreign
+script content is preserved byte-for-byte AND in position, because order is semantics in
+Sieve). **A calendar** (M5.6/M5.11/M5.13): month, week/day and agenda views, create/edit/delete
+for single events, series read-only by design. **File storage** (M5.7/M5.17/M5.18): browse,
+upload, folders, download, an inline preview on the reader's own policy, and RFC 9670 sharing
+with three named roles. **Multiple accounts** (M5.10/M5.14/M5.16), as switching rather than
+concurrent sessions. **Scheduled send, templates, saved searches and snooze**
+(M5.4/M5.5/M5.8). **Seven small parity items** (M5.3). **A translation pipeline** (M5.9).
+**A deployment config generator** (M5.20). **`winmail.dat` unpacking** (M5.21). **Read
+receipts** (M5.22) — a button, never automatic.
+
+**What this release is really about is the difference between reading a specification and
+measuring a server.** Four things were built from the RFC, measured, and found to be wrong:
+
+- `Principal/query` defines a `name` filter (RFC 9670 §2.3). Stalwart answers it with an empty
+  list and a 200. A picker built from the RFC would have shipped as a search box that finds
+  nobody, with no error anywhere to say why. It sends `text` instead, and an integration test
+  asserts `name` still finds no one — so the day Stalwart implements it, that is visible.
+- RFC 8098 requires `Content-Type: multipart/report; report-type=disposition-notification`, and
+  JMAP has no field for a content-type parameter. `type` alone silently drops it; a `headers`
+  array is refused; only `type` together with `header:Content-Type:asText` produces it. The
+  read receipt would have gone out looking valid and been unparseable by the client that asked.
+- An email cannot be created outside a mailbox — "Message has to belong to at least one
+  mailbox", for both an absent and an empty `mailboxIds`.
+- Stalwart advertises `maxDelayedSend: 2592000` (30 days) and enforces seven.
+
+**Three estimates of my own were also wrong, and each was corrected by checking rather than
+arguing.** RFC 9670 sharing was written off as "needs a principal picker, a screen of its own"
+— measured, the data was already there and the screen was the easy part. TNEF was written off
+as "poor ratio" — measured, it is one file, no dependency, in a lazy chunk. And the bundle
+budget was cited as the reason S/MIME verification could not be built — measured,
+`.size-limit.js` excludes every lazy chunk by name, so size was never the constraint. The real
+one is the trust root, which is a different argument and now stated as such.
+
+**Defects found by tests during the work, not after it.** A scope-collision in
+`deriveScope` — two accounts could derive the same storage scope, share one `waxwing-auth-…`
+database and one wrapping key, and each read the other's refresh token. A `winmail.dat`
+signature part listed as a downloadable attachment. A read-receipt header built from the
+sender's own `Message-ID`, which could have closed its field and started a `Bcc:`. A
+`multipart/report` chunk that never split because the module was both statically and
+dynamically imported, adding ~1 KB gz to first paint with no warning but a build log line.
+
+Two package types were wrong and are fixed: `EmailCreate.bodyStructure` demanded a full
+`EmailBodyPart` including the fields the server assigns, and `bodyValues` demanded
+`isEncodingProblem`/`isTruncated`, which are the server's answers about a value it decoded.
+
+**Left open on purpose:** PGP and S/MIME verification (see §11), a unified inbox across
+accounts, a recurrence scope editor, and 23 × 882 translation strings that need speakers rather
+than a machine.
+
+`pnpm verify`: 3 720 tests, 270.36 KB gz of 300.
+
 ### v0.11.0-dev (2026-08-18) — the pipelines, then the phone
 
 Two rounds. First a review of the CI/release pipelines and the repository settings, then the narrow
@@ -2421,19 +2479,50 @@ explicit owner decision:
   (2026-08-19). The raw editor is read-only, which is a deliberate narrowing of FR-SIEVE-02: see
   ADR-023 for why an editable one would have to re-parse Sieve.
 - ~~Saved searches as virtual folders (FR-SRCH-03 remainder)~~ — **shipped in M5.5**.
-- Snooze (FR-ORG-03) remains. ~~Scheduled send (FR-CMP-11)~~ — **shipped in M5.4**, and
-  SERVER-side rather than the client-side fallback this line assumed. ~~Templates
+- ~~Snooze (FR-ORG-03)~~ — **shipped in M5.8**. ~~Scheduled send (FR-CMP-11)~~ — **shipped in
+  M5.4**, and SERVER-side rather than the client-side fallback this line assumed. ~~Templates
   (FR-CMP-12)~~ — **shipped in M5.5**.
 - Offline search over cached subset (FR-SRCH-04).
 - ~~PWA badging (FR-NOTIF-04)~~ — **shipped in M5.3**; notification actions (FR-NOTIF-05)
   remain (ADR-017 explains why they are harder than they look).
 - ~~`List-Unsubscribe` one-click (FR-RD-09)~~ — **shipped in M5.3**; sectioned list grouping
   (FR-LST-08) remains.
-- Multi-account UI (FR-AUTH-07 full), unified inbox (FR-MBX-05).
+- ~~Multi-account UI (FR-AUTH-07 full)~~ — **shipped in M5.10/M5.14/M5.16**, as SWITCHING: a
+  registry, derived per-account scopes, add-account and a switcher. **Unified inbox (FR-MBX-05)
+  remains and is now the harder half**: the session provider holds ONE session, so a mailbox
+  spanning accounts needs that assumption reworked, not a new screen.
 - CSV contact import (FR-CON-06 remainder), auto-collected addresses (FR-CON-07).
 - Community theme gallery format (FR-THEME-04).
-- V2 per spec §10: **Calendar partially shipped in M5.6** (month + agenda, read-only —
-  week/day grids and editing remain); iTIP invitations, PGP, Files/Tasks integration remain.
+- V2 per spec §10: ~~Calendar~~ — **shipped in M5.6/M5.11/M5.13** (month, week/day and agenda
+  views; create, edit and delete for single events). **Recurring series stay read-only by
+  design** — a scope editor ("this event / this and following / all") is the one deliberate
+  omission, see `isEditable` in `calendar-client.ts`. iTIP invitations and Files/Tasks
+  integration remain; ~~Files~~ — **shipped in M5.7/M5.17/M5.18** (browse, upload, folders,
+  delete, download, inline preview and RFC 9670 sharing).
+
+**PGP and S/MIME verification (open, owner decision deferred 2026-08-19).** M5.15 and M5.19
+ship the half that needs no cryptography: signed and encrypted mail is recognised from its MIME
+structure and explained, and the signature part no longer shows up as an attachment nobody can
+open. Verification and decryption are not started, and §5.1 of
+`docs/competitive-analysis-bulwark.md` records which half is blocked on what:
+
+- **S/MIME verification is blocked on a trust root the browser does not expose.** There is no
+  chain-validation API and no access to the platform root store. Shipping a CA bundle would
+  make this app the owner of a PKI trust decision on the user's behalf, and a tick meaning
+  "signed by a certificate we could not check" reads to every user as "verified sender". That
+  is the failure worth refusing.
+- **PGP verification is buildable** and is the more promising half: no certificate chain, no
+  private key material, so none of the shared-computer or XSS-escalation questions apply.
+  What it costs is an OpenPGP packet parser (openpgp.js is ~300 KB, lazily loaded — the size
+  budget measures only eager chunks, so this is a dependency-weight question and not a budget
+  one) plus a public-key store and an acceptance workflow.
+- Decryption, either scheme, needs private keys and therefore a key store, a shared-computer
+  answer, a fresh XSS threat model and a recovery story. That is a milestone of its own.
+
+Measured 2026-08-19 against Stalwart 0.16: no key material is reachable over JMAP —
+`urn:stalwart:jmap` is absent from the session and its account capability is `{}`. The key
+Stalwart does hold is the user's OWN public key, for encryption at rest; verifying a signature
+needs the SENDER's, which no server in this architecture can supply.
 
 ## 12. Cross-cutting Workstreams (no start/end — enforced continuously)
 

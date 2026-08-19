@@ -71,7 +71,7 @@ The two fields that do it:
 So a Waxwing release reaches your users without you doing anything. **Omit
 `autoUpdateFrequency` if you would rather not have that** — then Stalwart fetches once and
 holds still until you change `resourceUrl` yourself. Pinning a version is the same idea:
-point `resourceUrl` at `…/download/waxwing-stalwart-v0.10.0.zip` and it stays there.
+point `resourceUrl` at `…/download/waxwing-stalwart-v0.13.0.zip` and it stays there.
 
 Users are not interrupted by an update. The service worker installs the new build in the
 background and Waxwing offers a reload; nobody loses a half-written message.
@@ -98,13 +98,13 @@ Sigstore-signed build-provenance attestation, made by the GitHub runner's own id
 
 ```sh
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.10.0
+  --source-ref refs/tags/v0.13.0
 ```
 
 **Give `--source-ref`, and name the tag you are installing.** Without it the check passes for
 anything this workflow built from *any* ref, branches included — and branch builds exist, because
 the workflow is dispatched as a rehearsal on purpose. With it, a rehearsal artefact is rejected:
-`expected SourceRepositoryRef to be refs/tags/v0.10.0, got refs/heads/main`.
+`expected SourceRepositoryRef to be refs/tags/v0.13.0, got refs/heads/main`.
 
 It then passes only for a file built by this repository's release workflow, from that tag. It starts with v0.10.0 — on the v0.9.0 assets it reports "no attestations found",
 which is the truthful answer and not a tampering signal.
