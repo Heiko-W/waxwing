@@ -1419,7 +1419,8 @@
     "viewLabel": "Calendar view",
     "view": {
       "month": "Month",
-      "agenda": "Agenda"
+      "agenda": "Agenda",
+      "week": "Week"
     },
     "untitled": "(no title)",
     "allDay": "All day",

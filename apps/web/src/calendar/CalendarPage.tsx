@@ -33,6 +33,7 @@ const EventDialog = lazy(() => import('./EventDialog'))
 import { zoneDiffersFromLocal } from './jscalendar-time'
 import {
   addMonths,
+  firstDayOfWeek,
   fromIsoDate,
   isSameDay,
   monthGrid,
@@ -40,8 +41,10 @@ import {
   startOfDay,
   toIsoDate,
 } from './month-grid'
+import { WeekView } from './WeekView'
+import { weekDays } from './week-grid'
 
-type View = 'month' | 'agenda'
+type View = 'month' | 'week' | 'agenda'
 
 export interface CalendarPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
@@ -191,6 +194,14 @@ export default function CalendarPage(props: CalendarPageProps) {
             {t('calendar.view.month')}
           </Button>
           <Button
+            variant={view === 'week' ? 'secondary' : 'ghost'}
+            size="sm"
+            aria-pressed={view === 'week'}
+            onClick={() => setView('week')}
+          >
+            {t('calendar.view.week')}
+          </Button>
+          <Button
             variant={view === 'agenda' ? 'secondary' : 'ghost'}
             size="sm"
             aria-pressed={view === 'agenda'}
@@ -219,6 +230,14 @@ export default function CalendarPage(props: CalendarPageProps) {
           onPick={goto}
           onCreate={(day) => setEditing({ event: null, day })}
           onOpen={(event, day) => setEditing({ event, day })}
+        />
+      ) : view === 'week' ? (
+        <WeekView
+          days={weekDays(focus, firstDayOfWeek(locale))}
+          events={events ?? []}
+          today={today}
+          onOpen={(placed, day) => setEditing({ event: placed.event, day })}
+          onCreate={(day) => setEditing({ event: null, day })}
         />
       ) : (
         <AgendaView events={events ?? []} today={today} />

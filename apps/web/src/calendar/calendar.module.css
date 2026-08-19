@@ -229,3 +229,104 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/* Week / day view (M5.13). The hour grid is drawn with absolutely-positioned lines rather than
+   168 cells: a cell per hour per day exists only to draw a border and means nothing to a reader. */
+.week {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+.weekHead,
+.weekBody {
+  display: grid;
+  /* The gutter, then one equal column per day. */
+  grid-template-columns: 3.5rem repeat(var(--waxwing-week-days, 7), 1fr);
+}
+
+.weekHead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: var(--waxwing-surface);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.weekDayHead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+  padding-block: var(--waxwing-space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.weekDayName {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.weekDayNumber {
+  font-size: var(--waxwing-text-lg);
+}
+
+.weekBody {
+  position: relative;
+}
+
+.hourGutter {
+  position: relative;
+  border-inline-end: 1px solid var(--waxwing-border);
+}
+
+.hourLabel {
+  position: absolute;
+  inset-inline-end: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  /* Sits ON the line rather than below it. */
+  transform: translateY(-50%);
+}
+
+.weekColumn {
+  position: relative;
+  border-inline-end: 1px solid var(--waxwing-border);
+}
+
+.hourLine {
+  position: absolute;
+  inset-inline: 0;
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
+.weekEvent {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--waxwing-space-hair) var(--waxwing-space-1);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-sm);
+  background: var(--waxwing-surface-selected);
+  color: var(--waxwing-text);
+  font: inherit;
+  font-size: var(--waxwing-text-xs);
+  text-align: start;
+  cursor: pointer;
+}
+
+.weekEventTime {
+  color: var(--waxwing-text-muted);
+}
+
+.weekEventTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
