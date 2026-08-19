@@ -200,4 +200,32 @@ test.describe('M4.4 shared accounts', () => {
     await inbox.click()
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0)
   })
+
+  /**
+   * The other half of making the rail one scroller: scrolled past, an account's folders lose the
+   * only label that says whose they are — and a delegated mailbox's folders carry the SAME names as
+   * the user's own (both fixtures' inboxes are literally mailbox `a`). So the account header sticks.
+   */
+  test('an account header stays visible while its folders scroll under it', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 300 })
+    await login(page)
+
+    const header = accountSection(page, OWN).getByText(OWN, { exact: true })
+    await expect(header).toBeVisible({ timeout: 30_000 })
+    const before = await header.boundingBox()
+
+    // Scroll the rail far enough that the header's normal position is off the top.
+    const rail = page.getByRole('navigation', { name: 'Folders' })
+    await rail.evaluate((nav) => {
+      const scroller = Array.from(nav.querySelectorAll('*')).find(
+        (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto',
+      )
+      if (scroller) scroller.scrollTop = 200
+    })
+
+    // Still on screen, and pinned to the top of the rail rather than carried away with the rows.
+    await expect(header).toBeInViewport()
+    const after = await header.boundingBox()
+    expect(after?.y ?? 0).toBeLessThanOrEqual((before?.y ?? 0) + 4)
+  })
 })

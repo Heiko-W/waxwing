@@ -273,9 +273,15 @@
   flex: 1 1 auto;
   min-block-size: 0;
   overflow-y: auto;
+  /* The gutter is reserved whether or not the bar is showing. Without it, expanding a folder makes
+     the scrollbar appear and every row in the rail shifts sideways by its width — a jump the reader
+     reads as the app losing its place. */
+  scrollbar-gutter: stable;
   /* Scrolling must not cost the focus ring: the rows sit flush against this box's inline edges. */
   padding-inline: 2px;
   margin-inline: -2px;
+  /* Momentum stops here rather than chaining into the shell behind it. */
+  overscroll-behavior: contain;
 }
 
 /* The drawer's own close affordance. Rendered only below 64em — where this region IS an overlay —
