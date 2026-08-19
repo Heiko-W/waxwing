@@ -75,6 +75,8 @@ import type {
   EmailSubmissionSetResponse,
   IdentityGetRequest,
   IdentityGetResponse,
+  IdentitySetRequest,
+  IdentitySetResponse,
 } from './types/submission'
 import type {
   VacationResponseGetRequest,
@@ -112,6 +114,8 @@ export const Methods = {
   ),
 
   identityGet: defineMethod<IdentityGetRequest, IdentityGetResponse>('Identity/get'),
+  /** RFC 8621 §6.3 — create/update/destroy send identities and their signatures (M5.1, FR-CMP-06). */
+  identitySet: defineMethod<IdentitySetRequest, IdentitySetResponse>('Identity/set'),
   emailSubmissionSet: defineMethod<EmailSubmissionSetRequest, EmailSubmissionSetResponse>(
     'EmailSubmission/set',
   ),

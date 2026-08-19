@@ -11,6 +11,34 @@ describe('Identity (RFC 8621 §6, submission capability)', () => {
   it('Identity/get maps to the submission capability for `using`', () => {
     expect(usingForMethods(['Identity/get'])).toContain(Capabilities.submission)
   })
+
+  it('identitySet invokes the Identity/set method', () => {
+    const builder = new RequestBuilder()
+    builder.invoke(Methods.identitySet, { accountId: 'a' })
+    expect(builder.invocations[0]?.[0]).toBe('Identity/set')
+  })
+
+  it('Identity/set maps to the submission capability for `using`', () => {
+    expect(usingForMethods(['Identity/set'])).toContain(Capabilities.submission)
+  })
+
+  it('serializes create/update/destroy and ifInState verbatim', () => {
+    const builder = new RequestBuilder()
+    builder.invoke(Methods.identitySet, {
+      accountId: 'a',
+      ifInState: 's1',
+      create: { new1: { email: 'me@x.test', name: 'Me', htmlSignature: '<p>bye</p>' } },
+      update: { i1: { name: 'Renamed', textSignature: '' } },
+      destroy: ['i2'],
+    })
+    expect(builder.invocations[0]?.[1]).toEqual({
+      accountId: 'a',
+      ifInState: 's1',
+      create: { new1: { email: 'me@x.test', name: 'Me', htmlSignature: '<p>bye</p>' } },
+      update: { i1: { name: 'Renamed', textSignature: '' } },
+      destroy: ['i2'],
+    })
+  })
 })
 
 describe('EmailSubmission (RFC 8621 §7, submission capability) — M2.8', () => {
