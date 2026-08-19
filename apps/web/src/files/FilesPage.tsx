@@ -17,7 +17,7 @@
 
 import type { FileNode } from '@waxwing/jmap'
 import { fileNodeNameProblem } from '@waxwing/jmap'
-import { Download, Eye, File as FileIcon, Folder, Trash2, Upload } from 'lucide-react'
+import { Download, Eye, File as FileIcon, Folder, Trash2, Upload, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
@@ -26,7 +26,15 @@ import { isPreviewable, previewSurface } from '../mail/preview-policy'
 import { safeDownloadName } from '../mail/safe-filename'
 import { Button, IconButton, Spinner, TextInput, useToast } from '../ui'
 import styles from './files.module.css'
-import { FileSetError, type FilesClient, fileCapability, makeFilesClient } from './files-client'
+import {
+  currentUserPrincipalId,
+  FileSetError,
+  type FilesClient,
+  fileCapability,
+  makeFilesClient,
+} from './files-client'
+import { ShareDialog } from './ShareDialog'
+import { mayShare } from './sharing'
 
 export interface FilesPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
@@ -58,6 +66,8 @@ export default function FilesPage(props: FilesPageProps) {
   const [newFolder, setNewFolder] = useState('')
   // The open preview, or null. Holds the object URL so the render stays synchronous.
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
+  // The node whose sharing is being edited, or null.
+  const [sharing, setSharing] = useState<FileNode | null>(null)
   // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
   // preview neither downloads the file again nor leaks the superseded URL.
   const urlCacheRef = useRef(new Map<string, string>())
@@ -65,13 +75,14 @@ export default function FilesPage(props: FilesPageProps) {
   const injected = props.client
   const sessionClient = connected?.client ?? null
   const accountId = connected?.accountId ?? null
+  const selfPrincipalId = currentUserPrincipalId(connected?.jmapSession ?? null, accountId)
   const client = useMemo(
     () =>
       injected ??
       (sessionClient === null || accountId === null
         ? null
-        : makeFilesClient(sessionClient, accountId)),
-    [injected, sessionClient, accountId],
+        : makeFilesClient(sessionClient, accountId, selfPrincipalId)),
+    [injected, sessionClient, accountId, selfPrincipalId],
   )
   const capability = fileCapability(connected?.jmapSession ?? null, accountId)
 
@@ -280,6 +291,16 @@ export default function FilesPage(props: FilesPageProps) {
                       <Eye />
                     </IconButton>
                   )}
+                {mayShare(node.myRights) && (
+                  <IconButton
+                    label={t('files.share.open', { name: node.name })}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSharing(node)}
+                  >
+                    <Users />
+                  </IconButton>
+                )}
                 {node.nodeType !== 'directory' && node.myRights.mayRead && (
                   <IconButton
                     label={t('files.download', { name: node.name })}
@@ -323,6 +344,17 @@ export default function FilesPage(props: FilesPageProps) {
             </li>
           ))}
         </ul>
+      )}
+
+      {sharing !== null && (
+        <ShareDialog
+          node={sharing}
+          client={client}
+          onClose={() => setSharing(null)}
+          // The list carries `shareWith`, and the dialog has just changed it — without this the
+          // row behind the dialog would keep claiming the old grant until the next navigation.
+          onChanged={() => void load()}
+        />
       )}
     </div>
   )

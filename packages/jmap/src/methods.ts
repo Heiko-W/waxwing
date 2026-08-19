@@ -93,6 +93,16 @@ import type {
   ThreadGetResponse,
 } from './types/mail'
 import type {
+  PrincipalGetRequest,
+  PrincipalGetResponse,
+  PrincipalQueryRequest,
+  PrincipalQueryResponse,
+  ShareNotificationGetRequest,
+  ShareNotificationGetResponse,
+  ShareNotificationSetRequest,
+  ShareNotificationSetResponse,
+} from './types/principal'
+import type {
   PushSubscriptionGetRequest,
   PushSubscriptionGetResponse,
   PushSubscriptionSetRequest,
@@ -242,6 +252,19 @@ export const Methods = {
   ),
   fileNodeQuery: defineMethod<FileNodeQueryRequest, FileNodeQueryResponse>('FileNode/query'),
   fileNodeSet: defineMethod<FileNodeSetRequest, FileNodeSetResponse>('FileNode/set'),
+
+  /**
+   * RFC 9670 — JMAP Sharing (M5.18). `Principal/query` is the one a picker runs; note that the
+   * usable filter is `text`, not the RFC's `name` — see `types/principal.ts`.
+   */
+  principalGet: defineMethod<PrincipalGetRequest, PrincipalGetResponse>('Principal/get'),
+  principalQuery: defineMethod<PrincipalQueryRequest, PrincipalQueryResponse>('Principal/query'),
+  shareNotificationGet: defineMethod<ShareNotificationGetRequest, ShareNotificationGetResponse>(
+    'ShareNotification/get',
+  ),
+  shareNotificationSet: defineMethod<ShareNotificationSetRequest, ShareNotificationSetResponse>(
+    'ShareNotification/set',
+  ),
 
   /** RFC 9610 — AddressBook (M4.2). No `/query`: an account's address books are always fetched whole. */
   addressBookGet: defineMethod<AddressBookGetRequest, AddressBookGetResponse>('AddressBook/get'),

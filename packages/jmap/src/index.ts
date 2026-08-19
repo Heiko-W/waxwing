@@ -79,6 +79,7 @@ export { fileNodeNameProblem } from './types/filenode'
 // Wire types (RFC 8620 core + RFC 8621 mail).
 export type * from './types/index'
 export { MailboxRoles } from './types/mail'
+export { principalSearchFilter } from './types/principal'
 export { EMAIL_DELIVERY_TYPE } from './types/push'
 export {
   isInvalidSieveError,

@@ -1479,6 +1479,35 @@
       "reservedName": "Dieser Name ist reserviert und kann nicht verwendet werden."
     },
     "preview": "{{name}} ansehen",
-    "hidePreview": "Vorschau von {{name}} schließen"
+    "hidePreview": "Vorschau von {{name}} schließen",
+    "share": {
+      "open": "{{name}} freigeben",
+      "title": "„{{name}}“ freigeben",
+      "currentHeading": "Wer Zugriff hat",
+      "addHeading": "Jemandem Zugriff geben",
+      "none": "Nur Sie.",
+      "search": "Personen suchen",
+      "searchPlaceholder": "Name oder Adresse",
+      "noMatches": "Dazu passt niemand.",
+      "roleLabel": "Darf",
+      "roleFor": "Was {{name}} darf",
+      "grant": "Hinzufügen",
+      "grantTo": "{{name}} Zugriff geben",
+      "revoke": "Entfernen",
+      "revokeFrom": "Zugriff von {{name}} entfernen",
+      "done": "Fertig",
+      "custom": "Eigene Rechte",
+      "failed": "Die Änderung wurde nicht gespeichert. Es hat sich nichts geändert.",
+      "role": {
+        "viewer": "Ansehen",
+        "editor": "Bearbeiten",
+        "manager": "Verwalten"
+      },
+      "explain": {
+        "viewer": "Öffnen und herunterladen. Ändern nicht.",
+        "editor": "Öffnen, ändern, umbenennen und löschen. Weitergeben an andere nicht.",
+        "manager": "Alles, was Sie auch dürfen — einschließlich der Weitergabe an andere, ohne dass Sie davon erfahren."
+      }
+    }
   }
 }

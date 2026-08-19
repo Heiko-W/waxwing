@@ -16,6 +16,9 @@ export * from './core'
 // `draft-ietf-jmap-filenode` (no RFC) — FileNode (M5.7).
 export * from './filenode'
 export * from './mail'
+// RFC 9670 — Principal, ShareNotification (M5.18). The filter shapes are measured, not
+// transcribed: Stalwart ignores the RFC's `name` condition.
+export * from './principal'
 // RFC 8620 §7 push + RFC 8887 WebSocket wire frames (StateChange, Request/Response, …).
 export * from './push'
 // RFC 9425 — Quota (M3.7, FR-QTA-01).

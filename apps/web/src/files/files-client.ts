@@ -11,8 +11,16 @@
  * the same trap RFC 9661 sets for Sieve scripts.
  */
 
-import type { FileNode, FileNodeCapability, Id, JmapClient } from '@waxwing/jmap'
-import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
+import type {
+  FileNode,
+  FileNodeCapability,
+  FileNodeRights,
+  Id,
+  JmapClient,
+  Principal,
+  PrincipalCapability,
+} from '@waxwing/jmap'
+import { Capabilities, hasCapability, Methods, principalSearchFilter } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
 
 /** Why a write failed, in the terms the UI can explain. */
@@ -53,9 +61,41 @@ export interface FilesClient {
   destroy(id: Id): Promise<void>
   /** The stored bytes, for a download. */
   download(node: FileNode): Promise<Blob | null>
+  /**
+   * Everyone this account may share with, matching `query` — never including the user themself.
+   *
+   * An empty query lists everyone rather than nobody: a picker that shows nothing until you type
+   * hides the fact that there are only three colleagues to choose from.
+   */
+  searchPrincipals(query: string): Promise<Principal[]>
+  /** Replaces the node's whole grant map. See `sharing.ts` on why the rest must be carried over. */
+  setShareWith(id: Id, shareWith: Record<Id, FileNodeRights>): Promise<void>
 }
 
-export function makeFilesClient(client: JmapClient, accountId: Id): FilesClient {
+/**
+ * The user's own principal id, from the account capability.
+ *
+ * `null` when the server does not advertise it — in which case the picker cannot exclude the user
+ * and does not pretend to. Sharing a file with yourself is harmless; silently filtering the wrong
+ * row out would not be.
+ */
+export function currentUserPrincipalId(
+  session: JmapSession | null,
+  accountId: Id | null,
+): Id | null {
+  if (session === null || accountId === null) return null
+  const capability = session.accounts?.[accountId]?.accountCapabilities?.[
+    Capabilities.principals
+  ] as PrincipalCapability | undefined
+  return capability?.currentUserPrincipalId ?? null
+}
+
+export function makeFilesClient(
+  client: JmapClient,
+  accountId: Id,
+  /** Excluded from principal searches. See {@link currentUserPrincipalId}. */
+  selfPrincipalId: Id | null = null,
+): FilesClient {
   /** Throws {@link FileSetError} for the first per-object refusal in a `/set` response. */
   function throwIfRefused(response: {
     notCreated?: Record<string, { type: string; description?: string | null }> | null
@@ -157,6 +197,29 @@ export function makeFilesClient(client: JmapClient, accountId: Id): FilesClient 
         node.name,
       )
       return new Blob([bytes as BlobPart], { type: node.type ?? 'application/octet-stream' })
+    },
+
+    async searchPrincipals(query) {
+      const builder = client.request()
+      const found = builder.invoke(Methods.principalQuery, {
+        accountId,
+        // `text`, not `name`: measured, see `principalSearchFilter`.
+        filter: principalSearchFilter(query),
+        limit: 50,
+      })
+      const principals = builder.invoke(Methods.principalGet, {
+        accountId,
+        '#ids': found.ref('/ids'),
+      })
+      const responses = await builder.send()
+      return responses.get(principals).list.filter((principal) => principal.id !== selfPrincipalId)
+    },
+
+    async setShareWith(id, shareWith) {
+      const responses = await client.call([
+        [Methods.fileNodeSet.name, { accountId, update: { [id]: { shareWith } } }, 'f0'],
+      ])
+      throwIfRefused(responses.get<{ notUpdated: Record<string, { type: string }> | null }>('f0'))
     },
   }
 }

@@ -1479,6 +1479,35 @@
       "reservedName": "That name is reserved and cannot be used."
     },
     "preview": "Preview {{name}}",
-    "hidePreview": "Hide the preview of {{name}}"
+    "hidePreview": "Hide the preview of {{name}}",
+    "share": {
+      "open": "Share {{name}}",
+      "title": "Share “{{name}}”",
+      "currentHeading": "Who has access",
+      "addHeading": "Give access to someone",
+      "none": "Only you.",
+      "search": "Search people",
+      "searchPlaceholder": "Name or address",
+      "noMatches": "Nobody matches that.",
+      "roleLabel": "They may",
+      "roleFor": "What {{name}} may do",
+      "grant": "Add",
+      "grantTo": "Give {{name}} access",
+      "revoke": "Remove",
+      "revokeFrom": "Remove {{name}}’s access",
+      "done": "Done",
+      "custom": "Custom access",
+      "failed": "That change was not saved. Nothing was altered.",
+      "role": {
+        "viewer": "View",
+        "editor": "Edit",
+        "manager": "Manage"
+      },
+      "explain": {
+        "viewer": "They can open and download it. They cannot change it.",
+        "editor": "They can open, change, rename and delete it. They cannot share it with anyone else.",
+        "manager": "They can do everything you can, including sharing it with other people — and you will not be told when they do."
+      }
+    }
   }
 }

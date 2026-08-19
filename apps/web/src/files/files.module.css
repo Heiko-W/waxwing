@@ -149,3 +149,85 @@
   border: 0;
   background: #ffffff;
 }
+
+/* ---- sharing (M5.18) ---- */
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-5);
+}
+
+.shareHeading {
+  margin: 0 0 var(--waxwing-space-2);
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-semibold);
+  color: var(--waxwing-text-muted);
+}
+
+.shareList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-1) 0;
+}
+
+.shareName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shareEmail {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.shareRole {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  font-style: italic;
+}
+
+.shareControls {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  align-items: flex-end;
+}
+
+.shareField {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.shareLabel {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
+.shareHint {
+  margin: var(--waxwing-space-2) 0 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.shareStatus {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}

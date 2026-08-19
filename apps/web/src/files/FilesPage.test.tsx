@@ -54,6 +54,8 @@ const client: FilesClient = {
   rename: async () => {},
   destroy: async () => {},
   download,
+  searchPrincipals: async () => [],
+  setShareWith: async () => {},
 }
 
 const created: string[] = []
