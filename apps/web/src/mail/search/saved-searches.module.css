@@ -1,0 +1,81 @@
+/* Saved searches in the sidebar (M5.5, FR-SRCH-03). Deliberately quieter than the folder tree:
+   these are the user's own additions, not the account's structure. */
+
+.saved {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin-block-start: var(--waxwing-space-4);
+}
+
+.savedTitle {
+  margin: 0;
+  padding-inline: var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-medium);
+  text-transform: uppercase;
+}
+
+.savedList {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.savedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  padding-inline-end: var(--waxwing-space-2);
+}
+
+.savedButton {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-inline-size: 0;
+  /* 44px touch target, matching the folder rows beside it. */
+  min-block-size: 2.75rem;
+  padding-inline: var(--waxwing-space-3);
+  border: 0;
+  border-radius: var(--waxwing-radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* Pointer-only affordance, matching the folder rows: on a touchscreen a tap leaves this stuck to
+   whatever it landed on, which then reads as a second selection. */
+@media (hover: hover) {
+  .savedButton:hover {
+    background: var(--waxwing-surface-hover);
+  }
+}
+
+/* The hovered state is named in the selector list on purpose: without it this rule and the
+   `:hover` rule above have equal specificity, so only source order decides which wins — and the
+   open search would lose its highlight the moment the pointer crossed it. */
+.savedButton[aria-current="true"],
+.savedButton[aria-current="true"]:hover {
+  background: var(--waxwing-surface-selected);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.savedIcon {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-text-muted);
+}
+
+.savedName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -25,6 +25,7 @@ import { Badge } from '../ui'
 import { resetMailScopedStores, useActiveAccountId, useActiveAccountStore } from './active-account'
 import { FolderTree } from './FolderTree'
 import styles from './folder-tree.module.css'
+import { SavedSearchList } from './search/SavedSearchList'
 
 export interface AccountTreesProps {
   /** Every mail account the session grants — the user's OWN first, then the shared tail (M4.4). */
@@ -76,7 +77,14 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
 
   // Pass-through: nothing shared ⇒ exactly today's single tree under the ambient (primary) provider.
   if (shared.length === 0) {
-    return <FolderTree onNavigate={onNavigate} />
+    return (
+      <>
+        <FolderTree onNavigate={onNavigate} />
+        {/* Saved searches belong to the account whose mail is on screen, so they hang off the
+            primary tree rather than the shell (M5.5, FR-SRCH-03). */}
+        <SavedSearchList />
+      </>
+    )
   }
 
   const primary = accounts.find((account) => account.id === primaryAccountId)

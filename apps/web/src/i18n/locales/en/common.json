@@ -1089,7 +1089,13 @@
     },
     "chipsLabel": "Active filters",
     "chipsCount_one": "{{count}} filter active",
-    "chipsCount_other": "{{count}} filters active"
+    "chipsCount_other": "{{count}} filters active",
+    "saved": {
+      "title": "Saved searches",
+      "save": "Save this search",
+      "saved": "Search saved",
+      "forget": "Remove {{name}}"
+    }
   },
   "labels": {
     "title": "Labels",

@@ -5,10 +5,18 @@
  * the box and its chips can never drift.
  */
 
-import { Search, X } from 'lucide-react'
+import { Bookmark, Search, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { setPref, useLocalPrefOptional, useReplicaOptional } from '../../sync'
 import { IconButton, Select, VisuallyHidden } from '../../ui'
+import {
+  addSavedSearch,
+  coerceSavedSearches,
+  defaultName,
+  findByQuery,
+  SAVED_SEARCH_PREF_KEY,
+} from './saved-searches'
 import styles from './search.module.css'
 import type { SearchScope, SearchState } from './use-search'
 
@@ -19,6 +27,26 @@ const DEBOUNCE_MS = 200
 
 export function SearchBox({ search }: { readonly search: SearchState }) {
   const { t } = useTranslation()
+  // The OPTIONAL forms: this box is unit-tested on its own, without a replica, and a settings-backed
+  // convenience must never be a reason for the search bar to crash.
+  const replica = useReplicaOptional()
+  const savedSearches = coerceSavedSearches(useLocalPrefOptional<unknown>(SAVED_SEARCH_PREF_KEY))
+  /** The entry matching what is on screen; its presence is what disables the save control. */
+  const saved = findByQuery(savedSearches, search.q, search.scope)
+  const saveCurrent = async (): Promise<void> => {
+    if (replica === null || search.q.trim() === '' || saved !== undefined) return
+    await setPref(
+      replica.db,
+      replica.accountId,
+      SAVED_SEARCH_PREF_KEY,
+      addSavedSearch(savedSearches, {
+        id: crypto.randomUUID(),
+        name: defaultName(search.q),
+        query: search.q,
+        scope: search.scope,
+      }),
+    )
+  }
   const [input, setInput] = useState(search.q)
   const timerRef = useRef<number | undefined>(undefined)
   const scopeId = useId()
@@ -123,6 +151,19 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
       */}
       {scopeVisible && (
         <div className={styles.scopeRow}>
+          {/* Saving is offered only for a query that HAS results to save (FR-SRCH-03), and it names
+              itself after the query — naming it is a rename away in the sidebar. */}
+          {replica !== null && (
+            <IconButton
+              label={saved === undefined ? t('search.saved.save') : t('search.saved.saved')}
+              variant="ghost"
+              size="sm"
+              disabled={saved !== undefined}
+              onClick={() => void saveCurrent()}
+            >
+              <Bookmark />
+            </IconButton>
+          )}
           <label className={styles.scopeLabel} htmlFor={scopeId}>
             {t('search.scope.label')}
           </label>
