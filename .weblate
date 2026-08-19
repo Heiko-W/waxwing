@@ -1,0 +1,22 @@
+# Weblate component configuration (see docs/translating.md).
+#
+# `push_on_commit = false` is the load-bearing line: Waxwing's gate (`pnpm verify` — typecheck,
+# Biome, ~3500 tests, the size budget) has to run before anything reaches a branch, and a
+# translation can break the build in two real ways. A missing key fails `guards.test.ts`, and a
+# malformed placeholder renders as literal braces to a reader. Weblate therefore opens a pull
+# request and CI decides.
+
+[weblate]
+url = https://hosted.weblate.org/api/
+
+[component "waxwing-web"]
+file_format = i18next-v4
+filemask = apps/web/src/i18n/locales/*/common.json
+template = apps/web/src/i18n/locales/en/common.json
+source_language = en
+# New languages arrive as a file; adding the tag to SUPPORTED_LANGUAGES is a code change a
+# maintainer makes deliberately, so Weblate does not create files on its own.
+new_lang = contact
+language_code_style = posix
+push_on_commit = false
+commit_pending_age = 24

@@ -58,13 +58,18 @@ function detectLanguage(): SupportedLanguage {
 }
 
 /**
- * Languages written right-to-left. Empty today — Waxwing ships `en` and `de` — and that is exactly
- * why it exists as a list rather than as an inline condition: FR-I18N-02 asks for RTL READINESS, and
- * readiness means the day a locale is added, adding its tag here is the whole change. Without it the
- * one `[dir='rtl']` rule in tokens.css (which signs every directional transform) could never apply,
- * and the gap would only surface once someone had already translated the app.
+ * Languages written right-to-left (FR-I18N-02).
+ *
+ * **Populated in advance, on purpose.** None of these ships yet — Waxwing has `en` and `de` — so
+ * every entry is inert today. That is the point: "RTL-ready" meant a list someone still had to
+ * remember to edit, and the person who adds an Arabic bundle is the person least likely to know
+ * that this file decides which way the document runs. Now adding the bundle is the whole change,
+ * and `[dir='rtl']` in tokens.css applies the moment it lands.
+ *
+ * The set is the scripts, not the countries: Arabic, Hebrew, Persian, Urdu, Pashto, Sindhi,
+ * Yiddish, Dhivehi.
  */
-const RTL_LANGUAGES: readonly string[] = []
+const RTL_LANGUAGES: readonly string[] = ['ar', 'he', 'fa', 'ur', 'ps', 'sd', 'yi', 'dv']
 
 /** Apply a language to the document: what it IS, and which way it runs. */
 function applyLanguage(lng: string): void {
