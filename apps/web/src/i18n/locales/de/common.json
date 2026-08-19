@@ -219,6 +219,73 @@
         "belowQuote": "Unter dem zitierten Text"
       }
     },
+    "identities": {
+      "title": "Identitäten",
+      "description": "Die Adressen, von denen Sie senden können, mit Signatur und Antwortadresse. Änderungen gelten für neue Nachrichten.",
+      "loading": "Identitäten werden geladen …",
+      "empty": "Dieses Konto hat keine Absenderidentitäten.",
+      "protected": "Standardadresse — der Server erlaubt kein Löschen.",
+      "created": "Identität angelegt",
+      "saved": "Identität gespeichert",
+      "deleted": "Identität gelöscht",
+      "cancel": "Abbrechen",
+      "create": {
+        "open": "Identität hinzufügen",
+        "submit": "Identität anlegen"
+      },
+      "edit": {
+        "open": "{{name}} bearbeiten",
+        "submit": "Identität speichern"
+      },
+      "delete": {
+        "open": "{{email}} löschen",
+        "title": "Identität löschen?",
+        "body": "{{email}} steht danach nicht mehr als Absenderadresse zur Verfügung.",
+        "draftsWarning": "Bereits geschriebene Entwürfe von dieser Adresse lassen sich danach nicht mehr senden.",
+        "cancel": "Behalten",
+        "confirm": "Löschen"
+      },
+      "email": {
+        "label": "E-Mail-Adresse",
+        "immutable": "Die Adresse einer bestehenden Identität lässt sich nicht ändern. Legen Sie stattdessen eine neue an."
+      },
+      "name": {
+        "label": "Anzeigename",
+        "placeholder": "Der Name, den Empfänger sehen"
+      },
+      "replyTo": {
+        "label": "Antwort an",
+        "hint": "Antworten gehen hierhin statt an die Absenderadresse. Mehrere Adressen mit Komma trennen."
+      },
+      "bcc": {
+        "label": "Automatische Blindkopie",
+        "hint": "Jede von dieser Identität gesendete Nachricht geht unsichtbar zusätzlich an diese Adressen."
+      },
+      "htmlSignature": {
+        "label": "Signatur",
+        "hint": "Wird in neue Nachrichten über dem zitierten Text eingefügt, sofern Sie die Platzierung unter „Verfassen“ nicht ändern."
+      },
+      "textSignature": {
+        "label": "Signatur als reiner Text",
+        "hint": "Wird verwendet, wenn eine Nachricht als reiner Text gesendet wird. Sie bleibt getrennt, damit eine von Hand geschriebene Signatur nicht überschrieben wird.",
+        "fromHtml": "Aus der Signatur oben übernehmen"
+      },
+      "error": {
+        "emailMissing": "Bitte eine E-Mail-Adresse eingeben.",
+        "emailInvalid": "Das sieht nicht nach einer E-Mail-Adresse aus.",
+        "replyToInvalid": "Eine Antwortadresse ist ungültig.",
+        "bccInvalid": "Eine Blindkopie-Adresse ist ungültig.",
+        "loadFailed": "Die Identitäten konnten nicht geladen werden.",
+        "conflict": "Die Identitäten wurden an anderer Stelle geändert. Ihre Änderung wurde nicht gespeichert — oben steht der aktuelle Stand.",
+        "forbiddenFrom": "Der Server erlaubt Ihnen nicht, von dieser Adresse zu senden.",
+        "forbidden": "Der Server erlaubt das Löschen dieser Identität nicht.",
+        "emailNotConfigured": "Diese Adresse ist für Ihr Konto nicht eingerichtet. Ein Server erlaubt nur Adressen, die für das Konto konfiguriert sind — die Serververwaltung muss sie als Alias anlegen.",
+        "invalidProperties": "Der Server hat einen der Werte abgelehnt.",
+        "rejected": "Der Server hat diese Änderung abgelehnt.",
+        "offline": "Sie sind offline. Identitäten lassen sich nur mit Verbindung ändern.",
+        "generic": "Die Änderung konnte nicht gespeichert werden."
+      }
+    },
     "vacation": {
       "title": "Abwesenheitsnotiz",
       "description": "Allen, die Ihnen schreiben, einmalig automatisch antworten.",

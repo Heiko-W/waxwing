@@ -219,6 +219,73 @@
         "belowQuote": "Below the quoted text"
       }
     },
+    "identities": {
+      "title": "Identities",
+      "description": "The addresses you can send from, with the signature and reply-to each one uses. Changes apply to new messages.",
+      "loading": "Loading identities…",
+      "empty": "This account has no send identities.",
+      "protected": "Default address — the server does not allow deleting it.",
+      "created": "Identity created",
+      "saved": "Identity saved",
+      "deleted": "Identity deleted",
+      "cancel": "Cancel",
+      "create": {
+        "open": "Add identity",
+        "submit": "Create identity"
+      },
+      "edit": {
+        "open": "Edit {{name}}",
+        "submit": "Save identity"
+      },
+      "delete": {
+        "open": "Delete {{email}}",
+        "title": "Delete identity?",
+        "body": "{{email}} will no longer be available as a sender address.",
+        "draftsWarning": "Drafts already written from this address cannot be sent afterwards.",
+        "cancel": "Keep it",
+        "confirm": "Delete"
+      },
+      "email": {
+        "label": "Email address",
+        "immutable": "The address of an existing identity cannot be changed. Create a new identity instead."
+      },
+      "name": {
+        "label": "Display name",
+        "placeholder": "The name recipients see"
+      },
+      "replyTo": {
+        "label": "Reply-to",
+        "hint": "Replies go here instead of to the sender address. Separate several addresses with commas."
+      },
+      "bcc": {
+        "label": "Automatic Bcc",
+        "hint": "Every message sent from this identity is silently copied to these addresses."
+      },
+      "htmlSignature": {
+        "label": "Signature",
+        "hint": "Inserted into new messages above the quoted text, unless you change the placement under Compose."
+      },
+      "textSignature": {
+        "label": "Plain-text signature",
+        "hint": "Used when a message is sent as plain text. It is kept separate, so a signature written by hand is not overwritten.",
+        "fromHtml": "Take it from the signature above"
+      },
+      "error": {
+        "emailMissing": "Enter an email address.",
+        "emailInvalid": "This does not look like an email address.",
+        "replyToInvalid": "A reply-to address is not valid.",
+        "bccInvalid": "A Bcc address is not valid.",
+        "loadFailed": "The identities could not be loaded.",
+        "conflict": "The identities were changed elsewhere. Your change was not saved — the current state is shown above.",
+        "forbiddenFrom": "The server does not allow you to send from this address.",
+        "forbidden": "The server does not allow deleting this identity.",
+        "emailNotConfigured": "This address is not set up for your account. A server only allows sending from addresses configured for it — ask your administrator to add it as an alias.",
+        "invalidProperties": "The server rejected one of these values.",
+        "rejected": "The server rejected this change.",
+        "offline": "You are offline. Identities can only be changed while connected.",
+        "generic": "The change could not be saved."
+      }
+    },
     "vacation": {
       "title": "Vacation responder",
       "description": "Automatically reply once to everyone who writes to you.",

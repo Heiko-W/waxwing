@@ -17,6 +17,7 @@ import { changeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../
 import { setPref, useLocalPref, useReplica, useReplicaOptional } from '../sync'
 import { Select } from '../ui'
 import { ComposeSection } from './ComposeSection'
+import { IdentitiesSection, serverSupportsIdentities } from './IdentitiesSection'
 import { NotificationsSection } from './NotificationsSection'
 import { ReadingSection } from './ReadingSection'
 import { ServerSection } from './ServerSection'
@@ -116,7 +117,8 @@ function DensityField({ id }: { readonly id: string }) {
 
 /**
  * Settings route screen (lazy chunk). M3.7 completes it: General, Appearance, Reading, Swipe
- * actions, Compose, Vacation responder, Notifications, Offline & storage, Server, About.
+ * actions, Compose, Vacation responder, Notifications, Offline & storage, Server, About. M5.1 adds
+ * Identities between Compose and the vacation responder.
  *
  * **Theme, language and the reading-pane mode stay in `localStorage`, not `localPrefs`** — they are
  * applied on the ONBOARDING screen, where there is no account and no replica to scope them to. The
@@ -164,6 +166,13 @@ export default function SettingsPage() {
   const replica = useReplicaOptional()
   const connected = useSessionOptional()
   const vacationAvailable = serverSupportsVacation(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+  )
+  // Identities live under the submission capability, i.e. under "this account can send at all".
+  // `connected.accountId` is the user's OWN account, never the delegated one the mail pane may be
+  // acting in — ADR-020 is what makes that distinction load-bearing here.
+  const identitiesAvailable = serverSupportsIdentities(
     connected?.jmapSession ?? null,
     connected?.accountId ?? null,
   )
@@ -248,6 +257,12 @@ export default function SettingsPage() {
       {replica !== null && (
         <Section slug="compose" title={t('settings.compose.title')}>
           <ComposeSection />
+        </Section>
+      )}
+
+      {replica !== null && identitiesAvailable && (
+        <Section slug="identities" title={t('settings.identities.title')}>
+          <IdentitiesSection />
         </Section>
       )}
 
