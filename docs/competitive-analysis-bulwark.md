@@ -145,7 +145,7 @@ stays legible.
 | 3 Multi-account + unified inbox | open |
 | 4 More languages | open, and see the note below — the *pipeline* is the deliverable, not machine-translated strings |
 | 5 S/MIME / PGP read + verify | open |
-| 6 Files (FileNode) | open — the fixture DOES advertise `urn:ietf:params:jmap:filenode`, measured 2026-08-19 |
+| 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
 | 7 Templates, scheduled send, saved searches, snooze | **three done** — M5.4/M5.5; snooze remains |
 | 8 Small parity items | **done** — M5.3, all seven |
 | 9 Setup wizard, theme upload, MDN, TNEF | open |
