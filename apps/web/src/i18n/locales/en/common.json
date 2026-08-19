@@ -101,7 +101,8 @@
       "confirm": "Remove data and sign out",
       "cancel": "Cancel"
     },
-    "switchTo": "Switch to {{name}}"
+    "switchTo": "Switch to {{name}}",
+    "add": "Add another account"
   },
   "status": {
     "offline": "Offline",

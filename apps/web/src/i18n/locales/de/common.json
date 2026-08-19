@@ -101,7 +101,8 @@
       "confirm": "Daten entfernen und abmelden",
       "cancel": "Abbrechen"
     },
-    "switchTo": "Zu {{name}} wechseln"
+    "switchTo": "Zu {{name}} wechseln",
+    "add": "Weiteres Konto hinzufügen"
   },
   "status": {
     "offline": "Offline",

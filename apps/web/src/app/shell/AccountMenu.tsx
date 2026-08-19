@@ -8,7 +8,7 @@
  * chunk — nothing about installing is in the entry bundle.
  */
 
-import { Download, LogOut, Trash2, User, UserRound } from 'lucide-react'
+import { Download, LogOut, Trash2, User, UserPlus, UserRound } from 'lucide-react'
 import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { switchAccount, useAccountRegistry } from '../../auth/use-account-registry'
@@ -47,8 +47,22 @@ export function AccountMenu({ productName, username }: AccountMenuProps) {
       id: `switch-${account.scope}`,
       label: t('account.switchTo', { name: account.label }),
       icon: UserRound,
-      onSelect: () => switchAccount(account.scope),
+      onSelect: () => {
+        switchAccount(account.scope)
+        // The session provider holds ONE session, so switching means ending this one and signing
+        // in as the other. `signOut` deliberately does not wipe: the other account's credentials
+        // live in its own store (ADR-004), and this account's survive for switching back.
+        signOut()
+      },
     })),
+    {
+      id: 'add-account',
+      label: t('account.add'),
+      icon: UserPlus,
+      // Same mechanism, and the label says what happens: this account stays in the switcher, but
+      // the session ends so the next one can begin.
+      onSelect: signOut,
+    },
     ...(offerInstall
       ? [
           {
