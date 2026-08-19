@@ -466,6 +466,22 @@
     "about": {
       "title": "About",
       "version": "Version {{version}}"
+    },
+    "templates": {
+      "title": "Templates",
+      "description": "Reusable message bodies. Inserting one adds it to the draft you are writing — it never replaces what is already there.",
+      "placeholders": "Placeholders filled in on insert: {{list}}",
+      "empty": "No templates yet.",
+      "add": "New template",
+      "edit": "Edit",
+      "delete": "Delete",
+      "dialogTitle": "Template",
+      "name": "Name",
+      "subject": "Subject",
+      "body": "Message",
+      "save": "Save template",
+      "cancel": "Cancel",
+      "defaultSenderName": "me"
     }
   },
   "contacts": {
@@ -1035,6 +1051,9 @@
         "tooFar": "That is further ahead than this server allows.",
         "unsupported": "This server cannot hold messages for later delivery."
       }
+    },
+    "templates": {
+      "insert": "Insert template"
     }
   },
   "search": {

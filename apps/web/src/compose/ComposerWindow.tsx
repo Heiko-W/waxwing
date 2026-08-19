@@ -11,7 +11,17 @@
  * discards silently, a non-empty one asks first).
  */
 
-import { Clock, Maximize2, Minimize2, Minus, Paperclip, Send, Trash2, X } from 'lucide-react'
+import {
+  Clock,
+  FileText,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Paperclip,
+  Send,
+  Trash2,
+  X,
+} from 'lucide-react'
 import {
   type ChangeEvent,
   type DragEvent,
@@ -28,7 +38,7 @@ import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import type { LayoutTier } from '../app/shell/layout'
 import { formatDate } from '../i18n/formatters'
-import { Button, Dialog, IconButton, TextInput, useFocusTrap, useToast } from '../ui'
+import { Button, Dialog, IconButton, Menu, TextInput, useFocusTrap, useToast } from '../ui'
 import { AttachmentChips } from './AttachmentChips'
 import { isPlausibleEmail } from './address-validation'
 import { mentionsAttachment } from './attachment-mention'
@@ -49,6 +59,7 @@ import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 import type { RecipientSuggestionSource } from './recipient-suggestions'
 import { useAttachmentUpload } from './use-attachment-upload'
 import { useDraftSync } from './use-draft-sync'
+import { useTemplates } from './use-templates'
 
 export interface ComposerWindowProps {
   readonly draft: DraftWindow
@@ -80,6 +91,7 @@ export function ComposerWindow({
   /** How far ahead this account may schedule; `0` hides the control entirely (FR-CMP-11). */
   const scheduleMaxMs = maxScheduleMs(connected?.jmapSession ?? null, connected?.accountId ?? null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const templates = useTemplates()
   // Only an ACTIVE upload blocks Send — an errored chip must not wedge it (the user can send
   // without the failed file). Completed uploads have already left the slice for `draft.attachments`.
   const uploadsInFlight = useComposerStore((state) =>
@@ -367,6 +379,21 @@ export function ComposerWindow({
             >
               <Send />
             </IconButton>
+            {templates.templates.length > 0 && (
+              // Only shown once the account HAS templates — an empty menu is a control that
+              // teaches the user nothing except that it does nothing.
+              <Menu
+                trigger={<FileText />}
+                triggerLabel={t('compose.templates.insert')}
+                triggerVariant="ghost"
+                align="end"
+                items={templates.templates.map((entry) => ({
+                  id: entry.id,
+                  label: entry.name,
+                  onSelect: () => templates.insert(draft.id, entry),
+                }))}
+              />
+            )}
             {scheduleMaxMs > 0 && (
               // Offered only where the SERVER can hold the message (FR-CMP-11). Without
               // FUTURERELEASE this would be a promise the app could not keep with its tab closed.

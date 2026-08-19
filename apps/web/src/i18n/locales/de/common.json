@@ -466,6 +466,22 @@
     "about": {
       "title": "Über",
       "version": "Version {{version}}"
+    },
+    "templates": {
+      "title": "Vorlagen",
+      "description": "Wiederverwendbare Nachrichtentexte. Beim Einfügen werden sie an den offenen Entwurf angehängt — Geschriebenes wird nie ersetzt.",
+      "placeholders": "Beim Einfügen ersetzte Platzhalter: {{list}}",
+      "empty": "Noch keine Vorlagen.",
+      "add": "Neue Vorlage",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "dialogTitle": "Vorlage",
+      "name": "Name",
+      "subject": "Betreff",
+      "body": "Nachricht",
+      "save": "Vorlage speichern",
+      "cancel": "Abbrechen",
+      "defaultSenderName": "ich"
     }
   },
   "contacts": {
@@ -1035,6 +1051,9 @@
         "tooFar": "Das liegt weiter in der Zukunft, als dieser Server erlaubt.",
         "unsupported": "Dieser Server kann Nachrichten nicht für später zurückhalten."
       }
+    },
+    "templates": {
+      "insert": "Vorlage einfügen"
     }
   },
   "search": {

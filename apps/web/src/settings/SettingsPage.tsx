@@ -27,6 +27,7 @@ import { StorageSection } from './StorageSection'
 import { SwipeSection } from './SwipeSection'
 import styles from './settings.module.css'
 import { FiltersSection, filtersAvailable } from './sieve/FiltersSection'
+import { TemplatesSection } from './TemplatesSection'
 import { VacationSection } from './VacationSection'
 import { serverSupportsVacation } from './vacation-client'
 
@@ -283,6 +284,12 @@ export default function SettingsPage() {
       {replica !== null && vacationAvailable && (
         <Section slug="vacation" title={t('settings.vacation.title')}>
           <VacationSection />
+        </Section>
+      )}
+
+      {replica !== null && (
+        <Section slug="templates" title={t('settings.templates.title')}>
+          <TemplatesSection />
         </Section>
       )}
 
