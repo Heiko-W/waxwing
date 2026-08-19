@@ -124,6 +124,26 @@ Worth stating, because these are the reasons to *not* switch to Bulwark:
 
 ## 5. What should not be copied
 
+### 5.1 S/MIME and PGP: what shipped, and what a key store would take
+
+M5.15 ships the half that needs no cryptography — recognising a signed or encrypted message from
+its MIME structure and telling the reader so. That closes the worst symptom: on an account with
+Stalwart's encryption-at-rest switched on, every message previously rendered as an empty body with
+no explanation.
+
+The remaining half is verification and decryption, and it is not a matter of more code. It needs:
+
+- **A key store.** Private keys in IndexedDB as non-extractable `CryptoKey`s where the algorithm
+  allows, a passphrase path where it does not, and a considered answer to what happens on a shared
+  computer — the same question `FR-AUTH-09` already answers for the mail cache.
+- **A trust model.** A signature is only meaningful against a validated certificate chain (S/MIME)
+  or a web of trust (PGP). Showing a tick without one is worse than showing nothing.
+- **An XSS threat model.** Any script injected into the app document could reach the key material.
+  The sandboxed body frame already isolates mail HTML; a key store raises what an escape would
+  cost.
+
+That is a milestone, not a follow-up commit, and it should be scoped as one.
+
 ### 5.0 Assessed and declined, with reasons (2026-08-19)
 
 Rank 9 of the closing list was worked through item by item. Two of the four are not
@@ -176,7 +196,7 @@ outcome against each entry, so what is left stays legible.
 | 2 Calendar | **done** — month, week and agenda views (M5.6, M5.13); create/edit/delete for single events (M5.11). Series are read-only BY DESIGN — a recurrence scope editor is the one deliberate omission, see `isEditable` |
 | 3 Multi-account + unified inbox | **foundation done** (M5.10) — registry, derived scopes, per-account forget. The second sign-in flow, the switcher UI and the unified inbox remain |
 | 4 More languages | **pipeline done** (M5.9) — Weblate config, `docs/translating.md`, RTL scripts pre-listed. The strings themselves need speakers, not a machine |
-| 5 S/MIME / PGP read + verify | open |
+| 5 S/MIME / PGP read + verify | **detection done** (M5.15) — signed and encrypted mail is recognised and explained, with no cryptography performed. Verification and decryption need a key store and are the remaining half; see §5.1 |
 | 6 Files (FileNode) | **done** — M5.7; browse, upload, folders, delete, download. Preview and RFC 9670 sharing remain |
 | 7 Templates, scheduled send, saved searches, snooze | **done** — M5.4/M5.5/M5.8, all four |
 | 8 Small parity items | **done** — M5.3, all seven |
