@@ -1426,7 +1426,22 @@
     "more": "+{{count}} more",
     "noEvents": "Nothing coming up.",
     "loadFailed": "The calendar could not be loaded.",
-    "signedOut": "Sign in to see your calendar."
+    "signedOut": "Sign in to see your calendar.",
+    "event": {
+      "createTitle": "New event",
+      "editTitle": "Edit event",
+      "title": "Title",
+      "start": "Starts",
+      "day": "Day",
+      "allDay": "All day",
+      "duration": "Length in minutes",
+      "calendar": "Calendar",
+      "description": "Notes",
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it."
+    }
   },
   "files": {
     "title": "Files",

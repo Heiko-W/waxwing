@@ -181,3 +181,51 @@
 .localeHint {
   display: none;
 }
+
+/* The event dialog (M5.11). */
+.eventForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.fieldLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  font-size: var(--waxwing-text-sm);
+}
+
+.textarea {
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  resize: vertical;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-2);
+}
+
+/* Shown instead of the editor for a recurring event — see `isEditable`. */
+.readOnlyNote {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}

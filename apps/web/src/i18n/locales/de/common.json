@@ -1426,7 +1426,22 @@
     "more": "+{{count}} weitere",
     "noEvents": "Nichts in Sicht.",
     "loadFailed": "Der Kalender konnte nicht geladen werden.",
-    "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen."
+    "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen.",
+    "event": {
+      "createTitle": "Neuer Termin",
+      "editTitle": "Termin bearbeiten",
+      "title": "Titel",
+      "start": "Beginnt",
+      "day": "Tag",
+      "allDay": "Ganztägig",
+      "duration": "Dauer in Minuten",
+      "calendar": "Kalender",
+      "description": "Notizen",
+      "save": "Speichern",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet."
+    }
   },
   "files": {
     "title": "Dateien",
