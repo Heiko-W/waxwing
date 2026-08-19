@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 // M4.4 shared-account suite — the ONLY place the delegated-mailbox story is exercised end to end,
 // against a live Stalwart that really enforces the grants (see playwright.shared.config.ts).
@@ -22,6 +23,7 @@ const accountSection = (page: Page, name: string) => page.getByRole('region', { 
 
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   // A reload only tests the ROUTE when the session survives it; without this the app would land on

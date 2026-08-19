@@ -22,6 +22,26 @@ export async function setUndoGrace(page: Page, seconds: number): Promise<void> {
 }
 
 /**
+ * Reveal the password form. It is collapsed behind a disclosure whenever OAuth leads (a secure
+ * context and `auth: ["oauth", ...]`), because only OAuth can carry a second factor — see
+ * `LoginForm`. A fixture whose config lists Basic first, or a non-secure origin, renders the form
+ * open and the trigger absent, so this is a no-op there rather than a failure.
+ */
+export async function revealPasswordForm(page: Page): Promise<void> {
+  const disclosure = page.getByRole('button', {
+    name: 'Sign in with a password instead',
+    exact: true,
+  })
+  const username = page.getByLabel('Username', { exact: true })
+  // Wait for the sign-in step to exist in EITHER shape first. A bare `isVisible()` resolves against
+  // whatever is on screen at that instant — during the boot spinner that is neither, so the
+  // disclosure went unclicked and the caller then waited out its timeout on a field that was never
+  // going to appear.
+  await expect(disclosure.or(username).first()).toBeVisible({ timeout: 30_000 })
+  if (await disclosure.isVisible()) await disclosure.click()
+}
+
+/**
  * Basic sign-in (same-origin proxy → onboarding lands straight on the Basic step), then open Inbox.
  * `stay: true` checks "Stay signed in" so the session survives a `page.reload()` (draft-recovery test).
  */
@@ -31,6 +51,7 @@ export async function login(
   options: { stay?: boolean } = {},
 ): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(creds.user)
   await page.getByLabel('Password', { exact: true }).fill(creds.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()

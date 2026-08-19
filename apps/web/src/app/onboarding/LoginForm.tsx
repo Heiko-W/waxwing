@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AuthMethod } from '../../auth'
 import { Button, Checkbox, TextInput } from '../../ui'
@@ -9,6 +9,11 @@ export interface LoginFormProps {
   readonly target: ConnectTarget
   /** Branding name (FR-THEME-02). */
   readonly productName: string
+  /**
+   * Resolved branding logo URL, or undefined when the hoster ships none. Carries the white-label
+   * identity on the one screen whose heading names the SERVER rather than the product (B12).
+   */
+  readonly logoSrc?: string | undefined
   /** Enabled methods in preference order; the first is the primary action. */
   readonly methods: readonly AuthMethod[]
   /** OAuth PKCE needs a secure context (`isSecureContext && crypto.subtle`). */
@@ -33,10 +38,20 @@ export interface LoginFormProps {
  * parent drives the {@link AuthController}. On an insecure origin `crypto.subtle` is absent so
  * OAuth PKCE cannot run — the OAuth button is then `aria-disabled` with an explanatory note and
  * a no-op click (mirrors the SP.4 demo), while Basic still works.
+ *
+ * WHY THE TWO METHODS ARE NO LONGER SIDE BY SIDE. They were, as "Sign in securely" above a full
+ * username/password form, and that presented a protocol detail as a choice the reader was
+ * expected to make. It is not a choice: Stalwart accepts a second factor ONLY through OAuth
+ * ("Two-factor authentication can only be used with mail clients that support OAuth and the
+ * OAUTHBEARER or XOAUTH2 SASL mechanism"), so a reader with 2FA who picks the password form gets
+ * their correct password refused with nothing on screen naming the reason. The password form is
+ * therefore collapsed behind a disclosure whenever OAuth actually leads — one obvious action,
+ * with the fallback still one click away for an app password.
  */
 export function LoginForm({
   target,
   productName,
+  logoSrc,
   methods,
   oauthAvailable,
   canEditServer,
@@ -58,10 +73,29 @@ export function LoginForm({
   const passwordId = `${id}-password`
   const oauthNoteId = `${id}-oauth-note`
   const errorId = `${id}-error`
+  const basicId = `${id}-basic`
 
   const hasOAuth = methods.includes('oauth')
   const hasBasic = methods.includes('basic')
   const oauthPrimary = methods[0] === 'oauth'
+  /**
+   * Whether OAuth is the way in on THIS load. Not the same as "the deployment lists oauth":
+   * on an insecure origin PKCE cannot run at all, and a deployment may rank Basic first. In
+   * both cases the password form is the primary path, so it is shown open and un-collapsible —
+   * a disclosure the reader must find first would be a dead end, not a simplification.
+   */
+  const oauthLeads = hasOAuth && oauthAvailable && oauthPrimary
+  const collapsible = hasBasic && oauthLeads
+  const [basicOpen, setBasicOpen] = useState(!collapsible)
+  const usernameRef = useRef<HTMLInputElement>(null)
+  /** Set only by the disclosure click, so opening the form moves focus but the initial render never does. */
+  const focusOnOpen = useRef(false)
+
+  useEffect(() => {
+    if (!basicOpen || !focusOnOpen.current) return
+    focusOnOpen.current = false
+    usernameRef.current?.focus()
+  }, [basicOpen])
 
   function handleOAuth(): void {
     if (!oauthAvailable || busy) return
@@ -73,17 +107,26 @@ export function LoginForm({
     onBasicSubmit(username, password, staySignedIn, publicComputer)
   }
 
+  function toggleBasic(): void {
+    focusOnOpen.current = !basicOpen
+    setBasicOpen((open) => !open)
+  }
+
+  const showBasicForm = hasBasic && (basicOpen || !collapsible)
+
   return (
     <section className={styles.card} aria-labelledby={headingId}>
-      {/* The PRODUCT, then the host. It used to read "Sign in to localhost:4183" — answering the
-          question the user is least likely to be asking, on the one screen everybody passes
-          through, while the configured product name (FR-THEME-02) appeared nowhere. The host is
-          still worth stating, because a user may hold accounts on several servers; it just is not
-          the headline. */}
+      {/* The heading names the HOST, and the logo carries the brand — B12's two halves, which the
+          previous layout could only satisfy one at a time. "Sign in to {product}" named the
+          software on a screen whose only open question is WHICH SERVER am I about to hand my
+          password to; dropping the product entirely left a white-label deployment unbranded at the
+          one moment the user decides whether they are in the right place (FR-DEP-04). The logo says
+          whose service this is without spending the headline on it, and its alt text is the
+          configured name, so the identity reaches a screen reader too. */}
+      {logoSrc ? <img className={styles.logo} src={logoSrc} alt={productName} /> : null}
       <h1 id={headingId} className={styles.heading}>
-        {t('auth.signInTitle', { product: productName })}
+        {t('auth.signInTitle', { host: target.displayHost })}
       </h1>
-      <p className={styles.subheading}>{t('auth.signInSubtitle', { host: target.displayHost })}</p>
 
       {/* Always mounted so the polite live region is already observed when the error text
           appears — a region inserted together with its content is not reliably announced. */}
@@ -108,28 +151,39 @@ export function LoginForm({
           >
             {t('auth.oauth.button')}
           </Button>
-          {!oauthAvailable ? (
-            <p id={oauthNoteId} className={styles.note}>
-              {t('auth.oauth.unavailable')}
-            </p>
-          ) : null}
+          {/* What the button DOES, in the reader's terms: a redirect to their own server, where
+              the password and the 2FA code are entered. Without it the redirect looks like the
+              app losing them to a strange page. */}
+          <p id={oauthNoteId} className={styles.note}>
+            {oauthAvailable
+              ? t('auth.oauth.explain', { host: target.displayHost })
+              : t('auth.oauth.unavailable')}
+          </p>
         </div>
       ) : null}
 
-      {/* A LABELLED separator. It was a bare decorative rule, so the screen offered "Sign in
-          securely" and "Sign in" with nothing between them but a line — and the implication that
-          the second one is insecure was left for the user to draw on their own. Naming the
-          difference (password) says what is actually different. */}
-      {hasOAuth && hasBasic ? <p className={styles.separator}>{t('auth.separator')}</p> : null}
+      {collapsible ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className={styles.disclosure}
+          aria-expanded={basicOpen}
+          aria-controls={basicId}
+          onClick={toggleBasic}
+        >
+          {t('auth.basic.disclose')}
+        </Button>
+      ) : null}
 
-      {hasBasic ? (
-        <form className={styles.form} onSubmit={handleBasicSubmit}>
+      {showBasicForm ? (
+        <form id={basicId} className={styles.form} onSubmit={handleBasicSubmit}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor={usernameId}>
               {t('auth.basic.username')}
             </label>
             <TextInput
               id={usernameId}
+              ref={usernameRef}
               type="text"
               autoComplete="username"
               spellCheck={false}
@@ -157,7 +211,12 @@ export function LoginForm({
             disabled={publicComputer}
             onChange={(event) => setStaySignedIn(event.target.checked)}
           />
-          <p className={styles.hint}>{t('auth.basic.appPasswordHint')}</p>
+          {/* Says what the server will DO, not what the reader "should" prefer: with 2FA on, the
+              account password is refused here. The variant that points back up to the server
+              sign-in is only honest when that button is on screen. */}
+          <p className={styles.hint}>
+            {hasOAuth ? t('auth.basic.appPasswordHintOAuth') : t('auth.basic.appPasswordHint')}
+          </p>
           <Button
             type="submit"
             variant={oauthPrimary ? 'secondary' : 'primary'}

@@ -8,6 +8,7 @@ import {
   READ_SUBJECTS,
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 // M1.9 read E2E suite — the REAL production bundle against the live Stalwart fixture (see
 // playwright.read.config.ts + read.setup.mjs). It proves the Phase-2 "read" story end to end:
@@ -28,6 +29,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   // The app is served from the same origin as its JMAP server (the preview proxy), so the
   // FR-AUTH-01 same-origin probe succeeds and onboarding lands straight on the Basic sign-in
   // step — no connect step to fill.
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
@@ -193,7 +195,7 @@ test.describe('M1.9 read suite', () => {
 
   test('OAuth login reaches the inbox (secure-context localhost)', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Sign in securely' }).click()
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     // Stalwart's /login SPA (same-origin via the proxy): fill its form and submit; the app then
     // completes the PKCE code exchange and mounts the shell.
     await page.locator('#username').fill(CREDENTIALS.user)

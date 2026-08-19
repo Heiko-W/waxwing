@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { LARGE_MAILBOX_NAME } from '../stalwart/seed-large.mjs'
+import { revealPasswordForm } from './helpers'
 
 /**
  * M4.8 — the 100 000-message mailbox, end to end (NFR-PERF-02, FR-LST-01).
@@ -40,6 +41,7 @@ const FIRST_WINDOW_MS = 180_000
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()

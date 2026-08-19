@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { expect, type Page, test } from '@playwright/test'
 import { DIST_B, SERVED_ROOT, stageBuildA } from '../pwa-build.mjs'
 import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
-import { fillTo, openComposer, typeBody } from './helpers'
+import { fillTo, openComposer, revealPasswordForm, typeBody } from './helpers'
 
 /**
  * M3.10 DEPLOY suite (FR-DEP-04, FR-OFF-01; handed over from M3.5).
@@ -50,6 +50,7 @@ const messageList = (page: Page) => page.getByRole('region', { name: 'Messages',
 
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()

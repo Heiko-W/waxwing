@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 /**
  * M3.10 push suite (gap B4, decision D2 / ADR-005) — the regression that hid for a milestone.
@@ -32,6 +33,7 @@ const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 const messageList = (page: Page) => page.getByRole('region', { name: 'Messages', exact: true })
 
 async function login(page: Page): Promise<void> {
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()

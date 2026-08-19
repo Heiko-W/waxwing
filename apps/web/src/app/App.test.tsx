@@ -49,7 +49,7 @@ describe('App onboarding', () => {
   it('disables OAuth on an insecure origin and explains why (Basic still works)', async () => {
     renderApp({ probePresent: true, oauthAvailable: false })
     await screen.findByText(/HTTPS/i)
-    const oauthButton = screen.getByRole('button', { name: /sign in securely/i })
+    const oauthButton = screen.getByRole('button', { name: /^sign in$/i })
     expect(oauthButton).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByLabelText(/username/i)).toBeInTheDocument()
   })

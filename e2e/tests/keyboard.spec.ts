@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 // M3.8 keyboard suite (FR-UI-04) — the WP's exit criterion, proven against the live Stalwart fixture:
 // a FULL triage session without touching the mouse, plus the ⌘K palette and the `?` cheat-sheet.
@@ -12,6 +13,7 @@ const grid = (page: Page) => page.getByRole('grid', { name: 'Messages' })
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()

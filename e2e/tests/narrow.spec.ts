@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 import { noOverflow } from './no-overflow'
 
 /**
@@ -32,6 +33,7 @@ const folders = (page: Page) => page.getByRole('navigation', { name: 'Folders' }
 test.beforeEach(async ({ page }) => {
   await seedReadMail()
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()

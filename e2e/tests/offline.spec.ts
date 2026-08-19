@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 import { jmapAs } from '../stalwart/seed-write.mjs'
-import { setUndoGrace } from './helpers'
+import { revealPasswordForm, setUndoGrace } from './helpers'
 
 /**
  * M3.10 offline suite (FR-OFF-01/03/04, and the G2 gap-B1/B2 payoffs) — the live counterpart the
@@ -40,6 +40,7 @@ const offlineChip = (page: Page) => page.getByRole('status').filter({ hasText: '
 
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
