@@ -61,7 +61,10 @@ webmail is an open gap.
 
 - No server-side component of any kind (no image proxy, no push relay, no search index).
 - No IMAP/SMTP/POP support — JMAP only.
-- No calendar UI in V1 (spec'd as V2, see §10).
+- ~~No calendar UI in V1~~ — **superseded (M5.6).** A read-only calendar (month + agenda)
+  ships against `urn:ietf:params:jmap:calendars`; see FR-CAL-01 in §6. The non-goal stood on
+  the assumption that calendars needed CalDAV, i.e. XML over WebDAV verbs a browser cannot
+  send cross-origin. JMAP for Calendars removed that obstacle entirely.
 - No server administration (Stalwart's own WebUI covers that).
 - No built-in AI features; no telemetry/analytics.
 - No support for non-evergreen browsers (see §8.4).
@@ -445,6 +448,21 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
 
 - **FR-VAC-01 (Must)** — **Vacation responder** UI (`VacationResponse/set`): on/off,
   date range, subject, rich body, preview.
+
+- **FR-CAL-01 (V2 — partially shipped M5.6)** — **Calendar** over JMAP for Calendars
+  (`draft-ietf-jmap-calendars`, JSCalendar/RFC 8984).
+
+  **Shipped:** a month grid and an agenda list, read-only, with recurrence expansion done
+  by the server (`expandRecurrences`) and correct local-time handling — a JSCalendar
+  `start` is a local date-time with its zone beside it, and the agenda shows that zone
+  whenever it is not the reader's.
+
+  **Not shipped, deliberately:** week and day grids (they need a time axis with overlap
+  resolution) and any form of editing (a recurrence editor plus an RSVP flow). A calendar
+  that lets someone half-edit a recurring meeting loses other people's time.
+
+  **Caveat to record:** the calendars draft has no RFC number yet. Every wire shape the
+  client relies on was measured against Stalwart 0.16 rather than taken from the draft.
 - **FR-SIEVE-01 (V1.x — shipped M5.2)** — **Filter rules** editor on top of JMAP for Sieve
   (RFC 9661): a visual rule builder (conditions → actions: move, flag, forward, discard,
   stop) generating a managed Sieve script; round-trip-safe (foreign scripts are shown

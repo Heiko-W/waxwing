@@ -134,6 +134,31 @@ Worth stating, because these are the reasons to *not* switch to Bulwark:
 
 ## 6. Ranked closing list
 
+**Status as of 2026-08-19.** Rows 1, 7 (three of four) and 8 are done; row 2 is partly done. The
+table below is the original ranking with the outcome recorded against each entry, so what is left
+stays legible.
+
+| Rank | Status |
+|---|---|
+| 1 Sieve filter rules | **done** — M5.2, ADR-023 |
+| 2 Calendar | **partly done** — M5.6 ships month + agenda, read-only. Week/day grids and editing remain |
+| 3 Multi-account + unified inbox | open |
+| 4 More languages | open, and see the note below — the *pipeline* is the deliverable, not machine-translated strings |
+| 5 S/MIME / PGP read + verify | open |
+| 6 Files (FileNode) | open — the fixture DOES advertise `urn:ietf:params:jmap:filenode`, measured 2026-08-19 |
+| 7 Templates, scheduled send, saved searches, snooze | **three done** — M5.4/M5.5; snooze remains |
+| 8 Small parity items | **done** — M5.3, all seven |
+| 9 Setup wizard, theme upload, MDN, TNEF | open |
+
+**On row 4.** The framework, the 882 keys and the switcher are all in place, so "add 23 languages"
+is a matter of producing 23 × 882 strings. Machine-translating them would produce text nobody has
+read in a program where confusing "Discard" with "Archive" costs the user a message. What is worth
+building is the *pipeline* — a Weblate connection, the RTL switch, and a contributor workflow —
+and then letting speakers fill it. That is the reading of "possible and sensible" this project
+should take.
+
+### The original ranking
+
 Ordered by (reason to choose Bulwark) ÷ (cost, given §2).
 
 | # | Gap | Why it ranks here |
