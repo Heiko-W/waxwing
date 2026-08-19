@@ -41,6 +41,7 @@ export type { ActiveFormats, EditorEngine, EditorFactory } from './editor-engine
 export { FromField } from './FromField'
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
 export { NEW_MESSAGE_BTN_ID, NewMessageButton } from './NewMessageButton'
+export { sanitizeQuotedHtml } from './quoted-html'
 export { RecipientFields, type RecipientFieldsProps } from './RecipientFields'
 export {
   RichTextEditor,

@@ -8,17 +8,33 @@
 
 import type { Identity } from '@waxwing/jmap'
 import { plainTextToHtml } from './html-to-text'
+import { sanitizeQuotedHtml } from './quoted-html'
 
 /** Boolean attribute marking the signature container so a swap finds + replaces exactly it. */
 export const SIGNATURE_ATTR = 'data-waxwing-signature'
 
 export type SignaturePlacement = 'aboveQuote' | 'belowQuote'
 
-/** The signature HTML for an identity: `htmlSignature`, else `textSignature`→HTML, else `''`. */
+/**
+ * The signature HTML for an identity: `htmlSignature`, else `textSignature`→HTML, else `''`.
+ *
+ * The HTML goes through {@link sanitizeQuotedHtml} FIRST, for the reason that pass exists at all: it
+ * is about to be written into a contenteditable in the APP document, not into the reading pane's
+ * sandboxed frame. `htmlSignature` is server data — set by an admin, by another client, or (since
+ * M5.1) in our own editor — and until this line nothing on the path sanitized it: the composer's
+ * DOMPurify is deliberately permissive (it keeps `style`, `<form>`, `<input>`), and `cleanOutgoingHtml`
+ * at send time only strips Squire's own classes. That is the same `position:fixed` overlay
+ * `quoted-html.ts` measured in Chromium, arriving through a different door.
+ *
+ * Sanitizing BEFORE the `.trim()` tests is deliberate: a signature that is nothing but stripped
+ * markup has to read as empty here, or `applySignature` would insert an empty marker container and
+ * `replaceSignature` would keep swapping it.
+ */
 export function signatureHtmlForIdentity(
   identity: Pick<Identity, 'htmlSignature' | 'textSignature'>,
 ): string {
-  if (identity.htmlSignature.trim() !== '') return identity.htmlSignature
+  const html = sanitizeQuotedHtml(identity.htmlSignature)
+  if (html.trim() !== '') return html
   if (identity.textSignature.trim() !== '') return plainTextToHtml(identity.textSignature)
   return ''
 }
