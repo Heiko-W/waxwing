@@ -33,9 +33,10 @@
   overflow-wrap: break-word;
 }
 
-/* On a phone, 28 px of subject takes two lines and 95 px of a 640 px screen before the mail starts.
-   One step down is still unmistakably the headline. */
-@media (max-width: 40em) {
+/* Below ~30rem of PANE, 28px of subject takes two lines before the mail starts. One step down is
+   still unmistakably the headline — and it now applies to a narrow pane on any screen, not just to
+   a narrow screen. */
+@container waxwing-pane (max-width: 30rem) {
   .subject {
     font-size: var(--waxwing-text-xl);
   }
@@ -138,6 +139,10 @@
   justify-content: space-between;
   gap: var(--waxwing-space-3);
   align-items: baseline;
+  /* The date is `flex-shrink: 0` and, spelled out, takes most of a narrow pane's width. Allowed to
+     wrap under the name, it stops competing for the same line — a tablet's reading pane is about
+     420px, and "Aug 19, 2026, 7:39 PM" is half of it. */
+  flex-wrap: wrap;
 }
 
 /* Name, real address and (rarely) the impersonation marker, on one wrapping baseline run. */
@@ -149,10 +154,20 @@
   min-width: 0;
 }
 
+/*
+ * `break-word`, NOT `anywhere`, and the difference is the whole bug.
+ *
+ * Both break inside a word when one would otherwise overflow. But `anywhere` also reports a
+ * min-content width of a single character, so any flex sibling that refuses to shrink — here the
+ * date, which is `flex-shrink: 0` — can squeeze this box down to a column of letters. Photographed
+ * on a tablet (834px, tablet-reading.webp): "Waxwing Weekly" came out as "Wax / wing / Week / ly"
+ * and the address below it as "bob@ / waxwi / ng.test". `break-word` keeps the longest word as the
+ * minimum, which is what makes the line wrap like a line.
+ */
 .from {
   font-weight: var(--waxwing-weight-semibold);
   color: var(--waxwing-text);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /*
@@ -182,7 +197,9 @@
 .fromAddress {
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
-  overflow-wrap: anywhere;
+  /* See `.from`: an address is one long word, and `anywhere` would let it be shredded rather than
+     wrapped. A genuinely over-long address still breaks, which is what `break-word` is for. */
+  overflow-wrap: break-word;
 }
 
 /*
@@ -286,20 +303,37 @@
 }
 
 /*
- * Tighter on a phone, because the grouping is a RATIO, not a pair of fixed numbers.
+ * Tighter in a narrow PANE, because the grouping is a RATIO, not a pair of fixed numbers.
  *
- * 16 px between groups and 4 px within reads well at 420 px of pane; at 390 px of viewport it cost a
- * third row — three strips of icons is worse than the two ungrouped ones it replaced. 12 px against
- * 2 px keeps the same visual relationship (six times, rather than four) and brings the six filing
- * and state actions back onto one line, with the reply group on the next.
+ * 16px between groups and 4px within reads well at 420px of pane; below that it costs a third row —
+ * three strips of icons is worse than the two ungrouped ones it replaced. 12px against 2px keeps
+ * the same visual relationship (six times, rather than four) and brings the six filing and state
+ * actions back onto one line, with the reply group on the next.
+ *
+ * Keyed to the container rather than the viewport since 2026-08-19: as a viewport rule it fired on
+ * a phone and NOT on a tablet, whose reading pane is just as narrow — which is precisely the case
+ * the tablet screenshot caught.
  */
-@media (max-width: 39.999em) {
+@container waxwing-pane (max-width: 30rem) {
+  /* 24px of margin on each side is a quarter of a narrow pane. */
+  .conversation {
+    padding-inline: var(--waxwing-space-3);
+  }
+
   .actionBar {
     gap: var(--waxwing-space-3);
   }
 
   .actionGroup {
     gap: var(--waxwing-space-hair);
+  }
+
+  /* The spacer holds the reply group against the far edge, which is right when everything fits on
+     one line and wrong the moment it does not: as a flex item that grows, it takes the whole
+     remainder of the first row and pushes the reply group onto a row of its own — a third strip of
+     icons. Below this width the groups simply run on, separated by their own gap. */
+  .actionSpacer {
+    display: none;
   }
 }
 

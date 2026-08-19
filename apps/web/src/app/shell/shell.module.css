@@ -423,7 +423,19 @@
   background-color: var(--waxwing-surface);
 }
 
+/*
+ * A QUERY CONTAINER for whatever the pane holds. What the list and the reading view need to know is
+ * how wide THEY are, and on a split layout that has never been the window's width: at 834px the
+ * reading pane is under 300px, so every rule keyed to a phone breakpoint sat idle exactly where it
+ * was needed (photographed in tablet-reading.webp — the action bar in three rows).
+ *
+ * Declared here rather than on `.conversation` because a container query cannot style the element
+ * that declares the container, and the conversation's own padding is one of the things that has to
+ * give way in a narrow pane.
+ */
 .paneBody {
+  container-type: inline-size;
+  container-name: waxwing-pane;
   flex: 1;
   overflow: auto;
 }

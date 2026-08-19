@@ -52,6 +52,20 @@ export default defineConfig({
       },
     },
     {
+      // 834×1112 — an iPad in portrait, and the only width where the two shell breakpoints
+      // disagree: past 40em (icon rail, not a bottom bar) and short of 64em (folder rail still a
+      // drawer). Neither of the other two projects photographs that combination.
+      name: 'tablet',
+      testMatch: '**/tablet.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 834, height: 1112 },
+        deviceScaleFactor: 2,
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
+    {
       // The phone shots are the point of this run. 390×844 is the iPhone 14/15 class viewport the
       // swipe suite already uses, and it sits below BOTH shell breakpoints (40em icon rail,
       // 64em persistent folder rail), so it photographs the bottom-nav-plus-drawer layout rather
