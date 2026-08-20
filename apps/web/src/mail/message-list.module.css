@@ -116,6 +116,18 @@
   min-block-size: 0;
 }
 
+/* Room for the compose button to float over.
+   `new-message-button.module.css` says it plainly — "what it does NOT clear is content that
+   scrolls under it" — and B50 answered that by keeping the button off every route but this one.
+   On this one it still sat on the last row: measured on a 390x844 phone it covered the timestamp
+   of the bottom message. A fixed element cannot be pushed aside by a list, so the list leaves it
+   the space. Same tokens the button positions itself with, so the two cannot drift. */
+@media (max-width: 39.999em) {
+  .scroll {
+    padding-block-end: calc(var(--waxwing-control-min) + 2 * var(--waxwing-space-4));
+  }
+}
+
 .spacer {
   position: relative;
   inline-size: 100%;

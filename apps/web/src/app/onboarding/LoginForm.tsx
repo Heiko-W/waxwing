@@ -142,7 +142,12 @@ export function LoginForm({
         <div className={styles.oauth}>
           <Button
             type="button"
-            variant={oauthPrimary ? 'primary' : 'secondary'}
+            /* Primary until the reader opens the password form, then secondary. ADR-024's first
+               decision is "one action leads" — it described the collapsed state, and the open one
+               had two: a filled Sign in at the top and an outlined Sign in with a password at the
+               bottom, where the outlined one is the one being used. The weight follows the
+               choice. */
+            variant={oauthPrimary && !basicOpen ? 'primary' : 'secondary'}
             block
             loading={busy}
             aria-disabled={!oauthAvailable || undefined}
@@ -219,7 +224,7 @@ export function LoginForm({
           </p>
           <Button
             type="submit"
-            variant={oauthPrimary ? 'secondary' : 'primary'}
+            variant={oauthPrimary && !basicOpen ? 'secondary' : 'primary'}
             block
             loading={busy}
           >

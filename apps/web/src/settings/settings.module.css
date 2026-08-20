@@ -46,7 +46,9 @@
 .railList {
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-hair);
+  /* No gap. `space-hair` is defined as the separation between a label and the mark beside it, not
+     as a list rhythm — at 2px it is too small to read as intent and too large to do nothing, and
+     it breaks up the hover/selection fills that should look continuous down a rail. */
   margin: 0;
   padding: 0;
   list-style: none;
@@ -55,6 +57,7 @@
 .railItem {
   display: flex;
   align-items: center;
+  gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-2);
   border-radius: var(--waxwing-radius-sm);
@@ -62,6 +65,30 @@
   font-size: var(--waxwing-text-sm);
   text-decoration: none;
   transition: background-color var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.railItemLabel {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.railChevron {
+  flex: 0 0 auto;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  color: var(--waxwing-text-muted);
+}
+
+/* Rules between destinations, on the viewport where this list IS the screen. iOS settings draws
+   them for the same reason: without a rule or a chevron, a column of plain text does not announce
+   that its lines are places you can go. */
+@media (max-width: 39.999em) {
+  .railList > li + li .railItem {
+    border-block-start: 1px solid var(--waxwing-border);
+  }
 }
 
 /* Pointer-only affordance: on a touchscreen a tap would leave this stuck to whatever it landed on,
@@ -142,17 +169,32 @@
   color: var(--waxwing-text-muted);
 }
 
+/*
+ * A grouped card, the way both of Apple's settings surfaces present a section.
+ *
+ * Loose fields on a bare page were the reason this screen read as an unfinished form: at 1440px
+ * the content ended at x≈735 with ~700px of nothing beside it, and the "General" section was a
+ * single 350px dropdown on an otherwise empty page. The card gives the section an edge, and the
+ * rules between rows give the eye a column to run down.
+ */
 .controls {
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-4);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-lg);
+  background-color: var(--waxwing-surface);
+  overflow: hidden;
+}
+
+.controls > * + * {
+  border-block-start: 1px solid var(--waxwing-border);
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
-  max-inline-size: 22rem;
+  padding: var(--waxwing-space-3) var(--waxwing-space-4);
 }
 
 /* A <fieldset> for a group of checkboxes (M3.6): the semantics are worth having, the browser's
@@ -176,6 +218,42 @@
   margin: 0;
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-xs);
+}
+
+/*
+ * Label beside its control, once there is width for it.
+ *
+ * Stacked, each field used 22rem of a 42rem panel and left the rest empty, so a section of six
+ * settings was a narrow ribbon down the left of a wide card. Side by side the values line up in a
+ * column that can be scanned — which is the point of a settings list and the reason the switch
+ * rows (`Switch.module.css .rowBlock`) were given this shape by the first audit.
+ *
+ * `:has(textarea)` opts out: a signature editor beside a label is a text box squeezed into half a
+ * card. Those keep the stacked form at every width.
+ */
+@media (min-width: 40em) {
+  .field:not(:has(textarea)) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--waxwing-space-1) var(--waxwing-space-4);
+  }
+
+  .field:not(:has(textarea)) > .label {
+    flex: 0 1 auto;
+  }
+
+  .field:not(:has(textarea)) > :not(.label):not(.hint) {
+    flex: 0 1 22rem;
+    min-inline-size: 0;
+  }
+
+  /* The explanation stays UNDER the row it explains. Left in the flow it landed beside the
+     control, reading as a second value for the same setting. */
+  .field:not(:has(textarea)) > .hint {
+    flex: 1 0 100%;
+  }
 }
 
 /* Raw capability URNs the panel does not have a name for (M3.7). Monospace, and allowed to break:
