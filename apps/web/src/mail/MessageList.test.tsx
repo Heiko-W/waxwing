@@ -1703,9 +1703,14 @@ describe('MessageList', () => {
       // no Archive strip in that same render. Both hold only once the account genuinely has no
       // Archive, and neither can regress — the folder stays deleted, the rows stay hydrated — so the
       // swipe that follows is guaranteed to see the settled state.
+      // `queryAllByText`, not `queryByText`: the failure this gate guards against reveals a strip on
+      // EVERY row, and `queryByText` THROWS on multiple matches. Inside `waitFor` a throw reads as
+      // "not settled yet", so the loop would keep polling and finally time out on the wrong thing —
+      // hiding the very shape it is here to catch. The assertions below already use the plural form
+      // for exactly this reason; the gate did not.
       await waitFor(() => {
         expect(screen.getAllByText('Mark as read')).toHaveLength(3)
-        expect(screen.queryByText('Archive')).toBeNull()
+        expect(screen.queryAllByText('Archive')).toHaveLength(0)
       })
 
       swipe(rowWrap('First'), -150)

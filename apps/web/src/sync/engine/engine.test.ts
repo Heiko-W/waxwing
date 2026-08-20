@@ -1872,6 +1872,79 @@ describe('SyncEngine — new-mail notifications (M3.6)', () => {
     await engine.stop()
   })
 
+  /*
+   * B45 — a notification a FAILED pass skipped is delivered by the retry, not by the next push.
+   *
+   * `notify.spec.ts` polled 30 s for a new-mail banner and saw none, ~3 minutes into a run against a
+   * live Stalwart. The mechanism is visible in `runSyncPass`: a delta error takes the early `return`
+   * ABOVE `raiseNewMailNotifications`, so the pass that would have raised the banner raises nothing.
+   * Until B47 the next attempt came only with the fixed 60 s safety sweep, and a 30 s poll cannot win
+   * that. Nothing was lost — but nothing was announced either, for up to a minute.
+   *
+   * This is what turns "B45 is plausibly covered by B47" into something checked. It drives the retry
+   * by hand rather than firing another push: a push would prove only that a SECOND delivery notifies,
+   * which was never in doubt, and is precisely the confusion the original report could not resolve.
+   */
+  it('delivers on its own retry the notification a failed pass skipped (B45)', async () => {
+    let failing = false
+    const base = notifyingPort()
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(state) {
+        if (failing) throw new Error('the server pushed back')
+        return base.emailChanges(state)
+      },
+    }
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    // Timers the test fires by hand, so the retry happens when this test says so and not on a clock.
+    let nextTimer = 1
+    const pending: { id: number; fn: () => void; delay: number }[] = []
+    let now = 1000
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      notify,
+      isForeground: () => false,
+      clock: {
+        now: () => now++,
+        setTimeout: (fn, delay) => {
+          const id = nextTimer++
+          pending.push({ id, fn, delay })
+          return id
+        },
+        clearTimeout: (id) => {
+          const at = pending.findIndex((timer) => timer.id === id)
+          if (at >= 0) pending.splice(at, 1)
+        },
+      },
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    // Past the first-pass storm guard: notifications are armed from here.
+    await anotherPass(push)
+    const armed = calls.length
+
+    // A delivery arrives and the pass that should announce it fails.
+    failing = true
+    push.fireStateChange()
+    await waitFor(() => engine.getStatus().phase === 'error')
+    expect(calls.length, 'a failed pass must not announce anything').toBe(armed)
+
+    // No further push — only the retry the failed pass scheduled for itself.
+    failing = false
+    const retry = pending.find((timer) => timer.delay < 60_000)
+    expect(retry, 'the failed pass scheduled no retry to deliver on').toBeDefined()
+    if (retry) {
+      pending.splice(pending.indexOf(retry), 1)
+      retry.fn()
+    }
+
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    expect(calls.length, 'the retry did not deliver the missed notification').toBeGreaterThan(armed)
+    await engine.stop()
+  })
+
   it('a notifier that THROWS does not fail the sync pass', async () => {
     const push = new FakePush()
     const engine = new SyncEngine({
