@@ -57,7 +57,21 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      // 1440 × 900 rather than Playwright's 1280 × 720 default, which was never a choice — it was
+      // whatever the tool handed out, and since B49 it is too narrow for what these tests do.
+      //
+      // Headless Chromium advertises NO pointing device, so `@media (pointer: coarse)` applies and
+      // every control here is 44px — the touch size, not the 34px a desktop with a mouse gets. At
+      // 1280px that leaves the reading pane's action bar 436px, which fits eight actions and the ⋯;
+      // Flag and Mark-as-unread are behind the menu, and two tests that click them in the bar broke
+      // on a layout no user has. At 1440px the bar is 596px and holds all eleven, as a real desktop
+      // does at 1280.
+      //
+      // Widening the viewport rather than teaching each test to hunt for its button: this suite
+      // asserts BEHAVIOUR (a flag round-trips, a move empties the row) and should not re-derive the
+      // overflow split on every click. The overflow itself is asserted where it belongs, in
+      // `viewports.spec.ts`, against the 834px pane it exists for.
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
       // The swipe suite needs a touchscreen; a desktop context cannot dispatch a touch at all, and
       // the notify suite needs a browser build that can show a notification at all (see below).
       testIgnore: ['**/swipe.spec.ts', '**/notify.spec.ts', '**/narrow.spec.ts'],
