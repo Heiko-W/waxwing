@@ -431,6 +431,12 @@ test.describe('M5.1 identity editor', () => {
     // THE REPLICA LEG: the engine pulls identities once per leadership session, so without the
     // mirror written by the editor this selector would not exist until the next sign-in. It is also
     // the first time `FromField` renders at all — it stays hidden while there is only one identity.
+    //
+    // Reached FROM the mail route since B50: the New-message button is scoped to the mail area, so
+    // Settings no longer offers one. What this leg is about — the identity mirror — lives in the
+    // replica and does not care where the composer was opened from. (`c` and ⌘N would work from
+    // here, but a chord is a different path than the one every other composer test takes.)
+    await page.getByRole('link', { name: 'Mail', exact: true }).click()
     await openComposer(page)
     const from = page.getByLabel('From', { exact: true })
     await expect(from).toBeVisible()
