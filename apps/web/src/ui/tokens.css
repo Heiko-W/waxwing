@@ -79,8 +79,20 @@
     --waxwing-danger-contrast: #ffffff;
     --waxwing-success: #1c722f;
     --waxwing-success-contrast: #ffffff;
+    /* Filing, as a swipe reveal. Its own value rather than the accent, which is what it used to
+       be: the other three reveals (delete, junk, read) are fixed, so archive was the one action
+       whose colour moved with a preference — and with the green accent selected it became the
+       SAME fill as the read reveal beside it. An action should look like itself whatever the user
+       picked. The value is the built-in accent's blue, which Apple Mail also uses for archive. */
+    --waxwing-archive: #2761c4;
+    --waxwing-archive-contrast: #ffffff;
     --waxwing-warning: #8a5d00;
     --waxwing-warning-contrast: #ffffff;
+    /* The user's own marker (the star). Its own token, at the warning value, so that the WARNING
+       token means one thing: a flagged message is not a warning, and while it borrowed the token
+       a star and the offline indicator carried the same signal colour at rest. Splitting the name
+       lets either move without dragging the other. */
+    --waxwing-flag: #8a5d00;
     --waxwing-switch-thumb: #ffffff;
 
     /* ---- Label swatch fills: light (M3.2). Decorative dots ringed by --waxwing-border-strong;
@@ -226,8 +238,11 @@
       --waxwing-danger-contrast: #1d1d1f;
       --waxwing-success: #30d158;
       --waxwing-success-contrast: #1d1d1f;
+      --waxwing-archive: #82acf5;
+      --waxwing-archive-contrast: #1d1d1f;
       --waxwing-warning: #ffd60a;
       --waxwing-warning-contrast: #1d1d1f;
+      --waxwing-flag: #ffd60a;
       --waxwing-switch-thumb: #f5f5f7;
 
       /* ---- Label swatch fills: dark (system preference) ---- */
@@ -275,8 +290,11 @@
     --waxwing-danger-contrast: #1d1d1f;
     --waxwing-success: #30d158;
     --waxwing-success-contrast: #1d1d1f;
+    --waxwing-archive: #82acf5;
+    --waxwing-archive-contrast: #1d1d1f;
     --waxwing-warning: #ffd60a;
     --waxwing-warning-contrast: #1d1d1f;
+    --waxwing-flag: #ffd60a;
     --waxwing-switch-thumb: #f5f5f7;
 
     /* ---- Label swatch fills: dark (explicit user override) ---- */
@@ -327,8 +345,11 @@
     --waxwing-danger-contrast: #ffffff;
     --waxwing-success: #1c722f;
     --waxwing-success-contrast: #ffffff;
+    --waxwing-archive: #2761c4;
+    --waxwing-archive-contrast: #ffffff;
     --waxwing-warning: #8a5d00;
     --waxwing-warning-contrast: #ffffff;
+    --waxwing-flag: #8a5d00;
     --waxwing-switch-thumb: #ffffff;
 
     /* ---- Label swatch fills: light re-asserted ---- */

@@ -232,8 +232,8 @@
 }
 
 .actionArchive {
-  background-color: var(--waxwing-accent);
-  color: var(--waxwing-accent-contrast);
+  background-color: var(--waxwing-archive);
+  color: var(--waxwing-archive-contrast);
 }
 
 .actionTrash {
@@ -487,7 +487,7 @@
 }
 
 .flag {
-  color: var(--waxwing-warning);
+  color: var(--waxwing-flag);
 }
 
 /* The bulk bar's star when every selected message is already flagged — the same on-state the
@@ -498,7 +498,7 @@
    others beside it, while these two are the ACTIONABLE star and match each other.
    Colour is never the only signal: the button's accessible name flips to "Unflag" with it. */
 .flagOn {
-  color: var(--waxwing-warning);
+  color: var(--waxwing-flag);
   fill: currentColor;
 }
 

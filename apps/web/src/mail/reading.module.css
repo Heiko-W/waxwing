@@ -345,7 +345,7 @@
 }
 
 .flagOn {
-  color: var(--waxwing-warning);
+  color: var(--waxwing-flag);
   fill: currentColor;
 }
 
@@ -596,6 +596,17 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
+}
+
+/* One glyph, turned. See `folder-tree.module.css` for the argument; these are the two places in
+   the reading pane that need it. */
+.chevron {
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
 /* ---- collapsed thread message ---- */

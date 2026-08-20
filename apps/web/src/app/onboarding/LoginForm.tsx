@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react'
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AuthMethod } from '../../auth'
@@ -177,6 +178,12 @@ export function LoginForm({
           onClick={toggleBasic}
         >
           {t('auth.basic.disclose')}
+          {/* The same rotated glyph the folder tree uses, and for the reason written there:
+              "Rotated, not exchanged. Swapping ChevronRight for ChevronDown says 'something
+              changed'; turning the same glyph says WHAT changed". This used to be a CSS
+              pseudo-element drawing its own triangle at 1.5px — the app's only hand-drawn glyph,
+              beside a set whose strokes are 1.33-2px. */}
+          <ChevronDown aria-hidden="true" className={styles.disclosureChevron} />
         </Button>
       ) : null}
 

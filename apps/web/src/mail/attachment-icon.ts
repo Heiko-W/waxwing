@@ -3,10 +3,10 @@
  * ({@link AttachmentList}, M1.8) and the composer's attachment chips (M2.7), so both stay in sync.
  */
 
-import { FileText, ImageIcon, type LucideIcon, Paperclip } from 'lucide-react'
+import { FileText, Image, type LucideIcon, Paperclip } from 'lucide-react'
 
 export function attachmentIcon(type: string): LucideIcon {
-  if (type.startsWith('image/')) return ImageIcon
+  if (type.startsWith('image/')) return Image
   if (type === 'application/pdf') return FileText
   return Paperclip
 }

@@ -7,7 +7,7 @@
  * axe's nested-interactive rule, whereas the tree pattern places it in a presentational wrapper.
  */
 
-import { MoreHorizontal } from 'lucide-react'
+import { Ellipsis } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Badge, Menu, type MenuItemSpec, VisuallyHidden } from '../../ui'
@@ -136,7 +136,7 @@ export function LabelList({
                   // twelve buttons all called "Label actions" — a screen reader's rotor shows a
                   // column of identical entries and voice control has nothing to disambiguate on.
                   triggerLabel={t('labels.actions.menu', { name: label.name })}
-                  trigger={<MoreHorizontal aria-hidden="true" className={styles.check} />}
+                  trigger={<Ellipsis aria-hidden="true" className={styles.check} />}
                   items={menuItems}
                   triggerTabIndex={label.keyword === tabbable ? 0 : -1}
                 />

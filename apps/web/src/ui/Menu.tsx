@@ -87,6 +87,8 @@ export function Menu({
   const [coords, setCoords] = useState({ top: 0, left: 0, flipped: false })
   const [focusedIndex, setFocusedIndex] = useState(-1)
 
+  /** Whether the menu reserves an icon column at all — see the note at the render site. */
+  const anyIcon = items.some((item) => item.icon !== undefined)
   const firstEnabled = items.findIndex((item) => !item.disabled)
   const lastEnabled = items.reduce((last, item, index) => (item.disabled ? last : index), -1)
 
@@ -280,7 +282,17 @@ export function Menu({
                   className={cx(styles.item, item.destructive && styles.destructive)}
                   onClick={() => activate(index)}
                 >
-                  {Icon ? <Icon aria-hidden="true" className={styles.icon} /> : null}
+                  {/* One text edge for the whole menu. The folder menu carries an icon on exactly
+                      one of its seven entries ("Keep offline"), which indented that entry's label
+                      past the other six — a menu with two left edges, and the single glyph pulling
+                      the eye to the least important row. Reserving the column where ANY entry uses
+                      it costs nothing and removes the choice between "an icon on all seven" and
+                      "no icons at all". */}
+                  {anyIcon ? (
+                    <span className={styles.iconSlot}>
+                      {Icon ? <Icon aria-hidden="true" className={styles.icon} /> : null}
+                    </span>
+                  ) : null}
                   <span className={styles.itemLabel}>{item.label}</span>
                 </button>
               )

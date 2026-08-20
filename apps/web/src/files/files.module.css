@@ -105,8 +105,8 @@
 
 .icon {
   flex: none;
-  inline-size: 1.125rem;
-  block-size: 1.125rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   color: var(--waxwing-text-muted);
 }
 

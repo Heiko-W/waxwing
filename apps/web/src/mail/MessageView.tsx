@@ -17,22 +17,21 @@ import { renderPlainText, sanitize } from '@waxwing/mail-html'
 import type { TFunction } from 'i18next'
 import type { LucideIcon } from 'lucide-react'
 import {
-  AlertTriangle,
   Archive,
   Ban,
   ChevronDown,
-  ChevronUp,
+  Ellipsis,
   FolderInput,
   Forward,
   Lock,
-  MailMinus,
-  MoreHorizontal,
+  Mail,
   Reply,
   ReplyAll,
   ShieldCheck,
   Star,
   Tag,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -835,7 +834,10 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         id: 'markUnread',
         group: 'mark',
         label: t('reading.markUnread'),
-        icon: MailMinus,
+        // `Mail`, not `MailMinus`: the bulk bar and the swipe reveal both use this pair for the
+        // read state, and `MailMinus` means "unsubscribe" a few hundred pixels above this bar in
+        // the same reading pane. One glyph cannot mean two things on one screen.
+        icon: Mail,
         unavailableReason: reasonText(rights.reason('seen')),
         onSelect: handlers.markUnread,
       },
@@ -917,7 +919,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
               {showFromAddress && <span className={styles.fromAddress}>{fromAddress}</span>}
               {nameIsAddressLike && (
                 <span className={styles.nameWarning}>
-                  <AlertTriangle className={styles.nameWarningIcon} aria-hidden="true" />
+                  <TriangleAlert className={styles.nameWarningIcon} aria-hidden="true" />
                   {t('reading.nameLooksLikeAddress')}
                 </span>
               )}
@@ -933,7 +935,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
                 aria-expanded={true}
                 onClick={onCollapse}
               >
-                <ChevronUp />
+                {/* Open, so it points up — the same glyph the collapsed row shows pointing down. */}
+                <ChevronDown className={styles.chevronOpen} />
               </IconButton>
             )}
           </div>
@@ -947,7 +950,13 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
               aria-expanded={detailsOpen}
               onClick={() => setDetailsOpen((open) => !open)}
             >
-              {detailsOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+              {/* Rotated, not exchanged — `folder-tree.module.css` argues the case: swapping one
+                  glyph for another says "something changed", turning the same glyph says WHAT
+                  changed. This was the one place that swapped. */}
+              <ChevronDown
+                aria-hidden="true"
+                className={detailsOpen ? styles.chevronOpen : styles.chevron}
+              />
               {t('reading.details')}
             </Button>
           </div>
@@ -1065,7 +1074,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         >
           <Menu
             triggerLabel={t('reading.more')}
-            trigger={<MoreHorizontal aria-hidden="true" />}
+            trigger={<Ellipsis aria-hidden="true" />}
             align="end"
             triggerVariant="toolbar"
             items={menuItems}

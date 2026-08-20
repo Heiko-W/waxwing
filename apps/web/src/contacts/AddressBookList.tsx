@@ -10,7 +10,7 @@
  * path so the list never silently changes shape when those buttons arrive.
  */
 
-import { BookOpen, Lock, Users } from 'lucide-react'
+import { BookOpen, Lock, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, Link } from '../app/route'
 import type { AddressBookRow } from '../sync'
@@ -44,7 +44,7 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
             {...(onSelectBook ? { onClick: onSelectBook } : {})}
             {...(selectedBookId === undefined ? { 'aria-current': 'page' as const } : {})}
           >
-            <Users aria-hidden="true" className={styles.bookIcon} />
+            <UsersRound aria-hidden="true" className={styles.bookIcon} />
             <span className={styles.bookName}>{t('contacts.books.all')}</span>
           </Link>
         </li>

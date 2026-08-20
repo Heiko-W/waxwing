@@ -89,6 +89,7 @@ const PAIRS: Pair[] = [
   { fg: 'success', bg: 'surface', min: TEXT_AA, note: 'success text on card' },
   { fg: 'success', bg: 'surface-2', min: TEXT_AA, note: 'success text on raised' },
   { fg: 'success-contrast', bg: 'success', min: TEXT_AA, note: 'label on success fill' },
+  { fg: 'archive-contrast', bg: 'archive', min: TEXT_AA, note: 'label on the archive reveal' },
   { fg: 'warning', bg: 'bg', min: TEXT_AA, note: 'warning text on page' },
   { fg: 'warning', bg: 'surface', min: TEXT_AA, note: 'warning text on card' },
   { fg: 'warning', bg: 'surface-2', min: TEXT_AA, note: 'warning text on raised' },

@@ -148,6 +148,41 @@ describe('accent palettes are accessible by construction', () => {
     }
   })
 
+  it('keeps the four swipe reveals distinguishable under every palette', () => {
+    /*
+     * The invariant that actually matters, rather than "no accent equals a semantic token".
+     *
+     * The green accent WAS byte-identical to `--waxwing-success`, and the visible consequence was
+     * that swiping to archive and swiping to mark read painted the same colour. Nudging the green
+     * by 1.5% lightness would satisfy a colour-equality check and change nothing anyone can see —
+     * so archive got its own token instead, and this checks the thing that was wrong: that the
+     * four reveals stay four colours.
+     *
+     * Amber remaining close to `--waxwing-warning` is not a defect: a palette called Amber is
+     * supposed to look like amber, and a warning triangle and an unread dot never share a surface.
+     * Only fills that CAN appear on the same surface are compared.
+     *
+     * Nor is the archive fill compared against the accent. With the blue palette they ARE the same
+     * blue, and that is the shipped default rather than a collision — the defect was archive
+     * MOVING with the preference while the three beside it stayed put.
+     */
+    const REVEALS = {
+      light: { archive: '#2761c4', trash: '#c10016', read: '#1c722f', junk: '#8a5d00' },
+      dark: { archive: '#82acf5', trash: '#ff8078', read: '#30d158', junk: '#ffd60a' },
+    } as const
+    for (const theme of ['light', 'dark'] as const) {
+      const values = Object.entries(REVEALS[theme])
+      for (const [nameA, a] of values) {
+        for (const [nameB, b] of values) {
+          if (nameA >= nameB) continue
+          expect(a.toLowerCase(), `${theme}: ${nameA} and ${nameB} are one colour`).not.toBe(
+            b.toLowerCase(),
+          )
+        }
+      }
+    }
+  })
+
   it('matches the built-in accent exactly for the default palette', () => {
     // "blue" must be a no-op: selecting it, or never selecting anything, has to render identically
     // to the shipped tokens, or the default install changes appearance for no reason.

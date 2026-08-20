@@ -107,8 +107,8 @@
 
 .bookIcon {
   flex: none;
-  inline-size: 1.15rem;
-  block-size: 1.15rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
 }
 
 .bookText {
@@ -409,8 +409,8 @@
 
 .fieldIcon {
   flex: none;
-  inline-size: 1.05rem;
-  block-size: 1.05rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   margin-block-start: var(--waxwing-space-hair);
   color: var(--waxwing-text-muted);
 }

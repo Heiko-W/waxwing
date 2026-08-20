@@ -15,11 +15,11 @@ import {
   Archive,
   Ban,
   ChevronRight,
+  Ellipsis,
   FileText,
   Folder,
   Inbox,
   type LucideIcon,
-  MoreHorizontal,
   Pin,
   Send,
   Trash2,
@@ -301,7 +301,7 @@ export function FolderTreeView({
                     triggerLabel={t('mailbox.actions.menu', {
                       name: folderDisplayName(mailbox, t),
                     })}
-                    trigger={<MoreHorizontal aria-hidden="true" className={styles.icon} />}
+                    trigger={<Ellipsis aria-hidden="true" className={styles.icon} />}
                     items={menuItems}
                     // Keep the tree a single tab stop: only the active row's action button is tabbable.
                     triggerTabIndex={mailbox.id === tabbableId ? 0 : -1}

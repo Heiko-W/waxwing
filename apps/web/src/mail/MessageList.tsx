@@ -14,11 +14,11 @@ import type { Id } from '@waxwing/jmap'
 import {
   Archive,
   Ban,
+  Ellipsis,
   FolderInput,
   type LucideIcon,
   Mail,
   MailOpen,
-  MoreHorizontal,
   Star,
   Tag,
   Trash2,
@@ -1426,7 +1426,7 @@ function BulkBar({
           <span ref={overflowRef} {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}>
             <Menu
               triggerLabel={t('list.actions.more')}
-              trigger={<MoreHorizontal aria-hidden="true" />}
+              trigger={<Ellipsis aria-hidden="true" />}
               align="end"
               triggerVariant="toolbar"
               items={menuItems}

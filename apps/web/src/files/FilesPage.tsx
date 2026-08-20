@@ -25,7 +25,7 @@ import {
   FolderPlus,
   Trash2,
   Upload,
-  Users,
+  UsersRound,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -352,7 +352,7 @@ export default function FilesPage(props: FilesPageProps) {
                     size="sm"
                     onClick={() => setSharing(node)}
                   >
-                    <Users />
+                    <UsersRound />
                   </IconButton>
                 )}
                 {node.nodeType !== 'directory' && node.myRights.mayRead && (

@@ -68,6 +68,8 @@ declared once.
 | `--waxwing-danger` | `#c10016` | `#ff8078` | Error text/icon; destructive fill |
 | `--waxwing-danger-contrast` | `#ffffff` | `#1d1d1f` | Label on a danger fill |
 | `--waxwing-success` | `#1c722f` | `#30d158` | Success text/icon; fill |
+| `--waxwing-archive` | `#2761c4` | `#82acf5` | The archive swipe reveal — fixed, so one action looks the same under every accent |
+| `--waxwing-flag` | `#8a5d00` | `#ffd60a` | The user's own marker (the star). Same value as `warning`, a different meaning |
 | `--waxwing-success-contrast` | `#ffffff` | `#1d1d1f` | Label on a success fill |
 | `--waxwing-warning` | `#8a5d00` | `#ffd60a` | Warning text/icon; fill |
 | `--waxwing-warning-contrast` | `#ffffff` | `#1d1d1f` | Label on a warning fill |

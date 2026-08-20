@@ -1,3 +1,11 @@
+/* Same rule as Button's, and for the same reason: an unpinned trigger drew Lucide's 24px default
+   beside 20px IconButtons in the same bar. */
+.trigger svg {
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
+  flex: none;
+}
+
 .trigger {
   display: inline-flex;
   align-items: center;
@@ -112,9 +120,19 @@
   color: var(--waxwing-danger);
 }
 
+/* The reserved column: present on every row of a menu where any row has a glyph, so the labels
+   share one edge. */
+.iconSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--waxwing-icon-sm);
+  flex: none;
+}
+
 .icon {
-  inline-size: 1.1rem;
-  block-size: 1.1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   flex: none;
 }
 
