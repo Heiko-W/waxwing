@@ -13,6 +13,7 @@ import {
 import { setActiveEngine } from '../sync/engine'
 import { addressBook, contactCard, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
+import { clickButton } from '../test/interact'
 import { ContactsScreen } from './ContactsScreen'
 
 // The photo hook needs a session; not under test here.
@@ -167,7 +168,10 @@ describe('ContactsScreen', () => {
     renderScreen('/contacts/personal')
     await screen.findByRole('option', { name: 'Alice Anderson' })
 
-    await user.click(screen.getByRole('button', { name: 'New contact' }))
+    // Same shape as B46: `New contact` is disabled until `useAddressBooks()` resolves. The wait for
+    // Alice above usually covers it — two liveQueries over one replica — but "usually" is what B46
+    // turned out to mean, and nothing here makes the two resolve in order.
+    await clickButton(user, 'New contact')
     expect(screen.getByRole('heading', { name: 'New contact' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))

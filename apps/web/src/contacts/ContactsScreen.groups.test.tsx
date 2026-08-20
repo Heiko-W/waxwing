@@ -13,6 +13,7 @@ import {
 import { setActiveEngine } from '../sync/engine'
 import { addressBook, contactCard, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
+import { clickButton } from '../test/interact'
 import { ContactsScreen } from './ContactsScreen'
 
 vi.mock('./use-contact-photo', () => ({ useContactPhoto: () => undefined }))
@@ -131,11 +132,22 @@ describe('ContactsScreen groups', () => {
     expect(screen.queryByRole('link', { name: 'Bob Brown' })).not.toBeInTheDocument()
   })
 
+  /*
+   * B46. This test used to click the button the moment `findByRole` returned it — and that button is
+   * `disabled` until `useAddressBooks()` resolves, which on a first render is never immediate: a
+   * Dexie liveQuery starts `undefined` whether or not the database is already seeded. It passed
+   * anyway because `user.click` awaits a sequence of events and the query usually resolved inside
+   * it; under load it did not, the click hit a disabled button, and the browser dropped it in
+   * silence. `clickWhenEnabled` waits for the state the test actually depends on.
+   *
+   * It is the only test in this file that clicks before waiting for anything — the others select
+   * "Team" first, which happens to synchronize them. That is why this one flaked and they did not.
+   */
   it('creates a group through the New-group form (createContactCard enqueue)', async () => {
     const user = userEvent.setup()
     renderScreen('/contacts/personal')
 
-    await user.click(await screen.findByRole('button', { name: 'New group' }))
+    await clickButton(user, 'New group')
     expect(screen.getByRole('heading', { name: 'New group' })).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Group name'), 'Friends')
