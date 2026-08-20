@@ -105,6 +105,15 @@ should say which defect it would have caught, and ideally which one it did.
 **Do not delete a failing test to make the gate green.** If a test is wrong, fix or remove it
 *and say so*. If it is right, the code is wrong.
 
+**A flake is a race you usually win.** Do not click a control the moment a query returns it:
+anything whose `disabled` comes from loaded data — most of this app — is disabled on its first
+render, because a Dexie `liveQuery` starts `undefined` whether or not the database is seeded.
+`findByRole` does not filter by disabled state, and a click on a disabled element is a *silent*
+no-op, so the failure surfaces later as a missing dialog and reads like a broken component. Use
+`clickButton` / `clickWhenEnabled` from `src/test/interact.ts`, which wait for the state the test
+actually depends on. That was B46: one sighting, three green re-runs, recorded as unexplained, and
+two days later the same test again.
+
 ### Where tests live
 
 | | Runner | Sees |
