@@ -11,30 +11,20 @@ import {
 import { revealPasswordForm } from './helpers'
 
 /**
- * A reading-pane action, wherever the bar has put it.
- *
- * The bar shows four actions and hands the rest to the `⋯` menu, and the split is MEASURED at
- * runtime — so a wide pane can keep an action on the bar that a narrow one hides. Asking for the
- * action rather than for a button in a particular place is correct at every width, and stays
- * correct if the primary four are ever re-chosen.
+ * A reading-pane action, wherever the bar has put it. See `bulkAction` in offline.spec.ts for why
+ * this is retried as a whole rather than decided once.
  */
 async function readingAction(page: import('@playwright/test').Page, name: string): Promise<void> {
-  // Wait for the BAR before asking where the action is: `count()` does not wait, so asking while
-  // the pane is still mounting answers 0 for a button that is about to appear — and the fallback
-  // then opens a menu that does not contain the action, because the action is on the bar.
   const trigger = page.getByRole('button', { name: 'More actions', exact: true })
   const onBar = page.getByRole('button', { name, exact: true })
-  await expect(trigger.or(onBar).first()).toBeVisible({ timeout: 15_000 })
-  // `isVisible`, not `count`: a matching node can exist in the DOM while being unreachable — the
-  // overflow menu's own items are `menuitem`, but a stale portal or a hidden pane can still put a
-  // matching `button` in the tree, and `count()` cannot tell the difference. Clicking it then
-  // waits for actionability that never arrives.
-  if (await onBar.first().isVisible()) {
-    await onBar.first().click()
-    return
-  }
-  await trigger.click()
-  await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
+  await expect(async () => {
+    if (await onBar.first().isVisible()) {
+      await onBar.first().click({ timeout: 2_000 })
+      return
+    }
+    await trigger.click({ timeout: 2_000 })
+    await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
 }
 
 /**

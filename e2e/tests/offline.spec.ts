@@ -6,29 +6,27 @@ import { openSettingsSection, revealPasswordForm, setUndoGrace } from './helpers
 /**
  * A bulk-bar action, wherever the bar has put it.
  *
- * The bulk bar shows what fits and hands the rest to a `⋯` menu (its width is measured at runtime,
- * so the split moves with the column). Asking for the action rather than for a button in a
- * particular place is correct at every width.
+ * The bar shows what fits and hands the rest to a `⋯` menu; the split is MEASURED at runtime, so
+ * an action's location is a property of the column width rather than of the code. Asking for the
+ * action and letting the component answer is correct at every width.
  *
- * The wait on the `⋯` trigger is load-bearing, not defensive: `count()` is a snapshot with no
- * waiting in it, so calling it while the bar is still mounting answers 0 for a button that is
- * about to appear — and the fallback then opens a menu that does not contain the action, because
- * the action is on the bar. Waiting for the bar to exist first makes the question answerable.
+ * Wrapped in `toPass` because deciding where it is and acting on that decision are two steps, and
+ * the answer can change between them: a bar that is still mounting reports no button for one that
+ * is about to appear, and a menu opened on a stale answer does not contain the action. One failed
+ * attempt costs a second and re-asks; without this the first wrong guess became a 60s
+ * actionability wait with nothing to report but a timeout.
  */
 async function bulkAction(page: import('@playwright/test').Page, name: string): Promise<void> {
   const trigger = page.getByRole('button', { name: 'More actions for the selection', exact: true })
   const onBar = page.getByRole('button', { name, exact: true })
-  await expect(trigger.or(onBar).first()).toBeVisible({ timeout: 15_000 })
-  // `isVisible`, not `count`: a matching node can exist in the DOM while being unreachable — the
-  // overflow menu's own items are `menuitem`, but a stale portal or a hidden pane can still put a
-  // matching `button` in the tree, and `count()` cannot tell the difference. Clicking it then
-  // waits for actionability that never arrives.
-  if (await onBar.first().isVisible()) {
-    await onBar.first().click()
-    return
-  }
-  await trigger.click()
-  await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
+  await expect(async () => {
+    if (await onBar.first().isVisible()) {
+      await onBar.first().click({ timeout: 2_000 })
+      return
+    }
+    await trigger.click({ timeout: 2_000 })
+    await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
 }
 
 /**
