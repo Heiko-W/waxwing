@@ -15,7 +15,7 @@
  */
 
 import { ChevronLeft, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AccountTrees } from '../../mail/AccountTrees'
@@ -42,8 +42,8 @@ import {
   useRouter,
 } from '../route'
 import { useSession } from '../session/context'
-import { SCREEN_BAR_ID } from './Header'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
+import { useScreenBarSlot } from './ScreenBar'
 import styles from './shell.module.css'
 
 const FOLDER_REGION_ID = 'waxwing-folder-region'
@@ -127,19 +127,10 @@ export function MailScreen() {
   /**
    * On a phone the screen's bar lives in the shell header, not in a strip of its own.
    *
-   * Looked up after mount rather than passed down: the header is a sibling several levels up, and
-   * threading a ref through `AppShell` would make the shell's layout depend on which screen is
-   * mounted. Re-queried when the tier changes, because the slot only exists below 40em — above it
-   * the panes keep their own toolbars, where there is room and where the brand still sits.
+   * This screen holds the slot rather than using `<ScreenBar>` because it has TWO bars and swaps
+   * between them: the list's controls while the list is showing, the way back while a message is.
    */
-  const [screenBarSlot, setScreenBarSlot] = useState<HTMLElement | null>(null)
-  // A LAYOUT effect, so the bar is in its final place before the first paint. With a passive effect
-  // the toolbar rendered once inside the pane and then moved into the header a frame later — a
-  // visible jump on the device, and in tests a node that is already detached by the time anything
-  // clicks it.
-  useLayoutEffect(() => {
-    setScreenBarSlot(tier === 'phone' ? document.getElementById(SCREEN_BAR_ID) : null)
-  }, [tier])
+  const screenBarSlot = useScreenBarSlot()
 
   const drawerCapable = tier !== 'desktop' && !fullScreen
   const [foldersOpen, setFoldersOpen] = useState(false)

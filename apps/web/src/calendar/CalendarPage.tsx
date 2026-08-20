@@ -13,13 +13,17 @@
  */
 
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import type { TFunction } from 'i18next'
+import { Check, ChevronLeft, ChevronRight, Plus, SlidersHorizontal } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
+import { useLayoutTier } from '../app/shell/layout'
+import { ScreenBar } from '../app/shell/ScreenBar'
+import shellStyles from '../app/shell/shell.module.css'
 import { formatDate } from '../i18n/formatters'
-import { Button, Dialog, IconButton, Spinner } from '../ui'
+import { Button, Dialog, IconButton, Menu, Spinner } from '../ui'
 import styles from './calendar.module.css'
 import {
   type CalendarClient,
@@ -46,6 +50,15 @@ import { weekDays } from './week-grid'
 
 type View = 'month' | 'week' | 'agenda'
 
+/** One source for both shapes of the view picker, so the segmented control and the menu cannot drift. */
+const VIEWS = ['month', 'week', 'agenda'] as const satisfies readonly View[]
+
+const VIEW_LABELS: Record<View, (t: TFunction) => string> = {
+  month: (t) => t('calendar.view.month'),
+  week: (t) => t('calendar.view.week'),
+  agenda: (t) => t('calendar.view.agenda'),
+}
+
 export interface CalendarPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
   readonly client?: CalendarClient
@@ -70,6 +83,7 @@ export default function CalendarPage(props: CalendarPageProps) {
   const today = useMemo(() => new Date(todayMs), [todayMs])
 
   const [view, setView] = useState<View>('month')
+  const tier = useLayoutTier()
   const [calendars, setCalendars] = useState<Calendar[]>([])
   /** `{ event }` edits, `{ event: null }` creates on `day`. */
   const [editing, setEditing] = useState<{ event: CalendarEvent | null; day: Date } | null>(null)
@@ -158,7 +172,11 @@ export default function CalendarPage(props: CalendarPageProps) {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
+      {/* The month, the way through it, and the one thing you come here to do — in the shell
+          header on a phone, in its own strip above the grid elsewhere. This screen used to spend
+          three bands before its grid began (61 + 56 + 52 = 169px, a fifth of a 390px phone), the
+          first of them empty apart from the shell's own two buttons. */}
+      <ScreenBar>
         <div className={styles.nav}>
           <IconButton
             label={t('calendar.previousMonth')}
@@ -168,7 +186,12 @@ export default function CalendarPage(props: CalendarPageProps) {
           >
             <ChevronLeft />
           </IconButton>
-          <h1 className={styles.title}>{formatDate(focus, { year: 'numeric', month: 'long' })}</h1>
+          {/* Abbreviated on a phone. "August 2026" wrapped onto two lines inside a 61px header and
+              pushed everything beside it into everything else; "Aug 2026" is the same information
+              in the space there is. */}
+          <h1 className={shellStyles.paneTitle}>
+            {formatDate(focus, { year: 'numeric', month: tier === 'phone' ? 'short' : 'long' })}
+          </h1>
           <IconButton
             label={t('calendar.nextMonth')}
             variant="ghost"
@@ -177,40 +200,72 @@ export default function CalendarPage(props: CalendarPageProps) {
           >
             <ChevronRight />
           </IconButton>
-          <Button variant="ghost" size="sm" onClick={() => goto(today)}>
-            {t('calendar.today')}
-          </Button>
+          {/* Today is a button where there is room and a menu entry where there is not — see the
+              view picker below, which it joins. */}
+          {tier !== 'phone' && (
+            <Button variant="ghost" size="sm" onClick={() => goto(today)}>
+              {t('calendar.today')}
+            </Button>
+          )}
         </div>
 
-        {/* No `role="group"`: both buttons carry `aria-pressed` and name themselves, so a group
-            role would add a wrapper announcement without adding information. */}
-        <div className={styles.views}>
-          <Button
-            variant={view === 'month' ? 'secondary' : 'ghost'}
-            size="sm"
-            aria-pressed={view === 'month'}
-            onClick={() => setView('month')}
-          >
-            {t('calendar.view.month')}
-          </Button>
-          <Button
-            variant={view === 'week' ? 'secondary' : 'ghost'}
-            size="sm"
-            aria-pressed={view === 'week'}
-            onClick={() => setView('week')}
-          >
-            {t('calendar.view.week')}
-          </Button>
-          <Button
-            variant={view === 'agenda' ? 'secondary' : 'ghost'}
-            size="sm"
-            aria-pressed={view === 'agenda'}
-            onClick={() => setView('agenda')}
-          >
-            {t('calendar.view.agenda')}
-          </Button>
-        </div>
-      </header>
+        {/*
+          A segmented control where there is room for one, a menu where there is not.
+
+          On a phone the header carries the month, both arrows, Today, this control, the new-event
+          button and the shell's own two — 390px does not hold that, and what gave way was the
+          month name, which is the one thing the screen has to state. Mail answers the same
+          pressure the same way: its view options live behind one button below 40em.
+
+          No `role="group"` on the segmented form: every button carries `aria-pressed` and names
+          itself, so a group role would add a wrapper announcement without adding information.
+        */}
+        {tier === 'phone' ? (
+          <Menu
+            triggerLabel={t('calendar.viewLabel')}
+            trigger={<SlidersHorizontal aria-hidden="true" />}
+            triggerVariant="toolbar"
+            align="end"
+            items={[
+              { id: 'today', label: t('calendar.today'), onSelect: () => goto(today) },
+              ...VIEWS.map((id) => ({
+                id,
+                label: VIEW_LABELS[id](t),
+                onSelect: () => setView(id),
+                // A tick on the current one: the trigger is an icon here, so unlike the segmented
+                // control it cannot show which view is on.
+                ...(view === id ? { icon: Check } : {}),
+              })),
+            ]}
+          />
+        ) : (
+          <div className={styles.views}>
+            {VIEWS.map((id) => (
+              <Button
+                key={id}
+                variant={view === id ? 'secondary' : 'ghost'}
+                size="sm"
+                aria-pressed={view === id}
+                onClick={() => setView(id)}
+              >
+                {VIEW_LABELS[id](t)}
+              </Button>
+            ))}
+          </div>
+        )}
+        {/* The primary action, which this screen had none of on any viewport: a day cell opens the
+            dialog when clicked, but nothing said so. Mail has its compose button and Contacts its
+            `+`; the calendar was the one screen you could look at without being told what it is
+            for. It creates on the day in focus, which is what Apple Calendar's does. */}
+        <IconButton
+          label={t('calendar.newEvent')}
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditing({ event: null, day: focus })}
+        >
+          <Plus />
+        </IconButton>
+      </ScreenBar>
 
       {failed && (
         <p className={styles.empty} role="alert">

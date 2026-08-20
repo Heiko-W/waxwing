@@ -1473,6 +1473,7 @@
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
+    "newEvent": "New event",
     "nextMonth": "Next month",
     "viewLabel": "Calendar view",
     "view": {
@@ -1511,7 +1512,7 @@
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",
     "newFolder": "New folder",
-    "newFolderPlaceholder": "Folder name",
+    "cancel": "Cancel",
     "download": "Download {{name}}",
     "delete": "Delete {{name}}",
     "error": {

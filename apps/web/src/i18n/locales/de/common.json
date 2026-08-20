@@ -1473,6 +1473,7 @@
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",
+    "newEvent": "Neuer Termin",
     "nextMonth": "Nächster Monat",
     "viewLabel": "Kalenderansicht",
     "view": {
@@ -1511,7 +1512,7 @@
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
     "newFolder": "Neuer Ordner",
-    "newFolderPlaceholder": "Ordnername",
+    "cancel": "Abbrechen",
     "download": "{{name}} herunterladen",
     "delete": "{{name}} löschen",
     "error": {

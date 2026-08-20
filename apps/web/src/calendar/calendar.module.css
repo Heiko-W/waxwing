@@ -1,74 +1,124 @@
 /* The calendar screen (M5.6, FR-CAL-01). Tokens only, so both themes and all six accent palettes
    follow without a second definition. */
 
+/* Fills its column. The grid used to end wherever six rows of cells happened to end — measured on
+   a 1440x900 desktop that left 220px of empty page below it, a quarter of the window, on a screen
+   whose whole job is to show a shape. Every calendar people know fills the space it is given. */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-4);
-  padding: var(--waxwing-space-4);
+  padding-inline: var(--waxwing-space-5);
+  padding-block: var(--waxwing-space-4);
   min-block-size: 0;
-}
-
-.header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--waxwing-space-3);
+  block-size: 100%;
 }
 
 .nav {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
+  flex: 1;
+  min-inline-size: 0;
 }
 
-.title {
-  margin: 0;
-  font-size: var(--waxwing-text-xl);
-  font-weight: var(--waxwing-weight-medium);
-}
-
+/*
+ * A segmented control, not three buttons that happen to sit together.
+ *
+ * Only the active one had a fill and a border before, so the other two read as plain text beside a
+ * single button — the shape said "one control and two links" when it means "one of three". Apple's
+ * is a tinted track with the selection lifted out of it; the track is what makes the set legible
+ * as a set.
+ */
 .views {
-  display: flex;
-  gap: var(--waxwing-space-1);
+  display: inline-flex;
+  gap: var(--waxwing-space-hair);
+  padding: var(--waxwing-space-hair);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface-2);
+  flex: 0 0 auto;
+}
+
+.views button {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.views button[aria-pressed="true"] {
+  background-color: var(--waxwing-surface);
+  border-color: var(--waxwing-border);
+  box-shadow: var(--waxwing-shadow-1);
 }
 
 .month {
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-1);
+  gap: var(--waxwing-space-2);
   min-block-size: 0;
+  flex: 1;
 }
 
 .weekdays,
 .grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: var(--waxwing-space-hair);
+}
+
+/*
+ * ONE grid with hairlines, not 42 rounded tiles with gaps.
+ *
+ * The tiles were the loudest thing on the screen: six rows of individually framed, individually
+ * rounded cards, so a week did not read as a row and a month did not read as a block. Every
+ * calendar people already know — Apple's, and the paper ones it comes from — draws rules between
+ * days rather than boxes around them. The outer frame belongs to the grid; each cell contributes
+ * only its top and left rule, which is what keeps them a single hairline wide where they meet.
+ */
+.grid {
+  flex: 1;
+  grid-auto-rows: 1fr;
+  min-block-size: 0;
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  overflow: hidden;
+  background-color: var(--waxwing-surface);
 }
 
 .weekday {
   padding-block: var(--waxwing-space-1);
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-xs);
-  text-align: center;
+  font-weight: var(--waxwing-weight-medium);
+  /* Left, over a cell whose date sits left. Centred headings above left-aligned numbers was two
+     alignment axes in one table. */
+  text-align: start;
+  /* Aligned to where the date MARK starts, not to the cell edge: the cell pads by space-1 and the
+     mark sits flush inside that, so anything wider puts the weekday and its column out of line. */
+  padding-inline-start: var(--waxwing-space-1);
 }
 
 .day {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
-  /* Tall enough for the date plus three chips; the six-row grid keeps the page height stable. */
+  /* Tall enough for the date plus three chips; `grid-auto-rows: 1fr` grows the rows past it. */
   min-block-size: 5.5rem;
   padding: var(--waxwing-space-1);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-md);
-  background: var(--waxwing-surface);
+  border-block-start: 1px solid var(--waxwing-border);
+  border-inline-start: 1px solid var(--waxwing-border);
+  background: transparent;
   color: inherit;
   font: inherit;
   text-align: start;
   cursor: pointer;
+}
+
+/* The frame supplies the outer edges, so the first row and first column keep theirs off. */
+.grid > .day:nth-child(-n + 7) {
+  border-block-start: none;
+}
+
+.grid > .day:nth-child(7n + 1) {
+  border-inline-start: none;
 }
 
 @media (hover: hover) {
@@ -77,22 +127,40 @@
   }
 }
 
-/* Days of the neighbouring months: present for context, quieter than the month being read. */
+/* Days of the neighbouring months: present for context, quieter than the month being read. The
+   tint is enough now that the cells share one grid — it used to be a tint AND a frame. */
 .outside {
   color: var(--waxwing-text-muted);
-  background: var(--waxwing-surface-2);
+  background: var(--waxwing-surface-sunken);
 }
 
-/* Named alongside its hover state so source order cannot decide which wins. */
-.today,
-.today:hover {
-  border-color: var(--waxwing-accent);
-  box-shadow: inset 0 0 0 1px var(--waxwing-accent);
-}
-
+/*
+ * Today marks the DATE, not the cell.
+ *
+ * A ring around the whole cell is the shape this app uses for focus and for selection, so today
+ * read as "you have selected this" on a grid where nothing was selected. Apple puts the mark on
+ * the number — which is also the only part of the cell that means "which day".
+ */
 .dayNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* `align-self`, or the flex column stretches the mark into a full-width pill instead of the
+     circle it is meant to be — and stretches every other date into a centred one besides. */
+  align-self: flex-start;
+  min-inline-size: 1.5rem;
+  min-block-size: 1.5rem;
+  padding-inline: var(--waxwing-space-1);
+  border-radius: var(--waxwing-radius-full);
   font-size: var(--waxwing-text-sm);
   font-weight: var(--waxwing-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.today .dayNumber {
+  background-color: var(--waxwing-accent);
+  color: var(--waxwing-accent-contrast);
+  font-weight: var(--waxwing-weight-semibold);
 }
 
 .dayEvents {

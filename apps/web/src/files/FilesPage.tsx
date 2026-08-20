@@ -17,14 +17,25 @@
 
 import type { FileNode } from '@waxwing/jmap'
 import { fileNodeNameProblem } from '@waxwing/jmap'
-import { Download, Eye, File as FileIcon, Folder, Trash2, Upload, Users } from 'lucide-react'
+import {
+  Download,
+  Eye,
+  File as FileIcon,
+  Folder,
+  FolderPlus,
+  Trash2,
+  Upload,
+  Users,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
+import { ScreenBar } from '../app/shell/ScreenBar'
+import shellStyles from '../app/shell/shell.module.css'
 import { formatBytes } from '../i18n/formatters'
 import { isPreviewable, previewSurface } from '../mail/preview-policy'
 import { safeDownloadName } from '../mail/safe-filename'
-import { Button, IconButton, Spinner, TextInput, useToast } from '../ui'
+import { Button, Dialog, IconButton, Spinner, TextInput, useToast } from '../ui'
 import styles from './files.module.css'
 import {
   currentUserPrincipalId,
@@ -64,6 +75,14 @@ export default function FilesPage(props: FilesPageProps) {
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const [newFolder, setNewFolder] = useState('')
+  /**
+   * The new-folder field is behind its button now.
+   *
+   * It used to sit open permanently: a 420px text input above a button that stayed disabled until
+   * something was typed into it, which is a form that looks broken while it waits. Mail asks for a
+   * folder name in a dialog; this asks the same question the same way.
+   */
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false)
   // The open preview, or null. Holds the object URL so the render stays synchronous.
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
   // The node whose sharing is being edited, or null.
@@ -177,67 +196,102 @@ export default function FilesPage(props: FilesPageProps) {
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
+      {/* Where you are and what you can do here, in the shell header on a phone and in its own
+          strip elsewhere — the arrangement mail has had since the first audit. This screen used to
+          state its location in a 12px breadcrumb and nothing else: it was the one screen with no
+          heading at all. */}
+      <ScreenBar>
+        {/* The folder you are IN is the heading; the ones above it are the way back.
+            It used to be a disabled ghost button at the end of a 12px breadcrumb — the only screen
+            in the app with no heading at all, while mail, contacts and calendar all state where
+            you are in the same 16px semibold. */}
         <nav className={styles.crumbs} aria-label={t('files.breadcrumb')}>
-          {path.map((crumb, index) => (
+          {path.slice(0, -1).map((crumb, index) => (
             <span key={crumb.id ?? 'root'} className={styles.crumb}>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={index === path.length - 1}
-                onClick={() => setPath(path.slice(0, index + 1))}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setPath(path.slice(0, index + 1))}>
                 {crumb.id === null ? t('files.root') : crumb.name}
               </Button>
-              {index < path.length - 1 && <span aria-hidden="true">/</span>}
+              <span aria-hidden="true">/</span>
             </span>
           ))}
         </nav>
+        <h1 className={shellStyles.paneTitle}>
+          {here === null ? t('files.root') : (path.at(-1)?.name ?? t('files.title'))}
+        </h1>
+        <IconButton
+          label={t('files.newFolder')}
+          variant="ghost"
+          disabled={busy}
+          onClick={() => setFolderDialogOpen(true)}
+        >
+          <FolderPlus />
+        </IconButton>
+        <IconButton
+          label={t('files.upload')}
+          variant="ghost"
+          disabled={busy}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload />
+        </IconButton>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className={styles.fileInput}
+          aria-label={t('files.upload')}
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            event.target.value = ''
+            if (file === undefined) return
+            if (!checkName(file.name)) return
+            void run(() => client.upload(file, here))
+          }}
+        />
+      </ScreenBar>
 
-        <div className={styles.actions}>
+      {folderDialogOpen && (
+        <Dialog
+          open
+          title={t('files.newFolder')}
+          onClose={() => {
+            setFolderDialogOpen(false)
+            setNewFolder('')
+          }}
+          footer={
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setFolderDialogOpen(false)
+                  setNewFolder('')
+                }}
+              >
+                {t('files.cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                disabled={busy || newFolder.trim() === ''}
+                onClick={() => {
+                  const name = newFolder.trim()
+                  if (!checkName(name)) return
+                  setNewFolder('')
+                  setFolderDialogOpen(false)
+                  void run(() => client.createFolder(name, here))
+                }}
+              >
+                {t('files.newFolder')}
+              </Button>
+            </>
+          }
+        >
           <TextInput
+            autoFocus
             value={newFolder}
-            placeholder={t('files.newFolderPlaceholder')}
             aria-label={t('files.newFolder')}
             onChange={(event) => setNewFolder(event.target.value)}
           />
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy || newFolder.trim() === ''}
-            onClick={() => {
-              if (!checkName(newFolder.trim())) return
-              const name = newFolder.trim()
-              setNewFolder('')
-              void run(() => client.createFolder(name, here))
-            }}
-          >
-            {t('files.newFolder')}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={busy}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload aria-hidden="true" />
-            {t('files.upload')}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className={styles.fileInput}
-            aria-label={t('files.upload')}
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              event.target.value = ''
-              if (file === undefined) return
-              if (!checkName(file.name)) return
-              void run(() => client.upload(file, here))
-            }}
-          />
-        </div>
-      </header>
+        </Dialog>
+      )}
 
       {failed && (
         <p className={styles.empty} role="alert">
