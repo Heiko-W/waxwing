@@ -11,20 +11,43 @@ import {
 import { revealPasswordForm } from './helpers'
 
 /**
- * Flag, wherever the bar has put it.
+ * A reading-pane action, wherever the bar has put it.
  *
- * The reading bar shows four actions and hands the rest to the `⋯` menu, so Flag is normally in
- * the menu — but the split is measured at runtime, and a very wide pane could keep it on the bar.
- * Asking for the ACTION rather than for a button in a particular place survives either.
+ * The bar shows four actions and hands the rest to the `⋯` menu, and the split is MEASURED at
+ * runtime — so a wide pane can keep an action on the bar that a narrow one hides. Asking for the
+ * action rather than for a button in a particular place is correct at every width, and stays
+ * correct if the primary four are ever re-chosen.
  */
-async function flagFromOverflow(page: import('@playwright/test').Page): Promise<void> {
-  const onBar = page.getByRole('button', { name: 'Flag', exact: true })
+async function readingAction(page: import('@playwright/test').Page, name: string): Promise<void> {
+  const onBar = page.getByRole('button', { name, exact: true })
   if ((await onBar.count()) > 0) {
     await onBar.click()
     return
   }
   await page.getByRole('button', { name: 'More actions', exact: true }).click()
-  await page.getByRole('menuitem', { name: /^Flag/ }).click()
+  await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
+}
+
+/**
+ * Wait for an action's label to read `name` — which is how a toggle reports that it took.
+ *
+ * Retried as a whole rather than asserted once: reading a menu item means opening the menu, and
+ * the state may not have landed the first time it is opened. Escape closes it between attempts so
+ * the next `toPass` iteration starts from the same place.
+ */
+async function expectReadingAction(
+  page: import('@playwright/test').Page,
+  name: string,
+  timeout: number,
+): Promise<void> {
+  await expect(async () => {
+    if ((await page.getByRole('button', { name, exact: true }).count()) > 0) return
+    await page.getByRole('button', { name: 'More actions', exact: true }).click()
+    await expect(page.getByRole('menuitem', { name: new RegExp(`^${name}`) })).toBeVisible({
+      timeout: 1_000,
+    })
+    await page.keyboard.press('Escape')
+  }).toPass({ timeout })
 }
 
 // M1.9 read E2E suite — the REAL production bundle against the live Stalwart fixture (see
@@ -170,13 +193,11 @@ test.describe('M1.9 read suite', () => {
   test('flags and archives a message from the reading action bar', async ({ page }) => {
     await login(page)
     await page.getByText(READ_SUBJECTS.plain).click()
-    await flagFromOverflow(page)
+    await readingAction(page, 'Flag')
     // The flag stuck (optimistic apply): the control flips to Unflag.
-    await expect(page.getByRole('button', { name: 'Unflag', exact: true })).toBeVisible({
-      timeout: 15_000,
-    })
+    await expectReadingAction(page, 'Unflag', 15_000)
     // Archiving moves it out of the inbox — the list row disappears (live).
-    await page.getByRole('button', { name: 'Archive', exact: true }).click()
+    await readingAction(page, 'Archive')
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0, {
       timeout: 15_000,
     })
@@ -231,11 +252,9 @@ test.describe('M1.9 read suite', () => {
     // Open the same message in both tabs, then flag it in A.
     await page.getByText(READ_SUBJECTS.plain).click()
     await b.getByText(READ_SUBJECTS.plain).click()
-    await flagFromOverflow(page)
+    await readingAction(page, 'Flag')
     // B reflects the change through the shared Dexie replica (cross-tab liveQuery).
-    await expect(b.getByRole('button', { name: 'Unflag', exact: true })).toBeVisible({
-      timeout: 20_000,
-    })
+    await expectReadingAction(b, 'Unflag', 20_000)
   })
 
   test('perf smoke: cached open and folder switch (records numbers)', async ({ page }) => {
