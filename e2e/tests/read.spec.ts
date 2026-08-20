@@ -10,6 +10,23 @@ import {
 } from '../stalwart/seed-read.mjs'
 import { revealPasswordForm } from './helpers'
 
+/**
+ * Flag, wherever the bar has put it.
+ *
+ * The reading bar shows four actions and hands the rest to the `⋯` menu, so Flag is normally in
+ * the menu — but the split is measured at runtime, and a very wide pane could keep it on the bar.
+ * Asking for the ACTION rather than for a button in a particular place survives either.
+ */
+async function flagFromOverflow(page: import('@playwright/test').Page): Promise<void> {
+  const onBar = page.getByRole('button', { name: 'Flag', exact: true })
+  if ((await onBar.count()) > 0) {
+    await onBar.click()
+    return
+  }
+  await page.getByRole('button', { name: 'More actions', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^Flag/ }).click()
+}
+
 // M1.9 read E2E suite — the REAL production bundle against the live Stalwart fixture (see
 // playwright.read.config.ts + read.setup.mjs). It proves the Phase-2 "read" story end to end:
 // Basic login, folder navigation, reading plain / HTML / threaded mail in the sandboxed frame,
@@ -153,7 +170,7 @@ test.describe('M1.9 read suite', () => {
   test('flags and archives a message from the reading action bar', async ({ page }) => {
     await login(page)
     await page.getByText(READ_SUBJECTS.plain).click()
-    await page.getByRole('button', { name: 'Flag', exact: true }).click()
+    await flagFromOverflow(page)
     // The flag stuck (optimistic apply): the control flips to Unflag.
     await expect(page.getByRole('button', { name: 'Unflag', exact: true })).toBeVisible({
       timeout: 15_000,
@@ -214,7 +231,7 @@ test.describe('M1.9 read suite', () => {
     // Open the same message in both tabs, then flag it in A.
     await page.getByText(READ_SUBJECTS.plain).click()
     await b.getByText(READ_SUBJECTS.plain).click()
-    await page.getByRole('button', { name: 'Flag', exact: true }).click()
+    await flagFromOverflow(page)
     // B reflects the change through the shared Dexie replica (cross-tab liveQuery).
     await expect(b.getByRole('button', { name: 'Unflag', exact: true })).toBeVisible({
       timeout: 20_000,
@@ -293,7 +310,7 @@ test.describe('M3.9 reading polish', () => {
     await expect(article).toContainText(READ_PHISHING.realAddress)
     await expect(article).toContainText(READ_PHISHING.displayName)
     // `From: "security@bank.test" <mallory@evil.tld>` — the name is impersonating an address.
-    await expect(article).toContainText(/not the sender's real address/i)
+    await expect(article).toContainText(/not the sender’s real address/i)
   })
 
   test('a link whose text names another host is interrupted; Cancel opens nothing', async ({

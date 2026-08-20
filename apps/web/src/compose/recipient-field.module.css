@@ -221,8 +221,14 @@
  *
  * `Button variant="ghost"` is the answer to both: unmistakably pressable, unmistakably not a link,
  * and 34px by construction. Only the placement stays here.
+ *
+ * `min-inline-size` was added when the labels were shortened from "Show Cc field" to "Cc": the
+ * button's height comes from `Button`, but its WIDTH came from the text, and two characters plus
+ * padding measured 32.7px — under the same floor this rule's history is about, in the other axis.
+ * Caught by `target-size.spec.ts`, which is exactly what it is for.
  */
 .fieldToggle {
+  min-inline-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-2);
 }
 

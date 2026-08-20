@@ -367,10 +367,12 @@ export function ComposerWindow({
         )}
         <div className={styles.titleBar}>
           <span id={titleId} className={styles.title}>
-            {/* "New message", not "(No subject)". The window is titled by what it IS until the
-                writer gives it a subject; a parenthesised negation is what a LIST calls a message
-                that was sent without one, which is why `compose.noSubject` still exists and the
-                outbox still uses it. */}
+            {/* "Draft", not "(No subject)". The window is titled by what it IS until the writer
+                gives it a subject; a parenthesised negation is what a LIST calls a message that was
+                sent without one, which is why `compose.noSubject` still exists and the outbox still
+                uses it. Not "New message" either — that is the compose BUTTON's name, and two
+                controls answering to one name on one screen is ambiguous to anything reading by
+                accessible name (a strict-mode E2E locator found it first). */}
             {draft.subject || t('compose.untitledWindow')}
           </span>
           <div className={styles.titleActions}>
