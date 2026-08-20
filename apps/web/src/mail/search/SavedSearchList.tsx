@@ -53,7 +53,9 @@ export function SavedSearchList() {
               onClick={() => open(saved)}
             >
               <Search aria-hidden="true" className={styles.savedIcon} />
-              <span className={styles.savedName}>{saved.name}</span>
+              <span className={styles.savedName} title={saved.name}>
+                {saved.name}
+              </span>
             </button>
             <IconButton
               label={t('search.saved.forget', { name: saved.name })}

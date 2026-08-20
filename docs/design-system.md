@@ -134,6 +134,11 @@ from this scale; no arbitrary pixel spacing.
   the value sets `--waxwing-text-sm` itself. No static check covers this one: telling "inherits
   from a container that sets it" apart from "inherits from the document" needs the cascade, not a
   regex.
+- **A truncated value carries a `title` only where it appears nowhere else.** Folder, label,
+  address-book and saved-search names live in one place, so cutting them loses information the
+  reader cannot recover; a subject or a sender is readable in the pane one click away. `title` is a
+  poor affordance (no keyboard, nothing on touch), which is why it is used where it is the only one
+  rather than everywhere text is cut.
 - **Section labels are a component, not a rule to copy.** `<SectionLabel>` (`ui/SectionLabel.tsx`)
   is the heading above a group of controls in a panel or dialog: `xs`, semibold, uppercase,
   `tracking-caps`, muted, no margin of its own.

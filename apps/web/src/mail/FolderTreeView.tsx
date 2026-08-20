@@ -267,7 +267,9 @@ export function FolderTreeView({
                 <span className={styles.chevron} aria-hidden="true" />
               )}
               <Icon aria-hidden="true" className={styles.icon} />
-              <span className={styles.label}>{folderDisplayName(mailbox, t)}</span>
+              <span className={styles.label} title={folderDisplayName(mailbox, t)}>
+                {folderDisplayName(mailbox, t)}
+              </span>
               {isPinned && (
                 // The pin glyph is decorative; the state is announced once, on the row itself.
                 <span className={styles.pin}>

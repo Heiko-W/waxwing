@@ -12,27 +12,10 @@
  */
 
 import { CloudOff, Loader2, TriangleAlert, WifiOff } from 'lucide-react'
-import { useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useEngineStatus } from '../../sync/engine'
+import { useOnline } from '../use-online'
 import styles from './shell.module.css'
-
-function subscribeOnline(onChange: () => void): () => void {
-  window.addEventListener('online', onChange)
-  window.addEventListener('offline', onChange)
-  return () => {
-    window.removeEventListener('online', onChange)
-    window.removeEventListener('offline', onChange)
-  }
-}
-
-function useOnline(): boolean {
-  return useSyncExternalStore(
-    subscribeOnline,
-    () => navigator.onLine,
-    () => true,
-  )
-}
 
 type Alert = 'offline' | 'error' | 'stuck' | null
 

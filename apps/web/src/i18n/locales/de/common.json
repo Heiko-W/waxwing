@@ -404,7 +404,7 @@
         "loadFailed": "Die Filter konnten nicht geladen werden.",
         "invalidSieve": "Der Server hat das Skript als ungültig abgelehnt. Ihre Regeln wurden nicht gespeichert.",
         "tooLarge": "Das Skript ist für diesen Server zu groß.",
-        "offline": "Filter lassen sich nur online ändern.",
+        "offline": "Sie sind offline. Filter lassen sich nur mit Verbindung ändern.",
         "rejected": "Der Server hat das Speichern der Filter abgelehnt.",
         "generic": "Die Filter konnten nicht gespeichert werden."
       }
@@ -1471,6 +1471,7 @@
     }
   },
   "calendar": {
+    "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",
@@ -1507,6 +1508,7 @@
     }
   },
   "files": {
+    "offline": "Sie sind offline. Dateien lassen sich nur mit Verbindung ändern.",
     "title": "Dateien",
     "root": "Dateien",
     "breadcrumb": "Ordnerpfad",

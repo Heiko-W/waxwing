@@ -404,7 +404,7 @@
         "loadFailed": "Filters could not be loaded.",
         "invalidSieve": "The server rejected the script as invalid. Your rules were not saved.",
         "tooLarge": "The script is too large for this server.",
-        "offline": "Filters can only be changed while online.",
+        "offline": "You are offline. Filters can only be changed while connected.",
         "rejected": "The server declined to save the filters.",
         "generic": "The filters could not be saved."
       }
@@ -1471,6 +1471,7 @@
     }
   },
   "calendar": {
+    "offline": "You are offline. Events can only be created while connected.",
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
@@ -1507,6 +1508,7 @@
     }
   },
   "files": {
+    "offline": "You are offline. Files can only be changed while connected.",
     "title": "Files",
     "root": "Files",
     "breadcrumb": "Folder path",

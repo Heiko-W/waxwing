@@ -30,6 +30,7 @@ import { useSessionOptional } from '../app/session/context'
 import { useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
+import { useOnline } from '../app/use-online'
 import { formatDate } from '../i18n/formatters'
 import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from '../ui'
 import styles from './calendar.module.css'
@@ -93,6 +94,13 @@ export default function CalendarPage(props: CalendarPageProps) {
   const [view, setView] = useState<View>('month')
   const tier = useLayoutTier()
   const { toast } = useToast()
+  /*
+   * This screen has no replica: every control on it is an online-only control. Without this check
+   * the new-event button stayed enabled offline, the write failed, and the reader was told the
+   * calendar could not be LOADED. Settings has gated its writes this way since M3.5; Calendar and
+   * Files were the two screens that never did.
+   */
+  const online = useOnline()
   const [calendars, setCalendars] = useState<Calendar[]>([])
   /** `{ event }` edits, `{ event: null }` creates on `day`. */
   const [editing, setEditing] = useState<{ event: CalendarEvent | null; day: Date } | null>(null)
@@ -278,6 +286,7 @@ export default function CalendarPage(props: CalendarPageProps) {
           label={t('calendar.newEvent')}
           variant="ghost"
           size="sm"
+          unavailableReason={online ? undefined : t('calendar.offline')}
           onClick={() => setEditing({ event: null, day: focus })}
         >
           <Plus />

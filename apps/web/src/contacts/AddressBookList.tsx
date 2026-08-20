@@ -100,7 +100,9 @@ function AddressBookItem({
             the folder you were IN was the only one whose name got cut. A book's name is the thing
             being chosen; a badge describes it and can wait for the second line. */}
         <span className={styles.bookText}>
-          <span className={styles.bookName}>{book.name}</span>
+          <span className={styles.bookName} title={book.name}>
+            {book.name}
+          </span>
           {(book.isDefault || isShared(book) || readOnly) && (
             <span className={styles.bookMarkers}>
               {book.isDefault && <Badge tone="neutral">{t('contacts.books.default')}</Badge>}

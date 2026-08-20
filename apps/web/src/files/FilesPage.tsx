@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
+import { useOnline } from '../app/use-online'
 import { formatBytes } from '../i18n/formatters'
 import { isPreviewable, previewSurface } from '../mail/preview-policy'
 import { safeDownloadName } from '../mail/safe-filename'
@@ -85,6 +86,8 @@ export default function FilesPage(props: FilesPageProps) {
    * folder name in a dialog; this asks the same question the same way.
    */
   const [folderDialogOpen, setFolderDialogOpen] = useState(false)
+  /** No replica here either — see the note in CalendarPage. */
+  const online = useOnline()
   // The open preview, or null. Holds the object URL so the render stays synchronous.
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
   // The node whose sharing is being edited, or null.
@@ -224,6 +227,7 @@ export default function FilesPage(props: FilesPageProps) {
           label={t('files.newFolder')}
           variant="ghost"
           disabled={busy}
+          unavailableReason={online ? undefined : t('files.offline')}
           onClick={() => setFolderDialogOpen(true)}
         >
           <FolderPlus />
@@ -232,6 +236,7 @@ export default function FilesPage(props: FilesPageProps) {
           label={t('files.upload')}
           variant="ghost"
           disabled={busy}
+          unavailableReason={online ? undefined : t('files.offline')}
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload />

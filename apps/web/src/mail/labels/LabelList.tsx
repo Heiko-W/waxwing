@@ -111,7 +111,10 @@ export function LabelList({
             }}
           >
             <LabelSwatch color={label.color} size="sm" />
-            <span className={`${styles.label}${label.discovered ? ` ${styles.discovered}` : ''}`}>
+            <span
+              className={`${styles.label}${label.discovered ? ` ${styles.discovered}` : ''}`}
+              title={label.name}
+            >
               {label.name}
             </span>
             {label.unread > 0 && (
