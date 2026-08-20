@@ -9,14 +9,21 @@ import { openSettingsSection, revealPasswordForm, setUndoGrace } from './helpers
  * The bulk bar shows what fits and hands the rest to a `⋯` menu (its width is measured at runtime,
  * so the split moves with the column). Asking for the action rather than for a button in a
  * particular place is correct at every width.
+ *
+ * The wait on the `⋯` trigger is load-bearing, not defensive: `count()` is a snapshot with no
+ * waiting in it, so calling it while the bar is still mounting answers 0 for a button that is
+ * about to appear — and the fallback then opens a menu that does not contain the action, because
+ * the action is on the bar. Waiting for the bar to exist first makes the question answerable.
  */
 async function bulkAction(page: import('@playwright/test').Page, name: string): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'More actions for the selection', exact: true })
   const onBar = page.getByRole('button', { name, exact: true })
+  await expect(trigger.or(onBar).first()).toBeVisible({ timeout: 15_000 })
   if ((await onBar.count()) > 0) {
     await onBar.click()
     return
   }
-  await page.getByRole('button', { name: 'More actions for the selection', exact: true }).click()
+  await trigger.click()
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
 }
 

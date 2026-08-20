@@ -19,12 +19,17 @@ import { revealPasswordForm } from './helpers'
  * correct if the primary four are ever re-chosen.
  */
 async function readingAction(page: import('@playwright/test').Page, name: string): Promise<void> {
+  // Wait for the BAR before asking where the action is: `count()` does not wait, so asking while
+  // the pane is still mounting answers 0 for a button that is about to appear — and the fallback
+  // then opens a menu that does not contain the action, because the action is on the bar.
+  const trigger = page.getByRole('button', { name: 'More actions', exact: true })
   const onBar = page.getByRole('button', { name, exact: true })
+  await expect(trigger.or(onBar).first()).toBeVisible({ timeout: 15_000 })
   if ((await onBar.count()) > 0) {
     await onBar.click()
     return
   }
-  await page.getByRole('button', { name: 'More actions', exact: true }).click()
+  await trigger.click()
   await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click()
 }
 
