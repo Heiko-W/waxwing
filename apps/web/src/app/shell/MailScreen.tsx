@@ -323,12 +323,21 @@ export function MailScreen() {
     <SplitPane
       orientation={layout.splitOrientation}
       label={t('shell.list.resize')}
-      // 420, not 360. The list column carries the search field, the folder title and the view
-      // toggle; at 360 px those were competing for the width of a phone while ~930 px of header sat
-      // empty beside them. Widening the column is the half of that imbalance worth fixing here —
-      // moving search into the shell header would put a mail-only control on the Contacts and
-      // Settings screens too.
-      defaultPrimarySize={420}
+      /*
+       * 420 on a desktop, 340 on a tablet.
+       *
+       * The desktop number is the first audit's answer to A5: the column carries the search field,
+       * the folder title and the view toggle, and at 360px those competed for the width of a phone
+       * while ~930px of header sat empty beside them.
+       *
+       * A tablet has no such spare width, and applying the desktop number there left the READING
+       * pane with 318px of an 834px screen — measured, its placeholder sentence wrapped onto two
+       * lines, which is a pane too narrow to read a message in but wide enough to cost the list
+       * the room. iPad Mail runs roughly 320/500 in portrait for the same reason. This is the
+       * split that makes both halves usable rather than the one that makes the list comfortable
+       * and the other half decorative.
+       */
+      defaultPrimarySize={tier === 'tablet' ? 340 : 420}
       minPrimarySize={260}
       maxPrimarySize={640}
     >
