@@ -119,8 +119,22 @@ from this scale; no arbitrary pixel spacing.
 - Sans stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, …`.
   Mono stack: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, …`.
 - Size scale: `--waxwing-text-xs` .75 · `-sm` .875 · `-base` 1 · `-lg` 1.125 · `-xl` 1.375 ·
-  `-2xl` 1.75 (rem). Line-heights: `tight` 1.2 · `normal` 1.5 · `relaxed` 1.7. Weights:
-  regular 400 · medium 500 · semibold 600 · bold 700.
+  `-2xl` 1.75 (rem). Line-heights: `tight` 1.2 · `snug` 1.35 · `normal` 1.5 · `relaxed` 1.7.
+  Weights: regular 400 · medium 500 · semibold 600 · bold 700.
+- **Display sizes carry their own leading and tracking.** Every `xl`/`2xl` rule sets
+  `--waxwing-leading-tight` and `--waxwing-tracking-tight`; `display-type.css.test.ts` enforces it,
+  with an exemption-plus-reason for glyphs that are sized but not set in lines.
+- **A row's primary value states its own size.** `global.css` puts 1rem on the document, so a rule
+  that styles everything about a line except its size inherits `base` — and `base` is a step the
+  scale otherwise reserves for body copy. That is how a file name, an attachment name, an event
+  title and an outbox subject each ended up one step LARGER than the metadata beside them, and a
+  step apart from the same value one screen over. Where the containing row does not set a size,
+  the value sets `--waxwing-text-sm` itself. No static check covers this one: telling "inherits
+  from a container that sets it" apart from "inherits from the document" needs the cascade, not a
+  regex.
+- **Section labels are a component, not a rule to copy.** `<SectionLabel>` (`ui/SectionLabel.tsx`)
+  is the heading above a group of controls in a panel or dialog: `xs`, semibold, uppercase,
+  `tracking-caps`, muted, no margin of its own.
 
 ### 2.6 Interaction & motion
 

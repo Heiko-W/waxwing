@@ -8,13 +8,18 @@
   margin-block-start: var(--waxwing-space-4);
 }
 
+/* The same micro-header the folder tree and the labels list use, because it sits directly under
+   both of them in one scrolling column. It used to be medium-weight with no tracking, which at 12px
+   uppercase is exactly the case `--waxwing-tracking-caps` exists for — the one place in the rail
+   that needed it was the one place without it. */
 .savedTitle {
   margin: 0;
-  padding-inline: var(--waxwing-space-3);
+  padding-inline: var(--waxwing-space-2);
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-xs);
-  font-weight: var(--waxwing-weight-medium);
+  font-weight: var(--waxwing-weight-semibold);
   text-transform: uppercase;
+  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .savedList {
@@ -38,11 +43,13 @@
   align-items: center;
   gap: var(--waxwing-space-2);
   min-inline-size: 0;
-  /* 44px touch target, matching the folder rows beside it. */
-  min-block-size: 2.75rem;
-  padding-inline: var(--waxwing-space-3);
+  /* The token, not the number. This said "44px touch target, matching the folder rows beside it"
+     while hardcoding `--waxwing-control-min`'s TOUCH value — so on every pointer device these rows
+     stood 10px taller than the folder rows they claimed to match, in the same narrow column. */
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
   border: 0;
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   background: none;
   color: inherit;
   font: inherit;

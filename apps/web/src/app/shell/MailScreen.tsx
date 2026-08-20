@@ -307,7 +307,7 @@ export function MailScreen() {
       tabIndex={-1}
     >
       {singleReading && screenBarSlot === null && (
-        <div className={styles.paneToolbar}>{readingBar}</div>
+        <div className={`${styles.paneToolbar} ${styles.paneToolbarReading}`}>{readingBar}</div>
       )}
       <div className={styles.paneBody}>
         {emailId !== undefined ? (

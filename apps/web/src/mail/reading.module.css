@@ -510,6 +510,8 @@
 }
 
 .attachmentName {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -598,15 +600,27 @@
 
 /* ---- collapsed thread message ---- */
 
+/*
+ * A ROW, not a card.
+ *
+ * Framed and rounded, each collapsed message was a card sitting directly above the open message,
+ * which is not a card — two formats stacked, and the eye reads that as two kinds of thing rather
+ * than one conversation. Apple Mail's collapsed messages are rows with rules between them, which
+ * is also the shape this app uses for every other list it draws.
+ *
+ * `border-block-end` rather than a pseudo-element: unlike the message list these do not carry a
+ * selection tint that a rule would run through, so there is no state to withdraw it for.
+ */
 .collapsed {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
-  width: 100%;
-  padding: var(--waxwing-space-2) var(--waxwing-space-3);
-  background: var(--waxwing-surface);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-md);
+  inline-size: 100%;
+  padding-block: var(--waxwing-space-2);
+  padding-inline: 0;
+  background: none;
+  border: 0;
+  border-block-end: 1px solid var(--waxwing-border);
   text-align: start;
   font: inherit;
   color: var(--waxwing-text);

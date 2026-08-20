@@ -1,10 +1,25 @@
 /* The files screen (M5.7, FR-FILE-01). Tokens only. */
 
+/*
+ * One edge for every full-width screen: `space-5`, dropping to `space-4` below 40em.
+ *
+ * Mail, Contacts, Calendar, Files and Settings all sit on the same `.main` plane and are the same
+ * thing — a screen with a margin — and they were using space-6, space-5 and space-4 between them.
+ * Clicking through the app moved its left edge by 16px with nothing structural changing, which is
+ * the kind of drift nobody reports and everybody feels.
+ */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-4);
-  padding: var(--waxwing-space-4);
+  padding-inline: var(--waxwing-space-5);
+  padding-block: var(--waxwing-space-4);
+}
+
+@media (max-width: 39.999em) {
+  .page {
+    padding-inline: var(--waxwing-space-4);
+  }
 }
 
 .header {
@@ -76,7 +91,7 @@
   gap: var(--waxwing-space-2);
   min-inline-size: 0;
   /* 44 px touch target for the folder rows, which are buttons. */
-  min-block-size: 2.75rem;
+  min-block-size: var(--waxwing-control-min);
   border: 0;
   background: none;
   color: inherit;
@@ -96,6 +111,8 @@
 }
 
 .nameText {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

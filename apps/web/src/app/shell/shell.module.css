@@ -389,6 +389,18 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/*
+ * The reading column's toolbar sits on the reading column's edge.
+ *
+ * `reading.module.css` opens by describing exactly this defect as fixed — "two left edges in one
+ * column, 13px apart, which the eye reads as a misalignment" — for the subject and the body. The
+ * toolbar above them was still on the LIST column's edge (space-3, which is where the message rows
+ * start), so the column had the misalignment back, one row higher.
+ */
+.paneToolbarReading {
+  padding-inline: var(--waxwing-space-5);
+}
+
 /* Where the active screen's bar lands inside the header (phone only — see Header.tsx). Empty and
    inert on wider tiers, where each pane keeps its own toolbar. */
 .screenBar {
@@ -458,7 +470,8 @@
 }
 
 .screen {
-  padding: var(--waxwing-space-6);
+  padding-inline: var(--waxwing-space-5);
+  padding-block: var(--waxwing-space-4);
 }
 
 .screenTitle {

@@ -309,10 +309,16 @@
 }
 
 /*
- * The separator, inset to the text column — 5.5rem clears the padding, the checkbox and the avatar,
- * which is where Apple Mail starts its own. It was a full-bleed `border-block-end` on every row: a
- * continuous grid that ran through the selection tint as well, so the row the reader was ON came
- * with a line drawn across it. A pseudo-element can be withdrawn per state; a border cannot.
+ * The separator, inset to the text column — where Apple Mail starts its own. It was a full-bleed
+ * `border-block-end` on every row: a continuous grid that ran through the selection tint as well,
+ * so the row the reader was ON came with a line drawn across it. A pseudo-element can be withdrawn
+ * per state; a border cannot.
+ *
+ * The inset is COMPUTED from the same tokens the row lays out with, not frozen at the 5.5rem those
+ * tokens happened to add up to. `--waxwing-control-min` is 2.125rem for a pointer and 2.75rem for
+ * touch, so the frozen number was right on a desktop and 12px short on a phone: the rule started
+ * under the avatar instead of at the text. Nothing said so, because 5.5rem is also the width of the
+ * timestamp column two rules down — two unrelated values that agreed by accident.
  */
 .row::after {
   content: "";
@@ -321,7 +327,14 @@
   pointer-events: none;
   position: absolute;
   inset-block-end: 0;
-  inset-inline: 5.5rem 0;
+  inset-inline-start: calc(
+    var(--waxwing-space-3) +
+    var(--waxwing-control-min) +
+    var(--waxwing-space-2) +
+    1.75rem +
+    var(--waxwing-space-2)
+  );
+  inset-inline-end: 0;
   block-size: 1px;
   background-color: var(--waxwing-border);
 }

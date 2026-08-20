@@ -106,6 +106,8 @@
 }
 
 .queuedSubject {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   margin: 0;
   font-weight: var(--waxwing-weight-medium);
   overflow: hidden;
@@ -145,6 +147,8 @@
 }
 
 .scheduledSubject {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   margin: 0;
   overflow: hidden;
   font-weight: var(--waxwing-weight-medium);

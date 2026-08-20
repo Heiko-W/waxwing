@@ -260,8 +260,31 @@
   align-items: center;
   gap: var(--waxwing-space-3);
   padding-inline: var(--waxwing-space-3);
-  border-block-end: 1px solid var(--waxwing-border);
   cursor: default;
+}
+
+/*
+ * The rule between rows, inset past the avatar and withdrawn under a selection.
+ *
+ * Both halves are the message list's, and the reason is written in that file: "a selection should
+ * read as one solid block, the way a table's selected row loses its rules". This list is the same
+ * pattern — a TanStack virtualizer, `role="listbox"`, avatar plus name, `surface-selected` — and
+ * it drew a full-width border that stayed put under the tint, so the row the reader had chosen was
+ * the one with a line through it.
+ *
+ * The inset is computed rather than frozen: row padding, the avatar, and the gap after it. The
+ * message list learned that lesson the hard way with a hardcoded 5.5rem that stopped matching once
+ * `--waxwing-control-min` changed under `pointer: coarse`.
+ */
+.contactRow::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: calc(var(--waxwing-space-3) + 1.75rem + var(--waxwing-space-3));
+  inset-inline-end: 0;
+  block-size: 1px;
+  background-color: var(--waxwing-border);
 }
 
 /* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
@@ -277,7 +300,13 @@
   background-color: var(--waxwing-surface-selected);
 }
 
+.contactRowSelected::after {
+  display: none;
+}
+
 .contactRowName {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   flex: 1;
   min-inline-size: 0;
   overflow: hidden;
