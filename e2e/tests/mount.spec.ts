@@ -136,6 +136,25 @@ test.describe('/mail/ mount', () => {
       new URL(MOUNT, page.url()).toString(),
     )
 
+    /*
+     * Let the page SETTLE before collecting, for the reason the cold-load collector above already
+     * records: reloading a document that is still fetching cancels its in-flight requests, and those
+     * arrive as `requestfailed` with `net::ERR_ABORTED` — a harness artefact the collector cannot
+     * tell from a real broken resource.
+     *
+     * That note fixed the collector one test up and this one kept the racy shape (B51). Waiting on
+     * `load` is not enough here: the branding logo is requested by React only AFTER `config.json`
+     * resolves (FR-THEME-02 — the logo path is deployment config, not a build-time literal), so the
+     * load event can fire before the image has been asked for at all. Reproduced at roughly one run
+     * in three, only inside the full suite — `net::ERR_ABORTED .../branding/logo-icon.svg`, an asset
+     * that IS in the precache and was never missing.
+     */
+    const logo = page.locator('img[src*="branding/"]').first()
+    await logo.waitFor()
+    await expect
+      .poll(() => page.evaluate(() => [...document.images].every((image) => image.complete)))
+      .toBe(true)
+
     await context.setOffline(true)
     const broken = brokenRequests(page)
     await page.reload()

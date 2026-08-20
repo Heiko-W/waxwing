@@ -2115,3 +2115,153 @@ describe('SyncEngine — new-mail notifications (M3.6)', () => {
     })
   })
 })
+
+/*
+ * B47 — a failed sync pass retries on its own, instead of waiting for the safety sweep.
+ *
+ * The flake that led here was `narrow.spec.ts` timing out after 30 s with skeleton rows on screen
+ * and "Sync problem — retrying" in the status region, ~4 minutes into a run that had been driving
+ * Docker and a live Stalwart. The layout was right and the envelopes had simply never arrived.
+ *
+ * The cause is not the fixture being slow. It is that until this block existed, NOTHING retried a
+ * failed pass: `runSyncPass` set `phase: 'error'` and returned, and the next attempt came whenever
+ * the fixed 60 s safety sweep next happened to land — a mean of 30 s and a worst case of 60 for a
+ * transient failure the server may have told us to retry in one. The status line said "retrying"
+ * and nothing was. The write path has honoured `Retry-After` with a backoff since M3.3; the read
+ * path had no equivalent.
+ *
+ * These tests drive the clock, so nothing here depends on wall time.
+ */
+describe('sync retry after a failed pass (B47)', () => {
+  interface Scheduled {
+    id: number
+    fn: () => void
+    delay: number
+  }
+
+  /** A clock whose timers the test fires by hand — the safety sweep never runs unless asked. */
+  function recordingClock() {
+    let now = 1000
+    let nextId = 1
+    const timers: Scheduled[] = []
+    const clock: EngineClock = {
+      now: () => now++,
+      setTimeout: (fn, delay) => {
+        const id = nextId++
+        timers.push({ id, fn, delay })
+        return id
+      },
+      clearTimeout: (id) => {
+        const at = timers.findIndex((timer) => timer.id === id)
+        if (at >= 0) timers.splice(at, 1)
+      },
+    }
+    return {
+      clock,
+      timers,
+      /** Timers scheduled sooner than the safety sweep — i.e. the retries this block is about. */
+      retries: (): Scheduled[] => timers.filter((timer) => timer.delay < 60_000),
+      fire(timer: Scheduled): void {
+        const at = timers.findIndex((entry) => entry.id === timer.id)
+        if (at >= 0) timers.splice(at, 1)
+        timer.fn()
+      },
+    }
+  }
+
+  /** A port whose delta round-trip fails until `failing` is cleared. */
+  function flakyPort(failure: () => unknown) {
+    let failing = true
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(state) {
+        if (failing) throw failure()
+        return base.emailChanges(state)
+      },
+    }
+    return {
+      port,
+      heal: () => {
+        failing = false
+      },
+    }
+  }
+
+  it('schedules a retry far sooner than the safety sweep, and recovers on it', async () => {
+    const time = recordingClock()
+    const { port, heal } = flakyPort(() => new Error('boom'))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    // The defect in one assertion: before this fix the only pending timer was the 60 s sweep.
+    const [retry] = time.retries()
+    expect(retry, 'a failed pass scheduled no retry of its own').toBeDefined()
+    // Half-jitter over a 2 s window: [1000, 2000).
+    expect(retry?.delay).toBeGreaterThanOrEqual(1_000)
+    expect(retry?.delay).toBeLessThan(2_000)
+
+    heal()
+    if (retry) time.fire(retry)
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await engine.stop()
+  })
+
+  it('honours a server-supplied Retry-After instead of guessing earlier', async () => {
+    const time = recordingClock()
+    const { port } = flakyPort(() => new JmapHttpError(429, 'Too Many Requests', undefined, 7_000))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    // Not the curve's 1–2 s: the server said seven seconds, and guessing earlier is how a
+    // throttled client stays throttled.
+    expect(time.retries().map((timer) => timer.delay)).toContain(7_000)
+    await engine.stop()
+  })
+
+  it('grows the delay while failures continue, and forgets them after a success', async () => {
+    const time = recordingClock()
+    const { port, heal } = flakyPort(() => new Error('boom'))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    const first = time.retries()[0]
+    expect(first).toBeDefined()
+    if (first) time.fire(first)
+    await waitFor(() => time.retries().length > 0)
+    const second = time.retries()[0]
+    expect(second?.delay ?? 0).toBeGreaterThanOrEqual(2_000) // second window is 4 s → [2000, 4000)
+
+    // A success resets the counter, so the NEXT failure starts at the short end again rather than
+    // inheriting a backoff from an outage the reader has long since forgotten about.
+    heal()
+    if (second) time.fire(second)
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    expect(time.retries(), 'a successful pass left a retry armed').toHaveLength(0)
+    await engine.stop()
+  })
+
+  it('does not back off while offline — reconnecting schedules its own pass', async () => {
+    const time = recordingClock()
+    const { port } = flakyPort(() => new Error('offline'))
+    const push = new FakePush()
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      clock: time.clock,
+      isOnline: () => false,
+    })
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'offline')
+
+    // Counting an offline failure would push the first retry AFTER reconnect out to the far end of
+    // the curve, which is the opposite of what a returning connection wants.
+    expect(time.retries()).toHaveLength(0)
+    await engine.stop()
+  })
+})

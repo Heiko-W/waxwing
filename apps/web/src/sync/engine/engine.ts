@@ -20,6 +20,8 @@ import {
   type EmailFilter,
   getCoreCapability,
   type Id,
+  JmapHttpError,
+  JmapProblemError,
   type PushChannel,
   type PushTransport,
   type SchedulerLike,
@@ -58,7 +60,7 @@ import {
   type WindowSpec,
   windowQueryKey,
 } from './backfill'
-import { STUCK_AFTER_ATTEMPTS } from './backoff'
+import { backoffDelayMs, clampRetryAfter, STUCK_AFTER_ATTEMPTS } from './backoff'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { isAuthExpiry } from './conflict'
 import {
@@ -185,6 +187,25 @@ export interface SyncEngineDeps {
 const DEFAULT_SAFETY_INTERVAL_MS = 60_000
 
 /**
+ * Backoff for a sync pass that FAILED, as distinct from the safety sweep above (B47).
+ *
+ * The sweep is a freshness poll on a fixed cadence — it exists for the case where nothing went
+ * wrong and no push arrived. It was also, until this existed, the only thing that ever retried a
+ * failed pass: a transient error left `phase: 'error'` on screen and the next attempt came whenever
+ * the 60 s timer happened to land, so a reader who tripped the server's request throttle watched
+ * skeleton rows for up to a minute under a status line that said "retrying" while nothing was.
+ *
+ * The write path has had the right shape since M3.3 — `conflict.ts` classifies a 429/5xx as
+ * transient and backs the row off, honouring `Retry-After`. This is the same treatment for the READ
+ * path, which had none.
+ *
+ * The cap is the sweep interval, deliberately: past that the sweep would retry sooner anyway, and a
+ * backoff that outruns the fallback is a backoff nobody reaches. Base 2 s under half-jitter puts the
+ * first retry at 1–2 s, which is the difference between a stalled list and a blink.
+ */
+const SYNC_RETRY_BACKOFF = { baseMs: 2_000, factor: 2, capMs: DEFAULT_SAFETY_INTERVAL_MS } as const
+
+/**
  * How long the leader waits for another tab to admit it is in the foreground (M3.6). A
  * `BroadcastChannel` round-trip inside one browser is sub-millisecond; this is generous, and it is
  * paid only on a pass that has new mail AND has cleared every other notification guard.
@@ -212,6 +233,9 @@ export class SyncEngine {
   private offlineUnsub: (() => void) | undefined
   private busUnsub: (() => void) | undefined
   private safetyTimer: number | undefined
+  /** Consecutive failed sync passes. Drives {@link scheduleSyncRetry}; reset by the first success. */
+  private syncFailures = 0
+  private syncRetryTimer: number | undefined
   /** Wakes the leader when the earliest `notBefore` grace / `nextAttemptAt` backoff elapses. */
   private queueWakeTimer: number | undefined
   /** Debounces an `online` burst into a single reconnect sync (M3.3). */
@@ -339,6 +363,8 @@ export class SyncEngine {
     this.stopController.abort()
     if (this.safetyTimer !== undefined) this.clock.clearTimeout(this.safetyTimer)
     if (this.queueWakeTimer !== undefined) this.clock.clearTimeout(this.queueWakeTimer)
+    // A pending retry outlives `stop()` otherwise, and fires a sync against a torn-down engine.
+    this.cancelSyncRetry()
     this.cancelReconnect()
     // A foreground probe in flight would otherwise sit on its timeout while `stop()` awaits the pass
     // that owns it. Settle it as "foreground" — on the way out, the safe direction is silence.
@@ -1042,6 +1068,50 @@ export class SyncEngine {
     push.open()
   }
 
+  /**
+   * A `Retry-After` the server actually sent, in ms — the only number here that is not a guess.
+   * Mirrors what `conflict.ts` reads for the write path, across both classes that carry it
+   * (`JmapProblemError` is NOT a subclass of `JmapHttpError`, so one check cannot span both).
+   */
+  private static retryAfterOf(error: unknown): number | undefined {
+    if (error instanceof JmapProblemError || error instanceof JmapHttpError) {
+      return error.retryAfterMs === undefined ? undefined : clampRetryAfter(error.retryAfterMs)
+    }
+    return undefined
+  }
+
+  /**
+   * Retry a FAILED pass before the safety sweep would (B47).
+   *
+   * Cancels any pending retry first: passes coalesce, so two failures must not leave two timers
+   * racing to start the same sync. A server-supplied `Retry-After` wins over the curve — it is the
+   * server saying when it will answer, and guessing earlier is how a throttled client stays
+   * throttled.
+   */
+  private scheduleSyncRetry(error: unknown): void {
+    this.cancelSyncRetry()
+    if (this.stopController.signal.aborted || !this.isLeader) return
+    this.syncFailures += 1
+    const hinted = SyncEngine.retryAfterOf(error)
+    const delay = hinted ?? backoffDelayMs(this.syncFailures, Math.random(), SYNC_RETRY_BACKOFF)
+    this.syncRetryTimer = this.clock.setTimeout(() => {
+      this.syncRetryTimer = undefined
+      if (this.isLeader) void this.sync()
+    }, delay)
+  }
+
+  private cancelSyncRetry(): void {
+    if (this.syncRetryTimer === undefined) return
+    this.clock.clearTimeout(this.syncRetryTimer)
+    this.syncRetryTimer = undefined
+  }
+
+  /** A pass got through: drop the backoff so the next failure starts from the short end again. */
+  private noteSyncSuccess(): void {
+    this.syncFailures = 0
+    this.cancelSyncRetry()
+  }
+
   private scheduleSafetySweep(): void {
     if (this.stopController.signal.aborted) return
     const interval = this.deps.safetyIntervalMs ?? DEFAULT_SAFETY_INTERVAL_MS
@@ -1225,6 +1295,9 @@ export class SyncEngine {
       }
       await this.runReplayCoalesced()
       if (deltaError !== undefined) {
+        // Offline is not a failure to back off from — the online transition schedules its own pass,
+        // and counting it would push the first retry after reconnect out to the far end of the curve.
+        if (this.deps.isOnline()) this.scheduleSyncRetry(deltaError)
         this.patch({
           phase: this.deps.isOnline() ? 'error' : 'offline',
           error: errorMessage(deltaError),
@@ -1233,6 +1306,7 @@ export class SyncEngine {
       }
       await this.raiseNewMailNotifications(created)
       await this.runMaintenance()
+      this.noteSyncSuccess()
       this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), error: null })
     } catch (error) {
       this.reportError(error)
@@ -1340,6 +1414,9 @@ export class SyncEngine {
       this.patch({ phase: 'idle', error: null })
       return
     }
+    // Same split as the delta branch: back off only when we are online and therefore actually
+    // retrying. Re-auth returned above — a retry loop against an expired session is not a fix.
+    if (this.deps.isOnline()) this.scheduleSyncRetry(error)
     this.patch({ phase: this.deps.isOnline() ? 'error' : 'offline', error: errorMessage(error) })
   }
 
