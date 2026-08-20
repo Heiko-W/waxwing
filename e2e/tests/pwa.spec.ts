@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 /**
  * M3.10 PWA suite — the first tests in this repo whose subject is the SERVICE WORKER (FR-OFF-01,
@@ -39,6 +40,7 @@ const SERVER_PATHS = /^\/(jmap|\.well-known|auth|login|api|logo)(\/|$)/
 
 async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
@@ -132,7 +134,7 @@ test.describe('M3.10 pwa', () => {
 
     // The shell booted: the document, the entry chunk and every eager chunk came out of the
     // precache with no network at all. This is the assertion the precache exists for.
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Sign in to', {
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for', {
       timeout: 30_000,
     })
     expect(broken).toEqual([])

@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 import { noOverflow } from './no-overflow'
 
 /**
@@ -32,6 +33,7 @@ const folders = (page: Page) => page.getByRole('navigation', { name: 'Folders' }
 test.beforeEach(async ({ page }) => {
   await seedReadMail()
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
@@ -59,6 +61,30 @@ test('the shell fits the viewport on every screen', async ({ page }) => {
 
   await page.getByRole('link', { name: 'Contacts', exact: true }).click()
   await noOverflow(page, 'contacts')
+})
+
+test('the compose button belongs to the mail area, not to every screen (B50)', async ({ page }) => {
+  // On this viewport the New-message button is a FIXED floating action button, so on a screen that
+  // is not mail it did not merely offer the wrong action — it sat on top of the content. The shot
+  // that found this (`phone-settings.webp`) has it covering the last row of the Settings list.
+  //
+  // The assertion runs in both directions on purpose: a button that is broken everywhere would pass
+  // the "not on Settings" half on its own.
+  const compose = page.getByRole('button', { name: 'New message', exact: true })
+  await openInbox(page)
+  await expect(compose).toBeVisible()
+
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+  await expect(compose).toBeHidden()
+
+  await page.getByRole('link', { name: 'Contacts', exact: true }).click()
+  await expect(compose).toBeHidden()
+
+  // Back where it belongs. `c` and ⌘N never stopped working on any of these screens — what went
+  // away is a button, not the action.
+  await page.getByRole('link', { name: 'Mail', exact: true }).click()
+  await expect(compose).toBeVisible()
 })
 
 test('the account name gives up its pixels but not its meaning', async ({ page }) => {
@@ -144,7 +170,7 @@ test('the drawer takes focus and offers a way out', async ({ page }) => {
 
   const insideDrawer = await page.evaluate(() => {
     const drawer = document.getElementById('waxwing-folder-region')
-    return drawer !== null && drawer.contains(document.activeElement)
+    return drawer?.contains(document.activeElement) === true
   })
   expect(insideDrawer, 'focus stayed outside the drawer it opened').toBe(true)
 

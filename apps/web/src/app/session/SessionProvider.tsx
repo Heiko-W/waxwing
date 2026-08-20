@@ -117,11 +117,16 @@ function canEditServer(config: WaxwingConfig, target: ConnectTarget): boolean {
  * wrong. Naming the host turns an accusation into the one fact that lets the reader fix it, and the
  * server field is already editable.
  */
-function errToOnboard(error: unknown, host?: string): OnboardError {
+function errToOnboard(error: unknown, host?: string, basic = false): OnboardError {
   if (error instanceof NoAccountError) return { key: 'onboarding.error.noAccount' }
   if (error instanceof JmapHttpError) {
     if (error.status === 401 || error.status === 403) {
-      return { key: 'auth.error.invalidCredentials' }
+      // A 401 on the PASSWORD path has a second, likelier cause than a typo, and the reader
+      // cannot see it: Stalwart accepts a second factor only over OAuth, so an account with
+      // 2FA on has its correct password refused here and only an app password gets through.
+      // Naming that turns a dead end into an instruction. The OAuth path keeps the plain
+      // wording — there a 401 really is a rejected credential.
+      return { key: basic ? 'auth.error.invalidCredentialsBasic' : 'auth.error.invalidCredentials' }
     }
     return { key: 'onboarding.error.generic' }
   }
@@ -469,7 +474,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           const connected = await connectSession(controller, target, 'basic')
           dispatch({ type: 'connected', connected })
         } catch (error) {
-          dispatch({ type: 'loginError', error: errToOnboard(error, target.displayHost) })
+          dispatch({ type: 'loginError', error: errToOnboard(error, target.displayHost, true) })
         }
       })()
     },
@@ -517,7 +522,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           const connected = await connectSession(controller, target, 'basic')
           dispatch({ type: 'reconnected', connected })
         } catch (error) {
-          dispatch({ type: 'reauthError', error: errToOnboard(error) })
+          dispatch({ type: 'reauthError', error: errToOnboard(error, undefined, true) })
         }
       })()
     },

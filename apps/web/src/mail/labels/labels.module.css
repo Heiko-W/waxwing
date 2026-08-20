@@ -58,11 +58,14 @@
   color: var(--waxwing-text);
 }
 
-/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
-   landed on, which then reads as a second selection. */
+/* Pointer-only affordance, and on the RECESSED rail it lifts rather than darkens: the row under the
+   pointer comes forward to the content plane. A step further back would be invisible in light —
+   the old `surface-2` fill measured 1.03:1 against `surface-sunken`, which the fill-against-fill
+   check in tokens.contrast.test.ts now refuses. On a touchscreen a tap would leave this stuck to
+   whatever it landed on, which then reads as a second selection, hence `hover: hover`. */
 @media (hover: hover) {
   .item:hover {
-    background-color: var(--waxwing-surface-2);
+    background-color: var(--waxwing-surface);
   }
 }
 

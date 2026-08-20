@@ -36,11 +36,15 @@ test.describe('placeholder shell', () => {
     // chunk loaded, React mounted and the config fetch resolved. The heading text is the login
     // step's `auth.signInTitle`, carrying the host the app decided to talk to — here the preview
     // origin itself, because the SPA fallback makes the same-origin probe succeed (see above).
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Sign in to')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for')
 
     // An interactive control is present, so the card is the real form and not an error fallback.
+    // The shipped config lists `["oauth", "basic"]` and `localhost` is a secure context, so OAuth
+    // leads and the password form sits behind its disclosure — both controls are asserted, which
+    // also pins that the collapsed layout reached the production bundle.
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
     await expect(
-      page.getByRole('button', { name: 'Sign in with a password', exact: true }),
+      page.getByRole('button', { name: 'Sign in with a password instead', exact: true }),
     ).toBeVisible()
 
     // The production CSP forbids inline script and eval. A violation here means the shipped

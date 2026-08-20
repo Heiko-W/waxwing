@@ -67,6 +67,12 @@ mark {
 }
 
 /* Respect reduced-motion (FR-UI-01, FR-A11Y-01). */
+/* Chromium on Android paints its own translucent blue over anything tappable, on top of whatever
+   `:active` state the app draws — two competing press feedbacks, one of them not ours. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

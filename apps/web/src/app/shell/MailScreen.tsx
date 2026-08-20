@@ -33,6 +33,7 @@ import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
 import { Button, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
 import {
+  FULL_PARAM,
   isReadingHistoryEntry,
   mailHrefKeepingQuery,
   mailPath,
@@ -70,7 +71,19 @@ export function MailScreen() {
   // Handed the account explicitly: this hook runs in the BODY, above the scope it feeds, so it cannot
   // take the acting account from context the way the panes below it do.
   const search = useSearch(mailboxId, activeAccountId ?? ambientAccountId)
-  const layout = computePaneLayout(tier, mode, emailId !== undefined)
+  /**
+   * Full screen: this one message, without the list or the folder rail (`?full=1`).
+   *
+   * It is `mode: 'off'` for one navigation. That is not a shortcut — `off` and the phone tier
+   * already describe exactly this shape, so full screen inherits a layout that is built, tested and
+   * shipped rather than introducing a second single-pane path beside it. Back and Escape leave it
+   * because leaving is just the previous URL.
+   *
+   * Only meaningful with a message open: `?full=1` on a folder would be a full-screen LIST, a state
+   * with no exit and no name, so `mailHrefKeepingQuery` drops the flag on the way back (route.ts).
+   */
+  const fullScreen = emailId !== undefined && route.search.get(FULL_PARAM) === '1'
+  const layout = computePaneLayout(tier, fullScreen ? 'off' : mode, emailId !== undefined)
 
   // A STABLE search-descriptor for the list — a fresh object each render would re-fire the list's
   // watch effect (and re-kick a sync) on every render (M3.1 review).
@@ -128,7 +141,7 @@ export function MailScreen() {
     setScreenBarSlot(tier === 'phone' ? document.getElementById(SCREEN_BAR_ID) : null)
   }, [tier])
 
-  const drawerCapable = tier !== 'desktop'
+  const drawerCapable = tier !== 'desktop' && !fullScreen
   const [foldersOpen, setFoldersOpen] = useState(false)
   /**
    * The list's sort / threading / unread-first controls, collapsed by default.
@@ -360,39 +373,49 @@ export function MailScreen() {
 
         On desktop none of this applies: the region is a persistent rail, not an overlay.
       */}
-      <nav
-        id={FOLDER_REGION_ID}
-        ref={folderRegionRef}
-        className={folderRegionClass}
-        aria-label={t('shell.folders.title')}
-        tabIndex={-1}
-      >
-        {drawerCapable && (
-          // A visible way out. Escape needs a keyboard and the backdrop is a 102 px strip beside a
-          // full-height panel — on touch that left the drawer with no affordance that says "close".
-          <div className={styles.drawerHeader}>
-            <IconButton label={t('shell.folders.hide')} variant="ghost" onClick={closeFolders}>
-              <X />
-            </IconButton>
+      {/* No rail in full screen: the whole point of the view is that nothing frames the message.
+          Removed rather than hidden, so it takes no space and no tab stop. */}
+      {!fullScreen && (
+        <nav
+          id={FOLDER_REGION_ID}
+          ref={folderRegionRef}
+          className={folderRegionClass}
+          aria-label={t('shell.folders.title')}
+          tabIndex={-1}
+        >
+          {drawerCapable && (
+            // A visible way out. Escape needs a keyboard and the backdrop is a 102 px strip beside a
+            // full-height panel — on touch that left the drawer with no affordance that says "close".
+            <div className={styles.drawerHeader}>
+              <IconButton label={t('shell.folders.hide')} variant="ghost" onClick={closeFolders}>
+                <X />
+              </IconButton>
+            </div>
+          )}
+          {/* Accounts, their trees and the labels are ONE scrolling column (`.folderScroll`), not a
+            stack of independently scrolling boxes. The storage bar stays outside it so it keeps its
+            place at the bottom of the rail; the drawer's close button, above, keeps its place too. */}
+          <div className={styles.folderScroll}>
+            {connected && (
+              <AccountTrees
+                accounts={connected.accounts}
+                primaryAccountId={connected.accountId}
+                onNavigate={closeFolders}
+              />
+            )}
+            <Labels onNavigate={closeFolders} />
           </div>
-        )}
-        {connected && (
-          <AccountTrees
-            accounts={connected.accounts}
-            primaryAccountId={connected.accountId}
-            onNavigate={closeFolders}
-          />
-        )}
-        <Labels onNavigate={closeFolders} />
-        <QuotaBar />
-      </nav>
-      {drawerCapable && foldersOpen && (
-        // A backdrop that closes the drawer on outside press. tabIndex=-1 keeps it out of the
-        // tab order (Escape already covers keyboard close) so focus can't strand on it when it
-        // unmounts.
+          <QuotaBar />
+        </nav>
+      )}
+      {drawerCapable && (
+        // A backdrop that closes the drawer on outside press. Mounted for as long as the drawer
+        // COULD open, so it can fade with it — `.backdrop` keeps it hidden and untouchable until
+        // `.backdropOpen` is added, the same visibility handshake the panel itself uses. tabIndex=-1
+        // keeps it out of the tab order either way (Escape already covers keyboard close).
         <button
           type="button"
-          className={styles.backdrop}
+          className={`${styles.backdrop}${foldersOpen ? ` ${styles.backdropOpen}` : ''}`}
           aria-label={t('shell.folders.hide')}
           tabIndex={-1}
           onClick={closeFolders}

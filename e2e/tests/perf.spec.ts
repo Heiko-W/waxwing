@@ -62,9 +62,11 @@ const median = (values: number[]): number =>
  */
 async function timeToInteractive(page: Page): Promise<number> {
   await page.goto('/', { waitUntil: 'commit' })
-  const field = page.getByLabel('Username', { exact: true })
-  await expect(field).toBeVisible({ timeout: 30_000 })
-  await expect(field).toBeEnabled()
+  // The sign-in ACTION, not the heading: "interactive" is about a control the reader can press,
+  // and the password field it used to watch now starts collapsed behind its disclosure.
+  const action = page.getByRole('button', { name: 'Sign in', exact: true })
+  await expect(action).toBeVisible({ timeout: 30_000 })
+  await expect(action).toBeEnabled()
   return page.evaluate(() => performance.now())
 }
 
@@ -119,7 +121,9 @@ test.describe('M4.8 startup performance (NFR-PERF-01)', () => {
     // Prime on a fast link, then throttle: this is the shape of the real case — a returning user on
     // a phone, whose bundle is already on disk.
     await page.goto('/')
-    await expect(page.getByLabel('Username', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+      timeout: 30_000,
+    })
     await page.evaluate(() => navigator.serviceWorker.ready)
     await page.waitForTimeout(500) // let the precache finish writing
 

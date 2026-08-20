@@ -16,7 +16,22 @@
   user-select: none;
   transition:
     background-color var(--waxwing-duration-fast) var(--waxwing-ease-standard),
-    border-color var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+    border-color var(--waxwing-duration-fast) var(--waxwing-ease-standard),
+    transform var(--waxwing-duration-instant) var(--waxwing-ease-standard);
+}
+
+/*
+ * The press. There was no `:active` rule anywhere in this app — not one, in 46 stylesheets — so
+ * every control answered on RELEASE at the earliest, and a click into a slow route felt like
+ * nothing happened. Perceived latency is measured from pointerdown, and this is the only thing that
+ * can answer there without waiting for data.
+ *
+ * `transform` rather than a colour, so it reads identically on every variant, and so it costs no
+ * layout. `prefers-reduced-motion` collapses the duration through the global reset in global.css;
+ * the scale still applies, which is correct — it is a state, not an animation.
+ */
+.button:active:not(:disabled):not(.unavailable) {
+  transform: scale(0.97);
 }
 
 .button:disabled {

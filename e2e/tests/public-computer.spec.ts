@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 /**
  * Public-computer mode, end to end (FR-AUTH-09).
@@ -31,6 +32,7 @@ test.beforeEach(async () => {
 test.describe('FR-AUTH-09 public-computer mode', () => {
   test('signs in to a throwaway replica and never creates the durable one', async ({ page }) => {
     await page.goto('/')
+    await revealPasswordForm(page)
     await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
     await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
     await page.getByLabel('Public or shared computer').check()
@@ -51,6 +53,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
 
   test('plain Sign out removes it — not just "remove data"', async ({ page }) => {
     await page.goto('/')
+    await revealPasswordForm(page)
     await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
     await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
     await page.getByLabel('Public or shared computer').check()
@@ -62,7 +65,9 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // first item; a mode whose guarantee depended on them finding the second one would not be one.
     await page.getByRole('button', { name: 'Account' }).click()
     await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
-    await expect(page.getByLabel('Username', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+      timeout: 30_000,
+    })
 
     await expect(async () => {
       expect((await databases(page)).some((n) => n.startsWith(EPHEMERAL_PREFIX))).toBe(false)
@@ -71,7 +76,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
 
   test('a crashed session is swept at the next start', async ({ page }) => {
     await page.goto('/')
-    await page.getByLabel('Username', { exact: true }).waitFor({ timeout: 30_000 })
+    await page.getByRole('heading', { level: 1, name: /^Webmail for/ }).waitFor({ timeout: 30_000 })
 
     // Exactly what a killed browser leaves: the database, and no index entry pointing at it —
     // because the entry is written at sign-in and cleared by the sweep, not by the crash.
@@ -89,7 +94,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     expect((await databases(page)).some((n) => n.startsWith(EPHEMERAL_PREFIX))).toBe(true)
 
     await page.reload()
-    await page.getByLabel('Username', { exact: true }).waitFor({ timeout: 30_000 })
+    await page.getByRole('heading', { level: 1, name: /^Webmail for/ }).waitFor({ timeout: 30_000 })
 
     // The whole point of the mode: the previous person's mail is gone before this one sees a thing.
     await expect(async () => {
@@ -106,7 +111,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // persisted refresh token, under a hint promising that nothing would be kept.
     await page.goto('/')
     await page.getByLabel('Public or shared computer').check()
-    await page.getByRole('button', { name: 'Sign in securely' }).click()
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
 
     // Stalwart's own /login SPA, same-origin through the preview proxy.
     await page.locator('#username').fill(CREDENTIALS.user)
@@ -123,7 +128,9 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // And the half that only OAuth has: a reload must NOT walk back in. A refresh token left on a
     // library terminal is worse than the cached mail — it fetches the mail again.
     await page.reload()
-    await expect(page.getByLabel('Username', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+      timeout: 30_000,
+    })
   })
 
   test('an ORDINARY OAuth sign-in is still restored on reload — the counter-test', async ({
@@ -132,7 +139,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // Without this, "never persist anything" would look identical to the test above and would
     // silently end offline cold start for every normal user.
     await page.goto('/')
-    await page.getByRole('button', { name: 'Sign in securely' }).click()
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     await page.locator('#username').fill(CREDENTIALS.user)
     await page.locator('#password').fill(CREDENTIALS.pass)
     await page.locator('#login-form button[type="submit"]').click()
@@ -149,6 +156,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // that ran unconditionally, would silently delete every normal user's offline mail. Nothing
     // else in this suite would notice.
     await page.goto('/')
+    await revealPasswordForm(page)
     await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
     await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
     await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()

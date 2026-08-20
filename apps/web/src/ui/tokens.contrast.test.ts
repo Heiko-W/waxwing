@@ -98,12 +98,82 @@ const PAIRS: Pair[] = [
   { fg: 'border-strong', bg: 'surface-2', min: UI_AA, note: 'control boundary on raised' },
   { fg: 'focus-ring', bg: 'bg', min: UI_AA, note: 'focus/selection ring on page' },
   { fg: 'focus-ring', bg: 'surface', min: UI_AA, note: 'focus/selection ring on card' },
+  // The recessed plane (2026-08-19). It carries the folder rail and the nav rail, so it holds
+  // folder names, account captions and the storage readout — body AND secondary text, plus the
+  // control boundaries of the rail's own buttons.
+  { fg: 'text', bg: 'surface-sunken', min: TEXT_AA, note: 'folder name on the rail' },
+  { fg: 'text-muted', bg: 'surface-sunken', min: TEXT_AA, note: 'account caption on the rail' },
+  { fg: 'accent', bg: 'surface-sunken', min: TEXT_AA, note: 'the selected folder on the rail' },
+  { fg: 'border-strong', bg: 'surface-sunken', min: UI_AA, note: 'control boundary on the rail' },
+  { fg: 'focus-ring', bg: 'surface-sunken', min: UI_AA, note: 'focus ring on the rail' },
+  { fg: 'text', bg: 'surface-selected-idle', min: TEXT_AA, note: 'text on an unfocused selection' },
+  {
+    fg: 'text-muted',
+    bg: 'surface-selected-idle',
+    min: TEXT_AA,
+    note: 'preview on an unfocused selection',
+  },
+]
+
+/**
+ * Plane against plane — the question the pairs above cannot ask.
+ *
+ * Every assertion in this file measures TEXT on a fill, and each one of them passed while
+ * `--waxwing-surface-hover` was invisible: drawn as a step above `--waxwing-surface`, it was
+ * landing on `--waxwing-bg`, where it measured **1.09:1** in light against **1.50:1** in dark. Same
+ * token, same code path, an effect the reader could see in one theme and not the other — and no
+ * test in the repo was looking at the two fills together.
+ *
+ * The corridor is narrow on both sides on purpose. Below it a state change is not perceptible;
+ * above it a hover reads as a selection, and a list under a moving pointer starts to flash. The
+ * upper bound is what makes this a two-sided check rather than a floor.
+ */
+const FILL_MIN = 1.12
+const FILL_MAX = 1.75
+
+interface FillPair {
+  readonly fill: string
+  readonly under: string
+  readonly note: string
+}
+
+const FILL_PAIRS: FillPair[] = [
+  {
+    fill: 'surface-hover',
+    under: 'surface',
+    note: 'a row under the pointer, on the content plane',
+  },
+  { fill: 'surface-selected', under: 'surface', note: 'the row the reader is on' },
+  {
+    fill: 'surface-selected-idle',
+    under: 'surface',
+    note: 'the row the reader was on, while they are elsewhere',
+  },
+  // On the rail a hover LIFTS to the content plane rather than darkening — a step further back is
+  // imperceptible in light, which is how this check earned its keep the day it was written.
+  { fill: 'surface', under: 'surface-sunken', note: 'a folder under the pointer, lifted' },
+  { fill: 'surface-2', under: 'surface', note: 'a raised inset on the content plane' },
 ]
 
 for (const [themeName, palette] of [
   ['light', light],
   ['dark', dark],
 ] as const) {
+  describe(`fill against fill — ${themeName} theme`, () => {
+    for (const pair of FILL_PAIRS) {
+      it(`${pair.fill} is perceptible on ${pair.under} (${pair.note})`, () => {
+        const fill = palette[pair.fill]
+        const under = palette[pair.under]
+        if (fill === undefined || under === undefined) {
+          throw new Error(`missing token: --waxwing-${pair.fill} or --waxwing-${pair.under}`)
+        }
+        const ratio = roundRatio(contrastRatio(fill, under))
+        expect(ratio, `${pair.fill} on ${pair.under} = ${ratio}:1`).toBeGreaterThanOrEqual(FILL_MIN)
+        expect(ratio, `${pair.fill} on ${pair.under} = ${ratio}:1`).toBeLessThanOrEqual(FILL_MAX)
+      })
+    }
+  })
+
   describe(`token contrast — ${themeName} theme`, () => {
     for (const pair of PAIRS) {
       it(`${pair.fg} on ${pair.bg} meets ${pair.min}:1 (${pair.note})`, () => {

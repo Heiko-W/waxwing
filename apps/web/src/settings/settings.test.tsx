@@ -45,6 +45,15 @@ function renderSettings() {
   )
 }
 
+/**
+ * Open a section from the rail — the panel-per-section layout means a test has to say WHICH panel it
+ * is about, which is also the honest shape: the reader has to choose one too.
+ */
+async function openSection(user: ReturnType<typeof userEvent.setup>, name: string) {
+  const rail = await screen.findByRole('navigation', { name: 'Settings' })
+  await user.click(within(rail).getByRole('link', { name }))
+}
+
 const estimate: EstimateFn = async () => ({ usage: 40 * 1024 * 1024, quota: 200 * 1024 * 1024 })
 
 function renderStorage(props: StorageSectionProps = {}) {
@@ -101,38 +110,66 @@ afterEach(async () => {
 })
 
 describe('the settings shell (M3.7)', () => {
-  it('renders its sections in the order the plan lays out', async () => {
+  it('groups its sections in the rail, in the order the plan lays out', async () => {
     // The shell is the one place the WHOLE screen is asserted; each section owns its own tests.
     // Without a session there is no Server section and no vacation responder, which is itself the
     // FR-SRV-02 promise: a capability we cannot verify is absent, never broken.
     renderSettings()
-    const headings = (await screen.findAllByRole('heading', { level: 2 })).map(
-      (heading) => heading.textContent,
-    )
-    expect(headings).toEqual([
+
+    // The GROUPS, in order — the information architecture, which is what this screen is now. They
+    // are list labels rather than headings, so a reader navigating by heading meets the page title
+    // and the open section, not nine rail captions in between.
+    const rail = await screen.findByRole('navigation', { name: 'Settings' })
+    const groupNames = within(rail)
+      .getAllByRole('list')
+      .map(
+        (list) => document.getElementById(list.getAttribute('aria-labelledby') ?? '')?.textContent,
+      )
+    // FOUR, not five: every section of "Accounts & rules" needs a session, so without one the group
+    // is not empty-but-present, it is absent. A heading over nothing is worse than no heading.
+    expect(groupNames).toEqual(['General', 'Appearance', 'Mail', 'System'])
+
+    // …and every section reachable from it. One rail link per section, in group order.
+    const links = within(rail)
+      .getAllByRole('link')
+      .map((link) => link.textContent)
+    expect(links).toEqual([
       'General',
+      'Notifications',
       'Appearance',
-      'Reading',
       'Swipe actions',
+      'Reading',
       'Compose',
       // Next to Compose because that is what a template is for (M5.5, FR-CMP-12). Unlike the
-      // sections below it needs only a replica, not a session — templates are stored locally.
+      // capability-gated ones it needs only a replica — templates are stored locally.
       'Templates',
-      'Notifications',
       'Offline & storage',
       'About',
     ])
   })
 
+  it('opens the first section on a wide screen, and the one the URL names', async () => {
+    // Landing on `/settings` with room for both columns shows a section rather than an empty panel:
+    // the reader asked for settings, not for a menu.
+    renderSettings()
+    expect(await screen.findByRole('heading', { level: 2, name: 'General' })).toBeInTheDocument()
+    // The deep link `/settings/<slug>` has been buildable since M1.4 and did nothing until now.
+    window.history.pushState(null, '', '/settings/compose')
+    renderSettings()
+    expect(await screen.findByRole('heading', { level: 2, name: 'Compose' })).toBeInTheDocument()
+  })
+
   it('hides the vacation responder, the identities and the server panel without a session', async () => {
     renderSettings()
-    await screen.findByLabelText('Theme')
+    // Absent from the RAIL is the stronger claim now: unreachable, not merely unrendered.
+    const rail = await screen.findByRole('navigation', { name: 'Settings' })
+    expect(within(rail).queryByRole('link', { name: 'Vacation responder' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Vacation responder' })).not.toBeInTheDocument()
     // Identities are session- AND capability-gated (they live under the submission capability):
     // without a session there is nothing to ask, so the section must not appear at all rather than
     // render an editor that would immediately fail to load (FR-SRV-02).
-    expect(screen.queryByRole('heading', { name: 'Identities' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole('link', { name: 'Identities' })).not.toBeInTheDocument()
+    expect(within(rail).queryByRole('link', { name: 'Server' })).not.toBeInTheDocument()
   })
 })
 
@@ -140,6 +177,7 @@ describe('SettingsPage', () => {
   it('changes the reading-pane layout preference', async () => {
     const user = userEvent.setup()
     renderSettings()
+    await openSection(user, 'Appearance')
 
     await user.selectOptions(screen.getByLabelText('Reading pane'), 'off')
 
@@ -149,6 +187,7 @@ describe('SettingsPage', () => {
   it('changes the theme preference', async () => {
     const user = userEvent.setup()
     renderSettings()
+    await openSection(user, 'Appearance')
 
     await user.selectOptions(screen.getByLabelText('Theme'), 'dark')
 
@@ -156,7 +195,11 @@ describe('SettingsPage', () => {
   })
 
   it('has no WCAG 2.x A/AA axe violations', async () => {
+    const user = userEvent.setup()
     const { container } = renderSettings()
+    // With a panel per section the sweep has to name one; Offline & storage is the richest of them
+    // (a meter, a breakdown, a switch and a destructive button) and the one this test always used.
+    await openSection(user, 'Offline & storage')
     await screen.findByText('Storage used')
     await expectNoA11yViolations(container)
   })

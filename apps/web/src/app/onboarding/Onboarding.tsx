@@ -17,7 +17,12 @@ import styles from './onboarding.module.css'
 
 export function Onboarding() {
   const { status, onboarding, submitConnect, chooseOAuth, submitBasic, editServer } = useSession()
-  const productName = useConfig().branding.productName
+  const branding = useConfig().branding
+  const productName = branding.productName
+  // Resolved against `document.baseURI`, like the shell header — the app can be mounted under any
+  // prefix (`/webmail/`), and a root-relative path would 404 there. An empty configured value means
+  // "no logo", which a hoster is allowed to want.
+  const logoSrc = branding.logo ? new URL(branding.logo, document.baseURI).href : undefined
 
   if (status === 'booting' || status === 'connecting' || !onboarding) {
     return (
@@ -39,6 +44,7 @@ export function Onboarding() {
       <LoginForm
         target={onboarding.target}
         productName={productName}
+        {...(logoSrc !== undefined ? { logoSrc } : {})}
         methods={onboarding.methods}
         oauthAvailable={onboarding.oauthAvailable}
         canEditServer={onboarding.canEditServer}

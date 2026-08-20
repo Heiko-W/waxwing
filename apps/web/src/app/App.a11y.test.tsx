@@ -22,7 +22,7 @@ describe('App accessibility', () => {
   it('has no axe violations on the sign-in step', async () => {
     const fake = makeFakeServices({ probePresent: true, oauthAvailable: true })
     const { container } = render(<App config={DEFAULT_CONFIG} services={fake.services} />)
-    await screen.findByRole('button', { name: /sign in securely/i })
+    await screen.findByRole('button', { name: /^sign in$/i })
     await expectNoA11yViolations(container)
   })
 

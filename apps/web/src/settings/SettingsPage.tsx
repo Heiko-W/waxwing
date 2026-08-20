@@ -1,15 +1,17 @@
-import { type ReactNode, useEffect, useId, useState } from 'react'
+import { ChevronLeft } from 'lucide-react'
+import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type AccentId, availablePalettes, getAccent, isAccentId, setAccent } from '../app/accent'
 import { BrandLinks } from '../app/BrandLinks'
 import type { ThemeSetting } from '../app/config'
 import { useConfig } from '../app/config-context'
-import { useRoute } from '../app/route'
+import { Link, settingsPath, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
 import {
   READING_PANE_MODES,
   type ReadingPaneMode,
   setReadingPaneMode,
+  useLayoutTier,
   useReadingPaneMode,
 } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
@@ -79,6 +81,26 @@ function SelectField(props: {
   )
 }
 
+/** One settings section: a slug the URL can name, a heading, and what it renders. */
+interface SettingsSection {
+  readonly slug: string
+  readonly title: string
+  /** False where the server or the session cannot support it — the section then does not exist. */
+  readonly available: boolean
+  readonly render: () => ReactNode
+}
+
+/** A named group of sections; `id` keys `settings.groups.<id>` in the locale files. */
+interface SettingsGroup {
+  readonly id: 'general' | 'appearance' | 'mail' | 'accounts' | 'system'
+  readonly sections: readonly SettingsSection[]
+}
+
+/** The id a rail group's label carries, so its list can be named by it. */
+function groupLabelId(scope: string, group: string): string {
+  return `${scope}-settings-group-${group}`
+}
+
 /** The DOM id a `/settings/<slug>` deep link resolves to. */
 export function settingsSectionDomId(slug: string): string {
   return `waxwing-settings-${slug}`
@@ -137,6 +159,7 @@ export default function SettingsPage() {
   const [theme, setThemeState] = useState<ThemeSetting>(() => getTheme())
   const readingPane = useReadingPaneMode()
   const activeLanguage = i18n.resolvedLanguage ?? i18n.language
+  const id = useId()
   const ids = {
     theme: useId(),
     language: useId(),
@@ -147,24 +170,16 @@ export default function SettingsPage() {
   const config = useConfig()
 
   /**
-   * `/settings/<slug>` jumps to that section.
+   * `/settings/<slug>` SELECTS that section — it no longer scrolls to it.
    *
    * The router has computed `rest` for this route since M1.4 and `settingsPath(sub)` has been able
-   * to BUILD such a path just as long — but nothing ever read it, so `/settings/notifications`
-   * silently rendered the top of a ten-section page. Dead infrastructure that looks like a feature:
-   * a link, a help reference or a notification could point at a section and appear to work.
-   *
-   * Focus as well as scroll, or a keyboard user arrives at the top of the page and has to travel
-   * back down to the thing they asked for.
+   * to build such a path just as long, but nothing read it: `/settings/notifications` rendered the
+   * top of a fourteen-section page. It was answered once with a scroll-and-focus effect, which was
+   * the right fix for a long page and is the wrong one for this layout — the URL now names the
+   * panel on screen, which is also what makes the rail's `aria-current` honest.
    */
   const route = useRoute()
-  useEffect(() => {
-    if (route.rest === '') return
-    const target = document.getElementById(settingsSectionDomId(route.rest))
-    if (target === null) return
-    target.scrollIntoView({ block: 'start' })
-    target.focus({ preventScroll: true })
-  }, [route.rest])
+  const narrow = useLayoutTier() === 'phone'
 
   const [accent, setAccentState] = useState<AccentId>(() => getAccent())
   const replica = useReplicaOptional()
@@ -204,134 +219,253 @@ export default function SettingsPage() {
     setThemeState(next)
   }
 
+  /**
+   * The sections, grouped — the information architecture, in one place.
+   *
+   * Fourteen sections in one scrolling column is what the owner met: everything present, nothing
+   * findable, and on a phone several screen-heights of it with no jump anywhere. The groups are the
+   * shape Bulwark and Apple Mail both settle on; the list on the left is the navigation those two
+   * have and this had none of.
+   *
+   * `available` is exactly the condition each section carried before — capability-gated sections
+   * still simply do not exist on a server that cannot do them, and an empty group disappears with
+   * its last section rather than leaving a heading over nothing.
+   */
+  const groups: readonly SettingsGroup[] = [
+    {
+      id: 'general',
+      sections: [
+        {
+          slug: 'general',
+          title: t('settings.general.title'),
+          available: true,
+          render: () => (
+            <SelectField
+              id={ids.language}
+              label={t('language.label')}
+              value={activeLanguage}
+              options={SUPPORTED_LANGUAGES.map((value: SupportedLanguage) => ({
+                value,
+                label: t(`language.${value}`),
+              }))}
+              onChange={(value) => {
+                void changeLanguage(value as SupportedLanguage)
+              }}
+            />
+          ),
+        },
+        {
+          slug: 'notifications',
+          title: t('notify.title'),
+          available: replica !== null,
+          render: () => <NotificationsSection />,
+        },
+      ],
+    },
+    {
+      id: 'appearance',
+      sections: [
+        {
+          slug: 'appearance',
+          title: t('settings.appearance.title'),
+          available: true,
+          render: () => (
+            <>
+              <SelectField
+                id={ids.theme}
+                label={t('theme.label')}
+                value={theme}
+                options={THEME_OPTIONS.map((value) => ({ value, label: t(`theme.${value}`) }))}
+                onChange={handleTheme}
+              />
+              {!config.branding.accentLocked && (
+                <SelectField
+                  id={ids.accent}
+                  label={t('settings.appearance.accent.label')}
+                  value={accent}
+                  options={availablePalettes(config.branding.accentPalettes).map((palette) => ({
+                    value: palette.id,
+                    label: t(`settings.appearance.accent.${palette.id}`),
+                  }))}
+                  onChange={handleAccent}
+                />
+              )}
+              {replica !== null && <DensityField id={ids.density} />}
+              <SelectField
+                id={ids.readingPane}
+                label={t('settings.appearance.readingPane.label')}
+                hint={t('settings.appearance.readingPane.hint')}
+                value={readingPane}
+                options={READING_PANE_MODES.map((value) => ({
+                  value,
+                  label: t(`settings.appearance.readingPane.${value}`),
+                }))}
+                onChange={(value) => setReadingPaneMode(value as ReadingPaneMode)}
+              />
+            </>
+          ),
+        },
+        {
+          // A device-input preference, not a mail one — which is why it sits with Appearance rather
+          // than under Mail, where it would be the only setting that is about the finger.
+          slug: 'swipe',
+          title: t('settings.swipe.title'),
+          available: replica !== null,
+          render: () => <SwipeSection />,
+        },
+      ],
+    },
+    {
+      id: 'mail',
+      sections: [
+        {
+          slug: 'reading',
+          title: t('settings.reading.title'),
+          available: replica !== null,
+          render: () => <ReadingSection />,
+        },
+        {
+          slug: 'compose',
+          title: t('settings.compose.title'),
+          available: replica !== null,
+          render: () => <ComposeSection />,
+        },
+        {
+          slug: 'templates',
+          title: t('settings.templates.title'),
+          available: replica !== null,
+          render: () => <TemplatesSection />,
+        },
+        {
+          slug: 'scheduled',
+          title: t('outbox.scheduled.title'),
+          available: connected !== null && scheduleAvailable,
+          render: () => (
+            <>
+              <p className={styles.hint}>{t('outbox.scheduled.description')}</p>
+              <ScheduledSends />
+            </>
+          ),
+        },
+      ],
+    },
+    {
+      id: 'accounts',
+      sections: [
+        {
+          slug: 'identities',
+          title: t('settings.identities.title'),
+          available: replica !== null && identitiesAvailable,
+          render: () => <IdentitiesSection />,
+        },
+        {
+          slug: 'vacation',
+          title: t('settings.vacation.title'),
+          available: replica !== null && vacationAvailable,
+          render: () => <VacationSection />,
+        },
+        {
+          slug: 'filters',
+          title: t('settings.filters.title'),
+          available: replica !== null && sieveAvailable,
+          render: () => <FiltersSection />,
+        },
+      ],
+    },
+    {
+      id: 'system',
+      sections: [
+        {
+          slug: 'offline',
+          title: t('settings.offline.title'),
+          available: replica !== null,
+          render: () => <StorageSection />,
+        },
+        {
+          slug: 'server',
+          title: t('settings.server.title'),
+          available: connected !== null,
+          render: () => <ServerSection />,
+        },
+        {
+          slug: 'about',
+          title: t('settings.about.title'),
+          available: true,
+          render: () => (
+            <>
+              {/* The version is not decoration: it is the first thing any support exchange needs,
+                  and a static deployment has no other way to say which build it is running (M4.5). */}
+              <p className={styles.aboutVersion}>
+                {t('settings.about.version', { version: APP_VERSION })}
+              </p>
+              <BrandLinks />
+            </>
+          ),
+        },
+      ],
+    },
+  ]
+
+  const shown = groups
+    .map((group) => ({ ...group, sections: group.sections.filter((s) => s.available) }))
+    .filter((group) => group.sections.length > 0)
+  const all = shown.flatMap((group) => group.sections)
+  const active = all.find((section) => section.slug === route.rest)
+  /**
+   * With room for both columns, landing on `/settings` shows the first section rather than an empty
+   * panel — the reader asked for settings, not for a menu. On a phone there IS no second column, so
+   * the list is the screen and a section replaces it (the Master/Detail pattern Bulwark uses, and
+   * the one the drawer and the reading pane already use here).
+   */
+  const detail = active ?? (narrow ? undefined : all[0])
+
   return (
-    <div className={styles.page}>
-      <h1 className={styles.title}>{t('settings.title')}</h1>
-
-      <Section slug="general" title={t('settings.general.title')}>
-        <SelectField
-          id={ids.language}
-          label={t('language.label')}
-          value={activeLanguage}
-          options={SUPPORTED_LANGUAGES.map((value: SupportedLanguage) => ({
-            value,
-            label: t(`language.${value}`),
-          }))}
-          onChange={(value) => {
-            void changeLanguage(value as SupportedLanguage)
-          }}
-        />
-      </Section>
-
-      <Section slug="appearance" title={t('settings.appearance.title')}>
-        <SelectField
-          id={ids.theme}
-          label={t('theme.label')}
-          value={theme}
-          options={THEME_OPTIONS.map((value) => ({ value, label: t(`theme.${value}`) }))}
-          onChange={handleTheme}
-        />
-        {!config.branding.accentLocked && (
-          <SelectField
-            id={ids.accent}
-            label={t('settings.appearance.accent.label')}
-            value={accent}
-            options={availablePalettes(config.branding.accentPalettes).map((palette) => ({
-              value: palette.id,
-              label: t(`settings.appearance.accent.${palette.id}`),
-            }))}
-            onChange={handleAccent}
-          />
-        )}
-        {replica !== null && <DensityField id={ids.density} />}
-        <SelectField
-          id={ids.readingPane}
-          label={t('settings.appearance.readingPane.label')}
-          hint={t('settings.appearance.readingPane.hint')}
-          value={readingPane}
-          options={READING_PANE_MODES.map((value) => ({
-            value,
-            label: t(`settings.appearance.readingPane.${value}`),
-          }))}
-          onChange={(value) => setReadingPaneMode(value as ReadingPaneMode)}
-        />
-      </Section>
-
-      {replica !== null && (
-        <Section slug="reading" title={t('settings.reading.title')}>
-          <ReadingSection />
-        </Section>
+    <div className={`${styles.page}${detail !== undefined ? ` ${styles.pageDetail}` : ''}`}>
+      {(!narrow || detail === undefined) && (
+        <nav className={styles.rail} aria-label={t('settings.title')}>
+          <h1 className={styles.title}>{t('settings.title')}</h1>
+          {shown.map((group) => (
+            <div key={group.id} className={styles.railGroup}>
+              {/* A LABEL for its list, not a heading: the only heading levels on this screen are the
+                  page title and the open section's, and a rail full of h2s would put nine of them
+                  between the two for anyone navigating by heading. `aria-labelledby` gives the list
+                  the same name without the outline. */}
+              <span id={groupLabelId(id, group.id)} className={styles.railGroupTitle}>
+                {t(`settings.groups.${group.id}`)}
+              </span>
+              <ul className={styles.railList} aria-labelledby={groupLabelId(id, group.id)}>
+                {group.sections.map((section) => (
+                  <li key={section.slug}>
+                    <Link
+                      to={settingsPath(section.slug)}
+                      className={styles.railItem}
+                      aria-current={detail?.slug === section.slug ? 'page' : undefined}
+                    >
+                      {section.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
       )}
 
-      {replica !== null && (
-        <Section slug="swipe" title={t('settings.swipe.title')}>
-          <SwipeSection />
-        </Section>
+      {detail !== undefined && (
+        <div className={styles.detail}>
+          {narrow && (
+            // The phone's way back to the list. On the wide layout the rail is right there, so a
+            // back link would point at something already on screen.
+            <Link to={settingsPath()} className={styles.detailBack}>
+              <ChevronLeft aria-hidden="true" />
+              {t('settings.title')}
+            </Link>
+          )}
+          <Section slug={detail.slug} title={detail.title}>
+            {detail.render()}
+          </Section>
+        </div>
       )}
-
-      {replica !== null && (
-        <Section slug="compose" title={t('settings.compose.title')}>
-          <ComposeSection />
-        </Section>
-      )}
-
-      {replica !== null && identitiesAvailable && (
-        <Section slug="identities" title={t('settings.identities.title')}>
-          <IdentitiesSection />
-        </Section>
-      )}
-
-      {replica !== null && vacationAvailable && (
-        <Section slug="vacation" title={t('settings.vacation.title')}>
-          <VacationSection />
-        </Section>
-      )}
-
-      {replica !== null && (
-        <Section slug="templates" title={t('settings.templates.title')}>
-          <TemplatesSection />
-        </Section>
-      )}
-
-      {replica !== null && sieveAvailable && (
-        <Section slug="filters" title={t('settings.filters.title')}>
-          <FiltersSection />
-        </Section>
-      )}
-
-      {connected !== null && scheduleAvailable && (
-        <Section slug="scheduled" title={t('outbox.scheduled.title')}>
-          <p className={styles.hint}>{t('outbox.scheduled.description')}</p>
-          <ScheduledSends />
-        </Section>
-      )}
-
-      {replica !== null && (
-        <Section slug="notifications" title={t('notify.title')}>
-          <NotificationsSection />
-        </Section>
-      )}
-
-      {replica !== null && (
-        <Section slug="offline" title={t('settings.offline.title')}>
-          <StorageSection />
-        </Section>
-      )}
-
-      {connected !== null && (
-        <Section slug="server" title={t('settings.server.title')}>
-          <ServerSection />
-        </Section>
-      )}
-
-      <Section slug="about" title={t('settings.about.title')}>
-        {/* The version is not decoration: it is the first thing any support exchange needs, and a
-            static deployment has no other way to say which build it is running (M4.5). */}
-        <p className={styles.aboutVersion}>
-          {t('settings.about.version', { version: APP_VERSION })}
-        </p>
-        <BrandLinks />
-      </Section>
     </div>
   )
 }

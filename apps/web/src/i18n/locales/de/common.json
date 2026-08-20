@@ -60,35 +60,37 @@
     }
   },
   "auth": {
-    "signInTitle": "Bei {{product}} anmelden",
+    "signInTitle": "Webmail für {{host}}",
     "oauth": {
-      "button": "Sicher anmelden",
-      "unavailable": "Die sichere Anmeldung benötigt eine HTTPS-Verbindung. Nutzen Sie unten Benutzername und Passwort."
+      "button": "Anmelden",
+      "unavailable": "Die Anmeldung über den Server benötigt eine HTTPS-Verbindung. Nutzen Sie unten Benutzername und Passwort.",
+      "explain": "Sie melden sich direkt bei {{host}} an — mit Ihrem Passwort und, falls für Ihr Konto eingerichtet, Ihrem Zwei-Faktor-Code."
     },
     "basic": {
       "username": "Benutzername",
       "password": "Passwort",
       "staySignedIn": "Angemeldet bleiben",
-      "appPasswordHint": "Bei Zwei-Faktor-Authentifizierung ein App-spezifisches Passwort verwenden.",
+      "appPasswordHint": "Ist für Ihr Konto Zwei-Faktor-Authentifizierung aktiv, wird Ihr normales Passwort hier abgelehnt — verwenden Sie ein App-Passwort.",
       "submit": "Mit Passwort anmelden",
       "publicComputer": "Öffentlicher oder gemeinsam genutzter Computer",
-      "publicComputerHint": "Es bleiben weder Nachrichten noch eine Anmeldung auf diesem Gerät — unabhängig davon, wie Sie sich anmelden. Beides wird beim Abmelden gelöscht, beim Schließen des Tabs und — falls der Browser vorher abstürzt — beim nächsten Start von {{product}} auf diesem Rechner."
+      "publicComputerHint": "Es bleiben weder Nachrichten noch eine Anmeldung auf diesem Gerät — unabhängig davon, wie Sie sich anmelden. Beides wird beim Abmelden gelöscht, beim Schließen des Tabs und — falls der Browser vorher abstürzt — beim nächsten Start von {{product}} auf diesem Rechner.",
+      "disclose": "Stattdessen mit Passwort anmelden",
+      "appPasswordHintOAuth": "Ist für Ihr Konto Zwei-Faktor-Authentifizierung aktiv, wird Ihr normales Passwort hier abgelehnt — verwenden Sie ein App-Passwort oder melden Sie sich oben über den Server an."
     },
     "back": "Anderen Server verwenden",
     "error": {
       "invalidCredentials": "Falscher Benutzername oder falsches Passwort.",
       "oauthUnavailable": "Dieser Server erfordert eine sichere (HTTPS-)Anmeldung, die hier nicht verfügbar ist.",
       "generic": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
-      "signOutIncomplete": "Sie sind abgemeldet, aber die lokale Kopie Ihrer Nachrichten konnte nicht entfernt werden — möglicherweise ist noch ein anderer Tab geöffnet. Schließen Sie alle Tabs und melden Sie sich erneut ab."
+      "signOutIncomplete": "Sie sind abgemeldet, aber die lokale Kopie Ihrer Nachrichten konnte nicht entfernt werden — möglicherweise ist noch ein anderer Tab geöffnet. Schließen Sie alle Tabs und melden Sie sich erneut ab.",
+      "invalidCredentialsBasic": "Falscher Benutzername oder falsches Passwort. Ist für dieses Konto Zwei-Faktor-Authentifizierung aktiv, funktioniert hier nur ein App-Passwort."
     },
     "reauth": {
       "title": "Sitzung abgelaufen",
       "body": "Ihre Sitzung ist abgelaufen. Melden Sie sich erneut an — Ihr Stand bleibt erhalten.",
       "submit": "Anmelden",
       "cancel": "Abmelden"
-    },
-    "signInSubtitle": "Postfach auf {{host}}",
-    "separator": "oder mit Passwort:"
+    }
   },
   "account": {
     "menu": "Konto",
@@ -503,6 +505,13 @@
       "save": "Vorlage speichern",
       "cancel": "Abbrechen",
       "defaultSenderName": "ich"
+    },
+    "groups": {
+      "general": "Allgemein",
+      "appearance": "Darstellung",
+      "mail": "E-Mail",
+      "accounts": "Konten & Regeln",
+      "system": "System"
     }
   },
   "contacts": {
@@ -996,7 +1005,9 @@
       "sentNote": "{{address}} wurde benachrichtigt.",
       "body": "Ihre Nachricht wurde angezeigt. Das ist keine Zusicherung, dass sie gelesen oder verstanden wurde.\n",
       "subject": "Gelesen: {{subject}}"
-    }
+    },
+    "fullScreen": "Im Vollbild öffnen",
+    "exitFullScreen": "Vollbild verlassen"
   },
   "compose": {
     "toolbar": "Formatierung",
@@ -1397,7 +1408,8 @@
         "next": "Nächste Nachricht",
         "prev": "Vorherige Nachricht",
         "open": "Nachricht öffnen",
-        "back": "Zurück zur Liste"
+        "back": "Zurück zur Liste",
+        "full": "Nachricht im Vollbild öffnen"
       },
       "list": {
         "select": "Nachricht aus- oder abwählen"

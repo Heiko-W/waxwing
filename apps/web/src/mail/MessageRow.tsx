@@ -58,6 +58,13 @@ export interface MessageRowProps {
   readonly onSelectRange: () => void
   /** Make this row the roving one (on pointer interaction) so keyboard continues from here. */
   readonly onActivate: () => void
+  /**
+   * Open the message on its own — the double-click gesture every desktop mail client has.
+   *
+   * Pointer-only by nature, so it is an ADDITION to a path that already exists rather than the only
+   * way there: the reading pane's overflow menu carries the same action for the keyboard (SC 2.5.7).
+   */
+  readonly onOpenFull: () => void
 }
 
 function senderName(email: EmailRow, fallback: string): string {
@@ -80,6 +87,7 @@ export function MessageRow({
   onSelectToggle,
   onSelectRange,
   onActivate,
+  onOpenFull,
 }: MessageRowProps) {
   const { t } = useTranslation()
   // Comfortable is the BASE row and takes no modifier class: the stylesheet expresses density as a
@@ -131,10 +139,21 @@ export function MessageRow({
   const overflowLabels = customKeywords.length - shownLabels.length
 
   function onRowClick(event: MouseEvent): void {
+    // The second click of a double-click arrives here too, and navigating twice to the same message
+    // pushes a duplicate history entry — so Back would appear to do nothing once. `detail` is the
+    // click count the browser already tracks, which beats a timer of our own.
+    if (event.detail > 1) return
     onActivate()
     if (event.metaKey || event.ctrlKey) onSelectToggle()
     else if (event.shiftKey) onSelectRange()
     else onOpen()
+  }
+
+  function onRowDoubleClick(event: MouseEvent): void {
+    // Modified double-clicks belong to selection, not to opening: ⌘-double-click would otherwise
+    // toggle the row AND throw the reader into full screen.
+    if (event.metaKey || event.ctrlKey || event.shiftKey) return
+    onOpenFull()
   }
 
   return (
@@ -149,6 +168,7 @@ export function MessageRow({
       className={`${rowClass}${unread ? ` ${styles.unread}` : ''}${selected ? ` ${styles.selected}` : ''}${focused ? ` ${styles.rowFocused}` : ''}`}
       style={style}
       onClick={onRowClick}
+      onDoubleClick={onRowDoubleClick}
     >
       {/* `draggable` on the row makes descendants draggable too — the checkbox must stay a
           checkbox, mirroring the stopPropagation below. */}

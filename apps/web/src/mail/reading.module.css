@@ -5,13 +5,22 @@
  * print (FR-RD-05), and motion respects prefers-reduced-motion.
  */
 
+/*
+ * The conversation column. Its padding used to be `space-4` while each message card added another
+ * `space-3` plus a border, so the subject sat 16 px from the pane edge and the message body 29 px —
+ * two left edges in one column, 13 px apart, which the eye reads as a misalignment rather than as a
+ * hierarchy. One inline padding governs both now, and the messages inside it are plain blocks.
+ */
 .conversation {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-3);
-  padding: var(--waxwing-space-4);
+  padding-block: var(--waxwing-space-4);
+  padding-inline: var(--waxwing-space-5);
   overflow-y: auto;
   height: 100%;
+  /* Momentum stops at the pane instead of chaining into the shell behind it. */
+  overscroll-behavior: contain;
 }
 
 .subject {
@@ -19,8 +28,18 @@
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
   color: var(--waxwing-text);
   overflow-wrap: break-word;
+}
+
+/* Below ~30rem of PANE, 28px of subject takes two lines before the mail starts. One step down is
+   still unmistakably the headline — and it now applies to a narrow pane on any screen, not just to
+   a narrow screen. */
+@container waxwing-pane (max-width: 30rem) {
+  .subject {
+    font-size: var(--waxwing-text-xl);
+  }
 }
 
 .threadCount {
@@ -83,14 +102,22 @@
 
 /* ---- one expanded message ---- */
 
+/*
+ * A message is a BLOCK, not a card. The border, radius and `surface` fill were what made a single
+ * open mail look like a receipt pinned to an empty page — with, on a tall window, several hundred
+ * pixels of bare background under it. Now that the pane itself is `surface` (shell.module.css), the
+ * card would be an invisible outline drawn on its own colour anyway. In a thread the messages are
+ * separated by a hairline instead, which is what carries a conversation in Apple Mail.
+ */
 .message {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-3);
-  padding: var(--waxwing-space-3);
-  background: var(--waxwing-surface);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-lg);
+}
+
+.message + .message {
+  padding-block-start: var(--waxwing-space-3);
+  border-block-start: 1px solid var(--waxwing-border);
 }
 
 .header {
@@ -112,6 +139,10 @@
   justify-content: space-between;
   gap: var(--waxwing-space-3);
   align-items: baseline;
+  /* The date is `flex-shrink: 0` and, spelled out, takes most of a narrow pane's width. Allowed to
+     wrap under the name, it stops competing for the same line — a tablet's reading pane is about
+     420px, and "Aug 19, 2026, 7:39 PM" is half of it. */
+  flex-wrap: wrap;
 }
 
 /* Name, real address and (rarely) the impersonation marker, on one wrapping baseline run. */
@@ -123,10 +154,20 @@
   min-width: 0;
 }
 
+/*
+ * `break-word`, NOT `anywhere`, and the difference is the whole bug.
+ *
+ * Both break inside a word when one would otherwise overflow. But `anywhere` also reports a
+ * min-content width of a single character, so any flex sibling that refuses to shrink — here the
+ * date, which is `flex-shrink: 0` — can squeeze this box down to a column of letters. Photographed
+ * on a tablet (834px, tablet-reading.webp): "Waxwing Weekly" came out as "Wax / wing / Week / ly"
+ * and the address below it as "bob@ / waxwi / ng.test". `break-word` keeps the longest word as the
+ * minimum, which is what makes the line wrap like a line.
+ */
 .from {
   font-weight: var(--waxwing-weight-semibold);
   color: var(--waxwing-text);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /*
@@ -156,7 +197,9 @@
 .fromAddress {
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
-  overflow-wrap: anywhere;
+  /* See `.from`: an address is one long word, and `anywhere` would let it be shredded rather than
+     wrapped. A genuinely over-long address still breaks, which is what `break-word` is for. */
+  overflow-wrap: break-word;
 }
 
 /*
@@ -238,47 +281,43 @@
 /* ---- action bar ---- */
 
 /*
- * The gap here is BETWEEN groups; `.actionGroup` sets the tighter one within each. That difference
- * is the whole mechanism — ten equally spaced, equally weighted glyphs in one run gave the eye
- * nothing to hold, and the six on the left came from four different verbs (file, delete, report,
- * flag) with no more distance between "archive" and "delete" than between "archive" and itself.
- * Distance does the grouping; no separators, no labels.
+ * ONE row, and short enough to be one (B49).
+ *
+ * What was here until 2026-08-20 was three spaced groups — file it | get rid of it | change its
+ * state — with the gap between groups four times the gap within, and no separators or labels.
+ * Distance did the grouping, and it worked: ten equally spaced, equally weighted glyphs in one run
+ * gave the eye nothing to hold.
+ *
+ * It was a good answer to a question the app no longer asks. Ten glyphs on a 270px tablet pane is
+ * three rows of icons at the 44px a touch target must be, and grouping cannot fix arithmetic — the
+ * ratio rule that shipped here bought back a row and still left three. The bar now keeps as many
+ * actions as fit and hands the rest to the `⋯` menu (`use-action-overflow.ts`), so the run is short
+ * wherever it is read, and one even gap is the honest way to space a short run.
+ *
+ * `nowrap` is load-bearing: wrapping is exactly the failure being fixed, and it would also hide the
+ * overshoot from the measurement, which asks how wide the bar is and would get the same answer on
+ * one row or three. Deliberately NOT `overflow: hidden` — for the frame before the first
+ * measurement, an overshoot that is visible is better than a focus ring that is clipped.
  */
 .actionBar {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--waxwing-space-4);
+  flex-wrap: nowrap;
+  gap: var(--waxwing-space-1);
   align-items: center;
   padding-bottom: var(--waxwing-space-2);
   border-bottom: 1px solid var(--waxwing-border);
 }
 
-.actionGroup {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--waxwing-space-1);
-}
-
 /*
- * Tighter on a phone, because the grouping is a RATIO, not a pair of fixed numbers.
- *
- * 16 px between groups and 4 px within reads well at 420 px of pane; at 390 px of viewport it cost a
- * third row — three strips of icons is worse than the two ungrouped ones it replaced. 12 px against
- * 2 px keeps the same visual relationship (six times, rather than four) and brings the six filing
- * and state actions back onto one line, with the reply group on the next.
+ * Keyed to the container rather than the viewport since 2026-08-19: as a viewport rule this fired on
+ * a phone and NOT on a tablet, whose reading pane is just as narrow — which is precisely the case
+ * the tablet screenshot caught.
  */
-@media (max-width: 39.999em) {
-  .actionBar {
-    gap: var(--waxwing-space-3);
+@container waxwing-pane (max-width: 30rem) {
+  /* 24px of margin on each side is a quarter of a narrow pane. */
+  .conversation {
+    padding-inline: var(--waxwing-space-3);
   }
-
-  .actionGroup {
-    gap: var(--waxwing-space-hair);
-  }
-}
-
-.actionSpacer {
-  flex: 1;
 }
 
 /* The overflow (⋯) menu. `Menu`'s trigger is a bordered button by default; here it sits among ghost
@@ -323,10 +362,19 @@
   color-scheme: light;
 }
 
+/*
+ * The same height the frame will take (`.frame`'s 8rem minimum), so the body does not jump when it
+ * arrives. Opening a message used to step through THREE different heights: the conversation
+ * skeleton (140px), then this box with a centred spinner (whatever 32px of padding made it), then
+ * the frame at its 8rem minimum before the ResizeObserver grew it to the content. Two of those
+ * three steps were pure layout shift, which reads as slowness even when the data is already there.
+ */
 .bodyLoading {
   display: flex;
-  justify-content: center;
-  padding: var(--waxwing-space-6);
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  min-block-size: 8rem;
+  padding-block: var(--waxwing-space-2);
 }
 
 /* ---- remote content banner ---- */

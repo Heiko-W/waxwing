@@ -8,6 +8,7 @@ import {
   READ_SUBJECTS,
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 // M1.9 read E2E suite — the REAL production bundle against the live Stalwart fixture (see
 // playwright.read.config.ts + read.setup.mjs). It proves the Phase-2 "read" story end to end:
@@ -28,6 +29,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   // The app is served from the same origin as its JMAP server (the preview proxy), so the
   // FR-AUTH-01 same-origin probe succeeds and onboarding lands straight on the Basic sign-in
   // step — no connect step to fill.
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
@@ -193,7 +195,7 @@ test.describe('M1.9 read suite', () => {
 
   test('OAuth login reaches the inbox (secure-context localhost)', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Sign in securely' }).click()
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
     // Stalwart's /login SPA (same-origin via the proxy): fill its form and submit; the app then
     // completes the PKCE code exchange and mounts the shell.
     await page.locator('#username').fill(CREDENTIALS.user)
@@ -534,5 +536,38 @@ test.describe('M3.9 nested message', () => {
     // Toggling it closed removes the nested view.
     await page.getByRole('button', { name: 'Hide message' }).click()
     await expect(page.getByText(READ_NESTED.subject)).toBeHidden()
+  })
+})
+
+test.describe('full-screen reading', () => {
+  /**
+   * Double-click opens the message on its own (M5-polish). Asserted against the REAL layout, because
+   * what it claims is a layout claim: the list and the folder rail are gone, and the message is not.
+   *
+   * A full window, not a full browser window: `window.open` would start a cold boot that cannot
+   * restore a session unless the reader ticked "stay signed in" — and lands on the sign-in form
+   * offline, in a window they just asked to have a message in (see the auth notes in ADR-006).
+   */
+  test('double-clicking a row opens the message alone, and Back brings the list home', async ({
+    page,
+  }) => {
+    await login(page)
+    const list = messageList(page)
+    const row = list.getByText(READ_SUBJECTS.plain)
+    await expect(row).toBeVisible({ timeout: 30_000 })
+
+    await row.dblclick()
+
+    // The message, alone: no list, no folder rail, and the URL says why.
+    await expect(page.getByRole('heading', { name: READ_SUBJECTS.plain })).toBeVisible()
+    await expect(list).toBeHidden()
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeHidden()
+    expect(page.url()).toContain('full=1')
+
+    // …and out again, to the list it came from rather than to a bare folder URL.
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(list).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible()
+    expect(page.url()).not.toContain('full=1')
   })
 })

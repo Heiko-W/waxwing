@@ -106,10 +106,20 @@
   gap: var(--waxwing-space-1);
 }
 
+/*
+ * THE SAME GRID the recipient rows use (recipient-field.module.css), and that is the point.
+ *
+ * From and Subject stacked their labels ABOVE the control while To/Cc/Bcc put theirs in a 2.5rem
+ * column to the left — two form languages in one small window, one above the other, so the reader's
+ * eye had to find a new left edge twice on the way down four fields. Photographed in
+ * desktop-compose.webp. One column measurement, declared once and shared, is also what stops the
+ * two halves drifting apart again.
+ */
 .field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--waxwing-space-1);
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   border-block-end: 1px solid var(--waxwing-border);
 }
@@ -118,6 +128,15 @@
 .fromLabel {
   font-size: var(--waxwing-text-sm);
   color: var(--waxwing-text-muted);
+}
+
+/* Below the tablet breakpoint the label column costs a fifth of the line; the labels go back on top
+   there, for every field at once — the two halves stay in one language either way. */
+@media (max-width: 39.999em) {
+  .field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--waxwing-space-1);
+  }
 }
 
 .editorWrap {
@@ -242,4 +261,21 @@
   margin: 0;
   color: var(--waxwing-danger);
   font-size: var(--waxwing-text-sm);
+}
+
+/*
+ * The action footer. Send sits where a form's primary action belongs — at the end of the form, not
+ * in the window chrome — and Discard sits at the other end of the row, because the gap is the only
+ * thing standing between a finished message and a deleted one.
+ */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-3);
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
+.footerDiscard {
+  margin-inline-start: auto;
 }

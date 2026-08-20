@@ -52,7 +52,7 @@ test.describe('/mail/ mount', () => {
 
     await page.goto(MOUNT)
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Sign in to')
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for')
     expect(broken).toEqual([])
 
     // The mount prefix reached the document, so every relative URL in the app — assets,
@@ -69,7 +69,7 @@ test.describe('/mail/ mount', () => {
     await page.goto(DEEP_LINK)
     // The heading is the proof of boot: it only exists if the entry chunk resolved, executed and
     // mounted React. Under the missing-`<base>` mutation this is a blank document instead.
-    await expect(heading).toContainText('Sign in to')
+    await expect(heading).toContainText('Webmail for')
     // Assert the failure MECHANISM too, not just the symptom. A future regression that white-
     // screens for some other reason should not be mistaken for this one, and a 404 on the entry
     // chunk is the fingerprint M3.5 actually recorded.
@@ -85,7 +85,7 @@ test.describe('/mail/ mount', () => {
     // also makes this a genuine reload of a loaded page, which is what "deep-link reload" means.
     const reloaded = brokenRequests(page)
     await page.reload()
-    await expect(heading).toContainText('Sign in to')
+    await expect(heading).toContainText('Webmail for')
     expect(reloaded).toEqual([])
 
     // The deep route did not become the base. This is the assertion that would have caught the
@@ -111,7 +111,7 @@ test.describe('/mail/ mount', () => {
     const heading = page.getByRole('heading', { level: 1 })
 
     await page.goto(DEEP_LINK)
-    await expect(heading).toContainText('Sign in to')
+    await expect(heading).toContainText('Webmail for')
 
     // From here on the assertion is `booted()`, not a specific heading — see its comment. The
     // onboarding branch the app picks depends on a network probe, so it CHANGES when we go offline,

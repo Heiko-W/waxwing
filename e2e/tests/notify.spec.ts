@@ -454,7 +454,7 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
 
     // The session really ended — otherwise "no notifications" could just mean the click missed.
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Sign in to', {
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for', {
       timeout: 20_000,
     })
     await expect

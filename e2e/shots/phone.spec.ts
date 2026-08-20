@@ -57,3 +57,13 @@ test('writing a message', async ({ page }) => {
   await page.keyboard.type('See you at one.')
   await shot(page, 'phone-compose')
 })
+
+test('the settings list', async ({ page }) => {
+  await signIn(page)
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  // On a phone the rail IS the screen: a section replaces it, and the back link returns here.
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible({
+    timeout: 30_000,
+  })
+  await shot(page, 'phone-settings')
+})

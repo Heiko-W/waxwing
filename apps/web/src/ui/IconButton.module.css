@@ -5,8 +5,19 @@
   aspect-ratio: 1;
 }
 
+/*
+ * The glyph, pinned to the medium step. Lucide draws at 24px by default and nothing here overrode
+ * it, so the app's most frequent control carried its LARGEST icon: ten 24px glyphs in 34px buttons
+ * in the reading bar, 71% fill, where a system toolbar runs nearer 50%. The token existed and was
+ * simply never enforced.
+ */
 .icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.icon svg {
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
 }

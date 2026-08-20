@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, type Page } from '@playwright/test'
+import { revealPasswordForm } from '../tests/helpers'
 
 /**
  * PNGs land here, NOT in `docs/site/shots/`. The published directory holds only the converted
@@ -36,6 +37,7 @@ const messageList = (page: Page) => page.getByRole('region', { name: 'Messages',
 
 export async function signIn(page: Page): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()

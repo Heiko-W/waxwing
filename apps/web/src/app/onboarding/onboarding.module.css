@@ -42,6 +42,15 @@
   box-shadow: var(--waxwing-shadow-1);
 }
 
+/* The hoster's mark, above the heading and sized like one line of display type: present enough to
+   identify the service, small enough that the host stays the headline. */
+.logo {
+  align-self: flex-start;
+  block-size: 2rem;
+  inline-size: auto;
+  margin-block-end: calc(var(--waxwing-space-2) * -1);
+}
+
 .heading {
   margin: 0;
   font-size: var(--waxwing-text-xl);
@@ -106,31 +115,31 @@
   border-block-start: 1px solid var(--waxwing-border);
 }
 
-/* A subtle, decorative divider between the OAuth and Basic options. */
-/* A labelled divider: hairline, caption, hairline. It carries text now, so it can no longer be a
-   1 px block — and it stops implying that the method below it is the unsafe one without saying so. */
-.separator {
-  display: flex;
-  align-items: center;
+/* The password fallback's disclosure trigger. Sized and coloured like a secondary remark rather
+   than a second offer: it is one click from the primary action, but it is not its equal — with
+   2FA on the account it only works with an app password. The chevron is drawn from a border so
+   the control needs no icon dependency, and it is hidden from assistive tech, which reads the
+   state from `aria-expanded` instead. */
+.disclosure {
+  align-self: flex-start;
   gap: var(--waxwing-space-2);
-  margin: 0;
+  padding-inline: 0;
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
 
-.separator::before,
-.separator::after {
+.disclosure::after {
   content: "";
-  flex: 1;
-  block-size: 1px;
-  background-color: var(--waxwing-border);
+  inline-size: 0.4em;
+  block-size: 0.4em;
+  border-inline-end: 1.5px solid currentcolor;
+  border-block-end: 1.5px solid currentcolor;
+  transform: translateY(-0.15em) rotate(45deg);
+  transition: transform var(--waxwing-duration-fast) ease;
 }
 
-/* The host, under the product name in the heading. */
-.subheading {
-  margin: 0;
-  color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-sm);
+.disclosure[aria-expanded="true"]::after {
+  transform: translateY(0.1em) rotate(225deg);
 }
 
 .errorRegion {

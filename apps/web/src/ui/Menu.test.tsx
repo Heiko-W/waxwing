@@ -112,3 +112,50 @@ describe('Menu', () => {
     await expectNoA11yViolations(document.body)
   })
 })
+
+describe('a menu near the bottom of the window opens upward', () => {
+  it('flips when there is no room below, and stays put when there is', async () => {
+    const user = userEvent.setup()
+    // jsdom reports zeros for every rect, so the trigger's geometry is supplied — which is also the
+    // only part of this that matters: the decision is arithmetic on a rect and a viewport.
+    const rect = (top: number) =>
+      ({
+        top,
+        bottom: top + 34,
+        left: 10,
+        right: 44,
+        width: 34,
+        height: 34,
+        x: 10,
+        y: top,
+      }) as DOMRect
+
+    render(
+      <Menu
+        triggerLabel="Actions"
+        trigger="A"
+        items={[{ id: 'a', label: 'Archive', onSelect: () => {} }]}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'Actions' })
+
+    // 40px of room under the trigger in an 800px window: the menu cannot fit below.
+    window.innerHeight = 800
+    trigger.getBoundingClientRect = () => rect(726)
+    await user.click(trigger)
+    const flipped = screen.getByRole('menu')
+    // The trigger's top, less the gap — the menu is then pulled fully above that point by
+    // `translateY(-100%)`, so the gap ends up between its bottom edge and the trigger.
+    expect(flipped.style.top).toBe('722px')
+    expect(flipped.className).toContain('flipped')
+
+    await user.keyboard('{Escape}')
+
+    // Near the top, with the whole window below it, nothing moves.
+    trigger.getBoundingClientRect = () => rect(20)
+    await user.click(trigger)
+    const normal = screen.getByRole('menu')
+    expect(normal.style.top).toBe('58px')
+    expect(normal.className).not.toContain('flipped')
+  })
+})

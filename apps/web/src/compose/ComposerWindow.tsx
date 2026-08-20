@@ -370,15 +370,6 @@ export function ComposerWindow({
             {draft.subject || t('compose.noSubject')}
           </span>
           <div className={styles.titleActions}>
-            <IconButton
-              label={sendLabel}
-              variant="primary"
-              size="sm"
-              disabled={!canSend}
-              onClick={requestSend}
-            >
-              <Send />
-            </IconButton>
             {templates.templates.length > 0 && (
               // Only shown once the account HAS templates — an empty menu is a control that
               // teaches the user nothing except that it does nothing.
@@ -394,36 +385,6 @@ export function ComposerWindow({
                 }))}
               />
             )}
-            {scheduleMaxMs > 0 && (
-              // Offered only where the SERVER can hold the message (FR-CMP-11). Without
-              // FUTURERELEASE this would be a promise the app could not keep with its tab closed.
-              <IconButton
-                label={t('compose.schedule.open')}
-                variant="ghost"
-                size="sm"
-                disabled={!canSend}
-                onClick={() => setScheduleOpen(true)}
-              >
-                <Clock />
-              </IconButton>
-            )}
-            <IconButton
-              label={t('compose.attach')}
-              variant="ghost"
-              size="sm"
-              disabled={!attachments.canUpload}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Paperclip />
-            </IconButton>
-            <IconButton
-              label={t('compose.discard')}
-              variant="ghost"
-              size="sm"
-              onClick={requestDiscard}
-            >
-              <Trash2 />
-            </IconButton>
             {/* Also not on a phone, and for the same reason: line 129 defines `minimized` as
                 `draft.mode === 'minimized' && tier !== 'phone'`, so on a phone the mode is stored
                 and then ignored. ComposerHost picks the visible draft by `focusedId`, which this
@@ -501,6 +462,51 @@ export function ComposerWindow({
             {...(attachments.canUpload ? { onAddFiles: attachments.addFiles } : {})}
             {...(editorFactory ? { factory: editorFactory } : {})}
           />
+        </div>
+
+        {/*
+          Send is a NAMED button in a footer, not a filled circle beside the wastebasket.
+          It was an icon-only primary in the title bar, one 8px gap from Discard — the two most
+          consequential actions in the window, adjacent, distinguished by a glyph. A composer's
+          primary action is also the one thing in it worth naming: `sendLabel` already carries the
+          reason it is disabled ("waiting for uploads", "check the recipients"), and an icon-only
+          button hides that sentence behind a tooltip nobody opens.
+        */}
+        <div className={styles.footer}>
+          <Button variant="primary" disabled={!canSend} onClick={requestSend}>
+            <Send aria-hidden="true" />
+            {sendLabel}
+          </Button>
+          {scheduleMaxMs > 0 && (
+            // Offered only where the SERVER can hold the message (FR-CMP-11). Without
+            // FUTURERELEASE this would be a promise the app could not keep with its tab closed.
+            <IconButton
+              label={t('compose.schedule.open')}
+              variant="ghost"
+              disabled={!canSend}
+              onClick={() => setScheduleOpen(true)}
+            >
+              <Clock />
+            </IconButton>
+          )}
+          <IconButton
+            label={t('compose.attach')}
+            variant="ghost"
+            disabled={!attachments.canUpload}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Paperclip />
+          </IconButton>
+          {/* At the far end, and that distance is the feature: discarding is the one action here
+              that cannot be undone from this window. */}
+          <IconButton
+            label={t('compose.discard')}
+            variant="ghost"
+            className={styles.footerDiscard}
+            onClick={requestDiscard}
+          >
+            <Trash2 />
+          </IconButton>
         </div>
 
         <input

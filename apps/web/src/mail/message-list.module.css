@@ -32,6 +32,23 @@
  * intact and the origin fixed; on a 390 px phone the tail is a swipe away, which is the same
  * gesture the rows underneath already answer to.
  */
+/* The disclosure track for the bulk bar / view options — see MessageList.tsx. `0fr → 1fr` is the
+   one way to transition a box to its own content height without measuring it in JS. */
+.barSlot {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--waxwing-duration-base) var(--waxwing-ease-standard);
+}
+
+.barSlotOpen {
+  grid-template-rows: 1fr;
+}
+
+.barSlotInner {
+  overflow: hidden;
+  min-block-size: 0;
+}
+
 .bulkBar {
   display: flex;
   align-items: center;
@@ -76,9 +93,12 @@
 }
 
 /* Virtual scroll container. */
+/* Momentum stops at the list rather than chaining into the pane and the shell behind it — three
+   nested `overflow: auto` boxes are what make a web app feel rubbery on a trackpad. */
 .scroll {
   position: relative;
   overflow: auto;
+  overscroll-behavior: contain;
   flex: 1 1 auto;
   min-block-size: 0;
 }
@@ -207,6 +227,14 @@
   padding: var(--waxwing-space-4);
 }
 
+/* The placeholder grid. Clips rather than scrolls: it is a picture of a list, and a scrollbar on it
+   would be a scrollbar on nothing. */
+.skeletonList {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
 .empty {
   padding: var(--waxwing-space-4);
   color: var(--waxwing-text-muted);
@@ -217,11 +245,14 @@
 .row {
   display: flex;
   align-items: center;
+  /* A double-click opens the message; without this it also selects whatever word it landed on, and
+     the reader is left with a highlighted sender name they did not ask for. */
+  user-select: none;
   gap: var(--waxwing-space-2);
   block-size: 100%;
   padding-inline: var(--waxwing-space-3);
-  border-block-end: 1px solid var(--waxwing-border);
   cursor: pointer;
+  position: relative;
   color: var(--waxwing-text);
   /*
    * Driven imperatively by `use-swipe`, which writes `--swipe-x` on `.rowWrap` (custom properties
@@ -238,7 +269,43 @@
      Fixing that means deciding whether the reveal follows the finger or the writing direction, and
      it cannot be verified without an RTL locale — filed as B41 rather than guessed at here. */
   transform: translateX(var(--swipe-x, 0px));
-  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+  transition:
+    transform var(--waxwing-duration-fast) var(--waxwing-ease-standard),
+    /* Hovering a virtualised list without this switches a chain of rectangles on and off as the
+       pointer sweeps; a 120ms fade turns that into one moving highlight. */
+    background-color
+    var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+/* A POINTER-DOWN state, not a hover affordance: on touch it lasts exactly as long as the finger
+   does, which is the point of it, so it deliberately sits outside `@media (hover: hover)`. */
+.row:active {
+  background-color: var(--waxwing-surface-2);
+}
+
+/*
+ * The separator, inset to the text column — 5.5rem clears the padding, the checkbox and the avatar,
+ * which is where Apple Mail starts its own. It was a full-bleed `border-block-end` on every row: a
+ * continuous grid that ran through the selection tint as well, so the row the reader was ON came
+ * with a line drawn across it. A pseudo-element can be withdrawn per state; a border cannot.
+ */
+.row::after {
+  content: "";
+  /* Decorative, and it sits on top of the row: without this it swallows the pointer, and the swipe
+     gesture bound to the row wrapper never starts. */
+  pointer-events: none;
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 5.5rem 0;
+  block-size: 1px;
+  background-color: var(--waxwing-border);
+}
+
+/* No line under the row you are on, or the one above it — a selection should read as one solid
+   block, the way a table's selected row loses its rules. */
+.row[aria-current="page"]::after,
+.selected::after {
+  display: none;
 }
 
 /*
@@ -285,6 +352,17 @@
 
 .selected {
   background-color: var(--waxwing-surface-selected);
+}
+
+/*
+ * Idle selection. While the reader is IN the reading pane, an accent-tinted row on the left is a
+ * second thing claiming to be current — the list is not where they are, it is where they were.
+ * A neutral fill keeps the place without competing for it, which is what every desktop list does
+ * when it loses focus.
+ */
+.scroll:not(:focus-within) .row[aria-current="page"],
+.scroll:not(:focus-within) .selected {
+  background-color: var(--waxwing-surface-selected-idle);
 }
 
 .skeletonRow {
@@ -343,14 +421,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--waxwing-text-sm);
+  line-height: var(--waxwing-leading-snug);
+  /* The sender anchors the row whether or not the mail is unread. Read rows were entirely regular
+     weight, so nothing in them stood first — the eye had to start at the left edge and read. */
+  font-weight: var(--waxwing-weight-medium);
 }
 
+/*
+ * A COLUMN, not a run. Measured on the shipped screenshot, the paperclip in one row sat at x=697
+ * and the unread dot in another at x=703 — every row started its metadata somewhere else, because
+ * the block is right-aligned and the relative time ("1 second ago" … "7 hours ago") changes width
+ * on every render. A fixed inline size and tabular figures make it a column the eye can scan down.
+ */
 .meta {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--waxwing-space-1);
   color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .icon {
@@ -377,6 +467,8 @@
 .time {
   font-size: var(--waxwing-text-xs);
   white-space: nowrap;
+  min-inline-size: 5.5rem;
+  text-align: end;
 }
 
 .subject,
@@ -385,14 +477,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--waxwing-text-sm);
+  line-height: var(--waxwing-leading-snug);
 }
 
 .subject {
   color: var(--waxwing-text);
 }
 
+/* One step down, so the row has three sizes and not two-and-a-half: sender and subject carry it,
+   the preview supports it. */
 .preview {
   color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
 }
 
 /* Unread emphasis. */

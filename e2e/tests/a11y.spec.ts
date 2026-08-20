@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { revealPasswordForm } from './helpers'
 
 /**
  * M4.7 — axe across the real screens, in a real engine, in BOTH themes (FR-A11Y-01).
@@ -31,6 +32,7 @@ const messageList = (page: Page) => page.getByRole('region', { name: 'Messages',
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
+  await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
@@ -165,9 +167,13 @@ const SCREENS: readonly { name: string; open: (page: Page) => Promise<void> }[] 
     name: 'command palette',
     open: async (page) => {
       await page.keyboard.press('ControlOrMeta+k')
-      await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible({
-        timeout: 30_000,
-      })
+      const palette = page.getByRole('dialog', { name: 'Command palette' })
+      await expect(palette).toBeVisible({ timeout: 30_000 })
+      // Settled, not merely present. Overlays fade in (200ms), and axe computes contrast from what
+      // is on screen AT THE MOMENT it looks — a panel caught at opacity 0.6 fails `color-contrast`
+      // on text that is perfectly legible once it arrives. Asserting the end state is both the
+      // honest question and a wait with a condition rather than a duration.
+      await expect(palette).toHaveCSS('opacity', '1')
     },
   },
 ]
@@ -201,7 +207,9 @@ test.describe('M4.7 axe sweep — real screens, both themes', () => {
   for (const theme of ['light', 'dark'] as const) {
     test(`the sign-in screen has no WCAG A/AA violations (${theme})`, async ({ page }) => {
       await page.goto('/')
-      await expect(page.getByLabel('Username', { exact: true })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+        timeout: 30_000,
+      })
       await setTheme(page, theme)
       expect(await scan(page), `sign-in / ${theme}`).toEqual([])
     })

@@ -54,7 +54,7 @@
    whatever it landed on, which then reads as a second selection. */
 @media (hover: hover) {
   .savedButton:hover {
-    background: var(--waxwing-surface-hover);
+    background: var(--waxwing-surface);
   }
 }
 

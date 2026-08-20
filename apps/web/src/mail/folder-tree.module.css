@@ -1,40 +1,45 @@
 /*
- * `flex: 0 1 auto`, not `block-size: 100%`.
+ * `flex: 0 0 auto`, not `block-size: 100%` and not `0 1 auto`.
  *
- * As a flex child of the sidebar column, `100%` made this tree claim the whole height whatever it
- * contained — so with six folders it left one 358 px hole (40 % of the viewport) between "Trash" and
- * the "LABELS" heading below, and the two blocks read as unrelated instead of as one navigator.
- * Sizing to content puts them back together; only the storage bar is pushed to the bottom, by the
- * rule on the region itself.
+ * `100%` made this tree claim the whole height whatever it contained — six folders left one 358 px
+ * hole (40 % of the viewport) between "Trash" and the "LABELS" heading below, and the two blocks
+ * read as unrelated instead of as one navigator. Sizing to content fixed that, but leaving the
+ * shrink factor at 1 kept a second failure: with a delegated account the sibling sections shrank
+ * to nothing, so an expanded own mailbox left the shared accounts as headers with no folders under
+ * them. A tree is now exactly as tall as its rows, and the rail scrolls around it
+ * (`.folderScroll` in shell.module.css).
  */
 .container {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-block-size: 0;
 }
 
+/* Same band as `.paneToolbar` next door (shell.module.css), so the two column heads share a
+   baseline instead of missing each other by 6px. */
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--waxwing-space-2);
+  min-block-size: calc(var(--waxwing-control-min) + 2 * var(--waxwing-space-2));
   padding-inline: var(--waxwing-space-2);
-  padding-block-end: var(--waxwing-space-2);
 }
 
 .headerTitle {
-  font-size: var(--waxwing-text-sm);
+  font-size: var(--waxwing-text-xs);
   font-weight: var(--waxwing-weight-semibold);
   color: var(--waxwing-text-muted);
   text-transform: uppercase;
   letter-spacing: var(--waxwing-tracking-caps);
 }
 
+/* No `overflow-y` here: the rail owns the one scroll container (see `.folderScroll`). A scroller
+   per tree divided the height between the accounts instead of letting them share it. */
 .tree {
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
   min-block-size: 0;
 }
 
@@ -60,12 +65,21 @@
   user-select: none;
 }
 
-/* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
-   landed on, which then reads as a second selection. */
+/* Pointer-only affordance, and on the RECESSED rail it lifts rather than darkens: the row under the
+   pointer comes forward to the content plane. A step further back would be invisible in light —
+   the old `surface-2` fill measured 1.03:1 against `surface-sunken`, which the fill-against-fill
+   check in tokens.contrast.test.ts now refuses. On a touchscreen a tap would leave this stuck to
+   whatever it landed on, which then reads as a second selection, hence `hover: hover`. */
 @media (hover: hover) {
   .item:hover {
-    background-color: var(--waxwing-surface-2);
+    background-color: var(--waxwing-surface);
   }
+}
+
+/* A POINTER-DOWN state rather than a hover affordance; on touch it lasts exactly as long as the
+   finger does, so it belongs outside `@media (hover: hover)`. */
+.item:active {
+  background-color: var(--waxwing-surface-2);
 }
 
 .item[aria-selected="true"],
@@ -89,6 +103,8 @@
   box-shadow: inset 0 0 0 2px var(--waxwing-accent);
 }
 
+/* Rotated, not exchanged. Swapping ChevronRight for ChevronDown says "something changed"; turning
+   the same glyph says WHAT changed, and it costs one transform. */
 .chevron {
   display: inline-flex;
   align-items: center;
@@ -97,6 +113,11 @@
   block-size: var(--waxwing-icon-sm);
   flex: 0 0 auto;
   color: var(--waxwing-text-muted);
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.item[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
 }
 
 .chevron svg {
@@ -186,6 +207,7 @@
 .accountSection {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   min-block-size: 0;
 }
 
@@ -193,12 +215,25 @@
   margin-block-start: var(--waxwing-space-3);
 }
 
+/*
+ * Sticky, because the rail became ONE scroller (B48) and the account name is the only thing that
+ * says whose folders these are. Scrolled past, a delegated mailbox's folders are indistinguishable
+ * from the user's own — and the two commonly share names. Opaque on purpose: rows scrolling
+ * visibly THROUGH a transparent header is worse than no header at all.
+ *
+ * Only this header sticks. The tree's own "Folders" caption below it would collide at the same
+ * offset, and it says nothing the reader needs while scrolling.
+ */
 .accountHeader {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
   padding-inline: var(--waxwing-space-2);
-  padding-block-end: var(--waxwing-space-1);
+  padding-block: var(--waxwing-space-1);
+  background-color: var(--waxwing-surface-sunken);
 }
 
 .accountName {

@@ -132,7 +132,9 @@ webmail is an open gap.
   cannot implement WebAuthn itself (the ceremony needs a server-side verifier).
 - **FR-AUTH-04 (Should)** — **HTTP Basic fallback** (opt-in via `config.json`) for minimal
   setups without OAuth; credentials stored only if the user chooses "stay signed in".
-  The UI encourages app passwords when 2FA is active.
+  The UI encourages app passwords when 2FA is active — and, where OAuth leads, keeps the form
+  collapsed behind a disclosure, because Stalwart carries a second factor over OAuth only
+  (ADR-024).
 - **FR-AUTH-05 (Must)** — Clean logout: revoke tokens where supported, wipe all local data
   (IndexedDB, caches, service-worker state) on request ("Sign out & remove data").
 - **FR-AUTH-06 (Should)** — Session expiry / password change is handled gracefully:

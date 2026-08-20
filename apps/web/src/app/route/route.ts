@@ -136,6 +136,24 @@ export const ACCOUNT_PARAM = 'account'
  * (`notify/click-route.ts`) qualifies unconditionally, because an omitted account is not "mine", it
  * is "whatever `carryAccount` finds on the route the user happens to be looking at".
  */
+/**
+ * The query flag that says "show this message on its own".
+ *
+ * A flag on the existing mail route rather than a route of its own, for two reasons that are both
+ * about not losing things: `carryAccount` only forwards `?account=` to paths beginning `/mail`, so a
+ * top-level `/message/...` would silently drop a delegated account (B37's failure, re-created); and
+ * the reading pane is already able to render alone — `computePaneLayout` produces exactly this
+ * layout for a phone and for `reading pane: off`. Full screen is therefore a VIEW of the message
+ * the reader is already on, which is also why Escape and Back get out of it for free.
+ */
+export const FULL_PARAM = 'full'
+
+/** The current message, alone: no list, no folder rail. */
+export function mailFullPath(mailboxId: string, emailId: string, accountId?: string): string {
+  const base = mailPath(mailboxId, emailId, accountId)
+  return `${base}${base.includes('?') ? '&' : '?'}${FULL_PARAM}=1`
+}
+
 export function mailPath(mailboxId?: string, emailId?: string, accountId?: string): string {
   const suffix = accountId === undefined ? '' : `?${ACCOUNT_PARAM}=${encodeURIComponent(accountId)}`
   if (mailboxId === undefined) return `/mail${suffix}`
@@ -158,8 +176,16 @@ export function mailHrefKeepingQuery(
   search: URLSearchParams,
   mailboxId?: string,
   emailId?: string,
+  options: { readonly full?: boolean } = {},
 ): string {
-  const qs = search.toString()
+  // …except `full`, which describes the MESSAGE view and means nothing on the list. Carried back it
+  // would put the reader in a full-screen list — a state with no way out and no name. It is set
+  // here, deliberately, rather than appended by the caller: one place decides whether this URL is a
+  // full-screen one, so "open" and "open full" cannot drift apart in what else they keep.
+  const kept = new URLSearchParams(search)
+  kept.delete(FULL_PARAM)
+  if (options.full === true) kept.set(FULL_PARAM, '1')
+  const qs = kept.toString()
   return mailPath(mailboxId, emailId) + (qs ? `?${qs}` : '')
 }
 

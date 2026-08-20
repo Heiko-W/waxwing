@@ -1056,4 +1056,70 @@ describe('MessageView', () => {
     // chrome — header, action bar, banner, attachments.
     await expectNoA11yViolations(container, { iframes: false })
   })
+
+  /*
+   * B49 — the bar keeps what fits and the ⋯ menu gains the rest.
+   *
+   * jsdom has no layout, so `useActionOverflow` normally answers "show everything" and every other
+   * test in this file sees the full row. Here width is supplied through prototype getters. The
+   * numbers are chosen for THIS environment: CSS Modules are stubbed to empty under jsdom, so the
+   * bar's `column-gap` computes to 0 and 224px of bar at 44px a control fits five — four actions
+   * and the trigger. In the browser the same arithmetic runs against a real gap; the E2E suite is
+   * where the real pane is measured.
+   */
+  describe('the action bar overflow (B49)', () => {
+    const widthGetter = (px: number) => ({ configurable: true, get: () => px })
+
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', widthGetter(224))
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', widthGetter(44))
+      window.ResizeObserver = class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      }
+    })
+
+    afterEach(() => {
+      Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+      Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth')
+    })
+
+    const toolbarNames = async (): Promise<string[]> => {
+      const toolbar = await screen.findByRole('toolbar', { name: 'Message actions' })
+      return within(toolbar)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label') ?? button.textContent ?? '')
+    }
+
+    it('keeps reply, reply-all, forward and delete beside the trigger', async () => {
+      await putEmailBody(db, textBodyRow('e1', 'body'))
+      renderView(seen())
+      expect(await toolbarNames()).toEqual([
+        'Reply',
+        'Reply all',
+        'Forward',
+        'Move to Trash',
+        'More actions',
+      ])
+    })
+
+    // The half that makes hiding them legitimate. A button removed from the bar and not added to the
+    // menu is an action the reader can no longer reach at all, which is why this is not a CSS rule.
+    it('makes every displaced action reachable in the menu', async () => {
+      await putEmailBody(db, textBodyRow('e1', 'body'))
+      renderView(seen())
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: 'More actions' }))
+      const menu = await screen.findByRole('menu')
+      const items = within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent ?? '')
+      for (const displaced of ['Archive', 'Move to…', 'Label', 'Mark as junk', 'Flag']) {
+        expect(items.some((item) => item.startsWith(displaced))).toBe(true)
+      }
+      // And what was always in the menu is still there, below them.
+      expect(items.some((item) => item.startsWith('Print'))).toBe(true)
+    })
+  })
 })
