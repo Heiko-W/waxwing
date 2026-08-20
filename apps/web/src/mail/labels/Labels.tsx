@@ -10,7 +10,7 @@ import { Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRoute } from '../../app/route'
-import { emailsWithKeyword, useReplicaQuery } from '../../sync'
+import { countEmailsWithKeyword, useReplicaQuery } from '../../sync'
 import { Button, Checkbox, Dialog, IconButton, Spinner } from '../../ui'
 import { LabelFormDialog } from './LabelFormDialog'
 import { LabelList } from './LabelList'
@@ -154,10 +154,11 @@ interface DeleteLabelDialogProps {
 function DeleteLabelDialog({ label, onClose, onConfirm }: DeleteLabelDialogProps) {
   const { t } = useTranslation()
   const [alsoStrip, setAlsoStrip] = useState(false)
+  // `count()` over the index range, not `toArray().length`: this dialog only needs the number, and
+  // the previous form deserialized every carrier's envelope to throw all of them away.
   const knownCount =
     useReplicaQuery(
-      ({ db, accountId }) =>
-        emailsWithKeyword(db, accountId, label.keyword).then((rows) => rows.length),
+      ({ db, accountId }) => countEmailsWithKeyword(db, accountId, label.keyword),
       [label.keyword],
     ) ?? 0
 
