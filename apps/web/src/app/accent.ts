@@ -23,12 +23,29 @@
  * ONBOARDING screen, where there is no account and no replica to scope a preference to.
  */
 
+/**
+ * One theme's worth of a palette: the fill, the label that is legible on it, and the SELECTION
+ * tint derived from it.
+ *
+ * `selected` is here rather than left to `tokens.css` because the built-in value was the only one
+ * that ever changed with the accent — every other palette kept the blue tint, so choosing amber
+ * produced yellow text on a blue row. Each tint carries the hue of its own accent at the
+ * saturation and strength of the built-in blue one (measured: 1.25:1 against the surface in light,
+ * 1.19:1 in dark), so no palette reads stronger or paler than the next, and all of them tint in
+ * the same direction: lighter than the surface in dark, darker in light.
+ */
+export interface AccentTheme {
+  readonly accent: string
+  readonly contrast: string
+  readonly selected: string
+}
+
 export interface AccentPalette {
   readonly id: AccentId
-  /** The accent in light mode, and the label that is legible on it. */
-  readonly light: { readonly accent: string; readonly contrast: string }
-  /** The accent in dark mode, and its label. */
-  readonly dark: { readonly accent: string; readonly contrast: string }
+  /** The accent in light mode, the label legible on it, and its selection tint. */
+  readonly light: AccentTheme
+  /** The same, in dark mode. */
+  readonly dark: AccentTheme
 }
 
 export const ACCENT_IDS = ['blue', 'teal', 'green', 'amber', 'rose', 'purple'] as const
@@ -40,46 +57,50 @@ export const DEFAULT_ACCENT: AccentId = 'blue'
 export const ACCENT_PALETTES: readonly AccentPalette[] = [
   {
     id: 'blue',
-    light: { accent: '#2761c4', contrast: '#ffffff' },
-    dark: { accent: '#82acf5', contrast: '#1d1d1f' },
+    light: { accent: '#2761c4', contrast: '#ffffff', selected: '#dbe7fa' },
+    dark: { accent: '#82acf5', contrast: '#1d1d1f', selected: '#28394f' },
   },
   {
     id: 'teal',
-    light: { accent: '#0f6d70', contrast: '#ffffff' },
-    dark: { accent: '#4fc4c7', contrast: '#1d1d1f' },
+    light: { accent: '#0f6d70', contrast: '#ffffff', selected: '#aef2f4' },
+    dark: { accent: '#4fc4c7', contrast: '#1d1d1f', selected: '#1f3d3e' },
   },
   {
     id: 'green',
-    light: { accent: '#1c722f', contrast: '#ffffff' },
-    dark: { accent: '#4fc06a', contrast: '#1d1d1f' },
+    light: { accent: '#1c722f', contrast: '#ffffff', selected: '#c5f1ce' },
+    dark: { accent: '#4fc06a', contrast: '#1d1d1f', selected: '#1f3e27' },
   },
   {
     id: 'amber',
     // Light amber is bright by nature, so its label is dark in BOTH themes — the case the
     // per-palette `contrast` exists for.
-    light: { accent: '#8a5d00', contrast: '#ffffff' },
-    dark: { accent: '#ffd60a', contrast: '#1d1d1f' },
+    light: { accent: '#8a5d00', contrast: '#ffffff', selected: '#f6e4bf' },
+    dark: { accent: '#ffd60a', contrast: '#1d1d1f', selected: '#3d381f' },
   },
   {
     id: 'rose',
-    light: { accent: '#b5145a', contrast: '#ffffff' },
-    dark: { accent: '#f186ad', contrast: '#1d1d1f' },
+    light: { accent: '#b5145a', contrast: '#ffffff', selected: '#fadfeb' },
+    dark: { accent: '#f186ad', contrast: '#1d1d1f', selected: '#552b3a' },
   },
   {
     id: 'purple',
-    light: { accent: '#7d3ac0', contrast: '#ffffff' },
-    dark: { accent: '#c89bf0', contrast: '#1d1d1f' },
+    light: { accent: '#7d3ac0', contrast: '#ffffff', selected: '#ece2f6' },
+    dark: { accent: '#c89bf0', contrast: '#1d1d1f', selected: '#452d5a' },
   },
 ]
 
 const STORAGE_KEY = 'waxwing.accent'
 
-/** The four properties a palette writes; `tokens.css` reads them as per-theme slots. */
+/** The properties a palette writes; `tokens.css` reads them as per-theme slots. */
 const SLOTS = [
   '--waxwing-accent-light',
   '--waxwing-accent-contrast-light',
+  '--waxwing-selected-light',
+  '--waxwing-ring-light',
   '--waxwing-accent-dark',
   '--waxwing-accent-contrast-dark',
+  '--waxwing-selected-dark',
+  '--waxwing-ring-dark',
 ] as const
 
 let current: AccentId = DEFAULT_ACCENT
@@ -121,8 +142,18 @@ function apply(id: AccentId): void {
   const root = document.documentElement
   root.style.setProperty('--waxwing-accent-light', palette.light.accent)
   root.style.setProperty('--waxwing-accent-contrast-light', palette.light.contrast)
+  root.style.setProperty('--waxwing-selected-light', palette.light.selected)
   root.style.setProperty('--waxwing-accent-dark', palette.dark.accent)
   root.style.setProperty('--waxwing-accent-contrast-dark', palette.dark.contrast)
+  root.style.setProperty('--waxwing-selected-dark', palette.dark.selected)
+  // The ring IS the accent for a CHOSEN palette, and only for one. `tokens.css` keeps the built-in
+  // ring decoupled on purpose: `branding.accentColor` accepts any value and is not contrast-proved,
+  // so a hoster could otherwise make focus invisible. These six are proved in both themes by
+  // accent.test.ts against page, surface and rail — the argument for decoupling does not reach them,
+  // and leaving the ring blue under a rose accent is the visible half of a setting that only half
+  // applied.
+  root.style.setProperty('--waxwing-ring-light', palette.light.accent)
+  root.style.setProperty('--waxwing-ring-dark', palette.dark.accent)
   root.dataset.accent = id
 }
 

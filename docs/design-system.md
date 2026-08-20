@@ -53,10 +53,14 @@ declared once.
 | `--waxwing-bg` | `#f5f5f7` | `#1c1c1e` | Page background |
 | `--waxwing-surface` | `#ffffff` | `#2c2c2e` | The content plane: list and reading panes, cards, overlays, inputs |
 | `--waxwing-surface-sunken` | `#eeeef2` | `#161618` | The recessed plane: folder rail, nav rail — behind the content, never in front of it |
-| `--waxwing-surface-2` | `#ebebef` | `#3a3a3c` | Raised/hover/inset |
+| `--waxwing-surface-2` | `#ebebef` | `#3a3a3c` | Raised/inset fill (chips, key caps, placeholder base) |
+| `--waxwing-skeleton-sheen` | `#dcdce2` | `#4a4a4e` | The highlight travelling across a loading placeholder — one step above `surface-2` |
+| `--waxwing-surface-hover` | `#f1f1f4` | `#353537` | A row under the pointer — the most subtle step above `surface` |
+| `--waxwing-surface-selected` | `#dbe7fa` | `#28394f` | The row the reader is on, while the list has focus — an accent tint |
+| `--waxwing-surface-selected-idle` | `#e3e3e8` | `#464648` | The same row while focus is elsewhere — neutral, so it stops competing |
 | `--waxwing-text` | `#1d1d1f` | `#f5f5f7` | Primary text |
-| `--waxwing-text-muted` | `#636366` | `#a5a5ad` | Secondary text (AA as text) |
-| `--waxwing-border` | `#d2d2d7` | `#3a3a3c` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
+| `--waxwing-text-muted` | `#636366` | `#b4b4bc` | Secondary text (AA as text, on every state fill) |
+| `--waxwing-border` | `#d2d2d7` | `#414145` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
 | `--waxwing-border-strong` | `#86868b` | `#939398` | **Interactive control boundary** (≥ 3:1) |
 | `--waxwing-focus-ring` | `#2761c4` | `#82acf5` | Focus + selection ring (≥ 3:1) |
 | `--waxwing-accent` | `#2761c4` | `#82acf5` | Brand fill — a calm blue, theme-aware; config-overridable, **never a sole indicator** |
@@ -147,8 +151,8 @@ tokens change. A representative slice (ratios in `x:1`):
 | --- | --- | --- | --- |
 | text on bg | 4.5 | 15.46 | 15.63 |
 | text on surface | 4.5 | 16.83 | 12.80 |
-| text-muted on surface | 4.5 | 5.99 | 5.70 |
-| text-muted on surface-2 | 4.5 | 5.04 | 4.64 |
+| text-muted on surface | 4.5 | 5.99 | 6.77 |
+| text-muted on surface-2 | 4.5 | 5.04 | 5.51 |
 | accent-contrast on accent | 4.5 | 4.70 | 5.54 |
 | danger on surface | 4.5 | 6.40 | 4.99 |
 | danger-contrast on danger | 4.5 | 6.40 | 6.03 |

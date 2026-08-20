@@ -9,7 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { contrastRatio, roundRatio } from '../ui/contrast'
+import { contrastRatio, relativeLuminance, roundRatio } from '../ui/contrast'
 import {
   ACCENT_IDS,
   ACCENT_PALETTES,
@@ -35,9 +35,19 @@ const UI_AA = 3.0
  * checks the two easiest backgrounds and calls the palette accessible.
  */
 const SURFACES = {
-  light: { bg: '#f5f5f7', surface: '#ffffff', raised: '#ebebef', selected: '#dbe7fa' },
-  dark: { bg: '#1c1c1e', surface: '#2c2c2e', raised: '#3a3a3c', selected: '#28394f' },
+  light: { bg: '#f5f5f7', surface: '#ffffff', sunken: '#eeeef2', raised: '#ebebef' },
+  dark: { bg: '#1c1c1e', surface: '#2c2c2e', sunken: '#161618', raised: '#3a3a3c' },
 } as const
+
+/** The plane a selection tint is drawn ON, and the two text colours it has to carry. */
+const CONTENT = {
+  light: { surface: '#ffffff', text: '#1d1d1f', muted: '#636366' },
+  dark: { surface: '#2c2c2e', text: '#f5f5f7', muted: '#b4b4bc' },
+} as const
+
+/** The corridor tokens.contrast.test.ts holds every state fill to, against the plane under it. */
+const FILL_MIN = 1.12
+const FILL_MAX = 1.75
 
 beforeEach(() => {
   localStorage.clear()
@@ -92,12 +102,58 @@ describe('accent palettes are accessible by construction', () => {
     }
   })
 
+  it('keeps every selection tint readable — body text, secondary text and the accent on it', () => {
+    // The tint is a FILL that carries text, so it answers to 1.4.3 three times over: the subject
+    // line, the preview beneath it, and the accent itself, which the folder tree and the nav rail
+    // both render as text on the selected row.
+    for (const palette of ACCENT_PALETTES) {
+      for (const theme of ['light', 'dark'] as const) {
+        const { selected, accent } = palette[theme]
+        const plane = CONTENT[theme]
+        for (const [name, fg] of [
+          ['text', plane.text],
+          ['muted', plane.muted],
+          ['accent', accent],
+        ] as const) {
+          const ratio = roundRatio(contrastRatio(fg, selected))
+          expect(
+            ratio,
+            `${palette.id} ${theme}: ${name} on its selection tint`,
+          ).toBeGreaterThanOrEqual(TEXT_AA)
+        }
+      }
+    }
+  })
+
+  it('tints every selection by the same amount, and in the same direction', () => {
+    // Without this, one palette gets a tint you can barely see and the next one shouts. The
+    // direction half matters just as much: a selection that is lighter than the surface under one
+    // accent and darker under another makes the same gesture look like two different things.
+    for (const palette of ACCENT_PALETTES) {
+      for (const theme of ['light', 'dark'] as const) {
+        const { selected } = palette[theme]
+        const surface = CONTENT[theme].surface
+        const ratio = roundRatio(contrastRatio(selected, surface))
+        expect(ratio, `${palette.id} ${theme}: tint against the surface`).toBeGreaterThanOrEqual(
+          FILL_MIN,
+        )
+        expect(ratio, `${palette.id} ${theme}: tint against the surface`).toBeLessThanOrEqual(
+          FILL_MAX,
+        )
+        expect(
+          relativeLuminance(selected) > relativeLuminance(surface),
+          `${palette.id} ${theme}: tint should be ${theme === 'dark' ? 'lighter' : 'darker'} than the surface`,
+        ).toBe(theme === 'dark')
+      }
+    }
+  })
+
   it('matches the built-in accent exactly for the default palette', () => {
     // "blue" must be a no-op: selecting it, or never selecting anything, has to render identically
     // to the shipped tokens, or the default install changes appearance for no reason.
     const blue = ACCENT_PALETTES.find((p) => p.id === DEFAULT_ACCENT)
-    expect(blue?.light).toEqual({ accent: '#2761c4', contrast: '#ffffff' })
-    expect(blue?.dark).toEqual({ accent: '#82acf5', contrast: '#1d1d1f' })
+    expect(blue?.light).toEqual({ accent: '#2761c4', contrast: '#ffffff', selected: '#dbe7fa' })
+    expect(blue?.dark).toEqual({ accent: '#82acf5', contrast: '#1d1d1f', selected: '#28394f' })
   })
 })
 

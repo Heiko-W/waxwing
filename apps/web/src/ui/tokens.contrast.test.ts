@@ -155,6 +155,42 @@ const FILL_PAIRS: FillPair[] = [
   { fill: 'surface-2', under: 'surface', note: 'a raised inset on the content plane' },
 ]
 
+/**
+ * Fill against fill, where BOTH are neutral — the question FILL_PAIRS cannot ask either.
+ *
+ * Every pair above measures a state fill against the plane UNDER it, and each one passed while the
+ * dark palette had `surface-2`, `surface-hover`, `surface-selected-idle` and `border` on one single
+ * value (#3a3a3c). Measured live in a browser: the skeleton gradient ran between three identical
+ * stops (1.00:1 — the animation played and nothing moved), and an opened message in the list was
+ * indistinguishable from the row merely under the pointer.
+ *
+ * `surface-selected` is deliberately absent from this list. It is the accent TINT, so it separates
+ * from a neutral hover chromatically rather than by luminance, and a luminance floor would force it
+ * darker for no gain. The pairs here are the ones that have nothing but lightness to tell them
+ * apart.
+ */
+const DISTINCT_MIN = 1.12
+
+interface DistinctPair {
+  readonly a: string
+  readonly b: string
+  readonly note: string
+}
+
+const DISTINCT_PAIRS: DistinctPair[] = [
+  {
+    a: 'surface-hover',
+    b: 'surface-selected-idle',
+    note: 'the row under the pointer vs the row the reader came from',
+  },
+  {
+    a: 'surface-2',
+    b: 'skeleton-sheen',
+    note: 'a loading placeholder and the highlight travelling across it',
+  },
+  { a: 'surface-hover', b: 'border', note: 'a hovered row and the rule beneath it' },
+]
+
 for (const [themeName, palette] of [
   ['light', light],
   ['dark', dark],
@@ -170,6 +206,21 @@ for (const [themeName, palette] of [
         const ratio = roundRatio(contrastRatio(fill, under))
         expect(ratio, `${pair.fill} on ${pair.under} = ${ratio}:1`).toBeGreaterThanOrEqual(FILL_MIN)
         expect(ratio, `${pair.fill} on ${pair.under} = ${ratio}:1`).toBeLessThanOrEqual(FILL_MAX)
+      })
+    }
+  })
+
+  describe(`neutral fills stay distinguishable — ${themeName} theme`, () => {
+    for (const pair of DISTINCT_PAIRS) {
+      it(`${pair.a} is not ${pair.b} (${pair.note})`, () => {
+        const a = palette[pair.a]
+        const b = palette[pair.b]
+        if (a === undefined || b === undefined) {
+          throw new Error(`missing token: --waxwing-${pair.a} or --waxwing-${pair.b}`)
+        }
+        expect(a, `${pair.a} and ${pair.b} are the same value (${a})`).not.toBe(b)
+        const ratio = roundRatio(contrastRatio(a, b))
+        expect(ratio, `${pair.a} vs ${pair.b} = ${ratio}:1`).toBeGreaterThanOrEqual(DISTINCT_MIN)
       })
     }
   })

@@ -127,7 +127,7 @@
 }
 
 .statusSpin {
-  animation: waxwing-status-spin 1s linear infinite;
+  animation: waxwing-status-spin var(--waxwing-duration-spin) linear infinite;
 }
 
 @keyframes waxwing-status-spin {

@@ -135,7 +135,7 @@
   border-inline-end: 1.5px solid currentcolor;
   border-block-end: 1.5px solid currentcolor;
   transform: translateY(-0.15em) rotate(45deg);
-  transition: transform var(--waxwing-duration-fast) ease;
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
 .disclosure[aria-expanded="true"]::after {

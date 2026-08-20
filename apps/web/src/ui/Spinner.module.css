@@ -10,7 +10,7 @@
   border-radius: var(--waxwing-radius-full);
   border: 2px solid var(--waxwing-border);
   border-block-start-color: var(--waxwing-accent);
-  animation: spin var(--waxwing-duration-slow) linear infinite;
+  animation: spin var(--waxwing-duration-spin) linear infinite;
 }
 
 .sm .ring {
