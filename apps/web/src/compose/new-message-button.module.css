@@ -11,6 +11,10 @@
  *
  * It clears the bottom bar (59 px including the safe-area inset) plus a gap, and sits below the
  * drawer's z-index so an open folder drawer is never punctured by it.
+ *
+ * What it does NOT clear is content that scrolls under it — which is why the button renders only on
+ * the mail route now (B50). A fixed element cannot be pushed aside by a list it does not know about,
+ * and on Settings it covered the last row.
  */
 @media (max-width: 39.999em) {
   .newMessage {

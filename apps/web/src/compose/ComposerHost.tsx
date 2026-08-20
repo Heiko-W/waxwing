@@ -39,14 +39,42 @@ export default function ComposerHost({
   // Persist edits (durable local write + coalesced server save) on idle + on tab-hide.
   useDraftAutosave()
 
-  // Return focus to the New-message trigger when the last draft closes (WCAG 2.4.3).
-  const prevCount = useRef(drafts.size)
+  /*
+   * Return focus when the last draft closes (WCAG 2.4.3).
+   *
+   * On UNMOUNT, which is when that happens: `AppShell` renders this host only while `drafts.size > 0`,
+   * so the "zero drafts" render the previous version waited for does not occur in the app — the
+   * component is gone by then. That effect had been dead since M2.2 and the unit tests could not see
+   * it, because they render the host directly and never reproduce the mount gate. The Gate harness
+   * below does.
+   *
+   * The target is the New-message trigger — it is what was pressed — but since B50 that button only
+   * renders on the mail route, and a draft can be opened from anywhere: `c` and ⌘N are global chords
+   * and the command palette offers the same action from Settings. So the opener is remembered and
+   * used when the trigger is not on screen; without it a keyboard reader closing a draft started in
+   * Settings would be stranded on `body`.
+   */
+  const opener = useRef<HTMLElement | null>(null)
+  // Read in the RENDER body, deliberately. Child effects run before the parent's, so by the time an
+  // effect here could look, `ComposerWindow` has already taken focus for itself — it would remember
+  // the composer instead of what opened it. Nothing is committed during render, so `activeElement`
+  // is still the opener. Idempotent under StrictMode's double render for the same reason.
+  if (opener.current === null && drafts.size > 0) {
+    const active = document.activeElement
+    opener.current = active instanceof HTMLElement && active !== document.body ? active : null
+  }
   useEffect(() => {
-    if (prevCount.current > 0 && drafts.size === 0) {
-      document.getElementById(NEW_MESSAGE_BTN_ID)?.focus()
+    return () => {
+      // Unmounting with drafts still open is the shell being torn down (sign-out, a remount), not a
+      // close — moving focus there would fight whatever is replacing this tree.
+      if (useComposerStore.getState().drafts.size > 0) return
+      const trigger = document.getElementById(NEW_MESSAGE_BTN_ID)
+      // The opener may be gone: a command-palette row is, every time. Focusing a detached node
+      // silently does nothing, which would look like it worked.
+      const fallback = opener.current?.isConnected === true ? opener.current : null
+      ;(trigger ?? fallback)?.focus()
     }
-    prevCount.current = drafts.size
-  }, [drafts.size])
+  }, [])
 
   if (drafts.size === 0) return null
 
