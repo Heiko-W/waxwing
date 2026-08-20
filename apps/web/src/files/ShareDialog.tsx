@@ -18,7 +18,7 @@ import type { FileNode, FileNodeRights, Id, Principal } from '@waxwing/jmap'
 import { Check, UserMinus, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Dialog, Select, Spinner, TextInput } from '../ui'
+import { Button, Dialog, SectionLabel, Select, Spinner, TextInput } from '../ui'
 import styles from './files.module.css'
 import type { FilesClient } from './files-client'
 import {
@@ -132,8 +132,8 @@ export function ShareDialog({ node, client, onClose, onChanged }: ShareDialogPro
       }
     >
       <div className={styles.share}>
-        <section aria-label={t('files.share.currentHeading')}>
-          <h3 className={styles.shareHeading}>{t('files.share.currentHeading')}</h3>
+        <section className={styles.shareSection} aria-label={t('files.share.currentHeading')}>
+          <SectionLabel>{t('files.share.currentHeading')}</SectionLabel>
           {current.length === 0 ? (
             <p className={styles.empty}>{t('files.share.none')}</p>
           ) : (
@@ -186,8 +186,8 @@ export function ShareDialog({ node, client, onClose, onChanged }: ShareDialogPro
           )}
         </section>
 
-        <section aria-label={t('files.share.addHeading')}>
-          <h3 className={styles.shareHeading}>{t('files.share.addHeading')}</h3>
+        <section className={styles.shareSection} aria-label={t('files.share.addHeading')}>
+          <SectionLabel>{t('files.share.addHeading')}</SectionLabel>
           <div className={styles.shareControls}>
             <span className={styles.shareField}>
               <label className={styles.shareLabel} htmlFor={searchId}>

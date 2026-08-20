@@ -23,9 +23,20 @@
   overscroll-behavior: contain;
 }
 
+/*
+ * One step down from where this started, and the reason is the heading beside it.
+ *
+ * The subject is an `h2`; the list pane's title ("Inbox") is the `h1`, at `text-base`. At `2xl`
+ * the deeper level was 75% larger than the one above it — the visual hierarchy contradicting the
+ * semantic one, on the same screen, for anyone who reads by size rather than by outline. Apple
+ * Mail runs the same pair at roughly 13px and 17px; the point is that the ratio is small enough
+ * to read as "these belong to different columns" rather than "this one outranks that one".
+ *
+ * Still unmistakably the headline: `xl` against the 14px sender line under it.
+ */
 .subject {
   margin: 0;
-  font-size: var(--waxwing-text-2xl);
+  font-size: var(--waxwing-text-xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
   letter-spacing: var(--waxwing-tracking-tight);
@@ -33,12 +44,10 @@
   overflow-wrap: break-word;
 }
 
-/* Below ~30rem of PANE, 28px of subject takes two lines before the mail starts. One step down is
-   still unmistakably the headline — and it now applies to a narrow pane on any screen, not just to
-   a narrow screen. */
+/* Below ~30rem of PANE, even `xl` takes two lines before the mail starts. */
 @container waxwing-pane (max-width: 30rem) {
   .subject {
-    font-size: var(--waxwing-text-xl);
+    font-size: var(--waxwing-text-lg);
   }
 }
 

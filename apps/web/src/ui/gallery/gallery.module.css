@@ -18,6 +18,8 @@
   margin: 0;
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .themeSwitch {

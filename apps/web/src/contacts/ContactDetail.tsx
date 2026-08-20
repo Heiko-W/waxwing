@@ -15,7 +15,7 @@ import { Mail as MailIcon, MoreHorizontal, Pencil, Phone as PhoneIcon, Trash2 } 
 import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type ContactCardRow, useContactCard, useReplica } from '../sync'
-import { Avatar, Button, Dialog, Menu, Spinner } from '../ui'
+import { Avatar, Button, Dialog, Menu, SectionLabel, Spinner } from '../ui'
 import {
   communicationTypeKey,
   contactBirthday,
@@ -255,7 +255,7 @@ function ContactPhoto({ card, name }: { card: ContactCardRow; name: string }) {
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className={styles.detailSection}>
-      <h3 className={styles.detailSectionTitle}>{title}</h3>
+      <SectionLabel>{title}</SectionLabel>
       <div className={styles.detailSectionBody}>{children}</div>
     </section>
   )

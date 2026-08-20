@@ -152,17 +152,18 @@
 
 /* ---- sharing (M5.18) ---- */
 
+/* Each labelled block inside the share dialog. The gap used to live as a bottom margin on the
+   heading itself; it belongs to the block, so one rule sets it for every child. */
+.shareSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
 .share {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-5);
-}
-
-.shareHeading {
-  margin: 0 0 var(--waxwing-space-2);
-  font-size: var(--waxwing-text-sm);
-  font-weight: var(--waxwing-weight-semibold);
-  color: var(--waxwing-text-muted);
 }
 
 .shareList {

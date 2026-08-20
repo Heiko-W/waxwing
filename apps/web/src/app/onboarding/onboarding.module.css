@@ -56,6 +56,7 @@
   font-size: var(--waxwing-text-xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .subtitle {

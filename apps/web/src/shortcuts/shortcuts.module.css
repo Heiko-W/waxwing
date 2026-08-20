@@ -105,16 +105,10 @@
 }
 
 .helpGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
   min-inline-size: 0;
-}
-
-.helpGroupTitle {
-  margin: 0 0 var(--waxwing-space-2);
-  font-size: var(--waxwing-text-sm);
-  font-weight: var(--waxwing-weight-semibold);
-  color: var(--waxwing-text-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .helpList {

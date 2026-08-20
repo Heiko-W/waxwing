@@ -20,7 +20,7 @@ import { Plus, X } from 'lucide-react'
 import { type FormEvent, useCallback, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ContactCardRow } from '../sync'
-import { Avatar, Button, IconButton, TextInput } from '../ui'
+import { Avatar, Button, IconButton, SectionLabel, TextInput } from '../ui'
 import { contactDisplayName, contactMatches } from './contact-fields'
 import {
   createGroupCard,
@@ -145,7 +145,7 @@ export function GroupForm(props: GroupFormProps) {
       {!canWrite && <p className={styles.formNotice}>{t('contacts.form.readOnly')}</p>}
 
       <section className={styles.formSection}>
-        <h3 className={styles.detailSectionTitle}>{t('contacts.groups.sections.name')}</h3>
+        <SectionLabel>{t('contacts.groups.sections.name')}</SectionLabel>
         <div className={styles.formField}>
           <label className={styles.formLabel} htmlFor={nameId}>
             {t('contacts.groups.name')}
@@ -160,9 +160,9 @@ export function GroupForm(props: GroupFormProps) {
       </section>
 
       <section className={styles.formSection}>
-        <h3 className={styles.detailSectionTitle}>
+        <SectionLabel>
           {t('contacts.groups.membersCount', { count: draft.memberUids.length })}
-        </h3>
+        </SectionLabel>
         {draft.memberUids.length === 0 ? (
           <p className={styles.groupMemberEmpty}>{t('contacts.groups.noMembers')}</p>
         ) : (
@@ -193,7 +193,7 @@ export function GroupForm(props: GroupFormProps) {
       </section>
 
       <section className={styles.formSection}>
-        <h3 className={styles.detailSectionTitle}>{t('contacts.groups.addMembers')}</h3>
+        <SectionLabel>{t('contacts.groups.addMembers')}</SectionLabel>
         <div className={styles.searchBox}>
           <TextInput
             id={pickerId}

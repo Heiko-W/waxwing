@@ -9,7 +9,7 @@
  */
 
 import { useTranslation } from 'react-i18next'
-import { Button, Dialog } from '../../ui'
+import { Button, Dialog, SectionLabel } from '../../ui'
 import styles from './install.module.css'
 import type { InstallPlatform } from './use-install-prompt'
 
@@ -64,7 +64,9 @@ export default function InstallDialog({
       <p>{t('pwa.install.body')}</p>
       {!canPrompt && platform === 'ios' && (
         <>
-          <h3 className={styles.stepsTitle}>{t('pwa.install.ios.title')}</h3>
+          <div className={styles.stepsHeading}>
+            <SectionLabel>{t('pwa.install.ios.title')}</SectionLabel>
+          </div>
           <ol className={styles.steps}>
             <li>{t('pwa.install.ios.steps.share')}</li>
             <li>{t('pwa.install.ios.steps.add')}</li>

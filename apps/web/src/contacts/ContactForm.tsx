@@ -30,7 +30,7 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type ContactCardRow, useReplica } from '../sync'
-import { Button, IconButton, Select, TextInput } from '../ui'
+import { Button, IconButton, SectionLabel, Select, TextInput } from '../ui'
 import {
   type AddressEntry,
   type ContactFormModel,
@@ -455,7 +455,7 @@ function FormSection({ title, children }: { title: string; children: ReactNode }
   // per field group, and there are many.
   return (
     <section className={styles.formSection}>
-      <h3 className={styles.detailSectionTitle}>{title}</h3>
+      <SectionLabel>{title}</SectionLabel>
       {children}
     </section>
   )

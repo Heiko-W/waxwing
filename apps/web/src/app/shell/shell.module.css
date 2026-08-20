@@ -465,6 +465,8 @@
   margin: 0 0 var(--waxwing-space-2);
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .screenLead {
