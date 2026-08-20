@@ -328,22 +328,11 @@
   }
 }
 
-/* The overflow (⋯) menu. `Menu`'s trigger is a bordered button by default; here it sits among ghost
-   IconButtons, so it borrows their look. */
+/* The overflow (⋯) menu. Its look comes from `Menu`'s `triggerVariant="toolbar"` now — this file
+   used to override the bordered default itself, which is a rule the bulk bar would have had to
+   copy the moment it grew the same menu. */
 .overflowMenu {
   display: inline-flex;
-}
-
-.overflowMenu button {
-  border-color: transparent;
-  background-color: transparent;
-  padding-inline: var(--waxwing-space-2);
-}
-
-@media (hover: hover) {
-  .overflowMenu button:hover {
-    background-color: var(--waxwing-surface-2);
-  }
 }
 
 .flagOn {

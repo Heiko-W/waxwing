@@ -1067,6 +1067,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             triggerLabel={t('reading.more')}
             trigger={<MoreHorizontal aria-hidden="true" />}
             align="end"
+            triggerVariant="toolbar"
             items={menuItems}
           />
         </span>

@@ -40,8 +40,12 @@ export interface MenuProps {
    * per-row menu on hover, which is right — but touch has no hover, so the fallback shows all of
    * them at once, and with the default bordered trigger that turned the drawer into a column of six
    * identical framed tiles, visually louder than the folder names they belong to.
+   *
+   * `'toolbar'` is the third case: a trigger standing among ghost IconButtons in an action bar. It
+   * differs from `'ghost'` only in keeping `--waxwing-text`, because a dimmed `⋯` beside glyphs
+   * that are not dimmed reads as disabled.
    */
-  triggerVariant?: 'default' | 'ghost'
+  triggerVariant?: 'default' | 'ghost' | 'toolbar'
 }
 
 /** The gap between trigger and menu, in px — matches the 4px this has always used. */
@@ -233,7 +237,12 @@ export function Menu({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
-        className={cx(styles.trigger, triggerVariant === 'ghost' && styles.triggerGhost, className)}
+        className={cx(
+          styles.trigger,
+          triggerVariant === 'ghost' && styles.triggerGhost,
+          triggerVariant === 'toolbar' && styles.triggerToolbar,
+          className,
+        )}
         onClick={() => (open ? close() : openMenu(firstEnabled))}
         onKeyDown={onTriggerKeyDown}
       >

@@ -1428,6 +1428,7 @@ function BulkBar({
               triggerLabel={t('list.actions.more')}
               trigger={<MoreHorizontal aria-hidden="true" />}
               align="end"
+              triggerVariant="toolbar"
               items={menuItems}
             />
           </span>

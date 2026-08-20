@@ -94,15 +94,26 @@ function AddressBookItem({
         {...(selected ? { 'aria-current': 'page' as const } : {})}
       >
         <BookOpen aria-hidden="true" className={styles.bookIcon} />
-        <span className={styles.bookName}>{book.name}</span>
-        {book.isDefault && <Badge tone="neutral">{t('contacts.books.default')}</Badge>}
-        {isShared(book) && <Badge tone="neutral">{t('contacts.books.shared')}</Badge>}
-        {readOnly && (
-          <span className={styles.readOnly}>
-            <Lock aria-hidden="true" className={styles.readOnlyIcon} />
-            <span>{t('contacts.books.readOnly')}</span>
-          </span>
-        )}
+        {/* Name on its own line, markers under it. Side by side, the markers took the width the
+            name needed: in a 215px rail "Stalwart Address Book" rendered as "Stalwart Addr…"
+            because a "Default" badge sat beside it — the same defect the folder rail had, where
+            the folder you were IN was the only one whose name got cut. A book's name is the thing
+            being chosen; a badge describes it and can wait for the second line. */}
+        <span className={styles.bookText}>
+          <span className={styles.bookName}>{book.name}</span>
+          {(book.isDefault || isShared(book) || readOnly) && (
+            <span className={styles.bookMarkers}>
+              {book.isDefault && <Badge tone="neutral">{t('contacts.books.default')}</Badge>}
+              {isShared(book) && <Badge tone="neutral">{t('contacts.books.shared')}</Badge>}
+              {readOnly && (
+                <span className={styles.readOnly}>
+                  <Lock aria-hidden="true" className={styles.readOnlyIcon} />
+                  <span>{t('contacts.books.readOnly')}</span>
+                </span>
+              )}
+            </span>
+          )}
+        </span>
       </Link>
     </li>
   )

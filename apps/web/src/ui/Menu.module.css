@@ -24,6 +24,29 @@
   color: var(--waxwing-text-muted);
 }
 
+/*
+ * For a menu whose trigger stands in a TOOLBAR, among ghost IconButtons.
+ *
+ * Not `triggerGhost`, and the difference is the text colour: `Button`'s ghost variant keeps
+ * `--waxwing-text` while this file's ghost dims to `--waxwing-text-muted`, so one word meant two
+ * things depending on which component you asked. A `⋯` that dims beside nine glyphs that do not
+ * reads as disabled. The reading pane had been overriding the default from its own stylesheet to
+ * get this; the bulk bar would have had to copy those rules, which is what named this variant
+ * instead.
+ */
+.triggerToolbar {
+  padding-inline: var(--waxwing-space-2);
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--waxwing-text);
+}
+
+@media (hover: hover) {
+  .triggerToolbar:hover {
+    background-color: var(--waxwing-surface-2);
+  }
+}
+
 /* Enter only — see the note in Dialog.module.css for why nothing here waits on an exit. The menu
    grows out of the control that opened it, so the origin is the top edge. */
 @keyframes waxwing-menu-in {
