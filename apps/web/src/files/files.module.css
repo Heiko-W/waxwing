@@ -235,7 +235,10 @@
 
 .shareLabel {
   font-size: var(--waxwing-text-sm);
-  color: var(--waxwing-text-muted);
+  color: var(--waxwing-text);
+  /* medium at full strength, like the six other field labels in the app. Left lighter and muted,
+     a label reads as help text about the control rather than the name of it. */
+  font-weight: var(--waxwing-weight-medium);
 }
 
 .shareHint {

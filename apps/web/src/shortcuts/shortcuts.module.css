@@ -7,14 +7,15 @@
   justify-content: center;
   min-inline-size: 1.75em;
   padding: 0 var(--waxwing-space-1);
-  border: 1px solid var(--waxwing-border);
+  border: 1px solid var(--waxwing-border-strong);
+  min-block-size: var(--waxwing-control-min);
   border-block-end-width: 2px;
   border-radius: var(--waxwing-radius-sm);
   background: var(--waxwing-surface-2);
   color: var(--waxwing-text);
   font-family: var(--waxwing-font-mono);
   font-size: var(--waxwing-text-xs);
-  line-height: 1.6;
+  line-height: var(--waxwing-leading-relaxed);
   white-space: nowrap;
 }
 
@@ -26,10 +27,15 @@
   min-block-size: 0;
 }
 
+/* The same three rules every other text field in the app carries. This one had `--waxwing-border`
+   as its only edge — which `docs/design-system.md` forbids in as many words, "never use
+   `--waxwing-border` as the only edge of an interactive element" — and no `min-block-size`, so it
+   stood ~8px taller than every field beside it. */
 .paletteInput {
   inline-size: 100%;
+  min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
-  border: 1px solid var(--waxwing-border);
+  border: 1px solid var(--waxwing-border-strong);
   border-radius: var(--waxwing-radius-md);
   background: var(--waxwing-surface);
   color: var(--waxwing-text);

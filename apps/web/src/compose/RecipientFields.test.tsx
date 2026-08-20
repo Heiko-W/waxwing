@@ -23,17 +23,22 @@ function renderFields(init?: OpenDraftInit): string {
 }
 
 describe('RecipientFields', () => {
+  // The toggle and the field label read the same word, so these ask for the FIELD rather than for
+  // the text: a `getByText('Cc')` now matches the button too, which would make the "not present"
+  // half of the first test vacuously false and the second half meaningless.
+  const ccField = () => screen.queryByRole('combobox', { name: 'Cc' })
+
   it('reveals the Cc field via its toggle', async () => {
     renderFields()
-    expect(screen.queryByText('Cc')).not.toBeInTheDocument()
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show Cc field' }))
-    expect(screen.getByText('Cc')).toBeInTheDocument()
+    expect(ccField()).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Cc' }))
+    expect(ccField()).toBeInTheDocument()
   })
 
   it('auto-shows Cc when a reply seeded it', () => {
     renderFields({ cc: [{ name: null, email: 'c@x.com' }] })
-    expect(screen.getByText('Cc')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Show Cc field' })).not.toBeInTheDocument()
+    expect(ccField()).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cc' })).not.toBeInTheDocument()
   })
 
   it('offers a "did you mean" correction and applies it to the last To address', async () => {

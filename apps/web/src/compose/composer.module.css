@@ -46,6 +46,9 @@
   background-color: var(--waxwing-overlay);
 }
 
+/* `radius-lg`, like every other large panel (Dialog, onboarding, the gallery). A fullscreen
+   composer and a `Dialog size="lg"` can be on screen together and used to carry two different
+   corners; the docked composer keeps `md`, where it is right. */
 .fullscreen {
   position: fixed;
   inset: var(--waxwing-space-6);
@@ -54,7 +57,7 @@
   flex-direction: column;
   background-color: var(--waxwing-surface);
   border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-lg);
   box-shadow: var(--waxwing-shadow-2);
   overflow: hidden;
 }

@@ -20,7 +20,9 @@
 }
 
 .backdrop {
-  animation: waxwing-dialog-backdrop var(--waxwing-duration-fast) linear;
+  /* One clock for both halves of one appearance: the backdrop used to finish 80ms before
+     the panel it belongs to. */
+  animation: waxwing-dialog-backdrop var(--waxwing-duration-base) var(--waxwing-ease-standard);
   position: fixed;
   inset: 0;
   z-index: 100;

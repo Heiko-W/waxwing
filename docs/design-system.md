@@ -116,6 +116,12 @@ from this scale; no arbitrary pixel spacing.
 
 `--waxwing-radius-sm` 6px · `-md` 10px · `-lg` 16px · `-full` pill.
 
+- **A row in a list takes `radius-sm`; `radius-md` belongs to buttons, fields and cards.** The
+  distinction had drifted — seven modules used `sm` for a list row and seven used `md`, at
+  identical row heights, so there was no size difference for the radius difference to track. The
+  sharpest pair was `ui/Menu`'s item against the reading pane's move-folder item: both "pick a
+  target folder from a list in an overlay", 4px apart.
+
 ### 2.5 Typography
 
 - Sans stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, …`.

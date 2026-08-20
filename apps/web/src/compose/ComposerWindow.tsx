@@ -335,7 +335,7 @@ export function ComposerWindow({
           focusDraft(draft.id)
         }}
       >
-        <span className={styles.chipTitle}>{draft.subject || t('compose.noSubject')}</span>
+        <span className={styles.chipTitle}>{draft.subject || t('compose.untitledWindow')}</span>
       </button>
     )
   }
@@ -367,7 +367,11 @@ export function ComposerWindow({
         )}
         <div className={styles.titleBar}>
           <span id={titleId} className={styles.title}>
-            {draft.subject || t('compose.noSubject')}
+            {/* "New message", not "(No subject)". The window is titled by what it IS until the
+                writer gives it a subject; a parenthesised negation is what a LIST calls a message
+                that was sent without one, which is why `compose.noSubject` still exists and the
+                outbox still uses it. */}
+            {draft.subject || t('compose.untitledWindow')}
           </span>
           <div className={styles.titleActions}>
             {templates.templates.length > 0 && (

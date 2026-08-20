@@ -568,7 +568,7 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   color: var(--waxwing-text);
   font: inherit;
   cursor: pointer;

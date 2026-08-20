@@ -206,8 +206,17 @@
  * hovered state explicitly makes this (0,3,0), so it no longer depends on which rule is written
  * last.
  */
+/*
+ * The current section, marked the way every other current thing in the app is marked.
+ *
+ * Colour alone was the odd one out: the folder rail, the labels list, the settings rail and the
+ * contact list all give the current row `--waxwing-surface-selected`, and this sat directly beside
+ * two of them showing only tinted text. Two selection languages, four inches apart, for the same
+ * idea — and the weaker of the two on the control that says which SECTION you are in.
+ */
 .primaryNavItem[aria-current="page"],
 .primaryNavItem[aria-current="page"]:hover {
+  background-color: var(--waxwing-surface-selected);
   color: var(--waxwing-accent);
 }
 

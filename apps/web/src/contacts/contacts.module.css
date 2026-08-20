@@ -85,7 +85,7 @@
   gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   color: var(--waxwing-text);
   text-decoration: none;
 }
@@ -661,7 +661,7 @@
   gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
 }
 
 .groupMemberName {
@@ -687,7 +687,7 @@
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
   border: 0;
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -742,7 +742,7 @@
   gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   color: var(--waxwing-text);
   text-decoration: none;
 }
