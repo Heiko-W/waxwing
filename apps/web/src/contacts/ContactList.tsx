@@ -178,9 +178,13 @@ export function ContactList({ bookId, selectedCardId, onCreate }: ContactListPro
           title={searching ? t('contacts.search.empty') : t('contacts.list.empty')}
           {...(!searching && onCreate !== undefined
             ? {
+                // Its own wording, not the toolbar button's: two controls answering to one
+                // accessible name on one screen is ambiguous to anything reading by name, and a
+                // strict-mode locator resolves to both. "Add contact" also reads better as the way
+                // OUT of an empty list than "New contact" does.
                 action: (
                   <Button variant="secondary" size="sm" onClick={onCreate}>
-                    {t('contacts.new')}
+                    {t('contacts.addFirst')}
                   </Button>
                 ),
               }

@@ -70,9 +70,10 @@ export function Labels({ onNavigate }: LabelsProps = {}) {
         <EmptyState
           density="compact"
           title={t('labels.empty')}
+          // Its own wording — see ContactList's empty state for why.
           action={
             <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: 'create' })}>
-              {t('labels.new')}
+              {t('labels.addFirst')}
             </Button>
           }
         />

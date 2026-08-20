@@ -573,6 +573,7 @@
       "other": "Sonstige"
     },
     "new": "Neuer Kontakt",
+    "addFirst": "Kontakt anlegen",
     "form": {
       "newTitle": "Neuer Kontakt",
       "editTitle": "Kontakt bearbeiten",
@@ -1168,6 +1169,7 @@
     "empty": "Noch keine Labels.",
     "noMessages": "Keine Nachrichten mit diesem Label.",
     "new": "Neues Label",
+    "addFirst": "Label anlegen",
     "newEllipsis": "Neues Label…",
     "assign": "Label",
     "menuTitle": "Labels anwenden",

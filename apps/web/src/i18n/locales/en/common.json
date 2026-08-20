@@ -573,6 +573,7 @@
       "other": "Other"
     },
     "new": "New contact",
+    "addFirst": "Add contact",
     "form": {
       "newTitle": "New contact",
       "editTitle": "Edit contact",
@@ -1168,6 +1169,7 @@
     "empty": "No labels yet.",
     "noMessages": "No messages with this label.",
     "new": "New label",
+    "addFirst": "Add label",
     "newEllipsis": "New label…",
     "assign": "Label",
     "menuTitle": "Apply labels",
