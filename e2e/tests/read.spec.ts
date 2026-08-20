@@ -25,8 +25,12 @@ async function readingAction(page: import('@playwright/test').Page, name: string
   const trigger = page.getByRole('button', { name: 'More actions', exact: true })
   const onBar = page.getByRole('button', { name, exact: true })
   await expect(trigger.or(onBar).first()).toBeVisible({ timeout: 15_000 })
-  if ((await onBar.count()) > 0) {
-    await onBar.click()
+  // `isVisible`, not `count`: a matching node can exist in the DOM while being unreachable — the
+  // overflow menu's own items are `menuitem`, but a stale portal or a hidden pane can still put a
+  // matching `button` in the tree, and `count()` cannot tell the difference. Clicking it then
+  // waits for actionability that never arrives.
+  if (await onBar.first().isVisible()) {
+    await onBar.first().click()
     return
   }
   await trigger.click()
