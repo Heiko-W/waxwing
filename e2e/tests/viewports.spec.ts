@@ -42,6 +42,76 @@ test.beforeEach(async ({ page }) => {
   await expect(messageList(page)).toBeVisible({ timeout: 30_000 })
 })
 
+/**
+ * B49 — the reading pane's action bar is ONE row at every width, and nothing is lost to make it one.
+ *
+ * This is the defect the first tablet photograph found: eleven controls at the 44px a touch target
+ * must be (WCAG 2.5.5) into a 270px pane is three rows, and the container-query pass that preceded
+ * this only got it down to two. The fix is the overflow menu, so the assertion has two halves —
+ * the row, and the actions that left it still being reachable. Either alone would pass while the
+ * feature was broken: a bar that dropped five buttons on the floor is also one row.
+ *
+ * `hasTouch` is what makes this the real case. Without it the controls are 34px and more of them
+ * fit, so the run would measure a pane that is not the one an iPad gets.
+ */
+test.use({ hasTouch: true, isMobile: true })
+
+/** Every action the bar can offer, whether it is currently in the bar or behind the ⋯. */
+const ALL_ACTIONS = [
+  'Reply',
+  'Reply all',
+  'Forward',
+  'Move to Trash',
+  'Archive',
+  'Move to…',
+  'Label',
+  'Mark as junk',
+  'Flag',
+  'Mark as unread',
+] as const
+
+test('the reading pane keeps its actions on one row, and none of them out of reach', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 834, height: 1112 })
+  await messageList(page).getByText(READ_SUBJECTS.newsletter, { exact: true }).click()
+  await expect(page.getByRole('heading', { name: READ_SUBJECTS.newsletter })).toBeVisible()
+
+  const toolbar = page.getByRole('toolbar', { name: 'Message actions' })
+  const buttons = toolbar.getByRole('button')
+  const boxes = await buttons.evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      label: node.getAttribute('aria-label') ?? '',
+      // Rounded: sub-pixel differences within a row are not a second row.
+      top: Math.round(node.getBoundingClientRect().top),
+    })),
+  )
+  expect(boxes.length, 'the bar renders something').toBeGreaterThan(1)
+  expect(new Set(boxes.map((box) => box.top)).size, 'rows the action bar occupies').toBe(1)
+
+  // Priority order, from the owner's call on B49: reply is what survives longest.
+  expect(boxes[0]?.label).toBe('Reply')
+  expect(boxes.at(-1)?.label, 'the overflow trigger is the last thing in the row').toBe(
+    'More actions',
+  )
+
+  // The half that makes the first half honest. Whatever left the bar has to be IN the menu.
+  const inBar = new Set(boxes.map((box) => box.label))
+  await page.getByRole('button', { name: 'More actions', exact: true }).click()
+  const inMenu = await page
+    .getByRole('menuitem')
+    .evaluateAll((nodes) => nodes.map((node) => node.textContent ?? ''))
+  for (const action of ALL_ACTIONS) {
+    const reachable = inBar.has(action) || inMenu.some((item) => item.startsWith(action))
+    expect(reachable, `${action} is reachable somewhere`).toBe(true)
+  }
+  // Something actually moved — otherwise this test would pass on a pane wide enough to need no
+  // overflow at all, which is not the pane B49 is about.
+  expect(inBar.size, 'the bar is shorter than the full action list').toBeLessThan(
+    ALL_ACTIONS.length,
+  )
+})
+
 for (const tier of TIERS) {
   test(`the shell fits a ${tier.name} viewport (${tier.width}px) on every screen`, async ({
     page,

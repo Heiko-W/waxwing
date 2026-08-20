@@ -15,6 +15,7 @@
 
 import { renderPlainText, sanitize } from '@waxwing/mail-html'
 import type { TFunction } from 'i18next'
+import type { LucideIcon } from 'lucide-react'
 import {
   AlertTriangle,
   Archive,
@@ -88,6 +89,7 @@ import type { SenderIdentity } from './sender-contact'
 import { SNOOZE_PRESETS } from './snooze'
 import { UnsubscribeBanner } from './UnsubscribeBanner'
 import { hasUnsubscribeOffer, readUnsubscribeOffer, sendOneClickUnsubscribe } from './unsubscribe'
+import { OVERFLOW_TRIGGER_ATTR, useActionOverflow } from './use-action-overflow'
 import { useLinkOpener } from './use-link-opener'
 import { useMessageActions } from './use-message-actions'
 import { useMessageRights } from './use-message-rights'
@@ -97,6 +99,27 @@ import { useSnooze } from './use-snooze'
 import { useTriage } from './use-triage'
 import { useInlineImages } from './useInlineImages'
 import { useMessageBody } from './useMessageBody'
+
+/**
+ * One reading-pane action, in the form both the bar and the `⋯` menu can render (B49).
+ *
+ * The two surfaces do not take the same props — a button has `unavailableReason` and a menu item
+ * does not — so this is what they have in common, and each render site adapts it. `popover` marks
+ * the one action that owns an anchored surface rather than firing and finishing.
+ */
+interface BarAction {
+  readonly id: string
+  readonly label: string
+  readonly icon: LucideIcon
+  readonly onSelect: () => void
+  readonly disabled?: boolean
+  /** A RIGHTS refusal (B34): the control stays focusable and says why, rather than going quiet. */
+  readonly unavailableReason?: string | undefined
+  readonly destructive?: boolean
+  readonly iconClassName?: string | undefined
+  /** Opens an anchored popover (the label picker) instead of acting; needs a ref and aria state. */
+  readonly popover?: boolean
+}
 
 /** How long an opened message must stay open before it is auto-marked read (FR-RD-07). */
 export const AUTO_MARK_READ_DELAY_MS = 1500
@@ -140,7 +163,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const rights = useMessageRights(rightsIds)
   const seenDenied = rights.reason('seen') !== null
   /** A refusal key from {@link rights} as the finished sentence a control announces; `undefined` = allowed. */
-  const reasonText = (key: string | null): string | undefined => (key === null ? undefined : t(key))
+  // Memoized only so it can be a dependency of `barActions` without defeating that memo — the six
+  // call sites are all inside it.
+  const reasonText = useCallback(
+    (key: string | null): string | undefined => (key === null ? undefined : t(key)),
+    [t],
+  )
   const openDraft = useComposerStore((state) => state.openDraft)
   /**
    * Full screen is a property of the ROUTE (`?full=1`), read here rather than threaded down as a
@@ -187,6 +215,27 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
    */
   const [labelsOpen, setLabelsOpen] = useState(false)
   const labelButtonRef = useRef<HTMLButtonElement>(null)
+  const overflowRef = useRef<HTMLSpanElement>(null)
+  /*
+   * Where the label popover anchors, which since B49 is not always the same element: below some pane
+   * width the Label button is inside the `⋯` menu, and the popover has to hang off the trigger that
+   * is actually on screen. A getter rather than a second piece of state — it is read at open time,
+   * and anything stored would have to be kept in step with a ResizeObserver.
+   *
+   * The fallback must be FOCUSABLE, not merely present: `LabelMenu` closes by calling
+   * `anchorRef.current?.focus()`, and the note above `labelsOpen` records what happens when that
+   * lands on something that cannot take focus — Escape drops the reader onto `<body>`, outside the
+   * pane they were reading in. The menu trigger is a button, which is the whole reason it is the one
+   * picked here rather than the wrapping span.
+   */
+  const labelAnchorRef = useMemo(
+    () => ({
+      get current(): HTMLElement | null {
+        return labelButtonRef.current ?? overflowRef.current?.querySelector('button') ?? null
+      },
+    }),
+    [],
+  )
   const { ref: actionBarRef, containerProps: actionBarKeys } = useToolbarRoving<HTMLDivElement>()
   /** The sender hover-card (FR-CON-05), anchored to the sender avatar in the header. */
   const [senderCardOpen, setSenderCardOpen] = useState(false)
@@ -648,6 +697,164 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     return () => clearReading(handlers.emailId)
   }, [autoMark, handlers, registerReading, clearReading])
 
+  /*
+   * The action bar as DATA, in priority order (B49).
+   *
+   * Eleven controls do not fit a 270px pane at 44px each, so below some width the tail of this list
+   * moves into the `⋯` menu — which is why it is an array and not JSX: the bar renders the head and
+   * the menu is built from the same entries, so an action cannot be hidden without becoming
+   * reachable in the same render. Buttons hidden by CSS would just be gone.
+   *
+   * THE ORDER IS THE DECISION, and it is the owner's: reply, reply-all, forward, delete stay
+   * visible longest. Filing (archive, move, label), reporting (junk) and state (flag, unread) give
+   * way first. It is one order at every width rather than one for wide and another for narrow, so
+   * dragging the splitter takes buttons off the end instead of rearranging the row under the
+   * pointer.
+   */
+  const barActions = useMemo<BarAction[]>(
+    () => [
+      {
+        id: 'reply',
+        label: t('reading.reply'),
+        icon: Reply,
+        // All three compose actions gate on `handlers.bodyReady` — `!loading && ready` — and not on
+        // `loading` alone: the body arrives before its inline images do, and in that window
+        // `sanitized` is still null and a seeded quote would be empty. One expression for button and
+        // chord, read off the same handlers object the shortcut layer gets.
+        disabled: !handlers.bodyReady,
+        onSelect: () => onCompose('reply'),
+      },
+      {
+        id: 'replyAll',
+        label: t('reading.replyAll'),
+        icon: ReplyAll,
+        disabled: !handlers.bodyReady,
+        onSelect: () => onCompose('replyAll'),
+      },
+      {
+        id: 'forward',
+        label: t('reading.forward'),
+        icon: Forward,
+        disabled: !handlers.bodyReady,
+        onSelect: () => onCompose('forward'),
+      },
+      {
+        id: 'trash',
+        label: inTrash ? t('list.actions.delete') : t('list.actions.trash'),
+        icon: Trash2,
+        disabled: !inTrash && trashBox === undefined,
+        // In Trash this button DESTROYS rather than moves, so it takes the destroy verdict.
+        unavailableReason: reasonText(
+          inTrash ? rights.reason('destroy') : rights.moveReason(inThisMailbox, trashBox?.id),
+        ),
+        destructive: true,
+        onSelect: () => (inTrash ? handlers.requestDelete() : handlers.trash()),
+      },
+      /* B34: `disabled` stays for the STRUCTURAL refusals (no such folder, already there) and
+         `unavailableReason` carries the RIGHTS refusal — a permission the user should be told
+         about, on a control that stays focusable so they can hear it. A move needs the source's
+         `mayRemoveItems` and the target's `mayAddItems`; the source half is the gap B34 names. */
+      {
+        id: 'archive',
+        label: t('list.actions.archive'),
+        icon: Archive,
+        disabled: archiveBox === undefined || inArchive,
+        unavailableReason: reasonText(rights.moveReason(inThisMailbox, archiveBox?.id)),
+        onSelect: handlers.archive,
+      },
+      {
+        // Without a source mailbox `move` keeps the other memberships — that is a COPY, not the
+        // move this button promises. The `v` chord gates on the same value (the shortcut context
+        // reads this very `mailboxId` back off the registered handlers), so the two cannot drift.
+        id: 'move',
+        label: t('list.actions.move'),
+        icon: FolderInput,
+        disabled: inThisMailbox === null,
+        // Only the SOURCE half here: the picker filters targets by `mayAddItems` already, and its
+        // empty state covers "nothing left to file into".
+        unavailableReason: reasonText(rights.removeReason(inThisMailbox)),
+        onSelect: handlers.openMove,
+      },
+      {
+        // Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
+        // way to reach. The bulk bar still uses it — there, nothing but the mouse opens the picker.
+        id: 'labels',
+        label: t('labels.assign'),
+        icon: Tag,
+        popover: true,
+        onSelect: () => setLabelsOpen((open) => !open),
+      },
+      {
+        id: 'junk',
+        label: t('list.actions.junk'),
+        icon: Ban,
+        disabled: junkBox === undefined || inJunk,
+        unavailableReason: reasonText(rights.moveReason(inThisMailbox, junkBox?.id)),
+        onSelect: handlers.junk,
+      },
+      {
+        id: 'flag',
+        label: email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag'),
+        icon: Star,
+        iconClassName: email.keywords.$flagged === true ? styles.flagOn : undefined,
+        unavailableReason: reasonText(rights.reason('keywords')),
+        onSelect: handlers.toggleFlag,
+      },
+      {
+        id: 'markUnread',
+        label: t('reading.markUnread'),
+        icon: MailMinus,
+        unavailableReason: reasonText(rights.reason('seen')),
+        onSelect: handlers.markUnread,
+      },
+    ],
+    [
+      t,
+      reasonText,
+      handlers,
+      onCompose,
+      rights,
+      inThisMailbox,
+      inTrash,
+      inArchive,
+      inJunk,
+      trashBox,
+      archiveBox,
+      junkBox,
+      email.keywords.$flagged,
+    ],
+  )
+
+  const visibleActions = useActionOverflow(actionBarRef, barActions.length)
+
+  /*
+   * The menu is the bar's tail plus what was always in it.
+   *
+   * A displaced action arrives DISABLED with its reason spoken in the label, because a menu item has
+   * nowhere to put `unavailableReason` — the pattern B34 built (a focusable control that explains
+   * why it refuses) has no equivalent here, and a silently inert row would be worse than a wordy
+   * one. `destructive` survives the trip: Delete is red in the menu as it is in the bar.
+   */
+  const menuItems = useMemo<MenuItemSpec[]>(
+    () => [
+      ...barActions.slice(visibleActions).map((action) => ({
+        id: action.id,
+        label:
+          action.unavailableReason === undefined
+            ? action.label
+            : `${action.label} — ${action.unavailableReason}`,
+        icon: action.icon,
+        disabled: action.disabled === true || action.unavailableReason !== undefined,
+        // Spread rather than assigned: `exactOptionalPropertyTypes` refuses an explicit `undefined`
+        // where the target says `boolean`.
+        ...(action.destructive === true ? { destructive: true } : {}),
+        onSelect: action.onSelect,
+      })),
+      ...overflowItems,
+    ],
+    [barActions, visibleActions, overflowItems],
+  )
+
   return (
     <article className={styles.message} aria-label={email.subject || t('list.noSubject')}>
       <header className={styles.header}>
@@ -778,6 +985,10 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       {/* B20.2: the role was here with none of the keyboard model behind it, so a screen reader
           announced "toolbar" and arrow keys did nothing — while eleven controls each took their own
           tab stop. `useToolbarRoving` supplies the model the role promises. */}
+      {/* ONE row, always (B49). The three spaced groups this replaced were a real improvement on ten
+          undifferentiated glyphs, but they were a solution to having ten glyphs — and the owner's
+          answer to the tablet shot was to stop having ten. What is left is short enough to read
+          without the grouping, and short enough to fit. */}
       <div
         ref={actionBarRef}
         className={styles.actionBar}
@@ -785,131 +996,37 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         aria-label={t('reading.actions')}
         {...actionBarKeys}
       >
-        {/* B34: `disabled` stays for the STRUCTURAL refusals (no such folder, already there) and
-            `unavailableReason` carries the RIGHTS refusal — a permission the user should be told
-            about, on a control that stays focusable so they can hear it. A move needs the source's
-            `mayRemoveItems` and the target's `mayAddItems`; the source half is the gap B34 names. */}
-        {/* Three groups, because ten equally-weighted glyphs in one run gave the eye nothing to
-            hold on to: file it (archive, label, move) | get rid of it (junk, trash) | change its
-            state (flag, unread). The gap between groups is four times the gap within one, which is
-            the whole mechanism — no separators, no labels, just distance doing the grouping. */}
-        <span className={styles.actionGroup}>
+        {barActions.slice(0, visibleActions).map((action) => (
           <IconButton
-            label={t('list.actions.archive')}
+            key={action.id}
+            // Only the label picker takes a ref, and it needs one: its popover positions against
+            // this button and returns focus to it on close.
+            ref={action.popover === true ? labelButtonRef : null}
+            label={action.label}
             variant="ghost"
-            disabled={archiveBox === undefined || inArchive}
-            unavailableReason={reasonText(rights.moveReason(inThisMailbox, archiveBox?.id))}
-            onClick={handlers.archive}
+            disabled={action.disabled}
+            unavailableReason={action.unavailableReason}
+            aria-haspopup={action.popover === true ? 'menu' : undefined}
+            aria-expanded={action.popover === true ? labelsOpen : undefined}
+            onClick={action.onSelect}
           >
-            <Archive />
+            <action.icon className={action.iconClassName} />
           </IconButton>
-          {/* Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
-            way to reach. The bulk bar still uses it — there, nothing but the mouse opens the picker. */}
-          <IconButton
-            ref={labelButtonRef}
-            label={t('labels.assign')}
-            variant="ghost"
-            aria-haspopup="menu"
-            aria-expanded={labelsOpen}
-            onClick={() => setLabelsOpen((open) => !open)}
-          >
-            <Tag />
-          </IconButton>
-          {/* Without a source mailbox `move` keeps the other memberships — that is a COPY, not the
-            move this button promises. The `v` chord gates on the same value (the shortcut context
-            reads this very `mailboxId` back off the registered handlers), so the two cannot drift. */}
-          <IconButton
-            label={t('list.actions.move')}
-            variant="ghost"
-            disabled={inThisMailbox === null}
-            // Only the SOURCE half here: the picker filters targets by `mayAddItems` already, and its
-            // empty state covers "nothing left to file into".
-            unavailableReason={reasonText(rights.removeReason(inThisMailbox))}
-            onClick={handlers.openMove}
-          >
-            <FolderInput />
-          </IconButton>
-        </span>
-        <span className={styles.actionGroup}>
-          <IconButton
-            label={t('list.actions.junk')}
-            variant="ghost"
-            disabled={junkBox === undefined || inJunk}
-            unavailableReason={reasonText(rights.moveReason(inThisMailbox, junkBox?.id))}
-            onClick={handlers.junk}
-          >
-            <Ban />
-          </IconButton>
-          <IconButton
-            label={inTrash ? t('list.actions.delete') : t('list.actions.trash')}
-            variant="ghost"
-            disabled={!inTrash && trashBox === undefined}
-            // In Trash this button DESTROYS rather than moves, so it takes the destroy verdict.
-            unavailableReason={reasonText(
-              inTrash ? rights.reason('destroy') : rights.moveReason(inThisMailbox, trashBox?.id),
-            )}
-            onClick={() => (inTrash ? handlers.requestDelete() : handlers.trash())}
-          >
-            <Trash2 />
-          </IconButton>
-        </span>
-        <span className={styles.actionGroup}>
-          <IconButton
-            label={
-              email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag')
-            }
-            variant="ghost"
-            unavailableReason={reasonText(rights.reason('keywords'))}
-            onClick={handlers.toggleFlag}
-          >
-            <Star className={email.keywords.$flagged === true ? styles.flagOn : undefined} />
-          </IconButton>
-          <IconButton
-            label={t('reading.markUnread')}
-            variant="ghost"
-            unavailableReason={reasonText(rights.reason('seen'))}
-            onClick={handlers.markUnread}
-          >
-            <MailMinus />
-          </IconButton>
-        </span>
-        <span className={styles.actionSpacer} />
-        {/* All three gate on `handlers.bodyReady` — `!loading && ready` — and not on `loading`
-            alone: the body arrives before its inline images do, and in that window `sanitized` is
-            still null and a seeded quote would be empty. One expression for button and chord, read
-            off the same handlers object the shortcut layer gets. */}
-        <IconButton
-          label={t('reading.reply')}
-          variant="ghost"
-          disabled={!handlers.bodyReady}
-          onClick={() => onCompose('reply')}
-        >
-          <Reply />
-        </IconButton>
-        <IconButton
-          label={t('reading.replyAll')}
-          variant="ghost"
-          disabled={!handlers.bodyReady}
-          onClick={() => onCompose('replyAll')}
-        >
-          <ReplyAll />
-        </IconButton>
-        <IconButton
-          label={t('reading.forward')}
-          variant="ghost"
-          disabled={!handlers.bodyReady}
-          onClick={() => onCompose('forward')}
-        >
-          <Forward />
-        </IconButton>
+        ))}
         {/* Wrapped rather than given `className` directly — the same shape FolderTreeView uses, and
-            the span is what the `@media print` rule hides. */}
-        <span className={styles.overflowMenu}>
+            the span is what the `@media print` rule hides. It also carries the attribute the
+            overflow measurement finds one control by, and the ref the label popover falls back to
+            when its own button is inside this menu. */}
+        <span
+          className={styles.overflowMenu}
+          ref={overflowRef}
+          {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}
+        >
           <Menu
             triggerLabel={t('reading.more')}
             trigger={<MoreHorizontal aria-hidden="true" />}
             align="end"
-            items={overflowItems}
+            items={menuItems}
           />
         </span>
       </div>
@@ -1036,7 +1153,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       {labelsOpen && (
         <LabelMenu
           ids={[email.id]}
-          anchorRef={labelButtonRef}
+          anchorRef={labelAnchorRef}
           onClose={() => setLabelsOpen(false)}
         />
       )}
