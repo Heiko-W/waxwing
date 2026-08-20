@@ -304,8 +304,16 @@
   flex-wrap: nowrap;
   gap: var(--waxwing-space-1);
   align-items: center;
-  padding-bottom: var(--waxwing-space-2);
-  border-bottom: 1px solid var(--waxwing-border);
+  padding-block-end: var(--waxwing-space-2);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+/* Where the meaning-family changes: replying is not filing, and filing is not marking. Four times
+   the base gap, which is the distance C5 asked for and `a685633` shipped before B49 removed the
+   wrappers that carried it. As a margin on the button itself it survives the row being cut short
+   by `useActionOverflow` — whatever is left still breaks in the right places. */
+.actionBar > [data-group-start] {
+  margin-inline-start: var(--waxwing-space-4);
 }
 
 /*

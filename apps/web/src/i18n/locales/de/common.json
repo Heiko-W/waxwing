@@ -827,7 +827,8 @@
       "notJunk": "Kein Spam",
       "trash": "In den Papierkorb",
       "delete": "Löschen",
-      "move": "Verschieben nach…"
+      "move": "Verschieben nach…",
+      "more": "Weitere Aktionen für die Auswahl"
     },
     "sort": {
       "label": "Sortieren",

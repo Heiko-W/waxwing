@@ -56,13 +56,26 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   border-block-end: 1px solid var(--waxwing-border);
   flex-wrap: nowrap;
-  overflow-x: auto;
-  /* The bar is 44 px tall; a scrollbar inside it would eat a quarter of that. */
-  scrollbar-width: none;
+  /* No `overflow-x: auto` any more. It was the reason this bar could ship 23px wider than its own
+     column and still look correct to every test: the last action sat 11px outside the container,
+     reachable only by dragging a bar that gives no sign it scrolls. The actions overflow into a
+     menu instead, which is the answer the reading pane's bar already gave. */
 }
 
 .bulkBar > * {
   flex: none;
+}
+
+/* What the overflow hook measures. `flex: 1` + `min-inline-size: 0` makes its `clientWidth` exactly
+   the room left after the checkbox, the count and the remove-from-label button — measuring the BAR
+   would count their width as available and hide one action too few. */
+.bulkActions {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  flex: 1;
+  min-inline-size: 0;
+  justify-content: flex-end;
 }
 
 /* `display: contents` so the label and the field become direct grid items of `.toolbar` and land in

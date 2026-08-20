@@ -827,7 +827,8 @@
       "notJunk": "Not junk",
       "trash": "Move to Trash",
       "delete": "Delete",
-      "move": "Move to…"
+      "move": "Move to…",
+      "more": "More actions for the selection"
     },
     "sort": {
       "label": "Sort",

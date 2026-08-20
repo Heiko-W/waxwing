@@ -34,7 +34,7 @@ export function useActionOverflow(ref: RefObject<HTMLElement | null>, count: num
 
   useLayoutEffect(() => {
     const bar = ref.current
-    if (bar === null || typeof ResizeObserver === 'undefined') {
+    if (bar === null) {
       setVisible(count)
       return
     }
@@ -48,14 +48,32 @@ export function useActionOverflow(ref: RefObject<HTMLElement | null>, count: num
         return
       }
       const gap = Number.parseFloat(getComputedStyle(bar).columnGap) || 0
+      // The bar also draws a WIDER gap where the meaning-family changes (C5). Read off the DOM
+      // rather than assumed, for the same reason `unit` is: it is a token, and a token can be
+      // retuned by a hoster. Reserving one is deliberately conservative — a row cut short enough
+      // to lose its family boundary reserves space it no longer needs, and showing one action
+      // fewer is the harmless direction to be wrong in.
+      const groupStart = bar.querySelector<HTMLElement>('[data-group-start]')
+      const extra =
+        groupStart === null
+          ? 0
+          : Number.parseFloat(getComputedStyle(groupStart).marginInlineStart) || 0
       // n controls occupy n*unit + (n-1)*gap, so the count that fits inverts to this.
-      const fits = Math.floor((width + gap) / (unit + gap))
+      const fits = Math.floor((width - extra + gap) / (unit + gap))
       // The trigger is one of them whenever anything is hidden behind it — but when everything fits
       // there is no reason to spend a slot on it, which is the `count + 1` comparison.
       setVisible(fits >= count + 1 ? count : Math.max(0, fits - 1))
     }
 
+    // Measure FIRST, and unconditionally. This used to bail out before measuring wherever
+    // `ResizeObserver` is missing, which is every jsdom test — so a suite could only ever see the
+    // full row, and the one place that wanted to check the split had to install a stub. Installing
+    // one is not free: TanStack Virtual switches to the observer path the moment the global exists,
+    // and a stub that never fires leaves a virtualized list with no rows at all. A single
+    // synchronous measurement answers the same `width === 0` fallback in a real jsdom run, and lets
+    // a test that DOES stub widths get a real answer.
     measure()
+    if (typeof ResizeObserver === 'undefined') return
     // Observing the BAR, not the window: the pane is resizable by a splitter and by the list beside
     // it, neither of which is a viewport change. This is the same lesson as the container queries in
     // `reading.module.css` — asking how wide the window is answers a different question.
