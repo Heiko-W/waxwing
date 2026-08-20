@@ -11,11 +11,18 @@
  */
 
 import type { ContactCardMedia, Id } from '@waxwing/jmap'
-import { Mail as MailIcon, MoreHorizontal, Pencil, Phone as PhoneIcon, Trash2 } from 'lucide-react'
+import {
+  Ellipsis,
+  Mail as MailIcon,
+  Pencil,
+  Phone as PhoneIcon,
+  Trash2,
+  UserRoundX,
+} from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { type ContactCardRow, useContactCard, useReplica } from '../sync'
-import { Avatar, Button, Dialog, Menu, SectionLabel, Spinner } from '../ui'
+import { type ContactCardRow, useContactCardResolved, useReplica } from '../sync'
+import { Avatar, Button, Dialog, EmptyState, Menu, SectionLabel, Spinner } from '../ui'
 import {
   communicationTypeKey,
   contactBirthday,
@@ -51,17 +58,23 @@ export function ContactDetail({
   canWrite = false,
 }: ContactDetailProps) {
   const { t } = useTranslation()
-  const card = useContactCard(cardId ?? '')
+  const { settled, card } = useContactCardResolved(cardId ?? '')
 
   if (cardId === undefined) {
     return <p className={styles.detailEmpty}>{t('contacts.detail.empty')}</p>
   }
-  if (card === undefined) {
+  if (!settled) {
     return (
       <div className={styles.detailLoading}>
         <Spinner label={t('contacts.detail.loading')} />
       </div>
     )
+  }
+  if (card === undefined) {
+    // Settled and empty: a deep link to a contact deleted since, or an id that never existed. This
+    // used to be the same spinner as "still loading", so the reader waited for something that was
+    // never coming.
+    return <EmptyState tone="error" icon={UserRoundX} title={t('contacts.detail.notAvailable')} />
   }
   return (
     <ContactCardView
@@ -123,7 +136,7 @@ function ContactCardView({
           {onExport && (
             <Menu
               triggerLabel={t('contacts.detail.more')}
-              trigger={<MoreHorizontal aria-hidden="true" />}
+              trigger={<Ellipsis aria-hidden="true" />}
               align="end"
               items={[
                 {

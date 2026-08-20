@@ -53,6 +53,7 @@ import {
   Avatar,
   Button,
   Dialog,
+  EmptyState,
   IconButton,
   Menu,
   type MenuItemSpec,
@@ -208,7 +209,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     () => (connected ? ownAddresses(connected.jmapSession, accountId) : []),
     [connected, accountId],
   )
-  const { body, htmlParts, textBody, loading } = useMessageBody(email.id)
+  const { body, htmlParts, textBody, loading, failed: bodyFailed } = useMessageBody(email.id)
   const { resolveCid, ready } = useInlineImages(accountId, body)
 
   const archiveBox = useMailboxByRole('archive')
@@ -1147,7 +1148,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
 
       <div className={styles.bodyWrap}>
-        {loading || bodyHtml === null ? (
+        {bodyFailed ? (
+          // The fetch came back with nothing — offline, or the message is gone. This used to be
+          // indistinguishable from "still loading", so the pane showed pulsing placeholders for a
+          // body that was never going to arrive. The two neighbouring surfaces (view-source and
+          // nested message) have had this text since M3.4; the main one did not.
+          <EmptyState
+            tone="error"
+            icon={TriangleAlert}
+            title={t('reading.notAvailable')}
+            density="compact"
+          />
+        ) : loading || bodyHtml === null ? (
           // Text-shaped placeholders rather than a spinner in a box: what is arriving is prose,
           // and a spinner says only "wait" while these say what for. The block is the frame's own
           // minimum height, so the pane holds still when the body lands.

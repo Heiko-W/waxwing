@@ -543,6 +543,7 @@
       "empty": "Keine Kontakte entsprechen Ihrer Suche."
     },
     "detail": {
+      "notAvailable": "Dieser Kontakt ist nicht verfügbar.",
       "title": "Kontakt",
       "empty": "Wählen Sie einen Kontakt aus, um die Details zu sehen.",
       "loading": "Kontakt wird geladen",
@@ -1165,6 +1166,7 @@
   "labels": {
     "title": "Labels",
     "empty": "Noch keine Labels. Über „+“ legen Sie eines an.",
+    "noMessages": "Keine Nachrichten mit diesem Label.",
     "new": "Neues Label",
     "newEllipsis": "Neues Label…",
     "assign": "Label",
@@ -1485,6 +1487,8 @@
     "allDay": "Ganztägig",
     "more": "+{{count}} weitere",
     "noEvents": "Nichts in Sicht.",
+    "retry": "Erneut versuchen",
+    "saveFailed": "Der Termin konnte nicht gespeichert werden.",
     "loadFailed": "Der Kalender konnte nicht geladen werden.",
     "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen.",
     "event": {
@@ -1508,6 +1512,7 @@
     "root": "Dateien",
     "breadcrumb": "Ordnerpfad",
     "empty": "Dieser Ordner ist leer.",
+    "retry": "Erneut versuchen",
     "loadFailed": "Die Dateien konnten nicht geladen werden.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",

@@ -543,6 +543,7 @@
       "empty": "No contacts match your search."
     },
     "detail": {
+      "notAvailable": "This contact is not available.",
       "title": "Contact",
       "empty": "Select a contact to see their details.",
       "loading": "Loading contact",
@@ -1165,6 +1166,7 @@
   "labels": {
     "title": "Labels",
     "empty": "No labels yet. Use + to create one.",
+    "noMessages": "No messages with this label.",
     "new": "New label",
     "newEllipsis": "New label…",
     "assign": "Label",
@@ -1485,6 +1487,8 @@
     "allDay": "All day",
     "more": "+{{count}} more",
     "noEvents": "Nothing coming up.",
+    "retry": "Try again",
+    "saveFailed": "The event could not be saved.",
     "loadFailed": "The calendar could not be loaded.",
     "signedOut": "Sign in to see your calendar.",
     "event": {
@@ -1508,6 +1512,7 @@
     "root": "Files",
     "breadcrumb": "Folder path",
     "empty": "This folder is empty.",
+    "retry": "Try again",
     "loadFailed": "The files could not be loaded.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",

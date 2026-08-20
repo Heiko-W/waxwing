@@ -22,8 +22,10 @@ import {
   Eye,
   File as FileIcon,
   Folder,
+  FolderOpen,
   FolderPlus,
   Trash2,
+  TriangleAlert,
   Upload,
   UsersRound,
 } from 'lucide-react'
@@ -35,7 +37,7 @@ import shellStyles from '../app/shell/shell.module.css'
 import { formatBytes } from '../i18n/formatters'
 import { isPreviewable, previewSurface } from '../mail/preview-policy'
 import { safeDownloadName } from '../mail/safe-filename'
-import { Button, Dialog, IconButton, Spinner, TextInput, useToast } from '../ui'
+import { Button, Dialog, EmptyState, IconButton, Spinner, TextInput, useToast } from '../ui'
 import styles from './files.module.css'
 import {
   currentUserPrincipalId,
@@ -134,7 +136,7 @@ export default function FilesPage(props: FilesPageProps) {
   if (client === null) {
     return (
       <div className={styles.page}>
-        <p className={styles.empty}>{t('files.signedOut')}</p>
+        <EmptyState icon={FolderOpen} title={t('files.signedOut')} />
       </div>
     )
   }
@@ -293,10 +295,20 @@ export default function FilesPage(props: FilesPageProps) {
         </Dialog>
       )}
 
+      {/* Failure and emptiness look different now. They used to share one class, so "the server
+          said no" and "this folder has nothing in it" were the same grey sentence — and only the
+          failure has anything the reader can do about it. */}
       {failed && (
-        <p className={styles.empty} role="alert">
-          {t('files.loadFailed')}
-        </p>
+        <EmptyState
+          tone="error"
+          icon={TriangleAlert}
+          title={t('files.loadFailed')}
+          action={
+            <Button variant="secondary" onClick={() => void load()}>
+              {t('files.retry')}
+            </Button>
+          }
+        />
       )}
 
       {nodes === null && !failed ? (
@@ -304,7 +316,7 @@ export default function FilesPage(props: FilesPageProps) {
           <Spinner label={t('ui.spinner.label')} />
         </div>
       ) : nodes !== null && nodes.length === 0 ? (
-        <p className={styles.empty}>{t('files.empty')}</p>
+        <EmptyState icon={FolderOpen} title={t('files.empty')} />
       ) : (
         <ul className={styles.list}>
           {(nodes ?? []).map((node) => (

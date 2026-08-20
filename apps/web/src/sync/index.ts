@@ -80,6 +80,7 @@ export {
   type ReplicaProviderProps,
   useAddressBooks,
   useContactCard,
+  useContactCardResolved,
   useContactWindow,
   useEmail,
   useEmailBody,

@@ -204,11 +204,22 @@ export function MessageList({
   const openMailbox = useMailbox(sourceMailboxId ?? '')
   const outsideWindow =
     !search && openMailbox !== undefined && openMailbox.totalEmails > 0 && ids.length === 0
-  const emptyMessage = search
-    ? t('search.results.empty')
-    : outsideWindow
-      ? t('list.emptyOutsideWindow', { count: config.offline.cacheDays })
-      : t('list.empty')
+  /*
+   * A LABEL with nothing in it is not a search with no matches.
+   *
+   * Browsing a label runs through the same `search` prop as a typed query (see `MailScreen`'s
+   * `effectiveSearch`), so this branch used to tell someone who clicked a label in the sidebar:
+   * "No messages match your search. Try all mailboxes, or fewer words." They had searched for
+   * nothing and were being advised to search differently.
+   */
+  const emptyMessage =
+    activeLabel !== undefined
+      ? t('labels.noMessages')
+      : search
+        ? t('search.results.empty')
+        : outsideWindow
+          ? t('list.emptyOutsideWindow', { count: config.offline.cacheDays })
+          : t('list.empty')
 
   // Publish the window. A new key (mailbox/sort/search changed) resets focus + selection in the store.
   useEffect(() => {

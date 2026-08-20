@@ -1130,6 +1130,30 @@ describe('MessageView', () => {
    * and the trigger. In the browser the same arithmetic runs against a real gap; the E2E suite is
    * where the real pane is measured.
    */
+  it('says a body that cannot be fetched is unavailable, instead of loading forever', async () => {
+    /*
+     * `useMessageBody` used to swallow a failed fetch — its own comment said so ("leaves the pane
+     * loading") — and `loading` is `body === undefined`, which is also what "still on its way"
+     * looks like. Offline, or opening a message deleted since the envelope synced, produced four
+     * pulsing placeholders that never resolved: a surface promising progress that had stopped.
+     *
+     * The two neighbouring surfaces (view-source, nested message) have had this text since M3.4.
+     */
+    setActiveEngine({
+      dispatch,
+      fetchBody: vi.fn(async () => {
+        throw new Error('offline')
+      }),
+      hydrateEmails: vi.fn(async () => {}),
+    } as unknown as Parameters<typeof setActiveEngine>[0])
+
+    renderView(seen())
+
+    expect(await screen.findByText('This message is not available.')).toBeInTheDocument()
+    // And it is no longer claiming to be busy.
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull())
+  })
+
   describe('the action bar overflow (B49)', () => {
     const widthGetter = (px: number) => ({ configurable: true, get: () => px })
 

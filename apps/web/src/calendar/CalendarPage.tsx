@@ -14,7 +14,15 @@
 
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
 import type { TFunction } from 'i18next'
-import { Check, ChevronLeft, ChevronRight, Plus, SlidersHorizontal } from 'lucide-react'
+import {
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  SlidersHorizontal,
+  TriangleAlert,
+} from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
@@ -23,7 +31,7 @@ import { useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { formatDate } from '../i18n/formatters'
-import { Button, Dialog, IconButton, Menu, Spinner } from '../ui'
+import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from '../ui'
 import styles from './calendar.module.css'
 import {
   type CalendarClient,
@@ -84,6 +92,7 @@ export default function CalendarPage(props: CalendarPageProps) {
 
   const [view, setView] = useState<View>('month')
   const tier = useLayoutTier()
+  const { toast } = useToast()
   const [calendars, setCalendars] = useState<Calendar[]>([])
   /** `{ event }` edits, `{ event: null }` creates on `day`. */
   const [editing, setEditing] = useState<{ event: CalendarEvent | null; day: Date } | null>(null)
@@ -140,8 +149,16 @@ export default function CalendarPage(props: CalendarPageProps) {
 
   const goto = (date: Date): void => navigate(calendarPath(toIsoDate(date)))
 
-  /** Runs a write, then reloads. Closes the dialog only on success, so a refusal keeps the
-   *  user's input on screen to correct rather than discarding it. */
+  /**
+   * Runs a write, then reloads. Closes the dialog only on success, so a refusal keeps the user's
+   * input on screen to correct rather than discarding it.
+   *
+   * A failed write raises a TOAST rather than the page-level `failed` flag, and that is the whole
+   * of the fix: `failed` renders inside the page, the dialog is modal and portalled above it, and
+   * `run` leaves the dialog open on failure — so the only report of a failed save was painted
+   * behind the backdrop. It also said "The calendar could not be loaded", which is a different
+   * sentence about a different operation. Pressing Save produced no visible response at all.
+   */
   const run = async (action: () => Promise<unknown>): Promise<void> => {
     setSaving(true)
     try {
@@ -149,7 +166,7 @@ export default function CalendarPage(props: CalendarPageProps) {
       setEditing(null)
       await load()
     } catch {
-      setFailed(true)
+      toast({ tone: 'danger', title: t('calendar.saveFailed') })
     } finally {
       setSaving(false)
     }
@@ -158,7 +175,7 @@ export default function CalendarPage(props: CalendarPageProps) {
   if (client === null) {
     return (
       <div className={styles.page}>
-        <p className={styles.empty}>{t('calendar.signedOut')}</p>
+        <EmptyState icon={CalendarDays} title={t('calendar.signedOut')} />
       </div>
     )
   }
@@ -267,10 +284,19 @@ export default function CalendarPage(props: CalendarPageProps) {
         </IconButton>
       </ScreenBar>
 
+      {/* A load that failed, told apart from a month with nothing in it — the two shared one
+          class, so a server error and an empty calendar were the same grey sentence. */}
       {failed && (
-        <p className={styles.empty} role="alert">
-          {t('calendar.loadFailed')}
-        </p>
+        <EmptyState
+          tone="error"
+          icon={TriangleAlert}
+          title={t('calendar.loadFailed')}
+          action={
+            <Button variant="secondary" onClick={() => void load()}>
+              {t('calendar.retry')}
+            </Button>
+          }
+        />
       )}
 
       {events === null && !failed ? (
@@ -426,7 +452,9 @@ function AgendaView({ events, today }: { readonly events: PlacedEvent[]; readonl
   // Only what is still ahead: an agenda is a list of what is coming, not a log.
   const upcoming = events.filter((placed) => (placed.endsAt ?? 0) >= startOfDay(today).getTime())
 
-  if (upcoming.length === 0) return <p className={styles.empty}>{t('calendar.noEvents')}</p>
+  if (upcoming.length === 0) {
+    return <EmptyState icon={CalendarDays} title={t('calendar.noEvents')} />
+  }
 
   return (
     <ol className={styles.agenda}>
