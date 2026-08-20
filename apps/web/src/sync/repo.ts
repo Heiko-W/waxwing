@@ -320,6 +320,34 @@ export function emailsWithKeyword(
 }
 
 /**
+ * The ids of a keyword's carriers — same index range as {@link emailsWithKeyword}, without
+ * deserializing an envelope per row. The counterpart of {@link emailIdsInMailbox}, and for the same
+ * reason: the strip pass and the delete dialog want ids and a count, and paying for `from`, `to`,
+ * `preview` and the keyword map of every carrier to get them is the kind of cost that only shows up
+ * on the mailbox that has thousands.
+ */
+export async function emailIdsWithKeyword(
+  db: ReplicaDb,
+  accountId: Id,
+  keyword: string,
+): Promise<Id[]> {
+  const keys = (await db.emails
+    .where('akw')
+    .equals(scopeKey(accountId, keyword))
+    .primaryKeys()) as [Id, Id][]
+  return keys.map(([, id]) => id)
+}
+
+/** How many replica-known messages carry a keyword. Counts the index range; loads no rows. */
+export function countEmailsWithKeyword(
+  db: ReplicaDb,
+  accountId: Id,
+  keyword: string,
+): Promise<number> {
+  return db.emails.where('akw').equals(scopeKey(accountId, keyword)).count()
+}
+
+/**
  * The distinct keywords present on cached mail for one account (M3.2 label discovery). Reads the
  * account-scoped slice of the `akw` multiEntry index by prefix — the NUL separator in {@link scopeKey}
  * guarantees no bleed from an account id that is a string prefix of another — and strips the scope,
@@ -337,16 +365,25 @@ export async function labelUnreadCounts(
   accountId: Id,
   keywords: readonly string[],
 ): Promise<Map<string, number>> {
-  const counts = new Map<string, number>()
-  for (const keyword of keywords) {
-    const count = await db.emails
-      .where('akw')
-      .equals(scopeKey(accountId, keyword))
-      .filter((row) => row.keywords.$seen !== true)
-      .count()
-    counts.set(keyword, count)
-  }
-  return counts
+  // Concurrent rather than sequential: these are N independent index ranges over one table, and
+  // awaiting each in turn made the label rail's badges cost N round-trips through the IndexedDB
+  // event loop for no ordering that anything depends on.
+  //
+  // `.filter()` here is a JS predicate over the range, not an index lookup — `$seen` lives inside
+  // the keywords object and no index can reach it. Narrowing it further would mean a derived index
+  // column and a schema migration; the range is already the account's carriers of ONE keyword,
+  // which is the small set.
+  const counts = await Promise.all(
+    keywords.map(async (keyword) => {
+      const count = await db.emails
+        .where('akw')
+        .equals(scopeKey(accountId, keyword))
+        .filter((row) => row.keywords.$seen !== true)
+        .count()
+      return [keyword, count] as const
+    }),
+  )
+  return new Map(counts)
 }
 
 /** The messages of a thread, for threaded rendering and collapse (FR-LST-02). */

@@ -3,9 +3,11 @@ import type { ReplicaDb } from './db'
 import {
   addressBooksForAccount,
   contactCardsByIds,
+  countEmailsWithKeyword,
   deleteAddressBooks,
   deleteContactCards,
   emailIdsInMailbox,
+  emailIdsWithKeyword,
   emailsByIds,
   emailsInThread,
   emailsWithKeyword,
@@ -17,6 +19,7 @@ import {
   getQueryCache,
   getSyncState,
   getThread,
+  labelUnreadCounts,
   lruBodies,
   mailboxByRole,
   mailboxesForAccount,
@@ -104,6 +107,50 @@ describe('keyword membership (flagged / labels — FR-LST, M3.2)', () => {
 
     expect(flagged.map((row) => row.id)).toEqual(['f1'])
     expect(flagged.every((row) => row.accountId === ACC)).toBe(true)
+  })
+
+  /*
+   * The row-free readers over the SAME index range. They exist because two callers wanted a count
+   * and a list of ids and were paying for a full envelope each to get them — so what has to hold is
+   * that they agree with the reader that does load rows, account scoping included. A cheaper query
+   * that answers a slightly different question would be worse than the cost it saves.
+   */
+  it('counts and lists ids over the same range, without leaking another account', async () => {
+    await putEmails(db, ACC, [
+      email('k1', { keywords: { work: true } }),
+      email('k2', { keywords: { work: true } }),
+      email('k3', { keywords: {} }),
+    ])
+    await putEmails(db, 'other', [email('k9', { keywords: { work: true } })])
+
+    const rows = await emailsWithKeyword(db, ACC, 'work')
+    const ids = await emailIdsWithKeyword(db, ACC, 'work')
+    const count = await countEmailsWithKeyword(db, ACC, 'work')
+
+    expect(ids.sort()).toEqual(['k1', 'k2'])
+    expect(count).toBe(2)
+    expect(ids.sort()).toEqual(rows.map((row) => row.id).sort())
+    expect(count).toBe(rows.length)
+  })
+
+  it('answers zero for a keyword nothing carries', async () => {
+    await putEmails(db, ACC, [email('n1', { keywords: {} })])
+    expect(await countEmailsWithKeyword(db, ACC, 'absent')).toBe(0)
+    expect(await emailIdsWithKeyword(db, ACC, 'absent')).toEqual([])
+  })
+
+  it('counts unread per keyword concurrently and agrees with the rows', async () => {
+    await putEmails(db, ACC, [
+      email('u1', { keywords: { work: true } }),
+      email('u2', { keywords: { work: true, $seen: true } }),
+      email('u3', { keywords: { home: true } }),
+    ])
+
+    const counts = await labelUnreadCounts(db, ACC, ['work', 'home', 'absent'])
+
+    expect(counts.get('work')).toBe(1)
+    expect(counts.get('home')).toBe(1)
+    expect(counts.get('absent')).toBe(0)
   })
 })
 

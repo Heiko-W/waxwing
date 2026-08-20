@@ -15,7 +15,7 @@ import type { Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
 import {
   distinctKeywords,
-  emailsWithKeyword,
+  emailIdsWithKeyword,
   labelUnreadCounts,
   type ReplicaDb,
   updateLabels,
@@ -85,8 +85,9 @@ export interface LabelActions {
 async function stripKeyword(db: ReplicaDb, accountId: Id, keyword: string): Promise<void> {
   const engine = getEngineFor(accountId)
   if (engine === null) return
-  const rows = await emailsWithKeyword(db, accountId, keyword)
-  const ids = rows.map((row) => row.id)
+  // Ids only — the intents below carry nothing else, and a label on a busy account can have
+  // thousands of carriers whose envelopes would be read and discarded.
+  const ids = await emailIdsWithKeyword(db, accountId, keyword)
   for (let start = 0; start < ids.length; start += STRIP_CHUNK) {
     const chunk = ids.slice(start, start + STRIP_CHUNK)
     await engine.dispatch(
