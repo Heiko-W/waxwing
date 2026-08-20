@@ -70,11 +70,22 @@
   margin: 0;
   font-size: var(--waxwing-text-lg);
   font-weight: var(--waxwing-weight-semibold);
+  /* User text lands here — an event title, a file name, a folder name — and the header is a flex
+     row, so without `min-inline-size: 0` the title refuses to shrink and pushes the close button
+     out of the panel. Two lines maximum: a dialog title is a label, not the content.
+     `e2e/tests/no-overflow.ts` cannot catch this, because no fixture carries a name long enough. */
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .body {
   padding: var(--waxwing-space-4);
   overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .footer {

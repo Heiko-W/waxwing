@@ -23,7 +23,6 @@
     },
     "list": {
       "title": "Nachrichten",
-      "empty": "Sobald synchronisiert wurde, erscheinen hier Ihre Nachrichten.",
       "resize": "Nachrichtenliste anpassen",
       "searchTitle": "Suchergebnisse"
     },
@@ -531,7 +530,7 @@
     "list": {
       "title": "Kontakte",
       "resize": "Größe der Kontaktliste anpassen",
-      "empty": "Noch keine Kontakte. Über „+“ oben legen Sie den ersten an.",
+      "empty": "Noch keine Kontakte.",
       "loading": "Kontakte werden geladen",
       "count_one": "{{count}} Kontakt",
       "count_other": "{{count}} Kontakte"
@@ -632,7 +631,7 @@
       "title": "Gruppen",
       "new": "Neue Gruppe",
       "loading": "Gruppen werden geladen",
-      "empty": "Noch keine Gruppen. Über „+“ fassen Sie Kontakte zusammen.",
+      "empty": "Noch keine Gruppen.",
       "newTitle": "Neue Gruppe",
       "editTitle": "Gruppe bearbeiten",
       "name": "Gruppenname",
@@ -1165,7 +1164,7 @@
   },
   "labels": {
     "title": "Labels",
-    "empty": "Noch keine Labels. Über „+“ legen Sie eines an.",
+    "empty": "Noch keine Labels.",
     "noMessages": "Keine Nachrichten mit diesem Label.",
     "new": "Neues Label",
     "newEllipsis": "Neues Label…",
@@ -1544,6 +1543,7 @@
       "search": "Personen suchen",
       "searchPlaceholder": "Name oder Adresse",
       "noMatches": "Dazu passt niemand.",
+      "searchFailed": "Die Personensuche ist fehlgeschlagen.",
       "roleLabel": "Darf",
       "roleFor": "Was {{name}} darf",
       "grant": "Hinzufügen",

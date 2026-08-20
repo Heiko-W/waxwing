@@ -74,7 +74,7 @@ describe('QueuedSends', () => {
     expect(region).toHaveAttribute('aria-live', 'polite')
     expect(region).toHaveAccessibleName('Queued messages')
     expect(await screen.findByText('Lunch?')).toBeInTheDocument()
-    expect(screen.getByText("Will send when you're back online")).toBeInTheDocument()
+    expect(screen.getByText('Will send when you’re back online')).toBeInTheDocument()
   })
 
   it('online: distinguishes the undo grace, a backoff retry and an in-progress send', async () => {

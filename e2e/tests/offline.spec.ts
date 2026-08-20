@@ -270,13 +270,13 @@ test.describe('M3.10 offline', () => {
     await page.getByRole('button', { name: 'Send', exact: true }).click()
 
     // The sticky toast states the outcome in the user's words…
-    await expect(page.getByText("You're offline — this will send when you reconnect")).toBeVisible({
+    await expect(page.getByText('You’re offline — this will send when you reconnect')).toBeVisible({
       timeout: 15_000,
     })
     // …and the durable chip is the one that is still there tomorrow.
     const queue = page.getByRole('status', { name: 'Queued messages' })
     await expect(queue).toContainText(token, { timeout: 15_000 })
-    await expect(queue).toContainText("Will send when you're back online")
+    await expect(queue).toContainText('Will send when you’re back online')
 
     await goOnline(page)
     await expect(queue).toBeHidden({ timeout: 30_000 })
@@ -577,11 +577,11 @@ test.describe('M3.10 offline', () => {
       await expect(problems).toBeVisible({ timeout: 30_000 })
       await problems.click()
 
-      const dialog = page.getByRole('dialog', { name: "Some actions didn't go through" })
+      const dialog = page.getByRole('dialog', { name: 'Some actions didn’t go through' })
       await expect(dialog).toBeVisible({ timeout: 15_000 })
       // The message names the actual cause rather than a generic failure — `describeConflict`
       // mapping `folderGone` onto a sentence a person can act on is the point of the surface.
-      await expect(dialog.getByText("Couldn't move — that folder was deleted.")).toBeVisible()
+      await expect(dialog.getByText('Couldn’t move — that folder was deleted.')).toBeVisible()
 
       await dialog.getByRole('button', { name: 'Discard', exact: true }).click()
 

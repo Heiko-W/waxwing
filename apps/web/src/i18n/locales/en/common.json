@@ -23,7 +23,6 @@
     },
     "list": {
       "title": "Messages",
-      "empty": "Messages appear here once syncing lands.",
       "resize": "Resize message list",
       "searchTitle": "Search results"
     },
@@ -137,7 +136,7 @@
         "compact": "Compact"
       },
       "accent": {
-        "label": "Accent colour",
+        "label": "Accent color",
         "blue": "Blue",
         "teal": "Teal",
         "green": "Green",
@@ -531,7 +530,7 @@
     "list": {
       "title": "Contacts",
       "resize": "Resize the contact list",
-      "empty": "No contacts yet. Use + above to add your first.",
+      "empty": "No contacts yet.",
       "loading": "Loading contacts",
       "count_one": "{{count}} contact",
       "count_other": "{{count}} contacts"
@@ -632,7 +631,7 @@
       "title": "Groups",
       "new": "New group",
       "loading": "Loading groups",
-      "empty": "No groups yet. Use + to group contacts together.",
+      "empty": "No groups yet.",
       "newTitle": "New group",
       "editTitle": "Edit group",
       "name": "Group name",
@@ -901,7 +900,7 @@
     "frameTitle": "Message: {{subject}}",
     "threadCount": "{{count}} messages in this conversation",
     "notAvailable": "This message is not available.",
-    "confirmDeleteBody": "This message will be permanently deleted. This can't be undone.",
+    "confirmDeleteBody": "This message will be permanently deleted. This can’t be undone.",
     "moveTitle": "Move to folder",
     "moveEmpty": "No other folders.",
     "remote": {
@@ -926,14 +925,14 @@
       "unpackNote": "Outlook packed these into one file. They are shown as your correspondent sent them; nothing here has been checked."
     },
     "editDraft": "Edit draft",
-    "draftLead": "This is a draft you haven't sent yet.",
+    "draftLead": "This is a draft you haven’t sent yet.",
     "more": "More actions",
     "authResults": {
       "label": "Authentication",
       "reportedBy": "Reported by {{host}}:",
       "unverified": "This report comes from the message itself and cannot be verified. Do not rely on it alone to judge whether a message is genuine."
     },
-    "nameLooksLikeAddress": "The name shown is not the sender's real address",
+    "nameLooksLikeAddress": "The name shown is not the sender’s real address",
     "linkWarning": {
       "title": "This link may not be genuine",
       "lead": "The text of this link names one website, but the link opens a different one. That is how phishing messages work.",
@@ -961,9 +960,9 @@
       "close": "Hide message",
       "frameTitle": "Attached message: {{subject}}",
       "error": {
-        "notParsable": "This attached message couldn't be opened.",
+        "notParsable": "This attached message couldn’t be opened.",
         "offline": "Connect to open this message.",
-        "failed": "This attached message couldn't be opened."
+        "failed": "This attached message couldn’t be opened."
       },
       "subjectLabel": "Subject",
       "truncated": "Showing the beginning of this message only. Download the attachment to see all of it.",
@@ -975,7 +974,7 @@
       "title": "Mailing list",
       "note": "This message offers a way to stop receiving it.",
       "sentNote": "Unsubscribe request sent. The list decides when it takes effect.",
-      "failedNote": "The request could not be sent. Try the list's own page instead.",
+      "failedNote": "The request could not be sent. Try the list’s own page instead.",
       "oneClick": "Unsubscribe",
       "open": "Unsubscribe page",
       "email": "Unsubscribe by email"
@@ -1092,7 +1091,7 @@
     "sendErrorRecipient": "Some recipients were rejected: {{detail}}",
     "sendErrorQuota": "Message not sent — mailbox is over quota",
     "sendErrorSize": "Message too large to send",
-    "sendErrorGeneric": "Message could not be sent — it's saved in Drafts",
+    "sendErrorGeneric": "Message could not be sent — it’s saved in Drafts",
     "attachMentionTitle": "Send without attachment?",
     "attachMentionBody": "You mentioned an attachment but none is attached.",
     "attachMentionSend": "Send anyway",
@@ -1165,7 +1164,7 @@
   },
   "labels": {
     "title": "Labels",
-    "empty": "No labels yet. Use + to create one.",
+    "empty": "No labels yet.",
     "noMessages": "No messages with this label.",
     "new": "New label",
     "newEllipsis": "New label…",
@@ -1254,9 +1253,9 @@
   },
   "outbox": {
     "problems": {
-      "open_one": "{{count}} action didn't go through",
-      "open_other": "{{count}} actions didn't go through",
-      "title": "Some actions didn't go through",
+      "open_one": "{{count}} action didn’t go through",
+      "open_other": "{{count}} actions didn’t go through",
+      "title": "Some actions didn’t go through",
       "empty": "Everything is up to date.",
       "discardAll": "Discard all"
     },
@@ -1267,21 +1266,21 @@
       "dismiss": "OK"
     },
     "conflict": {
-      "moveFolderGone": "Couldn't move — that folder was deleted.",
+      "moveFolderGone": "Couldn’t move — that folder was deleted.",
       "messageGone": "That message no longer exists on the server.",
       "folderGone": "That folder no longer exists.",
-      "folderNotEmpty": "The folder isn't empty.",
+      "folderNotEmpty": "The folder isn’t empty.",
       "contactGone": "That contact no longer exists on the server.",
-      "forbidden": "You don't have permission for that.",
+      "forbidden": "You don’t have permission for that.",
       "quota": "Your mailbox is over quota.",
-      "tooLarge": "That's too large for the server.",
+      "tooLarge": "That’s too large for the server.",
       "invalid": "The server rejected that change.",
       "stateConflict": "Someone else changed that at the same time.",
       "serverRejected": "The server rejected that change."
     },
     "send": {
-      "willSendWhenOnline": "Will send when you're back online",
-      "queuedOffline": "You're offline — this will send when you reconnect",
+      "willSendWhenOnline": "Will send when you’re back online",
+      "queuedOffline": "You’re offline — this will send when you reconnect",
       "retrying": "Retrying…",
       "cancel": "Cancel send",
       "label": "Queued messages"
@@ -1294,7 +1293,7 @@
       "loadFailed": "The scheduled messages could not be loaded.",
       "willSend": "Sends {{when}}",
       "cancel": "Cancel send",
-      "cancelled": "Send cancelled",
+      "cancelled": "Send canceled",
       "tooLate": "Already sent — it had left the queue."
     }
   },
@@ -1336,7 +1335,7 @@
       "label": "Notify me about new mail"
     },
     "permission": {
-      "denied": "Your browser is blocking notifications for this site. Allow them in your browser's site settings, then reload {{product}}.",
+      "denied": "Your browser is blocking notifications for this site. Allow them in your browser’s site settings, then reload {{product}}.",
       "dismissed": "Notifications were not allowed. Turn the switch on again to be asked once more.",
       "unsupported": "This browser does not support notifications.",
       "iosInstall": "On iPhone and iPad, notifications only work when {{product}} runs from the Home Screen. Add it there first."
@@ -1463,11 +1462,11 @@
   "rights": {
     "unavailable": {
       "accountReadOnly": "This account is read-only.",
-      "seen": "You don't have permission to mark these messages read or unread.",
-      "keywords": "You don't have permission to flag or label these messages.",
-      "remove": "You don't have permission to move messages out of this folder.",
-      "add": "You don't have permission to file messages into that folder.",
-      "destroy": "You don't have permission to delete these messages.",
+      "seen": "You don’t have permission to mark these messages read or unread.",
+      "keywords": "You don’t have permission to flag or label these messages.",
+      "remove": "You don’t have permission to move messages out of this folder.",
+      "add": "You don’t have permission to file messages into that folder.",
+      "destroy": "You don’t have permission to delete these messages.",
       "unknown": "Still checking what you may do here — not all messages have loaded yet."
     }
   },
@@ -1544,6 +1543,7 @@
       "search": "Search people",
       "searchPlaceholder": "Name or address",
       "noMatches": "Nobody matches that.",
+      "searchFailed": "The people search failed.",
       "roleLabel": "They may",
       "roleFor": "What {{name}} may do",
       "grant": "Add",

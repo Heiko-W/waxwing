@@ -16,12 +16,12 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
-import { Search, X } from 'lucide-react'
+import { Search, UsersRound, X } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate } from '../app/route'
 import type { ContactCardRow } from '../sync'
-import { Avatar, IconButton, Skeleton, Spinner, VisuallyHidden } from '../ui'
+import { Avatar, Button, EmptyState, IconButton, Skeleton, Spinner, VisuallyHidden } from '../ui'
 import { contactDisplayName } from './contact-fields'
 import styles from './contacts.module.css'
 import { useContactSearch } from './use-contact-search'
@@ -34,9 +34,17 @@ export interface ContactListProps {
   readonly bookId: Id | undefined
   /** The card the route currently opens, if any (rendered as the selected option). */
   readonly selectedCardId: Id | undefined
+  /**
+   * Start creating a contact, offered inside the empty state.
+   *
+   * Optional on purpose: the screen passes it only where a writable address book exists, so the
+   * empty state never offers an action that would be refused. The text used to instruct the reader
+   * to "use + above" whether or not that button was enabled.
+   */
+  readonly onCreate?: (() => void) | undefined
 }
 
-export function ContactList({ bookId, selectedCardId }: ContactListProps) {
+export function ContactList({ bookId, selectedCardId, onCreate }: ContactListProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const listId = useId()
@@ -143,9 +151,22 @@ export function ContactList({ bookId, selectedCardId }: ContactListProps) {
       </VisuallyHidden>
 
       {empty ? (
-        <p className={styles.listEmpty}>
-          {searching ? t('contacts.search.empty') : t('contacts.list.empty')}
-        </p>
+        // No instruction to go press something: where creating is possible the caller passes the
+        // action, and where it is not (no writable address book) the message simply stands alone —
+        // which is better than telling the reader to use a `+` that is disabled.
+        <EmptyState
+          icon={UsersRound}
+          title={searching ? t('contacts.search.empty') : t('contacts.list.empty')}
+          {...(!searching && onCreate !== undefined
+            ? {
+                action: (
+                  <Button variant="secondary" size="sm" onClick={onCreate}>
+                    {t('contacts.new')}
+                  </Button>
+                ),
+              }
+            : {})}
+        />
       ) : (
         <div
           ref={scrollRef}

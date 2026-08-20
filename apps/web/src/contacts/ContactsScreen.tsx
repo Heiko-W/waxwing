@@ -304,7 +304,11 @@ export function ContactsScreen() {
             onClose={() => setSelectedGroupId(null)}
           />
         ) : (
-          <ContactList bookId={bookId} selectedCardId={cardId} />
+          <ContactList
+            bookId={bookId}
+            selectedCardId={cardId}
+            {...(targetBook !== undefined ? { onCreate: () => setEditor('create') } : {})}
+          />
         )}
       </div>
     </section>

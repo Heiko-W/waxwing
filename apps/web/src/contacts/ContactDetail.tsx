@@ -17,6 +17,7 @@ import {
   Pencil,
   Phone as PhoneIcon,
   Trash2,
+  UserRound,
   UserRoundX,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
@@ -61,7 +62,7 @@ export function ContactDetail({
   const { settled, card } = useContactCardResolved(cardId ?? '')
 
   if (cardId === undefined) {
-    return <p className={styles.detailEmpty}>{t('contacts.detail.empty')}</p>
+    return <EmptyState icon={UserRound} title={t('contacts.detail.empty')} />
   }
   if (!settled) {
     return (

@@ -50,7 +50,7 @@ describe('NestedMessageView', () => {
   it('shows a localized message when the blob is not parsable', () => {
     state.current = { message: null, loading: false, error: 'notParsable' }
     render(<NestedMessageView accountId="a" blobId="b1" />)
-    expect(screen.getByText("This attached message couldn't be opened.")).toBeInTheDocument()
+    expect(screen.getByText('This attached message couldn’t be opened.')).toBeInTheDocument()
   })
 
   it('shows the offline message when there is no connection', () => {
@@ -85,7 +85,7 @@ describe('NestedMessageView', () => {
     state.current = { message: null, loading: false, error: null }
     render(<NestedMessageView accountId="a" blobId="b1" />)
     expect(screen.getByRole('status')).toBeInTheDocument()
-    expect(screen.queryByText("This attached message couldn't be opened.")).not.toBeInTheDocument()
+    expect(screen.queryByText('This attached message couldn’t be opened.')).not.toBeInTheDocument()
   })
 
   it('flags a truncated body rather than showing it silently clipped', () => {

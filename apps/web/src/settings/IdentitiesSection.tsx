@@ -354,7 +354,7 @@ export function IdentitiesSection(props: IdentitiesSectionProps) {
       )}
 
       {failure !== null && editing === null && (
-        <p role="alert" className={styles.hint}>
+        <p role="alert" className={styles.error}>
           {failureText(t, failure)}
         </p>
       )}

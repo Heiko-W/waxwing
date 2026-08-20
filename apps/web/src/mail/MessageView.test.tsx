@@ -1093,7 +1093,7 @@ describe('MessageView', () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(seen({ from: [{ name: 'security@bank.test', email: 'attacker@evil.tld' }] }))
     expect(
-      await screen.findByText("The name shown is not the sender's real address"),
+      await screen.findByText('The name shown is not the sender’s real address'),
     ).toBeInTheDocument()
     expect(screen.getByText('attacker@evil.tld')).toBeInTheDocument()
   })
@@ -1103,7 +1103,7 @@ describe('MessageView', () => {
     renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }] }))
     await screen.findByText('Alice')
     expect(
-      screen.queryByText("The name shown is not the sender's real address"),
+      screen.queryByText('The name shown is not the sender’s real address'),
     ).not.toBeInTheDocument()
   })
 

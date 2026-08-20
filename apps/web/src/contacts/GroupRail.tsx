@@ -10,7 +10,7 @@ import type { Id } from '@waxwing/jmap'
 import { Plus, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ContactCardRow } from '../sync'
-import { IconButton, Spinner } from '../ui'
+import { EmptyState, IconButton, Spinner } from '../ui'
 import { contactDisplayName } from './contact-fields'
 import styles from './contacts.module.css'
 
@@ -45,7 +45,7 @@ export function GroupRail({ groups, selectedGroupId, onSelect, onNew }: GroupRai
           <Spinner size="sm" label={t('contacts.groups.loading')} />
         </div>
       ) : groups.length === 0 ? (
-        <p className={styles.railEmpty}>{t('contacts.groups.empty')}</p>
+        <EmptyState density="compact" title={t('contacts.groups.empty')} />
       ) : (
         <ul className={styles.bookList}>
           {groups.map((group) => {

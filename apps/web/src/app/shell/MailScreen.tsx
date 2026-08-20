@@ -14,7 +14,7 @@
  * keyboard/SR users are not stranded (WCAG 2.4.3).
  */
 
-import { ChevronLeft, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
+import { ChevronLeft, MailOpen, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -30,7 +30,7 @@ import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
 import { QuotaBar } from '../../quota'
 import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
-import { Button, IconButton, SplitPane } from '../../ui'
+import { Button, EmptyState, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
 import {
   FULL_PARAM,
@@ -313,7 +313,7 @@ export function MailScreen() {
         {emailId !== undefined ? (
           <Conversation emailId={emailId} mailboxId={mailboxId} />
         ) : (
-          <p className={styles.emptyPane}>{t('shell.reading.empty')}</p>
+          <EmptyState icon={MailOpen} title={t('shell.reading.empty')} />
         )}
       </div>
     </section>

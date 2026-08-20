@@ -201,7 +201,7 @@ export function IdentityForm(props: IdentityFormProps) {
       </div>
 
       {message !== null && (
-        <p id={ids.error} role="alert" className={styles.hint}>
+        <p id={ids.error} role="alert" className={styles.error}>
           {message}
         </p>
       )}

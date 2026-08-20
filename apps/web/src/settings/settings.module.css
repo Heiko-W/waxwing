@@ -222,6 +222,20 @@
 }
 
 /*
+ * A refusal, which is not a hint.
+ *
+ * This file had no error class at all, so identities and the vacation responder announced
+ * "This does not look like an email address." in exactly the same muted 12px as the explanatory
+ * line above it — two sections of one settings page contradicting four other forms in the app
+ * (filters, folders, labels, onboarding), all of which use danger at `text-sm`.
+ */
+.error {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
+/*
  * Label beside its control, once there is width for it.
  *
  * Stacked, each field used 22rem of a 42rem panel and left the rest empty, so a section of six

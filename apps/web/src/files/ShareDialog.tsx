@@ -18,7 +18,7 @@ import type { FileNode, FileNodeRights, Id, Principal } from '@waxwing/jmap'
 import { Check, UserMinus, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Dialog, SectionLabel, Select, Spinner, TextInput } from '../ui'
+import { Button, Dialog, EmptyState, SectionLabel, Select, Spinner, TextInput } from '../ui'
 import styles from './files.module.css'
 import type { FilesClient } from './files-client'
 import {
@@ -60,6 +60,7 @@ export function ShareDialog({ node, client, onClose, onChanged }: ShareDialogPro
   )
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<Principal[] | null>(null)
+  const [searchFailed, setSearchFailed] = useState(false)
   const [role, setRole] = useState<ShareRole>('viewer')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -75,6 +76,7 @@ export function ShareDialog({ node, client, onClose, onChanged }: ShareDialogPro
         try {
           const principals = await client.searchPrincipals(query)
           if (cancelled) return
+          setSearchFailed(false)
           setFound(principals)
           setNames((current) => {
             const next = { ...current }
@@ -82,7 +84,10 @@ export function ShareDialog({ node, client, onClose, onChanged }: ShareDialogPro
             return next
           })
         } catch {
-          if (!cancelled) setFound([])
+          // NOT `setFound([])`. Turning a failed request into an empty result told the reader
+          // "Nobody matches that", so they concluded the person did not exist and gave up — the
+          // one outcome from which there is no way back.
+          if (!cancelled) setSearchFailed(true)
         }
       })()
     }, SEARCH_DELAY_MS)
@@ -221,12 +226,14 @@ export function ShareDialog({ node, client, onClose, onChanged }: ShareDialogPro
               people" is what the user is actually agreeing to. */}
           <p className={styles.shareHint}>{t(`files.share.explain.${role}`)}</p>
 
-          {found === null ? (
+          {searchFailed ? (
+            <EmptyState tone="error" title={t('files.share.searchFailed')} density="compact" />
+          ) : found === null ? (
             <div className={styles.loading}>
               <Spinner label={t('ui.spinner.label')} />
             </div>
           ) : candidates.length === 0 ? (
-            <p className={styles.empty}>{t('files.share.noMatches')}</p>
+            <EmptyState title={t('files.share.noMatches')} density="compact" />
           ) : (
             <ul className={styles.shareList}>
               {candidates.map((principal) => {

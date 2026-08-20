@@ -1,5 +1,5 @@
 /**
- * The persistent "some actions didn't go through" affordance in the header (M3.3). Hidden entirely
+ * The persistent "some actions didn’t go through" affordance in the header (M3.3). Hidden entirely
  * while the dead-letter queue is empty — it appears only when there is something to act on, which is
  * what makes it a gentle notice rather than permanent chrome.
  *

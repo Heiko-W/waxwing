@@ -4,7 +4,7 @@
  * The M2.8 "Sending…" toast auto-dismisses after the undo grace, so without this surface the user
  * had no way to see (let alone cancel) a message parked in the queue for hours.
  *
- * Each chip states plainly what will happen ("Will send when you're back online") and keeps Cancel
+ * Each chip states plainly what will happen ("Will send when you’re back online") and keeps Cancel
  * available for exactly as long as it is safe: cancellation is allowed while the row is `pending`
  * (the submission provably has not been dispatched), whatever its age.
  */
