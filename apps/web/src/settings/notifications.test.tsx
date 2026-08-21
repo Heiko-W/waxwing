@@ -34,7 +34,11 @@ function permissionApi(
   return { state, request: request ?? (async () => state) }
 }
 
-function renderSection(props: { permission: NotificationPermissionApi; backgroundPush?: boolean }) {
+function renderSection(props: {
+  permission: NotificationPermissionApi
+  backgroundPush?: boolean
+  emailPush?: boolean
+}) {
   return render(
     <ConfigProvider config={DEFAULT_CONFIG}>
       <ToastProvider>
@@ -42,6 +46,7 @@ function renderSection(props: { permission: NotificationPermissionApi; backgroun
           <NotificationsSection
             permission={props.permission}
             backgroundPush={props.backgroundPush ?? false}
+            emailPush={props.emailPush ?? false}
           />
         </ReplicaProvider>
       </ToastProvider>
@@ -285,8 +290,9 @@ describe('NotificationsSection — the honest capability note (ADR-010)', () => 
     expect(screen.getByText(/can also notify you while/i)).toBeInTheDocument()
     // No sender, no subject.
     expect(screen.getByText(/never the sender or the subject/i)).toBeInTheDocument()
-    // The folder setting above does not reach the closed-app banner (`EmailDelivery` names no mailbox).
-    expect(screen.getByText(/folder setting above does not apply/i)).toBeInTheDocument()
+    // The folder setting above does not reach the closed-app banner (`EmailDelivery` names no mailbox,
+    // and a server-side `emailPush` filter was deliberately NOT taken — ADR-017 amendment).
+    expect(screen.getByText(/folder selection above does not apply/i)).toBeInTheDocument()
     // Seven days, and only a running app can renew.
     expect(screen.getByText(/once a week/i)).toBeInTheDocument()
     expect(screen.queryByText(/not available with this server/i)).not.toBeInTheDocument()
@@ -302,8 +308,55 @@ describe('NotificationsSection — the honest capability note (ADR-010)', () => 
     const text = view.container.textContent ?? ''
     expect(text).toMatch(/can also notify you while/i)
     expect(text).toMatch(/never the sender or the subject/i)
-    expect(text).toMatch(/folder setting above does not apply/i)
+    expect(text).toMatch(/folder selection above does not apply/i)
     expect(text).toMatch(/once a week/i)
+    view.unmount()
+  })
+
+  /**
+   * `draft-ietf-jmap-emailpush-03` (ADR-017 amendment). Three configurations, three different true
+   * sentences — and the whole reason the branch exists is that the same screen must not print the
+   * contentless promise against a server that will in fact name the sender.
+   */
+  it('says the closed-app banner names sender and subject when the server can send them', () => {
+    const view = renderSection({
+      permission: permissionApi('default'),
+      backgroundPush: true,
+      emailPush: true,
+    })
+    const text = view.container.textContent ?? ''
+    expect(text).toMatch(/name the sender and the subject/i)
+    expect(text).not.toMatch(/never the sender or the subject/i)
+    // The limits that still hold are still stated.
+    expect(text).toMatch(/folder selection above does not apply/i)
+    expect(text).toMatch(/once a week/i)
+    view.unmount()
+  })
+
+  /**
+   * The honest version of "off". The subject is not hidden at the last moment — it is never asked
+   * for, so it never crosses the push service. A line promising less than the code delivers is as
+   * much an NFR-PRIV-02 failure as one promising more.
+   */
+  it('says the content is never requested, not merely hidden, when preview is off', async () => {
+    await setPref(db, ACC, NOTIFY_PREF_KEY, {
+      enabled: true,
+      mailboxIds: [INBOX],
+      quietHours: null,
+      preview: false,
+      sound: true,
+    })
+    const view = renderSection({
+      permission: permissionApi('granted'),
+      backgroundPush: true,
+      emailPush: true,
+    })
+    await waitFor(() => {
+      expect(view.container.textContent).toMatch(/does not ask this server to put them/i)
+    })
+    const text = view.container.textContent ?? ''
+    expect(text).toMatch(/not only to hide them/i)
+    expect(text).not.toMatch(/name the sender and the subject/i)
     view.unmount()
   })
 

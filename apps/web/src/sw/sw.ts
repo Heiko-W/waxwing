@@ -19,14 +19,18 @@
  *    invariant in sw-routes.ts, which also explains why an anchor rather than a denylist.
  *  - **No JMAP call, no access token, and no `SecretStore` access — including in the `push` handler.**
  *    This is the security property M4.0 was scoped around (ADR-017, owner decision D6a), not an
- *    accident of what has been built so far. The closed-app banner says only that mail arrived,
- *    which is exactly what a push can establish without asking anyone: the subscription is created
- *    with `types: ["EmailDelivery"]`, so the SERVER filters and a delivered push already means new
- *    mail. Everything the banner needs — the translated strings, the icon, quiet hours — is put in
- *    the `waxwing-push` database by the page (`notify/push-store.ts`), because this worker can run
- *    neither i18next nor Dexie. A future "sender and subject" banner (B28) would need a token in
- *    here; that is a separate owner decision with its own security review, and until it is taken,
- *    an import that reaches auth or JMAP from this file is a design error.
+ *    accident of what has been built so far. The subscription is created with
+ *    `types: ["EmailDelivery"]`, so the SERVER filters and a delivered push already means new mail.
+ *    Everything the banner needs — the translated strings, the icon, quiet hours — is put in the
+ *    `waxwing-push` database by the page (`notify/push-store.ts`), because this worker can run
+ *    neither i18next nor Dexie.
+ *
+ *    **The banner now names the sender and the subject when the server sends them (ADR-017
+ *    amendment, 2026-08-21), and this property did not have to be traded to get it.** They arrive IN
+ *    the push (`draft-ietf-jmap-emailpush-03`), already decrypted by the browser. B28 was costed as
+ *    an `L` because the worker was assumed to have to FETCH the message; it does not, and nothing
+ *    here asks anyone for anything. An import that reaches auth or JMAP from this file is still a
+ *    design error.
  */
 
 /// <reference lib="webworker" />
@@ -51,6 +55,7 @@ import {
   PUSH_VERIFICATION,
   type PushVerificationMessage,
   parsePushFrame,
+  pushBannerContent,
   shouldRaisePushBanner,
 } from '../notify/push-frame'
 import { putPendingVerification, readPushState } from '../notify/push-store'
@@ -177,10 +182,13 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 /**
  * Web Push arrived (M4.0, FR-NOTIF-02) — the app may be fully closed.
  *
- * Three frames, three answers, and the classification is a tested pure function
- * (`notify/push-frame.ts`) because nothing in this directory can have a test:
+ * Four wire shapes, three answers, and the classification is a tested pure function
+ * (`notify/push-frame.ts`) because nothing in this directory can have a test. A `StateChange` naming
+ * `EmailDelivery` and an `EmailPush` both classify as `delivery` — the server sends one OR the
+ * other for the same arrival, never both, so anything that treated them as different cases would
+ * fall silent the day content pushes were switched on:
  *
- *  - **`delivery`** — mail arrived. Raise ONE contentless banner, unless `shouldRaisePushBanner` says
+ *  - **`delivery`** — mail arrived. Raise ONE banner, unless `shouldRaisePushBanner` says
  *    otherwise: a visible window (the live push channel has already raised the richer banner with
  *    sender and subject, and a second one beside it is worse than none), quiet hours, or no handover
  *    state to render text from. All three return here with NO `showNotification` — the promise made
@@ -209,6 +217,8 @@ self.addEventListener('push', (event) => {
  */
 interface PushNotificationOptions extends NotificationOptions {
   renotify?: boolean
+  /** The moment the mail ARRIVED, not the moment a woken worker drew the banner. Same omission. */
+  timestamp?: number
 }
 
 async function handlePush(text: string | null): Promise<void> {
@@ -261,10 +271,16 @@ async function handlePush(text: string | null): Promise<void> {
   // decision. push-frame.ts states the set and what is known about the `userVisibleOnly` cost.
   if (!decision.show || state === null) return
 
+  // What the banner SAYS is a tested pure function too, for the same reason the decision to show one
+  // is: with `draft-ietf-jmap-emailpush-03` the frame may carry the sender, subject and preview, and
+  // "which of those appear, in which field, and what happens when the privacy toggle is off" is
+  // policy — the one thing this file may not hold.
+  const content = pushBannerContent(frame, state)
+
   // Via a typed local, not inline: an object LITERAL is excess-property-checked against
   // `showNotification`'s narrower `NotificationOptions`, which would reject `renotify` outright.
   const options: PushNotificationOptions = {
-    body: state.body,
+    body: content.body,
     icon: state.iconUrl,
     badge: state.badgeUrl,
     silent: !state.sound,
@@ -273,10 +289,14 @@ async function handlePush(text: string | null): Promise<void> {
     // arrival audible. The live channel's per-message tags are unaffected — they carry an email id.
     tag: 'waxwing:push:delivery',
     renotify: true,
+    // `exactOptionalPropertyTypes`: `{ timestamp: undefined }` is not the same thing as absent, and
+    // a `NaN` would render as garbage in the shade. `notify-model.ts` omits it the same way.
+    ...(content.timestamp === null ? {} : { timestamp: content.timestamp }),
     // No `data`: the click has nothing to route to. `notificationTargetPath` answers an unrecognised
-    // shape with the mail home, which is exactly right — we know mail arrived and nothing more.
+    // shape with the mail home, which is exactly right — even a content-carrying push does not ask
+    // for the message id (see `EMAIL_PUSH_PROPERTIES`), so there is no message to open.
   }
-  await self.registration.showNotification(state.title, options)
+  await self.registration.showNotification(content.title, options)
 }
 
 /**

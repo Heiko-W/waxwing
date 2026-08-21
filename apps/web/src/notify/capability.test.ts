@@ -7,10 +7,12 @@
 
 import type { Session } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
-import { serverSupportsBackgroundPush } from './capability'
+import { serverSupportsBackgroundPush, serverSupportsEmailPush } from './capability'
 
-const session = (capabilities: Record<string, unknown>): Session =>
-  ({ capabilities }) as unknown as Session
+const session = (
+  capabilities: Record<string, unknown>,
+  accounts: Record<string, unknown> = {},
+): Session => ({ capabilities, accounts }) as unknown as Session
 
 describe('serverSupportsBackgroundPush', () => {
   // Stalwart v0.16.14 (2026-07-20) auto-generates a VAPID keypair on a virgin registry, so this is
@@ -63,5 +65,44 @@ describe('serverSupportsBackgroundPush', () => {
 
   it('is false when disconnected — we cannot promise what we cannot check', () => {
     expect(serverSupportsBackgroundPush(null)).toBe(false)
+  })
+})
+
+/**
+ * `draft-ietf-jmap-emailpush-03` (ADR-017 amendment, 2026-08-21) — a SECOND, independent probe.
+ *
+ * Independent because the two capabilities are: RFC 9749 makes a background push possible at all,
+ * this draft only changes what it contains. Conflating them would either offer content against a
+ * server that cannot deliver it or withhold it from one that can — and the interesting case, the one
+ * every non-Stalwart JMAP server is in, is "the first without the second".
+ */
+describe('serverSupportsEmailPush', () => {
+  it('is true when the server advertises the URN', () => {
+    expect(
+      serverSupportsEmailPush(
+        session({
+          'urn:ietf:params:jmap:core': {},
+          'urn:ietf:params:jmap:webpush-vapid': { applicationServerKey: 'BEd3…key' },
+          'urn:ietf:params:jmap:emailpush': {},
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  /**
+   * Stalwart up to v0.16.15, and every other JMAP server today. Waxwing must keep working against
+   * it exactly as before — this `false` is what makes every request identical to the previous build.
+   */
+  it('is false for a server that can sign a push but cannot fill one', () => {
+    const capable = session({
+      'urn:ietf:params:jmap:core': {},
+      'urn:ietf:params:jmap:webpush-vapid': { applicationServerKey: 'BEd3…key' },
+    })
+    expect(serverSupportsBackgroundPush(capable)).toBe(true)
+    expect(serverSupportsEmailPush(capable)).toBe(false)
+  })
+
+  it('is false when disconnected', () => {
+    expect(serverSupportsEmailPush(null)).toBe(false)
   })
 })

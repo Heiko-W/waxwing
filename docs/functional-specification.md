@@ -340,7 +340,8 @@ webmail is an open gap.
   SSE. Runtime failover (SP.4) remains underneath as a safety net; it is no longer how the
   browser reaches SSE. The library default (WS → SSE → polling) is unchanged for server-side
   callers.
-- **FR-NOTIF-02 (Must, _partially met — contentless; see ADR-017 / decision D6a_)** — **System notifications**
+- **FR-NOTIF-02 (Must, _met against a server offering `urn:ietf:params:jmap:emailpush`; contentless
+  otherwise — see ADR-017 and its amendment of 2026-08-21_)** — **System notifications**
   via Web Push: JMAP `PushSubscription` with RFC 8291 encryption, handled in the service
   worker. No relay server beyond the browser vendor's push service; payloads are end-to-end
   encrypted (the privacy aspect to document, NFR-PRIV-01).
@@ -383,14 +384,32 @@ webmail is an open gap.
   **live push channel** (FR-NOTIF-01) whenever the app is running, a backgrounded or minimised
   tab included. The app probes for the capability and says plainly what it cannot do
   (NFR-PRIV-02).
+  **Amended 2026-08-21 ([ADR-017 amendment](adr/017-web-push-contentless.md)): the content half is
+  now delivered too, and B28 is closed.** Stalwart v0.16.16+ implements
+  `draft-ietf-jmap-emailpush-03`: a `PushSubscription` gains an `emailPush` property and a matching
+  delivery arrives as an `EmailPush` frame carrying `from`, `subject`, `preview` and `receivedAt`.
+  The paragraph above — that a banner naming the sender would need an authenticated fetch from the
+  worker — **no longer holds**: the browser has already decrypted the payload, so the worker reads
+  it and shows it, with no token, no `SecretStore` and no JMAP call. The closed-app banner therefore
+  names the sender and the subject **when the server advertises the capability AND FR-NOTIF-03's
+  preview toggle is on**; against every other server it is contentless exactly as before, and the
+  URN is never sent to one that has not advertised it (RFC 8620 §3.3 would fail the whole request).
+  Two limits above are unchanged and remain surfaced in the UI: no per-folder filtering while closed
+  (the draft's server-side `filter` was deliberately not taken — it suppresses the push entirely, so
+  the channel would go blind for unselected folders) and no FR-NOTIF-05 actions.
 - **FR-NOTIF-03 (Must)** — Notification preferences: per-folder on/off, quiet hours,
   preview content on/off (privacy), sound on/off.
   **Scope split by transport (D6a, ADR-017).** On the live channel (FR-NOTIF-01) all four apply.
   On the closed-app banner (FR-NOTIF-02) the master switch, quiet hours and sound apply — the
   worker reads them from `localPrefs`, which is unencrypted IndexedDB — while **per-folder does
-  not and cannot**, because the push names no mailbox. The preview toggle is met by construction:
-  the closed-app banner carries no content to withhold. Both gaps are stated in the settings UI;
+  not and cannot**, because the push names no mailbox. That gap is stated in the settings UI;
   a preference that cannot take effect must not be left looking effective.
+  **Amended 2026-08-21:** the preview toggle is no longer met "by construction". Against a server
+  offering `urn:ietf:params:jmap:emailpush` there IS content to withhold, and the toggle governs the
+  **wire**: with it off, Waxwing sends no `emailPush` configuration, so the server never puts a
+  subject in a push at all — it is not hidden at the last moment, it is never requested. It is also
+  honoured in the worker, because the server-side configuration is only rewritten on the app's next
+  start and a content-carrying push can be in flight when the switch flips.
 - **FR-NOTIF-04 (Should)** — Unread badge on the installed PWA icon (Badging API where
   supported).
 - **FR-NOTIF-05 (Should)** — Notification actions: archive / mark read / reply (opens

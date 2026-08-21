@@ -38,6 +38,9 @@ const state: PushWorkerState = {
   badgeUrl: 'https://mail.example/branding/icon-192.png',
   quietHours: { fromMinutes: 22 * 60, toMinutes: 7 * 60 },
   sound: true,
+  preview: true,
+  unknownSender: 'Unbekannter Absender',
+  noSubject: '(kein Betreff)',
 }
 
 describe('the worker state', () => {
@@ -89,6 +92,47 @@ describe('the worker state', () => {
     expect((await readPushState(idb))?.sound).toBe(false)
   })
 
+  /**
+   * **The asymmetry with `sound` above is the point, and it is a privacy rule.**
+   *
+   * A record written by the build before content pushes existed has no `preview` field at all.
+   * Reading that silence as "yes, show sender and subject" would put a subject on a lock screen on
+   * the strength of a field nobody ever wrote. Silence about a privacy switch is not consent — so
+   * `sound` defaults ON (an absent field must not silence every banner) and `preview` defaults OFF.
+   */
+  it('reads a missing preview as OFF, unlike sound — silence is not consent', async () => {
+    const db = await open(idb)
+    const { preview: _p, unknownSender: _u, noSubject: _n, ...rest } = state
+    await put(db, rest, 'state')
+    db.close()
+    const read = await readPushState(idb)
+    expect(read?.preview).toBe(false)
+    // …and the two strings the content banner needs fall back to the CONTENTLESS wording, which is
+    // translated and always present, rather than to an English literal the worker cannot translate.
+    expect(read?.unknownSender).toBe(state.title)
+    expect(read?.noSubject).toBe(state.body)
+  })
+
+  it('round-trips preview:true and the two fallback strings', async () => {
+    await writePushState(state, idb)
+    const read = await readPushState(idb)
+    expect(read?.preview).toBe(true)
+    expect(read?.unknownSender).toBe('Unbekannter Absender')
+    expect(read?.noSubject).toBe('(kein Betreff)')
+  })
+
+  /** Likewise for the registration: a record from before this feature says the server holds none. */
+  it('reads a registration with no emailPush field as "the server holds none"', async () => {
+    const db = await open(idb)
+    await put(
+      db,
+      { subscriptionId: 'sub-1', endpoint: 'e', applicationServerKey: 'k', expires: null },
+      'registration',
+    )
+    db.close()
+    expect((await readPushRegistration(idb))?.emailPush).toBe(false)
+  })
+
   it('returns null instead of throwing when there is no IndexedDB at all', async () => {
     // The worker on a browser where IDB is unavailable (private mode on some engines). No banner is
     // the right answer; an unhandled rejection inside `push` is not.
@@ -115,7 +159,13 @@ describe('the device client id', () => {
   it('survives the registration being deleted', async () => {
     const id = await ensureDeviceClientId(() => 'device-1', idb)
     await writePushRegistration(
-      { subscriptionId: 's', endpoint: 'e', applicationServerKey: 'k', expires: null },
+      {
+        subscriptionId: 's',
+        endpoint: 'e',
+        applicationServerKey: 'k',
+        expires: null,
+        emailPush: false,
+      },
       idb,
     )
     await deletePushRegistration(idb)
@@ -135,6 +185,7 @@ describe('the registration record', () => {
     endpoint: 'https://push.example/e/1',
     applicationServerKey: 'BLjc',
     expires: '2026-07-30T04:55:11Z',
+    emailPush: false,
   }
 
   it('round-trips', async () => {
@@ -195,7 +246,13 @@ describe('clearPushState', () => {
   it('removes everything, so a sign-out leaves nothing behind', async () => {
     await writePushState(state, idb)
     await writePushRegistration(
-      { subscriptionId: 's', endpoint: 'e', applicationServerKey: 'k', expires: null },
+      {
+        subscriptionId: 's',
+        endpoint: 'e',
+        applicationServerKey: 'k',
+        expires: null,
+        emailPush: false,
+      },
       idb,
     )
     await putPendingVerification({ pushSubscriptionId: 's', verificationCode: 'c' }, idb)
