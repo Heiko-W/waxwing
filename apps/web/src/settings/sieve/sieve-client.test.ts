@@ -141,7 +141,24 @@ describe('load', () => {
     const snapshot = await makeSieveClient(fake.client, ACC).load()
 
     expect(snapshot.active).toBeNull()
-    expect(fake.downloads).toEqual([])
+  })
+
+  it('reads our own script even when it is not the active one', async () => {
+    // What makes "filtering is off" survivable: the rules it switched off are still on screen.
+    // A section that empties itself the moment filtering stops looks like it deleted them.
+    const fake = fakeClient({ list: [script({ isActive: false })], source: '# ours' })
+    const snapshot = await makeSieveClient(fake.client, ACC).load()
+
+    expect(snapshot.active).toBeNull()
+    expect(snapshot.managed?.source).toBe('# ours')
+  })
+
+  it('downloads the script once when ours IS the active one', async () => {
+    const fake = fakeClient()
+    const snapshot = await makeSieveClient(fake.client, ACC).load()
+
+    expect(snapshot.managed).toBe(snapshot.active)
+    expect(fake.downloads).toEqual(['blob-stored'])
   })
 })
 
@@ -173,6 +190,17 @@ describe('save', () => {
     expect(names(fake.calls)).toEqual(['SieveScript/set', 'SieveScript/get'])
   })
 
+  it('does not activate when told not to — the master switch has to hold', async () => {
+    // A save that always activated would switch filtering back on behind the user's back the
+    // moment they edited a rule while it was off.
+    const fake = fakeClient()
+    await makeSieveClient(fake.client, ACC).save('# rules', script(), { activate: false })
+
+    const [args] = setArgs(fake.calls)
+    expect(args?.update).toEqual({ s1: { blobId: UPLOADED } })
+    expect(args).not.toHaveProperty('onSuccessActivateScript')
+  })
+
   it('surfaces a per-object refusal as a typed error', async () => {
     const fake = fakeClient({
       // Stalwart's spelling of "this does not compile" is the pre-RFC one.
@@ -184,6 +212,17 @@ describe('save', () => {
     await expect(makeSieveClient(fake.client, ACC).save('nonsense', script())).rejects.toThrow(
       SieveSetError,
     )
+  })
+})
+
+describe('activate', () => {
+  it('names the script by id and re-reads, because the echo may report nothing', async () => {
+    const fake = fakeClient()
+    await makeSieveClient(fake.client, ACC).activate(script())
+
+    const [args] = setArgs(fake.calls)
+    expect(args).toEqual({ accountId: ACC, onSuccessActivateScript: 's1' })
+    expect(names(fake.calls)).toEqual(['SieveScript/set', 'SieveScript/get'])
   })
 })
 

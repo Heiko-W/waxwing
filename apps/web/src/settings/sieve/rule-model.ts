@@ -6,7 +6,7 @@
  * builder can express a subset of the language, and everything outside that subset stays
  * untouched text (see `script-io.ts`).
  *
- * Two decisions worth stating, because they are the ones a later change is likely to undo:
+ * Three decisions worth stating, because they are the ones a later change is likely to undo:
  *
  * - **Mailboxes are addressed by id first, name second.** `fileinto :mailboxid "<id>" "<name>"`
  *   survives a rename — which a name-only `fileinto` does not — while leaving a readable
@@ -14,13 +14,36 @@
  * - **The rule set is stored as JSON in a comment, and never recovered by re-parsing the
  *   generated Sieve.** Round-tripping through a language whose semantics are richer than the
  *   builder's is how a rule editor silently changes what a rule does.
+ * - **The vocabulary offered is a function of what the server advertised, not a fixed set.**
+ *   Stalwart lists ~50 extensions in `sieveExtensions`; a `require` for one it does not have may
+ *   compile cleanly and then fail at delivery time (ADR-023). So {@link sieveFeatures} reads the
+ *   advertised list, the form offers only what is in it, and {@link generateSieve} emits the
+ *   better construct only when it was advertised. An account that advertised NO list gets the
+ *   1.0 vocabulary — "unknown" is not "supported".
  */
 
 /** How a text condition compares. */
 export type SieveMatch = 'contains' | 'is' | 'startsWith' | 'endsWith' | 'matches'
 
-/** Which part of the message a text condition reads. */
-export type SieveTextField = 'from' | 'to' | 'cc' | 'subject' | 'body'
+/**
+ * Which part of the message a text condition reads.
+ *
+ * `envelopeFrom`/`envelopeTo` are the SMTP envelope (RFC 5228 §5.4), not the header: the address
+ * the sending server actually handed over, which a forger cannot choose as freely as a `From:`
+ * line, and the address mail was actually delivered *to*, which is how an alias is told apart from
+ * the `To:` it was expanded into.
+ */
+export type SieveTextField =
+  | 'from'
+  | 'to'
+  | 'cc'
+  | 'subject'
+  | 'body'
+  | 'envelopeFrom'
+  | 'envelopeTo'
+
+/** Which part of "now" a {@link SieveCondition} of kind `currentDate` reads (RFC 5260 §4). */
+export type SieveDatePart = 'weekday' | 'hour'
 
 /** A single test within a rule. */
 export type SieveCondition =
@@ -32,6 +55,17 @@ export type SieveCondition =
     }
   | { readonly kind: 'size'; readonly operator: 'over' | 'under'; readonly bytes: number }
   | { readonly kind: 'hasAttachment' }
+  /** The server's spam score, 0–10 (RFC 5235). */
+  | { readonly kind: 'spam'; readonly operator: 'atLeast' | 'atMost'; readonly score: number }
+  /** Delivery time: a weekday (0 = Sunday) or an hour of the day, in the server's zone. */
+  | {
+      readonly kind: 'currentDate'
+      readonly part: SieveDatePart
+      readonly operator: 'is' | 'atLeast' | 'atMost'
+      readonly value: number
+    }
+  /** A message whose Message-ID has been seen before (RFC 7352). */
+  | { readonly kind: 'duplicate' }
 
 /** What a rule does when it matches. */
 export type SieveAction =
@@ -39,6 +73,8 @@ export type SieveAction =
   | { readonly kind: 'addFlag'; readonly flag: '\\Flagged' | '\\Seen' }
   | { readonly kind: 'redirect'; readonly address: string }
   | { readonly kind: 'discard' }
+  /** Refuse delivery and tell the sender why (RFC 5429). */
+  | { readonly kind: 'reject'; readonly reason: string }
 
 export interface SieveRule {
   readonly id: string
@@ -54,12 +90,79 @@ export interface SieveRule {
 }
 
 /** Sieve extensions this generator can emit, mapped to the constructs that need them. */
-const REQUIRES: Readonly<Record<string, string>> = {
+const REQUIRES = {
   fileInto: 'fileinto',
   mailboxId: 'mailboxid',
   addFlag: 'imap4flags',
   body: 'body',
   matches: 'variables',
+  envelope: 'envelope',
+  spamtest: 'spamtest',
+  relational: 'relational',
+  numeric: 'comparator-i;ascii-numeric',
+  date: 'date',
+  duplicate: 'duplicate',
+  reject: 'reject',
+  mime: 'mime',
+} as const
+
+/**
+ * Which of the widened vocabulary this server will actually run.
+ *
+ * `undefined` — the account advertised no `sieveExtensions` at all — yields all `false`. That is
+ * deliberately not the same as "assume the common case": a `require` a server does not implement
+ * can compile and then drop mail at delivery time, and a rule the user cannot see failing is worse
+ * than one the form never offered.
+ */
+export interface SieveFeatures {
+  /** `envelope` — match the SMTP sender/recipient instead of the header. */
+  readonly envelope: boolean
+  /** `spamtest` + the numeric comparison it needs. */
+  readonly spam: boolean
+  /** `date` — a weekday test, which needs no comparator. */
+  readonly currentDate: boolean
+  /** `date` + `relational` + the numeric comparator — an hour range. */
+  readonly hourRange: boolean
+  /** `duplicate` — suppress a message seen before. */
+  readonly duplicate: boolean
+  /** `reject` — refuse with a reason instead of discarding silently. */
+  readonly reject: boolean
+  /** `mime` — test the MIME parts, rather than guessing from `Content-Type`. */
+  readonly mimeAttachment: boolean
+}
+
+function has(extensions: readonly string[] | undefined, name: string): boolean {
+  return extensions?.includes(name) ?? false
+}
+
+/**
+ * Both spellings of the numeric comparator.
+ *
+ * `require` takes the `comparator-`-prefixed form (RFC 5228 §2.7.3) and that is what we emit. What
+ * a server puts in `sieveExtensions` is a different question: RFC 9661 calls the field "the list of
+ * Sieve extensions supported" and does not say which spelling, and a server that lists the bare
+ * comparator name is not saying it lacks it. Accepting either is the difference between a
+ * capability check and a spelling check.
+ */
+const NUMERIC_COMPARATOR_NAMES: readonly string[] = [
+  'comparator-i;ascii-numeric',
+  'i;ascii-numeric',
+]
+
+/** Reads {@link SieveFeatures} out of the account's advertised `sieveExtensions`. */
+export function sieveFeatures(extensions: readonly string[] | undefined): SieveFeatures {
+  const numeric =
+    has(extensions, REQUIRES.relational) &&
+    NUMERIC_COMPARATOR_NAMES.some((name) => has(extensions, name))
+  return {
+    envelope: has(extensions, REQUIRES.envelope),
+    spam: has(extensions, REQUIRES.spamtest) && numeric,
+    currentDate: has(extensions, REQUIRES.date),
+    hourRange: has(extensions, REQUIRES.date) && numeric,
+    duplicate: has(extensions, REQUIRES.duplicate),
+    reject: has(extensions, REQUIRES.reject),
+    mimeAttachment: has(extensions, REQUIRES.mime),
+  }
 }
 
 /**
@@ -111,37 +214,106 @@ function escapeMatchWildcards(value: string): string {
   return value.replace(/[\\?*]/g, (c) => `\\${c}`)
 }
 
+/** The relational operator (RFC 5231 §4) behind an at-least / at-most comparison. */
+function relationalOperator(operator: 'atLeast' | 'atMost'): string {
+  return operator === 'atLeast' ? 'ge' : 'le'
+}
+
+/** A numeric comparison, which always drags `relational` and the numeric comparator in with it. */
+function numericTest(
+  head: string,
+  operator: 'atLeast' | 'atMost',
+  operand: string,
+  required: Set<string>,
+): string {
+  required.add(REQUIRES.relational)
+  required.add(REQUIRES.numeric)
+  return `${head} :value ${quoteSieveString(relationalOperator(operator))} :comparator ${quoteSieveString(
+    REQUIRES.numeric.replace('comparator-', ''),
+  )} ${operand}`
+}
+
+/** The header a text field reads, for the fields that are headers. */
+function headerName(field: SieveTextField): string {
+  switch (field) {
+    case 'from':
+      return 'From'
+    case 'to':
+      return 'To'
+    case 'cc':
+      return 'Cc'
+    default:
+      return 'Subject'
+  }
+}
+
 /** Compiles one condition to a Sieve test, collecting the extensions it needs. */
-function conditionToTest(condition: SieveCondition, required: Set<string>): string {
+function conditionToTest(
+  condition: SieveCondition,
+  required: Set<string>,
+  features: SieveFeatures,
+): string {
   switch (condition.kind) {
     case 'text': {
       if (condition.field === 'body') {
-        required.add(REQUIRES.body as string)
+        required.add(REQUIRES.body)
         if (
           condition.match === 'matches' ||
           condition.match === 'startsWith' ||
           condition.match === 'endsWith'
         ) {
-          required.add(REQUIRES.matches as string)
+          required.add(REQUIRES.matches)
         }
         return `body :text ${matchOperator(condition.match)} ${quoteSieveString(matchValue(condition))}`
       }
-      const header =
-        condition.field === 'from'
-          ? 'From'
-          : condition.field === 'to'
-            ? 'To'
-            : condition.field === 'cc'
-              ? 'Cc'
-              : 'Subject'
-      return `header ${matchOperator(condition.match)} ${quoteSieveString(header)} ${quoteSieveString(matchValue(condition))}`
+      if (condition.field === 'envelopeFrom' || condition.field === 'envelopeTo') {
+        required.add(REQUIRES.envelope)
+        // RFC 5228 §5.4: the envelope part is named in lower case, and only `from`/`to` are
+        // required of an implementation.
+        const part = condition.field === 'envelopeFrom' ? 'from' : 'to'
+        return `envelope ${matchOperator(condition.match)} ${quoteSieveString(part)} ${quoteSieveString(matchValue(condition))}`
+      }
+      return `header ${matchOperator(condition.match)} ${quoteSieveString(headerName(condition.field))} ${quoteSieveString(matchValue(condition))}`
     }
     case 'size':
       return `size :${condition.operator} ${String(Math.max(0, Math.floor(condition.bytes)))}`
     case 'hasAttachment':
-      // No `hasAttachment` test exists in Sieve; a multipart Content-Type is the closest
-      // approximation a server can evaluate without parsing the body.
+      if (features.mimeAttachment) {
+        required.add(REQUIRES.mime)
+        // RFC 5703 §4: `:mime :anychild` turns the header test into one that reads EVERY MIME
+        // part. A part that says it is an attachment is one; an inline image — which the
+        // `multipart/mixed` guess below matches by accident — is not.
+        return `header :mime :anychild :contains "Content-Disposition" "attachment"`
+      }
+      // Without `mime` there is no attachment test in Sieve at all; a multipart Content-Type is
+      // the closest approximation a server can evaluate without looking at the body.
       return `header :contains "Content-Type" "multipart/mixed"`
+    case 'spam': {
+      required.add(REQUIRES.spamtest)
+      // RFC 5235 §2.1: the score is "0".."10", where "0" means the message was not tested at all.
+      const score = String(Math.min(10, Math.max(0, Math.round(condition.score))))
+      return numericTest('spamtest', condition.operator, quoteSieveString(score), required)
+    }
+    case 'currentDate': {
+      required.add(REQUIRES.date)
+      const part = quoteSieveString(condition.part)
+      const value =
+        condition.part === 'hour'
+          ? String(Math.min(23, Math.max(0, Math.round(condition.value)))).padStart(2, '0')
+          : String(Math.min(6, Math.max(0, Math.round(condition.value))))
+      if (condition.operator === 'is') return `currentdate :is ${part} ${quoteSieveString(value)}`
+      return numericTest(
+        'currentdate',
+        condition.operator,
+        `${part} ${quoteSieveString(value)}`,
+        required,
+      )
+    }
+    case 'duplicate':
+      required.add(REQUIRES.duplicate)
+      // Bare `duplicate` keys on the Message-ID with the server's default expiry — the shape that
+      // means "I have seen this message before", without inventing a tracking key of our own.
+      return `duplicate`
   }
 }
 
@@ -149,22 +321,25 @@ function conditionToTest(condition: SieveCondition, required: Set<string>): stri
 function actionToCommand(action: SieveAction, required: Set<string>): string {
   switch (action.kind) {
     case 'fileInto':
-      required.add(REQUIRES.fileInto as string)
-      required.add(REQUIRES.mailboxId as string)
+      required.add(REQUIRES.fileInto)
+      required.add(REQUIRES.mailboxId)
       // Id first so a renamed mailbox still receives the mail; the name is the fallback.
       return `fileinto :mailboxid ${quoteSieveString(action.mailboxId)} ${quoteSieveString(action.mailboxName)};`
     case 'addFlag':
-      required.add(REQUIRES.addFlag as string)
+      required.add(REQUIRES.addFlag)
       return `addflag ${quoteSieveString(action.flag)};`
     case 'redirect':
       return `redirect ${quoteSieveString(action.address)};`
     case 'discard':
       return `discard;`
+    case 'reject':
+      required.add(REQUIRES.reject)
+      return `reject ${quoteSieveString(action.reason)};`
   }
 }
 
 /** The Sieve for one rule, or `''` when it is disabled or has no actions. */
-function ruleToSieve(rule: SieveRule, required: Set<string>): string {
+function ruleToSieve(rule: SieveRule, required: Set<string>, features: SieveFeatures): string {
   if (!rule.enabled || rule.actions.length === 0) return ''
 
   const commands = rule.actions.map((action) => actionToCommand(action, required))
@@ -176,7 +351,7 @@ function ruleToSieve(rule: SieveRule, required: Set<string>): string {
     return `# ${sanitizeComment(rule.name)}\nif true {\n${body}\n}`
   }
 
-  const tests = rule.conditions.map((condition) => conditionToTest(condition, required))
+  const tests = rule.conditions.map((condition) => conditionToTest(condition, required, features))
   const test =
     tests.length === 1
       ? (tests[0] as string)
@@ -201,10 +376,22 @@ export interface GeneratedSieve {
   readonly requires: readonly string[]
 }
 
-/** Compiles a rule set to Sieve. The `require` line is the caller's job (foreign rules add their own). */
-export function generateSieve(rules: readonly SieveRule[]): GeneratedSieve {
+/**
+ * Compiles a rule set to Sieve. The `require` line is the caller's job (foreign rules add their own).
+ *
+ * `extensions` is the account's advertised `sieveExtensions`. It only ever picks between two
+ * spellings of the same rule (today: the attachment test) — never between rules — so a script
+ * generated against a server that advertises less is smaller, not different.
+ */
+export function generateSieve(
+  rules: readonly SieveRule[],
+  extensions?: readonly string[] | undefined,
+): GeneratedSieve {
+  const features = sieveFeatures(extensions)
   const required = new Set<string>()
-  const blocks = rules.map((rule) => ruleToSieve(rule, required)).filter((block) => block !== '')
+  const blocks = rules
+    .map((rule) => ruleToSieve(rule, required, features))
+    .filter((block) => block !== '')
   return { body: blocks.join('\n\n'), requires: [...required].sort() }
 }
 
@@ -230,4 +417,36 @@ export function unsupportedRequires(
   if (supported === undefined || supported.length === 0) return []
   const have = new Set(supported)
   return requires.filter((name) => !have.has(name))
+}
+
+/**
+ * `items` with the entry at `from` moved to `to`.
+ *
+ * Order is the semantics of a Sieve script — a rule with `stop` ends processing and everything
+ * below it never runs — so this is the operation behind both the drag and the keyboard reorder,
+ * kept pure and out of the component that renders them.
+ */
+export function moveItem<T>(items: readonly T[], from: number, to: number): readonly T[] {
+  if (from === to || from < 0 || from >= items.length) return items
+  const target = Math.min(items.length - 1, Math.max(0, to))
+  if (target === from) return items
+  const next = [...items]
+  const [moved] = next.splice(from, 1)
+  if (moved === undefined) return items
+  next.splice(target, 0, moved)
+  return next
+}
+
+/**
+ * The index a row dropped at `pointerY` should take, given the mid-height of every row.
+ *
+ * Split out because jsdom has no layout: every `getBoundingClientRect()` there is zero, so the
+ * only way this arithmetic can be tested at all is with the geometry passed in.
+ */
+export function dropIndex(midpoints: readonly number[], pointerY: number): number {
+  let index = 0
+  for (const midpoint of midpoints) {
+    if (pointerY > midpoint) index += 1
+  }
+  return Math.min(Math.max(index, 0), Math.max(midpoints.length - 1, 0))
 }
