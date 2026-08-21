@@ -24,6 +24,7 @@ import { ComposeSection } from './ComposeSection'
 import { IdentitiesSection, serverSupportsIdentities } from './IdentitiesSection'
 import { NotificationsSection } from './NotificationsSection'
 import { ReadingSection } from './ReadingSection'
+import { SecuritySection, serverSupportsSelfService } from './SecuritySection'
 import { ServerSection } from './ServerSection'
 import { StorageSection } from './StorageSection'
 import { SwipeSection } from './SwipeSection'
@@ -230,6 +231,19 @@ export default function SettingsPage() {
     connected?.accountId ?? null,
     config,
   )
+  /*
+   * Account & security is the one section behind a PROPRIETARY capability (`urn:stalwart:jmap`),
+   * and product principle 6 is why the gate is not optional: "no proprietary server extensions
+   * required. Stalwart-specific niceties are progressive enhancements." On a server without the
+   * URN the section does not exist — not disabled, not empty: absent, down to its row in the rail.
+   *
+   * It is also the one capability Stalwart advertises ONLY on the account, never on the session, so
+   * the probe reads both levels. `settings.test.tsx` holds both halves of that.
+   */
+  const selfServiceAvailable = serverSupportsSelfService(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+  )
 
   function handleAccent(value: string): void {
     if (!isAccentId(value)) return
@@ -395,6 +409,12 @@ export default function SettingsPage() {
           title: t('settings.filters.title'),
           available: replica !== null && sieveAvailable,
           render: () => <FiltersSection />,
+        },
+        {
+          slug: 'security',
+          title: t('settings.security.title'),
+          available: connected !== null && selfServiceAvailable,
+          render: () => <SecuritySection />,
         },
       ],
     },
