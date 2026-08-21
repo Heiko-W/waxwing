@@ -83,6 +83,7 @@ import {
   syncCalendars,
   syncContactCards,
   syncEmails,
+  syncFileNodes,
   syncIdentities,
   syncMailboxes,
   syncThreads,
@@ -129,6 +130,9 @@ const WATCHED_TYPES = [
   // colleague has to arrive on its own rather than on the next 60 s sweep.
   'Calendar',
   'CalendarEvent',
+  // D-4: the file tree is replicated too, so a file dropped in from another device arrives on its
+  // own rather than on the next sweep.
+  'FileNode',
   SHARE_NOTIFICATION_TYPE,
 ]
 
@@ -849,6 +853,26 @@ export class SyncEngine {
   }
 
   /**
+   * Re-read the file tree NOW (D-4).
+   *
+   * What a local write calls once the server has accepted it. Cheap after the first walk — it is a
+   * `FileNode/changes` plus a `/get` of what moved — and without it the screen would show a new
+   * folder only on the next sweep, which is indistinguishable from the write having failed.
+   *
+   * Answers whether the refresh actually happened, because the caller says something different when
+   * it did not: the write landed, the listing did not come back, and the reader must not be left to
+   * conclude from a stale list that nothing was saved.
+   */
+  async refreshFileTree(): Promise<boolean> {
+    try {
+      await syncFileNodes(this.port, this.db, this.accountId, this.clock)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * Highlighted (`<mark>` markup) subject/preview for the visible slice of a search (M3.1). Transient
    * VIEW data (query-specific) — NOT persisted. A failure returns an empty map (the list falls back
    * to plain previews); the caller SANITIZES the markup before rendering.
@@ -1483,6 +1507,25 @@ export class SyncEngine {
       await syncCalendars(this.port, this.db, this.accountId, this.clock)
       await syncCalendarEvents(this.port, this.db, this.accountId, this.clock)
       await this.reconcileWatchedCalendars(forceFull)
+    } catch (error) {
+      if (isAuthExpiry(error)) throw error
+    }
+    // Files (D-4): the tree, deltaed — but only once the reader has actually opened Files.
+    //
+    // The FIRST walk is the expensive one. The root query carries no filter (Stalwart refuses
+    // `{parentId: null}` and the whole request with it), so seeding the tree costs up to ten pages
+    // of five hundred objects, and paying that at every sign-in for a reader who never opens the
+    // screen would be a tax on Mail. So the initial walk belongs to the screen
+    // ({@link refreshFileTree}), and this pass only keeps a tree that ALREADY exists current — which
+    // is one `FileNode/changes` and is cheap enough to run every time. A reader who has never opened
+    // Files simply has no offline copy, and the screen says exactly that rather than pretending.
+    //
+    // Isolated for the same reason the calendar block above is, and SEPARATELY: a server with
+    // calendars but no file storage (or the reverse) must lose only the one it lacks.
+    try {
+      if ((await getSyncState(this.db, this.accountId, 'FileNode')) !== null) {
+        await syncFileNodes(this.port, this.db, this.accountId, this.clock)
+      }
     } catch (error) {
       if (isAuthExpiry(error)) throw error
     }

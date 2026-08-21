@@ -16,6 +16,8 @@ import {
   type CalendarEventRow,
   type CalendarRow,
   type ContactCardRow,
+  type FileNodeRow,
+  type FileTreeState,
   getReplica,
   type IdentityRow,
   type LocalPrefRow,
@@ -29,8 +31,11 @@ import {
   calendarsForAccount,
   contactCardsByIds,
   emailsByIds,
+  fileNodesForAccount,
+  fileNodesForParent,
   getCalendarQueryCache,
   getContactQueryCache,
+  getFileTreeState,
   identitiesForAccount,
   mailboxByRole,
   mailboxesForAccount,
@@ -295,6 +300,53 @@ export function useCalendarWindow(key: string): CalendarWindow | null | undefine
       empty: row.syncedAt === 0,
     }
   }, [context?.db, context?.accountId, key])
+}
+
+// ── Files (D-4) ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One level of the file tree from the replica — the children of `parentId`, the roots for `null`.
+ *
+ * `undefined` while the query is in flight; an EMPTY array is a real answer. Unsorted: the order
+ * the reader sees is `file-sort.ts`'s job, applied to whatever came back.
+ *
+ * Provider-optional for the same reason {@link useCalendars} is — `SyncEngineHost` renders its
+ * children without a provider until the session restores, and the Files screen is one of them.
+ */
+export function useFileNodes(parentId: Id | null): FileNodeRow[] | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<FileNodeRow[] | undefined>(
+    async () =>
+      context === null
+        ? undefined
+        : await fileNodesForParent(context.db, context.accountId, parentId),
+    [context?.db, context?.accountId, parentId],
+  )
+}
+
+/**
+ * Every node in the account (D-4) — what an account-wide search reads.
+ *
+ * `enabled` is a parameter rather than a conditional hook call, and it earns its place: the whole
+ * tree is needed only while a search is running, and reading it on every render of a folder listing
+ * would be work nobody asked for. Disabled, it answers `[]` without touching the database.
+ */
+export function useAllFileNodes(enabled: boolean): FileNodeRow[] | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<FileNodeRow[] | undefined>(async () => {
+    if (!enabled) return []
+    return context === null ? undefined : await fileNodesForAccount(context.db, context.accountId)
+  }, [context?.db, context?.accountId, enabled])
+}
+
+/** When the file tree was last walked, and whether that walk saw all of it (D-4). */
+export function useFileTreeState(): FileTreeState | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<FileTreeState | undefined>(
+    async () =>
+      context === null ? undefined : await getFileTreeState(context.db, context.accountId),
+    [context?.db, context?.accountId],
+  )
 }
 
 /** A local preference value (FR-MBX-04), typed by the caller. */

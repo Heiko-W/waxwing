@@ -310,6 +310,15 @@ function fakePort(accountId: string, emails: string[]): JmapPort {
     async queryCalendarEvents() {
       return { ids: [], queryState: 'q', canCalculateChanges: true, position: 0 }
     },
+    async fileNodePage() {
+      return { ids: [], list: [], state: 's' }
+    },
+    async getFileNodes() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async fileNodeChanges(s: string) {
+      return emptyChanges(s)
+    },
   }
 }
 

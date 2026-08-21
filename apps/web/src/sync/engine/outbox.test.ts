@@ -64,6 +64,9 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     getCalendarEvents: unused,
     calendarEventChanges: unused,
     queryCalendarEvents: unused,
+    fileNodePage: unused,
+    getFileNodes: unused,
+    fileNodeChanges: unused,
   }
   return { ...base, ...overrides }
 }

@@ -22,6 +22,7 @@ import type {
   EmailCreate,
   EmailFilter,
   Envelope,
+  FileNode,
   Id,
   Identity,
   Mailbox,
@@ -259,6 +260,38 @@ export interface JmapPort {
   calendarEventChanges(sinceState: string, maxChanges?: number): Promise<ChangesResult>
   /** One `CalendarEvent/query` page. `expandRecurrences` is what turns a rule into a month of rows. */
   queryCalendarEvents(spec: CalendarQuerySpec): Promise<QueryResult>
+
+  // ── Files (D-4, `draft-ietf-jmap-filenode`) ────────────────────────────────────────────────
+
+  /**
+   * One page of the WHOLE tree: `FileNode/query` + a back-referenced `FileNode/get`, in one request.
+   *
+   * Query and get are ONE call rather than two port methods, and that is forced by the wire: the get
+   * addresses its ids by back-reference (`#ids`), so the generic chunking in `@waxwing/jmap` cannot
+   * split it — a page has to be small enough to survive the get, which makes the query's limit the
+   * get's limit too. Separating them here would only invite a caller to pick two different numbers.
+   *
+   * NO FILTER, deliberately. Stalwart 0.16 refuses `{parentId: null}` — and refuses the whole
+   * REQUEST with it — so the roots cannot be asked for directly; the tree is read whole and the
+   * levels are reassembled locally. `files-client.ts` has always paid this price online.
+   */
+  fileNodePage(position: number, limit: number): Promise<FileNodePage>
+  /** `FileNode/get` for ids this client already holds (no back-reference, so it chunks normally). */
+  getFileNodes(ids: Id[]): Promise<GetResult<FileNode>>
+  /**
+   * The file-tree delta. REJECTS with {@link CannotCalculateChangesError} when the server cannot
+   * compute one — measured on an account with no change history, which is a new user's first sync.
+   * It means "walk the tree again", never "this failed".
+   */
+  fileNodeChanges(sinceState: string, maxChanges?: number): Promise<ChangesResult>
+}
+
+/** One page of the file-tree walk: the ids the query named and the nodes the get returned. */
+export interface FileNodePage {
+  readonly ids: Id[]
+  readonly list: FileNode[]
+  /** The `FileNode/get` object state — the cursor a later `FileNode/changes` advances from. */
+  readonly state: string
 }
 
 /** The property set fetched for an email envelope row (kept in one place so port + tests agree). */

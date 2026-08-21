@@ -275,6 +275,15 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
     async queryCalendarEvents() {
       return { ids: [], queryState: 'q', canCalculateChanges: true, position: 0 }
     },
+    async fileNodePage() {
+      return { ids: [], list: [], state: 's' }
+    },
+    async getFileNodes() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async fileNodeChanges(s: string) {
+      return emptyChanges(s)
+    },
   }
 }
 
@@ -400,6 +409,42 @@ describe('SyncEngine', () => {
     expect(row?.objectIds).toEqual(['e-master'])
     // The occurrence row keeps the link back to the writable master — what the screen resolves with.
     expect((await db.calendarEvents.get([ACC, 'occ-1']))?.base).toBe('e-master')
+
+    await engine.stop()
+  })
+
+  it('does not walk the file tree until the reader has opened Files (D-4)', async () => {
+    /*
+     * The first walk is the expensive one — no filter is possible at the root, so seeding the tree
+     * costs pages of five hundred objects. Paying that at every sign-in for a reader who never
+     * opens Files would be a tax on Mail, so the screen pays for its own first walk and the sweep
+     * only keeps an existing tree current.
+     */
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    let walks = 0
+    const port: JmapPort = {
+      ...base,
+      fileNodePage: async () => {
+        walks += 1
+        return {
+          ids: ['f1'],
+          list: [{ id: 'f1', name: 'f1', parentId: null } as never],
+          state: 'fs1',
+        }
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle' && engine.getStatus().isLeader)
+    expect(walks).toBe(0)
+
+    // The screen asks — and now the tree is there, and stays kept up.
+    expect(await engine.refreshFileTree()).toBe(true)
+    expect(walks).toBe(1)
+    expect(await db.fileNodes.get([ACC, 'f1'])).toBeDefined()
+    // Root-reachable, which is the whole reason the row carries a derived parent key.
+    expect((await db.fileNodes.get([ACC, 'f1']))?.parent).toBe('')
 
     await engine.stop()
   })

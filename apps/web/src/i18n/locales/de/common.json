@@ -2007,12 +2007,19 @@
       "undo": "Rückgängig"
     },
     "offline": "Sie sind offline. Dateien lassen sich nur mit Verbindung ändern.",
+    "offlineStale": "Offline — wird gerade nicht aktualisiert. Zuletzt aktualisiert {{when}}.",
+    "offlineNotUpdating": "Offline — wird gerade nicht aktualisiert.",
+    "offlineNever": {
+      "title": "Ihre Dateien wurden noch nicht synchronisiert",
+      "body": "Einmal verbinden, dann ist diese Liste beim nächsten Mal auch offline da. Zum Öffnen einer Datei ist immer eine Verbindung nötig."
+    },
     "title": "Dateien",
     "root": "Dateien",
     "breadcrumb": "Ordnerpfad",
     "empty": "Dieser Ordner ist leer.",
     "retry": "Erneut versuchen",
     "loadFailed": "Die Dateien konnten nicht geladen werden.",
+    "refreshFailed": "Ihre Dateien konnten nicht aktualisiert werden — was Sie sehen, ist möglicherweise veraltet.",
     "savedButNotShown": "Gespeichert — die Liste ließ sich aber nicht neu laden. Mit „Erneut versuchen“ wird sie geholt.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",

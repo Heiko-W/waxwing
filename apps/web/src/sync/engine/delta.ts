@@ -35,6 +35,7 @@ import {
   deleteCalendars,
   deleteContactCards,
   deleteEmails,
+  deleteFileNodes,
   deleteMailbox,
   deleteThreads,
   emailsByIds,
@@ -50,11 +51,13 @@ import {
   putContactCards,
   putContactQueryCache,
   putEmails,
+  putFileNodes,
   putMailboxes,
   putQueryCache,
   putThreads,
   recordAddressStats,
   replaceIdentities,
+  setFileTreeState,
   setSyncState,
 } from '../repo'
 import { CannotCalculateChangesError, type EngineClock, type JmapPort } from './types'
@@ -832,4 +835,113 @@ export async function fullRequeryCalendar(
     lastUsedAt: clock.now(),
   }
   await putCalendarQueryCache(db, row)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Files (D-4). The whole tree, mirrored — see the note on `FileNodeRow` in `db.ts`.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * One page of the tree walk, and the ceiling the `#ids` back-reference has to respect.
+ *
+ * `maxObjectsInGet` is 500 on Stalwart 0.16, and the get addresses its ids by back-reference — so
+ * the generic chunking cannot help and the query's limit IS the get's limit. Mirrors `PAGE` in
+ * `files-client.ts`, which pays the same price online.
+ */
+const FILE_PAGE = 500
+
+/**
+ * How many pages one walk will spend before it gives up and says so.
+ *
+ * Mirrors `MAX_PAGES` in `files-client.ts`. What is not acceptable is silence: a tree that stopped
+ * short while looking complete makes every conclusion the reader draws from it ("I must have deleted
+ * that") wrong, so the shortfall is recorded and the screen states it.
+ */
+const FILE_MAX_PAGES = 10
+
+/**
+ * File-tree sync.
+ *
+ * No state ⇒ walk the whole tree; a state ⇒ `FileNode/changes` + a `/get` of what moved. A server
+ * that cannot compute the delta gets the walk instead — that is the D-4 measured case (an account
+ * with no change history refusing to diff the state its own `/get` just returned) and it means
+ * "read it again", not "this failed".
+ */
+export async function syncFileNodes(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const sinceState = await getSyncState(db, accountId, 'FileNode')
+  if (sinceState === null) {
+    await walkFileTree(port, db, accountId, clock)
+    return
+  }
+
+  let acc: ChangesAccumulator
+  try {
+    acc = await drainChanges((state) => port.fileNodeChanges(state), sinceState)
+  } catch (error) {
+    if (error instanceof CannotCalculateChangesError) {
+      await walkFileTree(port, db, accountId, clock)
+      return
+    }
+    throw error
+  }
+
+  if (acc.changed.length > 0) {
+    const { list } = await port.getFileNodes(acc.changed)
+    await putFileNodes(db, accountId, list)
+  }
+  if (acc.destroyed.length > 0) await deleteFileNodes(db, accountId, acc.destroyed)
+  await setSyncState(db, accountId, 'FileNode', acc.newState, clock.now())
+}
+
+/**
+ * Read every node in the account, page by page, and replace the replica's tree with the answer.
+ *
+ * Three ways out of the loop, and they are NOT the same answer:
+ *  - a short page: that was the end of the query, and the tree is COMPLETE;
+ *  - {@link FILE_MAX_PAGES} spent: truncated, and the screen says so;
+ *  - a page that added nothing new: a server ignoring `position` and handing back the same page for
+ *    ever. Also truncated — and the guard that stops this being an infinite loop.
+ *
+ * Rows the walk did not see are deleted, but ONLY on a complete walk: a truncated one has not seen
+ * the whole tree, and treating "not in this answer" as "gone" would delete the very nodes the walk
+ * ran out of pages before reaching.
+ */
+async function walkFileTree(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const seen = new Set<Id>()
+  let truncated = false
+  let state: string | null = null
+  let position = 0
+
+  for (let page = 0; ; page += 1) {
+    const answer = await port.fileNodePage(position, FILE_PAGE)
+    const before = seen.size
+    for (const node of answer.list) seen.add(node.id)
+    await putFileNodes(db, accountId, answer.list)
+    state = answer.state
+    if (answer.ids.length < FILE_PAGE) break
+    if (seen.size === before || page + 1 >= FILE_MAX_PAGES) {
+      truncated = true
+      break
+    }
+    position += answer.ids.length
+  }
+
+  if (!truncated) {
+    const known = await db.fileNodes.where('accountId').equals(accountId).primaryKeys()
+    const gone = known.map(([, id]) => id).filter((id) => !seen.has(id))
+    if (gone.length > 0) await deleteFileNodes(db, accountId, gone)
+  }
+
+  await setFileTreeState(db, accountId, { syncedAt: clock.now(), truncated })
+  if (state !== null) await setSyncState(db, accountId, 'FileNode', state, clock.now())
 }

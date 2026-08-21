@@ -1,10 +1,13 @@
-import type { Calendar, CalendarEvent, Mailbox } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, FileNode, Mailbox } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { EmailEnvelopeInput, ReplicaDb } from '../db'
 import {
   calendarsForAccount,
+  fileNodesForAccount,
+  fileNodesForParent,
   getCalendarQueryCache,
   getContactQueryCache,
+  getFileTreeState,
   getQueryCache,
   getSyncState,
   putAddressBooks,
@@ -27,6 +30,7 @@ import {
   syncCalendars,
   syncContactCards,
   syncEmails,
+  syncFileNodes,
   syncMailboxes,
 } from './delta'
 import {
@@ -112,6 +116,9 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
     getCalendarEvents: async () => ({ list: [], notFound: [], state: 's' }),
     calendarEventChanges: async () => emptyChanges('s'),
     queryCalendarEvents: async () => emptyQuery(),
+    fileNodePage: async () => ({ ids: [], list: [], state: 's' }),
+    getFileNodes: async () => ({ list: [], notFound: [], state: 's' }),
+    fileNodeChanges: async () => emptyChanges('s'),
     ...overrides,
   }
 }
@@ -1054,5 +1061,142 @@ describe('the calendar window', () => {
     await reconcileCalendarQuery(port, db, ACC, 'august', { filter: WINDOW_FILTER }, clock)
     // Two queries: the expanded window and its identity companion.
     expect(queries).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Files (D-4)
+// ---------------------------------------------------------------------------------------------
+
+function fileNode(id: string, over: Partial<FileNode> = {}): FileNode {
+  return {
+    id,
+    name: id,
+    parentId: null,
+    nodeType: 'file',
+    blobId: `blob-${id}`,
+    target: null,
+    size: 1,
+    type: 'text/plain',
+    created: '2026-08-01T00:00:00Z',
+    modified: '2026-08-01T00:00:00Z',
+    accessed: '2026-08-01T00:00:00Z',
+    changed: '2026-08-01T00:00:00Z',
+    executable: false,
+    isSubscribed: true,
+    myRights: {
+      mayRead: true,
+      mayAddChildren: true,
+      mayRename: true,
+      mayDelete: true,
+      mayModifyContent: true,
+      mayShare: false,
+    },
+    shareWith: {},
+    role: null,
+    ...over,
+  } as FileNode
+}
+
+describe('syncFileNodes', () => {
+  it('walks the whole tree when there is no state, and seeds the cursor', async () => {
+    const nodes = [
+      fileNode('d1', { nodeType: 'directory', blobId: null, type: null }),
+      fileNode('f1', { parentId: 'd1' }),
+      fileNode('f2'),
+    ]
+    const port = fakePort({
+      fileNodePage: async () => ({ ids: nodes.map((n) => n.id), list: nodes, state: 'fs1' }),
+    })
+
+    await syncFileNodes(port, db, ACC, clock)
+
+    // The ROOT level is reachable even though `parentId` is null there — the whole reason the row
+    // carries a derived `parent` key (`null` is not a valid IndexedDB key).
+    expect((await fileNodesForParent(db, ACC, null)).map((row) => row.id).sort()).toEqual([
+      'd1',
+      'f2',
+    ])
+    expect((await fileNodesForParent(db, ACC, 'd1')).map((row) => row.id)).toEqual(['f1'])
+    expect(await getSyncState(db, ACC, 'FileNode')).toBe('fs1')
+    expect(await getFileTreeState(db, ACC)).toEqual({ syncedAt: 1000, truncated: false })
+  })
+
+  it('applies a delta, and takes destroyed nodes out', async () => {
+    await setSyncState(db, ACC, 'FileNode', 'fs1', 1)
+    await db.fileNodes.bulkPut([
+      { ...fileNode('f1'), accountId: ACC, parent: '' },
+      { ...fileNode('f2'), accountId: ACC, parent: '' },
+    ])
+    const port = fakePort({
+      fileNodeChanges: async () => ({
+        newState: 'fs2',
+        hasMoreChanges: false,
+        created: [],
+        updated: ['f1'],
+        destroyed: ['f2'],
+      }),
+      getFileNodes: async (ids) => ({
+        list: ids.map((id) => fileNode(id, { name: 'renamed' })),
+        notFound: [],
+        state: 'fs2',
+      }),
+    })
+
+    await syncFileNodes(port, db, ACC, clock)
+
+    expect((await fileNodesForAccount(db, ACC)).map((row) => row.id)).toEqual(['f1'])
+    expect((await db.fileNodes.get([ACC, 'f1']))?.name).toBe('renamed')
+    expect(await getSyncState(db, ACC, 'FileNode')).toBe('fs2')
+  })
+
+  it('treats `cannotCalculateChanges` as a FULL RELOAD, not an error', async () => {
+    /*
+     * The measured D-4 trap, fixed in v0.16.18 but describing a state every new account passes
+     * through: with no change history the server refuses to diff the very state its own `/get`
+     * just handed out. Surfacing that would give a first-time user a broken Files screen.
+     */
+    await setSyncState(db, ACC, 'FileNode', 'stale-cursor', 1)
+    await db.fileNodes.put({ ...fileNode('ghost'), accountId: ACC, parent: '' })
+    const port = fakePort({
+      fileNodeChanges: async () => {
+        throw new CannotCalculateChangesError()
+      },
+      fileNodePage: async () => ({ ids: ['f1'], list: [fileNode('f1')], state: 'fs9' }),
+    })
+
+    await expect(syncFileNodes(port, db, ACC, clock)).resolves.toBeUndefined()
+
+    // The walk is authoritative when it completes: a node it did not see is gone.
+    expect((await fileNodesForAccount(db, ACC)).map((row) => row.id)).toEqual(['f1'])
+    expect(await getSyncState(db, ACC, 'FileNode')).toBe('fs9')
+  })
+
+  it('never deletes on a TRUNCATED walk — it did not see the whole tree', async () => {
+    /*
+     * The pager gives up after ten pages. Treating "not in this answer" as "gone" would then delete
+     * exactly the nodes the walk ran out of pages before reaching — a client that silently empties
+     * a large account. The shortfall is recorded instead, and the screen says so (B-6).
+     */
+    const page = Array.from({ length: 500 }, (_, index) => fileNode(`p${index}`))
+    let pages = 0
+    const port = fakePort({
+      fileNodePage: async () => {
+        pages += 1
+        // Always a FULL page of the same nodes with fresh ids, so the walk never sees an end.
+        return {
+          ids: page.map((n) => `${n.id}-${pages}`),
+          list: page.map((n) => fileNode(`${n.id}-${pages}`)),
+          state: `fs${pages}`,
+        }
+      },
+    })
+    await db.fileNodes.put({ ...fileNode('older'), accountId: ACC, parent: '' })
+
+    await syncFileNodes(port, db, ACC, clock)
+
+    expect(pages).toBe(10)
+    expect((await getFileTreeState(db, ACC)).truncated).toBe(true)
+    expect(await db.fileNodes.get([ACC, 'older'])).toBeDefined()
   })
 })

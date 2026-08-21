@@ -11,6 +11,7 @@ import type {
   Calendar,
   CalendarEvent,
   ContactCard,
+  FileNode,
   Id,
   Identity,
   Mailbox,
@@ -43,6 +44,9 @@ import {
   type EmailRow,
   estimateBlobBytes,
   estimateBodyBytes,
+  FILE_TREE_STATE_KEY,
+  type FileNodeRow,
+  type FileTreeState,
   type IdentityRow,
   type LocalPrefRow,
   type MailboxRow,
@@ -57,6 +61,7 @@ import {
   toCalendarRow,
   toContactCardRow,
   toEmailRow,
+  toFileNodeRow,
   toIdentityRow,
   toMailboxRow,
   toThreadRow,
@@ -1128,4 +1133,60 @@ export async function markCalendarWindowsStale(db: ReplicaDb, accountId: Id): Pr
     .modify((row) => {
       row.stale = true
     })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Files (D-4). The whole tree, mirrored — see the note on {@link FileNodeRow} for why a window
+// would be the wrong shape here and why the root level needs a derived parent key.
+// ---------------------------------------------------------------------------------------------
+
+export async function putFileNodes(db: ReplicaDb, accountId: Id, nodes: FileNode[]): Promise<void> {
+  await db.fileNodes.bulkPut(nodes.map((node) => toFileNodeRow(accountId, node)))
+}
+
+/**
+ * One level of the tree — the children of `parentId`, or the roots when it is `null`.
+ *
+ * Unsorted on purpose: the ORDER the reader sees is `file-sort.ts`'s job and is applied to whatever
+ * came back, every time. A second opinion here would only be a place for the two to disagree.
+ */
+export function fileNodesForParent(
+  db: ReplicaDb,
+  accountId: Id,
+  parentId: Id | null,
+): Promise<FileNodeRow[]> {
+  return db.fileNodes
+    .where('[accountId+parent]')
+    .equals([accountId, parentId ?? ''])
+    .toArray()
+}
+
+export function fileNodesForAccount(db: ReplicaDb, accountId: Id): Promise<FileNodeRow[]> {
+  return db.fileNodes.where('accountId').equals(accountId).toArray()
+}
+
+export function fileNodesByIds(
+  db: ReplicaDb,
+  accountId: Id,
+  ids: Id[],
+): Promise<(FileNodeRow | undefined)[]> {
+  return db.fileNodes.bulkGet(ids.map((id) => [accountId, id]))
+}
+
+export function deleteFileNodes(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.fileNodes.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
+const NEVER_SYNCED: FileTreeState = { syncedAt: 0, truncated: false }
+
+export async function getFileTreeState(db: ReplicaDb, accountId: Id): Promise<FileTreeState> {
+  return (await getPref<FileTreeState>(db, accountId, FILE_TREE_STATE_KEY)) ?? NEVER_SYNCED
+}
+
+export function setFileTreeState(
+  db: ReplicaDb,
+  accountId: Id,
+  state: FileTreeState,
+): Promise<void> {
+  return setPref(db, accountId, FILE_TREE_STATE_KEY, state)
 }

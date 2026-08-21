@@ -64,6 +64,7 @@ import type {
   EmailBodyValue,
   EmailComparator,
   EmailFilter,
+  FileNode,
   Id,
   Identity,
   Mailbox,
@@ -752,6 +753,51 @@ export interface CalendarQueryCacheRow {
   lastUsedAt: number
 }
 
+// ---------------------------------------------------------------------------------------------
+// Files (D-4, `draft-ietf-jmap-filenode`). The WHOLE tree, not a window — and that is a fact about
+// this server rather than a preference.
+//
+// `files-client.ts` already reads the whole account to draw one folder: Stalwart 0.16 refuses
+// `filter: {parentId: null}` (and refuses the WHOLE request with it), so the root listing sends no
+// filter at all and the level is reassembled on the client. A replica of the whole tree is therefore
+// not more traffic than the screen was already spending — it is the same walk, done once and kept.
+//
+// Blobs are explicitly NOT part of this. A node's `blobId` addresses bytes on the download endpoint,
+// and caching those is a different feature with a different budget (`blob-cache.ts` + M3.4's
+// eviction). Offline you can see what is there and where it is; opening a file still needs the line.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * One node of the file tree.
+ *
+ * `parent` is derived and INDEXED because `parentId` is `null` at the root, and `null` is not a
+ * valid IndexedDB key — a record whose key path holds one is dropped from that index entirely, so
+ * every root node would be invisible to the query that draws the root folder. The empty string
+ * stands for "the root"; a JMAP id is never empty, so the two cannot be confused.
+ */
+export interface FileNodeRow extends FileNode {
+  accountId: Id
+  parent: Id | ''
+}
+
+/** {@link LocalPrefRow} key: was the last whole-tree walk cut short? See {@link FileTreeState}. */
+export const FILE_TREE_STATE_KEY = 'files.tree'
+
+/**
+ * What the file screen needs to know about the replica beyond the rows themselves.
+ *
+ * Kept in `localPrefs` rather than in a store of its own: it is one row per account, it is local-only,
+ * and a new store would be a schema version for two scalars. `truncated` is the answer to "is this
+ * all of it" (the pager gives up after {@link MAX_PAGES} — see `files-client.ts`), and a listing that
+ * is short while looking complete is the failure that answer exists to prevent.
+ */
+export interface FileTreeState {
+  /** When the whole tree was last walked; `0` = never. */
+  readonly syncedAt: number
+  /** The walk stopped before the end — something is missing from the rows. */
+  readonly truncated: boolean
+}
+
 export class ReplicaDb extends Dexie {
   accounts!: Table<AccountRecord, Id>
   mailboxes!: Table<MailboxRow, [Id, Id]>
@@ -772,6 +818,7 @@ export class ReplicaDb extends Dexie {
   calendars!: Table<CalendarRow, [Id, Id]>
   calendarEvents!: Table<CalendarEventRow, [Id, Id]>
   calendarQueryCache!: Table<CalendarQueryCacheRow, [Id, string]>
+  fileNodes!: Table<FileNodeRow, [Id, Id]>
 
   constructor(name: string = REPLICA_DB_NAME) {
     super(name)
@@ -860,6 +907,12 @@ export class ReplicaDb extends Dexie {
       calendars: '[accountId+id], accountId',
       calendarEvents: '[accountId+id], accountId, [accountId+base]',
       calendarQueryCache: '[accountId+key], accountId, [accountId+lastUsedAt]',
+    })
+    // v8 (D-4) — additive: the file tree. One brand-new store, so no `.upgrade()`. Indexed by the
+    // derived `parent` (see {@link FileNodeRow}) because `null` cannot be an IndexedDB key and the
+    // root level is the one every reader starts on.
+    this.version(8).stores({
+      fileNodes: '[accountId+id], accountId, [accountId+parent]',
     })
   }
 }
@@ -967,6 +1020,11 @@ export function toCalendarEventRow(
   const base =
     typeof event.baseEventId === 'string' && event.baseEventId !== '' ? event.baseEventId : event.id
   return { accountId, id: event.id, base, occurrence, event }
+}
+
+/** Map a JMAP FileNode to its stored row (D-4), deriving the root-safe parent key. */
+export function toFileNodeRow(accountId: Id, node: FileNode): FileNodeRow {
+  return { ...node, accountId, parent: node.parentId ?? '' }
 }
 
 // ---------------------------------------------------------------------------------------------

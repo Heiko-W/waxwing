@@ -7,12 +7,21 @@
  * someone later "simplifies" the render into a single `<iframe>` for everything.
  */
 
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { FileNode, FileNodeCapability } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext } from '../app/session/context'
 import type { SessionContextValue } from '../app/session/types'
+import {
+  deleteFileNodes,
+  putFileNodes,
+  type ReplicaDb,
+  ReplicaProvider,
+  setFileTreeState,
+} from '../sync'
+import { clearEngines, type SyncEngine, setEngineFor } from '../sync/engine'
+import { freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import FilesPage from './FilesPage'
@@ -52,6 +61,8 @@ let listed: FileNode[] = []
 let truncated = false
 /** What `search` answers with, paired with the folder each hit was found in. */
 let searchHits: FileSearchHit[] = []
+/** Makes the ENGINE's re-read fail — the outage that used to be `list` throwing. */
+let refreshFails = false
 
 const client: FilesClient = {
   list: async () => ({ nodes: listed, truncated }),
@@ -86,10 +97,16 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
+afterEach(async () => {
   listed = []
   searchHits = []
   truncated = false
+  refreshFails = false
+  clearEngines()
+  // Unmount before the database goes: a live query still subscribed to a deleted Dexie handle
+  // raises `DatabaseClosedError` as an unhandled rejection, outside any test.
+  cleanup()
+  await db?.delete()
 })
 
 /**
@@ -121,11 +138,45 @@ const session = {
   },
 } as unknown as SessionContextValue
 
+const ACC = 'a'
+let db: ReplicaDb
+
+/**
+ * The reader's own file tree lives in the replica now (D-4), so the screen reads Dexie rather than
+ * the injected client. `listed` and `truncated` — which every test in this file already writes — are
+ * seeded into it, and the fake engine's `refreshFileTree` re-seeds from whatever they hold at that
+ * moment, which is how a test changes what a reload finds.
+ *
+ * The client is still injected, and still does everything it did: writes, downloads and shares.
+ */
+function seedTree(): Promise<void> {
+  return (async () => {
+    const known = await db.fileNodes.where('accountId').equals(ACC).primaryKeys()
+    const fresh = new Set(listed.map((node) => node.id))
+    const gone = known.map(([, id]) => id).filter((id) => !fresh.has(id))
+    if (gone.length > 0) await deleteFileNodes(db, ACC, gone)
+    await putFileNodes(db, ACC, [...listed])
+    await setFileTreeState(db, ACC, { syncedAt: 1, truncated })
+  })().catch(() => {})
+}
+
 function mount(injected: FilesClient = client) {
+  db = freshDb()
+  void seedTree()
+  setEngineFor(ACC, {
+    accountId: ACC,
+    refreshFileTree: async () => {
+      if (refreshFails) return false
+      await seedTree()
+      return true
+    },
+  } as unknown as SyncEngine)
   return render(
     <SessionContext.Provider value={session}>
       <ToastProvider>
-        <FilesPage client={injected} />
+        <ReplicaProvider accountId={ACC} db={db}>
+          <FilesPage client={injected} />
+        </ReplicaProvider>
       </ToastProvider>
     </SessionContext.Provider>,
   )
@@ -367,14 +418,13 @@ describe('a write whose reload does not come back', () => {
     const uploaded: string[] = []
     const failing: FilesClient = {
       ...client,
-      list: async () => {
-        throw new Error('400 notRequest')
-      },
       upload: async (file) => {
         uploaded.push(file.name)
         return node({ id: '9', name: file.name })
       },
     }
+    // The re-read is the engine's now, so that is where the outage goes.
+    refreshFails = true
     const { container } = mount(failing)
     await screen.findByText('The files could not be loaded.')
 
@@ -383,6 +433,63 @@ describe('a write whose reload does not come back', () => {
 
     expect(uploaded).toEqual(['note.txt'])
     expect(await screen.findByText(/could not be reloaded/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * Files offline (D-4).
+ *
+ * The screen used to answer a lost connection with "Your files could not be loaded." over a folder
+ * the device had listed a minute earlier. It reads the replica now, so the listing survives; what
+ * cannot work without a line is offered greyed out with a reason, never removed.
+ */
+describe('offline', () => {
+  afterEach(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+
+  it('keeps showing the folder it already had, and says it is not updating', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    // Every request this screen could make fails; the rows come out of IndexedDB.
+    refreshFails = true
+    mount({
+      ...client,
+      list: async () => {
+        throw new Error('offline')
+      },
+    })
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toMatch(/Not updating while offline/)
+    // And emphatically NOT the failure the screen used to show over exactly this data.
+    expect(screen.queryByText('The files could not be loaded.')).not.toBeInTheDocument()
+  })
+
+  it('says a tree it has never synced is not synced, rather than reporting a failure', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = []
+    refreshFails = true
+    // A replica that has NEVER been walked — `syncedAt: 0`, which is a different sentence from
+    // "this folder is empty".
+    const view = mount()
+    await setFileTreeState(db, ACC, { syncedAt: 0, truncated: false })
+
+    expect(await screen.findByText('Your files have not been synced yet')).toBeInTheDocument()
+    expect(view.container.textContent).not.toContain('The files could not be loaded.')
+  })
+
+  it('offers Upload and New folder greyed out with a reason, never hidden', async () => {
+    // Apple's rule, and the one this screen already followed: what cannot work offline is visible
+    // and explained. A control that disappears teaches the reader the feature is gone.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount()
+    await showing('notes.txt')
+
+    expect(screen.getByRole('button', { name: /New folder/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Upload/ })).toBeInTheDocument()
   })
 })
 
@@ -710,39 +817,44 @@ describe('selecting several nodes', () => {
 describe('searching and sorting', () => {
   const open = () => userEvent.click(screen.getByRole('button', { name: 'List options' }))
 
-  it('asks the server, and states which folder each hit was found in', async () => {
-    const asked: string[] = []
-    const parent = node({
-      id: 'd1',
-      name: 'invoices',
-      nodeType: 'directory',
-      type: null,
-      blobId: null,
-    })
-    const spy: FilesClient = {
-      ...client,
-      search: async (query) => {
-        asked.push(query)
-        return [{ node: node({ id: '1', name: 'report.txt', parentId: 'd1' }), parent }]
-      },
-    }
-    listed = []
-    mount(spy)
-    await screen.findByText('This folder is empty.')
+  it('searches the WHOLE tree from the replica, and says which folder each hit is in', async () => {
+    /*
+     * The search is local now (D-4): the replica holds every node, so a round trip per keystroke
+     * bought nothing the client could not answer — and cost the answer when there is no line.
+     *
+     * It still spans the whole account, which is why the row has to say WHICH `report.txt` it is:
+     * a search that finds three files of the same name and shows three identical rows is worse than
+     * no search at all.
+     */
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({ id: '1', name: 'report.txt', parentId: 'd1' }),
+    ]
+    // `report.txt` is INSIDE `invoices`, so the root shows only the folder — until the search runs.
+    mount()
+    await showing('invoices')
 
     await userEvent.type(screen.getByLabelText('Search files'), 'report')
 
-    // A search spans the whole account — the server has no subtree condition — so the row has to
-    // say which `report.txt` it is.
-    await waitFor(() => expect(asked.at(-1)).toBe('report'))
     expect(await screen.findByText('report.txt')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'in invoices' })).toBeInTheDocument()
   })
 
-  it('says so when nothing matches, rather than showing an empty folder', async () => {
-    const spy: FilesClient = { ...client, search: async () => [] }
+  it('finds nothing without a network, rather than failing', async () => {
+    // The whole point of moving the search off the wire: it is the same search offline.
     listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
-    mount(spy)
+    refreshFails = true
+    mount()
+    await showing('notes.txt')
+
+    await userEvent.type(screen.getByLabelText('Search files'), 'note')
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+  })
+
+  it('says so when nothing matches, rather than showing an empty folder', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount()
     await showing('notes.txt')
 
     await userEvent.type(screen.getByLabelText('Search files'), 'zzz')
@@ -769,13 +881,14 @@ describe('searching and sorting', () => {
     await open()
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Sort by size' }))
 
-    // The server's comparator decides what survives a TRUNCATED listing; what is on screen is
-    // ordered here, so a server that ignores the comparator changes the wire and nothing else.
+    // Ordered HERE, over rows the replica already holds — so a server that ignores a comparator
+    // cannot change what is on screen. Since D-4 the reorder costs no request at all, which is the
+    // strongest form of the claim this test has always made.
     await waitFor(() => {
       const names = screen.getAllByText(/\.txt$/).map((element) => element.textContent)
       expect(names).toEqual(['b.txt', 'a.txt'])
     })
-    expect(calls).toBeGreaterThan(0)
+    expect(calls).toBe(0)
   })
 })
 

@@ -6,7 +6,7 @@
  * against a plain fake port.
  */
 
-import type { CalendarEvent, ContactCard, Id, PatchObject } from '@waxwing/jmap'
+import type { CalendarEvent, ContactCard, FileNode, Id, PatchObject } from '@waxwing/jmap'
 import {
   creationRef,
   isMethodErrorType,
@@ -537,6 +537,48 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       }
       return result
     },
+
+    // ── Files (D-4) ──────────────────────────────────────────────────────────────────────────
+
+    async fileNodePage(position, limit) {
+      const builder = client.request()
+      // No `filter` and no `sort`: the tree is read WHOLE (see `JmapPort.fileNodePage`), and the
+      // order the reader sees is decided locally by `file-sort.ts`. An argument this server might
+      // refuse is one that would take the entire request down (HTTP 400 `notRequest`), so the walk
+      // sends the smallest request that can answer.
+      const query = builder.invoke(Methods.fileNodeQuery, {
+        accountId,
+        // Omitted at 0 rather than sent — a default the server already applies is one more argument
+        // it could refuse.
+        ...(position === 0 ? {} : { position }),
+        limit,
+      })
+      const nodes = builder.invoke(Methods.fileNodeGet, { accountId, '#ids': query.ref('/ids') })
+      const responses = await builder.send()
+      const got = responses.get(nodes)
+      return { ids: responses.get(query).ids, list: got.list as FileNode[], state: got.state }
+    },
+
+    async getFileNodes(ids) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.fileNodeGet, { accountId, ids })
+      const response = (await builder.send()).get(handle)
+      return {
+        list: response.list as FileNode[],
+        notFound: response.notFound,
+        state: response.state,
+      }
+    },
+
+    async fileNodeChanges(sinceState, maxChanges) {
+      return changesOrReload(
+        client.request(),
+        Methods.fileNodeChanges,
+        accountId,
+        sinceState,
+        maxChanges,
+      )
+    },
   }
 }
 
@@ -552,7 +594,7 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
  */
 async function changesOrReload(
   builder: ReturnType<JmapClient['request']>,
-  // Both calendar feeds are `ChangesRequest → ChangesResponse`, so one definition types both.
+  // Every feed here is `ChangesRequest → ChangesResponse`, so one definition types them all.
   method: typeof Methods.calendarChanges,
   accountId: Id,
   sinceState: string,
