@@ -565,6 +565,90 @@
       "mail": "Mail",
       "accounts": "Accounts & rules",
       "system": "System"
+    },
+    "security": {
+      "title": "Account & security",
+      "description": "What your server lets you change about this account yourself.",
+      "loading": "Loading account settings…",
+      "unavailable": "Your server offers none of these settings for this account.",
+      "password": {
+        "label": "Password",
+        "hint": "The password you sign in with — here, and in every mail app that uses this account.",
+        "change": "Change password…",
+        "title": "Change password",
+        "current": "Current password",
+        "next": "New password",
+        "confirm": "Repeat new password",
+        "submit": "Change password",
+        "cancel": "Cancel",
+        "changed": "Password changed",
+        "missing": "Fill in all three fields.",
+        "mismatch": "The two new passwords are not the same.",
+        "devices": "Afterwards you sign in again here, and enter the new password in the mail apps on your other devices. App passwords keep working."
+      },
+      "appPasswords": {
+        "label": "App passwords",
+        "hint": "A separate password for each mail app on your devices. Revoking one leaves your account password and every other app untouched.",
+        "empty": "No app passwords yet.",
+        "create": "Create app password…",
+        "createTitle": "Create app password",
+        "createIntro": "Your server makes a password that only this one app uses.",
+        "name": "What is it for?",
+        "namePlaceholder": "iPhone Mail",
+        "nameMissing": "Give it a name, so you can tell it apart later.",
+        "expiry": "Expires",
+        "expiryNever": "Never",
+        "expiryDays": "In {{days}} days",
+        "submit": "Create",
+        "cancel": "Cancel",
+        "created": "Created {{date}}",
+        "expires": "Expires {{date}}",
+        "expired": "Expired — this password no longer works.",
+        "restricted": "Limited to certain rights or addresses. Set outside {{product}}.",
+        "revoke": "Revoke {{name}}",
+        "revokeTitle": "Revoke app password?",
+        "revokeBody": "{{name}} stops working straight away. Any app still using it asks for a password again.",
+        "revokeConfirm": "Revoke",
+        "revokeCancel": "Keep it",
+        "revoked": "App password revoked",
+        "secretTitle": "Your app password",
+        "secretIntro": "Enter it in the mail app now, together with your email address.",
+        "secretLabel": "App password",
+        "secretWarning": "This is the only time it is shown. If it gets lost, revoke it here and create a new one.",
+        "copy": "Copy",
+        "copied": "Copied",
+        "done": "Done"
+      },
+      "language": {
+        "label": "Language of server messages",
+        "hint": "The language your server writes its own calendar invitations and reminders in. The language of {{product}} itself is set under General.",
+        "saved": "Language saved"
+      },
+      "encryption": {
+        "label": "Encryption at rest",
+        "off": "Off. Your server stores your messages unencrypted.",
+        "on": "On — {{cipher}}",
+        "key": "Key: {{name}}",
+        "explain": "Your server encrypts incoming messages with your own key before storing them. {{product}} has no OpenPGP support and cannot display them.",
+        "manage": "Only your server’s own account console can change this. {{product}} does not offer the switch, because turning it on would leave your mailbox unreadable here."
+      },
+      "spam": {
+        "label": "Spam training samples",
+        "hint": "Copies your server kept of messages you classified, to train its spam filter. Deleting one removes the copy; where the message is filed does not change.",
+        "empty": "Your server kept no copies of your messages.",
+        "isSpam": "Kept as spam",
+        "isHam": "Kept as not spam",
+        "noSubject": "(no subject)",
+        "delete": "Delete the copy of {{subject}}",
+        "deleted": "Copy deleted"
+      },
+      "error": {
+        "loadFailed": "These settings could not be loaded.",
+        "rejected": "Your server refused this change.",
+        "server": "It said: {{detail}}",
+        "offline": "You are offline. These settings can only be changed while connected.",
+        "generic": "The change could not be saved."
+      }
     }
   },
   "contacts": {

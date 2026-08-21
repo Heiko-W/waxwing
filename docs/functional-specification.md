@@ -530,6 +530,34 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
   offered **only** when the account advertised what it needs in `sieveExtensions`, since a
   `require` the server does not implement can compile and then fail when mail arrives. An
   account that advertises no list at all gets the base vocabulary.
+- **FR-ACC-01 (V1.x, Should — shipped)** — **App passwords** (`x:AppPassword/{get,set}`): a
+  separate credential per mail app, created with a name and an optional expiry, listed with the
+  date it was made, revocable one at a time. The secret is generated server-side and shown
+  **exactly once**, with a copy action and a plain sentence saying it will not be shown again;
+  it is never written to storage, a log or the replica. Where another tool has narrowed a
+  password's rights or bound it to an IP range, the row says so — Waxwing sets neither.
+
+- **FR-ACC-02 (V1.x, Should — shipped)** — **Password change**
+  (`x:AccountPassword/set`): current password, new, repeat. Strength is the server's rule, not
+  ours; its refusal is shown with its own sentence in it. A Basic-auth session re-authenticates
+  immediately afterwards (FR-AUTH-06) rather than failing later out of context.
+
+- **FR-ACC-03 (V1.x, Could — shipped)** — **Server-message language and account diagnostics**
+  (`x:AccountSettings/get,set`, `x:PublicKey/get`, `x:SpamTrainingSample/{get,set}`): the
+  language the server writes its own calendar invitations and reminders in; a **read-only**
+  report of encryption at rest, naming the key and what it means for this client; and the spam
+  training samples the server is keeping of the reader's messages, deletable one at a time
+  (the server creates them — an account may not).
+
+- **FR-ACC-04 (Must, for all of FR-ACC-\*)** — All of the above sit behind `urn:stalwart:jmap`,
+  a **proprietary** extension, and are therefore a progressive enhancement in the sense of
+  product principle 6 and FR-SRV-02: on a server that does not advertise it the section does not
+  exist, down to its row in the settings rail. The capability is announced on the ACCOUNT, not
+  on the session — see ADR-027, which also records why **two-factor authentication is not
+  shipped** (enabling TOTP disables HTTP Basic, which is how this client signs in) and why
+  encryption at rest is reported rather than offered (this client cannot read an encrypted
+  mailbox).
+
 - **FR-SIEVE-02 (V1.x, Could — partially shipped M5.2)** — Raw Sieve editor with syntax
   highlighting and server-side validation feedback for power users.
 

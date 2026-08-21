@@ -565,6 +565,90 @@
       "mail": "E-Mail",
       "accounts": "Konten & Regeln",
       "system": "System"
+    },
+    "security": {
+      "title": "Konto & Sicherheit",
+      "description": "Was du an diesem Konto auf dem Server selbst ändern kannst.",
+      "loading": "Kontoeinstellungen werden geladen…",
+      "unavailable": "Dein Server bietet für dieses Konto keine dieser Einstellungen an.",
+      "password": {
+        "label": "Passwort",
+        "hint": "Das Passwort, mit dem du dich anmeldest — hier und in jedem Mailprogramm, das dieses Konto benutzt.",
+        "change": "Passwort ändern…",
+        "title": "Passwort ändern",
+        "current": "Aktuelles Passwort",
+        "next": "Neues Passwort",
+        "confirm": "Neues Passwort wiederholen",
+        "submit": "Passwort ändern",
+        "cancel": "Abbrechen",
+        "changed": "Passwort geändert",
+        "missing": "Fülle alle drei Felder aus.",
+        "mismatch": "Die beiden neuen Passwörter sind nicht gleich.",
+        "devices": "Danach meldest du dich hier neu an und trägst das neue Passwort in den Mailprogrammen auf deinen anderen Geräten nach. App-Passwörter gelten weiter."
+      },
+      "appPasswords": {
+        "label": "App-Passwörter",
+        "hint": "Ein eigenes Passwort für jedes Mailprogramm auf deinen Geräten. Widerrufst du eines, bleiben dein Kontopasswort und alle anderen Programme unberührt.",
+        "empty": "Noch keine App-Passwörter.",
+        "create": "App-Passwort erstellen…",
+        "createTitle": "App-Passwort erstellen",
+        "createIntro": "Dein Server erzeugt ein Passwort, das nur dieses eine Programm benutzt.",
+        "name": "Wofür ist es?",
+        "namePlaceholder": "iPhone Mail",
+        "nameMissing": "Gib ihm einen Namen, damit du es später wiedererkennst.",
+        "expiry": "Läuft ab",
+        "expiryNever": "Nie",
+        "expiryDays": "In {{days}} Tagen",
+        "submit": "Erstellen",
+        "cancel": "Abbrechen",
+        "created": "Erstellt am {{date}}",
+        "expires": "Läuft ab am {{date}}",
+        "expired": "Abgelaufen — dieses Passwort funktioniert nicht mehr.",
+        "restricted": "Auf bestimmte Rechte oder Adressen eingeschränkt. Nicht in {{product}} gesetzt.",
+        "revoke": "{{name}} widerrufen",
+        "revokeTitle": "App-Passwort widerrufen?",
+        "revokeBody": "{{name}} funktioniert ab sofort nicht mehr. Jedes Programm, das es noch benutzt, fragt wieder nach einem Passwort.",
+        "revokeConfirm": "Widerrufen",
+        "revokeCancel": "Behalten",
+        "revoked": "App-Passwort widerrufen",
+        "secretTitle": "Dein App-Passwort",
+        "secretIntro": "Trage es jetzt zusammen mit deiner E-Mail-Adresse in das Mailprogramm ein.",
+        "secretLabel": "App-Passwort",
+        "secretWarning": "Nur dieses eine Mal wird es angezeigt. Geht es verloren, widerrufe es hier und erstelle ein neues.",
+        "copy": "Kopieren",
+        "copied": "Kopiert",
+        "done": "Fertig"
+      },
+      "language": {
+        "label": "Sprache der Servermeldungen",
+        "hint": "Die Sprache, in der dein Server seine eigenen Kalendereinladungen und Erinnerungen schreibt. Die Sprache von {{product}} selbst stellst du unter Allgemein ein.",
+        "saved": "Sprache gespeichert"
+      },
+      "encryption": {
+        "label": "Verschlüsselung im Ruhezustand",
+        "off": "Aus. Dein Server legt deine Nachrichten unverschlüsselt ab.",
+        "on": "An — {{cipher}}",
+        "key": "Schlüssel: {{name}}",
+        "explain": "Dein Server verschlüsselt eingehende Nachrichten mit deinem eigenen Schlüssel, bevor er sie ablegt. {{product}} hat keine OpenPGP-Unterstützung und kann sie nicht anzeigen.",
+        "manage": "Ändern lässt sich das nur in der Kontoverwaltung deines Servers. {{product}} bietet den Schalter nicht an, weil dein Postfach hier danach unlesbar wäre."
+      },
+      "spam": {
+        "label": "Spam-Trainingsproben",
+        "hint": "Kopien, die dein Server von Nachrichten behalten hat, die du eingeordnet hast, um seinen Spamfilter zu trainieren. Löschen entfernt die Kopie; wo die Nachricht liegt, ändert sich dadurch nicht.",
+        "empty": "Dein Server hat keine Kopien deiner Nachrichten behalten.",
+        "isSpam": "Als Spam behalten",
+        "isHam": "Als kein Spam behalten",
+        "noSubject": "(kein Betreff)",
+        "delete": "Kopie von {{subject}} löschen",
+        "deleted": "Kopie gelöscht"
+      },
+      "error": {
+        "loadFailed": "Diese Einstellungen konnten nicht geladen werden.",
+        "rejected": "Dein Server hat diese Änderung abgelehnt.",
+        "server": "Er meldet: {{detail}}",
+        "offline": "Du bist offline. Diese Einstellungen lassen sich nur mit Verbindung ändern.",
+        "generic": "Die Änderung konnte nicht gespeichert werden."
+      }
     }
   },
   "contacts": {

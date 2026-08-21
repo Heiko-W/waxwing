@@ -2594,10 +2594,21 @@ open. Verification and decryption are not started, and §5.1 of
 - Decryption, either scheme, needs private keys and therefore a key store, a shared-computer
   answer, a fresh XSS threat model and a recovery story. That is a milestone of its own.
 
-Measured 2026-08-19 against Stalwart 0.16: no key material is reachable over JMAP —
-`urn:stalwart:jmap` is absent from the session and its account capability is `{}`. The key
-Stalwart does hold is the user's OWN public key, for encryption at rest; verifying a signature
-needs the SENDER's, which no server in this architecture can supply.
+Measured 2026-08-19 against Stalwart 0.16, **corrected 2026-08-21 against 0.16.18**: no
+SENDER key material is reachable over JMAP. The earlier wording — "`urn:stalwart:jmap` is
+absent from the session and its account capability is `{}`" — was misleading in its first
+half and has since been re-measured. The capability IS advertised: it is absent from the
+session-level `capabilities` object and present, as `{}`, in
+`accounts[id].accountCapabilities` (and in `primaryAccounts`). A client that probes the
+top-level object alone therefore finds nothing on the very server that has it — which is why
+`serverSupportsSelfService` (`apps/web/src/settings/stalwart-client.ts`) asks both levels
+through `hasCapability(session, urn, accountId)`, exactly as `getMailCapability` already did.
+
+What stands is the conclusion, for a different reason: behind that capability the registry
+exposes the user's OWN public key (`x:PublicKey`, for encryption at rest). Verifying a
+signature needs the SENDER's, which no server in this architecture can supply. What the
+capability DOES reach is self-service — app passwords, the account password, account settings
+— which M5.x ships as Settings → Account & security.
 
 ## 12. Cross-cutting Workstreams (no start/end — enforced continuously)
 
