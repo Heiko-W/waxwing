@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { useContactPhoto } from '../contacts/use-contact-photo'
 import { Avatar, Menu, VisuallyHidden } from '../ui'
 import { formatAddress, isPlausibleEmail, parseAddressList } from './address-validation'
-import type { RecipientField as RecipientFieldName } from './composer-store'
+import type { AddressField, RecipientField as RecipientFieldName } from './composer-store'
 import styles from './recipient-field.module.css'
 import {
   type AddressSuggestion,
@@ -27,14 +27,15 @@ import {
 const SUGGEST_DEBOUNCE_MS = 120
 const SUGGEST_LIMIT = 6
 
-const FIELD_LABEL_KEY: Record<RecipientFieldName, string> = {
+const FIELD_LABEL_KEY: Record<AddressField, string> = {
   to: 'compose.toLabel',
   cc: 'compose.ccLabel',
   bcc: 'compose.bccLabel',
+  replyTo: 'compose.replyToLabel',
 }
 
 export interface RecipientFieldProps {
-  readonly field: RecipientFieldName
+  readonly field: AddressField
   readonly label: string
   readonly value: EmailAddress[]
   readonly source: RecipientSuggestionSource
@@ -42,6 +43,7 @@ export interface RecipientFieldProps {
   readonly accountId?: Id | undefined
   readonly onChange: (addrs: EmailAddress[]) => void
   readonly onMove: (index: number, to: RecipientFieldName) => void
+  /** Fields a pill may be moved to. Empty (Reply-To) hides the per-pill move menu entirely. */
   readonly otherFields: readonly RecipientFieldName[]
 }
 

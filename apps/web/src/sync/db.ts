@@ -537,6 +537,12 @@ export interface SerializedDraft {
   to: EmailAddress[]
   cc: EmailAddress[]
   bcc: EmailAddress[]
+  /**
+   * The draft's own `Reply-To` (M-11). OPTIONAL, and it has to stay that way: rows written before
+   * this field existed are read back by `deserializeDraft` without a migration, and a required
+   * field would turn every one of them into a draft that cannot be reopened.
+   */
+  replyTo?: EmailAddress[]
   subject: string
   body: string
   inReplyTo: string[] | null
@@ -547,6 +553,23 @@ export interface SerializedDraft {
   /** Reply/forward source id + the keyword to set on it after send (M2.8); `null` for a new draft. */
   sourceEmailId: Id | null
   sourceFlag: '$answered' | '$forwarded' | null
+  /**
+   * Priority / delivery receipt / TLS-only for this send (M-7, M-11). Optional for the same reason
+   * as `replyTo`; absent reads back as {@link DEFAULT_SEND_OPTIONS}.
+   *
+   * Local, not on the server draft. Priority survives a round trip through the Drafts mailbox as a
+   * header, but a receipt and a TLS requirement are ENVELOPE facts with nowhere to live in a stored
+   * message — writing them into `X-Waxwing-*` headers would leak this app's bookkeeping into every
+   * message it sends. The crash-safe local row is where draft edit-state belongs anyway.
+   */
+  sendOptions?: SerializedSendOptions
+}
+
+/** {@link SerializedDraft.sendOptions} — structurally the composer's `SendOptions`. */
+export interface SerializedSendOptions {
+  priority: 'low' | 'normal' | 'high'
+  deliveryReceipt: boolean
+  requireTls: boolean
 }
 
 export type DraftSyncStatus = 'pending' | 'synced' | 'sending' | 'error'

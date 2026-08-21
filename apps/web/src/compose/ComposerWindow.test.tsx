@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { SessionContext } from '../app/session/context'
 import type { LayoutTier } from '../app/shell/layout'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
@@ -338,5 +340,100 @@ describe('what may be squeezed when the header grows', () => {
 
     const addressing = commonAncestor(to, subject)
     expect(addressing.contains(editor)).toBe(false)
+  })
+})
+
+/**
+ * Send options + attaching from Files in the window itself (M-7, M-11, D-5).
+ *
+ * These need a connected session, which the plain `Harness` deliberately does not have: what the
+ * account advertises is exactly what decides whether these controls exist. `withSession` wraps the
+ * same harness rather than forking it, so the window under test stays the real one.
+ */
+function withSession(
+  id: string,
+  accountCapabilities: Record<string, unknown>,
+  tier: LayoutTier = 'desktop',
+) {
+  const value = {
+    connected: {
+      accountId: 'a',
+      client: {},
+      // `capabilities` is present and empty rather than absent: a session document without it is
+      // not something a JMAP server may send (RFC 8620 §2), and the attachment hook reads it.
+      jmapSession: { capabilities: {}, accounts: { a: { accountCapabilities } } },
+    },
+  } as unknown as ComponentProps<typeof SessionContext.Provider>['value']
+  return render(
+    <SessionContext.Provider value={value}>
+      <Harness id={id} tier={tier} />
+    </SessionContext.Provider>,
+  )
+}
+
+const SUBMISSION_ALL = {
+  'urn:ietf:params:jmap:submission': {
+    maxDelayedSend: 2592000,
+    submissionExtensions: { DSN: [], REQUIRETLS: [], 'MT-PRIORITY': ['MIXER'] },
+  },
+}
+
+describe('ComposerWindow — send options (M-7, M-11)', () => {
+  it('keeps priority, receipt and TLS behind one control instead of on the surface', async () => {
+    const id = store().openDraft({})
+    withSession(id, SUBMISSION_ALL)
+
+    // Nothing about them is visible until asked for — the composer's ground floor is unchanged.
+    expect(screen.queryByLabelText('Priority')).toBeNull()
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Send options' }))
+
+    expect(await screen.findByLabelText('Priority')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: /delivery receipt/i })).toBeInTheDocument()
+  })
+
+  it('writes the chosen option onto the draft', async () => {
+    const id = store().openDraft({})
+    withSession(id, SUBMISSION_ALL)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'Send options' }))
+    await user.click(await screen.findByRole('switch', { name: /delivery receipt/i }))
+
+    expect(store().drafts.get(id)?.sendOptions.deliveryReceipt).toBe(true)
+  })
+
+  it('offers Reply-To beside Cc and Bcc, and it is not a recipient', async () => {
+    const id = store().openDraft({})
+    render(<Harness id={id} />)
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'Reply-To' }))
+    const field = screen.getByRole('combobox', { name: 'Reply-To' })
+    await user.type(field, 'replies@x.test{Enter}')
+
+    expect(store().drafts.get(id)?.replyTo).toEqual([{ name: null, email: 'replies@x.test' }])
+    // The three recipient fields are untouched: a Reply-To that delivered anywhere would be a bug.
+    const draft = store().drafts.get(id)
+    expect([draft?.to, draft?.cc, draft?.bcc]).toEqual([[], [], []])
+  })
+})
+
+describe('ComposerWindow — attach from Files (D-5)', () => {
+  it('offers a source menu only where the account HAS a file store', async () => {
+    const id = store().openDraft({})
+    withSession(id, { ...SUBMISSION_ALL, 'urn:ietf:params:jmap:filenode': {} })
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Attach file' }))
+
+    expect(await screen.findByRole('menuitem', { name: 'From Files…' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'From this device…' })).toBeInTheDocument()
+  })
+
+  it('keeps the paperclip a single act where there is no file store', async () => {
+    // A menu with one item is a tax on everyone for a feature nobody has.
+    const id = store().openDraft({})
+    withSession(id, SUBMISSION_ALL)
+    expect(screen.getByRole('button', { name: 'Attach file' })).not.toHaveAttribute('aria-haspopup')
   })
 })

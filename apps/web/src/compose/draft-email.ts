@@ -11,6 +11,7 @@ import { cleanOutgoingHtml } from './clean-html'
 import type { DraftWindow, OpenDraftInit } from './composer-store'
 import { htmlToPlainText } from './html-to-text'
 import { referencedCids, removeInlineImage } from './inline-images'
+import { DEFAULT_SEND_OPTIONS, priorityHeaders, type SendOptions } from './send-options'
 
 /** The persistable subset of a live draft (UI-only mode/dirty/focus excluded). */
 export function serializeDraft(draft: DraftWindow): SerializedDraft {
@@ -18,6 +19,7 @@ export function serializeDraft(draft: DraftWindow): SerializedDraft {
     to: draft.to,
     cc: draft.cc,
     bcc: draft.bcc,
+    replyTo: draft.replyTo,
     subject: draft.subject,
     body: draft.body,
     inReplyTo: draft.inReplyTo,
@@ -27,7 +29,13 @@ export function serializeDraft(draft: DraftWindow): SerializedDraft {
     attachments: draft.attachments,
     sourceEmailId: draft.sourceEmailId ?? null,
     sourceFlag: draft.sourceFlag ?? null,
+    sendOptions: draft.sendOptions,
   }
+}
+
+/** A stored draft's options, defaulted — a row written before M-7/M-11 simply has none. */
+export function draftSendOptions(draft: Pick<SerializedDraft, 'sendOptions'>): SendOptions {
+  return draft.sendOptions ?? DEFAULT_SEND_OPTIONS
 }
 
 /** A persisted draft → an `openDraft` init that reopens it under the SAME localId. */
@@ -38,6 +46,7 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
     to: content.to,
     cc: content.cc,
     bcc: content.bcc,
+    replyTo: content.replyTo ?? [],
     subject: content.subject,
     body: content.body,
     inReplyTo: content.inReplyTo,
@@ -47,6 +56,7 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
     attachments: content.attachments,
     sourceEmailId: content.sourceEmailId ?? undefined,
     sourceFlag: content.sourceFlag ?? undefined,
+    sendOptions: draftSendOptions(content),
   }
 }
 
@@ -112,6 +122,9 @@ export function toEmailCreate(input: {
     bcc: draft.bcc,
     inReplyTo: draft.inReplyTo,
     references: draft.references,
+    // Priority rides on the MESSAGE, so it is written here — into the Drafts copy as well as the
+    // sent one. A draft saved as urgent still reads as urgent when it is reopened tomorrow.
+    ...priorityHeaders(draftSendOptions(draft).priority),
     textBody: [{ partId: 'text', type: 'text/plain' }],
     htmlBody: [{ partId: 'html', type: 'text/html' }],
     bodyValues: {
@@ -119,6 +132,7 @@ export function toEmailCreate(input: {
       html: { value: cleaned, isEncodingProblem: false, isTruncated: false },
     },
   }
+  if (draft.replyTo !== undefined && draft.replyTo.length > 0) email.replyTo = draft.replyTo
   if (parts.length > 0) email.attachments = parts
   return email
 }
@@ -128,6 +142,9 @@ export function toDraftInit(email: EmailRow, bodyHtml: string): OpenDraftInit {
   return {
     to: email.to ?? [],
     cc: email.cc ?? [],
+    // A Reply-To on a stored draft IS the writer's earlier choice; the envelope profile already
+    // fetches it, so reopening from the Drafts folder no longer silently drops it.
+    replyTo: email.replyTo ?? [],
     subject: email.subject ?? '',
     body: bodyHtml,
     inReplyTo: email.inReplyTo,

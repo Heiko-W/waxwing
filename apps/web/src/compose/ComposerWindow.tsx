@@ -14,11 +14,14 @@
 import {
   Clock,
   FileText,
+  FolderOpen,
+  Laptop,
   Maximize2,
   Minimize2,
   Minus,
   Paperclip,
   Send,
+  SlidersHorizontal,
   Trash2,
   X,
 } from 'lucide-react'
@@ -41,10 +44,16 @@ import { formatDate } from '../i18n/formatters'
 import { Button, Dialog, IconButton, Menu, TextInput, useFocusTrap, useToast } from '../ui'
 import { AttachmentChips } from './AttachmentChips'
 import { isPlausibleEmail } from './address-validation'
+import { canAttachFromFiles } from './attach-from-files'
 import { mentionsAttachment } from './attachment-mention'
 import { maxScheduleMs } from './scheduled-send'
+import { hasSendOptions, readSubmissionExtensions } from './send-options'
 
 const ScheduleSendDialog = lazy(() => import('./ScheduleSendDialog'))
+// Lazy for the same reason as the picker above it: most messages are sent with the defaults, and
+// this one drags in the files client.
+const SendOptionsDialog = lazy(() => import('./SendOptionsDialog'))
+const AttachFromFilesDialog = lazy(() => import('./AttachFromFilesDialog'))
 
 import type { BlobUploader } from './attachment-upload'
 import { useUndoSendSeconds } from './compose-prefs'
@@ -91,6 +100,19 @@ export function ComposerWindow({
   /** How far ahead this account may schedule; `0` hides the control entirely (FR-CMP-11). */
   const scheduleMaxMs = maxScheduleMs(connected?.jmapSession ?? null, connected?.accountId ?? null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [filePickerOpen, setFilePickerOpen] = useState(false)
+  const setSendOptions = useComposerStore((state) => state.setSendOptions)
+  /** What this account will accept on the envelope — decides which switches the sheet shows. */
+  const submissionExtensions = readSubmissionExtensions(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+  )
+  /** Whether "from Files" is a source at all (D-5); false collapses the attach menu back to one act. */
+  const filesAvailable = canAttachFromFiles(
+    connected?.jmapSession ?? null,
+    connected?.accountId ?? null,
+  )
   const templates = useTemplates()
   // Only an ACTIVE upload blocks Send — an errored chip must not wedge it (the user can send
   // without the failed file). Completed uploads have already left the slice for `draft.attachments`.
@@ -511,13 +533,51 @@ export function ComposerWindow({
               <Clock />
             </IconButton>
           )}
+          {/* One paperclip, two sources (D-5). The MENU only appears where there is a second
+              source to choose: without a file store the button does what it always did in one tap,
+              because a menu with a single item is a tax on everyone for a feature nobody has. */}
+          {filesAvailable ? (
+            <Menu
+              trigger={<Paperclip />}
+              triggerLabel={t('compose.attach')}
+              triggerVariant="toolbar"
+              align="start"
+              items={[
+                {
+                  id: 'device',
+                  label: t('compose.attachFromDevice'),
+                  icon: Laptop,
+                  disabled: !attachments.canUpload,
+                  onSelect: () => fileInputRef.current?.click(),
+                },
+                {
+                  id: 'files',
+                  label: t('compose.attachFromFiles.open'),
+                  icon: FolderOpen,
+                  onSelect: () => setFilePickerOpen(true),
+                },
+              ]}
+            />
+          ) : (
+            <IconButton
+              label={t('compose.attach')}
+              variant="ghost"
+              disabled={!attachments.canUpload}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip />
+            </IconButton>
+          )}
+          {/* Priority / receipt / TLS-only (M-7, M-11). One control, findable by anyone looking for
+              it, invisible to everyone else — and it wears a dot when it is holding a choice, so a
+              setting made yesterday cannot be in force unannounced. */}
           <IconButton
-            label={t('compose.attach')}
+            label={t('compose.options.open')}
             variant="ghost"
-            disabled={!attachments.canUpload}
-            onClick={() => fileInputRef.current?.click()}
+            className={hasSendOptions(draft.sendOptions) ? styles.optionsSet : undefined}
+            onClick={() => setOptionsOpen(true)}
           >
-            <Paperclip />
+            <SlidersHorizontal />
           </IconButton>
           {/* At the far end, and that distance is the feature: discarding is the one action here
               that cannot be undone from this window. */}
@@ -594,6 +654,30 @@ export function ComposerWindow({
         >
           <p>{t('compose.attachMentionBody')}</p>
         </Dialog>
+      )}
+
+      {optionsOpen && (
+        <Suspense fallback={null}>
+          <SendOptionsDialog
+            value={draft.sendOptions}
+            extensions={submissionExtensions}
+            onChange={(options) => setSendOptions(draft.id, options)}
+            onClose={() => setOptionsOpen(false)}
+          />
+        </Suspense>
+      )}
+
+      {filePickerOpen && (
+        <Suspense fallback={null}>
+          <AttachFromFilesDialog
+            tier={tier}
+            onPick={(nodes) => {
+              setFilePickerOpen(false)
+              attachments.attachStored(nodes)
+            }}
+            onClose={() => setFilePickerOpen(false)}
+          />
+        </Suspense>
       )}
 
       {scheduleOpen && (

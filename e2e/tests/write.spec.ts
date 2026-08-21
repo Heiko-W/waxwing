@@ -171,3 +171,205 @@ test.describe('M2.9 write suite', () => {
     expect(await expectNoMail(bob, token, 13_000)).toEqual([])
   })
 })
+
+/**
+ * Send options and attaching from Files (M-7, M-11, D-5) — the three findings of 2026-08-21 that
+ * live in the compose path, each proved against the LIVE server rather than a fake.
+ *
+ * All three are request shapes no unit test can vouch for. `NOTIFY`/`ORCPT`/`RET` are ESMTP
+ * parameters the JMAP layer forwards verbatim to the MTA, which either accepts the envelope or
+ * refuses the whole submission; `MT-PRIORITY` was measured to accept only -6…5 on this build, so a
+ * value from the RFC's wider range would fail the send and nothing local would notice; and D-5's
+ * entire premise is that a `FileNode`'s `blobId` is usable as a message attachment — a claim about
+ * two JMAP data types sharing a blob namespace, which only the server can settle.
+ */
+test.describe('compose: send options + stored attachments (M-7, M-11, D-5)', () => {
+  test('a receipted, high-priority send carries the headers and gets a DSN back', async ({
+    page,
+  }) => {
+    const token = uniqueToken('dsn')
+    const subject = `${WRITE_PREFIX} ${token}`
+    await setUndoGrace(page, 1)
+    await login(page, CREDENTIALS.alice)
+    await openComposer(page)
+    await fillTo(page, ACCOUNTS.bob)
+    await fillSubject(page, subject)
+    await typeBody(page, 'Please confirm you got this.')
+
+    // The controls are behind ONE button and nothing else on the surface moved — that is the design
+    // constraint, so it is asserted before the behaviour.
+    await expect(page.getByLabel('Priority', { exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Send options', exact: true }).click()
+    const options = page.getByRole('dialog').filter({ hasText: 'Send options' })
+    await options.getByLabel('Priority', { exact: true }).selectOption('high')
+    await options.getByRole('switch', { name: /delivery receipt/i }).click()
+    await options.getByRole('button', { name: 'Done', exact: true }).click()
+    await expect(options).toBeHidden()
+
+    await clickSend(page)
+
+    // ---- the RECIPIENT sees the priority, because it travels as message headers (M-11). This is
+    // the half MT-PRIORITY cannot do: it orders the sending queue and is invisible past the MTA.
+    const bob = jmapAs(ACCOUNTS.bob)
+    const received = await pollMail(
+      bob,
+      token,
+      ['subject', 'header:X-Priority:asText', 'header:Importance:asText'],
+      { timeoutMs: 30_000 },
+    )
+    expect(received.length).toBe(1)
+    expect(received[0]?.['header:X-Priority:asText']).toBe('1')
+    expect(received[0]?.['header:Importance:asText']).toBe('high')
+
+    // ---- the ENVELOPE carried the DSN request (M-7). Read back off the submission the server
+    // stored, which is the only place that proves the parameters survived the round trip.
+    const alice = jmapAs(ACCOUNTS.alice)
+    const accountId = await alice.account()
+    const submissions = await alice.call(
+      ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:submission'],
+      [
+        [
+          'EmailSubmission/query',
+          { accountId, sort: [{ property: 'sentAt', isAscending: false }], limit: 1 },
+          's0',
+        ],
+        [
+          'EmailSubmission/get',
+          { accountId, '#ids': { resultOf: 's0', name: 'EmailSubmission/query', path: '/ids' } },
+          's1',
+        ],
+      ],
+    )
+    const submission = (
+      submissions.methodResponses.find(([name]) => name === 'EmailSubmission/get')?.[1] as {
+        list?: {
+          envelope?: {
+            mailFrom?: { parameters?: Record<string, string | null> | null }
+            rcptTo?: { email: string; parameters?: Record<string, string | null> | null }[]
+          } | null
+        }[]
+      }
+    ).list?.[0]
+    // `RET=HDRS`: a report about a large message must not carry the message back with it.
+    expect(submission?.envelope?.mailFrom?.parameters?.RET).toBe('HDRS')
+    const rcpt = submission?.envelope?.rcptTo?.[0]
+    expect(rcpt?.parameters?.NOTIFY).toContain('SUCCESS')
+    // Measured: NOTIFY may never mix NEVER with anything (`Invalid parameter: NOTIFY`), and ORCPT
+    // without the `rfc822;` address-type prefix is refused outright.
+    expect(rcpt?.parameters?.NOTIFY).not.toContain('NEVER')
+    expect(rcpt?.parameters?.ORCPT).toMatch(/^rfc822;/)
+
+    // ---- and the receipt actually COMES BACK. Measured against this fixture: it arrives as an
+    // ordinary message from the mail system, not on `EmailSubmission.dsnBlobIds` (which stays
+    // empty), which is why the reading side needed no change at all.
+    const aliceAccount = await alice.account()
+    const inbox = (await alice.mailboxes()).find((box) => box.role === 'inbox')
+    const deadline = Date.now() + 60_000
+    let report: { subject?: string } | undefined
+    while (Date.now() < deadline && report === undefined) {
+      const answer = await alice.call(
+        ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+        [
+          [
+            'Email/query',
+            {
+              accountId: aliceAccount,
+              filter: { inMailbox: inbox?.id, from: 'MAILER-DAEMON' },
+              sort: [{ property: 'receivedAt', isAscending: false }],
+              limit: 1,
+            },
+            'q0',
+          ],
+          [
+            'Email/get',
+            {
+              accountId: aliceAccount,
+              '#ids': { resultOf: 'q0', name: 'Email/query', path: '/ids' },
+              properties: ['subject'],
+            },
+            'q1',
+          ],
+        ],
+      )
+      report = (
+        answer.methodResponses.find(([name]) => name === 'Email/get')?.[1] as {
+          list?: { subject?: string }[]
+        }
+      ).list?.[0]
+      if (report === undefined) await page.waitForTimeout(2_000)
+    }
+    expect(report, 'no delivery report arrived from the mail system').toBeDefined()
+  })
+
+  test('a file already in the account is attached by reference — nothing is uploaded', async ({
+    page,
+  }) => {
+    const token = uniqueToken('d5')
+    const subject = `${WRITE_PREFIX} ${token}`
+    const fileName = `e2e-attach-${token}.txt`
+    const payload = `waxwing D-5 payload ${token}\n`
+    await setUndoGrace(page, 1)
+    await login(page, CREDENTIALS.alice)
+
+    // ---- put a file in the account the ordinary way (this part DOES upload).
+    await page.getByRole('link', { name: 'Files', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await page.locator('input[type="file"]').setInputFiles({
+      name: fileName,
+      mimeType: 'text/plain',
+      buffer: Buffer.from(payload),
+    })
+    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 30_000 })
+
+    // ---- from here on, COUNT every upload. The whole finding is that attaching a stored file
+    // costs none: the message references the file's existing blob. A counter is the only way to
+    // tell "referenced" from "quietly re-uploaded", because both produce a correct attachment.
+    let uploads = 0
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && /\/jmap\/upload\//.test(request.url())) uploads += 1
+    })
+
+    await page.getByRole('link', { name: 'Mail', exact: true }).click()
+    await openComposer(page)
+    await fillTo(page, ACCOUNTS.bob)
+    await fillSubject(page, subject)
+    await typeBody(page, 'The file is attached from my Files.')
+
+    await page.getByRole('button', { name: 'Attach file', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'From Files…', exact: true }).click()
+    const picker = page.getByRole('dialog').filter({ hasText: 'Attach from Files' })
+    await picker.getByRole('checkbox', { name: new RegExp(fileName) }).click()
+    await picker.getByRole('button', { name: /^Attach 1 file$/ }).click()
+    await expect(picker).toBeHidden()
+
+    // Instant, because there is nothing to transfer — no progress chip ever appears.
+    await expect(page.getByText(fileName, { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled()
+    await clickSend(page)
+
+    const bob = jmapAs(ACCOUNTS.bob)
+    const received = await pollMail(bob, token, ['subject', 'attachments'], { timeoutMs: 30_000 })
+    expect(received.length).toBe(1)
+    const attachment = received[0]?.attachments?.find((a) => a.name === fileName)
+    expect(attachment, 'the recipient did not get the stored file').toBeDefined()
+    expect(attachment?.size).toBe(Buffer.byteLength(payload))
+
+    // THE assertion. If the blobId had to be re-uploaded this would be 1, and D-5 would have cost
+    // a download-plus-upload of every attached file rather than a one-line mapping.
+    expect(uploads, 'attaching a stored file uploaded bytes it did not need to').toBe(0)
+
+    // ---- clean up after ourselves: the write setup resets mail, never files.
+    await page.getByRole('link', { name: 'Files', exact: true }).click()
+    const inRow = page.getByRole('button', { name: `Delete ${fileName}`, exact: true })
+    if (await inRow.isVisible().catch(() => false)) await inRow.click()
+    else {
+      await page.getByRole('button', { name: `More actions for ${fileName}`, exact: true }).click()
+      await page.getByRole('menuitem', { name: `Delete ${fileName}`, exact: true }).click()
+    }
+    const confirm = page.getByRole('dialog')
+    await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
+    await expect(page.getByText(fileName, { exact: true })).toHaveCount(0)
+  })
+})
