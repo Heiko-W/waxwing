@@ -51,6 +51,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [022](022-identities-are-editable-in-the-client.md) | Identities and signatures are editable in the client, online-only | accepted |
 | [023](023-foreign-sieve-is-preserved-never-parsed.md) | A Sieve script we did not write is preserved verbatim, never parsed | accepted |
 | [024](024-password-sign-in-sits-behind-a-disclosure.md) | Password sign-in sits behind a disclosure; only OAuth can carry a second factor | accepted |
+| [025](025-filter-reorder-uses-pointer-events.md) | Reordering filter rules uses pointer events, and has a keyboard path that is not a fallback | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.
