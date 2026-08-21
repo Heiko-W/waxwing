@@ -526,6 +526,13 @@
   gap: var(--waxwing-space-2);
 }
 
+/* One communication row and, below it, the reason it was refused (N9). */
+.commField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
 .commRow,
 .addressHead {
   display: flex;
@@ -533,9 +540,22 @@
   gap: var(--waxwing-space-2);
 }
 
+/*
+ * The type picker's OUTER width, and it has to sit on a wrapper of our own.
+ *
+ * `Select` forwards `className` to the inner `<select>` and renders it inside a relatively
+ * positioned wrapper (it hangs the chevron off that wrapper). The wrapper is therefore the flex
+ * child, and it carries `inline-size: 100%` — so a width set through `className` styled the wrong
+ * box, the wrapper took the whole row, and the value field beside it collapsed to ~26px. The row was
+ * unusable in every viewport.
+ *
+ * 9rem rather than the 7.5rem it used to ask for: 7.5rem leaves ~78px of text box after the control's
+ * own padding and chevron, which clips the longest German option ("Geschäftlich") — and a picker that
+ * cannot show what is picked is only half a control.
+ */
 .commType {
   flex: none;
-  inline-size: 7.5rem;
+  inline-size: 9rem;
 }
 
 .commValue {

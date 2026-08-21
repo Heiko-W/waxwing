@@ -354,6 +354,96 @@ describe('a hostile card cannot forge a second one', () => {
   })
 })
 
+/**
+ * Both halves of the converter face data nobody here wrote — a file the user picked, a card a
+ * different server minted. These are the shapes that made it lose or destroy something.
+ */
+describe('foreign data that used to break the converter', () => {
+  it('gives every entry its own key when PROP-IDs and generated ids collide', () => {
+    // The reported case: an explicit `PROP-ID=e2` on the FIRST line, and the second line's generated
+    // fallback is also `e2`. The second overwrote the first, so a three-address contact imported as
+    // two — and the dialog still said "3 contacts imported".
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'FN:Collision Case',
+        'EMAIL;PROP-ID=e2;TYPE=work:erste@import.example',
+        'EMAIL;TYPE=home:zweite@import.example',
+        'EMAIL:dritte@import.example',
+        'END:VCARD',
+        '',
+      ].join('\r\n'),
+    )
+    const addresses = Object.values(card.emails ?? {}).map((entry) => entry.address)
+    expect(addresses).toHaveLength(3)
+    expect(addresses).toEqual(
+      expect.arrayContaining([
+        'erste@import.example',
+        'zweite@import.example',
+        'dritte@import.example',
+      ]),
+    )
+    // The explicit id is honoured, and it still names the line that asked for it.
+    expect(card.emails?.e2?.address).toBe('erste@import.example')
+    expect(new Set(Object.keys(card.emails ?? {})).size).toBe(3)
+  })
+
+  it('keeps both entries when two lines claim the same PROP-ID', () => {
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'FN:Duplicate Prop Id',
+        'TEL;PROP-ID=t1:+49 30 1',
+        'TEL;PROP-ID=t1:+49 30 2',
+        'END:VCARD',
+        '',
+      ].join('\r\n'),
+    )
+    expect(Object.values(card.phones ?? {}).map((phone) => phone.number)).toEqual([
+      '+49 30 1',
+      '+49 30 2',
+    ])
+  })
+
+  it('keeps every nickname on a line that carries a PROP-ID and several values', () => {
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'FN:Anna Meier',
+        'NICKNAME;PROP-ID=nick1:Anni,Annchen',
+        'END:VCARD',
+        '',
+      ].join('\r\n'),
+    )
+    expect(Object.values(card.nicknames ?? {}).map((nick) => nick.name)).toEqual([
+      'Anni',
+      'Annchen',
+    ])
+  })
+
+  it('exports a card with no uid instead of taking the whole file down', () => {
+    // `Card.uid` is required by the type and by RFC 9553, and a JMAP server still handed us one
+    // without it. `escapeText(undefined)` threw, so ONE incomplete card made the whole address book
+    // unexportable — and the dialog reported nothing at all.
+    const card = { '@type': 'Card', version: '1.0' } as unknown as Card
+    const text = toVCard(card)
+    expect(text).toContain('BEGIN:VCARD')
+    expect(text).toContain('END:VCARD')
+    expect(text).not.toContain('UID')
+  })
+
+  it('exports the rest of the file around a card with no uid', () => {
+    const broken = { '@type': 'Card', version: '1.0' } as unknown as Card
+    const good = importOne(APPLE_EXPORT)
+    const text = toVCards([broken, good])
+    expect(text).toContain('UID:apple-anna-meier')
+    expect(text.match(/BEGIN:VCARD/g)).toHaveLength(2)
+  })
+})
+
 describe('round trips', () => {
   /**
    * **The load-bearing assertion of this package.** Import → export → import must be a fixed point:

@@ -91,8 +91,11 @@ export function matchRoute(
     return { id: 'mail', path, params, rest: '', search }
   }
   if (head === 'contacts') {
+    // `~all` is not a book id but the name of the ALL-BOOKS scope (see {@link CONTACTS_ALL_BOOKS});
+    // it resolves to "no book selected", which is what every consumer already means by `undefined`.
+    const book = parts[1]
     const params: Record<string, string | undefined> = {
-      bookId: parts[1],
+      bookId: book === CONTACTS_ALL_BOOKS ? undefined : book,
       cardId: parts[2],
     }
     return { id: 'contacts', path, params, rest: '', search }
@@ -214,6 +217,26 @@ export function settingsPath(sub?: string): string {
 
 export const CONTACTS_PATH = '/contacts'
 
+/**
+ * The book segment that stands for "every book" — the `All Contacts` scope.
+ *
+ * The contacts route is `/contacts/:bookId/:cardId`, so addressing a CARD used to require naming a
+ * BOOK, and "All Contacts" has none. The list therefore built `/contacts` for every row it opened and
+ * the click went nowhere — the whole area was unusable in its default view, and on a phone that is
+ * the view it starts in.
+ *
+ * The alternative was to look the card's own book up and navigate into it. That is worse in two ways
+ * that are not obvious until you try it: it silently swaps the list the reader is looking at (they
+ * clicked a row in "All Contacts" and land in "Work"), which on a phone also means the in-app Back
+ * button no longer returns to where they came from; and `addressBookIds` is a SET, so "the card's
+ * book" is not even well defined for a card filed in two.
+ *
+ * `~all` cannot collide with a real id: JMAP ids are `A-Za-z0-9_-` only (RFC 8620 §1.2), so no server
+ * can mint a book called `~all`. The tilde is unreserved in a URI path (RFC 3986 §2.3), so the
+ * segment needs no escaping and survives a copy-pasted link.
+ */
+export const CONTACTS_ALL_BOOKS = '~all'
+
 export const FILES_PATH = '/files'
 
 export const CALENDAR_PATH = '/calendar'
@@ -225,11 +248,13 @@ export function calendarPath(isoDate?: string): string {
 
 /**
  * Build the base-relative contacts route path for an address-book / card selection (M4.2). Mirrors
- * {@link mailPath}: `/contacts`, `/contacts/:bookId`, `/contacts/:bookId/:cardId`. A `cardId` is
- * ignored without a `bookId`, since the card is addressed relative to the book that owns the list.
+ * {@link mailPath}: `/contacts`, `/contacts/:bookId`, `/contacts/:bookId/:cardId`. A card with no book
+ * is addressed in the all-books scope, `/contacts/~all/:cardId` ({@link CONTACTS_ALL_BOOKS}) — it used
+ * to drop the card id and return `/contacts`, i.e. the page the reader was already on.
  */
 export function contactsPath(bookId?: string, cardId?: string): string {
-  if (bookId === undefined) return CONTACTS_PATH
-  if (cardId === undefined) return `${CONTACTS_PATH}/${bookId}`
-  return `${CONTACTS_PATH}/${bookId}/${cardId}`
+  if (cardId === undefined) {
+    return bookId === undefined ? CONTACTS_PATH : `${CONTACTS_PATH}/${bookId}`
+  }
+  return `${CONTACTS_PATH}/${bookId ?? CONTACTS_ALL_BOOKS}/${cardId}`
 }

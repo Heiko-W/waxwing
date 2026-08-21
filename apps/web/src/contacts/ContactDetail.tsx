@@ -34,6 +34,7 @@ import {
   formatAddressLines,
   formatBirthday,
   preferredEntries,
+  telHref,
 } from './contact-fields'
 import styles from './contacts.module.css'
 import { useContactPhoto } from './use-contact-photo'
@@ -202,7 +203,7 @@ function ContactCardView({
               label={typeLabel(t, phone)}
               icon={<PhoneIcon aria-hidden="true" className={styles.fieldIcon} />}
             >
-              <a href={`tel:${phone.number}`} className={styles.fieldLink}>
+              <a href={telHref(phone.number)} className={styles.fieldLink}>
                 {phone.number}
               </a>
             </FieldRow>

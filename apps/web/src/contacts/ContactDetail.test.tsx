@@ -79,7 +79,9 @@ describe('ContactDetail', () => {
     const emailLink = screen.getByRole('link', { name: 'alice@x.test' })
     expect(emailLink).toHaveAttribute('href', 'mailto:alice@x.test')
     const phoneLink = screen.getByRole('link', { name: '+49 30 1234' })
-    expect(phoneLink).toHaveAttribute('href', 'tel:+49 30 1234')
+    // The number is READ with its spaces and DIALLED without them: RFC 3966 §3 allows `-`, `.`, `(`
+    // and `)` as visual separators inside a telephone-subscriber, and no space.
+    expect(phoneLink).toHaveAttribute('href', 'tel:+49301234')
 
     expect(screen.getByText('Main Street 1')).toBeInTheDocument()
     expect(screen.getByText(/Engineer/)).toBeInTheDocument()

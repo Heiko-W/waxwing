@@ -317,9 +317,21 @@ function preservedLines(props: readonly JCardProp[] | undefined, out: WritableLi
 export function toVCard(card: Card): string {
   const out: WritableLine[] = []
 
-  // UID first, so a reader that streams sees the identity before anything else. Not required by the
-  // format (only VERSION's position is), but it is what every exporter does and it reads better.
-  out.push({ name: 'UID', value: escapeText(card.uid) })
+  /*
+   * UID first, so a reader that streams sees the identity before anything else. Not required by the
+   * format (only VERSION's position is), but it is what every exporter does and it reads better.
+   *
+   * The guard is not belt-and-braces. `Card.uid` is required by RFC 9553 §2.1.1 and by the type, but
+   * this converter's whole job is FOREIGN data: cards come off a JMAP server, out of a JSON file a
+   * user wrote, or from an importer that ran before this one. A server that omits `uid` (Stalwart
+   * does, for a card created without one) used to take the entire export down with
+   * `Cannot read properties of undefined (reading 'replace')` — one incomplete card and nobody in
+   * the address book could export anything. A card with no identity is written without a UID line;
+   * vCard 4.0 makes the property optional (RFC 6350 §6.7.6), so the file stays valid.
+   */
+  if (typeof card.uid === 'string' && card.uid !== '') {
+    out.push({ name: 'UID', value: escapeText(card.uid) })
+  }
   if (card.kind !== undefined) out.push({ name: 'KIND', value: card.kind })
 
   nameLines(card.name, out)

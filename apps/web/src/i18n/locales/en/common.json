@@ -602,7 +602,6 @@
       "region": "State / Province",
       "postcode": "Postal code",
       "country": "Country",
-      "type": "Type",
       "addEmail": "Add email",
       "addPhone": "Add phone",
       "addField": "Add field",
@@ -611,10 +610,19 @@
       "addBirthday": "Add birthday",
       "addNote": "Add note",
       "addPhoto": "Add photo",
-      "removeEmail": "Remove email",
-      "removePhone": "Remove phone",
-      "removeAddress": "Remove address",
-      "removeNote": "Remove note",
+      "fieldNames": {
+        "email": "Email",
+        "phone": "Phone",
+        "address": "Address",
+        "note": "Note"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "Type of {{field}}",
+        "remove": "Remove {{field}}",
+        "inGroup": "{{field}} ({{group}})"
+      },
+      "invalidEmail": "Enter an email address like name@example.com.",
       "choosePhoto": "Choose photo",
       "changePhoto": "Change photo",
       "removePhoto": "Remove photo",
@@ -698,7 +706,8 @@
       },
       "error": {
         "invalid": "The file could not be read. Check that it is a valid vCard or JSON file.",
-        "failed": "The file could not be imported."
+        "failed": "The file could not be imported.",
+        "export": "The export could not be prepared. Try the other format."
       }
     }
   },

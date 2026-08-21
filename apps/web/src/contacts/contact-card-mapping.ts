@@ -349,9 +349,26 @@ function applyType(
   allowFeatures: boolean,
 ): void {
   const extracted = original ? (communicationTypeKey(original) ?? '') : ''
-  if (formType === extracted) return // unchanged → keep the original buckets verbatim
+  if (formType === extracted) return // unchanged → keep the original buckets verbatim, `label` included
   delete base.features
   delete base.contexts
+  /*
+   * The free-text `label` goes with them, and this is the one deletion in this module that is not
+   * pure preservation — so it is worth saying why.
+   *
+   * `label` and the type picker are the SAME control to the reader: the detail view shows `label`
+   * when there is one and the translated context otherwise (`ContactDetail.typeLabel`), exactly as
+   * Apple Contacts treats a custom label as the type. A card that arrived from a vCard `LABEL`
+   * therefore had an invisible value overriding the visible picker: the user switched "Work" to
+   * "Home", the write went through, and the row still read "Büro". The change was saved and had no
+   * effect anyone could see, which is worse than either outcome it was choosing between.
+   *
+   * So changing the type retires the label the type used to be spelled as. It happens only on an
+   * ACTUAL change (the early return above covers everything else), the user acted on that exact
+   * field, and the alternative — keeping a label the UI cannot show or edit — makes the control a
+   * lie. `Address` carries no `label`; the delete is inert there.
+   */
+  delete base.label
   if (formType === '') return
   if (allowFeatures && PHONE_FEATURES.has(formType)) base.features = { [formType]: true }
   else base.contexts = { [formType]: true }
@@ -362,11 +379,14 @@ function applyType(
 function formToEmails(entries: readonly EmailEntry[]): Record<Id, EmailAddress> | undefined {
   const out: Record<Id, EmailAddress> = {}
   for (const entry of entries) {
-    if (entry.address.trim() === '') continue
+    const address = entry.address.trim()
+    if (address === '') continue
     const base: Record<string, unknown> = entry.original
       ? { ...entry.original }
       : { '@type': 'EmailAddress' }
-    base.address = entry.address
+    // Trimmed, like every other value the form stores: the emptiness test was already taken on the
+    // trimmed string, so storing the untrimmed one meant the check and the write disagreed.
+    base.address = address
     applyType(base, entry.type, entry.original, false)
     out[entry.key] = base as unknown as EmailAddress
   }
@@ -376,11 +396,14 @@ function formToEmails(entries: readonly EmailEntry[]): Record<Id, EmailAddress> 
 function formToPhones(entries: readonly PhoneEntry[]): Record<Id, Phone> | undefined {
   const out: Record<Id, Phone> = {}
   for (const entry of entries) {
-    if (entry.number.trim() === '') continue
+    const number = entry.number.trim()
+    if (number === '') continue
     const base: Record<string, unknown> = entry.original
       ? { ...entry.original }
       : { '@type': 'Phone' }
-    base.number = entry.number
+    // See `formToEmails`: the guard trimmed, the write did not, so `"  +49 123 456  "` reached the
+    // server verbatim — and then the detail view's `tel:` URI carried the padding too.
+    base.number = number
     applyType(base, entry.type, entry.original, true)
     out[entry.key] = base as unknown as Phone
   }
@@ -426,10 +449,15 @@ function addressFieldsEmpty(entry: AddressEntry): boolean {
   return ADDRESS_ORDER.every(([field]) => entry[field].trim() === '')
 }
 
-function addressUnchanged(entry: AddressEntry, original: Address): boolean {
+/** True when the five editable fields still read exactly as they were extracted from `original`. */
+function addressComponentsUnchanged(entry: AddressEntry, original: Address): boolean {
   const extracted = extractAddressFields(original)
+  return ADDRESS_ORDER.every(([field]) => entry[field] === extracted[field])
+}
+
+function addressUnchanged(entry: AddressEntry, original: Address): boolean {
   return (
-    ADDRESS_ORDER.every(([field]) => entry[field] === extracted[field]) &&
+    addressComponentsUnchanged(entry, original) &&
     entry.type === (communicationTypeKey(original) ?? '')
   )
 }
@@ -437,20 +465,52 @@ function addressUnchanged(entry: AddressEntry, original: Address): boolean {
 function formToAddresses(entries: readonly AddressEntry[]): Record<Id, Address> | undefined {
   const out: Record<Id, Address> = {}
   for (const entry of entries) {
-    // A blank row the user added but never filled is discarded; an original with only a `full`
-    // string (no structured components) has empty fields yet must survive — keep it.
-    if (entry.original === undefined && addressFieldsEmpty(entry)) continue
+    // Untouched → the original object, byte for byte. This is also what keeps a `full`-only address
+    // (no structured components, so all five fields read empty) alive through an unrelated edit.
     if (entry.original !== undefined && addressUnchanged(entry, entry.original)) {
       out[entry.key] = entry.original
       continue
     }
+    /*
+     * An empty row is dropped — the rule emails and phones already follow, extended to the case the
+     * old guard did not cover: an EXISTING address whose five fields the user cleared. That used to
+     * be sent as `{"@type":"Address"}`, an address object with no address in it.
+     *
+     * The exception is an original carrying a `full` string. Those five fields were never where its
+     * content lived, so "the user emptied them" says nothing about the address — dropping it would
+     * delete a formatted address the form cannot even show. (`full` and no components is what a
+     * vCard `ADR` with only a `LABEL` parameter imports as.)
+     */
+    if (addressFieldsEmpty(entry) && (entry.original?.full ?? '').trim() === '') continue
+
     const components: AddressComponent[] = []
     for (const [field, kind] of ADDRESS_ORDER) {
-      const value = entry[field]
-      if (value.trim() !== '') components.push({ '@type': 'AddressComponent', kind, value })
+      const value = entry[field].trim()
+      if (value !== '') components.push({ '@type': 'AddressComponent', kind, value })
     }
-    const base: Record<string, unknown> = { '@type': 'Address' }
+    /*
+     * Built ON the original, like `formToEmails`/`formToPhones`/`formToNotes` — not from scratch.
+     *
+     * Starting from `{'@type': 'Address'}` made every address edit a full replacement of the entry:
+     * `countryCode`, `timeZone`, `coordinates`, `pref`, `isOrdered` and the type all vanished the
+     * first time somebody corrected a street, with the server reporting success. That is precisely
+     * what this module's header promises will not happen, and the address was the one collection
+     * that did not honour it.
+     */
+    const base: Record<string, unknown> = entry.original
+      ? { ...entry.original }
+      : { '@type': 'Address' }
     if (components.length > 0) base.components = components
+    else delete base.components
+    /*
+     * `full` is the SAME address, pre-formatted for display — and `formatAddressLines` prefers it
+     * over the components. Carrying a stale one through a component edit would leave the reader
+     * looking at the address they just corrected. It only goes when the components actually moved;
+     * a pure type change keeps it.
+     */
+    if (entry.original !== undefined && !addressComponentsUnchanged(entry, entry.original)) {
+      delete base.full
+    }
     applyType(base, entry.type, entry.original, false)
     out[entry.key] = base as Address
   }
@@ -462,11 +522,14 @@ function formToAddresses(entries: readonly AddressEntry[]): Record<Id, Address> 
 function formToNotes(entries: readonly NoteEntry[]): Record<Id, Note> | undefined {
   const out: Record<Id, Note> = {}
   for (const entry of entries) {
-    if (entry.text.trim() === '') continue
+    const note = entry.text.trim()
+    if (note === '') continue
     const base: Record<string, unknown> = entry.original
       ? { ...entry.original }
       : { '@type': 'Note' }
-    base.note = entry.text
+    // Trimmed for the same reason as the address and the number above — and here it also showed:
+    // the detail view renders the note verbatim, so the leading blanks became visible indentation.
+    base.note = note
     out[entry.key] = base as unknown as Note
   }
   return Object.keys(out).length > 0 ? out : undefined

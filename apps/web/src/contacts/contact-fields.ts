@@ -214,11 +214,25 @@ export function formatAddressLines(address: Address): string[] {
   const street = [value('postOfficeBox'), value('name'), value('apartment')]
     .filter((part) => part !== '')
     .join(' ')
-  const cityLine = [value('postcode'), value('locality'), value('region')]
-    .filter((part) => part !== '')
-    .join(' ')
+  // Postcode and locality belong together ("33415 Verl"); the region is a separate administrative
+  // level and needs a separator, or the line reads as one long place name — "33415 Verl NRW".
+  const place = [value('postcode'), value('locality')].filter((part) => part !== '').join(' ')
+  const cityLine = [place, value('region')].filter((part) => part !== '').join(', ')
   const country = value('country')
   return [street, cityLine, country].filter((line) => line !== '')
+}
+
+/**
+ * A `tel:` URI for a phone number as the user typed it.
+ *
+ * RFC 3966 §3 allows the visual separators `-`, `.`, `(` and `)` inside a telephone-subscriber, and
+ * nothing else — a SPACE is not one of them, so `tel:+49 171 1234567` is not a valid URI and what a
+ * dialer makes of it is anyone's guess. The displayed text keeps its spaces (that is how people read
+ * a number); only the href is normalised. Everything outside the grammar's alphabet goes with them,
+ * so a number carrying a stray character still produces a dialable URI rather than a broken one.
+ */
+export function telHref(number: string): string {
+  return `tel:${number.replace(/[^+0-9A-Za-z*#.()-]/g, '')}`
 }
 
 /**

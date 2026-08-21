@@ -11,6 +11,8 @@ import {
   ReplicaProvider,
 } from '../sync'
 import { setActiveEngine } from '../sync/engine'
+import type { OutboxIntent } from '../sync/engine/outbox'
+import { deleteContactCards } from '../sync/repo'
 import { addressBook, contactCard, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { clickButton } from '../test/interact'
@@ -74,12 +76,21 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals())
 
 let db: ReplicaDb
+/** Every intent the fake engine was handed, so a test can read the creation id back out of it. */
+let dispatched: OutboxIntent[]
 
 beforeEach(async () => {
   db = freshDb()
+  dispatched = []
   setActiveEngine({
     watchContactQuery: vi.fn(() => 'k'),
     unwatchContactQuery: vi.fn(),
+    // Just the optimistic half of the real `dispatch`: write the card under its creation id, which
+    // is what makes the create/reconcile sequence reproducible here.
+    dispatch: async (intent: OutboxIntent) => {
+      dispatched.push(intent)
+      if (intent.kind === 'createContactCard') await putContactCards(db, 'a', [intent.card])
+    },
   } as unknown as Parameters<typeof setActiveEngine>[0])
   await putAddressBooks(db, 'a', [addressBook('personal', { name: 'Personal', isDefault: true })])
   await putContactCards(db, 'a', [
@@ -157,6 +168,41 @@ describe('ContactsScreen', () => {
     expect(window.location.pathname).toBe('/contacts/personal/c1')
   })
 
+  /**
+   * Every save used to land on "This contact is not available.", over a contact that had been
+   * created perfectly: the route was pointed at the CREATION id, and the acknowledgement re-files
+   * the row under the id the server chose. This drives the whole sequence — optimistic write, then
+   * the reconcile — and asserts the route ends up on the server's id.
+   */
+  it('follows a newly created contact from its creation id to the id the server gave it', async () => {
+    const user = userEvent.setup()
+    renderScreen('/contacts/personal')
+    await screen.findByRole('option', { name: 'Alice Anderson' })
+
+    await clickButton(user, 'New contact')
+    await user.type(screen.getByLabelText('First name'), 'Zoe')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const intent = dispatched.find((entry) => entry.kind === 'createContactCard')
+    if (intent?.kind !== 'createContactCard') throw new Error('no create was dispatched')
+    const creationId = intent.creationId
+    // Until the server answers there is no other id to use, and the optimistic row IS there.
+    await waitFor(() => expect(window.location.pathname).toBe(`/contacts/personal/${creationId}`))
+    expect(await screen.findByRole('heading', { name: 'Zoe' })).toBeInTheDocument()
+
+    // What `reconcileContactCardCreate` does on the acknowledgement: the temp row goes, the same
+    // card comes back under the server's id.
+    await deleteContactCards(db, 'a', [creationId])
+    await putContactCards(db, 'a', [{ ...intent.card, id: 'srv-9' }])
+
+    await waitFor(() => expect(window.location.pathname).toBe('/contacts/personal/srv-9'))
+    // …and the detail pane settles on the card, not on the dead end the old route led to.
+    await waitFor(() =>
+      expect(screen.queryByText('This contact is not available.')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('heading', { name: 'Zoe' })).toBeInTheDocument()
+  })
+
   it('has no axe violations', async () => {
     const { container } = renderScreen('/contacts/personal')
     await screen.findByRole('option', { name: 'Alice Anderson' })
@@ -176,6 +222,39 @@ describe('ContactsScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('heading', { name: 'New contact' })).not.toBeInTheDocument()
+  })
+
+  describe('address-book drawer on a phone', () => {
+    it('closes on a second press of the toggle it opened with', async () => {
+      // It only ever opened: the handler was `setBooksOpen(true)`, and the label stayed "Show
+      // address books" while `aria-expanded` said `true`. Escape and a backdrop tap were the only
+      // ways out, and neither is something a reader can see.
+      forcePhone()
+      const user = userEvent.setup()
+      renderScreen('/contacts/personal')
+
+      const toggle = screen.getByRole('button', { name: 'Show address books' })
+      await user.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      expect(toggle).toHaveAccessibleName('Hide address books')
+
+      await user.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(toggle).toHaveAccessibleName('Show address books')
+    })
+
+    it('closes once a book has been chosen, so the list under it is usable', async () => {
+      forcePhone()
+      const user = userEvent.setup()
+      renderScreen('/contacts')
+
+      const toggle = screen.getByRole('button', { name: 'Show address books' })
+      await user.click(toggle)
+      await user.click(screen.getByRole('link', { name: /Personal/ }))
+
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(window.location.pathname).toBe('/contacts/personal')
+    })
   })
 
   it('disables New contact in a read-only address book (read-only guard)', async () => {

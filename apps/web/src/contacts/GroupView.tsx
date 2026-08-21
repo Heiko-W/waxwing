@@ -15,7 +15,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, Link } from '../app/route'
 import type { ContactCardRow } from '../sync'
-import { Avatar, Button, Dialog } from '../ui'
+import { Avatar, Button, Dialog, IconButton } from '../ui'
 import { contactDisplayName } from './contact-fields'
 import { groupName } from './contact-group-mapping'
 import styles from './contacts.module.css'
@@ -58,17 +58,29 @@ export function GroupView({
           {t('contacts.groups.backToContacts')}
         </Button>
         <span className={styles.toolbarSpacer} />
+        {/* Icon-only, because this toolbar lives in the list column — 340px by default and 260px at
+            its narrowest. Three labelled buttons did not fit: "Gruppe löschen" ran off the edge of
+            the column. The way BACK keeps its words (it is the one thing a reader has to find in a
+            hurry); the two actions on the group keep their names as accessible labels. */}
         {onEdit && (
-          <Button variant="ghost" disabled={!canWrite} onClick={onEdit}>
-            <Pencil aria-hidden="true" />
-            {t('contacts.groups.edit')}
-          </Button>
+          <IconButton
+            label={t('contacts.groups.edit')}
+            variant="ghost"
+            disabled={!canWrite}
+            onClick={onEdit}
+          >
+            <Pencil />
+          </IconButton>
         )}
         {onDelete && (
-          <Button variant="ghost" disabled={!canWrite} onClick={() => setConfirmOpen(true)}>
-            <Trash2 aria-hidden="true" />
-            {t('contacts.groups.delete')}
-          </Button>
+          <IconButton
+            label={t('contacts.groups.delete')}
+            variant="ghost"
+            disabled={!canWrite}
+            onClick={() => setConfirmOpen(true)}
+          >
+            <Trash2 />
+          </IconButton>
         )}
       </div>
 
