@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
+import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
 import { login } from './helpers'
 
 /**
@@ -121,4 +122,199 @@ test('a failed write names the operation and the reason', async ({ page }) => {
   await expect(page.getByText('Nope, not today.')).toBeVisible()
   // And the dialog is still there with the reader's title in it.
   await expect(create.getByLabel('Title', { exact: true })).toHaveValue(`${TITLE} refused`)
+})
+
+/**
+ * Managing calendars (K-1) and reminders (K-5) against the LIVE fixture.
+ *
+ * These two belong here rather than in a component test for the same reason the block above does:
+ * the failures they guard against are shapes on the wire, and a fake answers whatever it was told
+ * to. Three of them were measured against Stalwart v0.16.18 on 21 August 2026 and are the reason the
+ * implementation plan had to be corrected:
+ *
+ *  - `inCalendars` (the draft's spelling) is answered `unsupportedFilter` as a METHOD-level error —
+ *    the whole query fails. Only `inCalendar`, singular, works.
+ *  - a `Calendar/set` destroy on a non-empty calendar is refused (`calendarHasEvent`) unless the
+ *    client sends `onDestroyRemoveEvents: true`.
+ *  - `participantIdentities` on a calendar is `invalidProperties` and fails the create outright.
+ *
+ * A component test cannot see any of that. This one can, because hiding a calendar here means the
+ * month comes back from the server without its events.
+ */
+
+const CAL = `E2E calendar ${Date.now()}`
+
+test('a calendar can be created, hidden, shown and deleted', async ({ page }) => {
+  await login(page)
+  await openCalendar(page)
+
+  // ---- create: `{name, color, isVisible, isSubscribed}` and nothing the server refuses
+  await page.getByRole('button', { name: 'New calendar' }).click()
+  const create = page.getByRole('dialog')
+  await create.getByLabel('Name', { exact: true }).fill(CAL)
+  await create.getByRole('radio', { name: 'Green' }).click()
+  await expect(create.getByText('Chosen: Green')).toBeVisible()
+  await create.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(create).toBeHidden()
+
+  const tick = page.getByRole('checkbox', { name: CAL })
+  await expect(tick).toBeVisible()
+  await expect(tick).toBeChecked()
+
+  // ---- an event in it, so the range query has something to prove
+  const eventTitle = `${CAL} entry`
+  await page.getByRole('button', { name: 'New event' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Title', { exact: true }).fill(eventTitle)
+  await dialog.getByLabel('Calendar', { exact: true }).selectOption({ label: CAL })
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog).toBeHidden()
+
+  await openAgenda(page)
+  await expect(row(page, eventTitle)).toBeVisible()
+
+  /*
+   * ---- hide it. The assertion is NOT that the row disappears from the screen — a local filter
+   * would do that too, and a local filter is precisely what this feature must not be. It is that
+   * the event is gone after the month has been fetched again, which only happens if the server was
+   * asked with `inCalendar` naming the calendars that are left.
+   */
+  await page.getByRole('checkbox', { name: CAL }).uncheck()
+  await expect(row(page, eventTitle)).toHaveCount(0)
+
+  // ---- and back again: the tick is server state, so it survives a re-read of the month.
+  await page.getByRole('checkbox', { name: CAL }).check()
+  await expect(row(page, eventTitle)).toBeVisible()
+
+  // ---- rename it, to exercise the update path
+  await page.getByRole('button', { name: `Options for ${CAL}` }).click()
+  await page.getByRole('menuitem', { name: 'Edit' }).click()
+  const edit = page.getByRole('dialog')
+  await edit.getByLabel('Name', { exact: true }).fill(`${CAL} renamed`)
+  await edit.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: `${CAL} renamed` })).toBeVisible()
+
+  /*
+   * ---- delete, which is the one control on this screen with a confirmation, and the one that
+   * needs `onDestroyRemoveEvents` — the calendar is NOT empty, so a client that omits the flag is
+   * refused here with "Calendar is not empty." and the test fails on the count line below.
+   */
+  await page.getByRole('button', { name: `Options for ${CAL} renamed` }).click()
+  await page.getByRole('menuitem', { name: 'Delete' }).click()
+  const confirm = page.getByRole('dialog')
+  await expect(confirm).toContainText('1 event')
+  await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
+
+  await expect(page.getByRole('checkbox', { name: `${CAL} renamed` })).toHaveCount(0)
+  await expect(row(page, eventTitle)).toHaveCount(0)
+})
+
+test('the default calendar cannot be deleted from here', async ({ page }) => {
+  /*
+   * The server WOULD allow it — measured, `destroy` on the account's default calendar succeeds.
+   * What it will not allow is appointing a replacement: `isDefault` is refused in create and in
+   * update ("Field could not be set."), because on this server the flag belongs to the DAV
+   * collection literally named `default`. The guard is therefore this client's, and nothing but a
+   * test says so.
+   */
+  await login(page)
+  await openCalendar(page)
+
+  const menu = page.getByRole('button', { name: /^Options for / }).first()
+  await menu.click()
+  await expect(page.getByRole('menuitem', { name: 'Edit' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0)
+})
+
+test('a reminder set here survives a rename, and one set elsewhere is not lost', async ({
+  page,
+}) => {
+  /*
+   * K-5 end to end. `alerts` was in no property list the client sent, so this could not even be
+   * OBSERVED before — and the moment the editor names the property in a patch, an alarm it cannot
+   * model is one save away from deletion.
+   *
+   * The second half is the one that needs a real server: the email alarm is put in over JMAP from
+   * NODE, because no control in this app can create one and `page.route` would only fake the
+   * answer. It then has to survive a title change made through the editor, which rewrites the whole
+   * `alerts` map from what the dialog knows — and the dialog does not know about email alarms.
+   */
+  const title = `E2E alert ${Date.now()}`
+  const alice = jmapAs(ACCOUNTS.alice)
+  const calendars = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:calendars']
+  const accountId = await alice.account()
+
+  await login(page)
+  await openCalendar(page)
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  const create = page.getByRole('dialog')
+  await create.getByLabel('Title', { exact: true }).fill(title)
+  await create.getByLabel('Alert', { exact: true }).selectOption('-PT15M')
+  await create.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(create).toBeHidden()
+
+  await openAgenda(page)
+  await row(page, title).click()
+  // Read back from the server, not from React state: the dialog closed and the month was re-fetched
+  // in between, so this value made the round trip.
+  await expect(page.getByRole('dialog').getByLabel('Alert', { exact: true })).toHaveValue('-PT15M')
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click()
+
+  // An alarm this client cannot make, put in behind its back — the shape a phone or a CalDAV client
+  // would leave. A per-member patch, so nothing else on the event is touched.
+  const found = await alice.call(calendars, [
+    ['CalendarEvent/query', { accountId, filter: { title } }, '0'],
+  ])
+  const eventId = (found.methodResponses[0]?.[1] as { ids?: string[] }).ids?.[0]
+  expect(eventId, 'the event just created was not found over JMAP').toBeTruthy()
+  if (eventId === undefined) return
+
+  await alice.call(calendars, [
+    [
+      'CalendarEvent/set',
+      {
+        accountId,
+        update: {
+          [eventId]: {
+            'alerts/mail': {
+              '@type': 'Alert',
+              action: 'email',
+              trigger: { '@type': 'OffsetTrigger', offset: '-PT1H' },
+            },
+          },
+        },
+      },
+      '0',
+    ],
+  ])
+
+  /*
+   * Force a re-read WITHOUT reloading the page: `login()` does not tick "Stay signed in", so a
+   * reload lands back on the sign-in form. Stepping a month away and back changes the window the
+   * screen asks about, which is the app's own way of fetching again.
+   */
+  await page.getByRole('button', { name: /Previous month/ }).click()
+  await page.getByRole('button', { name: /Next month/ }).click()
+
+  await row(page, title).click()
+  const edit = page.getByRole('dialog')
+  // Reported, and NOT offered for editing — it is not in the picker, it is a sentence.
+  await expect(edit.getByText(/further reminder is kept unchanged/)).toBeVisible()
+  await edit.getByLabel('Title', { exact: true }).fill(`${title} renamed`)
+  await edit.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(edit).toBeHidden()
+
+  // The assertion K-5 exists for. The editor rewrote `alerts` wholesale; the email alarm is still
+  // there, under its own key, with its own trigger.
+  const after = await alice.call(calendars, [
+    ['CalendarEvent/get', { accountId, ids: [eventId], properties: ['title', 'alerts'] }, '0'],
+  ])
+  const stored = (after.methodResponses[0]?.[1] as { list?: Record<string, unknown>[] }).list?.[0]
+  expect(stored?.title).toBe(`${title} renamed`)
+  expect(JSON.stringify(stored?.alerts)).toContain('email')
+  expect(JSON.stringify(stored?.alerts)).toContain('-PT15M')
+
+  // ---- clean up
+  await alice.call(calendars, [['CalendarEvent/set', { accountId, destroy: [eventId] }, '0']])
 })

@@ -12,6 +12,19 @@
  *
  * Where the event carries a location or attendees, they are SHOWN and not offered for editing —
  * see `EventFacts` for why that line is where it is, and for why saving cannot damage them.
+ *
+ * **Reminders (K-5) are editable, and they are the exception that proves that rule.** Two rows, each
+ * a fixed list of offsets, because Apple's list is the one people expect and a free-text duration
+ * field is a way of asking a reader to learn ISO 8601. The second row appears only once the first is
+ * set. Anything the client does not model — an email alarm, an absolute one — is counted on a
+ * read-only line and carried through the save untouched; see `event-alerts.ts`.
+ *
+ * The value list is a native `<select>` rather than a sub-page in a navigation stack. The stack is
+ * the right shape once repetition and participants arrive beside it (they are three rows with three
+ * sub-pages, and one dialog holding all of them is Apple's answer); for a single list of ten fixed
+ * values it would mean a focus trap inside a focus trap to reproduce what the platform's own picker
+ * already does — a full-height wheel on a phone, a popup on a desktop, keyboard and screen reader
+ * included.
  */
 
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
@@ -21,6 +34,14 @@ import { Button, Dialog, Select, TextInput } from '../ui'
 import styles from './calendar.module.css'
 import type { EventDraft } from './calendar-client'
 import { EventFacts } from './EventFacts'
+import {
+  alertsFromEvent,
+  type EventAlerts,
+  formatOffset,
+  MAX_OFFSETS,
+  NO_ALERTS,
+  offsetsFor,
+} from './event-alerts'
 import { durationToMs } from './jscalendar-time'
 
 export interface EventDialogProps {
@@ -90,6 +111,18 @@ export default function EventDialog(props: EventDialogProps) {
   })
   /** Set when the reader pressed Save on a length the app will not send. */
   const [durationRejected, setDurationRejected] = useState(false)
+  /**
+   * The event's reminders, read from what the server actually sent.
+   *
+   * Seeded from the EVENT and not from an empty value even while creating: a new event has no
+   * alerts, and `NO_ALERTS` says exactly that — an empty modelled list and nothing opaque, which
+   * `alertsToPatch` turns into `alerts: null` rather than into "leave them alone". For a create
+   * those are the same thing; for an update they are the difference between clearing the list and
+   * never touching it, and the dialog is always in a position to say which.
+   */
+  const [alerts, setAlerts] = useState<EventAlerts>(() =>
+    existing === null ? NO_ALERTS : alertsFromEvent(existing),
+  )
   const [calendar, setCalendar] = useState(
     () =>
       Object.keys(existing?.calendarIds ?? {})[0] ??
@@ -139,6 +172,10 @@ export default function EventDialog(props: EventDialogProps) {
             // The reader's own zone for a timed event. A picker for other zones is a separate
             // feature; guessing one here would be worse than using the obvious answer.
             timeZone: allDay ? null : Intl.DateTimeFormat().resolvedOptions().timeZone,
+            // Always stated, because this dialog always knows: it read the alerts on the way in and
+            // has shown the reader every one it models. A caller that does NOT know leaves the
+            // field off and the property stays out of the patch (see `EventDraft.alerts`).
+            alerts,
           })
         }}
       >
@@ -223,6 +260,10 @@ export default function EventDialog(props: EventDialogProps) {
           </Select>
         </div>
 
+        {/* Reminders sit above Notes, which is where Apple puts them and where the reader expects
+            them: Notes is the field with no shape, and a field with no shape belongs last. */}
+        <AlertRows allDay={allDay} alerts={alerts} onChange={setAlerts} />
+
         <div className={styles.field}>
           <label className={styles.fieldLabel} htmlFor={`${titleId}-desc`}>
             {t('calendar.event.description')}
@@ -263,5 +304,88 @@ export default function EventDialog(props: EventDialogProps) {
         </div>
       </form>
     </Dialog>
+  )
+}
+
+/** The reminder rows, named so each keeps a stable identity across a change. */
+const ALERT_ROWS = ['first', 'second'] as const
+
+/**
+ * The reminder rows (K-5).
+ *
+ * **The second row appears only once the first is set**, which is Apple's rule and the right one: a
+ * calendar with two empty "Alert" rows tells every reader that two are expected. Clearing the first
+ * while a second exists promotes the second rather than leaving a hole — the list is ordered, not
+ * indexed, so "no first alert but a second one" is a state that cannot be expressed and should not
+ * be shown.
+ *
+ * A stored offset the fixed list does not contain (another client's choice, or the same list for the
+ * other kind of event after "All day" was ticked) is added to that row's options rather than being
+ * dropped on selection. Same stance as the calendar colour picker: a value we did not offer is still
+ * a value somebody chose.
+ */
+function AlertRows({
+  allDay,
+  alerts,
+  onChange,
+}: {
+  readonly allDay: boolean
+  readonly alerts: EventAlerts
+  onChange: (next: EventAlerts) => void
+}) {
+  const { t } = useTranslation()
+  const baseId = useId()
+  const shown = alerts.offsets.slice(0, MAX_OFFSETS)
+  const opaque = Object.keys(alerts.opaque).length
+  // One row per set reminder, plus one empty row to set the next — until both are used. Named
+  // rather than counted, so each row keeps a stable React key: keyed by index, clearing the first
+  // reminder would hand the second one's state to the first one's `<select>`.
+  const rows = ALERT_ROWS.slice(0, Math.min(shown.length + 1, MAX_OFFSETS))
+
+  const setRow = (index: number, value: string): void => {
+    const next = [...shown]
+    if (value === '') next.splice(index, 1)
+    else next[index] = value
+    // De-duplicated here as well as on the way in: choosing the value the other row already holds
+    // would otherwise leave two rows claiming one alarm, and the server stores one.
+    onChange({ ...alerts, offsets: next.filter((entry, at) => next.indexOf(entry) === at) })
+  }
+
+  return (
+    <>
+      {rows.map((row, index) => {
+        const value = shown[index] ?? ''
+        const options = offsetsFor(allDay)
+        return (
+          <div className={styles.field} key={row}>
+            <label className={styles.fieldLabel} htmlFor={`${baseId}-${row}`}>
+              {index === 0 ? t('calendar.event.alert.label') : t('calendar.event.alert.second')}
+            </label>
+            <Select
+              id={`${baseId}-${row}`}
+              value={value}
+              onChange={(event) => setRow(index, event.target.value)}
+            >
+              <option value="">{t('calendar.event.alert.none')}</option>
+              {(value !== '' && !options.includes(value) ? [value, ...options] : options).map(
+                (offset) => (
+                  <option key={offset} value={offset}>
+                    {formatOffset(offset, allDay, t)}
+                  </option>
+                ),
+              )}
+            </Select>
+          </div>
+        )
+      })}
+      {opaque > 0 && (
+        /* Counted, not listed, and above all not editable. An email alarm or an absolute one is
+           carried through the save byte for byte (see `event-alerts.ts`); saying how many there are
+           is the difference between "this app keeps them" and a reader concluding they are gone. */
+        <p className={styles.alertCarried}>
+          {t('calendar.event.alert.carried', { count: opaque })}
+        </p>
+      )}
+    </>
   )
 }

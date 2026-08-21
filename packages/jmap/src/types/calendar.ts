@@ -280,7 +280,20 @@ export type CalendarGetRequest = GetRequest
 export type CalendarGetResponse = GetResponse<Calendar>
 export type CalendarChangesRequest = ChangesRequest
 export type CalendarChangesResponse = ChangesResponse
-export type CalendarSetRequest = SetRequest<Calendar>
+/**
+ * `Calendar/set` — plus the one argument that is not in {@link SetRequest}.
+ *
+ * **A calendar that holds events cannot simply be destroyed.** Measured against Stalwart v0.16.18:
+ * `destroy: ["<id>"]` on a non-empty calendar answers
+ * `{"type":"calendarHasEvent","description":"Calendar is not empty."}` and changes nothing. The
+ * same call with `onDestroyRemoveEvents: true` succeeds and takes every event in the calendar with
+ * it — which is precisely why the screen asks first (see `CalendarList`): the flag is the client
+ * saying out loud that it accepts the cascade, and there is no way back from it.
+ */
+export type CalendarSetRequest = SetRequest<Calendar> & {
+  /** Destroy the calendar's events along with it. Without it a non-empty calendar is refused. */
+  onDestroyRemoveEvents?: boolean
+}
 export type CalendarSetResponse = SetResponse<Calendar>
 
 export type CalendarEventGetRequest = GetRequest
@@ -292,7 +305,19 @@ export type CalendarEventSetResponse = SetResponse<CalendarEvent>
 
 /** Filter conditions for `CalendarEvent/query`. */
 export interface CalendarEventFilterCondition {
-  inCalendars?: Id[]
+  /**
+   * Events in ONE calendar — **singular, one id, and not `inCalendars`**.
+   *
+   * `draft-ietf-jmap-calendars` spells this `inCalendars` and types it as a list. Stalwart v0.16.18
+   * implements neither: `inCalendars` (and `calendarIds`, and `calendarId`) is answered
+   * `{"type":"unsupportedFilter","description":"inCalendars"}`, which is a METHOD-LEVEL error — the
+   * whole query fails, so a client that sends the draft's spelling loses the month rather than the
+   * filter. `inCalendar` with a single id works, including alongside `expandRecurrences`.
+   *
+   * More than one calendar is therefore an `OR` of these conditions; see `calendarFilter()` in
+   * `apps/web/src/calendar/calendar-client.ts`, which is the only place that builds one.
+   */
+  inCalendar?: Id
   /** Events that end at or after this instant. */
   after?: UTCDate
   /** Events that start before this instant. */

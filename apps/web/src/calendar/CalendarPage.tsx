@@ -16,6 +16,15 @@
  * opens it, and the `+` in the bar creates on the day that is selected. A day cell used to open the
  * new-event dialog directly, which meant the grid had no way to say "I mean this day" — the URL
  * never moved, so the arrow keys, `Today` and `+` all still pointed somewhere else (T6).
+ *
+ * **The calendars themselves are managed here too (K-1), and that changes what the grid asks for.**
+ * The list of calendars is a rail from 40em up and a screen-high sheet below it, reached from the
+ * same view menu that already carries Today. Ticking one off writes `isVisible` to the SERVER and
+ * then re-fetches the month naming only the calendars that are on — `eventsInRange`'s third
+ * parameter, which had existed since M5.6 with no caller. So the two loads are no longer
+ * independent: the calendars are fetched first and the events depend on their answer, which costs
+ * one extra round trip on the first paint and none afterwards. The alternative, filtering the drawn
+ * list locally, looks the same on this screen and is a lie on the phone.
  */
 
 import type { Calendar } from '@waxwing/jmap'
@@ -42,7 +51,9 @@ import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from 
 import styles from './calendar.module.css'
 import {
   type CalendarClient,
+  type CalendarDraft,
   makeCalendarClient,
+  mayCreateCalendar,
   type PlacedEvent,
   refusalReason,
   refuseEdit,
@@ -50,6 +61,8 @@ import {
 
 const EventDialog = lazy(() => import('./EventDialog'))
 
+import CalendarDialog, { CalendarDeleteDialog } from './CalendarDialog'
+import { CalendarList, visibleCalendarIds } from './CalendarList'
 import { EventFacts } from './EventFacts'
 import { zoneDiffersFromLocal } from './jscalendar-time'
 import {
@@ -123,6 +136,14 @@ export default function CalendarPage(props: CalendarPageProps) {
    */
   const online = useOnline()
   const [calendars, setCalendars] = useState<Calendar[]>([])
+  /**
+   * Whether {@link calendars} is an ANSWER or just the initial empty value.
+   *
+   * Without it the first paint cannot tell "this account has no calendars" from "the list has not
+   * arrived", and the range query would either fetch nothing for ever or fetch everything once and
+   * then contradict itself.
+   */
+  const [calendarsLoaded, setCalendarsLoaded] = useState(false)
   /** `{ placed }` edits, `{ placed: null }` creates on `day`. */
   const [editing, setEditing] = useState<{ placed: PlacedEvent | null; day: Date } | null>(null)
   /** The day whose full event list is open (T8) — `null` when none is. */
@@ -139,9 +160,19 @@ export default function CalendarPage(props: CalendarPageProps) {
   const [loaded, setLoaded] = useState<{
     fromMs: number
     toMs: number
+    /** Which calendars the list answers about — see `visibleKey`. */
+    visibleKey: string
     list: PlacedEvent[]
   } | null>(null)
   const [failed, setFailed] = useState(false)
+  /** `{ calendar }` edits, `{ calendar: null }` creates. */
+  const [editingCalendar, setEditingCalendar] = useState<{ calendar: Calendar | null } | null>(null)
+  /** The calendar the reader asked to delete, and how many events go with it (`null` = counting). */
+  const [deleting, setDeleting] = useState<{ calendar: Calendar; count: number | null } | null>(
+    null,
+  )
+  /** The calendar list on a phone, where there is no rail to put it in. */
+  const [calendarsOpen, setCalendarsOpen] = useState(false)
 
   /** The day the view is centred on: the route param, else today. */
   const focusDay = route.params.date
@@ -184,26 +215,50 @@ export default function CalendarPage(props: CalendarPageProps) {
    */
   const request = useRef(0)
 
-  const load = useCallback(async () => {
+  /**
+   * `null` until the calendars are known; then the ids whose events to ask for.
+   *
+   * The distinction matters: an EMPTY list is "every calendar is switched off" and must draw an
+   * empty month, while "not known yet" must not fetch at all — asking with no filter would draw
+   * every event for one paint and then take the hidden ones away again.
+   */
+  const visibleIds = useMemo(
+    () => (calendarsLoaded ? visibleCalendarIds(calendars) : null),
+    [calendars, calendarsLoaded],
+  )
+  /** A stable stamp for "which calendars this answer is about", for the staleness check below. */
+  const visibleKey = (visibleIds ?? []).join(',')
+
+  const loadCalendars = useCallback(async () => {
     if (client === null) return
+    try {
+      setCalendars(await client.listCalendars())
+      setCalendarsLoaded(true)
+    } catch {
+      setFailed(true)
+    }
+  }, [client])
+
+  const load = useCallback(async () => {
+    if (client === null || visibleIds === null) return
     request.current += 1
     const mine = request.current
     // Clearing the failure at the START of the attempt, so a retry shows that it is trying rather
     // than leaving the error on screen until it either succeeds or fails again.
     setFailed(false)
     try {
-      const [inRange, list] = await Promise.all([
-        client.eventsInRange(new Date(fromMs), new Date(toMs)),
-        client.listCalendars(),
-      ])
+      const inRange = await client.eventsInRange(new Date(fromMs), new Date(toMs), visibleIds)
       if (mine !== request.current) return
-      setLoaded({ fromMs, toMs, list: inRange })
-      setCalendars(list)
+      setLoaded({ fromMs, toMs, visibleKey, list: inRange })
     } catch {
       if (mine !== request.current) return
       setFailed(true)
     }
-  }, [client, fromMs, toMs])
+  }, [client, fromMs, toMs, visibleIds, visibleKey])
+
+  useEffect(() => {
+    void loadCalendars()
+  }, [loadCalendars])
 
   useEffect(() => {
     void load()
@@ -311,6 +366,93 @@ export default function CalendarPage(props: CalendarPageProps) {
     })
   }
 
+  /**
+   * Ticking a calendar on or off.
+   *
+   * Optimistic, and the optimism is not decoration: the write is followed by a fresh range query,
+   * so waiting for the round trip before moving the tick would leave the reader looking at a
+   * checkbox that ignored them for as long as the server took. On refusal the tick goes back where
+   * it was and the toast says why — the list is re-read rather than patched back, so the screen
+   * ends up agreeing with the server rather than with our guess about it.
+   */
+  const toggleCalendar = async (calendar: Calendar, visible: boolean): Promise<void> => {
+    if (client === null) return
+    setCalendars((current) =>
+      current.map((entry) => (entry.id === calendar.id ? { ...entry, isVisible: visible } : entry)),
+    )
+    try {
+      await client.updateCalendar(calendar.id, { isVisible: visible })
+    } catch (error) {
+      await loadCalendars()
+      toast({
+        tone: 'danger',
+        title: t('calendar.calendars.toggleFailed'),
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+    }
+  }
+
+  const saveCalendar = async (draft: CalendarDraft): Promise<void> => {
+    if (client === null || editingCalendar === null) return
+    const target = editingCalendar.calendar
+    setSaving(true)
+    try {
+      if (target === null) await client.createCalendar(draft)
+      else await client.updateCalendar(target.id, draft)
+      setEditingCalendar(null)
+      await loadCalendars()
+    } catch (error) {
+      toast({
+        tone: 'danger',
+        title: t('calendar.calendars.saveFailed'),
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * Opens the confirmation, then fetches what it has to say.
+   *
+   * The count is asked for AFTER the dialog is on screen rather than before it, so the answer to a
+   * menu click is immediate. Until it arrives the confirm button is out of reach — see
+   * `CalendarDeleteDialog`: agreeing to lose an unknown number of events is not agreement.
+   */
+  const askDelete = async (calendar: Calendar): Promise<void> => {
+    if (client === null) return
+    setCalendarsOpen(false)
+    setDeleting({ calendar, count: null })
+    try {
+      const count = await client.countEvents(calendar.id)
+      setDeleting((current) =>
+        current?.calendar.id === calendar.id ? { calendar, count } : current,
+      )
+    } catch {
+      // A count we could not take must not become a zero. Nothing changes; the dialog keeps saying
+      // it is counting and Delete stays unavailable, which is the honest end of this path.
+    }
+  }
+
+  const confirmDelete = async (): Promise<void> => {
+    if (client === null || deleting === null) return
+    setSaving(true)
+    try {
+      await client.destroyCalendar(deleting.calendar.id)
+      setDeleting(null)
+      await loadCalendars()
+      toast({ title: t('calendar.calendars.deleted', { name: deleting.calendar.name }) })
+    } catch (error) {
+      toast({
+        tone: 'danger',
+        title: t('calendar.calendars.deleteFailed'),
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (client === null) {
     return (
       <div className={styles.page}>
@@ -321,7 +463,12 @@ export default function CalendarPage(props: CalendarPageProps) {
 
   /** Only ever the list that answers about the window on screen — see `loaded`. */
   const events =
-    loaded !== null && loaded.fromMs === fromMs && loaded.toMs === toMs ? loaded.list : null
+    loaded !== null &&
+    loaded.fromMs === fromMs &&
+    loaded.toMs === toMs &&
+    loaded.visibleKey === visibleKey
+      ? loaded.list
+      : null
 
   const days = monthGrid(focus, locale, today)
   const week = weekDays(focus, firstDayOfWeek(locale))
@@ -433,6 +580,15 @@ export default function CalendarPage(props: CalendarPageProps) {
             align="end"
             items={[
               { id: 'today', label: t('calendar.today'), onSelect: () => goto(today) },
+              /* Below 40em there is no rail to hold the calendar list, so it becomes a screen-high
+                 sheet from the one menu this screen already has. Same list, same controls — the
+                 difference is where it is anchored, which is the difference Apple's own calendar
+                 makes between an iPad and an iPhone. */
+              {
+                id: 'calendars',
+                label: t('calendar.calendars.open'),
+                onSelect: () => setCalendarsOpen(true),
+              },
               ...VIEWS.map((id) => ({
                 id,
                 label: VIEW_LABELS[id](t),
@@ -478,63 +634,89 @@ export default function CalendarPage(props: CalendarPageProps) {
       {phoneTitle && <h1 className={styles.pageTitle}>{heading}</h1>}
 
       {/*
-        Exactly ONE of: the failure, the spinner, the view.
+        The month and the calendars, side by side from 40em up.
 
-        All three used to be able to stand in the DOM at once, and the combination was the worst of
-        the three: a red "could not be loaded" over a grid that looked complete and was not (T5).
-        A failure with usable data for THIS window keeps the data and reports in one line above it;
-        a failure with nothing to show takes the whole pane, which is where a Try again belongs.
+        The rail is the same shape as the address-book rail and the folder tree, because it is the
+        same kind of thing: a short list of containers, one line each, that decides what the pane
+        beside it shows. Below 40em it is not narrowed — it is not rendered, and the list lives in a
+        sheet instead (see the view menu above). A 215px rail beside a 390px phone is two panes that
+        both lose.
       */}
-      {failed && events === null ? (
-        <EmptyState
-          tone="error"
-          icon={TriangleAlert}
-          title={t('calendar.loadFailed')}
-          action={
-            <Button variant="secondary" onClick={() => void load()}>
-              {t('calendar.retry')}
-            </Button>
-          }
-        />
-      ) : (
-        <>
-          {failed && (
-            <div className={styles.loadError} role="alert">
-              <TriangleAlert aria-hidden="true" />
-              <span className={styles.loadErrorText}>{t('calendar.refreshFailed')}</span>
-              <Button variant="secondary" size="sm" onClick={() => void load()}>
-                {t('calendar.retry')}
-              </Button>
-            </div>
-          )}
-          {events === null ? (
-            <div className={styles.loading}>
-              <Spinner label={t('ui.spinner.label')} />
-            </div>
-          ) : view === 'month' ? (
-            <MonthView
-              days={days}
-              byDay={byDay}
-              locale={locale}
-              focus={focus}
-              onPick={goto}
-              onExpand={setExpandedDay}
-              onOpen={openEvent}
+      <div className={styles.body}>
+        {tier !== 'phone' && (
+          <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
+            <CalendarList
+              calendars={calendars}
+              canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
+              disabled={saving || !online}
+              onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
+              onCreate={() => setEditingCalendar({ calendar: null })}
+              onEdit={(calendar) => setEditingCalendar({ calendar })}
+              onDelete={(calendar) => void askDelete(calendar)}
             />
-          ) : view === 'week' ? (
-            <WeekView
-              days={week}
-              events={events}
-              today={today}
-              focus={focus}
-              onOpen={openEvent}
-              onPick={goto}
+          </aside>
+        )}
+        <div className={styles.main}>
+          {/*
+            Exactly ONE of: the failure, the spinner, the view.
+
+            All three used to be able to stand in the DOM at once, and the combination was the worst of
+            the three: a red "could not be loaded" over a grid that looked complete and was not (T5).
+            A failure with usable data for THIS window keeps the data and reports in one line above it;
+            a failure with nothing to show takes the whole pane, which is where a Try again belongs.
+          */}
+          {failed && events === null ? (
+            <EmptyState
+              tone="error"
+              icon={TriangleAlert}
+              title={t('calendar.loadFailed')}
+              action={
+                <Button variant="secondary" onClick={() => void load()}>
+                  {t('calendar.retry')}
+                </Button>
+              }
             />
           ) : (
-            <AgendaView events={events} today={today} onOpen={openEvent} />
+            <>
+              {failed && (
+                <div className={styles.loadError} role="alert">
+                  <TriangleAlert aria-hidden="true" />
+                  <span className={styles.loadErrorText}>{t('calendar.refreshFailed')}</span>
+                  <Button variant="secondary" size="sm" onClick={() => void load()}>
+                    {t('calendar.retry')}
+                  </Button>
+                </div>
+              )}
+              {events === null ? (
+                <div className={styles.loading}>
+                  <Spinner label={t('ui.spinner.label')} />
+                </div>
+              ) : view === 'month' ? (
+                <MonthView
+                  days={days}
+                  byDay={byDay}
+                  locale={locale}
+                  focus={focus}
+                  onPick={goto}
+                  onExpand={setExpandedDay}
+                  onOpen={openEvent}
+                />
+              ) : view === 'week' ? (
+                <WeekView
+                  days={week}
+                  events={events}
+                  today={today}
+                  focus={focus}
+                  onOpen={openEvent}
+                  onPick={goto}
+                />
+              ) : (
+                <AgendaView events={events} today={today} onOpen={openEvent} />
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
 
       {expandedDay !== null && (
         <DayDialog
@@ -542,6 +724,56 @@ export default function CalendarPage(props: CalendarPageProps) {
           events={byDay.get(toIsoDate(expandedDay)) ?? []}
           onClose={() => setExpandedDay(null)}
           onOpen={openEvent}
+        />
+      )}
+
+      {/* The phone's calendar list: the same component, in a screen-high sheet. `size="lg"` is what
+          the Dialog offers that comes closest to Apple's presentation, and below 40em the panel is
+          full-bleed anyway. */}
+      {calendarsOpen && (
+        <Dialog
+          open
+          onClose={() => setCalendarsOpen(false)}
+          size="lg"
+          title={t('calendar.calendars.title')}
+        >
+          <div className={styles.calendarSheet}>
+            <CalendarList
+              calendars={calendars}
+              heading={false}
+              canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
+              disabled={saving || !online}
+              onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
+              onCreate={() => {
+                setCalendarsOpen(false)
+                setEditingCalendar({ calendar: null })
+              }}
+              onEdit={(calendar) => {
+                setCalendarsOpen(false)
+                setEditingCalendar({ calendar })
+              }}
+              onDelete={(calendar) => void askDelete(calendar)}
+            />
+          </div>
+        </Dialog>
+      )}
+
+      {editingCalendar !== null && (
+        <CalendarDialog
+          calendar={editingCalendar.calendar}
+          busy={saving}
+          onCancel={() => setEditingCalendar(null)}
+          onSubmit={(draft) => void saveCalendar(draft)}
+        />
+      )}
+
+      {deleting !== null && (
+        <CalendarDeleteDialog
+          calendar={deleting.calendar}
+          eventCount={deleting.count}
+          busy={saving}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => void confirmDelete()}
         />
       )}
 

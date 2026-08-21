@@ -15,6 +15,7 @@ import {
   placeEvent,
   refuseEdit,
 } from './calendar-client'
+import { alertsFromEvent } from './event-alerts'
 
 const draft = (over: Partial<EventDraft> = {}): EventDraft => ({
   calendarId: 'c1',
@@ -134,6 +135,9 @@ describe('draftToEvent', () => {
       'organizerCalendarAddress',
       // Immutable on this server: an update naming it is refused outright.
       'method',
+      // Still absent HERE, because this draft names no reminders. It is no longer absent
+      // unconditionally — see the K-5 block below for the two ways it may now appear, and for why
+      // the condition is the whole safety property.
       'alerts',
       'privacy',
       'freeBusyStatus',
@@ -170,5 +174,68 @@ describe('refuseEdit', () => {
     expect(
       refuseEdit(placed({ recurrenceId: '2026-08-20T10:00:00' }, { writeId: '0', series: false })),
     ).toBe('series')
+  })
+})
+
+describe('draftToEvent and reminders (K-5)', () => {
+  const EMAIL_1H = {
+    '@type': 'Alert' as const,
+    action: 'email' as const,
+    trigger: { '@type': 'OffsetTrigger' as const, offset: '-PT1H' },
+  }
+
+  it('leaves `alerts` OUT of the patch when the draft says nothing about them', () => {
+    /*
+     * The line between K-5 being an improvement and K-5 being a data-loss bug.
+     *
+     * On an update this object is a JMAP patch: a property it does not name survives. Writing
+     * `alerts` unconditionally — even as `alerts: draft.alerts ?? null` — would mean every save
+     * from a caller that does not model reminders deletes every alarm on the event. Before K-5 the
+     * property was simply never named, and that accident is what protected them; now the condition
+     * has to do it on purpose.
+     */
+    expect(Object.keys(draftToEvent(draft()))).not.toContain('alerts')
+  })
+
+  it('writes `alerts: null` for a list the reader emptied', () => {
+    // The other half of the same distinction: `undefined` is "not touched", an empty EventAlerts is
+    // "the reader took the reminder off", and only the second one may reach the wire.
+    expect(draftToEvent(draft({ alerts: { offsets: [], opaque: {} } })).alerts).toBeNull()
+  })
+
+  it('writes the reminder the reader chose', () => {
+    const patch = draftToEvent(draft({ alerts: { offsets: ['-PT15M'], opaque: {} } }))
+    expect(Object.values(patch.alerts as Record<string, unknown>)).toEqual([
+      {
+        '@type': 'Alert',
+        action: 'display',
+        trigger: { '@type': 'OffsetTrigger', offset: '-PT15M', relativeTo: 'start' },
+      },
+    ])
+  })
+
+  it('carries an EMAIL alarm through a title change untouched', () => {
+    /*
+     * The event has a reminder this client cannot show, cannot set and must not lose. It arrives
+     * from `alertsFromEvent`, sits in `opaque`, and comes back out of `alertsToPatch` under the same
+     * key and with the same members — so renaming the meeting leaves the alarm exactly where the
+     * phone that set it put it.
+     */
+    const stored = alertsFromEvent({
+      id: 'e1',
+      calendarIds: { c1: true },
+      start: '2026-08-20T10:00:00',
+      alerts: { k2: EMAIL_1H },
+    } as unknown as CalendarEvent)
+
+    const patch = draftToEvent(draft({ title: 'Review, renamed', alerts: stored }))
+    expect((patch.alerts as Record<string, unknown>).k2).toEqual(EMAIL_1H)
+  })
+
+  it('keeps that alarm even when the reader clears the reminder they CAN see', () => {
+    // The most likely way to lose it: the row the reader can reach is set to "None" and the whole
+    // map is rewritten from what the dialog knows. `opaque` is what the dialog does not know.
+    const patch = draftToEvent(draft({ alerts: { offsets: [], opaque: { k2: EMAIL_1H } } }))
+    expect(patch.alerts).toEqual({ k2: EMAIL_1H })
   })
 })

@@ -74,6 +74,8 @@ interface FakeOptions {
   readonly breakIdentity?: boolean
   /** What `Calendar/get` resolves to. */
   readonly calendars?: Calendar[]
+  /** What a `calculateTotal` query answers with — the count behind the delete confirmation. */
+  readonly eventCount?: number
 }
 
 /**
@@ -114,7 +116,30 @@ function fakeClient(options: FakeOptions = {}): {
         const ids = list.map((entry) => entry.id)
         queryIds.set(id, ids)
         if (!expanded) identityQueries.add(id)
-        responses.push([name, { accountId: ACC, ids, queryState: 'q1' }, id])
+        responses.push([
+          name,
+          {
+            accountId: ACC,
+            ids,
+            queryState: 'q1',
+            ...(args.calculateTotal === true ? { total: options.eventCount ?? ids.length } : {}),
+          },
+          id,
+        ])
+        continue
+      }
+
+      if (name === 'Calendar/set') {
+        responses.push([
+          name,
+          {
+            accountId: ACC,
+            created: args.create === undefined ? null : { k: { id: 'cal-1' } },
+            updated: args.update === undefined ? null : { x: null },
+            destroyed: args.destroy ?? null,
+          },
+          id,
+        ])
         continue
       }
 
@@ -747,5 +772,186 @@ describe('placeEvent', () => {
     // The safe default is the point: a caller who forgets to resolve identity gets an event that
     // cannot be written, not one that writes with a display id.
     expect(placeEvent(event()).writeId).toBeNull()
+  })
+})
+
+describe('the calendars a range query asks about', () => {
+  /** The `filter` both halves of the range query carry. */
+  const filterOf = (calls: Invocation[]): Record<string, unknown> =>
+    (calls.find(([name]) => name === 'CalendarEvent/query')?.[1] as { filter: unknown })
+      .filter as Record<string, unknown>
+
+  it('NAMES the visible calendars — the parameter that had no caller', async () => {
+    /*
+     * K-1's whole point. `eventsInRange` has taken `calendarIds` since M5.6 and nothing ever passed
+     * one, so hiding a calendar could only ever have been a local filter — right on this screen and
+     * wrong everywhere else. With the ids named, the server does not send the events at all.
+     */
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, ['c1', 'c2'])
+
+    expect(filterOf(calls)).toEqual({
+      operator: 'AND',
+      conditions: [
+        { after: FROM.toISOString(), before: TO.toISOString() },
+        { operator: 'OR', conditions: [{ inCalendar: 'c1' }, { inCalendar: 'c2' }] },
+      ],
+    })
+  })
+
+  it('spells it `inCalendar`, singular — `inCalendars` fails the whole query', async () => {
+    /*
+     * Measured against Stalwart v0.16.18 on 21 August 2026. `draft-ietf-jmap-calendars` spells this
+     * `inCalendars` and types it as a list; the server answers
+     * `{"type":"unsupportedFilter","description":"inCalendars"}` — and that is a METHOD-level error,
+     * not an ignored argument, so a client sending the draft's spelling loses the month rather than
+     * the filter. `calendarIds` and `calendarId` are refused the same way. Only `inCalendar` with a
+     * single id works, which is why more than one calendar has to be an OR.
+     *
+     * This assertion is the one that would have caught it: the implementation PLAN said `inCalendars`
+     * too, and a client written from the plan would have shipped a calendar screen that showed
+     * nothing at all the moment a reader hid one calendar.
+     */
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, ['c1'])
+
+    const wire = JSON.stringify(filterOf(calls))
+    expect(wire).toContain('inCalendar')
+    expect(wire).not.toContain('inCalendars')
+    expect(wire).not.toContain('calendarIds')
+  })
+
+  it('asks both halves about the same calendars, or the join stops working', async () => {
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, ['c1'])
+
+    const queries = calls.filter(([name]) => name === 'CalendarEvent/query')
+    expect((queries[0]?.[1] as { filter: unknown }).filter).toEqual(
+      (queries[1]?.[1] as { filter: unknown }).filter,
+    )
+  })
+
+  it('asks for every calendar when the caller names none', async () => {
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
+
+    expect(filterOf(calls)).toEqual({ after: FROM.toISOString(), before: TO.toISOString() })
+  })
+
+  it('asks for NOTHING when every calendar is hidden, without a round trip', async () => {
+    // An empty list is a decision, not an absence. Sending it as "no filter" would draw every event
+    // under a screen that says nothing is shown — the exact inversion this parameter prevents.
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    expect(await makeCalendarClient(client, ACC).eventsInRange(FROM, TO, [])).toEqual([])
+    expect(calls).toEqual([])
+  })
+
+  it('asks the server for `alerts`, which it never used to', async () => {
+    // K-5's leading finding: `alerts` was in NO property list this client sent, so a reminder set on
+    // a phone was invisible here — the editor could not show it and no view knew it existed.
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
+
+    const drawn = calls.filter(([name]) => name === 'CalendarEvent/get')[0]
+    expect((drawn?.[1] as { properties: string[] }).properties).toContain('alerts')
+  })
+})
+
+describe('managing calendars', () => {
+  const setArgs = (calls: Invocation[]): Record<string, unknown> =>
+    calls.find(([name]) => name === 'Calendar/set')?.[1] as Record<string, unknown>
+
+  it('creates with a name, a colour and a visible flag', async () => {
+    const { client, calls } = fakeClient()
+    await makeCalendarClient(client, ACC).createCalendar({ name: 'Privat', color: '#2761c4' })
+
+    const created = (setArgs(calls).create as Record<string, Record<string, unknown>>).k ?? {}
+    expect(created.name).toBe('Privat')
+    expect(created.color).toBe('#2761c4')
+    expect(created.isVisible).toBe(true)
+    // Measured: a calendar created without it comes back `isSubscribed: false` — made, but not one
+    // the user asked to see, and therefore missing from the phone's calendar app.
+    expect(created.isSubscribed).toBe(true)
+  })
+
+  it('does NOT send `participantIdentities`, which the server refuses outright', async () => {
+    /*
+     * Measured: `Calendar/set` with `participantIdentities` answers
+     * `{"type":"invalidProperties","description":"Invalid property.","properties":["participantIdentities"]}`
+     * — the create fails entirely. `isDefault` is refused the same way in create AND update
+     * ("Field could not be set."), so neither may reach the wire.
+     */
+    const { client, calls } = fakeClient()
+    await makeCalendarClient(client, ACC).createCalendar({ name: 'Privat', color: null })
+
+    const created = (setArgs(calls).create as Record<string, Record<string, unknown>>).k ?? {}
+    expect(Object.keys(created)).not.toContain('participantIdentities')
+    expect(Object.keys(created)).not.toContain('isDefault')
+  })
+
+  it('patches only what it was given, so a rename cannot clear a colour', async () => {
+    const { client, calls } = fakeClient()
+    await makeCalendarClient(client, ACC).updateCalendar('c9', { name: 'Neu' })
+
+    expect(setArgs(calls).update).toEqual({ c9: { name: 'Neu' } })
+  })
+
+  it('states `onDestroyRemoveEvents`, or a non-empty calendar is refused', async () => {
+    /*
+     * Measured: a bare `destroy` on a calendar that holds events answers
+     * `{"type":"calendarHasEvent","description":"Calendar is not empty."}` and changes nothing; the
+     * same call with the flag succeeds and takes every event with it. The flag is not a convenience
+     * — it is the server making a client state that it accepts the cascade, which is why the screen
+     * asks first.
+     */
+    const { client, calls } = fakeClient()
+    await makeCalendarClient(client, ACC).destroyCalendar('c9')
+
+    expect(setArgs(calls).destroy).toEqual(['c9'])
+    expect(setArgs(calls).onDestroyRemoveEvents).toBe(true)
+  })
+
+  it('reports a `Calendar/set` refusal in the server’s own words', async () => {
+    const { client } = fakeClient()
+    const failing = {
+      ...client,
+      async call() {
+        return new MethodResponses(
+          [
+            [
+              'Calendar/set',
+              { notDestroyed: { c9: { type: 'calendarHasEvent', description: 'Not empty.' } } },
+              'c0',
+            ],
+          ],
+          's',
+          undefined,
+        )
+      },
+    } as unknown as JmapClient
+
+    const error = await makeCalendarClient(failing, ACC)
+      .destroyCalendar('c9')
+      .catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(CalendarSetError)
+    expect(refusalReason(error)).toBe('Not empty.')
+  })
+
+  it('counts a calendar’s events with a total, not with a list of every id', async () => {
+    // The confirmation says a number. Fetching every id in a calendar to length it would be a
+    // request whose size is the answer it is trying to report.
+    const { client, calls } = fakeClient({ eventCount: 42 })
+    expect(await makeCalendarClient(client, ACC).countEvents('c9')).toBe(42)
+
+    const query = calls.find(([name]) => name === 'CalendarEvent/query')?.[1] as Record<
+      string,
+      unknown
+    >
+    expect(query.filter).toEqual({ inCalendar: 'c9' })
+    expect(query.calculateTotal).toBe(true)
+    expect(query.limit).toBe(1)
+    // NOT expanded: the reader is being told how many events they are about to lose, and a weekly
+    // meeting expanded over a lifetime is a frightening answer to a different question.
+    expect(query.expandRecurrences).toBeUndefined()
   })
 })
