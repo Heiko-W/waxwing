@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { notificationTargetPath } from '../../notify/click-route'
 import { carryAccount } from './RouterProvider'
 import {
+  CONTACTS_ALL_BOOKS,
   CONTACTS_PATH,
   contactsPath,
   deriveBase,
@@ -171,8 +172,21 @@ describe('path builders', () => {
     expect(contactsPath()).toBe('/contacts')
     expect(contactsPath('book1')).toBe('/contacts/book1')
     expect(contactsPath('book1', 'c42')).toBe('/contacts/book1/c42')
-    // A card without a book has no addressable list to hang off, so the book segment wins.
-    expect(contactsPath(undefined, 'c42')).toBe('/contacts')
+  })
+
+  it('addresses a card in the all-books scope rather than dropping it', () => {
+    // The regression this pins: `contactsPath(undefined, 'c42')` used to return `/contacts`, so
+    // every row in "All Contacts" navigated to the page it was already on and nothing opened.
+    expect(contactsPath(undefined, 'c42')).toBe(`/contacts/${CONTACTS_ALL_BOOKS}/c42`)
+  })
+
+  it('reads the all-books segment back as "no book"', () => {
+    // Round trip: what `contactsPath` writes, `matchRoute` must resolve to the same pair the caller
+    // had — otherwise the rail would highlight a book named `~all` and the list would be empty.
+    const match = matchRoute('', loc(contactsPath(undefined, 'c42')))
+    expect(match.id).toBe('contacts')
+    expect(match.params.bookId).toBeUndefined()
+    expect(match.params.cardId).toBe('c42')
   })
 })
 

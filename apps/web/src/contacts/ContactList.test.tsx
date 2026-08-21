@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RouterProvider } from '../app/route'
+import { CONTACTS_ALL_BOOKS, RouterProvider } from '../app/route'
 import {
   canonicalContactQueryKey,
   putContactCards,
@@ -74,6 +75,18 @@ beforeEach(async () => {
     sort: null,
     lastUsedAt: 1,
   })
+  // The unconstrained window — what "All Contacts" reads (`buildFilter` yields `null` with no book).
+  await putContactQueryCache(db, {
+    accountId: 'a',
+    key: canonicalContactQueryKey({ filter: null }),
+    ids: ['c1', 'c2'],
+    queryState: 'q',
+    total: 2,
+    upToId: 'c2',
+    filter: null,
+    sort: null,
+    lastUsedAt: 1,
+  })
   // An empty book (window present, no ids) for the empty-state case.
   await putContactQueryCache(db, {
     accountId: 'a',
@@ -93,7 +106,7 @@ afterEach(async () => {
   await db.delete()
 })
 
-function renderContactList(bookId: string, selectedCardId?: string) {
+function renderContactList(bookId: string | undefined, selectedCardId?: string) {
   return render(
     <RouterProvider>
       <ReplicaProvider accountId="a" db={db}>
@@ -129,6 +142,29 @@ describe('ContactList', () => {
     renderContactList('empty')
     expect(await screen.findByText(/No contacts yet/)).toBeInTheDocument()
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  /**
+   * The "All Contacts" view is the app's default contacts route and the phone's only one, and every
+   * row in it opened nothing: the list built its target with `contactsPath(undefined, card.id)`,
+   * which dropped the card and returned `/contacts` — the page the reader was already on.
+   *
+   * The assertion is the URL rather than a navigate() spy on purpose: the defect was not a missing
+   * call, it was a call to the wrong place, and only the resulting location shows that.
+   */
+  it('opens a card from All Contacts, where there is no book to name', async () => {
+    const user = userEvent.setup()
+    window.history.pushState(null, '', '/contacts')
+    renderContactList(undefined)
+    await user.click(await screen.findByRole('option', { name: 'Alice Anderson' }))
+    expect(window.location.pathname).toBe(`/contacts/${CONTACTS_ALL_BOOKS}/c2`)
+  })
+
+  it('opens a card from a book by naming that book', async () => {
+    const user = userEvent.setup()
+    renderContactList('book1')
+    await user.click(await screen.findByRole('option', { name: 'Bob Brown' }))
+    expect(window.location.pathname).toBe('/contacts/book1/c1')
   })
 
   it('has no axe violations', async () => {
