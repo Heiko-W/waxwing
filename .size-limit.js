@@ -91,6 +91,24 @@ export default [
       '!apps/web/dist/assets/files-client-*.js',
       // The `.eml` import dialog (mail/, M5.3) — restoring an archived message is a rare, deliberate act.
       '!apps/web/dist/assets/EmlImportDialog-*.js',
+      // The calendar's write surfaces (calendar/, K-1…K-5): the event editor, the facts panel it
+      // shares with the detail view, the recurrence vocabulary, the ICS importer, and the client
+      // itself. `calendar-client` and `event-recurrence` became chunks of their own once a SECOND
+      // lazy chunk imported them — the same split `files-client` went through.
+      //
+      // Checked the way that split has to be checked, because the inverted rule means a wrong entry
+      // here hides real weight: none of the five is imported by `index-*.js`. They appear in that
+      // chunk only as STRINGS inside Vite's preload dependency lists, which is what a dynamic import
+      // of a route looks like from the entry side. `index.html` modulepreloads none of them.
+      '!apps/web/dist/assets/EventDialog-*.js',
+      '!apps/web/dist/assets/EventFacts-*.js',
+      '!apps/web/dist/assets/IcsImportDialog-*.js',
+      '!apps/web/dist/assets/calendar-client-*.js',
+      '!apps/web/dist/assets/event-recurrence-*.js',
+      // Sharing (sharing/, S-1…S-4): the generic dialog and the mailbox-specific wrapper. Reached
+      // from a folder's or a file's menu; the great majority of sessions never open either.
+      '!apps/web/dist/assets/ShareDialog-*.js',
+      '!apps/web/dist/assets/MailboxShareDialog-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],
