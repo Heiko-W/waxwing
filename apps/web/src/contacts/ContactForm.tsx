@@ -30,8 +30,8 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isPlausibleEmail } from '../compose/address-validation'
-import { type ContactCardRow, useReplica } from '../sync'
-import { Button, IconButton, SectionLabel, Select, TextInput } from '../ui'
+import { type AddressBookRow, type ContactCardRow, useReplica } from '../sync'
+import { Button, Checkbox, IconButton, SectionLabel, Select, TextInput } from '../ui'
 import {
   type AddressEntry,
   type ContactFormModel,
@@ -71,6 +71,11 @@ export interface ContactFormProps {
   readonly card?: ContactCardRow
   /** Target book for a create / context book for an edit — a card must belong to at least one book. */
   readonly bookId: Id
+  /**
+   * Every address book of the account, for the membership section. Omit (or pass one book) and the
+   * section is not rendered — see {@link AddressBooksField}.
+   */
+  readonly books?: readonly AddressBookRow[]
   readonly onSubmit: (submit: ContactFormSubmit) => void
   readonly onCancel: () => void
   /** Defence in depth: `false` disables Save and shows a read-only notice. Default `true`. */
@@ -135,7 +140,12 @@ export function ContactForm(props: ContactFormProps) {
   const [draft, setDraft] = useState<ContactFormModel>(() => {
     if (card !== undefined) return cardToForm(card)
     const blank = emptyFormModel()
-    return { ...blank, emails: [newEmailEntry(newId)], phones: [newPhoneEntry(newId)] }
+    return {
+      ...blank,
+      bookIds: [bookId],
+      emails: [newEmailEntry(newId)],
+      phones: [newPhoneEntry(newId)],
+    }
   })
   // The diff base, captured once. `card` may change identity under us (another tab); the diff is
   // still taken against the version the user opened, and the outbox `ifInState` guard catches races.
@@ -646,6 +656,13 @@ export function ContactForm(props: ContactFormProps) {
         </FormSection>
       )}
 
+      <AddressBooksField
+        books={props.books ?? []}
+        selected={draft.bookIds}
+        canWrite={canWrite}
+        onChange={(bookIds) => setDraft((p) => ({ ...p, bookIds }))}
+      />
+
       {hiddenSections.length > 0 && (
         <fieldset className={styles.addField}>
           <legend className={styles.addFieldLegend}>{t('contacts.form.addField')}</legend>
@@ -666,6 +683,88 @@ export function ContactForm(props: ContactFormProps) {
         </fieldset>
       )}
     </form>
+  )
+}
+
+/**
+ * Which address books this card is filed in (JMAP gap analysis, A-3).
+ *
+ * **Why this is a membership editor and not a "Copy to…" command.** `ContactCard/copy` exists and
+ * the obvious reading of the gap was to wire it up. Measured against Stalwart v0.16.18 on
+ * 2026-08-21, that reading is wrong at the protocol level: a `/copy` whose `accountId` equals its
+ * `fromAccountId` is refused outright — `invalidArguments`, *"From accountId is equal to
+ * fromAccountId"* — for every key shape tried. RFC 8620 §5.4 `/copy` moves objects BETWEEN
+ * ACCOUNTS; it cannot address two books of one account, which is the case a person actually has.
+ *
+ * And a copy would be the wrong answer even if it worked. JSContact files a card by a SET
+ * (`addressBookIds`, RFC 9610 §2), so "Anna is in Work and in Family" is one card in two books, not
+ * two cards that drift apart the first time a phone number changes. Measured: a card carrying
+ * `{b:true, c:true}` comes back from `ContactCard/query` for both books, with one id.
+ *
+ * **The shape is Apple's.** iOS and macOS Contacts have no copy command either — membership is a
+ * checklist inside Edit ("Groups"), because it is a property of the person, not an action performed
+ * on them. So: plain checkboxes, in the edit sheet, under everything that describes the human.
+ *
+ * Hidden below two books, where it would be a control with one possible answer. Books the user
+ * cannot write to appear only if the card is ALREADY in one, and then read-only — an unwritable
+ * book is a fact about the card, not an offer.
+ */
+function AddressBooksField({
+  books,
+  selected,
+  canWrite,
+  onChange,
+}: {
+  readonly books: readonly AddressBookRow[]
+  readonly selected: readonly Id[]
+  readonly canWrite: boolean
+  readonly onChange: (bookIds: readonly Id[]) => void
+}) {
+  const { t } = useTranslation()
+  // Shown once and then left alone: the rule only bites when someone tries to break it.
+  const [refused, setRefused] = useState(false)
+
+  const choices = books.filter(
+    (book) => book.myRights.mayWrite === true || selected.includes(book.id),
+  )
+  if (choices.length < 2) return null
+
+  return (
+    <FormSection title={t('contacts.form.sections.books')}>
+      {choices.map((book) => {
+        const checked = selected.includes(book.id)
+        const readOnly = !canWrite || book.myRights.mayWrite !== true
+        return (
+          <Checkbox
+            key={book.id}
+            label={book.name}
+            checked={checked}
+            disabled={readOnly}
+            onChange={(event) => {
+              if (event.target.checked) {
+                setRefused(false)
+                onChange([...selected, book.id])
+                return
+              }
+              // The server refuses the last removal (`invalidProperties`, measured). Refusing it here
+              // means the reader never sends a save that cannot succeed, and never sees the card
+              // vanish from the list and come back.
+              if (selected.length <= 1) {
+                setRefused(true)
+                return
+              }
+              setRefused(false)
+              onChange(selected.filter((id) => id !== book.id))
+            }}
+          />
+        )
+      })}
+      {refused && (
+        <p role="alert" className={styles.formNotice}>
+          {t('contacts.form.booksAtLeastOne')}
+        </p>
+      )}
+    </FormSection>
   )
 }
 

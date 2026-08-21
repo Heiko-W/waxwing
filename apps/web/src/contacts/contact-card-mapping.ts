@@ -145,6 +145,16 @@ export interface PreservedCollections {
 }
 
 export interface ContactFormModel {
+  /**
+   * Which address books the card is filed in (JSContact `addressBookIds`, RFC 9610 §2).
+   *
+   * A card belongs to a SET of books, not to one — that is the property this client had modelled as
+   * a scalar everywhere. Measured against Stalwart v0.16.18 on 2026-08-21: one card carrying
+   * `{b:true, c:true}` is returned by `ContactCard/query {inAddressBook:'b'}` AND by the same query
+   * for `c`, with one id and one copy of the data. Never empty on a real card — the server refuses
+   * the last removal with `invalidProperties: "Contact has to belong to at least one address book."`
+   */
+  readonly bookIds: readonly Id[]
   readonly name: NameFields
   readonly nameOriginal?: Name
   readonly organization: string
@@ -170,6 +180,8 @@ export interface ContactFormModel {
 /** A blank form for a brand-new contact (no rows revealed yet; the UI adds the first ones). */
 export function emptyFormModel(): ContactFormModel {
   return {
+    // The screen seeds this with the book it is creating into; a form with no book cannot be saved.
+    bookIds: [],
     name: { prefix: '', given: '', given2: '', surname: '', suffix: '' },
     organization: '',
     title: '',
@@ -254,6 +266,9 @@ export function cardToForm(card: Partial<ContactCard>): ContactFormModel {
   const photo = photoEntry(card)
 
   return {
+    bookIds: Object.entries(card.addressBookIds ?? {})
+      .filter(([, member]) => member === true)
+      .map(([id]) => id),
     name: extractNameFields(card.name),
     ...(card.name ? { nameOriginal: card.name } : {}),
     organization: orgEntry?.[1].name ?? '',
@@ -290,6 +305,9 @@ export function formToCard(
   newId: IdSource,
 ): ContactCard {
   const result: Record<string, unknown> = { ...(base as unknown as Record<string, unknown>) }
+  // Only when the form knows of a book: an empty set would strip `base`'s membership, and the server
+  // rejects a card that belongs to none. See {@link ContactFormModel.bookIds}.
+  if (form.bookIds.length > 0) result.addressBookIds = booleanSetOf(form.bookIds)
   setOrDelete(result, 'name', formToName(form.name, form.nameOriginal))
   setOrDelete(result, 'organizations', formToOrganizations(form, newId))
   setOrDelete(result, 'titles', formToTitles(form, newId))
@@ -304,7 +322,11 @@ export function formToCard(
   return result as unknown as ContactCard
 }
 
-/** Top-level JSContact properties the form owns — the only keys {@link diffCardPatch} may emit. */
+/**
+ * Top-level JSContact properties the form owns, each replaced whole. The only OTHER keys
+ * {@link diffCardPatch} may emit are the `addressBookIds/<id>` pointers — see
+ * {@link addressBookPointers} for why membership is patched per entry instead.
+ */
 const CONTROLLED_PROPS = [
   'name',
   'organizations',
@@ -337,7 +359,50 @@ export function diffCardPatch(
     if (deepEqual(before, after)) continue
     patch[key] = after === undefined ? null : after
   }
+  for (const [pointer, value] of addressBookPointers(
+    original.addressBookIds,
+    next.addressBookIds,
+  )) {
+    patch[pointer] = value
+  }
   return patch
+}
+
+/** `{a:true}` from a list of book ids. */
+function booleanSetOf(ids: readonly Id[]): BooleanSet {
+  const set: Record<Id, true> = {}
+  for (const id of ids) set[id] = true
+  return set
+}
+
+/**
+ * Membership changes as RFC 8620 §5.3 JSON-Pointer entries — `addressBookIds/<id>: true` to file,
+ * `addressBookIds/<id>: null` to unfile — rather than one whole-map replace.
+ *
+ * **Two reasons, both load-bearing.** The patch has to survive the outbox: a book created OFFLINE
+ * carries a temporary id until the server acknowledges it, and `rewriteAddressBookTarget`
+ * (`sync/engine/outbox.ts`) rewrites exactly the `addressBookIds/<tempId>` key shape — a whole-map
+ * replace would sail past it and reach the server naming a book id that never existed. And a
+ * pointer patch touches only what changed, so two clients filing the same card into two different
+ * books do not overwrite each other's membership.
+ *
+ * Both forms were verified against Stalwart v0.16.18 on 2026-08-21: `addressBookIds/<id>: true`
+ * adds, `: null` removes, and removing the LAST one is refused with `invalidProperties` — which is
+ * why the form never offers to.
+ */
+function addressBookPointers(
+  before: BooleanSet | undefined,
+  after: BooleanSet | undefined,
+): readonly (readonly [string, true | null])[] {
+  if (after === undefined) return []
+  const entries: (readonly [string, true | null])[] = []
+  for (const id of Object.keys(after)) {
+    if (after[id] === true && before?.[id] !== true) entries.push([`addressBookIds/${id}`, true])
+  }
+  for (const id of Object.keys(before ?? {})) {
+    if (before?.[id] === true && after[id] !== true) entries.push([`addressBookIds/${id}`, null])
+  }
+  return entries
 }
 
 // ── Name ──────────────────────────────────────────────────────────────────────────────────────

@@ -101,10 +101,18 @@ export type OutboxIntent =
   | {
       readonly kind: 'createMailbox'
       readonly creationId: string
+      /**
+       * Deliberately WITHOUT `role`. The field was here from the start and no caller ever set one
+       * (JMAP gap analysis, I-3): the New-folder affordance asks for a name and a parent, which is
+       * all Apple Mail asks for either. Setting a role at create time is not the same operation as
+       * naming a folder, and it already has its own intent — `updateMailbox { props: { role } }`
+       * (M-6). An optional property nobody writes is a claim that the create dialog offers
+       * something it does not, and it made `createMailbox` and `updateMailbox` look like two ways
+       * to do one thing.
+       */
       readonly props: {
         readonly name: string
         readonly parentId: Id | null
-        readonly role?: string | null
         /**
          * Where the folder lands among its siblings. Omitted for a group nobody has ordered by
          * hand, which leaves the server's 0 and RFC 8621's alphabetical tie-break in place.
@@ -1456,7 +1464,8 @@ export async function applyOptimistic(
         id: intent.creationId,
         name: intent.props.name,
         parentId: intent.props.parentId,
-        role: intent.props.role ?? null,
+        // A new folder has no role until `updateMailbox` gives it one — see the intent's note.
+        role: null,
         sortOrder: intent.props.sortOrder ?? 0,
         totalEmails: 0,
         unreadEmails: 0,
@@ -1908,7 +1917,6 @@ function executeIntent(
       return port.setEmails({ destroy: intent.emailIds, ifInState })
     case 'createMailbox': {
       const props: Partial<Mailbox> = { name: intent.props.name, parentId: intent.props.parentId }
-      if (intent.props.role != null) props.role = intent.props.role
       if (intent.props.sortOrder !== undefined) props.sortOrder = intent.props.sortOrder
       return port.setMailboxes({ create: { [intent.creationId]: props }, ifInState })
     }

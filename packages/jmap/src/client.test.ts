@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { bearer } from './auth'
 import { JmapClient } from './client'
 import { JmapError } from './errors'
+import { Methods } from './methods'
 import { at, autoRespond, jmapPostMock, makeSession } from './test-support'
 import type { FetchLike } from './transport'
 import type {
@@ -63,6 +64,23 @@ describe('JmapClient — envelope, auth and using', () => {
     const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
     const echoed = await client.echo({ hello: 'world', n: 42 })
     expect(echoed).toEqual({ hello: 'world', n: 42 })
+  })
+
+  /*
+   * `Methods.coreEcho` had no caller at all (JMAP gap analysis, I-2) while `echo()` two files away
+   * spelled the same wire name as a literal. Keeping the method in the registry is right — RFC 8620
+   * §4 makes `Core/echo` mandatory and it is the cheapest connectivity probe there is — so the fix
+   * was to give it the caller its presence implies. This pins the two together: rename the registry
+   * entry's wire name and the request follows, instead of silently disagreeing with it.
+   */
+  it('sends the wire name from the registry, not a second spelling of it', async () => {
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+
+    await client.echo({ hello: 'world' })
+
+    expect(Methods.coreEcho.name).toBe('Core/echo')
+    expect(at(calls, calls.length - 1).body.methodCalls[0]?.[0]).toBe(Methods.coreEcho.name)
   })
 })
 

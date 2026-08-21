@@ -87,11 +87,15 @@ export interface SieveSaveOptions {
   readonly activate?: boolean
 }
 
+/**
+ * The operations the filters UI performs. `read(script)` used to sit here too and had no caller
+ * outside this file (JMAP gap analysis, I-3): `load()` already downloads the sources anyone needs —
+ * the active script's and the managed one's — so the extra seam only offered a second, unsynchronised
+ * way to fetch a source that the snapshot already carries. Downloading stays internal.
+ */
 export interface SieveClient {
   /** Lists scripts and downloads the active one's source (and ours, if that is a different one). */
   load(signal?: AbortSignal): Promise<SieveSnapshot>
-  /** Downloads one script's source. */
-  read(script: SieveScript, signal?: AbortSignal): Promise<string>
   /**
    * Writes `source` to the managed script, creating it when absent, and activates it unless told
    * not to. Returns a fresh snapshot — never the `/set` echo.
@@ -175,8 +179,6 @@ export function makeSieveClient(client: JmapClient, accountId: Id): SieveClient 
 
   return {
     load: snapshot,
-
-    read: download,
 
     async save(source, existing, options) {
       const blobId = await uploadSource(source)

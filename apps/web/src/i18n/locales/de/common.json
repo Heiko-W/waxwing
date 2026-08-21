@@ -755,7 +755,8 @@
         "url": "Webseite",
         "im": "Instant Messaging",
         "note": "Notizen",
-        "photo": "Foto"
+        "photo": "Foto",
+        "books": "Adressbücher"
       },
       "namePrefix": "Titel",
       "given": "Vorname",
@@ -803,7 +804,8 @@
       "photoPreparing": "Foto wird vorbereitet …",
       "photoError": "Das Foto konnte nicht verwendet werden.",
       "photoTooLarge": "Dieses Foto ist zu groß. Wählen Sie ein kleineres.",
-      "photoAlt": "Vorschau des Kontaktfotos"
+      "photoAlt": "Vorschau des Kontaktfotos",
+      "booksAtLeastOne": "Ein Kontakt muss in mindestens einem Adressbuch bleiben."
     },
     "delete": {
       "title": "Kontakt löschen",

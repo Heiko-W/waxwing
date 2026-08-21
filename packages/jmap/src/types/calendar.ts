@@ -349,6 +349,7 @@ export type CalendarEventQueryRequest = Omit<QueryRequest, 'filter'> & {
 }
 
 export type CalendarEventQueryResponse = QueryResponse
+/** No {@link Methods} entry: the calendar is online-only, so there is no query state to diff. */
 export type CalendarEventQueryChangesRequest = Omit<QueryChangesRequest, 'filter'> & {
   filter?: CalendarEventFilter | null
 }

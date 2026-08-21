@@ -61,10 +61,16 @@ export interface Principal {
 
 export type PrincipalGetRequest = GetRequest
 export type PrincipalGetResponse = GetResponse<Principal>
+/** `Principal/changes` exists on v0.16.18 but has no registry entry: nothing caches principals. */
 export type PrincipalChangesRequest = ChangesRequest
 export type PrincipalChangesResponse = ChangesResponse
-export type PrincipalSetRequest = SetRequest<Principal>
-export type PrincipalSetResponse = SetResponse<Principal>
+/*
+ * `Principal/set` has NO types here on purpose, and this is the one absence that is a safety
+ * property rather than a preference: v0.16.18 answers any batch containing that method with HTTP
+ * 400 `notRequest` and no `methodResponses` at all, destroying every sibling call (measured —
+ * `sharing.test.ts`). The method is absent from {@link Methods}; leaving `SetRequest<Principal>`
+ * behind would be the one remaining way to type the arguments for a call that must never be made.
+ */
 
 /**
  * RFC 9670 §2.3.

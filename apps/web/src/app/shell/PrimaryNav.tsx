@@ -18,6 +18,7 @@ import {
   useRoute,
 } from '../route'
 import styles from './shell.module.css'
+import { useSectionAvailability } from './use-available-sections'
 
 interface NavItem {
   readonly id: RouteId
@@ -37,10 +38,12 @@ const ITEMS: readonly NavItem[] = [
 export function PrimaryNav() {
   const { t } = useTranslation()
   const route = useRoute()
+  // A section the server does not offer is not in the bar at all — see `use-available-sections.ts`.
+  const isAvailable = useSectionAvailability()
 
   return (
     <nav className={styles.primaryNav} aria-label={t('shell.nav')}>
-      {ITEMS.map(({ id, to, icon: Icon, labelKey }) => (
+      {ITEMS.filter(({ id }) => isAvailable(id)).map(({ id, to, icon: Icon, labelKey }) => (
         <Link
           key={id}
           to={to}

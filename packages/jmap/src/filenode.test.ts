@@ -56,6 +56,17 @@ describe('wiring', () => {
   it('auto-adds the filenode capability to `using`', () => {
     expect(usingForMethods(['FileNode/get'])).toContain('urn:ietf:params:jmap:filenode')
   })
+
+  /*
+   * `FileNode/changes` exists on v0.16.18 (measured) and had no caller (JMAP gap analysis, I-2).
+   * File browsing is online-only — `files/files-client.ts` re-queries the folder on every visit and
+   * keeps nothing — so there is no state a delta could be applied to. Same rule as the calendar:
+   * the binding returns when the replica does.
+   */
+  it('has no `FileNode/changes` binding, because file browsing keeps no local state', () => {
+    expect(Methods).not.toHaveProperty('fileNodeChanges')
+    expect(Object.values(Methods).map((method) => method.name)).not.toContain('FileNode/changes')
+  })
 })
 
 describe('the measured node shape', () => {
