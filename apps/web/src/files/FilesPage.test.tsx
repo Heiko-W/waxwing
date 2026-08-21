@@ -63,6 +63,8 @@ let truncated = false
 let searchHits: FileSearchHit[] = []
 /** Makes the ENGINE's re-read fail — the outage that used to be `list` throwing. */
 let refreshFails = false
+/** When the replica was last walked; `0` = never, which is a different screen from "empty". */
+let syncedAt = 1
 
 const client: FilesClient = {
   list: async () => ({ nodes: listed, truncated }),
@@ -102,6 +104,7 @@ afterEach(async () => {
   searchHits = []
   truncated = false
   refreshFails = false
+  syncedAt = 1
   clearEngines()
   // Unmount before the database goes: a live query still subscribed to a deleted Dexie handle
   // raises `DatabaseClosedError` as an unhandled rejection, outside any test.
@@ -156,7 +159,7 @@ function seedTree(): Promise<void> {
     const gone = known.map(([, id]) => id).filter((id) => !fresh.has(id))
     if (gone.length > 0) await deleteFileNodes(db, ACC, gone)
     await putFileNodes(db, ACC, [...listed])
-    await setFileTreeState(db, ACC, { syncedAt: 1, truncated })
+    await setFileTreeState(db, ACC, { syncedAt, truncated })
   })().catch(() => {})
 }
 
@@ -472,9 +475,9 @@ describe('offline', () => {
     listed = []
     refreshFails = true
     // A replica that has NEVER been walked — `syncedAt: 0`, which is a different sentence from
-    // "this folder is empty".
+    // "this folder is empty". Set BEFORE mounting: seeding races the render otherwise.
+    syncedAt = 0
     const view = mount()
-    await setFileTreeState(db, ACC, { syncedAt: 0, truncated: false })
 
     expect(await screen.findByText('Your files have not been synced yet')).toBeInTheDocument()
     expect(view.container.textContent).not.toContain('The files could not be loaded.')

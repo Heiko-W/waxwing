@@ -410,6 +410,31 @@ export default function FilesPage(props: FilesPageProps) {
   // names and new sizes, and the size column is part of what the row's actions have to fit around.
   const geometry = useRowGeometry(listRef, rows)
 
+  /**
+   * What stands where the list would — exactly ONE of these, always.
+   *
+   * Written as one value rather than as a chain of `&&`s in the JSX because the states became
+   * genuinely distinguishable with D-4 and the chain got two of them wrong: a first visit showed
+   * "This folder is empty." while the tree was still being walked (the replica answers `[]` long
+   * before the walk does), and a refused walk showed that same sentence UNDER the failure pane.
+   *
+   *  - `loading` — nothing is known yet, or the very first walk is still running.
+   *  - `offlineNever` — no line and no copy: "not synced yet", which is not "no files".
+   *  - `failed` — the read was refused and there is nothing to fall back on. The one state with a
+   *    Try again, because it is the one the reader can do something about.
+   *  - `empty` — an answer, and the answer is that there is nothing here.
+   *  - `list` — rows.
+   */
+  const paneState: 'loading' | 'offlineNever' | 'failed' | 'empty' | 'list' = (() => {
+    if (!online && neverSynced) return 'offlineNever'
+    if (online && failed && (rows === null || rows.length === 0)) return 'failed'
+    if (rows === null) return 'loading'
+    // The replica answers `[]` the moment it is asked; the walk that fills it takes longer. Until
+    // one of them has happened, "empty" would be a claim nobody has checked.
+    if (rows.length === 0 && replicated && neverSynced && online && !failed) return 'loading'
+    return rows.length === 0 ? 'empty' : 'list'
+  })()
+
   if (client === null) {
     return (
       <div className={styles.page}>
@@ -919,7 +944,7 @@ export default function FilesPage(props: FilesPageProps) {
             : t('files.offlineNotUpdating')}
         </p>
       )}
-      {!online && neverSynced && (
+      {paneState === 'offlineNever' && (
         <EmptyState
           icon={CloudOff}
           title={t('files.offlineNever.title')}
@@ -928,7 +953,7 @@ export default function FilesPage(props: FilesPageProps) {
       )}
       {online &&
         failed &&
-        (rows === null || rows.length === 0 ? (
+        (paneState === 'failed' ? (
           <EmptyState
             tone="error"
             icon={TriangleAlert}
@@ -989,11 +1014,11 @@ export default function FilesPage(props: FilesPageProps) {
         </section>
       )}
 
-      {rows === null && !failed ? (
+      {paneState === 'loading' ? (
         <div className={styles.loading}>
           <Spinner label={t('ui.spinner.label')} />
         </div>
-      ) : !online && neverSynced ? null : rows !== null && rows.length === 0 ? (
+      ) : paneState === 'offlineNever' || paneState === 'failed' ? null : paneState === 'empty' ? (
         <EmptyState
           icon={searching ? Search : FolderOpen}
           title={searching ? t('files.search.none', { query }) : t('files.empty')}
