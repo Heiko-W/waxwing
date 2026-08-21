@@ -41,13 +41,28 @@ steht unten.
   `mayCreateChild` / `mayRename` / `mayDelete` betreffen den Ordner, nicht die Post, gehören
   also zu „Verwalten".
 
-### 2. Die Capabilities lügen bei S-4
-Laut Bericht §1.1 erscheint ein Fremdkonto mit dem **vollen** Capability-Satz (mail, contacts,
-calendars, filenode), sobald **irgendein** Objekt geteilt ist. Der heutige Mail-Filter
-(`session.ts:239-252`) auf die URN liefert für Kalender/Kontakte/Dateien also Falsch-Positive
-— ein leerer „Bob"-Abschnitt.
-**Regel: Abschnitt erst rendern, wenn die Objektliste nicht leer ist** (`Calendar/get` /
-`AddressBook/get` / `FileNode/query` je Fremdkonto, ein Batch).
+### 2. Die Capabilities lügen bei S-4 — nachgemessen am 21.08. gegen v0.16.18
+Ein Fremdkonto erscheint mit dem **vollen** Capability-Satz, sobald **irgendein** Objekt geteilt
+ist. **Auch auf v0.16.18** — der v0.16.17-Fix ändert daran nichts. Gemessen: carol gibt alice
+**nur einen Kalender** frei; alices Session führt carol daraufhin mit allen 17 Capabilities,
+einschließlich `mail`, `contacts` und `filenode`. Der heutige Mail-Filter
+(`session.ts:239-252`) auf die URN liefert für Kalender/Kontakte/Dateien also Falsch-Positive.
+
+**Aber die Sondierung ist billiger als gedacht.** Ein nicht freigegebener Typ antwortet nicht
+mit einer leeren Liste, sondern mit einem klaren Fehler:
+```
+Mailbox/get   { accountId: "d" } → error forbidden "You do not have access to account d"
+AddressBook/get, FileNode/query  → dasselbe
+Calendar/get  { accountId: "d" } → OK, ein Kalender
+```
+Das ist **besser** als eine leere Liste, die auch „freigegeben, aber leer" heißen könnte.
+
+**Und `forbidden` ist ein lokaler Fehler** — gemessen: ein Batch aus fünf Aufrufen, von denen
+drei `forbidden` liefern, gibt trotzdem alle fünf Teilantworten zurück. (Anders als
+`Principal/set`, das die ganze Anfrage mit `notRequest` wegwirft — siehe S-7.)
+
+**Regel: ein einziger Batch mit je einem Sondier-Aufruf pro Typ und Fremdkonto.
+`forbidden` ⇒ Abschnitt nicht rendern, `OK` ⇒ rendern.**
 Der Test, der das festnagelt, ist der wertvollste des ganzen Pakets.
 
 ### 3. iCloud-Muster statt Kontowechsler
@@ -61,9 +76,9 @@ eine Änderung am Design-System und gehört in ein eigenes Paket.
 
 ## Neu zu messen (gegen v0.16.18)
 
-- **Strukturentscheidend:** Ob der v0.16.17-Fix („ACL-Freigaben wurden nie eingesammelt") die
-  Session-Sichtbarkeit **granular** macht. Wenn ja, fällt Entscheidung 2 in sich zusammen und
-  S-4 wird deutlich billiger. Das ist die einzige Messung, die den Plan strukturell ändert.
+- ~~Ob der v0.16.17-Fix die Session-Sichtbarkeit granular macht.~~ **Am 21.08. gegen v0.16.18
+  gemessen: nein, sie bleibt grobkörnig.** Siehe Entscheidung 2 — die Sondierung über
+  `forbidden` ersetzt sie.
 - Liefert `AddressBook/get` **ohne** `properties` überhaupt `shareWith`? Das heutige
   „Shared"-Badge (`AddressBookList.tsx:72`) hängt daran und ist womöglich seit jeher tot;
   `port.ts:326` fragt keine `properties` an. Für `Calendar` ist belegt: nur auf Anfrage.
