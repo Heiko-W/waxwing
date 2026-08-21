@@ -196,6 +196,45 @@ test.describe('M1.9 read suite', () => {
     })
   })
 
+  /**
+   * B-2 — an "all mailboxes" search must not rake through the Trash.
+   *
+   * The bug this pins was invisible to every unit test in the repo, because the client's filter was
+   * never wrong: it simply sent NO mailbox condition for scope=all, and only a real server with a
+   * real Trash in it can show what that means. The order of the two assertions is load-bearing —
+   * the wide scope proves the query works and the message is still there BEFORE the narrow scope is
+   * asked to hide it, so "no results" can never pass by simply not having loaded.
+   */
+  test('an all-mailboxes search leaves the Trash out', async ({ page }) => {
+    await login(page)
+    // Delete one message, so the only copy of this subject is in the Trash.
+    await page.getByText(READ_SUBJECTS.plain).click()
+    await page.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0, {
+      timeout: 15_000,
+    })
+
+    const box = page.getByRole('searchbox', { name: 'Search' })
+    await box.click()
+    await box.fill('Lunch')
+    await box.press('Enter')
+
+    // The widest scope finds it: the message exists, the query works, the index has it.
+    await page.getByLabel('Search in', { exact: true }).selectOption('everywhere')
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 20_000 })
+
+    // The everyday scope must not. Before the fix this row stayed exactly where it was.
+    await page.getByLabel('Search in', { exact: true }).selectOption('all')
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0, {
+      timeout: 20_000,
+    })
+
+    // …and the folder itself is still searchable, so the exclusion is not a blanket one.
+    await page.getByRole('treeitem', { name: /Trash/ }).click()
+    await page.getByLabel('Search in', { exact: true }).selectOption('folder')
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 20_000 })
+  })
+
   test('auto-refreshes on a live delivery, no manual reload', async ({ page }) => {
     // This used to be "the slow one", budgeted at 75 s because the WebSocket push handshake cannot
     // carry an `Authorization` header under Basic auth — so the comment concluded that push could

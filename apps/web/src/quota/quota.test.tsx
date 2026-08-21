@@ -9,6 +9,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import type { Quota } from '@waxwing/jmap'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { RouterProvider } from '../app/route'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { QuotaBar } from './QuotaBar'
@@ -64,6 +65,39 @@ describe('<QuotaBar>', () => {
   it('says the mailbox is full once the server is refusing writes', async () => {
     render(<QuotaBar client={clientOf([quota({ used: 5 * 1024 * 1024 * 1024 })])} />)
     expect(await screen.findByText('Mailbox full')).toBeInTheDocument()
+  })
+
+  /**
+   * M-2. The bar said the mailbox was nearly full and offered nothing to do about it — the one
+   * moment someone needs to find the large messages is the moment they are told there is no room.
+   * The link is an ordinary search (`larger:5M`), at the widest scope, because deleted mail counts
+   * towards the quota too.
+   */
+  describe('the way out of a full mailbox', () => {
+    const withRouter = (used: number) =>
+      render(
+        <RouterProvider baseUri="/">
+          <QuotaBar client={clientOf([quota({ used })])} />
+        </RouterProvider>,
+      )
+
+    it('offers a search for the large messages once the bar turns', async () => {
+      withRouter(4.8 * 1024 * 1024 * 1024)
+      const link = await screen.findByRole('link', { name: 'Find large messages' })
+      expect(link.getAttribute('href')).toBe('/mail?q=larger%3A5M&scope=everywhere')
+    })
+
+    it('says nothing while there is room — an offer to solve a problem nobody has', async () => {
+      withRouter(2 * 1024 * 1024 * 1024)
+      await screen.findByRole('progressbar')
+      expect(screen.queryByRole('link', { name: 'Find large messages' })).toBeNull()
+    })
+
+    it('still shows the number where there is no router to navigate with', async () => {
+      render(<QuotaBar client={clientOf([quota({ used: 4.8 * 1024 * 1024 * 1024 })])} />)
+      expect(await screen.findByText(/nearly full/i)).toBeInTheDocument()
+      expect(screen.queryByRole('link')).toBeNull()
+    })
   })
 
   it('renders NOTHING when the server offers no quota — and never asks it for one', async () => {

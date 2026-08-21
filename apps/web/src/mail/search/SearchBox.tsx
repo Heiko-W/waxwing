@@ -174,15 +174,25 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
             onChange={(event) => search.setScope(event.target.value as SearchScope)}
           >
             <option value="folder">{t('search.scope.folder')}</option>
+            {/* "All mailboxes" leaves Trash and Junk out (B-2) — the same default Apple Mail ships.
+                The third entry is the way back in, and it names what it adds rather than hiding
+                behind a preference: two words the reader can compare against the line above. */}
             <option value="all">{t('search.scope.all')}</option>
+            <option value="everywhere">{t('search.scope.everywhere')}</option>
           </Select>
         </div>
       )}
       {/* The operator hint was `VisuallyHidden`, so the one group that could have discovered this
           syntax by reading it never saw it. Shown while the field has focus: no cost at rest, and
           it is on screen exactly when someone is deciding what to type. */}
+      {/* One paragraph, two sentences. The second names the boolean syntax (M-3) — the only place
+          in the app that mentions `-` and `OR`, and deliberately the quietest: it is set smaller and
+          muted, it appears only while the field has focus, and someone who never reads it can use
+          every other operator without ever meeting a language. Kept INSIDE the hint element rather
+          than beside it so the field keeps exactly one description (B20.7). */}
       <p id={hintId} className={focused ? styles.hint : styles.hintHidden}>
         {t('search.hint')}
+        <span className={styles.hintAdvanced}>{t('search.hintAdvanced')}</span>
       </p>
       {search.chips.length > 0 && (
         <ul id={chipsId} className={styles.chips} aria-label={t('search.chipsLabel')}>

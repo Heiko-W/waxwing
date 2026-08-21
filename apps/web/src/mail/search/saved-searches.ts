@@ -10,6 +10,8 @@
  * has no concept of a saved search, so there is nothing to sync it to.
  */
 
+import type { SearchScope } from './use-search'
+
 export const SAVED_SEARCH_PREF_KEY = 'search.saved'
 
 /** A guard against an unbounded preference row; also the point where a sidebar stops being a list. */
@@ -21,7 +23,7 @@ export interface SavedSearch {
   /** The raw query, exactly as typed — `from:ada has:attachment`. */
   readonly query: string
   /** Whether it searches everywhere or only the folder it was saved in. */
-  readonly scope: 'all' | 'folder'
+  readonly scope: SearchScope
 }
 
 /** Reads the stored list, tolerating any shape. */
@@ -37,9 +39,9 @@ export function coerceSavedSearches(value: unknown): SavedSearch[] {
       id: raw.id,
       name: raw.name,
       query: raw.query,
-      // Anything unrecognised means "everywhere", which is the safer default: a saved search that
-      // silently narrowed itself to one folder would look like it had lost results.
-      scope: raw.scope === 'folder' ? 'folder' : 'all',
+      // Anything unrecognised means "all mailboxes", which is the safer default: a saved search
+      // that silently narrowed itself to one folder would look like it had lost results.
+      scope: raw.scope === 'folder' ? 'folder' : raw.scope === 'everywhere' ? 'everywhere' : 'all',
     })
   }
   return out.slice(0, MAX_SAVED_SEARCHES)
@@ -62,7 +64,7 @@ export function removeSavedSearch(searches: readonly SavedSearch[], id: string):
 export function findByQuery(
   searches: readonly SavedSearch[],
   query: string,
-  scope: 'all' | 'folder',
+  scope: SearchScope,
 ): SavedSearch | undefined {
   const needle = query.trim()
   return searches.find((saved) => saved.query.trim() === needle && saved.scope === scope)

@@ -11,11 +11,22 @@
 
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link, useRouterOptional } from '../app/route'
 import { formatBytes } from '../i18n/formatters'
 import styles from './quota.module.css'
 import type { QuotaClient } from './quota-client'
 import { pickPrimaryQuota, toQuotaView } from './quota-model'
 import { useQuota } from './use-quota'
+
+/**
+ * The way out of a full mailbox (M-2): an all-mailboxes search for anything over 5 MB, Trash and
+ * Junk INCLUDED — deleted mail still occupies the quota, so the scope that answers "what is filling
+ * this up?" is the widest one, not the everyday default.
+ *
+ * 5 MB because that is roughly where an attachment stops being incidental; the query is an ordinary
+ * search string, so the reader can widen or narrow it in the box it lands in.
+ */
+const LARGE_MESSAGE_SEARCH = `/mail?${new URLSearchParams({ q: 'larger:5M', scope: 'everywhere' }).toString()}`
 
 export interface QuotaBarProps {
   /** Injected in tests; defaults to the shared store's live client. */
@@ -25,6 +36,8 @@ export interface QuotaBarProps {
 export function QuotaBar(props: QuotaBarProps) {
   const { t } = useTranslation()
   const quotas = useQuota(props.client ? { client: props.client } : {})
+  // Optional: the bar's job is to show a number, and it must keep doing that wherever it is mounted.
+  const router = useRouterOptional()
   const labelId = useId()
   const summaryId = useId()
 
@@ -60,6 +73,14 @@ export function QuotaBar(props: QuotaBarProps) {
       <span id={summaryId} className={styles.summary}>
         {summary}
       </span>
+      {/* Only once the number is bad news. A permanent "find large messages" link beside a bar that
+          reads 4 % is clutter offering to solve a problem nobody has; at 90 % it is the next thing
+          the reader wants and it is already under their eyes. */}
+      {view.level !== 'ok' && router !== null && (
+        <Link className={styles.action} to={LARGE_MESSAGE_SEARCH}>
+          {t('search.findLarge')}
+        </Link>
+      )}
     </div>
   )
 }

@@ -852,8 +852,10 @@
     },
     "sort": {
       "label": "Sort",
-      "date": "Date",
+      "date": "Date received",
+      "sentAt": "Date sent",
       "from": "Sender",
+      "to": "Recipient",
       "subject": "Subject",
       "size": "Size",
       "unreadFirst": "Unread first"
@@ -1149,25 +1151,37 @@
     "scope": {
       "label": "Search in",
       "folder": "This folder",
-      "all": "All mailboxes"
+      "all": "All mailboxes",
+      "everywhere": "All mailboxes, incl. Trash & Junk"
     },
     "chip": {
       "remove": "Remove {{filter}} filter",
+      "not": "Not {{filter}}",
       "from": "From: {{value}}",
       "to": "To: {{value}}",
       "cc": "Cc: {{value}}",
+      "bcc": "Bcc: {{value}}",
       "subject": "Subject: {{value}}",
       "body": "Body: {{value}}",
       "hasAttachment": "Has attachment",
       "unread": "Unread",
       "read": "Read",
       "flagged": "Flagged",
+      "thread": {
+        "unread": "Unread conversations",
+        "read": "Read conversations",
+        "flagged": "Flagged conversations"
+      },
       "in": "In: {{value}}",
       "before": "Before {{value}}",
       "after": "After {{value}}",
+      "larger": "Larger than {{value}}",
+      "smaller": "Smaller than {{value}}",
       "text": "Contains: {{value}}"
     },
-    "hint": "Try from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "hint": "Try from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
+    "hintAdvanced": "Advanced: -word leaves it out, a OR b matches either, thread:unread finds conversations nobody has opened.",
+    "findLarge": "Find large messages",
     "results": {
       "empty": "No messages match your search. Try all mailboxes, or fewer words.",
       "count_one": "{{count}} result",

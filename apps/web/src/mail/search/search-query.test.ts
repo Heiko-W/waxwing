@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { canonicalQueryKey } from '../../sync'
 import {
   parseSearchQuery,
+  removeTokenAt,
   type SearchContext,
   serializeTokens,
   tokenizeSearch,
@@ -126,5 +127,206 @@ describe('parseSearchQuery + serializeTokens', () => {
     const once = serializeTokens(tokenizeSearch('from:alice a" b'))
     expect(serializeTokens(tokenizeSearch(once))).toBe(once)
     expect(once).not.toContain('"a"') // no broken split
+  })
+})
+
+/**
+ * B-2. "All mailboxes" used to send NO mailbox condition at all — every search returned deleted and
+ * spam mail beside the live copies, with no way to turn it off. `inMailboxOtherThan` is the operator
+ * for it (measured against Stalwart v0.16.14/.18, report C §2).
+ */
+describe('B-2 — an all-mailboxes search steps around Trash and Junk', () => {
+  const wide = (over: Partial<SearchContext> = {}) =>
+    ctx({ excludeMailboxIds: ['mb-trash', 'mb-junk'], ...over })
+
+  it('ANDs one inMailboxOtherThan carrying every excluded mailbox', () => {
+    expect(filterOf('offer', wide())).toEqual({
+      operator: 'AND',
+      conditions: [{ text: 'offer' }, { inMailboxOtherThan: ['mb-trash', 'mb-junk'] }],
+    })
+  })
+
+  it('excludes even when the query is nothing but operators', () => {
+    expect(filterOf('has:attachment', wide())).toEqual({
+      operator: 'AND',
+      conditions: [{ hasAttachment: true }, { inMailboxOtherThan: ['mb-trash', 'mb-junk'] }],
+    })
+  })
+
+  it('a POSITIVE in: overrides it — the user named the folder, that is the answer', () => {
+    expect(filterOf('in:archive offer', wide())).toEqual({
+      operator: 'AND',
+      conditions: [{ inMailbox: 'mb-arc' }, { text: 'offer' }],
+    })
+  })
+
+  it('a NEGATED in: narrows but does not name a folder, so the exclusion stays', () => {
+    expect(filterOf('-in:archive offer', wide())).toEqual({
+      operator: 'AND',
+      conditions: [
+        { operator: 'NOT', conditions: [{ inMailbox: 'mb-arc' }] },
+        { text: 'offer' },
+        { inMailboxOtherThan: ['mb-trash', 'mb-junk'] },
+      ],
+    })
+  })
+
+  it('sends nothing when there is nothing to exclude (a server without those roles)', () => {
+    expect(filterOf('offer', ctx({ excludeMailboxIds: [] }))).toEqual({ text: 'offer' })
+  })
+
+  it('never emits both a scope and an exclusion', () => {
+    expect(filterOf('offer', wide({ scopeMailboxId: 'mb-inbox' }))).toEqual({
+      operator: 'AND',
+      conditions: [{ text: 'offer' }, { inMailbox: 'mb-inbox' }],
+    })
+  })
+})
+
+/** M-3. `operator: OR` / `NOT` and the `bcc` condition are all server-side (report C §2). */
+describe('M-3 — NOT, OR and bcc:', () => {
+  it('negates an operator with a leading dash', () => {
+    expect(filterOf('-from:ads@x.test')).toEqual({
+      operator: 'NOT',
+      conditions: [{ from: 'ads@x.test' }],
+    })
+  })
+
+  it('negates a bare word', () => {
+    expect(filterOf('-invoice')).toEqual({ operator: 'NOT', conditions: [{ text: 'invoice' }] })
+  })
+
+  it('keeps a negated term out of the joined free text', () => {
+    expect(filterOf('report -draft')).toEqual({
+      operator: 'AND',
+      conditions: [{ operator: 'NOT', conditions: [{ text: 'draft' }] }, { text: 'report' }],
+    })
+  })
+
+  it('ORs two operators', () => {
+    expect(filterOf('from:alice OR from:bob')).toEqual({
+      operator: 'OR',
+      conditions: [{ from: 'alice' }, { from: 'bob' }],
+    })
+  })
+
+  it('ORs bare words, and `|` spells the same thing', () => {
+    const expected = { operator: 'OR', conditions: [{ text: 'alice' }, { text: 'bob' }] }
+    expect(filterOf('alice OR bob')).toEqual(expected)
+    expect(filterOf('alice | bob')).toEqual(expected)
+  })
+
+  it('chains a run of ORs into ONE group', () => {
+    expect(filterOf('a OR b OR c')).toEqual({
+      operator: 'OR',
+      conditions: [{ text: 'a' }, { text: 'b' }, { text: 'c' }],
+    })
+  })
+
+  it('binds OR tighter than the implicit AND (Gmail semantics)', () => {
+    expect(filterOf('from:alice OR from:bob invoice')).toEqual({
+      operator: 'AND',
+      conditions: [
+        { operator: 'OR', conditions: [{ from: 'alice' }, { from: 'bob' }] },
+        { text: 'invoice' },
+      ],
+    })
+  })
+
+  // The line between "a feature for the advanced user" and "a trap for everyone else".
+  it('leaves a lowercase "or" alone — it is an ordinary word, not an operator', () => {
+    expect(filterOf('cats or dogs')).toEqual({ text: 'cats or dogs' })
+  })
+
+  it('ignores a connector with nothing to connect', () => {
+    expect(filterOf('OR')).toBeNull()
+    expect(filterOf('from:alice OR')).toEqual({ from: 'alice' })
+    expect(filterOf('OR from:alice')).toEqual({ from: 'alice' })
+  })
+
+  it('maps bcc: — in Sent, the only way back to a blind copy', () => {
+    expect(filterOf('bcc:archive@x.test')).toEqual({ bcc: 'archive@x.test' })
+  })
+})
+
+/** M-2. `minSize`/`maxSize` are server-side; the quota bar had no way to reach them. */
+describe('M-2 — size', () => {
+  it('reads larger:/smaller: in binary multiples, as the list displays them', () => {
+    expect(filterOf('larger:5M')).toEqual({ minSize: 5 * 1024 * 1024 })
+    expect(filterOf('larger:5mb')).toEqual({ minSize: 5 * 1024 * 1024 })
+    expect(filterOf('smaller:100k')).toEqual({ maxSize: 100 * 1024 })
+    expect(filterOf('larger:2G')).toEqual({ minSize: 2 * 1024 * 1024 * 1024 })
+  })
+
+  it('takes a bare byte count and a decimal (comma or point)', () => {
+    expect(filterOf('larger:1234')).toEqual({ minSize: 1234 })
+    expect(filterOf('larger:2,5M')).toEqual({ minSize: 2.5 * 1024 * 1024 })
+    expect(filterOf('larger:2.5M')).toEqual({ minSize: 2.5 * 1024 * 1024 })
+  })
+
+  it('degrades an unparseable size to text', () => {
+    expect(filterOf('larger:huge')).toEqual({ text: 'larger:huge' })
+    expect(filterOf('smaller:5TB')).toEqual({ text: 'smaller:5TB' })
+  })
+})
+
+/** M-4. The three thread conditions ask about a CONVERSATION; `is:` asks about one message. */
+describe('M-4 — conversation state', () => {
+  it('thread:unread is "nothing in it has been read"', () => {
+    expect(filterOf('thread:unread')).toEqual({ noneInThreadHaveKeyword: '$seen' })
+  })
+
+  it('thread:read / thread:flagged use the other two thread conditions', () => {
+    expect(filterOf('thread:read')).toEqual({ allInThreadHaveKeyword: '$seen' })
+    expect(filterOf('thread:flagged')).toEqual({ someInThreadHaveKeyword: '$flagged' })
+  })
+
+  it('is: still answers about ONE message — the two are not the same filter', () => {
+    expect(filterOf('is:unread')).not.toEqual(filterOf('thread:unread'))
+  })
+
+  it('degrades an unknown value to text', () => {
+    expect(filterOf('thread:weird')).toEqual({ text: 'thread:weird' })
+  })
+})
+
+describe('removeTokenAt', () => {
+  it('drops the token AND the connector it would leave dangling', () => {
+    const tokens = tokenizeSearch('from:alice OR from:bob')
+    expect(serializeTokens(removeTokenAt(tokens, 2))).toBe('from:alice')
+    expect(serializeTokens(removeTokenAt(tokens, 0))).toBe('from:bob')
+  })
+
+  it('collapses a doubled connector rather than leaving a bare OR in the box', () => {
+    const tokens = tokenizeSearch('a OR b OR c')
+    expect(serializeTokens(removeTokenAt(tokens, 2))).toBe('a OR c')
+  })
+
+  it('leaves an untouched query alone', () => {
+    const tokens = tokenizeSearch('from:alice invoice')
+    expect(serializeTokens(removeTokenAt(tokens, 0))).toBe('invoice')
+  })
+})
+
+describe('round-trips with the boolean syntax', () => {
+  it('tokenize → serialize → tokenize is stable', () => {
+    for (const raw of [
+      '-from:ads@x.test invoice',
+      'from:alice OR from:bob thread:unread',
+      'larger:5M -has:attachment',
+      'a | b',
+    ]) {
+      const tokens = tokenizeSearch(raw)
+      expect(tokenizeSearch(serializeTokens(tokens))).toEqual(tokens)
+    }
+  })
+
+  it('quotes a word the grammar would otherwise read as syntax', () => {
+    // A literal "OR" and a literal leading dash are DATA here, and must come back as data.
+    for (const raw of ['"OR"', '"-5"', '"|"']) {
+      const tokens = tokenizeSearch(raw)
+      expect(tokens).toEqual([{ type: 'text', value: raw.slice(1, -1) }])
+      expect(tokenizeSearch(serializeTokens(tokens))).toEqual(tokens)
+    }
   })
 })

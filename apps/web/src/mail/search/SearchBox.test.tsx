@@ -43,6 +43,43 @@ describe('SearchBox', () => {
     expect(screen.getByRole('combobox', { name: 'Search in' })).toBeInTheDocument()
   })
 
+  /**
+   * B-2. "All mailboxes" now leaves Trash and Junk out, so there has to be a third choice that puts
+   * them back — otherwise the fix takes something away without offering a way to ask for it.
+   */
+  it('offers three scopes, and the widest one names what it adds', async () => {
+    const search = mockSearch()
+    render(<SearchBox search={search} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('searchbox', { name: 'Search' }))
+
+    const picker = screen.getByRole('combobox', { name: 'Search in' })
+    expect([...picker.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      'This folder',
+      'All mailboxes',
+      'All mailboxes, incl. Trash & Junk',
+    ])
+
+    await user.selectOptions(picker, 'everywhere')
+    expect(search.setScope).toHaveBeenCalledWith('everywhere')
+  })
+
+  /**
+   * M-3. The boolean syntax has to be discoverable by the one person who wants it and invisible to
+   * everyone else: it is part of the field's ONE description, shown while the field has focus.
+   */
+  it('names the advanced syntax in the hint, and only while the field has focus', async () => {
+    render(<SearchBox search={mockSearch()} />)
+    const input = screen.getByRole('searchbox', { name: 'Search' })
+    const hintId = (input.getAttribute('aria-describedby') ?? '').split(' ')[0] ?? ''
+    const hint = document.getElementById(hintId)
+    expect(hint?.textContent).toContain('OR')
+    expect(hint?.className).toMatch(/hintHidden/)
+
+    await userEvent.setup().click(input)
+    expect(document.getElementById(hintId)?.className).not.toMatch(/hintHidden/)
+  })
+
   it('debounces typing into a replace setQuery', async () => {
     const search = mockSearch()
     render(<SearchBox search={search} />)
