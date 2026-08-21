@@ -12,6 +12,9 @@ export default defineConfig({
   testMatch: [
     '**/write.spec.ts',
     '**/settings.spec.ts',
+    // Account & security (X-1..X-6): creates and revokes a credential on alice and moves her
+    // account locale, so it belongs with the other stateful suites rather than the read harness.
+    '**/security.spec.ts',
     '**/contacts.spec.ts',
     '**/calendar.spec.ts',
   ],

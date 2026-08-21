@@ -671,7 +671,7 @@
   color: var(--waxwing-text);
   font-family: var(--waxwing-font-mono, monospace);
   font-size: var(--waxwing-text-lg);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--waxwing-tracking-caps);
   text-align: center;
   overflow-wrap: anywhere;
   user-select: all;

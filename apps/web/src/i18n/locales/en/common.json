@@ -586,7 +586,7 @@
         "on": "On — {{cipher}}",
         "key": "Key: {{name}}",
         "explain": "Your server encrypts incoming messages with your own key before storing them. {{product}} has no OpenPGP support and cannot display them.",
-        "manage": "Only your server's own account console can change this. {{product}} does not offer the switch, because turning it on would leave your mailbox unreadable here."
+        "manage": "Only your server’s own account console can change this. {{product}} does not offer the switch, because turning it on would leave your mailbox unreadable here."
       },
       "spam": {
         "label": "Spam training samples",
