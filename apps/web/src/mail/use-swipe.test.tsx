@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen } from '@testing-library/react'
 import type { Id } from '@waxwing/jmap'
-import { useRef } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   type ResolvedSwipe,
@@ -209,6 +209,73 @@ describe('useRowSwipe — the ways a gesture ends without acting', () => {
     // No layer, no offset: an inert direction is silent rather than promising an action.
     expect(row().style.getPropertyValue('--swipe-x')).toBe('')
     expect(row().dataset.swipe).toBeUndefined()
+  })
+
+  /**
+   * B44. The axis lock calls `resolve` through a ref, because the window listeners are bound once
+   * and must still see the CURRENT decision. WHICH render's decision that is, is the whole question.
+   *
+   * `pointermove` arrives from a native window listener — outside React's tree — and a passive
+   * effect does not run at commit: React schedules it, and input can be delivered first. In that
+   * window the ref still holds the PREVIOUS render's callbacks, so a direction the committed render
+   * has already made inert (`resolve` → `null`) still resolves to the action it had one render ago.
+   * Not hypothetical: it is the account-loses-its-Archive failure, where the reveal strips — the
+   * SAME `resolve`, called during render — correctly showed nothing while the finger still armed an
+   * Archive and marked the row `data-swipe="left"`.
+   *
+   * The window is opened here exactly where it really is: a layout effect runs INSIDE the commit of
+   * the inert render, after React has written the DOM and before any passive effect. `useRowSwipe`
+   * is called first in this component, so its own commit-time refresh (the fix) is registered before
+   * the effect below and runs before it — which is the point: everything that can observe the new
+   * DOM must see the new decision with it.
+   */
+  it('resolves against the LAST COMMITTED render, not the last one whose effects have run (B44)', () => {
+    const MOVE = {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      bubbles: true,
+      clientX: 150,
+      clientY: 40,
+    }
+    let setInert: ((value: boolean) => void) | null = null
+    function StatefulHarness() {
+      const [inert, setInertState] = useState(false)
+      setInert = setInertState
+      // A NEW closure per render, as `MessageList`'s `resolveSwipe` is: it is memoised on the
+      // account's mailboxes, so its identity changes exactly when a role folder appears or goes.
+      const swipe = useRowSwipe({
+        resolve: () => (inert ? null : ARCHIVE),
+        commit,
+        swipingClassName: 'swiping',
+      })
+      useLayoutEffect(() => {
+        if (!inert) return
+        // Raw dispatch, not `fireEvent`: that wraps in `act`, and an `act` inside a commit is not
+        // the thing under test.
+        window.dispatchEvent(createEvent.pointerMove(window, MOVE))
+        window.dispatchEvent(createEvent.pointerUp(window, MOVE))
+      }, [inert])
+      return (
+        <div data-testid="row" role="presentation" onPointerDown={swipe.onPointerDown(ROW_ID)} />
+      )
+    }
+    render(<StatefulHarness />)
+    const el = row()
+    fireEvent.pointerDown(el, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      bubbles: true,
+      clientX: 300,
+      clientY: 40,
+    })
+    act(() => setInert?.(true))
+
+    // Inert in the three ways the caller and the reader can perceive it.
+    expect(el.dataset.swipe).toBeUndefined()
+    expect(el.style.getPropertyValue('--swipe-x')).toBe('')
+    expect(commit).not.toHaveBeenCalled()
   })
 
   it('detaches on unmount, so a row re-windowed mid-gesture leaves no window listeners', () => {
