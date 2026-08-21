@@ -41,10 +41,14 @@ import {
   emptyFormModel,
   formToCard,
   type IdSource,
+  type LinkEntry,
   newAddressEntry,
   newEmailEntry,
+  newLinkEntry,
   newNoteEntry,
+  newOnlineServiceEntry,
   newPhoneEntry,
+  type OnlineServiceEntry,
   type PhoneEntry,
 } from './contact-card-mapping'
 import type { PhotoScaler } from './contact-photo'
@@ -77,7 +81,7 @@ export interface ContactFormProps {
   readonly newId?: IdSource
 }
 
-type OptionalSection = 'address' | 'org' | 'birthday' | 'note' | 'photo'
+type OptionalSection = 'address' | 'org' | 'birthday' | 'url' | 'im' | 'note' | 'photo'
 
 const EMAIL_TYPE_OPTIONS = ['work', 'private', ''] as const
 const PHONE_TYPE_OPTIONS = ['mobile', 'work', 'private', 'fax', 'pager', ''] as const
@@ -142,6 +146,8 @@ export function ContactForm(props: ContactFormProps) {
     if (draft.addresses.length > 0) initial.add('address')
     if (draft.organization !== '' || draft.title !== '') initial.add('org')
     if (draft.birthday !== '') initial.add('birthday')
+    if (draft.links.length > 0) initial.add('url')
+    if (draft.onlineServices.length > 0) initial.add('im')
     if (draft.notes.length > 0) initial.add('note')
     if (draft.photo !== null) initial.add('photo')
     return initial
@@ -157,6 +163,16 @@ export function ContactForm(props: ContactFormProps) {
       } else if (section === 'note') {
         setDraft((prev) =>
           prev.notes.length > 0 ? prev : { ...prev, notes: [newNoteEntry(newId)] },
+        )
+      } else if (section === 'url') {
+        setDraft((prev) =>
+          prev.links.length > 0 ? prev : { ...prev, links: [newLinkEntry(newId)] },
+        )
+      } else if (section === 'im') {
+        setDraft((prev) =>
+          prev.onlineServices.length > 0
+            ? prev
+            : { ...prev, onlineServices: [newOnlineServiceEntry(newId)] },
         )
       }
     },
@@ -233,9 +249,9 @@ export function ContactForm(props: ContactFormProps) {
     [canWrite, bookId, draft, mode, newId, onSubmit, onCancel, valueDomId],
   )
 
-  const hiddenSections = (['address', 'org', 'birthday', 'note', 'photo'] as const).filter(
-    (section) => !revealed.has(section),
-  )
+  const hiddenSections = (
+    ['address', 'org', 'birthday', 'url', 'im', 'note', 'photo'] as const
+  ).filter((section) => !revealed.has(section))
 
   return (
     <form
@@ -455,6 +471,130 @@ export function ContactForm(props: ContactFormProps) {
         </FormSection>
       )}
 
+      {/* ── Optional: Websites (JSContact `links`, vCard URL) ── */}
+      {revealed.has('url') && (
+        <FormSection title={t('contacts.form.sections.url')}>
+          {draft.links.map((entry, index) => {
+            const name = rowName(t, t('contacts.form.fieldNames.url'), index, draft.links.length)
+            return (
+              <div key={entry.key} className={styles.commRow}>
+                <TextInput
+                  className={styles.commValue}
+                  type="url"
+                  inputMode="url"
+                  aria-label={name}
+                  placeholder={t('contacts.form.urlPlaceholder')}
+                  value={entry.uri}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      links: replaceByKey<LinkEntry>(p.links, entry.key, { uri: e.target.value }),
+                    }))
+                  }
+                />
+                <IconButton
+                  label={t('contacts.form.a11y.remove', { field: name })}
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() =>
+                    setDraft((p) => ({ ...p, links: removeByKey(p.links, entry.key) }))
+                  }
+                >
+                  <X />
+                </IconButton>
+              </div>
+            )
+          })}
+          <AddRowButton
+            label={t('contacts.form.addUrl')}
+            onClick={() => setDraft((p) => ({ ...p, links: [...p.links, newLinkEntry(newId)] }))}
+          />
+        </FormSection>
+      )}
+
+      {/* ── Optional: Instant messaging (JSContact `onlineServices`, vCard IMPP) ── */}
+      {revealed.has('im') && (
+        <FormSection title={t('contacts.form.sections.im')}>
+          {draft.onlineServices.map((entry, index) => {
+            const name = rowName(
+              t,
+              t('contacts.form.fieldNames.im'),
+              index,
+              draft.onlineServices.length,
+            )
+            const qualify = draft.onlineServices.length > 1
+            /*
+             * Two boxes, service then account — the order Apple Contacts uses for an IM row, and the
+             * order the fields are read in ("Matrix: @anna:example.test"). The service box is the
+             * narrow one: it holds a word, the account holds an address.
+             */
+            const fieldLabel = (label: string): string =>
+              qualify ? t('contacts.form.a11y.inGroup', { field: label, group: name }) : label
+            return (
+              <div key={entry.key} className={styles.commRow}>
+                <div className={styles.commType}>
+                  <TextInput
+                    aria-label={fieldLabel(t('contacts.form.imService'))}
+                    placeholder={t('contacts.form.imService')}
+                    value={entry.service}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        onlineServices: replaceByKey<OnlineServiceEntry>(
+                          p.onlineServices,
+                          entry.key,
+                          { service: e.target.value },
+                        ),
+                      }))
+                    }
+                  />
+                </div>
+                <TextInput
+                  className={styles.commValue}
+                  aria-label={qualify ? name : t('contacts.form.fieldNames.im')}
+                  placeholder={t('contacts.form.imPlaceholder')}
+                  value={entry.account}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      onlineServices: replaceByKey<OnlineServiceEntry>(
+                        p.onlineServices,
+                        entry.key,
+                        { account: e.target.value },
+                      ),
+                    }))
+                  }
+                />
+                <IconButton
+                  label={t('contacts.form.a11y.remove', { field: name })}
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() =>
+                    setDraft((p) => ({
+                      ...p,
+                      onlineServices: removeByKey(p.onlineServices, entry.key),
+                    }))
+                  }
+                >
+                  <X />
+                </IconButton>
+              </div>
+            )
+          })}
+          <AddRowButton
+            label={t('contacts.form.addIm')}
+            onClick={() =>
+              setDraft((p) => ({
+                ...p,
+                onlineServices: [...p.onlineServices, newOnlineServiceEntry(newId)],
+              }))
+            }
+          />
+        </FormSection>
+      )}
+
       {/* ── Optional: Notes ── */}
       {revealed.has('note') && (
         <FormSection title={t('contacts.form.sections.note')}>
@@ -534,6 +674,8 @@ const ADD_FIELD_LABELS: Record<OptionalSection, string> = {
   address: 'contacts.form.addAddress',
   org: 'contacts.form.addCompany',
   birthday: 'contacts.form.addBirthday',
+  url: 'contacts.form.addUrl',
+  im: 'contacts.form.addIm',
   note: 'contacts.form.addNote',
   photo: 'contacts.form.addPhoto',
 }

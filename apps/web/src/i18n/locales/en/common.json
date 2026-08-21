@@ -589,6 +589,8 @@
         "phone": "Phone",
         "address": "Address",
         "birthday": "Birthday",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Notes"
       },
       "more": "More actions"
@@ -622,6 +624,8 @@
         "address": "Address",
         "org": "Company",
         "birthday": "Birthday",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Notes",
         "photo": "Photo"
       },
@@ -643,12 +647,19 @@
       "addAddress": "Add address",
       "addCompany": "Add company",
       "addBirthday": "Add birthday",
+      "addUrl": "Add website",
+      "addIm": "Add instant messaging",
+      "urlPlaceholder": "https://example.com",
+      "imService": "Service",
+      "imPlaceholder": "Address or handle",
       "addNote": "Add note",
       "addPhoto": "Add photo",
       "fieldNames": {
         "email": "Email",
         "phone": "Phone",
         "address": "Address",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Note"
       },
       "a11y": {

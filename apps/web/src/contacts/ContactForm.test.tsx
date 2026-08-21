@@ -86,6 +86,8 @@ describe('ContactForm progressive disclosure (FR-CON-02)', () => {
     const revealers: [string, string][] = [
       ['Add company', 'Company'],
       ['Add birthday', 'Birthday'],
+      ['Add website', 'Website'],
+      ['Add instant messaging', 'Instant messaging'],
       ['Add note', 'Notes'],
       ['Add address', 'Address'],
       ['Add photo', 'Photo'],
@@ -435,5 +437,57 @@ describe('ContactForm a11y', () => {
       </ReplicaProvider>,
     )
     await expectNoA11yViolations(container)
+  })
+})
+
+/**
+ * A-5 of the JMAP gap analysis: websites and instant messaging were readable and preserved, and the
+ * form had no field for either — so a card could carry a URL nobody could see or change, and IM was
+ * modelled nowhere at all.
+ */
+describe('ContactForm websites and instant messaging (A-5)', () => {
+  it('writes a typed website into the card`s links', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+
+    await user.click(screen.getByRole('button', { name: 'Add website' }))
+    await user.type(screen.getByLabelText('Website'), 'https://anna.test')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.links ?? {})).toEqual([
+      { '@type': 'Link', uri: 'https://anna.test' },
+    ])
+  })
+
+  it('writes a service and an account into onlineServices', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+
+    await user.click(screen.getByRole('button', { name: 'Add instant messaging' }))
+    await user.type(screen.getByLabelText('Service'), 'Matrix')
+    await user.type(screen.getByLabelText('Instant messaging'), '@anna:example.test')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.onlineServices ?? {})).toEqual([
+      // A handle is not a URI — see `formToOnlineServices`.
+      { '@type': 'OnlineService', service: 'Matrix', user: '@anna:example.test' },
+    ])
+  })
+
+  it('reveals both sections up front for a card that already carries them', () => {
+    // The reveal bar is for fields the card does NOT have; a stored value must never be hidden
+    // behind an "Add …" button, which is how it stays invisible AND uneditable.
+    renderForm({
+      mode: 'edit',
+      card: contactCard('c1', {
+        links: { l1: { '@type': 'Link', uri: 'https://anna.test' } },
+        onlineServices: { s1: { '@type': 'OnlineService', service: 'Matrix', user: '@anna' } },
+      }) as ContactCardRow,
+    })
+    expect(screen.getByLabelText('Website')).toHaveValue('https://anna.test')
+    expect(screen.getByLabelText('Service')).toHaveValue('Matrix')
+    expect(screen.getByLabelText('Instant messaging')).toHaveValue('@anna')
   })
 })

@@ -277,6 +277,9 @@ export const CONTACT_CARD_PROPERTIES: readonly (keyof ContactCard | string)[] = 
   'notes',
   'media',
   'links',
+  // Instant messaging (A-5 of the JMAP gap analysis). Absent from this list, the server never sent
+  // it, so the property could not be shown, edited or even preserved through an edit.
+  'onlineServices',
   'keywords',
   'members',
   'vCardProps',

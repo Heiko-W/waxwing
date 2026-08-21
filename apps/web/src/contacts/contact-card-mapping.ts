@@ -33,10 +33,12 @@ import type {
   Anniversary,
   BooleanSet,
   EmailAddress,
+  Link,
   Name,
   NameComponent,
   NameComponentKind,
   Note,
+  OnlineService,
   Organization,
   PartialDate,
   Phone,
@@ -102,6 +104,28 @@ export interface NoteEntry {
   readonly original?: Note
 }
 
+/** One website (RFC 9553 §2.6.3 `links`); vCard `URL`. */
+export interface LinkEntry {
+  readonly key: Id
+  readonly uri: string
+  readonly original?: Link
+}
+
+/**
+ * One instant-messaging / online account (RFC 9553 §2.3.2 `onlineServices`); vCard `IMPP`.
+ *
+ * Two visible fields, because the RFC has two and they answer different questions: `service` is
+ * WHICH service ("Matrix", "Signal") and `uri`/`user` is the account there. The form writes a value
+ * that looks like a URI into `uri` and anything else into `user` — a handle like `@anna:matrix.org`
+ * is not a URI, and storing it as one produces a link that goes nowhere.
+ */
+export interface OnlineServiceEntry {
+  readonly key: Id
+  readonly service: string
+  readonly account: string
+  readonly original?: OnlineService
+}
+
 /** The single edited photo (RFC 9553 §2.7 media `kind: 'photo'`); `previewUrl` is display-only. */
 export interface PhotoField {
   readonly key: Id
@@ -137,6 +161,8 @@ export interface ContactFormModel {
   readonly birthdayKey?: Id
   readonly birthdayOriginal?: Anniversary
   readonly notes: readonly NoteEntry[]
+  readonly links: readonly LinkEntry[]
+  readonly onlineServices: readonly OnlineServiceEntry[]
   readonly photo: PhotoField | null
   readonly preserved: PreservedCollections
 }
@@ -152,6 +178,8 @@ export function emptyFormModel(): ContactFormModel {
     addresses: [],
     birthday: '',
     notes: [],
+    links: [],
+    onlineServices: [],
     photo: null,
     preserved: { organizations: {}, titles: {}, anniversaries: {}, media: {} },
   }
@@ -170,6 +198,12 @@ export function newAddressEntry(newId: IdSource): AddressEntry {
 }
 export function newNoteEntry(newId: IdSource): NoteEntry {
   return { key: newId(), text: '' }
+}
+export function newLinkEntry(newId: IdSource): LinkEntry {
+  return { key: newId(), uri: '' }
+}
+export function newOnlineServiceEntry(newId: IdSource): OnlineServiceEntry {
+  return { key: newId(), service: '', account: '' }
 }
 
 // ── card → form ─────────────────────────────────────────────────────────────────────────────
@@ -198,6 +232,21 @@ export function cardToForm(card: Partial<ContactCard>): ContactFormModel {
     text: value.note,
     original: value,
   }))
+  const links: LinkEntry[] = preferredEntries(card.links).map(([key, value]) => ({
+    key,
+    uri: value.uri,
+    original: value,
+  }))
+  const onlineServices: OnlineServiceEntry[] = preferredEntries(card.onlineServices).map(
+    ([key, value]) => ({
+      key,
+      service: value.service ?? '',
+      // Whichever of the two the entry carries — the form shows ONE account box, and writes back
+      // into the field the value's shape calls for.
+      account: value.uri ?? value.user ?? '',
+      original: value,
+    }),
+  )
 
   const orgEntry = preferredEntries(card.organizations)[0]
   const titleEntry = preferredEntries(card.titles)[0]
@@ -217,6 +266,8 @@ export function cardToForm(card: Partial<ContactCard>): ContactFormModel {
     birthday: extractBirthdayString(birthEntry?.[1]),
     ...(birthEntry ? { birthdayKey: birthEntry[0], birthdayOriginal: birthEntry[1] } : {}),
     notes,
+    links,
+    onlineServices,
     photo: photo ? { key: photo[0], ...pickMediaFields(photo[1]), original: photo[1] } : null,
     preserved: {
       organizations: omitKey(card.organizations, orgEntry?.[0]),
@@ -247,6 +298,8 @@ export function formToCard(
   setOrDelete(result, 'addresses', formToAddresses(form.addresses))
   setOrDelete(result, 'anniversaries', formToAnniversaries(form, newId))
   setOrDelete(result, 'notes', formToNotes(form.notes))
+  setOrDelete(result, 'links', formToLinks(form.links))
+  setOrDelete(result, 'onlineServices', formToOnlineServices(form.onlineServices))
   setOrDelete(result, 'media', formToMedia(form))
   return result as unknown as ContactCard
 }
@@ -261,6 +314,8 @@ const CONTROLLED_PROPS = [
   'addresses',
   'anniversaries',
   'notes',
+  'links',
+  'onlineServices',
   'media',
 ] as const
 
@@ -531,6 +586,59 @@ function formToNotes(entries: readonly NoteEntry[]): Record<Id, Note> | undefine
     // the detail view renders the note verbatim, so the leading blanks became visible indentation.
     base.note = note
     out[entry.key] = base as unknown as Note
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+// ── Links (websites) / online services (instant messaging) ─────────────────────────────────
+
+function formToLinks(entries: readonly LinkEntry[]): Record<Id, Link> | undefined {
+  const out: Record<Id, Link> = {}
+  for (const entry of entries) {
+    const uri = entry.uri.trim()
+    if (uri === '') continue
+    // Built ON the original, like every other collection here, so `kind`, `pref` and a free-text
+    // `label` survive an edit of the address itself.
+    const base: Record<string, unknown> = entry.original
+      ? { ...entry.original }
+      : { '@type': 'Link' }
+    base.uri = uri
+    out[entry.key] = base as unknown as Link
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * True when `value` reads as a URI — `scheme:rest`, with a scheme vCard/JSContact would recognise.
+ *
+ * The distinction is not cosmetic: `uri` and `user` are different JSContact properties, and a
+ * Matrix handle (`@anna:matrix.org`) put in `uri` becomes a link the browser cannot follow, while a
+ * `matrix:` URI put in `user` stops being one anything can dial. The test is deliberately shallow —
+ * anything with a plausible scheme is a URI — because the alternative is a scheme registry that
+ * would be wrong the first time someone uses a service we have not heard of.
+ */
+const URI_LIKE = /^[a-z][a-z0-9+.-]*:/i
+
+function formToOnlineServices(
+  entries: readonly OnlineServiceEntry[],
+): Record<Id, OnlineService> | undefined {
+  const out: Record<Id, OnlineService> = {}
+  for (const entry of entries) {
+    const account = entry.account.trim()
+    const service = entry.service.trim()
+    // An entry with neither an account nor a service name says nothing; a service name alone is a
+    // row the user started and did not finish.
+    if (account === '') continue
+    const base: Record<string, unknown> = entry.original
+      ? { ...entry.original }
+      : { '@type': 'OnlineService' }
+    delete base.uri
+    delete base.user
+    if (URI_LIKE.test(account)) base.uri = account
+    else base.user = account
+    if (service === '') delete base.service
+    else base.service = service
+    out[entry.key] = base as unknown as OnlineService
   }
   return Object.keys(out).length > 0 ? out : undefined
 }

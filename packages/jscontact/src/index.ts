@@ -33,6 +33,7 @@ export type {
   NameComponentKind,
   Nickname,
   Note,
+  OnlineService,
   Organization,
   OrgUnit,
   PartialDate,

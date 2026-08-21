@@ -31,6 +31,7 @@ or stops being supported cannot leave this document behind.
 | `BDAY` / `ANNIVERSARY` / `DEATHDATE` | `anniversaries` | `kind: 'birth'` / `'wedding'` / `'death'`. Reduced forms are kept: `--0415` is "15 April, year withheld". |
 | `NICKNAME` | `nicknames` | A comma-separated list: one property can yield several nicknames. |
 | `URL` | `links` | A URI value, never text-escaped. |
+| `IMPP` | `onlineServices` | Instant-messaging / online accounts. A URI value, never text-escaped; the `SERVICE-TYPE` parameter becomes `service`. |
 | `NOTE` | `notes` | |
 | `PHOTO` / `LOGO` | `media` | `kind: 'photo'` / `'logo'`. The value is a URI and is **never text-escaped** — a `data:` URI contains both `;` and `,`. |
 | `CATEGORIES` | `keywords` | Comma-separated values become set keys. |
@@ -51,7 +52,7 @@ Contacts keeps its `item1.X-ABLabel` bound to the right phone number; one from O
 
 Not mapped to a typed field, and therefore travelling in `vCardProps`:
 
-- `LANG`, `GENDER`, `TZ`, `GEO`, `KEY`, `IMPP`, `SOUND`, `RELATED`, `CLIENTPIDMAP`
+- `LANG`, `GENDER`, `TZ`, `GEO`, `KEY`, `SOUND`, `RELATED`, `CLIENTPIDMAP`
 - every `X-` extension
 - `PRODID`, `SOURCE`, `XML`
 
@@ -69,6 +70,9 @@ belong to. Guessing would attach a timezone to the wrong one, so they are preser
   slot. vCard has one slot; JSContact can hold several components in it.
 - **`vCardProps` keeps only the first value** of a multi-valued jCard property. Every property this
   affects is one nothing reads yet.
+- **An `onlineServices` entry with no `uri` is not exported.** `IMPP`'s value *is* a URI, so a bare
+  `user` handle at a service that has no URI scheme has no vCard home; it is skipped rather than
+  written as an empty property.
 - **No vCard 3.0 output.** Input in 3.0 shape is read (that is what Apple, Google and Outlook emit);
   output is always 4.0.
 

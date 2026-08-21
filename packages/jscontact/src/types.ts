@@ -201,6 +201,27 @@ export interface Link {
   readonly label?: string
 }
 
+/**
+ * An account with an online service (RFC 9553 §2.3.2) — instant messaging, and social accounts with
+ * it. vCard's `IMPP` is the property RFC 9555 §2.3.2 maps here.
+ *
+ * All three descriptive fields are optional in the RFC and at least one is expected in practice: a
+ * `uri` (`xmpp:…`, `matrix:…`), a `user` (a handle that is not a URI), or both, with `service`
+ * naming the service when the URI scheme does not.
+ */
+export interface OnlineService {
+  readonly '@type'?: 'OnlineService'
+  /** The service's name — "Matrix", "Signal", "Mastodon". */
+  readonly service?: string
+  /** A URI for the account, when it has one. */
+  readonly uri?: string
+  /** The handle at that service, when it is not expressible as a URI. */
+  readonly user?: string
+  readonly contexts?: BooleanSet
+  readonly pref?: Pref
+  readonly label?: string
+}
+
 // ── The card ────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -237,6 +258,8 @@ export interface Card {
   readonly notes?: Readonly<Record<Id, Note>>
   readonly media?: Readonly<Record<Id, Media>>
   readonly links?: Readonly<Record<Id, Link>>
+  /** Instant-messaging / online accounts (RFC 9553 §2.3.2); vCard `IMPP`. */
+  readonly onlineServices?: Readonly<Record<Id, OnlineService>>
   readonly keywords?: BooleanSet
   /** Group membership (`kind: 'group'`): a set of member UIDs. */
   readonly members?: BooleanSet
