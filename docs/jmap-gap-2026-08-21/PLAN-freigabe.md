@@ -130,3 +130,34 @@ eine Änderung am Design-System und gehört in ein eigenes Paket.
 - `packages/jmap/src/session.ts`
 - `apps/web/src/mail/AccountTrees.tsx`
 - `apps/web/src/calendar/CalendarPage.tsx`
+
+
+---
+
+## Nachtrag 22.08.2026 — die vier offenen Messfragen zu S-2/S-6
+
+Gegen die laufende Fixture (v0.16.18) beantwortet, nachdem S-2/S-6 gebaut waren:
+
+**1. `myRights` enthält `mayShare` — bei beiden Typen.** Das war die kritische Frage: hätte es
+gefehlt, wäre das Freigabe-Bedienelement im Kontakte-Rail nie erschienen, also ein toter Pfad wie
+seinerzeit beim Kontaktfoto.
+```
+AddressBook myRights: mayDelete, mayRead, mayShare, mayWrite            (4 Schlüssel)
+Calendar    myRights: mayDelete, mayRSVP, mayReadFreeBusy, mayReadItems,
+                      mayShare, mayUpdatePrivate, mayWriteAll, mayWriteOwn  (8 Schlüssel)
+```
+Damit ist zugleich **Frage 4 beantwortet**: die aus dem Bericht übernommenen Schlüssel stimmen
+exakt. Anders als beim Mailordner, wo es zehn statt neun waren, gibt es hier keine Überraschung.
+
+**2. `Principal/getAvailability` verlangt seine URN NICHT.** Derselbe Aufruf liefert mit und ohne
+`urn:ietf:params:jmap:principals:availability` im `using` dieselben echten Frei/Belegt-Zeiten.
+
+**Der Gegentest ist dabei der eigentliche Ertrag:** eine *unbekannte* URN im `using` lässt die
+Antwort ohne `methodResponses` zurückkommen — die ganze Anfrage fällt aus. Genau das war die
+Begründung, die Übersteuerungstabelle **nicht** zu bauen und die URN nur dann mitzusenden, wenn die
+Session sie führt. Die Entscheidung ist damit belegt und nicht bloß vorsichtig.
+
+**3. `Calendar/AddressBook.mayDelete` — Container oder Inhalt?** Weiterhin ungemessen. Die Antwort
+ließe sich nur durch einen echten Löschversuch auf fremdem Gut finden, und der Preis eines Irrtums
+(die Termine eines anderen) rechtfertigt die Neugier nicht. Beide bleiben konservativ in
+„Verwalten"; das ist die Einordnung, die im Zweifel zu wenig erlaubt statt zu viel.
