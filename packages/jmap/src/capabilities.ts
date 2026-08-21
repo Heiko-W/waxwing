@@ -36,6 +36,18 @@ export const Capabilities = {
    * announcement, read by {@link getWebPushVapidCapability}. `PushSubscription/*` is core.
    */
   webPushVapid: 'urn:ietf:params:jmap:webpush-vapid',
+  /**
+   * `draft-ietf-jmap-emailpush-03` — message data carried IN the push (M4.0 amendment to ADR-017).
+   *
+   * Like {@link Capabilities.webPushVapid} it is deliberately absent from `PREFIX_TO_CAPABILITY`,
+   * and for a stronger reason than "it is not a method capability": `PushSubscription/*` is core, so
+   * adding this URN there would put it in the `using` set of **every** subscription request Waxwing
+   * makes. RFC 8620 §3.3 obliges a server to answer an unknown `using` entry with a request-level
+   * `unknownCapability` — i.e. the whole push flow would break against every JMAP server that has
+   * not implemented this draft, which today is nearly all of them. It is therefore opted into per
+   * call, via {@link CallOptions.using}, and only once the session has been seen to advertise it.
+   */
+  emailPush: 'urn:ietf:params:jmap:emailpush',
 } as const
 
 /** Union of the known capability URN string literals. */

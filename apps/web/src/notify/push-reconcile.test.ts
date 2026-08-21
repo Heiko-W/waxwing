@@ -111,11 +111,14 @@ function deviceIdSentBy(client: { calls: Call[] }): string | undefined {
   return undefined
 }
 
-const session = (withKey = true): Session =>
+const session = (withKey = true, withEmailPush = false): Session =>
   ({
-    capabilities: withKey
-      ? { 'urn:ietf:params:jmap:webpush-vapid': { applicationServerKey: KEY } }
-      : {},
+    capabilities: {
+      ...(withKey ? { 'urn:ietf:params:jmap:webpush-vapid': { applicationServerKey: KEY } } : {}),
+      ...(withEmailPush ? { 'urn:ietf:params:jmap:emailpush': {} } : {}),
+    },
+    accounts: { b: {} },
+    primaryAccounts: { 'urn:ietf:params:jmap:mail': 'b' },
   }) as unknown as Session
 
 function deps(over: Record<string, unknown> = {}) {
@@ -133,6 +136,9 @@ function deps(over: Record<string, unknown> = {}) {
     badgeUrl: 'https://mail.example/branding/icon-192.png',
     quietHours: null,
     sound: true,
+    preview: true,
+    unknownSender: 'Unknown sender',
+    noSubject: '(no subject)',
     idb,
     ...over,
   }
@@ -152,7 +158,13 @@ describe('reconcilePushSubscription', () => {
 
   it('tears the subscription down when the user switched it off', async () => {
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     const existing = fakeSubscription()
@@ -178,7 +190,13 @@ describe('reconcilePushSubscription', () => {
    */
   it('does NOT tear down while the master switch is still loading', async () => {
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     const existing = fakeSubscription()
@@ -208,7 +226,13 @@ describe('reconcilePushSubscription', () => {
    */
   it('does NOT tear down while the session is merely reconnecting', async () => {
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     const existing = fakeSubscription()
@@ -227,7 +251,13 @@ describe('reconcilePushSubscription', () => {
     // `serverSupports` is false until the session document has loaded — a transient state, not an
     // answer. Reading it as one destroyed a healthy subscription on every reconnect.
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     const existing = fakeSubscription()
@@ -433,5 +463,83 @@ describe('reconcilePush — serialisation', () => {
     // One pass does 2 gets (list + granted-expiry read-back); the follow-up adds at most one more
     // pass's worth. Six passes would be far more — the point is that the queue collapsed.
     expect(gets.length).toBeLessThanOrEqual(6)
+  })
+})
+
+/**
+ * `draft-ietf-jmap-emailpush-03` (ADR-017 amendment, 2026-08-21) — the capability gate, asserted at
+ * the level where the session is actually read.
+ *
+ * The unit below it (`push-subscribe.test.ts`) proves what each `emailPush` value puts on the wire.
+ * What only this level can prove is that the value is derived from the SESSION and from the user's
+ * switch, and that the answer for a server which has never heard of the draft is "do not mention it".
+ */
+describe('reconcilePushSubscription — draft-ietf-jmap-emailpush-03', () => {
+  const bodyOf = (client: { calls: Call[] }): Record<string, unknown> => {
+    for (const [, args] of client.calls) {
+      const create = args.create as Record<string, Record<string, unknown>> | undefined
+      const body = create === undefined ? undefined : Object.values(create)[0]
+      if (body !== undefined) return body
+    }
+    return {}
+  }
+
+  /**
+   * **The portability guarantee.** A server without the URN must receive the request the build
+   * before this amendment sent — byte for byte, `emailPush` nowhere in it. Anything else and Waxwing
+   * stops being a client that runs against any JMAP server, which is the whole product.
+   */
+  it('never mentions the property to a server that does not advertise it', async () => {
+    const client = fakeClient()
+    const outcome = await reconcilePushSubscription(
+      deps({ client, session: session(true, false), preview: true }),
+    )
+
+    expect(outcome).toBe('subscribed')
+    expect(bodyOf(client)).toEqual({
+      deviceClientId: expect.any(String),
+      url: ENDPOINT,
+      keys: { p256dh: expect.any(String), auth: expect.any(String) },
+      types: ['EmailDelivery'],
+    })
+    expect(await readPushRegistration(idb).then((r) => r?.emailPush)).toBe(false)
+  })
+
+  it('configures it, keyed by the primary mail account, when the server offers it', async () => {
+    const client = fakeClient()
+    await reconcilePushSubscription(deps({ client, session: session(true, true), preview: true }))
+
+    expect(bodyOf(client).emailPush).toEqual({
+      b: { filter: null, properties: ['from', 'subject', 'preview', 'receivedAt'] },
+    })
+  })
+
+  /**
+   * **The privacy switch reaches the WIRE, not only the banner.** A push carrying a subject is
+   * content whether or not the banner shows it: it crosses the push service, sits in the browser's
+   * queue and is decrypted in a worker. Honouring the switch only at the last step would satisfy the
+   * letter of FR-NOTIF-03 and miss its point.
+   */
+  it('asks for no content at all when the preview toggle is off', async () => {
+    const client = fakeClient()
+    await reconcilePushSubscription(deps({ client, session: session(true, true), preview: false }))
+
+    expect(Object.hasOwn(bodyOf(client), 'emailPush')).toBe(false)
+    expect(await readPushRegistration(idb).then((r) => r?.emailPush)).toBe(false)
+  })
+
+  it('passes the preview toggle and both fallback strings to the worker', async () => {
+    await reconcilePushSubscription(
+      deps({
+        session: session(true, true),
+        preview: true,
+        unknownSender: 'Unbekannter Absender',
+        noSubject: '(kein Betreff)',
+      }),
+    )
+    const state = await readPushState(idb)
+    expect(state?.preview).toBe(true)
+    expect(state?.unknownSender).toBe('Unbekannter Absender')
+    expect(state?.noSubject).toBe('(kein Betreff)')
   })
 })

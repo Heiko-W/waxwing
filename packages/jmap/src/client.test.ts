@@ -28,6 +28,36 @@ describe('JmapClient — envelope, auth and using', () => {
     expect(recorded.body.using).toEqual(['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'])
   })
 
+  /**
+   * A capability that gates an ARGUMENT rather than a method — `urn:ietf:params:jmap:emailpush` is
+   * the first — cannot be derived from the method name: `PushSubscription/*` is core, so deriving it
+   * would put the URN on every subscription request. RFC 8620 §3.3 obliges a server that does not
+   * know it to fail the WHOLE request, which would break the push flow against every JMAP server
+   * that has not implemented the draft. Hence the per-call opt-in, and hence this test.
+   */
+  it('adds a per-call capability to the derived using set, sorted and de-duplicated', async () => {
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+
+    await client.call([['PushSubscription/set', { create: {} }, 'p0']], {
+      using: ['urn:ietf:params:jmap:emailpush', 'urn:ietf:params:jmap:core'],
+    })
+
+    expect(at(calls, calls.length - 1).body.using).toEqual([
+      'urn:ietf:params:jmap:core',
+      'urn:ietf:params:jmap:emailpush',
+    ])
+  })
+
+  it('sends only the derived set when no per-call capability is given', async () => {
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+
+    await client.call([['PushSubscription/set', { create: {} }, 'p0']])
+
+    expect(at(calls, calls.length - 1).body.using).toEqual(['urn:ietf:params:jmap:core'])
+  })
+
   it('Core/echo round-trips its arguments', async () => {
     const { fetch } = jmapPostMock((body) => autoRespond(body))
     const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })

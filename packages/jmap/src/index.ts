@@ -81,7 +81,7 @@ export { fileNodeNameProblem } from './types/filenode'
 export type * from './types/index'
 export { MailboxRoles } from './types/mail'
 export { principalSearchFilter } from './types/principal'
-export { EMAIL_DELIVERY_TYPE } from './types/push'
+export { EMAIL_DELIVERY_TYPE, EMAIL_PUSH_TYPE } from './types/push'
 export {
   isInvalidSieveError,
   isSieveIsActiveError,

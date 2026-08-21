@@ -12,13 +12,14 @@
  */
 
 import type { JmapClient, Session } from '@waxwing/jmap'
-import { getWebPushVapidCapability } from '@waxwing/jmap'
+import { Capabilities, getWebPushVapidCapability, hasCapability } from '@waxwing/jmap'
 import {
   clearPendingVerification,
   ensureDeviceClientId,
   peekPendingVerification,
 } from './push-store'
 import {
+  type EmailPushRequest,
   ensurePushSubscription,
   newDeviceClientId,
   type PushCapableRegistration,
@@ -78,6 +79,17 @@ export interface ReconcileDeps {
   readonly badgeUrl: string
   readonly quietHours: QuietHours | null
   readonly sound: boolean
+  /**
+   * FR-NOTIF-03's "show sender and subject". **It governs the WIRE, not only the banner**: with it
+   * off, no `emailPush` config is sent, so the server never puts a subject in a push at all. A push
+   * that carries a subject is content even when the banner declines to show it — it crosses the push
+   * service, sits in the browser's queue and is decrypted in a worker — and a privacy toggle that
+   * only hid it at the last step would be honouring the letter of the setting and not its point.
+   */
+  readonly preview: boolean
+  /** Already translated. Used only when a pushed message lacks a `from` / a `subject`. */
+  readonly unknownSender: string
+  readonly noSubject: string
   /** Injected in tests. */
   readonly idb?: IDBFactory | null
 }
@@ -166,6 +178,34 @@ export function resetReconcileSerialisation(): void {
   pendingWaiters = []
 }
 
+/**
+ * The `emailPush` configuration for this session (`draft-ietf-jmap-emailpush-03`).
+ *
+ * **`null` is reserved for one thing only: the server does not advertise the capability.** Then the
+ * property is never mentioned — not in the body, not in `using` — and Waxwing behaves exactly as the
+ * build before this amendment did, which is the condition on running against any JMAP server.
+ *
+ * Everything else returns a request with an account list, EMPTY when there is nothing to configure:
+ * the user's preview toggle is off, or the session names no primary mail account. An empty list is
+ * not the same as no capability, and collapsing the two was the bug worth avoiding — a server that
+ * understands `emailPush` and is holding one has to be TOLD to drop it, and that patch has to carry
+ * the URN or the server will refuse it and go on sending subjects.
+ *
+ * The account is `primaryAccounts['…:mail']`, the one this client syncs (`SessionProvider.tsx`) and
+ * the one the credentials certainly reach — Stalwart rejects the whole `set` with `invalidProperties`
+ * if the map names an account they cannot see, which would take the subscription down with it. Other
+ * reachable accounts are deliberately left out: their deliveries keep arriving as the plain
+ * `StateChange` they always did, so they raise the contentless banner exactly as before. Adding them
+ * changes what a shared mailbox puts on a lock screen, which is a product decision, not a loop.
+ */
+function emailPushRequest(session: Session, preview: boolean): EmailPushRequest | null {
+  if (!hasCapability(session, Capabilities.emailPush)) return null
+  if (!preview) return { accountIds: [] }
+  const accountId = session.primaryAccounts[Capabilities.mail]
+  if (accountId === undefined || accountId === '') return { accountIds: [] }
+  return { accountIds: [accountId] }
+}
+
 export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<ReconcileOutcome> {
   const idb = deps.idb ?? null
   if (deps.registration === null) return 'noServiceWorker'
@@ -203,6 +243,10 @@ export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<Re
     badgeUrl: deps.badgeUrl,
     quietHours: deps.quietHours,
     sound: deps.sound,
+    emailPush: emailPushRequest(deps.session, deps.preview),
+    preview: deps.preview,
+    unknownSender: deps.unknownSender,
+    noSubject: deps.noSubject,
     idb,
   })
   if (result.status !== 'subscribed') return result.status

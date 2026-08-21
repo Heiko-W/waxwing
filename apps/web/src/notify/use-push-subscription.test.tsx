@@ -421,6 +421,7 @@ describe('PushSubscriptionHost lifecycle', () => {
       endpoint: ENDPOINT,
       applicationServerKey: KEY,
       expires: FAR,
+      emailPush: false,
     }) // ...and in our own bookkeeping, so a teardown would issue a server destroy too
 
     render(

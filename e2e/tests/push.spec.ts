@@ -106,3 +106,213 @@ test.describe('M3.10 push transport (B4)', () => {
   // would buy nothing but a second fixture round-trip; the tightened budget there is mutation-proven
   // against the same `transports`-removal that reddens the socket assertion above.
 })
+
+/**
+ * `draft-ietf-jmap-emailpush-03` — the WIRE CONTRACT, against the real server (ADR-017 amendment,
+ * 2026-08-21).
+ *
+ * The unit suite proves what Waxwing builds; only a real Stalwart can prove the server accepts it.
+ * Three things are at stake here and none of them is visible to a unit test:
+ *
+ *  - **The fixture is new enough.** `emailPush` arrived in v0.16.16 and the fixture runs v0.16.18.
+ *    If someone pins it back, the capability assertion below is the thing that says so — rather than
+ *    the app silently falling back to the contentless banner and every unit test staying green.
+ *  - **`using` really is required, and really is enough.** RFC 8620 §3.3 lets a server fail the whole
+ *    request over an unknown capability, so the URN is opted into per call. That opt-in is one line
+ *    and it is not exercised by any assertion a mock can make.
+ *  - **The property set is the one the server knows.** `properties` is validated: an entry Stalwart
+ *    does not recognise comes back as `invalidProperties`. So the negative case below is not decoration
+ *    — it is the positive control that proves the acceptance above means something.
+ *
+ * **No browser push is involved and none could be.** Playwright cannot observe a closed app, and a
+ * real endpoint would need a push service; ADR-017 already records that the closed-app half is
+ * hand-verified per platform. What is automatable is the request/response pair, and that is what this
+ * covers. The subscription created here is destroyed in the same test; Stalwart will POST one
+ * `PushVerification` at the unroutable `push.example.com` in the meantime, which fails in the
+ * background and leaves nothing behind.
+ */
+test.describe('draft-ietf-jmap-emailpush-03 wire contract', () => {
+  const EMAILPUSH_URN = 'urn:ietf:params:jmap:emailpush'
+  /** Must stay in step with `EMAIL_PUSH_PROPERTIES` in apps/web/src/notify/push-subscribe.ts. */
+  const PROPERTIES = ['from', 'subject', 'preview', 'receivedAt']
+
+  /** One authenticated JMAP request, run from the page so the same-origin proxy applies. */
+  async function jmap(
+    page: Page,
+    using: string[],
+    methodCalls: unknown[],
+  ): Promise<Record<string, unknown>> {
+    return page.evaluate(
+      async ([body, credentials]) => {
+        const response = await fetch('/jmap/api', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Basic ${btoa(credentials as string)}`,
+          },
+          body: JSON.stringify(body),
+        })
+        return (await response.json()) as Record<string, unknown>
+      },
+      [{ using, methodCalls }, `${CREDENTIALS.user}:${CREDENTIALS.pass}`] as const,
+    )
+  }
+
+  test('the fixture advertises the capability, and accepts the exact config Waxwing sends', async ({
+    page,
+  }) => {
+    await page.goto('/')
+
+    const session = await page.evaluate(async (credentials) => {
+      const response = await fetch('/jmap/session', {
+        headers: { authorization: `Basic ${btoa(credentials)}` },
+      })
+      return (await response.json()) as {
+        capabilities: Record<string, unknown>
+        primaryAccounts: Record<string, string>
+      }
+    }, `${CREDENTIALS.user}:${CREDENTIALS.pass}`)
+
+    // The version guard. Everything below is meaningless if this is absent, and the app is right to
+    // fall back to the contentless banner when it is.
+    expect(Object.keys(session.capabilities)).toContain(EMAILPUSH_URN)
+
+    const accountId = session.primaryAccounts['urn:ietf:params:jmap:mail'] ?? ''
+    expect(accountId).toBeTruthy()
+
+    const created = await jmap(
+      page,
+      ['urn:ietf:params:jmap:core', EMAILPUSH_URN],
+      [
+        [
+          'PushSubscription/set',
+          {
+            create: {
+              probe: {
+                deviceClientId: 'waxwing-e2e-emailpush',
+                // Stalwart validates the URL at create time and rejects a literal private or
+                // reserved IP; a hostname is not resolved until it tries to send. This one never
+                // resolves inside the container, which is exactly what is wanted — nothing is
+                // delivered anywhere and the verification POST fails in the background.
+                url: 'https://push.example.com/waxwing-e2e-emailpush',
+                keys: null,
+                types: ['EmailDelivery'],
+                emailPush: { [accountId]: { filter: null, properties: PROPERTIES } },
+              },
+            },
+          },
+          'p0',
+        ],
+      ],
+    )
+
+    const createResult = (created.methodResponses as [string, Record<string, unknown>, string][])[0]
+    expect(createResult?.[0]).toBe('PushSubscription/set')
+    const notCreated = createResult?.[1].notCreated as Record<string, unknown> | null | undefined
+    // Assert the failure map FIRST: a `notCreated.probe` carries the server's own explanation, and
+    // reading it beats reading `created === null` and guessing why.
+    expect(notCreated ?? null).toBeNull()
+    const createdMap = createResult?.[1].created as Record<string, { id: string }> | null
+    const subscriptionId = createdMap?.probe?.id
+    expect(subscriptionId).toBeTruthy()
+
+    try {
+      /**
+       * The positive control. Without it, "the server accepted our config" could equally mean "the
+       * server ignores `emailPush` entirely" — and this whole feature would be a no-op that every
+       * test in the repo passes.
+       */
+      const rejected = await jmap(
+        page,
+        ['urn:ietf:params:jmap:core', EMAILPUSH_URN],
+        [
+          [
+            'PushSubscription/set',
+            {
+              update: {
+                [subscriptionId as string]: {
+                  emailPush: {
+                    [accountId]: { filter: null, properties: ['definitelyNotAProperty'] },
+                  },
+                },
+              },
+            },
+            'p1',
+          ],
+        ],
+      )
+      const updateResult = (
+        rejected.methodResponses as [string, Record<string, unknown>, string][]
+      )[0]
+      const notUpdated = updateResult?.[1].notUpdated as Record<
+        string,
+        { type: string; properties?: string[] }
+      > | null
+      expect(notUpdated?.[subscriptionId as string]?.type).toBe('invalidProperties')
+    } finally {
+      await jmap(
+        page,
+        ['urn:ietf:params:jmap:core'],
+        [['PushSubscription/set', { destroy: [subscriptionId] }, 'p2']],
+      )
+    }
+  })
+
+  /**
+   * The other half of RFC 8620 §3.3, from the server's side: the URN is not decoration. Waxwing
+   * derives its `using` set from method names, and `PushSubscription/*` is core — so if this request
+   * succeeded, the per-call opt-in in `client.ts` would be dead code nobody would notice removing.
+   */
+  test('rejects the property when `using` does not name the capability', async ({ page }) => {
+    await page.goto('/')
+
+    const session = await page.evaluate(async (credentials) => {
+      const response = await fetch('/jmap/session', {
+        headers: { authorization: `Basic ${btoa(credentials)}` },
+      })
+      return (await response.json()) as { primaryAccounts: Record<string, string> }
+    }, `${CREDENTIALS.user}:${CREDENTIALS.pass}`)
+    const accountId = session.primaryAccounts['urn:ietf:params:jmap:mail'] ?? ''
+
+    const response = await jmap(
+      page,
+      ['urn:ietf:params:jmap:core'],
+      [
+        [
+          'PushSubscription/set',
+          {
+            create: {
+              probe: {
+                deviceClientId: 'waxwing-e2e-emailpush-nousing',
+                url: 'https://push.example.com/waxwing-e2e-nousing',
+                keys: null,
+                types: ['EmailDelivery'],
+                emailPush: { [accountId]: { filter: null, properties: PROPERTIES } },
+              },
+            },
+          },
+          'p0',
+        ],
+      ],
+    )
+
+    // Either a request-level problem document or a method-level refusal is a pass: what must NOT
+    // happen is a subscription being created with the configuration silently dropped.
+    const responses = response.methodResponses as
+      | [string, Record<string, unknown>, string][]
+      | undefined
+    const createdMap = responses?.[0]?.[1].created as Record<string, { id: string }> | null
+    const subscriptionId = createdMap?.probe?.id
+
+    if (subscriptionId !== undefined) {
+      // It was created after all — then the server must at least not be holding the configuration,
+      // and the subscription is cleaned up before the assertion so a failure cannot leak state.
+      await jmap(
+        page,
+        ['urn:ietf:params:jmap:core'],
+        [['PushSubscription/set', { destroy: [subscriptionId] }, 'p1']],
+      )
+    }
+    expect(subscriptionId).toBeUndefined()
+  })
+})

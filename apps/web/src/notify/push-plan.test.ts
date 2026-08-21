@@ -18,6 +18,7 @@ const stored = (over: Partial<PushRegistrationRecord> = {}): PushRegistrationRec
   endpoint: ENDPOINT,
   applicationServerKey: KEY,
   expires: new Date(NOW + 7 * 24 * 60 * 60 * 1000).toISOString(),
+  emailPush: false,
   ...over,
 })
 
@@ -29,6 +30,9 @@ const plan = (over: Partial<Parameters<typeof planPushSubscription>[0]> = {}) =>
     serverHasSubscription: true,
     expires: new Date(NOW + 7 * 24 * 60 * 60 * 1000).toISOString(),
     now: NOW,
+    // The default is a server without `urn:ietf:params:jmap:emailpush`, which is what makes every
+    // existing case below a regression guard for "unchanged against a stock server".
+    wantEmailPush: false,
     ...over,
   })
 
@@ -130,5 +134,81 @@ describe('planPushSubscription', () => {
    */
   it('renews rather than trusting an expiry it cannot parse', () => {
     expect(plan({ expires: 'next Tuesday' })).toEqual({ kind: 'renew', subscriptionId: 'sub-1' })
+  })
+})
+
+/**
+ * `draft-ietf-jmap-emailpush-03` (ADR-017 amendment, 2026-08-21). The subscription can be perfectly
+ * healthy and still be configured to push a different amount of CONTENT than the user now wants —
+ * a state no other input in this file can express, and one that no error would ever report.
+ */
+describe('planPushSubscription — the emailPush configuration', () => {
+  it('reconfigures a healthy subscription when the user turned the preview ON', () => {
+    expect(plan({ stored: stored({ emailPush: false }), wantEmailPush: true })).toEqual({
+      kind: 'reconfigure',
+      subscriptionId: 'sub-1',
+    })
+  })
+
+  /**
+   * The direction that matters. Left alone, the server keeps putting subjects in a push that reaches
+   * the device of someone who has just said they do not want them — and the subscription looks
+   * healthy from every other angle, so nothing else in this file would ever act on it.
+   */
+  it('reconfigures when the user turned the preview OFF', () => {
+    expect(plan({ stored: stored({ emailPush: true }), wantEmailPush: false })).toEqual({
+      kind: 'reconfigure',
+      subscriptionId: 'sub-1',
+    })
+  })
+
+  it('keeps when the server already holds what the user wants', () => {
+    expect(plan({ stored: stored({ emailPush: true }), wantEmailPush: true })).toEqual({
+      kind: 'keep',
+      subscriptionId: 'sub-1',
+    })
+    expect(plan({ stored: stored({ emailPush: false }), wantEmailPush: false })).toEqual({
+      kind: 'keep',
+      subscriptionId: 'sub-1',
+    })
+  })
+
+  /**
+   * A renewal is already an `update`, so the content patch rides along with it (see
+   * `push-subscribe.ts#applyPlan`). Reporting `reconfigure` here instead would drop the renewal, and
+   * the subscription would lapse in seven days — trading the failure this file exists to prevent
+   * for the one it just learned about.
+   */
+  it('still renews when both are due — the lifetime question is not lost to the content one', () => {
+    const expiring = new Date(NOW + RENEW_BEFORE_MS - 1000).toISOString()
+    expect(
+      plan({
+        stored: stored({ emailPush: false, expires: expiring }),
+        expires: expiring,
+        wantEmailPush: true,
+      }),
+    ).toEqual({ kind: 'renew', subscriptionId: 'sub-1' })
+  })
+
+  /** A create sends the wanted configuration from the start; there is nothing to reconcile. */
+  it('creates rather than reconfigures when the endpoint moved', () => {
+    expect(
+      plan({
+        stored: stored({ emailPush: false }),
+        endpoint: 'https://push.example/endpoint/new',
+        wantEmailPush: true,
+      }),
+    ).toEqual({ kind: 'create', destroyId: 'sub-1' })
+  })
+
+  /**
+   * A server that never grants an expiry (the RFC permits `null`) would otherwise never take a
+   * reconfiguration: the branch above it returns `keep` unconditionally, and only a create could
+   * ever change the configuration again.
+   */
+  it('reconfigures even when the server grants no expiry at all', () => {
+    expect(
+      plan({ stored: stored({ emailPush: false }), expires: null, wantEmailPush: true }),
+    ).toEqual({ kind: 'reconfigure', subscriptionId: 'sub-1' })
   })
 })

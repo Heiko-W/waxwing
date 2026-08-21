@@ -36,6 +36,17 @@ export interface CallOptions {
   /** Seed `createdIds` map (RFC 8620 §5.8). */
   createdIds?: Record<CreationId, Id>
   signal?: AbortSignal
+  /**
+   * Extra capability URNs to add to this request's `using` set, on top of the ones derived from the
+   * method names (RFC 8620 §3.3).
+   *
+   * For the case the derivation cannot see: a capability that gates an **argument** rather than a
+   * method. `urn:ietf:params:jmap:emailpush` is the first of them — it is `PushSubscription/set`,
+   * which is core, carrying one extra property. Deriving it from the method name would send the URN
+   * on every subscription request, and a server that does not know it MUST then fail the whole
+   * request with `unknownCapability`. So the caller opts in, per call, having checked the session.
+   */
+  using?: readonly string[]
 }
 
 /**
@@ -87,7 +98,11 @@ export class JmapClient {
       return new MethodResponses([], this.currentSession.state, undefined, names)
     }
 
-    const using = usingForMethods(calls.map((call) => call[0]))
+    // Sorted, like `usingForMethods` itself: the set is compared verbatim in tests and a stable
+    // order is what makes an added URN a visible diff rather than a reshuffle.
+    const using = [
+      ...new Set([...usingForMethods(calls.map((call) => call[0])), ...(options.using ?? [])]),
+    ].sort()
     const plan = planRequest(calls, using, this.resolveLimits(), options.createdIds)
 
     const physicalResponses: Invocation[] = []
