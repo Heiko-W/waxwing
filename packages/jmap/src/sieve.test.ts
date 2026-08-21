@@ -37,16 +37,24 @@ function setResponder() {
 }
 
 describe('SieveScript (RFC 9661)', () => {
-  it('binds the four RFC method names — and only those', () => {
+  it('binds the three method names it calls — and only those', () => {
     expect(Methods.sieveScriptGet.name).toBe('SieveScript/get')
     expect(Methods.sieveScriptSet.name).toBe('SieveScript/set')
-    expect(Methods.sieveScriptQuery.name).toBe('SieveScript/query')
     expect(Methods.sieveScriptValidate.name).toBe('SieveScript/validate')
 
     // RFC 9661 defines no `/changes` and no `/queryChanges`, so a caller cannot reach for one and
     // discover at runtime that the server answers `unknownMethod`.
     expect(Methods).not.toHaveProperty('sieveScriptChanges')
     expect(Methods).not.toHaveProperty('sieveScriptQueryChanges')
+
+    /*
+     * `SieveScript/query` is the RFC's fourth method and DOES work on Stalwart v0.16.18 (measured:
+     * it answers `canCalculateChanges: true` on an empty account). It is absent anyway, because the
+     * registry states what this client calls: the script list is read whole by
+     * `SieveScript/get {ids:null}` (`settings/sieve/sieve-client.ts`), so a typed binding for a
+     * paged, filtered script query only ever told a reader that a paging path existed.
+     */
+    expect(Methods).not.toHaveProperty('sieveScriptQuery')
   })
 
   it('auto-adds the sieve capability to `using`', () => {

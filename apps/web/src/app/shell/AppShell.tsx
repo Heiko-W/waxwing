@@ -25,6 +25,7 @@ import { MailScreen } from './MailScreen'
 import { PrimaryNav } from './PrimaryNav'
 import { ReauthDialog } from './ReauthDialog'
 import styles from './shell.module.css'
+import { useSectionAvailability } from './use-available-sections'
 import { useDocumentTitle } from './use-document-title'
 import { useMailtoHandler } from './use-mailto-handler'
 import { useStorageFullNotifier } from './use-storage-notifier'
@@ -86,8 +87,13 @@ export function AppShell({ config }: AppShellProps) {
 
   const username = connected?.username ?? ''
 
+  // A deep link to a section this server does not offer resolves to "not found" rather than to a
+  // page whose first request comes back `unknownCapability` (JMAP gap analysis, I-3).
+  const isAvailable = useSectionAvailability()
+  const routeId = isAvailable(route.id) ? route.id : 'notFound'
+
   let screen: ReactNode
-  switch (route.id) {
+  switch (routeId) {
     case 'contacts':
       screen = <ContactsPage />
       break

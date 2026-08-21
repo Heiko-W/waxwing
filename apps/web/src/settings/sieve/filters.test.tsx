@@ -66,7 +66,6 @@ function fakeClient(source: string, options: { refuse?: SetError } = {}): Fake {
 
   const client: SieveClient = {
     load: async () => snapshot(),
-    read: async () => current,
     save: async (next, _existing, saveOptions) => {
       saved.push(next)
       activations.push(saveOptions?.activate ?? true)

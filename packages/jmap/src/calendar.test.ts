@@ -82,6 +82,22 @@ describe('capability wiring', () => {
     expect(using).toContain('urn:ietf:params:jmap:calendars')
     expect(using).toContain('urn:ietf:params:jmap:core')
   })
+
+  /*
+   * Both `/changes` methods exist on v0.16.18 — measured, they reject only a bogus `sinceState` —
+   * and both had no caller (JMAP gap analysis, I-2). A delta is only worth asking for when there is
+   * local state to apply it to, and the calendar has none: `calendar/calendar-client.ts` bypasses
+   * the sync engine entirely, so nothing is stored between visits and every view re-queries.
+   * A registry entry claiming otherwise is the misleading part; it comes back with the replica.
+   */
+  it('has no calendar `/changes` binding, because there is no calendar replica to update', () => {
+    expect(Methods).not.toHaveProperty('calendarChanges')
+    expect(Methods).not.toHaveProperty('calendarEventChanges')
+
+    const names = Object.values(Methods).map((method) => method.name)
+    expect(names).not.toContain('Calendar/changes')
+    expect(names).not.toContain('CalendarEvent/changes')
+  })
 })
 
 describe('the JSCalendar time model', () => {

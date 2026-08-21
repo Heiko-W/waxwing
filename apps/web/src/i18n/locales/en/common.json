@@ -755,7 +755,8 @@
         "url": "Website",
         "im": "Instant messaging",
         "note": "Notes",
-        "photo": "Photo"
+        "photo": "Photo",
+        "books": "Address books"
       },
       "namePrefix": "Prefix",
       "given": "First name",
@@ -803,7 +804,8 @@
       "photoPreparing": "Preparing photo…",
       "photoError": "The photo could not be used.",
       "photoTooLarge": "That photo is too large. Choose a smaller one.",
-      "photoAlt": "Contact photo preview"
+      "photoAlt": "Contact photo preview",
+      "booksAtLeastOne": "A contact has to stay in at least one address book."
     },
     "delete": {
       "title": "Delete contact",

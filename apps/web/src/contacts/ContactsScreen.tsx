@@ -420,6 +420,7 @@ export function ContactsScreen() {
       <ContactForm
         mode="create"
         bookId={targetBook.id}
+        books={books ?? []}
         canWrite
         onSubmit={onSubmit}
         onCancel={() => setEditor(null)}
@@ -429,6 +430,7 @@ export function ContactsScreen() {
         mode="edit"
         card={selectedCard}
         bookId={bookId ?? Object.keys(selectedCard.addressBookIds)[0] ?? ''}
+        books={books ?? []}
         canWrite={canEditSelected}
         onSubmit={onSubmit}
         onCancel={() => setEditor(null)}

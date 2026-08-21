@@ -4,6 +4,7 @@ import { downloadBlob, uploadBlob } from './blob'
 import { usingForMethods } from './capabilities'
 import type { ChunkLimits } from './chunking'
 import { planRequest, reassembleResponses, sanitizeLimits } from './chunking'
+import { Methods } from './methods'
 import { MethodResponses, RequestBuilder } from './request'
 import type { GetSessionOptions } from './session'
 import { getCoreCapability, getSession } from './session'
@@ -139,10 +140,16 @@ export class JmapClient {
     return new MethodResponses(reassembled, sessionState, createdIds, names)
   }
 
-  /** Convenience wrapper around `Core/echo` (RFC 8620 §4): returns the echoed arguments. */
+  /**
+   * Convenience wrapper around `Core/echo` (RFC 8620 §4): returns the echoed arguments.
+   *
+   * Named through {@link Methods.coreEcho} rather than the literal `'Core/echo'`, so the registry
+   * has the one caller its presence implies and there is no second spelling of the wire name to
+   * drift (JMAP gap analysis, I-2).
+   */
   async echo<T>(args: T): Promise<T> {
     const builder = this.request()
-    const handle = builder.call('Core/echo', args)
+    const handle = builder.call(Methods.coreEcho.name, args)
     const result = await builder.send()
     return result.get<T>(handle)
   }

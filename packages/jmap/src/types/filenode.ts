@@ -108,6 +108,7 @@ export type FileNodeQueryRequest = Omit<QueryRequest, 'filter'> & {
   filter?: FileNodeFilter | null
 }
 export type FileNodeQueryResponse = QueryResponse
+/** No {@link Methods} entry: file browsing is online-only, so there is no query state to diff. */
 export type FileNodeQueryChangesRequest = Omit<QueryChangesRequest, 'filter'> & {
   filter?: FileNodeFilter | null
 }

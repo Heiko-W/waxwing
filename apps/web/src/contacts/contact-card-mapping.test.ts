@@ -591,3 +591,50 @@ describe('links and onlineServices', () => {
     expect(diffCardPatch(original, next)).toEqual({ links: null, onlineServices: null })
   })
 })
+
+/**
+ * `addressBookIds` is a SET, and the patch says so one entry at a time (JMAP gap analysis, A-3).
+ *
+ * A whole-map replace would have worked against the server (measured on Stalwart v0.16.18) and is
+ * still wrong twice over: `sync/engine/outbox.ts` rewrites a book created offline by matching the
+ * `addressBookIds/<tempId>` key shape, and a replace overwrites membership another client added
+ * between the read and the save.
+ */
+describe('address book membership in the patch', () => {
+  const base: ContactCard = {
+    '@type': 'Card',
+    version: '1.0',
+    uid: 'u1',
+    id: 'c1',
+    addressBookIds: { work: true },
+  }
+
+  const both: ContactCard = { ...base, addressBookIds: { work: true, family: true } }
+
+  it('adds with a `true` pointer and leaves everything else alone', () => {
+    expect(diffCardPatch(base, both)).toEqual({ 'addressBookIds/family': true })
+  })
+
+  it('removes with a `null` pointer', () => {
+    expect(diffCardPatch(both, base)).toEqual({ 'addressBookIds/family': null })
+  })
+
+  it('emits nothing when membership is untouched', () => {
+    expect(diffCardPatch(base, { ...base })).toEqual({})
+  })
+
+  it('round-trips membership through the form model', () => {
+    const form = cardToForm(both)
+    expect(form.bookIds).toEqual(['work', 'family'])
+    expect(formToCard(form, both, idSource()).addressBookIds).toEqual({
+      work: true,
+      family: true,
+    })
+  })
+
+  it('never strips membership when the form does not know of a book', () => {
+    // `emptyFormModel()` carries no books; folding it onto a real card must not empty the set, which
+    // the server refuses outright ("Contact has to belong to at least one address book").
+    expect(formToCard(emptyFormModel(), base, idSource()).addressBookIds).toEqual({ work: true })
+  })
+})

@@ -17,10 +17,6 @@
 
 import { defineMethod, type MethodDef } from './request'
 import type {
-  CalendarChangesRequest,
-  CalendarChangesResponse,
-  CalendarEventChangesRequest,
-  CalendarEventChangesResponse,
   CalendarEventGetRequest,
   CalendarEventGetResponse,
   CalendarEventQueryRequest,
@@ -51,8 +47,6 @@ import type {
   ContactCardSetResponse,
 } from './types/contacts'
 import type {
-  FileNodeChangesRequest,
-  FileNodeChangesResponse,
   FileNodeGetRequest,
   FileNodeGetResponse,
   FileNodeQueryRequest,
@@ -79,10 +73,6 @@ import type {
   MailboxChangesResponse,
   MailboxGetRequest,
   MailboxGetResponse,
-  MailboxQueryChangesRequest,
-  MailboxQueryChangesResponse,
-  MailboxQueryRequest,
-  MailboxQueryResponse,
   MailboxSetRequest,
   MailboxSetResponse,
   SearchSnippetGetRequest,
@@ -116,8 +106,6 @@ import type { QuotaGetRequest, QuotaGetResponse } from './types/quota'
 import type {
   SieveScriptGetRequest,
   SieveScriptGetResponse,
-  SieveScriptQueryRequest,
-  SieveScriptQueryResponse,
   SieveScriptSetRequest,
   SieveScriptSetResponse,
   SieveScriptValidateRequest,
@@ -142,17 +130,42 @@ import type {
   VacationResponseSetResponse,
 } from './types/vacation'
 
-/** Registry of typed method definitions for the SP.1 capability surface. */
+/**
+ * Registry of typed method definitions for the SP.1 capability surface.
+ *
+ * **Membership is a claim, not a catalogue.** An entry here reads as "this client does this", so a
+ * method nobody calls is a lie a reader cannot check. Six were removed for that reason (JMAP gap
+ * analysis, I-2/I-3); each server-side method still EXISTS on Stalwart v0.16.18 — measured — so the
+ * note says why Waxwing has no use for it, not that it is unavailable:
+ *
+ *  - `Mailbox/query` / `Mailbox/queryChanges` — the folder tree is always fetched whole
+ *    (`Mailbox/get {ids:null}`); a partial, sorted, paged mailbox list has no consumer.
+ *  - `SieveScript/query` — the script list comes from `SieveScript/get {ids:null}` for the same
+ *    reason. RFC 9661 accounts hold a handful of scripts, not a page of them.
+ *  - `Calendar/changes` / `CalendarEvent/changes` / `FileNode/changes` — calendars and files are
+ *    online-only feature clients with no IndexedDB replica (see `sync/engine/port.ts`), so there is
+ *    no local state for a delta to be applied to. These three come back the day either gets one.
+ *
+ * Deliberately absent for a HARDER reason, and not to be added on a whim:
+ *  - `Principal/set` — v0.16.18 answers the whole batch HTTP 400 `notRequest` (`sharing.test.ts`).
+ *  - `SieveScript/changes` / `SieveScript/queryChanges` — RFC 9661 defines neither (`sieve.test.ts`).
+ *  - `Blob/*` (RFC 9404) — byte transfer goes through the RFC 8620 §6 endpoints in `blob.ts`.
+ *
+ * Present but with no production caller **on purpose**: `ShareNotification/changes` and
+ * `ShareNotification/query`. Both work on v0.16.18, but the notification list is short-lived and is
+ * read whole by `ShareNotification/get {ids:null}` — see `apps/web/src/sharing/incoming.ts` for the
+ * measurement. They stay because a sharing UI that grows past "read them all" reaches for exactly
+ * these two, and because leaving them out would suggest the server lacks them.
+ */
 export const Methods = {
-  /** RFC 8620 §4 — echoes its arguments; useful as a connectivity check. */
+  /**
+   * RFC 8620 §4 — echoes its arguments. Mandatory for every JMAP server and the cheapest possible
+   * connectivity probe, which is what {@link JmapClient.echo} uses it for.
+   */
   coreEcho: defineMethod<Record<string, unknown>, Record<string, unknown>>('Core/echo'),
 
   mailboxGet: defineMethod<MailboxGetRequest, MailboxGetResponse>('Mailbox/get'),
   mailboxChanges: defineMethod<MailboxChangesRequest, MailboxChangesResponse>('Mailbox/changes'),
-  mailboxQuery: defineMethod<MailboxQueryRequest, MailboxQueryResponse>('Mailbox/query'),
-  mailboxQueryChanges: defineMethod<MailboxQueryChangesRequest, MailboxQueryChangesResponse>(
-    'Mailbox/queryChanges',
-  ),
   mailboxSet: defineMethod<MailboxSetRequest, MailboxSetResponse>('Mailbox/set'),
 
   threadGet: defineMethod<ThreadGetRequest, ThreadGetResponse>('Thread/get'),
@@ -208,14 +221,12 @@ export const Methods = {
   quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
 
   /**
-   * RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02). The RFC defines these four and no more:
+   * RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02). The RFC defines four methods and no more:
    * there is no `/changes` and no `/queryChanges`, so scripts are re-read rather than synced.
+   * `SieveScript/query` is the fourth and is absent by choice — see the note on {@link Methods}.
    */
   sieveScriptGet: defineMethod<SieveScriptGetRequest, SieveScriptGetResponse>('SieveScript/get'),
   sieveScriptSet: defineMethod<SieveScriptSetRequest, SieveScriptSetResponse>('SieveScript/set'),
-  sieveScriptQuery: defineMethod<SieveScriptQueryRequest, SieveScriptQueryResponse>(
-    'SieveScript/query',
-  ),
   /** Compiles the blob without storing it; `error: null` means it parsed (RFC 9661 §2.6). */
   sieveScriptValidate: defineMethod<SieveScriptValidateRequest, SieveScriptValidateResponse>(
     'SieveScript/validate',
@@ -229,15 +240,9 @@ export const Methods = {
    * across DST in local time itself.
    */
   calendarGet: defineMethod<CalendarGetRequest, CalendarGetResponse>('Calendar/get'),
-  calendarChanges: defineMethod<CalendarChangesRequest, CalendarChangesResponse>(
-    'Calendar/changes',
-  ),
   calendarSet: defineMethod<CalendarSetRequest, CalendarSetResponse>('Calendar/set'),
   calendarEventGet: defineMethod<CalendarEventGetRequest, CalendarEventGetResponse>(
     'CalendarEvent/get',
-  ),
-  calendarEventChanges: defineMethod<CalendarEventChangesRequest, CalendarEventChangesResponse>(
-    'CalendarEvent/changes',
   ),
   calendarEventQuery: defineMethod<CalendarEventQueryRequest, CalendarEventQueryResponse>(
     'CalendarEvent/query',
@@ -251,9 +256,6 @@ export const Methods = {
    * measured against Stalwart 0.16 rather than taken from the draft.
    */
   fileNodeGet: defineMethod<FileNodeGetRequest, FileNodeGetResponse>('FileNode/get'),
-  fileNodeChanges: defineMethod<FileNodeChangesRequest, FileNodeChangesResponse>(
-    'FileNode/changes',
-  ),
   fileNodeQuery: defineMethod<FileNodeQueryRequest, FileNodeQueryResponse>('FileNode/query'),
   fileNodeSet: defineMethod<FileNodeSetRequest, FileNodeSetResponse>('FileNode/set'),
 

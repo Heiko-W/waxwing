@@ -41,6 +41,9 @@ export interface Quota {
 
 export type QuotaGetRequest = GetRequest
 export type QuotaGetResponse = GetResponse<Quota>
-/** Reserved for a later freshness milestone; the app polls on a TTL today. */
+/**
+ * Reserved for a later freshness milestone; the app polls on a TTL today. Exists on v0.16.18
+ * (measured) but has no {@link Methods} entry — see the deliberate-absence note there.
+ */
 export type QuotaChangesRequest = ChangesRequest
 export type QuotaChangesResponse = ChangesResponse

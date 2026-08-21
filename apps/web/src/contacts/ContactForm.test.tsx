@@ -1,8 +1,8 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type ContactCardRow, ReplicaProvider } from '../sync'
-import { contactCard } from '../sync/test-utils'
+import { type AddressBookRow, type ContactCardRow, ReplicaProvider } from '../sync'
+import { addressBook, contactCard } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
 import { PHOTO_MAX_BYTES, type PhotoScaler } from './contact-photo'
@@ -489,5 +489,144 @@ describe('ContactForm websites and instant messaging (A-5)', () => {
     expect(screen.getByLabelText('Website')).toHaveValue('https://anna.test')
     expect(screen.getByLabelText('Service')).toHaveValue('Matrix')
     expect(screen.getByLabelText('Instant messaging')).toHaveValue('@anna')
+  })
+})
+
+/**
+ * Filing one contact in several address books (JMAP gap analysis, A-3).
+ *
+ * The gap was written up as "`ContactCard/copy` is unused". It stays unused: measured against
+ * Stalwart v0.16.18 on 2026-08-21, a `/copy` with `accountId === fromAccountId` is refused with
+ * `invalidArguments` — *"From accountId is equal to fromAccountId"* — whatever key the `create` map
+ * uses. `/copy` moves objects between ACCOUNTS. Two books of one account is what a person has, and
+ * JSContact already answers it: `addressBookIds` is a set, so one card can sit in both (also
+ * measured — `ContactCard/query` returns the same id for either book).
+ *
+ * These pin the two halves a copy-based implementation would have got wrong: the patch shape that
+ * reaches the server, and the refusal of the last removal.
+ */
+describe('address book membership', () => {
+  const books: readonly AddressBookRow[] = [
+    { ...addressBook('book1', { name: 'Work', isDefault: true }), accountId: 'a' },
+    { ...addressBook('book2', { name: 'Family' }), accountId: 'a' },
+  ]
+
+  function cardInOneBook(): ContactCardRow {
+    return contactCard('c1', {
+      addressBookIds: { book1: true },
+      name: { '@type': 'Name', full: 'Alice Anderson' },
+    }) as ContactCardRow
+  }
+
+  it('is not offered while the account has a single address book', () => {
+    renderForm({
+      mode: 'edit',
+      card: cardInOneBook(),
+      books: [{ ...addressBook('book1', { name: 'Work' }), accountId: 'a' }],
+    })
+
+    expect(screen.queryByRole('heading', { name: 'Address books' })).not.toBeInTheDocument()
+  })
+
+  it('files the card into a second book with a JSON-Pointer patch, not a copy', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm({ mode: 'edit', card: cardInOneBook(), books })
+
+    expect(screen.getByRole('heading', { name: 'Address books' })).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Family' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0]
+    expect(submit).toMatchObject({ kind: 'update', cardId: 'c1' })
+    // Exactly one key, and it is the pointer form the outbox's temp-book rewrite understands —
+    // NOT a whole-map replace, which would sail past it and name a book id the server never had.
+    expect(submit?.kind === 'update' ? submit.patch : {}).toEqual({ 'addressBookIds/book2': true })
+  })
+
+  it('unfiles with a null pointer when the card is left in another book', async () => {
+    const user = userEvent.setup()
+    const card = contactCard('c1', {
+      addressBookIds: { book1: true, book2: true },
+      name: { '@type': 'Name', full: 'Alice Anderson' },
+    }) as ContactCardRow
+    const { onSubmit } = renderForm({ mode: 'edit', card, books })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Work' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0]
+    expect(submit?.kind === 'update' ? submit.patch : {}).toEqual({ 'addressBookIds/book1': null })
+  })
+
+  it('refuses to empty the set, because the server does', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm({ mode: 'edit', card: cardInOneBook(), books })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Work' }))
+
+    // Measured: `addressBookIds/<last>: null` comes back `invalidProperties` — "Contact has to
+    // belong to at least one address book." Refusing here keeps the card from blinking out of the
+    // list and back on the rejected replay.
+    expect(screen.getByRole('checkbox', { name: 'Work' })).toBeChecked()
+    expect(
+      screen.getByText('A contact has to stay in at least one address book.'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    // Nothing changed, so the form closes without a write at all.
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('creates into every ticked book at once', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm({ mode: 'create', bookId: 'book1', books })
+
+    await user.type(screen.getByLabelText('First name'), 'Bob')
+    await user.click(screen.getByRole('checkbox', { name: 'Family' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0]
+    expect(submit?.kind === 'create' ? submit.card.addressBookIds : {}).toEqual({
+      book1: true,
+      book2: true,
+    })
+  })
+
+  it('has no axe violations with the membership checklist open', async () => {
+    const { container } = render(
+      <ReplicaProvider accountId="a">
+        <ContactForm
+          mode="edit"
+          card={cardInOneBook()}
+          bookId="book1"
+          books={books}
+          onSubmit={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </ReplicaProvider>,
+    )
+    await expectNoA11yViolations(container)
+  })
+
+  it('shows a book the reader cannot write to, but does not let them leave it', () => {
+    const shared: AddressBookRow = {
+      ...addressBook('book3', {
+        name: 'Team',
+        myRights: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: false },
+      }),
+      accountId: 'a',
+    }
+    const card = contactCard('c1', {
+      addressBookIds: { book1: true, book3: true },
+      name: { '@type': 'Name', full: 'Alice Anderson' },
+    }) as ContactCardRow
+    renderForm({
+      mode: 'edit',
+      card,
+      books: [...books, shared],
+    })
+
+    expect(screen.getByRole('checkbox', { name: 'Team' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Team' })).toBeChecked()
   })
 })
