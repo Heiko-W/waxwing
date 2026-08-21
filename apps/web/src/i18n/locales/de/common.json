@@ -351,7 +351,12 @@
       "rule": {
         "enabled": "Aktiv",
         "edit": "Bearbeiten",
-        "delete": "Löschen"
+        "delete": "Löschen",
+        "reorder": "{{name}} verschieben",
+        "reorderHint": "Leertaste hebt die Regel an, Pfeil hoch und runter verschieben sie. Leertaste legt sie ab, Escape stellt sie zurück.",
+        "movedTo": "{{name}}, Regel {{position}} von {{count}}",
+        "dropped": "{{name}} abgelegt",
+        "dropCanceled": "{{name}} zurückgestellt"
       },
       "foreign": {
         "explain": "Für dieses Postfach existiert bereits ein Filterskript, das nicht hier erstellt wurde. Es wird unverändert angezeigt und nicht angetastet.",
@@ -380,7 +385,12 @@
         "remove": "Entfernen",
         "stop": "Weitere Regeln nicht mehr anwenden",
         "cancel": "Abbrechen",
-        "submit": "Regel speichern"
+        "submit": "Regel speichern",
+        "spamScore": "Bewertung (0–10)",
+        "datePart": "Teil",
+        "weekday": "Tag",
+        "hour": "Stunde (0–23)",
+        "reason": "Begründung"
       },
       "field": {
         "from": "Absender",
@@ -389,7 +399,12 @@
         "subject": "Betreff",
         "body": "Nachrichtentext",
         "size": "Größe",
-        "hasAttachment": "Hat Anhang"
+        "hasAttachment": "Hat Anhang",
+        "envelopeFrom": "Umschlag-Absender",
+        "envelopeTo": "Umschlag-Empfänger",
+        "spam": "Spam-Bewertung",
+        "currentDate": "Zustellzeitpunkt",
+        "duplicate": "Doppelte Nachricht"
       },
       "match": {
         "contains": "enthält",
@@ -398,13 +413,16 @@
         "endsWith": "endet mit",
         "matches": "entspricht Muster",
         "over": "größer als",
-        "under": "kleiner als"
+        "under": "kleiner als",
+        "atLeast": "mindestens",
+        "atMost": "höchstens"
       },
       "action": {
         "fileInto": "In Ordner verschieben",
         "addFlag": "Markieren",
         "redirect": "Weiterleiten an",
-        "discard": "Verwerfen"
+        "discard": "Verwerfen",
+        "reject": "Mit Begründung abweisen"
       },
       "flag": {
         "seen": "gelesen",
@@ -416,7 +434,33 @@
         "tooLarge": "Das Skript ist für diesen Server zu groß.",
         "offline": "Sie sind offline. Filter lassen sich nur mit Verbindung ändern.",
         "rejected": "Der Server hat das Speichern der Filter abgelehnt.",
-        "generic": "Die Filter konnten nicht gespeichert werden."
+        "generic": "Die Filter konnten nicht gespeichert werden.",
+        "invalidSieveReason": "Der Server hat das Skript als ungültig abgelehnt: {{reason}}. Ihre Regeln wurden nicht gespeichert."
+      },
+      "active": "Filterung ist an",
+      "activeHint": "Die Regeln unten laufen für jede Nachricht, die der Server annimmt.",
+      "inactiveHint": "Ihre Regeln bleiben erhalten, es wird aber nichts gefiltert, bis Sie das wieder einschalten.",
+      "deleteScript": "Filterskript löschen",
+      "delete": {
+        "title": "Filterskript löschen?",
+        "body": "Alle Regeln werden vom Server entfernt und eingehende Nachrichten nicht mehr gefiltert. Das lässt sich nicht rückgängig machen.",
+        "foreignWarning": "In diesem Skript stehen auch Regeln, die nicht hier geschrieben wurden. Sie werden mitgelöscht.",
+        "cancel": "Abbrechen",
+        "confirm": "Löschen",
+        "done": "Filterskript gelöscht"
+      },
+      "date": {
+        "weekday": "Wochentag",
+        "hour": "Stunde"
+      },
+      "weekday": {
+        "sunday": "Sonntag",
+        "monday": "Montag",
+        "tuesday": "Dienstag",
+        "wednesday": "Mittwoch",
+        "thursday": "Donnerstag",
+        "friday": "Freitag",
+        "saturday": "Samstag"
       }
     },
     "server": {

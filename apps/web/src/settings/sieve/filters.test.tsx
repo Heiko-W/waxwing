@@ -147,7 +147,7 @@ describe('<FiltersSection>', () => {
 
     await waitFor(() => expect(saved).toHaveLength(2))
     const written = saved[1] ?? ''
-    expect(written).toContain('@waxwing:rules:v1')
+    expect(written).toContain('@waxwing:rules:v2')
     expect(written).toContain('"name":"Newsletters"')
     expect(written).toContain('header :contains "Subject" "Newsletter"')
     // Still theirs, still there.

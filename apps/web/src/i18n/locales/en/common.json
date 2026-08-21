@@ -351,7 +351,12 @@
       "rule": {
         "enabled": "Active",
         "edit": "Edit",
-        "delete": "Delete"
+        "delete": "Delete",
+        "reorder": "Reorder {{name}}",
+        "reorderHint": "Press Space to pick the rule up, then Up and Down arrow to move it. Space drops it, Escape puts it back.",
+        "movedTo": "{{name}}, rule {{position}} of {{count}}",
+        "dropped": "{{name}} dropped",
+        "dropCanceled": "{{name}} put back"
       },
       "foreign": {
         "explain": "This mailbox already has a filter script that was not written here. It is shown as it is, and is left untouched.",
@@ -380,7 +385,12 @@
         "remove": "Remove",
         "stop": "Stop processing further rules",
         "cancel": "Cancel",
-        "submit": "Save rule"
+        "submit": "Save rule",
+        "spamScore": "Score (0–10)",
+        "datePart": "Part",
+        "weekday": "Day",
+        "hour": "Hour (0–23)",
+        "reason": "Reason"
       },
       "field": {
         "from": "Sender",
@@ -389,7 +399,12 @@
         "subject": "Subject",
         "body": "Message text",
         "size": "Size",
-        "hasAttachment": "Has attachment"
+        "hasAttachment": "Has attachment",
+        "envelopeFrom": "Envelope sender",
+        "envelopeTo": "Envelope recipient",
+        "spam": "Spam score",
+        "currentDate": "Delivery time",
+        "duplicate": "Duplicate message"
       },
       "match": {
         "contains": "contains",
@@ -398,13 +413,16 @@
         "endsWith": "ends with",
         "matches": "matches pattern",
         "over": "larger than",
-        "under": "smaller than"
+        "under": "smaller than",
+        "atLeast": "at least",
+        "atMost": "at most"
       },
       "action": {
         "fileInto": "Move to folder",
         "addFlag": "Mark",
         "redirect": "Forward to",
-        "discard": "Discard"
+        "discard": "Discard",
+        "reject": "Refuse with a reason"
       },
       "flag": {
         "seen": "read",
@@ -416,7 +434,33 @@
         "tooLarge": "The script is too large for this server.",
         "offline": "You are offline. Filters can only be changed while connected.",
         "rejected": "The server declined to save the filters.",
-        "generic": "The filters could not be saved."
+        "generic": "The filters could not be saved.",
+        "invalidSieveReason": "The server rejected the script as invalid: {{reason}}. Your rules were not saved."
+      },
+      "active": "Filtering is on",
+      "activeHint": "Rules below run on every message the server receives.",
+      "inactiveHint": "Your rules are kept, but nothing is filtered until you turn this back on.",
+      "deleteScript": "Delete filter script",
+      "delete": {
+        "title": "Delete filter script?",
+        "body": "Every rule is removed from the server and incoming mail stops being filtered. This can’t be undone.",
+        "foreignWarning": "This script also holds rules that were not written here. They are deleted too.",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "done": "Filter script deleted"
+      },
+      "date": {
+        "weekday": "Day of week",
+        "hour": "Hour of day"
+      },
+      "weekday": {
+        "sunday": "Sunday",
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday"
       }
     },
     "server": {
