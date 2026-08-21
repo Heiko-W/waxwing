@@ -20,6 +20,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate, useRoute } from '../app/route'
 import { computePaneLayout, useLayoutTier } from '../app/shell/layout'
+import { ScreenBar } from '../app/shell/ScreenBar'
+import shellStyles from '../app/shell/shell.module.css'
 import { type AddressBookRow, type ContactCardRow, useAddressBooks, useContactCard } from '../sync'
 import { Button, IconButton, SplitPane } from '../ui'
 import { AddressBookList } from './AddressBookList'
@@ -188,6 +190,17 @@ export function ContactsScreen() {
   const layout = computePaneLayout(tier, 'right', cardId !== undefined || editing)
 
   const drawerCapable = tier !== 'desktop'
+  /**
+   * Which set of contacts is on screen — the same question mail's pane title answers.
+   *
+   * The BOOK, never the selected group: a group has its own heading inside the pane, exactly as an
+   * opened message has its subject while the bar beside it still says "Inbox". Naming the group
+   * here put the same text on screen twice, one line apart.
+   */
+  const listHeading =
+    bookId === undefined
+      ? t('contacts.books.all')
+      : (books?.find((book) => book.id === bookId)?.name ?? t('contacts.title'))
   const [booksOpen, setBooksOpen] = useState(false)
 
   const closeBooks = useCallback(() => {
@@ -246,7 +259,10 @@ export function ContactsScreen() {
       ref={listRef}
       tabIndex={-1}
     >
-      <div className={styles.paneToolbar}>
+      {/* Same bar, same place, as the mail screen: its own strip beside the panes, and inside the
+          shell header on a phone. The title is new — this screen used to put a spacer where mail
+          puts its heading, so on a phone NEITHER of the two rows said where you were. */}
+      <ScreenBar>
         {drawerCapable && (
           <IconButton
             id={BOOKS_TOGGLE_ID}
@@ -259,7 +275,7 @@ export function ContactsScreen() {
             <PanelLeft />
           </IconButton>
         )}
-        <span className={styles.toolbarSpacer} />
+        <h1 className={shellStyles.paneTitle}>{listHeading}</h1>
         <IconButton label={t('contacts.io.open')} variant="ghost" onClick={() => setIoMode('full')}>
           <ArrowDownUp />
         </IconButton>
@@ -271,7 +287,7 @@ export function ContactsScreen() {
         >
           <Plus />
         </IconButton>
-      </div>
+      </ScreenBar>
       <div className={styles.paneBody}>
         {selectedGroup !== undefined ? (
           <GroupView
@@ -288,7 +304,11 @@ export function ContactsScreen() {
             onClose={() => setSelectedGroupId(null)}
           />
         ) : (
-          <ContactList bookId={bookId} selectedCardId={cardId} />
+          <ContactList
+            bookId={bookId}
+            selectedCardId={cardId}
+            {...(targetBook !== undefined ? { onCreate: () => setEditor('create') } : {})}
+          />
         )}
       </div>
     </section>

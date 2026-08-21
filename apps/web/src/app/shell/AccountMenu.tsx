@@ -8,7 +8,7 @@
  * chunk — nothing about installing is in the entry bundle.
  */
 
-import { Download, LogOut, Trash2, User, UserPlus, UserRound } from 'lucide-react'
+import { Download, LogOut, Trash2, UserPlus, UserRound } from 'lucide-react'
 import { lazy, Suspense, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { switchAccount, useAccountRegistry } from '../../auth/use-account-registry'
@@ -103,7 +103,7 @@ export function AccountMenu({ productName, username }: AccountMenuProps) {
       )}
       <Menu
         triggerLabel={t('account.menu')}
-        trigger={<User aria-hidden="true" className={styles.statusIcon} />}
+        trigger={<UserRound aria-hidden="true" className={styles.statusIcon} />}
         items={items}
         align="end"
       />

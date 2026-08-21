@@ -150,23 +150,64 @@
   color: var(--waxwing-text-muted);
 }
 
-/* The per-folder action menu: present in the DOM (keyboard-reachable), shown on row hover/focus. */
+/*
+ * The per-folder action menu: present in the DOM (keyboard-reachable), revealed on hover/focus.
+ *
+ * Where the device hovers, it OVERLAYS the unread count rather than sitting beside it, and that is
+ * what stopped the folder you are actually in from being the one folder whose name gets cut.
+ * Measured: "Posteingang" needed 84px and had 73, while every other folder had 110 — the
+ * difference was the count badge, which only a folder with unread mail shows, plus this button.
+ * Two pieces of conditional chrome were together taking 34% of the label width from the row most
+ * likely to need it.
+ *
+ * Apple's rails do the same: hovering a row replaces its metadata with the actions for it rather
+ * than making room for both. Nothing is lost — the count returns the moment the pointer leaves,
+ * and a keyboard user reaches the button through `:focus-within`, which reveals it the same way.
+ *
+ * The overlay is scoped to `hover: hover` rather than undone under `pointer: coarse`, and that
+ * direction matters: on touch the affordance has to stay visible permanently (there is no "off the
+ * row" moment to bring the count back), so beside-each-other is the base case and overlapping is
+ * the exception. Writing it the other way needs a `:hover` rule outside `@media (hover: hover)`,
+ * which is exactly what hover-state.css.test.ts refuses.
+ */
 .rowMenu {
   flex: 0 0 auto;
   opacity: 0;
   transition: opacity var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.item:focus-within .rowMenu,
-.item[aria-selected="true"] .rowMenu {
+@media (hover: hover) {
+  .rowMenu {
+    position: absolute;
+    inset-inline-end: var(--waxwing-space-2);
+    pointer-events: none;
+  }
+
+  .item:hover .rowMenu,
+  .item:focus-within .rowMenu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Selection alone no longer reveals it. A row you are merely standing in has no more need of an
+     action menu than any other, and keeping it revealed there is what cost the active folder its
+     name — the count sat under a button that was permanently on. */
+  .item:hover .count,
+  .item:focus-within .count {
+    visibility: hidden;
+  }
+}
+
+/* Keyboard reveal, on every device: the menu appears, and where there is no hover it appears
+   BESIDE the count rather than over it (the overlay rules above are scoped to `hover: hover`). */
+.item:focus-within .rowMenu {
   opacity: 1;
 }
 
-/* The hover half, split off so keyboard focus and selection keep revealing the menu on every
-   device. Behind `hover: hover` because a tap would otherwise leave it revealed on the row it
-   landed on — and on touch the `pointer: coarse` rule below shows it anyway. */
-@media (hover: hover) {
-  .item:hover .rowMenu {
+/* Touch has no hover at all, so the affordance is simply always there. The drawer is full-width
+   here, so the count and the button both fit. */
+@media (pointer: coarse) {
+  .rowMenu {
     opacity: 1;
   }
 }
@@ -174,13 +215,6 @@
 @media (prefers-reduced-motion: reduce) {
   .rowMenu {
     transition: none;
-  }
-}
-
-@media (pointer: coarse) {
-  /* Touch has no hover — keep the action affordance visible. */
-  .rowMenu {
-    opacity: 1;
   }
 }
 

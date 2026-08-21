@@ -1,0 +1,62 @@
+/* See EmptyState.tsx for why this is one component rather than thirty hand-built paragraphs. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  color: var(--waxwing-text-muted);
+}
+
+/* A whole surface with nothing on it: centred both ways, so the message sits where the eye
+   already is rather than in a corner of a large blank area. */
+.pane {
+  align-items: center;
+  justify-content: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-6) var(--waxwing-space-5);
+  text-align: center;
+  min-block-size: 0;
+  flex: 1;
+}
+
+/* A section inside a surface that has other things in it: reads as a line of text among them,
+   not as a centred announcement in the middle of a rail. */
+.compact {
+  align-items: flex-start;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-3);
+  text-align: start;
+}
+
+.icon {
+  inline-size: var(--waxwing-icon-lg);
+  block-size: var(--waxwing-icon-lg);
+  color: var(--waxwing-text-muted);
+  opacity: 0.7;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+}
+
+.pane .title {
+  color: var(--waxwing-text);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.description {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+  max-inline-size: 28rem;
+}
+
+.action {
+  margin-block-start: var(--waxwing-space-2);
+}
+
+/* Something failed, which is not the same as something being absent. The three screens that drew
+   both through one class gave a server error the exact look of an empty folder. */
+.error .icon,
+.error .title {
+  color: var(--waxwing-danger);
+}

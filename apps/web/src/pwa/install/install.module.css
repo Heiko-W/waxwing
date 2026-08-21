@@ -1,7 +1,5 @@
-.stepsTitle {
-  margin-block: var(--waxwing-space-5) var(--waxwing-space-2);
-  font-size: var(--waxwing-text-base);
-  font-weight: var(--waxwing-weight-semibold);
+.stepsHeading {
+  margin-block-start: var(--waxwing-space-5);
 }
 
 .steps {

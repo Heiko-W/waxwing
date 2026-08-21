@@ -11,7 +11,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRoute } from '../../app/route'
 import { countEmailsWithKeyword, useReplicaQuery } from '../../sync'
-import { Button, Checkbox, Dialog, IconButton, Spinner } from '../../ui'
+import { Button, Checkbox, Dialog, EmptyState, IconButton, Spinner } from '../../ui'
 import { LabelFormDialog } from './LabelFormDialog'
 import { LabelList } from './LabelList'
 import styles from './labels.module.css'
@@ -65,7 +65,18 @@ export function Labels({ onNavigate }: LabelsProps = {}) {
       </div>
 
       {labels.length === 0 ? (
-        <p className={styles.empty}>{t('labels.empty')}</p>
+        // The action, rather than a sentence pointing at the `+` above. The text used to read
+        // "No labels yet. Use + to create one." — an instruction to go find a control.
+        <EmptyState
+          density="compact"
+          title={t('labels.empty')}
+          // Its own wording — see ContactList's empty state for why.
+          action={
+            <Button variant="secondary" size="sm" onClick={() => setDialog({ kind: 'create' })}>
+              {t('labels.addFirst')}
+            </Button>
+          }
+        />
       ) : (
         <LabelList
           labels={labels}

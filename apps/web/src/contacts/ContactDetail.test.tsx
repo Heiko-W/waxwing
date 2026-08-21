@@ -60,6 +60,18 @@ function renderDetail(cardId?: string, props: Partial<ContactDetailProps> = {}) 
 }
 
 describe('ContactDetail', () => {
+  it('says a contact that does not exist is unavailable, instead of spinning', async () => {
+    /*
+     * `useContactCard` returns `undefined` for BOTH "the query has not resolved" and "there is no
+     * such row", and this component treated the pair as one — so a deep link to a contact deleted
+     * since (or a mistyped id) showed a spinner that never stopped. The mail side has told these
+     * two apart since M1.8 via `useEnsureEnvelopes`'s `settled`.
+     */
+    renderDetail('does-not-exist')
+    expect(await screen.findByText('This contact is not available.')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
   it('renders the common JSContact fields', async () => {
     renderDetail('c1')
     expect(await screen.findByRole('heading', { name: 'Alice Anderson' })).toBeInTheDocument()

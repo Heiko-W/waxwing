@@ -17,22 +17,21 @@ import { renderPlainText, sanitize } from '@waxwing/mail-html'
 import type { TFunction } from 'i18next'
 import type { LucideIcon } from 'lucide-react'
 import {
-  AlertTriangle,
   Archive,
   Ban,
   ChevronDown,
-  ChevronUp,
+  Ellipsis,
   FolderInput,
   Forward,
   Lock,
-  MailMinus,
-  MoreHorizontal,
+  Mail,
   Reply,
   ReplyAll,
   ShieldCheck,
   Star,
   Tag,
   Trash2,
+  TriangleAlert,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -54,6 +53,7 @@ import {
   Avatar,
   Button,
   Dialog,
+  EmptyState,
   IconButton,
   Menu,
   type MenuItemSpec,
@@ -107,8 +107,18 @@ import { useMessageBody } from './useMessageBody'
  * does not — so this is what they have in common, and each render site adapts it. `popover` marks
  * the one action that owns an anchored surface rather than firing and finishing.
  */
+/**
+ * Which meaning-family an action belongs to. The bar draws a wider gap where the family changes,
+ * which is the whole of C5's fix: six verbs from four families in one unbroken 4px run read as a
+ * strip of decoration, and on a phone the row wrapped so that "Move to…" landed visually inside
+ * the reply group. Grouping by attribute rather than by wrapper elements keeps the row a flat list
+ * of buttons, which is what `useToolbarRoving` walks.
+ */
+type ActionGroup = 'respond' | 'file' | 'mark'
+
 interface BarAction {
   readonly id: string
+  readonly group: ActionGroup
   readonly label: string
   readonly icon: LucideIcon
   readonly onSelect: () => void
@@ -120,6 +130,18 @@ interface BarAction {
   /** Opens an anchored popover (the label picker) instead of acting; needs a ref and aria state. */
   readonly popover?: boolean
 }
+
+/**
+ * How many actions the bar shows when everything fits: reply, reply-all, forward, delete.
+ *
+ * A CEILING, not a target — `useActionOverflow` still takes it lower when the pane is narrow. It
+ * exists because the measuring version alone answered the wrong question: at 1440px eleven controls
+ * fit, so eleven appeared, and the row went back to being the undifferentiated strip C5 was about.
+ * Apple Mail does not grow its toolbar with the window either; the toolbar is curated and the rest
+ * lives in the menu, which here is one that already has to exist for narrow panes. The four are the
+ * owner's choice.
+ */
+const PRIMARY_ACTIONS = 4
 
 /** How long an opened message must stay open before it is auto-marked read (FR-RD-07). */
 export const AUTO_MARK_READ_DELAY_MS = 1500
@@ -187,7 +209,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     () => (connected ? ownAddresses(connected.jmapSession, accountId) : []),
     [connected, accountId],
   )
-  const { body, htmlParts, textBody, loading } = useMessageBody(email.id)
+  const { body, htmlParts, textBody, loading, failed: bodyFailed } = useMessageBody(email.id)
   const { resolveCid, ready } = useInlineImages(accountId, body)
 
   const archiveBox = useMailboxByRole('archive')
@@ -715,6 +737,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     () => [
       {
         id: 'reply',
+        group: 'respond',
         label: t('reading.reply'),
         icon: Reply,
         // All three compose actions gate on `handlers.bodyReady` — `!loading && ready` — and not on
@@ -726,6 +749,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       },
       {
         id: 'replyAll',
+        group: 'respond',
         label: t('reading.replyAll'),
         icon: ReplyAll,
         disabled: !handlers.bodyReady,
@@ -733,6 +757,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       },
       {
         id: 'forward',
+        group: 'respond',
         label: t('reading.forward'),
         icon: Forward,
         disabled: !handlers.bodyReady,
@@ -740,6 +765,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       },
       {
         id: 'trash',
+        group: 'file',
         label: inTrash ? t('list.actions.delete') : t('list.actions.trash'),
         icon: Trash2,
         disabled: !inTrash && trashBox === undefined,
@@ -756,6 +782,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
          `mayRemoveItems` and the target's `mayAddItems`; the source half is the gap B34 names. */
       {
         id: 'archive',
+        group: 'file',
         label: t('list.actions.archive'),
         icon: Archive,
         disabled: archiveBox === undefined || inArchive,
@@ -767,6 +794,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         // move this button promises. The `v` chord gates on the same value (the shortcut context
         // reads this very `mailboxId` back off the registered handlers), so the two cannot drift.
         id: 'move',
+        group: 'file',
         label: t('list.actions.move'),
         icon: FolderInput,
         disabled: inThisMailbox === null,
@@ -779,6 +807,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         // Not `LabelMenuButton`: that component owns its own open state, which the `l` chord has no
         // way to reach. The bulk bar still uses it — there, nothing but the mouse opens the picker.
         id: 'labels',
+        group: 'mark',
         label: t('labels.assign'),
         icon: Tag,
         popover: true,
@@ -786,6 +815,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       },
       {
         id: 'junk',
+        group: 'file',
         label: t('list.actions.junk'),
         icon: Ban,
         disabled: junkBox === undefined || inJunk,
@@ -794,6 +824,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       },
       {
         id: 'flag',
+        group: 'mark',
         label: email.keywords.$flagged === true ? t('list.actions.unflag') : t('list.actions.flag'),
         icon: Star,
         iconClassName: email.keywords.$flagged === true ? styles.flagOn : undefined,
@@ -802,8 +833,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       },
       {
         id: 'markUnread',
+        group: 'mark',
         label: t('reading.markUnread'),
-        icon: MailMinus,
+        // `Mail`, not `MailMinus`: the bulk bar and the swipe reveal both use this pair for the
+        // read state, and `MailMinus` means "unsubscribe" a few hundred pixels above this bar in
+        // the same reading pane. One glyph cannot mean two things on one screen.
+        icon: Mail,
         unavailableReason: reasonText(rights.reason('seen')),
         onSelect: handlers.markUnread,
       },
@@ -825,7 +860,10 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     ],
   )
 
-  const visibleActions = useActionOverflow(actionBarRef, barActions.length)
+  const visibleActions = useActionOverflow(
+    actionBarRef,
+    Math.min(PRIMARY_ACTIONS, barActions.length),
+  )
 
   /*
    * The menu is the bar's tail plus what was always in it.
@@ -882,7 +920,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
               {showFromAddress && <span className={styles.fromAddress}>{fromAddress}</span>}
               {nameIsAddressLike && (
                 <span className={styles.nameWarning}>
-                  <AlertTriangle className={styles.nameWarningIcon} aria-hidden="true" />
+                  <TriangleAlert className={styles.nameWarningIcon} aria-hidden="true" />
                   {t('reading.nameLooksLikeAddress')}
                 </span>
               )}
@@ -898,7 +936,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
                 aria-expanded={true}
                 onClick={onCollapse}
               >
-                <ChevronUp />
+                {/* Open, so it points up — the same glyph the collapsed row shows pointing down. */}
+                <ChevronDown className={styles.chevronOpen} />
               </IconButton>
             )}
           </div>
@@ -912,7 +951,13 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
               aria-expanded={detailsOpen}
               onClick={() => setDetailsOpen((open) => !open)}
             >
-              {detailsOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+              {/* Rotated, not exchanged — `folder-tree.module.css` argues the case: swapping one
+                  glyph for another says "something changed", turning the same glyph says WHAT
+                  changed. This was the one place that swapped. */}
+              <ChevronDown
+                aria-hidden="true"
+                className={detailsOpen ? styles.chevronOpen : styles.chevron}
+              />
               {t('reading.details')}
             </Button>
           </div>
@@ -985,10 +1030,12 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       {/* B20.2: the role was here with none of the keyboard model behind it, so a screen reader
           announced "toolbar" and arrow keys did nothing — while eleven controls each took their own
           tab stop. `useToolbarRoving` supplies the model the role promises. */}
-      {/* ONE row, always (B49). The three spaced groups this replaced were a real improvement on ten
-          undifferentiated glyphs, but they were a solution to having ten glyphs — and the owner's
-          answer to the tablet shot was to stop having ten. What is left is short enough to read
-          without the grouping, and short enough to fit. */}
+      {/* ONE row, always (B49), and at most PRIMARY_ACTIONS of them. The wider gap where the
+          meaning-family changes is C5's fix, restored: B49 removed the group wrappers along with
+          the ten glyphs that made them necessary, but the measuring version kept showing all
+          eleven wherever they fit, so the strip came back at desktop widths. The gap is an
+          attribute rather than a wrapper because the row has to stay a flat list of buttons for
+          `useToolbarRoving`. */}
       <div
         ref={actionBarRef}
         className={styles.actionBar}
@@ -996,9 +1043,13 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         aria-label={t('reading.actions')}
         {...actionBarKeys}
       >
-        {barActions.slice(0, visibleActions).map((action) => (
+        {barActions.slice(0, visibleActions).map((action, index, shown) => (
           <IconButton
             key={action.id}
+            // First of its family, and not first overall: the gap goes BEFORE it.
+            data-group-start={
+              index > 0 && shown[index - 1]?.group !== action.group ? '' : undefined
+            }
             // Only the label picker takes a ref, and it needs one: its popover positions against
             // this button and returns focus to it on close.
             ref={action.popover === true ? labelButtonRef : null}
@@ -1024,8 +1075,9 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         >
           <Menu
             triggerLabel={t('reading.more')}
-            trigger={<MoreHorizontal aria-hidden="true" />}
+            trigger={<Ellipsis aria-hidden="true" />}
             align="end"
+            triggerVariant="toolbar"
             items={menuItems}
           />
         </span>
@@ -1096,7 +1148,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       )}
 
       <div className={styles.bodyWrap}>
-        {loading || bodyHtml === null ? (
+        {bodyFailed ? (
+          // The fetch came back with nothing — offline, or the message is gone. This used to be
+          // indistinguishable from "still loading", so the pane showed pulsing placeholders for a
+          // body that was never going to arrive. The two neighbouring surfaces (view-source and
+          // nested message) have had this text since M3.4; the main one did not.
+          <EmptyState
+            tone="error"
+            icon={TriangleAlert}
+            title={t('reading.notAvailable')}
+            density="compact"
+          />
+        ) : loading || bodyHtml === null ? (
           // Text-shaped placeholders rather than a spinner in a box: what is arriving is prose,
           // and a spinner says only "wait" while these say what for. The block is the frame's own
           // minimum height, so the pane holds still when the body lands.

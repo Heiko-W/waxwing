@@ -25,8 +25,30 @@ aus. Alle Zahlen hier sind mit `pointer: coarse` und 44-px-Bedienelementen erhob
 
 ## Stand der Umsetzung
 
-**51 der 52 Befunde sind behoben, 1 bewusst zurückgestellt** (C17, unten begründet), plus ein
-benannter Rest innerhalb von B6. Was sich messbar geändert hat, auf einem 390 × 844-Telefon mit
+**49 der 52 Befunde sind behoben, 1 bewusst zurückgestellt** (C17, unten begründet), plus ein
+benannter Rest innerhalb von B6.
+
+> **Nachtrag vom 2026-08-20** (aus dem zweiten Durchgang, [`ui-review-2026-08-20.md`](./ui-review-2026-08-20.md)).
+> Diese Zeile las sich ursprünglich „51 der 52", und das stimmte an dem Tag nicht, an dem sie
+> geschrieben wurde:
+>
+> - **B7 wurde nie angefasst.** Kein Commit hat die Navigationsschiene ab 64em entfallen lassen;
+>   derselbe Audit-Commit hat sie im Gegenteil von 4,5 rem auf 6 rem verbreitert. Heute stehen dort
+>   96 px Schiene plus 256 px Ordnerspalte — 352 statt der gemessenen 328 px.
+> - **D6 wurde später bewusst umgekehrt.** Die Überschrift des Anmeldeschirms nennt wieder den Host
+>   statt des Produkts, entschieden in
+>   [ADR-024](./adr/024-password-sign-in-sits-behind-a-disclosure.md) Punkt 5, mit dem konfigurierten
+>   Logo als Antwort auf FR-DEP-04. Die zweite Hälfte von D6 ist heute besser gelöst als hier
+>   verlangt.
+> - **C5 war zwischenzeitlich wieder offen** und ist es nicht mehr: `ebd88d3` (B49) entfernte die
+>   Gruppierung der Aktionsleiste zusammen mit den zehn Symbolen, die sie nötig gemacht hatten,
+>   während die messende Variante bei 1440 px weiterhin alle elf zeigte. Der zweite Durchgang hat
+>   beides behoben — eine feste Obergrenze von vier plus Überlaufmenü, und der weite Abstand am
+>   Bedeutungswechsel als Attribut statt als Wrapper.
+> - **Die B6-Beschreibung unten stimmt nicht.** Der Satz „Fokus, Fokusfalle, `aria-modal` und ein
+>   sichtbarer Schließen-Knopf sind da" wurde in `0613d7b` geschrieben — in genau dem Commit, der
+>   `role="dialog"`/`aria-modal` wieder entfernt hat, mit Begründung. Fokusfalle und Schließen-Knopf
+>   stehen; `aria-modal` steht nicht und soll nicht. Was sich messbar geändert hat, auf einem 390 × 844-Telefon mit
 echter Touch-Bemaßung:
 
 | Zustand | Chrome über der Liste | Sichtbare Zeilen |
@@ -59,8 +81,11 @@ zugehörigen Commit:
 **Zwei Dinge bleiben offen und sind es wert, benannt zu werden** — das erste ist ein Rest innerhalb
 eines ansonsten behobenen Befunds, das zweite ein ganzer:
 
-- **Die Android-Zurückgeste schließt den Ordner-Drawer noch nicht** (Teil von B6). Fokus, Fokusfalle,
-  `aria-modal` und ein sichtbarer Schließen-Knopf sind da; ein eigener History-Eintrag für ein
+- **Die Android-Zurückgeste schließt den Ordner-Drawer noch nicht** (Teil von B6). Fokus, Fokusfalle
+  und ein sichtbarer Schließen-Knopf sind da — `aria-modal` NICHT, und das ist Absicht: `0613d7b`
+  hat es zusammen mit `role="dialog"` wieder entfernt, weil ein Element eine Rolle hat und
+  `role="dialog"` das Folders-Landmark zerstört. (Der ursprüngliche Satz hier zählte es mit auf; er
+  wurde in genau jenem Commit geschrieben.) ein eigener History-Eintrag für ein
   transientes Overlay muss über den Auswahlpfad hinweg ausbalanciert bleiben, der selbst navigiert.
   Das ist einen eigenen sorgfältigen Durchgang wert, nicht einen Beifang.
 - **C17** (zwei faktische Bedienelementhöhen, 34 px und 39 px) ist nicht angefasst. Auf Touch ist es

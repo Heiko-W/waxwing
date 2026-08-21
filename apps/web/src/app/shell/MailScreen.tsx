@@ -14,8 +14,8 @@
  * keyboard/SR users are not stranded (WCAG 2.4.3).
  */
 
-import { ChevronLeft, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, MailOpen, PanelLeft, SlidersHorizontal, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { AccountTrees } from '../../mail/AccountTrees'
@@ -30,7 +30,7 @@ import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
 import { QuotaBar } from '../../quota'
 import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
-import { Button, IconButton, SplitPane } from '../../ui'
+import { Button, EmptyState, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
 import {
   FULL_PARAM,
@@ -42,8 +42,8 @@ import {
   useRouter,
 } from '../route'
 import { useSession } from '../session/context'
-import { SCREEN_BAR_ID } from './Header'
 import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
+import { useScreenBarSlot } from './ScreenBar'
 import styles from './shell.module.css'
 
 const FOLDER_REGION_ID = 'waxwing-folder-region'
@@ -127,19 +127,10 @@ export function MailScreen() {
   /**
    * On a phone the screen's bar lives in the shell header, not in a strip of its own.
    *
-   * Looked up after mount rather than passed down: the header is a sibling several levels up, and
-   * threading a ref through `AppShell` would make the shell's layout depend on which screen is
-   * mounted. Re-queried when the tier changes, because the slot only exists below 40em — above it
-   * the panes keep their own toolbars, where there is room and where the brand still sits.
+   * This screen holds the slot rather than using `<ScreenBar>` because it has TWO bars and swaps
+   * between them: the list's controls while the list is showing, the way back while a message is.
    */
-  const [screenBarSlot, setScreenBarSlot] = useState<HTMLElement | null>(null)
-  // A LAYOUT effect, so the bar is in its final place before the first paint. With a passive effect
-  // the toolbar rendered once inside the pane and then moved into the header a frame later — a
-  // visible jump on the device, and in tests a node that is already detached by the time anything
-  // clicks it.
-  useLayoutEffect(() => {
-    setScreenBarSlot(tier === 'phone' ? document.getElementById(SCREEN_BAR_ID) : null)
-  }, [tier])
+  const screenBarSlot = useScreenBarSlot()
 
   const drawerCapable = tier !== 'desktop' && !fullScreen
   const [foldersOpen, setFoldersOpen] = useState(false)
@@ -316,13 +307,13 @@ export function MailScreen() {
       tabIndex={-1}
     >
       {singleReading && screenBarSlot === null && (
-        <div className={styles.paneToolbar}>{readingBar}</div>
+        <div className={`${styles.paneToolbar} ${styles.paneToolbarReading}`}>{readingBar}</div>
       )}
       <div className={styles.paneBody}>
         {emailId !== undefined ? (
           <Conversation emailId={emailId} mailboxId={mailboxId} />
         ) : (
-          <p className={styles.emptyPane}>{t('shell.reading.empty')}</p>
+          <EmptyState icon={MailOpen} title={t('shell.reading.empty')} />
         )}
       </div>
     </section>
@@ -332,12 +323,21 @@ export function MailScreen() {
     <SplitPane
       orientation={layout.splitOrientation}
       label={t('shell.list.resize')}
-      // 420, not 360. The list column carries the search field, the folder title and the view
-      // toggle; at 360 px those were competing for the width of a phone while ~930 px of header sat
-      // empty beside them. Widening the column is the half of that imbalance worth fixing here —
-      // moving search into the shell header would put a mail-only control on the Contacts and
-      // Settings screens too.
-      defaultPrimarySize={420}
+      /*
+       * 420 on a desktop, 340 on a tablet.
+       *
+       * The desktop number is the first audit's answer to A5: the column carries the search field,
+       * the folder title and the view toggle, and at 360px those competed for the width of a phone
+       * while ~930px of header sat empty beside them.
+       *
+       * A tablet has no such spare width, and applying the desktop number there left the READING
+       * pane with 318px of an 834px screen — measured, its placeholder sentence wrapped onto two
+       * lines, which is a pane too narrow to read a message in but wide enough to cost the list
+       * the room. iPad Mail runs roughly 320/500 in portrait for the same reason. This is the
+       * split that makes both halves usable rather than the one that makes the list comfortable
+       * and the other half decorative.
+       */
+      defaultPrimarySize={tier === 'tablet' ? 340 : 420}
       minPrimarySize={260}
       maxPrimarySize={640}
     >

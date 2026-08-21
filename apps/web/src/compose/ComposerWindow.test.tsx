@@ -290,7 +290,7 @@ describe('focus survives a minimize (M4.7, WCAG 2.4.3)', () => {
 
     await user.keyboard('{Escape}')
 
-    const chip = await screen.findByRole('button', { name: /x|No subject/ })
+    const chip = await screen.findByRole('button', { name: /x|Draft/ })
     expect(chip).toHaveFocus()
   })
 
@@ -302,7 +302,7 @@ describe('focus survives a minimize (M4.7, WCAG 2.4.3)', () => {
     other.focus()
 
     openWindow('minimized')
-    await screen.findByRole('button', { name: /No subject/ })
+    await screen.findByRole('button', { name: /Draft/ })
 
     expect(other).toHaveFocus()
     other.remove()

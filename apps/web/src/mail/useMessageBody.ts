@@ -14,6 +14,15 @@ export interface MessageBody {
   readonly htmlParts: BodyText[] | null
   readonly textBody: string
   readonly loading: boolean
+  /**
+   * The fetch came back and there is nothing to show — offline, or the message is gone.
+   *
+   * `loading` alone cannot say this: it is `body === undefined`, which is also what "still on its
+   * way" looks like. Without the distinction a failed fetch left four pulsing grey bars on screen
+   * indefinitely, promising progress that had already stopped. `useEnsureEnvelopes` below has
+   * carried the same flag under the name `settled` since M1.8, for the same reason.
+   */
+  readonly failed: boolean
 }
 
 export function useMessageBody(emailId: string): MessageBody {
@@ -29,9 +38,11 @@ export function useMessageBody(emailId: string): MessageBody {
   // replica would leave it loading FOREVER, for every message, with no retry. Caching is best-effort;
   // reading is not. `null` is the normal case: the row is in the replica, so read it from there.
   const [unstored, setUnstored] = useState<EmailBodyRow | null>(null)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     setUnstored(null)
+    setFailed(false)
     if (emailId === '' || !engine) return
     let active = true
     void engine
@@ -39,9 +50,12 @@ export function useMessageBody(emailId: string): MessageBody {
       .then((row) => {
         if (active) setUnstored(row)
       })
-      // A failed fetch (offline, or the message is gone) leaves the pane loading, exactly as before
-      // M3.4 — but it must not surface as an unhandled rejection.
-      .catch(() => {})
+      // A failed fetch is REPORTED rather than swallowed. It used to leave the pane loading — the
+      // comment here said so plainly ("leaves the pane loading") — which meant offline, or opening
+      // a message that had since been deleted, produced a skeleton that never resolved.
+      .catch(() => {
+        if (active) setFailed(true)
+      })
     return () => {
       active = false
     }
@@ -53,7 +67,10 @@ export function useMessageBody(emailId: string): MessageBody {
     body,
     htmlParts: body ? pickHtmlBody(body) : null,
     textBody: body ? pickTextBody(body) : '',
-    loading: body === undefined,
+    // A failed fetch is no longer loading. If the row turns up later anyway (a background sync
+    // lands it), `body` wins and both flags fall away.
+    loading: body === undefined && !failed,
+    failed: body === undefined && failed,
   }
 }
 

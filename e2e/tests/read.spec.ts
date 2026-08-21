@@ -10,6 +10,45 @@ import {
 } from '../stalwart/seed-read.mjs'
 import { revealPasswordForm } from './helpers'
 
+/**
+ * A reading-pane action, wherever the bar has put it. See `bulkAction` in offline.spec.ts for why
+ * this is retried as a whole rather than decided once.
+ */
+async function readingAction(page: import('@playwright/test').Page, name: string): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'More actions', exact: true })
+  const onBar = page.getByRole('button', { name, exact: true })
+  await expect(async () => {
+    if (await onBar.first().isVisible()) {
+      await onBar.first().click({ timeout: 2_000 })
+      return
+    }
+    await trigger.click({ timeout: 2_000 })
+    await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
+}
+
+/**
+ * Wait for an action's label to read `name` — which is how a toggle reports that it took.
+ *
+ * Retried as a whole rather than asserted once: reading a menu item means opening the menu, and
+ * the state may not have landed the first time it is opened. Escape closes it between attempts so
+ * the next `toPass` iteration starts from the same place.
+ */
+async function expectReadingAction(
+  page: import('@playwright/test').Page,
+  name: string,
+  timeout: number,
+): Promise<void> {
+  await expect(async () => {
+    if ((await page.getByRole('button', { name, exact: true }).count()) > 0) return
+    await page.getByRole('button', { name: 'More actions', exact: true }).click()
+    await expect(page.getByRole('menuitem', { name: new RegExp(`^${name}`) })).toBeVisible({
+      timeout: 1_000,
+    })
+    await page.keyboard.press('Escape')
+  }).toPass({ timeout })
+}
+
 // M1.9 read E2E suite — the REAL production bundle against the live Stalwart fixture (see
 // playwright.read.config.ts + read.setup.mjs). It proves the Phase-2 "read" story end to end:
 // Basic login, folder navigation, reading plain / HTML / threaded mail in the sandboxed frame,
@@ -153,13 +192,11 @@ test.describe('M1.9 read suite', () => {
   test('flags and archives a message from the reading action bar', async ({ page }) => {
     await login(page)
     await page.getByText(READ_SUBJECTS.plain).click()
-    await page.getByRole('button', { name: 'Flag', exact: true }).click()
+    await readingAction(page, 'Flag')
     // The flag stuck (optimistic apply): the control flips to Unflag.
-    await expect(page.getByRole('button', { name: 'Unflag', exact: true })).toBeVisible({
-      timeout: 15_000,
-    })
+    await expectReadingAction(page, 'Unflag', 15_000)
     // Archiving moves it out of the inbox — the list row disappears (live).
-    await page.getByRole('button', { name: 'Archive', exact: true }).click()
+    await readingAction(page, 'Archive')
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toHaveCount(0, {
       timeout: 15_000,
     })
@@ -214,11 +251,9 @@ test.describe('M1.9 read suite', () => {
     // Open the same message in both tabs, then flag it in A.
     await page.getByText(READ_SUBJECTS.plain).click()
     await b.getByText(READ_SUBJECTS.plain).click()
-    await page.getByRole('button', { name: 'Flag', exact: true }).click()
+    await readingAction(page, 'Flag')
     // B reflects the change through the shared Dexie replica (cross-tab liveQuery).
-    await expect(b.getByRole('button', { name: 'Unflag', exact: true })).toBeVisible({
-      timeout: 20_000,
-    })
+    await expectReadingAction(b, 'Unflag', 20_000)
   })
 
   test('perf smoke: cached open and folder switch (records numbers)', async ({ page }) => {
@@ -293,7 +328,7 @@ test.describe('M3.9 reading polish', () => {
     await expect(article).toContainText(READ_PHISHING.realAddress)
     await expect(article).toContainText(READ_PHISHING.displayName)
     // `From: "security@bank.test" <mallory@evil.tld>` — the name is impersonating an address.
-    await expect(article).toContainText(/not the sender's real address/i)
+    await expect(article).toContainText(/not the sender’s real address/i)
   })
 
   test('a link whose text names another host is interrupted; Cancel opens nothing', async ({

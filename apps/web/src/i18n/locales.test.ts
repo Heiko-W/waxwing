@@ -98,3 +98,45 @@ describe('locale files', () => {
     expect(empty).toEqual([])
   })
 })
+
+/**
+ * Typographic consistency, which nothing else was watching.
+ *
+ * Found by reading the bundle end to end: the SAME sentence appeared twice, one line apart in
+ * meaning — `list.delete.body` with "This can’t be undone." and `reading.delete.body` with "This
+ * can't be undone." — plus "Send canceled" against "Send cancelled" and "Accent colour" against
+ * "Change color". None of it is wrong in isolation, which is exactly why it survives review: it is
+ * only visible when two of them are on screen together, and by then nobody is reading for
+ * punctuation.
+ */
+describe('typographic consistency', () => {
+  it('uses the typographic apostrophe, never the straight one', () => {
+    const offenders: string[] = []
+    for (const [language, strings] of locales) {
+      for (const [key, value] of strings) {
+        // Between letters only: a straight quote elsewhere is a quotation mark or code.
+        if (/[\p{L}]'[\p{L}]/u.test(value)) offenders.push(`${language}: ${key} — ${value}`)
+      }
+    }
+    expect(offenders, "use ’ (U+2019), not ' — Apple's style and this bundle's majority").toEqual(
+      [],
+    )
+  })
+
+  it('spells each word one way', () => {
+    // One spelling per word, not one variety per file: the bundle is otherwise American, so these
+    // three are the outliers rather than the rule.
+    const PAIRS: readonly (readonly [RegExp, RegExp, string])[] = [
+      [/\bcancelled\b/i, /\bcanceled\b/i, 'canceled'],
+      [/\bcolour\b/i, /\bcolor\b/i, 'color'],
+    ]
+    const english = locales.get('en') ?? new Map<string, string>()
+    for (const [wrong, , preferred] of PAIRS) {
+      const found = [...english].filter(([, value]) => wrong.test(value))
+      expect(
+        found.map(([key, value]) => `${key} — ${value}`),
+        `prefer "${preferred}"`,
+      ).toEqual([])
+    }
+  })
+})

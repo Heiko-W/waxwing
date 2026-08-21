@@ -481,7 +481,10 @@ function NameDialog({
           }}
         />
         {error !== null && (
-          <p id={errorId} className={styles.formError}>
+          // `role="alert"`, as its twin in `LabelFormDialog` has: both dialogs ask for a name,
+          // validate it and render the refusal in the same place, and only one of them announced
+          // it. axe does not check live regions, so this stayed green while being wrong.
+          <p id={errorId} role="alert" className={styles.formError}>
             {error}
           </p>
         )}

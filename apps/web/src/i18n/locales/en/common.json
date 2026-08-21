@@ -23,7 +23,6 @@
     },
     "list": {
       "title": "Messages",
-      "empty": "Messages appear here once syncing lands.",
       "resize": "Resize message list",
       "searchTitle": "Search results"
     },
@@ -137,7 +136,7 @@
         "compact": "Compact"
       },
       "accent": {
-        "label": "Accent colour",
+        "label": "Accent color",
         "blue": "Blue",
         "teal": "Teal",
         "green": "Green",
@@ -405,7 +404,7 @@
         "loadFailed": "Filters could not be loaded.",
         "invalidSieve": "The server rejected the script as invalid. Your rules were not saved.",
         "tooLarge": "The script is too large for this server.",
-        "offline": "Filters can only be changed while online.",
+        "offline": "You are offline. Filters can only be changed while connected.",
         "rejected": "The server declined to save the filters.",
         "generic": "The filters could not be saved."
       }
@@ -531,7 +530,7 @@
     "list": {
       "title": "Contacts",
       "resize": "Resize the contact list",
-      "empty": "No contacts yet. Use + above to add your first.",
+      "empty": "No contacts yet.",
       "loading": "Loading contacts",
       "count_one": "{{count}} contact",
       "count_other": "{{count}} contacts"
@@ -543,6 +542,7 @@
       "empty": "No contacts match your search."
     },
     "detail": {
+      "notAvailable": "This contact is not available.",
       "title": "Contact",
       "empty": "Select a contact to see their details.",
       "loading": "Loading contact",
@@ -573,6 +573,7 @@
       "other": "Other"
     },
     "new": "New contact",
+    "addFirst": "Add contact",
     "form": {
       "newTitle": "New contact",
       "editTitle": "Edit contact",
@@ -631,7 +632,7 @@
       "title": "Groups",
       "new": "New group",
       "loading": "Loading groups",
-      "empty": "No groups yet. Use + to group contacts together.",
+      "empty": "No groups yet.",
       "newTitle": "New group",
       "editTitle": "Edit group",
       "name": "Group name",
@@ -827,7 +828,8 @@
       "notJunk": "Not junk",
       "trash": "Move to Trash",
       "delete": "Delete",
-      "move": "Move to…"
+      "move": "Move to…",
+      "more": "More actions for the selection"
     },
     "sort": {
       "label": "Sort",
@@ -899,7 +901,7 @@
     "frameTitle": "Message: {{subject}}",
     "threadCount": "{{count}} messages in this conversation",
     "notAvailable": "This message is not available.",
-    "confirmDeleteBody": "This message will be permanently deleted. This can't be undone.",
+    "confirmDeleteBody": "This message will be permanently deleted. This can’t be undone.",
     "moveTitle": "Move to folder",
     "moveEmpty": "No other folders.",
     "remote": {
@@ -924,14 +926,14 @@
       "unpackNote": "Outlook packed these into one file. They are shown as your correspondent sent them; nothing here has been checked."
     },
     "editDraft": "Edit draft",
-    "draftLead": "This is a draft you haven't sent yet.",
+    "draftLead": "This is a draft you haven’t sent yet.",
     "more": "More actions",
     "authResults": {
       "label": "Authentication",
       "reportedBy": "Reported by {{host}}:",
       "unverified": "This report comes from the message itself and cannot be verified. Do not rely on it alone to judge whether a message is genuine."
     },
-    "nameLooksLikeAddress": "The name shown is not the sender's real address",
+    "nameLooksLikeAddress": "The name shown is not the sender’s real address",
     "linkWarning": {
       "title": "This link may not be genuine",
       "lead": "The text of this link names one website, but the link opens a different one. That is how phishing messages work.",
@@ -959,9 +961,9 @@
       "close": "Hide message",
       "frameTitle": "Attached message: {{subject}}",
       "error": {
-        "notParsable": "This attached message couldn't be opened.",
+        "notParsable": "This attached message couldn’t be opened.",
         "offline": "Connect to open this message.",
-        "failed": "This attached message couldn't be opened."
+        "failed": "This attached message couldn’t be opened."
       },
       "subjectLabel": "Subject",
       "truncated": "Showing the beginning of this message only. Download the attachment to see all of it.",
@@ -973,7 +975,7 @@
       "title": "Mailing list",
       "note": "This message offers a way to stop receiving it.",
       "sentNote": "Unsubscribe request sent. The list decides when it takes effect.",
-      "failedNote": "The request could not be sent. Try the list's own page instead.",
+      "failedNote": "The request could not be sent. Try the list’s own page instead.",
       "oneClick": "Unsubscribe",
       "open": "Unsubscribe page",
       "email": "Unsubscribe by email"
@@ -1033,6 +1035,7 @@
     "textSizeLarge": "Large",
     "new": "New message",
     "noSubject": "(No subject)",
+    "untitledWindow": "Draft",
     "fromLabel": "From",
     "subjectLabel": "Subject",
     "minimize": "Minimize",
@@ -1052,8 +1055,8 @@
     "forwardLabelSubject": "Subject",
     "forwardLabelDate": "Date",
     "bccLabel": "Bcc",
-    "showCcField": "Show Cc field",
-    "showBccField": "Show Bcc field",
+    "showCcField": "Cc",
+    "showBccField": "Bcc",
     "recipientRemove": "Remove {{address}}",
     "recipientInvalid": "Invalid email address",
     "recipientDidYouMean": "Did you mean {{suggestion}}?",
@@ -1090,7 +1093,7 @@
     "sendErrorRecipient": "Some recipients were rejected: {{detail}}",
     "sendErrorQuota": "Message not sent — mailbox is over quota",
     "sendErrorSize": "Message too large to send",
-    "sendErrorGeneric": "Message could not be sent — it's saved in Drafts",
+    "sendErrorGeneric": "Message could not be sent — it’s saved in Drafts",
     "attachMentionTitle": "Send without attachment?",
     "attachMentionBody": "You mentioned an attachment but none is attached.",
     "attachMentionSend": "Send anyway",
@@ -1163,8 +1166,10 @@
   },
   "labels": {
     "title": "Labels",
-    "empty": "No labels yet. Use + to create one.",
+    "empty": "No labels yet.",
+    "noMessages": "No messages with this label.",
     "new": "New label",
+    "addFirst": "Add label",
     "newEllipsis": "New label…",
     "assign": "Label",
     "menuTitle": "Apply labels",
@@ -1251,9 +1256,9 @@
   },
   "outbox": {
     "problems": {
-      "open_one": "{{count}} action didn't go through",
-      "open_other": "{{count}} actions didn't go through",
-      "title": "Some actions didn't go through",
+      "open_one": "{{count}} action didn’t go through",
+      "open_other": "{{count}} actions didn’t go through",
+      "title": "Some actions didn’t go through",
       "empty": "Everything is up to date.",
       "discardAll": "Discard all"
     },
@@ -1264,21 +1269,21 @@
       "dismiss": "OK"
     },
     "conflict": {
-      "moveFolderGone": "Couldn't move — that folder was deleted.",
+      "moveFolderGone": "Couldn’t move — that folder was deleted.",
       "messageGone": "That message no longer exists on the server.",
       "folderGone": "That folder no longer exists.",
-      "folderNotEmpty": "The folder isn't empty.",
+      "folderNotEmpty": "The folder isn’t empty.",
       "contactGone": "That contact no longer exists on the server.",
-      "forbidden": "You don't have permission for that.",
+      "forbidden": "You don’t have permission for that.",
       "quota": "Your mailbox is over quota.",
-      "tooLarge": "That's too large for the server.",
+      "tooLarge": "That’s too large for the server.",
       "invalid": "The server rejected that change.",
       "stateConflict": "Someone else changed that at the same time.",
       "serverRejected": "The server rejected that change."
     },
     "send": {
-      "willSendWhenOnline": "Will send when you're back online",
-      "queuedOffline": "You're offline — this will send when you reconnect",
+      "willSendWhenOnline": "Will send when you’re back online",
+      "queuedOffline": "You’re offline — this will send when you reconnect",
       "retrying": "Retrying…",
       "cancel": "Cancel send",
       "label": "Queued messages"
@@ -1291,7 +1296,7 @@
       "loadFailed": "The scheduled messages could not be loaded.",
       "willSend": "Sends {{when}}",
       "cancel": "Cancel send",
-      "cancelled": "Send cancelled",
+      "cancelled": "Send canceled",
       "tooLate": "Already sent — it had left the queue."
     }
   },
@@ -1333,7 +1338,7 @@
       "label": "Notify me about new mail"
     },
     "permission": {
-      "denied": "Your browser is blocking notifications for this site. Allow them in your browser's site settings, then reload {{product}}.",
+      "denied": "Your browser is blocking notifications for this site. Allow them in your browser’s site settings, then reload {{product}}.",
       "dismissed": "Notifications were not allowed. Turn the switch on again to be asked once more.",
       "unsupported": "This browser does not support notifications.",
       "iosInstall": "On iPhone and iPad, notifications only work when {{product}} runs from the Home Screen. Add it there first."
@@ -1460,18 +1465,20 @@
   "rights": {
     "unavailable": {
       "accountReadOnly": "This account is read-only.",
-      "seen": "You don't have permission to mark these messages read or unread.",
-      "keywords": "You don't have permission to flag or label these messages.",
-      "remove": "You don't have permission to move messages out of this folder.",
-      "add": "You don't have permission to file messages into that folder.",
-      "destroy": "You don't have permission to delete these messages.",
+      "seen": "You don’t have permission to mark these messages read or unread.",
+      "keywords": "You don’t have permission to flag or label these messages.",
+      "remove": "You don’t have permission to move messages out of this folder.",
+      "add": "You don’t have permission to file messages into that folder.",
+      "destroy": "You don’t have permission to delete these messages.",
       "unknown": "Still checking what you may do here — not all messages have loaded yet."
     }
   },
   "calendar": {
+    "offline": "You are offline. Events can only be created while connected.",
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
+    "newEvent": "New event",
     "nextMonth": "Next month",
     "viewLabel": "Calendar view",
     "view": {
@@ -1483,6 +1490,8 @@
     "allDay": "All day",
     "more": "+{{count}} more",
     "noEvents": "Nothing coming up.",
+    "retry": "Try again",
+    "saveFailed": "The event could not be saved.",
     "loadFailed": "The calendar could not be loaded.",
     "signedOut": "Sign in to see your calendar.",
     "event": {
@@ -1502,15 +1511,17 @@
     }
   },
   "files": {
+    "offline": "You are offline. Files can only be changed while connected.",
     "title": "Files",
     "root": "Files",
     "breadcrumb": "Folder path",
     "empty": "This folder is empty.",
+    "retry": "Try again",
     "loadFailed": "The files could not be loaded.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",
     "newFolder": "New folder",
-    "newFolderPlaceholder": "Folder name",
+    "cancel": "Cancel",
     "download": "Download {{name}}",
     "delete": "Delete {{name}}",
     "error": {
@@ -1537,6 +1548,7 @@
       "search": "Search people",
       "searchPlaceholder": "Name or address",
       "noMatches": "Nobody matches that.",
+      "searchFailed": "The people search failed.",
       "roleLabel": "They may",
       "roleFor": "What {{name}} may do",
       "grant": "Add",

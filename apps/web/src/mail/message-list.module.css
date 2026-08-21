@@ -56,13 +56,26 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   border-block-end: 1px solid var(--waxwing-border);
   flex-wrap: nowrap;
-  overflow-x: auto;
-  /* The bar is 44 px tall; a scrollbar inside it would eat a quarter of that. */
-  scrollbar-width: none;
+  /* No `overflow-x: auto` any more. It was the reason this bar could ship 23px wider than its own
+     column and still look correct to every test: the last action sat 11px outside the container,
+     reachable only by dragging a bar that gives no sign it scrolls. The actions overflow into a
+     menu instead, which is the answer the reading pane's bar already gave. */
 }
 
 .bulkBar > * {
   flex: none;
+}
+
+/* What the overflow hook measures. `flex: 1` + `min-inline-size: 0` makes its `clientWidth` exactly
+   the room left after the checkbox, the count and the remove-from-label button — measuring the BAR
+   would count their width as available and hide one action too few. */
+.bulkActions {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  flex: 1;
+  min-inline-size: 0;
+  justify-content: flex-end;
 }
 
 /* `display: contents` so the label and the field become direct grid items of `.toolbar` and land in
@@ -101,6 +114,18 @@
   overscroll-behavior: contain;
   flex: 1 1 auto;
   min-block-size: 0;
+}
+
+/* Room for the compose button to float over.
+   `new-message-button.module.css` says it plainly — "what it does NOT clear is content that
+   scrolls under it" — and B50 answered that by keeping the button off every route but this one.
+   On this one it still sat on the last row: measured on a 390x844 phone it covered the timestamp
+   of the bottom message. A fixed element cannot be pushed aside by a list, so the list leaves it
+   the space. Same tokens the button positions itself with, so the two cannot drift. */
+@media (max-width: 39.999em) {
+  .scroll {
+    padding-block-end: calc(var(--waxwing-control-min) + 2 * var(--waxwing-space-4));
+  }
 }
 
 .spacer {
@@ -207,8 +232,8 @@
 }
 
 .actionArchive {
-  background-color: var(--waxwing-accent);
-  color: var(--waxwing-accent-contrast);
+  background-color: var(--waxwing-archive);
+  color: var(--waxwing-archive-contrast);
 }
 
 .actionTrash {
@@ -284,10 +309,16 @@
 }
 
 /*
- * The separator, inset to the text column — 5.5rem clears the padding, the checkbox and the avatar,
- * which is where Apple Mail starts its own. It was a full-bleed `border-block-end` on every row: a
- * continuous grid that ran through the selection tint as well, so the row the reader was ON came
- * with a line drawn across it. A pseudo-element can be withdrawn per state; a border cannot.
+ * The separator, inset to the text column — where Apple Mail starts its own. It was a full-bleed
+ * `border-block-end` on every row: a continuous grid that ran through the selection tint as well,
+ * so the row the reader was ON came with a line drawn across it. A pseudo-element can be withdrawn
+ * per state; a border cannot.
+ *
+ * The inset is COMPUTED from the same tokens the row lays out with, not frozen at the 5.5rem those
+ * tokens happened to add up to. `--waxwing-control-min` is 2.125rem for a pointer and 2.75rem for
+ * touch, so the frozen number was right on a desktop and 12px short on a phone: the rule started
+ * under the avatar instead of at the text. Nothing said so, because 5.5rem is also the width of the
+ * timestamp column two rules down — two unrelated values that agreed by accident.
  */
 .row::after {
   content: "";
@@ -296,7 +327,14 @@
   pointer-events: none;
   position: absolute;
   inset-block-end: 0;
-  inset-inline: 5.5rem 0;
+  inset-inline-start: calc(
+    var(--waxwing-space-3) +
+    var(--waxwing-control-min) +
+    var(--waxwing-space-2) +
+    1.75rem +
+    var(--waxwing-space-2)
+  );
+  inset-inline-end: 0;
   block-size: 1px;
   background-color: var(--waxwing-border);
 }
@@ -449,7 +487,7 @@
 }
 
 .flag {
-  color: var(--waxwing-warning);
+  color: var(--waxwing-flag);
 }
 
 /* The bulk bar's star when every selected message is already flagged — the same on-state the
@@ -460,7 +498,7 @@
    others beside it, while these two are the ACTIONABLE star and match each other.
    Colour is never the only signal: the button's accessible name flips to "Unflag" with it. */
 .flagOn {
-  color: var(--waxwing-warning);
+  color: var(--waxwing-flag);
   fill: currentColor;
 }
 

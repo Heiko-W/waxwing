@@ -53,10 +53,14 @@ declared once.
 | `--waxwing-bg` | `#f5f5f7` | `#1c1c1e` | Page background |
 | `--waxwing-surface` | `#ffffff` | `#2c2c2e` | The content plane: list and reading panes, cards, overlays, inputs |
 | `--waxwing-surface-sunken` | `#eeeef2` | `#161618` | The recessed plane: folder rail, nav rail — behind the content, never in front of it |
-| `--waxwing-surface-2` | `#ebebef` | `#3a3a3c` | Raised/hover/inset |
+| `--waxwing-surface-2` | `#ebebef` | `#3a3a3c` | Raised/inset fill (chips, key caps, placeholder base) |
+| `--waxwing-skeleton-sheen` | `#dcdce2` | `#4a4a4e` | The highlight travelling across a loading placeholder — one step above `surface-2` |
+| `--waxwing-surface-hover` | `#f1f1f4` | `#353537` | A row under the pointer — the most subtle step above `surface` |
+| `--waxwing-surface-selected` | `#dbe7fa` | `#28394f` | The row the reader is on, while the list has focus — an accent tint |
+| `--waxwing-surface-selected-idle` | `#e3e3e8` | `#464648` | The same row while focus is elsewhere — neutral, so it stops competing |
 | `--waxwing-text` | `#1d1d1f` | `#f5f5f7` | Primary text |
-| `--waxwing-text-muted` | `#636366` | `#a5a5ad` | Secondary text (AA as text) |
-| `--waxwing-border` | `#d2d2d7` | `#3a3a3c` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
+| `--waxwing-text-muted` | `#636366` | `#b4b4bc` | Secondary text (AA as text, on every state fill) |
+| `--waxwing-border` | `#d2d2d7` | `#414145` | **Subtle divider/hairline only** (decorative, < 3:1 by design) |
 | `--waxwing-border-strong` | `#86868b` | `#939398` | **Interactive control boundary** (≥ 3:1) |
 | `--waxwing-focus-ring` | `#2761c4` | `#82acf5` | Focus + selection ring (≥ 3:1) |
 | `--waxwing-accent` | `#2761c4` | `#82acf5` | Brand fill — a calm blue, theme-aware; config-overridable, **never a sole indicator** |
@@ -64,6 +68,8 @@ declared once.
 | `--waxwing-danger` | `#c10016` | `#ff8078` | Error text/icon; destructive fill |
 | `--waxwing-danger-contrast` | `#ffffff` | `#1d1d1f` | Label on a danger fill |
 | `--waxwing-success` | `#1c722f` | `#30d158` | Success text/icon; fill |
+| `--waxwing-archive` | `#2761c4` | `#82acf5` | The archive swipe reveal — fixed, so one action looks the same under every accent |
+| `--waxwing-flag` | `#8a5d00` | `#ffd60a` | The user's own marker (the star). Same value as `warning`, a different meaning |
 | `--waxwing-success-contrast` | `#ffffff` | `#1d1d1f` | Label on a success fill |
 | `--waxwing-warning` | `#8a5d00` | `#ffd60a` | Warning text/icon; fill |
 | `--waxwing-warning-contrast` | `#ffffff` | `#1d1d1f` | Label on a warning fill |
@@ -110,13 +116,38 @@ from this scale; no arbitrary pixel spacing.
 
 `--waxwing-radius-sm` 6px · `-md` 10px · `-lg` 16px · `-full` pill.
 
+- **A row in a list takes `radius-sm`; `radius-md` belongs to buttons, fields and cards.** The
+  distinction had drifted — seven modules used `sm` for a list row and seven used `md`, at
+  identical row heights, so there was no size difference for the radius difference to track. The
+  sharpest pair was `ui/Menu`'s item against the reading pane's move-folder item: both "pick a
+  target folder from a list in an overlay", 4px apart.
+
 ### 2.5 Typography
 
 - Sans stack: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, …`.
   Mono stack: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, …`.
 - Size scale: `--waxwing-text-xs` .75 · `-sm` .875 · `-base` 1 · `-lg` 1.125 · `-xl` 1.375 ·
-  `-2xl` 1.75 (rem). Line-heights: `tight` 1.2 · `normal` 1.5 · `relaxed` 1.7. Weights:
-  regular 400 · medium 500 · semibold 600 · bold 700.
+  `-2xl` 1.75 (rem). Line-heights: `tight` 1.2 · `snug` 1.35 · `normal` 1.5 · `relaxed` 1.7.
+  Weights: regular 400 · medium 500 · semibold 600 · bold 700.
+- **Display sizes carry their own leading and tracking.** Every `xl`/`2xl` rule sets
+  `--waxwing-leading-tight` and `--waxwing-tracking-tight`; `display-type.css.test.ts` enforces it,
+  with an exemption-plus-reason for glyphs that are sized but not set in lines.
+- **A row's primary value states its own size.** `global.css` puts 1rem on the document, so a rule
+  that styles everything about a line except its size inherits `base` — and `base` is a step the
+  scale otherwise reserves for body copy. That is how a file name, an attachment name, an event
+  title and an outbox subject each ended up one step LARGER than the metadata beside them, and a
+  step apart from the same value one screen over. Where the containing row does not set a size,
+  the value sets `--waxwing-text-sm` itself. No static check covers this one: telling "inherits
+  from a container that sets it" apart from "inherits from the document" needs the cascade, not a
+  regex.
+- **A truncated value carries a `title` only where it appears nowhere else.** Folder, label,
+  address-book and saved-search names live in one place, so cutting them loses information the
+  reader cannot recover; a subject or a sender is readable in the pane one click away. `title` is a
+  poor affordance (no keyboard, nothing on touch), which is why it is used where it is the only one
+  rather than everywhere text is cut.
+- **Section labels are a component, not a rule to copy.** `<SectionLabel>` (`ui/SectionLabel.tsx`)
+  is the heading above a group of controls in a panel or dialog: `xs`, semibold, uppercase,
+  `tracking-caps`, muted, no margin of its own.
 
 ### 2.6 Interaction & motion
 
@@ -147,8 +178,8 @@ tokens change. A representative slice (ratios in `x:1`):
 | --- | --- | --- | --- |
 | text on bg | 4.5 | 15.46 | 15.63 |
 | text on surface | 4.5 | 16.83 | 12.80 |
-| text-muted on surface | 4.5 | 5.99 | 5.70 |
-| text-muted on surface-2 | 4.5 | 5.04 | 4.64 |
+| text-muted on surface | 4.5 | 5.99 | 6.77 |
+| text-muted on surface-2 | 4.5 | 5.04 | 5.51 |
 | accent-contrast on accent | 4.5 | 4.70 | 5.54 |
 | danger on surface | 4.5 | 6.40 | 4.99 |
 | danger-contrast on danger | 4.5 | 6.40 | 6.03 |

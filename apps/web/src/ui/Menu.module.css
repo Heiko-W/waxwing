@@ -1,3 +1,11 @@
+/* Same rule as Button's, and for the same reason: an unpinned trigger drew Lucide's 24px default
+   beside 20px IconButtons in the same bar. */
+.trigger svg {
+  inline-size: var(--waxwing-icon-md);
+  block-size: var(--waxwing-icon-md);
+  flex: none;
+}
+
 .trigger {
   display: inline-flex;
   align-items: center;
@@ -22,6 +30,29 @@
   border-color: transparent;
   background-color: transparent;
   color: var(--waxwing-text-muted);
+}
+
+/*
+ * For a menu whose trigger stands in a TOOLBAR, among ghost IconButtons.
+ *
+ * Not `triggerGhost`, and the difference is the text colour: `Button`'s ghost variant keeps
+ * `--waxwing-text` while this file's ghost dims to `--waxwing-text-muted`, so one word meant two
+ * things depending on which component you asked. A `⋯` that dims beside nine glyphs that do not
+ * reads as disabled. The reading pane had been overriding the default from its own stylesheet to
+ * get this; the bulk bar would have had to copy those rules, which is what named this variant
+ * instead.
+ */
+.triggerToolbar {
+  padding-inline: var(--waxwing-space-2);
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--waxwing-text);
+}
+
+@media (hover: hover) {
+  .triggerToolbar:hover {
+    background-color: var(--waxwing-surface-2);
+  }
 }
 
 /* Enter only — see the note in Dialog.module.css for why nothing here waits on an exit. The menu
@@ -89,9 +120,19 @@
   color: var(--waxwing-danger);
 }
 
+/* The reserved column: present on every row of a menu where any row has a glyph, so the labels
+   share one edge. */
+.iconSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--waxwing-icon-sm);
+  flex: none;
+}
+
 .icon {
-  inline-size: 1.1rem;
-  block-size: 1.1rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   flex: none;
 }
 

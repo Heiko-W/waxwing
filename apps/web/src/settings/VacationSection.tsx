@@ -282,7 +282,7 @@ export function VacationSection(props: VacationSectionProps) {
       </div>
 
       {(invalid !== null || error !== null) && (
-        <p id={ids.error} role="alert" className={styles.hint}>
+        <p id={ids.error} role="alert" className={styles.error}>
           {invalid !== null ? t(`settings.vacation.error.${invalid}`) : t(error?.key ?? '')}
         </p>
       )}

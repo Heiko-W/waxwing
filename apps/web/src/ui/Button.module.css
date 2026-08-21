@@ -1,3 +1,21 @@
+/*
+ * A glyph inside a labelled button is `icon-sm`, not whatever Lucide's default is.
+ *
+ * `IconButton` learned this and its own comment records the number — a 24px glyph in a 34px
+ * control is 71% fill where a system toolbar runs nearer 50%. A labelled button has the same
+ * problem in a different shape: the glyph sits beside 14px text, and at Lucide's 24px default with
+ * 2px strokes it is both larger and visibly heavier than the same glyph one control over in an
+ * `IconButton`. Sixteen call sites drew the two side by side, including one header where the SAME
+ * chevron appeared at both sizes.
+ *
+ * `sm` rather than `md` because this glyph accompanies text rather than replacing it.
+ */
+.button svg {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  flex: none;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

@@ -3,6 +3,9 @@
 }
 
 .tooltip {
+  /* Enters like every other portalled layer. It was the only one that snapped in — menus fade over
+     120ms, dialogs and toasts over 200 — which reads as a glitch beside them rather than as speed. */
+  animation: waxwing-tooltip-in var(--waxwing-duration-fast) var(--waxwing-ease-standard);
   z-index: 60;
   max-inline-size: 16rem;
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
@@ -20,4 +23,13 @@
 
 .bottom {
   translate: -50% 0;
+}
+
+@keyframes waxwing-tooltip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

@@ -23,7 +23,6 @@
     },
     "list": {
       "title": "Nachrichten",
-      "empty": "Sobald synchronisiert wurde, erscheinen hier Ihre Nachrichten.",
       "resize": "Nachrichtenliste anpassen",
       "searchTitle": "Suchergebnisse"
     },
@@ -405,7 +404,7 @@
         "loadFailed": "Die Filter konnten nicht geladen werden.",
         "invalidSieve": "Der Server hat das Skript als ungültig abgelehnt. Ihre Regeln wurden nicht gespeichert.",
         "tooLarge": "Das Skript ist für diesen Server zu groß.",
-        "offline": "Filter lassen sich nur online ändern.",
+        "offline": "Sie sind offline. Filter lassen sich nur mit Verbindung ändern.",
         "rejected": "Der Server hat das Speichern der Filter abgelehnt.",
         "generic": "Die Filter konnten nicht gespeichert werden."
       }
@@ -531,7 +530,7 @@
     "list": {
       "title": "Kontakte",
       "resize": "Größe der Kontaktliste anpassen",
-      "empty": "Noch keine Kontakte. Über „+“ oben legen Sie den ersten an.",
+      "empty": "Noch keine Kontakte.",
       "loading": "Kontakte werden geladen",
       "count_one": "{{count}} Kontakt",
       "count_other": "{{count}} Kontakte"
@@ -543,6 +542,7 @@
       "empty": "Keine Kontakte entsprechen Ihrer Suche."
     },
     "detail": {
+      "notAvailable": "Dieser Kontakt ist nicht verfügbar.",
       "title": "Kontakt",
       "empty": "Wählen Sie einen Kontakt aus, um die Details zu sehen.",
       "loading": "Kontakt wird geladen",
@@ -573,6 +573,7 @@
       "other": "Sonstige"
     },
     "new": "Neuer Kontakt",
+    "addFirst": "Kontakt anlegen",
     "form": {
       "newTitle": "Neuer Kontakt",
       "editTitle": "Kontakt bearbeiten",
@@ -631,7 +632,7 @@
       "title": "Gruppen",
       "new": "Neue Gruppe",
       "loading": "Gruppen werden geladen",
-      "empty": "Noch keine Gruppen. Über „+“ fassen Sie Kontakte zusammen.",
+      "empty": "Noch keine Gruppen.",
       "newTitle": "Neue Gruppe",
       "editTitle": "Gruppe bearbeiten",
       "name": "Gruppenname",
@@ -827,7 +828,8 @@
       "notJunk": "Kein Spam",
       "trash": "In den Papierkorb",
       "delete": "Löschen",
-      "move": "Verschieben nach…"
+      "move": "Verschieben nach…",
+      "more": "Weitere Aktionen für die Auswahl"
     },
     "sort": {
       "label": "Sortieren",
@@ -1033,6 +1035,7 @@
     "textSizeLarge": "Groß",
     "new": "Neue Nachricht",
     "noSubject": "(Kein Betreff)",
+    "untitledWindow": "Entwurf",
     "fromLabel": "Von",
     "subjectLabel": "Betreff",
     "minimize": "Minimieren",
@@ -1052,8 +1055,8 @@
     "forwardLabelSubject": "Betreff",
     "forwardLabelDate": "Datum",
     "bccLabel": "Blindkopie",
-    "showCcField": "Feld „Kopie“ anzeigen",
-    "showBccField": "Feld „Blindkopie“ anzeigen",
+    "showCcField": "Kopie",
+    "showBccField": "Blindkopie",
     "recipientRemove": "{{address}} entfernen",
     "recipientInvalid": "Ungültige E-Mail-Adresse",
     "recipientDidYouMean": "Meinten Sie {{suggestion}}?",
@@ -1163,8 +1166,10 @@
   },
   "labels": {
     "title": "Labels",
-    "empty": "Noch keine Labels. Über „+“ legen Sie eines an.",
+    "empty": "Noch keine Labels.",
+    "noMessages": "Keine Nachrichten mit diesem Label.",
     "new": "Neues Label",
+    "addFirst": "Label anlegen",
     "newEllipsis": "Neues Label…",
     "assign": "Label",
     "menuTitle": "Labels anwenden",
@@ -1469,9 +1474,11 @@
     }
   },
   "calendar": {
+    "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",
+    "newEvent": "Neuer Termin",
     "nextMonth": "Nächster Monat",
     "viewLabel": "Kalenderansicht",
     "view": {
@@ -1483,6 +1490,8 @@
     "allDay": "Ganztägig",
     "more": "+{{count}} weitere",
     "noEvents": "Nichts in Sicht.",
+    "retry": "Erneut versuchen",
+    "saveFailed": "Der Termin konnte nicht gespeichert werden.",
     "loadFailed": "Der Kalender konnte nicht geladen werden.",
     "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen.",
     "event": {
@@ -1502,15 +1511,17 @@
     }
   },
   "files": {
+    "offline": "Sie sind offline. Dateien lassen sich nur mit Verbindung ändern.",
     "title": "Dateien",
     "root": "Dateien",
     "breadcrumb": "Ordnerpfad",
     "empty": "Dieser Ordner ist leer.",
+    "retry": "Erneut versuchen",
     "loadFailed": "Die Dateien konnten nicht geladen werden.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
     "newFolder": "Neuer Ordner",
-    "newFolderPlaceholder": "Ordnername",
+    "cancel": "Abbrechen",
     "download": "{{name}} herunterladen",
     "delete": "{{name}} löschen",
     "error": {
@@ -1537,6 +1548,7 @@
       "search": "Personen suchen",
       "searchPlaceholder": "Name oder Adresse",
       "noMatches": "Dazu passt niemand.",
+      "searchFailed": "Die Personensuche ist fehlgeschlagen.",
       "roleLabel": "Darf",
       "roleFor": "Was {{name}} darf",
       "grant": "Hinzufügen",

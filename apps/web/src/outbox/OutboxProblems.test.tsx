@@ -90,9 +90,9 @@ describe('OutboxProblemsButton', () => {
     await enqueue(db, deadLetter('i3'))
     renderButton()
 
-    // Pluralized, not a bare number: "3 actions didn't go through".
+    // Pluralized, not a bare number: "3 actions didn’t go through".
     expect(
-      await screen.findByRole('button', { name: "3 actions didn't go through" }),
+      await screen.findByRole('button', { name: '3 actions didn’t go through' }),
     ).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
   })
@@ -102,20 +102,20 @@ describe('OutboxProblemsButton', () => {
     await enqueue(db, deadLetter('i1'))
     renderButton()
     // The button counts real rows now, so it appears when the query resolves — not on first paint.
-    await screen.findByRole('button', { name: /didn't go through/ })
+    await screen.findByRole('button', { name: /didn’t go through/ })
 
     await user.tab()
     expect(screen.getByRole('button')).toHaveFocus()
     await user.keyboard('{Enter}')
 
-    expect(await screen.findByRole('dialog')).toHaveAccessibleName("Some actions didn't go through")
+    expect(await screen.findByRole('dialog')).toHaveAccessibleName('Some actions didn’t go through')
   })
 
   it('has no axe violations (button + dialog)', async () => {
     const user = userEvent.setup()
     await enqueue(db, deadLetter('i1'))
     renderButton()
-    await screen.findByRole('button', { name: /didn't go through/ })
+    await screen.findByRole('button', { name: /didn’t go through/ })
     await expectNoA11yViolations(document.body)
 
     await user.click(screen.getByRole('button'))
@@ -128,7 +128,7 @@ describe('OutboxProblemsDialog', () => {
   async function openDialog() {
     const user = userEvent.setup()
     renderButton()
-    await user.click(await screen.findByRole('button', { name: /didn't go through/ }))
+    await user.click(await screen.findByRole('button', { name: /didn’t go through/ }))
     await screen.findByRole('dialog')
     return user
   }
@@ -139,7 +139,7 @@ describe('OutboxProblemsDialog', () => {
 
     const items = await screen.findAllByRole('listitem')
     expect(items).toHaveLength(1)
-    expect(items[0]).toHaveTextContent("Couldn't move — that folder was deleted.")
+    expect(items[0]).toHaveTextContent('Couldn’t move — that folder was deleted.')
     expect(items[0]).toHaveTextContent('mailboxIds/archive') // the server's own words, as detail only
   })
 
@@ -216,7 +216,7 @@ describe('dead letters are account-complete (B32)', () => {
     await enqueue(db, deadLetter('shared-1', { accountId: SHARED }))
     render(withShared(<OutboxProblemsButton />))
 
-    const button = await screen.findByRole('button', { name: "1 action didn't go through" })
+    const button = await screen.findByRole('button', { name: '1 action didn’t go through' })
     const user = userEvent.setup()
     await user.click(button)
 
@@ -231,7 +231,7 @@ describe('dead letters are account-complete (B32)', () => {
     render(withShared(<OutboxProblemsButton />))
 
     expect(
-      await screen.findByRole('button', { name: "2 actions didn't go through" }),
+      await screen.findByRole('button', { name: '2 actions didn’t go through' }),
     ).toBeInTheDocument()
   })
 
@@ -252,7 +252,7 @@ describe('dead letters are account-complete (B32)', () => {
     render(withShared(<OutboxProblemsButton />))
 
     const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: /didn't go through/ }))
+    await user.click(await screen.findByRole('button', { name: /didn’t go through/ }))
     await user.click(await screen.findByRole('button', { name: 'Try again' }))
 
     expect(sharedRetry).toHaveBeenCalledWith('shared-1')

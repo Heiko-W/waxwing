@@ -1,4 +1,4 @@
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { type ReactNode, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type AccentId, availablePalettes, getAccent, isAccentId, setAccent } from '../app/accent'
@@ -441,7 +441,14 @@ export default function SettingsPage() {
                       className={styles.railItem}
                       aria-current={detail?.slug === section.slug ? 'page' : undefined}
                     >
-                      {section.title}
+                      <span className={styles.railItemLabel}>{section.title}</span>
+                      {/* Only where the rail IS the screen. Where the panel sits beside it, the
+                          selected row is marked by its own fill and a chevron pointing at content
+                          that is already visible would be pointing at nothing. On a phone the rail
+                          is a list of destinations with no other sign that it is one — measured on
+                          390px it was thirteen lines of plain text with neither rule nor chevron
+                          between them. */}
+                      {narrow && <ChevronRight aria-hidden="true" className={styles.railChevron} />}
                     </Link>
                   </li>
                 ))}

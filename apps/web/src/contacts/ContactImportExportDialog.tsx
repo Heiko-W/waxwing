@@ -23,7 +23,7 @@ import type { ContactCard, Id } from '@waxwing/jmap'
 import { type ChangeEvent, useCallback, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AddressBookRow } from '../sync'
-import { Button, Checkbox, Dialog, Select } from '../ui'
+import { Button, Checkbox, Dialog, SectionLabel, Select } from '../ui'
 import type { CardLike } from './contact-fields'
 import {
   type ContactFormat,
@@ -208,7 +208,7 @@ export default function ContactImportExportDialog({
       <div className={styles.io}>
         {allowImport && (
           <section className={styles.ioSection} aria-label={t('contacts.io.import.heading')}>
-            <h3 className={styles.ioSectionTitle}>{t('contacts.io.import.heading')}</h3>
+            <SectionLabel>{t('contacts.io.import.heading')}</SectionLabel>
 
             <div className={styles.formField}>
               <label className={styles.formLabel} htmlFor={importFormatId}>
@@ -324,7 +324,7 @@ export default function ContactImportExportDialog({
         {allowImport && <hr className={styles.ioDivider} />}
 
         <section className={styles.ioSection} aria-label={t('contacts.io.export.heading')}>
-          <h3 className={styles.ioSectionTitle}>{t('contacts.io.export.heading')}</h3>
+          <SectionLabel>{t('contacts.io.export.heading')}</SectionLabel>
           {exportCards.length === 0 ? (
             <p className={styles.formHint}>{t('contacts.io.export.empty')}</p>
           ) : (

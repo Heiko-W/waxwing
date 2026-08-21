@@ -23,9 +23,20 @@
   overscroll-behavior: contain;
 }
 
+/*
+ * One step down from where this started, and the reason is the heading beside it.
+ *
+ * The subject is an `h2`; the list pane's title ("Inbox") is the `h1`, at `text-base`. At `2xl`
+ * the deeper level was 75% larger than the one above it — the visual hierarchy contradicting the
+ * semantic one, on the same screen, for anyone who reads by size rather than by outline. Apple
+ * Mail runs the same pair at roughly 13px and 17px; the point is that the ratio is small enough
+ * to read as "these belong to different columns" rather than "this one outranks that one".
+ *
+ * Still unmistakably the headline: `xl` against the 14px sender line under it.
+ */
 .subject {
   margin: 0;
-  font-size: var(--waxwing-text-2xl);
+  font-size: var(--waxwing-text-xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
   letter-spacing: var(--waxwing-tracking-tight);
@@ -33,12 +44,10 @@
   overflow-wrap: break-word;
 }
 
-/* Below ~30rem of PANE, 28px of subject takes two lines before the mail starts. One step down is
-   still unmistakably the headline — and it now applies to a narrow pane on any screen, not just to
-   a narrow screen. */
+/* Below ~30rem of PANE, even `xl` takes two lines before the mail starts. */
 @container waxwing-pane (max-width: 30rem) {
   .subject {
-    font-size: var(--waxwing-text-xl);
+    font-size: var(--waxwing-text-lg);
   }
 }
 
@@ -304,8 +313,16 @@
   flex-wrap: nowrap;
   gap: var(--waxwing-space-1);
   align-items: center;
-  padding-bottom: var(--waxwing-space-2);
-  border-bottom: 1px solid var(--waxwing-border);
+  padding-block-end: var(--waxwing-space-2);
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+/* Where the meaning-family changes: replying is not filing, and filing is not marking. Four times
+   the base gap, which is the distance C5 asked for and `a685633` shipped before B49 removed the
+   wrappers that carried it. As a margin on the button itself it survives the row being cut short
+   by `useActionOverflow` — whatever is left still breaks in the right places. */
+.actionBar > [data-group-start] {
+  margin-inline-start: var(--waxwing-space-4);
 }
 
 /*
@@ -320,26 +337,15 @@
   }
 }
 
-/* The overflow (⋯) menu. `Menu`'s trigger is a bordered button by default; here it sits among ghost
-   IconButtons, so it borrows their look. */
+/* The overflow (⋯) menu. Its look comes from `Menu`'s `triggerVariant="toolbar"` now — this file
+   used to override the bordered default itself, which is a rule the bulk bar would have had to
+   copy the moment it grew the same menu. */
 .overflowMenu {
   display: inline-flex;
 }
 
-.overflowMenu button {
-  border-color: transparent;
-  background-color: transparent;
-  padding-inline: var(--waxwing-space-2);
-}
-
-@media (hover: hover) {
-  .overflowMenu button:hover {
-    background-color: var(--waxwing-surface-2);
-  }
-}
-
 .flagOn {
-  color: var(--waxwing-warning);
+  color: var(--waxwing-flag);
   fill: currentColor;
 }
 
@@ -504,6 +510,8 @@
 }
 
 .attachmentName {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   flex: 1;
   min-width: 0;
   white-space: nowrap;
@@ -560,7 +568,7 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   color: var(--waxwing-text);
   font: inherit;
   cursor: pointer;
@@ -590,17 +598,40 @@
   font-size: var(--waxwing-text-sm);
 }
 
+/* One glyph, turned. See `folder-tree.module.css` for the argument; these are the two places in
+   the reading pane that need it. */
+.chevron {
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
 /* ---- collapsed thread message ---- */
 
+/*
+ * A ROW, not a card.
+ *
+ * Framed and rounded, each collapsed message was a card sitting directly above the open message,
+ * which is not a card — two formats stacked, and the eye reads that as two kinds of thing rather
+ * than one conversation. Apple Mail's collapsed messages are rows with rules between them, which
+ * is also the shape this app uses for every other list it draws.
+ *
+ * `border-block-end` rather than a pseudo-element: unlike the message list these do not carry a
+ * selection tint that a rule would run through, so there is no state to withdraw it for.
+ */
 .collapsed {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
-  width: 100%;
-  padding: var(--waxwing-space-2) var(--waxwing-space-3);
-  background: var(--waxwing-surface);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-md);
+  inline-size: 100%;
+  padding-block: var(--waxwing-space-2);
+  padding-inline: 0;
+  background: none;
+  border: 0;
+  border-block-end: 1px solid var(--waxwing-border);
   text-align: start;
   font: inherit;
   color: var(--waxwing-text);

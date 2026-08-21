@@ -211,6 +211,27 @@ export function useContactCard(id: Id) {
   return useReplicaQuery(({ db, accountId }) => db.contactCards.get([accountId, id]), [id])
 }
 
+/**
+ * The same lookup, able to say "there is no such contact".
+ *
+ * {@link useContactCard} returns `undefined` for BOTH "the query has not resolved" and "the row is
+ * not there", so a deep link to a deleted contact showed a spinner forever — the reader was told
+ * to wait for something that was never coming. Wrapping the row in an object moves the two apart:
+ * the wrapper itself is `undefined` while the query is in flight, and `{ card: undefined }` once
+ * it has answered. The mail side has carried this distinction since M1.8 (`useEnsureEnvelopes`'s
+ * `settled`); this is the contacts equivalent.
+ */
+export function useContactCardResolved(id: Id): {
+  settled: boolean
+  card: ContactCardRow | undefined
+} {
+  const result = useReplicaQuery(
+    async ({ db, accountId }) => ({ card: await db.contactCards.get([accountId, id]) }),
+    [id],
+  )
+  return { settled: result !== undefined, card: result?.card }
+}
+
 /** A local preference value (FR-MBX-04), typed by the caller. */
 export function useLocalPref<T>(key: string): T | undefined {
   const row = useReplicaQuery(({ db, accountId }) => db.localPrefs.get([accountId, key]), [key])

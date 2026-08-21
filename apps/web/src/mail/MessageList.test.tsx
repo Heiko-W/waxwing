@@ -230,6 +230,102 @@ describe('MessageList', () => {
     })
   })
 
+  describe('the bulk bar overflow', () => {
+    // The bar used to render every action unconditionally behind `overflow-x: auto`. Measured live
+    // in a browser at both widths the app ships for: seven controls came to 443px inside a 420px
+    // column, so "Move to…" ended 11px outside its own container — present in the DOM, invisible on
+    // screen, and reachable only by dragging a bar that shows no scrollbar. Every existing test
+    // passed throughout, because jsdom reports no widths and `getByRole` does not care where an
+    // element is painted.
+    /**
+     * Widths for the ACTION CONTAINER only, not for every element on the page.
+     *
+     * The reading-pane version of this can stub `HTMLElement.prototype` wholesale; here that breaks
+     * the test before it starts, because the list is virtualized and TanStack measures the same
+     * property to decide how many rows exist. Reporting 224px for the scroll container renders no
+     * rows at all, so `findByText('First')` never resolves — the failure looks like a bulk-bar bug
+     * and is a test-harness one.
+     */
+    let barWidth = 224
+
+    beforeEach(() => {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return typeof this.className === 'string' && this.className.includes('bulkActions')
+            ? barWidth
+            : 0
+        },
+      })
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.tagName === 'BUTTON' ? 44 : 0
+        },
+      })
+      // Deliberately NO ResizeObserver stub. jsdom has none, and installing one switches TanStack
+      // Virtual onto its observer path, where a stub that never fires leaves the list with zero
+      // rows — the test then fails looking for a message, not for a button. The hook measures once
+      // synchronously, which is all this needs.
+    })
+
+    afterEach(() => {
+      Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth')
+      Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth')
+      barWidth = 224
+    })
+
+    const selectFirst = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+      renderList()
+      await screen.findByText('First')
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      await screen.findByText('1 selected')
+    }
+
+    it('hands what does not fit to a menu instead of painting it outside the column', async () => {
+      const user = userEvent.setup()
+      await selectFirst(user)
+      const bar = screen.getByText('1 selected').parentElement as HTMLElement
+      const buttons = within(bar)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label') ?? '')
+      // Not the exact count: jsdom reports no `column-gap` for a CSS module, so the arithmetic
+      // lands one control higher here than in a browser. What the bar must NEVER do is draw all
+      // seven and let the last sit outside its own box, which is what the old one did at every
+      // width the app ships.
+      expect(buttons.length).toBeLessThan(7)
+      expect(buttons.at(-1)).toBe('More actions for the selection')
+      // The first survivors are the ones triage needs most, in order.
+      expect(buttons.slice(0, 3)).toEqual(['Mark as read', 'Archive', 'Move to Trash'])
+    })
+
+    it('makes every displaced action reachable in that menu', async () => {
+      // The half that makes hiding them legitimate: an action removed from the bar and not added to
+      // the menu is one the reader can no longer perform at all.
+      const user = userEvent.setup()
+      await selectFirst(user)
+      await user.click(screen.getByRole('button', { name: 'More actions for the selection' }))
+      const menu = await screen.findByRole('menu')
+      const items = within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent ?? '')
+      for (const displaced of ['Move to…']) {
+        expect(items.some((item) => item.startsWith(displaced))).toBe(true)
+      }
+    })
+
+    it('shows no trigger at all when everything fits', async () => {
+      barWidth = 2000
+      const user = userEvent.setup()
+      await selectFirst(user)
+      expect(
+        screen.queryByRole('button', { name: 'More actions for the selection' }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
   it('the bulk-bar read button TOGGLES, so mark-unread has a single-pointer path (SC 2.5.7)', async () => {
     // Swipe-right toggles `$seen`, so WCAG 2.2 SC 2.5.7 owes that outcome a single-pointer,
     // non-dragging equivalent. Before this, marking a message unread existed only on the `u` chord —

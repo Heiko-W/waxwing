@@ -25,12 +25,14 @@ export {
 } from './Button'
 export { Checkbox, type CheckboxProps } from './Checkbox'
 export { Dialog, type DialogProps, type DialogSize } from './Dialog'
+export { EmptyState, type EmptyStateProps } from './EmptyState'
 export { IconButton, type IconButtonProps } from './IconButton'
 // Overlay primitives — shared by Dialog and the composer windows (M2.2), which are legitimate
 // portal/focus-trapped surfaces of their own.
 export { Portal } from './internal/Portal'
 export { useFocusTrap } from './internal/useFocusTrap'
 export { Menu, type MenuItemSpec, type MenuProps } from './Menu'
+export { SectionLabel, type SectionLabelProps } from './SectionLabel'
 export { Select, type SelectProps } from './Select'
 export { Skeleton, type SkeletonProps } from './Skeleton'
 export { Spinner, type SpinnerProps, type SpinnerSize } from './Spinner'

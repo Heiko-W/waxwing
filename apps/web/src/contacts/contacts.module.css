@@ -85,7 +85,7 @@
   gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   color: var(--waxwing-text);
   text-decoration: none;
 }
@@ -107,16 +107,30 @@
 
 .bookIcon {
   flex: none;
-  inline-size: 1.15rem;
-  block-size: 1.15rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+}
+
+.bookText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  flex: 1;
+  min-inline-size: 0;
 }
 
 .bookName {
-  flex: 1;
   min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bookMarkers {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  flex-wrap: wrap;
 }
 
 .readOnly {
@@ -246,8 +260,31 @@
   align-items: center;
   gap: var(--waxwing-space-3);
   padding-inline: var(--waxwing-space-3);
-  border-block-end: 1px solid var(--waxwing-border);
   cursor: default;
+}
+
+/*
+ * The rule between rows, inset past the avatar and withdrawn under a selection.
+ *
+ * Both halves are the message list's, and the reason is written in that file: "a selection should
+ * read as one solid block, the way a table's selected row loses its rules". This list is the same
+ * pattern — a TanStack virtualizer, `role="listbox"`, avatar plus name, `surface-selected` — and
+ * it drew a full-width border that stayed put under the tint, so the row the reader had chosen was
+ * the one with a line through it.
+ *
+ * The inset is computed rather than frozen: row padding, the avatar, and the gap after it. The
+ * message list learned that lesson the hard way with a hardcoded 5.5rem that stopped matching once
+ * `--waxwing-control-min` changed under `pointer: coarse`.
+ */
+.contactRow::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: calc(var(--waxwing-space-3) + 1.75rem + var(--waxwing-space-3));
+  inset-inline-end: 0;
+  block-size: 1px;
+  background-color: var(--waxwing-border);
 }
 
 /* Pointer-only affordance: on a touchscreen a tap leaves this style stuck to whatever it
@@ -263,7 +300,13 @@
   background-color: var(--waxwing-surface-selected);
 }
 
+.contactRowSelected::after {
+  display: none;
+}
+
 .contactRowName {
+  /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
+  font-size: var(--waxwing-text-sm);
   flex: 1;
   min-inline-size: 0;
   overflow: hidden;
@@ -318,6 +361,7 @@
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .detailOrg {
@@ -337,6 +381,8 @@
   object-fit: cover;
 }
 
+/* waxwing-display-exempt: initials centred in a circle, not type set in lines — leading and
+   tracking would both push the glyph off centre. */
 .detailAvatar {
   inline-size: 5rem;
   block-size: 5rem;
@@ -347,15 +393,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-2);
-}
-
-.detailSectionTitle {
-  margin: 0;
-  color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-xs);
-  font-weight: var(--waxwing-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--waxwing-tracking-caps);
 }
 
 .detailSectionBody {
@@ -372,8 +409,8 @@
 
 .fieldIcon {
   flex: none;
-  inline-size: 1.05rem;
-  block-size: 1.05rem;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
   margin-block-start: var(--waxwing-space-hair);
   color: var(--waxwing-text-muted);
 }
@@ -624,7 +661,7 @@
   gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
 }
 
 .groupMemberName {
@@ -650,7 +687,7 @@
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
   border: 0;
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -705,7 +742,7 @@
   gap: var(--waxwing-space-2);
   min-block-size: var(--waxwing-control-min);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
-  border-radius: var(--waxwing-radius-md);
+  border-radius: var(--waxwing-radius-sm);
   color: var(--waxwing-text);
   text-decoration: none;
 }
@@ -754,12 +791,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-3);
-}
-
-.ioSectionTitle {
-  margin: 0;
-  font-size: var(--waxwing-text-base);
-  font-weight: var(--waxwing-weight-semibold);
 }
 
 .ioDivider {

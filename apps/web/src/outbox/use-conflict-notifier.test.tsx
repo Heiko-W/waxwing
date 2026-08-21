@@ -85,7 +85,7 @@ describe('useConflictNotifier', () => {
     await enqueue(db, deadLetter('i1', conflict('folderGone')))
     renderNotifier()
 
-    expect(await screen.findByText("Couldn't move — that folder was deleted.")).toBeInTheDocument()
+    expect(await screen.findByText('Couldn’t move — that folder was deleted.')).toBeInTheDocument()
     // The message is already back in Inbox; accepting that outcome IS discarding the dead letter.
     await user.click(await screen.findByRole('button', { name: 'Keep in Inbox' }))
     expect(discardFailed).toHaveBeenCalledWith('i1')
@@ -103,7 +103,7 @@ describe('useConflictNotifier', () => {
     )
     renderNotifier()
 
-    expect(await screen.findByText("You don't have permission for that.")).toBeInTheDocument()
+    expect(await screen.findByText('You don’t have permission for that.')).toBeInTheDocument()
     await user.click(await screen.findByRole('button', { name: 'Try again' }))
     expect(retryFailed).toHaveBeenCalledWith('i1')
   })

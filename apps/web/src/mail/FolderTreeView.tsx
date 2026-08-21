@@ -15,11 +15,11 @@ import {
   Archive,
   Ban,
   ChevronRight,
+  Ellipsis,
   FileText,
   Folder,
   Inbox,
   type LucideIcon,
-  MoreHorizontal,
   Pin,
   Send,
   Trash2,
@@ -267,7 +267,9 @@ export function FolderTreeView({
                 <span className={styles.chevron} aria-hidden="true" />
               )}
               <Icon aria-hidden="true" className={styles.icon} />
-              <span className={styles.label}>{folderDisplayName(mailbox, t)}</span>
+              <span className={styles.label} title={folderDisplayName(mailbox, t)}>
+                {folderDisplayName(mailbox, t)}
+              </span>
               {isPinned && (
                 // The pin glyph is decorative; the state is announced once, on the row itself.
                 <span className={styles.pin}>
@@ -301,7 +303,7 @@ export function FolderTreeView({
                     triggerLabel={t('mailbox.actions.menu', {
                       name: folderDisplayName(mailbox, t),
                     })}
-                    trigger={<MoreHorizontal aria-hidden="true" className={styles.icon} />}
+                    trigger={<Ellipsis aria-hidden="true" className={styles.icon} />}
                     items={menuItems}
                     // Keep the tree a single tab stop: only the active row's action button is tabbable.
                     triggerTabIndex={mailbox.id === tabbableId ? 0 : -1}

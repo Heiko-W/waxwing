@@ -56,6 +56,7 @@
   font-size: var(--waxwing-text-xl);
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .subtitle {
@@ -128,18 +129,12 @@
   font-size: var(--waxwing-text-sm);
 }
 
-.disclosure::after {
-  content: "";
-  inline-size: 0.4em;
-  block-size: 0.4em;
-  border-inline-end: 1.5px solid currentcolor;
-  border-block-end: 1.5px solid currentcolor;
-  transform: translateY(-0.15em) rotate(45deg);
-  transition: transform var(--waxwing-duration-fast) ease;
+.disclosureChevron {
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
 }
 
-.disclosure[aria-expanded="true"]::after {
-  transform: translateY(0.1em) rotate(225deg);
+.disclosure[aria-expanded="true"] .disclosureChevron {
+  transform: rotate(180deg);
 }
 
 .errorRegion {

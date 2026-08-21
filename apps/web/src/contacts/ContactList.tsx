@@ -16,17 +16,35 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
-import { Search, X } from 'lucide-react'
+import { Search, UsersRound, X } from 'lucide-react'
 import { type KeyboardEvent, useCallback, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate } from '../app/route'
-import type { ContactCardRow } from '../sync'
-import { Avatar, IconButton, Skeleton, Spinner, VisuallyHidden } from '../ui'
+import type { Density } from '../mail/MessageRow'
+import { type ContactCardRow, useLocalPref } from '../sync'
+import { Avatar, Button, EmptyState, IconButton, Skeleton, VisuallyHidden } from '../ui'
 import { contactDisplayName } from './contact-fields'
 import styles from './contacts.module.css'
 import { useContactSearch } from './use-contact-search'
 
-const ROW_HEIGHT = 56
+/**
+ * Row heights, per the SAME `list.density` preference the message list reads.
+ *
+ * The setting is called "List density" and was read in exactly one place, so choosing Compact
+ * changed one of the app's list surfaces and left the rest alone. This is the other virtualized
+ * list — the one where the choice has something to act on — so it follows too. The rails and the
+ * file list keep `--waxwing-control-min`: their heights are a hit-target guarantee rather than a
+ * density choice, and shrinking them is not this preference's to offer.
+ */
+const ROW_HEIGHT: Record<Density, number> = { comfortable: 56, compact: 44 }
+
+/**
+ * Enough to fill a pane without pretending to know how many contacts there are.
+ *
+ * Stable keys rather than the index, following `MessageList`'s `SKELETON_KEYS`: these are
+ * positions in a fixed grid, not items with an identity.
+ */
+const SKELETON_KEYS = Array.from({ length: 8 }, (_, index) => `contact-skeleton-${index}`)
 const OVERSCAN = 8
 
 export interface ContactListProps {
@@ -34,14 +52,23 @@ export interface ContactListProps {
   readonly bookId: Id | undefined
   /** The card the route currently opens, if any (rendered as the selected option). */
   readonly selectedCardId: Id | undefined
+  /**
+   * Start creating a contact, offered inside the empty state.
+   *
+   * Optional on purpose: the screen passes it only where a writable address book exists, so the
+   * empty state never offers an action that would be refused. The text used to instruct the reader
+   * to "use + above" whether or not that button was enabled.
+   */
+  readonly onCreate?: (() => void) | undefined
 }
 
-export function ContactList({ bookId, selectedCardId }: ContactListProps) {
+export function ContactList({ bookId, selectedCardId, onCreate }: ContactListProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const listId = useId()
   const optionDomId = useCallback((index: number) => `${listId}-opt-${index}`, [listId])
 
+  const density = useLocalPref<Density>('list.density') ?? 'comfortable'
   const { query, setQuery, cards, searching } = useContactSearch(bookId)
   const rows = cards ?? []
   const loading = cards === undefined
@@ -53,7 +80,7 @@ export function ContactList({ bookId, selectedCardId }: ContactListProps) {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => ROW_HEIGHT[density],
     overscan: OVERSCAN,
   })
   const virtualItems = virtualizer.getVirtualItems()
@@ -143,9 +170,26 @@ export function ContactList({ bookId, selectedCardId }: ContactListProps) {
       </VisuallyHidden>
 
       {empty ? (
-        <p className={styles.listEmpty}>
-          {searching ? t('contacts.search.empty') : t('contacts.list.empty')}
-        </p>
+        // No instruction to go press something: where creating is possible the caller passes the
+        // action, and where it is not (no writable address book) the message simply stands alone —
+        // which is better than telling the reader to use a `+` that is disabled.
+        <EmptyState
+          icon={UsersRound}
+          title={searching ? t('contacts.search.empty') : t('contacts.list.empty')}
+          {...(!searching && onCreate !== undefined
+            ? {
+                // Its own wording, not the toolbar button's: two controls answering to one
+                // accessible name on one screen is ambiguous to anything reading by name, and a
+                // strict-mode locator resolves to both. "Add contact" also reads better as the way
+                // OUT of an empty list than "New contact" does.
+                action: (
+                  <Button variant="secondary" size="sm" onClick={onCreate}>
+                    {t('contacts.addFirst')}
+                  </Button>
+                ),
+              }
+            : {})}
+        />
       ) : (
         <div
           ref={scrollRef}
@@ -158,8 +202,33 @@ export function ContactList({ bookId, selectedCardId }: ContactListProps) {
           onKeyDown={onKeyDown}
         >
           {loading && (
-            <div role="presentation" className={styles.listLoading}>
-              <Spinner label={t('contacts.list.loading')} />
+            /*
+             * Skeleton ROWS, not a spinner in an empty pane.
+             *
+             * `MessageList` writes the rule down and the message pane follows it — "text-shaped
+             * placeholders rather than a spinner in a box: what is arriving is prose, and a spinner
+             * says only 'wait' while these say what for". This list is the same two-column layout
+             * one screen over and made the opposite choice, so the app changed its loading grammar
+             * when the reader changed tab. `ContactOption` already renders a skeleton for a row it
+             * has no card for; this just gives it some to render.
+             */
+            <div role="presentation" className={styles.listSpacer}>
+              <VisuallyHidden>
+                <span role="status">{t('contacts.list.loading')}</span>
+              </VisuallyHidden>
+              {SKELETON_KEYS.map((key, index) => (
+                <ContactOption
+                  key={key}
+                  id={`${listId}-${key}`}
+                  card={undefined}
+                  selected={false}
+                  focused={false}
+                  offset={index * ROW_HEIGHT[density]}
+                  height={ROW_HEIGHT[density]}
+                  onOpen={() => {}}
+                  onActivate={() => {}}
+                />
+              ))}
             </div>
           )}
           <div

@@ -16,7 +16,7 @@ import type { OutboxIntent } from '../sync/engine'
 export type ConflictAction = 'retry' | 'keepHere' | 'dismiss' | 'none'
 
 export interface ConflictDescription {
-  /** i18n key for the human sentence ("Couldn't move — that folder was deleted."). */
+  /** i18n key for the human sentence ("Couldn’t move — that folder was deleted."). */
   readonly titleKey: string
   /** Interpolation values for {@link titleKey} and for the action label. */
   readonly params: Readonly<Record<string, string>>

@@ -52,14 +52,20 @@
        token producing two visibly different reactions depending on the theme. */
     --waxwing-surface-sunken: #eeeef2;
     --waxwing-surface-2: #ebebef;
+    /* The moving highlight of a loading placeholder. Its own token because a shimmer is a light
+       effect, not a divider: it used to borrow `--waxwing-border`, and when the dark palette put
+       four fills on one value the gradient ran between three identical stops — the animation
+       played and nothing moved (1.00:1). Held one step ABOVE `surface-2` in both themes, checked
+       by tokens.contrast.test.ts. */
+    --waxwing-skeleton-sheen: #dcdce2;
     /* ---- Row states (M1.6; defined M3.9). `surface-hover` is the transient one (a pointer over a
        row); `surface-selected` marks the row the reader is ON — an accent tint, per Apple Mail. Both
        were referenced by the message list from M1.6 and DEFINED NOWHERE for eight milestones, so an
        opened or ticked row computed to `transparent` and looked like every other row (measured live in
        a browser, not inferred). Nothing could catch it: CSS custom properties are not typechecked, and
        the E2E assert `aria-current`, never colour. Text stays dark on both — tokens.contrast.test.ts. */
-    --waxwing-surface-hover: #ebebef;
-    --waxwing-surface-selected: #dbe7fa;
+    --waxwing-surface-hover: #f1f1f4;
+    --waxwing-surface-selected: var(--waxwing-selected-light, #dbe7fa);
     /* The same row, when the list does NOT have focus. An accent tint says "this is where you
        are"; beside an open message it competes with the pane the reader is actually in, and two
        surfaces claiming to be current is one too many. Apple Mail drops to a neutral grey. */
@@ -68,13 +74,25 @@
     --waxwing-text-muted: #636366;
     --waxwing-border: #d2d2d7;
     --waxwing-border-strong: #86868b;
-    --waxwing-focus-ring: #2761c4;
+    --waxwing-focus-ring: var(--waxwing-ring-light, #2761c4);
     --waxwing-danger: #c10016;
     --waxwing-danger-contrast: #ffffff;
     --waxwing-success: #1c722f;
     --waxwing-success-contrast: #ffffff;
+    /* Filing, as a swipe reveal. Its own value rather than the accent, which is what it used to
+       be: the other three reveals (delete, junk, read) are fixed, so archive was the one action
+       whose colour moved with a preference — and with the green accent selected it became the
+       SAME fill as the read reveal beside it. An action should look like itself whatever the user
+       picked. The value is the built-in accent's blue, which Apple Mail also uses for archive. */
+    --waxwing-archive: #2761c4;
+    --waxwing-archive-contrast: #ffffff;
     --waxwing-warning: #8a5d00;
     --waxwing-warning-contrast: #ffffff;
+    /* The user's own marker (the star). Its own token, at the warning value, so that the WARNING
+       token means one thing: a flagged message is not a warning, and while it borrowed the token
+       a star and the offline indicator carried the same signal colour at rest. Splitting the name
+       lets either move without dragging the other. */
+    --waxwing-flag: #8a5d00;
     --waxwing-switch-thumb: #ffffff;
 
     /* ---- Label swatch fills: light (M3.2). Decorative dots ringed by --waxwing-border-strong;
@@ -177,6 +195,13 @@
     --waxwing-duration-fast: 120ms;
     --waxwing-duration-base: 200ms;
     --waxwing-duration-slow: 320ms;
+    /* LOOP periods, deliberately separate from the three transition durations above. A transition
+       runs once and 320ms reads as brisk; the same number as a rotation period is 3.1 turns per
+       second, which reads as panic. The spinner used to borrow `duration-slow` and did exactly
+       that, beside a header indicator turning at 1s — two "loading" marks at triple each other's
+       speed read as two different states. */
+    --waxwing-duration-spin: 900ms;
+    --waxwing-duration-shimmer: 1400ms;
     --waxwing-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   }
 
@@ -198,22 +223,26 @@
       /* The recessed plane: rail and nav (see the light block). */
       --waxwing-surface-sunken: #161618;
       --waxwing-surface-2: #3a3a3c;
+      --waxwing-skeleton-sheen: #4a4a4e;
       /* ---- Row states: dark (see the light block for why these exist). ---- */
-      --waxwing-surface-hover: #3a3a3c;
-      --waxwing-surface-selected: #28394f;
+      --waxwing-surface-hover: #353537;
+      --waxwing-surface-selected: var(--waxwing-selected-dark, #28394f);
       /* Neutral when the list is not focused — see the light block. */
-      --waxwing-surface-selected-idle: #3a3a3c;
+      --waxwing-surface-selected-idle: #464648;
       --waxwing-text: #f5f5f7;
-      --waxwing-text-muted: #a5a5ad;
-      --waxwing-border: #3a3a3c;
+      --waxwing-text-muted: #b4b4bc;
+      --waxwing-border: #414145;
       --waxwing-border-strong: #939398;
-      --waxwing-focus-ring: #82acf5;
+      --waxwing-focus-ring: var(--waxwing-ring-dark, #82acf5);
       --waxwing-danger: #ff8078;
       --waxwing-danger-contrast: #1d1d1f;
       --waxwing-success: #30d158;
       --waxwing-success-contrast: #1d1d1f;
+      --waxwing-archive: #82acf5;
+      --waxwing-archive-contrast: #1d1d1f;
       --waxwing-warning: #ffd60a;
       --waxwing-warning-contrast: #1d1d1f;
+      --waxwing-flag: #ffd60a;
       --waxwing-switch-thumb: #f5f5f7;
 
       /* ---- Label swatch fills: dark (system preference) ---- */
@@ -246,22 +275,26 @@
     /* The recessed plane: rail and nav (see the :root block). */
     --waxwing-surface-sunken: #161618;
     --waxwing-surface-2: #3a3a3c;
+    --waxwing-skeleton-sheen: #4a4a4e;
     /* ---- Row states: dark (see the light block for why these exist). ---- */
-    --waxwing-surface-hover: #3a3a3c;
-    --waxwing-surface-selected: #28394f;
+    --waxwing-surface-hover: #353537;
+    --waxwing-surface-selected: var(--waxwing-selected-dark, #28394f);
     /* Neutral when the list is not focused — see the light block. */
-    --waxwing-surface-selected-idle: #3a3a3c;
+    --waxwing-surface-selected-idle: #464648;
     --waxwing-text: #f5f5f7;
-    --waxwing-text-muted: #a5a5ad;
-    --waxwing-border: #3a3a3c;
+    --waxwing-text-muted: #b4b4bc;
+    --waxwing-border: #414145;
     --waxwing-border-strong: #939398;
-    --waxwing-focus-ring: #82acf5;
+    --waxwing-focus-ring: var(--waxwing-ring-dark, #82acf5);
     --waxwing-danger: #ff8078;
     --waxwing-danger-contrast: #1d1d1f;
     --waxwing-success: #30d158;
     --waxwing-success-contrast: #1d1d1f;
+    --waxwing-archive: #82acf5;
+    --waxwing-archive-contrast: #1d1d1f;
     --waxwing-warning: #ffd60a;
     --waxwing-warning-contrast: #1d1d1f;
+    --waxwing-flag: #ffd60a;
     --waxwing-switch-thumb: #f5f5f7;
 
     /* ---- Label swatch fills: dark (explicit user override) ---- */
@@ -290,9 +323,15 @@
     /* The recessed plane: rail and nav (see the :root block). */
     --waxwing-surface-sunken: #eeeef2;
     --waxwing-surface-2: #ebebef;
+    /* The moving highlight of a loading placeholder. Its own token because a shimmer is a light
+       effect, not a divider: it used to borrow `--waxwing-border`, and when the dark palette put
+       four fills on one value the gradient ran between three identical stops — the animation
+       played and nothing moved (1.00:1). Held one step ABOVE `surface-2` in both themes, checked
+       by tokens.contrast.test.ts. */
+    --waxwing-skeleton-sheen: #dcdce2;
     /* ---- Row states: light (see the :root block). ---- */
-    --waxwing-surface-hover: #ebebef;
-    --waxwing-surface-selected: #dbe7fa;
+    --waxwing-surface-hover: #f1f1f4;
+    --waxwing-surface-selected: var(--waxwing-selected-light, #dbe7fa);
     /* The same row, when the list does NOT have focus. An accent tint says "this is where you
        are"; beside an open message it competes with the pane the reader is actually in, and two
        surfaces claiming to be current is one too many. Apple Mail drops to a neutral grey. */
@@ -301,13 +340,16 @@
     --waxwing-text-muted: #636366;
     --waxwing-border: #d2d2d7;
     --waxwing-border-strong: #86868b;
-    --waxwing-focus-ring: #2761c4;
+    --waxwing-focus-ring: var(--waxwing-ring-light, #2761c4);
     --waxwing-danger: #c10016;
     --waxwing-danger-contrast: #ffffff;
     --waxwing-success: #1c722f;
     --waxwing-success-contrast: #ffffff;
+    --waxwing-archive: #2761c4;
+    --waxwing-archive-contrast: #ffffff;
     --waxwing-warning: #8a5d00;
     --waxwing-warning-contrast: #ffffff;
+    --waxwing-flag: #8a5d00;
     --waxwing-switch-thumb: #ffffff;
 
     /* ---- Label swatch fills: light re-asserted ---- */

@@ -127,7 +127,7 @@
 }
 
 .statusSpin {
-  animation: waxwing-status-spin 1s linear infinite;
+  animation: waxwing-status-spin var(--waxwing-duration-spin) linear infinite;
 }
 
 @keyframes waxwing-status-spin {
@@ -206,8 +206,17 @@
  * hovered state explicitly makes this (0,3,0), so it no longer depends on which rule is written
  * last.
  */
+/*
+ * The current section, marked the way every other current thing in the app is marked.
+ *
+ * Colour alone was the odd one out: the folder rail, the labels list, the settings rail and the
+ * contact list all give the current row `--waxwing-surface-selected`, and this sat directly beside
+ * two of them showing only tinted text. Two selection languages, four inches apart, for the same
+ * idea — and the weaker of the two on the control that says which SECTION you are in.
+ */
 .primaryNavItem[aria-current="page"],
 .primaryNavItem[aria-current="page"]:hover {
+  background-color: var(--waxwing-surface-selected);
   color: var(--waxwing-accent);
 }
 
@@ -389,6 +398,18 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/*
+ * The reading column's toolbar sits on the reading column's edge.
+ *
+ * `reading.module.css` opens by describing exactly this defect as fixed — "two left edges in one
+ * column, 13px apart, which the eye reads as a misalignment" — for the subject and the body. The
+ * toolbar above them was still on the LIST column's edge (space-3, which is where the message rows
+ * start), so the column had the misalignment back, one row higher.
+ */
+.paneToolbarReading {
+  padding-inline: var(--waxwing-space-5);
+}
+
 /* Where the active screen's bar lands inside the header (phone only — see Header.tsx). Empty and
    inert on wider tiers, where each pane keeps its own toolbar. */
 .screenBar {
@@ -458,13 +479,16 @@
 }
 
 .screen {
-  padding: var(--waxwing-space-6);
+  padding-inline: var(--waxwing-space-5);
+  padding-block: var(--waxwing-space-4);
 }
 
 .screenTitle {
   margin: 0 0 var(--waxwing-space-2);
   font-size: var(--waxwing-text-2xl);
   font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
 }
 
 .screenLead {

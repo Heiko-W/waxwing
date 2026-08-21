@@ -4,6 +4,32 @@ import { jmapAs } from '../stalwart/seed-write.mjs'
 import { openSettingsSection, revealPasswordForm, setUndoGrace } from './helpers'
 
 /**
+ * A bulk-bar action, wherever the bar has put it.
+ *
+ * The bar shows what fits and hands the rest to a `⋯` menu; the split is MEASURED at runtime, so
+ * an action's location is a property of the column width rather than of the code. Asking for the
+ * action and letting the component answer is correct at every width.
+ *
+ * Wrapped in `toPass` because deciding where it is and acting on that decision are two steps, and
+ * the answer can change between them: a bar that is still mounting reports no button for one that
+ * is about to appear, and a menu opened on a stale answer does not contain the action. One failed
+ * attempt costs a second and re-asks; without this the first wrong guess became a 60s
+ * actionability wait with nothing to report but a timeout.
+ */
+async function bulkAction(page: import('@playwright/test').Page, name: string): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'More actions for the selection', exact: true })
+  const onBar = page.getByRole('button', { name, exact: true })
+  await expect(async () => {
+    if (await onBar.first().isVisible()) {
+      await onBar.first().click({ timeout: 2_000 })
+      return
+    }
+    await trigger.click({ timeout: 2_000 })
+    await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
+}
+
+/**
  * M3.10 offline suite (FR-OFF-01/03/04, and the G2 gap-B1/B2 payoffs) — the live counterpart the
  * M3.3 chaos suite explicitly defers to (`engine.chaos.test.ts` header: "the same scenarios against
  * the Stalwart fixture — is M3.10").
@@ -161,7 +187,7 @@ test.describe('M3.10 offline', () => {
     await goOffline(page)
 
     await selectRow(page, READ_SUBJECTS.plain)
-    await page.getByRole('button', { name: 'Archive', exact: true }).click()
+    await bulkAction(page, 'Archive')
     await expect(page.getByText('Moved to Archive')).toBeVisible({ timeout: 15_000 })
     await expect(messageList(page).getByText(READ_SUBJECTS.plain, { exact: true })).toBeHidden({
       timeout: 15_000,
@@ -196,7 +222,7 @@ test.describe('M3.10 offline', () => {
     await goOffline(page)
 
     await selectRow(page, READ_SUBJECTS.plain)
-    await page.getByRole('button', { name: 'Archive', exact: true }).click()
+    await bulkAction(page, 'Archive')
     await expect(messageList(page).getByText(READ_SUBJECTS.plain, { exact: true })).toBeHidden({
       timeout: 15_000,
     })
@@ -270,13 +296,13 @@ test.describe('M3.10 offline', () => {
     await page.getByRole('button', { name: 'Send', exact: true }).click()
 
     // The sticky toast states the outcome in the user's words…
-    await expect(page.getByText("You're offline — this will send when you reconnect")).toBeVisible({
+    await expect(page.getByText('You’re offline — this will send when you reconnect')).toBeVisible({
       timeout: 15_000,
     })
     // …and the durable chip is the one that is still there tomorrow.
     const queue = page.getByRole('status', { name: 'Queued messages' })
     await expect(queue).toContainText(token, { timeout: 15_000 })
-    await expect(queue).toContainText("Will send when you're back online")
+    await expect(queue).toContainText('Will send when you’re back online')
 
     await goOnline(page)
     await expect(queue).toBeHidden({ timeout: 30_000 })
@@ -414,7 +440,7 @@ test.describe('M3.10 offline', () => {
     expect(sorted.slice(0, 2)).toEqual([READ_SUBJECTS.plain, READ_SUBJECTS.phishing])
 
     await selectRow(page, READ_SUBJECTS.plain)
-    await page.getByRole('button', { name: 'Mark as read', exact: true }).click()
+    await bulkAction(page, 'Mark as read')
 
     // It leaves the unread block and lands among the read messages in date order — behind the
     // remaining unread row and behind the newer Q3 thread, ahead of the older newsletter.
@@ -559,7 +585,7 @@ test.describe('M3.10 offline', () => {
       await goOffline(page)
 
       await selectRow(page, READ_SUBJECTS.plain)
-      await page.getByRole('button', { name: 'Move to…' }).click()
+      await bulkAction(page, 'Move to…')
       await page.getByRole('button', { name: 'ZzDoomed', exact: true }).click()
       await expect(messageList(page).getByText(READ_SUBJECTS.plain, { exact: true })).toBeHidden({
         timeout: 15_000,
@@ -573,15 +599,15 @@ test.describe('M3.10 offline', () => {
       // The replay now fails in a way no retry can fix, so it dead-letters and the affordance
       // appears. It is hidden entirely while the queue is clean, which is what makes its presence
       // an assertion rather than a coincidence.
-      const problems = page.getByRole('button', { name: /didn't go through/ })
+      const problems = page.getByRole('button', { name: /didn’t go through/ })
       await expect(problems).toBeVisible({ timeout: 30_000 })
       await problems.click()
 
-      const dialog = page.getByRole('dialog', { name: "Some actions didn't go through" })
+      const dialog = page.getByRole('dialog', { name: 'Some actions didn’t go through' })
       await expect(dialog).toBeVisible({ timeout: 15_000 })
       // The message names the actual cause rather than a generic failure — `describeConflict`
       // mapping `folderGone` onto a sentence a person can act on is the point of the surface.
-      await expect(dialog.getByText("Couldn't move — that folder was deleted.")).toBeVisible()
+      await expect(dialog.getByText('Couldn’t move — that folder was deleted.')).toBeVisible()
 
       await dialog.getByRole('button', { name: 'Discard', exact: true }).click()
 

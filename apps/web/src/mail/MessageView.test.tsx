@@ -27,6 +27,62 @@ import { AUTO_MARK_READ_DELAY_MS, MessageView } from './MessageView'
 import { useReadingStore } from './reading-store'
 import { useBlobFetcher } from './use-blob'
 
+/**
+ * Reach a bar action the way a reader does, whether it is on the bar or behind the `⋯`.
+ *
+ * The bar shows PRIMARY_ACTIONS of them and hands the rest to the menu, so a test that only ever
+ * looked for a button was testing the bar's composition rather than the action. This asks for the
+ * action and lets the component decide where it lives — which is also what makes these tests
+ * survive the next change to that composition.
+ */
+async function clickAction(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  const onBar = screen.queryByRole('button', { name })
+  if (onBar !== null) {
+    await waitFor(() => expect(onBar).toBeEnabled())
+    await user.click(onBar)
+    return
+  }
+  await user.click(await screen.findByRole('button', { name: 'More actions' }))
+  const menu = await screen.findByRole('menu')
+  await user.click(within(menu).getByRole('menuitem', { name: new RegExp(`^${name}`) }))
+}
+
+/**
+ * Open the `⋯` menu once and answer "can the reader use this action" for anything inside it.
+ *
+ * Two shapes have to give the same answer: a bar button carries native `disabled`, a menu item
+ * carries `aria-disabled` (and omits it entirely when enabled, so a `toHaveAttribute(…, 'false')`
+ * assertion never matches). Asking the question once, here, keeps that difference out of the tests
+ * that only care whether an action is offered.
+ */
+async function openOverflow(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(await screen.findByRole('button', { name: 'More actions' }))
+  return await screen.findByRole('menu')
+}
+
+/**
+ * The same trip, on `fireEvent` — for the dwell tests, which run on fake timers.
+ *
+ * `userEvent` schedules its own delays on the real clock, so it deadlocks under `vi.useFakeTimers`.
+ * These tests were written with `fireEvent` for exactly that reason, and moving Mark-as-unread into
+ * the overflow menu must not quietly convert them to the other library.
+ */
+function fireAction(name: string): void {
+  const onBar = screen.queryByRole('button', { name })
+  if (onBar !== null) {
+    fireEvent.click(onBar)
+    return
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+  const menu = screen.getByRole('menu')
+  fireEvent.click(within(menu).getByRole('menuitem', { name: new RegExp(`^${name}`) }))
+}
+
+function isOffered(menu: HTMLElement, name: string): boolean {
+  const item = within(menu).getByRole('menuitem', { name: new RegExp(`^${name}`) })
+  return item.getAttribute('aria-disabled') !== 'true'
+}
+
 function part(over: Partial<EmailBodyPart> = {}): EmailBodyPart {
   return {
     partId: null,
@@ -402,11 +458,10 @@ describe('MessageView', () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()
     renderView(seen(), 'inbox')
-    // The Archive button is disabled until the archive-mailbox liveQuery resolves — wait for it
-    // (clicking a disabled button is a silent no-op, which would flake the dispatch assertion).
-    const archive = screen.getByRole('button', { name: 'Archive' })
-    await waitFor(() => expect(archive).toBeEnabled())
-    await user.click(archive)
+    // Archive is disabled until the archive-mailbox liveQuery resolves, and `clickAction` waits
+    // for that — clicking a disabled control is a silent no-op, which would flake the dispatch
+    // assertion below rather than fail it.
+    await clickAction(user, 'Archive')
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'move', emailIds: ['e1'], from: 'inbox', to: 'archive' }),
       expect.anything(),
@@ -421,15 +476,20 @@ describe('MessageView', () => {
     renderView(seen(), 'archive')
     // Junk IS a real move from Archive, and it enables as soon as its liveQuery lands — waiting for
     // it is what proves the assertion below is the self-move gate rather than an unresolved query.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Mark as junk' })).toBeEnabled())
-    expect(screen.getByRole('button', { name: 'Archive' })).toBeDisabled()
+    const user = userEvent.setup()
+    const menu = await openOverflow(user)
+    // Junk IS a real move from Archive, so it settles enabled once its liveQuery lands. Waiting on
+    // it inside the OPEN menu is what proves the assertion below is the self-move gate rather than
+    // an unresolved query — and the menu stays open across the re-render, so one open is enough.
+    await waitFor(() => expect(isOffered(menu, 'Mark as junk')).toBe(true))
+    expect(isOffered(menu, 'Archive')).toBe(false)
   })
 
   it('marks unread by dispatching a $seen=false keyword change', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()
     renderView(seen())
-    await user.click(screen.getByRole('button', { name: 'Mark as unread' }))
+    await clickAction(user, 'Mark as unread')
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'setKeywords',
@@ -508,7 +568,9 @@ describe('MessageView', () => {
     ])
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(unseen())
-    await screen.findByRole('button', { name: /Archive/i })
+    // Wait for the mailbox liveQuery through a control that is always ON the bar: Archive moved
+    // into the overflow menu, and `findByRole('button')` for it now waits forever.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Move to Trash' })).toBeEnabled())
 
     await new Promise((resolve) => setTimeout(resolve, AUTO_MARK_READ_DELAY_MS + 400))
     expect(seenIntents()).toEqual([])
@@ -573,7 +635,7 @@ describe('MessageView', () => {
     vi.useFakeTimers()
     renderView(unseen())
     await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS - 500)
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }))
+    fireAction('Mark as unread')
     await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
     // The reader's intent, and nothing after it. A `true` here is the dwell overruling them.
     expect(seenIntents()).toEqual([false])
@@ -654,7 +716,7 @@ describe('MessageView', () => {
     await vi.advanceTimersByTimeAsync(500)
     inPane.rerender(tree(seen()))
     await vi.advanceTimersByTimeAsync(200)
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }))
+    fireAction('Mark as unread')
     inPane.rerender(tree(unseen())) // the optimistic apply lands
     await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
     expect(seenIntents()).toEqual([false])
@@ -701,43 +763,44 @@ describe('MessageView', () => {
     })
   }
 
-  it('the `l` chord opens the same picker the Label button owns', async () => {
+  it('the `l` chord opens the picker against whatever control currently owns Label', async () => {
+    // Label sits in the `⋯` menu now (it is past PRIMARY_ACTIONS), so the control a mouse user
+    // would reach for is the overflow trigger. The chord has to anchor to the same thing —
+    // `labelAnchorRef` falls back to it precisely so this stays one picker with one state.
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(seen())
-    const button = await screen.findByRole('button', { name: 'Label' })
-    expect(button).toHaveAttribute('aria-expanded', 'false')
+    const anchor = await screen.findByRole('button', { name: 'More actions' })
     pressLabelChord()
     expect(await screen.findByRole('menu', { name: 'Apply labels' })).toBeInTheDocument()
-    // One picker, one state: a chord-opened menu is announced on the button a mouse user would click.
-    expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(anchor).toBeInstanceOf(HTMLButtonElement)
   })
 
-  it('returns focus to the Label button when Escape closes the `l` picker', async () => {
+  it('returns focus to the picker\u2019s anchor when Escape closes it', async () => {
     // The picker used to be anchored to the `role="toolbar"` div, which has no tabIndex — so
     // `anchorRef.current?.focus()` was a no-op and the keyboard user landed on <body>.
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()
     renderView(seen())
-    const button = await screen.findByRole('button', { name: 'Label' })
+    const anchor = await screen.findByRole('button', { name: 'More actions' })
     pressLabelChord()
     await screen.findByRole('menu', { name: 'Apply labels' })
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
-    expect(button).toHaveFocus()
+    expect(anchor).toHaveFocus()
     expect(document.activeElement).not.toBe(document.body)
   })
 
-  it('returns focus to the Label button when Tab dismisses the `l` picker', async () => {
+  it('returns focus to the picker\u2019s anchor when Tab dismisses it', async () => {
     // fireEvent, not user-event: user-event would ALSO move focus itself for a Tab key, which would
     // mask whether the picker's own close path restored it.
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(seen())
-    const button = await screen.findByRole('button', { name: 'Label' })
+    const anchor = await screen.findByRole('button', { name: 'More actions' })
     pressLabelChord()
     const menu = await screen.findByRole('menu', { name: 'Apply labels' })
     fireEvent.keyDown(menu, { key: 'Tab' })
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
-    expect(button).toHaveFocus()
+    expect(anchor).toHaveFocus()
   })
 
   // ---- header details (M3.9, FR-RD-06) ----
@@ -1030,7 +1093,7 @@ describe('MessageView', () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(seen({ from: [{ name: 'security@bank.test', email: 'attacker@evil.tld' }] }))
     expect(
-      await screen.findByText("The name shown is not the sender's real address"),
+      await screen.findByText('The name shown is not the sender’s real address'),
     ).toBeInTheDocument()
     expect(screen.getByText('attacker@evil.tld')).toBeInTheDocument()
   })
@@ -1040,7 +1103,7 @@ describe('MessageView', () => {
     renderView(seen({ from: [{ name: 'Alice', email: 'alice@x.test' }] }))
     await screen.findByText('Alice')
     expect(
-      screen.queryByText("The name shown is not the sender's real address"),
+      screen.queryByText('The name shown is not the sender’s real address'),
     ).not.toBeInTheDocument()
   })
 
@@ -1067,6 +1130,30 @@ describe('MessageView', () => {
    * and the trigger. In the browser the same arithmetic runs against a real gap; the E2E suite is
    * where the real pane is measured.
    */
+  it('says a body that cannot be fetched is unavailable, instead of loading forever', async () => {
+    /*
+     * `useMessageBody` used to swallow a failed fetch — its own comment said so ("leaves the pane
+     * loading") — and `loading` is `body === undefined`, which is also what "still on its way"
+     * looks like. Offline, or opening a message deleted since the envelope synced, produced four
+     * pulsing placeholders that never resolved: a surface promising progress that had stopped.
+     *
+     * The two neighbouring surfaces (view-source, nested message) have had this text since M3.4.
+     */
+    setActiveEngine({
+      dispatch,
+      fetchBody: vi.fn(async () => {
+        throw new Error('offline')
+      }),
+      hydrateEmails: vi.fn(async () => {}),
+    } as unknown as Parameters<typeof setActiveEngine>[0])
+
+    renderView(seen())
+
+    expect(await screen.findByText('This message is not available.')).toBeInTheDocument()
+    // And it is no longer claiming to be busy.
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull())
+  })
+
   describe('the action bar overflow (B49)', () => {
     const widthGetter = (px: number) => ({ configurable: true, get: () => px })
 

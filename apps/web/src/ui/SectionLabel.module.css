@@ -1,0 +1,10 @@
+/* See SectionLabel.tsx for why this is one rule rather than five near-copies. Margins belong to
+   the layout that places it, not to the label, so there are none here. */
+.label {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--waxwing-tracking-caps);
+}

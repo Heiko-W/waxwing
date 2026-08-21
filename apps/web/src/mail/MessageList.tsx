@@ -11,7 +11,18 @@
 
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Id } from '@waxwing/jmap'
-import { Archive, Ban, FolderInput, Mail, MailOpen, Star, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  Ban,
+  Ellipsis,
+  FolderInput,
+  type LucideIcon,
+  Mail,
+  MailOpen,
+  Star,
+  Tag,
+  Trash2,
+} from 'lucide-react'
 import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
@@ -28,10 +39,18 @@ import {
   useMailboxes,
   useReplica,
 } from '../sync'
-import { Button, Checkbox, Dialog, IconButton, Select, VisuallyHidden } from '../ui'
+import {
+  Button,
+  Checkbox,
+  Dialog,
+  IconButton,
+  Menu,
+  type MenuItemSpec,
+  Select,
+  VisuallyHidden,
+} from '../ui'
 import { clearActiveDrag, draggedMessageIds, MESSAGES_MIME, setActiveDrag } from './dnd'
 import { LabelMenu } from './labels/LabelMenu'
-import { LabelMenuButton } from './labels/LabelMenuButton'
 import { useLabels } from './labels/use-labels'
 import { type GridHandle, useListStore } from './list-store'
 import type { Density, RowLabel } from './MessageRow'
@@ -41,6 +60,7 @@ import styles from './message-list.module.css'
 import { messageRights } from './rights'
 import { useSnippets } from './search/use-snippets'
 import { useSwipeLeft, useSwipeRight } from './swipe-prefs'
+import { OVERFLOW_TRIGGER_ATTR, useActionOverflow } from './use-action-overflow'
 import { useMessageActions } from './use-message-actions'
 import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
 import { useAccountIsReadOnly, useMessageRightsFor } from './use-message-rights'
@@ -184,11 +204,22 @@ export function MessageList({
   const openMailbox = useMailbox(sourceMailboxId ?? '')
   const outsideWindow =
     !search && openMailbox !== undefined && openMailbox.totalEmails > 0 && ids.length === 0
-  const emptyMessage = search
-    ? t('search.results.empty')
-    : outsideWindow
-      ? t('list.emptyOutsideWindow', { count: config.offline.cacheDays })
-      : t('list.empty')
+  /*
+   * A LABEL with nothing in it is not a search with no matches.
+   *
+   * Browsing a label runs through the same `search` prop as a typed query (see `MailScreen`'s
+   * `effectiveSearch`), so this branch used to tell someone who clicked a label in the sidebar:
+   * "No messages match your search. Try all mailboxes, or fewer words." They had searched for
+   * nothing and were being advised to search differently.
+   */
+  const emptyMessage =
+    activeLabel !== undefined
+      ? t('labels.noMessages')
+      : search
+        ? t('search.results.empty')
+        : outsideWindow
+          ? t('list.emptyOutsideWindow', { count: config.offline.cacheDays })
+          : t('list.empty')
 
   // Publish the window. A new key (mailbox/sort/search changed) resets focus + selection in the store.
   useEffect(() => {
@@ -1020,6 +1051,32 @@ interface BulkBarProps {
   readonly onRequestMove: () => void
 }
 
+/**
+ * One control in the bulk bar, as data rather than as JSX.
+ *
+ * The same shape `MessageView`'s action bar uses, and for the same reason: a bar that renders a
+ * fixed list of elements cannot hand its tail to a menu, and this one needed to. Measured at both
+ * widths the app ships for, seven controls in a 420px list column came to 443px — "Move to…" sat
+ * 11px outside its own container on the desktop AND the tablet, reachable only by horizontally
+ * scrolling a bar that gives no sign it scrolls. `useActionOverflow` already existed for exactly
+ * this; the bulk bar was simply never given it.
+ *
+ * `when` rather than a conditional in the list: every entry is written once, and the gate that
+ * decides whether the reader may use it stays beside the action it gates.
+ */
+interface BulkAction {
+  readonly id: string
+  readonly when: boolean
+  readonly label: string
+  readonly icon: LucideIcon
+  readonly onSelect: () => void
+  readonly unavailableReason?: string | undefined
+  readonly destructive?: boolean
+  readonly iconClassName?: string | undefined
+  /** Opens the label picker instead of acting; needs the anchor and aria state. */
+  readonly popover?: boolean
+}
+
 function BulkBar({
   count,
   ids,
@@ -1168,6 +1225,169 @@ function BulkBar({
     if (move(ids, fromMailbox)) onClear()
   }
 
+  /**
+   * The label picker's state lives HERE, not inside a `LabelMenuButton`.
+   *
+   * It has to: once Label can be displaced into the overflow menu there is no button of its own to
+   * hold the state or to anchor the popover against. `MessageView` hoisted the same state for the
+   * same reason when its `l` chord needed a picker the bar might not be showing — this is that
+   * arrangement, one surface over, so both bars now behave the same way when they run out of room.
+   */
+  const [labelsOpen, setLabelsOpen] = useState(false)
+  const labelButtonRef = useRef<HTMLButtonElement>(null)
+  const overflowRef = useRef<HTMLSpanElement>(null)
+  const actionsRef = useRef<HTMLDivElement>(null)
+  /** The button on the bar while Label is on it; the `⋯` trigger once it is not. Focusable either way. */
+  const labelAnchorRef = useMemo(
+    () => ({
+      get current(): HTMLElement | null {
+        return labelButtonRef.current ?? overflowRef.current?.querySelector('button') ?? null
+      },
+    }),
+    [],
+  )
+
+  const bulkActions: BulkAction[] = [
+    /**
+     * A TOGGLE, not a setter — and that is a WCAG 2.2 SC 2.5.7 requirement here, not a nicety.
+     * Swipe-right toggles `$seen` against the row's current state, so SC 2.5.7 owes each swipe
+     * outcome a single-pointer, non-dragging equivalent. Archive and Trash had one; marking a
+     * message UNREAD was reachable only from the `u` chord, which is a keyboard path (SC 2.1.1)
+     * and no help to the pointer user this gesture exists for.
+     * It also ends a three-way drift that had grown across the entry points: the button SET
+     * `$seen`, `u` CLEARED it, the swipe TOGGLES it — exactly what `useTriage` exists to prevent.
+     */
+    {
+      id: 'seen',
+      when: true,
+      label: allSeen ? t('list.actions.unread') : t('list.actions.read'),
+      icon: allSeen ? Mail : MailOpen,
+      unavailableReason: reasonText(rights.reason('seen')),
+      onSelect: () => triage.setSeen(ids, !allSeen),
+    },
+    {
+      id: 'archive',
+      when: canMoveTo(archive?.id),
+      label: t('list.actions.archive'),
+      icon: Archive,
+      unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, archive?.id)),
+      onSelect: () => moveThenClear(triage.archive),
+    },
+    /**
+     * ONE destructive button, and which destruction it is depends on where you are standing.
+     * It used to be two: this "Move to Trash" and, below the Move button, an UNCONDITIONAL
+     * "Delete" (permanent destroy) — adjacent, icon-only, and drawing the SAME `Trash2` glyph. In
+     * the Inbox that put two identical icons side by side, one recoverable and one not, told apart
+     * only by an accessible name a sighted pointer user never hears.
+     * The swap that replaces it is not an invention: `MessageView`'s action bar has always drawn
+     * one `Trash2` that reads "Move to Trash" outside Trash and "Delete" inside it (its `inTrash`),
+     * and the `#` chord's shortcut context carries the same distinction — `ShortcutContext.inTrash`
+     * in `shortcuts/types.ts` is documented, verbatim: True when the acted-on messages live in
+     * Trash (there, "delete" means destroy). Those two are this bar's peers: all
+     * three act on a hand-picked target from wherever the user happens to be standing, and all
+     * three resolve `inTrash` against the TRASH role alone. The bulk bar was the one of the three
+     * that offered a permanent destroy from ANY folder.
+     * Do NOT cite `FolderTree`'s `olderMode` for this rule — an earlier version of this comment
+     * did, and it says the OPPOSITE: `role === 'trash' || role === 'junk'` → `'destroy'`. That is
+     * a different family of action, not a contradiction to resolve. "Empty Junk" / "Delete older
+     * than…" are FOLDER-LEVEL PURGES: named for the folder, confirmed in their own dialog, and
+     * permanent in both purge folders by spec — FR-ORG-04 pairs "empty-trash / empty-junk" as one
+     * feature, `FolderTreeView` puts one Empty entry on BOTH purge roles and picks its label by
+     * role ("Empty Trash" / "Empty Junk"), and `Engine.deleteOlderThan` is documented "for
+     * Trash/Junk cleanup". Nothing in that family
+     * speaks for what an icon-only button does to five ticked rows.
+     * So Junk parts company with Trash HERE and only here, and the reason is the kind of action,
+     * not the folder: a hand-picked delete in Junk stays recoverable, because Junk is where a
+     * false-positive classification lands and this button has no dialog naming the folder. Both
+     * halves are pinned — `MessageList.test.tsx` "offers the recoverable move in Junk, not the
+     * permanent destroy" and `FolderTree.test.tsx` "destroys permanently from Junk even though a
+     * Trash exists to move to" — so moving either surface to the other's rule fails a test that
+     * states the rule out loud.
+     * What that costs, stated rather than glossed: from Junk, or from a source-less cross-folder
+     * search selection, the bulk bar no longer permanently destroys. Junk keeps "Move to Trash"
+     * and its own "Empty Junk"; a search selection keeps read/flag/label and gets neither
+     * destructive button, which is the same gate `canMove` already applies to every move here.
+     */
+    inTrash
+      ? {
+          id: 'delete',
+          when: true,
+          label: t('list.actions.delete'),
+          icon: Trash2,
+          destructive: true,
+          unavailableReason: reasonText(rights.reason('destroy')),
+          onSelect: onRequestDelete,
+        }
+      : {
+          id: 'trash',
+          when: canMoveTo(trash?.id),
+          label: t('list.actions.trash'),
+          icon: Trash2,
+          destructive: true,
+          unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, trash?.id)),
+          onSelect: () => moveThenClear(triage.trash),
+        },
+    /**
+     * A TOGGLE for the same reason the read button beside it is one: the `s` chord toggles through
+     * this very seam, and a button that can only ever SET the flag is the keystroke/button drift
+     * `useTriage` exists to prevent. The label is the accessible name, so it has to move with the
+     * state too — a control permanently announced as "Flag" that unflags is a lie to a screen
+     * reader, not a cosmetic slip. And it draws a STAR, the mark the row indicator and the reading
+     * pane both paint: the bulk button was the one surface not showing the mark it sets.
+     */
+    {
+      id: 'flag',
+      when: true,
+      label: allFlagged ? t('list.actions.unflag') : t('list.actions.flag'),
+      icon: Star,
+      iconClassName: allFlagged ? styles.flagOn : undefined,
+      unavailableReason: reasonText(rights.reason('keywords')),
+      onSelect: () => triage.setFlagged(ids, !allFlagged),
+    },
+    {
+      id: 'labels',
+      when: true,
+      label: t('labels.assign'),
+      icon: Tag,
+      popover: true,
+      onSelect: () => setLabelsOpen((open) => !open),
+    },
+    {
+      id: 'junk',
+      when: canMoveTo(junk?.id),
+      label: t('list.actions.junk'),
+      icon: Ban,
+      unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, junk?.id)),
+      onSelect: () => moveThenClear(triage.junk),
+    },
+    /**
+     * Move to an arbitrary folder — the only non-pointer path to it, and the one WCAG 2.2
+     * SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
+     * button are one path. Clearing the selection is the picker's job, not this button's.
+     */
+    {
+      id: 'move',
+      when: canMove,
+      label: t('list.actions.move'),
+      icon: FolderInput,
+      unavailableReason: reasonText(rights.removeReason(fromMailbox ?? null)),
+      onSelect: onRequestMove,
+    },
+  ].filter((action) => action.when)
+
+  const visibleActions = useActionOverflow(actionsRef, bulkActions.length)
+  const menuItems: MenuItemSpec[] = bulkActions.slice(visibleActions).map((action) => ({
+    id: action.id,
+    label:
+      action.unavailableReason === undefined
+        ? action.label
+        : `${action.label} — ${action.unavailableReason}`,
+    icon: action.icon,
+    disabled: action.unavailableReason !== undefined,
+    ...(action.destructive === true ? { destructive: true } : {}),
+    onSelect: action.onSelect,
+  }))
+
   return (
     <div className={styles.bulkBar}>
       {/* The name has to follow the action. Once everything is selected this control CLEARS the
@@ -1182,40 +1402,6 @@ function BulkBar({
         onChange={(event) => (event.target.checked ? onSelectAll() : onClear())}
       />
       <span className={styles.bulkCount}>{t('list.selected', { count })}</span>
-      {/*
-        A TOGGLE, not a setter — and that is a WCAG 2.2 SC 2.5.7 requirement here, not a nicety.
-        Swipe-right toggles `$seen` against the row's current state, so SC 2.5.7 owes each swipe
-        outcome a single-pointer, non-dragging equivalent. Archive and Trash had one; marking a
-        message UNREAD was reachable only from the `u` chord, which is a keyboard path (SC 2.1.1)
-        and no help to the pointer user this gesture exists for.
-        It also ends a three-way drift that had grown across the entry points: the button SET
-        `$seen`, `u` CLEARED it, the swipe TOGGLES it — exactly what `useTriage` exists to prevent.
-      */}
-      <IconButton
-        label={allSeen ? t('list.actions.unread') : t('list.actions.read')}
-        variant="ghost"
-        unavailableReason={reasonText(rights.reason('seen'))}
-        onClick={() => triage.setSeen(ids, !allSeen)}
-      >
-        {allSeen ? <Mail /> : <MailOpen />}
-      </IconButton>
-      {/*
-        A TOGGLE for the same reason the read button beside it is one: the `s` chord toggles through
-        this very seam, and a button that can only ever SET the flag is the keystroke/button drift
-        `useTriage` exists to prevent. The label is the accessible name, so it has to move with the
-        state too — a control permanently announced as "Flag" that unflags is a lie to a screen
-        reader, not a cosmetic slip. And it draws a STAR, the mark the row indicator and the reading
-        pane both paint: the bulk button was the one surface not showing the mark it sets.
-      */}
-      <IconButton
-        label={allFlagged ? t('list.actions.unflag') : t('list.actions.flag')}
-        variant="ghost"
-        unavailableReason={reasonText(rights.reason('keywords'))}
-        onClick={() => triage.setFlagged(ids, !allFlagged)}
-      >
-        <Star className={allFlagged ? styles.flagOn : undefined} />
-      </IconButton>
-      <LabelMenuButton ids={ids} />
       {activeLabel !== undefined && (
         <Button
           size="sm"
@@ -1229,99 +1415,38 @@ function BulkBar({
           {t('labels.removeFromLabel')}
         </Button>
       )}
-      {canMoveTo(archive?.id) && (
-        <IconButton
-          label={t('list.actions.archive')}
-          variant="ghost"
-          unavailableReason={reasonText(rights.moveReason(fromMailbox ?? null, archive?.id))}
-          onClick={() => moveThenClear(triage.archive)}
-        >
-          <Archive />
-        </IconButton>
-      )}
-      {canMoveTo(junk?.id) && (
-        <IconButton
-          label={t('list.actions.junk')}
-          variant="ghost"
-          unavailableReason={reasonText(rights.moveReason(fromMailbox ?? null, junk?.id))}
-          onClick={() => moveThenClear(triage.junk)}
-        >
-          <Ban />
-        </IconButton>
-      )}
-      {/*
-        ONE destructive button, and which destruction it is depends on where you are standing.
-
-        It used to be two: this "Move to Trash" and, below the Move button, an UNCONDITIONAL
-        "Delete" (permanent destroy) — adjacent, icon-only, and drawing the SAME `Trash2` glyph. In
-        the Inbox that put two identical icons side by side, one recoverable and one not, told apart
-        only by an accessible name a sighted pointer user never hears.
-
-        The swap that replaces it is not an invention: `MessageView`'s action bar has always drawn
-        one `Trash2` that reads "Move to Trash" outside Trash and "Delete" inside it (its `inTrash`),
-        and the `#` chord's shortcut context carries the same distinction — `ShortcutContext.inTrash`
-        in `shortcuts/types.ts` is documented, verbatim: True when the acted-on messages live in
-        Trash (there, "delete" means destroy). Those two are this bar's peers: all
-        three act on a hand-picked target from wherever the user happens to be standing, and all
-        three resolve `inTrash` against the TRASH role alone. The bulk bar was the one of the three
-        that offered a permanent destroy from ANY folder.
-
-        Do NOT cite `FolderTree`'s `olderMode` for this rule — an earlier version of this comment
-        did, and it says the OPPOSITE: `role === 'trash' || role === 'junk'` → `'destroy'`. That is
-        a different family of action, not a contradiction to resolve. "Empty Junk" / "Delete older
-        than…" are FOLDER-LEVEL PURGES: named for the folder, confirmed in their own dialog, and
-        permanent in both purge folders by spec — FR-ORG-04 pairs "empty-trash / empty-junk" as one
-        feature, `FolderTreeView` puts one Empty entry on BOTH purge roles and picks its label by
-        role ("Empty Trash" / "Empty Junk"), and `Engine.deleteOlderThan` is documented "for
-        Trash/Junk cleanup". Nothing in that family
-        speaks for what an icon-only button does to five ticked rows.
-
-        So Junk parts company with Trash HERE and only here, and the reason is the kind of action,
-        not the folder: a hand-picked delete in Junk stays recoverable, because Junk is where a
-        false-positive classification lands and this button has no dialog naming the folder. Both
-        halves are pinned — `MessageList.test.tsx` "offers the recoverable move in Junk, not the
-        permanent destroy" and `FolderTree.test.tsx` "destroys permanently from Junk even though a
-        Trash exists to move to" — so moving either surface to the other's rule fails a test that
-        states the rule out loud.
-
-        What that costs, stated rather than glossed: from Junk, or from a source-less cross-folder
-        search selection, the bulk bar no longer permanently destroys. Junk keeps "Move to Trash"
-        and its own "Empty Junk"; a search selection keeps read/flag/label and gets neither
-        destructive button, which is the same gate `canMove` already applies to every move here.
-      */}
-      {inTrash ? (
-        <IconButton
-          label={t('list.actions.delete')}
-          variant="ghost"
-          unavailableReason={reasonText(rights.reason('destroy'))}
-          onClick={onRequestDelete}
-        >
-          <Trash2 />
-        </IconButton>
-      ) : (
-        canMoveTo(trash?.id) && (
+      {/* The measured container is THIS one, not the bar: the checkbox, the count and the
+          remove-from-label button are a prefix of unknown width, and `flex: 1` plus `min-inline-size:
+          0` makes the hook's `clientWidth` exactly the room the actions actually have. */}
+      <div ref={actionsRef} className={styles.bulkActions}>
+        {bulkActions.slice(0, visibleActions).map((action) => (
           <IconButton
-            label={t('list.actions.trash')}
+            key={action.id}
+            ref={action.popover === true ? labelButtonRef : null}
+            label={action.label}
             variant="ghost"
-            unavailableReason={reasonText(rights.moveReason(fromMailbox ?? null, trash?.id))}
-            onClick={() => moveThenClear(triage.trash)}
+            unavailableReason={action.unavailableReason}
+            aria-haspopup={action.popover === true ? 'menu' : undefined}
+            aria-expanded={action.popover === true ? labelsOpen : undefined}
+            onClick={action.onSelect}
           >
-            <Trash2 />
+            <action.icon className={action.iconClassName} />
           </IconButton>
-        )
-      )}
-      {/* Move to an arbitrary folder — the only non-pointer path to it, and the one WCAG 2.2
-          SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
-          button are one path. Clearing the selection is the picker's job, not this button's. */}
-      {canMove && (
-        <IconButton
-          label={t('list.actions.move')}
-          variant="ghost"
-          unavailableReason={reasonText(rights.removeReason(fromMailbox ?? null))}
-          onClick={onRequestMove}
-        >
-          <FolderInput />
-        </IconButton>
+        ))}
+        {menuItems.length > 0 && (
+          <span ref={overflowRef} {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}>
+            <Menu
+              triggerLabel={t('list.actions.more')}
+              trigger={<Ellipsis aria-hidden="true" />}
+              align="end"
+              triggerVariant="toolbar"
+              items={menuItems}
+            />
+          </span>
+        )}
+      </div>
+      {labelsOpen && (
+        <LabelMenu ids={ids} anchorRef={labelAnchorRef} onClose={() => setLabelsOpen(false)} />
       )}
     </div>
   )

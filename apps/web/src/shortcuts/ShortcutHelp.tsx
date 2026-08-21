@@ -9,7 +9,7 @@
 
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Dialog } from '../ui'
+import { Dialog, SectionLabel } from '../ui'
 import { formatChord, isApplePlatform } from './keys'
 import { SHORTCUTS } from './registry'
 import styles from './shortcuts.module.css'
@@ -46,7 +46,7 @@ export default function ShortcutHelp({
           if (actions.length === 0) return null
           return (
             <section key={group} className={styles.helpGroup}>
-              <h3 className={styles.helpGroupTitle}>{t(`shortcuts.groups.${group}`)}</h3>
+              <SectionLabel>{t(`shortcuts.groups.${group}`)}</SectionLabel>
               <dl className={styles.helpList}>
                 {actions.map((action) => {
                   const scope = scopeLabel(action, t)

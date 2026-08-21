@@ -104,8 +104,11 @@
 
 .scopeLabel {
   font-size: var(--waxwing-text-sm);
-  color: var(--waxwing-text-muted);
+  color: var(--waxwing-text);
   white-space: nowrap;
+  /* medium at full strength, like the six other field labels in the app. Left lighter and muted,
+     a label reads as help text about the control rather than the name of it. */
+  font-weight: var(--waxwing-weight-medium);
 }
 
 /* The operator hint: on screen while the field has focus, in the accessibility tree always. */
