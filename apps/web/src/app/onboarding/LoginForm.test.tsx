@@ -399,3 +399,44 @@ describe('LoginForm', () => {
     await expectNoA11yViolations(container)
   })
 })
+
+describe('what the sign-in promises about this device', () => {
+  /** The password form open, which is where both checkboxes live. */
+  async function openForm() {
+    const user = userEvent.setup()
+    render(
+      <LoginForm
+        target={target}
+        productName="Acme Mail"
+        methods={['oauth', 'basic']}
+        oauthAvailable
+        canEditServer
+        busy={false}
+        onOAuth={vi.fn()}
+        onBasicSubmit={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Sign in with a password instead' }))
+    return user
+  }
+
+  it('says what happens WITHOUT "stay signed in", where the reader actually is (M8)', async () => {
+    // Two of four reviewers filed "a reload signs me out" as a defect, naming two different
+    // checkboxes between them. The behaviour is intended; the label was what did not carry it.
+    await openForm()
+    expect(screen.getByText(/reloading it or closing the tab signs you out/i)).toBeInTheDocument()
+  })
+
+  it('drops the sentence once the box is ticked — it describes the state you are in', async () => {
+    const user = await openForm()
+    await user.click(screen.getByLabelText('Stay signed in'))
+    expect(screen.queryByText(/reloading it or closing the tab/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps one promise on screen, not two: public-computer mode hides it', async () => {
+    const user = await openForm()
+    await user.click(screen.getByLabelText('Public or shared computer'))
+    expect(screen.queryByText(/reloading it or closing the tab/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Keeps no mail and no sign-in on this device/i)).toBeInTheDocument()
+  })
+})

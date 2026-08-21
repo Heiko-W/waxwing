@@ -77,6 +77,7 @@
       "username": "Benutzername",
       "password": "Passwort",
       "staySignedIn": "Angemeldet bleiben",
+      "staySignedInHint": "Ohne dieses Häkchen gilt die Anmeldung nur für diese Seite: Beim Neuladen oder beim Schließen des Tabs sind Sie wieder abgemeldet.",
       "appPasswordHint": "Ist für Ihr Konto Zwei-Faktor-Authentifizierung aktiv, wird Ihr normales Passwort hier abgelehnt — verwenden Sie ein App-Passwort.",
       "submit": "Mit Passwort anmelden",
       "publicComputer": "Öffentlicher oder gemeinsam genutzter Computer",

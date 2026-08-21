@@ -77,6 +77,7 @@
       "username": "Username",
       "password": "Password",
       "staySignedIn": "Stay signed in",
+      "staySignedInHint": "Without this, the sign-in lasts only as long as this page: reloading it or closing the tab signs you out again.",
       "appPasswordHint": "If two-factor authentication is on for your account, your normal password is refused here — use an app password.",
       "submit": "Sign in with a password",
       "publicComputer": "Public or shared computer",
