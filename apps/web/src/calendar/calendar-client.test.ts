@@ -13,7 +13,15 @@
  *  - the range query asks the server BOTH ways, in one request;
  *  - a write addresses the id from the unexpanded answer and never the one the grid drew with;
  *  - an occurrence that cannot be traced back to an object is not writable at all, rather than
- *    writable-and-refused.
+ *    writable-and-refused;
+ *  - and an occurrence that could be traced to TWO objects is not writable either.
+ *
+ * The join itself is a SIGNATURE and not `uid`, which is the correction this file also pins. The
+ * first fix for T1 joined on `uid` and was green here while every event stayed read-only against
+ * the real server: measured, Stalwart returns a `uid` only for an event that has one stored, and
+ * an event created through this client has none, because `draftToEvent` names none and the server
+ * mints none. So the fixtures below carry no `uid` at all — a fixture richer than the server is
+ * how a client passes its tests and fails its users.
  *
  * The client is a hand-rolled fake of the `call()`/`request()` seam rather than a real `JmapClient`
  * over a fetch mock: `packages/jmap/src/test-support.ts` is deliberately outside the package's
@@ -25,6 +33,7 @@ import { MethodResponses, RequestBuilder } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
 import {
   CalendarSetError,
+  eventSignature,
   indexObjects,
   makeCalendarClient,
   placeEvent,
@@ -37,11 +46,17 @@ const ACC = 'a'
 const FROM = new Date('2026-07-26T22:00:00.000Z')
 const TO = new Date('2026-09-06T22:00:00.000Z')
 
+/**
+ * An event as THIS server describes one: no `uid`, because it does not send one.
+ *
+ * `timeZone` is set because the views read it — it is deliberately not part of the signature, and
+ * `resolveIdentity` ignoring it is asserted below.
+ */
 const event = (over: Partial<CalendarEvent> = {}): CalendarEvent =>
   ({
     id: 'e1',
-    uid: 'uid-1',
     calendarIds: { c1: true },
+    title: 'Review',
     start: '2026-08-21T16:00:00',
     duration: 'PT60M',
     timeZone: 'Europe/Berlin',
@@ -78,15 +93,19 @@ function fakeClient(options: FakeOptions = {}): {
     const responses: Invocation[] = []
     /** Which ids each `query` answered with, so a chained `get` can resolve its `#ids`. */
     const queryIds = new Map<string, string[]>()
+    /** Which of those queries was the UNEXPANDED one — the companion `get` chains off it. */
+    const identityQueries = new Set<string>()
 
     for (const [name, rawArgs, id] of invocations) {
       const args = rawArgs as Record<string, unknown>
       calls.push([name, args, id])
 
       if (name === 'CalendarEvent/query') {
-        const list = args.expandRecurrences === true ? occurrences : objects
+        const expanded = args.expandRecurrences === true
+        const list = expanded ? occurrences : objects
         const ids = list.map((entry) => entry.id)
         queryIds.set(id, ids)
+        if (!expanded) identityQueries.add(id)
         responses.push([name, { accountId: ACC, ids, queryState: 'q1' }, id])
         continue
       }
@@ -97,9 +116,10 @@ function fakeClient(options: FakeOptions = {}): {
           reference === undefined
             ? (args.ids as string[] | undefined)
             : queryIds.get(reference.resultOf)
-        // The identity call is the one asking for the three-property set; nothing else does.
-        const properties = args.properties as string[] | undefined
-        const isCompanion = properties?.length === 3 && properties.includes('recurrenceRules')
+        // The identity call is the one chained off the unexpanded query — recognised by WHAT IT
+        // ASKED, not by how many properties it named, so growing the property list cannot silently
+        // turn this fake into one that answers both `get`s the same way.
+        const isCompanion = reference !== undefined && identityQueries.has(reference.resultOf)
         if (isCompanion && options.breakIdentity === true) {
           responses.push(['error', { type: 'invalidArguments' }, id])
           continue
@@ -134,10 +154,15 @@ function fakeClient(options: FakeOptions = {}): {
   return { client: client as unknown as JmapClient, calls }
 }
 
-/** The occurrence a Stalwart-shaped server hands back for a plain, non-repeating event. */
-const SYNTHETIC = event({ id: 'eaaaaa0', uid: 'uid-1' })
+/**
+ * The occurrence a Stalwart-shaped server hands back for a plain, non-repeating event.
+ *
+ * Measured: identical to the stored event in every property the identity query asks for, with a
+ * synthetic id swapped in. That equality IS the join — there is nothing else to join on.
+ */
+const SYNTHETIC = event({ id: 'eaaaaa0' })
 /** The same event as the unexpanded query names it. */
-const REAL = event({ id: '0', uid: 'uid-1' })
+const REAL = event({ id: '0' })
 
 describe('eventsInRange', () => {
   it('asks the server BOTH ways in one request', async () => {
@@ -169,7 +194,7 @@ describe('eventsInRange', () => {
     // No uid match and no id match: the honest answer is "not editable", not "editable and then
     // refused by the server", which is the state the whole calendar was in.
     const { client } = fakeClient({
-      occurrences: [event({ id: 'eaaaaa9', uid: 'uid-other' })],
+      occurrences: [event({ id: 'eaaaaa9', title: 'Somebody else', start: '2026-08-22T09:00:00' })],
       objects: [REAL],
     })
     const [placed] = await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
@@ -193,14 +218,13 @@ describe('eventsInRange', () => {
   })
 
   it('marks an occurrence as a series from the MASTER, not from the occurrence alone', async () => {
+    // The FIRST occurrence of a weekly series starts where its master does, so it is the one
+    // occurrence the signature does resolve — and it must come back marked as a series, not as an
+    // ordinary event that happens to be writable.
     const { client } = fakeClient({
-      occurrences: [event({ id: 'eaaaaa1', uid: 'uid-w' })],
+      occurrences: [event({ id: 'eaaaaa1' })],
       objects: [
-        event({
-          id: '7',
-          uid: 'uid-w',
-          recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }],
-        }),
+        event({ id: '7', recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] }),
       ],
     })
     const [placed] = await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
@@ -209,14 +233,24 @@ describe('eventsInRange', () => {
     expect(placed && refuseEdit(placed)).toBe('series')
   })
 
-  it('asks for uid and recurrenceRules, without which neither question can be answered', async () => {
+  it('asks BOTH gets for every field the signature reads', async () => {
+    // The join compares two answers, so it breaks the moment they are asked for different things:
+    // a property that was not requested reads as absent, and two events both "missing" a title
+    // would look alike. `recurrenceRules` is there for the series flag, which nothing else answers.
     const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
     await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
 
     const gets = calls.filter(([name]) => name === 'CalendarEvent/get')
-    const properties = (gets[0]?.[1] as { properties: string[] }).properties
-    expect(properties).toContain('uid')
-    expect(properties).toContain('recurrenceRules')
+    expect(gets).toHaveLength(2)
+    for (const get of gets) {
+      const properties = (get[1] as { properties: string[] }).properties
+      for (const field of ['calendarIds', 'title', 'start', 'duration', 'showWithoutTime']) {
+        expect(properties, `${field} must be asked for on both sides`).toContain(field)
+      }
+      expect(properties).toContain('recurrenceRules')
+    }
+    // And `uid` on neither: the server does not send it, so asking for it only suggests it matters.
+    expect((gets[0]?.[1] as { properties: string[] }).properties).not.toContain('uid')
   })
 
   it('drops an event whose start cannot be read rather than sorting it to 1970', async () => {
@@ -366,18 +400,86 @@ describe('restoreEvent', () => {
   })
 })
 
-describe('resolveIdentity', () => {
-  const index = indexObjects([
-    event({ id: '0', uid: 'uid-1' }),
-    event({
-      id: '7',
-      uid: 'uid-w',
-      recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }],
-    }),
-  ])
+describe('eventSignature', () => {
+  it('is equal for the two answers the server gives about ONE event', () => {
+    // The whole join in one assertion: the expanded occurrence and the stored object differ in
+    // their id and in nothing else the signature reads.
+    expect(eventSignature(event({ id: 'eaaaaa0' }))).toBe(eventSignature(event({ id: '0' })))
+  })
 
-  it('maps a synthetic occurrence onto its object by uid', () => {
-    expect(resolveIdentity(event({ id: 'eaaaaa0', uid: 'uid-1' }), index)).toEqual({
+  it('IGNORES timeZone, which the two answers disagree about', () => {
+    /*
+     * Measured against the fixture: for a whole-day or floating event the expanded query answers
+     * `Etc/UTC` and a direct read of the same event answers `null` (the same discrepancy T12 found
+     * in the agenda). A signature that read the zone would therefore fail to resolve exactly those
+     * events — and they are the ones a reader is most likely to have made by hand.
+     */
+    expect(eventSignature(event({ timeZone: 'Etc/UTC' }))).toBe(
+      eventSignature(event({ timeZone: null })),
+    )
+  })
+
+  it('separates events that differ in any field it does read', () => {
+    const base = eventSignature(event())
+    expect(eventSignature(event({ title: 'Other' }))).not.toBe(base)
+    expect(eventSignature(event({ start: '2026-08-21T17:00:00' }))).not.toBe(base)
+    expect(eventSignature(event({ duration: 'PT90M' }))).not.toBe(base)
+    expect(eventSignature(event({ calendarIds: { c2: true } }))).not.toBe(base)
+    expect(eventSignature(event({ showWithoutTime: true }))).not.toBe(base)
+  })
+
+  it('does not depend on the order the calendar set arrives in', () => {
+    // `calendarIds` is a SET; JSON object key order is an accident of the encoder, not a fact
+    // about the event. Two orderings that meant the same thing must not read as two events.
+    expect(eventSignature(event({ calendarIds: { c1: true, c2: true } }))).toBe(
+      eventSignature(event({ calendarIds: { c2: true, c1: true } })),
+    )
+  })
+
+  it('reads a missing field and an empty one the same way', () => {
+    // The tolerant direction on purpose: this can only ever cause a COLLISION, which costs an edit,
+    // never a false match, which would cost the wrong event.
+    const bare = {
+      id: 'x',
+      calendarIds: { c1: true },
+      start: '2026-08-21T16:00:00',
+    } as CalendarEvent
+    expect(eventSignature(bare)).toBe(
+      eventSignature({ ...bare, title: '', duration: '', showWithoutTime: false } as CalendarEvent),
+    )
+  })
+
+  it('survives an event whose calendarIds is not a set at all', () => {
+    // Nothing about a malformed answer may throw here: this runs over every event in the month,
+    // and one bad record would take the whole calendar down rather than one row's Edit button.
+    const broken = {
+      id: 'x',
+      start: '2026-08-21T16:00:00',
+      calendarIds: null,
+    } as unknown as CalendarEvent
+    expect(() => eventSignature(broken)).not.toThrow()
+  })
+
+  it('cannot be forged by a title that contains the encoding', () => {
+    // Joined with a separator instead of encoded, a crafted title would collide with another
+    // event and hand the reader someone else's id to write to.
+    expect(eventSignature(event({ title: '","2026-08-21T16:00:00' }))).not.toBe(
+      eventSignature(event({ title: '' })),
+    )
+  })
+})
+
+describe('resolveIdentity', () => {
+  const single = event({ id: '0', title: 'Single' })
+  const weekly = event({
+    id: '7',
+    title: 'Weekly',
+    recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }],
+  })
+  const index = indexObjects([single, weekly])
+
+  it('maps a synthetic occurrence onto its object by signature', () => {
+    expect(resolveIdentity(event({ id: 'eaaaaa0', title: 'Single' }), index)).toEqual({
       writeId: '0',
       series: false,
     })
@@ -385,29 +487,94 @@ describe('resolveIdentity', () => {
 
   it('accepts an id the unexpanded query itself named', () => {
     // A server that does not synthesise ids when expanding needs no mapping, and must keep working.
-    expect(resolveIdentity(event({ id: '0', uid: 'uid-1' }), index).writeId).toBe('0')
+    expect(resolveIdentity(event({ id: '0', title: 'Single' }), index).writeId).toBe('0')
   })
 
-  it('refuses an occurrence with no uid at all', () => {
-    const anonymous = {
-      id: 'eaaaaa5',
-      calendarIds: {},
-      start: '2026-08-21T16:00:00',
-    } as CalendarEvent
+  it('refuses an occurrence nothing in the window looks like', () => {
+    // An occurrence of a series lands here: it starts at a different time from its master, so it
+    // matches nothing — which is the same answer `isEditable` gives it anyway.
+    expect(
+      resolveIdentity(
+        event({ id: 'eaaaaa5', title: 'Weekly', start: '2026-08-28T16:00:00' }),
+        index,
+      ).writeId,
+    ).toBeNull()
+  })
+
+  it('refuses an occurrence that TWO objects look like', () => {
+    /*
+     * The ambiguity case, and the reason the map stores `null` rather than the last writer.
+     *
+     * Two events at the same time, the same length, the same title, in the same calendar cannot be
+     * told apart by anything this join can see. Picking one would mean the reader opens the second
+     * and edits the first — silently, and with no way to notice. Read-only is the honest answer.
+     */
+    const twins = indexObjects([event({ id: 'x' }), event({ id: 'y' })])
+    expect(resolveIdentity(event({ id: 'eaaaaa0' }), twins).writeId).toBeNull()
+    // A collision poisons ONE signature, not the index: a third, distinct object still resolves.
+    const mixed = indexObjects([event({ id: 'x' }), event({ id: 'y' }), single])
+    expect(resolveIdentity(event({ id: 'eaaaaa0' }), mixed).writeId).toBeNull()
+    expect(resolveIdentity(event({ id: 'eaaaaa2', title: 'Single' }), mixed).writeId).toBe('0')
+  })
+
+  it('refuses an occurrence with no usable fields at all', () => {
+    const anonymous = { id: 'eaaaaa9', calendarIds: {}, start: '' } as unknown as CalendarEvent
     expect(resolveIdentity(anonymous, index).writeId).toBeNull()
   })
 
   it('carries the series flag over from the master', () => {
-    expect(resolveIdentity(event({ id: 'eaaaaa7', uid: 'uid-w' }), index).series).toBe(true)
+    expect(resolveIdentity(event({ id: 'eaaaaa7', title: 'Weekly' }), index).series).toBe(true)
   })
 
   it('treats a recurrenceId as a series even where the master says nothing', () => {
     expect(
       resolveIdentity(
-        event({ id: 'eaaaaa0', uid: 'uid-1', recurrenceId: '2026-08-21T16:00:00' }),
+        event({ id: 'eaaaaa0', title: 'Single', recurrenceId: '2026-08-21T16:00:00' }),
         index,
       ).series,
     ).toBe(true)
+  })
+})
+
+describe('a series as this server actually reports one', () => {
+  /*
+   * Measured by putting a weekly `RRULE` in over CalDAV — the only way a series can exist here at
+   * all, since `CalendarEvent/set` rejects `recurrenceRules` outright (`invalidProperties`).
+   *
+   * Two things came back that this suite has to hold on to. Every expanded occurrence carries
+   * `recurrenceId`. And the stored master answers WITHOUT `recurrenceRules`, even when asked for
+   * it by name — so the "series flag from the master" belt is not fastened on this server and the
+   * `recurrenceId` braces are carrying the whole load.
+   */
+  const master = event({ id: 'b', title: 'CalDAV Weekly Probe', start: '2026-08-03T09:00:00' })
+  const occurrence = (start: string, id: string) =>
+    event({ id, title: 'CalDAV Weekly Probe', start, recurrenceId: start })
+
+  it('refuses the FIRST occurrence, which the signature does resolve', () => {
+    // It starts where its master starts, so it is the one instance with a write id — and it must
+    // still not open an editor. `refuseEdit` asks about the series before it asks about the id.
+    const identity = resolveIdentity(
+      occurrence('2026-08-03T09:00:00', 'eaaaaab'),
+      indexObjects([master]),
+    )
+    expect(identity.writeId).toBe('b')
+    expect(identity.series).toBe(true)
+    expect(refuseEdit(placeEvent(occurrence('2026-08-03T09:00:00', 'eaaaaab'), identity))).toBe(
+      'series',
+    )
+  })
+
+  it('refuses every later occurrence, which the signature resolves to nothing', () => {
+    const identity = resolveIdentity(
+      occurrence('2026-08-10T09:00:00', 'iaaaaab'),
+      indexObjects([master]),
+    )
+    expect(identity.writeId).toBeNull()
+    // `series`, not `unresolved`: the reader is told this repeats, which is true and actionable,
+    // rather than that the server said something we could not follow.
+    expect(refuseEdit(placeEvent(occurrence('2026-08-10T09:00:00', 'iaaaaab'), identity))).toBe(
+      'series',
+    )
   })
 })
 

@@ -19,11 +19,49 @@
  * failed for EVERY event, including plain single ones that have no recurrence at all.
  *
  * So the range query asks TWICE in one request: once expanded, which is what the grid draws, and
- * once unexpanded, which is what a write may address. The two are joined by `uid` — RFC 8984 gives
- * every event one, and every occurrence of a series shares the master's — and the resulting
- * {@link PlacedEvent.writeId} is the ONLY id this module will write to. An occurrence that cannot
- * be traced back to an object carries `writeId: null` and is shown read-only, rather than being
- * offered an editor whose Save is guaranteed to fail.
+ * once unexpanded, which is what a write may address. The resulting {@link PlacedEvent.writeId} is
+ * the ONLY id this module will write to. An occurrence that cannot be traced back to an object
+ * carries `writeId: null` and is shown read-only, rather than being offered an editor whose Save
+ * is guaranteed to fail.
+ *
+ * **The two answers are joined by a SIGNATURE, and NOT by `uid`.** RFC 8984 gives every event a
+ * `uid` and every occurrence its master's, so a uid join is the obvious design — it is what the
+ * first attempt at this fix did, and it left every event in the calendar read-only on the wire
+ * while passing every unit test. Measured against Stalwart v0.16, here is why:
+ *
+ *  - `uid` comes back only for an event that HAS one stored. Anything written over CalDAV does
+ *    (iCalendar requires it), and a `CalendarEvent/set` that names a `uid` keeps it.
+ *  - A `CalendarEvent/set` that does NOT name one gets no uid — Stalwart mints none, and the .ics
+ *    it then serves over CalDAV has no `UID` line either.
+ *  - {@link draftToEvent} names no uid. So every event a reader creates HERE has none, and a uid
+ *    join fails for exactly the events this editor exists to edit while working for everyone
+ *    else's — the worst possible distribution of a bug, and precisely the one that shipped.
+ *
+ * Minting a uid on create would fix half of that and nothing about events already stored, so the
+ * join has to hold without one. If it is ever added, it belongs beside the two branches in
+ * {@link resolveIdentity} as a third, more certain one — never as a replacement for them.
+ *
+ * What the server does send, for an occurrence of a non-repeating event, is the stored event's own
+ * record with a synthetic `id` swapped in — compared field by field against the unexpanded answer.
+ * So {@link eventSignature} is built from what the two demonstrably share: `start`, `duration`,
+ * `title`, `calendarIds`, `showWithoutTime`. `timeZone` is deliberately NOT among them: the
+ * expanded answer says `Etc/UTC` where a direct read of the same event says `null` (the same
+ * discrepancy T12 found in the agenda), so including it would fail to resolve precisely the
+ * whole-day and floating events.
+ *
+ * The join is deliberately conservative. Exactly one object carrying the signature is a write id;
+ * none, or more than one, leaves `writeId: null`. Two genuinely indistinguishable events in the
+ * same window make each other read-only instead of one becoming the target of the other's edit.
+ * In doubt, do not write.
+ *
+ * **A series is refused either way, which is what makes that conservatism affordable.** Measured
+ * with a weekly `RRULE` put in over CalDAV: every expanded occurrence carries `recurrenceId`, so
+ * {@link refuseEdit} answers `series` for all of them. Their `start` differs from the master's
+ * from the second occurrence on, so the signature resolves nothing — and the first occurrence,
+ * which does resolve, is refused on the series flag before the write id is ever consulted. Worth
+ * knowing while reading {@link indexObjects}: that same measurement showed the stored master
+ * answering WITHOUT `recurrenceRules` even when asked for it, so on this server `recurrenceId` on
+ * the occurrence is the only thing actually reporting a series. Both are checked; only one works.
  */
 
 import type { Calendar, CalendarEvent, Id, JmapClient } from '@waxwing/jmap'
@@ -164,19 +202,21 @@ export function draftToEvent(draft: EventDraft): Record<string, unknown> {
   }
 }
 
+/**
+ * Everything {@link eventSignature} reads.
+ *
+ * Named once and spread into BOTH property lists below, because the join only works while the two
+ * queries are asked for the same fields: a property that is not requested comes back absent, and
+ * two events both "missing" a title would then look alike to a signature built from one side only.
+ */
+const SIGNATURE_PROPERTIES = ['calendarIds', 'title', 'start', 'duration', 'showWithoutTime']
+
 /** The properties the views actually read — a whole JSCalendar event is far larger. */
 const EVENT_PROPERTIES = [
   'id',
-  // The join key back to the writable object (see the note at the top). RFC 8984 requires one on
-  // every event, and every occurrence of a series carries its master's.
-  'uid',
-  'calendarIds',
-  'title',
+  ...SIGNATURE_PROPERTIES,
   'description',
-  'start',
-  'duration',
   'timeZone',
-  'showWithoutTime',
   'status',
   'locations',
   'participants',
@@ -188,13 +228,15 @@ const EVENT_PROPERTIES = [
 ]
 
 /** What the unexpanded companion query needs, and nothing else — it is asked purely for identity. */
-const IDENTITY_PROPERTIES = ['id', 'uid', 'recurrenceRules']
+const IDENTITY_PROPERTIES = ['id', ...SIGNATURE_PROPERTIES, 'recurrenceRules']
 
 /**
  * Server-owned properties, dropped when an event is re-created from a snapshot.
  *
- * `uid` is deliberately NOT in this list: restoring an event is meant to bring back the same event,
- * and to a CalDAV client on the other side of the same account the uid is what says so.
+ * `uid` is deliberately NOT in this list. This server does not send one (see the note at the top),
+ * but a snapshot is whatever the server handed back, and on a server that does send one, restoring
+ * an event is meant to bring back THAT event — to a CalDAV client on the other side of the same
+ * account the uid is what says so.
  */
 const SERVER_OWNED = ['id', 'created', 'updated', 'isOrigin']
 
@@ -213,29 +255,76 @@ export function placeEvent(
   return { event, writeId: identity.writeId, series: identity.series, startsAt, endsAt, allDay }
 }
 
-/** What the unexpanded query taught us about the objects in this window. */
-export interface IdentityIndex {
-  readonly byUid: Map<string, { readonly id: Id; readonly series: boolean }>
-  readonly byId: Map<Id, { readonly series: boolean }>
+/**
+ * The fields an expanded occurrence and the stored object behind it demonstrably share.
+ *
+ * Measured against the fixture rather than derived from the spec: asked for an occurrence of a
+ * non-repeating event, the server answered with the stored event's record and a synthetic `id` in
+ * place of the real one — every other property equal. These five are that set, minus `timeZone`,
+ * which is NOT equal, and minus everything the identity query does not fetch. See the note at the
+ * top of the file for why `uid` is not the join key it ought to be.
+ *
+ * Encoded as JSON rather than joined with a separator, so a title that contains the separator
+ * cannot forge another event's signature. `calendarIds` is a SET in JSCalendar and its key order is
+ * not promised, so it is sorted. An absent field and an empty one both read as `''`, which can only
+ * ever make the join LESS certain — a false collision costs an edit, a false match costs the wrong
+ * event.
+ */
+export function eventSignature(event: CalendarEvent): string {
+  const members: unknown = event.calendarIds
+  const calendars =
+    typeof members === 'object' && members !== null
+      ? Object.entries(members as Record<string, unknown>)
+          .filter(([, member]) => member === true)
+          .map(([id]) => id)
+          .sort()
+      : []
+  return JSON.stringify([
+    typeof event.start === 'string' ? event.start : '',
+    typeof event.duration === 'string' ? event.duration : '',
+    typeof event.title === 'string' ? event.title : '',
+    calendars,
+    event.showWithoutTime === true,
+  ])
 }
 
-const EMPTY_INDEX: IdentityIndex = { byUid: new Map(), byId: new Map() }
+/** One stored object, as the identity index remembers it. */
+interface StoredObject {
+  readonly id: Id
+  readonly series: boolean
+}
+
+/** What the unexpanded query taught us about the objects in this window. */
+export interface IdentityIndex {
+  /**
+   * Signature → the single object carrying it, or `null` where more than one does.
+   *
+   * `null` is not the same as absent, and the difference is load-bearing: it RECORDS that the
+   * signature is ambiguous, so a second object cannot quietly overwrite the first and win a
+   * collision it should have lost.
+   */
+  readonly bySignature: ReadonlyMap<string, StoredObject | null>
+  /** Every id the unexpanded query named — a server that does not synthesise needs no join. */
+  readonly byId: ReadonlyMap<Id, { readonly series: boolean }>
+}
+
+const EMPTY_INDEX: IdentityIndex = { bySignature: new Map(), byId: new Map() }
 
 /** Builds the index from the unexpanded query's answer. */
 export function indexObjects(objects: readonly CalendarEvent[]): IdentityIndex {
-  const byUid = new Map<string, { id: Id; series: boolean }>()
+  const bySignature = new Map<string, StoredObject | null>()
   const byId = new Map<Id, { series: boolean }>()
   for (const object of objects) {
     const rules = object.recurrenceRules
     const series = Array.isArray(rules) && rules.length > 0
     byId.set(object.id, { series })
-    // First writer wins: two objects sharing a uid means a detached override is in the window, and
-    // the master is the one the unexpanded query lists first.
-    if (typeof object.uid === 'string' && object.uid !== '' && !byUid.has(object.uid)) {
-      byUid.set(object.uid, { id: object.id, series })
-    }
+    const signature = eventSignature(object)
+    // A second object with the same signature POISONS the entry rather than replacing it: two
+    // events nothing distinguishes cannot be told apart, and picking either one means editing an
+    // event the reader did not open.
+    bySignature.set(signature, bySignature.has(signature) ? null : { id: object.id, series })
   }
-  return { byUid, byId }
+  return { bySignature, byId }
 }
 
 /**
@@ -245,8 +334,10 @@ export function indexObjects(objects: readonly CalendarEvent[]): IdentityIndex {
  *
  * 1. The id is itself an object id. A server that does not synthesise ids when expanding — which
  *    the spec permits — needs no mapping at all, and this keeps such a server working unchanged.
- * 2. The `uid` names an object in the same window. This is the Stalwart case.
- * 3. Neither: `writeId` stays `null` and the screen says so, rather than offering a doomed editor.
+ * 2. Exactly one object in the same window carries the same {@link eventSignature}. This is the
+ *    Stalwart case, and the reason a whole month is fetched both ways.
+ * 3. Neither, or several: `writeId` stays `null` and the screen says so, rather than offering a
+ *    doomed editor or — far worse — writing the wrong event's id.
  *
  * `series` is taken from the MASTER wherever one was found, not from the occurrence alone: an
  * expanded instance is supposed to carry `recurrenceId`, and a client that believes only the
@@ -257,9 +348,9 @@ export function resolveIdentity(event: CalendarEvent, index: IdentityIndex): Eve
   const own = index.byId.get(event.id)
   if (own !== undefined) return { writeId: event.id, series: own.series || occurrence }
 
-  const uid = typeof event.uid === 'string' ? event.uid : ''
-  const master = uid === '' ? undefined : index.byUid.get(uid)
-  if (master === undefined) return { writeId: null, series: occurrence }
+  const master = index.bySignature.get(eventSignature(event))
+  // `undefined` is "no such signature", `null` is "more than one". Both mean: do not write.
+  if (master === undefined || master === null) return { writeId: null, series: occurrence }
   return { writeId: master.id, series: master.series || occurrence }
 }
 
