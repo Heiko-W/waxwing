@@ -1605,6 +1605,43 @@
     }
   },
   "files": {
+    "listOptions": "List options",
+    "deleteAction": "Delete",
+    "confirmDeleteBody_one": "This item will be permanently deleted. This can’t be undone.",
+    "confirmDeleteBody_other": "These {{count}} items will be permanently deleted. This can’t be undone.",
+    "confirmDeleteFolder": "Everything inside the selected folders goes with them.",
+    "truncated": "This account holds more than can be listed at once, so some files are not shown. Search to find one that is missing.",
+    "search": {
+      "label": "Search files",
+      "placeholder": "Search all files",
+      "none": "Nothing matches “{{query}}”.",
+      "in": "in {{name}}",
+      "inRoot": "in Files"
+    },
+    "sort": {
+      "byName": "Sort by name",
+      "bySize": "Sort by size",
+      "byKind": "Sort by kind"
+    },
+    "selection": {
+      "start": "Select",
+      "stop": "Done",
+      "clear": "Clear the selection",
+      "all": "Select everything here",
+      "count_one": "{{count}} selected",
+      "count_other": "{{count}} selected"
+    },
+    "move": {
+      "open": "Move {{name}}",
+      "action": "Move",
+      "title": "Move “{{name}}”",
+      "titleMany": "Move {{count}} items",
+      "here": "Move to {{name}}",
+      "breadcrumb": "Destination folder",
+      "noFolders": "No folders here — “Move” still puts them in this one.",
+      "done": "Moved to {{name}}.",
+      "undo": "Undo"
+    },
     "offline": "You are offline. Files can only be changed while connected.",
     "title": "Files",
     "root": "Files",

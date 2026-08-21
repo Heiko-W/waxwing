@@ -14,6 +14,9 @@ export default defineConfig({
     '**/settings.spec.ts',
     '**/contacts.spec.ts',
     '**/calendar.spec.ts',
+    // Stateful like the three above, and cleans up after itself for the same reason: there is no
+    // file seed for the setup to reset. See the header of `files.spec.ts` on what it owns.
+    '**/files.spec.ts',
   ],
   // One shared fixture, stateful sends → serial + per-test reset (see write.spec.ts beforeEach).
   fullyParallel: false,

@@ -71,3 +71,46 @@ describe('a file row keeps its name readable (N-1)', () => {
     expect(ruleBody('.name')).toMatch(/min-block-size:\s*var\(--waxwing-control-min\)/)
   })
 })
+
+/**
+ * The surfaces added on 2026-08-21 (D-1, D-2, D-3), under the same rule as the row above them.
+ *
+ * All four findings landed on a screen whose row already could not hold what it had — which is why
+ * `use-row-actions.ts` exists — so every new element here had to answer "and on a 390px phone?"
+ * before it was allowed on. What follows are the four answers that are stated in CSS rather than in
+ * JavaScript, and that no component test can see: jsdom reports every width as 0.
+ */
+describe('the phone answer for selection, search and the move picker', () => {
+  it('keeps the name’s minimum while the list is in selection mode', () => {
+    // A checkbox in front of the name does not make the name less the point of the row. Without
+    // this the selectable row is back to the N-1 defect: `protokoll-neu.txt` as "p".
+    const select = ruleBody('.selectName')
+    const min = /min-inline-size:\s*([\d.]+)rem/.exec(select)
+    expect(min, '`.selectName` must state the same kind of minimum `.name` does').not.toBeNull()
+    expect(Number(min?.[1])).toBeGreaterThan(0)
+    expect(select).toMatch(/min-block-size:\s*var\(--waxwing-control-min\)/)
+  })
+
+  it('lets the selection bar take a second line rather than scroll sideways', () => {
+    // Five controls at `--waxwing-control-min` (44px under `pointer: coarse`) do not fit 390px. A
+    // second line is untidy; a horizontal scroll with nothing to say it scrolls is unreachable.
+    expect(ruleBody('.selectionBar')).toMatch(/flex-wrap:\s*wrap/)
+  })
+
+  it('never lets a search hit’s location be the thing that gives way', () => {
+    // Same rule as `.rowActions`, one column over: "in Invoices" squeezed to "in I" states nothing,
+    // and stating WHICH `report.txt` this is, is the entire reason an account-wide search is usable.
+    expect(ruleBody('.location')).toMatch(/flex:\s*none/)
+  })
+
+  it('bounds the move picker so its own confirm button stays on screen', () => {
+    // A level of forty folders would otherwise push the dialog footer — and with it "Move here" —
+    // off the bottom of a phone, leaving a picker you can browse and cannot use.
+    expect(ruleBody('.picker')).toMatch(/max-block-size:/)
+    expect(ruleBody('.pickerList')).toMatch(/overflow-y:\s*auto/)
+  })
+
+  it('sizes a destination row from the touch token, like every other row target', () => {
+    expect(ruleBody('.pickerItem')).toMatch(/min-block-size:\s*var\(--waxwing-control-min\)/)
+  })
+})
