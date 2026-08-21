@@ -1309,6 +1309,41 @@
     },
     "templates": {
       "insert": "Insert template"
+    },
+    "replyToLabel": "Reply-To",
+    "showReplyToField": "Reply-To",
+    "attachFromDevice": "From this device…",
+    "options": {
+      "open": "Send options",
+      "title": "Send options",
+      "done": "Done",
+      "priority": {
+        "label": "Priority",
+        "high": "High",
+        "normal": "Normal",
+        "low": "Low"
+      },
+      "receipt": {
+        "label": "Request a delivery receipt",
+        "hint": "The mail system replies with a message telling you whether this was delivered."
+      },
+      "tls": {
+        "label": "Require an encrypted connection",
+        "hint": "The message is returned to you rather than handed over unencrypted."
+      }
+    },
+    "attachFromFiles": {
+      "open": "From Files…",
+      "title": "Attach from Files",
+      "path": "Folder path",
+      "root": "Files",
+      "empty": "This folder is empty.",
+      "errorTitle": "Files could not be loaded",
+      "errorBody": "Check your connection and try again.",
+      "cancel": "Cancel",
+      "confirmEmpty": "Attach",
+      "confirm_one": "Attach {{count}} file",
+      "confirm_other": "Attach {{count}} files"
     }
   },
   "search": {

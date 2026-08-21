@@ -1309,6 +1309,41 @@
     },
     "templates": {
       "insert": "Vorlage einfügen"
+    },
+    "replyToLabel": "Antwort an",
+    "showReplyToField": "Antwort an",
+    "attachFromDevice": "Von diesem Gerät…",
+    "options": {
+      "open": "Sendeoptionen",
+      "title": "Sendeoptionen",
+      "done": "Fertig",
+      "priority": {
+        "label": "Priorität",
+        "high": "Hoch",
+        "normal": "Normal",
+        "low": "Niedrig"
+      },
+      "receipt": {
+        "label": "Zustellbestätigung anfordern",
+        "hint": "Das Mailsystem antwortet mit einer Nachricht, ob diese Mail zugestellt wurde."
+      },
+      "tls": {
+        "label": "Nur verschlüsselt zustellen",
+        "hint": "Die Nachricht kommt zurück, statt unverschlüsselt weitergereicht zu werden."
+      }
+    },
+    "attachFromFiles": {
+      "open": "Aus Dateien…",
+      "title": "Aus Dateien anhängen",
+      "path": "Ordnerpfad",
+      "root": "Dateien",
+      "empty": "Dieser Ordner ist leer.",
+      "errorTitle": "Dateien konnten nicht geladen werden",
+      "errorBody": "Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+      "cancel": "Abbrechen",
+      "confirmEmpty": "Anhängen",
+      "confirm_one": "{{count}} Datei anhängen",
+      "confirm_other": "{{count}} Dateien anhängen"
     }
   },
   "search": {

@@ -12,6 +12,7 @@
 
 import {
   DEFAULT_BLOB_TYPE,
+  type FileNode,
   getCoreCapability,
   getMailCapability,
   type JmapClient,
@@ -21,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import { formatBytes } from '../i18n/formatters'
 import { useToast } from '../ui'
+import { planFileAttachments } from './attach-from-files'
 import {
   type AddFilesMode,
   type BlobUploader,
@@ -97,6 +99,15 @@ export interface UseAttachmentUploadOptions {
 export interface AttachmentController {
   /** Validate + start uploads. Inline images are inserted into the editor immediately (optimistic). */
   addFiles(files: readonly File[], mode: AddFilesMode): void
+  /**
+   * Attach files that are ALREADY in the account, by blob reference (D-5).
+   *
+   * No upload, no progress, no `UploadItem` — the blob exists, so the attachment is complete the
+   * moment it is added. It still runs the same two size checks and raises the same toasts, because
+   * `maxSizeAttachmentsPerEmail` is a limit on the MESSAGE and does not care where the bytes came
+   * from.
+   */
+  attachStored(nodes: readonly FileNode[]): void
   /** Cancel an in-flight upload (abort) or drop an errored one; revokes an inline preview. */
   removeUpload(tempId: string): void
   /** Re-run a failed upload with the same File. */
@@ -385,6 +396,19 @@ export function useAttachmentUpload(
     [draftId],
   )
 
+  const attachStored = useCallback(
+    (nodes: readonly FileNode[]): void => {
+      const state = useComposerStore.getState()
+      const draft = state.drafts.get(draftId)
+      if (draft === undefined) return
+      const existing = totalAttachmentBytes(draft.attachments, state.uploads.get(draftId) ?? [])
+      const plan = planFileAttachments(nodes, existing, limitsRef.current)
+      for (const refusal of plan.refused) toastValidation({ code: refusal.reason }, refusal.name)
+      if (plan.attachments.length > 0) state.addAttachments(draftId, [...plan.attachments])
+    },
+    [draftId, toastValidation],
+  )
+
   // Reactive: does the draft's attachment total (completed + in-flight) already exceed the per-email
   // cap? Forwarded attachments (M2.3) enter via openDraft and bypass addFiles' cumulative check, so
   // this is the send-time gate that also covers a forwarded-only oversize set.
@@ -399,6 +423,7 @@ export function useAttachmentUpload(
   return useMemo<AttachmentController>(
     () => ({
       addFiles,
+      attachStored,
       removeUpload,
       retry,
       removeAttachment,
@@ -406,6 +431,15 @@ export function useAttachmentUpload(
       canUpload: uploader !== undefined,
       oversized,
     }),
-    [addFiles, removeUpload, retry, removeAttachment, syncInlineImages, uploader, oversized],
+    [
+      addFiles,
+      attachStored,
+      removeUpload,
+      retry,
+      removeAttachment,
+      syncInlineImages,
+      uploader,
+      oversized,
+    ],
   )
 }

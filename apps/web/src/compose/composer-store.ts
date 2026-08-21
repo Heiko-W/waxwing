@@ -14,11 +14,22 @@ import type { EmailAddress } from '@waxwing/jmap'
 import { create } from 'zustand'
 import type { UploadItem } from './attachment-upload'
 import type { DraftAttachment } from './reply'
+import { DEFAULT_SEND_OPTIONS, type SendOptions } from './send-options'
 
 export type DraftMode = 'docked' | 'expanded' | 'minimized'
 
-/** The three recipient fields (M2.4). */
+/** The three recipient fields (M2.4). Exactly the fields a pill may be MOVED between. */
 export type RecipientField = 'to' | 'cc' | 'bcc'
+
+/**
+ * Every address field the composer renders, including Reply-To (M-11).
+ *
+ * Deliberately a superset of {@link RecipientField} rather than an extension of it. Reply-To is an
+ * address the composer edits with the same pill widget, but it is NOT a recipient: it never reaches
+ * `rcptTo`, and offering "move to Reply-To" in a pill's menu — which extending `RecipientField`
+ * would have done for free — would put an address into a header that does not deliver anywhere.
+ */
+export type AddressField = RecipientField | 'replyTo'
 
 /** The keyword set on the reply/forward SOURCE message once THIS draft is sent (M2.8, FR-CMP-07). */
 export type SourceFlag = '$answered' | '$forwarded'
@@ -29,6 +40,14 @@ export interface DraftWindow {
   to: EmailAddress[]
   cc: EmailAddress[]
   bcc: EmailAddress[]
+  /**
+   * Where replies should go instead of the From address (M-11) — the `Reply-To` header.
+   *
+   * Per DRAFT, and it wins over the selected identity's own `replyTo` when set: an identity-wide
+   * setting answers "always", this answers "this once", and the more specific of two answers to the
+   * same question is the one the writer just gave.
+   */
+  replyTo: EmailAddress[]
   subject: string
   /** Message HTML — fed to RichTextEditor's `value`, updated from its `onChange`. */
   body: string
@@ -44,6 +63,8 @@ export interface DraftWindow {
   /** The reply/forward source message id (M2.8) — flagged $answered/$forwarded on a successful send. */
   sourceEmailId: string | undefined
   sourceFlag: SourceFlag | undefined
+  /** Priority + delivery receipt + TLS-only, for THIS send (M-7/M-11). */
+  sendOptions: SendOptions
   /** True once the reader edited body/subject — drives the close-guard stub. */
   dirty: boolean
   readonly createdAt: number
@@ -61,6 +82,7 @@ export interface OpenDraftInit {
   readonly to?: EmailAddress[]
   readonly cc?: EmailAddress[]
   readonly bcc?: EmailAddress[]
+  readonly replyTo?: EmailAddress[]
   readonly inReplyTo?: string[] | null
   readonly references?: string[] | null
   readonly fromIdentityHint?: string | undefined
@@ -68,6 +90,7 @@ export interface OpenDraftInit {
   readonly attachments?: DraftAttachment[]
   readonly sourceEmailId?: string | undefined
   readonly sourceFlag?: SourceFlag | undefined
+  readonly sendOptions?: SendOptions
 }
 
 export interface ComposerState {
@@ -86,8 +109,10 @@ export interface ComposerActions {
   setMode(id: string, mode: DraftMode): void
   updateBody(id: string, body: string): void
   updateSubject(id: string, subject: string): void
-  /** Replace a whole recipient field (the pill field adds/removes by passing the new array). */
-  setRecipients(id: string, field: RecipientField, addrs: EmailAddress[]): void
+  /** Replace a whole address field (the pill field adds/removes by passing the new array). */
+  setRecipients(id: string, field: AddressField, addrs: EmailAddress[]): void
+  /** Replace this draft's send options (M-7/M-11); marks the draft dirty. */
+  setSendOptions(id: string, options: SendOptions): void
   /** Move one recipient from one field to another (keyboard "move to Cc/Bcc"), deduping in target. */
   moveRecipient(id: string, from: RecipientField, to: RecipientField, index: number): void
   /** Set the From identity + the signature-swapped body (M2.5; caller computes body via signature.ts). */
@@ -140,6 +165,7 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
       to: init?.to ?? [],
       cc: init?.cc ?? [],
       bcc: init?.bcc ?? [],
+      replyTo: init?.replyTo ?? [],
       subject: init?.subject ?? '',
       body: init?.body ?? '',
       inReplyTo: init?.inReplyTo ?? null,
@@ -149,6 +175,7 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
       attachments: init?.attachments ?? [],
       sourceEmailId: init?.sourceEmailId,
       sourceFlag: init?.sourceFlag,
+      sendOptions: init?.sendOptions ?? DEFAULT_SEND_OPTIONS,
       dirty: false,
       createdAt: Date.now(),
     })
@@ -195,6 +222,14 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
     if (current === undefined) return
     const next = new Map(get().drafts)
     next.set(id, { ...current, [field]: addrs, dirty: true })
+    set({ drafts: next })
+  },
+
+  setSendOptions(id, options) {
+    const current = get().drafts.get(id)
+    if (current === undefined) return
+    const next = new Map(get().drafts)
+    next.set(id, { ...current, sendOptions: options, dirty: true })
     set({ drafts: next })
   },
 

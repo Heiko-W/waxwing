@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next'
 import { type ContactCardRow, useReplicaOptional } from '../sync'
 import { Button } from '../ui'
 import {
+  type AddressField,
   type DraftWindow,
   type RecipientField as RecipientFieldName,
   useComposerStore,
@@ -26,10 +27,11 @@ import {
 } from './recipient-suggestions'
 import { suggestDomainCorrection } from './typo-heuristic'
 
-const LABEL_KEY: Record<RecipientFieldName, string> = {
+const LABEL_KEY: Record<AddressField, string> = {
   to: 'compose.toLabel',
   cc: 'compose.ccLabel',
   bcc: 'compose.bccLabel',
+  replyTo: 'compose.replyToLabel',
 }
 const ALL_FIELDS = ['to', 'cc', 'bcc'] as const
 
@@ -74,8 +76,14 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
 
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
+  const [showReplyTo, setShowReplyTo] = useState(false)
   const ccVisible = showCc || draft.cc.length > 0
   const bccVisible = showBcc || draft.bcc.length > 0
+  // Reply-To (M-11) joins Cc and Bcc behind the same toggle row rather than moving into the send
+  // options sheet, because it IS an address: it belongs with the other addresses, edited by the
+  // same pill widget, and a writer looking for "where do replies go" looks at the header block.
+  // It auto-reveals when it already holds one, so a reopened draft never hides a choice already made.
+  const replyToVisible = showReplyTo || draft.replyTo.length > 0
 
   const renderField = (field: RecipientFieldName) => (
     <RecipientField
@@ -116,7 +124,7 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
           </button>
         </p>
       )}
-      {(!ccVisible || !bccVisible) && (
+      {(!ccVisible || !bccVisible || !replyToVisible) && (
         <div className={styles.fieldToggles}>
           {/* Second grid column, so these line up under the entry box rather than under the label —
               see `.fieldToggles` for why hardcoding the offset kept getting it wrong. */}
@@ -141,11 +149,35 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
                 {t('compose.showBccField')}
               </Button>
             )}
+            {!replyToVisible && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={styles.fieldToggle}
+                onClick={() => setShowReplyTo(true)}
+              >
+                {t('compose.showReplyToField')}
+              </Button>
+            )}
           </div>
         </div>
       )}
       {ccVisible && renderField('cc')}
       {bccVisible && renderField('bcc')}
+      {replyToVisible && (
+        <RecipientField
+          field="replyTo"
+          label={t(LABEL_KEY.replyTo)}
+          value={draft.replyTo}
+          source={source}
+          accountId={replica?.accountId}
+          onChange={(addrs) => setRecipients(draft.id, 'replyTo', addrs)}
+          // Never movable: Reply-To is not a recipient, so "move to Cc" from here would be a
+          // promise to deliver somewhere. An empty list hides the pill menu (RecipientField:268).
+          onMove={() => {}}
+          otherFields={[]}
+        />
+      )}
     </div>
   )
 }

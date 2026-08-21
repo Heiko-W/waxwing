@@ -317,3 +317,194 @@
 .footerDiscard {
   margin-inline-start: auto;
 }
+
+/*
+ * Send options (M-7, M-11) — priority, delivery receipt, TLS-only.
+ *
+ * The trigger wears a dot whenever the sheet is holding a non-default choice. That is the price of
+ * putting anything behind a menu: a control the reader cannot see must still be able to say that it
+ * is doing something, or "why did this go out marked urgent" has no answer on screen.
+ */
+.optionsSet {
+  position: relative;
+}
+
+.optionsSet::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 0.25rem;
+  inset-inline-end: 0.25rem;
+  inline-size: 0.4rem;
+  block-size: 0.4rem;
+  border-radius: 50%;
+  background-color: var(--waxwing-accent);
+}
+
+.optionsBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+}
+
+.optionRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.optionLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.optionSwitch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.optionHint {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/*
+ * The "attach from Files" picker (D-5).
+ *
+ * A file list needs height above all else, so the panel takes a fixed share of the viewport rather
+ * than sizing to its contents — a picker that is four rows tall on a full folder is a scroller
+ * inside a scroller, which is the one shape a touch device handles worst.
+ */
+.pickerPanel {
+  block-size: min(32rem, calc(100vh - 4 * var(--waxwing-space-4)));
+}
+
+.pickerBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+  min-block-size: 0;
+}
+
+.pickerPath {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+  font-size: var(--waxwing-text-sm);
+}
+
+.pickerCrumbGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-1);
+}
+
+.pickerCrumb {
+  border: 0;
+  background: none;
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  color: var(--waxwing-text-muted);
+  font: inherit;
+  cursor: pointer;
+  min-block-size: var(--waxwing-control-min);
+}
+
+/* Pointer-only: a :hover style latches on touch and reads as a second selection. */
+@media (hover: hover) {
+  .pickerCrumb:hover {
+    color: var(--waxwing-text);
+    background-color: var(--waxwing-surface-hover);
+  }
+}
+
+.pickerCrumbSeparator {
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  color: var(--waxwing-text-muted);
+}
+
+.pickerStatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--waxwing-space-6);
+}
+
+.pickerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-block-size: 0;
+}
+
+.pickerRow,
+.pickerRowInner {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  inline-size: 100%;
+  /* 44px under `pointer: coarse` — a file row is a touch target, not a line of text. */
+  min-block-size: var(--waxwing-control-min);
+  text-align: start;
+}
+
+.pickerRow {
+  border: 0;
+  background: none;
+  padding: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pickerRow:hover {
+    background-color: var(--waxwing-surface-hover);
+  }
+}
+
+.pickerIcon {
+  flex: none;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  color: var(--waxwing-text-muted);
+}
+
+.pickerName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickerSize {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--waxwing-text-sm);
+}
+
+/*
+ * Phone: a sheet that owns the screen, not a window floating in the middle of it — the shape the
+ * platform's own document picker has, and the only one where a browsable list is usable one-handed.
+ */
+@media (max-width: 39.999em) {
+  .pickerSheet {
+    /* Negative margins cancel the shared backdrop's padding, which is the only thing standing
+       between this and the screen edge — cheaper and safer than a phone branch in ui/Dialog, which
+       every other dialog in the app would then inherit. */
+    margin: calc(-1 * var(--waxwing-space-4));
+    inline-size: 100vw;
+    block-size: 100vh;
+    max-block-size: none;
+    max-inline-size: none;
+    border: 0;
+    border-radius: 0;
+  }
+}

@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SessionContext } from '../app/session/context'
 import { putIdentities, putMailboxes, type ReplicaDb, ReplicaProvider } from '../sync'
 import { setActiveEngine } from '../sync/engine'
 import { freshDb, mailbox } from '../sync/test-utils'
@@ -195,5 +196,182 @@ describe('useDraftSync.send (M2.8)', () => {
 
     expect(cancelSend).toHaveBeenCalledWith(`send:${id}`)
     expect(useComposerStore.getState().drafts.has(id)).toBe(true) // reopened for editing
+  })
+})
+
+/**
+ * Send options on the wire (M-7, M-11).
+ *
+ * The envelope is where a delivery receipt and a TLS requirement actually live, and it is the one
+ * place a unit test can see them before a server does. `sessionWrapper` adds what the plain
+ * `wrapper` deliberately lacks — a connected session advertising the extensions — because the whole
+ * gate under test is "only send what the account said it accepts".
+ */
+function sessionWrapper(submissionExtensions: Record<string, unknown> | null) {
+  const session = {
+    connected: {
+      accountId: 'a',
+      jmapSession: {
+        accounts: {
+          a: {
+            accountCapabilities:
+              submissionExtensions === null
+                ? {}
+                : { 'urn:ietf:params:jmap:submission': { submissionExtensions } },
+          },
+        },
+      },
+    },
+  } as unknown as ComponentProps<typeof SessionContext.Provider>['value']
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <SessionContext.Provider value={session}>
+        <ReplicaProvider accountId="a" db={db}>
+          {children}
+        </ReplicaProvider>
+      </SessionContext.Provider>
+    )
+  }
+}
+
+/** Exactly what the fixture advertises. */
+const FIXTURE_EXTENSIONS = {
+  FUTURERELEASE: [],
+  SIZE: [],
+  DSN: [],
+  DELIVERYBY: [],
+  'MT-PRIORITY': ['MIXER'],
+  REQUIRETLS: [],
+}
+
+const sentIntent = () =>
+  dispatch.mock.calls[0]?.[0] as {
+    email: Record<string, unknown>
+    envelope: {
+      mailFrom: { email: string; parameters?: Record<string, string | null> }
+      rcptTo: { email: string; parameters?: Record<string, string | null> }[]
+    }
+  }
+
+describe('useDraftSync.send — send options (M-7, M-11)', () => {
+  it('asks for a delivery receipt PER RECIPIENT, and for headers-only in the report', async () => {
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      cc: [{ name: null, email: 'b@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+      sendOptions: { priority: 'normal', deliveryReceipt: true, requireTls: false },
+    })
+    const { result } = renderHook(() => useDraftSync(), {
+      wrapper: sessionWrapper(FIXTURE_EXTENSIONS),
+    })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    const { envelope } = sentIntent()
+    expect(envelope.mailFrom.parameters).toEqual({ RET: 'HDRS' })
+    // NOTIFY/ORCPT are per-RCPT in SMTP — that is what lets a report name WHICH address failed.
+    expect(envelope.rcptTo).toEqual([
+      {
+        email: 'a@x.test',
+        parameters: { NOTIFY: 'SUCCESS,DELAY,FAILURE', ORCPT: 'rfc822;a@x.test' },
+      },
+      {
+        email: 'b@x.test',
+        parameters: { NOTIFY: 'SUCCESS,DELAY,FAILURE', ORCPT: 'rfc822;b@x.test' },
+      },
+    ])
+  })
+
+  it('writes priority as MESSAGE headers and, where advertised, MT-PRIORITY too', async () => {
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+      sendOptions: { priority: 'high', deliveryReceipt: false, requireTls: false },
+    })
+    const { result } = renderHook(() => useDraftSync(), {
+      wrapper: sessionWrapper(FIXTURE_EXTENSIONS),
+    })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    const intent = sentIntent()
+    // The headers are the part the RECIPIENT sees; MT-PRIORITY only orders the sending queue.
+    expect(intent.email['header:X-Priority:asText']).toBe('1')
+    expect(intent.email['header:Importance:asText']).toBe('high')
+    expect(intent.envelope.mailFrom.parameters).toEqual({ 'MT-PRIORITY': '4' })
+  })
+
+  it('merges the scheduling parameter with the options rather than choosing between them', async () => {
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+      sendOptions: { priority: 'normal', deliveryReceipt: true, requireTls: true },
+    })
+    const { result } = renderHook(() => useDraftSync(), {
+      wrapper: sessionWrapper(FIXTURE_EXTENSIONS),
+    })
+
+    await result.current.send(id, { undoMs: 0, scheduleAt: new Date('2026-09-01T08:00:00.000Z') })
+
+    // An envelope carries all of its parameters or none — scheduling a receipted message is an
+    // ordinary thing to want, and dropping either half would be a silent broken promise.
+    expect(sentIntent().envelope.mailFrom.parameters).toEqual({
+      HOLDUNTIL: '2026-09-01T08:00:00.000Z',
+      RET: 'HDRS',
+      REQUIRETLS: null,
+    })
+  })
+
+  it('sends NO envelope parameters where the account advertises no extensions', async () => {
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+      sendOptions: { priority: 'high', deliveryReceipt: true, requireTls: true },
+    })
+    const { result } = renderHook(() => useDraftSync(), { wrapper: sessionWrapper(null) })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    const intent = sentIntent()
+    // Byte-for-byte the envelope this app sent before M-7 existed. A parameter the server would
+    // reject must never reach it — that turns an unavailable feature into a failed send.
+    expect(intent.envelope.mailFrom).toEqual({ email: 'me@x.test' })
+    expect(intent.envelope.rcptTo).toEqual([{ email: 'a@x.test' }])
+    // Priority still travels: headers need no extension at all.
+    expect(intent.email['header:X-Priority:asText']).toBe('1')
+  })
+
+  it("lets the draft's own Reply-To beat the identity's", async () => {
+    await putIdentities(db, 'a', [
+      {
+        id: 'id3',
+        name: 'Me3',
+        email: 'me3@x.test',
+        replyTo: [{ name: null, email: 'always@x.test' }],
+        bcc: null,
+        textSignature: '',
+        htmlSignature: '',
+        mayDelete: true,
+      },
+    ])
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      replyTo: [{ name: null, email: 'this-once@x.test' }],
+      fromIdentityId: 'id3',
+      subject: 'Hi',
+    })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    // An identity-wide Reply-To answers "always"; the field in this window answers "this once", and
+    // the more specific answer is the one the writer just gave.
+    expect(sentIntent().email.replyTo).toEqual([{ name: null, email: 'this-once@x.test' }])
+    // And it is NOT a recipient — nothing was added to the SMTP envelope.
+    expect(sentIntent().envelope.rcptTo).toEqual([{ email: 'a@x.test' }])
   })
 })

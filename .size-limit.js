@@ -79,6 +79,16 @@ export default [
       '!apps/web/dist/assets/FilesPage-*.js',
       // The send-later picker (compose/, M5.4): presets plus the window validation.
       '!apps/web/dist/assets/ScheduleSendDialog-*.js',
+      // The send-options sheet (compose/, M-11): priority, delivery receipt, TLS-only. Opened from
+      // the composer footer, and by the great majority of messages never opened at all.
+      '!apps/web/dist/assets/SendOptionsDialog-*.js',
+      // "Attach from Files" (compose/, D-5) and the files client it browses with. `files-client`
+      // became a chunk of its OWN the day a SECOND lazy chunk started importing it — the same split
+      // `contacts.module` went through. It is a dependency of two lazy chunks and is not
+      // modulepreloaded by index.html, so it loads with the picker or the files screen, never at
+      // first paint.
+      '!apps/web/dist/assets/AttachFromFilesDialog-*.js',
+      '!apps/web/dist/assets/files-client-*.js',
       // The `.eml` import dialog (mail/, M5.3) — restoring an archived message is a rare, deliberate act.
       '!apps/web/dist/assets/EmlImportDialog-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).

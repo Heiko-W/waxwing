@@ -6,8 +6,9 @@
  * local row + destroys the server draft. Reads the running engine lazily (safe before it starts).
  */
 
-import type { EmailAddress, Id } from '@waxwing/jmap'
+import type { EmailAddress, EmailSubmissionAddress, Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
+import { useSessionOptional } from '../app/session/context'
 import {
   type DraftRow,
   deleteDraft,
@@ -20,23 +21,41 @@ import {
 } from '../sync'
 import { getEngineFor } from '../sync/engine'
 import { useComposerStore } from './composer-store'
-import { deserializeDraft, isEmptyDraft, serializeDraft, toEmailCreate } from './draft-email'
+import {
+  deserializeDraft,
+  draftSendOptions,
+  isEmptyDraft,
+  serializeDraft,
+  toEmailCreate,
+} from './draft-email'
 import { revokeInlineObjectUrls } from './inline-image-registry'
 import { holdUntilParameters } from './scheduled-send'
+import { mailFromParameters, rcptToParameters, readSubmissionExtensions } from './send-options'
 
 /** Why a send could not start (surfaced by the composer as a toast). */
 export type SendFailure = 'noRecipients' | 'noIdentity' | 'noSentMailbox' | 'engineUnavailable'
 export type SendResult = { ok: true; undoMs: number } | { ok: false; reason: SendFailure }
 
-/** Unique SMTP recipients (RCPT TO) across to+cc+bcc, deduped by lowercased address. */
-function dedupRecipients(list: readonly EmailAddress[]): { email: string }[] {
+/**
+ * Unique SMTP recipients (RCPT TO) across to+cc+bcc, deduped by lowercased address.
+ *
+ * Each carries its own DSN parameters (M-7), because `NOTIFY`/`ORCPT` are per-RECIPIENT in SMTP —
+ * that is the whole reason a receipt can tell you *which* of five addresses failed. `ORCPT` is
+ * built from `addr.email` as the writer typed it, not the lower-cased dedup key: the point of the
+ * parameter is to echo the original address back in the report.
+ */
+function dedupRecipients(
+  list: readonly EmailAddress[],
+  parameters: (email: string) => Record<string, string | null> | null,
+): EmailSubmissionAddress[] {
   const seen = new Set<string>()
-  const out: { email: string }[] = []
+  const out: EmailSubmissionAddress[] = []
   for (const addr of list) {
     const key = addr.email.toLowerCase()
     if (!seen.has(key)) {
       seen.add(key)
-      out.push({ email: addr.email })
+      const params = parameters(addr.email)
+      out.push(params === null ? { email: addr.email } : { email: addr.email, parameters: params })
     }
   }
   return out
@@ -69,6 +88,15 @@ export interface DraftSync {
   send(localId: string, opts: { undoMs: number; scheduleAt?: Date }): Promise<SendResult>
   /** Cancel a queued send while still in its grace window and reopen the draft (M2.8 Undo). */
   undoSend(localId: string): Promise<void>
+}
+
+/** Merge two optional parameter maps into one, or `null` when neither has anything to say. */
+function mergeEnvelopeParameters(
+  ...maps: readonly (Record<string, string | null> | null)[]
+): Record<string, string | null> | null {
+  const merged: Record<string, string | null> = {}
+  for (const map of maps) if (map !== null) Object.assign(merged, map)
+  return Object.keys(merged).length > 0 ? merged : null
 }
 
 /** Autosave/discard share this id (a later save coalesces over an earlier one). */
@@ -151,6 +179,19 @@ export async function flushActiveDraft(localId: string): Promise<void> {
 
 export function useDraftSync(): DraftSync {
   const replica = useReplicaOptional()
+  const connected = useSessionOptional()
+  const jmapSession = connected?.jmapSession ?? null
+  const sessionAccountId = connected?.accountId ?? null
+  // What this account may be ASKED for. Absent session (unit tests, pre-connect) reads as "no
+  // extensions", which makes every envelope identical to the one sent before M-7 existed — the
+  // send path must never become dependent on a capability document having arrived.
+  //
+  // Memoized because the DraftSync below is, and a fresh object every render would rebuild the whole
+  // seam on every keystroke.
+  const extensions = useMemo(
+    () => readSubmissionExtensions(jmapSession, sessionAccountId),
+    [jmapSession, sessionAccountId],
+  )
   return useMemo<DraftSync>(() => {
     const closeWindow = (localId: string): void => useComposerStore.getState().closeDraft(localId)
     if (replica === null) {
@@ -229,13 +270,23 @@ export function useDraftSync(): DraftSync {
         // Apply the selected identity's submission extras (RFC 8621 §6): a Reply-To header and an
         // "always bcc" copy. An identity bcc must ALSO reach the SMTP envelope (rcptTo) to deliver.
         const identityBcc = identity.bcc ?? []
-        if (identity.replyTo !== null && identity.replyTo.length > 0)
+        // The identity's Reply-To is a FALLBACK now (M-11): `toEmailCreate` has already written the
+        // draft's own, and overwriting it here would make the per-message field the one thing in the
+        // composer that silently does nothing.
+        const draftReplyTo = content.replyTo ?? []
+        if (draftReplyTo.length === 0 && identity.replyTo !== null && identity.replyTo.length > 0) {
           email.replyTo = identity.replyTo
+        }
         if (identityBcc.length > 0) {
           const seen = new Set(content.bcc.map((address) => address.email.toLowerCase()))
           const extra = identityBcc.filter((address) => !seen.has(address.email.toLowerCase()))
           if (extra.length > 0) email.bcc = [...content.bcc, ...extra]
         }
+        const sendOptions = draftSendOptions(content)
+        const mergedParameters = mergeEnvelopeParameters(
+          opts.scheduleAt === undefined ? null : holdUntilParameters(opts.scheduleAt),
+          mailFromParameters(sendOptions, extensions),
+        )
         const source =
           content.sourceEmailId !== null && content.sourceFlag !== null
             ? { emailId: content.sourceEmailId, keyword: content.sourceFlag }
@@ -256,18 +307,17 @@ export function useDraftSync(): DraftSync {
             envelope: {
               mailFrom: {
                 email: identity.email,
-                // The scheduling request rides here, as an SMTP parameter — NOT as `sendAt`, which
-                // is server-set and immutable (RFC 8621 §7.1).
-                ...(opts.scheduleAt === undefined
-                  ? {}
-                  : { parameters: holdUntilParameters(opts.scheduleAt) }),
+                // ONE parameter map, built from two independent wishes: the scheduling request
+                // (FUTURERELEASE) and the send options (DSN / REQUIRETLS / MT-PRIORITY). They are
+                // merged rather than chosen between — scheduling a receipted message is an ordinary
+                // thing to want, and an envelope carries all of its parameters or none of them.
+                // Omitted entirely when both are empty, so an ordinary send is unchanged.
+                ...(mergedParameters === null ? {} : { parameters: mergedParameters }),
               },
-              rcptTo: dedupRecipients([
-                ...content.to,
-                ...content.cc,
-                ...content.bcc,
-                ...identityBcc,
-              ]),
+              rcptTo: dedupRecipients(
+                [...content.to, ...content.cc, ...content.bcc, ...identityBcc],
+                (email) => rcptToParameters(email, sendOptions, extensions),
+              ),
             },
             onSuccessUpdateEmail: {
               [`mailboxIds/${draftsBox.id}`]: null,
@@ -291,5 +341,5 @@ export function useDraftSync(): DraftSync {
         }
       },
     }
-  }, [replica])
+  }, [replica, extensions])
 }
