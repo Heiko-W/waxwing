@@ -931,8 +931,10 @@
   cursor: pointer;
 }
 
-.navRow:hover {
-  background: var(--waxwing-surface-hover);
+@media (hover: hover) {
+  .navRow:hover {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 .navRowLabel {
@@ -986,8 +988,10 @@
   cursor: pointer;
 }
 
-.choiceRow:hover:not(:disabled) {
-  background: var(--waxwing-surface-hover);
+@media (hover: hover) {
+  .choiceRow:hover:not(:disabled) {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 /* The row a stored rule this editor cannot express occupies. Shown so the reader knows what the
