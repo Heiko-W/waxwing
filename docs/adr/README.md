@@ -51,6 +51,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [022](022-identities-are-editable-in-the-client.md) | Identities and signatures are editable in the client, online-only | accepted |
 | [023](023-foreign-sieve-is-preserved-never-parsed.md) | A Sieve script we did not write is preserved verbatim, never parsed | accepted |
 | [024](024-password-sign-in-sits-behind-a-disclosure.md) | Password sign-in sits behind a disclosure; only OAuth can carry a second factor | accepted |
+| [025](025-jscalendarbis-is-the-wire-format.md) | The calendar wire format is `jscalendarbis`, not RFC 8984 | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

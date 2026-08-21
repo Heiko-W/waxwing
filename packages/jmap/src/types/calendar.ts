@@ -1,10 +1,25 @@
 /**
  * JMAP for Calendars — `Calendar` and `CalendarEvent` (M5.6, FR-CAL-01).
  *
- * **Standardisation status, stated plainly:** this is `draft-ietf-jmap-calendars`, which sits in
- * the RFC Editor queue and has no RFC number yet. The event payload itself is JSCalendar, which
- * *is* final (RFC 8984). Every shape below was **measured against Stalwart 0.16** rather than
- * transcribed from the draft — where the two differ, the server won.
+ * **Two specifications, and neither is an RFC.** That is worth stating plainly, because the file
+ * this replaced claimed one of them was final and was wrong about it:
+ *
+ *  - the **transport and object model** is `draft-ietf-jmap-calendars` — the `Calendar` object, the
+ *    `/get`,`/set`,`/query` shapes, and the handful of envelope properties JMAP adds to an event
+ *    (`calendarIds`, `isOrigin`, `isDraft`, `baseEventId`). It sits in the RFC Editor queue and has
+ *    no number yet.
+ *  - the **event payload** is JSCalendar. RFC 8984 is final, but Stalwart does not implement it: it
+ *    implements **`draft-ietf-calext-jscalendarbis`**, the revision that is meant to obsolete
+ *    RFC 8984, and the two differ in property names this client has to get right. See
+ *    `docs/adr/025-jscalendarbis-is-the-wire-format.md` for the measurements.
+ *
+ * Every property below carries a marker saying which of the two it comes from, so the next reader
+ * looks it up in the right document. The three that cost the most to find the hard way:
+ * `recurrenceRule` is SINGULAR, a participant's address is `calendarAddress` and not `sendTo`, and
+ * an expanded instance names its master in `baseEventId`.
+ *
+ * As before, every shape here was **measured against Stalwart 0.16** rather than transcribed —
+ * where server and draft differ, the server wins and the difference is written down.
  *
  * **The one modelling decision worth understanding.** A JSCalendar `start` is a *local* date-time
  * with no offset (`2026-08-20T10:00:00`), and the zone lives beside it in `timeZone`. That is not
@@ -37,7 +52,16 @@ export type LocalDateTime = string
 /** An ISO 8601 duration: `PT1H`, `P1D`. */
 export type Duration = string
 
-/** Per-calendar permissions (measured; the draft's set is the same). */
+/**
+ * A calendar address, as JSCalendar 2.0 writes one: a bare URI string, `mailto:someone@example.test`.
+ *
+ * RFC 8984 modelled the same thing as a `sendTo` MAP from method (`imip`, `web`) to URI.
+ * `jscalendarbis` replaced that map with this single string, and Stalwart followed — see
+ * {@link Participant.calendarAddress} for what happens if a client sends the old shape.
+ */
+export type CalendarAddress = string
+
+/** Per-calendar permissions (`draft-ietf-jmap-calendars`; measured, and the draft's set is the same). */
 export interface CalendarRights {
   mayReadFreeBusy: boolean
   mayReadItems: boolean
@@ -53,7 +77,16 @@ export interface CalendarRights {
   mayDelete: boolean
 }
 
-/** A calendar (the container an event belongs to). */
+/**
+ * A calendar (the container an event belongs to) — `draft-ietf-jmap-calendars` §4.
+ *
+ * **Half of this arrives only if you ask for it.** Measured: `Calendar/get` with no `properties`
+ * answers `id, name, description, color, timeZone, sortOrder, isDefault, isSubscribed, myRights`
+ * and nothing else. The five optional properties below are omitted from that default answer and
+ * come back only when named explicitly, which is why they are typed as optional here rather than
+ * required — a client that adds one to the type and forgets the request reads `undefined`
+ * everywhere and concludes the server does not support it.
+ */
 export interface Calendar {
   id: Id
   name: string
@@ -66,6 +99,22 @@ export interface Calendar {
   isDefault: boolean
   isSubscribed: boolean
   myRights: CalendarRights
+  /**
+   * Whether this calendar's events should be drawn at all.
+   *
+   * **Only `false` means hidden.** `undefined` means the property was not requested (or the server
+   * does not send it), and treating that as "hidden" empties the calendar on any server that does
+   * not implement it. The rule is one-sided on purpose: absent is visible.
+   */
+  isVisible?: boolean
+  /** Which of this calendar's events count towards free/busy. Measured value: `attending`. */
+  includeInAvailability?: 'all' | 'attending' | 'none'
+  /** Alerts applied to new TIMED events that do not set their own. */
+  defaultAlertsWithTime?: Record<Id, Alert> | null
+  /** Alerts applied to new WHOLE-DAY events that do not set their own. */
+  defaultAlertsWithoutTime?: Record<Id, Alert> | null
+  /** Principal id → the rights that principal has here. Absent when the calendar is not shared. */
+  shareWith?: Record<Id, CalendarRights> | null
 }
 
 /** The account-level `urn:ietf:params:jmap:calendars` object (measured against Stalwart 0.16). */
@@ -83,18 +132,33 @@ export interface CalendarCapability {
   mayCreateCalendar: boolean
 }
 
-/** How a participant answered (JSCalendar, RFC 8984 §4.4.5). */
+/** How a participant answered (JSCalendar §4.4). */
 export type ParticipationStatus = 'needs-action' | 'accepted' | 'declined' | 'tentative'
 
-/** One participant of an event. */
+/**
+ * One participant of an event (JSCalendar).
+ *
+ * **`calendarAddress`, not `sendTo` — and getting it wrong is silent.** Measured against Stalwart
+ * 0.16: a `CalendarEvent/set` whose participants carry RFC 8984's `sendTo: {imip: "mailto:…"}` is
+ * answered `created`, with no error and no `invalidProperties`; reading the event back shows it has
+ * no `participants` at all. The whole map is dropped on the floor. The same call with
+ * `calendarAddress` stores every participant and echoes them back.
+ */
 export interface Participant {
   '@type'?: 'Participant'
   name?: string
   email?: string
-  /** `mailto:someone@example.test`. */
-  sendTo?: Record<string, string>
-  /** `owner`, `attendee`, `chair`, `optional`, … — a set, not a single value. */
+  /**
+   * `mailto:someone@example.test`. Required by `jscalendarbis` whenever `expectReply` is set, and
+   * the server adds one for the organiser itself if the client does not.
+   */
+  calendarAddress?: CalendarAddress
+  /** The address that acted on this participant's behalf (a delegate or an assistant). */
+  sentBy?: CalendarAddress
+  /** `owner`, `attendee`, `chair`, `optional`, `required`, … — a set, not a single value. */
   roles?: Record<string, boolean>
+  /** `individual`, `group`, `resource`, `location`. Stalwart fills this in for the organiser. */
+  kind?: string
   participationStatus?: ParticipationStatus
   expectReply?: boolean
 }
@@ -112,7 +176,7 @@ export interface Alert {
   action?: 'display' | 'email'
 }
 
-/** A recurrence rule (JSCalendar §4.3.3). Only the fields a client commonly writes are named. */
+/** A recurrence rule (JSCalendar §4.3). Only the fields a client commonly writes are named. */
 export interface RecurrenceRule {
   '@type'?: 'RecurrenceRule'
   frequency: 'yearly' | 'monthly' | 'weekly' | 'daily' | 'hourly' | 'minutely' | 'secondly'
@@ -121,10 +185,20 @@ export interface RecurrenceRule {
   until?: LocalDateTime
   byDay?: { '@type'?: 'NDay'; day: string; nthOfPeriod?: number }[]
   byMonthDay?: number[]
+  /**
+   * Months, as STRINGS — `'1'` for January, and `'5L'` for a leap month in a lunisolar calendar.
+   * That last case is why the format cannot use numbers here, and it is the one property of this
+   * object whose type surprises everybody. `byMonthDay` above really is numeric.
+   */
+  byMonth?: string[]
 }
 
 /**
- * A calendar event (JSCalendar, RFC 8984).
+ * A calendar event.
+ *
+ * The payload is JSCalendar (`jscalendarbis`); `calendarIds`, `isOrigin`, `isDraft` and
+ * `baseEventId` are the envelope `draft-ietf-jmap-calendars` adds around it, and are marked as
+ * such below so nobody hunts for them in the wrong document.
  *
  * Deliberately not exhaustive: JSCalendar is a large format and this names what the client reads
  * or writes. Unknown properties survive a round trip because the server keeps them — this type
@@ -133,7 +207,7 @@ export interface RecurrenceRule {
 export interface CalendarEvent {
   '@type'?: 'Event'
   id: Id
-  /** Which calendars it belongs to, as a set. */
+  /** **JMAP envelope.** Which calendars it belongs to, as a set. */
   calendarIds: Record<Id, boolean>
   title?: string
   description?: string
@@ -150,14 +224,50 @@ export interface CalendarEvent {
   locations?: Record<string, { '@type'?: 'Location'; name?: string }>
   virtualLocations?: Record<string, { '@type'?: 'VirtualLocation'; name?: string; uri?: string }>
   participants?: Record<string, Participant>
+  /**
+   * The organiser's calendar address. Set it whenever `participants` is set — `jscalendarbis`
+   * requires it, and Stalwart 0.16.18's release notes name a bug where the server failed to assign
+   * it and then sent no scheduling messages at all.
+   */
+  organizerCalendarAddress?: CalendarAddress
+  /**
+   * The iTIP method in lowercase (`request`, `reply`, `cancel`, …).
+   *
+   * **Immutable on this server:** an update naming it is refused with
+   * `invalidProperties: "This property is immutable."`, so it is a read-only field for the editor.
+   */
+  method?: string
   alerts?: Record<string, Alert>
-  recurrenceRules?: RecurrenceRule[]
+  /**
+   * The repetition rule — **SINGULAR, one object, not an array**.
+   *
+   * RFC 8984 §4.3.3 named this `recurrenceRules` and typed it as a list; `jscalendarbis` replaced
+   * it with a single `recurrenceRule`, and Stalwart implements the latter in BOTH directions.
+   * Measured: a create carrying `recurrenceRules` is refused outright
+   * (`invalidProperties: ["recurrenceRules"]`), the same create carrying `recurrenceRule` succeeds,
+   * and a read answers `recurrenceRule` — which is why a master asked for the plural spelling came
+   * back looking like an ordinary event for months.
+   */
+  recurrenceRule?: RecurrenceRule
   /** Per-instance overrides, keyed by the instance's local start. */
   recurrenceOverrides?: Record<LocalDateTime, Record<string, unknown> | null>
-  /** Server-set: whether this is the master event rather than an expanded instance. */
+  /** **JMAP envelope.** Server-set: is this account the authoritative source for the event? */
   isOrigin?: boolean
+  /** **JMAP envelope.** A draft is not scheduled and triggers no alerts. */
   isDraft?: boolean
-  /** Present on an expanded instance: which occurrence this is. */
+  /**
+   * **JMAP envelope.** The id of the MASTER event this synthetic instance was expanded from.
+   *
+   * Present on every occurrence an `expandRecurrences` query answers with — including occurrences
+   * of events that repeat nothing, where it simply names the event itself. Absent on a real,
+   * stored object, because the draft defines it only "if the `id` property is a synthetic id".
+   *
+   * This is the one certain way back from a display id to a writable one, and it is why
+   * `calendar-client.ts` no longer has to guess. Its presence says nothing about recurrence:
+   * `recurrenceId` reports that.
+   */
+  baseEventId?: Id
+  /** Present on an expanded instance: which occurrence this is (JSCalendar §4.3). */
   recurrenceId?: LocalDateTime
   uid?: string
   sequence?: UnsignedInt
@@ -206,6 +316,9 @@ export type CalendarEventQueryRequest = Omit<QueryRequest, 'filter'> & {
    * handling that is genuinely hard and that the server has already done. Requires `after` and
    * `before`, and the window may not exceed
    * {@link CalendarCapability.maxExpandedQueryDuration}.
+   *
+   * The ids it answers with are SYNTHETIC and cannot be written to; each expanded event carries
+   * {@link CalendarEvent.baseEventId} naming the real one.
    */
   expandRecurrences?: boolean
 }
