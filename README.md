@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.13.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.14.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -101,17 +101,25 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.13.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.14.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: ~3 200 unit tests, 9
-integration tests against a live Stalwart, and 107 end-to-end tests across six Playwright
+Every planned work package is done and the release gate is signed off: 3 823 unit tests, 18
+integration tests against a live Stalwart, and 125 end-to-end tests across six Playwright
 suites, all green. Performance and accessibility are measured rather than asserted — the
 numbers are in the [implementation plan](docs/implementation-plan.md).
 
-**v0.13.0 closes the gap to Bulwark**, the other serverless JMAP client, measured feature
+**v0.14.0 is the second UI review, fixed.** Sixty findings from a follow-up pass over the
+running client at three viewport tiers, in both themes and across all six accent palettes —
+including two settings that turned out to apply only half-way (the dark palette had four
+surface tokens on one value, and five of six accents left the selection tint blue), and a
+regression the previous round's own work had introduced. The list, its evidence and the three
+findings withdrawn on reading the code are in
+[the review](docs/ui-review-2026-08-20.md).
+
+**v0.13.0 closed the gap to Bulwark**, the other serverless JMAP client, measured feature
 by feature in [the comparison](docs/competitive-analysis-bulwark.md). Sieve filter rules, a
 calendar, file storage with sharing, multiple accounts, scheduled send, saved searches,
-templates, snooze, `winmail.dat` unpacking and read receipts all arrived in this release. Every
+templates, snooze, `winmail.dat` unpacking and read receipts all arrived in that release. Every
 JMAP shape in it was measured against a live server rather than transcribed from a draft, which
 is how four of them turned out to differ from what the specification says.
 
