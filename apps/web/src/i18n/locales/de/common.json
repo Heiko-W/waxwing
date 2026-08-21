@@ -1544,6 +1544,43 @@
     }
   },
   "files": {
+    "listOptions": "Listenoptionen",
+    "deleteAction": "Löschen",
+    "confirmDeleteBody_one": "Dieses Element wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "confirmDeleteBody_other": "Diese {{count}} Elemente werden endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "confirmDeleteFolder": "Alles in den gewählten Ordnern geht mit.",
+    "truncated": "Dieses Konto enthält mehr, als sich auf einmal auflisten lässt; ein Teil der Dateien fehlt hier. Suchen Sie nach einer, die Sie vermissen.",
+    "search": {
+      "label": "Dateien durchsuchen",
+      "placeholder": "Alle Dateien durchsuchen",
+      "none": "Nichts passt zu „{{query}}“.",
+      "in": "in {{name}}",
+      "inRoot": "in Dateien"
+    },
+    "sort": {
+      "byName": "Nach Name sortieren",
+      "bySize": "Nach Größe sortieren",
+      "byKind": "Nach Art sortieren"
+    },
+    "selection": {
+      "start": "Auswählen",
+      "stop": "Fertig",
+      "clear": "Auswahl aufheben",
+      "all": "Alles hier auswählen",
+      "count_one": "{{count}} ausgewählt",
+      "count_other": "{{count}} ausgewählt"
+    },
+    "move": {
+      "open": "{{name}} bewegen",
+      "action": "Bewegen",
+      "title": "„{{name}}“ bewegen",
+      "titleMany": "{{count}} Elemente bewegen",
+      "here": "Nach {{name}} bewegen",
+      "breadcrumb": "Zielordner",
+      "noFolders": "Hier gibt es keine Ordner — „Bewegen“ legt sie trotzdem in diesen.",
+      "done": "Nach {{name}} bewegt.",
+      "undo": "Rückgängig"
+    },
     "offline": "Sie sind offline. Dateien lassen sich nur mit Verbindung ändern.",
     "title": "Dateien",
     "root": "Dateien",
