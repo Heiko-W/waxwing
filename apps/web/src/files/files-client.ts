@@ -377,7 +377,27 @@ export function makeFilesClient(
     async destroy(ids) {
       if (ids.length === 0) return
       const responses = await client.call([
-        [Methods.fileNodeSet.name, { accountId, destroy: [...ids] }, 'f0'],
+        [
+          Methods.fileNodeSet.name,
+          {
+            accountId,
+            destroy: [...ids],
+            /**
+             * The flag the confirmation already promised. `FilesPage` shows "Everything inside the
+             * selected folders goes with them." whenever a directory is among the nodes being
+             * deleted — and without this the server refuses the whole set with
+             * `nodeHasChildren` ("Cannot delete non-empty folder."), so the one delete the sentence
+             * was written for was the one that could not happen. The user has already answered the
+             * question this flag asks; not sending it turned their Yes into an error toast.
+             *
+             * Unconditional rather than "only when a directory is selected": a leaf has no children
+             * for it to remove, and a per-call condition would have to re-derive what the dialog
+             * already decided.
+             */
+            onDestroyRemoveChildren: true,
+          },
+          'f0',
+        ],
       ])
       throwIfRefused(responses.get<{ notDestroyed: Record<string, { type: string }> | null }>('f0'))
     },

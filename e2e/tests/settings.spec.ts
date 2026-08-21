@@ -21,6 +21,7 @@ const QUOTA = 'urn:ietf:params:jmap:quota'
 const SUBMISSION = 'urn:ietf:params:jmap:submission'
 const MAIL = 'urn:ietf:params:jmap:mail'
 const WEBPUSH_VAPID = 'urn:ietf:params:jmap:webpush-vapid'
+const EMAILPUSH = 'urn:ietf:params:jmap:emailpush'
 
 interface Vacation {
   readonly isEnabled: boolean
@@ -216,17 +217,22 @@ test.describe('M3.7 settings suite', () => {
   /**
    * FR-NOTIF-02 / NFR-PRIV-02, and the ONLY background-push assertion this repo may contain.
    *
-   * **This test has now been rewritten twice by its own instructions, which is the point of it.**
-   * The first form asserted the capability was ABSENT and said it must fail the day a server shipped
-   * RFC 9749; Stalwart v0.16.14 did, on 2026-07-20, and it failed. The second form asserted the app
-   * admitted "we do not deliver it yet" and said it must fail again if the client half ever shipped.
-   * M4.0 shipped it (owner decision D6a, ADR-017), and it failed. Both times the fix was to make the
-   * app honest and follow it here — never to pin a wording that had stopped being true.
+   * **This test has now been rewritten three times by its own instructions, which is the point of
+   * it.** The first form asserted the capability was ABSENT and said it must fail the day a server
+   * shipped RFC 9749; Stalwart v0.16.14 did, on 2026-07-20, and it failed. The second form asserted
+   * the app admitted "we do not deliver it yet" and said it must fail again if the client half ever
+   * shipped. M4.0 shipped it (owner decision D6a, ADR-017), and it failed. The third form pinned
+   * "never the sender or the subject" — and P-1 shipped `draft-ietf-jmap-emailpush-03`, which is
+   * precisely the extension that lets a closed-app banner carry them, so it failed too. Every time
+   * the fix was to make the app honest and follow it here — never to pin a wording that had stopped
+   * being true.
    *
    * What it guards NOW is the shape ADR-017 accepted: the good news may be stated, and never alone.
-   * A closed-app banner names no sender and no subject, the folder list on this very screen does not
-   * reach it, and the subscription lapses after seven days without a visit. All three are limits a
-   * user cannot discover by using the feature — only by being told.
+   * WHICH limits apply is a property of the SERVER, and this one supports `emailPush`, so the
+   * closed-app banner is contentful and the honest statement is that it names the sender and the
+   * subject — the same thing an open Waxwing shows. The two limits that survive that are asserted
+   * below, and the contentless sentence must be ABSENT: on this server it would be a lie, and it is
+   * the exact string this test used to demand.
    *
    * **What this test deliberately does NOT do: verify a delivery.** Playwright cannot observe a
    * closed app, and Chromium here has no push service to mint an endpoint against, so
@@ -241,6 +247,12 @@ test.describe('M3.7 settings suite', () => {
   }) => {
     const session = (await alice.session()) as unknown as SessionDoc
     expect(usableVapidKey(session), premiseFailure(session)).toBe(true)
+    // The other half of the premise, and the one that decides which sentence is true below: with
+    // `emailPush` the server can put the sender and the subject in a closed-app notification.
+    expect(
+      Object.hasOwn(session.capabilities, EMAILPUSH),
+      `the server advertises no \`${EMAILPUSH}\`; the fixture must run Stalwart >= v0.16.16`,
+    ).toBe(true)
 
     await login(page, CREDENTIALS.alice)
     await openSettings(page, 'Notifications')
@@ -256,10 +268,16 @@ test.describe('M3.7 settings suite', () => {
     await expect(notifications).toContainText(
       'This server can also notify you while Waxwing is closed',
     )
-    // The three limits, each of which a user would otherwise discover only by being let down.
-    await expect(notifications).toContainText('never the sender or the subject')
-    await expect(notifications).toContainText('folder setting above does not apply')
+    // What the banner will actually say on THIS server — stated, not left to be discovered.
+    await expect(notifications).toContainText('name the sender and the subject')
+    // The two limits that survive `emailPush`, each of which a user would otherwise discover only by
+    // being let down.
+    await expect(notifications).toContainText('folder selection above does not apply')
     await expect(notifications).toContainText('at least once a week')
+    // …and the contentless promise is NOT also made. It is the string this test demanded before
+    // P-1, so its absence is the assertion that the copy followed the capability rather than being
+    // widened to satisfy both.
+    await expect(notifications).not.toContainText('never the sender or the subject')
 
     // …and it does not simultaneously claim the server cannot. The two strings are mutually
     // exclusive by construction, so this is the assertion a future edit cannot satisfy by rendering

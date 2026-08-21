@@ -363,9 +363,15 @@ test.describe('compose: send options + stored attachments (M-7, M-11, D-5)', () 
     // ---- clean up after ourselves: the write setup resets mail, never files.
     await page.getByRole('link', { name: 'Files', exact: true }).click()
     const inRow = page.getByRole('button', { name: `Delete ${fileName}`, exact: true })
-    if (await inRow.isVisible().catch(() => false)) await inRow.click()
+    const rowMenu = page.getByRole('button', { name: `More actions for ${fileName}`, exact: true })
+    // WAIT for the row before asking which shape it has — `use-row-actions.ts` puts Delete in the
+    // row or behind the `⋯` depending on how wide the row is, and `isVisible()` does not wait. Asked
+    // straight after this navigation it answers "no" because the listing has not arrived yet, and
+    // the else-branch then waited the whole test timeout for a menu this row never grows.
+    await expect(inRow.or(rowMenu).first()).toBeVisible({ timeout: 30_000 })
+    if (await inRow.isVisible()) await inRow.click()
     else {
-      await page.getByRole('button', { name: `More actions for ${fileName}`, exact: true }).click()
+      await rowMenu.click()
       await page.getByRole('menuitem', { name: `Delete ${fileName}`, exact: true }).click()
     }
     const confirm = page.getByRole('dialog')

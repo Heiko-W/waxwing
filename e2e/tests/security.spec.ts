@@ -245,16 +245,19 @@ test.describe('Settings → Account & security', () => {
     await page.getByRole('button', { name: 'Change password…', exact: true }).click()
 
     const dialog = page.getByRole('dialog')
-    await expect(dialog.getByLabel('Current password')).toBeVisible()
-    await expect(dialog.getByLabel('New password')).toBeVisible()
-    await expect(dialog.getByLabel('Repeat new password')).toBeVisible()
+    // `exact` on the middle one, and it is load-bearing: `getByLabel` matches a SUBSTRING, and
+    // "New password" is one of "Repeat new password" — so the bare form resolves to both fields and
+    // Playwright refuses it under strict mode. The labels themselves are right; the query was not.
+    await expect(dialog.getByLabel('Current password', { exact: true })).toBeVisible()
+    await expect(dialog.getByLabel('New password', { exact: true })).toBeVisible()
+    await expect(dialog.getByLabel('Repeat new password', { exact: true })).toBeVisible()
     await expect(dialog).toContainText('App passwords keep working.')
 
     // The one thing safe to submit: two new passwords that disagree. Caught in the client, so no
     // request is made and no attempt is counted.
-    await dialog.getByLabel('Current password').fill(CREDENTIALS.alice.pass)
-    await dialog.getByLabel('New password').fill('one-Pw1!')
-    await dialog.getByLabel('Repeat new password').fill('another-Pw1!')
+    await dialog.getByLabel('Current password', { exact: true }).fill(CREDENTIALS.alice.pass)
+    await dialog.getByLabel('New password', { exact: true }).fill('one-Pw1!')
+    await dialog.getByLabel('Repeat new password', { exact: true }).fill('another-Pw1!')
     await dialog.getByRole('button', { name: 'Change password', exact: true }).click()
 
     await expect(dialog).toContainText('The two new passwords are not the same.')

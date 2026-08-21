@@ -59,7 +59,7 @@ import {
   Upload,
   UsersRound,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
@@ -292,6 +292,27 @@ export default function FilesPage(props: FilesPageProps) {
     void load()
   }, [load])
 
+  /**
+   * The CURRENT `load`, for the one callback on this screen that outlives the render that made it.
+   *
+   * `load` is a `useCallback` over `here` — the folder on screen — so every render in a different
+   * folder produces a different one. `run()` closes over whichever `load` its own render had, and
+   * that is right for every caller but one: the move toast's **Undo**. That toast does not expire
+   * (ADR-021), so the reader can walk into the folder they just moved the file to and press Undo
+   * there — which is the obvious thing to do, and is exactly what the E2E does. The server move
+   * back then ran correctly and the reload that followed it refreshed the folder the reader had
+   * LEFT, so the row stayed on screen and Undo looked like it had done nothing.
+   *
+   * `useLayoutEffect` rather than `useEffect`, matching the fix recorded for B44: a passive effect
+   * is scheduled as its own task, so between a commit and its effect a callback still reads the
+   * previous render's value. The window is not what bites here — the gap is renders wide, not
+   * microtasks — but there is no reason to leave the smaller hole open next to the larger one.
+   */
+  const loadRef = useRef(load)
+  useLayoutEffect(() => {
+    loadRef.current = load
+  }, [load])
+
   // A selection is about the rows in front of you. Walking into a folder or typing a search puts
   // different rows there, and carrying ids across would leave a bulk action pointed at things the
   // reader can no longer see. The deps are the two navigations, not anything the body reads.
@@ -364,7 +385,10 @@ export default function FilesPage(props: FilesPageProps) {
        * be loaded", and nothing anywhere said that the file was now there — the user uploaded into
        * a void. The reload failing is not the write failing, and the two must not look the same.
        */
-      if (!(await load())) toast({ tone: 'warning', title: t('files.savedButNotShown') })
+      // `loadRef`, not `load`: reload what is on screen NOW, not what was on screen when this
+      // callback was made. See the ref's own note — the move toast's Undo is the caller that can
+      // be pressed several navigations later.
+      if (!(await loadRef.current())) toast({ tone: 'warning', title: t('files.savedButNotShown') })
     } catch (thrown) {
       const key =
         thrown instanceof FileSetError ? `files.error.${thrown.failure}` : 'files.error.rejected'

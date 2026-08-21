@@ -152,7 +152,13 @@ test('a calendar can be created, hidden, shown and deleted', async ({ page }) =>
   await page.getByRole('button', { name: 'New calendar' }).click()
   const create = page.getByRole('dialog')
   await create.getByLabel('Name', { exact: true }).fill(CAL)
-  await create.getByRole('radio', { name: 'Green' }).click()
+  // The <label>, not the radio inside it — because that is the control a person presses. The input
+  // is deliberately invisible (1 px, `clip-path`, so arrow keys and the accessible name still come
+  // from a real radio; see `.swatchInput` in calendar.module.css) and sits at its static position
+  // under the coloured dot, so a click aimed at the input itself is intercepted by the tick drawn
+  // on top of it — which is what this line used to do, and it retried for ninety seconds. Clicking
+  // the label activates the radio exactly as a mouse does; `Chosen: Green` below is the proof.
+  await create.locator('label').filter({ hasText: 'Green' }).click()
   await expect(create.getByText('Chosen: Green')).toBeVisible()
   await create.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(create).toBeHidden()
