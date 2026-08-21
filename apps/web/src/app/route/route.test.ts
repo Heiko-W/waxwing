@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { notificationTargetPath } from '../../notify/click-route'
 import { carryAccount } from './RouterProvider'
 import {
+  atMailRoot,
   CONTACTS_ALL_BOOKS,
   CONTACTS_PATH,
   contactsPath,
@@ -208,6 +209,33 @@ describe('mailPath — account qualification (B37)', () => {
 
   it('encodes an account id that needs it', () => {
     expect(mailPath('a', undefined, 'x/y z')).toBe('/mail/a?account=x%2Fy%20z')
+  })
+})
+
+describe('atMailRoot — the guard on the "/mail resolves to the Inbox" redirect', () => {
+  /*
+   * The redirect fires when the replica finishes syncing, not when the screen opens, so by then the
+   * reader may already be somewhere else — and `MailScreen` asks THIS about `window.location`
+   * rather than about its own render, which is a sync behind. See the effect's note.
+   */
+  it('says yes for the bare mail root, with or without a trailing slash', () => {
+    expect(atMailRoot('/mail')).toBe(true)
+    expect(atMailRoot('/mail/')).toBe(true)
+  })
+
+  it('says yes under a mount prefix, which is where the app actually ships (FR-DEP-02)', () => {
+    // Stalwart serves the app under a path prefix and rewrites `<base href>`; an equality check
+    // against '/mail' would disable the Inbox default on every hosted deployment.
+    expect(atMailRoot('/webmail/mail')).toBe(true)
+  })
+
+  it('says no once a folder is named, and no for every other screen', () => {
+    expect(atMailRoot('/mail/inbox')).toBe(false)
+    expect(atMailRoot('/mail/inbox/e1')).toBe(false)
+    // The whole point: these are the destinations the redirect used to overwrite.
+    expect(atMailRoot('/files')).toBe(false)
+    expect(atMailRoot('/settings')).toBe(false)
+    expect(atMailRoot('/contacts')).toBe(false)
   })
 })
 

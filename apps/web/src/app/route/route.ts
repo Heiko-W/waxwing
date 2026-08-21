@@ -165,6 +165,23 @@ export function mailPath(mailboxId?: string, emailId?: string, accountId?: strin
 }
 
 /**
+ * Is `pathname` the bare mail root — `/mail`, with no folder and no message?
+ *
+ * For the ONE caller that must ask the address bar rather than its own props: `MailScreen`'s
+ * "resolve `/mail` to the Inbox" effect fires when the replica finishes syncing, which may be a
+ * second after sign-in, and by then the reader may have clicked Files or Settings. `navigate`
+ * writes the URL synchronously (RouterProvider), so `window.location` is the only witness that is
+ * never a render behind — see the effect's own note.
+ *
+ * `endsWith` and not equality, because `<base href>` (FR-DEP-02) puts the app under a mount prefix:
+ * the same screen is `/mail` on a bare host and `/webmail/mail` on a Stalwart mount. A trailing
+ * slash is stripped so `/mail/` counts as the root and not as a folder called "".
+ */
+export function atMailRoot(pathname: string): boolean {
+  return pathname.replace(/\/+$/, '').endsWith(mailPath())
+}
+
+/**
  * A mail URL that KEEPS the current query string — `?q=` (search), `?label=` and `?account=` are
  * what the list is currently showing.
  *

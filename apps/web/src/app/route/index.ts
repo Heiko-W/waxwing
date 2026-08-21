@@ -6,6 +6,7 @@ export { Link, type LinkProps } from './Link'
 export { RouterProvider, type RouterProviderProps } from './RouterProvider'
 export {
   ACCOUNT_PARAM,
+  atMailRoot,
   CALENDAR_PATH,
   CONTACTS_ALL_BOOKS,
   CONTACTS_PATH,

@@ -360,10 +360,23 @@ async function principalIdFor(owner, ownerAccountId, granteeLogin) {
   return found.id
 }
 
+/**
+ * One test account, named either way round.
+ *
+ * `ACCOUNTS` carries both a short `name` ("carol") and a `login` ("carol@waxwing.test"), and the
+ * callers of the share helpers reach for whichever the surrounding test already had in a constant.
+ * Matching only on `name` made `shareFileFolder('carol@waxwing.test', …)` throw `unknown pair` from
+ * inside a `beforeAll`, which Playwright reports as a test that failed in 0 ms with no page in it —
+ * a long way from "you passed the login".
+ */
+function accountNamed(which) {
+  return ACCOUNTS.find((account) => account.name === which || account.login === which)
+}
+
 /** Idempotent: `shareWith` is a full replacement, so re-writing the same grant is a no-op update. */
 async function ensureDelegation({ owner, grantee, access }) {
-  const ownerAccount = ACCOUNTS.find((a) => a.name === owner)
-  const granteeAccount = ACCOUNTS.find((a) => a.name === grantee)
+  const ownerAccount = accountNamed(owner)
+  const granteeAccount = accountNamed(grantee)
   if (!ownerAccount || !granteeAccount)
     throw new Error(`unknown delegation pair ${owner}/${grantee}`)
 
@@ -466,7 +479,7 @@ export async function shareInbox(owner, grantee, access) {
  * start from none, or it will pass on a leftover from the run before.
  */
 export async function clearShareNotifications(name) {
-  const account = ACCOUNTS.find((a) => a.name === name)
+  const account = accountNamed(name)
   if (!account) throw new Error(`unknown account ${name}`)
   const accountId = await ownAccountId(account)
   const args = await jmapAs(account, SHARE_USING, [
@@ -522,8 +535,8 @@ const FILE_USING = [
  * happy to create two siblings with the same name and the screen would then show both.
  */
 export async function shareFileFolder(owner, grantee, name) {
-  const ownerAccount = ACCOUNTS.find((a) => a.name === owner)
-  const granteeAccount = ACCOUNTS.find((a) => a.name === grantee)
+  const ownerAccount = accountNamed(owner)
+  const granteeAccount = accountNamed(grantee)
   if (!ownerAccount || !granteeAccount) throw new Error(`unknown pair ${owner}/${grantee}`)
 
   const ownerAccountId = await ownAccountId(ownerAccount)
@@ -590,7 +603,7 @@ export async function clearFileNodes() {
 /** Withdraw every share (`shareWith: {}`), returning the fixture to its single-account default. */
 export async function revokeDelegations() {
   for (const { owner } of DELEGATIONS) {
-    const ownerAccount = ACCOUNTS.find((a) => a.name === owner)
+    const ownerAccount = accountNamed(owner)
     if (!ownerAccount) continue
     const ownerAccountId = await ownAccountId(ownerAccount)
     const boxes = await jmapAs(ownerAccount, SHARE_USING, [
