@@ -564,7 +564,17 @@ test.describe('M3.10 offline', () => {
     const mail = ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail']
     const accountId = await alice.account()
     const created = await alice.call(mail, [
-      ['Mailbox/set', { accountId, create: { doomed: { name: 'ZzDoomed', parentId: null } } }, '0'],
+      // `isSubscribed: true` is not decoration. Stalwart stores `false` when a create omits the
+      // property (RFC 8621 §2 says it SHOULD be true for a mailbox the user made themself; this
+      // server does not honour that), and since M-5 the sidebar hides an unsubscribed folder. This
+      // create stands in for "another client made a folder", so it has to say what a client that
+      // made a folder for its user says — which is exactly what Waxwing's own `createMailbox` now
+      // puts on the wire.
+      [
+        'Mailbox/set',
+        { accountId, create: { doomed: { name: 'ZzDoomed', parentId: null, isSubscribed: true } } },
+        '0',
+      ],
     ])
     // Indexed access is checked under this tsconfig, so unwrap deliberately rather than with `!`:
     // a seeder change that stops returning the mailbox should fail HERE with a sentence, not with a

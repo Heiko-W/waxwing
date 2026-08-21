@@ -3358,6 +3358,31 @@ describe('outbox — replay resilience', () => {
     expect((await db.mailboxes.get([ACC, 'mb2']))?.sortOrder).toBe(9)
   })
 
+  it('subscribes a folder it creates, so the sidebar keeps it (M-5)', async () => {
+    // RFC 8621 §2 only SHOULDs this, and Stalwart v0.16.18 does not: a create that omits
+    // `isSubscribed` is stored as `false`. Since M-5 the sidebar hides an unsubscribed folder, so
+    // omitting it here meant the folder the user just made vanished the moment the server's copy
+    // synced back. The optimistic row has always said `true`; this is the wire saying the same.
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'createMailbox', creationId: 'tmp', props: { name: 'Receipts', parentId: null } },
+      { id: 'i1', now: 1 },
+    )
+    expect((await db.mailboxes.get([ACC, 'tmp']))?.isSubscribed).toBe(true)
+
+    const sent: unknown[] = []
+    const port = fakePort({
+      setMailboxes: async (args) => {
+        sent.push(args.create)
+        return setResult({ created: { tmp: { id: 'srv-1' } } })
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect(sent).toEqual([{ tmp: { name: 'Receipts', parentId: null, isSubscribed: true } }])
+  })
+
   it('sends the role and the subscription, and rolls each back on refusal (M-5/M-6)', async () => {
     await putMailboxes(db, ACC, [mailbox('mb1', { name: 'Old mail' })])
     await enqueueAction(

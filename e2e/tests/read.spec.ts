@@ -231,7 +231,17 @@ test.describe('M1.9 read suite', () => {
     })
 
     // …and the folder itself is still searchable, so the exclusion is not a blanket one.
+    //
+    // The query is retyped rather than carried over, and that is the app's design, not a workaround:
+    // a search lives in the URL (`?q=…&scope=…`, see use-search.ts) and picking a folder navigates
+    // to `/mail/<id>`, which drops it. So the scope picker does not exist for the instant after the
+    // click, and asking it for an option there timed out against a search that no longer existed.
     await page.getByRole('treeitem', { name: /Trash/ }).click()
+    await box.click()
+    await box.fill('Lunch')
+    await box.press('Enter')
+    // Explicit even though `folder` is the default an unparameterised URL falls back to: the point
+    // of the assertion is the scope, so it is written down rather than inherited.
     await page.getByLabel('Search in', { exact: true }).selectOption('folder')
     await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 20_000 })
   })
@@ -768,63 +778,80 @@ test.describe('M-5 / M-6 folder order, use and visibility', () => {
       .toBe(true)
   })
 
+  /** Open "Folder info…" for a folder in the tree and return the dialog. */
+  async function openFolderInfo(page: Page, name: string) {
+    const item = page.getByRole('treeitem', { name: new RegExp(name) })
+    await item.hover()
+    await item.getByRole('button', { name: 'Folder actions' }).click()
+    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
+    const dialog = page.getByRole('dialog', { name: /Folder info/ })
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+    return dialog
+  }
+
+  /**
+   * WHY `important` AND NOT `archive`, which is the obvious role to demonstrate this with: alice
+   * already HAS an Archive. Stalwart creates one per account and `seed-read.mjs` guarantees it,
+   * every triage test in this file moves mail into it — and a role is unique per account, so
+   * `archive` is exactly the one role no probe folder here can ever be given. Written the obvious
+   * way, this test asked the select for an option the client is right not to offer and timed out
+   * against its own fixture. `important` is free in this account, and the absence of `archive`
+   * below is now an assertion in its own right rather than a blind spot.
+   */
   test('"use this folder as…" writes the role, and it survives a reload (M-6)', async ({
     page,
   }) => {
     // `stay` is required, not incidental: this test RELOADS, and without it the token lives only in
     // memory (NFR-SEC-02) so a reload lands back on sign-in.
     await login(page, { stay: true })
-    await newFolder(page, 'ZzArchive')
+    await newFolder(page, 'ZzRole')
 
-    const item = page.getByRole('treeitem', { name: /ZzArchive/ })
-    await item.hover()
-    await item.getByRole('button', { name: 'Folder actions' }).click()
-    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
-
-    const dialog = page.getByRole('dialog', { name: /Folder info/ })
-    await expect(dialog).toBeVisible({ timeout: 10_000 })
+    const dialog = await openFolderInfo(page, 'ZzRole')
     // MEASURED (Stalwart v0.16.18): `templates` is refused outright, so it must not be offered.
     await expect(dialog.getByRole('option', { name: 'Templates' })).toHaveCount(0)
-    await dialog.getByLabel('Use this folder as…').selectOption('archive')
+    // …and neither is a role this account has already spoken for (see the note above).
+    await expect(dialog.getByRole('option', { name: 'Archive' })).toHaveCount(0)
+    await dialog.getByLabel('Use this folder as…').selectOption('important')
     await dialog.getByRole('button', { name: 'Save', exact: true }).click()
 
     await expect
-      .poll(async () => (await serverFolder('ZzArchive'))?.role ?? null, POLL)
-      .toBe('archive')
+      .poll(async () => (await serverFolder('ZzRole'))?.role ?? null, POLL)
+      .toBe('important')
 
-    // …and the client still recognises it after a cold start: the folder is now THE Archive, under
-    // its standard name and in the standard place, exactly as another client would show it.
+    // …and the client still knows it after a cold start. The select is the witness that counts:
+    // it is seeded from the REPLICA's copy of the folder, so reading `important` back out of it
+    // after a reload proves the role came from the server and not from the optimistic patch that
+    // wrote it — which is the half no unit test can reach.
     await page.reload()
     await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByRole('treeitem', { name: /Archive/ })).toBeVisible({ timeout: 30_000 })
+    const reopened = await openFolderInfo(page, 'ZzRole')
+    await expect(reopened.getByLabel('Use this folder as…')).toHaveValue('important', {
+      timeout: 20_000,
+    })
   })
 
   test('a role the account already uses is not offered a second time (M-6)', async ({ page }) => {
     // MEASURED: `Mailbox/set` answers `invalidProperties: "A mailbox with role 'archive' already
     // exists."` — so offering it twice would produce a dead letter the user could not have foreseen.
     await login(page)
-    await newFolder(page, 'ZzArchive')
+    await newFolder(page, 'ZzRole')
     await newFolder(page, 'ZzOther')
 
-    const archive = page.getByRole('treeitem', { name: /ZzArchive/ })
-    await archive.hover()
-    await archive.getByRole('button', { name: 'Folder actions' }).click()
-    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
-    const first = page.getByRole('dialog', { name: /Folder info/ })
-    await first.getByLabel('Use this folder as…').selectOption('archive')
+    const first = await openFolderInfo(page, 'ZzRole')
+    await first.getByLabel('Use this folder as…').selectOption('important')
     await first.getByRole('button', { name: 'Save', exact: true }).click()
     await expect
-      .poll(async () => (await serverFolder('ZzArchive'))?.role ?? null, POLL)
-      .toBe('archive')
+      .poll(async () => (await serverFolder('ZzRole'))?.role ?? null, POLL)
+      .toBe('important')
 
-    const other = page.getByRole('treeitem', { name: /ZzOther/ })
-    await other.hover()
-    await other.getByRole('button', { name: 'Folder actions' }).click()
-    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
-    const second = page.getByRole('dialog', { name: /Folder info/ })
-    await expect(second).toBeVisible({ timeout: 10_000 })
+    const second = await openFolderInfo(page, 'ZzOther')
+    // Gone because the folder next door just took it…
+    await expect(second.getByRole('option', { name: 'Important' })).toHaveCount(0)
+    // …and gone because the account's own Archive has held it since the account existed. Both are
+    // the same rule; only the second one is true before any test does anything.
     await expect(second.getByRole('option', { name: 'Archive' })).toHaveCount(0)
-    await expect(second.getByRole('option', { name: 'Important' })).toHaveCount(1)
+    // The positive control: the list is filtered, not empty.
+    await expect(second.getByRole('option', { name: 'Snoozed' })).toHaveCount(1)
   })
 
   test('hiding a folder writes isSubscribed, and it stays findable here (M-5)', async ({
