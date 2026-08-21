@@ -8,8 +8,10 @@
 
 import type { ContactCardRow } from '../sync'
 import { useReplicaQuery } from '../sync'
-import { contactSortKey } from './contact-fields'
-import { isGroupCard } from './contact-group-mapping'
+// `contact-fields`, not `contact-group-mapping`: this hook is reached EAGERLY from the mail reading
+// pane (`SenderCard`), and the group mapping imports `contact-card-mapping` (~25 KB) at runtime for
+// its `deepEqual` — which put the whole contact-editor mapping in the initial chunk.
+import { contactSortKey, isGroupCard } from './contact-fields'
 
 function byDisplayName(a: ContactCardRow, b: ContactCardRow): number {
   return contactSortKey(a).localeCompare(contactSortKey(b), undefined, { sensitivity: 'base' })
