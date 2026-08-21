@@ -176,7 +176,7 @@ fixture-side hooks make the browser demo work:
 `docker-compose.yml` defines two variants behind compose **profiles** so a bare
 `docker compose up` starts nothing by accident:
 
-- **`dev`** — pinned `stalwartlabs/stalwart:v0.16.14-alpine`, the tested baseline. This is
+- **`dev`** — pinned `stalwartlabs/stalwart:v0.16.18-alpine`, the tested baseline. This is
   what `pnpm e2e:server` runs. **Changing this tag requires a `pnpm e2e:server:down` before the
   next `up`** — see “Upgrading the pinned image” above.
 - **`main`** — `stalwartlabs/stalwart:latest`, intended for a scheduled, **non-blocking** compat
@@ -201,7 +201,7 @@ node e2e/stalwart/fixture.mjs down     # tears down whichever profile is running
 
 ## Troubleshooting
 
-- **Alpine image issues** — swap `:v0.16.14-alpine` for the non-alpine `:v0.16.14` in
+- **Alpine image issues** — swap `:v0.16.18-alpine` for the non-alpine `:v0.16.18` in
   `docker-compose.yml` (both were verified to boot identically) and note it here.
 - **Port 18080 in use** — something else holds the port; free it or change the host port in
   **all three** places, which must stay in sync: the `ports:` mapping **and**
