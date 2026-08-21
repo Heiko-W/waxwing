@@ -386,6 +386,12 @@ describe('the widened vocabulary (M-8)', () => {
     expect(sieveFeatures(['spamtest', 'relational', 'comparator-i;ascii-numeric']).spam).toBe(true)
   })
 
+  it('accepts either spelling of the comparator a server may advertise', () => {
+    // `require` takes the `comparator-` prefix and that is what is emitted; what a server LISTS is
+    // a different question, and a server naming the bare comparator is not saying it lacks it.
+    expect(sieveFeatures(['spamtest', 'relational', 'i;ascii-numeric']).spam).toBe(true)
+  })
+
   it('separates the weekday gate from the hour gate — they need different extensions', () => {
     expect(sieveFeatures(['date'])).toMatchObject({ currentDate: true, hourRange: false })
     expect(sieveFeatures(['date', 'relational', 'comparator-i;ascii-numeric'])).toMatchObject({

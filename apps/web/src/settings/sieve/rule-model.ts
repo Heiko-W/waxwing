@@ -135,9 +135,25 @@ function has(extensions: readonly string[] | undefined, name: string): boolean {
   return extensions?.includes(name) ?? false
 }
 
+/**
+ * Both spellings of the numeric comparator.
+ *
+ * `require` takes the `comparator-`-prefixed form (RFC 5228 §2.7.3) and that is what we emit. What
+ * a server puts in `sieveExtensions` is a different question: RFC 9661 calls the field "the list of
+ * Sieve extensions supported" and does not say which spelling, and a server that lists the bare
+ * comparator name is not saying it lacks it. Accepting either is the difference between a
+ * capability check and a spelling check.
+ */
+const NUMERIC_COMPARATOR_NAMES: readonly string[] = [
+  'comparator-i;ascii-numeric',
+  'i;ascii-numeric',
+]
+
 /** Reads {@link SieveFeatures} out of the account's advertised `sieveExtensions`. */
 export function sieveFeatures(extensions: readonly string[] | undefined): SieveFeatures {
-  const numeric = has(extensions, REQUIRES.relational) && has(extensions, REQUIRES.numeric)
+  const numeric =
+    has(extensions, REQUIRES.relational) &&
+    NUMERIC_COMPARATOR_NAMES.some((name) => has(extensions, name))
   return {
     envelope: has(extensions, REQUIRES.envelope),
     spam: has(extensions, REQUIRES.spamtest) && numeric,
