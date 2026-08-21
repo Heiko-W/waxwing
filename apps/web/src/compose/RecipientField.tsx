@@ -9,12 +9,13 @@
 
 import type { EmailAddress, Id } from '@waxwing/jmap'
 import { Ellipsis, UsersRound, X } from 'lucide-react'
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useContactPhoto } from '../contacts/use-contact-photo'
 import { Avatar, Menu, VisuallyHidden } from '../ui'
 import { formatAddress, isPlausibleEmail, parseAddressList } from './address-validation'
 import type { AddressField, RecipientField as RecipientFieldName } from './composer-store'
+import { DIRECTORY_DEBOUNCE_MS } from './directory-suggestion-source'
 import styles from './recipient-field.module.css'
 import {
   type AddressSuggestion,
@@ -39,6 +40,16 @@ export interface RecipientFieldProps {
   readonly label: string
   readonly value: EmailAddress[]
   readonly source: RecipientSuggestionSource
+  /**
+   * The organisation directory (S-5), queried SEPARATELY from {@link source} and appended to it.
+   *
+   * Not merged through `combineSuggestionSources`, and that is the whole design: that combiner
+   * awaits every source together, so one network round trip would hold back the recents and the
+   * contact cards — both of which are local, instant and work offline. Here the local list appears
+   * on its own schedule and the directory rows arrive after, at the END of the list, so an option
+   * the reader has already arrowed onto never moves out from under them.
+   */
+  readonly directorySource?: RecipientSuggestionSource | undefined
   /** Account for loading a suggestion's contact photo (M4.3); absent → initials-only (e.g. tests). */
   readonly accountId?: Id | undefined
   readonly onChange: (addrs: EmailAddress[]) => void
@@ -52,6 +63,7 @@ export function RecipientField({
   label,
   value,
   source,
+  directorySource,
   accountId,
   onChange,
   onMove,
@@ -61,12 +73,29 @@ export function RecipientField({
   const [text, setText] = useState('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
-  const [suggestions, setSuggestions] = useState<RecipientSuggestion[]>([])
+  const [local, setLocal] = useState<RecipientSuggestion[]>([])
+  const [directory, setDirectory] = useState<AddressSuggestion[]>([])
   const [activePill, setActivePill] = useState(-1)
+
+  /**
+   * What the listbox shows: the local hits, then the directory ones that add something (S-5).
+   *
+   * Appended rather than interleaved, and deduped against the local list keeping the LOCAL row —
+   * a colleague who is also in the writer's contacts has a photo and a name the writer chose, and
+   * the directory's copy of them would be a second row saying less.
+   */
+  const suggestions = useMemo<RecipientSuggestion[]>(() => {
+    if (directory.length === 0) return local
+    const seen = new Set(local.map(suggestionKey))
+    const extra = directory.filter((entry) => !seen.has(suggestionKey(entry)))
+    return [...local, ...extra].slice(0, SUGGEST_LIMIT)
+  }, [local, directory])
 
   const inputRef = useRef<HTMLInputElement>(null)
   const pillRefs = useRef<(HTMLButtonElement | null)[]>([])
   const rootRef = useRef<HTMLDivElement>(null)
+  /** The needle Escape was pressed at — see the reopen effect below. */
+  const dismissedFor = useRef<string | null>(null)
   const labelId = useId()
   const listboxId = useId()
   const optionId = (index: number): string => `${listboxId}-opt-${index}`
@@ -88,14 +117,14 @@ export function RecipientField({
   useEffect(() => {
     const needle = text.trim()
     if (needle === '') {
-      setSuggestions([])
+      setLocal([])
       return
     }
     let cancelled = false
     const timer = window.setTimeout(() => {
       void source.query(needle, SUGGEST_LIMIT).then((results) => {
         if (cancelled) return
-        setSuggestions(results)
+        setLocal(results)
         setOpen(results.length > 0)
         setActiveIndex(-1)
       })
@@ -105,6 +134,52 @@ export function RecipientField({
       window.clearTimeout(timer)
     }
   }, [text, source])
+
+  /*
+   * The directory, on its own timer and its own state (S-5).
+   *
+   * Separate from the effect above on purpose. It waits longer (a directory hit is a round trip,
+   * not a table read), it may answer late or not at all, and — the rule that matters — a failure
+   * clears only THIS list. `createDirectorySuggestionSource` already turns every failure into `[]`;
+   * the effect never touches `local`, so nothing the writer already had can be taken away by a
+   * directory that is unreachable.
+   */
+  useEffect(() => {
+    const needle = text.trim()
+    if (directorySource === undefined || needle === '') {
+      setDirectory([])
+      return
+    }
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void directorySource.query(needle, SUGGEST_LIMIT).then((results) => {
+        if (cancelled) return
+        // Addresses only: the directory yields no groups (see `directory-suggestion-source.ts`),
+        // and this narrowing is what lets the option render the organisation line.
+        setDirectory(results.filter((entry): entry is AddressSuggestion => entry.kind !== 'group'))
+      })
+    }, DIRECTORY_DEBOUNCE_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [text, directorySource])
+
+  /*
+   * A listbox that GREW after the reader stopped typing has to be openable by that growth, or the
+   * directory's late answer would arrive into a closed list and stay invisible until the next
+   * keystroke — which is precisely the case S-5 exists for: nothing local matched, so the field
+   * closed, and the colleague the writer was looking for is in the answer that came second.
+   *
+   * `dismissedFor` is what keeps that from fighting the reader: Escape records the text it was
+   * pressed at, and the list stays shut until they type something else.
+   */
+  useEffect(() => {
+    if (suggestions.length === 0) return
+    const needle = text.trim()
+    if (needle === '' || dismissedFor.current === needle) return
+    setOpen(true)
+  }, [suggestions.length, text])
 
   // Outside press closes the listbox.
   useEffect(() => {
@@ -121,7 +196,9 @@ export function RecipientField({
     setText('')
     setOpen(false)
     setActiveIndex(-1)
-    setSuggestions([])
+    setLocal([])
+    setDirectory([])
+    dismissedFor.current = null
   }
 
   const commitAddresses = (additions: EmailAddress[]): void => {
@@ -202,6 +279,9 @@ export function RecipientField({
           // the capture phase; this listbox is a plain child and has to say so itself.
           event.stopPropagation()
           setOpen(false)
+          // Remember WHAT was dismissed, so a directory answer still in flight does not reopen the
+          // list the reader just closed (S-5). Typing anything else clears it.
+          dismissedFor.current = text.trim()
         }
         break
       case 'Backspace':
@@ -372,6 +452,13 @@ export function RecipientField({
                     <span className={styles.optionName}>{suggestion.name || suggestion.email}</span>
                     {suggestion.name !== null && suggestion.name !== '' && (
                       <span className={styles.optionEmail}>{suggestion.email}</span>
+                    )}
+                    {/* The organisation, for a directory hit only (S-5). No badge and no group
+                        header: a quiet line stating where this person belongs is what tells the
+                        reader the row came from the company directory rather than their own
+                        contacts, and it says so by adding a fact instead of a label. */}
+                    {suggestion.organization !== undefined && (
+                      <span className={styles.optionOrg}>{suggestion.organization}</span>
                     )}
                   </span>
                 </>

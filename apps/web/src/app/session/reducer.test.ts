@@ -23,6 +23,7 @@ function conn(id: string): ConnectedSession {
     jmapSession: {} as ConnectedSession['jmapSession'],
     accountId: id,
     accounts: [{ id, name: id, isPersonal: true, isReadOnly: false }],
+    delegated: [],
     username: id,
     method: 'basic',
   }

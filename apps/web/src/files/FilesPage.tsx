@@ -61,6 +61,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
@@ -105,6 +106,11 @@ import { ROW_PART, useRowGeometry, visibleRowActions } from './use-row-actions'
 export interface FilesPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
   readonly client?: FilesClient
+  /**
+   * Injected in tests that cross ACCOUNTS (S-4): the client for `accountId`, so a shared account's
+   * listing can be told apart from the user's own. Takes precedence over {@link client}.
+   */
+  readonly clientFor?: (accountId: Id) => FilesClient
 }
 
 /**
@@ -213,16 +219,40 @@ export default function FilesPage(props: FilesPageProps) {
   const urlCacheRef = useRef(new Map<string, string>())
 
   const injected = props.client
+  const injectedFor = props.clientFor
   const sessionClient = connected?.client ?? null
-  const accountId = connected?.accountId ?? null
+  const ownAccountId = connected?.accountId ?? null
+  /**
+   * The delegated accounts that really have files in them (S-4).
+   *
+   * Not the ones the session lists — measured against Stalwart v0.16.18, a share of ANY single
+   * object makes the whole account appear with all seventeen capabilities, `filenode` among them,
+   * so the capability says nothing. `connected.delegated` carries the answer to a probe that asked
+   * `FileNode/get` per account; `delegatedAccountsFor` keeps the ones it served.
+   */
+  const sharedAccounts = useMemo(
+    () => (connected === null ? [] : delegatedAccountsFor(connected, 'files')),
+    [connected],
+  )
+  /** The shared account being browsed, or `null` for the user's own — see {@link enterAccount}. */
+  const [visitingId, setVisitingId] = useState<Id | null>(null)
+  const visiting = sharedAccounts.find((account) => account.id === visitingId) ?? null
+  /*
+   * Not derived state, but corrected state: a session change can take a share away while the reader
+   * is standing in it. Falling back silently to their own root would be the same "which account am
+   * I looking at" confusion the account-qualified mail routes exist to prevent, so the crumb and
+   * the listing move back together, here, in one place.
+   */
+  const accountId = visiting?.id ?? ownAccountId
   const selfPrincipalId = currentUserPrincipalId(connected?.jmapSession ?? null, accountId)
   const client = useMemo(
     () =>
+      (accountId === null ? undefined : injectedFor?.(accountId)) ??
       injected ??
       (sessionClient === null || accountId === null
         ? null
         : makeFilesClient(sessionClient, accountId, selfPrincipalId)),
-    [injected, sessionClient, accountId, selfPrincipalId],
+    [injected, injectedFor, sessionClient, accountId, selfPrincipalId],
   )
   const capability = fileCapability(connected?.jmapSession ?? null, accountId)
 
@@ -304,6 +334,17 @@ export default function FilesPage(props: FilesPageProps) {
       </div>
     )
   }
+
+  /** What the root of the account on screen is CALLED: "Files", or whose files these are. */
+  const rootName = visiting === null ? t('files.root') : visiting.name
+  /**
+   * Whether the "Shared with me" section belongs on screen.
+   *
+   * Only at the reader's own root, and only outside a search: it is a place, and a place has one
+   * spot in a hierarchy. Repeating it under every folder — or over a set of search hits that
+   * deliberately span the whole account — would turn a location into decoration.
+   */
+  const showShared = visiting === null && !searching && here === null && sharedAccounts.length > 0
 
   const visibleNodes = (rows ?? []).map((row) => row.node)
   const selectedNodes = visibleNodes.filter((node) => selected.has(node.id))
@@ -399,6 +440,27 @@ export default function FilesPage(props: FilesPageProps) {
     ])
   }
 
+  /**
+   * Move to another account's root — a shared one with an id, the user's own with `null` (S-4).
+   *
+   * Everything the previous account put on screen goes with it: the path, the search, the selection.
+   * File node ids are per-account and short, so a selection carried across would name real but
+   * DIFFERENT files in the account it landed in — the same hazard `resetMailScopedStores` exists for
+   * in mail, and the reason this is one function rather than a `setVisitingId` at each call site.
+   */
+  const goToAccount = (id: Id | null): void => {
+    setVisitingId(id)
+    setPath([{ id: null, name: '' }])
+    setTerm('')
+    setQuery('')
+    setSelecting(false)
+    setSelected(new Set())
+    setPreview(null)
+    setNodes(null)
+    setHits(null)
+    setTruncated(false)
+  }
+
   const toggle = (id: Id): void =>
     setSelected((current) => {
       const next = new Set(current)
@@ -480,17 +542,28 @@ export default function FilesPage(props: FilesPageProps) {
             in the app with no heading at all, while mail, contacts and calendar all state where
             you are in the same 16px semibold. */}
         <nav className={styles.crumbs} aria-label={t('files.breadcrumb')}>
+          {/* Inside a shared account the trail starts one step further back, at the reader's OWN
+              root — the way out. Apple's Files does the same: "Shared" is a place you walked into
+              and walk out of, not a mode you have to know how to leave. */}
+          {visiting !== null && (
+            <span className={styles.crumb}>
+              <Button variant="ghost" size="sm" onClick={() => goToAccount(null)}>
+                {t('files.root')}
+              </Button>
+              <span aria-hidden="true">/</span>
+            </span>
+          )}
           {path.slice(0, -1).map((crumb, index) => (
             <span key={crumb.id ?? 'root'} className={styles.crumb}>
               <Button variant="ghost" size="sm" onClick={() => setPath(path.slice(0, index + 1))}>
-                {crumb.id === null ? t('files.root') : crumb.name}
+                {crumb.id === null ? rootName : crumb.name}
               </Button>
               <span aria-hidden="true">/</span>
             </span>
           ))}
         </nav>
         <h1 className={shellStyles.paneTitle}>
-          {here === null ? t('files.root') : (path.at(-1)?.name ?? t('files.title'))}
+          {here === null ? rootName : (path.at(-1)?.name ?? t('files.title'))}
         </h1>
         <IconButton
           label={t('files.newFolder')}
@@ -756,6 +829,44 @@ export default function FilesPage(props: FilesPageProps) {
             </Button>
           }
         />
+      )}
+
+      {/*
+       * SHARED CONTENT IS A SECTION OF THIS SCREEN, NOT ANOTHER SCREEN (S-4).
+       *
+       * The iCloud arrangement, and the one the mail rail already uses: your own things and other
+       * people's sit in the same place, one under the other, and there is no account switcher to
+       * find first. A reader who has been given a folder walks into it the way they walk into any
+       * folder — which is also why the rows look like folder rows and carry the owner's name rather
+       * than a badge saying "shared".
+       *
+       * It sits ABOVE the listing and outside its loading/empty branch on purpose: an own root that
+       * is empty is exactly the account where someone else's folder is the only thing there is, and
+       * hiding it behind "This folder is empty." would be the worst possible moment to.
+       */}
+      {showShared && (
+        <section className={styles.sharedSection} aria-label={t('files.shared.title')}>
+          <h2 className={styles.sharedHeading}>{t('files.shared.title')}</h2>
+          <ul className={styles.list}>
+            {sharedAccounts.map((account) => (
+              <li key={account.id} className={styles.row}>
+                <button
+                  type="button"
+                  className={styles.name}
+                  // The visible text is the name; the label says what the row DOES with it, and
+                  // contains that name (WCAG 2.5.3) so speech input still works on what is read.
+                  aria-label={t('files.shared.open', { name: account.name })}
+                  onClick={() => goToAccount(account.id)}
+                >
+                  <span className={styles.nameInner}>
+                    <UsersRound aria-hidden="true" className={styles.icon} />
+                    <span className={styles.nameText}>{account.name}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {rows === null && !failed ? (

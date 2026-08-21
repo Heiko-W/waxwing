@@ -16,7 +16,11 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/shared.spec.ts', '**/sharing.spec.ts'],
+  // `delegation.spec.ts` (S-4/S-5) belongs here for the same reason as the other two: it needs a
+  // second real account to have shared something, and it revokes the suite's mail delegations
+  // mid-run to prove a files-only share grows no mail section — which nothing outside a
+  // delegation-aware, serial suite may do.
+  testMatch: ['**/shared.spec.ts', '**/sharing.spec.ts', '**/delegation.spec.ts'],
   // One account, stateful mutations across two shared mailboxes — serial, and reseeded per test.
   fullyParallel: false,
   workers: 1,

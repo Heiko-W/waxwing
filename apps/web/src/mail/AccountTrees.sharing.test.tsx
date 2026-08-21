@@ -166,19 +166,25 @@ function renderRail(client: JmapClient, accounts: readonly MailAccount[] = [OWN,
 }
 
 describe('a shared account that has no mail in it', () => {
-  it('THE ONE: full capabilities plus a forbidden Mailbox/get produces NO section', async () => {
-    // Exactly the measured state: carol is in the session (she shared a calendar), the mail
-    // capability is on her account, and the server refuses her mailboxes.
-    renderRail(fakeClient({ mailFor: ['b'] }))
+  /*
+   * The probe MOVED (S-4). It used to run inside this rail, which narrowed what was on screen and
+   * left the real damage in place: the engine fleet reads `connected.accounts` and renders nothing,
+   * so it went on starting a sync engine for an account every request to which comes back
+   * `forbidden`. It now runs once in `SessionProvider`, and `connected.accounts` arrives narrowed.
+   *
+   * So the claim itself lives in `app/session/delegation.test.ts` — including "and no sync engine
+   * starts for it", which no assertion about a sidebar could ever have made. What is left to check
+   * here is that the rail spends nothing asking the question a second time, and renders exactly the
+   * accounts it is handed.
+   */
+  it('THE ONE: renders no section for an account the session already excluded', async () => {
+    // The narrowed list: carol is in the SESSION (she shared a calendar) but not in `accounts`,
+    // because the probe found her mail forbidden.
+    renderRail(fakeClient({ mailFor: ['b'] }), [OWN])
 
-    // The user's own folders are there throughout — nothing about this may cost them their mail.
+    // The user's own folders are there — nothing about this may cost them their mail.
     expect(await screen.findByRole('treeitem', { name: /Inbox/ })).toBeInTheDocument()
-
-    // Carol's section is not. `waitFor` because the probe is a round trip: until it answers the
-    // rail still shows her, which is exactly the behaviour this removes.
-    await waitFor(() => {
-      expect(screen.queryByRole('region', { name: 'carol@waxwing.test' })).not.toBeInTheDocument()
-    })
+    expect(screen.queryByRole('region', { name: 'carol@waxwing.test' })).not.toBeInTheDocument()
 
     // And with nothing shared left, the rail is back to the PASS-THROUGH: one ungrouped tree, no
     // account headings at all — byte-for-byte the single-account sidebar. A rail that had kept an
@@ -187,21 +193,23 @@ describe('a shared account that has no mail in it', () => {
     expect(screen.queryByRole('region', { name: 'alice@waxwing.test' })).not.toBeInTheDocument()
   })
 
-  it('keeps a shared account whose mailboxes the server DOES serve', async () => {
-    renderRail(fakeClient({ mailFor: ['b', 'd'] }))
-    expect(await screen.findByRole('region', { name: 'carol@waxwing.test' })).toBeInTheDocument()
+  it('asks the server nothing of its own about which accounts have mail', async () => {
+    // A rail that re-probed would spend a round trip per render of the sidebar. Every call this
+    // component makes is a `ShareNotification` one (S-1).
+    const client = fakeClient({ mailFor: ['b'] })
+    const spy = vi.spyOn(client, 'call')
+    renderRail(client, [OWN])
+    expect(await screen.findByRole('treeitem', { name: /Inbox/ })).toBeInTheDocument()
+    await waitFor(() => expect(spy).toHaveBeenCalled())
+    for (const [invocations] of spy.mock.calls) {
+      for (const [name] of invocations as Invocation[]) {
+        expect(name).not.toBe('Mailbox/get')
+      }
+    }
   })
 
-  it('falls back to the whole rail when the probe request itself fails', async () => {
-    // Offline must not empty the sidebar. A section that should not be there is recoverable; a
-    // section that vanished while the user was reading it is not.
-    const client = {
-      session: { accounts: {} },
-      call: async () => {
-        throw new Error('offline')
-      },
-    } as unknown as JmapClient
-    renderRail(client)
+  it('renders a shared account the session did keep', async () => {
+    renderRail(fakeClient({ mailFor: ['b', 'd'] }), [OWN, CAROL])
     expect(await screen.findByRole('region', { name: 'carol@waxwing.test' })).toBeInTheDocument()
   })
 })

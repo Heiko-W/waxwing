@@ -96,6 +96,14 @@ export interface FakeServicesOptions {
   readonly startLoginError?: Error
   /** The session `connect()` resolves to. Default: {@link fakeJmapSession} (single account). */
   readonly session?: JmapClient['session']
+  /**
+   * The whole client `connect()` resolves to, when a test needs one that can ANSWER (S-4).
+   *
+   * {@link fakeJmapClient} carries a session and no `call`, which is right for the auth flows and
+   * makes the delegation probe fail harmlessly (a failed probe grants everything — see
+   * `sharing/probe.ts`). A test about what the probe DOES has to supply a client that replies.
+   */
+  readonly client?: JmapClient
 }
 
 export interface FakeServices {
@@ -133,7 +141,7 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
   const connect = vi.fn(async (_input: string, provider: AuthProvider) => {
     captured = provider
     if (options.connectError) throw options.connectError
-    return fakeJmapClient(options.session ?? fakeJmapSession())
+    return options.client ?? fakeJmapClient(options.session ?? fakeJmapSession())
   })
 
   const provider: AuthProvider = {

@@ -7,6 +7,7 @@
 
 import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
 import type { AuthMethod } from '../../auth'
+import type { AreaAccess } from '../../sharing/probe'
 
 /** A JMAP `Session` as the client exposes it (avoids naming the wire type directly). */
 export type JmapSession = JmapClient['session']
@@ -50,6 +51,18 @@ export interface OnboardingView {
   readonly error: OnboardError | null
 }
 
+/**
+ * A delegated/shared account, with the areas the server was MEASURED to serve for it (S-4).
+ *
+ * The measurement is not a nicety. A share of any single object makes the whole account appear in
+ * the session with the full capability set — all seventeen URNs on Stalwart v0.16.18 — so the
+ * capability list cannot tell a shared address book from a shared mailbox. `areas` is what the
+ * server answered to a probe of each area, and it is the only honest input a rail has.
+ */
+export interface DelegatedAccount extends MailAccount {
+  readonly areas: AreaAccess
+}
+
 /** The connected session M1.5/M1.6 and the sync engine consume. */
 export interface ConnectedSession {
   readonly client: JmapClient
@@ -57,11 +70,21 @@ export interface ConnectedSession {
   /** `session.primaryAccounts['urn:ietf:params:jmap:mail']` — the user's own account. */
   readonly accountId: string
   /**
-   * Every mail account this session grants, the user's own ({@link accountId}) FIRST followed by
-   * the delegated/shared mailboxes (M4.4). Use {@link secondaryMailAccounts} to read just the
-   * shared tail. `[accountId]` alone when the server shares nothing.
+   * Every account with MAIL in it, the user's own ({@link accountId}) FIRST followed by the
+   * delegated/shared mailboxes (M4.4). Use {@link secondaryMailAccounts} to read just the shared
+   * tail. `[accountId]` alone when the server shares nothing.
+   *
+   * Narrowed by the S-4 probe: a delegated account that answers `Mailbox/get` with `forbidden` is
+   * NOT here, however loudly its capability list claims mail. That is what keeps the engine fleet
+   * (which reads exactly this list) from starting a sync engine for an account with no mail in it.
    */
   readonly accounts: readonly MailAccount[]
+  /**
+   * Every delegated/shared account the session grants, whatever it turned out to hold — the
+   * superset {@link accounts}' shared tail is filtered out of. Rails read this and pick the area
+   * they render; {@link delegatedAccountsFor} is the selector.
+   */
+  readonly delegated: readonly DelegatedAccount[]
   readonly username: string
   readonly method: AuthMethod
 }

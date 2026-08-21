@@ -97,9 +97,22 @@ export type PrincipalQueryResponse = QueryResponse
 /**
  * The filter for a free-text principal search.
  *
- * `text` rather than `name`: measured against Stalwart 0.16, `name` matches nothing while `text`
- * matches substrings of both the name and the address. An empty query returns `null` — "no filter"
- * — which lists everyone the account may see, and is the right starting state for a picker.
+ * `text` rather than `name`: measured against Stalwart 0.16, `name` matches only the FULL login
+ * address (`{name:"bob@waxwing.test"}` → the hit, `{name:"alice"}` → nothing) while `text` searches
+ * the name, the description and the address together. An empty query returns `null` — "no filter" —
+ * which lists everyone the account may see, and is the right starting state for a picker.
+ *
+ * **It matches WHOLE WORDS, not prefixes, and a caller has to design around that** (re-measured
+ * against v0.16.18 on 2026-08-21, correcting an earlier note here that called it a substring match):
+ * ```
+ * text:"Baker" → [c]     text:"bak"  → []      text:"bak*" → []
+ * text:"alice" → [b]     text:"ali"  → []      text:"b*"   → []
+ * text:"carol chen" → [d]   (several words AND together)
+ * text:"bob@waxwing.test" → []   (the address is tokenised; the whole of it matches nothing)
+ * ```
+ * So an as-you-type search stays empty until a complete word has been typed, and then answers. No
+ * wildcard syntax is accepted. `{email:"bob@waxwing.test"}` is an exact match and is the way to
+ * find someone by an address typed in full.
  */
 export function principalSearchFilter(query: string): PrincipalFilterCondition | null {
   const trimmed = query.trim()
