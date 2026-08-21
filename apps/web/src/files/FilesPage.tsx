@@ -24,6 +24,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Pencil,
   Trash2,
   TriangleAlert,
   Upload,
@@ -92,6 +93,17 @@ export default function FilesPage(props: FilesPageProps) {
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
   // The node whose sharing is being edited, or null.
   const [sharing, setSharing] = useState<FileNode | null>(null)
+  /**
+   * The node being renamed, or null — plus the name being typed for it.
+   *
+   * A dialog rather than an editable cell in the row, for the same reason the folder name is one:
+   * a name is refused for reasons the reader cannot see coming (`fileNodeNameProblem` — a `:`, a
+   * name like `AUX`), and a refusal needs somewhere to be said that is not the list. The field
+   * opens with the CURRENT name selected, because renaming is far more often an edit of what is
+   * there than a replacement of it.
+   */
+  const [renaming, setRenaming] = useState<FileNode | null>(null)
+  const [renameTo, setRenameTo] = useState('')
   // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
   // preview neither downloads the file again nor leaks the superseded URL.
   const urlCacheRef = useRef(new Map<string, string>())
@@ -312,6 +324,47 @@ export default function FilesPage(props: FilesPageProps) {
         </Dialog>
       )}
 
+      {renaming !== null && (
+        <Dialog
+          open
+          title={t('files.rename.title', { name: renaming.name })}
+          onClose={() => setRenaming(null)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setRenaming(null)}>
+                {t('files.cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                // Unchanged is not a rename: `FileNode/set` would accept the no-op and the reader
+                // would get a round trip and a reload for nothing.
+                disabled={busy || renameTo.trim() === '' || renameTo.trim() === renaming.name}
+                onClick={() => {
+                  const name = renameTo.trim()
+                  const { id } = renaming
+                  // The same client-side name check the upload and the new folder go through, and
+                  // for the same reason: the server refuses `:` and `AUX` for Windows-compatibility
+                  // reasons that have nothing to do with what the user meant. Left OPEN on a bad
+                  // name — the dialog is where the name is, so it is where the objection belongs.
+                  if (!checkName(name)) return
+                  setRenaming(null)
+                  void run(() => client.rename(id, name))
+                }}
+              >
+                {t('files.rename.confirm')}
+              </Button>
+            </>
+          }
+        >
+          <TextInput
+            autoFocus
+            value={renameTo}
+            aria-label={t('files.rename.label')}
+            onChange={(event) => setRenameTo(event.target.value)}
+          />
+        </Dialog>
+      )}
+
       {/* Failure and emptiness look different now. They used to share one class, so "the server
           said no" and "this folder has nothing in it" were the same grey sentence — and only the
           failure has anything the reader can do about it. */}
@@ -382,6 +435,24 @@ export default function FilesPage(props: FilesPageProps) {
                     onClick={() => setSharing(node)}
                   >
                     <UsersRound />
+                  </IconButton>
+                )}
+                {/* Gated on the server's own `mayRename`, like delete is on `mayDelete`: the flag is
+                    on the record precisely so a client does not have to offer the failure. This
+                    was the one action of the seven this screen claims that had no control at all —
+                    `filesClient.rename()` existed and shipped with no caller outside its test. */}
+                {node.myRights.mayRename && (
+                  <IconButton
+                    label={t('files.rename.open', { name: node.name })}
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      setRenaming(node)
+                      setRenameTo(node.name)
+                    }}
+                  >
+                    <Pencil />
                   </IconButton>
                 )}
                 {node.nodeType !== 'directory' && node.myRights.mayRead && (

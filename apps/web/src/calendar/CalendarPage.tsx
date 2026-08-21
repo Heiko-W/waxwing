@@ -346,21 +346,46 @@ export default function CalendarPage(props: CalendarPageProps) {
     goto(view === 'week' ? addDays(focus, delta * 7) : addMonths(focus, delta))
 
   /* The week view names the week it shows. It used to say "August 2026" over a strip of seven days
-     that could start in July, and its arrows said "Next month" and jumped one (T6). */
+     that could start in July, and its arrows said "Next month" and jumped one (T6).
+
+     The month name is spelled out on every viewport again. It was abbreviated on a phone to buy
+     room inside the header — which did not work (see `phoneTitle` below), and is not needed now
+     that the heading has a line of its own there. */
   const heading =
     view === 'week'
       ? t('calendar.weekRange', {
           from: formatDate(week[0] ?? focus, { day: 'numeric', month: 'short' }),
           to: formatDate(week[6] ?? focus, { day: 'numeric', month: 'short', year: 'numeric' }),
         })
-      : formatDate(focus, { year: 'numeric', month: tier === 'phone' ? 'short' : 'long' })
+      : formatDate(focus, { year: 'numeric', month: 'long' })
+
+  /*
+   * Where the heading goes, and why it is not always in the bar (F1).
+   *
+   * On a phone the bar is the SHELL header, and it holds four 44px controls of this screen's own
+   * (both arrows, the view menu, the new-event button) beside the shell's palette, compose and
+   * account buttons. Seven touch targets, their gaps and the header's own inset come to some 388 of
+   * the 390px there are: measured, the heading got 32px of the 76 it needs — "A…" where it should
+   * say "August 2026", and "1…" for a week range. The targets are correct at 44px (T15) and may not
+   * shrink, the shell's buttons are not this screen's to remove, and no stylesheet can invent the
+   * missing 44px: the arithmetic is the defect, exactly as it was for the reading pane's
+   * eleven-button toolbar (`mail/use-action-overflow.ts`).
+   *
+   * So the heading stops competing for that row. Below 40em it becomes the page's own title line,
+   * full width, above the grid — which is where Apple Calendar puts the month on an iPhone, at the
+   * size a heading is meant to be read at, and the one thing this screen must state. It costs a
+   * single text line; the alternative costs the reader the ability to tell which month they are
+   * looking at. Above 40em nothing changes: the pane's strip has room for both.
+   */
+  const phoneTitle = tier === 'phone'
 
   return (
     <div className={styles.page}>
-      {/* The month, the way through it, and the one thing you come here to do — in the shell
-          header on a phone, in its own strip above the grid elsewhere. This screen used to spend
-          three bands before its grid began (61 + 56 + 52 = 169px, a fifth of a 390px phone), the
-          first of them empty apart from the shell's own two buttons. */}
+      {/* The way through the month and the one thing you come here to do — in the shell header on
+          a phone, in its own strip above the grid elsewhere. This screen used to spend three bands
+          before its grid began (61 + 56 + 52 = 169px, a fifth of a 390px phone), the first of them
+          empty apart from the shell's own two buttons. The month NAME joins them from 40em up; on a
+          phone it is the page title below (see `phoneTitle`). */}
       <ScreenBar>
         <div className={styles.nav}>
           <IconButton
@@ -371,10 +396,7 @@ export default function CalendarPage(props: CalendarPageProps) {
           >
             <ChevronLeft />
           </IconButton>
-          {/* Abbreviated on a phone. "August 2026" wrapped onto two lines inside a 61px header and
-              pushed everything beside it into everything else; "Aug 2026" is the same information
-              in the space there is. */}
-          <h1 className={shellStyles.paneTitle}>{heading}</h1>
+          {!phoneTitle && <h1 className={shellStyles.paneTitle}>{heading}</h1>}
           <IconButton
             label={view === 'week' ? t('calendar.nextWeek') : t('calendar.nextMonth')}
             variant="ghost"
@@ -449,6 +471,11 @@ export default function CalendarPage(props: CalendarPageProps) {
           <Plus />
         </IconButton>
       </ScreenBar>
+
+      {/* The phone's heading line — see `phoneTitle`. It wraps rather than truncating: a week range
+          is two dates long, and a heading that ends in an ellipsis answers half the question it was
+          put there to answer. */}
+      {phoneTitle && <h1 className={styles.pageTitle}>{heading}</h1>}
 
       {/*
         Exactly ONE of: the failure, the spinner, the view.

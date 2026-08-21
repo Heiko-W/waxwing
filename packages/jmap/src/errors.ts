@@ -232,6 +232,33 @@ export async function errorFromResponse(response: Response): Promise<JmapError> 
   )
 }
 
+/**
+ * The HTTP status behind a thrown JMAP error — whichever class happens to carry it.
+ *
+ * {@link JmapProblemError} and {@link JmapRequestError} are NOT subclasses of
+ * {@link JmapHttpError}: the hierarchy branches on the SHAPE OF THE BODY, not on the transport, so
+ * one server answering a 401 with `application/problem+json` and another answering it with an empty
+ * body produce two unrelated classes for the same failure. Every `instanceof JmapHttpError` guard
+ * that means "was this a 401?" is therefore half a guard, and the half it misses is the one
+ * Stalwart takes: it returns a JSON problem document, so an `instanceof JmapHttpError` check on a
+ * rejected password is false and the failure arrives as an unrecognized error.
+ *
+ * That has now cost this repo twice — the sync outbox dead-lettered a whole queue instead of
+ * re-authenticating (M3.3), and the sign-in screen answered a mistyped password with "Something
+ * went wrong" plus an offer to delete the local mailbox (U2). Both were one missing branch of this
+ * function, written out separately. It lives here, beside the classes, so the next caller that
+ * needs a status gets all three without having to know that.
+ *
+ * Returns `undefined` for anything that is not a JMAP error carrying a status — a network
+ * `TypeError`, an abort, a bug — which callers must treat as "no status", never as "not an error".
+ */
+export function httpStatusOf(error: unknown): number | undefined {
+  if (error instanceof JmapHttpError) return error.status
+  if (error instanceof JmapProblemError) return error.status
+  if (error instanceof JmapRequestError) return error.status
+  return undefined
+}
+
 /** `true` if a {@link SetError} represents the given standard type. */
 export function isSetErrorType(error: SetError, type: string): boolean {
   return error.type === type

@@ -1558,6 +1558,12 @@
     "cancel": "Abbrechen",
     "download": "{{name}} herunterladen",
     "delete": "{{name}} löschen",
+    "rename": {
+      "open": "{{name}} umbenennen",
+      "title": "„{{name}}“ umbenennen",
+      "label": "Neuer Name",
+      "confirm": "Umbenennen"
+    },
     "error": {
       "nameTaken": "Hier gibt es bereits etwas mit diesem Namen.",
       "tooLarge": "Diese Datei ist für diesen Server zu groß.",

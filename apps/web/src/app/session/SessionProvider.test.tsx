@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { JmapSessionOriginError } from '@waxwing/jmap'
+import { JmapProblemError, JmapSessionOriginError } from '@waxwing/jmap'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthConfigError } from '../../auth'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
@@ -144,6 +144,27 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.generic'),
     )
     expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+  })
+
+  it('reads a 401 out of a JSON problem body too, not only out of a JmapHttpError (U2)', async () => {
+    // `errorFromResponse` picks the error class from the SHAPE OF THE BODY: Stalwart answers a
+    // refused password with an RFC 7807 document, so it arrives as a `JmapProblemError` — which is
+    // NOT a subclass of `JmapHttpError`. The old `instanceof JmapHttpError` check therefore missed
+    // every real rejected credential and called it "something went wrong", and the onboarding
+    // screen — which withholds its "reset this app" offer by matching the credential keys — put
+    // the invitation to delete the local mailbox under a typo.
+    const user = userEvent.setup()
+    renderSession({
+      probePresent: true,
+      connectError: new JmapProblemError({ type: 'about:blank', detail: 'Unauthorized' }, 401),
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('auth.error.invalidCredentialsBasic'),
+    )
   })
 
   it('names the host it could not reach, instead of blaming the connection', async () => {

@@ -34,6 +34,7 @@ export { connect, FALLBACK_LIMITS, JmapClient } from './client'
 // Error hierarchy (RFC 8620 §3.6, RFC 8887 §4.2).
 export {
   errorFromResponse,
+  httpStatusOf,
   isMethodError,
   isMethodErrorType,
   isSetErrorType,

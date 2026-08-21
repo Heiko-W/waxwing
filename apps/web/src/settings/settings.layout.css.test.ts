@@ -122,6 +122,62 @@ describe('a panel heading is not a rail caption', () => {
   })
 })
 
+describe('a list of records inside the card is rows, not a second card (G2)', () => {
+  it('draws no edge of its own on an identity row', () => {
+    // The `<li>` carried `border`, `border-radius` and `background`, so it drew a bordered box
+    // exactly 1px inside the card's: card `x=480 w=672`, row `x=481 w=670`, two concentric arcs at
+    // every corner. The `.controls` rework took that shape out of thirteen sections and missed
+    // this one, because the offender is an `<li>` and not a nested `.controls` — which is also why
+    // the "exactly one card per section" count in `settings.test.tsx` cannot see it, and why the
+    // check lives here.
+    const row = ruleBody(css, '.identityRow')
+    expect(row, 'no border, no radius — a row has neither').not.toMatch(/border/)
+    expect(row, 'and no surface of its own: the card is the surface').not.toMatch(/background/)
+  })
+
+  it('separates the rows the way the card separates its own', () => {
+    // Removing the boxes must not run the records together — a list of addresses is read down a
+    // column of rules, exactly like the rows of every other section.
+    expect(ruleBody(css, '.identityRow + .identityRow')).toMatch(/border-block-start:/)
+  })
+
+  it('gives the rows the card inset the `<ul>` cannot pass on', () => {
+    // `.controls > *` insets the LIST, whose rows would then start at the card's border. The list
+    // opts out (`padding: 0`) and the rows take the same inset, so an identity lines up with every
+    // other row on the screen rather than one gap further in or out.
+    expect(ruleBody(css, '.identityList')).toMatch(/padding:\s*0/)
+    expect(ruleBody(css, '.identityRow')).toMatch(/padding:/)
+  })
+})
+
+describe('the phone heading is the page title, and the cascade has to agree', () => {
+  it('states the phone size AFTER the base rule it overrides', () => {
+    /*
+     * Both selectors are one class, and a media query does not raise specificity — so this is
+     * decided purely by which rule comes last. The phone override was written inside the layout
+     * `@media` block two hundred lines ABOVE `.sectionTitle`, which meant `text-lg` won and every
+     * section heading on a phone rendered at 18px next to 17px labels: the 28px was dead code that
+     * no test and no green suite could see, because the query itself matched and its other
+     * declaration (`flex: 1 1 0` on the rail) arrived correctly.
+     *
+     * Source ORDER is the invariant, not the two sizes: it survives a change from 28px to 26px,
+     * and it is the thing that was wrong.
+     */
+    const base = /^\.sectionTitle\s*\{/m.exec(css)
+    const phone = /^[ \t]+\.sectionTitle\s*\{/m.exec(css)
+    expect(base, 'the base rule must exist to be overridden').not.toBeNull()
+    expect(phone, 'the phone override must exist at all').not.toBeNull()
+    expect(phone?.index).toBeGreaterThan(base?.index ?? 0)
+  })
+
+  it('overrides it inside the phone query and nowhere else', () => {
+    // If the override ever moves back out of a media query it stops being an override and starts
+    // being the size everywhere, which is the opposite mistake and just as invisible.
+    expect(mediaBlock(css, PHONE)).toMatch(/\.sectionTitle\s*\{/)
+    expect(ruleBody(mediaBlock(css, PHONE), '.sectionTitle')).toMatch(/font-size:/)
+  })
+})
+
 describe('the page bounds itself rather than trailing off', () => {
   it('caps its width and centres the remainder', () => {
     // At 1920px the two columns ended at x≈1048 with 872px of nothing to the right of them. The

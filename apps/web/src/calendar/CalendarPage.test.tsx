@@ -97,6 +97,51 @@ beforeEach(() => {
   window.history.pushState({}, '', '/')
 })
 
+const originalMatchMedia = window.matchMedia
+
+/** Force the phone tier (nothing matches → `useLayoutTier` reports 'phone'). */
+function forcePhone(): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false
+      },
+    }),
+  })
+}
+
+afterEach(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: originalMatchMedia,
+  })
+})
+
+/**
+ * The screen's toolbar: the smallest element holding both ends of it.
+ *
+ * Found by containment rather than by class name — a CSS-module class is a build artefact, and the
+ * claim below ("the heading is not in that row") is about the DOM the reader gets, whatever the row
+ * happens to be called.
+ */
+function toolbar(): HTMLElement {
+  const plus = screen.getByRole('button', { name: 'New event' })
+  let node: HTMLElement | null = screen.getByRole('button', { name: /Previous (month|week)/ })
+  while (node !== null && !node.contains(plus)) node = node.parentElement
+  if (node === null) throw new Error('no element holds both ends of the toolbar')
+  return node
+}
+
 describe('CalendarPage reporting', () => {
   it('offers a way to create an event', async () => {
     // Day cells opened the dialog all along and nothing said so, which made this the one screen a
@@ -499,5 +544,43 @@ describe('offline (T3)', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Weekly' }))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+})
+
+describe('the phone header (F1)', () => {
+  /*
+   * The heading measured 32px of visible width against 76px of content on a 390px phone: "A…" for
+   * "August 2026", "1…" for a week range. Five 44px controls of this screen's own plus the shell's
+   * own buttons leave nothing for it, and none of those may shrink — so the heading leaves the row
+   * instead of being squeezed inside it.
+   *
+   * Asserted structurally (is the heading in that row?) rather than by measurement: jsdom lays
+   * nothing out, and the pixel widths were never the invariant — "the month is legible on a phone"
+   * is.
+   */
+  it('takes the month out of the toolbar row', async () => {
+    forcePhone()
+    renderPage(client())
+
+    const heading = await screen.findByRole('heading', { level: 1 })
+    expect(toolbar().contains(heading), 'the heading shares no row with the buttons').toBe(false)
+  })
+
+  it('spells the month out again, now that there is room for it', async () => {
+    // "Aug 2026" was the previous answer to the same pressure, and it did not work either — the
+    // abbreviation bought 30px against a shortfall of 44.
+    forcePhone()
+    renderPage(client())
+
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('August 2026')
+  })
+
+  it('leaves the wide layout alone: there the heading IS the middle of the bar', async () => {
+    // The strip beside the panes has room for both, and the pane title is where every other screen
+    // states which list it is showing. This is the half that must not change.
+    renderPage(client())
+
+    const heading = await screen.findByRole('heading', { level: 1 })
+    expect(toolbar().contains(heading)).toBe(true)
   })
 })

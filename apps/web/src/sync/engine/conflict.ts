@@ -16,6 +16,7 @@
  */
 
 import {
+  httpStatusOf,
   JmapHttpError,
   JmapMethodError,
   JmapProblemError,
@@ -211,19 +212,14 @@ export function classifyThrown(
 }
 
 /**
- * The HTTP status behind a thrown JMAP error — whichever class carries it. `JmapProblemError` and
- * `JmapRequestError` are NOT subclasses of `JmapHttpError`, so a status check MUST span all three:
- * a server (or gateway) that answers an expired token with a JSON body yields a `JmapProblemError`,
- * which would otherwise slip past the auth funnel and be misread as a per-action failure.
+ * A background 401/403 — the session expired: route to re-auth (FR-AUTH-06), do not fail the row.
+ *
+ * The status comes from `httpStatusOf` in `@waxwing/jmap` rather than from an `instanceof
+ * JmapHttpError` here, and that is the whole content of this function: `JmapProblemError` and
+ * `JmapRequestError` are not subclasses of it, so a server that answers an expired token with a
+ * JSON body used to slip past this funnel and have its 401 misread as a per-action failure —
+ * dead-lettering the entire queue with no re-auth prompt.
  */
-function httpStatusOf(error: unknown): number | undefined {
-  if (error instanceof JmapHttpError) return error.status
-  if (error instanceof JmapProblemError) return error.status
-  if (error instanceof JmapRequestError) return error.status
-  return undefined
-}
-
-/** A background 401/403 — the session expired: route to re-auth (FR-AUTH-06), do not fail the row. */
 export function isAuthExpiry(error: unknown): boolean {
   const status = httpStatusOf(error)
   return status === 401 || status === 403

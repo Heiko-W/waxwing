@@ -299,6 +299,45 @@ describe('focus on navigation (G5)', () => {
     })
   })
 
+  it('moves focus without scrolling the panel, so the way back stays on screen', async () => {
+    /*
+     * The regression the fix above introduced, and the reason `preventScroll` is not a nicety.
+     *
+     * The `<section>` sits below the "‹ Settings" link inside the panel, which scrolls. A plain
+     * `focus()` therefore scrolled the panel to bring the section into view and pushed that link
+     * out of the box: measured at `scrollTop: 60` on a 390×844 phone for every section taller than
+     * the panel (Vacation, Server), and 0 for the ones that fit. On a phone that link is the only
+     * route back to the section list, so the screen kept its focus fix and lost its exit.
+     *
+     * jsdom lays nothing out, so the scroll itself is unobservable here — the option that governs
+     * it is. That is the whole of the invariant anyway: this call must never be the thing that
+     * decides where the panel is scrolled to.
+     */
+    forcePhone()
+    const user = userEvent.setup()
+    const original = HTMLElement.prototype.focus
+    const onSection: (FocusOptions | undefined)[] = []
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+      this: HTMLElement,
+      options?: FocusOptions,
+    ) {
+      if (this.tagName === 'SECTION') onSection.push(options)
+      original.call(this, options)
+    })
+
+    try {
+      renderSettings()
+      await openSection(user, 'Compose')
+      const section = await screen.findByRole('region', { name: 'Compose' })
+      await waitFor(() => expect(document.activeElement).toBe(section))
+
+      expect(onSection.length, 'the section must actually have been focused').toBeGreaterThan(0)
+      for (const options of onSection) expect(options?.preventScroll).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('does not seize focus on first paint', async () => {
     // Landing on `/settings` shows a section because there is room for one, which is not the
     // reader asking to be put inside it.

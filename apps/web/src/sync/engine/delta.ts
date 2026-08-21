@@ -595,7 +595,7 @@ export async function fullRequeryContacts(
 }
 
 /** Fetch + store cards for any of `ids` not already in the replica (mirror of {@link hydrateMissing}). */
-async function hydrateMissingContacts(
+export async function hydrateMissingContacts(
   port: JmapPort,
   db: ReplicaDb,
   accountId: Id,

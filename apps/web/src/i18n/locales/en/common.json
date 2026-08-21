@@ -1558,6 +1558,12 @@
     "cancel": "Cancel",
     "download": "Download {{name}}",
     "delete": "Delete {{name}}",
+    "rename": {
+      "open": "Rename {{name}}",
+      "title": "Rename “{{name}}”",
+      "label": "New name",
+      "confirm": "Rename"
+    },
     "error": {
       "nameTaken": "Something with that name is already here.",
       "tooLarge": "That file is too large for this server.",

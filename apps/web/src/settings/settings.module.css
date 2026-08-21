@@ -197,14 +197,6 @@
     inline-size: auto;
     flex: 1 1 0;
   }
-
-  /* On a phone the panel IS the screen and its heading IS the page title, so it is set like one
-     rather than like the caption over a panel that sits beside something else. */
-  .sectionTitle {
-    font-size: var(--waxwing-text-2xl);
-    line-height: var(--waxwing-leading-tight);
-    letter-spacing: var(--waxwing-tracking-tight);
-  }
 }
 
 .title {
@@ -236,6 +228,31 @@
   font-size: var(--waxwing-text-lg);
   font-weight: var(--waxwing-weight-semibold);
   color: var(--waxwing-text);
+}
+
+/*
+ * On a phone the panel IS the screen and its heading IS the page title, so it is set like one
+ * rather than like the caption over a panel standing beside something else.
+ *
+ * IT HAS TO STAND HERE, AFTER THE RULE IT OVERRIDES, and that is the entire content of this
+ * comment. It was written two hundred lines above, inside the phone `@media` block with the layout
+ * switch, where it was dead: a media query does not raise specificity, both selectors are one
+ * class, so the LATER rule won and every phone heading rendered at `text-lg` — 18px against the
+ * 17px labels under it, on a screen whose whole point was to open with a title. The measurement
+ * that found it (`matchMedia('(max-width: 39.999em)').matches === true`, `font-size: 18px`) is
+ * what a stylesheet looks like when a rule is stated in the right place and read in the wrong one.
+ *
+ * The other arrangement — hoisting the base rule above the media block — is not open to us either:
+ * Biome's `noDescendingSpecificity` refuses a lower-specificity selector after a higher one for the
+ * same element, and two corrections in this repo have already died on it. An override goes after
+ * what it overrides, next to what it overrides.
+ */
+@media (max-width: 39.999em) {
+  .sectionTitle {
+    font-size: var(--waxwing-text-2xl);
+    line-height: var(--waxwing-leading-tight);
+    letter-spacing: var(--waxwing-tracking-tight);
+  }
 }
 
 /*
@@ -511,29 +528,50 @@
 /* ── Identities (M5.1) ───────────────────────────────────────────────────────────────────────
    A list of records, which the rest of this file has no precedent for: every other section is a
    column of single controls. It stays a plain <ul> with the list styling removed rather than a new
-   ui/ primitive — one screen uses it. */
+   ui/ primitive — two sections use it (Identities and Templates), which is what the `identity*`
+   names now under-describe. */
 .identityList {
   margin: 0;
+  /* The ROWS of this list are the <li>s, not this <ul>, so it passes the card's inset down instead
+     of taking it (`.controls > *` would otherwise inset the whole list once and each row not at
+     all). Every other stated width and edge in the card still comes from the card. */
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-2);
 }
 
-/* Wraps rather than truncates: the row carries an address, and a cut-off address is a wrong one.
-   Below ~30em the actions drop under the text instead of squeezing it (the 390px sweep in
-   e2e/tests/narrow.spec.ts measures exactly this). */
+/*
+ * A row of the card — NOT a card of its own (G2).
+ *
+ * This used to carry `border: 1px solid`, `border-radius` and `background` and therefore drew a
+ * second bordered box exactly 1px inside the first: measured at card `x=480 w=672` against `li
+ * x=481 w=670`, with two concentric arcs at every corner, and stronger in dark than in light. That
+ * is precisely the shape the `.controls` rework removed from thirteen sections; it survived here
+ * because the offender is an `<li>` rather than a nested `.controls`, so the "exactly one card per
+ * section" count in `settings.test.tsx` could not see it. A section has ONE edge. What separates
+ * things inside it is a rule between rows, which is what the card does with its own children and
+ * what this does with its.
+ *
+ * Wraps rather than truncates: the row carries an address, and a cut-off address is a wrong one.
+ * Below ~30em the actions drop under the text instead of squeezing it (the 390px sweep in
+ * e2e/tests/narrow.spec.ts measures exactly this).
+ */
 .identityRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--waxwing-space-2);
-  padding: var(--waxwing-space-3);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-md);
-  background: var(--waxwing-surface);
+  /* The card's own row inset, restated because the inset stops at the `<ul>` — same value, so an
+     identity lines up with every other row on the screen. */
+  padding: var(--waxwing-space-3) var(--waxwing-space-4);
+}
+
+/* Between rows only: the list already sits under the card's rule that separates it from the text
+   above it, and a second line drawn on the first row would double it. */
+.identityRow + .identityRow {
+  border-block-start: 1px solid var(--waxwing-border);
 }
 
 .identityText {

@@ -1,7 +1,8 @@
 /**
- * Contact detail (M4.2) — a single {@link ContactCard} rendered read-only. Loads the card via
- * {@link useContactCard} and lays out the common JSContact fields (name, emails, phones, addresses,
- * organization / title, birthday, notes) the way Apple Contacts groups them. The photo comes from the
+ * Contact detail (M4.2) — a single {@link ContactCard} rendered read-only. Reads the card from the
+ * replica ({@link useContactCardResolved}) and fetches it if nobody else has
+ * ({@link useEnsureContactCard}), then lays out the common JSContact fields (name, emails, phones,
+ * addresses, organization / title, birthday, notes) the way Apple Contacts groups them. The photo comes from the
  * card's media blob ({@link useContactPhoto}) with an initials fallback.
  *
  * Edit / Delete are RIGHTS-GATED (M4.2, stage 5b): the buttons are enabled only when the parent passes
@@ -38,6 +39,7 @@ import {
 } from './contact-fields'
 import styles from './contacts.module.css'
 import { useContactPhoto } from './use-contact-photo'
+import { useEnsureContactCard } from './use-ensure-contact-card'
 
 export interface ContactDetailProps {
   /** The card to show, or `undefined` when nothing is selected (renders the empty state). */
@@ -61,11 +63,22 @@ export function ContactDetail({
 }: ContactDetailProps) {
   const { t } = useTranslation()
   const { settled, card } = useContactCardResolved(cardId ?? '')
+  /*
+   * This pane fetches the card it was asked for instead of hoping the list already did (F3).
+   *
+   * The replica is the only thing read below, and until this hook existed the only thing that ever
+   * WROTE a card into it was the list pane's watched query. On a phone the list is not mounted
+   * beside the detail — it is the other half of a single pane — so a deep link into a contact found
+   * an empty replica and a settled query, which is exactly the shape of "no such contact". The
+   * message was right about what it saw and wrong about what it meant.
+   */
+  const { fetching } = useEnsureContactCard(cardId)
 
   if (cardId === undefined) {
     return <EmptyState icon={UserRound} title={t('contacts.detail.empty')} />
   }
-  if (!settled) {
+  // A card already in the replica is shown at once; the fetch behind it is a no-op for that id.
+  if (card === undefined && (!settled || fetching)) {
     return (
       <div className={styles.detailLoading}>
         <Spinner label={t('contacts.detail.loading')} />
@@ -73,9 +86,9 @@ export function ContactDetail({
     )
   }
   if (card === undefined) {
-    // Settled and empty: a deep link to a contact deleted since, or an id that never existed. This
-    // used to be the same spinner as "still loading", so the reader waited for something that was
-    // never coming.
+    // Settled, fetched, and still nothing: a deep link to a contact deleted since, or an id that
+    // never existed. This used to be the same spinner as "still loading", so the reader waited for
+    // something that was never coming.
     return <EmptyState tone="error" icon={UserRoundX} title={t('contacts.detail.notAvailable')} />
   }
   return (

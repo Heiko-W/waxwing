@@ -1173,6 +1173,35 @@ describe('SyncEngine', () => {
     expect(await db.emails.get([ACC, 'e2'])).toBeDefined()
     expect(requested).toEqual([['e1'], ['e2']])
   })
+
+  it('fetchContactCards hydrates a card no watched query covers (F3)', async () => {
+    // The detail pane's own supply line. Until it existed, a contact card could only enter the
+    // replica through a watched `ContactCard/query` — the list pane's — so a phone deep link, which
+    // mounts the detail with no list beside it, had no way to obtain the card it was asked to show.
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const requested: string[][] = []
+    const port: JmapPort = {
+      ...base,
+      getContactCards: async (ids) => {
+        requested.push([...ids])
+        return {
+          list: ids.map((id) => ({ '@type': 'Card', version: '1.0', uid: `uid-${id}`, id })),
+          notFound: [],
+          state: 'cc-1',
+        } as unknown as Awaited<ReturnType<JmapPort['getContactCards']>>
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    await engine.fetchContactCards(['k1'])
+    expect(await db.contactCards.get([ACC, 'k1'])).toBeDefined()
+    expect(requested).toEqual([['k1']])
+
+    // Already in the replica → the card the reader opened from the list costs no round-trip.
+    await engine.fetchContactCards(['k1', 'k2'])
+    expect(await db.contactCards.get([ACC, 'k2'])).toBeDefined()
+    expect(requested).toEqual([['k1'], ['k2']])
+  })
 })
 
 describe('SyncEngine — undo-send (M2.8)', () => {

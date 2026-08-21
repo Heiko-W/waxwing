@@ -65,6 +65,7 @@ import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { isAuthExpiry } from './conflict'
 import {
   type ContactQuerySpecInput,
+  hydrateMissingContacts,
   reconcileContactQuery,
   reconcileQuery,
   syncAddressBooks,
@@ -909,6 +910,26 @@ export class SyncEngine {
     if (missing.length === 0) return
     const { list } = await this.port.getEmailEnvelopes(missing)
     await putEmails(this.db, this.accountId, list)
+  }
+
+  /**
+   * Ensure the given contact cards exist in the replica — the contacts analogue of
+   * {@link fetchEnvelopes}, and for the same reason one exists for mail.
+   *
+   * Contact rows only ever arrived through a watched `ContactCard/query` (the list pane's window).
+   * That makes the LIST the sole source of cards, and the detail pane a reader of whatever the list
+   * happened to have fetched — which holds on a screen that shows both and fails on one that does
+   * not. A phone shows list XOR detail, so a deep link straight into `/contacts/~all/<id>` mounted
+   * the detail with no list behind it, nothing ever ran a query, and the card stayed absent for the
+   * life of the session: "This contact is not available." over a contact that exists.
+   *
+   * A `ContactCard/get` by id rather than a query, because the question is about ONE card: a query
+   * would have to guess a filter that contains it and would still return a windowed page that may
+   * not. Already-present ids are skipped, so this is a cheap no-op for the card the reader clicked
+   * in the list.
+   */
+  async fetchContactCards(ids: Id[]): Promise<void> {
+    await hydrateMissingContacts(this.port, this.db, this.accountId, ids)
   }
 
   getStatus(): EngineStatus {

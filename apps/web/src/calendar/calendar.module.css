@@ -24,6 +24,22 @@
 }
 
 /*
+ * The month, on a phone, where there is room to read it (F1).
+ *
+ * Rendered only below 40em (`phoneTitle` in CalendarPage.tsx) — not hidden here with a media query,
+ * because on wider viewports the heading is a different element in a different place, not this one
+ * turned off. It carries no `text-overflow`, deliberately: it is the full width of the page, and
+ * the state this replaces was a heading truncated to its first letter.
+ */
+.pageTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-xl);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
+}
+
+/*
  * A segmented control, not three buttons that happen to sit together.
  *
  * Only the active one had a fill and a border before, so the other two read as plain text beside a

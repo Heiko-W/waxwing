@@ -492,7 +492,21 @@ export default function SettingsPage() {
     }
     if (previous === shownSlug) return
     if (shownSlug !== undefined) {
-      sectionRef.current?.focus()
+      /*
+       * `preventScroll`, because moving focus must not move the panel.
+       *
+       * The `<section>` sits BELOW the "‹ Settings" link inside the scrolling panel, so the
+       * default "scroll the new focus into view" put the panel at `scrollTop: 60` the moment a
+       * section was opened — pushing that link out of the box. Measured on a 390×844 phone, that
+       * happened for every section taller than the panel (Vacation, Server: 60px each; Reading,
+       * Identities, About, which fit, stayed at 0). On a phone the link is the ONLY way back to
+       * the section list this screen offers, so the fix for "focus is nowhere" had made the way
+       * out invisible until you scrolled up to look for it.
+       *
+       * Not applied to the rail below: going back, scrolling to reveal the row that was left is
+       * the whole point — the rail IS the screen there, and the row may be far down it.
+       */
+      sectionRef.current?.focus({ preventScroll: true })
     } else if (previous !== undefined) {
       document.getElementById(railItemDomId(id, previous))?.focus()
     }

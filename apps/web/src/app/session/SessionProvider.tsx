@@ -13,7 +13,7 @@
  */
 
 import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
-import { JmapHttpError, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
+import { httpStatusOf, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError } from '../../auth'
@@ -137,8 +137,24 @@ function errToOnboard(error: unknown, host?: string, basic = false): OnboardErro
       values: { field: error.field, url: error.url, origin: error.expectedOrigin },
     }
   }
-  if (error instanceof JmapHttpError) {
-    if (error.status === 401 || error.status === 403) {
+  /*
+   * THE STATUS, NOT THE CLASS (U2).
+   *
+   * This read `error instanceof JmapHttpError` and never fired against a real server. Stalwart
+   * answers a refused password with a JSON problem document, so `errorFromResponse` builds a
+   * `JmapProblemError` — which is NOT a subclass of `JmapHttpError`; the hierarchy branches on the
+   * shape of the BODY, not on the transport. A mistyped password therefore fell through every
+   * branch of this function to "Something went wrong. Please try again.", and — because
+   * `Onboarding` withholds its "reset this app" escape hatch by MATCHING THE TWO CREDENTIAL KEYS —
+   * the one failure that must never offer to delete the local mailbox was the one that did.
+   *
+   * `httpStatusOf` spans all three status-carrying classes. Asking for the status is also the only
+   * question this function actually has: what the server said, not which constructor the body
+   * happened to select.
+   */
+  const status = httpStatusOf(error)
+  if (status !== undefined) {
+    if (status === 401 || status === 403) {
       // A 401 on the PASSWORD path has a second, likelier cause than a typo, and the reader
       // cannot see it: Stalwart accepts a second factor only over OAuth, so an account with
       // 2FA on has its correct password refused here and only an app password gets through.
