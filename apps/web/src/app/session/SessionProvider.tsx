@@ -13,7 +13,7 @@
  */
 
 import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
-import { JmapHttpError, secondaryMailAccounts } from '@waxwing/jmap'
+import { JmapHttpError, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError } from '../../auth'
@@ -119,6 +119,24 @@ function canEditServer(config: WaxwingConfig, target: ConnectTarget): boolean {
  */
 function errToOnboard(error: unknown, host?: string, basic = false): OnboardError {
   if (error instanceof NoAccountError) return { key: 'onboarding.error.noAccount' }
+  /*
+   * The one error that already knows exactly what is wrong, and used to be flattened into
+   * "Something went wrong. Please try again." (U1).
+   *
+   * `packages/jmap` refuses a Session document whose `apiUrl`/`downloadUrl`/… names a different
+   * origin than the one that served it, because every request would attach the Authorization
+   * header to that foreign host. The refusal is right and stays. What was wrong is that it threw
+   * away the only three facts that make the misconfiguration fixable — which field, which URL, and
+   * which origin the credential may go to — and left an operator with a sentence that describes
+   * nothing and an instruction ("try again") that cannot help. Trying again produces the identical
+   * refusal, forever.
+   */
+  if (error instanceof JmapSessionOriginError) {
+    return {
+      key: 'onboarding.error.sessionOrigin',
+      values: { field: error.field, url: error.url, origin: error.expectedOrigin },
+    }
+  }
   if (error instanceof JmapHttpError) {
     if (error.status === 401 || error.status === 403) {
       // A 401 on the PASSWORD path has a second, likelier cause than a typo, and the reader
@@ -196,6 +214,17 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
    * not be stale in either.
    */
   const ephemeralRef = useRef(false)
+  /**
+   * The sign-out teardown that is still running behind the login form, or `null`.
+   *
+   * Since a sign-out clears the screen FIRST (see `endSession`), the login form is usable while
+   * the wipe, the push teardown and the credential delete are still in flight — several seconds of
+   * it. A sign-in started in that window would race the teardown: `resetReplica()`,
+   * `releaseEphemeralClaim()` and `controllerRef.current = null` would land AFTER the new session
+   * had opened and quietly dismantle it. Both sign-in paths await this first, so the race cannot
+   * exist rather than being unlikely.
+   */
+  const teardownRef = useRef<Promise<void> | null>(null)
 
   /**
    * Switch this session to a throwaway replica (FR-AUTH-09). Shared by BOTH sign-in paths — the
@@ -385,6 +414,17 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         dispatch({ type: 'showConnect' })
       }
     } catch (error) {
+      /*
+       * NAMED, even when the message on screen cannot name it (U2).
+       *
+       * A start-up that fails without a single failed network call — stale local state was the
+       * observed trigger, though which part of it was never established — reaches this catch and
+       * renders whatever `errToOnboard` can make of it, which for an unrecognised error is the
+       * generic sentence. The error object itself is the only thing that says more, and it was
+       * being dropped here. One console line is not a fix, but it is the difference between a
+       * report that says "it says something went wrong" and one that can be acted on.
+       */
+      console.error('[waxwing] start-up failed', error)
       goToLogin(targetRef.current ?? fallbackTarget(), errToOnboard(error))
     }
   }, [config, ensureController, connectSession, goToLogin, fallbackTarget, services, markEphemeral])
@@ -420,6 +460,8 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         const target = current.status === 'onboarding' ? current.view.target : null
         if (!target) return
         dispatch({ type: 'submitBusy' })
+        // A sign-out clears the screen before it finishes cleaning up; see `teardownRef`.
+        await teardownRef.current
         try {
           writeStored(session(), STASH_TARGET_KEY, target)
           // Two halves, because they are consumed by different owners after the redirect: the
@@ -461,6 +503,9 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         const target = current.status === 'onboarding' ? current.view.target : null
         if (!target) return
         dispatch({ type: 'submitBusy' })
+        // A sign-out clears the screen before it finishes cleaning up; see `teardownRef`. Awaited
+        // BEFORE `markEphemeral` below, because the teardown's `resetReplica()` would undo it.
+        await teardownRef.current
         try {
           // BEFORE any replica work (FR-AUTH-09). `setReplicaName` throws once a replica is open,
           // and the first `getReplica()` happens inside `connectSession` below — so this is the one
@@ -531,7 +576,30 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
 
   const endSession = useCallback(
     (wipeData: boolean) => {
-      void (async () => {
+      /*
+       * THE SCREEN IS CLEARED FIRST, AND EVERYTHING ELSE HAPPENS BEHIND THE LOGIN FORM.
+       *
+       * This used to be the last statement of the async block below, after stopping the sync
+       * engines, wiping the replica, closing OS notifications, tearing down the push subscription
+       * and awaiting the controller's logout. Measured against the fixture, that took a mean of
+       * 6.1 s (4–8 s), and for all of it the menu had closed and NOTHING else had changed: the
+       * account name in the header, the folder tree and the whole Inbox with its subject lines and
+       * preview text stayed on screen. On a shared machine that is the worst moment this app has —
+       * you press "Sign out", you walk away, and the mailbox stands open behind you for six
+       * seconds.
+       *
+       * Clearing the display is also the only part that is instantaneous and cannot fail. The
+       * teardown is I/O with locks, network calls and a database delete in it; it belongs behind
+       * the login form, not in front of it. Nothing that stays on screen depends on it — the
+       * in-memory session goes with this dispatch, every screen unmounts, and the refs below are
+       * dropped in the same task.
+       *
+       * The one thing that must NOT overtake it is a new sign-in: `teardownRef` holds this promise
+       * so `submitBasic`/`chooseOAuth` wait for it before opening a session that this teardown
+       * would otherwise wipe out from under them.
+       */
+      goToLogin(targetRef.current ?? fallbackTarget())
+      teardownRef.current = (async () => {
         // FR-AUTH-05 / FR-AUTH-06. Stop the sync engines and release their Web Locks BEFORE any wipe —
         // otherwise `deleteDatabase` blocks on an open Dexie/IndexedDB connection (M1.3). EVERY engine
         // (M4.4 Etappe 4): since the fleet, each shared account's engine holds a handle of its own, and
@@ -597,14 +665,36 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         resetReplica()
         removeStored(local(), DURABLE_TARGET_KEY)
         removeStored(session(), STASH_PUBLIC_KEY)
-        goToLogin(
-          targetRef.current ?? fallbackTarget(),
-          incomplete ? { key: 'auth.error.signOutIncomplete' } : undefined,
-        )
-      })()
+        // Only the BAD news arrives late, and it arrives on the login form the user is already
+        // looking at: "your data is still on this machine" is not something to swallow because the
+        // screen has moved on. A clean sign-out says nothing, which is what a clean sign-out looks
+        // like everywhere else.
+        if (incomplete) {
+          dispatch({ type: 'loginError', error: { key: 'auth.error.signOutIncomplete' } })
+        }
+      })().catch((error: unknown) => {
+        // Nothing awaits this for its own sake, and a rejection here would surface in whichever
+        // sign-in happens to await `teardownRef` next — as a failure of THAT sign-in, which it is
+        // not. Named in the console instead, where a start-up failure can be looked up.
+        console.error('[waxwing] sign-out clean-up did not finish', error)
+      })
     },
     [goToLogin, fallbackTarget],
   )
+
+  /**
+   * "Remove my data" for someone who never got in (U2). See {@link SessionContextValue.wipeLocalState}.
+   *
+   * Deliberately NOT routed through `endSession`: there is no session to end, no engine to stop and
+   * no controller to log out — and `endSession`'s first act is to render the very screen this is
+   * being triggered from. The service drops the storages and reloads; if the reload does not
+   * happen the error stays on screen, which is the honest outcome.
+   */
+  const wipeLocalState = useCallback(() => {
+    void services.resetLocalData().catch((error: unknown) => {
+      console.error('[waxwing] resetting local data failed', error)
+    })
+  }, [services])
 
   const signOut = useCallback(() => endSession(false), [endSession])
   const signOutAndWipe = useCallback(() => endSession(true), [endSession])
@@ -661,6 +751,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       cancelReauth,
       signOut,
       signOutAndWipe,
+      wipeLocalState,
       getClient,
       getAuthProvider,
     }
@@ -676,6 +767,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     cancelReauth,
     signOut,
     signOutAndWipe,
+    wipeLocalState,
     getClient,
     getAuthProvider,
   ])

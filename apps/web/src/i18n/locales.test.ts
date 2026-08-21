@@ -140,3 +140,25 @@ describe('typographic consistency', () => {
     }
   })
 })
+
+describe('one word, one meaning', () => {
+  it('does not let the shortcut group and the sort control share a name (M9)', () => {
+    /*
+     * The German for "Triage" was "Sortieren" — the same word the view options already use for the
+     * sort order, one screen away. So the shortcut sheet had a heading "SORTIEREN" over Archive,
+     * Trash, Mark as spam and Move to folder: the reader is told these keys sort things, which they
+     * do not, in a word the same app spends on something they do.
+     *
+     * A group name is a promise about what is under it; two promises cannot be the same sentence.
+     */
+    for (const [language, strings] of locales) {
+      const group = strings.get('shortcuts.groups.triage')
+      const sort = strings.get('list.sort.label')
+      expect(group, `${language}: shortcuts.groups.triage`).toBeDefined()
+      expect(sort, `${language}: list.sort.label`).toBeDefined()
+      expect(group, `${language}: the shortcut group must not be named after sorting`).not.toBe(
+        sort,
+      )
+    }
+  })
+})

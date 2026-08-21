@@ -151,11 +151,11 @@ describe('the surface a preview is rendered in', () => {
     expect(container.querySelector('iframe')).toBeNull()
   })
 
-  it('puts a PDF in a frame that is sandboxed to nothing', async () => {
-    listed = [node({ id: '1', name: 'report.pdf', type: 'application/pdf' })]
+  it('puts plain text in a frame that is sandboxed to nothing', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
     const { container } = renderPage()
-    await showing('report.pdf')
-    await userEvent.click(screen.getByRole('button', { name: /Preview report\.pdf/i }))
+    await showing('notes.txt')
+    await userEvent.click(screen.getByRole('button', { name: /Preview notes\.txt/i }))
 
     const frame = await waitFor(() => {
       const found = container.querySelector('iframe')
@@ -165,6 +165,19 @@ describe('the surface a preview is rendered in', () => {
     // Empty, not absent: `sandbox=""` denies same-origin, and a blob: URL carries this app's origin.
     expect(frame.getAttribute('sandbox')).toBe('')
     expect(frame.getAttribute('src')).toBe(created[0])
+  })
+
+  it('offers a PDF no preview at all rather than an empty frame', async () => {
+    // The frame it would need is one this app may not open — `sandbox=""` stops Chromium's viewer
+    // dead, and the only tokens that revive it hand a blob: URL this app's own origin. Download is
+    // the honest offer, and it is the button next to where this one used to be.
+    listed = [node({ id: '1', name: 'report.pdf', type: 'application/pdf' })]
+    const { container } = renderPage()
+    await showing('report.pdf')
+
+    expect(screen.queryByRole('button', { name: /Preview report\.pdf/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download report\.pdf/i })).toBeInTheDocument()
+    expect(container.querySelector('iframe')).toBeNull()
   })
 
   it('reads the type through the policy, parameters and all', async () => {
@@ -221,6 +234,37 @@ describe('opening and closing', () => {
 
     unmount()
     expect(revoked).toEqual(created)
+  })
+})
+
+describe('a write whose reload does not come back', () => {
+  it('still says the upload was saved', async () => {
+    // The measured shape of the outage: the listing is refused, the upload is not. The screen kept
+    // showing "could not be loaded" and said nothing at all about the file that had just landed on
+    // the server — the user uploaded into a void. A failed refresh is not a failed write.
+    const uploaded: string[] = []
+    const failing: FilesClient = {
+      ...client,
+      list: async () => {
+        throw new Error('400 notRequest')
+      },
+      upload: async (file) => {
+        uploaded.push(file.name)
+        return node({ id: '9', name: file.name })
+      },
+    }
+    const { container } = render(
+      <ToastProvider>
+        <FilesPage client={failing} />
+      </ToastProvider>,
+    )
+    await screen.findByText('The files could not be loaded.')
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['bytes'], 'note.txt', { type: 'text/plain' }))
+
+    expect(uploaded).toEqual(['note.txt'])
+    expect(await screen.findByText(/could not be reloaded/i)).toBeInTheDocument()
   })
 })
 

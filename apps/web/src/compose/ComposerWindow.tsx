@@ -432,31 +432,47 @@ export function ComposerWindow({
           </div>
         </div>
 
-        <FromField draft={draft} />
+        {/*
+          The addressing block is ONE scrolling group, and the editor is not part of it.
 
-        <RecipientFields
-          draft={draft}
-          {...(recipientSuggestions ? { suggestionSource: recipientSuggestions } : {})}
-        />
+          These rows grow: Cc and Bcc open, recipients wrap onto second and third lines, an
+          attachment strip appears. They used to take that room out of the message body, because
+          every row was a sibling of the editor in a window with a FIXED height — measured at
+          448x512 with two To recipients, one Cc and one attachment, the body was left 62 visible
+          pixels for 171 of text, with the formatting toolbar scrolled out of sight above it. The
+          part of a compose window you look at least had pushed out the part you came for.
 
-        <div className={styles.field}>
-          <label className={styles.subjectLabel} htmlFor={subjectId}>
-            {t('compose.subjectLabel')}
-          </label>
-          {/* No placeholder. It used to repeat the label word for word — "Betreff" above an empty
+          Now the window grows with this group (composer.module.css), and past the point where it
+          can grow no further THIS scrolls — the editor keeps its floor. The subject is inside the
+          group on purpose: you write it once at the top, the body is what you return to.
+        */}
+        <div className={styles.headerFields}>
+          <FromField draft={draft} />
+
+          <RecipientFields
+            draft={draft}
+            {...(recipientSuggestions ? { suggestionSource: recipientSuggestions } : {})}
+          />
+
+          <div className={styles.field}>
+            <label className={styles.subjectLabel} htmlFor={subjectId}>
+              {t('compose.subjectLabel')}
+            </label>
+            {/* No placeholder. It used to repeat the label word for word — "Betreff" above an empty
               box that also said "Betreff" — which costs a line of the narrowest screen for no
               information. A placeholder earns its place by giving an EXAMPLE (as
               `settings.vacation.subject.placeholder` does with "Nicht im Büro"); a subject has no
               generic example, so the label carries it alone. */}
-          <TextInput
-            ref={subjectRef}
-            id={subjectId}
-            value={draft.subject}
-            onChange={(event) => updateSubject(draft.id, event.target.value)}
-          />
-        </div>
+            <TextInput
+              ref={subjectRef}
+              id={subjectId}
+              value={draft.subject}
+              onChange={(event) => updateSubject(draft.id, event.target.value)}
+            />
+          </div>
 
-        <AttachmentChips draftId={draft.id} controller={attachments} />
+          <AttachmentChips draftId={draft.id} controller={attachments} />
+        </div>
 
         <div className={styles.editorWrap}>
           <RichTextEditor

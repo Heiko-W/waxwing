@@ -168,3 +168,60 @@ test('every navigation label stays inside the rail', async ({ page }) => {
       'with long compounds can.',
   ).toEqual([])
 })
+
+/**
+ * The two things the tablet and phone tiers were measured to get wrong, named rather than swept up.
+ *
+ * `noOverflow` cannot see either: nothing overflows in either case. A filename shortened to two
+ * characters fits its box perfectly, and a 36px button is inside the viewport. Both are failures of
+ * a rule the app states elsewhere and broke in exactly one place.
+ */
+test('the attachment filename keeps more than a stub of itself on a tablet (M7)', async ({
+  page,
+}) => {
+  // Measured at 820x1180: `quarterly-report.pdf` rendered as `qu…` while "Hide preview" stood at
+  // full length beside it. The name is the only thing in that row that is not a fixed label, and it
+  // was the only thing allowed to shrink.
+  await page.setViewportSize({ width: 834, height: 1112 })
+  await messageList(page).getByText(READ_SUBJECTS.pdf, { exact: true }).click()
+  const name = page.getByText('quarterly-report.pdf')
+  await expect(name).toBeVisible({ timeout: 30_000 })
+
+  const width = await name.evaluate((node) => node.getBoundingClientRect().width)
+  // 8rem is the floor the stylesheet commits to; anything at or below the two-character case is the
+  // defect returning.
+  expect(width, 'the filename box on a tablet').toBeGreaterThanOrEqual(120)
+})
+
+test('every tap target in the reading pane meets the coarse-pointer size on a phone (M11)', async ({
+  page,
+}) => {
+  /*
+   * The sender avatar doubles as the contact-card trigger and measured 36x36 — the one control in
+   * the reading pane below `--waxwing-control-min`, which `tokens.css` raises to 2.75rem under
+   * `pointer: coarse`. Everything around it (header buttons, folder actions, "Back to messages")
+   * met it, which is what makes this worth naming: the app keeps this promise everywhere else.
+   *
+   * The token is read from the page rather than hardcoded, so this follows the design rather than
+   * a copy of it.
+   */
+  await page.setViewportSize({ width: 390, height: 844 })
+  await messageList(page).getByText(READ_SUBJECTS.plain, { exact: true }).click()
+  await expect(page.getByRole('button', { name: /Show contact card for/ })).toBeVisible({
+    timeout: 30_000,
+  })
+
+  const minimum = await page.evaluate(() => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--waxwing-control-min')
+    return Number.parseFloat(raw) * (raw.includes('rem') ? 16 : 1)
+  })
+  expect(minimum, 'a coarse pointer raises the control minimum to 44px').toBeGreaterThanOrEqual(44)
+
+  const trigger = page.getByRole('button', { name: /Show contact card for/ })
+  const box = await trigger.evaluate((node) => {
+    const rect = node.getBoundingClientRect()
+    return { width: rect.width, height: rect.height }
+  })
+  expect(box.width, 'contact-card trigger width').toBeGreaterThanOrEqual(minimum)
+  expect(box.height, 'contact-card trigger height').toBeGreaterThanOrEqual(minimum)
+})

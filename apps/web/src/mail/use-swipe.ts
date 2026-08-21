@@ -126,6 +126,9 @@ export function useRowSwipe(options: RowSwipeOptions): RowSwipe {
     // unmount this row.
     if (gesture.direction !== null) {
       const { wrap } = gesture
+      // Whatever yielded to the gesture comes back — see the note where this is set. In
+      // `endGesture` rather than on `pointerup`, so a cancelled gesture restores it too.
+      delete document.body.dataset.waxwingSwiping
       wrap.classList.remove(gesture.swipingClassName)
       wrap.style.setProperty('--swipe-x', '0px')
       wrap.dataset.swipeArmed = ''
@@ -188,6 +191,22 @@ export function useRowSwipe(options: RowSwipeOptions): RowSwipe {
             gesture.resolved = resolved
             gesture.wrap.dataset.swipe = direction
             gesture.wrap.classList.add(gesture.swipingClassName)
+            /*
+             * On the DOCUMENT, because what has to get out of the way is not in this tree.
+             *
+             * The compose button is `position: fixed` in the bottom-trailing corner on a phone, and
+             * a swipe on a row that happens to be under it reveals its label straight behind the
+             * button — measured on the bottom row of the Inbox, where "Archive" is half-covered by
+             * a solid accent circle. Nothing else can fix that from here: the strip cannot paint
+             * over a fixed overlay, and the label cannot move without giving up the progressive
+             * reveal that makes the gesture readable.
+             *
+             * So the overlay yields for as long as the gesture lasts. One attribute rather than
+             * shared state: the button is in another feature (`compose/`), it needs no re-render to
+             * do this, and a 60 Hz gesture is the last place to put one. Set only once the axis
+             * lock has RESOLVED — a touch that turns out to be a scroll never flickers it.
+             */
+            document.body.dataset.waxwingSwiping = 'true'
           }
 
           // Locked: `dy` is irrelevant from here, and so is the far side of the origin. Dragging

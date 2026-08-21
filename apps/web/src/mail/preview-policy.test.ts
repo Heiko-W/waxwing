@@ -24,10 +24,6 @@ describe('images', () => {
 })
 
 describe('framed documents', () => {
-  it('frames a PDF', () => {
-    expect(previewSurface('application/pdf')).toBe('frame')
-  })
-
   it('frames plain text', () => {
     expect(previewSurface('text/plain')).toBe('frame')
   })
@@ -35,12 +31,24 @@ describe('framed documents', () => {
   it('reads a type that carries parameters', () => {
     // A FileNode type comes from whatever uploaded the file; `charset` on it is ordinary.
     expect(previewSurface('text/plain; charset=utf-8')).toBe('frame')
-    expect(previewSurface('APPLICATION/PDF')).toBe('frame')
-    expect(previewSurface('  application/pdf  ')).toBe('frame')
+    expect(previewSurface('TEXT/PLAIN')).toBe('frame')
+    expect(previewSurface('  text/plain  ')).toBe('frame')
   })
 })
 
 describe('what it refuses', () => {
+  it('refuses a PDF — the frame it would need is not one this app may open', () => {
+    /*
+     * Not a gap in the list: a PDF cannot be shown inside `<iframe sandbox="">` at all (Chromium's
+     * viewer needs `allow-scripts allow-same-origin`, which on a blob: URL hands the app's own
+     * origin to unvetted bytes), and every other route out is blocked by `object-src 'none'`. The
+     * button used to be offered and opened an empty box. See the note above FRAMEABLE.
+     */
+    for (const type of ['application/pdf', 'APPLICATION/PDF', 'application/pdf; version=1.7']) {
+      expect(previewSurface(type), type).toBeNull()
+    }
+  })
+
   it('refuses HTML', () => {
     // The one type that must not reach a frame: it would arrive without the sanitizer the mail
     // body frame exists to apply.

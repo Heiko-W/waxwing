@@ -217,12 +217,32 @@ export function LoginForm({
               required
             />
           </div>
+          {/*
+            THE CONSEQUENCE IS ON SCREEN, because the label alone could not carry it.
+
+            "Stay signed in" reads, everywhere else on the web, as "across browser restarts" — so
+            with the box UNticked people expect a reload to be harmless. Here it is not: without the
+            opt-in nothing is persisted at all (`AuthController.startBasicLogin`: "Without opt-in,
+            nothing survives a reload"), and pressing F5 lands back on this form. That is deliberate
+            and stays — a password is written to this device only when its owner asks — but two of
+            four reviewers of the same build filed the behaviour as a bug, and each of them named a
+            DIFFERENT checkbox as the cause. When readers cannot tell which control did something,
+            the control has not told them.
+
+            So the sentence says what happens WITHOUT the tick, not what the tick is for: the state
+            people are actually in when they read it is the unticked one. It is hidden while
+            "public or shared computer" is on, where the box is disabled and its own hint already
+            says that nothing is kept — one promise per screen, not two that overlap.
+          */}
           <Checkbox
             label={t('auth.basic.staySignedIn')}
             checked={staySignedIn}
             disabled={publicComputer}
             onChange={(event) => setStaySignedIn(event.target.checked)}
           />
+          {!publicComputer && !staySignedIn && (
+            <p className={styles.hint}>{t('auth.basic.staySignedInHint')}</p>
+          )}
           {/* Says what the server will DO, not what the reader "should" prefer: with 2FA on, the
               account password is refused here. The variant that points back up to the server
               sign-in is only honest when that button is on screen. */}

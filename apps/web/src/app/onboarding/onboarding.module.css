@@ -27,6 +27,13 @@
   padding-block-start: var(--waxwing-space-1);
 }
 
+/* The last resort under the card (U2): centred, quiet, and only on screen once something has gone
+   wrong. It sits OUTSIDE the card on purpose — it is not one of the ways in, it is the way out. */
+.reset {
+  align-self: center;
+  color: var(--waxwing-text-muted);
+}
+
 .card {
   box-sizing: border-box;
   display: flex;
