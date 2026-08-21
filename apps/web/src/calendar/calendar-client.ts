@@ -91,7 +91,6 @@ import type {
 import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
 import { alertsToPatch, type EventAlerts } from './event-alerts'
-import { type ImportCandidate, candidatesFrom, createsFor, type ImportOutcome, outcomeFrom } from './ics-import'
 import { type ParticipantRow, participantsToPatch, rsvpPatch } from './event-participants'
 import {
   type EditScope,
@@ -103,6 +102,13 @@ import {
   type RepeatPreset,
   ruleToWrite,
 } from './event-recurrence'
+import {
+  candidatesFrom,
+  createsFor,
+  type ImportCandidate,
+  type ImportOutcome,
+  outcomeFrom,
+} from './ics-import'
 import { durationToMs, localToInstant } from './jscalendar-time'
 
 /**
@@ -373,7 +379,10 @@ export function needsScope(placed: PlacedEvent): boolean {
  * repetition rule this editor has no control for, which `ruleToWrite` carries through rather than
  * flattening into the nearest preset it does know.
  */
-export function draftToEvent(draft: EventDraft, stored?: CalendarEvent | null): Record<string, unknown> {
+export function draftToEvent(
+  draft: EventDraft,
+  stored?: CalendarEvent | null,
+): Record<string, unknown> {
   return {
     '@type': 'Event',
     calendarIds: { [draft.calendarId]: true },
@@ -407,7 +416,13 @@ export function draftToEvent(draft: EventDraft, stored?: CalendarEvent | null): 
      */
     ...(draft.repeat === undefined
       ? {}
-      : { recurrenceRule: ruleToWrite(draft.repeat.preset, draft.repeat.end, stored?.recurrenceRule) }),
+      : {
+          recurrenceRule: ruleToWrite(
+            draft.repeat.preset,
+            draft.repeat.end,
+            stored?.recurrenceRule,
+          ),
+        }),
     /*
      * `participants` (K-3), same rule again. An EMPTY list is the reader having removed the last
      * one and writes `null`; `undefined` keeps the property out of the patch entirely.
@@ -869,7 +884,14 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const before = builder.invoke(Methods.calendarEventGet, {
         accountId,
         ids: [id],
-        properties: ['id', 'recurrenceOverrides', ...SIGNATURE_PROPERTIES, 'description', 'timeZone', 'alerts'],
+        properties: [
+          'id',
+          'recurrenceOverrides',
+          ...SIGNATURE_PROPERTIES,
+          'description',
+          'timeZone',
+          'alerts',
+        ],
       })
       const responses = await builder.send()
       const master = responses.get(before).list[0]
@@ -882,9 +904,17 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
         // quietly become "all of them".
         throw new CalendarSetError('invalidArguments', 'This event has no occurrence to override.')
       }
-      const overrides = mergeOverride(master, key, overrideFromDraft(master, draftToEvent(draft, master)))
+      const overrides = mergeOverride(
+        master,
+        key,
+        overrideFromDraft(master, draftToEvent(draft, master)),
+      )
       const write = await client.call([
-        [Methods.calendarEventSet.name, { accountId, update: { [id]: { recurrenceOverrides: overrides } } }, 'c0'],
+        [
+          Methods.calendarEventSet.name,
+          { accountId, update: { [id]: { recurrenceOverrides: overrides } } },
+          'c0',
+        ],
       ])
       throwIfRefused(write.get<SetOutcome>('c0'))
     },
@@ -951,7 +981,11 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
     async importEvents(candidates, calendarId) {
       if (candidates.length === 0) return { added: 0, duplicates: 0, failed: 0, reason: null }
       const responses = await client.call([
-        [Methods.calendarEventSet.name, { accountId, create: createsFor(candidates, calendarId) }, 'c0'],
+        [
+          Methods.calendarEventSet.name,
+          { accountId, create: createsFor(candidates, calendarId) },
+          'c0',
+        ],
       ])
       // NOT `throwIfRefused`: a `uid` already in the account is the expected answer to importing the
       // same file twice, and turning that into a thrown error would report a working importer as
@@ -959,7 +993,10 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       return outcomeFrom(
         responses.get<{
           created?: Record<string, unknown> | null
-          notCreated?: Record<string, { type: string; description?: string | null; properties?: string[] | null }> | null
+          notCreated?: Record<
+            string,
+            { type: string; description?: string | null; properties?: string[] | null }
+          > | null
         }>('c0'),
       )
     },

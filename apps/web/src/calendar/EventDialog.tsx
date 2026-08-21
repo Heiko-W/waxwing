@@ -217,7 +217,9 @@ export default function EventDialog(props: EventDialogProps) {
       ...(participantsTouched
         ? {
             participants,
-            ...(organizer === undefined ? {} : { organizerCalendarAddress: organizer.calendarAddress }),
+            ...(organizer === undefined
+              ? {}
+              : { organizerCalendarAddress: organizer.calendarAddress }),
           }
         : {}),
     }
@@ -285,12 +287,7 @@ export default function EventDialog(props: EventDialogProps) {
       }
     >
       {page === 'repeat' && (
-        <RepeatPage
-          preset={preset}
-          end={repeatEnd}
-          onPreset={setPreset}
-          onEnd={setRepeatEnd}
-        />
+        <RepeatPage preset={preset} end={repeatEnd} onPreset={setPreset} onEnd={setRepeatEnd} />
       )}
 
       {page === 'participants' && (
@@ -531,7 +528,8 @@ function RepeatPage({
   const { t } = useTranslation()
   const untilId = useId()
   const countId = useId()
-  const offered: readonly RepeatPreset[] = preset === 'custom' ? [...REPEAT_PRESETS, 'custom'] : REPEAT_PRESETS
+  const offered: readonly RepeatPreset[] =
+    preset === 'custom' ? [...REPEAT_PRESETS, 'custom'] : REPEAT_PRESETS
 
   return (
     <div className={styles.eventForm}>
@@ -596,7 +594,9 @@ function RepeatPage({
                 // JSCalendar's `until` is a LOCAL date-time like every other timestamp in the
                 // format; a date picker gives the day, and the last second of it is what "up to and
                 // including this day" means.
-                onChange={(event) => onEnd({ kind: 'until', until: `${event.target.value}T23:59:59` })}
+                onChange={(event) =>
+                  onEnd({ kind: 'until', until: `${event.target.value}T23:59:59` })
+                }
               />
             </div>
           )}
@@ -729,7 +729,9 @@ function ParticipantsPage({
                 )}
               </span>
               <span className={styles.participantStatus}>
-                {t(`calendar.event.participant.status.${row.participationStatus ?? 'needs-action'}`)}
+                {t(
+                  `calendar.event.participant.status.${row.participationStatus ?? 'needs-action'}`,
+                )}
               </span>
               {!row.isOrganizer && (
                 <IconButton
@@ -770,6 +772,7 @@ function RsvpBar({
 }) {
   const { t } = useTranslation()
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a `<fieldset>` brings a UA border with it, measured breaking this bar in the K-1 visual pass; `role="group"` reads the same and draws nothing
     <div className={styles.rsvpBar} role="group" aria-label={t('calendar.event.rsvp.label')}>
       {RSVP_STATUSES.map((entry) => (
         <button

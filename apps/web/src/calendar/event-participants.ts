@@ -33,7 +33,12 @@
  * organiser's copy of the event is on the same server as the reply: the patch IS the answer.
  */
 
-import type { CalendarEvent, Participant, ParticipantIdentity, ParticipationStatus } from '@waxwing/jmap'
+import type {
+  CalendarEvent,
+  Participant,
+  ParticipantIdentity,
+  ParticipationStatus,
+} from '@waxwing/jmap'
 
 /**
  * The most participants one event may carry.
@@ -90,16 +95,12 @@ export function normaliseAddress(value: unknown): string {
 
 /** Does this participant carry the organiser role? */
 function hasOwnerRole(roles: unknown): boolean {
-  return typeof roles === 'object' && roles !== null && (roles as Record<string, unknown>).owner === true
+  return (
+    typeof roles === 'object' && roles !== null && (roles as Record<string, unknown>).owner === true
+  )
 }
 
-const MODELLED_KEYS = new Set([
-  '@type',
-  'name',
-  'calendarAddress',
-  'roles',
-  'participationStatus',
-])
+const MODELLED_KEYS = new Set(['@type', 'name', 'calendarAddress', 'roles', 'participationStatus'])
 
 /**
  * Reads an event's `participants` map into a de-duplicated, ordered list.
@@ -146,9 +147,10 @@ export function participantsFromEvent(event: CalendarEvent): ParticipantRow[] {
       calendarAddress,
       address,
       name: typeof participant.name === 'string' ? participant.name : '',
-      roles: hasOwnerRole(participant.roles) || typeof participant.roles === 'object'
-        ? ((participant.roles ?? {}) as Record<string, boolean>)
-        : {},
+      roles:
+        hasOwnerRole(participant.roles) || typeof participant.roles === 'object'
+          ? ((participant.roles ?? {}) as Record<string, boolean>)
+          : {},
       participationStatus: readStatus(participant.participationStatus),
       isOrganizer: hasOwnerRole(participant.roles) || (address !== '' && address === organizer),
       rest,
@@ -161,7 +163,10 @@ export function participantsFromEvent(event: CalendarEvent): ParticipantRow[] {
 }
 
 function readStatus(value: unknown): ParticipationStatus | null {
-  return value === 'accepted' || value === 'declined' || value === 'tentative' || value === 'needs-action'
+  return value === 'accepted' ||
+    value === 'declined' ||
+    value === 'tentative' ||
+    value === 'needs-action'
     ? value
     : null
 }
@@ -170,7 +175,10 @@ function readStatus(value: unknown): ParticipationStatus | null {
 function mergeRows(first: ParticipantRow, second: ParticipantRow): ParticipantRow {
   return {
     // The key follows the status, because the status is the field an RSVP writes.
-    key: first.participationStatus === null && second.participationStatus !== null ? second.key : first.key,
+    key:
+      first.participationStatus === null && second.participationStatus !== null
+        ? second.key
+        : first.key,
     calendarAddress: first.calendarAddress === '' ? second.calendarAddress : first.calendarAddress,
     address: first.address === '' ? second.address : first.address,
     name: first.name === '' ? second.name : first.name,
@@ -198,9 +206,7 @@ function compareRows(a: ParticipantRow, b: ParticipantRow): number {
  * what makes the server ask for an answer, and an invitation nobody is expected to answer is a
  * notification with extra steps.
  */
-export function participantsToPatch(
-  rows: readonly ParticipantRow[],
-): Record<string, Participant> {
+export function participantsToPatch(rows: readonly ParticipantRow[]): Record<string, Participant> {
   const map: Record<string, Participant> = {}
   for (const row of rows) {
     const participant: Participant & Record<string, unknown> = {
@@ -230,7 +236,9 @@ export function newParticipantRow(calendarAddress: string, name = ''): Participa
   const address = normaliseAddress(calendarAddress)
   return {
     key: `p${address.replace(/[^a-z0-9]/g, '')}`,
-    calendarAddress: calendarAddress.startsWith('mailto:') ? calendarAddress : `mailto:${calendarAddress.trim()}`,
+    calendarAddress: calendarAddress.startsWith('mailto:')
+      ? calendarAddress
+      : `mailto:${calendarAddress.trim()}`,
     address,
     name,
     roles: { attendee: true },

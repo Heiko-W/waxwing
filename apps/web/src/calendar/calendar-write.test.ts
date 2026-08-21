@@ -65,7 +65,9 @@ describe('isSeriesEvent', () => {
     // jscalendarbis server for `recurrenceRules` is how the master came back looking like a plain
     // event in the first place.
     expect(
-      isSeriesEvent(event({ recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] })),
+      isSeriesEvent(
+        event({ recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] }),
+      ),
     ).toBe(true)
   })
 

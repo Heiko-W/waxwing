@@ -65,9 +65,9 @@ describe('presetFromRule', () => {
      * Thursdays" is a lie the reader only discovers by saving — and by then the `byDay` is gone,
      * because the editor would have written back the preset it displayed.
      */
-    expect(
-      presetFromRule({ frequency: 'weekly', byDay: [{ day: 'tu' }, { day: 'th' }] }),
-    ).toBe('custom')
+    expect(presetFromRule({ frequency: 'weekly', byDay: [{ day: 'tu' }, { day: 'th' }] })).toBe(
+      'custom',
+    )
     expect(presetFromRule({ frequency: 'weekly', interval: 3 })).toBe('custom')
     expect(presetFromRule({ frequency: 'monthly', byMonthDay: [1] })).toBe('custom')
   })
@@ -84,10 +84,14 @@ describe('ruleToWrite', () => {
   it('clears the ending it did not choose', () => {
     // A rule that keeps a stale `count` beside a fresh `until` has two endings. `null` is how a
     // JMAP patch removes a member (RFC 8620 §5.3); measured accepted inside `recurrenceRule`.
-    const rule = ruleToWrite('weekly', { kind: 'until', until: '2026-12-31T23:59:59' }, {
-      frequency: 'weekly',
-      count: 6,
-    }) as unknown as Record<string, unknown>
+    const rule = ruleToWrite(
+      'weekly',
+      { kind: 'until', until: '2026-12-31T23:59:59' },
+      {
+        frequency: 'weekly',
+        count: 6,
+      },
+    ) as unknown as Record<string, unknown>
     expect(rule.until).toBe('2026-12-31T23:59:59')
     expect(rule.count).toBeNull()
   })
@@ -96,7 +100,10 @@ describe('ruleToWrite', () => {
     // The whole reason `custom` exists. The editor has no `byDay` control, and that must not be the
     // reason a reader's Tuesday-and-Thursday meeting becomes a plain weekly one.
     const stored = { frequency: 'weekly' as const, byDay: [{ day: 'tu' }, { day: 'th' }] }
-    const rule = ruleToWrite('custom', { kind: 'never' }, stored) as unknown as Record<string, unknown>
+    const rule = ruleToWrite('custom', { kind: 'never' }, stored) as unknown as Record<
+      string,
+      unknown
+    >
     expect(rule.byDay).toEqual([{ day: 'tu' }, { day: 'th' }])
   })
 

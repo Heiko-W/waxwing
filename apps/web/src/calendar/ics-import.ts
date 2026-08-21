@@ -43,7 +43,15 @@ import type { CalendarEvent, Id } from '@waxwing/jmap'
  * See the file header for the measurement behind each. `method` is the one that is not a judgement
  * call: leaving it in fails the create outright.
  */
-export const PARSED_ONLY = ['iCalendar', 'method', 'id', 'created', 'updated', 'isOrigin', 'baseEventId'] as const
+export const PARSED_ONLY = [
+  'iCalendar',
+  'method',
+  'id',
+  'created',
+  'updated',
+  'isOrigin',
+  'baseEventId',
+] as const
 
 /** One row of the import preview. */
 export interface ImportCandidate {
@@ -68,7 +76,11 @@ export interface ImportCandidate {
  * object form costs three lines; assuming it costs the second event of every multi-event file.
  */
 export function candidatesFrom(value: unknown): ImportCandidate[] {
-  const events: unknown[] = Array.isArray(value) ? value : value !== null && typeof value === 'object' ? [value] : []
+  const events: unknown[] = Array.isArray(value)
+    ? value
+    : value !== null && typeof value === 'object'
+      ? [value]
+      : []
   const rows: ImportCandidate[] = []
   for (const [index, entry] of events.entries()) {
     if (entry === null || typeof entry !== 'object') continue
@@ -127,7 +139,10 @@ export interface ImportOutcome {
  */
 export function outcomeFrom(response: {
   created?: Record<string, unknown> | null
-  notCreated?: Record<string, { type: string; description?: string | null; properties?: string[] | null }> | null
+  notCreated?: Record<
+    string,
+    { type: string; description?: string | null; properties?: string[] | null }
+  > | null
 }): ImportOutcome {
   const added = Object.keys(response.created ?? {}).length
   let duplicates = 0

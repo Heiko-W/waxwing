@@ -50,7 +50,14 @@ import { durationToMs } from './jscalendar-time'
  * this list cannot express is shown as `custom` and left exactly as it is, because a "simplify to
  * the nearest offer" would quietly rewrite somebody's real rule into an approximation of it.
  */
-export type RepeatPreset = 'none' | 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'custom'
+export type RepeatPreset =
+  | 'none'
+  | 'daily'
+  | 'weekly'
+  | 'biweekly'
+  | 'monthly'
+  | 'yearly'
+  | 'custom'
 
 /** The presets the picker lists, in Apple's order. `custom` is a state, not a choice. */
 export const REPEAT_PRESETS: readonly RepeatPreset[] = [
@@ -91,7 +98,12 @@ export function ruleForPreset(preset: RepeatPreset): RecurrenceRule | null {
 export function presetFromRule(rule: RecurrenceRule | undefined | null): RepeatPreset {
   if (rule === undefined || rule === null || typeof rule !== 'object') return 'none'
   const extras = Object.keys(rule).filter(
-    (key) => key !== '@type' && key !== 'frequency' && key !== 'interval' && key !== 'count' && key !== 'until',
+    (key) =>
+      key !== '@type' &&
+      key !== 'frequency' &&
+      key !== 'interval' &&
+      key !== 'count' &&
+      key !== 'until',
   )
   if (extras.length > 0) return 'custom'
   const interval = rule.interval ?? 1
@@ -117,7 +129,8 @@ export type RepeatEnd =
 
 export function endFromRule(rule: RecurrenceRule | undefined | null): RepeatEnd {
   if (rule === undefined || rule === null) return { kind: 'never' }
-  if (typeof rule.until === 'string' && rule.until !== '') return { kind: 'until', until: rule.until }
+  if (typeof rule.until === 'string' && rule.until !== '')
+    return { kind: 'until', until: rule.until }
   if (typeof rule.count === 'number' && rule.count > 0) return { kind: 'count', count: rule.count }
   return { kind: 'never' }
 }
@@ -182,7 +195,11 @@ export function overrideKeyFor(
   const start = typeof occurrence.start === 'string' ? occurrence.start : ''
   if (start !== '') {
     for (const [key, value] of Object.entries(overrides)) {
-      if (value !== null && typeof value === 'object' && (value as Record<string, unknown>).start === start) {
+      if (
+        value !== null &&
+        typeof value === 'object' &&
+        (value as Record<string, unknown>).start === start
+      ) {
         return key
       }
     }
@@ -191,7 +208,9 @@ export function overrideKeyFor(
 }
 
 /** The stored overrides map, defended against every shape that is not one. */
-export function readOverrides(event: CalendarEvent): Record<string, Record<string, unknown> | null> {
+export function readOverrides(
+  event: CalendarEvent,
+): Record<string, Record<string, unknown> | null> {
   const overrides = event.recurrenceOverrides
   if (overrides === undefined || overrides === null || typeof overrides !== 'object') return {}
   return overrides as Record<string, Record<string, unknown> | null>
@@ -215,7 +234,8 @@ export function mergeOverride(
 ): Record<string, Record<string, unknown> | null> {
   const overrides = { ...readOverrides(master) }
   const existing = overrides[key]
-  const merged: Record<string, unknown> = existing === null || existing === undefined ? {} : { ...existing }
+  const merged: Record<string, unknown> =
+    existing === null || existing === undefined ? {} : { ...existing }
   for (const [member, value] of Object.entries(patch)) {
     if (value === undefined) delete merged[member]
     else merged[member] = value

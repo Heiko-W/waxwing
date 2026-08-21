@@ -27,7 +27,10 @@ const ACC = 'a'
  * `stored` is what the SERVER has, deliberately different from what the screen is holding — that
  * difference is what the re-read test is about.
  */
-function fakeClient(stored: Record<string, CalendarEvent>, onSet?: (args: Record<string, unknown>) => Record<string, unknown>) {
+function fakeClient(
+  stored: Record<string, CalendarEvent>,
+  onSet?: (args: Record<string, unknown>) => Record<string, unknown>,
+) {
   const calls: Invocation[] = []
   const run = (invocations: Invocation[]): MethodResponses => {
     const responses: Invocation[] = []
@@ -46,7 +49,9 @@ function fakeClient(stored: Record<string, CalendarEvent>, onSet?: (args: Record
           {
             accountId: ACC,
             state: 's1',
-            list: [{ id: 'a', name: 'kx1', calendarAddress: 'mailto:kx1@waxwing.test', isDefault: true }],
+            list: [
+              { id: 'a', name: 'kx1', calendarAddress: 'mailto:kx1@waxwing.test', isDefault: true },
+            ],
             notFound: [],
           },
           id,
@@ -60,8 +65,20 @@ function fakeClient(stored: Record<string, CalendarEvent>, onSet?: (args: Record
             accountId: ACC,
             parsed: {
               'blob-1': [
-                { '@type': 'Event', uid: 'a@x', title: 'Eins', start: '2026-11-01T10:00:00', method: 'request' },
-                { '@type': 'Event', uid: 'b@x', title: 'Zwei', start: '2026-11-05T00:00:00', method: 'request' },
+                {
+                  '@type': 'Event',
+                  uid: 'a@x',
+                  title: 'Eins',
+                  start: '2026-11-01T10:00:00',
+                  method: 'request',
+                },
+                {
+                  '@type': 'Event',
+                  uid: 'b@x',
+                  title: 'Zwei',
+                  start: '2026-11-05T00:00:00',
+                  method: 'request',
+                },
               ],
             },
           },
@@ -157,7 +174,9 @@ describe('updateEvent with scope "occurrence"', () => {
     const names = calls.map(([name]) => name)
     expect(names).toEqual(['CalendarEvent/get', 'CalendarEvent/set'])
 
-    const set = calls[1]?.[1] as { update: Record<string, { recurrenceOverrides: Record<string, unknown> }> }
+    const set = calls[1]?.[1] as {
+      update: Record<string, { recurrenceOverrides: Record<string, unknown> }>
+    }
     const overrides = set.update.b?.recurrenceOverrides
     // The other client's exclusion survived.
     expect(overrides?.['2026-09-28T09:00:00']).toEqual({ excluded: true })
@@ -179,10 +198,13 @@ describe('updateEvent with scope "occurrence"', () => {
   it('leaves a plain event alone: no re-read, no overrides, just the patch', async () => {
     // The scope parameter must be inert for an event that does not repeat, or every ordinary save
     // pays for a round trip it does not need.
-    const single = placeEvent({ id: '7', calendarIds: { c1: true }, start: '2026-09-14T09:00:00' } as CalendarEvent, {
-      writeId: '7',
-      series: false,
-    })
+    const single = placeEvent(
+      { id: '7', calendarIds: { c1: true }, start: '2026-09-14T09:00:00' } as CalendarEvent,
+      {
+        writeId: '7',
+        series: false,
+      },
+    )
     const { client, calls } = fakeClient({ '7': MASTER })
     await makeCalendarClient(client, ACC).updateEvent(single, draft, 'occurrence')
 
@@ -201,7 +223,9 @@ describe('excludeOccurrence', () => {
     const { client, calls } = fakeClient({ b: withOverride })
     await makeCalendarClient(client, ACC).excludeOccurrence(OCCURRENCE)
 
-    const set = calls[1]?.[1] as { update: Record<string, { recurrenceOverrides: Record<string, unknown> }> }
+    const set = calls[1]?.[1] as {
+      update: Record<string, { recurrenceOverrides: Record<string, unknown> }>
+    }
     expect(set.update.b?.recurrenceOverrides).toEqual({
       '2026-09-21T09:00:00': { title: 'Behalten' },
       '2026-09-14T09:00:00': { excluded: true },

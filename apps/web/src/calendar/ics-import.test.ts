@@ -50,7 +50,10 @@ const PARSED = [
     showWithoutTime: true,
     updated: '2026-08-01T10:00:00Z',
     method: 'request',
-    iCalendar: { convertedProperties: { start: { parameters: { value: 'DATE' } } }, name: 'vevent' },
+    iCalendar: {
+      convertedProperties: { start: { parameters: { value: 'DATE' } } },
+      name: 'vevent',
+    },
   },
 ]
 
@@ -139,7 +142,11 @@ describe('outcomeFrom', () => {
       outcomeFrom({
         created: null,
         notCreated: {
-          i0: { type: 'invalidProperties', description: 'This property is immutable.', properties: ['method'] },
+          i0: {
+            type: 'invalidProperties',
+            description: 'This property is immutable.',
+            properties: ['method'],
+          },
         },
       }),
     ).toEqual({ added: 0, duplicates: 0, failed: 1, reason: 'This property is immutable.' })

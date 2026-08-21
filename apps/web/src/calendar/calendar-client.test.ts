@@ -36,9 +36,9 @@ import {
   eventSignature,
   indexObjects,
   makeCalendarClient,
+  needsScope,
   placeEvent,
   refusalReason,
-  needsScope,
   refuseEdit,
   resolveIdentity,
 } from './calendar-client'

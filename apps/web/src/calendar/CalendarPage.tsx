@@ -59,8 +59,8 @@ import {
   type CalendarDraft,
   makeCalendarClient,
   mayCreateCalendar,
-  type PlacedEvent,
   needsScope,
+  type PlacedEvent,
   refusalReason,
   refuseEdit,
 } from './calendar-client'
@@ -214,11 +214,12 @@ export default function CalendarPage(props: CalendarPageProps) {
    * of letting the whole save come back `tooManyParticipants` after the reader has finished typing.
    */
   const maxParticipants = useMemo(() => {
-    const capability = accountId === null
-      ? undefined
-      : (connected?.jmapSession?.accounts?.[accountId]?.accountCapabilities?.[
-          'urn:ietf:params:jmap:calendars'
-        ] as { maxParticipantsPerEvent?: number | null } | undefined)
+    const capability =
+      accountId === null
+        ? undefined
+        : (connected?.jmapSession?.accounts?.[accountId]?.accountCapabilities?.[
+            'urn:ietf:params:jmap:calendars'
+          ] as { maxParticipantsPerEvent?: number | null } | undefined)
     return capability?.maxParticipantsPerEvent ?? DEFAULT_MAX_PARTICIPANTS
   }, [connected, accountId])
   const client = useMemo(
@@ -953,7 +954,9 @@ export default function CalendarPage(props: CalendarPageProps) {
 function rsvpAllowed(calendars: readonly Calendar[], placed: PlacedEvent | null): boolean {
   if (placed === null) return false
   const ids = Object.keys(placed.event.calendarIds ?? {})
-  return calendars.some((calendar) => ids.includes(calendar.id) && calendar.myRights?.mayRSVP === true)
+  return calendars.some(
+    (calendar) => ids.includes(calendar.id) && calendar.myRights?.mayRSVP === true,
+  )
 }
 
 interface MonthViewProps {

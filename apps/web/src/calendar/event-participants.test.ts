@@ -93,7 +93,11 @@ describe('participantsFromEvent', () => {
       event({
         participants: {
           a: { '@type': 'Participant', calendarAddress: 'mailto:Bob@Waxwing.Test', name: 'Bob' },
-          b: { '@type': 'Participant', calendarAddress: 'mailto:bob@waxwing.test', roles: { owner: true } },
+          b: {
+            '@type': 'Participant',
+            calendarAddress: 'mailto:bob@waxwing.test',
+            roles: { owner: true },
+          },
         },
       }),
     )
@@ -131,7 +135,11 @@ describe('participantsFromEvent', () => {
         participants: {
           z: { '@type': 'Participant', calendarAddress: 'mailto:zoe@waxwing.test', name: 'Zoe' },
           a: { '@type': 'Participant', calendarAddress: 'mailto:ann@waxwing.test', name: 'Ann' },
-          c: { '@type': 'Participant', calendarAddress: 'mailto:chair@waxwing.test', name: 'Chris' },
+          c: {
+            '@type': 'Participant',
+            calendarAddress: 'mailto:chair@waxwing.test',
+            name: 'Chris',
+          },
         },
       }),
     )
@@ -189,7 +197,9 @@ describe('participantsToPatch', () => {
 
 describe('newParticipantRow', () => {
   it('derives the key from the address, so the same person twice is one entry', () => {
-    expect(newParticipantRow('Bob@Waxwing.Test').key).toBe(newParticipantRow('bob@waxwing.test').key)
+    expect(newParticipantRow('Bob@Waxwing.Test').key).toBe(
+      newParticipantRow('bob@waxwing.test').key,
+    )
   })
 
   it('produces a key with no `/` in it', () => {
