@@ -8,6 +8,7 @@ import {
   READ_SUBJECTS,
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
+import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
 import { revealPasswordForm } from './helpers'
 
 /**
@@ -628,5 +629,224 @@ test.describe('full-screen reading', () => {
     await expect(list).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible()
     expect(page.url()).not.toContain('full=1')
+  })
+})
+
+/*
+ * JMAP gap analysis M-5 / M-6 — the folder properties that used to stop at the browser.
+ *
+ * `sortOrder`, `isSubscribed` and `role` are all mutable Mailbox properties (RFC 8621 §2) and none
+ * of them was ever written: an order made on the laptop was not the order on the phone, and a
+ * folder made here was the Archive nowhere else. So every assertion below goes to the SERVER —
+ * `Mailbox/get` — and not to the screen that wrote it.
+ *
+ * The drag is here rather than in a component test for the reason ADR-026 gives: jsdom has no
+ * layout engine, so every rectangle a pointer drag measures there is zero. This is the only place
+ * the gesture can be executed at all.
+ */
+test.describe('M-5 / M-6 folder order, use and visibility', () => {
+  const jmap = jmapAs(ACCOUNTS.alice)
+  const POLL = { timeout: 20_000, intervals: [500, 1000, 1000, 2000] }
+
+  interface ServerMailbox {
+    readonly id: string
+    readonly name: string
+    readonly role: string | null
+    readonly sortOrder: number
+    readonly isSubscribed: boolean
+  }
+
+  /** Every folder as the SERVER has it — the only witness that counts here. */
+  async function serverMailboxes(): Promise<ServerMailbox[]> {
+    const accountId = await jmap.account()
+    const res = await jmap.call(
+      ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+      [
+        [
+          'Mailbox/get',
+          {
+            accountId,
+            ids: null,
+            properties: ['id', 'name', 'role', 'sortOrder', 'isSubscribed'],
+          },
+          '0',
+        ],
+      ],
+    )
+    const args = res.methodResponses[0]?.[1] as { list: ServerMailbox[] } | undefined
+    return args?.list ?? []
+  }
+
+  async function serverFolder(name: string): Promise<ServerMailbox | undefined> {
+    return (await serverMailboxes()).find((mailbox) => mailbox.name === name)
+  }
+
+  async function newFolder(page: Page, name: string): Promise<void> {
+    await page.getByRole('button', { name: 'New folder' }).click()
+    await page.getByLabel('Folder name', { exact: true }).fill(name)
+    await page.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(page.getByRole('treeitem', { name: new RegExp(name) })).toBeVisible({
+      timeout: 15_000,
+    })
+  }
+
+  /**
+   * Destroy the probe folders straight over JMAP, so a failed assertion still leaves the fixture as
+   * it was found — a folder left carrying `role: "archive"` would change what EVERY later test in
+   * this account sees, because a role is unique per account.
+   */
+  async function destroyProbes(): Promise<void> {
+    const accountId = await jmap.account()
+    const ids = (await serverMailboxes())
+      .filter((mailbox) => mailbox.name.startsWith('Zz'))
+      .map((mailbox) => mailbox.id)
+    if (ids.length === 0) return
+    await jmap.call(
+      ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+      [['Mailbox/set', { accountId, destroy: ids, onDestroyRemoveEmails: true }, '0']],
+    )
+  }
+
+  test.afterEach(destroyProbes)
+
+  test('a drag on the grabber writes the new sortOrder to the server (M-5)', async ({ page }) => {
+    await login(page)
+    await newFolder(page, 'ZzOne')
+    await newFolder(page, 'ZzTwo')
+
+    await page.getByRole('button', { name: 'Manage folders' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Manage folders' })
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+    const grabber = dialog.getByRole('button', { name: 'Reorder ZzOne' })
+    const target = dialog.getByRole('button', { name: 'Reorder ZzTwo' })
+    const from = await grabber.boundingBox()
+    const to = await target.boundingBox()
+    if (from === null || to === null) throw new Error('the reorder grabbers have no geometry')
+
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    // Past the row below, not merely onto it: the drop index is decided by the row's MIDPOINT.
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height, { steps: 12 })
+    await page.mouse.up()
+
+    // The half no unit test can reach: Stalwart really stored it, and a phone reading this account
+    // now gets the same order.
+    await expect
+      .poll(async () => {
+        const one = await serverFolder('ZzOne')
+        const two = await serverFolder('ZzTwo')
+        if (one === undefined || two === undefined) return null
+        return two.sortOrder < one.sortOrder
+      }, POLL)
+      .toBe(true)
+  })
+
+  test('the keyboard alone reorders folders, which is what SC 2.5.7 requires (M-5)', async ({
+    page,
+  }) => {
+    await login(page)
+    await newFolder(page, 'ZzOne')
+    await newFolder(page, 'ZzTwo')
+
+    await page.getByRole('button', { name: 'Manage folders' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Manage folders' })
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+    await dialog.getByRole('button', { name: 'Reorder ZzOne' }).focus()
+    await page.keyboard.press('Space')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Space')
+
+    await expect
+      .poll(async () => {
+        const one = await serverFolder('ZzOne')
+        const two = await serverFolder('ZzTwo')
+        if (one === undefined || two === undefined) return null
+        return two.sortOrder < one.sortOrder
+      }, POLL)
+      .toBe(true)
+  })
+
+  test('"use this folder as…" writes the role, and it survives a reload (M-6)', async ({
+    page,
+  }) => {
+    // `stay` is required, not incidental: this test RELOADS, and without it the token lives only in
+    // memory (NFR-SEC-02) so a reload lands back on sign-in.
+    await login(page, { stay: true })
+    await newFolder(page, 'ZzArchive')
+
+    const item = page.getByRole('treeitem', { name: /ZzArchive/ })
+    await item.hover()
+    await item.getByRole('button', { name: 'Folder actions' }).click()
+    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
+
+    const dialog = page.getByRole('dialog', { name: /Folder info/ })
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+    // MEASURED (Stalwart v0.16.18): `templates` is refused outright, so it must not be offered.
+    await expect(dialog.getByRole('option', { name: 'Templates' })).toHaveCount(0)
+    await dialog.getByLabel('Use this folder as…').selectOption('archive')
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+
+    await expect
+      .poll(async () => (await serverFolder('ZzArchive'))?.role ?? null, POLL)
+      .toBe('archive')
+
+    // …and the client still recognises it after a cold start: the folder is now THE Archive, under
+    // its standard name and in the standard place, exactly as another client would show it.
+    await page.reload()
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('treeitem', { name: /Archive/ })).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('a role the account already uses is not offered a second time (M-6)', async ({ page }) => {
+    // MEASURED: `Mailbox/set` answers `invalidProperties: "A mailbox with role 'archive' already
+    // exists."` — so offering it twice would produce a dead letter the user could not have foreseen.
+    await login(page)
+    await newFolder(page, 'ZzArchive')
+    await newFolder(page, 'ZzOther')
+
+    const archive = page.getByRole('treeitem', { name: /ZzArchive/ })
+    await archive.hover()
+    await archive.getByRole('button', { name: 'Folder actions' }).click()
+    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
+    const first = page.getByRole('dialog', { name: /Folder info/ })
+    await first.getByLabel('Use this folder as…').selectOption('archive')
+    await first.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect
+      .poll(async () => (await serverFolder('ZzArchive'))?.role ?? null, POLL)
+      .toBe('archive')
+
+    const other = page.getByRole('treeitem', { name: /ZzOther/ })
+    await other.hover()
+    await other.getByRole('button', { name: 'Folder actions' }).click()
+    await page.getByRole('menuitem', { name: 'Folder info…' }).click()
+    const second = page.getByRole('dialog', { name: /Folder info/ })
+    await expect(second).toBeVisible({ timeout: 10_000 })
+    await expect(second.getByRole('option', { name: 'Archive' })).toHaveCount(0)
+    await expect(second.getByRole('option', { name: 'Important' })).toHaveCount(1)
+  })
+
+  test('hiding a folder writes isSubscribed, and it stays findable here (M-5)', async ({
+    page,
+  }) => {
+    await login(page)
+    await newFolder(page, 'ZzHidden')
+
+    await page.getByRole('button', { name: 'Manage folders' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Manage folders' })
+    await dialog.getByRole('switch', { name: 'Show ZzHidden in the sidebar' }).click()
+
+    // The server is told, so the phone and Thunderbird hide it too — that is the whole point.
+    await expect
+      .poll(async () => (await serverFolder('ZzHidden'))?.isSubscribed ?? null, POLL)
+      .toBe(false)
+    // Still in THIS list, switched off: nothing can become unfindable by being hidden here.
+    await expect(
+      dialog.getByRole('switch', { name: 'Show ZzHidden in the sidebar' }),
+    ).toHaveAttribute('aria-checked', 'false')
+
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    await expect(page.getByRole('treeitem', { name: /ZzHidden/ })).toHaveCount(0)
   })
 })

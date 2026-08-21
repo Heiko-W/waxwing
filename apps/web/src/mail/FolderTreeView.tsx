@@ -29,6 +29,7 @@ import { useTranslation } from 'react-i18next'
 import type { MailboxRow } from '../sync'
 import { Badge, Menu, type MenuItemSpec, VisuallyHidden } from '../ui'
 import { MAILBOX_MIME, MESSAGES_MIME } from './dnd'
+import { mayChangeRole } from './folder-order'
 import { type FolderNode, folderDisplayName, visibleRows } from './folder-tree'
 import styles from './folder-tree.module.css'
 
@@ -54,6 +55,8 @@ export interface FolderTreeViewProps {
   readonly onRequestMove?: (mailbox: MailboxRow) => void
   /** Import `.eml` files into this folder (M5.3, FR-MBX-06); omit to hide the entry. */
   readonly onRequestImport?: (mailbox: MailboxRow) => void
+  /** Open the folder's info panel, where "use this folder as…" lives (M-6); omit to hide. */
+  readonly onRequestInfo?: (mailbox: MailboxRow) => void
   /** May the drag in flight drop on this mailbox? Omit to disable drop entirely (M3.9 5b). */
   readonly canDropOn?: (mailbox: MailboxRow) => boolean
   /** A drag was dropped on this mailbox — carry out the move (M3.9 5b). */
@@ -81,6 +84,7 @@ export function FolderTreeView({
   onRequestDelete,
   onRequestMove,
   onRequestImport,
+  onRequestInfo,
   canDropOn,
   onDropOn,
   onDragStartMailbox,
@@ -190,6 +194,7 @@ export function FolderTreeView({
             onRequestDelete,
             onRequestMove,
             onRequestImport,
+            onRequestInfo,
             onRequestEmpty,
             onRequestDeleteOlder,
             onTogglePin,
@@ -339,6 +344,7 @@ function actionItems(
     onRequestDelete: (mailbox: MailboxRow) => void
     onRequestMove?: ((mailbox: MailboxRow) => void) | undefined
     onRequestImport?: ((mailbox: MailboxRow) => void) | undefined
+    onRequestInfo?: ((mailbox: MailboxRow) => void) | undefined
     onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
     onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
     onTogglePin?: ((mailbox: MailboxRow) => void) | undefined
@@ -416,6 +422,17 @@ function actionItems(
       id: 'deleteOlder',
       label: t('cleanup.menu.deleteOlder'),
       onSelect: () => onRequestDeleteOlder(mailbox),
+    })
+  }
+  // Folder info (M-6) — where "use this folder as…" lives. Offered only where there is something
+  // to change: a folder whose role is ours to set (`mayChangeRole` also asks `mayRename`, the right
+  // that governs a `Mailbox/set` update on the folder itself). Most users never open it.
+  if (handlers.onRequestInfo && mayChangeRole(mailbox)) {
+    const onRequestInfo = handlers.onRequestInfo
+    items.push({
+      id: 'info',
+      label: t('mailbox.actions.info'),
+      onSelect: () => onRequestInfo(mailbox),
     })
   }
   if (mailbox.myRights.mayDelete) {

@@ -109,6 +109,8 @@ function isContainerIntent(kind: IntentKind): boolean {
     kind === 'renameMailbox' ||
     kind === 'moveMailbox' ||
     kind === 'deleteMailbox' ||
+    kind === 'updateMailbox' ||
+    kind === 'reorderMailboxes' ||
     kind === 'updateAddressBook'
   )
 }

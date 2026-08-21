@@ -8,6 +8,7 @@ import { RouterProvider } from '../app/route'
 import de from '../i18n/locales/de/common.json'
 import { getPref, putMailboxes, type ReplicaDb, ReplicaProvider } from '../sync'
 import { setActiveEngine } from '../sync/engine'
+import { enqueueAction } from '../sync/engine/outbox'
 import { freshDb, mailbox } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
 import { clearActiveDrag, setActiveDrag } from './dnd'
@@ -480,5 +481,196 @@ describe('FolderTree (container)', () => {
 
       expect(dispatch).not.toHaveBeenCalled()
     })
+  })
+})
+/*
+ * JMAP gap analysis M-5 / M-6 — the three Mailbox properties that used to stop at the browser.
+ *
+ * Every test here fails without the change, and fails for the RIGHT reason: there was no way to
+ * express any of these three operations, so the dispatch that carries them did not exist.
+ */
+describe('folder order, use and visibility (M-5 / M-6)', () => {
+  /** Open "Manage folders" — the sidebar in edit mode (the iOS "Edit" affordance). */
+  async function openManage(user: UserEvent) {
+    await screen.findByText('Work')
+    await user.click(screen.getByRole('button', { name: 'Manage folders' }))
+    return await screen.findByRole('dialog', { name: 'Manage folders' })
+  }
+
+  /** Open a folder's info panel, where "use this folder as…" lives. */
+  async function openInfo(user: UserEvent, name: RegExp) {
+    const item = await screen.findByRole('treeitem', { name })
+    await user.click(within(item).getByRole('button', { name: /^Folder actions/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Folder info…' }))
+    return await screen.findByRole('dialog', { name: /Folder info/ })
+  }
+
+  it('sends the new sortOrder to the server when a folder is moved (M-5)', async () => {
+    const user = userEvent.setup()
+    await putMailboxes(db, 'a', [mailbox('zeta', { name: 'Zeta' })])
+    renderTree()
+    const dialog = await openManage(user)
+
+    // The keyboard path, which is a peer of the drag and not a fallback (ADR-026). The drag itself
+    // is unreachable here — jsdom has no layout, so every rectangle it measures is zero — and runs
+    // in `e2e/tests/read.spec.ts` instead.
+    const handle = within(dialog).getByRole('button', { name: 'Reorder Work' })
+    handle.focus()
+    await user.keyboard(' {ArrowDown} ')
+
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
+      kind: 'reorderMailboxes',
+      // 1-based and contiguous, so a folder created later can be appended rather than teleported
+      // to the top of a group the user has just put in order.
+      order: [
+        { id: 'zeta', sortOrder: 1 },
+        { id: 'work', sortOrder: 2 },
+      ],
+    })
+  })
+
+  it('Escape puts a lifted folder back WITHOUT closing the dialog (M-5)', async () => {
+    const user = userEvent.setup()
+    await putMailboxes(db, 'a', [mailbox('zeta', { name: 'Zeta' })])
+    renderTree()
+    const dialog = await openManage(user)
+
+    const handle = within(dialog).getByRole('button', { name: 'Reorder Work' })
+    handle.focus()
+    await user.keyboard(' {ArrowDown}{Escape}')
+
+    // Nothing written…
+    expect(dispatch).not.toHaveBeenCalled()
+    // …and the sheet is still open. `Dialog` dismisses from a capture-phase listener on `document`,
+    // so this only holds because the interception sits one step earlier, on `window`.
+    expect(screen.getByRole('dialog', { name: 'Manage folders' })).toBeInTheDocument()
+  })
+
+  it('offers no grabber for a standard folder — its order is pinned by role', async () => {
+    const user = userEvent.setup()
+    renderTree()
+    const dialog = await openManage(user)
+
+    expect(within(dialog).queryByRole('button', { name: 'Reorder Inbox' })).toBeNull()
+    expect(within(dialog).getByRole('button', { name: 'Reorder Work' })).toBeInTheDocument()
+  })
+
+  it('does not offer a role another folder already holds (M-6)', async () => {
+    // MEASURED, Stalwart v0.16.18: a second `archive` is refused with
+    // `invalidProperties: "A mailbox with role 'archive' already exists."`
+    const user = userEvent.setup()
+    await putMailboxes(db, 'a', [mailbox('old', { name: 'Old mail', role: 'archive' })])
+    renderTree()
+    const dialog = await openInfo(user, /Work/)
+
+    const options = within(dialog)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+    expect(options).not.toContain('Archive')
+    expect(options).toContain('Important')
+  })
+
+  it('does not offer a role this server refuses (M-6)', async () => {
+    // MEASURED: `templates` — a role RFC 8621's world knows — answers
+    // `invalidProperties: "Invalid property or value."`, as do `all`, `flagged` and `notes`.
+    const user = userEvent.setup()
+    renderTree()
+    const dialog = await openInfo(user, /Work/)
+
+    const options = within(dialog)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+    expect(options).toEqual([
+      'A regular folder',
+      'Archive',
+      'Important',
+      'Snoozed',
+      'Scheduled',
+      'Notes',
+    ])
+  })
+
+  it('sends the chosen role to the server (M-6)', async () => {
+    const user = userEvent.setup()
+    renderTree()
+    const dialog = await openInfo(user, /Work/)
+
+    await user.selectOptions(within(dialog).getByLabelText('Use this folder as…'), 'archive')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
+      kind: 'updateMailbox',
+      id: 'work',
+      props: { role: 'archive' },
+    })
+  })
+
+  it('still recognises the folder as the Archive after a reload (M-6)', async () => {
+    // The intent applied for real — this is what the replica holds after the optimistic write, and
+    // what a cold start reads back from IndexedDB.
+    await enqueueAction(
+      db,
+      'a',
+      { kind: 'updateMailbox', id: 'work', props: { role: 'archive' } },
+      { id: 'i1', now: 0 },
+    )
+    expect((await db.mailboxes.get(['a', 'work']))?.role).toBe('archive')
+
+    renderTree() // a fresh mount = the reload
+
+    // Not "Work" any more: it is the Archive, under its standard name and in the standard place —
+    // which is exactly what the phone and Thunderbird now see too.
+    const archive = await screen.findByRole('treeitem', { name: /Archive/ })
+    expect(archive).toBeInTheDocument()
+    const names = screen.getAllByRole('treeitem').map((item) => item.textContent)
+    expect(names[0]).toContain('Inbox')
+    expect(names[1]).toContain('Archive')
+  })
+
+  it('hides a folder on the server, and keeps it findable here (M-5)', async () => {
+    const user = userEvent.setup()
+    renderTree()
+    const dialog = await openManage(user)
+
+    await user.click(within(dialog).getByRole('switch', { name: 'Show Work in the sidebar' }))
+
+    expect(dispatch.mock.calls[0]?.[0]).toEqual({
+      kind: 'updateMailbox',
+      id: 'work',
+      props: { isSubscribed: false },
+    })
+  })
+
+  it('takes a hidden folder out of the tree but never out of this list (M-5)', async () => {
+    const user = userEvent.setup()
+    await putMailboxes(db, 'a', [
+      mailbox('zeta', { name: 'Zeta', isSubscribed: false }),
+      mailbox('zsub', { name: 'Zsub', parentId: 'zeta' }),
+    ])
+    renderTree()
+    await screen.findByText('Work')
+
+    // Gone from the sidebar — and so is its child, which must not re-surface as a root.
+    expect(screen.queryByRole('treeitem', { name: /Zeta/ })).toBeNull()
+    expect(screen.queryByRole('treeitem', { name: /Zsub/ })).toBeNull()
+
+    // …but the one surface that can bring it back still lists it, switched off.
+    await user.click(screen.getByRole('button', { name: 'Manage folders' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Manage folders' })
+    expect(
+      within(dialog).getByRole('switch', { name: 'Show Zeta in the sidebar' }),
+    ).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('keeps the folder you are IN visible even when it is switched off (M-5)', async () => {
+    const user = userEvent.setup()
+    renderTree()
+    // Open Work, then hide it from under the user's feet (another client could do exactly this).
+    await user.click(await screen.findByRole('treeitem', { name: /Work/ }))
+    await putMailboxes(db, 'a', [mailbox('work', { name: 'Work', isSubscribed: false })])
+
+    // Still there: being inside an invisible folder is the one state hiding must never produce.
+    expect(await screen.findByRole('treeitem', { name: /Work/ })).toBeInTheDocument()
   })
 })

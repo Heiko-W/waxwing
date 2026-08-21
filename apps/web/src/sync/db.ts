@@ -446,6 +446,24 @@ export type OutboxUndo =
   | { readonly kind: 'refetchEmails'; readonly prunedKeys?: string[] }
   | { readonly kind: 'mailbox'; readonly id: Id; readonly prior: MailboxRow | null }
   /**
+   * `updateMailbox` / `reorderMailboxes` (JMAP gap analysis M-5/M-6) — a PROPERTY-scoped rollback:
+   * only the columns the intent wrote, and their pre-image values.
+   *
+   * Not the whole-row `mailbox` variant above, and the difference is behavioural. Two updates
+   * queued against the same folder (mark it the Archive, then hide it) each take their pre-image at
+   * enqueue time, so the second one's pre-image already contains the first one's change. If the
+   * first is then refused, a whole-row restore puts the folder back to before BOTH — silently
+   * undoing a change the server accepted. Restoring one column cannot do that.
+   *
+   * A list rather than a single id because a reorder writes a whole sibling group at once.
+   */
+  | {
+      readonly kind: 'mailboxProps'
+      readonly prior: ReadonlyArray<
+        { readonly id: Id } & Partial<Pick<MailboxRow, 'role' | 'isSubscribed' | 'sortOrder'>>
+      >
+    }
+  /**
    * A ContactCard create/update/delete (M4.2). `prior` is the pre-mutation row (null for a create) —
    * the full stored row, so a rollback is exact regardless of how the optimistic patch was applied.
    * The mirror of the `mailbox` variant for the contact-card object.

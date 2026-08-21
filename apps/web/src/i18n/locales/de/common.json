@@ -842,7 +842,11 @@
       "sent": "Gesendet",
       "archive": "Archiv",
       "junk": "Spam",
-      "trash": "Papierkorb"
+      "trash": "Papierkorb",
+      "important": "Wichtig",
+      "snoozed": "Zurückgestellt",
+      "scheduled": "Geplant",
+      "memos": "Notizen"
     },
     "unread": "{{count}} ungelesen",
     "expand": "{{name}} aufklappen",
@@ -856,7 +860,28 @@
       "keepOffline": "Offline behalten",
       "keepOfflineOff": "Nicht mehr offline behalten",
       "move": "Verschieben nach…",
-      "import": "EML-Dateien importieren…"
+      "import": "EML-Dateien importieren…",
+      "info": "Ordnerinformationen…",
+      "manage": "Ordner verwalten"
+    },
+    "manage": {
+      "title": "Ordner verwalten",
+      "hint": "Ordner ziehen, um die Reihenfolge zu ändern, oder ausschalten, damit er nicht mehr in der Seitenleiste steht. Ausgeblendete Ordner bleiben in dieser Liste, und Ihre anderen E-Mail-Programme blenden sie ebenfalls aus.",
+      "done": "Fertig",
+      "alwaysShown": "Immer sichtbar",
+      "show": "{{name}} in der Seitenleiste zeigen",
+      "reorder": "{{name}} verschieben",
+      "reorderHint": "Leertaste hebt den Ordner an, Pfeil hoch und runter verschieben ihn. Leertaste legt ihn ab, Escape stellt ihn zurück.",
+      "movedTo": "{{name}}, Ordner {{position}} von {{count}}",
+      "dropped": "{{name}} abgelegt",
+      "dropCanceled": "{{name}} zurückgestellt"
+    },
+    "info": {
+      "title": "Ordnerinformationen: {{name}}",
+      "useAs": "Diesen Ordner verwenden als…",
+      "useAsNone": "Normaler Ordner",
+      "useAsHint": "Ihre anderen E-Mail-Programme lesen das mit. Ein Ordner, der als Archiv verwendet wird, ist auch dort das Archiv — und rückt hier zu den Standardordnern nach oben.",
+      "submit": "Sichern"
     },
     "create": {
       "title": "Neuer Ordner",
