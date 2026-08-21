@@ -2291,6 +2291,81 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
+### v0.14.0 (2026-08-21) — the second UI review, and what a first pass leaves behind
+
+Sixty findings fixed, three withdrawn, four that were corrections to the previous audit's own
+bookkeeping. The review is `docs/ui-review-2026-08-20.md`: the running client at three viewport
+tiers with real touch sizing, in German (the longer strings), in both themes, across all six
+accent palettes.
+
+**Two user settings applied only half-way, and every existing test was green throughout** —
+because those tests compare a token to a token and never a token to the way it is used.
+
+1. **The dark palette had four fills on one value.** `surface-2`, `surface-hover`,
+   `surface-selected-idle` and `border` were all `#3a3a3c`. Measured in a browser: the skeleton
+   gradient ran between three identical stops, so the shimmer animated and nothing moved
+   (1.00:1), and an opened message in the list was indistinguishable from the row merely under
+   the pointer. `tokens.contrast.test.ts` gained a group that compares neutral fills to each
+   other, which is the question it could not previously ask.
+2. **Five of six accents left the selection blue.** `accent.ts` wrote the fill and its label and
+   nothing else, so amber produced yellow text on a blue row — while `tokens.css` describes that
+   fill in its own comment as *"an accent tint, per Apple Mail"*. Each palette now carries a tint
+   generated at its own hue with the built-in blue one's saturation and strength. The focus ring
+   follows a CHOSEN palette and never `branding.accentColor`, which takes any value and is not
+   contrast-proved.
+
+**A regression from the previous round.** C5 asked for a grouped action bar; `a685633` shipped
+it; `ebd88d3` (B49) removed the grouping along with the ten glyphs that had made it necessary —
+and the measuring version kept showing all eleven wherever they fit, so the strip came back at
+desktop widths. Now the owner's four plus the `⋯`, with the wider gap at the meaning boundary
+carried as an attribute rather than a wrapper, so it survives the row being cut short. **The bulk
+bar had never been given the overflow hook at all**: seven controls measured 443px inside a 420px
+column, so "Move to…" sat 11px outside its own container on tablet *and* desktop, reachable only
+by dragging a bar that shows no scrollbar.
+
+**Three screens never received the first audit's phone fix.** Calendar, Contacts and Files each
+spent a 61px header on two shell buttons with 290 of 390px empty, then put their own band
+underneath; Calendar needed three bands (169px, 20% of the height) before its grid began, and
+Contacts showed no title in either of them. `<ScreenBar>` extracts what `MailScreen` had been
+doing alone. The calendar also gained a way to create an event — day cells opened the dialog all
+along and nothing said so — a grid that fills its column (a 1440×900 desktop left 220px of empty
+page), hairlines instead of 42 rounded tiles, and a today marker on the DATE rather than a ring
+around the cell, a ring being this app's shape for focus.
+
+**Three components replace thirty copies.** `EmptyState` (nine class names across eight
+stylesheets, four alignments, not one with an icon, heading or action — including the ones whose
+text told the reader to press a button elsewhere), `SectionLabel` (one rank, five looks, two of
+them inside a single feature), `useOnline` (Calendar and Files are online-only screens that never
+checked, so offline the buttons stayed enabled and the failure said "could not be loaded").
+
+**Six guards, because a fix without one holds until the next change:** fill-against-fill contrast,
+per-palette selection tints and four distinguishable swipe reveals, display type carrying its own
+leading and tracking (`display-type.css.test.ts`, new), the typographic apostrophe and one
+spelling per word, and the bulk-bar overflow. `CalendarPage` got its first component test at
+all — which is how a screen shipped where pressing Save on a failed write produced no visible
+response whatsoever: `run` reported through a page-level flag rendered BEHIND the modal's own
+backdrop, in wording about loading rather than saving.
+
+**Three findings were withdrawn** after reading the reasoning already in the repo — search
+highlighting in the accent colour, the quota bar's permanent presence, and checkboxes on every
+row. Each is answered in a comment at the site, two of them in as many words. They are marked as
+withdrawn in the review rather than quietly dropped, because a list that shows only its hits
+sends the next pass in the same direction.
+
+**Three naming collisions were created during the work and caught by the suites** — the draft
+chip against the compose button, the Cc toggle against its own field label, the empty-state
+button against the toolbar's — each by shortening or reusing a string. And a shortened "Cc" label
+took its button to 32.7px against a 34px floor, found by `target-size.spec.ts`. Worth stating as
+a rule: a label is not only text, it is the control's NAME, and two controls cannot share one.
+
+**The first audit's scoreboard is corrected** in `docs/ui-audit.md`. It read "51 of 52 fixed":
+B7 was never touched, D6 was later reversed by ADR-024, and the B6 status line was written in the
+very commit that removed the `aria-modal` it claims is present.
+
+`pnpm verify` 3823 tests / 271.76 KB gz of 300; `pnpm verify:e2e` green across every suite.
+
+---
+
 ### v0.13.0 (2026-08-19) — closing the gap to Bulwark
 
 Bulwark is the other serverless JMAP client. The question that started this was whether there
