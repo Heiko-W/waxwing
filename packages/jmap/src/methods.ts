@@ -97,8 +97,12 @@ import type {
   PrincipalGetResponse,
   PrincipalQueryRequest,
   PrincipalQueryResponse,
+  ShareNotificationChangesRequest,
+  ShareNotificationChangesResponse,
   ShareNotificationGetRequest,
   ShareNotificationGetResponse,
+  ShareNotificationQueryRequest,
+  ShareNotificationQueryResponse,
   ShareNotificationSetRequest,
   ShareNotificationSetResponse,
 } from './types/principal'
@@ -262,6 +266,14 @@ export const Methods = {
   shareNotificationGet: defineMethod<ShareNotificationGetRequest, ShareNotificationGetResponse>(
     'ShareNotification/get',
   ),
+  shareNotificationChanges: defineMethod<
+    ShareNotificationChangesRequest,
+    ShareNotificationChangesResponse
+  >('ShareNotification/changes'),
+  shareNotificationQuery: defineMethod<
+    ShareNotificationQueryRequest,
+    ShareNotificationQueryResponse
+  >('ShareNotification/query'),
   shareNotificationSet: defineMethod<ShareNotificationSetRequest, ShareNotificationSetResponse>(
     'ShareNotification/set',
   ),

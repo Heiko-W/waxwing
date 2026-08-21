@@ -23,9 +23,11 @@ import {
   Pin,
   Send,
   Trash2,
+  UserPlus,
 } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { mayShareMailbox } from '../sharing/mailbox'
 import type { MailboxRow } from '../sync'
 import { Badge, Menu, type MenuItemSpec, VisuallyHidden } from '../ui'
 import { MAILBOX_MIME, MESSAGES_MIME } from './dnd'
@@ -54,6 +56,8 @@ export interface FolderTreeViewProps {
   readonly onRequestMove?: (mailbox: MailboxRow) => void
   /** Import `.eml` files into this folder (M5.3, FR-MBX-06); omit to hide the entry. */
   readonly onRequestImport?: (mailbox: MailboxRow) => void
+  /** Share this folder with someone (S-3, RFC 9670); omit to hide the entry. */
+  readonly onRequestShare?: (mailbox: MailboxRow) => void
   /** May the drag in flight drop on this mailbox? Omit to disable drop entirely (M3.9 5b). */
   readonly canDropOn?: (mailbox: MailboxRow) => boolean
   /** A drag was dropped on this mailbox — carry out the move (M3.9 5b). */
@@ -81,6 +85,7 @@ export function FolderTreeView({
   onRequestDelete,
   onRequestMove,
   onRequestImport,
+  onRequestShare,
   canDropOn,
   onDropOn,
   onDragStartMailbox,
@@ -190,6 +195,7 @@ export function FolderTreeView({
             onRequestDelete,
             onRequestMove,
             onRequestImport,
+            onRequestShare,
             onRequestEmpty,
             onRequestDeleteOlder,
             onTogglePin,
@@ -339,6 +345,7 @@ function actionItems(
     onRequestDelete: (mailbox: MailboxRow) => void
     onRequestMove?: ((mailbox: MailboxRow) => void) | undefined
     onRequestImport?: ((mailbox: MailboxRow) => void) | undefined
+    onRequestShare?: ((mailbox: MailboxRow) => void) | undefined
     onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
     onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
     onTogglePin?: ((mailbox: MailboxRow) => void) | undefined
@@ -390,6 +397,24 @@ function actionItems(
       id: 'import',
       label: t('mailbox.actions.import'),
       onSelect: () => onRequestImport(mailbox),
+    })
+  }
+  /*
+   * Share (S-3). `mayShare` is the server's answer for THIS user on THIS folder — an owner has it, a
+   * grantee normally does not — so the entry is simply absent where the action would be refused,
+   * which is the same discipline every entry above follows.
+   *
+   * Read through `mayShareMailbox` rather than `mailbox.myRights.mayShare` directly: the right is an
+   * extension property (`Capabilities.mailShare`), a server without it sends nine keys instead of
+   * ten, and a replica row written by an older build has none at all. `undefined` must read as "no".
+   */
+  if (handlers.onRequestShare && mayShareMailbox(mailbox.myRights)) {
+    const onRequestShare = handlers.onRequestShare
+    items.push({
+      id: 'share',
+      label: t('sharing.mailbox.action'),
+      icon: UserPlus,
+      onSelect: () => onRequestShare(mailbox),
     })
   }
   // Cleanup (M3.2): empty a Trash/Junk mailbox, or delete older messages from any purgeable one.

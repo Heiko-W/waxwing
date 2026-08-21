@@ -1553,6 +1553,58 @@
       "unknown": "Ihre Berechtigungen werden noch geprüft — es sind noch nicht alle Nachrichten geladen."
     }
   },
+  "sharing": {
+    "currentHeading": "Wer Zugriff hat",
+    "addHeading": "Jemandem Zugriff geben",
+    "none": "Nur Sie.",
+    "search": "Personen suchen",
+    "searchPlaceholder": "Name oder Adresse",
+    "noMatches": "Dazu passt niemand.",
+    "searchFailed": "Die Personensuche ist fehlgeschlagen.",
+    "roleLabel": "Darf",
+    "roleFor": "Was {{name}} darf",
+    "grant": "Hinzufügen",
+    "grantTo": "{{name}} Zugriff geben",
+    "revoke": "Entfernen",
+    "revokeFrom": "Zugriff von {{name}} entfernen",
+    "done": "Fertig",
+    "custom": "Eigene Rechte",
+    "failed": "Die Änderung wurde nicht gespeichert. Es hat sich nichts geändert.",
+    "role": {
+      "viewer": "Ansehen",
+      "editor": "Bearbeiten",
+      "manager": "Verwalten"
+    },
+    "explain": {
+      "file": {
+        "viewer": "Öffnen und herunterladen. Ändern nicht.",
+        "editor": "Öffnen, ändern, umbenennen und löschen. Weitergeben an andere nicht.",
+        "manager": "Alles, was Sie auch dürfen — einschließlich der Weitergabe an andere, ohne dass Sie davon erfahren."
+      },
+      "mailbox": {
+        "viewer": "Die Post in diesem Ordner lesen. Geöffnete Nachrichten gelten für Sie weiterhin als ungelesen — dafür sinkt aber auch die Ungelesen-Zahl der anderen Person nie.",
+        "editor": "Die Post lesen, in den Ordner und aus ihm heraus verschieben, als gelesen markieren und kennzeichnen. Den Ordner umbenennen oder löschen nicht.",
+        "manager": "Alles, was Sie mit diesem Ordner dürfen — Post lesen und einsortieren, umbenennen, löschen und ohne Ihr Wissen an weitere Personen freigeben."
+      }
+    },
+    "mailbox": {
+      "action": "Freigeben…",
+      "title": "Ordner „{{name}}“ freigeben",
+      "loadFailed": "Die aktuellen Zugriffsrechte ließen sich nicht laden. Solange lässt sich hier nichts gefahrlos ändern.",
+      "noSubmit": "Aus Ihrem Konto senden kann niemand, egal was Sie hier vergeben."
+    },
+    "incoming": {
+      "region": "Neue Freigaben",
+      "mailbox": "{{who}} hat den Ordner „{{name}}“ für Sie freigegeben.",
+      "mailboxUnnamed": "{{who}} hat einen Mailordner für Sie freigegeben.",
+      "revoked": "{{who}} hat Ihren Zugriff auf „{{name}}“ zurückgenommen.",
+      "revokedUnnamed": "{{who}} hat Ihren Zugriff auf einen Mailordner zurückgenommen.",
+      "someone": "Jemand",
+      "open": "Öffnen",
+      "dismiss": "Ausblenden",
+      "dismissOne": "Diesen Hinweis ausblenden"
+    }
+  },
   "calendar": {
     "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
     "offlineOpen": "Sie sind offline. Termine lassen sich nur mit Verbindung öffnen und ändern.",
@@ -1680,33 +1732,7 @@
     "more": "Weitere Aktionen für {{name}}",
     "share": {
       "open": "{{name}} freigeben",
-      "title": "„{{name}}“ freigeben",
-      "currentHeading": "Wer Zugriff hat",
-      "addHeading": "Jemandem Zugriff geben",
-      "none": "Nur Sie.",
-      "search": "Personen suchen",
-      "searchPlaceholder": "Name oder Adresse",
-      "noMatches": "Dazu passt niemand.",
-      "searchFailed": "Die Personensuche ist fehlgeschlagen.",
-      "roleLabel": "Darf",
-      "roleFor": "Was {{name}} darf",
-      "grant": "Hinzufügen",
-      "grantTo": "{{name}} Zugriff geben",
-      "revoke": "Entfernen",
-      "revokeFrom": "Zugriff von {{name}} entfernen",
-      "done": "Fertig",
-      "custom": "Eigene Rechte",
-      "failed": "Die Änderung wurde nicht gespeichert. Es hat sich nichts geändert.",
-      "role": {
-        "viewer": "Ansehen",
-        "editor": "Bearbeiten",
-        "manager": "Verwalten"
-      },
-      "explain": {
-        "viewer": "Öffnen und herunterladen. Ändern nicht.",
-        "editor": "Öffnen, ändern, umbenennen und löschen. Weitergeben an andere nicht.",
-        "manager": "Alles, was Sie auch dürfen — einschließlich der Weitergabe an andere, ohne dass Sie davon erfahren."
-      }
+      "title": "„{{name}}“ freigeben"
     }
   }
 }

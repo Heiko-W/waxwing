@@ -21,6 +21,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
+import { makeMailboxSharingClient } from '../sharing/mailbox-client'
+import { currentUserPrincipalId } from '../sharing/principals'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
 import { Button, Dialog, IconButton, Spinner, TextInput, useToast } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
@@ -35,6 +37,9 @@ import {
 import { makeEmlImporter } from './eml-import'
 
 const EmlImportDialog = lazy(() => import('./EmlImportDialog'))
+// Lazy for the same reason: sharing a folder is a deliberate, occasional act, and the dialog drags
+// in the principal picker. Keeping it out of the initial chunk is what the size budget asks for.
+const MailboxShareDialog = lazy(() => import('../sharing/MailboxShareDialog'))
 
 import { FolderMoveDialog } from './FolderMoveDialog'
 import { FolderTreeView } from './FolderTreeView'
@@ -60,6 +65,7 @@ type DialogState =
   | { readonly kind: 'empty'; readonly mailbox: MailboxRow }
   | { readonly kind: 'deleteOlder'; readonly mailbox: MailboxRow }
   | { readonly kind: 'import'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'share'; readonly mailbox: MailboxRow }
 
 export interface FolderTreeProps {
   /**
@@ -96,6 +102,23 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
   // across an async loop.
   const importer = useMemo(
     () => (connected === null ? null : makeEmlImporter(connected.client, accountId)),
+    [connected, accountId],
+  )
+  /*
+   * The share seam for THIS tree's account (S-3). Bound to `useReplica().accountId`, not to the
+   * primary: the account-grouped sidebar renders one tree per account, and a `Mailbox/set` sent to
+   * the wrong account would find a real, different folder there — the per-account ids are short and
+   * they collide. Same reasoning as `use-folder-actions.ts`.
+   */
+  const sharingClient = useMemo(
+    () =>
+      connected === null
+        ? null
+        : makeMailboxSharingClient(
+            connected.client,
+            accountId,
+            currentUserPrincipalId(connected.jmapSession, accountId),
+          ),
     [connected, accountId],
   )
   const route = useRoute()
@@ -221,6 +244,9 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
         onRequestMove={(mailbox) => setDialog({ kind: 'move', mailbox })}
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
         onRequestImport={(mailbox) => setDialog({ kind: 'import', mailbox })}
+        {...(sharingClient === null
+          ? {}
+          : { onRequestShare: (mailbox: MailboxRow) => setDialog({ kind: 'share', mailbox }) })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
         onDragStartMailbox={(mailbox) =>
@@ -343,6 +369,17 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
             setDialog(null)
           }}
         />
+      )}
+
+      {dialog?.kind === 'share' && sharingClient !== null && (
+        <Suspense fallback={null}>
+          <MailboxShareDialog
+            mailboxId={dialog.mailbox.id}
+            name={folderDisplayName(dialog.mailbox, t)}
+            client={sharingClient}
+            onClose={() => setDialog(null)}
+          />
+        </Suspense>
       )}
 
       {dialog?.kind === 'import' && importer !== null && (

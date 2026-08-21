@@ -446,6 +446,62 @@ export async function ensureDelegations() {
   return granted
 }
 
+/**
+ * Grant (or re-grant) ONE owner's inbox to ONE grantee, outside the fixed {@link DELEGATIONS} set.
+ *
+ * For the S-1 suite, which needs a `ShareNotification` that is FRESH. `shareWith` is a full
+ * replacement, so re-writing the same rights is a no-op the server does not report — a test that
+ * relied on the setup's own grant would find the card on the first run and nothing on the second.
+ * Re-granting with a DIFFERENT `access` is a real change and mints a new notification every time.
+ */
+export async function shareInbox(owner, grantee, access) {
+  return await ensureDelegation({ owner, grantee, access })
+}
+
+/**
+ * Destroy every outstanding `ShareNotification` on one account.
+ *
+ * RFC 9670 §3 gives a notification no read flag, so destroying it is the only "seen" there is — and
+ * it is what the app does when the user hides a card. A suite that asserts a card APPEARS has to
+ * start from none, or it will pass on a leftover from the run before.
+ */
+export async function clearShareNotifications(name) {
+  const account = ACCOUNTS.find((a) => a.name === name)
+  if (!account) throw new Error(`unknown account ${name}`)
+  const accountId = await ownAccountId(account)
+  const args = await jmapAs(account, SHARE_USING, [
+    ['ShareNotification/get', { accountId, ids: null, properties: ['id'] }, '0'],
+  ])
+  const ids = (args.list ?? []).map((entry) => entry.id)
+  if (ids.length === 0) return 0
+  await jmapAs(account, SHARE_USING, [['ShareNotification/set', { accountId, destroy: ids }, '0']])
+  return ids.length
+}
+
+/**
+ * Unshare EVERY mailbox of EVERY test account.
+ *
+ * The belt to {@link revokeDelegations}' braces. That function knows only the fixed
+ * {@link DELEGATIONS} pairs — owner bob and owner carol, inbox only — which was enough while the
+ * only shares were the ones the setup created. The S-3 suite grants one through the UI, from
+ * ALICE's account and possibly on a folder that is not her inbox, and a share left behind there
+ * would reshape bob's and carol's sidebars in every later run. This sweeps all of it.
+ */
+export async function revokeAllShares() {
+  for (const account of ACCOUNTS) {
+    const accountId = await ownAccountId(account)
+    const boxes = await jmapAs(account, SHARE_USING, [
+      ['Mailbox/get', { accountId, ids: null, properties: ['id', 'shareWith'] }, '0'],
+    ])
+    const update = {}
+    for (const box of boxes.list ?? []) {
+      if (Object.keys(box.shareWith ?? {}).length > 0) update[box.id] = { shareWith: {} }
+    }
+    if (Object.keys(update).length === 0) continue
+    await jmapAs(account, SHARE_USING, [['Mailbox/set', { accountId, update }, '0']])
+  }
+}
+
 /** Withdraw every share (`shareWith: {}`), returning the fixture to its single-account default. */
 export async function revokeDelegations() {
   for (const { owner } of DELEGATIONS) {

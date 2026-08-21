@@ -23,6 +23,7 @@ import type {
   QueryResponse,
   SetRequest,
   SetResponse,
+  UTCDate,
 } from './core'
 
 /**
@@ -126,5 +127,36 @@ export type ShareNotificationChangesRequest = ChangesRequest
 export type ShareNotificationChangesResponse = ChangesResponse
 export type ShareNotificationSetRequest = SetRequest<ShareNotification>
 export type ShareNotificationSetResponse = SetResponse<ShareNotification>
-export type ShareNotificationQueryRequest = QueryRequest
+
+/**
+ * RFC 9670 §3.3 filter conditions. `objectType` is measured — Stalwart v0.16.18 answers
+ * `{ objectType: "Mailbox" }` with exactly the mailbox notifications and drops the calendar ones.
+ *
+ * `before`/`after` are the RFC's and are NOT measured here; a caller that needs "only since X"
+ * should sort by `created` and stop reading rather than trust an untested condition.
+ */
+export interface ShareNotificationFilterCondition {
+  before?: UTCDate
+  after?: UTCDate
+  objectType?: string
+  objectAccountId?: Id
+}
+
+export type ShareNotificationFilter = FilterOperator | ShareNotificationFilterCondition
+
+export type ShareNotificationQueryRequest = Omit<QueryRequest, 'filter'> & {
+  filter?: ShareNotificationFilter | null
+}
 export type ShareNotificationQueryResponse = QueryResponse
+
+/**
+ * The RFC 8620 §7.1 `StateChange` type name for share notifications.
+ *
+ * **Measured, and the answer decides the whole design of an "incoming shares" surface.** Over a
+ * WebSocket with `WebSocketPushEnable`, Stalwart v0.16.18 emits
+ * `{"@type":"StateChange","changed":{"<own account>":{"ShareNotification":"<state>"}}}` the moment
+ * someone else's `Mailbox/set … shareWith` names this user — a separate frame from the `Mailbox`
+ * one the OWNER gets. So a client can LISTEN; it does not have to poll. The name has to be in the
+ * push subscription's `types`, or the server filters the frame out before it is sent.
+ */
+export const SHARE_NOTIFICATION_TYPE = 'ShareNotification'

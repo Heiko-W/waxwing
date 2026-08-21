@@ -82,12 +82,44 @@ eine Änderung am Design-System und gehört in ein eigenes Paket.
 - Liefert `AddressBook/get` **ohne** `properties` überhaupt `shareWith`? Das heutige
   „Shared"-Badge (`AddressBookList.tsx:72`) hängt daran und ist womöglich seit jeher tot;
   `port.ts:326` fragt keine `properties` an. Für `Calendar` ist belegt: nur auf Anfrage.
-- Verlangt `Mailbox/set … shareWith` die URN `urn:ietf:params:jmap:mail:share` im `using`
-  (die e2e-Fixture sendet sie), und reißt eine dem Server unbekannte `using`-URN die Anfrage ab?
+- ~~Verlangt `Mailbox/set … shareWith` die URN `urn:ietf:params:jmap:mail:share` im `using`
+  (die e2e-Fixture sendet sie), und reißt eine dem Server unbekannte `using`-URN die Anfrage ab?~~
+  **Am 21.08. gegen v0.16.18 gemessen: nein und ja.** `Mailbox/get properties:['shareWith']` und
+  `Mailbox/set … shareWith` gelingen beide mit `using: [core, mail]` allein. Eine dem Server
+  unbekannte URN wirft dagegen die **ganze** Anfrage weg — HTTP 400 `notRequest`, keine einzige
+  Teilantwort, dieselbe Bruchstelle wie `Principal/set`. Die URN gehört deshalb **nicht** in
+  `PREFIX_TO_CAPABILITY` (sie käme sonst in jede Mailbox-Anfrage), sondern als Konstante
+  `Capabilities.mailShare` für den Opt-in über `CallOptions.using`.
+- **Neu gemessen: `Mailbox/get` liefert `shareWith` NUR auf Anfrage.** Ohne `properties` kommen elf
+  Schlüssel zurück und `shareWith` ist keiner davon; der Sync-Motor (`port.ts`) fragt keine
+  `properties` an, also hat keine Replica-Zeile je eine Freigabekarte gehalten. Ein Dialog muss sie
+  selbst holen. Dasselbe zu prüfen für `AddressBook` (S-2, offen).
+- **Neu gemessen: `myRights` hat zehn Schlüssel, nicht die neun aus RFC 8621.** `mayShare` kommt
+  bei jedem `Mailbox/get` mit. Alle zehn werden in `shareWith` akzeptiert; ein erfundener elfter
+  (`mayFlibber`) wird **pro Objekt** mit `invalidProperties: 'Invalid permission "mayFlibber"'`
+  abgelehnt, die Anfrage überlebt. Der Server normalisiert: `{mayReadItems:true}` liest sich als
+  alle zehn Schlüssel mit dem Rest auf `false`.
 - Was löschen `Calendar.mayDelete` / `AddressBook.mayDelete` — den Container oder den Inhalt?
   Entscheidet, ob sie zu „Bearbeiten" oder „Verwalten" gehören. Konservativ bis dahin:
   „Verwalten".
-- Trägt `StateChange` einen `ShareNotification`-Typ? Sonst muss S-1 pollen statt zu lauschen.
+- ~~Trägt `StateChange` einen `ShareNotification`-Typ? Sonst muss S-1 pollen statt zu lauschen.~~
+  **Am 21.08. gemessen: ja — S-1 lauscht.** Über WebSocket mit `WebSocketPushEnable` liefert der
+  Server beim Freigeben durch carol auf alices Verbindung
+  `{"@type":"StateChange","changed":{"b":{"ShareNotification":"sqcwidwels9imcba"}}}` — alices
+  **eigene** Konto-Id, ein eigener Typname, ein eigener Frame (der `Mailbox`-Frame geht an die
+  Eigentümerin). Der Name muss in den `dataTypes` der Push-Anmeldung stehen, sonst filtert der
+  Server ihn weg; `WATCHED_TYPES` in `sync/engine/engine.ts` führt ihn jetzt.
+- **Neu gemessen, und es kostet eine Entwurfsentscheidung: `ShareNotification.changedBy` kann die
+  falsche Person nennen.** Eine Freigabe, die carol per `Mailbox/set` erteilt hat, kam mit
+  `{principalId:"d333333", name:"Recovery admin account", email:"admin"}` an — während ein
+  `Calendar/set` desselben Kontos korrekt Carol nannte. Ebenso ist `ShareNotification.name`
+  durchgehend der **leere String**, nie der Objektname. Die Karte nimmt den Namen deshalb aus
+  `objectAccountId` (die Session führt geteilte Konten namentlich) und den Ordnernamen aus der
+  Replica; `changedBy` ist nur Rückfalloption und wird verworfen, wenn es ein Administrationskonto
+  nennt.
+- **Neu gemessen: `ShareNotification/changes` und `/query` funktionieren** (`query` meldet sogar
+  `canCalculateChanges: true`, `filter: {objectType:"Mailbox"}` filtert korrekt). `/changes` mit
+  `sinceState: "0"` antwortet `invalidArguments` — es braucht einen echten State-String.
 - Kommt eine Freigabe an einen **Gruppen**-Principal bei den Mitgliedern an? Solange offen:
   Gruppen im Wähler nicht anbieten.
 - FileNode-Vererbung: Download eines Kindknotens gelingt, `myRights` meldet trotzdem alles

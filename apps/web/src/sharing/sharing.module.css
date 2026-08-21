@@ -1,0 +1,138 @@
+/* The generic share dialog (S-1 … S-4). Lifted from `files.module.css`, where it was the app's only
+   sharing surface, with the phone layout added — see `.shareRow` below. */
+
+/* Each labelled block inside the share dialog. The gap used to live as a bottom margin on the
+   heading itself; it belongs to the block, so one rule sets it for every child. */
+.shareSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-5);
+}
+
+.shareList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shareRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-1) 0;
+}
+
+.shareName {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shareEmail {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.shareRole {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  font-style: italic;
+}
+
+.shareControls {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  align-items: flex-end;
+}
+
+.shareField {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
+.shareLabel {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text);
+  /* medium at full strength, like the six other field labels in the app. Left lighter and muted,
+     a label reads as help text about the control rather than the name of it. */
+  font-weight: var(--waxwing-weight-medium);
+}
+
+.shareHint {
+  margin: var(--waxwing-space-2) 0 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.shareStatus {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
+.loading,
+.empty {
+  margin: 0;
+  padding: var(--waxwing-space-6);
+  color: var(--waxwing-text-muted);
+  text-align: center;
+}
+
+/* ---- phone ---- */
+
+@media (max-width: 39.999em) {
+  /* TWO LINES, not one squeezed one. A person row carries a name, an address, a role picker and a
+     remove button; at 390px that is four things fighting over ~330px, and the loser is always the
+     name — the only part that says WHO the row is about. Wrapping puts identity on the first line
+     and the controls on the second, where the 44px targets fit without shrinking.
+
+     `flex-wrap` rather than a column: the name and address still share a line when they fit, which
+     is what makes a list of three colleagues read as three rows and not six. */
+  .shareRow {
+    flex-wrap: wrap;
+    row-gap: var(--waxwing-space-1);
+    padding-block: var(--waxwing-space-2);
+  }
+
+  .shareName {
+    /* Forces the break: the name claims the whole first line, so the controls start the second. */
+    flex-basis: 100%;
+  }
+
+  .shareEmail {
+    flex-basis: 100%;
+  }
+
+  /* The controls line. `margin-inline-start: auto` on the last child would push the button to the
+     edge and leave a gap nobody asked for; letting the select grow keeps the pair balanced. */
+  .shareRow > :last-child {
+    margin-inline-start: auto;
+  }
+
+  /* The role picker on a phone is the platform's own wheel — see the `Select` used in the dialog —
+     and a 44px target is the point of it. */
+  .shareRow select {
+    min-block-size: 2.75rem;
+  }
+
+  .shareControls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--waxwing-space-2);
+  }
+}

@@ -35,6 +35,7 @@ const inbox: Mailbox = {
     mayRename: true,
     mayDelete: true,
     maySubmit: true,
+    mayShare: false,
   },
 }
 

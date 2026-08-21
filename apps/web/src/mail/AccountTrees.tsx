@@ -20,10 +20,14 @@ import { Lock } from 'lucide-react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
-import { type ReplicaDb, ReplicaProvider, useReplica } from '../sync'
+import { IncomingShares } from '../sharing/IncomingShares'
+import type { ShareAnnouncement } from '../sharing/incoming'
+import { useIncomingShares, useMailAccounts } from '../sharing/use-incoming-shares'
+import { type ReplicaDb, ReplicaProvider, useReplica, useReplicaQuery } from '../sync'
 import { Badge } from '../ui'
 import { resetMailScopedStores, useActiveAccountId, useActiveAccountStore } from './active-account'
 import { FolderTree } from './FolderTree'
+import { folderDisplayName } from './folder-tree'
 import styles from './folder-tree.module.css'
 import { SavedSearchList } from './search/SavedSearchList'
 
@@ -36,12 +40,28 @@ export interface AccountTreesProps {
   readonly onNavigate?: (() => void) | undefined
 }
 
-export function AccountTrees({ accounts, primaryAccountId, onNavigate }: AccountTreesProps) {
+export function AccountTrees({
+  accounts: advertised,
+  primaryAccountId,
+  onNavigate,
+}: AccountTreesProps) {
   const { db } = useReplica()
   const navigate = useNavigate()
   const route = useRoute()
   const stored = useActiveAccountId()
   const activeAccountId = stored ?? primaryAccountId
+  /*
+   * The accounts that really have mail, not the ones the session ADVERTISES (S-4).
+   *
+   * Measured against Stalwart v0.16.18: sharing one CALENDAR makes an account appear in the session
+   * with all seventeen capabilities, `urn:ietf:params:jmap:mail` included — so
+   * `secondaryMailAccounts()`, which reads exactly that, produced a labelled section, an empty
+   * folder tree and a sync engine for an account whose every `Mailbox/get` answers `forbidden`.
+   * `useMailAccounts` asks instead, once, in one batch. See `sharing/probe.ts`.
+   */
+  const accounts = useMailAccounts(advertised, primaryAccountId)
+  const incoming = useIncomingShares('Mailbox')
+  const sharedNames = useSharedFolderNames(incoming.announcements)
 
   const selectMailbox = useCallback(
     (accountId: Id, mailboxId: string) => {
@@ -73,12 +93,42 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
     [activeAccountId, navigate, route.params.mailboxId, onNavigate],
   )
 
+  const openShare = useCallback(
+    (announcement: ShareAnnouncement) => {
+      // Both halves of the address, because a mailbox id alone is ambiguous: they are per-account
+      // and short, and `a` exists in nearly every account. Same rule as `selectMailbox` above.
+      selectMailbox(announcement.accountId, announcement.objectId)
+      // Read, and therefore done with. Leaving it up after the user has followed it would turn the
+      // strip into a list of things they have already dealt with.
+      incoming.dismiss(announcement.id)
+    },
+    [selectMailbox, incoming],
+  )
+
+  /*
+   * The strip sits ABOVE the trees and outside the pass-through check, so a first-ever share is
+   * announced even while the rail is still a single ungrouped tree — which is precisely the moment
+   * it matters: the section it is telling the user about has not appeared yet. It renders nothing
+   * when there is nothing, so the single-account sidebar stays byte-for-byte what it was.
+   */
+  const strip = (
+    <IncomingShares
+      announcements={incoming.announcements}
+      nameOf={(announcement) =>
+        sharedNames[`${announcement.accountId}/${announcement.objectId}`] ?? null
+      }
+      onOpen={openShare}
+      onDismiss={incoming.dismiss}
+    />
+  )
+
   const shared = accounts.filter((account) => account.id !== primaryAccountId)
 
   // Pass-through: nothing shared ⇒ exactly today's single tree under the ambient (primary) provider.
   if (shared.length === 0) {
     return (
       <>
+        {strip}
         <FolderTree onNavigate={onNavigate} />
         {/* Saved searches belong to the account whose mail is on screen, so they hang off the
             primary tree rather than the shell (M5.5, FR-SRCH-03). */}
@@ -90,6 +140,7 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
   const primary = accounts.find((account) => account.id === primaryAccountId)
   return (
     <>
+      {strip}
       <AccountSection
         name={primary?.name ?? primaryAccountId}
         accountId={primaryAccountId}
@@ -112,6 +163,39 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
       ))}
     </>
   )
+}
+
+/**
+ * The NAMES of the folders the cards are about, keyed `accountId/mailboxId`.
+ *
+ * The server does not send one. `ShareNotification.name` is the empty string on v0.16.18 — measured,
+ * for mailboxes and calendars alike — so "Carol shared the folder ‘Projekt’" has to get "Projekt"
+ * from somewhere else, and the replica is where it already is: the fleet runs an engine per shared
+ * account and mirrors its mailboxes into the same database, keyed by `[accountId, id]`.
+ *
+ * It is legitimately ABSENT for a brand-new share: the card can arrive before that account's first
+ * sync has run, and the strip has a wording that needs no name for exactly that window. Nothing here
+ * waits for it — a card the user cannot read yet would be worse than one that says "a mail folder".
+ */
+function useSharedFolderNames(announcements: readonly ShareAnnouncement[]): Record<string, string> {
+  const { t } = useTranslation()
+  const key = announcements.map((entry) => `${entry.accountId}/${entry.objectId}`).join(',')
+  const names = useReplicaQuery(
+    async ({ db }) => {
+      const found: Record<string, string> = {}
+      for (const pair of key === '' ? [] : key.split(',')) {
+        const [accountId, mailboxId] = pair.split('/')
+        if (accountId === undefined || mailboxId === undefined) continue
+        const row = await db.mailboxes.get([accountId, mailboxId])
+        // `folderDisplayName`, not `row.name`: a role folder is called "Inbox" here and
+        // "INBOX" on the wire, and the card must read like the rail below it.
+        if (row !== undefined) found[pair] = folderDisplayName(row, t)
+      }
+      return found
+    },
+    [key],
+  )
+  return names ?? {}
 }
 
 interface AccountSectionProps {

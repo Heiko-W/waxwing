@@ -27,6 +27,7 @@ import {
   type SchedulerLike,
   type SearchSnippet,
   type Session,
+  SHARE_NOTIFICATION_TYPE,
 } from '@waxwing/jmap'
 import type { NotifyNewMail } from '../../notify/notifier'
 import {
@@ -96,8 +97,25 @@ import {
   type JmapPort,
 } from './types'
 
-/** Data types we ask push to notify on and delta-sync. */
-const WATCHED_TYPES = ['Mailbox', 'Thread', 'Email', 'AddressBook', 'ContactCard']
+/**
+ * Data types we ask push to notify on and delta-sync.
+ *
+ * `ShareNotification` is the odd one and does NOT get delta-synced — nothing mirrors it into the
+ * replica. It is here because the push subscription is a FILTER: a server sends only the types that
+ * were asked for, so leaving it out means the frame never arrives. Measured against Stalwart
+ * v0.16.18: someone else's `Mailbox/set … shareWith` produces
+ * `{"@type":"StateChange","changed":{"<own account>":{"ShareNotification":"…"}}}` on this user's
+ * channel — which is what lets the incoming-shares strip (S-1) listen rather than poll. The sync it
+ * triggers is a no-op for that type and the `lastSyncedAt` tick is the signal.
+ */
+const WATCHED_TYPES = [
+  'Mailbox',
+  'Thread',
+  'Email',
+  'AddressBook',
+  'ContactCard',
+  SHARE_NOTIFICATION_TYPE,
+]
 
 /**
  * The push transports a *browser* may use (decision D2, ratified at G1; ADR-005).

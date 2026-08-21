@@ -150,6 +150,7 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
               mayRename: true,
               mayDelete: true,
               maySubmit: true,
+              mayShare: false,
             },
             isSubscribed: true,
           },

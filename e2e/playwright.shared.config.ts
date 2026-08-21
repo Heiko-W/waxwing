@@ -16,7 +16,7 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/shared.spec.ts'],
+  testMatch: ['**/shared.spec.ts', '**/sharing.spec.ts'],
   // One account, stateful mutations across two shared mailboxes — serial, and reseeded per test.
   fullyParallel: false,
   workers: 1,

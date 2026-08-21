@@ -32,6 +32,7 @@ export const FULL_RIGHTS: MailboxRights = {
   mayRename: true,
   mayDelete: true,
   maySubmit: true,
+  mayShare: false,
 }
 
 export function mailbox(id: string, over: Partial<Mailbox> = {}): Mailbox {
