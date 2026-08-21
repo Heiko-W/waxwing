@@ -196,6 +196,17 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
    * not be stale in either.
    */
   const ephemeralRef = useRef(false)
+  /**
+   * The sign-out teardown that is still running behind the login form, or `null`.
+   *
+   * Since a sign-out clears the screen FIRST (see `endSession`), the login form is usable while
+   * the wipe, the push teardown and the credential delete are still in flight — several seconds of
+   * it. A sign-in started in that window would race the teardown: `resetReplica()`,
+   * `releaseEphemeralClaim()` and `controllerRef.current = null` would land AFTER the new session
+   * had opened and quietly dismantle it. Both sign-in paths await this first, so the race cannot
+   * exist rather than being unlikely.
+   */
+  const teardownRef = useRef<Promise<void> | null>(null)
 
   /**
    * Switch this session to a throwaway replica (FR-AUTH-09). Shared by BOTH sign-in paths — the
@@ -420,6 +431,8 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         const target = current.status === 'onboarding' ? current.view.target : null
         if (!target) return
         dispatch({ type: 'submitBusy' })
+        // A sign-out clears the screen before it finishes cleaning up; see `teardownRef`.
+        await teardownRef.current
         try {
           writeStored(session(), STASH_TARGET_KEY, target)
           // Two halves, because they are consumed by different owners after the redirect: the
@@ -461,6 +474,9 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         const target = current.status === 'onboarding' ? current.view.target : null
         if (!target) return
         dispatch({ type: 'submitBusy' })
+        // A sign-out clears the screen before it finishes cleaning up; see `teardownRef`. Awaited
+        // BEFORE `markEphemeral` below, because the teardown's `resetReplica()` would undo it.
+        await teardownRef.current
         try {
           // BEFORE any replica work (FR-AUTH-09). `setReplicaName` throws once a replica is open,
           // and the first `getReplica()` happens inside `connectSession` below — so this is the one
@@ -531,7 +547,30 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
 
   const endSession = useCallback(
     (wipeData: boolean) => {
-      void (async () => {
+      /*
+       * THE SCREEN IS CLEARED FIRST, AND EVERYTHING ELSE HAPPENS BEHIND THE LOGIN FORM.
+       *
+       * This used to be the last statement of the async block below, after stopping the sync
+       * engines, wiping the replica, closing OS notifications, tearing down the push subscription
+       * and awaiting the controller's logout. Measured against the fixture, that took a mean of
+       * 6.1 s (4–8 s), and for all of it the menu had closed and NOTHING else had changed: the
+       * account name in the header, the folder tree and the whole Inbox with its subject lines and
+       * preview text stayed on screen. On a shared machine that is the worst moment this app has —
+       * you press "Sign out", you walk away, and the mailbox stands open behind you for six
+       * seconds.
+       *
+       * Clearing the display is also the only part that is instantaneous and cannot fail. The
+       * teardown is I/O with locks, network calls and a database delete in it; it belongs behind
+       * the login form, not in front of it. Nothing that stays on screen depends on it — the
+       * in-memory session goes with this dispatch, every screen unmounts, and the refs below are
+       * dropped in the same task.
+       *
+       * The one thing that must NOT overtake it is a new sign-in: `teardownRef` holds this promise
+       * so `submitBasic`/`chooseOAuth` wait for it before opening a session that this teardown
+       * would otherwise wipe out from under them.
+       */
+      goToLogin(targetRef.current ?? fallbackTarget())
+      teardownRef.current = (async () => {
         // FR-AUTH-05 / FR-AUTH-06. Stop the sync engines and release their Web Locks BEFORE any wipe —
         // otherwise `deleteDatabase` blocks on an open Dexie/IndexedDB connection (M1.3). EVERY engine
         // (M4.4 Etappe 4): since the fleet, each shared account's engine holds a handle of its own, and
@@ -597,11 +636,19 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         resetReplica()
         removeStored(local(), DURABLE_TARGET_KEY)
         removeStored(session(), STASH_PUBLIC_KEY)
-        goToLogin(
-          targetRef.current ?? fallbackTarget(),
-          incomplete ? { key: 'auth.error.signOutIncomplete' } : undefined,
-        )
-      })()
+        // Only the BAD news arrives late, and it arrives on the login form the user is already
+        // looking at: "your data is still on this machine" is not something to swallow because the
+        // screen has moved on. A clean sign-out says nothing, which is what a clean sign-out looks
+        // like everywhere else.
+        if (incomplete) {
+          dispatch({ type: 'loginError', error: { key: 'auth.error.signOutIncomplete' } })
+        }
+      })().catch((error: unknown) => {
+        // Nothing awaits this for its own sake, and a rejection here would surface in whichever
+        // sign-in happens to await `teardownRef` next — as a failure of THAT sign-in, which it is
+        // not. Named in the console instead, where a start-up failure can be looked up.
+        console.error('[waxwing] sign-out clean-up did not finish', error)
+      })
     },
     [goToLogin, fallbackTarget],
   )

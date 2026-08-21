@@ -418,6 +418,67 @@ describe('SessionProvider — public-computer mode', () => {
   })
 })
 
+describe('SessionProvider — sign-out clears the screen first', () => {
+  /** A `logout` that hangs until the test lets go, standing in for the slow half of the teardown. */
+  function pendingLogout(fake: ReturnType<typeof renderSession>): () => void {
+    let release: () => void = () => {}
+    fake.spies.logout.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+    return () => release()
+  }
+
+  async function signedIn() {
+    const user = userEvent.setup()
+    const fake = renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    return { user, fake }
+  }
+
+  it('shows the login form while the clean-up is still running (M3)', async () => {
+    // The measured defect: the account name, the folder tree and the whole Inbox stayed on screen
+    // for a mean of 6.1 s after the click, because the login dispatch was the LAST statement of the
+    // teardown. Clearing the display is instant and cannot fail; the wipe is I/O. Order matters
+    // most on the shared machine the user is walking away from.
+    const { user, fake } = await signedIn()
+    const release = pendingLogout(fake)
+
+    await user.click(screen.getByText('signout'))
+
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+    expect(screen.getByTestId('account')).toHaveTextContent('')
+
+    await act(async () => {
+      release()
+    })
+  })
+
+  it('holds a new sign-in until the clean-up it would race is done', async () => {
+    // The cost of clearing first: the login form is usable while `resetReplica()` and
+    // `controllerRef.current = null` are still ahead. A session opened in that window would be
+    // dismantled by the teardown that follows it.
+    const { user, fake } = await signedIn()
+    const release = pendingLogout(fake)
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+    expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+  })
+})
+
 describe('SessionProvider — the boot path cannot hang', () => {
   it('renders a login step even when the configured server URL is unusable', async () => {
     // `config.ts` now rejects an unparseable `sessionUrl` before it reaches here, so this config is
