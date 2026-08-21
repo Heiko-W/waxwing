@@ -65,11 +65,18 @@ async function openFiles(page: Page): Promise<void> {
  */
 async function rowAction(page: Page, label: string, node: string): Promise<void> {
   const inRow = page.getByRole('button', { name: label, exact: true })
-  if (await inRow.isVisible().catch(() => false)) {
+  const menu = page.getByRole('button', { name: `More actions for ${node}`, exact: true })
+  // WAIT for the row to be in one of its two shapes before choosing between them. `isVisible()`
+  // does not wait — it answers about this instant — so called straight after a navigation it says
+  // "no" simply because the listing has not arrived, and the else-branch below then waited the full
+  // test timeout for a `⋯` that this row never grows. The failure read like a missing menu and was
+  // a missing millisecond.
+  await expect(inRow.or(menu).first()).toBeVisible({ timeout: 30_000 })
+  if (await inRow.isVisible()) {
     await inRow.click()
     return
   }
-  await page.getByRole('button', { name: `More actions for ${node}`, exact: true }).click()
+  await menu.click()
   await page.getByRole('menuitem', { name: label, exact: true }).click()
 }
 
@@ -140,7 +147,14 @@ test('a file can be filed away, lost, found by name and followed home', async ({
   await expect(row(page, NOTE)).toBeVisible()
 
   // ---- delete asks first (B-7), and this server keeps no trash to undo it from
-  await page.getByRole('link', { name: 'Files', exact: true }).click()
+  //
+  // Back to the account root by the BREADCRUMB, which is the way out this screen offers. The
+  // primary-nav "Files" link does not do it: the folder you are in is component state, not part of
+  // the URL (`path` in FilesPage.tsx), so clicking a link to the route you are already on changes
+  // nothing at all. The test used to click it and then hunt for a row that was two levels above
+  // where the screen still was.
+  await page.getByRole('button', { name: 'Files', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
   await rowAction(page, `Delete ${ROOT}`, ROOT)
   const confirm = page.getByRole('dialog')
   await expect(confirm.getByText(/permanently deleted/i)).toBeVisible()
@@ -185,12 +199,21 @@ test('several files can be picked out at once and filed together', async ({ page
   await picker.getByRole('button', { name: 'Move to target', exact: true }).click()
 
   await expect(row(page, one)).toHaveCount(0)
+
+  // LEAVE the selection mode before opening the folder. A move empties the selection but does not
+  // end the mode — deliberately, so a second batch can be picked without re-entering it — and while
+  // the mode is on the row IS a checkbox, so a click on it selects rather than opens. The test used
+  // to click "target" here and merely tick it, then look for the moved files in the folder it had
+  // never left.
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
   await row(page, 'target').click()
   await expect(row(page, one)).toBeVisible()
   await expect(row(page, two)).toBeVisible()
 
-  // ---- clean up: one folder, and everything under it
-  await page.getByRole('link', { name: 'Files', exact: true }).click()
+  // ---- clean up: one folder, and everything under it. By the breadcrumb, not the nav link — see
+  // the note in the test above.
+  await page.getByRole('button', { name: 'Files', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Files', level: 1 })).toBeVisible()
   await rowAction(page, `Delete ${bulkRoot}`, bulkRoot)
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(row(page, bulkRoot)).toHaveCount(0)

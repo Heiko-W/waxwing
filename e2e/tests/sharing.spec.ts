@@ -1,5 +1,10 @@
 import { expect, type Page, test } from '@playwright/test'
-import { clearShareNotifications, revokeAllShares, shareInbox } from '../stalwart/fixture.mjs'
+import {
+  clearShareNotifications,
+  ensureDelegations,
+  revokeAllShares,
+  shareInbox,
+} from '../stalwart/fixture.mjs'
 import { seedReadMail } from '../stalwart/seed-read.mjs'
 import { revealPasswordForm } from './helpers'
 
@@ -28,13 +33,24 @@ const CREDENTIALS = { user: 'alice@waxwing.test', pass: 'waxwing-e2e-Pw1!' }
 const OWN = 'alice@waxwing.test'
 const CAROL = 'carol@waxwing.test'
 
-async function login(page: Page): Promise<void> {
+async function login(page: Page, options: { stay?: boolean } = {}): Promise<void> {
   await page.goto('/')
   await revealPasswordForm(page)
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
+  // `stay` for any test that RELOADS: without it the token lives only in memory (NFR-SEC-02), so a
+  // reload lands back on the sign-in step and the wait below never resolves.
+  if (options.stay) await page.getByLabel('Stay signed in').check()
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  // Either shape of the folder rail. On a phone-width viewport it is a DRAWER — there is no
+  // `navigation "Folders"` on screen at all until the button is pressed — so waiting only for the
+  // navigation made the one test that resizes fail before it had done anything.
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Folders' })
+      .or(page.getByRole('button', { name: 'Folders' }))
+      .first(),
+  ).toBeVisible({ timeout: 30_000 })
 }
 
 /** Alice's OWN Inbox row — the one she owns and may therefore share. */
@@ -61,7 +77,15 @@ test.describe('S-3 — sharing a mail folder', () => {
   test.afterEach(async () => {
     // Belt and braces: a failed assertion must not leave alice's Inbox shared, or the NEXT suite's
     // `treeitem name=/Inbox/` locator becomes ambiguous inside carol's newly grouped sidebar.
+    //
+    // …and then PUT THE SUITE'S OWN GRANTS BACK, which is not optional. `revokeAllShares` sweeps
+    // every account, including the two `shared.setup.mjs` granted — and those are what make this
+    // sidebar account-grouped at all. Without them `getByRole('region', { name: OWN })` matches
+    // nothing, so the first test here quietly disarmed every test after it: eight 30 s timeouts
+    // hunting for a region that the cleanup had dissolved. `ensureDelegations` is idempotent and
+    // rewrites exactly the fixed pair set, so this restores the baseline without inventing one.
     await revokeAllShares()
+    await ensureDelegations()
   })
 
   test('the “Share…” entry is offered on a folder the user OWNS', async ({ page }) => {
@@ -167,6 +191,17 @@ test.describe('S-3 — sharing a mail folder', () => {
 
 test.describe('S-1 — being told that something was shared', () => {
   test.afterEach(async () => {
+    // Put carol's grant back to the fixture's `ro` FIRST, then sweep. That order is not cosmetic:
+    // re-granting is itself a change, so it mints a fresh `ShareNotification`, and clearing before
+    // it would leave that one behind for whatever runs next to find a "New shares" strip it never
+    // asked for.
+    //
+    // The restore itself is what makes this block work at all: every test here mints its card by
+    // re-granting `rw`, and `shareWith` is a full replacement, so `rw` over an existing `rw` is a
+    // no-op the server does not report. Without the reset the FIRST test consumed the only real
+    // change available and every one after it waited thirty seconds for a card that was never
+    // going to be created.
+    await ensureDelegations()
     await clearShareNotifications('alice')
   })
 
@@ -218,7 +253,8 @@ test.describe('S-1 — being told that something was shared', () => {
      */
     await clearShareNotifications('alice')
     await shareInbox('carol', 'alice', 'rw')
-    await login(page)
+    // `stay`, because the assertion IS the reload below — see `login`.
+    await login(page, { stay: true })
 
     const strip = page.getByRole('region', { name: 'New shares' })
     await expect(strip).toBeVisible({ timeout: 30_000 })

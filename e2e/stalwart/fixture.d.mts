@@ -62,3 +62,22 @@ export function shareFileFolder(
  * on screen into the next suite.
  */
 export function clearFileNodes(): Promise<void>
+
+/**
+ * Re-establish the fixed delegation set (`DELEGATIONS`) — the two grants `shared.setup.mjs` makes.
+ *
+ * Declared here, unlike `up`/`down`/`provision`, because a spec legitimately needs it: the shared
+ * suite's own cleanups are broader than the state they are cleaning. `revokeAllShares()` sweeps
+ * every account including these two, and the S-1 tests mint their notification by re-granting `rw`,
+ * which only counts as a change if the grant is back at `ro` first. Both are a restore, not a new
+ * fixture: idempotent, and exactly the pairs the setup wrote.
+ */
+export function ensureDelegations(): Promise<
+  ReadonlyArray<{
+    owner: string
+    grantee: string
+    access: ShareAccess
+    ownerAccountId: string
+    inboxId: string
+  }>
+>

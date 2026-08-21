@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { clearFileNodes, shareFileFolder } from '../stalwart/fixture.mjs'
+import { clearFileNodes, ensureDelegations, shareFileFolder } from '../stalwart/fixture.mjs'
 import { revealPasswordForm } from './helpers'
 
 /**
@@ -43,6 +43,15 @@ async function login(page: Page): Promise<void> {
 
 async function openFiles(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Files', exact: true }).click()
+  // The HEADING first, and only then the button. Until the route has swapped, the mail rail is
+  // still mounted — and in THIS suite it carries one "New folder" per account region, so for that
+  // moment the button below matches three elements and Playwright raises a strict-mode violation
+  // rather than waiting. It is not retried, so the whole test dies on a transition it should have
+  // waited out; which of the two screens the assertion lands on is a race, and it was won and lost
+  // by two tests in the same file in the same run.
+  await expect(page.getByRole('heading', { level: 1, name: 'Files' })).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
     timeout: 30_000,
   })
@@ -58,6 +67,13 @@ test.describe('S-4 — opening files someone shared', () => {
 
   test.afterAll(async () => {
     await clearFileNodes()
+    // PUT THE MAIL DELEGATIONS BACK. "THE ONE" below revokes every share on purpose — that is the
+    // only way to isolate a files-only grant — and nothing restored them, so every suite that ran
+    // after this file found alice with a single-account sidebar and no `region` to look in. It went
+    // unnoticed because the file used to die in its own `beforeAll`: the revoke never ran, so the
+    // damage never happened. `ensureDelegations` is idempotent and rewrites exactly the fixed pairs
+    // `shared.setup.mjs` granted.
+    await ensureDelegations()
   })
 
   test('the shared account appears as a section of the reader’s OWN root', async ({ page }) => {
@@ -154,7 +170,14 @@ test.describe('S-5 — finding a colleague who is in no address book', () => {
     await expect(option).toContainText('waxwing.test')
 
     await option.click()
-    await expect(page.getByText('bob@waxwing.test')).toBeVisible()
+    // The CHIP, by the one control that carries the address verbatim (`compose.recipientRemove`).
+    // A bare `getByText('bob@waxwing.test')` was not an assertion about the composer at all: bob is
+    // named by his own section header in the delegated sidebar and by every share-notification card
+    // behind the dialog, so depending on what the fixture had just done it matched four elements
+    // (strict-mode violation) or none of the ones that mattered.
+    await expect(
+      page.getByRole('button', { name: 'Remove bob@waxwing.test', exact: true }),
+    ).toBeVisible()
   })
 
   test('a directory that cannot be reached leaves the local suggestions alone', async ({
@@ -173,9 +196,14 @@ test.describe('S-5 — finding a colleague who is in no address book', () => {
       return route.fallback()
     })
 
-    // Someone alice HAS corresponded with, so the recents source has an answer.
-    await to.fill('carol')
-    await expect(page.getByRole('option', { name: /carol@waxwing\.test/ })).toBeVisible({
+    // Someone alice HAS corresponded with, so the recents source has an answer — and in THIS
+    // fixture that is bob, not carol. `seedReadMail` fills alice's inbox from Bob Baker; carol
+    // appears only as the sender of the live-delivery helper (which this suite never calls) and
+    // inside a `message/rfc822` attachment, and neither puts an address in `addressStats`. So the
+    // old locator was waiting for a suggestion the replica had no way to make, and the test read
+    // as "the directory failure took the local sources down with it" when nothing had gone wrong.
+    await to.fill('bob')
+    await expect(page.getByRole('option', { name: /bob@waxwing\.test/ })).toBeVisible({
       timeout: 15_000,
     })
   })

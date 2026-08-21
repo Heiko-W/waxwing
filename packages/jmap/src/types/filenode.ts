@@ -87,7 +87,19 @@ export type FileNodeGetRequest = GetRequest
 export type FileNodeGetResponse = GetResponse<FileNode>
 export type FileNodeChangesRequest = ChangesRequest
 export type FileNodeChangesResponse = ChangesResponse
-export type FileNodeSetRequest = SetRequest<FileNode>
+export interface FileNodeSetRequest extends SetRequest<FileNode> {
+  /**
+   * If `true`, destroying a directory also destroys everything under it (default `false`);
+   * otherwise a directory that still has children cannot be destroyed at all.
+   *
+   * **The name is `…Children`, not `…Contents`**, and it is measured rather than read off a
+   * registry — Stalwart v0.16.18 answers `notDestroyed: { type: "nodeHasChildren" }` for
+   * `onDestroyRemoveContents` (RFC 9610's spelling, for address books) and destroys the whole
+   * subtree for `onDestroyRemoveChildren`. Getting it wrong is silent in the type system and loud
+   * only against a real server, which is why it is spelled out here.
+   */
+  onDestroyRemoveChildren?: boolean
+}
 export type FileNodeSetResponse = SetResponse<FileNode>
 
 export interface FileNodeFilterCondition {

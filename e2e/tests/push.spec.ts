@@ -136,7 +136,16 @@ test.describe('draft-ietf-jmap-emailpush-03 wire contract', () => {
   /** Must stay in step with `EMAIL_PUSH_PROPERTIES` in apps/web/src/notify/push-subscribe.ts. */
   const PROPERTIES = ['from', 'subject', 'preview', 'receivedAt']
 
-  /** One authenticated JMAP request, run from the page so the same-origin proxy applies. */
+  /**
+   * One authenticated JMAP request, run from the page so the same-origin proxy applies.
+   *
+   * The endpoint is READ OFF THE SESSION, exactly as the client does (`buildConfigFromSession`),
+   * and not spelled out here. It was, once — `/jmap/api`, an endpoint Stalwart does not serve: it
+   * answers 404 there and JMAP lives at the advertised `apiUrl` (`/jmap/`). The 404 body has no
+   * `methodResponses`, which made the positive test below throw on `[0]` and — far worse — made the
+   * negative test two tests down pass for the wrong reason, since "no subscription was created"
+   * is exactly what a 404 produces. A test that asserts an absence must reach the server first.
+   */
   async function jmap(
     page: Page,
     using: string[],
@@ -144,12 +153,13 @@ test.describe('draft-ietf-jmap-emailpush-03 wire contract', () => {
   ): Promise<Record<string, unknown>> {
     return page.evaluate(
       async ([body, credentials]) => {
-        const response = await fetch('/jmap/api', {
+        const auth = `Basic ${btoa(credentials as string)}`
+        const session = (await (
+          await fetch('/jmap/session', { headers: { authorization: auth } })
+        ).json()) as { apiUrl: string }
+        const response = await fetch(session.apiUrl, {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Basic ${btoa(credentials as string)}`,
-          },
+          headers: { 'content-type': 'application/json', authorization: auth },
           body: JSON.stringify(body),
         })
         return (await response.json()) as Record<string, unknown>
@@ -259,11 +269,34 @@ test.describe('draft-ietf-jmap-emailpush-03 wire contract', () => {
   })
 
   /**
-   * The other half of RFC 8620 §3.3, from the server's side: the URN is not decoration. Waxwing
-   * derives its `using` set from method names, and `PushSubscription/*` is core — so if this request
-   * succeeded, the per-call opt-in in `client.ts` would be dead code nobody would notice removing.
+   * The other half of RFC 8620 §3.3 — and the answer this fixture gives is NOT the one this test
+   * was written expecting, so read the measurement before changing it back.
+   *
+   * It asserted that a `PushSubscription/set` carrying `emailPush` while `using` names only
+   * `urn:ietf:params:jmap:core` is REFUSED, on the theory that the per-call opt-in in `client.ts`
+   * would otherwise be dead code. Measured against the fixture (Stalwart v0.16.18, 21.08.2026,
+   * `alice@waxwing.test`), that is simply not what happens:
+   *
+   *  - the subscription is created, whether or not the URN is named;
+   *  - the configuration is KEPT — a follow-up `PushSubscription/get` with
+   *    `properties: ['emailPush']` reads back the exact map that was sent, `urgency` and all;
+   *  - the property list is validated identically either way (a bogus entry is `invalidProperties`
+   *    at create time as well as at update time).
+   *
+   * So this server does not police the opt-in, and no test run against it can prove that Waxwing's
+   * `using: [Capabilities.emailPush]` is load-bearing — the unit suite pins that Waxwing sends it,
+   * which is the client's half of §3.3 and all the client controls.
+   *
+   * What is still worth asserting, and is what the original comment actually named as the failure
+   * mode, is that the configuration is never SILENTLY DROPPED: a server that takes the create and
+   * quietly forgets `emailPush` would leave Waxwing believing it had contentful push while every
+   * notification arrived empty, and nothing else in the suite would notice. Both outcomes therefore
+   * pass — refusal (a server that does police it) and acceptance-with-the-config-stored — and the
+   * one in between fails. That keeps the test honest if Stalwart ever tightens this.
    */
-  test('rejects the property when `using` does not name the capability', async ({ page }) => {
+  test('never takes the property and silently drops it, `using` or no `using`', async ({
+    page,
+  }) => {
     await page.goto('/')
 
     const session = await page.evaluate(async (credentials) => {
@@ -296,23 +329,40 @@ test.describe('draft-ietf-jmap-emailpush-03 wire contract', () => {
       ],
     )
 
-    // Either a request-level problem document or a method-level refusal is a pass: what must NOT
-    // happen is a subscription being created with the configuration silently dropped.
+    // A request-level problem document or a method-level refusal is a pass — that is a server that
+    // polices the opt-in, and nothing was created to inspect.
     const responses = response.methodResponses as
       | [string, Record<string, unknown>, string][]
       | undefined
     const createdMap = responses?.[0]?.[1].created as Record<string, { id: string }> | null
     const subscriptionId = createdMap?.probe?.id
+    if (subscriptionId === undefined) return
 
-    if (subscriptionId !== undefined) {
-      // It was created after all — then the server must at least not be holding the configuration,
-      // and the subscription is cleaned up before the assertion so a failure cannot leak state.
+    // It WAS created (this fixture's answer). Then the configuration has to actually be there.
+    // `emailPush` is not in the default property set — `PushSubscription/get` without an explicit
+    // `properties` returns id/deviceClientId/verificationCode/expires/types and nothing else — so it
+    // must be asked for by name or this assertion would read an absence that means nothing.
+    try {
+      const stored = await jmap(
+        page,
+        ['urn:ietf:params:jmap:core', EMAILPUSH_URN],
+        [
+          [
+            'PushSubscription/get',
+            { ids: [subscriptionId], properties: ['id', 'emailPush'] },
+            'p1',
+          ],
+        ],
+      )
+      const list = (stored.methodResponses as [string, Record<string, unknown>, string][])[0]?.[1]
+        .list as Array<{ emailPush?: Record<string, { properties?: string[] }> | null }> | undefined
+      expect(list?.[0]?.emailPush?.[accountId]?.properties).toEqual(PROPERTIES)
+    } finally {
       await jmap(
         page,
         ['urn:ietf:params:jmap:core'],
-        [['PushSubscription/set', { destroy: [subscriptionId] }, 'p1']],
+        [['PushSubscription/set', { destroy: [subscriptionId] }, 'p2']],
       )
     }
-    expect(subscriptionId).toBeUndefined()
   })
 })

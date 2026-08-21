@@ -351,6 +351,18 @@ describe('destroy', () => {
 
     expect(argsOf(fake, 'FileNode/set').destroy).toEqual(['f1', 'f2'])
   })
+
+  it('asks for the children too, which is what the confirmation promised', async () => {
+    // MEASURED (Stalwart v0.16.18): without it a directory with anything under it comes back
+    // `notDestroyed: { type: 'nodeHasChildren' }`, so the delete the dialog's "Everything inside
+    // the selected folders goes with them." describes was the one that always failed. The spelling
+    // is `onDestroyRemoveChildren`, NOT RFC 9610's `onDestroyRemoveContents` — see the type.
+    const fake = fakeClient([folder('d1', null, 'invoices')])
+
+    await makeFilesClient(fake.client, ACC).destroy(['d1'])
+
+    expect(argsOf(fake, 'FileNode/set').onDestroyRemoveChildren).toBe(true)
+  })
 })
 
 /** D-3 — `FileNode/query` supports a name condition and nothing was asking. */

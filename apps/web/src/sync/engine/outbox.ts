@@ -1916,7 +1916,25 @@ function executeIntent(
     case 'destroyEmails':
       return port.setEmails({ destroy: intent.emailIds, ifInState })
     case 'createMailbox': {
-      const props: Partial<Mailbox> = { name: intent.props.name, parentId: intent.props.parentId }
+      const props: Partial<Mailbox> = {
+        name: intent.props.name,
+        parentId: intent.props.parentId,
+        /**
+         * Sent EXPLICITLY, and the folder disappears without it. RFC 8621 §2 says `isSubscribed`
+         * "SHOULD default to false for Mailboxes in shared accounts … and true for any new
+         * Mailboxes created by the user themself", but that is a SHOULD and the fixture does not
+         * honour it: measured on Stalwart v0.16.18, a `Mailbox/set create` that omits the property
+         * is stored with `isSubscribed: false`.
+         *
+         * Since M-5 the sidebar hides an unsubscribed folder, so the two together produced a folder
+         * that the user creates, sees (the optimistic row says `true`), and then watches vanish the
+         * moment the server's own copy syncs back — with no way to get it back except "Manage
+         * folders", where it is switched off for a choice nobody made. One word on the wire is the
+         * whole fix; the optimistic row in `applyIntent` has always said `true`, and now agrees
+         * with what the server is told.
+         */
+        isSubscribed: true,
+      }
       if (intent.props.sortOrder !== undefined) props.sortOrder = intent.props.sortOrder
       return port.setMailboxes({ create: { [intent.creationId]: props }, ifInState })
     }
