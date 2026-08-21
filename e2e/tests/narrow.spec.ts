@@ -205,3 +205,50 @@ test('the composer offers no controls that do nothing here', async ({ page }) =>
 
   await noOverflow(page, 'composing')
 })
+
+/**
+ * Every settings section is reachable on a phone.
+ *
+ * The rail IS the screen here, and it is longer than 844px: fourteen destinations behind five group
+ * captions. It carried `flex: 0 0 auto` from the two-column layout, where that pins its WIDTH —
+ * above the panel it pinned its HEIGHT instead, so the box grew to fit its content, its own
+ * `overflow-y: auto` had nothing to scroll, and `.page { overflow: hidden }` cut 146px off without
+ * a scrollbar anywhere. "Offline & storage", "Server" and "About" were not below the fold; they
+ * were outside the page box — `elementFromPoint` returned null over all three, and wheel events of
+ * 300/600/1200/3000px moved nothing at all.
+ *
+ * The check is the one the reader would make: get to the bottom, then tap the last row.
+ */
+test('the settings list scrolls to its last section, and that section opens', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  const last = rail.getByRole('link', { name: 'About', exact: true })
+
+  // It is in the DOM either way; the question is whether the viewport can ever contain it.
+  await last.scrollIntoViewIfNeeded()
+  await expect(last).toBeInViewport()
+
+  // …and whether it is the element actually under that point, rather than something painted over
+  // it. `click()` fails on an unhittable target, which is precisely the reported symptom.
+  await last.click()
+  await expect(page.getByRole('heading', { name: 'About', level: 1 })).toBeVisible()
+
+  await noOverflow(page, 'settings — a section on a phone')
+})
+
+/**
+ * The phone's detail screen is a screen, and a screen begins at heading level 1.
+ *
+ * Opening a section REPLACES the rail, and the page's only `<h1>` — "Settings" — went with it. All
+ * fourteen sections therefore started at level 2 with no level 1 anywhere on the page.
+ */
+test('a settings section on a phone has exactly one h1: its own name', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  await rail.getByRole('link', { name: 'Compose', exact: true }).click()
+
+  const levelOnes = await page.getByRole('heading', { level: 1 }).allTextContents()
+  expect(levelOnes, 'the open section names the screen').toEqual(['Compose'])
+})

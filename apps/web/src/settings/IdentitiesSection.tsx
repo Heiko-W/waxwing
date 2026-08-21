@@ -265,8 +265,9 @@ export function IdentitiesSection(props: IdentitiesSectionProps) {
     }
   }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       <p className={styles.hint}>{t('settings.identities.description')}</p>
 
       {/* "Not loaded yet" and "no identities" look identical in a list, so say which it is —
@@ -322,7 +323,7 @@ export function IdentitiesSection(props: IdentitiesSectionProps) {
       )}
 
       {editing === null && (
-        <div>
+        <div className={styles.rowActions}>
           <Button
             variant="ghost"
             disabled={busy || offline || snapshot === null}
@@ -388,6 +389,6 @@ export function IdentitiesSection(props: IdentitiesSectionProps) {
             row is gone — so this warning is about drafts that already exist, not a hypothetical. */}
         <p>{t('settings.identities.delete.draftsWarning')}</p>
       </Dialog>
-    </div>
+    </>
   )
 }

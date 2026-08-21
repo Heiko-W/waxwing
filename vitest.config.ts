@@ -28,7 +28,11 @@ export default defineConfig({
             // `*.css.test.ts` is the B5 family (token references, focus indicators), which
             // walks every *.css under apps/web with plain node:fs.
             'apps/web/src/ui/**/*.contrast.test.ts',
-            'apps/web/src/ui/**/*.css.test.ts',
+            // Any `*.css.test.ts`, not only `ui/`'s: a feature area may need to pin an invariant
+            // about its OWN stylesheet next to the code it governs (settings does), and the reason
+            // these run here — reading the shipped CSS from disk — has nothing to do with where the
+            // file sits.
+            'apps/web/src/**/*.css.test.ts',
             // `*.shipped.test.ts` — assertions about DEPLOYMENT files (public/config.json and
             // friends) read from disk. Same reason as the CSS family: the jsdom project cannot
             // read them, and what ships is the thing worth checking.

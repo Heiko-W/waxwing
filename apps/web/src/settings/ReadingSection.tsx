@@ -31,8 +31,9 @@ export function ReadingSection() {
 
   const ids = { remote: useId(), autoMark: useId() }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       <div className={styles.field}>
         <Switch
           block
@@ -80,6 +81,6 @@ export function ReadingSection() {
           {t('settings.reading.autoMarkRead.hint')}
         </p>
       </div>
-    </div>
+    </>
   )
 }

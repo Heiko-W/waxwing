@@ -96,8 +96,12 @@ export function IdentityForm(props: IdentityFormProps) {
   }
 
   return (
+    // `.form`, not `.controls`: this editor is rendered as a ROW of the identities card, so a
+    // `.controls` here drew a second bordered card inside that one. A form is also not a settings
+    // list — it stacks, which is what puts its fields, its text box and its rich-text editor on the
+    // one right edge they used to miss by 91px in two directions.
     <form
-      className={styles.controls}
+      className={styles.form}
       onSubmit={(event) => {
         event.preventDefault()
         submit()
@@ -162,7 +166,7 @@ export function IdentityForm(props: IdentityFormProps) {
         <p className={styles.hint}>{t('settings.identities.bcc.hint')}</p>
       </div>
 
-      <div className={styles.field}>
+      <div className={styles.group}>
         <span className={styles.label}>{t('settings.identities.htmlSignature.label')}</span>
         <RichTextEditor
           ref={editorRef}
@@ -186,18 +190,18 @@ export function IdentityForm(props: IdentityFormProps) {
           onChange={(event) => patch({ textSignature: event.target.value })}
         />
         <p className={styles.hint}>{t('settings.identities.textSignature.hint')}</p>
-        <div>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              editorRef.current?.flush()
-              patch({ textSignature: htmlToPlainText(draftRef.current.htmlSignature) })
-            }}
-          >
-            {t('settings.identities.textSignature.fromHtml')}
-          </Button>
-        </div>
+        {/* A direct child of the field, so it starts on the same left edge as the labels above it
+            rather than 12px in from them behind a wrapper that did nothing else. */}
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            editorRef.current?.flush()
+            patch({ textSignature: htmlToPlainText(draftRef.current.htmlSignature) })
+          }}
+        >
+          {t('settings.identities.textSignature.fromHtml')}
+        </Button>
       </div>
 
       {message !== null && (

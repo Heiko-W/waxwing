@@ -331,6 +331,7 @@
       },
       "error": {
         "endBeforeStart": "Das Ende muss nach dem Beginn liegen.",
+        "loadFailed": "Die Abwesenheitsnotiz konnte nicht geladen werden.",
         "conflict": "Die Abwesenheitsnotiz wurde anderswo geändert. Ihre Änderungen wurden nicht gespeichert — oben sehen Sie die aktuellen Einstellungen.",
         "rejected": "Der Server hat diese Einstellungen abgelehnt.",
         "offline": "Sie sind offline. Die Abwesenheitsnotiz lässt sich nur mit Verbindung ändern.",

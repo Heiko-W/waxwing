@@ -25,8 +25,9 @@ export function ComposeSection() {
   const placement = useSignaturePlacement()
   const ids = { undo: useId(), undoHint: useId(), signature: useId(), signatureHint: useId() }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       <div className={styles.field}>
         <label className={styles.label} htmlFor={ids.undo}>
           {t('settings.compose.undoSend.label')}
@@ -76,6 +77,6 @@ export function ComposeSection() {
           {t('settings.compose.signature.hint')}
         </p>
       </div>
-    </div>
+    </>
   )
 }

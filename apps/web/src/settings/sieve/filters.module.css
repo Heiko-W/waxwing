@@ -43,6 +43,24 @@
   gap: var(--waxwing-space-2);
 }
 
+/*
+ * Equal shares of the line, not shrink-to-fit.
+ *
+ * A `<select>` sizes itself from its own longest option, so six rows of one form ended at 320,
+ * 224, 208, 252, 256 and 192px — a right edge that moved by a hundred pixels per line, which is a
+ * right edge nothing can be read against. `1 1 8rem` gives every field on a line the same width
+ * and lets the whole line wrap on a phone rather than any one field being crushed.
+ */
+.rowField {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
+
+/* The "Remove" beside them keeps the width of its own word. */
+.row > button {
+  flex: 0 0 auto;
+}
+
 .formActions {
   display: flex;
   justify-content: flex-end;
@@ -84,6 +102,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-3);
+}
+
+/* A button is as wide as its words; a flex column would stretch it across the whole card. */
+.foreign > button {
+  align-self: flex-start;
 }
 
 .error {

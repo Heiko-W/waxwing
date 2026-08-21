@@ -14,6 +14,8 @@ import userEvent from '@testing-library/user-event'
 import type { SieveScript } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type ReplicaDb, ReplicaProvider } from '../../sync'
+import { INITIAL_ENGINE_STATUS } from '../../sync/engine'
+import { setEngineStatus } from '../../sync/engine/status'
 import { freshDb } from '../../sync/test-utils'
 import { expectNoA11yViolations } from '../../test/axe'
 import { ToastProvider } from '../../ui'
@@ -61,11 +63,16 @@ function fakeClient(source: string): { client: SieveClient; saved: string[] } {
  */
 let db: ReplicaDb
 
+const MANAGED = `# @waxwing:rules:v1 {"version":1,"rules":[{"id":"r1","name":"Invoices","enabled":true,"match":"all","conditions":[],"actions":[{"kind":"discard"}],"stop":false}]}
+# @waxwing:rules:end
+`
+
 beforeEach(() => {
   db = freshDb()
 })
 
 afterEach(async () => {
+  setEngineStatus(INITIAL_ENGINE_STATUS)
   await db.delete()
 })
 
@@ -92,10 +99,7 @@ async function addRule(user: ReturnType<typeof userEvent.setup>, name: string) {
 
 describe('<FiltersSection>', () => {
   it('lists the rules it wrote itself', async () => {
-    const managed = `# @waxwing:rules:v1 {"version":1,"rules":[{"id":"r1","name":"Invoices","enabled":true,"match":"all","conditions":[],"actions":[{"kind":"discard"}],"stop":false}]}
-# @waxwing:rules:end
-`
-    renderSection(managed)
+    renderSection(MANAGED)
 
     expect(await screen.findByText('Invoices')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add rule' })).toBeInTheDocument()
@@ -154,5 +158,48 @@ describe('<FiltersSection>', () => {
     const { container } = renderSection(FOREIGN)
     await screen.findByRole('button', { name: 'Manage filters alongside it' })
     await expectNoA11yViolations(container)
+  })
+})
+
+/**
+ * Offline, filters answer the way identities have answered since M5.1.
+ *
+ * Saving a Sieve script is online-only — the outbox cannot replay a settings document with
+ * last-write-wins semantics — but nothing said so until the save failed. A reader could open the
+ * rule form offline, name a rule, pick a field, a comparison, a value and an action, press Save and
+ * only THEN be told it was never possible. Identities disable their "Add identity" and print one
+ * sentence; this section left every control live. Two sections of one screen, two answers to the
+ * same question.
+ *
+ * "Show script" is the deliberate exception: it discloses what is already on screen and writes
+ * nothing, so there is nothing for being offline to prevent.
+ */
+describe('offline (G11)', () => {
+  it('refuses the writes up front and says why, instead of failing after the form is filled in', async () => {
+    renderSection(MANAGED)
+    await screen.findByText('Invoices')
+
+    setEngineStatus({ ...INITIAL_ENGINE_STATUS, online: false })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add rule' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Active' })).toBeDisabled()
+    expect(
+      screen.getByText('You are offline. Filters can only be changed while connected.'),
+    ).toBeInTheDocument()
+
+    // …and the one control that only READS stays available.
+    expect(screen.getByRole('button', { name: 'Show script' })).toBeEnabled()
+  })
+
+  it('leaves everything usable while connected', async () => {
+    renderSection(MANAGED)
+    await screen.findByText('Invoices')
+
+    expect(screen.getByRole('button', { name: 'Add rule' })).toBeEnabled()
+    expect(
+      screen.queryByText('You are offline. Filters can only be changed while connected.'),
+    ).not.toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -21,9 +21,32 @@ import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import SettingsPage from './SettingsPage'
 import { StorageSection, type StorageSectionProps } from './StorageSection'
+import styles from './settings.module.css'
 
 const ACC = 'a'
 let db: ReplicaDb
+
+const originalMatchMedia = window.matchMedia
+
+/** Force the phone tier — no `matchMedia` match makes `useLayoutTier()` return 'phone'. */
+function forcePhone(): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent() {
+        return false
+      },
+    }),
+  })
+}
 
 // SettingsPage renders BrandLinks, which reads the config context; provide it (DEFAULT_CONFIG
 // has no branding links, so none render — the reading-pane/theme/axe assertions are unaffected).
@@ -106,6 +129,12 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: originalMatchMedia,
+  })
+  window.history.pushState(null, '', '/settings')
   await db.delete()
 })
 
@@ -170,6 +199,148 @@ describe('the settings shell (M3.7)', () => {
     // render an editor that would immediately fail to load (FR-SRV-02).
     expect(within(rail).queryByRole('link', { name: 'Identities' })).not.toBeInTheDocument()
     expect(within(rail).queryByRole('link', { name: 'Server' })).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * ONE card per section — the invariant the whole card/row split exists to hold.
+ *
+ * `.controls` was `display: flex` and a gap when eleven section components adopted it as their own
+ * root; the day it became a bordered card, every one of them drew a second card inside the one
+ * `Section` already renders. Ten of fourteen sections showed two concentric borders offset by a
+ * pixel, Notifications managed three, and nothing anywhere could see it: it is a class name used in
+ * two places that mean different things.
+ *
+ * The count is the check, and it is deliberately taken for EVERY section reachable in this fixture
+ * rather than for a chosen one — the defect arrived section by section, and so would the next.
+ */
+describe('the section card (G2)', () => {
+  it('draws exactly one card in every section, never a card inside a card', async () => {
+    const user = userEvent.setup()
+    const { container } = renderSettings()
+    const rail = await screen.findByRole('navigation', { name: 'Settings' })
+    const names = within(rail)
+      .getAllByRole('link')
+      .map((link) => link.textContent ?? '')
+    expect(names.length).toBeGreaterThan(5) // a loop over nothing passes just as happily
+
+    for (const name of names) {
+      await openSection(user, name)
+      const cards = container.querySelectorAll(`.${styles.controls}`)
+      expect(cards, `${name} should be one card`).toHaveLength(1)
+    }
+  })
+})
+
+/**
+ * The heading a screen opens with (G6).
+ *
+ * On a phone the rail is REPLACED by the section, and the page's only `<h1>` — "Settings", in the
+ * rail — goes with it. All fourteen sections therefore began at level 2 with no level 1 anywhere,
+ * in every viewport that matters most for heading navigation. And in every viewport, the `<h1>` sat
+ * inside `<nav aria-label="Settings">`: a landmark named after a heading it contains says the same
+ * word twice and distinguishes nothing.
+ */
+describe('heading structure (G6)', () => {
+  it('gives the phone’s detail screen its own h1 — the section’s name', async () => {
+    forcePhone()
+    const user = userEvent.setup()
+    renderSettings()
+    await openSection(user, 'Compose')
+
+    const levelOnes = screen.getAllByRole('heading', { level: 1 })
+    expect(levelOnes.map((heading) => heading.textContent)).toEqual(['Compose'])
+    // …and the rail's title is gone with the rail, so there is exactly one.
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument()
+  })
+
+  it('keeps page title over section title where both are on screen', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+    await openSection(user, 'Compose')
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Settings')
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Compose')
+  })
+
+  it('never puts the page heading inside the navigation named after it', async () => {
+    renderSettings()
+    const rail = await screen.findByRole('navigation', { name: 'Settings' })
+    expect(within(rail).queryByRole('heading')).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Focus follows the navigation, in both directions (G5).
+ *
+ * The `tabIndex={-1}` on the section has been there since M1.4 for exactly this and nothing ever
+ * called `focus()`. On a phone that is not a nicety: opening a section removes the rail from the
+ * DOM together with the focused `<a>`, so the reader is dropped at the top of the document and has
+ * to walk through the header and the main navigation again — after every section they open.
+ */
+describe('focus on navigation (G5)', () => {
+  it('moves focus into the section that was opened, and back to the row that was left', async () => {
+    forcePhone()
+    const user = userEvent.setup()
+    renderSettings()
+
+    const rail = await screen.findByRole('navigation', { name: 'Settings' })
+    const row = within(rail).getByRole('link', { name: 'Compose' })
+    await user.click(row)
+
+    const section = await screen.findByRole('region', { name: 'Compose' })
+    await waitFor(() => expect(document.activeElement).toBe(section))
+
+    await user.click(screen.getByRole('link', { name: 'Settings' }))
+
+    await waitFor(() => {
+      const back = screen.getByRole('navigation', { name: 'Settings' })
+      expect(document.activeElement).toBe(within(back).getByRole('link', { name: 'Compose' }))
+    })
+  })
+
+  it('does not seize focus on first paint', async () => {
+    // Landing on `/settings` shows a section because there is room for one, which is not the
+    // reader asking to be put inside it.
+    renderSettings()
+    await screen.findByRole('heading', { level: 2, name: 'General' })
+    expect(document.activeElement).toBe(document.body)
+  })
+})
+
+/**
+ * A slug that names no section rewrites the address (G14).
+ *
+ * `/settings/gibtsnicht` rendered the first section and marked it `aria-current="page"` while the
+ * address bar kept a section name that does not exist — the URL and the only thing on screen saying
+ * different things, and a bookmark of it silently wrong.
+ */
+describe('an unknown section slug (G14)', () => {
+  it('replaces the address rather than disagreeing with what is on screen', async () => {
+    window.history.pushState(null, '', '/settings/gibtsnicht')
+    renderSettings()
+
+    await waitFor(() => expect(window.location.pathname).toBe('/settings'))
+    expect(await screen.findByRole('heading', { level: 2, name: 'General' })).toBeInTheDocument()
+  })
+
+  it('leaves a slug that DOES name a section alone', async () => {
+    window.history.pushState(null, '', '/settings/compose')
+    renderSettings()
+
+    await screen.findByRole('heading', { level: 2, name: 'Compose' })
+    expect(window.location.pathname).toBe('/settings/compose')
+  })
+
+  it('leaves a section that this server merely cannot offer alone', async () => {
+    // "Server" is a real section, gated on having a session — and this fixture has none. Rewriting
+    // it would mean racing the session and the replica: a deep link would be thrown away in
+    // whatever frames pass before they arrive. A capability we do not have is not a typo.
+    window.history.pushState(null, '', '/settings/server')
+    renderSettings()
+
+    await screen.findByRole('heading', { level: 2, name: 'General' })
+    expect(window.location.pathname).toBe('/settings/server')
   })
 })
 

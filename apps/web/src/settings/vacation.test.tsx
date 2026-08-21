@@ -177,6 +177,86 @@ describe('<VacationSection>', () => {
 })
 
 /**
+ * A message on a screen the reader has not touched has to be TRUE, and it has to be its own.
+ *
+ * Opening the section printed "The vacation responder could not be saved." in red, with
+ * `role="alert"`, before anybody had saved anything — six runs out of six. Two separate defects
+ * behind one line of code:
+ *
+ *  1. The load effect treated its own `AbortController` as a failure. React StrictMode
+ *     double-invokes effects, so the first run is aborted by design and the second one succeeds;
+ *     the message was painted over a form that had loaded perfectly.
+ *  2. A failed LOAD reported the SAVE failure's string, because no load-failure string existed.
+ *     It was false — nothing had been saved — and it was character-for-character what a real save
+ *     failure says, so a reader who met the genuine one could not tell which they were looking at.
+ *
+ * Both are asserted through the section's own behaviour rather than through the effect: what
+ * matters is what the reader is told.
+ */
+describe('the load path does not invent a failure (G4)', () => {
+  it('says nothing at all when the load is aborted', async () => {
+    // The client rejects exactly as `fetch` does when the signal fires — which is what the cleanup
+    // of this effect causes on every StrictMode mount and on every reconnect.
+    const client: VacationClient = {
+      get: async () => {
+        throw new DOMException('The operation was aborted.', 'AbortError')
+      },
+      save: async () => ({ vacation: SINGLETON, state: 'st-1' }),
+    }
+    renderSection(client)
+
+    await screen.findByLabelText('Send automatic replies')
+    // Give the rejection every chance to land before claiming there is no alert.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('names LOADING when loading is what failed — never the save message', async () => {
+    const client: VacationClient = {
+      get: async () => {
+        throw new Error('offline')
+      },
+      save: async () => ({ vacation: SINGLETON, state: 'st-1' }),
+    }
+    renderSection(client)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The vacation responder could not be loaded.')
+    // The distinction is the whole point: the two sentences must not be the same sentence.
+    expect(alert).not.toHaveTextContent('could not be saved')
+  })
+
+  it('clears a stale load failure once a later load succeeds', async () => {
+    // Nothing else resets it — a transient failure would otherwise sit over a form that is
+    // demonstrably fine for as long as the screen is open.
+    let fail = true
+    const client: VacationClient = {
+      get: async () => {
+        if (fail) throw new Error('offline')
+        return { vacation: SINGLETON, state: 'st-1' }
+      },
+      save: async () => ({ vacation: SINGLETON, state: 'st-1' }),
+    }
+    const { rerender } = render(
+      <ToastProvider>
+        <VacationSection client={client} editorFactory={fakeEditorFactory()} />
+      </ToastProvider>,
+    )
+    await screen.findByRole('alert')
+
+    fail = false
+    // A NEW client identity is what re-runs the load — the same thing a reconnect does.
+    rerender(
+      <ToastProvider>
+        <VacationSection client={{ ...client }} editorFactory={fakeEditorFactory()} />
+      </ToastProvider>,
+    )
+
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+})
+
+/**
  * The regression guard for the defect the unit tests structurally could not see.
  *
  * Every test above INJECTS a `VacationClient`, and an injected client is a stable object — so the

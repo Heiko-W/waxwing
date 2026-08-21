@@ -177,8 +177,9 @@ export function FiltersSection(props: FiltersSectionProps) {
     void persist(next, script)
   }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={settings.controls}>
+    <>
       <p className={settings.hint}>{t('settings.filters.intro')}</p>
 
       {failure !== null && (
@@ -214,7 +215,7 @@ export function FiltersSection(props: FiltersSectionProps) {
                   <Switch
                     checked={rule.enabled}
                     label={t('settings.filters.rule.enabled')}
-                    disabled={busy}
+                    disabled={busy || offline}
                     onCheckedChange={(enabled) =>
                       void persist(
                         rules.map((existing) =>
@@ -226,13 +227,18 @@ export function FiltersSection(props: FiltersSectionProps) {
                   />
                   <span className={styles.ruleName}>{rule.name}</span>
                   <div className={settings.rowActions}>
-                    <Button variant="ghost" size="sm" onClick={() => setEditing({ rule })}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy || offline}
+                      onClick={() => setEditing({ rule })}
+                    >
                       {t('settings.filters.rule.edit')}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      disabled={busy}
+                      disabled={busy || offline}
                       onClick={() =>
                         void persist(
                           rules.filter((existing) => existing.id !== rule.id),
@@ -248,13 +254,24 @@ export function FiltersSection(props: FiltersSectionProps) {
             </ul>
           )}
 
-          <Button variant="secondary" disabled={busy} onClick={() => setEditing({ rule: null })}>
-            {t('settings.filters.addRule')}
-          </Button>
+          {/* Both actions in ONE row, at ONE size. They were two rows: "Add rule" a direct child
+              of the card and therefore stretched across all 668px of it, "Show script" directly
+              underneath at `size="sm"` — 12px type against 14px, for two buttons of equal rank
+              sitting one above the other. "Show script" stays enabled offline: it discloses the
+              script already on screen and writes nothing. */}
+          <div className={settings.rowActions}>
+            <Button
+              variant="secondary"
+              disabled={busy || offline}
+              onClick={() => setEditing({ rule: null })}
+            >
+              {t('settings.filters.addRule')}
+            </Button>
 
-          <Button variant="ghost" size="sm" onClick={() => setShowSource((shown) => !shown)}>
-            {showSource ? t('settings.filters.hideSource') : t('settings.filters.showSource')}
-          </Button>
+            <Button variant="ghost" onClick={() => setShowSource((shown) => !shown)}>
+              {showSource ? t('settings.filters.hideSource') : t('settings.filters.showSource')}
+            </Button>
+          </div>
 
           {showSource && (
             // FR-SIEVE-02: the raw script, for the reader who wants to know exactly what runs.
@@ -265,6 +282,12 @@ export function FiltersSection(props: FiltersSectionProps) {
         </>
       )}
 
+      {/* The same sentence identities has shown since M5.1, for the same reason. Filters used to
+          leave every action live offline: a reader could open the rule form, fill in six fields and
+          meet the failure only on Save. Two sections of one screen answering "you are offline" two
+          different ways is the finding; saying it BEFORE the work is the answer. */}
+      {offline && <p className={settings.hint}>{t('settings.filters.error.offline')}</p>}
+
       {editing !== null && (
         <RuleForm
           rule={editing.rule}
@@ -274,7 +297,7 @@ export function FiltersSection(props: FiltersSectionProps) {
           onCancel={() => setEditing(null)}
         />
       )}
-    </div>
+    </>
   )
 }
 
