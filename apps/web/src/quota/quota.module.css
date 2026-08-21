@@ -65,3 +65,17 @@
 .bar[data-level="over"] .meter::-moz-progress-bar {
   background: var(--waxwing-danger);
 }
+
+/*
+ * "Find large messages" — the escape hatch from a full mailbox, shown only at warn/over. A plain
+ * text link at the bar's own scale: it is an offer, not a call to action, and a button here would
+ * out-shout the folder tree it sits under.
+ */
+.action {
+  font-size: var(--waxwing-text-xs);
+  color: var(--waxwing-accent);
+  /* The 44 px touch target under `pointer: coarse` — the tap area, not the text, does the growing. */
+  display: flex;
+  align-items: center;
+  min-block-size: var(--waxwing-control-min);
+}

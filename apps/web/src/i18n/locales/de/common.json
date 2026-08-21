@@ -1181,6 +1181,7 @@
     },
     "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
     "hintAdvanced": "Für Fortgeschrittene: -wort schließt aus, a OR b findet eines von beiden, thread:unread findet ungeöffnete Konversationen.",
+    "findLarge": "Große Nachrichten finden",
     "results": {
       "empty": "Keine Nachrichten entsprechen Ihrer Suche. Versuchen Sie es in allen Ordnern oder mit weniger Wörtern.",
       "count_one": "{{count}} Treffer",

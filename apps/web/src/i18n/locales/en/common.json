@@ -1181,6 +1181,7 @@
     },
     "hint": "Try from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
     "hintAdvanced": "Advanced: -word leaves it out, a OR b matches either, thread:unread finds conversations nobody has opened.",
+    "findLarge": "Find large messages",
     "results": {
       "empty": "No messages match your search. Try all mailboxes, or fewer words.",
       "count_one": "{{count}} result",
