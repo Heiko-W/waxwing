@@ -114,6 +114,35 @@ forget and impossible to notice.
 read-only, which stopped being true on 21 August, and named RFC 8984 as the format, which was never
 quite true against this server.
 
+## Amendment, 2026-08-21 — the filter is not from either document
+
+Building K-1 turned up a third spelling that belongs to neither draft, and it is the sharpest
+illustration of why this ADR exists.
+
+`CalendarEvent/query` is filtered by **`inCalendar`, singular, one id per condition**. The
+calendars draft says `inCalendars` (plural, an array). Measured against v0.16.18:
+
+```jsonc
+filter: { inCalendars: ["g"] }  → {"type":"unsupportedFilter"}   // and see below
+filter: { inCalendar:  "g"  }   → works
+```
+
+Two things make this worth an amendment rather than a code comment.
+
+**It fails at the method level, not the condition level.** `unsupportedFilter` is returned for the
+whole call, so a client that sends the draft's spelling does not get a wrong result set — it gets
+no result set at all. Filtering several calendars therefore means an `OR` group of singular
+conditions.
+
+**It would have shipped.** The plan this work followed specified `inCalendars`, taken from the
+draft in good faith, and the first thing that would have broken is the month view the moment
+anyone hid a calendar — a whole month gone, from a feature whose entire point is hiding calendars.
+It was caught by measuring, not by review.
+
+The same session also corrected two further plan assumptions the same way: destroying a calendar
+needs `onDestroyRemoveEvents: true` (else `calendarHasEvent`), and the all-day alert offsets are
+`9h − 24h·n`, not `−(24n+9)h`.
+
 ## What remains unmeasured
 
 Recorded so nobody mistakes it for verified:
