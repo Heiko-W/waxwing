@@ -1822,6 +1822,12 @@
   "calendar": {
     "offline": "You are offline. Events can only be created while connected.",
     "offlineOpen": "You are offline. Events can only be opened and changed while connected.",
+    "offlineStale": "Not updating while offline. Last updated {{when}}.",
+    "offlineNotUpdating": "Not updating while offline.",
+    "offlineNever": {
+      "title": "This month has not been synced yet",
+      "body": "Connect once and your calendar will be here the next time you are offline."
+    },
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
@@ -2039,12 +2045,19 @@
       "undo": "Undo"
     },
     "offline": "You are offline. Files can only be changed while connected.",
+    "offlineStale": "Not updating while offline. Last updated {{when}}.",
+    "offlineNotUpdating": "Not updating while offline.",
+    "offlineNever": {
+      "title": "Your files have not been synced yet",
+      "body": "Connect once and this list will be here the next time you are offline. Opening a file always needs a connection."
+    },
     "title": "Files",
     "root": "Files",
     "breadcrumb": "Folder path",
     "empty": "This folder is empty.",
     "retry": "Try again",
     "loadFailed": "The files could not be loaded.",
+    "refreshFailed": "Your files could not be refreshed — what you see may be out of date.",
     "savedButNotShown": "That was saved, but the list could not be reloaded — try again to see it.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",

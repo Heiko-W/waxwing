@@ -41,6 +41,7 @@ import { fileNodeNameProblem } from '@waxwing/jmap'
 import {
   ArrowDown,
   ArrowUp,
+  CloudOff,
   Download,
   Ellipsis,
   Eye,
@@ -66,9 +67,11 @@ import { useSessionOptional } from '../app/session/context'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { useOnline } from '../app/use-online'
-import { formatBytes } from '../i18n/formatters'
+import { formatBytes, formatRelativeTime } from '../i18n/formatters'
 import { isPreviewable, previewSurface } from '../mail/preview-policy'
 import { safeDownloadName } from '../mail/safe-filename'
+import { useFileNodes, useFileTreeState } from '../sync'
+import { useAccountEngine } from '../sync/engine'
 import {
   Button,
   Checkbox,
@@ -101,6 +104,7 @@ import {
 } from './files-client'
 import { ShareDialog } from './ShareDialog'
 import { mayShare } from './sharing'
+import { useFileSearch } from './use-file-tree'
 import { ROW_PART, useRowGeometry, visibleRowActions } from './use-row-actions'
 
 export interface FilesPageProps {
@@ -171,10 +175,18 @@ export default function FilesPage(props: FilesPageProps) {
   const listRef = useRef<HTMLUListElement>(null)
 
   const [path, setPath] = useState<Crumb[]>([{ id: null, name: '' }])
-  const [nodes, setNodes] = useState<readonly FileNode[] | null>(null)
-  const [hits, setHits] = useState<readonly FileSearchHit[] | null>(null)
-  /** The listing stopped short of what the server holds — see `files-client.ts` (B-6). */
-  const [truncated, setTruncated] = useState(false)
+  /**
+   * The listing when it comes from the SERVER — a visit to somebody else's files (S-4).
+   *
+   * The reader's own tree is replicated and read below; a shared account's is not, and cannot be:
+   * the engine fleet runs one engine per MAIL account (`fleetAccounts`), so an account shared for
+   * its files alone has no engine and no rows. Reading the replica there would show the reader
+   * their OWN files under somebody else's name — the worst possible failure for a screen whose
+   * whole job is saying where you are.
+   */
+  const [remoteNodes, setRemoteNodes] = useState<readonly FileNode[] | null>(null)
+  const [remoteHits, setRemoteHits] = useState<readonly FileSearchHit[] | null>(null)
+  const [remoteTruncated, setRemoteTruncated] = useState(false)
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   const [newFolder, setNewFolder] = useState('')
@@ -186,7 +198,14 @@ export default function FilesPage(props: FilesPageProps) {
    * folder name in a dialog; this asks the same question the same way.
    */
   const [folderDialogOpen, setFolderDialogOpen] = useState(false)
-  /** No replica here either — see the note in CalendarPage. */
+  /**
+   * Whether the reader is online.
+   *
+   * The screen no longer NEEDS this to show files — the tree is replicated (D-4) — but it still
+   * needs it to be honest: what cannot work without a line (upload, share, opening a file's bytes)
+   * is offered greyed out with a reason rather than removed, and the listing says quietly that it
+   * is not being refreshed.
+   */
   const online = useOnline()
   // The open preview, or null. Holds the object URL so the render stays synchronous.
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
@@ -255,6 +274,8 @@ export default function FilesPage(props: FilesPageProps) {
     [injected, injectedFor, sessionClient, accountId, selfPrincipalId],
   )
   const capability = fileCapability(connected?.jmapSession ?? null, accountId)
+  /** The engine that owns this account's replica; `null` before the session restores. */
+  const engine = useAccountEngine()
 
   const here = path[path.length - 1]?.id ?? null
   const searching = query !== ''
@@ -266,19 +287,60 @@ export default function FilesPage(props: FilesPageProps) {
     return () => clearTimeout(timer)
   }, [term])
 
-  /** Reloads what is on screen — this level, or the search. Returns whether it arrived. */
+  /**
+   * Whose files are on screen, and whether the replica holds them.
+   *
+   * `visiting === null` is the reader's own account, which the sync engine mirrors. Anything else is
+   * a share, and a share stays online — see {@link remoteNodes}.
+   */
+  const replicated = visiting === null
+
+  // ── The replicated read (D-4). Live queries: the engine writes, these re-render. ──────────────
+  const levelRows = useFileNodes(here)
+  const searchRows = useFileSearch(replicated ? query : '')
+  const treeState = useFileTreeState()
+
+  /** This level, from wherever this account's files come from. `null` = not answered yet. */
+  const nodes: readonly FileNode[] | null = replicated ? (levelRows ?? null) : remoteNodes
+  const hits: readonly FileSearchHit[] | null = replicated
+    ? query === ''
+      ? null
+      : (searchRows ?? null)
+    : remoteHits
+  /** The listing stopped short of what the server holds — see `files-client.ts` (B-6). */
+  const truncated = replicated ? (treeState?.truncated ?? false) : remoteTruncated
+  /** This device has never walked the tree — "nothing yet", which is not "no files". */
+  const neverSynced = replicated && treeState !== undefined && treeState.syncedAt === 0
+
+  /**
+   * Reloads what is on screen. Returns whether it arrived.
+   *
+   * For the reader's own account that means asking the ENGINE to re-read the tree — a
+   * `FileNode/changes` and a `/get` of what moved, not the whole walk — and the rows appear through
+   * the live queries above. For a share it is the round trip it always was.
+   *
+   * The return value is load-bearing: `run()` says something different when a write landed but the
+   * listing did not come back, so the reader is never left to conclude from a stale list that
+   * nothing was saved.
+   */
   const load = useCallback(async (): Promise<boolean> => {
+    if (replicated) {
+      if (engine === null) return false
+      const ok = await engine.refreshFileTree()
+      setFailed(!ok)
+      return ok
+    }
     if (client === null) return false
     const wire = { sort: serverSort(sort, capability) }
     try {
       if (query !== '') {
-        setHits(await client.search(query, wire))
-        setTruncated(false)
+        setRemoteHits(await client.search(query, wire))
+        setRemoteTruncated(false)
       } else {
         const listing = await client.list(here, wire)
-        setNodes(listing.nodes)
-        setTruncated(listing.truncated)
-        setHits(null)
+        setRemoteNodes(listing.nodes)
+        setRemoteTruncated(listing.truncated)
+        setRemoteHits(null)
       }
       setFailed(false)
       return true
@@ -286,7 +348,7 @@ export default function FilesPage(props: FilesPageProps) {
       setFailed(true)
       return false
     }
-  }, [client, here, query, sort, capability])
+  }, [replicated, engine, client, here, query, sort, capability])
 
   useEffect(() => {
     void load()
@@ -347,6 +409,31 @@ export default function FilesPage(props: FilesPageProps) {
   // Above the early return for the same reason, and keyed to `rows`: a new listing brings new
   // names and new sizes, and the size column is part of what the row's actions have to fit around.
   const geometry = useRowGeometry(listRef, rows)
+
+  /**
+   * What stands where the list would — exactly ONE of these, always.
+   *
+   * Written as one value rather than as a chain of `&&`s in the JSX because the states became
+   * genuinely distinguishable with D-4 and the chain got two of them wrong: a first visit showed
+   * "This folder is empty." while the tree was still being walked (the replica answers `[]` long
+   * before the walk does), and a refused walk showed that same sentence UNDER the failure pane.
+   *
+   *  - `loading` — nothing is known yet, or the very first walk is still running.
+   *  - `offlineNever` — no line and no copy: "not synced yet", which is not "no files".
+   *  - `failed` — the read was refused and there is nothing to fall back on. The one state with a
+   *    Try again, because it is the one the reader can do something about.
+   *  - `empty` — an answer, and the answer is that there is nothing here.
+   *  - `list` — rows.
+   */
+  const paneState: 'loading' | 'offlineNever' | 'failed' | 'empty' | 'list' = (() => {
+    if (!online && neverSynced) return 'offlineNever'
+    if (online && failed && (rows === null || rows.length === 0)) return 'failed'
+    if (rows === null) return 'loading'
+    // The replica answers `[]` the moment it is asked; the walk that fills it takes longer. Until
+    // one of them has happened, "empty" would be a claim nobody has checked.
+    if (rows.length === 0 && replicated && neverSynced && online && !failed) return 'loading'
+    return rows.length === 0 ? 'empty' : 'list'
+  })()
 
   if (client === null) {
     return (
@@ -480,9 +567,11 @@ export default function FilesPage(props: FilesPageProps) {
     setSelecting(false)
     setSelected(new Set())
     setPreview(null)
-    setNodes(null)
-    setHits(null)
-    setTruncated(false)
+    // The SERVER-backed listing only (a share). The replicated one is a live query keyed on the
+    // level, so it re-answers for the new account by itself and has nothing to clear.
+    setRemoteNodes(null)
+    setRemoteHits(null)
+    setRemoteTruncated(false)
   }
 
   const toggle = (id: Id): void =>
@@ -839,21 +928,53 @@ export default function FilesPage(props: FilesPageProps) {
         </Dialog>
       )}
 
-      {/* Failure and emptiness look different now. They used to share one class, so "the server
-          said no" and "this folder has nothing in it" were the same grey sentence — and only the
-          failure has anything the reader can do about it. */}
-      {failed && (
+      {/*
+        Failure, staleness and emptiness are three different things, and D-4 changed which one wins.
+
+        It used to be failure-first, so a lost connection replaced a folder this device was holding
+        with "Your files could not be loaded." Now a tree that has ever synced is SHOWN, and the fact
+        that it is not being refreshed is one quiet line above it. The loud, retryable failure is
+        reserved for the case where there is genuinely nothing to show.
+      */}
+      {!online && replicated && !neverSynced && (
+        <p className={styles.truncated} role="status">
+          <CloudOff aria-hidden="true" className={styles.icon} />
+          {treeState !== undefined && treeState.syncedAt > 0
+            ? t('files.offlineStale', { when: formatRelativeTime(treeState.syncedAt) })
+            : t('files.offlineNotUpdating')}
+        </p>
+      )}
+      {paneState === 'offlineNever' && (
         <EmptyState
-          tone="error"
-          icon={TriangleAlert}
-          title={t('files.loadFailed')}
-          action={
-            <Button variant="secondary" onClick={() => void load()}>
-              {t('files.retry')}
-            </Button>
-          }
+          icon={CloudOff}
+          title={t('files.offlineNever.title')}
+          description={t('files.offlineNever.body')}
         />
       )}
+      {online &&
+        failed &&
+        (paneState === 'failed' ? (
+          <EmptyState
+            tone="error"
+            icon={TriangleAlert}
+            title={t('files.loadFailed')}
+            action={
+              <Button variant="secondary" onClick={() => void load()}>
+                {t('files.retry')}
+              </Button>
+            }
+          />
+        ) : (
+          // A failure with usable rows keeps the rows and reports in one line above them. A red pane
+          // over a listing that looks complete is the worse of the two answers (the calendar's T5).
+          <p className={styles.truncated} role="alert">
+            <TriangleAlert aria-hidden="true" className={styles.icon} />
+            {t('files.refreshFailed')}
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              {t('files.retry')}
+            </Button>
+          </p>
+        ))}
 
       {/*
        * SHARED CONTENT IS A SECTION OF THIS SCREEN, NOT ANOTHER SCREEN (S-4).
@@ -893,11 +1014,11 @@ export default function FilesPage(props: FilesPageProps) {
         </section>
       )}
 
-      {rows === null && !failed ? (
+      {paneState === 'loading' ? (
         <div className={styles.loading}>
           <Spinner label={t('ui.spinner.label')} />
         </div>
-      ) : rows !== null && rows.length === 0 ? (
+      ) : paneState === 'offlineNever' || paneState === 'failed' ? null : paneState === 'empty' ? (
         <EmptyState
           icon={searching ? Search : FolderOpen}
           title={searching ? t('files.search.none', { query }) : t('files.empty')}

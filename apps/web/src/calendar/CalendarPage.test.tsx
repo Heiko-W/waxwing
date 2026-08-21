@@ -1,8 +1,18 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Calendar, CalendarEvent } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, CalendarEventFilter, Id } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../app/route'
+import {
+  canonicalCalendarQueryKey,
+  putCalendarEvents,
+  putCalendarQueryCache,
+  putCalendars,
+  type ReplicaDb,
+  ReplicaProvider,
+} from '../sync'
+import { clearEngines, type SyncEngine, setEngineFor } from '../sync/engine'
+import { freshDb } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
 import CalendarPage from './CalendarPage'
 import {
@@ -99,11 +109,140 @@ function occurrence(
   )
 }
 
+const ACC = 'acc'
+
+let db: ReplicaDb
+
+/**
+ * The window `[after, before)` and the calendar ids a watch spec names.
+ *
+ * The screen no longer calls `eventsInRange` — it registers a window with the sync engine and reads
+ * the replica (K-8). This unpicks the filter the engine was handed so the fake below can answer with
+ * the very same `eventsInRange` every test in this file already writes, and so the assertions about
+ * WHICH calendars are asked about still assert exactly what they always did.
+ */
+function unpackFilter(filter: CalendarEventFilter | null | undefined): {
+  from: Date
+  to: Date
+  ids: Id[]
+} {
+  type Node = {
+    operator?: string
+    conditions?: Node[]
+    after?: string
+    before?: string
+    inCalendar?: Id
+  }
+  let from = new Date(0)
+  let to = new Date(0)
+  const ids: Id[] = []
+  const visit = (node: Node | null | undefined): void => {
+    if (node === null || node === undefined) return
+    if (node.operator !== undefined) {
+      for (const inner of node.conditions ?? []) visit(inner)
+      return
+    }
+    if (node.after !== undefined) from = new Date(node.after)
+    if (node.before !== undefined) to = new Date(node.before)
+    if (node.inCalendar !== undefined) ids.push(node.inCalendar)
+  }
+  visit(filter as Node | null | undefined)
+  return { from, to, ids }
+}
+
+/**
+ * Write what `eventsInRange` answered into the replica, the way the real delta does.
+ *
+ * The identity half is RECONSTRUCTED from each `PlacedEvent`'s `writeId`/`series` — a stored object
+ * per distinct write id, carrying a `recurrenceRule` when the occurrence claimed to be part of a
+ * series — because that is what the server actually sends and what `resolveIdentity` reads back. A
+ * test asking for `{ writeId: null }` seeds no object, so the occurrence resolves to nothing, which
+ * is the "cannot be traced" case.
+ */
+async function materialize(
+  key: string,
+  spec: { filter?: CalendarEventFilter | null },
+  c: CalendarClient,
+): Promise<void> {
+  const { from, to, ids } = unpackFilter(spec.filter)
+  let placed: PlacedEvent[]
+  try {
+    placed = await c.eventsInRange(from, to, ids)
+  } catch {
+    // Exactly what the engine does with a refused window it has never materialized: a placeholder
+    // row, so the screen can tell "tried and failed" from "still loading".
+    await putCalendarQueryCache(db, {
+      accountId: ACC,
+      key,
+      ids: [],
+      objectIds: [],
+      filter: spec.filter ?? null,
+      stale: true,
+      syncedAt: 0,
+      lastUsedAt: 1,
+    })
+    return
+  }
+
+  const occurrences = placed.map((item) =>
+    item.writeId === null
+      ? item.event
+      : ({ ...item.event, baseEventId: item.writeId } as CalendarEvent),
+  )
+  const objects = new Map<Id, CalendarEvent>()
+  for (const item of placed) {
+    if (item.writeId === null) continue
+    objects.set(item.writeId, {
+      ...item.event,
+      id: item.writeId,
+      ...(item.series ? { recurrenceRule: { frequency: 'weekly' } } : {}),
+    } as CalendarEvent)
+  }
+
+  await putCalendarEvents(db, ACC, [...objects.values()], false)
+  await putCalendarEvents(db, ACC, occurrences, true)
+  await putCalendarQueryCache(db, {
+    accountId: ACC,
+    key,
+    ids: occurrences.map((event) => event.id),
+    objectIds: [...objects.keys()],
+    filter: spec.filter ?? null,
+    stale: false,
+    syncedAt: 1,
+    lastUsedAt: 1,
+  })
+}
+
+/** The narrow slice of the engine this screen touches, backed by the injected client. */
+function fakeEngine(c: CalendarClient): SyncEngine {
+  const keyOf = (spec: { filter?: CalendarEventFilter | null }): string =>
+    canonicalCalendarQueryKey({ filter: spec.filter ?? null, expandRecurrences: true })
+  return {
+    accountId: ACC,
+    watchCalendarQuery(spec: { filter?: CalendarEventFilter | null }) {
+      const key = keyOf(spec)
+      // Swallowed: `afterEach` deletes the replica, and a seed still in flight then rejects with
+      // `DatabaseClosedError` — an unhandled rejection that fails the run from outside any test.
+      void materialize(key, spec, c).catch(() => {})
+      return key
+    },
+    unwatchCalendarQuery() {},
+    async refreshCalendarWindow(spec: { filter?: CalendarEventFilter | null }) {
+      await materialize(keyOf(spec), spec, c).catch(() => {})
+    },
+  } as unknown as SyncEngine
+}
+
 function renderPage(c: CalendarClient) {
+  db = freshDb()
+  setEngineFor(ACC, fakeEngine(c))
+  void putCalendars(db, ACC, [CALENDAR]).catch(() => {})
   return render(
     <RouterProvider>
       <ToastProvider>
-        <CalendarPage client={c} today={TODAY} />
+        <ReplicaProvider accountId={ACC} db={db}>
+          <CalendarPage client={c} today={TODAY} />
+        </ReplicaProvider>
       </ToastProvider>
     </RouterProvider>,
   )
@@ -135,12 +274,17 @@ function forcePhone(): void {
   })
 }
 
-afterEach(() => {
+afterEach(async () => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     writable: true,
     value: originalMatchMedia,
   })
+  clearEngines()
+  // Unmount BEFORE the database goes away: a live query still subscribed to a deleted Dexie handle
+  // raises `DatabaseClosedError` as an unhandled rejection, which fails the run from outside any test.
+  cleanup()
+  await db?.delete()
 })
 
 /**
@@ -621,6 +765,131 @@ describe('the agenda', () => {
 describe('offline (T3)', () => {
   afterEach(() => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+
+  /**
+   * Render the screen with a replica that ALREADY holds August, and a server that answers nothing.
+   *
+   * This is the state a phone is in on a train: the month was synced this morning, the radio is off
+   * now, and every request the screen could make will fail. Before K-8 that produced "The calendar
+   * could not be loaded." over data the device was holding the whole time.
+   */
+  function renderWithReplicaOnly(placed: PlacedEvent[]) {
+    db = freshDb()
+    let seeded: Promise<void> = Promise.resolve()
+
+    /**
+     * Stands in for a window this device synced EARLIER and is now holding with no way to refresh
+     * it: `stale: true` (a refresh is owed) and a `syncedAt` an hour old. The window is written
+     * under the key the screen itself asks for, so the test cannot drift from the page's own idea of
+     * which month it is looking at.
+     */
+    // The calendar list first and unconditionally: the screen has to know WHICH calendars to ask
+    // about before it registers a window at all, so seeding it inside `seedFor` would deadlock.
+    seeded = putCalendars(db, ACC, [CALENDAR]).catch(() => {})
+
+    const seedFor = (key: string): void => {
+      seeded = (async () => {
+        const occurrences = placed.map(
+          (item) => ({ ...item.event, baseEventId: item.writeId }) as CalendarEvent,
+        )
+        await putCalendarEvents(
+          db,
+          ACC,
+          placed.map((item) => ({ ...item.event, id: item.writeId }) as CalendarEvent),
+          false,
+        )
+        await putCalendarEvents(db, ACC, occurrences, true)
+        await putCalendarQueryCache(db, {
+          accountId: ACC,
+          key,
+          ids: occurrences.map((event) => event.id),
+          objectIds: placed.map((item) => item.writeId as string),
+          filter: null,
+          stale: true,
+          syncedAt: TODAY.getTime() - 3_600_000,
+          lastUsedAt: 1,
+        })
+      })().catch(() => {})
+    }
+
+    // An engine that can reach nothing. It registers the window and refreshes NOTHING — which is
+    // the offline contract: what the replica holds must survive a materialization that cannot run.
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: (spec: { filter?: CalendarEventFilter | null }) => {
+        const key = canonicalCalendarQueryKey({
+          filter: spec.filter ?? null,
+          expandRecurrences: true,
+        })
+        seedFor(key)
+        return key
+      },
+      unwatchCalendarQuery: () => {},
+      refreshCalendarWindow: async () => {},
+    } as unknown as SyncEngine)
+
+    // Every request this screen can make fails, exactly as it does with the radio off.
+    const offlineClient = client({
+      listCalendars: async () => {
+        throw new Error('offline')
+      },
+      eventsInRange: async () => {
+        throw new Error('offline')
+      },
+    })
+    render(
+      <RouterProvider>
+        <ToastProvider>
+          <ReplicaProvider accountId={ACC} db={db}>
+            <CalendarPage client={offlineClient} today={TODAY} />
+          </ReplicaProvider>
+        </ToastProvider>
+      </RouterProvider>,
+    )
+    return { seeded: () => seeded }
+  }
+
+  it('keeps showing the month it already had, and says it is not updating', async () => {
+    /*
+     * The whole of K-8 in one assertion. Every request this screen can make fails, and the event is
+     * still on the grid — drawn from the replica, under a quiet line saying it is not being kept up
+     * to date. Not an error pane, not a spinner, not an empty month.
+     */
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderWithReplicaOnly([occurrence()])
+
+    expect(await screen.findByRole('button', { name: 'Standup' })).toBeInTheDocument()
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Not updating while offline')
+    // And emphatically NOT the failure the screen used to show over exactly this data.
+    expect(screen.queryByText('The calendar could not be loaded.')).not.toBeInTheDocument()
+  })
+
+  it('knows which calendars to draw even though the calendar list request failed', async () => {
+    // The rail is read from the replica too. Without it the screen would not know WHICH calendars
+    // to ask about, so the month filter would name none and the grid would be empty — the events
+    // would be sitting in the replica, unreachable.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderWithReplicaOnly([occurrence()])
+
+    expect(await screen.findByRole('button', { name: 'Standup' })).toBeInTheDocument()
+  })
+
+  it('says a month it has never synced is not synced, rather than reporting a failure', async () => {
+    // The other offline first-visit: nothing was ever stored for this window. That is "not synced
+    // yet" with a sentence about what to do, not "could not be loaded" with a Try again that cannot.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderPage(
+      client({
+        eventsInRange: async () => {
+          throw new Error('offline')
+        },
+      }),
+    )
+
+    expect(await screen.findByText('This month has not been synced yet')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
   })
 
   it('refuses to open the editor and says why, instead of loading a chunk that is not there', async () => {

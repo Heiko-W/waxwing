@@ -1,11 +1,17 @@
-import type { Mailbox } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, FileNode, Mailbox } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { EmailEnvelopeInput, ReplicaDb } from '../db'
 import {
+  calendarsForAccount,
+  fileNodesForAccount,
+  fileNodesForParent,
+  getCalendarQueryCache,
   getContactQueryCache,
+  getFileTreeState,
   getQueryCache,
   getSyncState,
   putAddressBooks,
+  putCalendarQueryCache,
   putContactCards,
   putContactQueryCache,
   putEmails,
@@ -15,11 +21,16 @@ import {
 } from '../repo'
 import { addressBook, contactCard, email, freshDb, mailbox } from '../test-utils'
 import {
+  fullRequeryCalendar,
+  reconcileCalendarQuery,
   reconcileContactQuery,
   reconcileQuery,
   syncAddressBooks,
+  syncCalendarEvents,
+  syncCalendars,
   syncContactCards,
   syncEmails,
+  syncFileNodes,
   syncMailboxes,
 } from './delta'
 import {
@@ -45,6 +56,10 @@ afterEach(async () => {
 
 function emptyChanges(newState: string): ChangesResult {
   return { newState, hasMoreChanges: false, created: [], updated: [], destroyed: [] }
+}
+
+function emptyQuery(): QueryResult {
+  return { ids: [], queryState: 'q', canCalculateChanges: true, position: 0 }
 }
 
 function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
@@ -96,6 +111,14 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
       added: [],
     }),
     setContactCards: async () => emptySet(),
+    getCalendars: async () => ({ list: [], notFound: [], state: 's' }),
+    calendarChanges: async () => emptyChanges('s'),
+    getCalendarEvents: async () => ({ list: [], notFound: [], state: 's' }),
+    calendarEventChanges: async () => emptyChanges('s'),
+    queryCalendarEvents: async () => emptyQuery(),
+    fileNodePage: async () => ({ ids: [], list: [], state: 's' }),
+    getFileNodes: async () => ({ list: [], notFound: [], state: 's' }),
+    fileNodeChanges: async () => emptyChanges('s'),
     ...overrides,
   }
 }
@@ -746,5 +769,434 @@ describe('reconcileQuery — windowed delta (M1.3 review)', () => {
     expect(seenUpToId).toBe('i2')
     const row = await getQueryCache(db, ACC, 'k')
     expect(row?.ids).toEqual(['i0', 'i1', 'i2'])
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Calendar (K-8)
+// ---------------------------------------------------------------------------------------------
+
+function calendar(id: string, over: Partial<Calendar> = {}): Calendar {
+  return { id, name: id, isVisible: true, isSubscribed: true, ...over } as unknown as Calendar
+}
+
+function occurrence(id: string, baseEventId?: string): CalendarEvent {
+  return {
+    id,
+    calendarIds: { c1: true },
+    title: id,
+    start: '2026-08-20T09:00:00',
+    duration: 'PT1H',
+    ...(baseEventId === undefined ? {} : { baseEventId }),
+  } as unknown as CalendarEvent
+}
+
+const WINDOW_FILTER = { after: '2026-08-01T00:00:00Z', before: '2026-09-01T00:00:00Z' }
+
+/** A materialized window, as `fullRequeryCalendar` would have left it. */
+async function seedWindow(key: string, ids: string[], objectIds: string[]): Promise<void> {
+  await putCalendarQueryCache(db, {
+    accountId: ACC,
+    key,
+    ids,
+    objectIds,
+    filter: WINDOW_FILTER,
+    stale: false,
+    syncedAt: 500,
+    lastUsedAt: 500,
+  })
+}
+
+describe('syncCalendars', () => {
+  it('pulls the whole list when there is no state, and seeds the cursor', async () => {
+    const port = fakePort({
+      getCalendars: async () => ({
+        list: [calendar('c1'), calendar('c2')],
+        notFound: [],
+        state: 's1',
+      }),
+    })
+
+    await syncCalendars(port, db, ACC, clock)
+
+    expect((await calendarsForAccount(db, ACC)).map((row) => row.id)).toEqual(['c1', 'c2'])
+    expect(await getSyncState(db, ACC, 'Calendar')).toBe('s1')
+  })
+
+  it('treats `cannotCalculateChanges` as "read the list again", not as a failure', async () => {
+    // A brand-new account has no change history, so the server genuinely cannot diff. Surfacing
+    // that as an error would greet a first-time user with a broken calendar rail.
+    await setSyncState(db, ACC, 'Calendar', 'old', 1)
+    let listPulls = 0
+    const port = fakePort({
+      calendarChanges: async () => {
+        throw new CannotCalculateChangesError()
+      },
+      getCalendars: async () => {
+        listPulls += 1
+        return { list: [calendar('c1')], notFound: [], state: 's9' }
+      },
+    })
+
+    await expect(syncCalendars(port, db, ACC, clock)).resolves.toBeUndefined()
+    expect(listPulls).toBe(1)
+    expect(await getSyncState(db, ACC, 'Calendar')).toBe('s9')
+  })
+
+  it('drops a calendar the whole-list pull no longer names', async () => {
+    await setSyncState(db, ACC, 'Calendar', 'old', 1)
+    await putCalendarQueryCache(db, {
+      accountId: ACC,
+      key: 'unused',
+      ids: [],
+      objectIds: [],
+      filter: null,
+      stale: false,
+      syncedAt: 1,
+      lastUsedAt: 1,
+    })
+    await db.calendars.put({ accountId: ACC, ...calendar('gone') } as never)
+    const port = fakePort({
+      calendarChanges: async () => {
+        throw new CannotCalculateChangesError()
+      },
+      getCalendars: async () => ({ list: [calendar('c1')], notFound: [], state: 's9' }),
+    })
+
+    await syncCalendars(port, db, ACC, clock)
+
+    expect((await calendarsForAccount(db, ACC)).map((row) => row.id)).toEqual(['c1'])
+  })
+})
+
+describe('syncCalendarEvents', () => {
+  it('is a no-op from a null state — the initial population is the window query', async () => {
+    let called = false
+    const port = fakePort({
+      calendarEventChanges: async () => {
+        called = true
+        return emptyChanges('s')
+      },
+    })
+
+    expect(await syncCalendarEvents(port, db, ACC, clock)).toBe(0)
+    expect(called).toBe(false)
+  })
+
+  it('marks the windows a changed STORED event appears in, and fetches nothing', async () => {
+    /*
+     * The delta reports on stored objects; the grid draws expanded occurrences. There is no way to
+     * turn "master e1 moved" into "these three rows in August changed" without expanding the rule,
+     * so the delta marks and the window re-query reads.
+     */
+    await setSyncState(db, ACC, 'CalendarEvent', 'v1', 1)
+    await seedWindow('august', ['occ-1'], ['e1'])
+    await seedWindow('other', ['occ-9'], ['e9'])
+    let gets = 0
+    const port = fakePort({
+      calendarEventChanges: async () => ({
+        newState: 'v2',
+        hasMoreChanges: false,
+        created: [],
+        updated: ['e1'],
+        destroyed: [],
+      }),
+      getCalendarEvents: async () => {
+        gets += 1
+        return { list: [], notFound: [], state: 'v2' }
+      },
+    })
+
+    expect(await syncCalendarEvents(port, db, ACC, clock)).toBe(1)
+    expect(gets).toBe(0)
+    expect((await getCalendarQueryCache(db, ACC, 'august'))?.stale).toBe(true)
+    expect((await getCalendarQueryCache(db, ACC, 'other'))?.stale).toBe(false)
+    expect(await getSyncState(db, ACC, 'CalendarEvent')).toBe('v2')
+  })
+
+  it('marks EVERY window when an event was created, because a new event is in none of them yet', async () => {
+    await setSyncState(db, ACC, 'CalendarEvent', 'v1', 1)
+    await seedWindow('august', ['occ-1'], ['e1'])
+    await seedWindow('september', ['occ-9'], ['e9'])
+    const port = fakePort({
+      calendarEventChanges: async () => ({
+        newState: 'v2',
+        hasMoreChanges: false,
+        created: ['brand-new'],
+        updated: [],
+        destroyed: [],
+      }),
+    })
+
+    expect(await syncCalendarEvents(port, db, ACC, clock)).toBe(2)
+  })
+
+  it('deletes the expanded rows of a destroyed master — nothing else ever would', async () => {
+    await setSyncState(db, ACC, 'CalendarEvent', 'v1', 1)
+    await seedWindow('august', ['occ-1', 'occ-2'], ['e1'])
+    await db.calendarEvents.bulkPut([
+      {
+        accountId: ACC,
+        id: 'occ-1',
+        base: 'e1',
+        occurrence: true,
+        event: occurrence('occ-1', 'e1'),
+      },
+      {
+        accountId: ACC,
+        id: 'occ-2',
+        base: 'e1',
+        occurrence: true,
+        event: occurrence('occ-2', 'e1'),
+      },
+      { accountId: ACC, id: 'keep', base: 'e2', occurrence: true, event: occurrence('keep', 'e2') },
+    ])
+    const port = fakePort({
+      calendarEventChanges: async () => ({
+        newState: 'v2',
+        hasMoreChanges: false,
+        created: [],
+        updated: [],
+        destroyed: ['e1'],
+      }),
+    })
+
+    await syncCalendarEvents(port, db, ACC, clock)
+
+    expect((await db.calendarEvents.toArray()).map((row) => row.id)).toEqual(['keep'])
+  })
+
+  it('treats `cannotCalculateChanges` as a FULL RELOAD, not an error', async () => {
+    /*
+     * The measured trap (fixed in v0.16.18 for `FileNode`/`CalendarEventNotification`, but the shape
+     * is the point): a server with no change history for this account refuses to diff the very state
+     * a `/get` just handed out. That is the FIRST SYNC of every new account. It must mean "read it
+     * all again": every window stale, the cursor dropped so the next full re-query re-seeds it.
+     */
+    await setSyncState(db, ACC, 'CalendarEvent', 'stale-cursor', 1)
+    await seedWindow('august', ['occ-1'], ['e1'])
+    await seedWindow('september', ['occ-9'], ['e9'])
+    const port = fakePort({
+      calendarEventChanges: async () => {
+        throw new CannotCalculateChangesError()
+      },
+    })
+
+    await expect(syncCalendarEvents(port, db, ACC, clock)).resolves.toBe(2)
+
+    expect((await getCalendarQueryCache(db, ACC, 'august'))?.stale).toBe(true)
+    expect((await getCalendarQueryCache(db, ACC, 'september'))?.stale).toBe(true)
+    expect(await getSyncState(db, ACC, 'CalendarEvent')).toBeNull()
+  })
+})
+
+describe('the calendar window', () => {
+  it('stores the OCCURRENCES the grid draws AND the objects behind them, and seeds the cursor', async () => {
+    const port = fakePort({
+      queryCalendarEvents: async (spec) => ({
+        ids: spec.expandRecurrences === true ? ['occ-1', 'occ-2'] : ['e1'],
+        queryState: 'q',
+        canCalculateChanges: false,
+        position: 0,
+      }),
+      getCalendarEvents: async (ids, expanded) => ({
+        list: expanded ? ids.map((id) => occurrence(id, 'e1')) : [occurrence('e1')],
+        notFound: [],
+        state: 'v1',
+      }),
+    })
+
+    await fullRequeryCalendar(port, db, ACC, 'august', { filter: WINDOW_FILTER }, clock)
+
+    const row = await getCalendarQueryCache(db, ACC, 'august')
+    expect(row?.ids).toEqual(['occ-1', 'occ-2'])
+    expect(row?.objectIds).toEqual(['e1'])
+    expect(row?.stale).toBe(false)
+    expect(row?.syncedAt).toBe(1000)
+    // The occurrence rows carry the link back to their writable master — the whole reason the
+    // identity half is stored beside them.
+    expect((await db.calendarEvents.get([ACC, 'occ-2']))?.base).toBe('e1')
+    expect(await getSyncState(db, ACC, 'CalendarEvent')).toBe('v1')
+  })
+
+  it('still draws the month when the identity half is refused', async () => {
+    // A month that reads but cannot be edited beats no month at all — the same trade the online
+    // client has made since K-2.
+    const port = fakePort({
+      queryCalendarEvents: async (spec) => {
+        if (spec.expandRecurrences !== true) throw new Error('unsupported')
+        return { ids: ['occ-1'], queryState: 'q', canCalculateChanges: false, position: 0 }
+      },
+      getCalendarEvents: async (ids) => ({
+        list: ids.map((id) => occurrence(id, 'e1')),
+        notFound: [],
+        state: 'v1',
+      }),
+    })
+
+    await fullRequeryCalendar(port, db, ACC, 'august', { filter: WINDOW_FILTER }, clock)
+
+    const row = await getCalendarQueryCache(db, ACC, 'august')
+    expect(row?.ids).toEqual(['occ-1'])
+    expect(row?.objectIds).toEqual([])
+  })
+
+  it('does not re-query a fresh window, and does re-query a stale one', async () => {
+    let queries = 0
+    const port = fakePort({
+      queryCalendarEvents: async () => {
+        queries += 1
+        return { ids: [], queryState: 'q', canCalculateChanges: false, position: 0 }
+      },
+    })
+    await seedWindow('august', ['occ-1'], ['e1'])
+
+    await reconcileCalendarQuery(port, db, ACC, 'august', { filter: WINDOW_FILTER }, clock)
+    expect(queries).toBe(0)
+
+    await putCalendarQueryCache(db, {
+      ...(await getCalendarQueryCache(db, ACC, 'august')),
+      stale: true,
+    } as never)
+    await reconcileCalendarQuery(port, db, ACC, 'august', { filter: WINDOW_FILTER }, clock)
+    // Two queries: the expanded window and its identity companion.
+    expect(queries).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Files (D-4)
+// ---------------------------------------------------------------------------------------------
+
+function fileNode(id: string, over: Partial<FileNode> = {}): FileNode {
+  return {
+    id,
+    name: id,
+    parentId: null,
+    nodeType: 'file',
+    blobId: `blob-${id}`,
+    target: null,
+    size: 1,
+    type: 'text/plain',
+    created: '2026-08-01T00:00:00Z',
+    modified: '2026-08-01T00:00:00Z',
+    accessed: '2026-08-01T00:00:00Z',
+    changed: '2026-08-01T00:00:00Z',
+    executable: false,
+    isSubscribed: true,
+    myRights: {
+      mayRead: true,
+      mayAddChildren: true,
+      mayRename: true,
+      mayDelete: true,
+      mayModifyContent: true,
+      mayShare: false,
+    },
+    shareWith: {},
+    role: null,
+    ...over,
+  } as FileNode
+}
+
+describe('syncFileNodes', () => {
+  it('walks the whole tree when there is no state, and seeds the cursor', async () => {
+    const nodes = [
+      fileNode('d1', { nodeType: 'directory', blobId: null, type: null }),
+      fileNode('f1', { parentId: 'd1' }),
+      fileNode('f2'),
+    ]
+    const port = fakePort({
+      fileNodePage: async () => ({ ids: nodes.map((n) => n.id), list: nodes, state: 'fs1' }),
+    })
+
+    await syncFileNodes(port, db, ACC, clock)
+
+    // The ROOT level is reachable even though `parentId` is null there — the whole reason the row
+    // carries a derived `parent` key (`null` is not a valid IndexedDB key).
+    expect((await fileNodesForParent(db, ACC, null)).map((row) => row.id).sort()).toEqual([
+      'd1',
+      'f2',
+    ])
+    expect((await fileNodesForParent(db, ACC, 'd1')).map((row) => row.id)).toEqual(['f1'])
+    expect(await getSyncState(db, ACC, 'FileNode')).toBe('fs1')
+    expect(await getFileTreeState(db, ACC)).toEqual({ syncedAt: 1000, truncated: false })
+  })
+
+  it('applies a delta, and takes destroyed nodes out', async () => {
+    await setSyncState(db, ACC, 'FileNode', 'fs1', 1)
+    await db.fileNodes.bulkPut([
+      { ...fileNode('f1'), accountId: ACC, parent: '' },
+      { ...fileNode('f2'), accountId: ACC, parent: '' },
+    ])
+    const port = fakePort({
+      fileNodeChanges: async () => ({
+        newState: 'fs2',
+        hasMoreChanges: false,
+        created: [],
+        updated: ['f1'],
+        destroyed: ['f2'],
+      }),
+      getFileNodes: async (ids) => ({
+        list: ids.map((id) => fileNode(id, { name: 'renamed' })),
+        notFound: [],
+        state: 'fs2',
+      }),
+    })
+
+    await syncFileNodes(port, db, ACC, clock)
+
+    expect((await fileNodesForAccount(db, ACC)).map((row) => row.id)).toEqual(['f1'])
+    expect((await db.fileNodes.get([ACC, 'f1']))?.name).toBe('renamed')
+    expect(await getSyncState(db, ACC, 'FileNode')).toBe('fs2')
+  })
+
+  it('treats `cannotCalculateChanges` as a FULL RELOAD, not an error', async () => {
+    /*
+     * The measured D-4 trap, fixed in v0.16.18 but describing a state every new account passes
+     * through: with no change history the server refuses to diff the very state its own `/get`
+     * just handed out. Surfacing that would give a first-time user a broken Files screen.
+     */
+    await setSyncState(db, ACC, 'FileNode', 'stale-cursor', 1)
+    await db.fileNodes.put({ ...fileNode('ghost'), accountId: ACC, parent: '' })
+    const port = fakePort({
+      fileNodeChanges: async () => {
+        throw new CannotCalculateChangesError()
+      },
+      fileNodePage: async () => ({ ids: ['f1'], list: [fileNode('f1')], state: 'fs9' }),
+    })
+
+    await expect(syncFileNodes(port, db, ACC, clock)).resolves.toBeUndefined()
+
+    // The walk is authoritative when it completes: a node it did not see is gone.
+    expect((await fileNodesForAccount(db, ACC)).map((row) => row.id)).toEqual(['f1'])
+    expect(await getSyncState(db, ACC, 'FileNode')).toBe('fs9')
+  })
+
+  it('never deletes on a TRUNCATED walk — it did not see the whole tree', async () => {
+    /*
+     * The pager gives up after ten pages. Treating "not in this answer" as "gone" would then delete
+     * exactly the nodes the walk ran out of pages before reaching — a client that silently empties
+     * a large account. The shortfall is recorded instead, and the screen says so (B-6).
+     */
+    const page = Array.from({ length: 500 }, (_, index) => fileNode(`p${index}`))
+    let pages = 0
+    const port = fakePort({
+      fileNodePage: async () => {
+        pages += 1
+        // Always a FULL page of the same nodes with fresh ids, so the walk never sees an end.
+        return {
+          ids: page.map((n) => `${n.id}-${pages}`),
+          list: page.map((n) => fileNode(`${n.id}-${pages}`)),
+          state: `fs${pages}`,
+        }
+      },
+    })
+    await db.fileNodes.put({ ...fileNode('older'), accountId: ACC, parent: '' })
+
+    await syncFileNodes(port, db, ACC, clock)
+
+    expect(pages).toBe(10)
+    expect((await getFileTreeState(db, ACC)).truncated).toBe(true)
+    expect(await db.fileNodes.get([ACC, 'older'])).toBeDefined()
   })
 })

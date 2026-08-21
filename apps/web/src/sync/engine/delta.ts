@@ -10,6 +10,7 @@
  */
 
 import type {
+  CalendarEventFilter,
   ContactCardComparator,
   ContactCardFilter,
   EmailComparator,
@@ -18,6 +19,7 @@ import type {
   Mailbox,
 } from '@waxwing/jmap'
 import type {
+  CalendarQueryCacheRow,
   ContactQueryCacheRow,
   EmailEnvelopeInput,
   MailboxRow,
@@ -25,25 +27,37 @@ import type {
   ReplicaDb,
 } from '../db'
 import {
+  calendarEventsForBase,
+  calendarQueryCacheForAccount,
   contactCardsByIds,
   deleteAddressBooks,
+  deleteCalendarEvents,
+  deleteCalendars,
   deleteContactCards,
   deleteEmails,
+  deleteFileNodes,
   deleteMailbox,
   deleteThreads,
   emailsByIds,
+  getCalendarQueryCache,
   getContactQueryCache,
   getQueryCache,
   getSyncState,
+  markCalendarWindowsStale,
   putAddressBooks,
+  putCalendarEvents,
+  putCalendarQueryCache,
+  putCalendars,
   putContactCards,
   putContactQueryCache,
   putEmails,
+  putFileNodes,
   putMailboxes,
   putQueryCache,
   putThreads,
   recordAddressStats,
   replaceIdentities,
+  setFileTreeState,
   setSyncState,
 } from '../repo'
 import { CannotCalculateChangesError, type EngineClock, type JmapPort } from './types'
@@ -607,4 +621,327 @@ export async function hydrateMissingContacts(
   if (missing.length === 0) return
   const cards = await port.getContactCards(missing)
   await putContactCards(db, accountId, cards.list)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Calendar delta (K-8). Calendars mirror {@link syncAddressBooks} — few, pulled whole, deltaed by
+// `Calendar/changes`. Events do NOT mirror {@link syncContactCards}, and the difference is the whole
+// point of this block: what the grid draws are SYNTHETIC occurrences the server expanded, and no
+// delta reports on those. `CalendarEvent/changes` reports on STORED events, so it is used for the
+// one thing it can honestly say — these objects moved — after which the windows they appear in are
+// re-materialized whole by {@link fullRequeryCalendar}.
+// ---------------------------------------------------------------------------------------------
+
+/** The filter a watched calendar window is defined by (a month grid × the visible calendars). */
+export interface CalendarQuerySpecInput {
+  readonly filter?: CalendarEventFilter | null
+}
+
+/**
+ * Calendar-list sync. Initial (no state) pulls every calendar; a delta applies `Calendar/changes`.
+ *
+ * A server that cannot compute the delta is not an error and never reaches the caller: it means the
+ * list has to be read again, which is precisely what the initial branch does. An account that has
+ * never had a calendar change is the ordinary case here, not a corner one.
+ */
+export async function syncCalendars(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const sinceState = await getSyncState(db, accountId, 'Calendar')
+  if (sinceState === null) {
+    await reloadCalendars(port, db, accountId, clock)
+    return
+  }
+
+  let acc: ChangesAccumulator
+  try {
+    acc = await drainChanges((state) => port.calendarChanges(state), sinceState)
+  } catch (error) {
+    if (error instanceof CannotCalculateChangesError) {
+      await reloadCalendars(port, db, accountId, clock)
+      return
+    }
+    throw error
+  }
+
+  if (acc.changed.length > 0) {
+    const { list } = await port.getCalendars(acc.changed)
+    await putCalendars(db, accountId, list)
+  }
+  if (acc.destroyed.length > 0) await deleteCalendars(db, accountId, acc.destroyed)
+  await setSyncState(db, accountId, 'Calendar', acc.newState, clock.now())
+}
+
+/** Read the whole calendar list and re-seed the cursor — the initial pull AND the recovery. */
+async function reloadCalendars(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const { list, state } = await port.getCalendars(null)
+  await putCalendars(db, accountId, list)
+  // Whatever the server dropped since the last pull is gone from the answer but still in the
+  // replica; the whole-list read is the only chance to notice.
+  const known = await db.calendars.where('accountId').equals(accountId).primaryKeys()
+  const fresh = new Set(list.map((calendar) => calendar.id))
+  const gone = known.map(([, id]) => id).filter((id) => !fresh.has(id))
+  if (gone.length > 0) await deleteCalendars(db, accountId, gone)
+  await setSyncState(db, accountId, 'Calendar', state, clock.now())
+}
+
+/**
+ * Event sync — the STORED-object delta, whose only product is a set of stale windows.
+ *
+ * It deliberately fetches nothing. A changed master says nothing about how many occurrence rows it
+ * produces in a given month (a weekly meeting is one id and up to five rows), and computing that
+ * locally is the recurrence expansion this client has never done. So the delta marks and moves on;
+ * {@link reconcileCalendarQuery} does the reading.
+ *
+ * A no-op from a null state — the initial population is {@link fullRequeryCalendar}, which seeds the
+ * cursor from its own `/get`.
+ *
+ * Returns the number of windows it marked, purely so the engine can tell a pass that found nothing
+ * from one that did.
+ */
+export async function syncCalendarEvents(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<number> {
+  const sinceState = await getSyncState(db, accountId, 'CalendarEvent')
+  if (sinceState === null) return 0
+
+  let acc: ChangesAccumulator
+  try {
+    acc = await drainChanges((state) => port.calendarEventChanges(state), sinceState)
+  } catch (error) {
+    if (!(error instanceof CannotCalculateChangesError)) throw error
+    // The measured trap, and the requirement: a server that cannot diff has NOT failed. Everything
+    // it holds may have moved, so every window is stale and the cursor is dropped — the next full
+    // re-query re-seeds it from its own `/get`. Treating this as an error is what would take a
+    // brand-new account's calendar down on its very first sync.
+    await markCalendarWindowsStale(db, accountId)
+    await setSyncState(db, accountId, 'CalendarEvent', null, clock.now())
+    return (await calendarQueryCacheForAccount(db, accountId)).length
+  }
+
+  const touched = [...new Set([...acc.changed, ...acc.destroyed])]
+  let marked = 0
+  if (touched.length > 0) {
+    // A destroyed master takes its expanded rows with it: they are derived from it and nothing else
+    // will ever remove them.
+    if (acc.destroyed.length > 0) {
+      const orphans: Id[] = []
+      for (const baseId of acc.destroyed) {
+        for (const row of await calendarEventsForBase(db, accountId, baseId)) orphans.push(row.id)
+      }
+      if (orphans.length > 0) await deleteCalendarEvents(db, accountId, orphans)
+    }
+    // Which windows the touched objects appear in. A CREATED event appears in none of them yet — so
+    // the id test alone would miss every new event — which is why any created id marks them all.
+    const windows = await calendarQueryCacheForAccount(db, accountId)
+    const anyCreated = acc.created.length > 0
+    const touchedSet = new Set(touched)
+    for (const window of windows) {
+      if (window.stale) continue
+      const hit =
+        anyCreated ||
+        window.objectIds.some((id) => touchedSet.has(id)) ||
+        window.ids.some((id) => touchedSet.has(id))
+      if (!hit) continue
+      await putCalendarQueryCache(db, { ...window, stale: true })
+      marked += 1
+    }
+  }
+  await setSyncState(db, accountId, 'CalendarEvent', acc.newState, clock.now())
+  return marked
+}
+
+/**
+ * Keep one watched calendar window current.
+ *
+ * There is no cheap path here and there is no pretending otherwise: an expanded window has no
+ * `queryChanges` to ask (the ids are synthetic), so "reconcile" means "re-query when due". Due is
+ * `forceFull`, an absent row, or the {@link CalendarQueryCacheRow.stale} flag a delta set.
+ */
+export async function reconcileCalendarQuery(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  queryKey: string,
+  spec: CalendarQuerySpecInput,
+  clock: EngineClock,
+  forceFull = false,
+): Promise<void> {
+  const row = await getCalendarQueryCache(db, accountId, queryKey)
+  if (!forceFull && row !== undefined && !row.stale) return
+  await fullRequeryCalendar(port, db, accountId, queryKey, spec, clock)
+}
+
+/**
+ * Materialize one calendar window: the expanded occurrences the grid draws, and the unexpanded
+ * stored objects behind them.
+ *
+ * Both halves, in one function, because neither is usable alone — see the note on
+ * {@link CalendarQueryCacheRow}. The identity half is best-effort: a server that refuses it leaves
+ * every occurrence unresolved, which is a month that reads but cannot be edited, and that is a far
+ * better answer than no month at all (the online path has made the same trade since K-2).
+ *
+ * Seeds the `CalendarEvent` cursor from the `/get` when none exists, so the delta can take over.
+ */
+export async function fullRequeryCalendar(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  queryKey: string,
+  spec: CalendarQuerySpecInput,
+  clock: EngineClock,
+): Promise<void> {
+  const filter = spec.filter ?? null
+  const query = await port.queryCalendarEvents({ filter, expandRecurrences: true })
+  const occurrences = await port.getCalendarEvents(query.ids, true)
+
+  let objectIds: Id[] = []
+  try {
+    const objectQuery = await port.queryCalendarEvents({ filter })
+    objectIds = objectQuery.ids
+    const objects = await port.getCalendarEvents(objectIds, false)
+    // Objects FIRST, occurrences second. On a server that does not synthesise ids the two answers
+    // name the same records, and the occurrence set is the richer one — writing it last is what
+    // keeps the lean identity fetch from overwriting properties the grid needs.
+    await putCalendarEvents(db, accountId, objects.list, false)
+  } catch {
+    objectIds = []
+  }
+  await putCalendarEvents(db, accountId, occurrences.list, true)
+
+  if ((await getSyncState(db, accountId, 'CalendarEvent')) === null) {
+    await setSyncState(db, accountId, 'CalendarEvent', occurrences.state, clock.now())
+  }
+
+  const row: CalendarQueryCacheRow = {
+    accountId,
+    key: queryKey,
+    ids: query.ids,
+    objectIds,
+    filter,
+    stale: false,
+    syncedAt: clock.now(),
+    lastUsedAt: clock.now(),
+  }
+  await putCalendarQueryCache(db, row)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Files (D-4). The whole tree, mirrored — see the note on `FileNodeRow` in `db.ts`.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * One page of the tree walk, and the ceiling the `#ids` back-reference has to respect.
+ *
+ * `maxObjectsInGet` is 500 on Stalwart 0.16, and the get addresses its ids by back-reference — so
+ * the generic chunking cannot help and the query's limit IS the get's limit. Mirrors `PAGE` in
+ * `files-client.ts`, which pays the same price online.
+ */
+const FILE_PAGE = 500
+
+/**
+ * How many pages one walk will spend before it gives up and says so.
+ *
+ * Mirrors `MAX_PAGES` in `files-client.ts`. What is not acceptable is silence: a tree that stopped
+ * short while looking complete makes every conclusion the reader draws from it ("I must have deleted
+ * that") wrong, so the shortfall is recorded and the screen states it.
+ */
+const FILE_MAX_PAGES = 10
+
+/**
+ * File-tree sync.
+ *
+ * No state ⇒ walk the whole tree; a state ⇒ `FileNode/changes` + a `/get` of what moved. A server
+ * that cannot compute the delta gets the walk instead — that is the D-4 measured case (an account
+ * with no change history refusing to diff the state its own `/get` just returned) and it means
+ * "read it again", not "this failed".
+ */
+export async function syncFileNodes(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const sinceState = await getSyncState(db, accountId, 'FileNode')
+  if (sinceState === null) {
+    await walkFileTree(port, db, accountId, clock)
+    return
+  }
+
+  let acc: ChangesAccumulator
+  try {
+    acc = await drainChanges((state) => port.fileNodeChanges(state), sinceState)
+  } catch (error) {
+    if (error instanceof CannotCalculateChangesError) {
+      await walkFileTree(port, db, accountId, clock)
+      return
+    }
+    throw error
+  }
+
+  if (acc.changed.length > 0) {
+    const { list } = await port.getFileNodes(acc.changed)
+    await putFileNodes(db, accountId, list)
+  }
+  if (acc.destroyed.length > 0) await deleteFileNodes(db, accountId, acc.destroyed)
+  await setSyncState(db, accountId, 'FileNode', acc.newState, clock.now())
+}
+
+/**
+ * Read every node in the account, page by page, and replace the replica's tree with the answer.
+ *
+ * Three ways out of the loop, and they are NOT the same answer:
+ *  - a short page: that was the end of the query, and the tree is COMPLETE;
+ *  - {@link FILE_MAX_PAGES} spent: truncated, and the screen says so;
+ *  - a page that added nothing new: a server ignoring `position` and handing back the same page for
+ *    ever. Also truncated — and the guard that stops this being an infinite loop.
+ *
+ * Rows the walk did not see are deleted, but ONLY on a complete walk: a truncated one has not seen
+ * the whole tree, and treating "not in this answer" as "gone" would delete the very nodes the walk
+ * ran out of pages before reaching.
+ */
+async function walkFileTree(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  clock: EngineClock,
+): Promise<void> {
+  const seen = new Set<Id>()
+  let truncated = false
+  let state: string | null = null
+  let position = 0
+
+  for (let page = 0; ; page += 1) {
+    const answer = await port.fileNodePage(position, FILE_PAGE)
+    const before = seen.size
+    for (const node of answer.list) seen.add(node.id)
+    await putFileNodes(db, accountId, answer.list)
+    state = answer.state
+    if (answer.ids.length < FILE_PAGE) break
+    if (seen.size === before || page + 1 >= FILE_MAX_PAGES) {
+      truncated = true
+      break
+    }
+    position += answer.ids.length
+  }
+
+  if (!truncated) {
+    const known = await db.fileNodes.where('accountId').equals(accountId).primaryKeys()
+    const gone = known.map(([, id]) => id).filter((id) => !seen.has(id))
+    if (gone.length > 0) await deleteFileNodes(db, accountId, gone)
+  }
+
+  await setFileTreeState(db, accountId, { syncedAt: clock.now(), truncated })
+  if (state !== null) await setSyncState(db, accountId, 'FileNode', state, clock.now())
 }

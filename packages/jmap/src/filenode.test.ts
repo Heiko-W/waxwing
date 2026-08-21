@@ -58,14 +58,12 @@ describe('wiring', () => {
   })
 
   /*
-   * `FileNode/changes` exists on v0.16.18 (measured) and had no caller (JMAP gap analysis, I-2).
-   * File browsing is online-only — `files/files-client.ts` re-queries the folder on every visit and
-   * keeps nothing — so there is no state a delta could be applied to. Same rule as the calendar:
-   * the binding returns when the replica does.
+   * `FileNode/changes` exists on v0.16.18 (measured) and had no caller until D-4, because file
+   * browsing kept no local state for a delta to be applied to. It keeps a replica now
+   * (`sync/engine/delta.ts` `syncFileNodes`), so the binding is a claim this client honours.
    */
-  it('has no `FileNode/changes` binding, because file browsing keeps no local state', () => {
-    expect(Methods).not.toHaveProperty('fileNodeChanges')
-    expect(Object.values(Methods).map((method) => method.name)).not.toContain('FileNode/changes')
+  it('binds `FileNode/changes`, now that the file tree is replicated', () => {
+    expect(Methods.fileNodeChanges.name).toBe('FileNode/changes')
   })
 })
 

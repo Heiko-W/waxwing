@@ -324,3 +324,77 @@ test('a reminder set here survives a rename, and one set elsewhere is not lost',
   // ---- clean up
   await alice.call(calendars, [['CalendarEvent/set', { accountId, destroy: [eventId] }, '0']])
 })
+
+/**
+ * The calendar offline (K-8), against the LIVE fixture.
+ *
+ * Before the replica landed, this screen answered a lost connection with "The calendar could not be
+ * loaded." over a month the device had drawn a minute earlier — the one failure mode a calendar
+ * cannot afford, because looking at it in a lift or on a train is most of what a calendar is for.
+ *
+ * Only a browser can prove the fix. The unit tests inject a fake engine and a seeded replica; what
+ * they cannot see is whether the REAL sync engine actually materialized this month into IndexedDB,
+ * and whether the REAL screen reads it back when `navigator.onLine` flips. That is one seam per
+ * layer, all of which are correct in isolation, and the class of bug that lives between them.
+ *
+ * The test never reloads the page — `login()` does not tick "Stay signed in", so a reload lands back
+ * on the sign-in form. Leaving the screen and coming back is enough: `CalendarPage` unmounts, its
+ * component state dies with it, and everything drawn afterwards can only have come from the replica.
+ */
+test('offline, the calendar keeps showing the month it already has (K-8)', async ({
+  page,
+  context,
+}) => {
+  const title = `E2E offline ${Date.now()}`
+  await login(page)
+  await openCalendar(page)
+
+  // ---- something to look at, created while there is still a network
+  await page.getByRole('button', { name: 'New event' }).click()
+  const create = page.getByRole('dialog')
+  await create.getByLabel('Title', { exact: true }).fill(title)
+  await create.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(create).toBeHidden()
+  await openAgenda(page)
+  await expect(row(page, title)).toBeVisible()
+
+  try {
+    // ---- pull the plug, and wait for the APP to agree rather than for the CDP command
+    await context.setOffline(true)
+    await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeVisible({
+      timeout: 15_000,
+    })
+
+    // ---- leave and come back: from here on, anything on screen came out of IndexedDB
+    await page.getByRole('link', { name: 'Mail', exact: true }).click()
+    await page.getByRole('link', { name: 'Calendar', exact: true }).click()
+    await openAgenda(page)
+
+    await expect(row(page, title)).toBeVisible({ timeout: 30_000 })
+    // …and the screen says so, quietly, instead of claiming to be live.
+    await expect(
+      page.getByRole('status').filter({ hasText: /Not updating while offline/ }),
+    ).toBeVisible()
+    // The failure it used to show over exactly this data.
+    await expect(page.getByText('The calendar could not be loaded.')).toHaveCount(0)
+
+    // ---- what cannot work offline is REFUSED with a reason, not silently broken (Apple's rule:
+    // greyed out and explained, never invisible).
+    await page.getByRole('button', { name: 'New event' }).click()
+    await expect(
+      page.getByText('You are offline. Events can only be created while connected.'),
+    ).toBeVisible()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+  } finally {
+    await context.setOffline(false)
+  }
+
+  // ---- clean up: back online, delete the event for good
+  await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeHidden({
+    timeout: 15_000,
+  })
+  await openAgenda(page)
+  await row(page, title).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(row(page, title)).toHaveCount(0)
+})

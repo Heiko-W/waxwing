@@ -44,11 +44,15 @@ describe('ReplicaDb schema', () => {
         'addressBooks',
         'addressStats',
         'blobsMeta',
+        'calendarEvents',
+        'calendarQueryCache',
+        'calendars',
         'contactCards',
         'contactQueryCache',
         'drafts',
         'emailBodies',
         'emails',
+        'fileNodes',
         'identities',
         'localPrefs',
         'mailboxes',
@@ -60,10 +64,10 @@ describe('ReplicaDb schema', () => {
     )
   })
 
-  it('is at schema version 6 (the contacts migration is appended, v1–v5 untouched)', () => {
-    // If this drops below 6, a later `.version()` was renumbered or the append-only chain was
+  it('is at schema version 8 (the files migration is appended, v1–v7 untouched)', () => {
+    // If this drops below 8, a later `.version()` was renumbered or the append-only chain was
     // rewritten — exactly what the migration policy forbids.
-    expect(db.verno).toBe(6)
+    expect(db.verno).toBe(8)
   })
 
   it('round-trips a mailbox on its compound key', async () => {

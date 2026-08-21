@@ -20,6 +20,7 @@
  */
 
 import type {
+  CalendarEventFilter,
   ContactCardComparator,
   ContactCardFilter,
   EmailComparator,
@@ -57,6 +58,27 @@ export function canonicalContactQueryKey(spec: {
     kind: 'contact',
     filter: normalizeFilter((spec.filter ?? null) as unknown as EmailFilter | null),
     sort: normalizeSort((spec.sort ?? null) as unknown as EmailComparator[] | null),
+  })
+}
+
+/**
+ * The calendar analogue (K-8), keyed on the filter alone — an expanded `CalendarEvent/query` has no
+ * client-chosen sort (the window is drawn by start time, which `placeEvent` computes) and the two
+ * things that DO change the answer, the `[after, before)` window and the `inCalendar` OR-group, are
+ * both inside the filter. `expandRecurrences` is part of the key because the same filter asked with
+ * and without it answers with different ids — synthetic occurrences versus stored objects.
+ *
+ * Same `kind` discriminator as the contact key, for the same reason: separate stores, but a key
+ * that could collide across them is a bug waiting for someone to merge the tables.
+ */
+export function canonicalCalendarQueryKey(spec: {
+  filter?: CalendarEventFilter | null
+  expandRecurrences?: boolean
+}): string {
+  return stableStringify({
+    kind: 'calendar',
+    filter: normalizeFilter((spec.filter ?? null) as unknown as EmailFilter | null),
+    expandRecurrences: spec.expandRecurrences ?? false,
   })
 }
 

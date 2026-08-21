@@ -218,3 +218,68 @@ test('several files can be picked out at once and filed together', async ({ page
   await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(row(page, bulkRoot)).toHaveCount(0)
 })
+
+/**
+ * Files offline (D-4), against the LIVE fixture.
+ *
+ * Before the replica landed, a lost connection replaced the folder this device had just listed with
+ * "Your files could not be loaded." — over data it was holding the whole time. Files joined Mail and
+ * Contacts in the replica; this is the browser-level proof that the seams are actually connected.
+ *
+ * What only a browser can show here: that the REAL sync engine walked the tree into IndexedDB, that
+ * the REAL screen reads it back when `navigator.onLine` flips, and that the search — which is a
+ * local pass over the replicated tree now, not a `FileNode/query` — still answers with no network.
+ * Every one of those is correct in isolation upstream and proves nothing about the wiring.
+ *
+ * No reload: `login()` does not tick "Stay signed in", so a reload lands back on the sign-in form.
+ * Leaving the screen and coming back unmounts `FilesPage` and takes its component state with it, so
+ * everything drawn afterwards can only have come from the replica.
+ */
+test('offline, the file list keeps showing what it already has (D-4)', async ({
+  page,
+  context,
+}) => {
+  const folder = `E2E offline ${Date.now()}`
+  await login(page)
+  await openFiles(page)
+
+  // ---- something to look at, made while there is still a network
+  await page.getByRole('button', { name: 'New folder', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('New folder', { exact: true }).fill(folder)
+  await dialog.getByRole('button', { name: 'New folder', exact: true }).click()
+  await expect(row(page, folder)).toBeVisible()
+
+  try {
+    // ---- pull the plug, and wait for the APP to agree rather than for the CDP command
+    await context.setOffline(true)
+    await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeVisible({
+      timeout: 15_000,
+    })
+
+    // ---- leave and come back: from here on, anything on screen came out of IndexedDB
+    await page.getByRole('link', { name: 'Mail', exact: true }).click()
+    await page.getByRole('link', { name: 'Files', exact: true }).click()
+
+    await expect(row(page, folder)).toBeVisible({ timeout: 30_000 })
+    await expect(
+      page.getByRole('status').filter({ hasText: /Not updating while offline/ }),
+    ).toBeVisible()
+    await expect(page.getByText('The files could not be loaded.')).toHaveCount(0)
+
+    // ---- and the search still answers, because it is a pass over the replica rather than a query
+    await page.getByRole('searchbox', { name: 'Search files' }).fill(folder)
+    await expect(row(page, folder)).toBeVisible({ timeout: 15_000 })
+    await page.getByRole('searchbox', { name: 'Search files' }).fill('')
+  } finally {
+    await context.setOffline(false)
+  }
+
+  // ---- clean up, back online
+  await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeHidden({
+    timeout: 15_000,
+  })
+  await rowAction(page, `Delete ${folder}`, folder)
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(row(page, folder)).toHaveCount(0)
+})

@@ -14,12 +14,15 @@
  * carries the probe's answer, and a section is drawn from that or not at all.
  */
 
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { FileNode, FileNodeCapability, Id } from '@waxwing/jmap'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { SessionContext } from '../app/session/context'
 import type { DelegatedAccount, SessionContextValue } from '../app/session/types'
+import { putFileNodes, type ReplicaDb, ReplicaProvider, setFileTreeState } from '../sync'
+import { clearEngines, type SyncEngine, setEngineFor } from '../sync/engine'
+import { freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import FilesPage from './FilesPage'
@@ -109,16 +112,49 @@ function clients(byAccount: Readonly<Record<Id, readonly FileNode[]>>) {
   return { clientFor, asked }
 }
 
-function mount(delegated: readonly DelegatedAccount[], byAccount: Record<Id, readonly FileNode[]>) {
+/**
+ * The OWN account ('b') is the one the sync engine replicates, so its files are seeded into Dexie
+ * (D-4); carol's ('d') are not, and come from `clientFor('d')` over the wire. That split is the
+ * subject of these tests as much as the section is: reading the replica for somebody else's account
+ * would show the reader their own files under carol's name.
+ */
+const SELF = 'b'
+let db: ReplicaDb
+
+afterEach(async () => {
+  clearEngines()
+  cleanup()
+  await db?.delete()
+})
+
+function render_(
+  delegated: readonly DelegatedAccount[],
+  byAccount: Record<Id, readonly FileNode[]>,
+) {
   const { clientFor, asked } = clients(byAccount)
-  render(
+  db = freshDb()
+  void (async () => {
+    await putFileNodes(db, SELF, [...(byAccount[SELF] ?? [])])
+    await setFileTreeState(db, SELF, { syncedAt: 1, truncated: false })
+  })().catch(() => {})
+  setEngineFor(SELF, {
+    accountId: SELF,
+    refreshFileTree: async () => true,
+  } as unknown as SyncEngine)
+  const view = render(
     <SessionContext.Provider value={session(delegated)}>
       <ToastProvider>
-        <FilesPage clientFor={clientFor} />
+        <ReplicaProvider accountId={SELF} db={db}>
+          <FilesPage clientFor={clientFor} />
+        </ReplicaProvider>
       </ToastProvider>
     </SessionContext.Provider>,
   )
-  return { asked }
+  return { asked, view }
+}
+
+function mount(delegated: readonly DelegatedAccount[], byAccount: Record<Id, readonly FileNode[]>) {
+  return { asked: render_(delegated, byAccount).asked }
 }
 
 const OWN = { b: [node('n1', 'my-notes.txt')], d: [node('n2', 'projekt.pdf')] }
@@ -183,14 +219,8 @@ describe('the "Shared with me" section', () => {
   })
 
   it('has no a11y violations with a shared account on screen', async () => {
-    const { container } = render(
-      <SessionContext.Provider value={session([carol()])}>
-        <ToastProvider>
-          <FilesPage clientFor={clients(OWN).clientFor} />
-        </ToastProvider>
-      </SessionContext.Provider>,
-    )
+    const { view } = render_([carol()], OWN)
     await screen.findByText('my-notes.txt')
-    await expectNoA11yViolations(container)
+    await expectNoA11yViolations(view.container)
   })
 })

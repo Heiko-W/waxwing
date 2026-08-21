@@ -17,6 +17,10 @@
 
 import { defineMethod, type MethodDef } from './request'
 import type {
+  CalendarChangesRequest,
+  CalendarChangesResponse,
+  CalendarEventChangesRequest,
+  CalendarEventChangesResponse,
   CalendarEventGetRequest,
   CalendarEventGetResponse,
   CalendarEventParseRequest,
@@ -51,6 +55,8 @@ import type {
   ContactCardSetResponse,
 } from './types/contacts'
 import type {
+  FileNodeChangesRequest,
+  FileNodeChangesResponse,
   FileNodeGetRequest,
   FileNodeGetResponse,
   FileNodeQueryRequest,
@@ -148,9 +154,6 @@ import type {
  *    (`Mailbox/get {ids:null}`); a partial, sorted, paged mailbox list has no consumer.
  *  - `SieveScript/query` — the script list comes from `SieveScript/get {ids:null}` for the same
  *    reason. RFC 9661 accounts hold a handful of scripts, not a page of them.
- *  - `Calendar/changes` / `CalendarEvent/changes` / `FileNode/changes` — calendars and files are
- *    online-only feature clients with no IndexedDB replica (see `sync/engine/port.ts`), so there is
- *    no local state for a delta to be applied to. These three come back the day either gets one.
  *
  * Deliberately absent for a HARDER reason, and not to be added on a whim:
  *  - `Principal/set` — v0.16.18 answers the whole batch HTTP 400 `notRequest` (`sharing.test.ts`).
@@ -246,9 +249,26 @@ export const Methods = {
    * across DST in local time itself.
    */
   calendarGet: defineMethod<CalendarGetRequest, CalendarGetResponse>('Calendar/get'),
+  /**
+   * The calendar-tree delta (K-8). Bound now because there is finally something to apply it to: the
+   * replica keeps the calendar list between visits, so a colour changed on a phone has to arrive
+   * without re-reading every calendar.
+   */
+  calendarChanges: defineMethod<CalendarChangesRequest, CalendarChangesResponse>(
+    'Calendar/changes',
+  ),
   calendarSet: defineMethod<CalendarSetRequest, CalendarSetResponse>('Calendar/set'),
   calendarEventGet: defineMethod<CalendarEventGetRequest, CalendarEventGetResponse>(
     'CalendarEvent/get',
+  ),
+  /**
+   * The event delta (K-8) — and note what it reports on: STORED events, never the synthetic
+   * occurrences an `expandRecurrences` query answers with. A changed weekly meeting is ONE id here
+   * and fifty-two rows on screen, so the replica uses this to learn THAT a window is stale, then
+   * re-materializes the window itself (`sync/engine/delta.ts`).
+   */
+  calendarEventChanges: defineMethod<CalendarEventChangesRequest, CalendarEventChangesResponse>(
+    'CalendarEvent/changes',
   ),
   calendarEventQuery: defineMethod<CalendarEventQueryRequest, CalendarEventQueryResponse>(
     'CalendarEvent/query',
@@ -284,6 +304,17 @@ export const Methods = {
    * measured against Stalwart 0.16 rather than taken from the draft.
    */
   fileNodeGet: defineMethod<FileNodeGetRequest, FileNodeGetResponse>('FileNode/get'),
+  /**
+   * The file-tree delta (D-4). Bound now that there is a replica to apply it to.
+   *
+   * The measured trap this one exists around: for an account with NO change history the server may
+   * refuse to diff the very state a `/get` just handed out (`cannotCalculateChanges`; fixed for this
+   * method in v0.16.18, but the case — a brand-new account's first sync — is every new user's).
+   * `sync/engine/port.ts` translates that into "read the tree again", never into an error.
+   */
+  fileNodeChanges: defineMethod<FileNodeChangesRequest, FileNodeChangesResponse>(
+    'FileNode/changes',
+  ),
   fileNodeQuery: defineMethod<FileNodeQueryRequest, FileNodeQueryResponse>('FileNode/query'),
   fileNodeSet: defineMethod<FileNodeSetRequest, FileNodeSetResponse>('FileNode/set'),
 
