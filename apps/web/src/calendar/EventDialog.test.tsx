@@ -281,3 +281,48 @@ describe('reminders', () => {
     expect(await screen.findByLabelText('Alert')).toHaveValue('-PT7M')
   })
 })
+
+describe('reminders beyond the rows on offer', () => {
+  const three = {
+    k1: {
+      '@type': 'Alert',
+      action: 'display',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT5M' },
+    },
+    k2: {
+      '@type': 'Alert',
+      action: 'display',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT10M' },
+    },
+    k3: {
+      '@type': 'Alert',
+      action: 'display',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT15M' },
+    },
+  }
+
+  it('reports the third as kept, and keeps it', async () => {
+    // Two rows is how many the editor OFFERS, not how many an event may have. The third is counted
+    // in the same sentence as the alarms this client cannot model, because from where the reader
+    // sits the two facts are the same one: kept, and not shown.
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({
+      event: { ...EXISTING, alerts: three } as unknown as CalendarEvent,
+    })
+
+    expect(screen.getByText(/1 further reminder is kept unchanged/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit.mock.calls[0]?.[0].alerts.offsets).toEqual(['-PT5M', '-PT10M', '-PT15M'])
+  })
+
+  it('does not lose it when a row the reader CAN reach is changed', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({
+      event: { ...EXISTING, alerts: three } as unknown as CalendarEvent,
+    })
+
+    await user.selectOptions(screen.getByLabelText('Alert'), '-PT30M')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit.mock.calls[0]?.[0].alerts.offsets).toEqual(['-PT30M', '-PT10M', '-PT15M'])
+  })
+})

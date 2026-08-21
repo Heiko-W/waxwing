@@ -181,7 +181,16 @@ function displayAlert(offset: Duration): Alert {
 export function alertsToPatch(alerts: EventAlerts): Record<string, Alert> | null {
   const map: Record<string, Alert> = { ...alerts.opaque }
   let next = 1
-  for (const offset of alerts.offsets.slice(0, MAX_OFFSETS)) {
+  /*
+   * EVERY offset, not only the {@link MAX_OFFSETS} the dialog draws a row for.
+   *
+   * An event that arrived with three display alarms is not a mistake to be tidied up — slicing here
+   * would mean opening such an event, changing its title and silently deleting the third. The two
+   * rows are how many the editor OFFERS; what it carries is everything it was given. The rows
+   * beyond the second are reported in the same sentence as the alarms this client cannot model,
+   * because from the reader's side they are the same fact: kept, and not shown.
+   */
+  for (const offset of alerts.offsets) {
     let key = `w${next}`
     while (key in map) {
       next += 1

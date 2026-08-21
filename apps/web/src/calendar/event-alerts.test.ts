@@ -149,9 +149,14 @@ describe('alertsToPatch', () => {
     expect(Object.keys(patch ?? {})).toHaveLength(2)
   })
 
-  it('sends no more than the editor showed', () => {
+  it('keeps MORE reminders than the editor has rows for', () => {
+    // The editor draws two rows; an event that arrived with three display alarms still has three
+    // afterwards. Slicing here would mean opening such an event, changing its title, and silently
+    // deleting the last one — the same failure as dropping an email alarm, only for a reminder the
+    // client understands perfectly well.
     const patch = alertsToPatch({ offsets: ['-PT5M', '-PT10M', '-PT15M'], opaque: {} })
-    expect(Object.keys(patch ?? {})).toHaveLength(MAX_OFFSETS)
+    expect(Object.keys(patch ?? {})).toHaveLength(3)
+    expect(MAX_OFFSETS).toBe(2)
   })
 })
 

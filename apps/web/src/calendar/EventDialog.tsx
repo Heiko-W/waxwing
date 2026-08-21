@@ -336,7 +336,8 @@ function AlertRows({
   const { t } = useTranslation()
   const baseId = useId()
   const shown = alerts.offsets.slice(0, MAX_OFFSETS)
-  const opaque = Object.keys(alerts.opaque).length
+  /** Reminders that are kept but not drawn: the ones we cannot model, plus any beyond the rows. */
+  const kept = Object.keys(alerts.opaque).length + (alerts.offsets.length - shown.length)
   // One row per set reminder, plus one empty row to set the next — until both are used. Named
   // rather than counted, so each row keeps a stable React key: keyed by index, clearing the first
   // reminder would hand the second one's state to the first one's `<select>`.
@@ -346,9 +347,12 @@ function AlertRows({
     const next = [...shown]
     if (value === '') next.splice(index, 1)
     else next[index] = value
+    // The tail is put back untouched: an event that came in with more reminders than there are
+    // rows keeps them, exactly as an alarm this client cannot model does.
+    const all = [...next, ...alerts.offsets.slice(MAX_OFFSETS)]
     // De-duplicated here as well as on the way in: choosing the value the other row already holds
     // would otherwise leave two rows claiming one alarm, and the server stores one.
-    onChange({ ...alerts, offsets: next.filter((entry, at) => next.indexOf(entry) === at) })
+    onChange({ ...alerts, offsets: all.filter((entry, at) => all.indexOf(entry) === at) })
   }
 
   return (
@@ -378,13 +382,12 @@ function AlertRows({
           </div>
         )
       })}
-      {opaque > 0 && (
-        /* Counted, not listed, and above all not editable. An email alarm or an absolute one is
-           carried through the save byte for byte (see `event-alerts.ts`); saying how many there are
-           is the difference between "this app keeps them" and a reader concluding they are gone. */
-        <p className={styles.alertCarried}>
-          {t('calendar.event.alert.carried', { count: opaque })}
-        </p>
+      {kept > 0 && (
+        /* Counted, not listed, and above all not editable. An email alarm, an absolute one, or a
+           third reminder past the rows on offer is carried through the save byte for byte (see
+           `event-alerts.ts`); saying how many there are is the difference between "this app keeps
+           them" and a reader concluding they are gone. */
+        <p className={styles.alertCarried}>{t('calendar.event.alert.carried', { count: kept })}</p>
       )}
     </>
   )
