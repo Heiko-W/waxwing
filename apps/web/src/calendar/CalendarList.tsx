@@ -19,7 +19,7 @@
  * renaming does not exist for a keyboard.
  *
  * **Rights decide what is on the row, not whether it is refused afterwards.** A calendar the reader
- * cannot write to has no `⋯` at all; a calendar that is the account default, or that
+ * cannot write to has no `⋯` at all; one whose `myRights.mayShare` is false has no share icon; a calendar that is the account default, or that
  * `myRights.mayDelete` denies, has a `⋯` without a Delete. Offering a control that the server will
  * refuse is how a UI teaches people to distrust it.
  *
@@ -33,9 +33,10 @@
  */
 
 import type { Calendar } from '@waxwing/jmap'
-import { CalendarPlus, MoreHorizontal } from 'lucide-react'
+import { CalendarPlus, MoreHorizontal, UserPlus, UsersRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, Checkbox, IconButton, Menu } from '../ui'
+import { mayShareCalendar } from '../sharing/calendar-roles'
+import { Button, Checkbox, IconButton, Menu, VisuallyHidden } from '../ui'
 import styles from './calendar.module.css'
 
 /**
@@ -57,6 +58,18 @@ export function visibleCalendarIds(calendars: readonly Calendar[]): string[] {
 /** May the reader change this calendar's name and colour? */
 export function mayEdit(calendar: Calendar): boolean {
   return calendar.myRights?.mayWriteAll === true
+}
+
+/**
+ * Is this calendar shared with anybody (S-2)?
+ *
+ * Reliable here in a way the address book's equivalent is not: `CALENDAR_PROPERTIES` names
+ * `shareWith` on every `Calendar/get`, so an empty map means empty rather than "not asked for".
+ * `null` is the server's own word for "nobody" and reads the same way.
+ */
+export function isCalendarShared(calendar: Calendar): boolean {
+  const shareWith = calendar.shareWith
+  return shareWith != null && Object.keys(shareWith).length > 0
 }
 
 /**
@@ -89,6 +102,16 @@ export interface CalendarListProps {
   onCreate: () => void
   onEdit: (calendar: Calendar) => void
   onDelete: (calendar: Calendar) => void
+  /**
+   * Open the share dialog for one calendar (S-2).
+   *
+   * Optional so a caller that cannot share — no session, offline — simply passes nothing and the
+   * row loses the control rather than growing one that fails. The row ALSO checks
+   * `myRights.mayShare`: a calendar shared WITH the reader comes back with that right `false` and
+   * `shareWith: null`, so the affordance would open a dialog listing nobody over something they
+   * cannot change.
+   */
+  onShare?: ((calendar: Calendar) => void) | undefined
 }
 
 export function CalendarList(props: CalendarListProps) {
@@ -141,6 +164,34 @@ export function CalendarList(props: CalendarListProps) {
                   onChange={(event) => props.onToggle(calendar, event.target.checked)}
                 />
               </span>
+              {/*
+                The share affordance sits beside the NAME rather than inside the ⋯ — which is where
+                iCloud puts it, and the reason is not fashion: sharing a calendar is a thing people
+                come to this list to do, and a control that has to be found in a menu is a control
+                most people never learn exists. It is an icon and not a word because the row is a
+                rail 215px wide and the name may not be shortened for it.
+              */}
+              {isCalendarShared(calendar) && (
+                // NOT colour, and not the icon alone (WCAG 1.4.1): the icon is decorative and the
+                // word beside it is the marker, hidden from sight but not from a screen reader —
+                // there is no room in this rail for a second badge, and no honest way to say
+                // "shared" with a tint.
+                <span className={styles.calendarShared} title={t('calendar.calendars.sharedTitle')}>
+                  <UsersRound aria-hidden="true" className={styles.calendarSharedIcon} />
+                  <VisuallyHidden>{t('calendar.calendars.sharedTitle')}</VisuallyHidden>
+                </span>
+              )}
+              {props.onShare !== undefined && mayShareCalendar(calendar.myRights) && (
+                <IconButton
+                  label={t('calendar.calendars.share', { name: calendar.name })}
+                  variant="ghost"
+                  size="sm"
+                  disabled={props.disabled}
+                  onClick={() => props.onShare?.(calendar)}
+                >
+                  <UserPlus />
+                </IconButton>
+              )}
               {mayEdit(calendar) && (
                 <Menu
                   triggerLabel={t('calendar.calendars.menu', { name: calendar.name })}

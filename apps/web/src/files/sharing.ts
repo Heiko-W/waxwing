@@ -10,12 +10,12 @@
  */
 
 import type { FileNodeRights } from '@waxwing/jmap'
-import { makeRoleModel, type RoleSpec } from '../sharing/roles'
+import { type BasicShareRole, makeRoleModel, type RoleSpec, SHARE_ROLES } from '../sharing/roles'
 
 export type { ShareRole, ShareRoleOrCustom } from '../sharing/roles'
 export { SHARE_ROLES } from '../sharing/roles'
 
-import type { ShareRole, ShareRoleOrCustom } from '../sharing/roles'
+import type { ShareRoleOrCustom } from '../sharing/roles'
 
 const NONE: FileNodeRights = {
   mayRead: false,
@@ -33,8 +33,9 @@ const NONE: FileNodeRights = {
  * has it can widen access the owner never approved — and there is no notification that would tell
  * them. Naming the role "manager" is the honest label for that.
  */
-const SPEC: RoleSpec<FileNodeRights> = {
+const SPEC: RoleSpec<FileNodeRights, BasicShareRole> = {
   none: NONE,
+  order: SHARE_ROLES,
   roles: {
     viewer: { ...NONE, mayRead: true },
     editor: {
@@ -59,7 +60,7 @@ const SPEC: RoleSpec<FileNodeRights> = {
 export const fileRoles = makeRoleModel(SPEC)
 
 /** The full six-boolean grant for a role. */
-export function rightsFor(role: ShareRole): FileNodeRights {
+export function rightsFor(role: BasicShareRole): FileNodeRights {
   return fileRoles.rightsFor(role)
 }
 
@@ -79,7 +80,7 @@ export function grantees(
 export function withGrant(
   shareWith: Record<string, Partial<FileNodeRights>> | null | undefined,
   principalId: string,
-  role: ShareRole,
+  role: BasicShareRole,
 ): Record<string, FileNodeRights> {
   return fileRoles.withGrant(shareWith, principalId, role)
 }

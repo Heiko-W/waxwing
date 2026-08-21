@@ -140,6 +140,62 @@ export interface ShareNotification {
   name?: string | null
 }
 
+/**
+ * How busy a period is (RFC 9670 §5, JSCalendar `freeBusyStatus`).
+ *
+ * Measured on Stalwart v0.16.18: a plain event with `freeBusyStatus: "busy"` comes back as
+ * `confirmed`. `unavailable` is the RFC's word for "out of office"; both are typed because the
+ * distinction is the only thing a client may render differently, and neither is guessable.
+ */
+export type BusyStatus = 'confirmed' | 'tentative' | 'unavailable'
+
+/**
+ * One busy period on someone's calendar — **times, never titles**.
+ *
+ * That is the property that makes this method worth having: it answers "is Bob free on Tuesday at
+ * ten" **without any share at all**, so it needs no grant, no delegated account and no trust. The
+ * `event` field is the escape hatch for a caller that also has read access, and on this server it
+ * is almost always `null`: measured, `eventProperties` accepts only `id` and `baseEventId`
+ * (`invalidArguments: "Only 'id' and 'baseEventId' properties are supported in results"`), so
+ * asking for a title is an error rather than a redaction.
+ */
+export interface AvailabilityPeriod {
+  utcStart: UTCDate
+  utcEnd: UTCDate
+  busyStatus: BusyStatus
+  /** Only when `showDetails` was asked for AND the caller may read the event. Usually `null`. */
+  event?: { id?: Id; baseEventId?: Id } | null
+}
+
+/**
+ * `Principal/getAvailability` (RFC 9670 §5) — the free/busy question.
+ *
+ * **`id` is required and its absence is an error, not an empty answer** — measured:
+ * `invalidArguments "Missing principal id"`. `utcStart`/`utcEnd` are absolute instants (`Z`), not
+ * local date-times: unlike everything in JSCalendar, this method deals in a window on the clock of
+ * the world rather than on the clock of the calendar.
+ *
+ * The calendars capability publishes `maxAvailabilityDuration` (`P52W1D` on this server) as the
+ * widest window it will answer. Measured, v0.16.18 **does not enforce it** — a ten-year window came
+ * back with a result rather than an error — so a client that wants the limit respected has to
+ * respect it itself.
+ */
+export interface PrincipalGetAvailabilityRequest {
+  accountId: Id
+  /** The principal being asked about. Any principal the account can see — no share required. */
+  id: Id
+  utcStart: UTCDate
+  utcEnd: UTCDate
+  /** Ask for `event` on each period. Only `id`/`baseEventId` can ever come back — see the type. */
+  showDetails?: boolean
+  eventProperties?: readonly string[] | null
+}
+
+export interface PrincipalGetAvailabilityResponse {
+  accountId?: Id
+  list: AvailabilityPeriod[]
+}
+
 export type ShareNotificationGetRequest = GetRequest
 export type ShareNotificationGetResponse = GetResponse<ShareNotification>
 export type ShareNotificationChangesRequest = ChangesRequest

@@ -61,6 +61,10 @@ function client(over: Partial<CalendarClient> = {}): CalendarClient {
     importEvents: async () => ({ added: 0, duplicates: 0, failed: 0, reason: null }),
     destroyEvent: async (): Promise<CalendarEvent | null> => null,
     restoreEvent: async (): Promise<void> => {},
+    // S-6. Empty directory + no answer by default: the availability picker then renders disabled
+    // and the week view draws no hatch, which is what every test written before S-6 assumes.
+    listPrincipals: async () => [],
+    getAvailability: async () => null,
     ...over,
   }
 }
@@ -487,6 +491,90 @@ describe('the week view (T6)', () => {
     // 18–20 August: three of the seven columns, in the strip above the hour axis where an event
     // with no time of day belongs.
     expect(await screen.findAllByRole('button', { name: 'Trip' })).toHaveLength(3)
+  })
+})
+
+/**
+ * The availability layer (S-6).
+ *
+ * Three claims, and each is about a state the screen must NOT be allowed to reach:
+ *
+ *  - the picker exists only where the answer can be drawn (the week view has the time axis; the
+ *    month and agenda do not), so there is no control whose effect the reader cannot see;
+ *  - nothing is fetched until somebody is chosen — a person's diary is not something to ask for on
+ *    the off-chance;
+ *  - a `null` answer draws no hatch and SAYS so. An unhatched week would otherwise read as
+ *    "free all week", which is a statement the client has no business making on the server's behalf.
+ */
+describe('showing somebody’s availability (S-6)', () => {
+  const BOB = { id: 'p-bob', type: 'individual' as const, name: 'Bob Baker', email: 'bob@x.test' }
+
+  it('offers the picker in the week view only', async () => {
+    const user = userEvent.setup()
+    renderPage(client({ listPrincipals: async () => [BOB] }))
+
+    // The month view is the default, and it has no time axis to hatch.
+    await screen.findByRole('button', { name: 'Week' })
+    expect(screen.queryByLabelText('Show availability')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Week' }))
+    expect(await screen.findByLabelText('Show availability')).toBeInTheDocument()
+  })
+
+  it('asks nobody about anybody until a person is chosen', async () => {
+    const user = userEvent.setup()
+    const getAvailability = vi.fn(async () => null)
+    renderPage(client({ listPrincipals: async () => [BOB], getAvailability }))
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    await screen.findByLabelText('Show availability')
+    expect(getAvailability).not.toHaveBeenCalled()
+  })
+
+  it('draws a band per busy period once somebody is chosen', async () => {
+    const user = userEvent.setup()
+    renderPage(
+      client({
+        listPrincipals: async () => [BOB],
+        getAvailability: async () => [
+          {
+            utcStart: new Date(2026, 7, 18, 10).toISOString(),
+            utcEnd: new Date(2026, 7, 18, 12).toISOString(),
+            busyStatus: 'confirmed' as const,
+          },
+        ],
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    await user.selectOptions(await screen.findByLabelText('Show availability'), 'p-bob')
+
+    // The band itself is decoration; this sentence is the only form of it a screen reader gets,
+    // and asserting on it is also the only honest way to assert on a background layer.
+    expect(
+      await screen.findByText(/Bob Baker is busy on .* from .* to .*/, { exact: false }),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing came back rather than drawing an empty, free-looking week', async () => {
+    const user = userEvent.setup()
+    renderPage(client({ listPrincipals: async () => [BOB], getAvailability: async () => null }))
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    await user.selectOptions(await screen.findByLabelText('Show availability'), 'p-bob')
+
+    expect(
+      await screen.findByText('No availability came back for that person.'),
+    ).toBeInTheDocument()
+  })
+
+  it('is disabled, with a reason, when the directory is empty', async () => {
+    const user = userEvent.setup()
+    renderPage(client({ listPrincipals: async () => [] }))
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    expect(await screen.findByText('There is nobody to ask.')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Show availability')).toBeDisabled()
   })
 })
 

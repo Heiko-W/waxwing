@@ -688,7 +688,8 @@
         "nameRequired": "Geben Sie einen Namen ein.",
         "nameTooLong": "Dieser Name ist zu lang.",
         "nameTaken": "Ein Adressbuch mit diesem Namen gibt es bereits."
-      }
+      },
+      "share": "{{name}} freigeben"
     },
     "list": {
       "title": "Kontakte",
@@ -1758,7 +1759,8 @@
     "role": {
       "viewer": "Ansehen",
       "editor": "Bearbeiten",
-      "manager": "Verwalten"
+      "manager": "Verwalten",
+      "freeBusy": "Nur Verfügbarkeit"
     },
     "explain": {
       "file": {
@@ -1770,6 +1772,17 @@
         "viewer": "Die Post in diesem Ordner lesen. Geöffnete Nachrichten gelten für Sie weiterhin als ungelesen — dafür sinkt aber auch die Ungelesen-Zahl der anderen Person nie.",
         "editor": "Die Post lesen, in den Ordner und aus ihm heraus verschieben, als gelesen markieren und kennzeichnen. Den Ordner umbenennen oder löschen nicht.",
         "manager": "Alles, was Sie mit diesem Ordner dürfen — Post lesen und einsortieren, umbenennen, löschen und ohne Ihr Wissen an weitere Personen freigeben."
+      },
+      "calendar": {
+        "freeBusy": "Sieht, WANN Sie belegt sind, aber nie womit — keine Titel, keine Orte, keine Teilnehmer. Das gibt man jemandem, der um Sie herum planen soll.",
+        "viewer": "Liest jeden Termin dieses Kalenders mit Titel, Zeit und Details. Ändern kann diese Person nichts.",
+        "editor": "Liest, legt an und ändert Termine, sagt Einladungen zu oder ab und setzt eigene Erinnerungen. Den Kalender löschen oder weitergeben nicht.",
+        "manager": "Alles, was Sie mit diesem Kalender dürfen — einschließlich Löschen und Weitergeben an andere, ohne dass Sie davon erfahren."
+      },
+      "addressBook": {
+        "viewer": "Liest die Kontakte in dieser Liste. Ändern nicht.",
+        "editor": "Liest, ergänzt, ändert und entfernt Kontakte in dieser Liste. Die Liste löschen oder weitergeben nicht.",
+        "manager": "Alles, was Sie mit dieser Liste dürfen — einschließlich Löschen und Weitergeben an andere, ohne dass Sie davon erfahren."
       }
     },
     "mailbox": {
@@ -1787,7 +1800,23 @@
       "someone": "Jemand",
       "open": "Öffnen",
       "dismiss": "Ausblenden",
-      "dismissOne": "Diesen Hinweis ausblenden"
+      "dismissOne": "Diesen Hinweis ausblenden",
+      "calendar": "{{who}} hat den Kalender „{{name}}“ für Sie freigegeben.",
+      "calendarUnnamed": "{{who}} hat einen Kalender für Sie freigegeben.",
+      "revokedCalendarUnnamed": "{{who}} hat Ihren Zugriff auf einen Kalender zurückgenommen.",
+      "addressBook": "{{who}} hat die Kontaktliste „{{name}}“ für Sie freigegeben.",
+      "addressBookUnnamed": "{{who}} hat eine Kontaktliste für Sie freigegeben.",
+      "revokedAddressBookUnnamed": "{{who}} hat Ihren Zugriff auf eine Kontaktliste zurückgenommen.",
+      "object": "{{who}} hat „{{name}}“ für Sie freigegeben.",
+      "objectUnnamed": "{{who}} hat etwas für Sie freigegeben.",
+      "revokedObjectUnnamed": "{{who}} hat Ihren Zugriff auf etwas zurückgenommen."
+    },
+    "calendar": {
+      "title": "Kalender „{{name}}“ freigeben"
+    },
+    "addressBook": {
+      "title": "Liste „{{name}}“ freigeben",
+      "loadFailed": "Die aktuellen Zugriffsrechte ließen sich nicht laden. Solange lässt sich hier nichts gefahrlos ändern."
     }
   },
   "calendar": {
@@ -1931,7 +1960,9 @@
       "deleted": "„{{name}}“ gelöscht.",
       "deleteFailed": "Der Kalender konnte nicht gelöscht werden.",
       "saveFailed": "Der Kalender konnte nicht gespeichert werden.",
-      "toggleFailed": "Der Kalender konnte nicht ein- oder ausgeblendet werden."
+      "toggleFailed": "Der Kalender konnte nicht ein- oder ausgeblendet werden.",
+      "share": "{{name}} freigeben",
+      "sharedTitle": "Freigegeben"
     },
     "colors": {
       "red": "Rot",
@@ -1960,7 +1991,14 @@
       "duplicates_other": "{{count}} Termine waren schon im Kalender."
     },
     "rsvpFailed": "Ihre Antwort konnte nicht gesendet werden.",
-    "occurrenceDeleted": "Dieser Termin der Serie wurde entfernt."
+    "occurrenceDeleted": "Dieser Termin der Serie wurde entfernt.",
+    "availability": {
+      "label": "Verfügbarkeit einblenden",
+      "nobody": "Niemand",
+      "noPeople": "Es gibt niemanden, den man fragen könnte.",
+      "unavailable": "Für diese Person kam keine Verfügbarkeit zurück.",
+      "period": "{{name}} ist am {{day}} von {{from}} bis {{to}} belegt."
+    }
   },
   "files": {
     "listOptions": "Listenoptionen",

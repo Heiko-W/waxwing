@@ -35,7 +35,7 @@
  */
 
 import type { Id, MailboxRights } from '@waxwing/jmap'
-import { makeRoleModel, type RoleSpec } from './roles'
+import { type BasicShareRole, makeRoleModel, type RoleSpec, SHARE_ROLES } from './roles'
 
 /** The all-false grant. Its keys are the ten the server accepts — see the module note. */
 const NONE: MailboxRights = {
@@ -51,8 +51,10 @@ const NONE: MailboxRights = {
   mayShare: false,
 }
 
-const SPEC: RoleSpec<MailboxRights> = {
+const SPEC: RoleSpec<MailboxRights, BasicShareRole> = {
   none: NONE,
+  // The three that fit: a mail folder has no "availability only" and never gets one.
+  order: SHARE_ROLES,
   roles: {
     /** Read the mail and nothing else — explicitly NOT `maySetSeen`. */
     viewer: { ...NONE, mayReadItems: true },

@@ -30,6 +30,27 @@ export const Capabilities = {
   /** RFC 8620 §8 (JMAP Sharing) — principals. */
   principals: 'urn:ietf:params:jmap:principals',
   /**
+   * RFC 9670 §5 — `Principal/getAvailability`, the free/busy question (S-6).
+   *
+   * **Deliberately absent from `PREFIX_TO_CAPABILITY`, for the reason the whole table has to obey:
+   * the mapping is by PREFIX, and the prefix `Principal` already means {@link Capabilities.principals}.**
+   * An entry here would put this URN into every `Principal/get` and `Principal/query` the people
+   * picker runs — and one `using` entry a server does not know answers the WHOLE batch with HTTP
+   * 400 `notRequest` (measured on v0.16.18; see {@link Capabilities.mailShare}). The picker is the
+   * one part of sharing that works against any RFC 9670 server, and it would be the first casualty.
+   *
+   * A per-METHOD override table was considered and rejected for the same reason it was rejected for
+   * `CalendarEvent/parse`: it would send the URN unconditionally, on every server, forever. What is
+   * measured is only that the call succeeds when the URN IS sent — the `A-stalwart-methoden.md`
+   * probe used all sixteen session URNs at once, so "does it also work without" was never asked.
+   *
+   * So the rule is the one {@link Capabilities.emailPush} follows: the caller opts in per call via
+   * {@link CallOptions.using}, and only after {@link hasCapability} has seen the session advertise
+   * it. A server that does not advertise it gets a request without the URN — which either works
+   * (the method is not gated) or fails as one method, never as the whole batch.
+   */
+  principalsAvailability: 'urn:ietf:params:jmap:principals:availability',
+  /**
    * RFC 9670 §1.2 — sharing a `Mailbox`: `myRights.mayShare` and the `shareWith` property.
    *
    * **Deliberately absent from `PREFIX_TO_CAPABILITY`, and this is the load-bearing part.** The

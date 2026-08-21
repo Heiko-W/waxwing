@@ -81,3 +81,51 @@ export function ensureDelegations(): Promise<
     inboxId: string
   }>
 >
+
+/** How much a calendar share grants (S-2). `freeBusy` is `mayReadFreeBusy` and nothing else. */
+export type CalendarShareRole = 'freeBusy' | 'viewer'
+
+/**
+ * Share one owner's DEFAULT calendar with one grantee.
+ *
+ * Its own grant, not a variant of {@link shareInbox}: measured on v0.16.18, a mail delegation does
+ * not make `Calendar/get` answer for the grantee and this one does not make `Mailbox/get` answer.
+ */
+export function shareCalendar(
+  owner: string,
+  grantee: string,
+  role?: CalendarShareRole,
+): Promise<{ ownerAccountId: string; calendarId: string; granteePrincipal: string }>
+
+/** How much an address-book share grants (S-2). */
+export type AddressBookShareRole = 'viewer' | 'editor'
+
+/** Share one owner's DEFAULT address book with one grantee. Same reasoning as {@link shareCalendar}. */
+export function shareAddressBook(
+  owner: string,
+  grantee: string,
+  role?: AddressBookShareRole,
+): Promise<{ ownerAccountId: string; bookId: string; granteePrincipal: string }>
+
+/**
+ * Put one timed event in an owner's default calendar (S-6).
+ *
+ * `start` is a LOCAL JSCalendar date-time (`2026-08-25T10:00:00`) in `Europe/Berlin`; an offset is
+ * refused. Without an event `Principal/getAvailability` answers an empty list, which on screen is
+ * indistinguishable from the method not working at all.
+ */
+export function addBusyEvent(
+  owner: string,
+  event: { start: string; duration?: string; title?: string },
+): Promise<{ ownerAccountId: string; calendarId: string; eventId: string | undefined }>
+
+/** Destroy every calendar event of every test account. */
+export function clearCalendarEvents(): Promise<void>
+
+/**
+ * Unshare every calendar and address book of every test account (S-2).
+ *
+ * The companion to {@link revokeAllShares}, which sweeps mailboxes only — and just as necessary: one
+ * shared calendar puts the owner's whole account into the grantee's session with every capability.
+ */
+export function revokeAllPimShares(): Promise<void>

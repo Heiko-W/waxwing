@@ -31,7 +31,7 @@
  * list locally, looks the same on this screen and is a lie on the phone.
  */
 
-import type { Calendar } from '@waxwing/jmap'
+import type { Calendar, Id, Principal } from '@waxwing/jmap'
 import type { TFunction } from 'i18next'
 import {
   CalendarDays,
@@ -43,7 +43,7 @@ import {
   SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
@@ -52,7 +52,12 @@ import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { useOnline } from '../app/use-online'
 import { formatDate } from '../i18n/formatters'
-import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from '../ui'
+import { makeCalendarSharingClient } from '../sharing/calendar-share-client'
+import { IncomingShares } from '../sharing/IncomingShares'
+import { currentUserPrincipalId, principalLabel } from '../sharing/principals'
+import { useIncomingShares } from '../sharing/use-incoming-shares'
+import { Button, Dialog, EmptyState, IconButton, Menu, Select, Spinner, useToast } from '../ui'
+import { type BusyPeriod, toBusyPeriods } from './availability'
 import styles from './calendar.module.css'
 import {
   type CalendarClient,
@@ -73,6 +78,12 @@ const EventDialog = lazy(() => import('./EventDialog'))
  * deliberate act, and the editor is opened many times a session. Registered in `.size-limit.js`.
  */
 const IcsImportDialog = lazy(() => import('./IcsImportDialog'))
+/*
+ * The share dialog is a chunk of its own (registered in `.size-limit.js`), and not part of this
+ * screen's: it pulls in the generic `ShareDialog` and the principal picker, which the great majority
+ * of calendar sessions never open.
+ */
+const CalendarShareDialog = lazy(() => import('../sharing/CalendarShareDialog'))
 
 import CalendarDialog, { CalendarDeleteDialog } from './CalendarDialog'
 import { CalendarList, visibleCalendarIds } from './CalendarList'
@@ -91,7 +102,7 @@ import {
   toIsoDate,
 } from './month-grid'
 import { WeekView } from './WeekView'
-import { weekDays } from './week-grid'
+import { weekDays, weekRange } from './week-grid'
 
 type View = 'month' | 'week' | 'agenda'
 
@@ -196,8 +207,40 @@ export default function CalendarPage(props: CalendarPageProps) {
    * round trip at all — measured on v0.16.18, it does not.
    */
   const [myAddresses, setMyAddresses] = useState<readonly string[]>([])
+  /*
+   * Incoming calendar shares (S-1, extended to this type by S-2).
+   *
+   * No `onOpen` is passed to the strip: following the card means opening someone ELSE's calendar,
+   * and this screen is wired to `connected.accountId` throughout — `sharing/probe.ts` does not even
+   * have a `calendar` area, because there is no rail that could render one. The card announces the
+   * share; a button that led back to the reader's own calendars would be a lie.
+   */
+  const incoming = useIncomingShares('Calendar')
   /** The `.ics` import sheet (K-4). */
   const [importing, setImporting] = useState(false)
+  /** The calendar whose share dialog is open (S-2), or `null`. */
+  const [sharing, setSharing] = useState<Calendar | null>(null)
+  /**
+   * Whose availability is drawn behind the week grid (S-6) — a principal id, or `null` for nobody.
+   *
+   * Deliberately NOT persisted. It is a question ("when is Bob free this week?"), not a preference,
+   * and a hatch that was still there next week over somebody the reader had forgotten choosing
+   * would be read as their own calendar being wrong.
+   */
+  const [availabilityOf, setAvailabilityOf] = useState<Id | null>(null)
+  /** The directory to choose from — fetched once, and only once the picker is on screen. */
+  const [people, setPeople] = useState<readonly Principal[] | null>(null)
+  /** The answer for {@link availabilityOf}, or `null` for "no answer" — never `[]` for it. */
+  const [busy, setBusy] = useState<readonly BusyPeriod[] | null>(null)
+  /**
+   * Whether that answer is still on its way.
+   *
+   * Its own flag rather than "busy is null", because those are two different sentences and one of
+   * them is a claim: without it, the moment between choosing somebody and their diary arriving
+   * showed "No availability came back for that person" — a false statement, flashed at the reader,
+   * that reads as a failure and then vanishes.
+   */
+  const [busyPending, setBusyPending] = useState(false)
 
   /** The day the view is centred on: the route param, else today. */
   const focusDay = route.params.date
@@ -270,6 +313,57 @@ export default function CalendarPage(props: CalendarPageProps) {
   /** A stable stamp for "which calendars this answer is about", for the staleness check below. */
   const visibleKey = (visibleIds ?? []).join(',')
 
+  /**
+   * Whether the availability layer has anywhere to go (S-6).
+   *
+   * The week view alone: it is the only one of the three with a time axis, and free/busy without a
+   * time axis is a list of intervals nobody can compare against anything. Rather than draw a picker
+   * in the month view that quietly does nothing, the picker itself is week-only — so there is no
+   * control on screen whose effect the reader cannot see.
+   */
+  const showAvailability = view === 'week'
+
+  /**
+   * The week on screen, as timestamps.
+   *
+   * Timestamps rather than `Date`s for the same reason `fromMs`/`toMs` are: a `Date` is a fresh
+   * object every render, so an effect keyed on one never settles.
+   */
+  const { weekFromMs, weekToMs } = useMemo(() => {
+    const range = weekRange(focus, firstDayOfWeek(locale))
+    return { weekFromMs: range.from.getTime(), weekToMs: range.to.getTime() }
+  }, [focus, locale])
+
+  /**
+   * Whose availability the hatch is, as a name.
+   *
+   * `null` until the directory has come back with a name for the chosen id, and the week view draws
+   * nothing while it is — a hatch nobody is named beside is a pattern the reader has to guess at.
+   */
+  const busyName = useMemo(() => {
+    if (availabilityOf === null) return null
+    const person = (people ?? []).find((entry) => entry.id === availabilityOf)
+    return person === undefined ? null : principalLabel(person)
+  }, [people, availabilityOf])
+
+  /**
+   * The share seam (S-2) — `Calendar/set … shareWith`, classified separately from the editor's write.
+   *
+   * `null` when there is no session, which is what removes the affordance from every row rather
+   * than letting one open a dialog that cannot save.
+   */
+  const sharingClient = useMemo(
+    () =>
+      sessionClient === null || accountId === null
+        ? null
+        : makeCalendarSharingClient(
+            sessionClient,
+            accountId,
+            currentUserPrincipalId(connected?.jmapSession ?? null, accountId),
+          ),
+    [sessionClient, accountId, connected],
+  )
+
   const loadCalendars = useCallback(async () => {
     if (client === null) return
     try {
@@ -319,6 +413,70 @@ export default function CalendarPage(props: CalendarPageProps) {
   useEffect(() => {
     void load()
   }, [load])
+
+  /*
+   * The directory, fetched at most once and only when the picker is actually on screen.
+   *
+   * `Principal/query` + `/get` is a round trip that says nothing about the reader's own calendar, so
+   * it may not ride along with the month load. `showAvailability` gates it: the picker exists in the
+   * week view alone (that is the only view with a time axis to hatch), so a reader who never opens
+   * the week view never sends it.
+   *
+   * A failure sets an EMPTY list rather than leaving `null`: `null` is "still asking" and would spin
+   * for ever. An empty directory renders the picker disabled with its "nobody to ask" note, which is
+   * the honest outcome of a server that will not answer.
+   */
+  useEffect(() => {
+    if (client === null || !showAvailability || people !== null) return
+    let live = true
+    void client
+      .listPrincipals()
+      .then((list) => {
+        if (live) setPeople(list)
+      })
+      .catch(() => {
+        if (live) setPeople([])
+      })
+    return () => {
+      live = false
+    }
+  }, [client, showAvailability, people])
+
+  /*
+   * The busy periods for the chosen person, over the week on screen.
+   *
+   * The WEEK, not the month the events are fetched for: the hatch is only ever drawn in the week
+   * view, and asking for six weeks of somebody else's diary to draw one is six times the answer for
+   * nothing. Well inside `maxAvailabilityDuration` (`P52W1D`) either way — which the server was
+   * measured NOT to enforce, so staying inside it is this client's own discipline.
+   *
+   * `null` on failure, and `null` while in flight: both mean "nothing to draw", and neither is `[]`,
+   * which would be the claim that the person is free all week.
+   */
+  useEffect(() => {
+    if (client === null || availabilityOf === null || !showAvailability) {
+      setBusy(null)
+      setBusyPending(false)
+      return
+    }
+    let live = true
+    setBusyPending(true)
+    void client
+      .getAvailability(availabilityOf, new Date(weekFromMs), new Date(weekToMs))
+      .then((list) => {
+        if (!live) return
+        setBusy(list === null ? null : toBusyPeriods(list))
+        setBusyPending(false)
+      })
+      .catch(() => {
+        if (!live) return
+        setBusy(null)
+        setBusyPending(false)
+      })
+    return () => {
+      live = false
+    }
+  }, [client, availabilityOf, showAvailability, weekFromMs, weekToMs])
 
   const goto = useCallback(
     (date: Date): void => navigate(calendarPath(toIsoDate(date))),
@@ -737,6 +895,7 @@ export default function CalendarPage(props: CalendarPageProps) {
       <div className={styles.body}>
         {tier !== 'phone' && (
           <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
+            <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
             <CalendarList
               calendars={calendars}
               canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
@@ -745,7 +904,22 @@ export default function CalendarPage(props: CalendarPageProps) {
               onCreate={() => setEditingCalendar({ calendar: null })}
               onEdit={(calendar) => setEditingCalendar({ calendar })}
               onDelete={(calendar) => void askDelete(calendar)}
+              {...(sharingClient === null || !online
+                ? {}
+                : { onShare: (calendar: Calendar) => setSharing(calendar) })}
             />
+            {/* The availability layer's control, under the list of layers it joins — a calendar is
+                "whose events are drawn", this is "whose free/busy is drawn behind them". */}
+            {showAvailability && (
+              <AvailabilityPicker
+                people={people}
+                value={availabilityOf}
+                answered={busy !== null}
+                pending={busyPending}
+                disabled={!online}
+                onChange={setAvailabilityOf}
+              />
+            )}
           </aside>
         )}
         <div className={styles.main}>
@@ -801,6 +975,7 @@ export default function CalendarPage(props: CalendarPageProps) {
                   focus={focus}
                   onOpen={openEvent}
                   onPick={goto}
+                  {...(busy === null || busyName === null ? {} : { busy, busyName })}
                 />
               ) : (
                 <AgendaView events={events} today={today} onOpen={openEvent} />
@@ -845,9 +1020,44 @@ export default function CalendarPage(props: CalendarPageProps) {
                 setEditingCalendar({ calendar })
               }}
               onDelete={(calendar) => void askDelete(calendar)}
+              {...(sharingClient === null || !online
+                ? {}
+                : {
+                    onShare: (calendar: Calendar) => {
+                      setCalendarsOpen(false)
+                      setSharing(calendar)
+                    },
+                  })}
             />
+            {showAvailability && (
+              <AvailabilityPicker
+                people={people}
+                value={availabilityOf}
+                answered={busy !== null}
+                pending={busyPending}
+                disabled={!online}
+                onChange={setAvailabilityOf}
+              />
+            )}
           </div>
         </Dialog>
+      )}
+
+      {sharing !== null && sharingClient !== null && (
+        <Suspense fallback={null}>
+          <CalendarShareDialog
+            calendarId={sharing.id}
+            name={sharing.name}
+            // The map the last `Calendar/get` returned — `CALENDAR_PROPERTIES` names `shareWith`, so
+            // it is really here and the dialog needs no fetch of its own.
+            shareWith={sharing.shareWith}
+            client={sharingClient}
+            onClose={() => setSharing(null)}
+            // Re-read, so the row's "shared" marker is the server's answer rather than this
+            // screen's guess — and so the dialog, which adopts the prop, shows what really landed.
+            onChanged={() => void loadCalendars()}
+          />
+        </Suspense>
       )}
 
       {editingCalendar !== null && (
@@ -956,6 +1166,77 @@ function rsvpAllowed(calendars: readonly Calendar[], placed: PlacedEvent | null)
   const ids = Object.keys(placed.event.calendarIds ?? {})
   return calendars.some(
     (calendar) => ids.includes(calendar.id) && calendar.myRights?.mayRSVP === true,
+  )
+}
+
+interface AvailabilityPickerProps {
+  /** The directory, or `null` while it is still being fetched. */
+  readonly people: readonly Principal[] | null
+  /** The chosen principal, or `null` for nobody. */
+  readonly value: Id | null
+  /** Whether the server has actually answered for {@link value} — see the note in the body. */
+  readonly answered: boolean
+  /** Whether that answer is still on its way. Distinct from `!answered`, which is a claim. */
+  readonly pending: boolean
+  readonly disabled: boolean
+  onChange: (principalId: Id | null) => void
+}
+
+/**
+ * "Show availability: …" — the control behind the week view's hatched layer (S-6).
+ *
+ * **A native `<Select>`, and one line of explanation.** The alternative that was considered and
+ * rejected is a participant picker inside the event editor: an availability answer is only useful
+ * next to the reader's OWN commitments, and the editor has no time axis to put it on — it would
+ * have needed a timeline widget of its own, fetched per keystroke, to say anything more than a
+ * yes/no about an instant that may not even be chosen yet. This costs one round trip per person per
+ * week, reuses the week grid's geometry entirely, and answers the question people actually have
+ * before they create the meeting.
+ *
+ * **It needs no share of any kind**, which is the measurement that makes it worth building at all:
+ * `Principal/getAvailability` is answerable about anyone in the directory, and it returns times
+ * without titles. So a reader may plan around a colleague they have no access to whatsoever.
+ *
+ * `answered === false` with somebody chosen is the honest empty case: the request failed, or the
+ * server has no such method. It says so rather than leaving an unhatched week to be read as "free".
+ */
+function AvailabilityPicker({
+  people,
+  value,
+  answered,
+  pending,
+  disabled,
+  onChange,
+}: AvailabilityPickerProps) {
+  const { t } = useTranslation()
+  const selectId = useId()
+  const empty = people !== null && people.length === 0
+
+  return (
+    <div className={styles.availability}>
+      <label className={styles.availabilityLabel} htmlFor={selectId}>
+        {t('calendar.availability.label')}
+      </label>
+      {/* A native select on every viewport: on a phone this is the platform's own picker wheel,
+          which is a 44px target and a gesture people already know. */}
+      <Select
+        id={selectId}
+        value={value ?? ''}
+        disabled={disabled || people === null || empty}
+        onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
+      >
+        <option value="">{t('calendar.availability.nobody')}</option>
+        {(people ?? []).map((person) => (
+          <option key={person.id} value={person.id}>
+            {principalLabel(person)}
+          </option>
+        ))}
+      </Select>
+      {empty && <p className={styles.availabilityNote}>{t('calendar.availability.noPeople')}</p>}
+      {value !== null && !answered && !pending && (
+        <p className={styles.availabilityNote}>{t('calendar.availability.unavailable')}</p>
+      )}
+    </div>
   )
 }
 

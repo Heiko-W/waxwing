@@ -20,10 +20,16 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { BookOpen, Ellipsis, Lock, Plus, UsersRound } from 'lucide-react'
-import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
+import { BookOpen, Ellipsis, Lock, Plus, UserPlus, UsersRound } from 'lucide-react'
+import { type FormEvent, lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, Link } from '../app/route'
+import { useSessionOptional } from '../app/session/context'
+import { makeAddressBookSharingClient } from '../sharing/addressbook-client'
+import { mayShareAddressBook } from '../sharing/addressbook-roles'
+import { IncomingShares } from '../sharing/IncomingShares'
+import { currentUserPrincipalId } from '../sharing/principals'
+import { useIncomingShares } from '../sharing/use-incoming-shares'
 import type { AddressBookRow } from '../sync'
 import { useAddressBooks } from '../sync'
 import {
@@ -39,6 +45,12 @@ import {
 import styles from './contacts.module.css'
 import { useAddressBookActions } from './use-address-book-actions'
 
+/*
+ * The share dialog is a chunk of its own (registered in `.size-limit.js`): it pulls in the generic
+ * `ShareDialog` and the principal picker, and the great majority of sessions never open it.
+ */
+const AddressBookShareDialog = lazy(() => import('../sharing/AddressBookShareDialog'))
+
 /**
  * A defensive cap on the name a book may be given. JMAP publishes no `maxSizeAddressBookName`
  * capability (unlike `maxSizeMailboxName`), so this is the same round number the folder dialog uses
@@ -51,6 +63,7 @@ type BookDialog =
   | { readonly kind: 'create' }
   | { readonly kind: 'rename'; readonly book: AddressBookRow }
   | { readonly kind: 'delete'; readonly book: AddressBookRow }
+  | { readonly kind: 'share'; readonly book: AddressBookRow }
 
 export interface AddressBookListProps {
   /** The address book the route currently selects (`undefined` = the "All Contacts" view). */
@@ -67,13 +80,41 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
   const { t } = useTranslation()
   const books = useAddressBooks()
   const actions = useAddressBookActions()
+  const connected = useSessionOptional()
   const [dialog, setDialog] = useState<BookDialog | null>(null)
+  /*
+   * The share seam (S-2). Online-only and outside the replica by design — see
+   * `sharing/addressbook-client.ts`: the engine's `AddressBook/get` names no `properties`, so no row
+   * here has been proved to carry a `shareWith` at all.
+   *
+   * Memoized because the dialog holds it across an async load and in a `useEffect` dependency list.
+   */
+  const sharingClient = useMemo(
+    () =>
+      connected === null
+        ? null
+        : makeAddressBookSharingClient(
+            connected.client,
+            connected.accountId,
+            currentUserPrincipalId(connected.jmapSession, connected.accountId),
+          ),
+    [connected],
+  )
+  /*
+   * Incoming address-book shares (S-1, extended to this type by S-2).
+   *
+   * No `onOpen`: opening someone else's address book means scoping this whole screen to a foreign
+   * account, and it is wired to `connected.accountId` throughout. The card announces the share and
+   * offers Hide — see `IncomingShares` on why a button that led nowhere would be worse.
+   */
+  const incoming = useIncomingShares('AddressBook')
 
   const takenNames = (except?: Id): string[] =>
     (books ?? []).filter((book) => book.id !== except).map((book) => book.name)
 
   return (
     <div className={styles.books}>
+      <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
       <div className={styles.railHeader}>
         <h2 className={styles.railTitle}>{t('contacts.books.title')}</h2>
         <IconButton
@@ -113,6 +154,9 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
               selected={book.id === selectedBookId}
               onRename={() => setDialog({ kind: 'rename', book })}
               onDelete={() => setDialog({ kind: 'delete', book })}
+              {...(sharingClient === null
+                ? {}
+                : { onShare: () => setDialog({ kind: 'share', book }) })}
               {...(onSelectBook ? { onSelect: onSelectBook } : {})}
             />
           ))
@@ -184,6 +228,17 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
           <p>{t('contacts.books.delete.contents')}</p>
         </Dialog>
       )}
+
+      {dialog?.kind === 'share' && sharingClient !== null && (
+        <Suspense fallback={null}>
+          <AddressBookShareDialog
+            bookId={dialog.book.id}
+            name={dialog.book.name}
+            client={sharingClient}
+            onClose={() => setDialog(null)}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }
@@ -199,15 +254,24 @@ function AddressBookItem({
   onSelect,
   onRename,
   onDelete,
+  onShare,
 }: {
   book: AddressBookRow
   selected: boolean
   onSelect?: () => void
   onRename: () => void
   onDelete: () => void
+  /** Absent when there is no session to share through. */
+  onShare?: (() => void) | undefined
 }) {
   const { t } = useTranslation()
   const readOnly = book.myRights.mayWrite === false
+  /*
+   * `myRights.mayShare`, checked here rather than discovered from a refusal: a book shared WITH the
+   * reader carries it `false`, and offering the control would open a dialog over something the
+   * server will not let them change.
+   */
+  const canShare = onShare !== undefined && mayShareAddressBook(book.myRights)
   const items: MenuItemSpec[] = []
   if (!readOnly) {
     items.push({ id: 'rename', label: t('contacts.books.rename.action'), onSelect: onRename })
@@ -254,17 +318,32 @@ function AddressBookItem({
           )}
         </span>
       </Link>
-      {items.length > 0 && (
+      {(canShare || items.length > 0) && (
         <span className={styles.bookMenu}>
-          <Menu
-            align="end"
-            triggerVariant="ghost"
-            // Named after its ROW: a rail of four books otherwise exposes four buttons all called
-            // "Address book actions", and a screen reader user cannot tell which one they are on.
-            triggerLabel={t('contacts.books.actions', { name: book.name })}
-            trigger={<Ellipsis aria-hidden="true" className={styles.bookIcon} />}
-            items={items}
-          />
+          {/* Beside the name, not inside the ⋯ — the same rule the calendar rail follows, and for
+              the same reason: sharing is something people come to the rail to do. It shares the
+              row's reveal chrome, so a rail nobody is pointing at stays as quiet as it was. */}
+          {canShare && (
+            <IconButton
+              label={t('contacts.books.share', { name: book.name })}
+              variant="ghost"
+              size="sm"
+              onClick={() => onShare?.()}
+            >
+              <UserPlus />
+            </IconButton>
+          )}
+          {items.length > 0 && (
+            <Menu
+              align="end"
+              triggerVariant="ghost"
+              // Named after its ROW: a rail of four books otherwise exposes four buttons all called
+              // "Address book actions", and a screen reader user cannot tell which one they are on.
+              triggerLabel={t('contacts.books.actions', { name: book.name })}
+              trigger={<Ellipsis aria-hidden="true" className={styles.bookIcon} />}
+              items={items}
+            />
+          )}
         </span>
       )}
     </li>

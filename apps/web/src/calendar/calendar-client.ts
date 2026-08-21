@@ -80,6 +80,7 @@
  */
 
 import type {
+  AvailabilityPeriod,
   Calendar,
   CalendarEvent,
   CalendarEventFilter,
@@ -87,9 +88,11 @@ import type {
   JmapClient,
   ParticipantIdentity,
   ParticipationStatus,
+  Principal,
 } from '@waxwing/jmap'
 import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
+import { searchPrincipals } from '../sharing/principals'
 import { alertsToPatch, type EventAlerts } from './event-alerts'
 import { type ParticipantRow, participantsToPatch, rsvpPatch } from './event-participants'
 import {
@@ -305,6 +308,23 @@ export interface CalendarClient {
   destroyEvent(target: PlacedEvent): Promise<CalendarEvent | null>
   /** Re-creates an event from a copy taken by {@link CalendarClient.destroyEvent}. */
   restoreEvent(snapshot: CalendarEvent): Promise<void>
+  /**
+   * Everyone this account may ask an availability question about (S-6).
+   *
+   * The whole organisation, and that is measured rather than assumed: `Principal/get {ids: null}`
+   * as any user lists every user, with **no share of any kind in place**. So this is a directory,
+   * not a list of people who have let the reader see something.
+   */
+  listPrincipals(): Promise<Principal[]>
+  /**
+   * When one principal is busy in `[from, to)` — times, never titles (S-6).
+   *
+   * `null` rather than an empty list when the server cannot answer, and the difference is the whole
+   * point: `[]` means "free all week" and would be drawn as an empty column, which is a statement.
+   * A server without the method, a principal who has hidden their availability, a network failure —
+   * all of those are "no answer", and the layer is simply not drawn.
+   */
+  getAvailability(principalId: Id, from: Date, to: Date): Promise<AvailabilityPeriod[] | null>
 }
 
 /**
@@ -1033,6 +1053,60 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
         [Methods.calendarEventSet.name, { accountId, create: { e: create } }, 'c0'],
       ])
       throwIfRefused(responses.get<SetOutcome>('c0'))
+    },
+
+    async listPrincipals() {
+      // The empty query is "everyone" — `principalSearchFilter` answers `null` for it, and the
+      // directory is small enough that a picker listing it whole is the right shape. `null` for
+      // `selfPrincipalId` on purpose: asking about your OWN availability is a legitimate thing to
+      // do here (it is not a share, so there is nothing odd about naming yourself).
+      return await searchPrincipals(client, accountId, '')
+    },
+
+    async getAvailability(principalId, from, to) {
+      /*
+       * The `using` set, and the one thing in this file that could take a whole batch down.
+       *
+       * `capabilityForMethod` maps by PREFIX, so `Principal/getAvailability` derives
+       * `urn:ietf:params:jmap:principals` — not the `...:principals:availability` the RFC assigns
+       * it. There is no per-method override table in `@waxwing/jmap`, deliberately (see
+       * `Capabilities.principalsAvailability`): one would send the URN unconditionally, and a
+       * `using` entry the server does not know answers the WHOLE request with HTTP 400
+       * `notRequest` — no method responses at all, every sibling call destroyed.
+       *
+       * So it is opted into per call and ONLY when the session has been seen to advertise it. On
+       * Stalwart it is advertised, so the correct URN goes out; on a server that does not implement
+       * the extension nothing extra goes out and the worst case is one method failing rather than
+       * the batch. What is NOT measured is whether this server would answer without the URN — the
+       * probe that established the method sent all sixteen session URNs at once.
+       */
+      const advertised = hasCapability(
+        client.session,
+        Capabilities.principalsAvailability,
+        accountId,
+      )
+      try {
+        const responses = await client.call(
+          [
+            [
+              Methods.principalGetAvailability.name,
+              {
+                accountId,
+                id: principalId,
+                utcStart: from.toISOString(),
+                utcEnd: to.toISOString(),
+              },
+              'p0',
+            ],
+          ],
+          advertised ? { using: [Capabilities.principalsAvailability] } : {},
+        )
+        return responses.get<{ list: AvailabilityPeriod[] }>('p0').list
+      } catch {
+        // `null`, never `[]` — see the interface. "No answer" and "free all week" are different
+        // statements and only one of them may be drawn.
+        return null
+      }
     },
   }
 }
