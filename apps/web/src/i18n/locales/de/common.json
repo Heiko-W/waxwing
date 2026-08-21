@@ -1518,6 +1518,7 @@
     "empty": "Dieser Ordner ist leer.",
     "retry": "Erneut versuchen",
     "loadFailed": "Die Dateien konnten nicht geladen werden.",
+    "savedButNotShown": "Gespeichert — die Liste ließ sich aber nicht neu laden. Mit „Erneut versuchen“ wird sie geholt.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
     "newFolder": "Neuer Ordner",

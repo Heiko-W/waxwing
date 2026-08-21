@@ -224,6 +224,37 @@ describe('opening and closing', () => {
   })
 })
 
+describe('a write whose reload does not come back', () => {
+  it('still says the upload was saved', async () => {
+    // The measured shape of the outage: the listing is refused, the upload is not. The screen kept
+    // showing "could not be loaded" and said nothing at all about the file that had just landed on
+    // the server — the user uploaded into a void. A failed refresh is not a failed write.
+    const uploaded: string[] = []
+    const failing: FilesClient = {
+      ...client,
+      list: async () => {
+        throw new Error('400 notRequest')
+      },
+      upload: async (file) => {
+        uploaded.push(file.name)
+        return node({ id: '9', name: file.name })
+      },
+    }
+    const { container } = render(
+      <ToastProvider>
+        <FilesPage client={failing} />
+      </ToastProvider>,
+    )
+    await screen.findByText('The files could not be loaded.')
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['bytes'], 'note.txt', { type: 'text/plain' }))
+
+    expect(uploaded).toEqual(['note.txt'])
+    expect(await screen.findByText(/could not be reloaded/i)).toBeInTheDocument()
+  })
+})
+
 describe('accessibility', () => {
   it('states whether the preview is open, and has no violations with one open', async () => {
     listed = [node({ id: '1', name: 'photo.png', type: 'image/png' })]

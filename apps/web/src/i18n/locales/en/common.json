@@ -1518,6 +1518,7 @@
     "empty": "This folder is empty.",
     "retry": "Try again",
     "loadFailed": "The files could not be loaded.",
+    "savedButNotShown": "That was saved, but the list could not be reloaded — try again to see it.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",
     "newFolder": "New folder",

@@ -113,7 +113,31 @@ export function makeFilesClient(
       const builder = client.request()
       const query = builder.invoke(Methods.fileNodeQuery, {
         accountId,
-        filter: { parentId },
+        /*
+         * THE ROOT LEVEL SENDS NO FILTER AT ALL, and that is the whole fix for the screen.
+         *
+         * `filter: { parentId: null }` is what RFC 9670's filter condition says "the roots" — and
+         * Stalwart 0.16 answers it with `invalidArguments: "invalid type: null, expected a
+         * borrowed string"`, because it accepts `parentId` only as a String even though it returns
+         * that same field as `null` in every root node it hands back. What made that a dead screen
+         * rather than an empty list is the SECOND half: a single refused method makes Stalwart
+         * reject the WHOLE request with HTTP 400 `notRequest`, so the `FileNode/get` below never
+         * ran either. Measured by `curl` against the fixture: no filter → OK, `{parentId:"a"}` →
+         * OK, `{parentId:null}` → refused, and the app's own two-method request → 400.
+         *
+         * So an optional argument whose value we do not have is OMITTED, never sent as `null`.
+         * That is the repo's `exactOptionalPropertyTypes` idiom (conditional spreading) applied to
+         * the wire, and it is the shape that survives a server which is stricter than the RFC:
+         * a key that is not there cannot be rejected.
+         *
+         * The price is honest and bounded: an unfiltered query returns the whole tree, so the
+         * `limit` below is spent on every node rather than on this level's, and the client-side
+         * level filter under `list` puts the level back together. For an account with more than
+         * `limit` nodes the root listing can therefore be short — a listing that is incomplete at
+         * the far end beats a screen that never loads at all, and no other request shape gets both
+         * past this server.
+         */
+        ...(parentId === null ? {} : { filter: { parentId } }),
         sort: [
           // Directories first, then by name — the ordering every file manager uses, and the one
           // `fileNodeQuerySortOptions` supports.
@@ -126,7 +150,11 @@ export function makeFilesClient(
         '#ids': query.ref('/ids'),
       })
       const responses = await builder.send()
-      const list = responses.get(nodes).list
+      // The level the caller asked for, filtered HERE and not only by the server: at the root the
+      // query above carries no filter and the answer is the whole tree, and below the root this
+      // costs one pass over at most `limit` nodes to stop trusting a server we already know reads
+      // this filter differently than we do.
+      const list = responses.get(nodes).list.filter((node) => (node.parentId ?? null) === parentId)
       // Directories before files, then the server's name order within each group.
       return [
         ...list.filter((node) => node.nodeType === 'directory'),
@@ -201,10 +229,15 @@ export function makeFilesClient(
 
     async searchPrincipals(query) {
       const builder = client.request()
+      // `principalSearchFilter` answers `null` for an empty query — "everyone" — and the share
+      // picker opens on exactly that. Same rule as `list` above: "no filter" is an ABSENT key, not
+      // a null one. This one has not been seen to fail, and that is the point of fixing it now:
+      // it is the identical shape one round trip away from the one that took the Files screen out.
+      const filter = principalSearchFilter(query)
       const found = builder.invoke(Methods.principalQuery, {
         accountId,
         // `text`, not `name`: measured, see `principalSearchFilter`.
-        filter: principalSearchFilter(query),
+        ...(filter === null ? {} : { filter }),
         limit: 50,
       })
       const principals = builder.invoke(Methods.principalGet, {

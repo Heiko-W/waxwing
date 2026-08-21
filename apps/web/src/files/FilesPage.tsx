@@ -112,13 +112,16 @@ export default function FilesPage(props: FilesPageProps) {
 
   const here = path[path.length - 1]?.id ?? null
 
-  const load = useCallback(async () => {
-    if (client === null) return
+  /** Reloads this level. Returns whether the listing arrived — see {@link run}. */
+  const load = useCallback(async (): Promise<boolean> => {
+    if (client === null) return false
     try {
       setNodes(await client.list(here))
       setFailed(false)
+      return true
     } catch {
       setFailed(true)
+      return false
     }
   }, [client, here])
 
@@ -149,7 +152,16 @@ export default function FilesPage(props: FilesPageProps) {
     setBusy(true)
     try {
       await action()
-      await load()
+      /*
+       * A WRITE THAT SUCCEEDED IS NEVER SILENT, even when the listing behind it does not come back.
+       *
+       * The normal path needs no toast: the uploaded file appears in the list, which is the
+       * confirmation. But `load()` swallows its own failure into the error state, so while the
+       * root listing was broken an upload landed on the server, the screen kept showing "could not
+       * be loaded", and nothing anywhere said that the file was now there — the user uploaded into
+       * a void. The reload failing is not the write failing, and the two must not look the same.
+       */
+      if (!(await load())) toast({ tone: 'warning', title: t('files.savedButNotShown') })
     } catch (thrown) {
       const key =
         thrown instanceof FileSetError ? `files.error.${thrown.failure}` : 'files.error.rejected'
