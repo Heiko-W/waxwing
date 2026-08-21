@@ -622,7 +622,7 @@ test.describe('M5.2 filter rules', () => {
     await openSettings(page, 'Filters')
     await addFilterRule(page, 'Invoices', 'Invoice')
 
-    await page.getByRole('switch', { name: 'Filtering is on' }).click()
+    await page.getByRole('switch', { name: 'Filter incoming mail' }).click()
 
     await expect
       .poll(async () => (await scriptsOf()).some((script) => script.isActive), POLL)
@@ -631,7 +631,7 @@ test.describe('M5.2 filter rules', () => {
     expect((await scriptsOf()).map((script) => script.name)).toContain('waxwing')
     await expect(page.getByRole('region', { name: 'Filters' })).toContainText('Invoices')
 
-    await page.getByRole('switch', { name: 'Filtering is on' }).click()
+    await page.getByRole('switch', { name: 'Filter incoming mail' }).click()
     await expect
       .poll(async () => (await scriptsOf()).some((script) => script.isActive), POLL)
       .toBe(true)

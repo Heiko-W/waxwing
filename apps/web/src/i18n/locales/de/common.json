@@ -437,7 +437,7 @@
         "generic": "Die Filter konnten nicht gespeichert werden.",
         "invalidSieveReason": "Der Server hat das Skript als ungültig abgelehnt: {{reason}}. Ihre Regeln wurden nicht gespeichert."
       },
-      "active": "Filterung ist an",
+      "active": "Eingehende Nachrichten filtern",
       "activeHint": "Die Regeln unten laufen für jede Nachricht, die der Server annimmt.",
       "inactiveHint": "Ihre Regeln bleiben erhalten, es wird aber nichts gefiltert, bis Sie das wieder einschalten.",
       "deleteScript": "Filterskript löschen",

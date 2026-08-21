@@ -196,7 +196,7 @@ describe('<FiltersSection>', () => {
       // The one surface whose whole promise is "we left it alone" may not also be the one that
       // throws it away. Switching filtering off — reversible, destructive of nothing — is there.
       expect(screen.queryByRole('button', { name: 'Delete filter script' })).not.toBeInTheDocument()
-      expect(screen.getByRole('switch', { name: 'Filtering is on' })).toBeInTheDocument()
+      expect(screen.getByRole('switch', { name: 'Filter incoming mail' })).toBeInTheDocument()
     })
 
     it('keeps every line of it when the user starts managing filters alongside', async () => {
@@ -288,7 +288,7 @@ describe('the master switch', () => {
     const { log, saved } = renderSection(MANAGED)
     await screen.findByText('Invoices')
 
-    await user.click(screen.getByRole('switch', { name: 'Filtering is on' }))
+    await user.click(screen.getByRole('switch', { name: 'Filter incoming mail' }))
 
     await waitFor(() => expect(log).toEqual(['deactivate']))
     expect(saved).toEqual([])
@@ -304,7 +304,7 @@ describe('the master switch', () => {
     const { log } = renderSection(MANAGED)
     await screen.findByText('Invoices')
 
-    const master = () => screen.getByRole('switch', { name: 'Filtering is on' })
+    const master = () => screen.getByRole('switch', { name: 'Filter incoming mail' })
     await user.click(master())
     await waitFor(() => expect(master()).toHaveAttribute('aria-checked', 'false'))
     await user.click(master())
@@ -319,7 +319,7 @@ describe('the master switch', () => {
     const { activations, log } = renderSection(MANAGED)
     await screen.findByText('Invoices')
 
-    await user.click(screen.getByRole('switch', { name: 'Filtering is on' }))
+    await user.click(screen.getByRole('switch', { name: 'Filter incoming mail' }))
     await waitFor(() => expect(log).toEqual(['deactivate']))
 
     await addRule(user, 'Newsletters')
@@ -474,7 +474,7 @@ describe('offline (G11)', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
     expect(screen.getByRole('switch', { name: 'Active' })).toBeDisabled()
-    expect(screen.getByRole('switch', { name: 'Filtering is on' })).toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Filter incoming mail' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reorder Invoices' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Delete filter script' })).toBeDisabled()
     expect(

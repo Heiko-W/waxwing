@@ -437,7 +437,7 @@
         "generic": "The filters could not be saved.",
         "invalidSieveReason": "The server rejected the script as invalid: {{reason}}. Your rules were not saved."
       },
-      "active": "Filtering is on",
+      "active": "Filter incoming mail",
       "activeHint": "Rules below run on every message the server receives.",
       "inactiveHint": "Your rules are kept, but nothing is filtered until you turn this back on.",
       "deleteScript": "Delete filter script",
