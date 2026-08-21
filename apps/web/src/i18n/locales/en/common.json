@@ -1475,11 +1475,15 @@
   },
   "calendar": {
     "offline": "You are offline. Events can only be created while connected.",
+    "offlineOpen": "You are offline. Events can only be opened and changed while connected.",
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
     "newEvent": "New event",
     "nextMonth": "Next month",
+    "previousWeek": "Previous week",
+    "nextWeek": "Next week",
+    "weekRange": "{{from}} – {{to}}",
     "viewLabel": "Calendar view",
     "view": {
       "month": "Month",
@@ -1490,9 +1494,15 @@
     "allDay": "All day",
     "more": "+{{count}} more",
     "noEvents": "Nothing coming up.",
+    "noEventsOnDay": "Nothing on this day.",
     "retry": "Try again",
+    "undo": "Undo",
+    "deleted": "Event deleted.",
     "saveFailed": "The event could not be saved.",
+    "deleteFailed": "The event could not be deleted.",
+    "restoreFailed": "The event could not be restored.",
     "loadFailed": "The calendar could not be loaded.",
+    "refreshFailed": "The calendar could not be refreshed — what you see may be out of date.",
     "signedOut": "Sign in to see your calendar.",
     "event": {
       "createTitle": "New event",
@@ -1502,12 +1512,16 @@
       "day": "Day",
       "allDay": "All day",
       "duration": "Length in minutes",
+      "durationInvalid": "Enter a length between 1 and {{max}} minutes.",
       "calendar": "Calendar",
       "description": "Notes",
+      "location": "Location",
+      "participants": "Participants",
       "save": "Save",
       "cancel": "Cancel",
       "delete": "Delete",
-      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it."
+      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it.",
+      "unresolvedReadOnly": "The server returned this as an occurrence that cannot be traced back to a stored event, so it can be viewed here but not changed — only in a calendar app that reaches the event itself."
     }
   },
   "files": {

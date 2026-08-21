@@ -1,14 +1,17 @@
 /**
  * Creating and editing a single calendar event (M5.11, FR-CAL-01) — a lazy chunk.
  *
- * **Single occurrences only.** A recurring event never reaches this dialog: `isEditable` refuses
- * both the master and an expanded occurrence, and the caller shows a read-only view instead.
+ * **Single occurrences only.** A recurring event never reaches this dialog: `refuseEdit` turns
+ * back both the master and an expanded occurrence, and the caller shows a read-only view instead.
  * Editing a series needs a scope editor ("this one" / "this and following" / "all") plus iTIP for
  * the participants, and half of that loses other people's time.
  *
  * The date and time are a native `datetime-local`, which is LOCAL wall-clock with no offset — the
  * same thing JSCalendar's `start` is. That correspondence is why no conversion happens here: what
  * the user types is what gets stored, and the zone travels beside it.
+ *
+ * Where the event carries a location or attendees, they are SHOWN and not offered for editing —
+ * see `EventFacts` for why that line is where it is, and for why saving cannot damage them.
  */
 
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
@@ -17,6 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Dialog, Select, TextInput } from '../ui'
 import styles from './calendar.module.css'
 import type { EventDraft } from './calendar-client'
+import { EventFacts } from './EventFacts'
 import { durationToMs } from './jscalendar-time'
 
 export interface EventDialogProps {
@@ -32,6 +36,15 @@ export interface EventDialogProps {
   onDestroy?: (() => void) | undefined
 }
 
+/**
+ * The longest an event may be, in minutes: 365 days.
+ *
+ * Not a technical limit — JSCalendar would take `P9999Y` — but the point at which a number stops
+ * being a length and starts being a typo. The field accepted 999 999 999 minutes, about nineteen
+ * centuries, and drew the resulting block across every view (T14).
+ */
+const MAX_MINUTES = 365 * 24 * 60
+
 /** `YYYY-MM-DDTHH:mm` in local time — the format `datetime-local` speaks. */
 function toInputValue(date: Date): string {
   const pad = (value: number): string => String(value).padStart(2, '0')
@@ -41,6 +54,20 @@ function toInputValue(date: Date): string {
 /** A JSCalendar local start (`2026-08-20T10:00:00`) is already almost this format. */
 function startToInputValue(start: string): string {
   return start.slice(0, 16)
+}
+
+/**
+ * The length in minutes, or `null` when the field does not hold one.
+ *
+ * Kept as TEXT in state and parsed here, rather than held as a number. `Number('')` is 0, so a
+ * controlled numeric field snapped to `0` the instant the field was emptied — the value could not
+ * be cleared and retyped, only overtyped (T14).
+ */
+export function parseDurationMinutes(text: string): number | null {
+  const trimmed = text.trim()
+  if (!/^\d+$/.test(trimmed)) return null
+  const value = Number(trimmed)
+  return value >= 1 && value <= MAX_MINUTES ? value : null
 }
 
 export default function EventDialog(props: EventDialogProps) {
@@ -57,10 +84,12 @@ export default function EventDialog(props: EventDialogProps) {
   const [start, setStart] = useState(() =>
     existing === null ? toInputValue(props.defaultDate) : startToInputValue(existing.start),
   )
-  const [minutes, setMinutes] = useState(() => {
+  const [duration, setDuration] = useState(() => {
     const ms = durationToMs(existing?.duration)
-    return ms > 0 ? Math.round(ms / 60_000) : 60
+    return String(ms > 0 ? Math.round(ms / 60_000) : 60)
   })
+  /** Set when the reader pressed Save on a length the app will not send. */
+  const [durationRejected, setDurationRejected] = useState(false)
   const [calendar, setCalendar] = useState(
     () =>
       Object.keys(existing?.calendarIds ?? {})[0] ??
@@ -80,9 +109,25 @@ export default function EventDialog(props: EventDialogProps) {
     >
       <form
         className={styles.eventForm}
+        /*
+         * `noValidate`, so the app answers rather than the browser.
+         *
+         * With the constraint on the input, Chrome refused the submit and showed its own bubble —
+         * in the BROWSER's language, not the page's, positioned by the browser, and gone on the
+         * next keystroke. Nothing else on the screen moved, no request went out, and the dialog
+         * looked inert (T14). The validation below says the same thing in the page's voice, and
+         * stays until it is fixed.
+         */
+        noValidate
         onSubmit={(event) => {
           event.preventDefault()
           if (!canSubmit) return
+          const minutes = allDay ? 1 : parseDurationMinutes(duration)
+          if (minutes === null) {
+            setDurationRejected(true)
+            return
+          }
+          setDurationRejected(false)
           props.onSubmit({
             calendarId: calendar,
             title: title.trim(),
@@ -142,10 +187,22 @@ export default function EventDialog(props: EventDialogProps) {
             <TextInput
               id={durationId}
               type="number"
-              min={1}
-              value={String(minutes)}
-              onChange={(event) => setMinutes(Number(event.target.value))}
+              inputMode="numeric"
+              value={duration}
+              aria-invalid={durationRejected}
+              {...(durationRejected ? { 'aria-describedby': `${durationId}-error` } : {})}
+              onChange={(event) => {
+                setDuration(event.target.value)
+                // The complaint goes as soon as the reader starts answering it; it comes back on
+                // the next Save if the answer is still not a length.
+                setDurationRejected(false)
+              }}
             />
+            {durationRejected && (
+              <p className={styles.fieldError} id={`${durationId}-error`}>
+                {t('calendar.event.durationInvalid', { max: MAX_MINUTES })}
+              </p>
+            )}
           </div>
         )}
 
@@ -179,9 +236,21 @@ export default function EventDialog(props: EventDialogProps) {
           />
         </div>
 
+        {existing !== null && <EventFacts event={existing} />}
+
         <div className={styles.formActions}>
           {props.onDestroy !== undefined && (
-            <Button type="button" variant="destructive" onClick={props.onDestroy}>
+            /* Delete sits at the far end of the row, away from Cancel and Save.
+               It used to stand immediately beside Cancel — two adjacent buttons, one of which
+               undoes the dialog and the other the event (T13). There is no confirmation: the
+               deletion is undoable from the toast it raises, which is how mail triage answers the
+               same question, and an Undo costs the careful reader nothing. */
+            <Button
+              type="button"
+              variant="destructive"
+              className={styles.deleteAction}
+              onClick={props.onDestroy}
+            >
               {t('calendar.event.delete')}
             </Button>
           )}
