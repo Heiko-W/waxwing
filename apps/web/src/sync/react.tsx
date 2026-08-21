@@ -13,6 +13,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
 import {
   type AddressBookRow,
+  type CalendarEventRow,
+  type CalendarRow,
   type ContactCardRow,
   getReplica,
   type IdentityRow,
@@ -23,8 +25,11 @@ import {
 } from './db'
 import {
   addressBooksForAccount,
+  calendarEventsByIds,
+  calendarsForAccount,
   contactCardsByIds,
   emailsByIds,
+  getCalendarQueryCache,
   getContactQueryCache,
   identitiesForAccount,
   mailboxByRole,
@@ -230,6 +235,66 @@ export function useContactCardResolved(id: Id): {
     [id],
   )
   return { settled: result !== undefined, card: result?.card }
+}
+
+// ── Calendar (K-8) ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The calendar list for the account, in draw order (K-8) — the analogue of {@link useAddressBooks}.
+ *
+ * OPTIONAL over the provider, for the reason {@link useMailboxOptional} documents: `SyncEngineHost`
+ * renders its children WITHOUT a provider for as long as the session takes to restore, and the
+ * calendar screen is one of those children. A throwing hook there is a white page on every reload.
+ */
+export function useCalendars(): CalendarRow[] | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<CalendarRow[] | undefined>(
+    async () =>
+      context === null ? undefined : await calendarsForAccount(context.db, context.accountId),
+    [context?.db, context?.accountId],
+  )
+}
+
+/** What one materialized calendar window holds, or `undefined` while the query resolves. */
+export interface CalendarWindow {
+  /** The expanded occurrences the grid draws, in server order; `undefined` per id not yet stored. */
+  readonly occurrences: (CalendarEventRow | undefined)[]
+  /** The stored objects behind them — the identity half; see {@link CalendarQueryCacheRow}. */
+  readonly objects: (CalendarEventRow | undefined)[]
+  /** When the window was last read from the server; `0` = never (nothing has arrived yet). */
+  readonly syncedAt: number
+  /** `true` when the window has never been materialized — "nothing yet", not "no events". */
+  readonly empty: boolean
+}
+
+/**
+ * A watched calendar window, read from the replica alone (K-8; key from `watchCalendarQuery`).
+ *
+ * THREE answers, and conflating any two of them produces a visible bug:
+ *  - `undefined` — the live query has not resolved, or there is no window to read (no provider, no
+ *    key yet). Nothing is known: show a spinner.
+ *  - `null` — the query answered and there is NO ROW. The engine has been asked for this window and
+ *    has not finished; a first visit is here for as long as the request takes. Also a spinner —
+ *    reading it as "empty" is what would flash "could not be loaded" over every first load.
+ *  - a window — the row exists. `syncedAt === 0` then means the engine TRIED and failed (it writes
+ *    that placeholder itself), which is the state the offline notice belongs to.
+ */
+export function useCalendarWindow(key: string): CalendarWindow | null | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<CalendarWindow | null | undefined>(async () => {
+    // Same provider-optional reasoning as {@link useCalendars} — and `''` is the "watch nothing"
+    // key the caller passes before the calendar list has arrived.
+    if (context === null || key === '') return undefined
+    const { db, accountId } = context
+    const row = await getCalendarQueryCache(db, accountId, key)
+    if (row === undefined) return null
+    return {
+      occurrences: await calendarEventsByIds(db, accountId, row.ids),
+      objects: await calendarEventsByIds(db, accountId, row.objectIds),
+      syncedAt: row.syncedAt,
+      empty: row.syncedAt === 0,
+    }
+  }, [context?.db, context?.accountId, key])
 }
 
 /** A local preference value (FR-MBX-04), typed by the caller. */

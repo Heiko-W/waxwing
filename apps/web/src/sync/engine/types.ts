@@ -8,6 +8,9 @@
 
 import type {
   AddressBook,
+  Calendar,
+  CalendarEvent,
+  CalendarEventFilter,
   ContactCard,
   ContactCardComparator,
   ContactCardFilter,
@@ -226,6 +229,36 @@ export interface JmapPort {
     destroy?: Id[]
     ifInState?: string | null
   }): Promise<PortSetResult>
+
+  // ── Calendar (K-8, `draft-ietf-jmap-calendars`) ────────────────────────────────────────────
+  // Calendars mirror the Mailbox surface (whole-account pull + a `/changes` delta). Events do NOT
+  // mirror the Email surface, and that is the whole design: the rows the grid draws are SYNTHETIC
+  // occurrences the server expanded, so there is no per-occurrence delta to ask for. The event feed
+  // therefore has exactly two jobs — advance a cursor and report WHICH STORED events moved — and the
+  // window itself is re-materialized by {@link queryCalendarEvents}.
+
+  /** `ids === null` fetches every calendar (the initial + reconciliation pull). */
+  getCalendars(ids: Id[] | null): Promise<GetResult<Calendar>>
+  /**
+   * The calendar-list delta. REJECTS with {@link CannotCalculateChangesError} when the server cannot
+   * compute one — which an account that has never had a calendar change genuinely cannot, and which
+   * means "re-read the list", not "something is broken".
+   */
+  calendarChanges(sinceState: string, maxChanges?: number): Promise<ChangesResult>
+
+  /**
+   * `CalendarEvent/get` for the given ids. `expanded` picks the property set: the rich one the grid
+   * draws with, or the lean identity set the unexpanded companion query needs.
+   */
+  getCalendarEvents(ids: Id[], expanded: boolean): Promise<GetResult<CalendarEvent>>
+  /**
+   * The STORED-event delta. Same `cannotCalculateChanges` contract as {@link calendarChanges}, and
+   * the same meaning: a fresh account has no history to diff, so the answer is "load it all", not an
+   * error the reader should ever see.
+   */
+  calendarEventChanges(sinceState: string, maxChanges?: number): Promise<ChangesResult>
+  /** One `CalendarEvent/query` page. `expandRecurrences` is what turns a rule into a month of rows. */
+  queryCalendarEvents(spec: CalendarQuerySpec): Promise<QueryResult>
 }
 
 /** The property set fetched for an email envelope row (kept in one place so port + tests agree). */
@@ -283,6 +316,88 @@ export const CONTACT_CARD_PROPERTIES: readonly (keyof ContactCard | string)[] = 
   'keywords',
   'members',
   'vCardProps',
+]
+
+/** A `CalendarEvent/query` (one page) — the calendar analogue of {@link ContactQuerySpec}. */
+export interface CalendarQuerySpec {
+  readonly filter?: CalendarEventFilter | null
+  /** Answer one id per OCCURRENCE rather than one per stored event. Requires `after` + `before`. */
+  readonly expandRecurrences?: boolean
+  readonly limit?: number
+  readonly calculateTotal?: boolean
+}
+
+/**
+ * Everything `eventSignature` reads — the join key that resolves an occurrence to its stored object
+ * on a server that omits `baseEventId`.
+ *
+ * Spread into BOTH event property lists below, because the join only works while the two queries ask
+ * for the same fields: a property that is not requested comes back absent, and two events both
+ * "missing" a title would then look alike to a signature built from one side only.
+ */
+export const CALENDAR_SIGNATURE_PROPERTIES: readonly string[] = [
+  'calendarIds',
+  'title',
+  'start',
+  'duration',
+  'showWithoutTime',
+]
+
+/**
+ * What a `Calendar/get` has to name to get a complete calendar.
+ *
+ * **The list exists because a bare `Calendar/get` is not a complete answer.** Measured: with no
+ * `properties` at all Stalwart returns `id, name, description, color, timeZone, sortOrder,
+ * isDefault, isSubscribed, myRights` — and silently omits `isVisible`, `shareWith`,
+ * `includeInAvailability` and both `defaultAlerts*` maps. A client that adds them to its type and
+ * leaves the request alone reads `undefined` for all five and concludes the server cannot do them.
+ */
+export const CALENDAR_PROPERTIES: readonly string[] = [
+  'id',
+  'name',
+  'description',
+  'color',
+  'timeZone',
+  'sortOrder',
+  'isDefault',
+  'isSubscribed',
+  'myRights',
+  // Everything from here down is omitted unless named. `isVisible` is the load-bearing one: only
+  // `false` means hidden, so a missing property is not "invisible".
+  'isVisible',
+  'includeInAvailability',
+  'defaultAlertsWithTime',
+  'defaultAlertsWithoutTime',
+  'shareWith',
+]
+
+/** The properties the calendar views actually read — a whole JSCalendar event is far larger. */
+export const CALENDAR_EVENT_PROPERTIES: readonly string[] = [
+  'id',
+  ...CALENDAR_SIGNATURE_PROPERTIES,
+  'description',
+  'timeZone',
+  'status',
+  'locations',
+  'participants',
+  'recurrenceId',
+  // K-5: an alarm set on a phone is invisible here unless it is asked for.
+  'alerts',
+  // Asked for although no view draws it: `isSeriesEvent` tests it, and a property that is never
+  // fetched always reads as absent — so the master of a series looked like a plain event. Note the
+  // name is SINGULAR on this server (ADR-025); the plural RFC 8984 spelling never comes back.
+  'recurrenceRule',
+  // The server's own answer to "which stored event is this an instance of". Only present on a
+  // synthetic id, which is exactly when it is needed — see `resolveIdentity`.
+  'baseEventId',
+  'isDraft',
+]
+
+/** What the unexpanded companion query needs, and nothing else — it is asked purely for identity. */
+export const CALENDAR_OBJECT_PROPERTIES: readonly string[] = [
+  'id',
+  ...CALENDAR_SIGNATURE_PROPERTIES,
+  'recurrenceRule',
 ]
 
 /**

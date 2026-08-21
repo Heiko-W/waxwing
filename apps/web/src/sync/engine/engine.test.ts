@@ -260,6 +260,21 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
     async setContactCards() {
       return emptySet()
     },
+    async getCalendars() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async calendarChanges(s: string) {
+      return emptyChanges(s)
+    },
+    async getCalendarEvents() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async calendarEventChanges(s: string) {
+      return emptyChanges(s)
+    },
+    async queryCalendarEvents() {
+      return { ids: [], queryState: 'q', canCalculateChanges: true, position: 0 }
+    },
   }
 }
 
@@ -321,6 +336,72 @@ describe('SyncEngine', () => {
 
     await engine.stop()
     expect(push.closed).toBe(true)
+  })
+
+  it('a server without calendars does not take mail sync down with it (K-8)', async () => {
+    /*
+     * `Calendar/get` puts `urn:ietf:params:jmap:calendars` in `using`, and a server that does not
+     * know the URN refuses the whole REQUEST (RFC 8620 §3.3). The pass reports ONE status, so an
+     * unguarded calendar leg would leave the chrome in `error`, retrying and failing for ever, on an
+     * account whose mail is perfectly fine.
+     */
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      getCalendars: async () => {
+        throw new Error('unknownCapability')
+      },
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle' && engine.getStatus().isLeader)
+
+    expect(engine.getStatus().error).toBeNull()
+    expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
+
+    await engine.stop()
+  })
+
+  it('materializes a watched calendar window into the replica (K-8)', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      queryCalendarEvents: async (spec) => ({
+        ids: spec.expandRecurrences === true ? ['occ-1'] : ['e-master'],
+        queryState: 'q',
+        canCalculateChanges: false,
+        position: 0,
+      }),
+      getCalendarEvents: async (ids) => ({
+        list: ids.map(
+          (id) =>
+            ({
+              id,
+              calendarIds: { c1: true },
+              title: id,
+              start: '2026-08-20T09:00:00',
+              ...(id === 'occ-1' ? { baseEventId: 'e-master' } : {}),
+            }) as never,
+        ),
+        notFound: [],
+        state: 'cv1',
+      }),
+    }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader)
+    const key = engine.watchCalendarQuery({ filter: { inCalendar: 'c1' } })
+    await waitFor(async () => (await db.calendarQueryCache.get([ACC, key])) !== undefined)
+
+    const row = await db.calendarQueryCache.get([ACC, key])
+    expect(row?.ids).toEqual(['occ-1'])
+    expect(row?.objectIds).toEqual(['e-master'])
+    // The occurrence row keeps the link back to the writable master — what the screen resolves with.
+    expect((await db.calendarEvents.get([ACC, 'occ-1']))?.base).toBe('e-master')
+
+    await engine.stop()
   })
 
   it('fetches identities once per session, not on every sync sweep (M2.5)', async () => {

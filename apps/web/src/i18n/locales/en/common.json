@@ -1793,6 +1793,12 @@
   "calendar": {
     "offline": "You are offline. Events can only be created while connected.",
     "offlineOpen": "You are offline. Events can only be opened and changed while connected.",
+    "offlineStale": "Not updating while offline. Last updated {{when}}.",
+    "offlineNotUpdating": "Not updating while offline.",
+    "offlineNever": {
+      "title": "This month has not been synced yet",
+      "body": "Connect once and your calendar will be here the next time you are offline."
+    },
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",

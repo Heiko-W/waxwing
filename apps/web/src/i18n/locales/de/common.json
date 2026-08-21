@@ -1793,6 +1793,12 @@
   "calendar": {
     "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
     "offlineOpen": "Sie sind offline. Termine lassen sich nur mit Verbindung öffnen und ändern.",
+    "offlineStale": "Offline — wird gerade nicht aktualisiert. Zuletzt aktualisiert {{when}}.",
+    "offlineNotUpdating": "Offline — wird gerade nicht aktualisiert.",
+    "offlineNever": {
+      "title": "Dieser Monat wurde noch nicht synchronisiert",
+      "body": "Einmal verbinden, dann ist Ihr Kalender beim nächsten Mal auch offline da."
+    },
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",

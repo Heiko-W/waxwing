@@ -38,15 +38,22 @@ import {
   type ReplicaDb,
   scopeKey,
 } from '../db'
-import { canonicalContactQueryKey, canonicalQueryKey, type QuerySpec } from '../query-key'
+import {
+  canonicalCalendarQueryKey,
+  canonicalContactQueryKey,
+  canonicalQueryKey,
+  type QuerySpec,
+} from '../query-key'
 import {
   failedOutbox,
+  getCalendarQueryCache,
   getContactQueryCache,
   getQueryCache,
   getSyncState,
   mailboxByRole,
   newestReceivedAt,
   pendingOutbox,
+  putCalendarQueryCache,
   putContactQueryCache,
   putEmailBody,
   putEmails,
@@ -65,11 +72,15 @@ import { backoffDelayMs, clampRetryAfter, STUCK_AFTER_ATTEMPTS } from './backoff
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
 import { isAuthExpiry } from './conflict'
 import {
+  type CalendarQuerySpecInput,
   type ContactQuerySpecInput,
   hydrateMissingContacts,
+  reconcileCalendarQuery,
   reconcileContactQuery,
   reconcileQuery,
   syncAddressBooks,
+  syncCalendarEvents,
+  syncCalendars,
   syncContactCards,
   syncEmails,
   syncIdentities,
@@ -114,6 +125,10 @@ const WATCHED_TYPES = [
   'Email',
   'AddressBook',
   'ContactCard',
+  // K-8: the calendar has a replica now, so a colour changed on a phone or an event moved by a
+  // colleague has to arrive on its own rather than on the next 60 s sweep.
+  'Calendar',
+  'CalendarEvent',
   SHARE_NOTIFICATION_TYPE,
 ]
 
@@ -273,6 +288,11 @@ export class SyncEngine {
   private readonly watchedContacts = new Set<string>()
   /** Contact query keys with a backfill in flight — same unwatch→rewatch dedup as {@link inFlightBackfills}. */
   private readonly inFlightContactBackfills = new Set<string>()
+
+  /** Canonical keys of the CALENDAR windows kept fresh (K-8); filters live in the cache row. */
+  private readonly watchedCalendars = new Set<string>()
+  /** Calendar keys with a materialization in flight — same dedup as {@link inFlightBackfills}. */
+  private readonly inFlightCalendarBackfills = new Set<string>()
 
   /** Identities are pulled once per leadership session (M2.5; Identity/changes deferred). */
   private identitiesSynced = false
@@ -754,6 +774,77 @@ export class SyncEngine {
       })
     } finally {
       this.inFlightContactBackfills.delete(key)
+    }
+  }
+
+  /**
+   * Register a watched calendar window (K-8) — one month grid for one set of visible calendars.
+   * Returns the canonical key SYNCHRONOUSLY so the caller can subscribe to `calendarQueryCache[key]`
+   * immediately and render whatever the replica already holds; the materialization runs in the
+   * background. The caller MUST {@link unwatchCalendarQuery} on unmount or when the month changes.
+   */
+  watchCalendarQuery(spec: CalendarQuerySpecInput): string {
+    const key = canonicalCalendarQueryKey({ filter: spec.filter ?? null, expandRecurrences: true })
+    if (this.watchedCalendars.has(key)) return key
+    this.watchedCalendars.add(key)
+    void this.backfillCalendarQueryIfAbsent(key, spec)
+    return key
+  }
+
+  /** Stop keeping a calendar window fresh (a month left behind stays in the replica until reaped). */
+  unwatchCalendarQuery(key: string): void {
+    this.watchedCalendars.delete(key)
+  }
+
+  /**
+   * Re-read one calendar window NOW (K-8).
+   *
+   * What a local write calls the moment the server has accepted it. Without it the grid would show
+   * the change on the next 60 s sweep — the reader saves an event and watches the old month sit
+   * there, which is indistinguishable from the save having failed. Rejections are swallowed: the
+   * write already succeeded, and the sweep will catch up.
+   */
+  async refreshCalendarWindow(spec: CalendarQuerySpecInput): Promise<void> {
+    const key = canonicalCalendarQueryKey({ filter: spec.filter ?? null, expandRecurrences: true })
+    try {
+      await reconcileCalendarQuery(this.port, this.db, this.accountId, key, spec, this.clock, true)
+    } catch {
+      /* the next sweep re-reads it */
+    }
+  }
+
+  private async backfillCalendarQueryIfAbsent(
+    key: string,
+    spec: CalendarQuerySpecInput,
+  ): Promise<void> {
+    if (this.inFlightCalendarBackfills.has(key)) return
+    const existing = await getCalendarQueryCache(this.db, this.accountId, key)
+    if (existing !== undefined && !existing.stale) {
+      if (this.isLeader) void this.sync()
+      return
+    }
+    this.inFlightCalendarBackfills.add(key)
+    try {
+      await reconcileCalendarQuery(this.port, this.db, this.accountId, key, spec, this.clock, true)
+    } catch {
+      if (this.stopController.signal.aborted) return
+      // Offline is the ORDINARY reason to land here, and it must change nothing: an existing window
+      // stays exactly as it was so the month keeps rendering from the replica. Only a window that
+      // has never been materialized gets the empty placeholder, so a first visit says "nothing yet"
+      // instead of spinning for ever; it stays `stale`, so the next pass re-reads it.
+      if (existing !== undefined) return
+      await putCalendarQueryCache(this.db, {
+        accountId: this.accountId,
+        key,
+        ids: [],
+        objectIds: [],
+        filter: spec.filter ?? null,
+        stale: true,
+        syncedAt: 0,
+        lastUsedAt: this.clock.now(),
+      })
+    } finally {
+      this.inFlightCalendarBackfills.delete(key)
     }
   }
 
@@ -1377,6 +1468,24 @@ export class SyncEngine {
     await syncAddressBooks(this.port, this.db, this.accountId, this.clock)
     await syncContactCards(this.port, this.db, this.accountId, this.clock)
     await this.reconcileWatchedContacts(forceFull)
+    // Calendar (K-8): the calendar list (pulled whole) + the STORED-event delta, which only marks
+    // windows stale, + the windows themselves. Order matters — the delta is what tells the
+    // reconcile there is anything to do.
+    //
+    // ISOLATED, and this guard is not defensive habit. `Calendar/get` adds
+    // `urn:ietf:params:jmap:calendars` to `using`, and RFC 8620 §3.3 has a server refuse a request
+    // naming a URN it does not know — Stalwart refuses the whole REQUEST for one (see the note on
+    // `Capabilities.mailShare`). Unguarded, a server with no calendar support would fail this leg on
+    // every pass, and the pass reports one status: MAIL would sit in `phase: 'error'`, retrying and
+    // failing for ever, on an account whose mail is perfectly fine. Auth expiry still propagates, so
+    // the re-auth funnel is unaffected (FR-AUTH-06).
+    try {
+      await syncCalendars(this.port, this.db, this.accountId, this.clock)
+      await syncCalendarEvents(this.port, this.db, this.accountId, this.clock)
+      await this.reconcileWatchedCalendars(forceFull)
+    } catch (error) {
+      if (isAuthExpiry(error)) throw error
+    }
     return created
   }
 
@@ -1536,6 +1645,32 @@ export class SyncEngine {
           this.accountId,
           key,
           spec,
+          this.clock,
+          forceFull,
+        )
+      } catch (error) {
+        if (isAuthExpiry(error)) throw error
+      }
+    }
+  }
+
+  /**
+   * Keep the watched CALENDAR windows fresh (K-8). Cheaper than its siblings by construction:
+   * {@link reconcileCalendarQuery} returns immediately unless the window is stale or the pass is a
+   * forced one, so an idle calendar costs nothing per sweep. Per-key isolation + auth-expiry
+   * re-throw as on the mail side.
+   */
+  private async reconcileWatchedCalendars(forceFull: boolean): Promise<void> {
+    for (const key of this.watchedCalendars) {
+      const row = await getCalendarQueryCache(this.db, this.accountId, key)
+      if (!row) continue
+      try {
+        await reconcileCalendarQuery(
+          this.port,
+          this.db,
+          this.accountId,
+          key,
+          { filter: row.filter },
           this.clock,
           forceFull,
         )

@@ -38,12 +38,13 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CloudOff,
   Import,
   Plus,
   SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
@@ -51,7 +52,8 @@ import { useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { useOnline } from '../app/use-online'
-import { formatDate } from '../i18n/formatters'
+import { formatDate, formatRelativeTime } from '../i18n/formatters'
+import { useCalendars } from '../sync'
 import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from '../ui'
 import styles from './calendar.module.css'
 import {
@@ -66,6 +68,7 @@ import {
 } from './calendar-client'
 import { DEFAULT_MAX_PARTICIPANTS, ownAddresses } from './event-participants'
 import type { EditScope } from './event-recurrence'
+import { useCalendarEvents } from './use-calendar-events'
 
 const EventDialog = lazy(() => import('./EventDialog'))
 /*
@@ -163,20 +166,14 @@ export default function CalendarPage(props: CalendarPageProps) {
   const [expandedDay, setExpandedDay] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
   /**
-   * The last answer, **stamped with the window it answers about**.
+   * The event list no longer needs a stamp, and that is K-8's doing rather than a simplification.
    *
-   * Holding a bare list is what let September show August's events: the fetch for the new month was
-   * still in flight, `events` still held the old month's, and the grid drew them under the new
-   * heading as if they were real (T5). Stamping makes staleness a question the render can answer —
-   * a list whose window is not the window on screen is simply not shown.
+   * It used to hold "the last answer, stamped with the window it answers about", because the answer
+   * arrived asynchronously into component state and the fetch for a new month could land after the
+   * reader had paged again (T5). The list now comes from the replica keyed BY that window, so a
+   * month can only ever render its own rows: the staleness question the stamp answered cannot be
+   * asked any more.
    */
-  const [loaded, setLoaded] = useState<{
-    fromMs: number
-    toMs: number
-    /** Which calendars the list answers about — see `visibleKey`. */
-    visibleKey: string
-    list: PlacedEvent[]
-  } | null>(null)
   const [failed, setFailed] = useState(false)
   /** `{ calendar }` edits, `{ calendar: null }` creates. */
   const [editingCalendar, setEditingCalendar] = useState<{ calendar: Calendar | null } | null>(null)
@@ -248,13 +245,24 @@ export default function CalendarPage(props: CalendarPageProps) {
   }, [focus, locale])
 
   /**
-   * Which fetch is the current one.
+   * The calendar list, read the way the folder tree is: from the replica.
    *
-   * Two loads can be in flight after quick paging, and they can answer out of order. Without this
-   * the older answer wins and the screen settles on the wrong month's data — the same class of bug
-   * as the stale list above, arriving by a different route.
+   * The network read below still runs and still wins — it is how a calendar created on this device
+   * appears before the next sweep. What changed is what happens when it does not answer: the
+   * replica's copy is drawn instead of an empty rail, which is the difference between a calendar
+   * that shows the events it already holds under their own names and one that shows nothing at all
+   * because it does not know which calendars to ask for.
    */
-  const request = useRef(0)
+  const replicaCalendars = useCalendars()
+
+  /**
+   * What the rail draws and what the month filter names — the network's answer once it has one, the
+   * replica's until then. `null` while neither has answered.
+   */
+  const effectiveCalendars = useMemo<Calendar[] | null>(
+    () => (calendarsLoaded ? calendars : (replicaCalendars ?? null)),
+    [calendars, calendarsLoaded, replicaCalendars],
+  )
 
   /**
    * `null` until the calendars are known; then the ids whose events to ask for.
@@ -264,38 +272,23 @@ export default function CalendarPage(props: CalendarPageProps) {
    * every event for one paint and then take the hidden ones away again.
    */
   const visibleIds = useMemo(
-    () => (calendarsLoaded ? visibleCalendarIds(calendars) : null),
-    [calendars, calendarsLoaded],
+    () => (effectiveCalendars === null ? null : visibleCalendarIds(effectiveCalendars)),
+    [effectiveCalendars],
   )
-  /** A stable stamp for "which calendars this answer is about", for the staleness check below. */
-  const visibleKey = (visibleIds ?? []).join(',')
+
+  /** The month, from the replica (K-8). The engine keeps it fresh; this never fetches. */
+  const { events, syncedAt, neverSynced, refresh } = useCalendarEvents(fromMs, toMs, visibleIds)
 
   const loadCalendars = useCallback(async () => {
     if (client === null) return
     try {
       setCalendars(await client.listCalendars())
       setCalendarsLoaded(true)
+      setFailed(false)
     } catch {
       setFailed(true)
     }
   }, [client])
-
-  const load = useCallback(async () => {
-    if (client === null || visibleIds === null) return
-    request.current += 1
-    const mine = request.current
-    // Clearing the failure at the START of the attempt, so a retry shows that it is trying rather
-    // than leaving the error on screen until it either succeeds or fails again.
-    setFailed(false)
-    try {
-      const inRange = await client.eventsInRange(new Date(fromMs), new Date(toMs), visibleIds)
-      if (mine !== request.current) return
-      setLoaded({ fromMs, toMs, visibleKey, list: inRange })
-    } catch {
-      if (mine !== request.current) return
-      setFailed(true)
-    }
-  }, [client, fromMs, toMs, visibleIds, visibleKey])
 
   useEffect(() => {
     void loadCalendars()
@@ -316,9 +309,17 @@ export default function CalendarPage(props: CalendarPageProps) {
     }
   }, [client])
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  /**
+   * Try everything the screen needs again — the calendar list AND the month.
+   *
+   * Both, because they fail together and independently: the rail is a `Calendar/get` and the grid a
+   * pair of `CalendarEvent` calls, and a "Try again" that re-read only one of them would leave the
+   * other's failure on screen with no way to clear it.
+   */
+  const retry = useCallback(async () => {
+    await loadCalendars()
+    await refresh()
+  }, [loadCalendars, refresh])
 
   const goto = useCallback(
     (date: Date): void => navigate(calendarPath(toIsoDate(date))),
@@ -346,7 +347,7 @@ export default function CalendarPage(props: CalendarPageProps) {
     try {
       const value = await action()
       setEditing(null)
-      await load()
+      await refresh()
       return { ok: true, value }
     } catch (error) {
       toast({
@@ -527,15 +528,6 @@ export default function CalendarPage(props: CalendarPageProps) {
       </div>
     )
   }
-
-  /** Only ever the list that answers about the window on screen — see `loaded`. */
-  const events =
-    loaded !== null &&
-    loaded.fromMs === fromMs &&
-    loaded.toMs === toMs &&
-    loaded.visibleKey === visibleKey
-      ? loaded.list
-      : null
 
   const days = monthGrid(focus, locale, today)
   const week = weekDays(focus, firstDayOfWeek(locale))
@@ -750,36 +742,60 @@ export default function CalendarPage(props: CalendarPageProps) {
         )}
         <div className={styles.main}>
           {/*
-            Exactly ONE of: the failure, the spinner, the view.
+            Exactly ONE of: the "nothing here yet" pane, the spinner, the view.
 
-            All three used to be able to stand in the DOM at once, and the combination was the worst of
-            the three: a red "could not be loaded" over a grid that looked complete and was not (T5).
-            A failure with usable data for THIS window keeps the data and reports in one line above it;
-            a failure with nothing to show takes the whole pane, which is where a Try again belongs.
+            The order is what K-8 changed. It used to be failure-first, so ONE refused request turned
+            a month the device already held into "The calendar could not be loaded" — the reader was
+            shown an error instead of their own data. Now a window that has ever synced is DRAWN,
+            whatever the network is doing, and the fact that it is not updating right now is said in
+            one line above it. The full-pane state is reserved for the case where there is genuinely
+            nothing to draw: a month this device has never synced.
+
+            The failure line still exists, and it is still one line: a stale grid with a note is a far
+            better answer than a red pane over data (T5).
           */}
-          {failed && events === null ? (
+          {events !== undefined && neverSynced && events.length === 0 ? (
             <EmptyState
-              tone="error"
-              icon={TriangleAlert}
-              title={t('calendar.loadFailed')}
-              action={
-                <Button variant="secondary" onClick={() => void load()}>
-                  {t('calendar.retry')}
-                </Button>
-              }
+              tone={online ? 'error' : 'empty'}
+              icon={online ? TriangleAlert : CloudOff}
+              title={online ? t('calendar.loadFailed') : t('calendar.offlineNever.title')}
+              {...(online
+                ? {
+                    action: (
+                      <Button variant="secondary" onClick={() => void retry()}>
+                        {t('calendar.retry')}
+                      </Button>
+                    ),
+                  }
+                : { description: t('calendar.offlineNever.body') })}
             />
           ) : (
             <>
-              {failed && (
+              {/*
+                Apple's answer to "the data on screen is not live": say so quietly, beside the data,
+                and never take the data away. `role="status"` rather than `alert` — nothing is wrong,
+                and a screen reader should hear it after whatever the reader was doing, not instead.
+              */}
+              {!online && events !== undefined && (
+                <div className={styles.loadError} role="status">
+                  <CloudOff aria-hidden="true" />
+                  <span className={styles.loadErrorText}>
+                    {syncedAt > 0
+                      ? t('calendar.offlineStale', { when: formatRelativeTime(syncedAt) })
+                      : t('calendar.offlineNotUpdating')}
+                  </span>
+                </div>
+              )}
+              {online && failed && (
                 <div className={styles.loadError} role="alert">
                   <TriangleAlert aria-hidden="true" />
                   <span className={styles.loadErrorText}>{t('calendar.refreshFailed')}</span>
-                  <Button variant="secondary" size="sm" onClick={() => void load()}>
+                  <Button variant="secondary" size="sm" onClick={() => void retry()}>
                     {t('calendar.retry')}
                   </Button>
                 </div>
               )}
-              {events === null ? (
+              {events === undefined ? (
                 <div className={styles.loading}>
                   <Spinner label={t('ui.spinner.label')} />
                 </div>
@@ -877,7 +893,7 @@ export default function CalendarPage(props: CalendarPageProps) {
             onClose={() => setImporting(false)}
             onImported={() => {
               setImporting(false)
-              void load()
+              void refresh()
             }}
           />
         </Suspense>

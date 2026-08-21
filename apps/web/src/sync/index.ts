@@ -24,6 +24,9 @@ export {
   BLOB_META_OVERHEAD_BYTES,
   type BlobMetaRow,
   BODY_OVERHEAD_BYTES,
+  type CalendarEventRow,
+  type CalendarQueryCacheRow,
+  type CalendarRow,
   type ConflictCode,
   type ContactCardRow,
   type ContactQueryCacheRow,
@@ -58,6 +61,8 @@ export {
   setReplicaName,
   type ThreadRow,
   toAddressBookRow,
+  toCalendarEventRow,
+  toCalendarRow,
   toContactCardRow,
   toEmailRow,
   toIdentityRow,
@@ -72,13 +77,21 @@ export {
   releaseEphemeralClaim,
   sweepEphemeral,
 } from './ephemeral'
-export { canonicalContactQueryKey, canonicalQueryKey, type QuerySpec } from './query-key'
 export {
+  canonicalCalendarQueryKey,
+  canonicalContactQueryKey,
+  canonicalQueryKey,
+  type QuerySpec,
+} from './query-key'
+export {
+  type CalendarWindow,
   getActiveReplica,
   type ReplicaContextValue,
   ReplicaProvider,
   type ReplicaProviderProps,
   useAddressBooks,
+  useCalendars,
+  useCalendarWindow,
   useContactCard,
   useContactCardResolved,
   useContactWindow,

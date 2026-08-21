@@ -59,6 +59,11 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     queryContactCards: unused,
     queryContactCardChanges: unused,
     setContactCards: unused,
+    getCalendars: unused,
+    calendarChanges: unused,
+    getCalendarEvents: unused,
+    calendarEventChanges: unused,
+    queryCalendarEvents: unused,
   }
   return { ...base, ...overrides }
 }

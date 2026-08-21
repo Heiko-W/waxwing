@@ -382,6 +382,12 @@ class FakeServer {
       queryContactCardChanges: async () =>
         guard(() => ({ oldQueryState: 'cq', newQueryState: 'cq', removed: [], added: [] })),
       setContactCards: async () => guard(() => this.emptySet()),
+      getCalendars: async () => guard(() => ({ list: [], notFound: [], state: 's' })),
+      calendarChanges: async (state) => guard(() => changes(state)),
+      getCalendarEvents: async () => guard(() => ({ list: [], notFound: [], state: 's' })),
+      calendarEventChanges: async (state) => guard(() => changes(state)),
+      queryCalendarEvents: async () =>
+        guard(() => ({ ids: [], queryState: 'q', canCalculateChanges: true, position: 0 })),
     }
   }
 }

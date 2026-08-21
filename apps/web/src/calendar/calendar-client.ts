@@ -90,6 +90,15 @@ import type {
 } from '@waxwing/jmap'
 import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
+// The property lists live with the sync engine's port contract, not here: the replica (K-8) and this
+// online client MUST ask for the same fields or an event read offline would be missing whatever only
+// one of them named — and `eventSignature`'s join breaks outright if the two lists drift.
+import {
+  CALENDAR_EVENT_PROPERTIES,
+  CALENDAR_OBJECT_PROPERTIES,
+  CALENDAR_PROPERTIES,
+  CALENDAR_SIGNATURE_PROPERTIES,
+} from '../sync/engine/types'
 import { alertsToPatch, type EventAlerts } from './event-alerts'
 import { type ParticipantRow, participantsToPatch, rsvpPatch } from './event-participants'
 import {
@@ -484,71 +493,6 @@ export function calendarFilter(
 }
 
 /**
- * Everything {@link eventSignature} reads.
- *
- * Named once and spread into BOTH property lists below, because the join only works while the two
- * queries are asked for the same fields: a property that is not requested comes back absent, and
- * two events both "missing" a title would then look alike to a signature built from one side only.
- */
-const SIGNATURE_PROPERTIES = ['calendarIds', 'title', 'start', 'duration', 'showWithoutTime']
-
-/** The properties the views actually read — a whole JSCalendar event is far larger. */
-const EVENT_PROPERTIES = [
-  'id',
-  ...SIGNATURE_PROPERTIES,
-  'description',
-  'timeZone',
-  'status',
-  'locations',
-  'participants',
-  'recurrenceId',
-  // K-5: asked for at last. `alerts` was in NO property list this client sent, so an alarm set on a
-  // phone was invisible here — the editor could not show it, and only the fact that `draftToEvent`
-  // is a patch kept a title change from being the moment it disappeared.
-  'alerts',
-  // Asked for although no view draws it: `isSeriesEvent` tests it, and a property that is never
-  // fetched always reads as absent — so the master of a series looked like a plain event. It read
-  // as absent for a second reason too, until ADR-025: the name is SINGULAR on this server, and the
-  // plural RFC 8984 spelling this line used to carry was never going to come back.
-  'recurrenceRule',
-  // The server's own answer to "which stored event is this an instance of". Only present on a
-  // synthetic id, which is exactly when it is needed — see `resolveIdentity`.
-  'baseEventId',
-  'isDraft',
-]
-
-/** What the unexpanded companion query needs, and nothing else — it is asked purely for identity. */
-const IDENTITY_PROPERTIES = ['id', ...SIGNATURE_PROPERTIES, 'recurrenceRule']
-
-/**
- * What a `Calendar/get` has to name to get a complete calendar.
- *
- * **The list exists because a bare `Calendar/get` is not a complete answer.** Measured: with no
- * `properties` at all Stalwart returns `id, name, description, color, timeZone, sortOrder,
- * isDefault, isSubscribed, myRights` — and silently omits `isVisible`, `shareWith`,
- * `includeInAvailability` and both `defaultAlerts*` maps. A client that adds them to its type and
- * leaves the request alone reads `undefined` for all five and concludes the server cannot do them.
- */
-const CALENDAR_PROPERTIES = [
-  'id',
-  'name',
-  'description',
-  'color',
-  'timeZone',
-  'sortOrder',
-  'isDefault',
-  'isSubscribed',
-  'myRights',
-  // Everything from here down is omitted unless named. `isVisible` is the load-bearing one: only
-  // `false` means hidden (see `Calendar.isVisible`), so a missing property is not "invisible".
-  'isVisible',
-  'includeInAvailability',
-  'defaultAlertsWithTime',
-  'defaultAlertsWithoutTime',
-  'shareWith',
-]
-
-/**
  * Server-owned properties, dropped when an event is re-created from a snapshot.
  *
  * `uid` is deliberately NOT in this list. This server does not send one (see the note at the top),
@@ -711,7 +655,11 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const responses = await client.call([
         // `properties` is named, and that is not tidiness: without it the answer silently lacks
         // `isVisible` and the four other opt-in properties. See CALENDAR_PROPERTIES.
-        [Methods.calendarGet.name, { accountId, ids: null, properties: CALENDAR_PROPERTIES }, 'c0'],
+        [
+          Methods.calendarGet.name,
+          { accountId, ids: null, properties: [...CALENDAR_PROPERTIES] },
+          'c0',
+        ],
       ])
       return responses.get<{ list: Calendar[] }>('c0').list
     },
@@ -793,7 +741,7 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const occurrences = builder.invoke(Methods.calendarEventGet, {
         accountId,
         '#ids': occurrenceQuery.ref('/ids'),
-        properties: EVENT_PROPERTIES,
+        properties: [...CALENDAR_EVENT_PROPERTIES],
       })
       // What a write may address: the same window WITHOUT expansion, which is the query whose ids
       // are real. Two more calls inside the same request, so it stays one round trip.
@@ -801,7 +749,7 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const objects = builder.invoke(Methods.calendarEventGet, {
         accountId,
         '#ids': objectQuery.ref('/ids'),
-        properties: IDENTITY_PROPERTIES,
+        properties: [...CALENDAR_OBJECT_PROPERTIES],
       })
       const responses = await builder.send()
 
@@ -887,7 +835,7 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
         properties: [
           'id',
           'recurrenceOverrides',
-          ...SIGNATURE_PROPERTIES,
+          ...CALENDAR_SIGNATURE_PROPERTIES,
           'description',
           'timeZone',
           'alerts',

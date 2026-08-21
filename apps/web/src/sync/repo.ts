@@ -6,7 +6,16 @@
  * liveQuery hooks in `./react`).
  */
 
-import type { AddressBook, ContactCard, Id, Identity, Mailbox, Thread } from '@waxwing/jmap'
+import type {
+  AddressBook,
+  Calendar,
+  CalendarEvent,
+  ContactCard,
+  Id,
+  Identity,
+  Mailbox,
+  Thread,
+} from '@waxwing/jmap'
 import Dexie from 'dexie'
 import { LABELS_PREF_KEY, type LabelPref } from '../mail/labels/label-model'
 import { PINNED_PREF_KEY, type PinnedPref } from '../mail/pinned/pinned-model'
@@ -22,6 +31,9 @@ import {
   type AddressBookRow,
   type AddressStatRow,
   type BlobMetaRow,
+  type CalendarEventRow,
+  type CalendarQueryCacheRow,
+  type CalendarRow,
   type ContactCardRow,
   type ContactQueryCacheRow,
   collectBodyBlobIds,
@@ -41,6 +53,8 @@ import {
   scopeKey,
   type ThreadRow,
   toAddressBookRow,
+  toCalendarEventRow,
+  toCalendarRow,
   toContactCardRow,
   toEmailRow,
   toIdentityRow,
@@ -1010,4 +1024,108 @@ export function getContactQueryCache(
   key: string,
 ): Promise<ContactQueryCacheRow | undefined> {
   return db.contactQueryCache.get([accountId, key])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Calendar (K-8). The calendar list mirrors the folder tree (fetched whole, sorted in memory); the
+// events are a window of expanded occurrences plus the stored objects behind them — see the note on
+// {@link CalendarQueryCacheRow} for why both are kept.
+// ---------------------------------------------------------------------------------------------
+
+export async function putCalendars(
+  db: ReplicaDb,
+  accountId: Id,
+  calendars: Calendar[],
+): Promise<void> {
+  await db.calendars.bulkPut(calendars.map((calendar) => toCalendarRow(accountId, calendar)))
+}
+
+/** Every calendar for an account, in the order the list draws them (`sortOrder`, then name). */
+export async function calendarsForAccount(db: ReplicaDb, accountId: Id): Promise<CalendarRow[]> {
+  const rows = await db.calendars.where('accountId').equals(accountId).toArray()
+  return rows.sort(
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.name ?? '').localeCompare(b.name ?? ''),
+  )
+}
+
+export function deleteCalendars(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.calendars.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
+/**
+ * Store one query's answer. `occurrence` says which half of the pair this is, and it is written onto
+ * every row rather than inferred, because for a server that does not synthesise ids the two halves
+ * are the same records and only the caller knows which query produced them.
+ */
+export async function putCalendarEvents(
+  db: ReplicaDb,
+  accountId: Id,
+  events: CalendarEvent[],
+  occurrence: boolean,
+): Promise<void> {
+  await db.calendarEvents.bulkPut(
+    events.map((event) => toCalendarEventRow(accountId, event, occurrence)),
+  )
+}
+
+/** Rows for `ids` in the SAME order, `undefined` where the replica has none — mirrors {@link emailsByIds}. */
+export function calendarEventsByIds(
+  db: ReplicaDb,
+  accountId: Id,
+  ids: Id[],
+): Promise<(CalendarEventRow | undefined)[]> {
+  return db.calendarEvents.bulkGet(ids.map((id) => [accountId, id]))
+}
+
+/**
+ * Every row descended from one STORED event id — the occurrences a delta on that id invalidated,
+ * plus the object itself. Served off the `[accountId+base]` index, which is what the derived `base`
+ * field exists for.
+ */
+export function calendarEventsForBase(
+  db: ReplicaDb,
+  accountId: Id,
+  baseId: Id,
+): Promise<CalendarEventRow[]> {
+  return db.calendarEvents.where('[accountId+base]').equals([accountId, baseId]).toArray()
+}
+
+export function deleteCalendarEvents(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
+  return db.calendarEvents.bulkDelete(ids.map((id) => [accountId, id]))
+}
+
+export async function putCalendarQueryCache(
+  db: ReplicaDb,
+  row: CalendarQueryCacheRow,
+): Promise<void> {
+  await db.calendarQueryCache.put(row)
+}
+
+export function getCalendarQueryCache(
+  db: ReplicaDb,
+  accountId: Id,
+  key: string,
+): Promise<CalendarQueryCacheRow | undefined> {
+  return db.calendarQueryCache.get([accountId, key])
+}
+
+export function calendarQueryCacheForAccount(
+  db: ReplicaDb,
+  accountId: Id,
+): Promise<CalendarQueryCacheRow[]> {
+  return db.calendarQueryCache.where('accountId').equals(accountId).toArray()
+}
+
+/**
+ * Mark every watched calendar window stale — "re-materialize this from the server when you next
+ * can". The recovery path for a delta the server could not compute (`cannotCalculateChanges`), and
+ * the one thing a client may safely conclude from it: not an error, just a full reload.
+ */
+export async function markCalendarWindowsStale(db: ReplicaDb, accountId: Id): Promise<void> {
+  await db.calendarQueryCache
+    .where('accountId')
+    .equals(accountId)
+    .modify((row) => {
+      row.stale = true
+    })
 }
