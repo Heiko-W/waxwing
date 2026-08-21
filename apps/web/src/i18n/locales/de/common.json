@@ -1579,6 +1579,7 @@
     },
     "preview": "{{name}} ansehen",
     "hidePreview": "Vorschau von {{name}} schließen",
+    "more": "Weitere Aktionen für {{name}}",
     "share": {
       "open": "{{name}} freigeben",
       "title": "„{{name}}“ freigeben",

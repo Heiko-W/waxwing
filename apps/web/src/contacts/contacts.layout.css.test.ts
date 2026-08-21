@@ -1,5 +1,5 @@
 /**
- * Static checks on the contacts stylesheet — the two findings of the 21 August walkthrough that are
+ * Static checks on the contacts stylesheet — the findings of the 21 August walkthrough that are
  * pure layout, pinned as rules rather than as pixels.
  *
  * jsdom computes no styles, so no component test in this folder can see a button pushed 29px past
@@ -34,6 +34,21 @@ function remOf(declaration: string | undefined): number {
   const value = /(-?[\d.]+)rem/.exec(declaration ?? '')?.[1]
   expect(value, `\`${declaration}\` must state a rem length`).toBeDefined()
   return Number(value)
+}
+
+/** Everything inside `@container <name> (…) { … }`, prelude included, for the named container. */
+function containerBlock(name: string): string {
+  const start = css.indexOf(`@container ${name} `)
+  if (start === -1) throw new Error(`no @container ${name}`)
+  let depth = 0
+  for (let i = css.indexOf('{', start); i < css.length; i++) {
+    if (css[i] === '{') depth += 1
+    if (css[i] === '}') {
+      depth -= 1
+      if (depth === 0) return css.slice(start, i)
+    }
+  }
+  throw new Error(`unterminated @container ${name}`)
 }
 
 describe('the contact header never puts a control off the screen (F2)', () => {
@@ -99,5 +114,48 @@ describe('a communication row favours the field over the picker (N2)', () => {
     // `flex: none` — spare width goes to the value, always. A picker that grew would put the ratio
     // back the wrong way round on exactly the wide screens where it currently looks fine.
     expect(ruleBody('.commType')).toMatch(/flex:\s*none/)
+  })
+})
+
+describe('an ordinary address fits the field it is typed into (N2, second pass)', () => {
+  /*
+   * The first pass made the value field the wider of the two boxes at every width, and it is. What
+   * it did not fix is what happens on the line the field wraps ONTO: the remove button wraps with
+   * it, so on an 820px tablet — a 312px row — `vorname.nachname@beispiel-firma.de` had 258px for
+   * the 265 it needs. Seven pixels, the last letter cut in half, and exactly the promise the
+   * previous fix had made. The rule below is that promise, kept.
+   */
+  it('measures the row rather than the window', () => {
+    // The row is 312px inside an 820px viewport: a media query answers a different question, which
+    // is the lesson `mail/reading.module.css` already writes down for the reading pane. The
+    // container sits on the row's own wrapper, so the width queried IS the width that matters.
+    const field = ruleBody('.commField')
+    expect(field).toMatch(/container-type:\s*inline-size/)
+    expect(field).toMatch(/container-name:\s*waxwing-comm-row/)
+  })
+
+  it('gives the field the whole line once the three cannot share one', () => {
+    // A basis of 100% is what makes the wrapped field the width of the ROW rather than the width of
+    // the row minus a button — which is the entire seven pixels.
+    expect(containerBlock('waxwing-comm-row')).toMatch(/\.commValue\s*\{[^{}]*flex-basis:\s*100%/)
+  })
+
+  it('sends the remove button up beside the picker instead of leaving it there', () => {
+    // Otherwise the button gets a third line to itself, which is worse than the defect: the row
+    // grows by a line AND the reader loses the pairing of a value with the control that drops it.
+    expect(containerBlock('waxwing-comm-row')).toMatch(/\.commValue\s*\{[^{}]*order:/)
+  })
+
+  it('switches before the field would be squeezed, not after', () => {
+    /*
+     * The threshold has to be at least as wide as the row's own declared appetite — the picker's
+     * width plus the width the value asks for — or there is a band in which all three sit on one
+     * line and the field is below its basis, which is the defect wearing a different width. Stated
+     * against the file's own numbers so it survives a retune of either box.
+     */
+    const threshold = remOf(/max-width:\s*[^)]+/.exec(containerBlock('waxwing-comm-row'))?.[0])
+    const picker = remOf(/inline-size:\s*[^;]+/.exec(ruleBody('.commType'))?.[0])
+    const value = remOf(/flex:\s*\d+\s+\d+\s+[^;]+/.exec(ruleBody('.commValue'))?.[0])
+    expect(threshold).toBeGreaterThan(picker + value)
   })
 })

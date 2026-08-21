@@ -51,6 +51,70 @@ Die Kürzel **T · N · G · M · U** sind neu vergeben, damit sie weder mit **A
 stehen die Befunde nach Schwere: blockierend, dann störend, dann kosmetisch. Sortiert wird
 ausschließlich nach Schwere, nicht nach Aufwand — der ist hier nicht bekannt.
 
+## Stand der Umsetzung (21.08.2026)
+
+**Alle 58 Befunde sind bearbeitet: 54 behoben, 4 begründet zurückgewiesen.** Die Arbeit lief in
+vier parallelen Durchgängen je Gruppe, danach eine Sichtprüfung im Browser, aus der neun
+Nachbesserungen hervorgingen.
+
+| Gruppe | behoben | zurückgewiesen | wer |
+|---|---|---|---|
+| **T** Kalender | 14 | 1 (T15) | vier Commits, plus eine Nachbesserung an T1 |
+| **N** Kontakte | 13 | 1 (N13) | sieben Commits |
+| **G** Einstellungen | 15 | — | fünf Commits |
+| **M** + **U** Mail/Hülle/Dateien/Anmeldung | 12 | 2 (M5, M6) | acht Commits |
+
+### Die vier Zurückweisungen
+
+- **T15** — die gemessenen 34 × 34 px stammten aus einem Playwright-Kontext **ohne** `hasTouch`,
+  in dem der Browser `pointer: fine` meldet und `tokens.css` korrekterweise den kleineren Wert
+  liefert. Mit `hasTouch` messen dieselben Schaltflächen 44 × 44 px. **Der Befund war ein
+  Messfehler dieser Prüfung**, nicht ein Fehler der Anwendung — in der Sichtprüfung
+  gegengeprüft.
+- **N13** — eine doppelte E-Mail-Adresse ist kein Fehler: RFC 9553 erlaubt dieselbe Adresse mit
+  verschiedenen `contexts`. Verhindern verbietet gültige Daten, Zusammenführen verliert welche,
+  und ein Hinweis ohne nächsten Schritt ist genau die Meldungsart, die dieses Repo sonst
+  ausschließt.
+- **M5** — die Sortierung nach Betreff ordnet serverseitig falsch. Clientseitiges Nachsortieren
+  würde eine seitenweise nachgeladene Liste in sich widersprüchlich machen: schlimmer als das
+  Symptom.
+- **M6** — die Spaltenbreiten 340/480 auf dem Tablet sind eine bereits belegte Entscheidung
+  (`MailScreen.tsx:326‑339`, Vorbild iPad Mail) und werden nicht ohne neuen Grund umgestoßen.
+
+### Zwei Befunde, deren Ursache eine andere war als vermutet
+
+- **T1** war mit der `uid`-Verknüpfung zunächst **nicht** behoben. Die erste Korrektur war gegen
+  jsdom grün und scheiterte gegen einen echten Stalwart: `draftToEvent()` schickt kein `uid`,
+  Stalwart vergibt von sich aus keins, und damit fehlte der Verknüpfungsschlüssel ausgerechnet
+  bei den Terminen, die Waxwing selbst angelegt hat — bei fremden hätte es funktioniert.
+  Gefunden hat das der E2E-Test, nicht die 3800 Unit-Tests. Die Verknüpfung läuft jetzt über
+  eine Signatur aus `start`, `duration`, `title`, `calendarIds` und `showWithoutTime`;
+  `timeZone` ist bewusst nicht darin, weil die expandierte Antwort `Etc/UTC` sagt, wo ein
+  direkter Lesevorgang `null` sagt (derselbe Widerspruch wie in **T12**).
+- **U2** lag nicht am veralteten lokalen Zustand, sondern an einer Vererbungslücke:
+  `packages/jmap` verzweigt die Fehlerklasse an der Form des Antwortkörpers, nicht am Transport.
+  Stalwart beantwortet ein abgelehntes Passwort mit `application/problem+json`, daraus wird ein
+  `JmapProblemError` — **keine** Unterklasse von `JmapHttpError`. `error instanceof
+  JmapHttpError` war damit für jeden echten 401 falsch. Folge: ein vertipptes Passwort zeigte
+  „Etwas ist schiefgelaufen" **und** bot daneben an, die lokalen Daten zu löschen. Dieselbe
+  Lücke war in M3.3 schon einmal privat in `sync/engine/conflict.ts` geschlossen worden;
+  `httpStatusOf` steht jetzt in `packages/jmap` und wird von beiden Stellen benutzt.
+
+### Neun Nachbesserungen aus der Sichtprüfung
+
+Die Sichtprüfung im Browser fand neun Punkte, die kein Unit-Test sehen konnte — darunter **zwei,
+die durch die Korrekturen selbst entstanden waren**: die neue Fokusführung schob auf dem Phone
+den Zurück-Link aus dem Bild (**G5**), und die neuen `~all`-Links machten einen Kontakt-Deeplink
+alltäglich, bei dem auf dem Phone die Karte nie ankam (**F3**) — Kontaktkarten erreichten die
+lokale Kopie nur über die `ContactCard/query` der **Listenspalte**, die unterhalb von 40 em gar
+nicht rendert. Die Replik meldete korrekt „keine Zeile", was zeichengleich ist mit „gibt es
+nicht".
+
+Die übrigen sieben: **M1** hatte kein Bedienelement zum Umbenennen, **G6** war toter CSS-Code
+(Medienabfrage vor der Regel, die sie überschreiben sollte), **G2** zog in der Identitätenliste
+einen zweiten Rahmen, **F2** schob „Weitere Aktionen" aus dem Bild, **F1** schrumpfte die
+Kalenderüberschrift auf „A…", **N2** ließ das Wertfeld schmaler als das Menü daneben.
+
 ---
 
 ## T — Kalender/Termine

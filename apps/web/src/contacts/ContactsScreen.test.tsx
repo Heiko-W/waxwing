@@ -285,3 +285,56 @@ describe('ContactsScreen', () => {
     expect(screen.getByRole('heading', { name: 'Edit contact' })).toBeInTheDocument()
   })
 })
+
+/**
+ * The row that holds this screen's own controls, wherever the viewport put it.
+ *
+ * Found by walking up from one end of it to the first element that also holds the other, rather
+ * than by class name: the bar is a portal into the shell header on a phone and a strip beside the
+ * panes above 40em, and the question these tests ask ("does the heading share that row?") is the
+ * same either way.
+ */
+function screenBar(): HTMLElement {
+  const create = screen.getByRole('button', { name: 'New contact' })
+  let node: HTMLElement | null = screen.getByRole('button', { name: 'Import or export' })
+  while (node !== null && !node.contains(create)) node = node.parentElement
+  if (node === null) throw new Error('no element holds both ends of the screen bar')
+  return node
+}
+
+describe('the phone header', () => {
+  /*
+   * "Alle Kon…" — the title truncated to eight characters on a 390px phone, because the row it sat
+   * in also carries the drawer toggle, import and new contact at 44px each plus the shell's own
+   * two buttons. This is the crowding F1 fixed for the calendar one screen over, and it has the
+   * same answer: none of those controls may shrink, so the heading leaves the row instead.
+   *
+   * Asserted structurally rather than by measurement — jsdom lays nothing out, and the pixels were
+   * never the invariant. "The reader can see which set of contacts this is" is.
+   */
+  it('takes the heading out of the toolbar row', async () => {
+    forcePhone()
+    renderScreen('/contacts')
+
+    const heading = await screen.findByRole('heading', { name: 'All Contacts' })
+    expect(screenBar().contains(heading), 'the heading shares no row with the buttons').toBe(false)
+  })
+
+  it('states the whole name of the set, not a prefix of it', async () => {
+    forcePhone()
+    renderScreen('/contacts')
+
+    expect(await screen.findByRole('heading', { name: 'All Contacts' })).toHaveTextContent(
+      'All Contacts',
+    )
+  })
+
+  it('leaves the wide layout alone: there the heading IS the middle of the bar', async () => {
+    // The pane's own strip has room for both, and a pane title is where every other screen in this
+    // app states which list it is showing. This is the half that must not change.
+    renderScreen('/contacts')
+
+    const heading = await screen.findByRole('heading', { name: 'All Contacts' })
+    expect(screenBar().contains(heading)).toBe(true)
+  })
+})

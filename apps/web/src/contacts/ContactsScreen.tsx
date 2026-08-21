@@ -240,6 +240,24 @@ export function ContactsScreen() {
     bookId === undefined
       ? t('contacts.books.all')
       : (books?.find((book) => book.id === bookId)?.name ?? t('contacts.title'))
+  /*
+   * Where that heading goes, and why not always in the bar.
+   *
+   * Same arithmetic as the calendar's (F1, `calendar/CalendarPage.tsx`), one screen over. On a
+   * phone the bar IS the shell header, and it carries the book drawer's toggle, import and new
+   * contact — three 44px controls of this screen's own — beside the shell's palette and account
+   * buttons. Five targets, their gaps and the header's inset take nearly all of a 390px phone, and
+   * what was left for the title was enough for "Alle Kon…". The targets are correct at 44px and may
+   * not shrink, the shell's buttons are not this screen's to remove, and no stylesheet can invent
+   * the missing width: the arithmetic is the defect, not the truncation.
+   *
+   * So the heading stops competing for that row and becomes the page's own title line above the
+   * list — which is where Apple Contacts puts "All Contacts" on an iPhone, at the size a heading is
+   * meant to be read at. It costs one text line. Above 40em nothing changes: the pane's own strip
+   * has room for the title and the buttons both, and that is where every other screen states which
+   * list it is showing.
+   */
+  const phoneTitle = tier === 'phone'
   const [booksOpen, setBooksOpen] = useState(false)
 
   const closeBooks = useCallback(() => {
@@ -325,7 +343,14 @@ export function ContactsScreen() {
             <PanelLeft />
           </IconButton>
         )}
-        <h1 className={shellStyles.paneTitle}>{listHeading}</h1>
+        {/* The heading takes the slack so the two trailing buttons sit at the end of the row. On a
+            phone it is not here (see `phoneTitle`), so a spacer does that job instead — the same
+            one GroupView's toolbar uses. */}
+        {phoneTitle ? (
+          <span className={styles.toolbarSpacer} />
+        ) : (
+          <h1 className={shellStyles.paneTitle}>{listHeading}</h1>
+        )}
         {/* `Import`, not `ArrowDownUp`: a vertical up/down arrow pair is the sort glyph everywhere
             else, and this area has no sort to offer — so the one control it did not name was read as
             the one thing it cannot do. */}
@@ -341,6 +366,10 @@ export function ContactsScreen() {
           <Plus />
         </IconButton>
       </ScreenBar>
+      {/* The phone's heading line — see `phoneTitle`. It wraps rather than truncating: an address
+          book is named by its owner and a heading that ends in an ellipsis answers half the
+          question it was put there to answer. */}
+      {phoneTitle && <h1 className={styles.pageTitle}>{listHeading}</h1>}
       <div className={styles.paneBody}>
         {selectedGroup !== undefined ? (
           <GroupView

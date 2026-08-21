@@ -1579,6 +1579,7 @@
     },
     "preview": "Preview {{name}}",
     "hidePreview": "Hide the preview of {{name}}",
+    "more": "More actions for {{name}}",
     "share": {
       "open": "Share {{name}}",
       "title": "Share “{{name}}”",

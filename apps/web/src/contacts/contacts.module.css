@@ -183,6 +183,28 @@
   flex: 1;
 }
 
+/*
+ * Which set of contacts this is, on a phone, where there is room to read it.
+ *
+ * Rendered only below 40em (`phoneTitle` in ContactsScreen.tsx) — not hidden here with a media
+ * query, because on wider viewports the heading is a different element in a different place, not
+ * this one turned off. The same answer the calendar reached for the same crowding (F1), at the same
+ * size, so the two screens' phone titles are one thing and not two.
+ *
+ * It carries no `text-overflow`: it has the full width of the pane, and the state it replaces was a
+ * heading truncated to "Alle Kon…". The inset matches the search box and the rows below it, so the
+ * pane has one text edge and not two.
+ */
+.pageTitle {
+  margin: 0;
+  padding-block: var(--waxwing-space-3) var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-3);
+  font-size: var(--waxwing-text-xl);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
+}
+
 .paneBody {
   flex: 1;
   min-block-size: 0;
@@ -567,11 +589,22 @@
   gap: var(--waxwing-space-2);
 }
 
-/* One communication row and, below it, the reason it was refused (N9). */
+/*
+ * One communication row and, below it, the reason it was refused (N9).
+ *
+ * Also the QUERY CONTAINER for the row inside it (N2). The rule below needs to know how wide this
+ * one row is, and that has never been the window's width: on an 820px tablet the form is 360px and
+ * the row 312px, so a `@media` query would answer a question nobody asked. The container is
+ * declared here rather than on the pane (`waxwing-pane`, shell.module.css) because the pane's width
+ * is the row's width plus the form's padding plus whatever a scrollbar takes — three subtractions
+ * standing between the number queried and the number that matters. This box IS the row's width.
+ */
 .commField {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
+  container-type: inline-size;
+  container-name: waxwing-comm-row;
 }
 
 /*
@@ -620,13 +653,40 @@
  * and the remove button left behind, which on a narrow form is less than the picker's own 9rem.
  * A 12rem basis states the opposite — the value asks for MORE than the picker before either of
  * them grows. Where the row can seat both it does, with every spare pixel going here (the picker
- * does not grow); where it cannot, flex line-breaking moves this field to the next line, where it
- * gets the full width of the row. Both outcomes satisfy the same sentence: the field being typed
- * into is never the smaller of the two.
+ * does not grow); where it cannot, flex line-breaking moves this field to the next line. Both
+ * outcomes satisfy the same sentence: the field being typed into is never the smaller of the two.
  */
 .commValue {
   flex: 1 1 12rem;
   min-inline-size: 0;
+}
+
+/*
+ * ON THE NEXT LINE IT GETS THE WHOLE LINE, and the remove button goes up beside the picker.
+ *
+ * The last fix said the wrapped field "gets the full width of the row". It does not: wrapping moves
+ * items in order, so the field landed on line two WITH the remove button still after it, and on the
+ * 820px tablet — a 312px row — that left 258px for `vorname.nachname@beispiel-firma.de`, which
+ * needs 265. Seven pixels, the final "e" cut in half, and precisely the promise the fix had made.
+ *
+ * Reordering is what buys them back, and the geometry decides when: picker (9rem) + gap + a field
+ * wide enough for an ordinary work address (~16.75rem, measured) + gap + a touch-sized button
+ * (2.75rem) is just under 30rem. Below that the three cannot share a line at their honest sizes, so
+ * they stop trying — the picker and the button take the first line at its two ends (the shape
+ * `.addressHead` already uses), the field takes the second one whole. Above it nothing changes.
+ *
+ * The visual order moves; the DOM order does not, so the tab order stays picker → field → button,
+ * which is the order the row is filled in.
+ */
+@container waxwing-comm-row (max-width: 30rem) {
+  .commRow {
+    justify-content: space-between;
+  }
+
+  .commValue {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 
 .addRow {
