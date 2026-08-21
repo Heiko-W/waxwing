@@ -1916,6 +1916,10 @@
     "share": {
       "open": "Share {{name}}",
       "title": "Share “{{name}}”"
+    },
+    "shared": {
+      "title": "Shared with me",
+      "open": "Open the files {{name}} shared with you"
     }
   }
 }

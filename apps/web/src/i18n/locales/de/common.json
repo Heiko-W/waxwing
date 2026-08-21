@@ -1916,6 +1916,10 @@
     "share": {
       "open": "{{name}} freigeben",
       "title": "„{{name}}“ freigeben"
+    },
+    "shared": {
+      "title": "Für mich freigegeben",
+      "open": "Von {{name}} freigegebene Dateien öffnen"
     }
   }
 }

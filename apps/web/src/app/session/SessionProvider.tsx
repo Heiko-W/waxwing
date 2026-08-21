@@ -23,6 +23,7 @@ import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
 import { getPushRegistration } from '../../notify/registration'
+import { probeSharedAreas } from '../../sharing/probe'
 import {
   currentReplicaName,
   getReplica,
@@ -37,6 +38,7 @@ import {
 import { stopAllEngines } from '../../sync/engine'
 import type { AuthMethod, WaxwingConfig } from '../config'
 import { useServices } from '../services'
+import { deriveDelegation } from './accounts'
 import { SessionContext } from './context'
 import {
   INITIAL_SESSION_STATE,
@@ -321,23 +323,42 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       controllerRef.current = controller
       targetRef.current = target
       writeStored(local(), DURABLE_TARGET_KEY, target)
-      // Lift EVERY mail account this session grants into the model (M4.4): the user's own account
-      // first, then any delegated/shared mailboxes. Etappe 3 reads this; today nothing renders it.
+      // Lift EVERY account this session grants into the model (M4.4): the user's own account
+      // first, then any delegated/shared one.
       const own = jmapSession.accounts[accountId]
-      const accounts: readonly MailAccount[] = [
-        {
-          id: accountId,
-          name: own?.name ?? (jmapSession.username || accountId),
-          isPersonal: own?.isPersonal ?? true,
-          isReadOnly: own?.isReadOnly ?? false,
-        },
-        ...secondaryMailAccounts(jmapSession, accountId),
-      ]
+      const primary: MailAccount = {
+        id: accountId,
+        name: own?.name ?? (jmapSession.username || accountId),
+        isPersonal: own?.isPersonal ?? true,
+        isReadOnly: own?.isReadOnly ?? false,
+      }
+      const advertised = secondaryMailAccounts(jmapSession, accountId)
+      /*
+       * ASK, once, before anything is built on the answer (S-4).
+       *
+       * The capability list is a false positive by construction: measured against Stalwart v0.16.18,
+       * sharing ONE address book made the whole account appear with all seventeen capabilities,
+       * `urn:ietf:params:jmap:mail` included. Deciding from it started a sync engine for an account
+       * whose every `Mailbox/get` answers `forbidden`, and put a folder tree on screen that could
+       * never fill.
+       *
+       * It belongs HERE rather than in the rail that noticed it first: the engine fleet reads
+       * `connected.accounts` and never renders anything, so a probe living in the sidebar could not
+       * reach it. One batch, one call per account and area, and only when something is actually
+       * shared — `probeSharedAreas` sends nothing for an empty list, so the overwhelmingly common
+       * single-account sign-in costs exactly what it did before.
+       */
+      const verdicts = await probeSharedAreas(
+        client,
+        advertised.map((account) => account.id),
+      )
+      const { accounts, delegated } = deriveDelegation(primary, advertised, verdicts)
       return {
         client,
         jmapSession,
         accountId,
         accounts,
+        delegated,
         username: jmapSession.username || accountId,
         method,
       }

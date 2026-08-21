@@ -113,6 +113,8 @@ const session = {
   connected: {
     client: {},
     accountId: 'a',
+    // Nothing shared: the "Shared with me" section is absent and this is the pre-S-4 screen.
+    delegated: [],
     jmapSession: {
       accounts: { a: { accountCapabilities: { 'urn:ietf:params:jmap:filenode': CAPABILITY } } },
     },

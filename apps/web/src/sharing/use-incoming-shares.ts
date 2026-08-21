@@ -1,14 +1,17 @@
 /**
- * The two hooks the mail rail needs from the sharing layer (S-1, S-4).
+ * The hook the rails need from the sharing layer (S-1).
  *
- * Both do the same shape of work — one JMAP call whose answer decides what the sidebar renders —
- * and both hold to the same rule: **a failure changes nothing on screen.** An account is only
- * removed when the server has explicitly refused it, and a notification card only appears when the
- * server has explicitly sent one. Anything else (offline, a 500, a token about to be refreshed)
- * leaves the rail exactly as it was.
+ * It holds to the rule the whole package holds to: **a failure changes nothing on screen.** A
+ * notification card only appears when the server has explicitly sent one; anything else (offline, a
+ * 500, a token about to be refreshed) leaves the rail exactly as it was.
+ *
+ * The area probe that used to live beside it moved to {@link SessionProvider} (S-4). It had to: the
+ * engine fleet reads `connected.accounts` and renders nothing, so a probe running inside the
+ * sidebar could narrow what was on screen but could not stop an engine starting for an account with
+ * no mail in it. `sharing/probe.ts` is still where the measurement and the reasoning live.
  */
 
-import type { Id, MailAccount } from '@waxwing/jmap'
+import type { Id } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSessionOptional } from '../app/session/context'
 import { useEngineStatus } from '../sync/engine/status'
@@ -18,49 +21,6 @@ import {
   makeIncomingSharesClient,
   type ShareAnnouncement,
 } from './incoming'
-import { accountsWithMail, type MailAccess, probeMailAccess } from './probe'
-
-/**
- * `accounts`, minus every shared account the server refuses `Mailbox/get` on.
- *
- * See `probe.ts` for why the session's own capability list cannot answer this: a single shared
- * CALENDAR makes an account advertise `urn:ietf:params:jmap:mail` (measured), and the rail then grew
- * a labelled section for an account with no reachable mail in it.
- */
-export function useMailAccounts(
-  accounts: readonly MailAccount[],
-  primaryAccountId: Id,
-): readonly MailAccount[] {
-  const connected = useSessionOptional()
-  const [verdicts, setVerdicts] = useState<ReadonlyMap<Id, MailAccess>>(new Map())
-
-  // The ids, as a stable string: `accounts` is a fresh array on every session render, and probing
-  // once per render would be one round trip per keystroke elsewhere in the app.
-  const sharedIds = accounts
-    .filter((account) => account.id !== primaryAccountId)
-    .map((account) => account.id)
-  const key = sharedIds.join(',')
-
-  useEffect(() => {
-    if (connected === null || key === '') {
-      setVerdicts(new Map())
-      return
-    }
-    let cancelled = false
-    void (async () => {
-      const result = await probeMailAccess(connected.client, key.split(','))
-      if (!cancelled) setVerdicts(result)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [connected, key])
-
-  return useMemo(
-    () => accountsWithMail(accounts, primaryAccountId, verdicts),
-    [accounts, primaryAccountId, verdicts],
-  )
-}
 
 /** What {@link useIncomingShares} hands the card strip. */
 export interface IncomingShares {

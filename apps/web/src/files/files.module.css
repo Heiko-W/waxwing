@@ -362,3 +362,25 @@
   border: 0;
   background: #ffffff;
 }
+
+/*
+ * "Shared with me" — the other people's-content section of the root listing (S-4).
+ *
+ * A quiet heading over ordinary folder rows, the way iCloud Drive and the mail rail both do it:
+ * shared content is a place in the same hierarchy, not a mode with its own chrome. The rows are
+ * `.row`/`.name` verbatim, so they inherit the 44px target and the name's minimum width without a
+ * second set of rules to keep in step.
+ */
+.sharedSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin-block-end: var(--waxwing-space-4);
+}
+
+.sharedHeading {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-semibold);
+}

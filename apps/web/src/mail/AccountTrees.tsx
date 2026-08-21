@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { IncomingShares } from '../sharing/IncomingShares'
 import type { ShareAnnouncement } from '../sharing/incoming'
-import { useIncomingShares, useMailAccounts } from '../sharing/use-incoming-shares'
+import { useIncomingShares } from '../sharing/use-incoming-shares'
 import { type ReplicaDb, ReplicaProvider, useReplica, useReplicaQuery } from '../sync'
 import { Badge } from '../ui'
 import { resetMailScopedStores, useActiveAccountId, useActiveAccountStore } from './active-account'
@@ -32,7 +32,13 @@ import styles from './folder-tree.module.css'
 import { SavedSearchList } from './search/SavedSearchList'
 
 export interface AccountTreesProps {
-  /** Every mail account the session grants — the user's OWN first, then the shared tail (M4.4). */
+  /**
+   * Every account with MAIL in it — the user's OWN first, then the shared tail (M4.4).
+   *
+   * Already narrowed by the S-4 probe when it comes from `connected.accounts`: a shared account the
+   * server refuses `Mailbox/get` on is not in this list, so the rail renders what it is given and
+   * asks nothing itself (see `sharing/probe.ts` and `app/session/accounts.ts`).
+   */
   readonly accounts: readonly MailAccount[]
   /** The user's own account id: the primary the pass-through sidebar renders alone. */
   readonly primaryAccountId: Id
@@ -40,26 +46,12 @@ export interface AccountTreesProps {
   readonly onNavigate?: (() => void) | undefined
 }
 
-export function AccountTrees({
-  accounts: advertised,
-  primaryAccountId,
-  onNavigate,
-}: AccountTreesProps) {
+export function AccountTrees({ accounts, primaryAccountId, onNavigate }: AccountTreesProps) {
   const { db } = useReplica()
   const navigate = useNavigate()
   const route = useRoute()
   const stored = useActiveAccountId()
   const activeAccountId = stored ?? primaryAccountId
-  /*
-   * The accounts that really have mail, not the ones the session ADVERTISES (S-4).
-   *
-   * Measured against Stalwart v0.16.18: sharing one CALENDAR makes an account appear in the session
-   * with all seventeen capabilities, `urn:ietf:params:jmap:mail` included — so
-   * `secondaryMailAccounts()`, which reads exactly that, produced a labelled section, an empty
-   * folder tree and a sync engine for an account whose every `Mailbox/get` answers `forbidden`.
-   * `useMailAccounts` asks instead, once, in one batch. See `sharing/probe.ts`.
-   */
-  const accounts = useMailAccounts(advertised, primaryAccountId)
   const incoming = useIncomingShares('Mailbox')
   const sharedNames = useSharedFolderNames(incoming.announcements)
 

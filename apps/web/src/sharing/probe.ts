@@ -1,5 +1,5 @@
 /**
- * Which shared accounts really have mail in them (the S-4 measurement, applied to the mail rail).
+ * Which shared accounts really have mail, contacts or files in them (the S-4 measurement).
  *
  * ## The session lies, and it lies in the direction that shows a section for nothing
  *
@@ -29,19 +29,73 @@
  *
  * `ids: []` rather than `ids: null`: the access check happens before the fetch — measured, an empty
  * id list is refused exactly the same way — so the probe costs the server nothing but the lookup.
+ *
+ * ## The same question, for the other two areas (S-4, measured 2026-08-21)
+ *
+ * Mail is not special. Re-measured against the same fixture, in both directions, with exactly one
+ * object shared:
+ * ```
+ * # alice shares nothing with carol; carol asks about account b
+ * AddressBook/get {ids:[]}  → forbidden        FileNode/get {ids:[]}  → forbidden
+ * Mailbox/get    {ids:[]}   → forbidden        FileNode/query          → forbidden
+ *
+ * # alice shares ONE ADDRESS BOOK with carol; carol asks again, same batch
+ * AddressBook/get {ids:[]}  → { list: [] }     FileNode/get {ids:[]}  → forbidden
+ * Mailbox/get    {ids:[]}   → forbidden        FileNode/query          → forbidden
+ * ```
+ * So the probe generalises without qualification: one `Foo/get` with an EMPTY id list per area,
+ * per account, all in one batch. `FileNode/get` and `FileNode/query` were measured to agree in
+ * every observed state, and `/get` is chosen so all three areas send the same shape.
+ *
+ * **One known lag, and it is the server's:** revoking the last share of an area leaves that area
+ * answering for a while (measured — destroying the only shared `FileNode` left `FileNode/query`
+ * answering an empty list rather than `forbidden`). The failure mode is an empty section, never a
+ * wrong one, and it settles by itself.
  */
 
 import type { Id, JmapClient } from '@waxwing/jmap'
 import { Methods } from '@waxwing/jmap'
 
-/** The probe's verdict for one account. */
+/** The probe's verdict for one account (in one area). */
 export type MailAccess = 'granted' | 'denied'
 
 /**
- * Which of `accountIds` answer `Mailbox/get` — one batch, one call each.
+ * A kind of shared content this client can open. `calendar` is deliberately absent: the calendar
+ * rail is a package of its own, and an area nothing renders would be a promise in a type.
+ */
+export type ShareArea = 'mail' | 'contacts' | 'files'
+
+/** Every area the probe asks about by default, in rail order. */
+export const SHARE_AREAS: readonly ShareArea[] = ['mail', 'contacts', 'files']
+
+/**
+ * The method whose refusal is the answer, per area.
  *
- * A `granted` verdict means the server served a mailbox list for that account; `denied` means it
- * refused. Accounts the caller did not ask about are absent from the map.
+ * All three are a `/get` with an empty id list, because all three were measured to refuse that
+ * exactly as they refuse a real fetch — see the module header.
+ */
+const AREA_METHOD: Readonly<Record<ShareArea, string>> = {
+  mail: Methods.mailboxGet.name,
+  contacts: Methods.addressBookGet.name,
+  files: Methods.fileNodeGet.name,
+}
+
+/** One account's verdict in every probed area. */
+export type AreaAccess = Readonly<Record<ShareArea, MailAccess>>
+
+const ALL_GRANTED: AreaAccess = { mail: 'granted', contacts: 'granted', files: 'granted' }
+
+/** The optimistic default — see {@link probeSharedAreas} on why a failure grants rather than denies. */
+export function grantedEverywhere(): AreaAccess {
+  return ALL_GRANTED
+}
+
+/**
+ * Which of `accountIds` will serve which `areas` — ONE batch, one call per account and area.
+ *
+ * A `granted` verdict means the server answered that area's `/get` for that account; `denied` means
+ * it refused. Accounts the caller did not ask about are absent from the map. An area not probed is
+ * reported `granted`, because "not asked" is not evidence of anything.
  *
  * **A transport failure is not a denial.** If the request itself fails — offline, 500, an expired
  * token — this returns `granted` for everything, because the alternative is a sidebar that empties
@@ -49,51 +103,75 @@ export type MailAccess = 'granted' | 'denied'
  * behaviour and is recoverable on the next probe; a false negative silently removes an account the
  * user was working in.
  */
-export async function probeMailAccess(
+export async function probeSharedAreas(
   client: JmapClient,
   accountIds: readonly Id[],
-): Promise<ReadonlyMap<Id, MailAccess>> {
-  const verdicts = new Map<Id, MailAccess>()
-  if (accountIds.length === 0) return verdicts
+  areas: readonly ShareArea[] = SHARE_AREAS,
+): Promise<ReadonlyMap<Id, AreaAccess>> {
+  const verdicts = new Map<Id, AreaAccess>()
+  if (accountIds.length === 0 || areas.length === 0) return verdicts
 
-  const callIds = accountIds.map((accountId, index) => [`p${index}`, accountId] as const)
+  const calls = accountIds.flatMap((accountId, accountIndex) =>
+    areas.map((area, areaIndex) => ({
+      callId: `p${accountIndex}_${areaIndex}`,
+      accountId,
+      area,
+    })),
+  )
   try {
     const responses = await client.call(
-      callIds.map(([callId, accountId]) => [
-        Methods.mailboxGet.name,
+      calls.map(({ callId, accountId, area }) => [
+        AREA_METHOD[area],
         { accountId, ids: [], properties: ['id'] },
         callId,
       ]),
     )
-    for (const [callId, accountId] of callIds) {
+    for (const accountId of accountIds) verdicts.set(accountId, { ...ALL_GRANTED })
+    for (const { callId, accountId, area } of calls) {
       // `get` throws on a method-level error; that throw IS the answer, and it is per call.
+      let access: MailAccess
       try {
         responses.get(callId)
-        verdicts.set(accountId, 'granted')
+        access = 'granted'
       } catch {
-        verdicts.set(accountId, 'denied')
+        access = 'denied'
       }
+      verdicts.set(accountId, { ...(verdicts.get(accountId) ?? ALL_GRANTED), [area]: access })
     }
   } catch {
-    for (const [, accountId] of callIds) verdicts.set(accountId, 'granted')
+    for (const accountId of accountIds) verdicts.set(accountId, ALL_GRANTED)
   }
   return verdicts
 }
 
 /**
- * The accounts a mail rail may show: the primary always, plus every shared account not yet PROVEN to
- * be mail-less.
+ * Which of `accountIds` answer `Mailbox/get` — the mail-only shorthand over
+ * {@link probeSharedAreas}, kept because "does this account have mail" is asked on its own.
+ */
+export async function probeMailAccess(
+  client: JmapClient,
+  accountIds: readonly Id[],
+): Promise<ReadonlyMap<Id, MailAccess>> {
+  const areas = await probeSharedAreas(client, accountIds, ['mail'])
+  return new Map([...areas].map(([accountId, access]) => [accountId, access.mail]))
+}
+
+/**
+ * The accounts a rail may show in `area`: the primary always, plus every shared account not yet
+ * PROVEN to lack it.
  *
  * "Not yet proven" is the load-bearing word. A `verdicts` map that is empty — because the probe has
- * not answered — keeps everything, so the sidebar does not flicker an account out and back in on
- * every reconnect. Only an explicit `denied` removes one.
+ * not answered — keeps everything, so a rail does not flicker an account out and back in on every
+ * reconnect. Only an explicit `denied` removes one.
  */
-export function accountsWithMail<A extends { readonly id: Id }>(
+export function accountsWithArea<A extends { readonly id: Id }>(
   accounts: readonly A[],
   primaryAccountId: Id,
-  verdicts: ReadonlyMap<Id, MailAccess>,
+  area: ShareArea,
+  verdicts: ReadonlyMap<Id, AreaAccess>,
 ): readonly A[] {
   return accounts.filter(
-    (account) => account.id === primaryAccountId || verdicts.get(account.id) !== 'denied',
+    (account) =>
+      account.id === primaryAccountId || verdicts.get(account.id)?.[area] !== ('denied' as const),
   )
 }

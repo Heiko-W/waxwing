@@ -40,3 +40,25 @@ export function clearShareNotifications(name: string): Promise<number>
 
 /** Unshare every mailbox of every test account — the sweep a UI-granted share needs. */
 export function revokeAllShares(): Promise<void>
+
+/**
+ * Create (or reuse) a folder in `owner`'s file storage and share it read-only with `grantee` (S-4).
+ *
+ * Its own grant, not a variant of {@link shareInbox}: measured on v0.16.18, a mail share does not
+ * make `FileNode/get` answer and a file share does not make `Mailbox/get` answer — which is the
+ * fact the S-4 suite exists to assert.
+ */
+export function shareFileFolder(
+  owner: string,
+  grantee: string,
+  name: string,
+): Promise<{ ownerAccountId: string; nodeId: string | undefined; granteePrincipal: string }>
+
+/**
+ * Destroy every file node of every test account.
+ *
+ * DESTROYS rather than unshares: revoking the last file share leaves the account answering an empty
+ * list rather than `forbidden` for a while (measured), which would keep a "Shared with me" section
+ * on screen into the next suite.
+ */
+export function clearFileNodes(): Promise<void>

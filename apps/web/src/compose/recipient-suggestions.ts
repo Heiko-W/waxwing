@@ -18,6 +18,15 @@ import { type AddressStatRow, type ReplicaDb, suggestAddresses } from '../sync'
 export interface AddressSuggestion extends EmailAddress {
   readonly kind?: 'address'
   readonly photo?: ContactCardMedia
+  /**
+   * The organisation this address belongs to — a quiet third line under the name (S-5).
+   *
+   * Set only by the directory source, and it is what tells a reader that the row came from the
+   * company directory rather than their own contacts. Deliberately a FACT about the person rather
+   * than a badge saying "directory": Apple states affiliation, it does not label the source.
+   * Display-only, like {@link photo} — stripped on commit by {@link suggestionAddresses}.
+   */
+  readonly organization?: string
 }
 
 /**

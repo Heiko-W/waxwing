@@ -502,6 +502,91 @@ export async function revokeAllShares() {
   }
 }
 
+const FILE_USING = [
+  'urn:ietf:params:jmap:core',
+  'urn:ietf:params:jmap:filenode',
+  'urn:ietf:params:jmap:principals',
+]
+
+/**
+ * Create a folder in `owner`'s file storage and share it read-only with `grantee` (S-4).
+ *
+ * Its own helper rather than a variant of {@link shareInbox} because the two grants do NOT imply one
+ * another, and that is the whole point of the suite it serves: measured against Stalwart v0.16.18,
+ * sharing one address book made the owning account appear in the grantee's session with all
+ * seventeen capabilities while `FileNode/get` on it still answered
+ * `forbidden "You do not have access to account b"`. A files test that leaned on the mail
+ * delegation would therefore have proved nothing about files.
+ *
+ * Idempotent: a folder of the same name is reused rather than duplicated, since `FileNode/set` is
+ * happy to create two siblings with the same name and the screen would then show both.
+ */
+export async function shareFileFolder(owner, grantee, name) {
+  const ownerAccount = ACCOUNTS.find((a) => a.name === owner)
+  const granteeAccount = ACCOUNTS.find((a) => a.name === grantee)
+  if (!ownerAccount || !granteeAccount) throw new Error(`unknown pair ${owner}/${grantee}`)
+
+  const ownerAccountId = await ownAccountId(ownerAccount)
+  const granteePrincipal = await principalIdFor(ownerAccount, ownerAccountId, granteeAccount.login)
+
+  const existing = await jmapAs(ownerAccount, FILE_USING, [
+    ['FileNode/get', { accountId: ownerAccountId, ids: null, properties: ['id', 'name'] }, '0'],
+  ])
+  const found = (existing.list ?? []).find((node) => node.name === name)
+  const rights = { mayRead: true }
+
+  if (found) {
+    await jmapAs(ownerAccount, FILE_USING, [
+      [
+        'FileNode/set',
+        {
+          accountId: ownerAccountId,
+          update: { [found.id]: { shareWith: { [granteePrincipal]: rights } } },
+        },
+        '0',
+      ],
+    ])
+    return { ownerAccountId, nodeId: found.id, granteePrincipal }
+  }
+
+  const created = await jmapAs(ownerAccount, FILE_USING, [
+    [
+      'FileNode/set',
+      {
+        accountId: ownerAccountId,
+        create: { f1: { name, parentId: null, shareWith: { [granteePrincipal]: rights } } },
+      },
+      '0',
+    ],
+  ])
+  if (created.notCreated?.f1) {
+    throw new Error(
+      `file share ${owner}->${grantee} rejected: ${JSON.stringify(created.notCreated.f1)}`,
+    )
+  }
+  return { ownerAccountId, nodeId: created.created?.f1?.id, granteePrincipal }
+}
+
+/**
+ * Destroy every file node of every test account.
+ *
+ * The files counterpart of {@link revokeAllShares}, and it DESTROYS rather than unshares: measured
+ * on v0.16.18, revoking the last file share leaves the account answering `FileNode/query` with an
+ * empty list rather than `forbidden` for a while, so a merely-unshared folder would keep the
+ * grantee's "Shared with me" section on screen into the next suite.
+ */
+export async function clearFileNodes() {
+  for (const account of ACCOUNTS) {
+    const accountId = await ownAccountId(account)
+    const nodes = await jmapAs(account, FILE_USING, [
+      ['FileNode/get', { accountId, ids: null, properties: ['id'] }, '0'],
+    ])
+    const ids = (nodes.list ?? []).map((node) => node.id)
+    if (ids.length === 0) continue
+    await jmapAs(account, FILE_USING, [['FileNode/set', { accountId, destroy: ids }, '0']])
+  }
+}
+
 /** Withdraw every share (`shareWith: {}`), returning the fixture to its single-account default. */
 export async function revokeDelegations() {
   for (const { owner } of DELEGATIONS) {
