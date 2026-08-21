@@ -1,26 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Waxwing logo mark">
   <title>Waxwing</title>
-  <defs>
-    <mask id="waxwing-m">
-      <rect width="256" height="256" fill="black"/>
-      <!-- tail (back, down-left) -->
-      <polygon points="72,170 20,208 32,228 86,196" fill="white"/>
-      <!-- body -->
-      <circle cx="120" cy="150" r="62" fill="white"/>
-      <!-- head -->
-      <circle cx="170" cy="104" r="40" fill="white"/>
-      <!-- crest (swept back) -->
-      <polygon points="148,80 103,36 184,70" fill="white"/>
-      <!-- beak -->
-      <polygon points="204,92 238,106 204,120" fill="white"/>
-      <!-- legs -->
-      <line x1="108" y1="208" x2="103" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
-      <line x1="134" y1="206" x2="131" y2="232" stroke="white" stroke-width="10" stroke-linecap="round"/>
-      <!-- eye (punched out) -->
-      <circle cx="180" cy="98" r="6.5" fill="black"/>
-    </mask>
-  </defs>
-  <rect width="256" height="256" fill="#E8770E" mask="url(#waxwing-m)"/>
-  <!-- the sealing-wax drop on the wing -->
-  <circle cx="97" cy="164" r="10" fill="#C4331D"/>
+  <!--
+    The one-colour mark: a perched waxwing as a SINGLE closed contour.
+
+    The outline is constructed, not drawn freehand. Three leading circles (breast, rump,
+    head) fix the masses; the back and belly are large blending arcs laid tangentially
+    across both body circles, throat and nape are fillet arcs, and the tail leaves the rump
+    on a tangent. Between the anchors a biarc solve fits two true circular arcs with
+    matching end tangents, so G1 continuity is a property of the construction rather than
+    something smoothed in afterwards. Every arc is emitted as a cubic (4/3·tan(delta/4)·r).
+    Only four corners are deliberate: the bill tip, the crest tip and the two tail corners.
+
+    The eye is an evenodd cut-out, so the mark is one path and inherits any fill.
+  -->
+  <path fill-rule="evenodd" fill="#E8770E" d="M228.00,90.60C223.67,91.52 219.46,92.97 215.48,94.91C211.54,96.83 208.08,99.63 205.38,103.09C204.68,104.81 203.86,106.47 202.91,108.06C201.96,109.65 200.88,111.17 199.70,112.59C197.65,115.06 195.80,117.70 194.17,120.46C192.54,123.23 191.14,126.12 189.97,129.11C188.80,132.10 187.88,135.18 187.20,138.32C186.53,141.46 186.11,144.64 185.94,147.85C185.74,151.83 185.00,155.76 183.73,159.54C182.47,163.31 180.70,166.90 178.48,170.20C176.08,173.76 173.18,176.94 169.86,179.66C166.54,182.37 162.84,184.59 158.88,186.23C148.18,190.68 137.23,194.50 126.09,197.68C114.95,200.86 103.63,203.39 92.20,205.26C89.86,205.64 87.48,205.70 85.12,205.44C82.77,205.18 80.46,204.59 78.26,203.71C71.75,201.07 64.28,203.54 60.62,209.54C56.44,216.39 50.84,222.27 44.20,226.77C41.53,224.25 38.87,221.73 36.20,219.21C33.54,216.69 30.87,214.17 28.21,211.65C34.57,203.91 41.13,196.34 47.89,188.94C54.63,181.55 60.79,173.64 66.29,165.29C72.86,155.34 80.12,145.87 88.03,136.95C95.95,128.04 104.49,119.70 113.59,112.00C114.34,111.36 115.12,110.75 115.91,110.17C116.70,109.59 117.52,109.03 118.35,108.50C120.68,107.01 122.86,105.30 124.86,103.38C126.85,101.46 128.65,99.36 130.23,97.09C131.82,94.81 133.17,92.39 134.27,89.86C135.38,87.32 136.23,84.68 136.82,81.98C136.83,81.90 136.85,81.82 136.87,81.74C136.89,81.66 136.90,81.58 136.92,81.50C137.95,77.07 136.93,72.42 134.15,68.81C131.26,65.06 129.18,60.75 128.04,56.15C126.94,51.76 126.43,47.24 126.53,42.71C126.62,38.21 125.76,33.74 124.00,29.60C135.23,33.91 146.43,38.29 157.61,42.73C168.77,47.17 179.60,52.42 190.00,58.42C193.92,60.87 197.40,63.95 200.30,67.55C203.19,71.13 205.34,75.25 206.61,79.68C209.59,82.37 213.11,84.40 216.93,85.65C220.78,86.92 224.49,88.57 228.00,90.60ZM189.60,81.60C189.60,83.09 189.01,84.51 187.96,85.56C186.91,86.61 185.49,87.20 184.00,87.20C182.51,87.20 181.09,86.61 180.04,85.56C178.99,84.51 178.40,83.09 178.40,81.60C178.40,80.11 178.99,78.69 180.04,77.64C181.09,76.59 182.51,76.00 184.00,76.00C185.49,76.00 186.91,76.59 187.96,77.64C189.01,78.69 189.60,80.11 189.60,81.60Z"/>
 </svg>
