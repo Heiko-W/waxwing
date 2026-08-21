@@ -742,28 +742,79 @@
   outline-offset: 1px;
 }
 
+/*
+ * The photo well (B-1) — Apple Contacts' shape: one circle where the photo goes, the action written
+ * under it, centred, nothing else. The circle and its caption are ONE label wrapping a visually
+ * hidden file input, so the whole thing is the target (well past `--waxwing-control-min` on a phone
+ * without needing a rule to say so) and there is exactly one accessible name.
+ */
 .photoField {
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-2);
-}
-
-.photoActions {
-  display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
 }
 
-.photoPick {
+.photoPicker {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-1);
+  border-radius: var(--waxwing-radius-md);
   cursor: pointer;
 }
 
-.photoImg {
+.photoWell {
+  display: grid;
+  place-items: center;
   inline-size: 5rem;
   block-size: 5rem;
+  /* Never below the touch minimum, whatever a future design does to the 5rem above. */
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
+  border-radius: var(--waxwing-radius-full);
+  background: var(--waxwing-surface-2);
+  color: var(--waxwing-text-muted);
+  overflow: hidden;
+}
+
+.photoWellIcon {
+  inline-size: var(--waxwing-icon-lg);
+  block-size: var(--waxwing-icon-lg);
+}
+
+.photoPickText {
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-accent);
+}
+
+/*
+ * Hidden from view, kept in the accessibility tree AND focusable — the same clip technique as
+ * `ui/VisuallyHidden`, not `display: none`, which would take the control out of the tab order and
+ * make the well keyboard-unreachable.
+ */
+.photoInput {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The input carries the focus, the well shows it. */
+.photoPicker:focus-within {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 2px;
+}
+
+.photoImg {
+  inline-size: 100%;
+  block-size: 100%;
   border-radius: var(--waxwing-radius-full);
   object-fit: cover;
 }

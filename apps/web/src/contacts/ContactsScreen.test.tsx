@@ -203,6 +203,44 @@ describe('ContactsScreen', () => {
     expect(screen.getByRole('heading', { name: 'Zoe' })).toBeInTheDocument()
   })
 
+  /**
+   * B-1 of the JMAP gap analysis, both halves, at the level where they lived.
+   *
+   * The photo picker was `disabled` unless a caller passed `uploadPhoto`, and NEITHER of this
+   * screen's two `ContactForm` render sites did — so the button was dead in every shipped build.
+   * `ContactForm.test.tsx` passed the uploader itself and could not see it. And had it been wired,
+   * what it wrote (`media[].blobId`) is what Stalwart rejects with
+   * `"blobIds in media is not supported."`.
+   *
+   * So this drives the whole path through the SCREEN, with nothing about the photo injected: pick a
+   * file, save, and read the card out of the intent the outbox was handed.
+   */
+  it('saves a contact photo picked in the form (B-1: wiring AND wire format)', async () => {
+    const createObjectURL = vi.fn(() => 'blob:preview')
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }))
+    const user = userEvent.setup()
+    renderScreen('/contacts/personal')
+    await screen.findByRole('option', { name: 'Alice Anderson' })
+
+    await clickButton(user, 'New contact')
+    await user.type(screen.getByLabelText('First name'), 'Pia')
+    await clickButton(user, 'Add photo')
+
+    // The control the user is shown must be a control the user can operate.
+    const picker = screen.getByLabelText('Choose photo')
+    expect(picker, 'the photo picker is dead without an uploader wired through').toBeEnabled()
+    await user.upload(picker, new File(['bytes'], 'me.png', { type: 'image/png' }))
+    await screen.findByRole('img')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const intent = dispatched.find((entry) => entry.kind === 'createContactCard')
+    if (intent?.kind !== 'createContactCard') throw new Error('no create was dispatched')
+    const media = Object.values(intent.card.media ?? {})[0]
+    expect(media, 'the picked photo reached the write').toBeDefined()
+    expect(media?.uri ?? '').toMatch(/^data:image\/png;base64,/)
+    expect(media?.blobId, 'Stalwart rejects blobIds in media').toBeUndefined()
+  })
+
   it('has no axe violations', async () => {
     const { container } = renderScreen('/contacts/personal')
     await screen.findByRole('option', { name: 'Alice Anderson' })

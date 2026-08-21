@@ -636,8 +636,9 @@
       "choosePhoto": "Choose photo",
       "changePhoto": "Change photo",
       "removePhoto": "Remove photo",
-      "photoUploading": "Uploading photo…",
-      "photoError": "The photo could not be uploaded.",
+      "photoPreparing": "Preparing photo…",
+      "photoError": "The photo could not be used.",
+      "photoTooLarge": "That photo is too large. Choose a smaller one.",
       "photoAlt": "Contact photo preview"
     },
     "delete": {

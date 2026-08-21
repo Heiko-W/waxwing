@@ -636,8 +636,9 @@
       "choosePhoto": "Foto auswählen",
       "changePhoto": "Foto ändern",
       "removePhoto": "Foto entfernen",
-      "photoUploading": "Foto wird hochgeladen …",
-      "photoError": "Das Foto konnte nicht hochgeladen werden.",
+      "photoPreparing": "Foto wird vorbereitet …",
+      "photoError": "Das Foto konnte nicht verwendet werden.",
+      "photoTooLarge": "Dieses Foto ist zu groß. Wählen Sie ein kleineres.",
       "photoAlt": "Vorschau des Kontaktfotos"
     },
     "delete": {

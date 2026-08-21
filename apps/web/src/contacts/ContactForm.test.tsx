@@ -5,7 +5,7 @@ import { type ContactCardRow, ReplicaProvider } from '../sync'
 import { contactCard } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
-import type { PhotoScaler, PhotoUploader } from './contact-photo-upload'
+import { PHOTO_MAX_BYTES, type PhotoScaler } from './contact-photo'
 import styles from './contacts.module.css'
 
 // The photo preview goes through the authenticated blob path — out of scope here. With it stubbed the
@@ -340,38 +340,59 @@ describe('ContactForm email validation (N9)', () => {
   })
 })
 
-describe('ContactForm photo upload', () => {
+describe('ContactForm photo (JMAP gap analysis, B-1)', () => {
   const passthroughScaler: PhotoScaler = async (file) => ({ blob: file, mediaType: file.type })
 
-  it('uploads a picked file and writes its blobId into the media map', async () => {
+  /**
+   * The write format. Stalwart answers a `media[].blobId` with
+   * `invalidProperties: "blobIds in media is not supported."` and accepts the same photo as a
+   * `data:` URI (measured, `docs/jmap-gap-2026-08-21/berichte/D-sharing-pim.md` §3.3) — so this
+   * asserts on the SHAPE of the card the form hands back, which is the thing the old code got
+   * wrong while its test was green.
+   */
+  it('writes the picked file into the media map as a data: URI, never a blobId', async () => {
     const user = userEvent.setup()
-    const uploader: PhotoUploader = vi.fn(async (_blob, mediaType) => ({
-      blobId: 'uploaded-blob',
-      mediaType,
-    }))
-    const { onSubmit } = renderForm({ uploadPhoto: uploader, scalePhoto: passthroughScaler })
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
 
     await user.click(screen.getByRole('button', { name: 'Add photo' }))
     const file = new File(['bytes'], 'me.png', { type: 'image/png' })
     await user.upload(screen.getByLabelText('Choose photo'), file)
 
-    // Preview appears (from the local objectURL) and the uploader ran.
+    // Preview appears (from the local objectURL created while the encode runs).
     expect(await screen.findByRole('img')).toBeInTheDocument()
-    expect(uploader).toHaveBeenCalledTimes(1)
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
     const media = Object.values(submit.card.media ?? {})[0]
-    expect(media).toMatchObject({ kind: 'photo', blobId: 'uploaded-blob', mediaType: 'image/png' })
+    expect(media).toMatchObject({ kind: 'photo', mediaType: 'image/png' })
+    expect(media?.uri ?? '').toMatch(/^data:image\/png;base64,/)
+    expect(media?.blobId).toBeUndefined()
+  })
+
+  /**
+   * The photo rides inside the card now, so there has to be a ceiling — otherwise a 4 MB camera
+   * shot from a browser that cannot downscale becomes a 5.5 MB base64 string in every sync.
+   */
+  it('refuses a photo too large to put in a card, and says so in its own words', async () => {
+    const user = userEvent.setup()
+    // A scaler that cannot help (the real one's behaviour when it cannot decode the file).
+    const giant = new File(['x'.repeat(PHOTO_MAX_BYTES + 1)], 'huge.png', { type: 'image/png' })
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
+
+    await user.click(screen.getByRole('button', { name: 'Add photo' }))
+    await user.upload(screen.getByLabelText('Choose photo'), giant)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That photo is too large. Choose a smaller one.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(submit.card.media).toBeUndefined()
   })
 
   it('removes the photo again', async () => {
     const user = userEvent.setup()
-    const uploader: PhotoUploader = vi.fn(async (_blob, mediaType) => ({
-      blobId: 'uploaded-blob',
-      mediaType,
-    }))
-    const { onSubmit } = renderForm({ uploadPhoto: uploader, scalePhoto: passthroughScaler })
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
 
     await user.click(screen.getByRole('button', { name: 'Add photo' }))
     await user.upload(
@@ -385,6 +406,18 @@ describe('ContactForm photo upload', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
     expect(submit.card.media).toBeUndefined()
+  })
+
+  /**
+   * The half of B-1 that no component test could see: the picker was `disabled` unless a caller
+   * passed an uploader, and no caller did. The form no longer takes one — so this pins that the
+   * control the user is shown is a control the user can operate, with nothing to wire.
+   */
+  it('offers an ENABLED picker with no props beyond the form itself', async () => {
+    const user = userEvent.setup()
+    renderForm()
+    await user.click(screen.getByRole('button', { name: 'Add photo' }))
+    expect(screen.getByLabelText('Choose photo')).toBeEnabled()
   })
 })
 

@@ -17,7 +17,7 @@
  */
 
 import type { ContactCard, ContactCardMedia, Id, PatchObject } from '@waxwing/jmap'
-import { Plus, X } from 'lucide-react'
+import { Plus, UserRound, X } from 'lucide-react'
 import {
   type FormEvent,
   type ReactNode,
@@ -47,8 +47,12 @@ import {
   newPhoneEntry,
   type PhoneEntry,
 } from './contact-card-mapping'
-import type { PhotoScaler, PhotoUploader } from './contact-photo-upload'
-import { scalePhoto as defaultScalePhoto } from './contact-photo-upload'
+import type { PhotoScaler } from './contact-photo'
+import {
+  scalePhoto as defaultScalePhoto,
+  PhotoTooLargeError,
+  preparePhotoUri,
+} from './contact-photo'
 import styles from './contacts.module.css'
 import { useContactPhoto } from './use-contact-photo'
 
@@ -67,8 +71,6 @@ export interface ContactFormProps {
   readonly onCancel: () => void
   /** Defence in depth: `false` disables Save and shows a read-only notice. Default `true`. */
   readonly canWrite?: boolean
-  /** Injected in tests; production builds one from the session (see the screen wiring). */
-  readonly uploadPhoto?: PhotoUploader
   /** Injected in tests (jsdom has no canvas); defaults to the real downscaler. */
   readonly scalePhoto?: PhotoScaler
   /** Injected in tests for deterministic map keys. */
@@ -497,7 +499,6 @@ export function ContactForm(props: ContactFormProps) {
         <FormSection title={t('contacts.form.sections.photo')}>
           <PhotoField
             photo={draft.photo}
-            uploader={props.uploadPhoto}
             scale={props.scalePhoto ?? defaultScalePhoto}
             newId={newId}
             onChange={(photo) => setDraft((p) => ({ ...p, photo }))}
@@ -748,16 +749,34 @@ function AddressRow({
 
 interface PhotoFieldProps {
   readonly photo: ContactFormModel['photo']
-  readonly uploader: PhotoUploader | undefined
   readonly scale: PhotoScaler
   readonly newId: IdSource
   readonly onChange: (photo: ContactFormModel['photo']) => void
 }
 
-function PhotoField({ photo, uploader, scale, newId, onChange }: PhotoFieldProps) {
+/**
+ * The photo well (JMAP gap analysis, B-1).
+ *
+ * **Two defects were fixed here, and the second is why the first was invisible.** The field used to
+ * take an `uploadPhoto` prop and disable its `<input type="file">` when it was absent — which it
+ * always was, because neither of the screen's two `ContactForm` render sites passed one. The label
+ * "Choose photo" stayed visible over a control that could not be operated. And had it been wired,
+ * the write it produced (`media[].blobId`) is one Stalwart rejects outright. So the uploader seam is
+ * GONE rather than passed down: there is nothing left to forget to wire, the bytes are encoded
+ * inline by {@link preparePhotoUri}, and the only injectable is the scaler the tests already need.
+ *
+ * **The shape is Apple's, and deliberately so.** iOS and macOS Contacts put one circular well where
+ * the photo will be, with the action written under it — content first, one target, no chrome around
+ * an empty circle. The whole well IS the file input (one implicit `<label>`, so there is exactly one
+ * accessible name and no `form-field-multiple-labels`), which makes it a target far larger than the
+ * 44px minimum on a phone; the input itself is visually hidden but focusable, and the well takes the
+ * focus ring on its behalf.
+ */
+function PhotoField({ photo, scale, newId, onChange }: PhotoFieldProps) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(false)
+  /** `null` = no complaint; otherwise the i18n key of the one the user needs to read. */
+  const [error, setError] = useState<string | null>(null)
   const previewRef = useRef<string | null>(null)
 
   const setPreview = useCallback((url: string | null): void => {
@@ -774,67 +793,81 @@ function PhotoField({ photo, uploader, scale, newId, onChange }: PhotoFieldProps
 
   const onPick = useCallback(
     async (file: File): Promise<void> => {
-      if (uploader === undefined) return
       setBusy(true)
-      setError(false)
+      setError(null)
+      // Shown while the scale+encode runs; the stored value is the `data:` URI, not this.
       const previewUrl = URL.createObjectURL(file)
       setPreview(previewUrl)
       try {
-        const prepared = await scale(file)
-        const uploaded = await uploader(prepared.blob, prepared.mediaType)
+        const prepared = await preparePhotoUri(file, scale)
         onChange({
           key: photo?.key ?? newId(),
-          blobId: uploaded.blobId,
-          mediaType: uploaded.mediaType,
+          uri: prepared.uri,
+          mediaType: prepared.mediaType,
           previewUrl,
+          // Keep the entry's other JSContact properties (`pref`, a label, …) across a replacement —
+          // `formToMedia` builds on `original` and drops the `blobId` the new `uri` supersedes.
+          ...(photo?.original !== undefined ? { original: photo.original } : {}),
         })
-      } catch {
+      } catch (thrown) {
         setPreview(null)
-        setError(true)
+        // "Too large" is the one failure the user can act on, so it says so instead of hiding
+        // inside a generic "could not be read".
+        setError(
+          thrown instanceof PhotoTooLargeError
+            ? 'contacts.form.photoTooLarge'
+            : 'contacts.form.photoError',
+        )
       } finally {
         setBusy(false)
       }
     },
-    [uploader, scale, onChange, photo?.key, newId, setPreview],
+    [scale, onChange, photo?.key, photo?.original, newId, setPreview],
   )
 
   const remove = useCallback((): void => {
     setPreview(null)
+    setError(null)
     onChange(null)
   }, [onChange, setPreview])
 
+  const pickLabel = photo !== null ? t('contacts.form.changePhoto') : t('contacts.form.choosePhoto')
+
   return (
     <div className={styles.photoField}>
-      {photo !== null && <PhotoPreview photo={photo} />}
-      <div className={styles.photoActions}>
-        <label className={styles.photoPick}>
-          <span>
-            {photo !== null ? t('contacts.form.changePhoto') : t('contacts.form.choosePhoto')}
-          </span>
-          <input
-            type="file"
-            accept="image/*"
-            disabled={uploader === undefined || busy}
-            aria-label={
-              photo !== null ? t('contacts.form.changePhoto') : t('contacts.form.choosePhoto')
-            }
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file !== undefined) void onPick(file)
-              e.target.value = ''
-            }}
-          />
-        </label>
-        {photo !== null && (
-          <Button variant="ghost" size="sm" type="button" onClick={remove}>
-            {t('contacts.form.removePhoto')}
-          </Button>
-        )}
-      </div>
-      {busy && <p className={styles.formHint}>{t('contacts.form.photoUploading')}</p>}
-      {error && (
+      {/* One <label>, wrapping both the well and its caption: the input has a single accessible
+          name and the whole circle opens the picker. */}
+      <label className={styles.photoPicker}>
+        <span className={styles.photoWell}>
+          {photo !== null ? (
+            <PhotoPreview photo={photo} />
+          ) : (
+            <UserRound aria-hidden="true" className={styles.photoWellIcon} />
+          )}
+        </span>
+        <span className={styles.photoPickText}>{pickLabel}</span>
+        <input
+          className={styles.photoInput}
+          type="file"
+          accept="image/*"
+          disabled={busy}
+          aria-label={pickLabel}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file !== undefined) void onPick(file)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {photo !== null && (
+        <Button variant="ghost" size="sm" type="button" onClick={remove}>
+          {t('contacts.form.removePhoto')}
+        </Button>
+      )}
+      {busy && <p className={styles.formHint}>{t('contacts.form.photoPreparing')}</p>}
+      {error !== null && (
         <p role="alert" className={styles.formNotice}>
-          {t('contacts.form.photoError')}
+          {t(error)}
         </p>
       )}
     </div>
@@ -855,7 +888,9 @@ function PhotoPreview({ photo }: { photo: NonNullable<ContactFormModel['photo']>
     [photo.blobId, photo.uri, photo.mediaType],
   )
   const fetched = useContactPhoto(accountId, media)
-  const url = photo.previewUrl ?? fetched
+  // `uri` before `fetched`: an inline photo needs no session at all, and this component is mounted
+  // in tests (and on the screen) where the blob path is stubbed out.
+  const url = photo.previewUrl ?? photo.uri ?? fetched
   if (url === undefined) return null
   return <img src={url} alt={t('contacts.form.photoAlt')} className={styles.photoImg} />
 }
