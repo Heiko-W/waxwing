@@ -526,6 +526,13 @@
   gap: var(--waxwing-space-2);
 }
 
+/* One communication row and, below it, the reason it was refused (N9). */
+.commField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+}
+
 .commRow,
 .addressHead {
   display: flex;

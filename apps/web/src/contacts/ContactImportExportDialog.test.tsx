@@ -121,6 +121,26 @@ describe('ContactImportExportDialog — export', () => {
     }
   })
 
+  it('names the failure instead of doing nothing visible', async () => {
+    // `onExport` was a `try/finally` with no `catch`: a throw below it became an unhandled promise
+    // rejection in the console, and the dialog stood there unchanged. Pressing Download did nothing.
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: () => {
+        throw new Error('no object URLs here')
+      },
+      revokeObjectURL: vi.fn(),
+    })
+    try {
+      const user = userEvent.setup()
+      renderDialog({ allowImport: false, exportCards: [contactCard('c1') as ContactCard] })
+      await user.click(screen.getByRole('button', { name: 'Download' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/could not be prepared/)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('says so when there is nothing to export', () => {
     renderDialog({ allowImport: false, exportCards: [] })
     expect(screen.getByText('There are no contacts to export.')).toBeInTheDocument()

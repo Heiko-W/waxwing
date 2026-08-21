@@ -611,10 +611,19 @@
       "addBirthday": "Geburtstag hinzufügen",
       "addNote": "Notiz hinzufügen",
       "addPhoto": "Foto hinzufügen",
-      "removeEmail": "E-Mail entfernen",
-      "removePhone": "Telefon entfernen",
-      "removeAddress": "Adresse entfernen",
-      "removeNote": "Notiz entfernen",
+      "fieldNames": {
+        "email": "E-Mail",
+        "phone": "Telefon",
+        "address": "Adresse",
+        "note": "Notiz"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "Typ von {{field}}",
+        "remove": "{{field}} entfernen",
+        "inGroup": "{{field}} ({{group}})"
+      },
+      "invalidEmail": "Geben Sie eine E-Mail-Adresse wie name@example.com ein.",
       "choosePhoto": "Foto auswählen",
       "changePhoto": "Foto ändern",
       "removePhoto": "Foto entfernen",
@@ -698,7 +707,8 @@
       },
       "error": {
         "invalid": "Die Datei konnte nicht gelesen werden. Prüfen Sie, ob es eine gültige vCard- oder JSON-Datei ist.",
-        "failed": "Die Datei konnte nicht importiert werden."
+        "failed": "Die Datei konnte nicht importiert werden.",
+        "export": "Der Export konnte nicht erstellt werden. Versuchen Sie das andere Format."
       }
     }
   },

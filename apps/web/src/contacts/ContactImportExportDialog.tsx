@@ -112,6 +112,15 @@ export default function ContactImportExportDialog({
   const [importing, setImporting] = useState(false)
   const [importedCount, setImportedCount] = useState<number | null>(null)
   const [exporting, setExporting] = useState(false)
+  /*
+   * Whether the last Download attempt failed.
+   *
+   * `onExport` used to be a `try/finally` with no `catch`, so a throw anywhere below it — the
+   * converter hitting a card the server had left without a `uid` was the real one — became an
+   * unhandled rejection in the console and NOTHING on screen. The reader pressed Download and the
+   * dialog sat there unchanged. A failure the app cannot explain is still a failure it has to name.
+   */
+  const [exportFailed, setExportFailed] = useState(false)
 
   const effectiveBookId = targetBookId ?? writableBooks[0]?.id
   const targetBook = writableBooks.find((book) => book.id === effectiveBookId)
@@ -174,6 +183,7 @@ export default function ContactImportExportDialog({
 
   const onExport = useCallback(async (): Promise<void> => {
     setExporting(true)
+    setExportFailed(false)
     try {
       const content = await serializeExport(exportCards, exportFormat)
       downloadText(
@@ -181,6 +191,8 @@ export default function ContactImportExportDialog({
         exportFilename(exportFilenameStem, exportFormat),
         exportMimeType(exportFormat),
       )
+    } catch {
+      setExportFailed(true)
     } finally {
       setExporting(false)
     }
@@ -336,7 +348,11 @@ export default function ContactImportExportDialog({
                 <Select
                   id={exportFormatId}
                   value={exportFormat}
-                  onChange={(event) => setExportFormat(event.target.value as ContactFormat)}
+                  onChange={(event) => {
+                    // Changing the format is the next step the message offers, so it retires it.
+                    setExportFailed(false)
+                    setExportFormat(event.target.value as ContactFormat)
+                  }}
                 >
                   {formatOptions}
                 </Select>
@@ -344,6 +360,11 @@ export default function ContactImportExportDialog({
               <p className={styles.formHint}>
                 {t('contacts.io.export.scope', { count: exportCards.length })}
               </p>
+              {exportFailed && (
+                <p role="alert" className={styles.formNotice}>
+                  {t('contacts.io.error.export')}
+                </p>
+              )}
               <div className={styles.ioActions}>
                 <Button variant="primary" onClick={onExport} disabled={exporting}>
                   {t('contacts.io.export.button')}
