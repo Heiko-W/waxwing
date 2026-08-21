@@ -109,6 +109,23 @@ export default [
       // from a folder's or a file's menu; the great majority of sessions never open either.
       '!apps/web/dist/assets/ShareDialog-*.js',
       '!apps/web/dist/assets/MailboxShareDialog-*.js',
+      // The calendar and address-book bindings of the same dialog (S-2), reached from a share icon
+      // on a rail row — and the two ROLE-SPEC modules they share with their rails. `calendar-roles`
+      // and `addressbook-roles` became chunks of their own the moment a second lazy chunk imported
+      // them, the same split `files-client`, `contacts.module` and `calendar-client` went through.
+      // They carry the `-roles` suffix so the globs below cannot also swallow a future eager
+      // `calendar-…` or `addressbook-…` chunk, which is the way this file fails silently.
+      //
+      // Checked the way the inverted rule demands, because a wrong entry here hides real weight:
+      // neither `CalendarShareDialog` nor `AddressBookShareDialog` is named in `index-*.js` at all,
+      // and `calendar-roles-*`/`addressbook-roles-*` appear there ONLY as strings inside Vite's
+      // `__vite__mapDeps` preload table — which is what a dynamic import of a route looks like from
+      // the entry side. `index.html` modulepreloads none of the four (it preloads exactly
+      // `initReactI18next`, `ui`, `sync` and `dist`).
+      '!apps/web/dist/assets/CalendarShareDialog-*.js',
+      '!apps/web/dist/assets/AddressBookShareDialog-*.js',
+      '!apps/web/dist/assets/calendar-roles-*.js',
+      '!apps/web/dist/assets/addressbook-roles-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],

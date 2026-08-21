@@ -1,8 +1,15 @@
 /**
- * Sharing one object — a file, a folder, later a calendar (S-1 … S-4, RFC 9670).
+ * Sharing one object — a file, a mail folder, a calendar, an address book (S-1 … S-4, RFC 9670).
  *
  * Two lists: who has access now, and who could be given it. The rights model is in `roles.ts` plus
  * one spec per object type, tested without rendering; this file is the surface.
+ *
+ * **The role list comes from the model, not from this file** (S-2). It used to iterate the
+ * module-level `SHARE_ROLES`, which was correct while every type had the same three; a calendar has
+ * four, because `mayReadFreeBusy` alone is a grant people ask for by name. Reading the list off
+ * {@link RoleModel.roles} is the whole of that change here — one `<Select>` renders three options or
+ * four, and the picker's default becomes whatever the model calls least rather than the literal
+ * "viewer".
  *
  * **Lifted, not rewritten.** This is `files/ShareDialog.tsx` with three things made into parameters —
  * the rights vocabulary ({@link ShareDialogProps.roles}), the write ({@link SharingClient}) and the
@@ -26,8 +33,8 @@ import { Check, UserMinus, UserPlus } from 'lucide-react'
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Dialog, EmptyState, SectionLabel, Select, Spinner, TextInput } from '../ui'
+import { principalLabel } from './principals'
 import type { RightsMap, RoleModel, ShareRole, ShareRoleOrCustom } from './roles'
-import { SHARE_ROLES } from './roles'
 import styles from './sharing.module.css'
 
 /**
@@ -47,8 +54,15 @@ export interface SharingClient<R extends RightsMap<R>> {
   setShareWith(shareWith: Record<Id, R>): Promise<void>
 }
 
-/** Which object type is being shared — picks the explanation texts, nothing else. */
-export type ShareKind = 'file' | 'mailbox'
+/**
+ * Which object type is being shared — picks the explanation texts, nothing else.
+ *
+ * The roles themselves come from {@link ShareDialogProps.roles}, which is what lets a calendar offer
+ * four of them and a mail folder three. This union only decides which sentence explains each one,
+ * and every `sharing.explain.<kind>.<role>` key it can reach has to exist: a calendar without
+ * `explain.calendar.freeBusy` would render the key itself under the picker.
+ */
+export type ShareKind = 'file' | 'mailbox' | 'calendar' | 'addressBook'
 
 /**
  * Whether the grant map is here yet.
@@ -85,16 +99,6 @@ export interface ShareDialogProps<R extends RightsMap<R>> {
 /** How long to wait after a keystroke before asking the server. */
 const SEARCH_DELAY_MS = 250
 
-function principalLabel(principal: Principal): string {
-  const name = principal.name?.trim()
-  if (name !== undefined && name !== '') return name
-  const email = principal.email?.trim()
-  if (email !== undefined && email !== '') return email
-  // A principal with neither is legal in the RFC. Its id is not a name, but it is not nothing, and
-  // an empty row would be worse than an ugly one.
-  return principal.id
-}
-
 export function ShareDialog<R extends RightsMap<R>>({
   title,
   kind,
@@ -113,7 +117,12 @@ export function ShareDialog<R extends RightsMap<R>>({
   const [query, setQuery] = useState('')
   const [found, setFound] = useState<Principal[] | null>(null)
   const [searchFailed, setSearchFailed] = useState(false)
-  const [role, setRole] = useState<ShareRole>('viewer')
+  /*
+   * The role the Add button will grant. Seeded from the MODEL rather than from the word "viewer":
+   * a calendar's least role is `freeBusy`, and a picker that opened on "View" would make the safe
+   * choice the one you have to notice and change.
+   */
+  const [role, setRole] = useState<ShareRole>(() => roles.roles[0] ?? 'viewer')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
 
@@ -184,6 +193,18 @@ export function ShareDialog<R extends RightsMap<R>>({
   const roleLabel = (value: ShareRoleOrCustom): string =>
     value === 'custom' ? t('sharing.custom') : t(`sharing.role.${value}`)
 
+  /*
+   * Which roles this object type offers, and the one the Add button is holding.
+   *
+   * `offered` is the model's list, not a module constant — see `roles.ts`. `addRole` re-reads it
+   * every render because the model can change under a mounted dialog (the Files screen swaps the
+   * node behind it), and a `role` that is no longer offered would render a `<Select>` whose value
+   * matches no option: React shows the first one and the state says another, so Add would grant
+   * something the reader never chose.
+   */
+  const offered = roles.roles
+  const addRole = offered.includes(role) ? role : (offered[0] ?? 'viewer')
+
   return (
     <Dialog
       open
@@ -239,7 +260,7 @@ export function ShareDialog<R extends RightsMap<R>>({
                             )
                           }
                         >
-                          {SHARE_ROLES.map((value) => (
+                          {offered.map((value) => (
                             <option key={value} value={value}>
                               {roleLabel(value)}
                             </option>
@@ -286,10 +307,10 @@ export function ShareDialog<R extends RightsMap<R>>({
                   would have to reinvent both. */}
                 <Select
                   id={roleId}
-                  value={role}
+                  value={addRole}
                   onChange={(event) => setRole(event.target.value as ShareRole)}
                 >
-                  {SHARE_ROLES.map((value) => (
+                  {offered.map((value) => (
                     <option key={value} value={value}>
                       {roleLabel(value)}
                     </option>
@@ -301,7 +322,7 @@ export function ShareDialog<R extends RightsMap<R>>({
               "can share this with other people" is what the user is actually agreeing to — and for a
               mail folder "View" has a consequence ("their unread counts will not move") that no
               generic wording could carry. */}
-            <p className={styles.shareHint}>{t(`sharing.explain.${kind}.${role}`)}</p>
+            <p className={styles.shareHint}>{t(`sharing.explain.${kind}.${addRole}`)}</p>
 
             {searchFailed ? (
               <EmptyState tone="error" title={t('sharing.searchFailed')} density="compact" />
@@ -328,7 +349,9 @@ export function ShareDialog<R extends RightsMap<R>>({
                         variant="ghost"
                         disabled={busy}
                         aria-label={t('sharing.grantTo', { name })}
-                        onClick={() => void write(roles.withGrant(shareWith, principal.id, role))}
+                        onClick={() =>
+                          void write(roles.withGrant(shareWith, principal.id, addRole))
+                        }
                       >
                         <UserPlus aria-hidden="true" />
                         {t('sharing.grant')}

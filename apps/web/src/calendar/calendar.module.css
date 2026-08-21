@@ -1103,3 +1103,74 @@
   flex-direction: column;
   gap: var(--waxwing-space-2);
 }
+
+/* ---- Sharing (S-2) --------------------------------------------------------------------------- */
+
+/*
+ * The "this calendar is shared" marker: a small person symbol beside the name, as iCloud draws it.
+ *
+ * Muted rather than tinted — the row already carries one colour and it means the CALENDAR. A second
+ * hue here would compete with it and would be the only carrier of the meaning, which WCAG 1.4.1
+ * forbids; the word lives in a `VisuallyHidden` beside the glyph and in the `title`.
+ */
+.calendarShared {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--waxwing-text-muted);
+}
+
+.calendarSharedIcon {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+}
+
+/* ---- Free/busy, as a background layer (S-6) --------------------------------------------------- */
+
+/*
+ * Somebody else's busy time, behind the reader's own grid.
+ *
+ * A HATCH, not a fill. Three constraints meet here and only a pattern satisfies all three: it may
+ * not obscure a real appointment drawn over it (so it is low-contrast and behind), it may not read
+ * as one of the reader's own calendars (so it is not a hue), and it may not carry its meaning by
+ * colour alone (WCAG 1.4.1 — the diagonals are the marker, and the words are in the
+ * `VisuallyHidden` beside each band). It is the same answer Apple's calendar gives, and the same
+ * one paper diaries gave before that.
+ *
+ * `currentColor` at low alpha rather than a fixed grey: the app has a dark theme, and a grey chosen
+ * for one of them is invisible in the other.
+ */
+.busyBand {
+  position: absolute;
+  inset-inline: 0;
+  /* Never a click target — the column underneath still creates an event where it did. */
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, currentColor 22%, transparent) 0,
+    color-mix(in srgb, currentColor 22%, transparent) 2px,
+    transparent 2px,
+    transparent 7px
+  );
+}
+
+/* The availability picker, at the foot of the calendar rail. */
+.availability {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  padding-block-start: var(--waxwing-space-2);
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
+.availabilityLabel {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.availabilityNote {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}

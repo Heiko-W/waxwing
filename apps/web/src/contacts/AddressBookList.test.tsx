@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../app/route'
+import { SessionContext } from '../app/session/context'
+import type { SessionContextValue } from '../app/session/types'
 import { putAddressBooks, type ReplicaDb, ReplicaProvider } from '../sync'
 import { setActiveEngine } from '../sync/engine'
 import type { OutboxIntent } from '../sync/engine/outbox'
@@ -23,7 +25,13 @@ beforeEach(async () => {
     },
   } as unknown as Parameters<typeof setActiveEngine>[0])
   await putAddressBooks(db, 'a', [
-    addressBook('personal', { name: 'Personal', isDefault: true }),
+    // `mayShare` on the owner's own book, so the S-2 tests below have something to share. The
+    // shared "Team" book keeps the fixture's default `false`, which is what a grantee really gets.
+    addressBook('personal', {
+      name: 'Personal',
+      isDefault: true,
+      myRights: { mayRead: true, mayWrite: true, mayShare: true, mayDelete: false },
+    }),
     addressBook('team', {
       name: 'Team',
       myRights: { mayRead: true, mayWrite: true, mayShare: false, mayDelete: true },
@@ -51,6 +59,35 @@ function renderList(selectedBookId?: string) {
         <AddressBookList selectedBookId={selectedBookId} />
       </ReplicaProvider>
     </RouterProvider>,
+  )
+}
+
+/**
+ * The same rail with a connected session behind it (S-2).
+ *
+ * The share affordance needs one — there is no seam to share through otherwise — so the default
+ * `renderList` above deliberately has none, and every test written before S-2 keeps asserting a rail
+ * with no share button on it. `ShareNotification/get` is answered with an empty list so the incoming
+ * strip stays out of the way.
+ */
+function renderWithSession(selectedBookId?: string) {
+  const value = {
+    connected: {
+      client: { call: async () => ({ get: () => ({ list: [] }) }) },
+      accountId: 'a',
+      accounts: [],
+      delegated: [],
+      jmapSession: { accounts: { a: { accountCapabilities: {} } } },
+    },
+  } as unknown as SessionContextValue
+  return render(
+    <SessionContext.Provider value={value}>
+      <RouterProvider>
+        <ReplicaProvider accountId="a" db={db}>
+          <AddressBookList selectedBookId={selectedBookId} />
+        </ReplicaProvider>
+      </RouterProvider>
+    </SessionContext.Provider>,
   )
 }
 
@@ -182,5 +219,41 @@ describe('managing address books (B-5)', () => {
     await openMenu(user, 'Personal')
     expect(await screen.findByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Sharing an address book from the rail (S-2).
+ *
+ * The rule is the calendar's: `myRights.mayShare` decides whether the control exists, not whether
+ * the write is refused afterwards. The fixture's "Team" book carries `mayShare: false` — a book
+ * somebody shared WITH this account — and "Personal" carries the default rights, which include it.
+ */
+describe('sharing a book (S-2)', () => {
+  it('offers nothing without a session — there is nothing to share through', async () => {
+    renderList()
+    await screen.findByRole('link', { name: /Personal/ })
+    expect(screen.queryByRole('button', { name: 'Share Personal' })).not.toBeInTheDocument()
+  })
+
+  it('THE ONE: offers nothing on a book whose `myRights.mayShare` is false', async () => {
+    renderWithSession()
+    await screen.findByRole('link', { name: /Team/ })
+    expect(screen.queryByRole('button', { name: 'Share Team' })).not.toBeInTheDocument()
+  })
+
+  it('offers it on a book the reader may share, named after its row', async () => {
+    renderWithSession()
+    await screen.findByRole('link', { name: /Personal/ })
+    expect(screen.getByRole('button', { name: 'Share Personal' })).toBeInTheDocument()
+  })
+
+  it('opens the dialog, which fetches the grant map before showing anything', async () => {
+    const user = userEvent.setup()
+    renderWithSession()
+    await screen.findByRole('link', { name: /Personal/ })
+    await user.click(screen.getByRole('button', { name: 'Share Personal' }))
+    // Lazy chunk: the dialog arrives a microtask later, titled after the book.
+    expect(await screen.findByText('Share the list “Personal”')).toBeInTheDocument()
   })
 })

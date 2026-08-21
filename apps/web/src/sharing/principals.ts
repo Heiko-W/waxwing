@@ -14,6 +14,21 @@ import type { JmapSession } from '../app/session/types'
 const SEARCH_LIMIT = 50
 
 /**
+ * What to call a principal on screen.
+ *
+ * Name, else address, else the id. Every one of the three is optional in RFC 9670 — Stalwart sends
+ * `name` and `email` for a person and no `email` at all for a group — and an id is not a name, but
+ * a blank row is worse than an ugly one: it is a person the reader cannot pick.
+ */
+export function principalLabel(principal: Principal): string {
+  const name = principal.name?.trim()
+  if (name !== undefined && name !== '') return name
+  const email = principal.email?.trim()
+  if (email !== undefined && email !== '') return email
+  return principal.id
+}
+
+/**
  * Everyone `accountId` may share with, matching `query` — never `selfPrincipalId`.
  *
  * An empty query lists everyone rather than nobody: a picker that shows nothing until you type

@@ -688,7 +688,8 @@
         "nameRequired": "Enter a name.",
         "nameTooLong": "That name is too long.",
         "nameTaken": "An address book with that name already exists."
-      }
+      },
+      "share": "Share {{name}}"
     },
     "list": {
       "title": "Contacts",
@@ -1758,7 +1759,8 @@
     "role": {
       "viewer": "View",
       "editor": "Edit",
-      "manager": "Manage"
+      "manager": "Manage",
+      "freeBusy": "Availability only"
     },
     "explain": {
       "file": {
@@ -1770,6 +1772,17 @@
         "viewer": "They can read the mail in this folder. Opening a message will not mark it read for you — which also means their own unread count never goes down.",
         "editor": "They can read the mail, move it in and out of this folder, mark it read and flag it. They cannot rename or delete the folder.",
         "manager": "They can do everything you can with this folder — read and file the mail, rename it, delete it, and share it with other people without telling you."
+      },
+      "calendar": {
+        "freeBusy": "They can see WHEN you are busy, never what you are doing — no titles, no places, no people. This is what you give someone who needs to schedule around you.",
+        "viewer": "They can read every event in this calendar, with its title, time and details. They cannot change anything.",
+        "editor": "They can read, create and change events, answer invitations, and set their own alerts. They cannot delete the calendar or share it.",
+        "manager": "They can do everything you can with this calendar — including deleting it and sharing it with other people, without telling you."
+      },
+      "addressBook": {
+        "viewer": "They can read the contacts in this list. They cannot change them.",
+        "editor": "They can read, add, change and remove contacts in this list. They cannot delete the list or share it.",
+        "manager": "They can do everything you can with this list — including deleting it and sharing it with other people, without telling you."
       }
     },
     "mailbox": {
@@ -1787,7 +1800,23 @@
       "someone": "Someone",
       "open": "Open",
       "dismiss": "Hide",
-      "dismissOne": "Hide this notice"
+      "dismissOne": "Hide this notice",
+      "calendar": "{{who}} shared the calendar “{{name}}” with you.",
+      "calendarUnnamed": "{{who}} shared a calendar with you.",
+      "revokedCalendarUnnamed": "{{who}} withdrew your access to a calendar.",
+      "addressBook": "{{who}} shared the contact list “{{name}}” with you.",
+      "addressBookUnnamed": "{{who}} shared a contact list with you.",
+      "revokedAddressBookUnnamed": "{{who}} withdrew your access to a contact list.",
+      "object": "{{who}} shared “{{name}}” with you.",
+      "objectUnnamed": "{{who}} shared something with you.",
+      "revokedObjectUnnamed": "{{who}} withdrew your access to something."
+    },
+    "calendar": {
+      "title": "Share the calendar “{{name}}”"
+    },
+    "addressBook": {
+      "title": "Share the list “{{name}}”",
+      "loadFailed": "The current access list could not be loaded, so nothing here can be changed safely."
     }
   },
   "calendar": {
@@ -1931,7 +1960,9 @@
       "deleted": "“{{name}}” deleted.",
       "deleteFailed": "The calendar could not be deleted.",
       "saveFailed": "The calendar could not be saved.",
-      "toggleFailed": "The calendar could not be shown or hidden."
+      "toggleFailed": "The calendar could not be shown or hidden.",
+      "share": "Share {{name}}",
+      "sharedTitle": "Shared"
     },
     "colors": {
       "red": "Red",
@@ -1960,7 +1991,14 @@
       "duplicates_other": "{{count}} events were already in the calendar."
     },
     "rsvpFailed": "Your reply could not be sent.",
-    "occurrenceDeleted": "That event was removed from the series."
+    "occurrenceDeleted": "That event was removed from the series.",
+    "availability": {
+      "label": "Show availability",
+      "nobody": "Nobody",
+      "noPeople": "There is nobody to ask.",
+      "unavailable": "No availability came back for that person.",
+      "period": "{{name}} is busy on {{day}} from {{from}} to {{to}}."
+    }
   },
   "files": {
     "listOptions": "List options",

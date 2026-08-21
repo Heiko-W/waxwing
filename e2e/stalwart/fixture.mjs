@@ -600,6 +600,253 @@ export async function clearFileNodes() {
   }
 }
 
+const CALENDAR_USING = [
+  'urn:ietf:params:jmap:core',
+  'urn:ietf:params:jmap:calendars',
+  'urn:ietf:params:jmap:principals',
+]
+
+const CONTACTS_USING = [
+  'urn:ietf:params:jmap:core',
+  'urn:ietf:params:jmap:contacts',
+  'urn:ietf:params:jmap:principals',
+]
+
+/**
+ * The rights each named role grants a CALENDAR grantee (S-2).
+ *
+ * The eight keys the server accepts, measured — a ninth is refused per object with
+ * `invalidProperties`, so the fixture writes the same list the app does rather than a subset.
+ * `freeBusy` is the interesting one: it is the level that says "you may see that I am busy, never
+ * what I am doing", and a suite that only ever granted `viewer` would never exercise it.
+ */
+const CALENDAR_RIGHTS = {
+  freeBusy: {
+    mayReadFreeBusy: true,
+    mayReadItems: false,
+    mayWriteAll: false,
+    mayWriteOwn: false,
+    mayUpdatePrivate: false,
+    mayRSVP: false,
+    mayShare: false,
+    mayDelete: false,
+  },
+  viewer: {
+    mayReadFreeBusy: true,
+    mayReadItems: true,
+    mayWriteAll: false,
+    mayWriteOwn: false,
+    mayUpdatePrivate: false,
+    mayRSVP: false,
+    mayShare: false,
+    mayDelete: false,
+  },
+}
+
+/** The four keys RFC 9610 defines for an address book. A mailbox key here is refused by name. */
+const ADDRESS_BOOK_RIGHTS = {
+  viewer: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: false },
+  editor: { mayRead: true, mayWrite: true, mayShare: false, mayDelete: false },
+}
+
+/**
+ * Share `owner`'s DEFAULT calendar with `grantee` at one of {@link CALENDAR_RIGHTS} (S-2).
+ *
+ * Its own helper rather than a flag on {@link shareInbox}, for the reason the S-4 measurement
+ * established: the grants do not imply one another. A mail delegation does not make `Calendar/get`
+ * answer for the grantee, and this one does not make `Mailbox/get` answer.
+ *
+ * Idempotent in the same sense as `ensureDelegation`: `shareWith` is a full replacement, so writing
+ * the same rights twice is a no-op the server does not report. Re-granting at a DIFFERENT level is
+ * what mints a fresh `ShareNotification`.
+ */
+export async function shareCalendar(owner, grantee, role = 'viewer') {
+  const ownerAccount = accountNamed(owner)
+  const granteeAccount = accountNamed(grantee)
+  if (!ownerAccount || !granteeAccount) throw new Error(`unknown pair ${owner}/${grantee}`)
+  const rights = CALENDAR_RIGHTS[role]
+  if (!rights) throw new Error(`unknown calendar role ${role}`)
+
+  const ownerAccountId = await ownAccountId(ownerAccount)
+  const granteePrincipal = await principalIdFor(ownerAccount, ownerAccountId, granteeAccount.login)
+
+  const calendars = await jmapAs(ownerAccount, CALENDAR_USING, [
+    [
+      'Calendar/get',
+      { accountId: ownerAccountId, ids: null, properties: ['id', 'isDefault'] },
+      '0',
+    ],
+  ])
+  const list = calendars.list ?? []
+  const calendar = list.find((entry) => entry.isDefault) ?? list[0]
+  if (!calendar) throw new Error(`${ownerAccount.login} has no calendar to share`)
+
+  const args = await jmapAs(ownerAccount, CALENDAR_USING, [
+    [
+      'Calendar/set',
+      {
+        accountId: ownerAccountId,
+        update: { [calendar.id]: { shareWith: { [granteePrincipal]: rights } } },
+      },
+      '0',
+    ],
+  ])
+  if (args.notUpdated?.[calendar.id]) {
+    throw new Error(
+      `calendar share ${owner}->${grantee} rejected: ${JSON.stringify(args.notUpdated[calendar.id])}`,
+    )
+  }
+  return { ownerAccountId, calendarId: calendar.id, granteePrincipal }
+}
+
+/** Share `owner`'s DEFAULT address book with `grantee` (S-2). Same reasoning as {@link shareCalendar}. */
+export async function shareAddressBook(owner, grantee, role = 'viewer') {
+  const ownerAccount = accountNamed(owner)
+  const granteeAccount = accountNamed(grantee)
+  if (!ownerAccount || !granteeAccount) throw new Error(`unknown pair ${owner}/${grantee}`)
+  const rights = ADDRESS_BOOK_RIGHTS[role]
+  if (!rights) throw new Error(`unknown address-book role ${role}`)
+
+  const ownerAccountId = await ownAccountId(ownerAccount)
+  const granteePrincipal = await principalIdFor(ownerAccount, ownerAccountId, granteeAccount.login)
+
+  const books = await jmapAs(ownerAccount, CONTACTS_USING, [
+    [
+      'AddressBook/get',
+      { accountId: ownerAccountId, ids: null, properties: ['id', 'isDefault'] },
+      '0',
+    ],
+  ])
+  const list = books.list ?? []
+  const book = list.find((entry) => entry.isDefault) ?? list[0]
+  if (!book) throw new Error(`${ownerAccount.login} has no address book to share`)
+
+  const args = await jmapAs(ownerAccount, CONTACTS_USING, [
+    [
+      'AddressBook/set',
+      {
+        accountId: ownerAccountId,
+        update: { [book.id]: { shareWith: { [granteePrincipal]: rights } } },
+      },
+      '0',
+    ],
+  ])
+  if (args.notUpdated?.[book.id]) {
+    throw new Error(
+      `address-book share ${owner}->${grantee} rejected: ${JSON.stringify(args.notUpdated[book.id])}`,
+    )
+  }
+  return { ownerAccountId, bookId: book.id, granteePrincipal }
+}
+
+/**
+ * Put one timed event in `owner`'s default calendar, for the free/busy suite (S-6).
+ *
+ * `Principal/getAvailability` answers `{list: []}` for an empty calendar, which is
+ * indistinguishable on screen from "the method does not work" — so a test that asserts a busy band
+ * has to create the busy time first. Returns the event id so the test can destroy it again.
+ */
+export async function addBusyEvent(owner, { start, duration = 'PT2H', title = 'Busy' }) {
+  const ownerAccount = accountNamed(owner)
+  if (!ownerAccount) throw new Error(`unknown account ${owner}`)
+  const ownerAccountId = await ownAccountId(ownerAccount)
+
+  const calendars = await jmapAs(ownerAccount, CALENDAR_USING, [
+    [
+      'Calendar/get',
+      { accountId: ownerAccountId, ids: null, properties: ['id', 'isDefault'] },
+      '0',
+    ],
+  ])
+  const list = calendars.list ?? []
+  const calendar = list.find((entry) => entry.isDefault) ?? list[0]
+  if (!calendar) throw new Error(`${ownerAccount.login} has no calendar`)
+
+  const args = await jmapAs(ownerAccount, CALENDAR_USING, [
+    [
+      'CalendarEvent/set',
+      {
+        accountId: ownerAccountId,
+        create: {
+          e: {
+            '@type': 'Event',
+            title,
+            // A LOCAL date-time plus a zone, which is what JSCalendar wants — an offset here is
+            // refused, and `Principal/getAvailability` normalises the answer to UTC itself.
+            start,
+            timeZone: 'Europe/Berlin',
+            duration,
+            // The default anyway, and stated so the availability answer cannot depend on it.
+            freeBusyStatus: 'busy',
+            calendarIds: { [calendar.id]: true },
+          },
+        },
+      },
+      '0',
+    ],
+  ])
+  if (args.notCreated?.e) {
+    throw new Error(`busy event rejected: ${JSON.stringify(args.notCreated.e)}`)
+  }
+  return { ownerAccountId, calendarId: calendar.id, eventId: args.created?.e?.id }
+}
+
+/** Destroy every event in every test account's calendars — the sweep {@link addBusyEvent} needs. */
+export async function clearCalendarEvents() {
+  for (const account of ACCOUNTS) {
+    const accountId = await ownAccountId(account)
+    const found = await jmapAs(account, CALENDAR_USING, [
+      ['CalendarEvent/query', { accountId }, '0'],
+    ])
+    const ids = found.ids ?? []
+    if (ids.length === 0) continue
+    await jmapAs(account, CALENDAR_USING, [
+      ['CalendarEvent/set', { accountId, destroy: [...ids] }, '0'],
+    ])
+  }
+}
+
+/**
+ * Unshare every CALENDAR and ADDRESS BOOK of every test account (S-2).
+ *
+ * The companion to {@link revokeAllShares}, which sweeps mailboxes only. A calendar left shared puts
+ * the owner's whole account into the grantee's session — with all seventeen capabilities, measured —
+ * and every later suite then sees a sidebar it was not written for.
+ */
+export async function revokeAllPimShares() {
+  for (const account of ACCOUNTS) {
+    const accountId = await ownAccountId(account)
+
+    const calendars = await jmapAs(account, CALENDAR_USING, [
+      ['Calendar/get', { accountId, ids: null, properties: ['id', 'shareWith'] }, '0'],
+    ])
+    const calendarUpdate = {}
+    for (const calendar of calendars.list ?? []) {
+      if (Object.keys(calendar.shareWith ?? {}).length > 0) {
+        calendarUpdate[calendar.id] = { shareWith: {} }
+      }
+    }
+    if (Object.keys(calendarUpdate).length > 0) {
+      await jmapAs(account, CALENDAR_USING, [
+        ['Calendar/set', { accountId, update: calendarUpdate }, '0'],
+      ])
+    }
+
+    const books = await jmapAs(account, CONTACTS_USING, [
+      ['AddressBook/get', { accountId, ids: null, properties: ['id', 'shareWith'] }, '0'],
+    ])
+    const bookUpdate = {}
+    for (const book of books.list ?? []) {
+      if (Object.keys(book.shareWith ?? {}).length > 0) bookUpdate[book.id] = { shareWith: {} }
+    }
+    if (Object.keys(bookUpdate).length > 0) {
+      await jmapAs(account, CONTACTS_USING, [
+        ['AddressBook/set', { accountId, update: bookUpdate }, '0'],
+      ])
+    }
+  }
+}
+
 /** Withdraw every share (`shareWith: {}`), returning the fixture to its single-account default. */
 export async function revokeDelegations() {
   for (const { owner } of DELEGATIONS) {

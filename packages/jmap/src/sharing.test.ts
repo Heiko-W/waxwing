@@ -92,6 +92,67 @@ describe('the mail-sharing URN is opt-in, never automatic', () => {
   })
 })
 
+describe('S-6 — the availability URN is opt-in for the SAME reason', () => {
+  /*
+   * `Principal/getAvailability` is assigned `urn:ietf:params:jmap:principals:availability` by RFC
+   * 9670, and `capabilityForMethod` cannot know that: it maps by PREFIX, and `Principal` already
+   * means `principals`. A per-METHOD override table would fix the derivation and break the batch —
+   * it would send the URN to every server, and one the server does not know costs the whole request.
+   *
+   * What is NOT measured: whether Stalwart answers this method WITHOUT the URN. The probe that
+   * established the method sent all sixteen session URNs at once. So the rule is "send it when the
+   * session advertises it", which is correct either way the unmeasured question falls.
+   */
+  it('derives the plain principals URN, not the availability one', () => {
+    expect(capabilityForMethod('Principal/getAvailability')).toBe(Capabilities.principals)
+  })
+
+  it('never puts the availability URN in a derived `using` set', () => {
+    expect(usingForMethods(['Principal/getAvailability', 'Principal/query'])).toEqual([
+      Capabilities.core,
+      Capabilities.principals,
+    ])
+    expect(usingForMethods(['Principal/getAvailability'])).not.toContain(
+      Capabilities.principalsAvailability,
+    )
+  })
+
+  it('has a constant to opt in with, and it is the RFC’s spelling', () => {
+    expect(Capabilities.principalsAvailability).toBe('urn:ietf:params:jmap:principals:availability')
+  })
+
+  it('can be added per call, which is how a caller that checked the session sends it', async () => {
+    const mock = jmapPostMock(() => ({
+      methodResponses: [['Principal/getAvailability', { accountId: 'b', list: [] }, '0']],
+      sessionState: 's0',
+    }))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch: mock.fetch })
+    await client.call(
+      [
+        [
+          Methods.principalGetAvailability.name,
+          {
+            accountId: 'b',
+            id: 'b',
+            utcStart: '2026-08-24T00:00:00Z',
+            utcEnd: '2026-08-31T00:00:00Z',
+          },
+          '0',
+        ],
+      ],
+      { using: [Capabilities.principalsAvailability] },
+    )
+    const { using } = at(mock.calls, 0).body
+    expect(using).toContain(Capabilities.principalsAvailability)
+    // And the derived one is still there: the method needs both, and `call` unions them.
+    expect(using).toContain(Capabilities.principals)
+  })
+
+  it('is registered under the name the server answers to', () => {
+    expect(Methods.principalGetAvailability.name).toBe('Principal/getAvailability')
+  })
+})
+
 describe('`Mailbox` carries the sharing properties it is sent', () => {
   /*
    * A type test with teeth: before this, `myRights.mayShare` and `shareWith` were absent from the

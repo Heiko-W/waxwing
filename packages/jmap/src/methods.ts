@@ -87,6 +87,8 @@ import type {
   ThreadGetResponse,
 } from './types/mail'
 import type {
+  PrincipalGetAvailabilityRequest,
+  PrincipalGetAvailabilityResponse,
   PrincipalGetRequest,
   PrincipalGetResponse,
   PrincipalQueryRequest,
@@ -291,6 +293,19 @@ export const Methods = {
    */
   principalGet: defineMethod<PrincipalGetRequest, PrincipalGetResponse>('Principal/get'),
   principalQuery: defineMethod<PrincipalQueryRequest, PrincipalQueryResponse>('Principal/query'),
+  /**
+   * RFC 9670 §5 — free/busy (S-6).
+   *
+   * **The `using` set this derives is `[core, principals]` and that is on purpose.** The method's
+   * own capability is `urn:ietf:params:jmap:principals:availability`, but `capabilityForMethod`
+   * maps by PREFIX and `Principal` already means `principals` — see
+   * {@link Capabilities.principalsAvailability} for why an override would cost more than it buys.
+   * A caller that has seen the session advertise the URN adds it through `CallOptions.using`.
+   */
+  principalGetAvailability: defineMethod<
+    PrincipalGetAvailabilityRequest,
+    PrincipalGetAvailabilityResponse
+  >('Principal/getAvailability'),
   shareNotificationGet: defineMethod<ShareNotificationGetRequest, ShareNotificationGetResponse>(
     'ShareNotification/get',
   ),

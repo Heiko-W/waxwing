@@ -1,5 +1,11 @@
 /**
- * Three named roles over an arbitrary JMAP `shareWith` rights map (S-1 … S-4, RFC 9670).
+ * Named roles over an arbitrary JMAP `shareWith` rights map (S-1 … S-4, S-2, RFC 9670).
+ *
+ * **Three of them fit most types and a fourth exists for exactly one.** The three are View / Edit /
+ * Manage; the fourth, `freeBusy`, is the calendar's "availability only" and is described where it is
+ * declared. Which roles a type offers is data in its {@link RoleSpec.order} — a global list would
+ * have made "add a fourth" mean "add it everywhere", which is how the mail folder would have grown
+ * a grant that says nothing.
  *
  * Every shareable JMAP object — `FileNode`, `Mailbox`, `Calendar`, `AddressBook` — spells its grant
  * the same way: `shareWith` is principal id → a flat map of independent booleans. The number of
@@ -17,7 +23,8 @@
  * needs "view" to withhold `maySetSeen` — a reader who cannot help marking the owner's post as read
  * is not a viewer — and needs `maySubmit` false in *all three* roles (ADR-020). That is expressed as
  * data in `mailbox.ts`, not as an exception here; a spec whose roles do not describe a type is a
- * signal to write a fourth role, not to bend one of these three.
+ * signal to write a fourth role, not to bend one of these three. `calendar-roles.ts` is that signal taken
+ * up: `mayReadFreeBusy` alone is a grant people ask for by name, so the calendar spec lists four.
  *
  * **Foreign combinations are preserved, not corrected.** An object shared by another client can
  * carry rights no role here produces. {@link RoleModel.roleOf} calls that `custom` and the UI leaves
@@ -25,14 +32,38 @@
  * the kind of "helpful" that loses data.
  */
 
-/** What a grantee may do, as a name rather than N booleans. */
-export type ShareRole = 'viewer' | 'editor' | 'manager'
+/**
+ * What a grantee may do, as a name rather than N booleans.
+ *
+ * **Four names, and no object type offers all four.** `freeBusy` exists for the calendar alone: on
+ * `Calendar.shareWith`, `mayReadFreeBusy` on its own is a real, familiar grant — "they may see that
+ * I am busy, not what I am doing" — and it is the level iCloud and Google both expose by name. It
+ * is not a variant of "View" and must never be collapsed into it: someone with `freeBusy` cannot
+ * read a single title, and someone with "View" can read all of them.
+ *
+ * Which of the four a given type offers is DATA, in that type's {@link RoleSpec.order} — see
+ * {@link RoleModel.roles}. There is no type that offers `freeBusy` and, say, not `manager`; the
+ * order is nevertheless per spec rather than a global constant, because it is also the order the
+ * picker lists and the list `roleOf` compares against, and a role a type does not have must not be
+ * offerable there.
+ */
+export type ShareRole = 'freeBusy' | 'viewer' | 'editor' | 'manager'
 
 /** A role, or the marker for rights that match none of them. */
 export type ShareRoleOrCustom = ShareRole | 'custom'
 
-/** The order they are offered in — least to most, so the safe choice is the first one. */
-export const SHARE_ROLES: readonly ShareRole[] = ['viewer', 'editor', 'manager']
+/**
+ * The three that fit a file node, a mail folder and an address book — least to most, so the safe
+ * choice is the first one.
+ *
+ * `as const` rather than `readonly ShareRole[]`, and that is load-bearing: a spec annotated
+ * `RoleSpec<R, BasicShareRole>` is then obliged to define exactly these three and no `freeBusy`
+ * placeholder. Widening the type here would put a fourth, meaningless grant into every spec.
+ */
+export const SHARE_ROLES = ['viewer', 'editor', 'manager'] as const satisfies readonly ShareRole[]
+
+/** The three roles {@link SHARE_ROLES} offers, as a type. */
+export type BasicShareRole = (typeof SHARE_ROLES)[number]
 
 /**
  * Any JMAP rights object: a flat record of independent booleans.
@@ -52,9 +83,18 @@ export type RightsMap<R = Record<string, boolean>> = { [K in keyof R]: boolean }
  * exactly its keys, so a key missing from `none` is a right this client neither grants nor notices.
  * That is why each spec writes every measured key out in full instead of spreading a partial.
  */
-export interface RoleSpec<R extends RightsMap<R>> {
+export interface RoleSpec<R extends RightsMap<R>, Role extends ShareRole = ShareRole> {
   readonly none: R
-  readonly roles: Readonly<Record<ShareRole, R>>
+  /**
+   * The roles this type offers, least to most.
+   *
+   * It is BOTH the order the picker lists and the order {@link RoleModel.roleOf} compares in, which
+   * is why it is one list rather than two. Least-first matters twice over: the picker's default is
+   * the first entry, and `roleOf` returns the first match — so where two roles happened to produce
+   * the same grant, the narrower name would win.
+   */
+  readonly order: readonly Role[]
+  readonly roles: Readonly<Record<Role, R>>
 }
 
 /** One grantee, as the UI lists them. */
@@ -64,9 +104,11 @@ export interface Grantee {
 }
 
 /** The role model for one object type. */
-export interface RoleModel<R extends RightsMap<R>> {
+export interface RoleModel<R extends RightsMap<R>, Role extends ShareRole = ShareRole> {
+  /** The roles this type offers, least to most — {@link RoleSpec.order}, for the picker to render. */
+  readonly roles: readonly Role[]
   /** The full grant for a role — a fresh object, never the spec's own. */
-  rightsFor(role: ShareRole): R
+  rightsFor(role: Role): R
   /** Which role these rights are, or `custom`. */
   roleOf(rights: Partial<R> | null | undefined): ShareRoleOrCustom
   /** Everyone this object is shared with, in a stable order for rendering. */
@@ -75,7 +117,7 @@ export interface RoleModel<R extends RightsMap<R>> {
   withGrant(
     shareWith: Record<string, Partial<R>> | null | undefined,
     principalId: string,
-    role: ShareRole,
+    role: Role,
   ): Record<string, R>
   /** `shareWith` without `principalId`. */
   withoutGrant(
@@ -84,10 +126,14 @@ export interface RoleModel<R extends RightsMap<R>> {
   ): Record<string, Partial<R>>
 }
 
-export function makeRoleModel<R extends RightsMap<R>>(spec: RoleSpec<R>): RoleModel<R> {
+export function makeRoleModel<R extends RightsMap<R>, Role extends ShareRole>(
+  spec: RoleSpec<R, Role>,
+): RoleModel<R, Role> {
   const keys = Object.keys(spec.none) as (keyof R & string)[]
 
   return {
+    roles: spec.order,
+
     rightsFor(role) {
       return { ...spec.roles[role] }
     },
@@ -102,7 +148,9 @@ export function makeRoleModel<R extends RightsMap<R>>(spec: RoleSpec<R>): RoleMo
     roleOf(rights) {
       if (rights === null || rights === undefined) return 'custom'
       const full = { ...spec.none, ...rights } as R
-      for (const role of SHARE_ROLES) {
+      // `spec.order`, not a module-level list: a mail folder must never be reported as `freeBusy`
+      // and a calendar must be able to be. The spec is the only thing that knows which.
+      for (const role of spec.order) {
         const candidate = spec.roles[role]
         if (keys.every((key) => full[key] === candidate[key])) return role
       }
