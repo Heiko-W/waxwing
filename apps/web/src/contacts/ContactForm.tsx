@@ -530,18 +530,23 @@ function TypeSelect({
   // Keep an unusual stored type (e.g. a vCard `home`) selectable so a round-trip never drops it.
   const all = options.includes(value) ? options : [...options, value]
   return (
-    <Select
-      className={styles.commType}
-      aria-label={t('contacts.form.type')}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {all.map((option) => (
-        <option key={option} value={option}>
-          {t(`contacts.labels.${option === '' ? 'other' : option}`, { defaultValue: option })}
-        </option>
-      ))}
-    </Select>
+    // The width lives on this wrapper, not on the `Select`: `Select`'s `className` lands on the inner
+    // `<select>`, while the flex child of the row is the wrapper `Select` renders around it (which is
+    // `inline-size: 100%`). See the note on `.commType`. Sizing the shared component from outside
+    // would mean changing it for its eight other callers, so the box that needs the width gets one.
+    <div className={styles.commType}>
+      <Select
+        aria-label={t('contacts.form.type')}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {all.map((option) => (
+          <option key={option} value={option}>
+            {t(`contacts.labels.${option === '' ? 'other' : option}`, { defaultValue: option })}
+          </option>
+        ))}
+      </Select>
+    </div>
   )
 }
 

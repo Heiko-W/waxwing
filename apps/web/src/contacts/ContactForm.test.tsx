@@ -6,6 +6,7 @@ import { contactCard } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
 import type { PhotoScaler, PhotoUploader } from './contact-photo-upload'
+import styles from './contacts.module.css'
 
 // The photo preview goes through the authenticated blob path — out of scope here. With it stubbed the
 // preview falls back to the local objectURL created on pick.
@@ -93,6 +94,32 @@ describe('ContactForm progressive disclosure (FR-CON-02)', () => {
       await user.click(screen.getByRole('button', { name: button }))
       expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
     }
+  })
+})
+
+describe('ContactForm comm-row layout', () => {
+  /**
+   * The row is `[type] [value] [x]` and the type is the only fixed-width part of it, so whichever box
+   * carries that width decides whether the value field gets a row or a sliver. `Select` forwards
+   * `className` to the INNER `<select>` and lays out through a wrapper of its own — so the width used
+   * to be set on a box that is not the flex child, the wrapper claimed the whole row at its
+   * `inline-size: 100%`, and the email/phone field measured 26px in every viewport.
+   *
+   * Asserted on the DOM rather than on the stylesheet because that is where the mistake was: the rule
+   * itself was always right, it was attached to the wrong element.
+   */
+  it('puts the fixed width on the flex child of the row, not on the inner select', () => {
+    renderForm()
+    const select = screen.getAllByRole('combobox')[0] as HTMLElement
+    expect(select.tagName).toBe('SELECT')
+    // `Select` renders <div wrapper><select/><chevron/></div>; the sized box is outside that wrapper.
+    expect(select).not.toHaveClass(styles.commType as string)
+    expect(select.parentElement).not.toHaveClass(styles.commType as string)
+    expect(select.parentElement?.parentElement).toHaveClass(styles.commType as string)
+    // …and that box is a direct child of the row, so `flex: none` has something to act on.
+    expect(select.parentElement?.parentElement?.parentElement).toHaveClass(
+      styles.commRow as string,
+    )
   })
 })
 
