@@ -138,8 +138,9 @@ export type OutboxIntent =
   // ── Contacts (M4.2, RFC 9610) ──────────────────────────────────────────────────────────────
   // A ContactCard is a standalone object with create/update/destroy over `ContactCard/set`, exactly
   // like a Mailbox over `Mailbox/set` — so these MIRROR `createMailbox`/`renameMailbox`/`deleteMailbox`
-  // (creation-id flow for the create, prior-state undo for update/delete). AddressBook create is the
-  // Mailbox-create analogue; AddressBook update/delete are deliberately NOT part of this stage (5a).
+  // (creation-id flow for the create, prior-state undo for update/delete). The AddressBook trio is
+  // the same shape one level up (JMAP gap analysis B-5: create existed and had no caller; update and
+  // destroy did not exist at all, so a second address book could be neither renamed nor removed).
   | {
       /** Create a card in one or more address books; the full JSContact card rides along with its `id`
        *  set to `creationId` until the server acks (then {@link reconcileContactCardCreate} swaps it). */
@@ -153,6 +154,22 @@ export type OutboxIntent =
       readonly kind: 'createAddressBook'
       readonly creationId: string
       readonly props: { readonly name: string; readonly description?: string | null }
+    }
+  | {
+      /** Rename / re-describe a book. Only the properties present are written. */
+      readonly kind: 'updateAddressBook'
+      readonly id: Id
+      readonly props: { readonly name?: string; readonly description?: string | null }
+    }
+  | {
+      /**
+       * Destroy a book WITH its contents (RFC 9610 §2.3 `onDestroyRemoveContents`) — the cards that
+       * are in no other book go with it. The flag is not optional here: without it a book that still
+       * holds a card cannot be destroyed at all, and "delete this list" would fail for the only
+       * reason anyone ever has a list. The UI says so before it dispatches.
+       */
+      readonly kind: 'deleteAddressBook'
+      readonly id: Id
     }
 
 /**
@@ -173,6 +190,9 @@ export function stateGuardType(kind: OutboxIntent['kind']): GuardedType | null {
     case 'updateContactCard':
     case 'deleteContactCard':
       return 'ContactCard'
+    case 'updateAddressBook':
+    case 'deleteAddressBook':
+      return 'AddressBook'
     default:
       return null
   }
@@ -1467,6 +1487,34 @@ export async function applyOptimistic(
       await putAddressBooks(db, accountId, [book])
       return { kind: 'addressBook', id: intent.creationId, prior: null }
     }
+    case 'updateAddressBook': {
+      const prior = (await db.addressBooks.get([accountId, intent.id])) ?? null
+      if (prior !== null) {
+        await db.addressBooks.update([accountId, intent.id], {
+          ...(intent.props.name === undefined ? {} : { name: intent.props.name }),
+          ...(intent.props.description === undefined
+            ? {}
+            : { description: intent.props.description }),
+        })
+      }
+      return { kind: 'addressBook', id: intent.id, prior }
+    }
+    case 'deleteAddressBook': {
+      const prior = (await db.addressBooks.get([accountId, intent.id])) ?? null
+      await deleteAddressBooks(db, accountId, [intent.id])
+      /*
+       * The book row goes; the CARDS in it are left to the `ContactCard/changes` delta.
+       *
+       * Deliberate, and the reason is the undo: it is a persisted row, and restoring a book plus
+       * every card that was only in it would mean carrying those cards in the payload — the payload
+       * growth this module forbids itself (see the note on `insertedKeys`). The server destroys them
+       * (`onDestroyRemoveContents`) and reports them destroyed on the next pass, which is the same
+       * path a card deleted in another client takes. Until it arrives those cards are visible under
+       * "All Contacts" without a book of their own: a transient, not a loss, and a REJECTED destroy
+       * then needs no card restored because none was removed.
+       */
+      return { kind: 'addressBook', id: intent.id, prior }
+    }
     case 'saveDraft':
     case 'discardDraft':
       // Drafts are edit-state, not envelope cache: the local `drafts` row is written durably by the
@@ -1813,6 +1861,20 @@ function executeIntent(
       if (intent.props.description != null) props.description = intent.props.description
       return port.setAddressBooks({ create: { [intent.creationId]: props }, ifInState })
     }
+    case 'updateAddressBook': {
+      const patch: PatchObject = {}
+      if (intent.props.name !== undefined) patch.name = intent.props.name
+      if (intent.props.description !== undefined) patch.description = intent.props.description
+      return port.setAddressBooks({ update: { [intent.id]: patch }, ifInState })
+    }
+    case 'deleteAddressBook':
+      // `onDestroyRemoveContents` — see the intent's own note: without it a book holding a single
+      // card cannot be destroyed, and the user has already been told what goes with it.
+      return port.setAddressBooks({
+        destroy: [intent.id],
+        onDestroyRemoveContents: true,
+        ifInState,
+      })
     case 'saveDraft':
       // create-new + destroy-old in one call — RFC 8620 §5.3 processes create before destroy, so the
       // new draft exists before the prior one is removed (gap-free).
@@ -1884,6 +1946,12 @@ function rejections(intent: OutboxIntent, result: PortSetResult): Map<string, Po
       break
     case 'createAddressBook':
       collect(result.notCreated, [intent.creationId])
+      break
+    case 'updateAddressBook':
+      collect(result.notUpdated, [intent.id])
+      break
+    case 'deleteAddressBook':
+      collect(result.notDestroyed, [intent.id])
       break
     case 'saveDraft':
       collect(result.notCreated, [intent.creationId])
@@ -1990,11 +2058,15 @@ function rewriteContactCardTarget(intent: OutboxIntent, fromId: Id, toId: Id): O
 
 /**
  * A queued intent referencing an address book created in the same session: re-point the book id.
- * Two carriers — a card CREATED into the fresh book (`addressBookIds`), and an UPDATE patch that
- * files a card into it (`addressBookIds/<tempId>` pointer) — both of which would otherwise dangle and
- * be answered with a bogus `notFound` (the D5 defect, contacts edition).
+ * Carriers — a card CREATED into the fresh book (`addressBookIds`), an UPDATE patch that files a
+ * card into it (`addressBookIds/<tempId>` pointer), and a rename/delete of the BOOK itself queued
+ * before its create was acknowledged — all of which would otherwise dangle and be answered with a
+ * bogus `notFound` (the D5 defect, contacts edition).
  */
 function rewriteAddressBookTarget(intent: OutboxIntent, fromId: Id, toId: Id): OutboxIntent | null {
+  if (intent.kind === 'updateAddressBook' || intent.kind === 'deleteAddressBook') {
+    return intent.id === fromId ? { ...intent, id: toId } : null
+  }
   if (intent.kind === 'createContactCard') {
     if (intent.card.addressBookIds[fromId] !== true) return null
     const addressBookIds = { ...intent.card.addressBookIds }
@@ -2559,6 +2631,8 @@ function rejectionKeys(intent: OutboxIntent): string[] {
       return [intent.creationId]
     case 'updateContactCard':
     case 'deleteContactCard':
+    case 'updateAddressBook':
+    case 'deleteAddressBook':
       return [intent.id]
     case 'saveDraft':
       return [intent.creationId]

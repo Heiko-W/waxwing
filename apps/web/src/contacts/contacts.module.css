@@ -79,6 +79,57 @@
   list-style: none;
 }
 
+/*
+ * One rail row: the book (a link, taking the width) and its action menu (B-5). The menu is a SIBLING
+ * of the link, never inside it — a button nested in an anchor is not valid, and a press meant for
+ * the menu would navigate.
+ */
+.bookRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+}
+
+/*
+ * Quiet until wanted — the macOS Contacts sidebar shows no per-row chrome until the row is pointed
+ * at. Kept in the layout either way (`opacity`, not `display`), so revealing it moves nothing.
+ */
+.bookMenu {
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+@media (hover: hover) {
+  .bookRow:hover .bookMenu {
+    opacity: 1;
+  }
+}
+
+/* Keyboard reveal, on every device — otherwise the menu is pointer-only. */
+.bookRow:focus-within .bookMenu {
+  opacity: 1;
+}
+
+/* Touch has no hover at all, so the affordance is simply always there. */
+@media (pointer: coarse) {
+  .bookMenu {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bookMenu {
+    transition: none;
+  }
+}
+
+.bookForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
 .bookItem {
   display: flex;
   align-items: center;
@@ -103,6 +154,13 @@
   background-color: var(--waxwing-surface-selected);
   color: var(--waxwing-accent);
   font-weight: var(--waxwing-weight-medium);
+}
+
+/* Declared after the plain `.bookItem` rules above: same box, one specificity step up, so the
+   cascade order matches the specificity order (`noDescendingSpecificity`). */
+.bookRow > .bookItem {
+  flex: 1;
+  min-inline-size: 0;
 }
 
 .bookIcon {

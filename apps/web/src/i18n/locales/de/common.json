@@ -535,7 +535,32 @@
       "show": "Adressbücher anzeigen",
       "hide": "Adressbücher ausblenden",
       "loading": "Adressbücher werden geladen",
-      "empty": "Keine Adressbücher."
+      "empty": "Keine Adressbücher.",
+      "new": "Neues Adressbuch",
+      "actions": "Aktionen für {{name}}",
+      "nameLabel": "Name",
+      "create": {
+        "title": "Neues Adressbuch",
+        "submit": "Anlegen"
+      },
+      "rename": {
+        "action": "Umbenennen",
+        "title": "Adressbuch umbenennen",
+        "submit": "Umbenennen"
+      },
+      "delete": {
+        "action": "Löschen",
+        "title": "Adressbuch löschen",
+        "body": "„{{name}}“ löschen?",
+        "contents": "Kontakte, die nur in diesem Adressbuch stehen, werden mitgelöscht.",
+        "confirm": "Löschen",
+        "cancel": "Abbrechen"
+      },
+      "error": {
+        "nameRequired": "Geben Sie einen Namen ein.",
+        "nameTooLong": "Dieser Name ist zu lang.",
+        "nameTaken": "Ein Adressbuch mit diesem Namen gibt es bereits."
+      }
     },
     "list": {
       "title": "Kontakte",

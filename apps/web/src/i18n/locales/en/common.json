@@ -535,7 +535,32 @@
       "show": "Show address books",
       "hide": "Hide address books",
       "loading": "Loading address books",
-      "empty": "No address books."
+      "empty": "No address books.",
+      "new": "New address book",
+      "actions": "Actions for {{name}}",
+      "nameLabel": "Name",
+      "create": {
+        "title": "New address book",
+        "submit": "Create"
+      },
+      "rename": {
+        "action": "Rename",
+        "title": "Rename address book",
+        "submit": "Rename"
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete address book",
+        "body": "Delete \u201c{{name}}\u201d?",
+        "contents": "Contacts that are only in this address book are deleted with it.",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "error": {
+        "nameRequired": "Enter a name.",
+        "nameTooLong": "That name is too long.",
+        "nameTaken": "An address book with that name already exists."
+      }
     },
     "list": {
       "title": "Contacts",
