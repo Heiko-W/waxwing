@@ -852,8 +852,10 @@
     },
     "sort": {
       "label": "Sort",
-      "date": "Date",
+      "date": "Date received",
+      "sentAt": "Date sent",
       "from": "Sender",
+      "to": "Recipient",
       "subject": "Subject",
       "size": "Size",
       "unreadFirst": "Unread first"

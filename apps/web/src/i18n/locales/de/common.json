@@ -852,8 +852,10 @@
     },
     "sort": {
       "label": "Sortieren",
-      "date": "Datum",
+      "date": "Empfangsdatum",
+      "sentAt": "Sendedatum",
       "from": "Absender",
+      "to": "Empfänger",
       "subject": "Betreff",
       "size": "Größe",
       "unreadFirst": "Ungelesene zuerst"

@@ -1015,6 +1015,40 @@ describe('MessageList', () => {
       })
     }
 
+    /**
+     * M-10. `sentAt` and `to` are in the session's own `emailQuerySortOptions` and were never
+     * offered. "Date" alone was also a small lie: it has always been the RECEIVED date, and the
+     * moment a sent date sits beside it the label has to say which one it is.
+     */
+    it('offers all six sort keys, naming which date is which', async () => {
+      renderList()
+      await screen.findByText('First')
+      const options = [...screen.getByLabelText('Sort').querySelectorAll('option')]
+      expect(options.map((option) => option.value)).toEqual([
+        'date',
+        'sentAt',
+        'from',
+        'to',
+        'subject',
+        'size',
+      ])
+      expect(options.map((option) => option.textContent)).toEqual([
+        'Date received',
+        'Date sent',
+        'Sender',
+        'Recipient',
+        'Subject',
+        'Size',
+      ])
+    })
+
+    it('persists a newly offered sort like any other', async () => {
+      renderList()
+      await screen.findByText('First')
+      fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'sentAt' } })
+      await waitFor(async () => expect(await getPref(db, 'a', 'list.sort')).toBe('sentAt'))
+    })
+
     it('leaves them live in a folder view (the control, so "disabled" means something)', async () => {
       renderList()
       await screen.findByText('First')

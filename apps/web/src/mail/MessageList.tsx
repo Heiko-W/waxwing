@@ -993,8 +993,13 @@ function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: To
           aria-describedby={describedBy}
           onChange={(event) => change('list.sort', event.target.value)}
         >
+          {/* Received and sent date next to each other, then the two address keys, then subject
+              and size — the order Apple Mail's own sort menu uses, and the order someone scanning
+              the list expects to find them in. */}
           <option value="date">{t('list.sort.date')}</option>
+          <option value="sentAt">{t('list.sort.sentAt')}</option>
           <option value="from">{t('list.sort.from')}</option>
+          <option value="to">{t('list.sort.to')}</option>
           <option value="subject">{t('list.sort.subject')}</option>
           <option value="size">{t('list.sort.size')}</option>
         </Select>
