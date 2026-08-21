@@ -336,3 +336,35 @@ belegten Messungen und der Liste der betroffenen Eigenschaften.
 ## Dokumentenpflege (I-4)
 FR-CAL-01 beschreibt den Kalender noch als „read-only" und nennt RFC 8984 als Format. Beides
 wird mit K-6 und K-1 falsch; die Spezifikation gehört im selben Paket nachgezogen.
+
+---
+
+## Nachtrag 21.08.2026 — die iMIP-Sonde ist gelaufen
+
+Der Plan verlangte sie vor jeder Zeile UI für K-3. Ergebnis gegen **v0.16.18**, mit zwei
+Wegwerfkonten und isoliertem Auslöser:
+
+| Aufruf | Einladung beim Eingeladenen? |
+|---|---|
+| `CalendarEvent/set create` mit `participants` | **nein** |
+| `CalendarEvent/set create` mit `participants` **und `sendSchedulingMessages: true`** | **ja** |
+
+**Der Auslöser ist das Methodenargument `sendSchedulingMessages: true`**, nicht der Inhalt des
+Termins. Ohne es passiert nichts — kein Fehler, keine Mail, kein Log-Eintrag. Das erklärt auch
+die Messung auf v0.16.14, wo dieselbe Sonde nichts ergab: dort war die Funktion zusätzlich
+defekt, hier ist sie nur ausdrücklich anzufordern.
+
+Die angekommene Mail ist eine vollwertige Einladung:
+
+```
+Betreff : Invitation: iMIP-Sonde v2 @ Thursday November 5, 2026 10:00am (Europe/Berlin)
+Von     : imip1@waxwing.test
+Anhänge : text/calendar · image/png (inline) · application/ics ("event.ics", attachment)
+```
+
+**Damit ist K-3 baubar** — die Einschränkung „nur auf einem freigegebenen Kalender", die der Plan
+für den Fall des Scheiterns vorsah, entfällt. Was weiterhin **nicht** geht: der
+Einladungs-Posteingang über `CalendarEventNotification` (K-9, weiter ungeklärt) und
+`CalendarEvent/participantReply` (existiert nicht). Für eingehende Einladungen bleibt der Weg
+über den `text/calendar`-Anhang in der Mail — und der Server legt ihn, wie oben zu sehen,
+ohnehin bei.
