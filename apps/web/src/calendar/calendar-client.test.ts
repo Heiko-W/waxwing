@@ -28,7 +28,7 @@
  * published surface, so app-side tests fake the seam (see `settings/identity-client.test.ts`).
  */
 
-import type { CalendarEvent, Invocation, JmapClient } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, Invocation, JmapClient } from '@waxwing/jmap'
 import { MethodResponses, RequestBuilder } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
 import {
@@ -72,6 +72,8 @@ interface FakeOptions {
   readonly onSet?: (args: Record<string, unknown>) => Record<string, unknown>
   /** Makes the unexpanded companion `/get` fail at the method level. */
   readonly breakIdentity?: boolean
+  /** What `Calendar/get` resolves to. */
+  readonly calendars?: Calendar[]
 }
 
 /**
@@ -88,6 +90,7 @@ function fakeClient(options: FakeOptions = {}): {
   const calls: Invocation[] = []
   const occurrences = options.occurrences ?? []
   const objects = options.objects ?? []
+  const calendars = options.calendars ?? []
 
   const run = (invocations: Invocation[]): MethodResponses => {
     const responses: Invocation[] = []
@@ -99,6 +102,11 @@ function fakeClient(options: FakeOptions = {}): {
     for (const [name, rawArgs, id] of invocations) {
       const args = rawArgs as Record<string, unknown>
       calls.push([name, args, id])
+
+      if (name === 'Calendar/get') {
+        responses.push([name, { accountId: ACC, state: 's1', list: calendars, notFound: [] }, id])
+        continue
+      }
 
       if (name === 'CalendarEvent/query') {
         const expanded = args.expandRecurrences === true
@@ -224,7 +232,7 @@ describe('eventsInRange', () => {
     const { client } = fakeClient({
       occurrences: [event({ id: 'eaaaaa1' })],
       objects: [
-        event({ id: '7', recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] }),
+        event({ id: '7', recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly' } }),
       ],
     })
     const [placed] = await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
@@ -236,7 +244,7 @@ describe('eventsInRange', () => {
   it('asks BOTH gets for every field the signature reads', async () => {
     // The join compares two answers, so it breaks the moment they are asked for different things:
     // a property that was not requested reads as absent, and two events both "missing" a title
-    // would look alike. `recurrenceRules` is there for the series flag, which nothing else answers.
+    // would look alike. `recurrenceRule` is there for the series flag, which nothing else answers.
     const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
     await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
 
@@ -247,10 +255,25 @@ describe('eventsInRange', () => {
       for (const field of ['calendarIds', 'title', 'start', 'duration', 'showWithoutTime']) {
         expect(properties, `${field} must be asked for on both sides`).toContain(field)
       }
-      expect(properties).toContain('recurrenceRules')
+      // SINGULAR (ADR-025). The plural RFC 8984 spelling this line used to assert was never
+      // answered by this server, which is exactly why the master of a series read as a plain
+      // event — and why asserting the old name here kept the bug green for months.
+      expect(properties).toContain('recurrenceRule')
+      expect(properties).not.toContain('recurrenceRules')
     }
     // And `uid` on neither: the server does not send it, so asking for it only suggests it matters.
     expect((gets[0]?.[1] as { properties: string[] }).properties).not.toContain('uid')
+  })
+
+  it('asks the EXPANDED get for `baseEventId`, which is the server naming the master', async () => {
+    // Not a nice-to-have: it is the only branch of `resolveIdentity` that resolves an occurrence
+    // whose start has moved away from its master's, and a property that is never requested always
+    // reads as absent.
+    const { client, calls } = fakeClient({ occurrences: [SYNTHETIC], objects: [REAL] })
+    await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
+
+    const gets = calls.filter(([name]) => name === 'CalendarEvent/get')
+    expect((gets[0]?.[1] as { properties: string[] }).properties).toContain('baseEventId')
   })
 
   it('drops an event whose start cannot be read rather than sorting it to 1970', async () => {
@@ -398,6 +421,24 @@ describe('restoreEvent', () => {
     expect(body.alerts).toEqual({ a1: { '@type': 'Alert' } })
     expect(body.participants).toEqual({ p1: { '@type': 'Participant', name: 'Bob' } })
   })
+
+  /**
+   * Measured, not reasoned: Stalwart v0.16.18 refuses `method` in **create** with
+   * `{"type":"invalidProperties","description":"This property is immutable."}` — the same answer
+   * it gives to an update. An event that arrived by iMIP carries one, so without this the delete
+   * would succeed, the Undo toast would appear, and pressing it would fail. Offering an Undo that
+   * cannot run is worse than offering none.
+   */
+  it('drops `method`, which this server refuses on create as well as on update', async () => {
+    const { client, calls } = fakeClient()
+    await makeCalendarClient(client, ACC).restoreEvent(
+      event({ id: '0', method: 'request', title: 'Invitation' }),
+    )
+
+    const body = (calls[0]?.[1] as { create: { e: Record<string, unknown> } }).create.e
+    expect(body.method).toBeUndefined()
+    expect(body.title).toBe('Invitation')
+  })
 })
 
 describe('eventSignature', () => {
@@ -474,9 +515,52 @@ describe('resolveIdentity', () => {
   const weekly = event({
     id: '7',
     title: 'Weekly',
-    recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }],
+    // Singular: how `jscalendarbis`, and therefore this server, reports a repetition (ADR-025).
+    recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly' },
   })
   const index = indexObjects([single, weekly])
+
+  it('takes `baseEventId` as the write id WITHOUT consulting the signature', () => {
+    /*
+     * The measured shape, straight off the wire:
+     *   {"start":"2026-09-14T11:00:00","title":"Wochenmeeting (verschoben)",
+     *    "recurrenceId":"2026-09-14T11:00:00","id":"eaaaaaf","baseEventId":"f"}
+     *
+     * The index here holds NOTHING that matches: no id `f`, no matching signature. The old code
+     * therefore answered `writeId: null` and the occurrence was shown read-only-because-unresolved,
+     * even though the server had named its master in the payload. That is the whole point of the
+     * new branch — it resolves an occurrence whose `start` has moved away from its master's, which
+     * is every occurrence of a series after the first.
+     */
+    const moved = event({
+      id: 'eaaaaaf',
+      title: 'Wochenmeeting (verschoben)',
+      start: '2026-09-14T11:00:00',
+      recurrenceId: '2026-09-14T11:00:00',
+      baseEventId: 'f',
+    })
+    expect(resolveIdentity(moved, index)).toEqual({ writeId: 'f', series: true })
+  })
+
+  it('does NOT read `baseEventId` as "this repeats"', () => {
+    /*
+     * Stalwart puts it on every event an expanded query answers with, including instances of
+     * events that repeat nothing — `Principal/getAvailability` showed `{"id":"iaaaaab",
+     * "baseEventId":"b"}` for a plain single event. Treating its presence as a series flag would
+     * turn every event in the month read-only, which is a worse bug than the one it fixes.
+     */
+    const instance = event({ id: 'iaaaaa0', title: 'Single', baseEventId: '0' })
+    expect(resolveIdentity(instance, index)).toEqual({ writeId: '0', series: false })
+  })
+
+  it('still carries the series flag over when the index HAS the named master', () => {
+    expect(resolveIdentity(event({ id: 'eaaaaa7', baseEventId: '7' }), index).series).toBe(true)
+  })
+
+  it('ignores an empty `baseEventId` rather than writing to nothing', () => {
+    const blank = event({ id: 'eaaaaa0', title: 'Single', baseEventId: '' })
+    expect(resolveIdentity(blank, index).writeId).toBe('0')
+  })
 
   it('maps a synthetic occurrence onto its object by signature', () => {
     expect(resolveIdentity(event({ id: 'eaaaaa0', title: 'Single' }), index)).toEqual({
@@ -538,15 +622,27 @@ describe('resolveIdentity', () => {
 
 describe('a series as this server actually reports one', () => {
   /*
-   * Measured by putting a weekly `RRULE` in over CalDAV — the only way a series can exist here at
-   * all, since `CalendarEvent/set` rejects `recurrenceRules` outright (`invalidProperties`).
+   * Measured twice, and the second measurement corrected the first.
    *
-   * Two things came back that this suite has to hold on to. Every expanded occurrence carries
-   * `recurrenceId`. And the stored master answers WITHOUT `recurrenceRules`, even when asked for
-   * it by name — so the "series flag from the master" belt is not fastened on this server and the
-   * `recurrenceId` braces are carrying the whole load.
+   * The original run put a weekly `RRULE` in over CalDAV and recorded that the stored master
+   * answered WITHOUT its rule "even when asked for it by name" — so the "series flag from the
+   * master" belt looked unfastened and `recurrenceId` seemed to carry the whole load. The gap
+   * survey of 21 Aug 2026 found the cause: the client was asking for `recurrenceRules`, and this
+   * server speaks `jscalendarbis`, where the property is `recurrenceRule` (ADR-025). A create
+   * carrying the plural name is refused with `invalidProperties: ["recurrenceRules"]`; the
+   * singular one is accepted and read back. So the master below carries its rule, because that is
+   * what the server sends when asked correctly.
+   *
+   * This block keeps the occurrences WITHOUT `baseEventId` on purpose: it pins the signature
+   * fallback, i.e. what happens on a server that does not send it. The block after it is the same
+   * series as Stalwart really answers, with `baseEventId` on every instance.
    */
-  const master = event({ id: 'b', title: 'CalDAV Weekly Probe', start: '2026-08-03T09:00:00' })
+  const master = event({
+    id: 'b',
+    title: 'CalDAV Weekly Probe',
+    start: '2026-08-03T09:00:00',
+    recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly' },
+  })
   const occurrence = (start: string, id: string) =>
     event({ id, title: 'CalDAV Weekly Probe', start, recurrenceId: start })
 
@@ -575,6 +671,74 @@ describe('a series as this server actually reports one', () => {
     expect(refuseEdit(placeEvent(occurrence('2026-08-10T09:00:00', 'iaaaaab'), identity))).toBe(
       'series',
     )
+  })
+})
+
+describe('a series with `baseEventId`, as Stalwart really answers one', () => {
+  /*
+   * The four instances of event `f` from the 21 Aug 2026 survey, verbatim. Note that the master is
+   * NOT in the index: an unexpanded query over the same window returns it, but a reader paging to
+   * a later month gets occurrences whose master started before the window. Under the signature
+   * join those were unresolvable; here every one of them names `f`.
+   */
+  const instance = (start: string, id: string, title = 'Wochenmeeting') =>
+    event({ id, title, start, recurrenceId: start, baseEventId: 'f' })
+
+  it('resolves EVERY instance to the master, including the ones the signature cannot', () => {
+    const empty = indexObjects([])
+    for (const [start, id] of [
+      ['2026-09-07T09:00:00', 'iaaaaaf'],
+      ['2026-09-14T11:00:00', 'eaaaaaf'],
+      ['2026-09-28T09:00:00', 'maaaaaf'],
+    ] as const) {
+      const identity = resolveIdentity(instance(start, id), empty)
+      expect(identity.writeId, `${id} must resolve to its master`).toBe('f')
+      expect(identity.series).toBe(true)
+    }
+  })
+
+  it('refuses to open an editor on any of them all the same', () => {
+    // Resolving is not permitting. A write id makes Undo and delete possible; the series refusal
+    // is what stops a single-event patch reaching a repeating meeting.
+    const one = instance('2026-09-14T11:00:00', 'eaaaaaf', 'Wochenmeeting (verschoben)')
+    expect(refuseEdit(placeEvent(one, resolveIdentity(one, indexObjects([]))))).toBe('series')
+  })
+})
+
+describe('listCalendars', () => {
+  it('NAMES the properties it needs, `isVisible` above all', async () => {
+    /*
+     * Measured: `Calendar/get` with no `properties` answers `id, name, description, color,
+     * timeZone, sortOrder, isDefault, isSubscribed, myRights` and silently omits `isVisible`,
+     * `shareWith`, `includeInAvailability` and both `defaultAlerts*` maps. The call used to send
+     * no `properties` at all, so a client that started reading `isVisible` would have seen
+     * `undefined` on every calendar and concluded the server does not support hiding one.
+     */
+    const { client, calls } = fakeClient({ calendars: [] })
+    await makeCalendarClient(client, ACC).listCalendars()
+
+    const get = calls.find(([name]) => name === 'Calendar/get')
+    const properties = (get?.[1] as { properties?: string[] }).properties
+    expect(properties).toBeDefined()
+    for (const field of [
+      'isVisible',
+      'includeInAvailability',
+      'defaultAlertsWithTime',
+      'defaultAlertsWithoutTime',
+      'shareWith',
+    ]) {
+      expect(properties, `${field} must be asked for or it never arrives`).toContain(field)
+    }
+    // And nothing the app already reads may fall out of the answer by being left unnamed.
+    for (const field of ['id', 'name', 'color', 'isDefault', 'isSubscribed', 'myRights']) {
+      expect(properties, `${field} was in the default answer and must stay`).toContain(field)
+    }
+  })
+
+  it('hands the list back untouched — hiding is a screen decision, not a seam one', async () => {
+    const hidden = { id: 'c9', name: 'Privat', isVisible: false } as unknown as Calendar
+    const { client } = fakeClient({ calendars: [hidden] })
+    expect(await makeCalendarClient(client, ACC).listCalendars()).toEqual([hidden])
   })
 })
 

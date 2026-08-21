@@ -38,8 +38,17 @@
  *    else's — the worst possible distribution of a bug, and precisely the one that shipped.
  *
  * Minting a uid on create would fix half of that and nothing about events already stored, so the
- * join has to hold without one. If it is ever added, it belongs beside the two branches in
- * {@link resolveIdentity} as a third, more certain one — never as a replacement for them.
+ * join has to hold without one. If it is ever added, it belongs beside the branches in
+ * {@link resolveIdentity} as a more certain one — never as a replacement for them.
+ *
+ * **That more certain branch now exists, and it is `baseEventId`.** `draft-ietf-jmap-calendars`
+ * defines it as "only defined if the `id` property is a synthetic id", and Stalwart sends it on
+ * EVERY event an expanded query answers with — `{"id":"iaaaaaf","baseEventId":"f"}` — including
+ * instances of events that repeat nothing, where it names the event itself. It is the server
+ * stating the mapping the signature was reconstructing, so it is asked for and consulted first.
+ * The signature stays exactly where it was, as the fallback for a server that does not send it:
+ * it is measured behaviour on one version of one server, and deleting the join that works without
+ * it would trade a guess for a different guess.
  *
  * What the server does send, for an occurrence of a non-repeating event, is the stored event's own
  * record with a synthetic `id` swapped in — compared field by field against the unexpanded answer.
@@ -60,8 +69,14 @@
  * from the second occurrence on, so the signature resolves nothing — and the first occurrence,
  * which does resolve, is refused on the series flag before the write id is ever consulted. Worth
  * knowing while reading {@link indexObjects}: that same measurement showed the stored master
- * answering WITHOUT `recurrenceRules` even when asked for it, so on this server `recurrenceId` on
- * the occurrence is the only thing actually reporting a series. Both are checked; only one works.
+ * answering WITHOUT `recurrenceRules` even when asked for it. That is no longer a mystery — the
+ * client was asking for the wrong property name. Stalwart implements
+ * `draft-ietf-calext-jscalendarbis`, where the rule is SINGULAR (`recurrenceRule`, one object) and
+ * not RFC 8984's `recurrenceRules` array; asked by its real name, the master answers. See
+ * `docs/adr/025-jscalendarbis-is-the-wire-format.md`. The occurrence's `recurrenceId` still
+ * carries most of the load, but the master's own answer is no longer a belt that was never
+ * fastened — which matters the moment a series editor exists, because that editor starts from the
+ * master.
  */
 
 import type { Calendar, CalendarEvent, Id, JmapClient } from '@waxwing/jmap'
@@ -151,12 +166,29 @@ export interface CalendarClient {
  * editor that quietly applied one of those three to a meeting other people are in would lose their
  * time, not ours. Series stay read-only until that scope editor exists.
  *
- * An expanded instance is recognisable by its `recurrenceId`; a master by its `recurrenceRules`.
+ * An expanded instance is recognisable by its `recurrenceId`; a master by its `recurrenceRule`.
  */
 export function isEditable(event: CalendarEvent): boolean {
   if (event.recurrenceId !== undefined) return false
-  const rules = event.recurrenceRules
-  return !(Array.isArray(rules) && rules.length > 0)
+  return !isSeriesMaster(event)
+}
+
+/**
+ * Does this stored object carry a repetition rule?
+ *
+ * **Both spellings are refused, and only one is asked for.** `recurrenceRule` (singular, one
+ * object) is `jscalendarbis` and is what this server answers; `recurrenceRules` (plural, an array)
+ * is RFC 8984 and is what the client used to ask for and never get. The plural branch is kept
+ * because refusing to edit is the safe direction and a server that volunteers the old spelling
+ * should not have its series handed to an editor that cannot write them — but it is deliberately
+ * NOT in the property lists, because asking a `jscalendarbis` server for it is how this bug
+ * started. An empty array is not a series.
+ */
+function isSeriesMaster(event: CalendarEvent): boolean {
+  const rule: unknown = event.recurrenceRule
+  if (typeof rule === 'object' && rule !== null) return true
+  const legacy: unknown = event.recurrenceRules
+  return Array.isArray(legacy) && legacy.length > 0
 }
 
 /** Why an occurrence cannot be edited, or `null` when it can. */
@@ -192,7 +224,7 @@ export function draftToEvent(draft: EventDraft): Record<string, unknown> {
     showWithoutTime: draft.allDay ? true : null,
     timeZone: draft.allDay ? null : draft.timeZone,
     /*
-     * Note what is NOT here: `locations`, `participants`, `recurrenceRules`, `alerts`.
+     * Note what is NOT here: `locations`, `participants`, `recurrenceRule`, `alerts`.
      *
      * On an update this object is a JMAP PATCH (RFC 8620 §5.3) — every property it does not name is
      * left exactly as it was. That is what keeps a location and an attendee list the editor cannot
@@ -222,13 +254,46 @@ const EVENT_PROPERTIES = [
   'participants',
   'recurrenceId',
   // Asked for although no view draws it: `isEditable` tests it, and a property that is never
-  // fetched always reads as absent — so the master of a series looked like a plain event.
-  'recurrenceRules',
+  // fetched always reads as absent — so the master of a series looked like a plain event. It read
+  // as absent for a second reason too, until ADR-025: the name is SINGULAR on this server, and the
+  // plural RFC 8984 spelling this line used to carry was never going to come back.
+  'recurrenceRule',
+  // The server's own answer to "which stored event is this an instance of". Only present on a
+  // synthetic id, which is exactly when it is needed — see `resolveIdentity`.
+  'baseEventId',
   'isDraft',
 ]
 
 /** What the unexpanded companion query needs, and nothing else — it is asked purely for identity. */
-const IDENTITY_PROPERTIES = ['id', ...SIGNATURE_PROPERTIES, 'recurrenceRules']
+const IDENTITY_PROPERTIES = ['id', ...SIGNATURE_PROPERTIES, 'recurrenceRule']
+
+/**
+ * What a `Calendar/get` has to name to get a complete calendar.
+ *
+ * **The list exists because a bare `Calendar/get` is not a complete answer.** Measured: with no
+ * `properties` at all Stalwart returns `id, name, description, color, timeZone, sortOrder,
+ * isDefault, isSubscribed, myRights` — and silently omits `isVisible`, `shareWith`,
+ * `includeInAvailability` and both `defaultAlerts*` maps. A client that adds them to its type and
+ * leaves the request alone reads `undefined` for all five and concludes the server cannot do them.
+ */
+const CALENDAR_PROPERTIES = [
+  'id',
+  'name',
+  'description',
+  'color',
+  'timeZone',
+  'sortOrder',
+  'isDefault',
+  'isSubscribed',
+  'myRights',
+  // Everything from here down is omitted unless named. `isVisible` is the load-bearing one: only
+  // `false` means hidden (see `Calendar.isVisible`), so a missing property is not "invisible".
+  'isVisible',
+  'includeInAvailability',
+  'defaultAlertsWithTime',
+  'defaultAlertsWithoutTime',
+  'shareWith',
+]
 
 /**
  * Server-owned properties, dropped when an event is re-created from a snapshot.
@@ -237,8 +302,16 @@ const IDENTITY_PROPERTIES = ['id', ...SIGNATURE_PROPERTIES, 'recurrenceRules']
  * but a snapshot is whatever the server handed back, and on a server that does send one, restoring
  * an event is meant to bring back THAT event — to a CalDAV client on the other side of the same
  * account the uid is what says so.
+ *
+ * `method` IS in it, and that one is not a judgement call — it is measured. Stalwart answers
+ * `{"type":"invalidProperties","description":"This property is immutable.","properties":["method"]}`
+ * to a `method` in **create** as well as in update (probed against v0.16.18 on 2026-08-21; the
+ * update half was already known, the create half is what makes it matter here). A scheduling
+ * event — one that arrived by iMIP and therefore carries `method` — would otherwise snapshot
+ * fine, delete fine, and fail to come back: Undo offered and Undo refused, which is the one
+ * outcome a delete-with-Undo may never produce.
  */
-const SERVER_OWNED = ['id', 'created', 'updated', 'isOrigin']
+const SERVER_OWNED = ['id', 'created', 'updated', 'isOrigin', 'baseEventId', 'method']
 
 /** Places one event on the timeline. */
 export function placeEvent(
@@ -315,8 +388,7 @@ export function indexObjects(objects: readonly CalendarEvent[]): IdentityIndex {
   const bySignature = new Map<string, StoredObject | null>()
   const byId = new Map<Id, { series: boolean }>()
   for (const object of objects) {
-    const rules = object.recurrenceRules
-    const series = Array.isArray(rules) && rules.length > 0
+    const series = isSeriesMaster(object)
     byId.set(object.id, { series })
     const signature = eventSignature(object)
     // A second object with the same signature POISONS the entry rather than replacing it: two
@@ -330,21 +402,37 @@ export function indexObjects(objects: readonly CalendarEvent[]): IdentityIndex {
 /**
  * Resolves one displayed occurrence to the object behind it.
  *
- * Three ways, in order of certainty:
+ * Four ways, in order of certainty:
  *
- * 1. The id is itself an object id. A server that does not synthesise ids when expanding — which
+ * 1. The occurrence carries `baseEventId`, and the server has therefore NAMED its master. Nothing
+ *    is inferred, nothing is compared, and the index is not consulted at all — which is the point:
+ *    it resolves an occurrence the signature cannot, such as the second week of a series, where
+ *    `start` has moved away from the master's.
+ * 2. The id is itself an object id. A server that does not synthesise ids when expanding — which
  *    the spec permits — needs no mapping at all, and this keeps such a server working unchanged.
- * 2. Exactly one object in the same window carries the same {@link eventSignature}. This is the
- *    Stalwart case, and the reason a whole month is fetched both ways.
- * 3. Neither, or several: `writeId` stays `null` and the screen says so, rather than offering a
- *    doomed editor or — far worse — writing the wrong event's id.
+ * 3. Exactly one object in the same window carries the same {@link eventSignature}. This is what
+ *    carried the whole feature before `baseEventId` was asked for, and it is the reason a whole
+ *    month is still fetched both ways: it is the fallback for a server that omits it.
+ * 4. None of those, or an ambiguous signature: `writeId` stays `null` and the screen says so,
+ *    rather than offering a doomed editor or — far worse — writing the wrong event's id.
  *
  * `series` is taken from the MASTER wherever one was found, not from the occurrence alone: an
  * expanded instance is supposed to carry `recurrenceId`, and a client that believes only the
- * instance is one server quirk away from offering to edit a series in place.
+ * instance is one server quirk away from offering to edit a series in place. Note what `series`
+ * is NOT taken from: `baseEventId` itself. Stalwart puts it on every expanded event, repeating or
+ * not, so reading it as "this is a series" would make every single event in the month read-only.
  */
 export function resolveIdentity(event: CalendarEvent, index: IdentityIndex): EventIdentity {
   const occurrence = event.recurrenceId !== undefined
+
+  const base: unknown = event.baseEventId
+  if (typeof base === 'string' && base !== '') {
+    // The index is consulted only for the series flag, and only if it happens to hold the master.
+    // The write id does not depend on it — an occurrence whose master lies outside the fetched
+    // window still resolves, which is precisely what the signature join could never do.
+    return { writeId: base, series: (index.byId.get(base)?.series ?? false) || occurrence }
+  }
+
   const own = index.byId.get(event.id)
   if (own !== undefined) return { writeId: event.id, series: own.series || occurrence }
 
@@ -368,7 +456,9 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
   return {
     async listCalendars() {
       const responses = await client.call([
-        [Methods.calendarGet.name, { accountId, ids: null }, 'c0'],
+        // `properties` is named, and that is not tidiness: without it the answer silently lacks
+        // `isVisible` and the four other opt-in properties. See CALENDAR_PROPERTIES.
+        [Methods.calendarGet.name, { accountId, ids: null, properties: CALENDAR_PROPERTIES }, 'c0'],
       ])
       return responses.get<{ list: Calendar[] }>('c0').list
     },

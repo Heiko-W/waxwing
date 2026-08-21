@@ -41,16 +41,36 @@ describe('isEditable', () => {
     expect(isEditable(event({ recurrenceId: '2026-08-20T10:00:00' }))).toBe(false)
   })
 
-  it('REFUSES the master of a series', () => {
+  it('REFUSES the master of a series, spelled the way THIS server spells one', () => {
+    /*
+     * `recurrenceRule`, singular, one object — `draft-ietf-calext-jscalendarbis`, which is what
+     * Stalwart implements (ADR-025). This is the assertion the whole correction exists for: before
+     * it, `isEditable` looked only for RFC 8984's `recurrenceRules` array, so a weekly meeting's
+     * master answered "yes, editable" and a series editor built on that would have written a
+     * single-event patch straight onto a series.
+     */
+    expect(
+      isEditable(event({ recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly' } })),
+    ).toBe(false)
+    // Without the rule it is an ordinary event again — the refusal is the rule, not the fixture.
+    expect(isEditable(event({ title: 'Weekly-looking but single' }))).toBe(true)
+  })
+
+  it('also REFUSES the RFC 8984 spelling, which it does not ask for', () => {
+    // Refusing to edit is the safe direction, so a server that volunteers the old plural array
+    // gets the same answer. It is not in EVENT_PROPERTIES, though: asking a jscalendarbis server
+    // for `recurrenceRules` is how the master came back looking like a plain event in the first
+    // place.
     expect(
       isEditable(event({ recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] })),
     ).toBe(false)
   })
 
-  it('allows an event whose recurrenceRules is present but empty', () => {
-    // An empty list is not a series; refusing it would make ordinary events uneditable on servers
-    // that always emit the property.
+  it('allows an event whose recurrence rule is present but empty', () => {
+    // Neither an empty list nor an absent rule is a series; refusing them would make ordinary
+    // events uneditable on servers that always emit the property.
     expect(isEditable(event({ recurrenceRules: [] }))).toBe(true)
+    expect(isEditable(event())).toBe(true)
   })
 })
 
@@ -108,8 +128,12 @@ describe('draftToEvent', () => {
       'locations',
       'virtualLocations',
       'participants',
+      'recurrenceRule',
       'recurrenceRules',
       'recurrenceOverrides',
+      'organizerCalendarAddress',
+      // Immutable on this server: an update naming it is refused outright.
+      'method',
       'alerts',
       'privacy',
       'freeBusyStatus',
