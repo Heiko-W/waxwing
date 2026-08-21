@@ -380,6 +380,20 @@ describe('ShortcutProvider — the guards (this is the work package)', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  it('Ctrl+K opens the palette from inside the search box (M10)', async () => {
+    // The button that opens it is labelled "Command palette (Ctrl+K)" and the cheat sheet lists it
+    // with no scope — but the typing guard was a blanket early return, so the one place a reader is
+    // most likely to be when they reach for a command was the one place the chord did nothing.
+    // A bare letter still belongs to the field; a Mod chord is not something a keyboard types.
+    await mounted()
+    const search = screen.getByLabelText('Search')
+    search.focus()
+
+    press('k', { ctrlKey: true }, search)
+
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument()
+  })
+
   it('a key pressed inside an open dialog dispatches nothing (portal guard)', async () => {
     await mounted()
     press('?', { shiftKey: true })

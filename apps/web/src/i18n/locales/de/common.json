@@ -1408,7 +1408,7 @@
     },
     "groups": {
       "navigation": "Navigation",
-      "triage": "Sortieren",
+      "triage": "Aktionen",
       "compose": "Verfassen",
       "application": "Anwendung"
     },

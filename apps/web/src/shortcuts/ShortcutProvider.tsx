@@ -16,7 +16,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../ui'
 import { isInOverlay, isTextEntryTarget } from './dom'
-import { matchesAny } from './keys'
+import { matchesAny, parseChord } from './keys'
 import { isRunnable, SHORTCUTS, unavailableNow } from './registry'
 import type { ShortcutContext } from './types'
 import { usePaletteUi } from './ui-store'
@@ -72,13 +72,32 @@ export function ShortcutProvider() {
       if (event.defaultPrevented) return
       // 2. An IME composition keystroke belongs to the input method.
       if (event.isComposing || event.keyCode === 229) return
-      // 3. Not while a modal / menu / the composer is up, and not while the user is typing.
+      // 3. Not while a modal / menu / the composer is up. That one is unconditional: those
+      //    surfaces claim their own keys, chords included (Squire's ⌘K, the composer's ⌘↵).
       const target = event.target
-      if (isInOverlay(target) || isTextEntryTarget(target)) return
+      if (isInOverlay(target)) return
+      /*
+       * TYPING SILENCES LETTERS, NOT CHORDS.
+       *
+       * This used to be the same early return as the overlay check, so nothing at all fired while
+       * the caret was in a field — including Ctrl/⌘+K, whose own button is labelled "Command
+       * palette (Ctrl+K)" and whose entry in the cheat sheet claims no scope. Pressing it in the
+       * search box did nothing, which reads as a broken shortcut rather than as a rule.
+       *
+       * The rule that was wanted all along is narrower: a bare letter belongs to the field the
+       * reader is typing into (`e` must never archive while someone writes "e-mail"), while a Mod
+       * chord is not typing in any layout — `matchesChord` already rejects Alt and AltGr for them,
+       * so nothing a keyboard produces as a CHARACTER can reach one. Filtering the chord list
+       * rather than returning early keeps that decision in one expression, and a letter pressed
+       * while typing simply matches nothing.
+       */
+      const typing = isTextEntryTarget(target)
 
       const context = contextRef.current
       for (const action of SHORTCUTS) {
-        if (!matchesAny(event, action.keys)) continue
+        const keys = typing ? action.keys.filter((chord) => parseChord(chord).mod) : action.keys
+        if (keys.length === 0) continue
+        if (!matchesAny(event, keys)) continue
         // A held `e` must not archive forty messages: swallow the repeat rather than fall through to
         // another action that happens to share the chord.
         if (event.repeat && action.allowRepeat !== true) return
