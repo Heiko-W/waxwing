@@ -249,7 +249,39 @@ export interface CalendarEvent {
    * back looking like an ordinary event for months.
    */
   recurrenceRule?: RecurrenceRule
-  /** Per-instance overrides, keyed by the instance's local start. */
+  /**
+   * Per-instance overrides, keyed by the instance's ORIGINAL local start.
+   *
+   * **This map cannot be patched by pointer on Stalwart v0.16.18, and that is measured.** The plan
+   * this work followed left it as the one open question and required a probe; the probe says no:
+   *
+   * ```jsonc
+   * update: { "b": { "recurrenceOverrides/2026-09-14T09:00:00": { "excluded": true } } }
+   * → notUpdated: { "b": { "type":"invalidProperties",
+   *                       "description":"Patch operation failed.",
+   *                       "properties":["recurrenceOverrides/2026-09-14T09:00:00"] } }
+   * ```
+   *
+   * The same value written as the WHOLE map succeeds and round-trips. A pointer patch one level
+   * deeper (`recurrenceOverrides/<rid>/title`) is refused with the same words, and — the control
+   * that makes this a property of this map rather than of the server — `recurrenceRule/count` in
+   * the very same call IS accepted. So pointer patching works here generally; `recurrenceOverrides`
+   * is the exception.
+   *
+   * The consequence for a client is unpleasant and has to be stated: changing one occurrence means
+   * READING the current map, merging, and writing all of it back. `calendar-client.ts` does that in
+   * a single JMAP request (get, then set) so no other change can slip between the two, and it never
+   * writes a map it did not just read.
+   *
+   * **The key is the original start, not the one the expansion reports.** Once an occurrence has
+   * been moved, `CalendarEvent/query` with `expandRecurrences` answers it with
+   * `recurrenceId` equal to its NEW start (measured: override key `2026-09-21T09:00:00`,
+   * expansion `recurrenceId: "2026-09-21T16:00:00"`). Using the displayed `recurrenceId` as the key
+   * therefore adds a SECOND override and leaves the first behind. See `overrideKeyFor()`.
+   *
+   * An entry the server has written back carries an `updated` timestamp it added itself; entries are
+   * merged rather than replaced so that stays where it is.
+   */
   recurrenceOverrides?: Record<LocalDateTime, Record<string, unknown> | null>
   /** **JMAP envelope.** Server-set: is this account the authoritative source for the event? */
   isOrigin?: boolean
@@ -300,8 +332,86 @@ export type CalendarEventGetRequest = GetRequest
 export type CalendarEventGetResponse = GetResponse<CalendarEvent>
 export type CalendarEventChangesRequest = ChangesRequest
 export type CalendarEventChangesResponse = ChangesResponse
-export type CalendarEventSetRequest = SetRequest<CalendarEvent>
+/**
+ * `CalendarEvent/set` — plus the argument that turns a participant list into an invitation.
+ *
+ * **`sendSchedulingMessages` is the trigger, and nothing else is.** Measured against v0.16.18 with
+ * two throwaway accounts and an isolated probe: a `create` carrying `participants` and
+ * `organizerCalendarAddress` sends **nothing** — no mail, no queue entry, no error. The identical
+ * call with `sendSchedulingMessages: true` delivers a full iMIP invitation (a `text/calendar` part
+ * and an `event.ics` attachment). It is a METHOD argument, not a property of the event, which is
+ * why it is here and not on {@link CalendarEvent}.
+ *
+ * It is deliberately NOT sent on every write. An event whose participants did not change should not
+ * re-invite everybody because somebody fixed a typo in the title, so `calendar-client.ts` sets it
+ * only where the screen said "invite".
+ */
+export type CalendarEventSetRequest = SetRequest<CalendarEvent> & {
+  /** Send iMIP invitations/updates/cancellations for the events this call touches. */
+  sendSchedulingMessages?: boolean
+}
 export type CalendarEventSetResponse = SetResponse<CalendarEvent>
+
+/**
+ * `CalendarEvent/parse` — an uploaded `text/calendar` blob read as JSCalendar
+ * (`urn:ietf:params:jmap:calendars:parse`).
+ *
+ * **The value per blob is an ARRAY**, and that is the whole trap: one VCALENDAR may hold many
+ * VEVENTs, and a client typed to expect an object silently keeps the first and loses the rest.
+ *
+ * Measured on v0.16.18: the method answers with the `urn:ietf:params:jmap:calendars` capability
+ * alone — the `:parse` URN in `using` is not required. It is therefore NOT added to the
+ * method→capability table: RFC 8620 §3.3 has a server refuse an unknown `using` entry, and
+ * Stalwart refuses the whole REQUEST for one (see {@link Capabilities.mailShare}), so sending a URN
+ * a server may not know in order to satisfy a draft would trade a working call for a dead batch.
+ */
+export interface CalendarEventParseRequest {
+  accountId: Id
+  blobIds: Id[]
+}
+
+export interface CalendarEventParseResponse {
+  accountId: Id
+  /** blobId → **every** event in that blob, in document order. */
+  parsed?: Record<Id, CalendarEvent[]> | null
+  notParsable?: Id[] | null
+  notFound?: Id[] | null
+}
+
+/**
+ * One address the user may act as, for RSVP and as an event's organiser
+ * (`draft-ietf-jmap-calendars`, "ParticipantIdentity").
+ *
+ * **Three things are measured and all three are refusals.**
+ *
+ *  - `isDefault` is server-owned: naming it in `create` or `update` is answered
+ *    `"Field could not be set."`. Never send it. (During the gap survey a test account's default
+ *    identity was destroyed this way and could only be re-made under a different id.)
+ *  - `'@type': 'ParticipantIdentity'` in a `create` is refused with
+ *    `invalidProperties: ["@type"]` — unlike every other object in this file, this one will not
+ *    accept its own type tag.
+ *  - A `create` naming an address the account does not already own is refused with
+ *    `"Calendar address not configured for this account."`. An identity is therefore not something
+ *    a client invents; it is a view of the addresses the account already has. That is why Waxwing
+ *    only ever READS them, and why `ParticipantIdentity/set` has no method binding here.
+ *
+ * `/changes` is likewise absent on purpose: it is documented as always answering
+ * `cannotCalculateChanges`, and on v0.16.18 it does not even get that far — a `sinceState` it does
+ * not recognise is a request-level `invalidArguments`.
+ *
+ * The shape is `id`, `name`, `calendarAddress`, `isDefault` — note `calendarAddress` and NOT the
+ * draft's `sendTo`, exactly as on {@link Participant}.
+ */
+export interface ParticipantIdentity {
+  id: Id
+  name?: string | null
+  calendarAddress?: CalendarAddress
+  /** Server-owned. Read it, never write it. */
+  isDefault?: boolean
+}
+
+export type ParticipantIdentityGetRequest = GetRequest
+export type ParticipantIdentityGetResponse = GetResponse<ParticipantIdentity>
 
 /** Filter conditions for `CalendarEvent/query`. */
 export interface CalendarEventFilterCondition {

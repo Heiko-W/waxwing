@@ -105,7 +105,9 @@ describe('the length field (T14)', () => {
     expect(screen.queryByText(/Enter a length/)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ durationMinutes: 30 }))
+    // The draft is argument ONE of three now (draft, scope, invite) — asserted positionally so the
+    // scope a series would carry cannot slip past unnoticed.
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ durationMinutes: 30 }))
   })
 
   it('is not asked for at all on a whole-day event', async () => {
@@ -117,42 +119,29 @@ describe('the length field (T14)', () => {
     expect(screen.queryByLabelText('Length in minutes')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allDay: true }))
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ allDay: true }))
   })
 })
 
 describe('what the editor cannot edit (T11)', () => {
-  it('shows a location and the attendees the event carries', async () => {
+  it('shows a location the event carries', async () => {
     renderDialog({
       event: {
         ...EXISTING,
         locations: { l1: { '@type': 'Location', name: 'Besprechungsraum 3, Verl' } },
-        participants: { p1: { '@type': 'Participant', name: 'Bob Baker' } },
       } as unknown as CalendarEvent,
     })
 
     expect(screen.getByText('Location')).toBeInTheDocument()
     expect(screen.getByText('Besprechungsraum 3, Verl')).toBeInTheDocument()
-    expect(screen.getByText('Participants')).toBeInTheDocument()
-    expect(screen.getByText('Bob Baker')).toBeInTheDocument()
   })
 
-  it('falls back to a participant’s address when it has no name', () => {
-    renderDialog({
-      event: {
-        ...EXISTING,
-        participants: { p1: { '@type': 'Participant', email: 'bob@waxwing.test' } },
-      } as unknown as CalendarEvent,
-    })
-
-    expect(screen.getByText('bob@waxwing.test')).toBeInTheDocument()
-  })
-
-  it('says nothing where there is nothing to say', () => {
+  it('says nothing where there is no location', () => {
     // An empty "Location: —" row is a field the dialog does not have, dressed up as one it does.
+    // Participants are NOT asserted absent any more: since K-3 they are a row that leads to a page,
+    // so the word is on screen whether or not the event has any — with "None" beside it.
     renderDialog({ event: EXISTING })
     expect(screen.queryByText('Location')).not.toBeInTheDocument()
-    expect(screen.queryByText('Participants')).not.toBeInTheDocument()
   })
 })
 

@@ -4,13 +4,17 @@
  * Three views: a **month** grid for orientation, a **week** grid with a time axis, and an **agenda**
  * list for "what is next".
  *
- * Single events can be created, edited and deleted (M5.11). A RECURRING one cannot: clicking it
- * opens a read-only note instead of the editor, because changing a series means choosing between
- * "this occurrence", "this and following" and "all", and a calendar that half-edits a repeating
- * meeting loses other people's time. `refuseEdit` is where that line is drawn — and it draws a
- * second one beside it: an occurrence the client cannot trace back to a writable object is refused
- * too, with its own sentence, because the alternative is the editor T1 described, whose Save could
- * never work.
+ * Events can be created, edited and deleted (M5.11) — **including repeating ones (K-2)**. A series
+ * no longer opens a read-only note: it opens the editor, and the scope question ("this event" /
+ * "all events") is asked after Save, which is where Apple asks it and the only place it can be
+ * answered. `refuseEdit` still draws one line: an occurrence the client cannot trace back to a
+ * writable object is refused, with its own sentence, because the alternative is the editor T1
+ * described, whose Save could never work.
+ *
+ * **Participants and RSVP (K-3)** ride in the same editor. The answer bar appears only when one of
+ * the participants carries an address this account owns — which is what `ParticipantIdentity/get`
+ * (K-10) is fetched for, once per mount — and the calendar grants `mayRSVP`. Inviting works because
+ * `CalendarEvent/set` is given `sendSchedulingMessages: true`; measured, it is the only trigger.
  *
  * **One interaction rule across all three views:** clicking a DAY selects it, clicking an EVENT
  * opens it, and the `+` in the bar creates on the day that is selected. A day cell used to open the
@@ -34,6 +38,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Import,
   Plus,
   SlidersHorizontal,
   TriangleAlert,
@@ -55,11 +60,19 @@ import {
   makeCalendarClient,
   mayCreateCalendar,
   type PlacedEvent,
+  needsScope,
   refusalReason,
   refuseEdit,
 } from './calendar-client'
+import { DEFAULT_MAX_PARTICIPANTS, ownAddresses } from './event-participants'
+import type { EditScope } from './event-recurrence'
 
 const EventDialog = lazy(() => import('./EventDialog'))
+/*
+ * The import sheet is a chunk of its own, and not part of `EventDialog`: reading a `.ics` is a rare,
+ * deliberate act, and the editor is opened many times a session. Registered in `.size-limit.js`.
+ */
+const IcsImportDialog = lazy(() => import('./IcsImportDialog'))
 
 import CalendarDialog, { CalendarDeleteDialog } from './CalendarDialog'
 import { CalendarList, visibleCalendarIds } from './CalendarList'
@@ -173,6 +186,18 @@ export default function CalendarPage(props: CalendarPageProps) {
   )
   /** The calendar list on a phone, where there is no rail to put it in. */
   const [calendarsOpen, setCalendarsOpen] = useState(false)
+  /**
+   * This account's own calendar addresses (K-10) — fetched once, read only to answer "which of
+   * these participants is me".
+   *
+   * Failure is silent and empty on purpose: a server without `ParticipantIdentity` is a server on
+   * which the RSVP bar cannot be shown, which is a missing control rather than a broken screen. The
+   * session's calendar capability was expected to carry the same address and would have cost no
+   * round trip at all — measured on v0.16.18, it does not.
+   */
+  const [myAddresses, setMyAddresses] = useState<readonly string[]>([])
+  /** The `.ics` import sheet (K-4). */
+  const [importing, setImporting] = useState(false)
 
   /** The day the view is centred on: the route param, else today. */
   const focusDay = route.params.date
@@ -181,6 +206,21 @@ export default function CalendarPage(props: CalendarPageProps) {
   const injected = props.client
   const sessionClient = connected?.client ?? null
   const accountId = connected?.accountId ?? null
+
+  /**
+   * The server's own ceiling on participants, from the account capability (measured `20`).
+   *
+   * Read rather than assumed so the editor refuses the 21st attendee here, with a sentence, instead
+   * of letting the whole save come back `tooManyParticipants` after the reader has finished typing.
+   */
+  const maxParticipants = useMemo(() => {
+    const capability = accountId === null
+      ? undefined
+      : (connected?.jmapSession?.accounts?.[accountId]?.accountCapabilities?.[
+          'urn:ietf:params:jmap:calendars'
+        ] as { maxParticipantsPerEvent?: number | null } | undefined)
+    return capability?.maxParticipantsPerEvent ?? DEFAULT_MAX_PARTICIPANTS
+  }, [connected, accountId])
   const client = useMemo(
     () =>
       injected ??
@@ -261,6 +301,21 @@ export default function CalendarPage(props: CalendarPageProps) {
   }, [loadCalendars])
 
   useEffect(() => {
+    if (client === null) return
+    let live = true
+    void client
+      .listParticipantIdentities()
+      .then((identities) => {
+        if (live) setMyAddresses(ownAddresses(identities))
+      })
+      // Swallowed: see `myAddresses`. Nothing on this screen depends on it except one optional bar.
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [client])
+
+  useEffect(() => {
     void load()
   }, [load])
 
@@ -331,10 +386,21 @@ export default function CalendarPage(props: CalendarPageProps) {
     setEditing({ placed: null, day })
   }
 
-  const deleteEvent = async (target: PlacedEvent): Promise<void> => {
+  const deleteEvent = async (target: PlacedEvent, scope: EditScope = 'all'): Promise<void> => {
     // Narrowed here rather than relying on the early return below, which comes later in the body.
     const writer = client
     if (writer === null) return
+    /*
+     * Removing ONE occurrence of a series is an `excluded` override on the master, not a delete —
+     * so there is nothing to snapshot and nothing to restore, and the toast must not offer an Undo
+     * it cannot honour. Undoing it would mean removing the override again, which is a different
+     * write with a different failure mode; it is left out rather than approximated.
+     */
+    if (scope === 'occurrence' && needsScope(target)) {
+      const removed = await run(() => writer.excludeOccurrence(target), t('calendar.deleteFailed'))
+      if (removed.ok) toast({ title: t('calendar.occurrenceDeleted') })
+      return
+    }
     const outcome = await run(() => writer.destroyEvent(target), t('calendar.deleteFailed'))
     if (!outcome.ok) return
     const snapshot = outcome.value
@@ -589,6 +655,17 @@ export default function CalendarPage(props: CalendarPageProps) {
                 label: t('calendar.calendars.open'),
                 onSelect: () => setCalendarsOpen(true),
               },
+              // Importing a file is rare and deliberate; it belongs in a menu on every viewport,
+              // not beside the one control this screen uses constantly.
+              ...(online && calendars.length > 0
+                ? [
+                    {
+                      id: 'import',
+                      label: t('calendar.import.open'),
+                      onSelect: () => setImporting(true),
+                    },
+                  ]
+                : []),
               ...VIEWS.map((id) => ({
                 id,
                 label: VIEW_LABELS[id](t),
@@ -600,19 +677,33 @@ export default function CalendarPage(props: CalendarPageProps) {
             ]}
           />
         ) : (
-          <div className={styles.views}>
-            {VIEWS.map((id) => (
-              <Button
-                key={id}
-                variant={view === id ? 'secondary' : 'ghost'}
-                size="sm"
-                aria-pressed={view === id}
-                onClick={() => setView(id)}
-              >
-                {VIEW_LABELS[id](t)}
-              </Button>
-            ))}
-          </div>
+          <>
+            <div className={styles.views}>
+              {VIEWS.map((id) => (
+                <Button
+                  key={id}
+                  variant={view === id ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={view === id}
+                  onClick={() => setView(id)}
+                >
+                  {VIEW_LABELS[id](t)}
+                </Button>
+              ))}
+            </div>
+            {/* From 40em up there is no overflow menu to hide it in, so import is its own control —
+                an icon button, beside `+` and quieter than it. */}
+            <IconButton
+              label={t('calendar.import.open')}
+              variant="ghost"
+              size="sm"
+              disabled={calendars.length === 0}
+              unavailableReason={online ? undefined : t('calendar.offline')}
+              onClick={() => setImporting(true)}
+            >
+              <Import aria-hidden="true" />
+            </IconButton>
+          </>
         )}
         {/* The primary action, which this screen had none of on any viewport: it creates on the day
             in focus, which is what Apple Calendar's does — and since a click on a day now MOVES the
@@ -777,21 +868,31 @@ export default function CalendarPage(props: CalendarPageProps) {
         />
       )}
 
+      {importing && (
+        <Suspense fallback={null}>
+          <IcsImportDialog
+            client={client}
+            calendars={calendars}
+            onClose={() => setImporting(false)}
+            onImported={() => {
+              setImporting(false)
+              void load()
+            }}
+          />
+        </Suspense>
+      )}
+
       {editing !== null &&
         (editing.placed !== null && refuseEdit(editing.placed) !== null ? (
-          // Shown, never edited — see `refuseEdit` for the two reasons and why they read
-          // differently.
+          // Shown, never edited — one reason left, see `refuseEdit`. A SERIES is no longer one of
+          // them: it opens the editor and answers the scope question after Save (K-2).
           <Dialog
             open
             onClose={() => setEditing(null)}
             size="sm"
             title={editing.placed.event.title || t('calendar.untitled')}
           >
-            <p className={styles.readOnlyNote}>
-              {refuseEdit(editing.placed) === 'series'
-                ? t('calendar.event.recurringReadOnly')
-                : t('calendar.event.unresolvedReadOnly')}
-            </p>
+            <p className={styles.readOnlyNote}>{t('calendar.event.unresolvedReadOnly')}</p>
             <EventFacts event={editing.placed.event} />
           </Dialog>
         ) : (
@@ -801,21 +902,38 @@ export default function CalendarPage(props: CalendarPageProps) {
               defaultDate={editing.day}
               calendars={calendars}
               busy={saving}
+              isSeries={editing.placed !== null && needsScope(editing.placed)}
+              ownAddresses={myAddresses}
+              // `mayRSVP` is read from the calendar the event is IN, not from the account: a shared
+              // calendar can grant reading and refuse answering, and a bar that always fails is
+              // worse than no bar.
+              mayRsvp={rsvpAllowed(calendars, editing.placed)}
+              maxParticipants={maxParticipants}
               onCancel={() => setEditing(null)}
-              onSubmit={(draft) => {
+              onSubmit={(draft, scope, invite) => {
                 const target = editing.placed
                 void run(
                   () =>
-                    target === null ? client.createEvent(draft) : client.updateEvent(target, draft),
+                    target === null
+                      ? client.createEvent(draft, invite)
+                      : client.updateEvent(target, draft, scope, invite),
                   t('calendar.saveFailed'),
                 )
               }}
+              onRsvp={
+                editing.placed === null
+                  ? undefined
+                  : (key, status) => {
+                      const target = editing.placed as PlacedEvent
+                      void run(() => client.rsvp(target, key, status), t('calendar.rsvpFailed'))
+                    }
+              }
               onDestroy={
                 editing.placed === null
                   ? undefined
-                  : () => {
+                  : (scope) => {
                       const target = editing.placed as PlacedEvent
-                      void deleteEvent(target)
+                      void deleteEvent(target, scope)
                     }
               }
             />
@@ -823,6 +941,19 @@ export default function CalendarPage(props: CalendarPageProps) {
         ))}
     </div>
   )
+}
+
+/**
+ * May the reader answer an invitation on this event?
+ *
+ * Asked of the CALENDAR the event is in, because that is where the right lives: `myRights.mayRSVP`
+ * is per calendar, and a calendar shared read-only grants everything except this. An event in a
+ * calendar this list does not hold answers `false` — an unknown right is not a granted one.
+ */
+function rsvpAllowed(calendars: readonly Calendar[], placed: PlacedEvent | null): boolean {
+  if (placed === null) return false
+  const ids = Object.keys(placed.event.calendarIds ?? {})
+  return calendars.some((calendar) => ids.includes(calendar.id) && calendar.myRights?.mayRSVP === true)
 }
 
 interface MonthViewProps {

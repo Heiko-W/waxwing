@@ -51,6 +51,14 @@ function client(over: Partial<CalendarClient> = {}): CalendarClient {
     countEvents: async (): Promise<number> => 0,
     createEvent: async (): Promise<void> => {},
     updateEvent: async (): Promise<void> => {},
+    updateOccurrence: async (): Promise<void> => {},
+    excludeOccurrence: async (): Promise<void> => {},
+    rsvp: async (): Promise<void> => {},
+    // Empty by default: without a matching own address the RSVP bar is not shown, which is what
+    // every test written before K-3 assumes.
+    listParticipantIdentities: async () => [],
+    parseIcs: async () => [],
+    importEvents: async () => ({ added: 0, duplicates: 0, failed: 0, reason: null }),
     destroyEvent: async (): Promise<CalendarEvent | null> => null,
     restoreEvent: async (): Promise<void> => {},
     ...over,
@@ -225,20 +233,33 @@ describe('writing an event (T1)', () => {
     expect(target.event.id).toBe('eaaaaa0')
   })
 
-  it('shows a series occurrence instead of pretending to edit it', async () => {
+  it('OPENS a series occurrence and asks for a scope after Save (K-2)', async () => {
+    /*
+     * The inversion. Until K-2 this test asserted that a repeating event opened a read-only note;
+     * now it opens the editor, and the safety property moved from "no editor" to "no silent scope":
+     * Save does not write, it asks, and the two answers are the two things the reader could mean.
+     */
     const user = userEvent.setup()
+    const updateEvent = vi.fn<CalendarClient['updateEvent']>(async () => {})
     renderPage(
       client({
         eventsInRange: async () => [
           occurrence({ title: 'Weekly' }, { writeId: '7', series: true }),
         ],
+        updateEvent,
       }),
     )
 
     await user.click(await screen.findByRole('button', { name: 'Weekly' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/This event repeats/)).toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    // Nothing has been written yet — the question is the whole point.
+    expect(updateEvent).not.toHaveBeenCalled()
+    expect(within(dialog).getByRole('button', { name: 'This event only' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'This event only' }))
+    expect(updateEvent.mock.calls[0]?.[2]).toBe('occurrence')
   })
 
   it('says so when it cannot trace an occurrence back to a stored event', async () => {
@@ -535,18 +556,18 @@ describe('offline (T3)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('still shows a series occurrence, which needs neither chunk nor connection', async () => {
+  it('still refuses to open an occurrence it cannot trace, which needs no chunk', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
     const user = userEvent.setup()
     renderPage(
       client({
         eventsInRange: async () => [
-          occurrence({ title: 'Weekly' }, { writeId: '7', series: true }),
+          occurrence({ title: 'Orphan' }, { writeId: null, series: false }),
         ],
       }),
     )
 
-    await user.click(await screen.findByRole('button', { name: 'Weekly' }))
+    await user.click(await screen.findByRole('button', { name: 'Orphan' }))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 })
