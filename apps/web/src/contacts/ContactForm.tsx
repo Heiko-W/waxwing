@@ -326,9 +326,7 @@ export function ContactForm(props: ContactFormProps) {
             valueType="email"
             valueId={valueDomId(entry.key)}
             errorId={errorDomId(entry.key)}
-            {...(invalidEmails.has(entry.key)
-              ? { error: t('contacts.form.invalidEmail') }
-              : {})}
+            {...(invalidEmails.has(entry.key) ? { error: t('contacts.form.invalidEmail') } : {})}
             onType={(type) =>
               setDraft((p) => ({ ...p, emails: replaceByKey(p.emails, entry.key, { type }) }))
             }
@@ -478,7 +476,9 @@ export function ContactForm(props: ContactFormProps) {
                   variant="ghost"
                   size="sm"
                   type="button"
-                  onClick={() => setDraft((p) => ({ ...p, notes: removeByKey(p.notes, entry.key) }))}
+                  onClick={() =>
+                    setDraft((p) => ({ ...p, notes: removeByKey(p.notes, entry.key) }))
+                  }
                 >
                   <X />
                 </IconButton>

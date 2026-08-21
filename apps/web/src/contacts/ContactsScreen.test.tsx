@@ -10,8 +10,8 @@ import {
   type ReplicaDb,
   ReplicaProvider,
 } from '../sync'
-import type { OutboxIntent } from '../sync/engine/outbox'
 import { setActiveEngine } from '../sync/engine'
+import type { OutboxIntent } from '../sync/engine/outbox'
 import { deleteContactCards } from '../sync/repo'
 import { addressBook, contactCard, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'

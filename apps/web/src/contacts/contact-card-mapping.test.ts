@@ -331,7 +331,9 @@ describe('contact-card-mapping addresses (N4 / N12)', () => {
       country: '',
     })
     expect(cleared).toBeUndefined()
-    expect(diffCardPatch(card, { ...card, addresses: cleared })).toEqual({ addresses: null })
+    // …and the patch says "remove", rather than replacing the entry with an empty object.
+    const { addresses: _dropped, ...withoutAddresses } = card
+    expect(diffCardPatch(card, withoutAddresses)).toEqual({ addresses: null })
   })
 
   it('keeps a `full`-only address when its (always empty) component fields are "cleared"', () => {
@@ -385,7 +387,12 @@ describe('contact-card-mapping type vs. free-text label (N7)', () => {
       addressBookIds: { book1: true },
       kind: 'individual',
       emails: {
-        e1: { '@type': 'EmailAddress', address: 'a@b.test', contexts: { work: true }, label: 'Büro' },
+        e1: {
+          '@type': 'EmailAddress',
+          address: 'a@b.test',
+          contexts: { work: true },
+          label: 'Büro',
+        },
       },
     }
     const form = cardToForm(card)

@@ -117,9 +117,7 @@ describe('ContactForm comm-row layout', () => {
     expect(select.parentElement).not.toHaveClass(styles.commType as string)
     expect(select.parentElement?.parentElement).toHaveClass(styles.commType as string)
     // …and that box is a direct child of the row, so `flex: none` has something to act on.
-    expect(select.parentElement?.parentElement?.parentElement).toHaveClass(
-      styles.commRow as string,
-    )
+    expect(select.parentElement?.parentElement?.parentElement).toHaveClass(styles.commRow as string)
   })
 })
 
@@ -326,10 +324,7 @@ describe('ContactForm email validation (N9)', () => {
     // `type="email"` constraint rejects it. The app's own check does not.
     const user = userEvent.setup()
     const { onSubmit } = renderForm()
-    await user.type(
-      screen.getByRole('textbox', { name: 'Email' }),
-      'björn.müller@exämple.de',
-    )
+    await user.type(screen.getByRole('textbox', { name: 'Email' }), 'björn.müller@exämple.de')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>

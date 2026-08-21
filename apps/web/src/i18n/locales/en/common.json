@@ -602,7 +602,6 @@
       "region": "State / Province",
       "postcode": "Postal code",
       "country": "Country",
-      "type": "Type",
       "addEmail": "Add email",
       "addPhone": "Add phone",
       "addField": "Add field",
