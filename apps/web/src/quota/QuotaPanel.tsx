@@ -28,7 +28,10 @@ export function QuotaPanel(props: QuotaPanelProps) {
   if (quotas === null || quotas.length === 0) return null
 
   return (
-    <div className={styles.field}>
+    // `.group`, not `.field`: this is a label over a TABLE, and above 40em `.field` would put the
+    // label beside it — vertically centred in an otherwise empty column, floating next to a block
+    // several times its own height. It renders as one row of the Server card.
+    <div className={styles.group}>
       <span id={labelId} className={styles.label}>
         {t('quota.label')}
       </span>

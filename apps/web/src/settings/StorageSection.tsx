@@ -99,14 +99,17 @@ export function StorageSection(props: StorageSectionProps) {
     setPersistDenied(!granted)
   }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       {/* The product name is never hardcoded in the corpus — a hoster rebrands it (FR-THEME-02). */}
       <p className={styles.hint}>
         {t('settings.offline.description', { product: config.branding.productName })}
       </p>
 
-      <div className={styles.field}>
+      {/* `.group`, not `.field`: the meter and its summary are a block under their label, and a
+          label parked in the vertical middle of one is a label floating in an empty column. */}
+      <div className={styles.group}>
         <span id={meterId} className={styles.label}>
           {t('settings.offline.meter.label')}
         </span>
@@ -165,16 +168,20 @@ export function StorageSection(props: StorageSectionProps) {
         </div>
       )}
 
-      <div className={styles.field}>
+      <div className={styles.rowActions}>
         <Button variant="ghost" disabled={busy} onClick={() => void freeUp()}>
           {t('settings.offline.freeUp')}
         </Button>
       </div>
 
-      <p className={styles.hint}>
-        {t('settings.offline.window', { count: config.offline.cacheDays })}
-      </p>
-      <p className={styles.hint}>{t('settings.offline.pinned', { count: pinned?.size ?? 0 })}</p>
-    </div>
+      {/* One row: two facts about the same thing, and a rule drawn between them would claim they
+          are two settings. */}
+      <div className={styles.group}>
+        <p className={styles.hint}>
+          {t('settings.offline.window', { count: config.offline.cacheDays })}
+        </p>
+        <p className={styles.hint}>{t('settings.offline.pinned', { count: pinned?.size ?? 0 })}</p>
+      </div>
+    </>
   )
 }

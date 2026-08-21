@@ -39,14 +39,20 @@ export function TemplatesSection() {
     await setPref(db, accountId, TEMPLATE_PREF_KEY, [...next])
   }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
-      <p className={styles.hint}>{t('settings.templates.description')}</p>
-      <p className={styles.hint}>
-        {t('settings.templates.placeholders', {
-          list: PLACEHOLDERS.map((name) => `{{${name}}}`).join(', '),
-        })}
-      </p>
+    <>
+      {/* One row, two sentences. Each row of the card is separated from the next by a rule, and two
+          consecutive paragraphs of the same explanation are not two rows — a rule drawn between
+          them cuts a single thought in half. */}
+      <div className={styles.group}>
+        <p className={styles.hint}>{t('settings.templates.description')}</p>
+        <p className={styles.hint}>
+          {t('settings.templates.placeholders', {
+            list: PLACEHOLDERS.map((name) => `{{${name}}}`).join(', '),
+          })}
+        </p>
+      </div>
 
       {templates.length === 0 ? (
         <p className={styles.hint}>{t('settings.templates.empty')}</p>
@@ -75,13 +81,17 @@ export function TemplatesSection() {
         </ul>
       )}
 
-      <Button
-        variant="secondary"
-        disabled={templates.length >= MAX_TEMPLATES}
-        onClick={() => setEditing({ id: crypto.randomUUID(), name: '', subject: '', body: '' })}
-      >
-        {t('settings.templates.add')}
-      </Button>
+      {/* An actions row, so the button keeps the width of its own words. As a direct child of the
+          card it was a row itself and got stretched across all 668px of it. */}
+      <div className={styles.rowActions}>
+        <Button
+          variant="secondary"
+          disabled={templates.length >= MAX_TEMPLATES}
+          onClick={() => setEditing({ id: crypto.randomUUID(), name: '', subject: '', body: '' })}
+        >
+          {t('settings.templates.add')}
+        </Button>
+      </div>
 
       {editing !== null && (
         <TemplateDialog
@@ -93,7 +103,7 @@ export function TemplatesSection() {
           }}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -137,7 +147,9 @@ function TemplateDialog(props: TemplateDialogProps) {
         </>
       }
     >
-      <div className={styles.controls}>
+      {/* `.form`, not `.controls`: a dialog is not a settings list, and a card drawn inside a
+          dialog panel is a second border around content that already has one. */}
+      <div className={styles.form}>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="template-name">
             {t('settings.templates.name')}

@@ -55,11 +55,24 @@ function blankRule(): SieveRule {
   }
 }
 
-/** A labelled field, matching the shape the other settings sections use. */
-function Field(props: { readonly label: string; readonly children: (id: string) => ReactNode }) {
+/**
+ * A labelled field, matching the shape the other settings sections use.
+ *
+ * `className` is how a field says it is one of several on a shared line (`.rowField`). Left to
+ * themselves the selects were each exactly as wide as their own longest option — 320, 224, 208,
+ * 252, 256 and 192px down one form — and a right edge that moves by a hundred pixels per line is
+ * a right edge the eye cannot use.
+ */
+function Field(props: {
+  readonly label: string
+  readonly className?: string | undefined
+  readonly children: (id: string) => ReactNode
+}) {
   const id = useId()
+  const className =
+    props.className === undefined ? settings.field : `${settings.field} ${props.className}`
   return (
-    <div className={settings.field}>
+    <div className={className}>
       <label className={settings.label} htmlFor={id}>
         {props.label}
       </label>
@@ -236,7 +249,7 @@ function ConditionRow(props: ConditionRowProps) {
 
   return (
     <div className={styles.row}>
-      <Field label={t('settings.filters.form.field')}>
+      <Field className={styles.rowField} label={t('settings.filters.form.field')}>
         {(id) => (
           <Select
             id={id}
@@ -271,7 +284,7 @@ function ConditionRow(props: ConditionRowProps) {
 
       {condition.kind === 'text' && (
         <>
-          <Field label={t('settings.filters.form.match')}>
+          <Field className={styles.rowField} label={t('settings.filters.form.match')}>
             {(id) => (
               <Select
                 id={id}
@@ -288,7 +301,7 @@ function ConditionRow(props: ConditionRowProps) {
               </Select>
             )}
           </Field>
-          <Field label={t('settings.filters.form.value')}>
+          <Field className={styles.rowField} label={t('settings.filters.form.value')}>
             {(id) => (
               <TextInput
                 id={id}
@@ -302,7 +315,7 @@ function ConditionRow(props: ConditionRowProps) {
 
       {condition.kind === 'size' && (
         <>
-          <Field label={t('settings.filters.form.match')}>
+          <Field className={styles.rowField} label={t('settings.filters.form.match')}>
             {(id) => (
               <Select
                 id={id}
@@ -319,7 +332,7 @@ function ConditionRow(props: ConditionRowProps) {
               </Select>
             )}
           </Field>
-          <Field label={t('settings.filters.form.sizeKb')}>
+          <Field className={styles.rowField} label={t('settings.filters.form.sizeKb')}>
             {(id) => (
               <TextInput
                 id={id}
@@ -358,7 +371,7 @@ function ActionRow(props: ActionRowProps) {
 
   return (
     <div className={styles.row}>
-      <Field label={t('settings.filters.form.action')}>
+      <Field className={styles.rowField} label={t('settings.filters.form.action')}>
         {(id) => (
           <Select
             id={id}
@@ -385,7 +398,7 @@ function ActionRow(props: ActionRowProps) {
       </Field>
 
       {action.kind === 'fileInto' && (
-        <Field label={t('settings.filters.form.mailbox')}>
+        <Field className={styles.rowField} label={t('settings.filters.form.mailbox')}>
           {(id) => (
             <Select
               id={id}
@@ -412,7 +425,7 @@ function ActionRow(props: ActionRowProps) {
       )}
 
       {action.kind === 'addFlag' && (
-        <Field label={t('settings.filters.form.flag')}>
+        <Field className={styles.rowField} label={t('settings.filters.form.flag')}>
           {(id) => (
             <Select
               id={id}
@@ -432,7 +445,7 @@ function ActionRow(props: ActionRowProps) {
       )}
 
       {action.kind === 'redirect' && (
-        <Field label={t('settings.filters.form.address')}>
+        <Field className={styles.rowField} label={t('settings.filters.form.address')}>
           {(id) => (
             <TextInput
               id={id}

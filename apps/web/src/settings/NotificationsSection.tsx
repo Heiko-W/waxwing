@@ -201,8 +201,9 @@ export function NotificationsSection(props: NotificationsSectionProps) {
         ? t('notify.permission.dismissed')
         : null
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       <p className={styles.hint}>{t('notify.description', { product })}</p>
 
       <div className={styles.field}>
@@ -248,8 +249,18 @@ export function NotificationsSection(props: NotificationsSectionProps) {
               aria-describedby={`${ids.quiet}-hint`}
               onCheckedChange={toggleQuietHours}
             />
-            {prefs.quietHours !== null && (
-              <div className={styles.controls}>
+            <p id={`${ids.quiet}-hint`} className={styles.hint}>
+              {t('notify.quiet.hint')}
+            </p>
+          </div>
+
+          {/* The two bounds are a ROW OF THEIR OWN, below the switch that reveals them — the way
+              iOS shows a date range under the toggle that turns it on. They were a `.controls`
+              nested inside the switch's row, i.e. a third card two levels inside the section's,
+              with "From" and "To" printed directly onto its border. */}
+          {prefs.quietHours !== null && (
+            <div className={styles.range}>
+              <div className={styles.group}>
                 <label htmlFor={ids.quietFrom} className={styles.label}>
                   {t('notify.quiet.from')}
                 </label>
@@ -258,6 +269,8 @@ export function NotificationsSection(props: NotificationsSectionProps) {
                   minutes={prefs.quietHours.fromMinutes}
                   onCommit={(minutes) => setQuietBound('fromMinutes', minutes)}
                 />
+              </div>
+              <div className={styles.group}>
                 <label htmlFor={ids.quietTo} className={styles.label}>
                   {t('notify.quiet.to')}
                 </label>
@@ -267,11 +280,8 @@ export function NotificationsSection(props: NotificationsSectionProps) {
                   onCommit={(minutes) => setQuietBound('toMinutes', minutes)}
                 />
               </div>
-            )}
-            <p id={`${ids.quiet}-hint`} className={styles.hint}>
-              {t('notify.quiet.hint')}
-            </p>
-          </div>
+            </div>
+          )}
 
           <div className={styles.field}>
             <Switch
@@ -310,14 +320,17 @@ export function NotificationsSection(props: NotificationsSectionProps) {
           week without a visit. A user who reads only the first line would believe something the code
           does not do, which is the failure NFR-PRIV-02 exists to forbid. */}
       {backgroundPush ? (
-        <>
+        // ONE row. The three sentences are one statement — the good news and the two limits that
+        // qualify it — and a rule between each pair would present them as three separate settings,
+        // which is exactly the reading NFR-PRIV-02 forbids.
+        <div className={styles.group}>
           <p className={styles.hint}>{t('notify.background.available', { product })}</p>
           <p className={styles.hint}>{t('notify.background.contentless')}</p>
           <p className={styles.hint}>{t('notify.background.renewal', { product })}</p>
-        </>
+        </div>
       ) : (
         <p className={styles.hint}>{t('notify.background.unavailable', { product })}</p>
       )}
-    </div>
+    </>
   )
 }

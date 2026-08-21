@@ -81,36 +81,45 @@ export function ServerSection(props: ServerSectionProps) {
   if (session === null || accountId === null) return null
   const view = buildCapabilitiesView(session, accountId)
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
-      <p id={connectionId} className={styles.hint}>
-        {t('settings.server.description')}
-      </p>
+    <>
+      {/* One row: the `<dl>` is named BY the paragraph above it (`aria-labelledby`), so a rule
+          drawn between the two would separate a caption from the thing it captions. */}
+      <div className={styles.group}>
+        <p id={connectionId} className={styles.hint}>
+          {t('settings.server.description')}
+        </p>
 
-      <dl className={styles.breakdown} aria-labelledby={connectionId}>
-        <div className={styles.breakdownRow}>
-          <dt>{t('settings.server.connection.url')}</dt>
-          <dd>{view.apiOrigin}</dd>
-        </div>
-        <div className={styles.breakdownRow}>
-          <dt>{t('settings.server.connection.username')}</dt>
-          <dd>{view.username}</dd>
-        </div>
-        <div className={styles.breakdownRow}>
-          <dt>{t('settings.server.connection.account')}</dt>
-          <dd>
-            {view.accountName}
-            {view.accountIsReadOnly ? ` — ${t('settings.server.connection.readOnly')}` : ''}
-          </dd>
-        </div>
-      </dl>
+        <dl className={styles.breakdown} aria-labelledby={connectionId}>
+          <div className={styles.breakdownRow}>
+            <dt>{t('settings.server.connection.url')}</dt>
+            <dd>{view.apiOrigin}</dd>
+          </div>
+          <div className={styles.breakdownRow}>
+            <dt>{t('settings.server.connection.username')}</dt>
+            <dd>{view.username}</dd>
+          </div>
+          <div className={styles.breakdownRow}>
+            <dt>{t('settings.server.connection.account')}</dt>
+            <dd>
+              {view.accountName}
+              {view.accountIsReadOnly ? ` — ${t('settings.server.connection.readOnly')}` : ''}
+            </dd>
+          </div>
+        </dl>
+      </div>
 
       <QuotaPanel {...(props.quotaClient ? { client: props.quotaClient } : {})} />
 
       {/* Each group's heading is a plain <span>, so the <dl> below it had no accessible name at all
           — four unlabelled description lists in a row, which is what B20.6 reported. Pointing each
           list at its own heading keeps the visual design and gives the structure its names. */}
-      <div className={styles.field}>
+      {/* `.group`, not `.field`: each of these is a TABLE under its label. Beside it, the 40em rule
+          centres the label vertically in an otherwise empty column — "Limits" floated in the middle
+          of a 242px block, "Optional features" in the middle of a 296px one, while the fourth
+          block on the same screen sat at the top. Four rows, two alignments, neither chosen. */}
+      <div className={styles.group}>
         <span id={coreId} className={styles.label}>
           {t('settings.server.core.title')}
         </span>
@@ -121,7 +130,7 @@ export function ServerSection(props: ServerSectionProps) {
         )}
       </div>
 
-      <div className={styles.field}>
+      <div className={styles.group}>
         <span id={mailId} className={styles.label}>
           {t('settings.server.mail.title')}
         </span>
@@ -132,7 +141,7 @@ export function ServerSection(props: ServerSectionProps) {
         )}
       </div>
 
-      <div className={styles.field}>
+      <div className={styles.group}>
         <span id={capsId} className={styles.label}>
           {t('settings.server.capabilities.title')}
         </span>
@@ -148,7 +157,7 @@ export function ServerSection(props: ServerSectionProps) {
       </div>
 
       {view.extra.length > 0 && (
-        <div className={styles.field}>
+        <div className={styles.group}>
           <span id={extraId} className={styles.label}>
             {t('settings.server.extra.title')}
           </span>
@@ -161,6 +170,6 @@ export function ServerSection(props: ServerSectionProps) {
       )}
 
       <ConfigGeneratorPanel session={session} />
-    </div>
+    </>
   )
 }
