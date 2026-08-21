@@ -853,3 +853,110 @@ Weg ist für Anhänge der richtige), D-6 (öffentliche Links — der Server kann
 X-7 (Enterprise-gesperrt), M-14 (`maxDelayedSend` — bereits korrekt behandelt), sowie
 `header`-Filter, `Mailbox/query`, `Quota/query`/`changes` und die exotischen
 `headers:*`-Formen.
+
+---
+
+# Stand der Umsetzung (22.08.2026)
+
+Von **67 Befunden** sind **58 umgesetzt**, **6 als „kein Handlungsbedarf" bestätigt**,
+**2 begründet nicht gebaut** und **1 bleibt ungeklärt**.
+
+Zahlen zum Vergleich: **4042 → 4861 Tests**, Bündel **273,11 → 279,05 kB** von 300.
+Fixture von Stalwart v0.16.14 auf **v0.16.18** angehoben.
+
+## Was dabei herauskam, das nicht in der Liste stand
+
+Die Umsetzung hat mehr echte Fehler gefunden als die Erhebung selbst. Der Reihe nach:
+
+**Vier Fehler steckten in dem, was diese Runde selbst gebaut hat**, und alle vier fand erst
+die E2E-Suite — die 4700 Unit-Tests waren durchgehend grün:
+
+- `createMailbox` schickte kein `isSubscribed`. Stalwart speichert dann `false`, und die neue
+  Ausblenden-Logik aus M-5 versteckt den Ordner: **selbst angelegte Ordner verschwanden nach
+  dem nächsten Sync.**
+- Der Lösch-Dialog für Ordner versprach „alles darin geht mit", der Client schickte aber kein
+  `onDestroyRemoveChildren`.
+- Das Rückgängigmachen einer Dateiverschiebung lud den Ordner neu, den man gerade verlassen
+  hatte.
+- Der Vergleich von Termin-Dauern lief über die Zeichenkette, sodass `PT60M` und `PT1H` als
+  verschieden galten. Jede Änderung an einem einzelnen Serientermin hätte die Dauer
+  eingefroren; ein späteres Verlängern der Serie wäre an genau diesem Termin wirkungslos
+  geblieben — sichtbar erst Wochen später.
+
+**Zwei alte Defekte sind gelöst**, beide waren keine Testprobleme:
+
+- **B44** — ein Ref, das ein *passiver* `useEffect` aktualisiert, aber ein nativer
+  Event-Listener liest. Im Fenster dazwischen gelten die Callbacks des vorherigen Renders.
+  Reproduziert mit 7 von 150 Gesten; `useLayoutEffect` behebt es. **Zwei weitere Fundstellen
+  derselben Bauart** mitbehoben, darunter `ShortcutProvider`, wo die Taste `e` die Auswahl
+  eines Renders zuvor hätte archivieren können.
+- **B52** — die Inbox-Vorgabe des Mail-Bildschirms feuerte nach dem Sync und überschrieb per
+  `replace` den gerade gewählten Bildschirm.
+
+**Ein Test war falsch grün:** Er postete an einen Endpunkt, den Stalwart mit 404 beantwortet,
+und legte deshalb nie etwas an.
+
+**Und der Prüflauf selbst verbarg etwas:** `verify:e2e` bricht beim ersten roten Schritt ab.
+Die gemeldeten „7 Fehlschläge" waren nur die Read-Suite — es waren **21**, weil Write, Shared
+und Deploy bis dahin gar nicht gelaufen waren.
+
+## Vier Korrekturen an den eigenen Plänen
+
+Die Pläne wurden aus Entwurfstexten gebaut und an mehreren Stellen vom Server widerlegt. Das
+ist der Ertrag der Vorgabe, im Zweifel zu messen:
+
+| Plan sagte | Server sagt | Folge ohne Messung |
+|---|---|---|
+| `inCalendars: [...]` | **`inCalendar`, Einzahl** | `unsupportedFilter` kippt die **ganze** Abfrage — der Monat wäre leer, sobald jemand einen Kalender ausblendet |
+| Zeiger-Patch auf `recurrenceOverrides` | **wird abgelehnt** | die Karte muss neu gelesen und ganz geschrieben werden |
+| `method` nur beim Update immutable | **auch beim `create`** | Undo eines eingeladenen Termins hätte stumm versagt |
+| Ganztags-Erinnerung `−(24n+9)h` | **`9h − 24h·n`** | Wecker einen Tag daneben |
+
+Dazu drei Angaben aus dem Kalenderplan, die sich als schlicht falsch erwiesen (`sentBy` gehört
+zu `Participant`, `recurrenceId` zu JSCalendar, `byMonth: String[]` ist keine
+`jscalendarbis`-Abweichung) — im Plan als KORREKTUR vermerkt statt stillschweigend geändert.
+
+## Neue Messungen, die vorher niemand hatte
+
+- **Einladungen gehen — mit einem Flag.** `CalendarEvent/set` verschickt nur bei
+  `sendSchedulingMessages: true` eine iMIP-Mail. Ohne das Argument passiert nichts: keine Mail,
+  kein Fehler, kein Log-Eintrag. Damit wurde K-3 überhaupt erst baubar.
+- **Eine unbekannte `using`-URN reißt die ganze Anfrage weg** (Antwort ohne `methodResponses`).
+  Deshalb wird jede Capability-URN nur gesendet, wenn die Session sie führt — und deshalb
+  musste der Kalender im Sync-Durchlauf isoliert werden: ungeschützt hätte ein Server ohne die
+  Kalender-URN **Mail** dauerhaft in den Fehlerzustand gelegt.
+- **Die Session bleibt grobkörnig**, auch auf v0.16.18: ein Fremdkonto erscheint mit allen 17
+  Capabilities, sobald irgendein Objekt geteilt ist. Dafür antwortet ein nicht freigegebener
+  Typ mit `forbidden` statt mit leerer Liste, und `forbidden` ist ein **lokaler** Fehler — ein
+  Batch je Fremdkonto genügt zur Sondierung.
+- **`role` lässt sich nachträglich setzen**, ist aber eindeutig je Konto, und nicht jede
+  RFC-Rolle existiert (`templates` wird abgewiesen).
+- **`mayShare` steht in `myRights`** bei Adressbuch und Kalender — die Freigabe-Bedienelemente
+  sind also erreichbar und nicht tot.
+- **Die `blobId` eines `FileNode` ist unverändert als Anhang verwendbar.** Kein erneuter
+  Upload; der E2E-Test hält das mit `expect(uploads).toBe(0)` fest.
+
+## Was bewusst nicht gebaut wurde
+
+- **X-3 (2FA).** TOTP schaltet HTTP-Basic ab, und Waxwing meldet sich per Basic an. Der
+  Ausweg „App-Passwort" umgeht den zweiten Faktor vollständig — das wäre keine
+  Zwei-Faktor-Anmeldung, sondern deren Anschein.
+- **X-5 als Schalter.** Verschlüsselung im Ruhezustand lässt sich einschalten, aber Waxwing
+  kann verschlüsselte Nachrichten nicht lesen. Wer sie einschaltet, sperrt sich aus seinem
+  eigenen Postfach aus. Deshalb nur als Anzeige.
+- **A-2 (`ContactCard/parse`).** Der eigene Parser funktioniert und arbeitet offline; der
+  Server als Rückfall hätte Bündelgröße gekostet und keine Frage beantwortet.
+- **ICS-Export über JMAP.** Gemessen unmöglich: jede Property-Variante wird still verworfen,
+  `CalendarEvent/export` gibt es nicht, und für einen Termin existiert kein Blob.
+
+## Was offen bleibt
+
+- **K-9** — `CalendarEventNotification/*` lieferte in jedem Szenario leere Listen. Ursache
+  weiterhin ungeklärt. Ein Einladungs-Posteingang darauf ist nicht baubar; der Weg über den
+  `text/calendar`-Anhang in der Mail steht als Ersatz.
+- **Schreiben offline** für Kalender und Dateien. Gelesen wird aus der Replik (K-8, D-4),
+  geschrieben weiterhin nur online, mit Begründung gesperrt. Mail und Kontakte können beides.
+- **`Calendar.mayDelete` / `AddressBook.mayDelete`** — Container oder Inhalt? Ungemessen; die
+  Antwort kostete einen echten Löschversuch auf fremdem Gut. Beide liegen konservativ in
+  „Verwalten".
+- Eine Eviction für die neuen Kalenderfenster: verlassene Monate bleiben in der Replik liegen.
