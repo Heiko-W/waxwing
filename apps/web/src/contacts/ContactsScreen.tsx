@@ -15,7 +15,7 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { ArrowDownUp, ChevronLeft, PanelLeft, Plus } from 'lucide-react'
+import { ChevronLeft, Import, PanelLeft, Plus } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { contactsPath, useNavigate, useRoute } from '../app/route'
@@ -94,6 +94,25 @@ export function ContactsScreen() {
   const actions = useContactActions()
 
   const [editor, setEditor] = useState<EditorMode>(null)
+  /*
+   * A create the route is still following to its real id.
+   *
+   * `actions.create` resolves with the CREATION id — the client-minted key the optimistic row is
+   * filed under and the one `ContactCard/set` uses as its `create` key. The server answers with an
+   * id of its own, and `reconcileContactCardCreate` then deletes the optimistic row and re-files it
+   * under that id. Navigating to the creation id therefore worked for a fraction of a second and
+   * then pointed at nothing: every single save ended on "This contact is not available." over a
+   * contact that had been created perfectly.
+   *
+   * The card is followed by its JSContact `uid` instead, which the reconciliation carries across
+   * unchanged. That works offline too — before the ack there IS no server id, and the optimistic row
+   * under the creation id is the right thing to show — so this corrects the route when the answer
+   * arrives rather than making the save wait for one.
+   */
+  const [pendingCreate, setPendingCreate] = useState<{
+    readonly uid: string
+    readonly creationId: Id
+  } | null>(null)
   // The group selected in the rail (LOCAL, not the route): filters the list pane to its members.
   const [selectedGroupId, setSelectedGroupId] = useState<Id | null>(null)
   const [groupEditor, setGroupEditor] = useState<EditorMode>(null)
@@ -165,11 +184,31 @@ export function ContactsScreen() {
         return
       }
       const newCardId = await actions.create(submit.card)
-      const targetId = pickTargetBook(bookId, books)?.id ?? bookId
-      navigate(contactsPath(targetId, newCardId))
+      setPendingCreate({ uid: submit.card.uid, creationId: newCardId })
+      // The book the reader is IN, not the book the card went into. They differ only in "All
+      // Contacts", where the card is filed in the default book but the list the reader is looking at
+      // shows it too — so there is no reason to move them out of it.
+      navigate(contactsPath(bookId, newCardId))
     },
-    [actions, navigate, bookId, books],
+    [actions, navigate, bookId],
   )
+
+  // Swap the creation id for the server id as soon as the acknowledged card appears in the replica.
+  // `replace`, not push: the creation-id URL names nothing and must not be a Back destination.
+  useEffect(() => {
+    if (pendingCreate === null) return
+    if (cardId !== pendingCreate.creationId) {
+      // The reader went somewhere else in the meantime; stop following them around.
+      setPendingCreate(null)
+      return
+    }
+    const landed = (allCards ?? []).find(
+      (card) => card.uid === pendingCreate.uid && card.id !== pendingCreate.creationId,
+    )
+    if (landed === undefined) return
+    setPendingCreate(null)
+    navigate(contactsPath(bookId, landed.id), { replace: true })
+  }, [pendingCreate, allCards, cardId, bookId, navigate])
 
   const onGroupSubmit = useCallback(
     async (submit: GroupFormSubmit): Promise<void> => {
@@ -220,8 +259,13 @@ export function ContactsScreen() {
     [drawerCapable, closeBooks],
   )
 
-  // Choosing a book (or "All Contacts") leaves the group's member view.
-  const onSelectBook = useCallback(() => setSelectedGroupId(null), [])
+  // Choosing a book (or "All Contacts") leaves the group's member view — and, on a narrow screen,
+  // closes the drawer, exactly as picking a group already did. Left open it lies over the list it
+  // was opened to filter and swallows every tap meant for it, including Save in the contact form.
+  const onSelectBook = useCallback(() => {
+    setSelectedGroupId(null)
+    if (drawerCapable) closeBooks()
+  }, [drawerCapable, closeBooks])
 
   // Escape closes the address-book drawer (narrow screens only), restoring focus to its toggle.
   useEffect(() => {
@@ -266,9 +310,15 @@ export function ContactsScreen() {
         {drawerCapable && (
           <IconButton
             id={BOOKS_TOGGLE_ID}
-            label={t('contacts.books.show')}
+            // A toggle says which way it goes. It kept saying "Show address books" while
+            // `aria-expanded` said `true`, and pressing it again did nothing at all — the drawer had
+            // only Escape and a backdrop tap to close it, neither of which is discoverable.
+            label={t(booksOpen ? 'contacts.books.hide' : 'contacts.books.show')}
             variant="ghost"
-            onClick={() => setBooksOpen(true)}
+            onClick={() => {
+              if (booksOpen) closeBooks()
+              else setBooksOpen(true)
+            }}
             aria-expanded={booksOpen}
             aria-controls={BOOKS_REGION_ID}
           >
@@ -276,8 +326,11 @@ export function ContactsScreen() {
           </IconButton>
         )}
         <h1 className={shellStyles.paneTitle}>{listHeading}</h1>
+        {/* `Import`, not `ArrowDownUp`: a vertical up/down arrow pair is the sort glyph everywhere
+            else, and this area has no sort to offer — so the one control it did not name was read as
+            the one thing it cannot do. */}
         <IconButton label={t('contacts.io.open')} variant="ghost" onClick={() => setIoMode('full')}>
-          <ArrowDownUp />
+          <Import />
         </IconButton>
         <IconButton
           label={t('contacts.new')}
@@ -399,10 +452,14 @@ export function ContactsScreen() {
         />
       </nav>
       {drawerCapable && booksOpen && (
+        // A click-catcher, not a second control: it does exactly what the toggle above does, and now
+        // that the toggle says "Hide address books" while open, naming this the same thing would put
+        // two identically-named buttons on one screen. It is already unfocusable (`tabIndex={-1}`),
+        // and a reader who cannot see it closes the drawer with Escape or with the toggle.
         <button
           type="button"
           className={styles.backdrop}
-          aria-label={t('contacts.books.hide')}
+          aria-hidden="true"
           tabIndex={-1}
           onClick={closeBooks}
         />

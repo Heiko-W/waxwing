@@ -7,6 +7,7 @@ import {
   formatAddressLines,
   formatBirthday,
   preferred,
+  telHref,
 } from './contact-fields'
 
 describe('contactDisplayName', () => {
@@ -118,6 +119,41 @@ describe('formatAddressLines', () => {
     })
     expect(lines).toContain('Main Street 1')
     expect(lines).toContain('Germany')
+  })
+
+  it('separates the region from the place with a comma (N14)', () => {
+    // "33415 Verl NRW" reads as one long place name. Postcode and locality belong together; the
+    // region is a different administrative level and needs a separator.
+    expect(
+      formatAddressLines({
+        components: [
+          { kind: 'postcode', value: '33415' },
+          { kind: 'locality', value: 'Verl' },
+          { kind: 'region', value: 'NRW' },
+        ],
+      }),
+    ).toEqual(['33415 Verl, NRW'])
+  })
+
+  it('adds no separator when there is no region', () => {
+    expect(
+      formatAddressLines({
+        components: [
+          { kind: 'postcode', value: '33415' },
+          { kind: 'locality', value: 'Verl' },
+        ],
+      }),
+    ).toEqual(['33415 Verl'])
+  })
+})
+
+describe('telHref (N11)', () => {
+  it('strips the spaces a `tel:` URI may not carry, keeping the visual separators it may', () => {
+    // RFC 3966 §3: `-`, `.`, `(` and `)` are visual separators inside a telephone-subscriber. A
+    // space is not one, so `tel:+49 171 1234567` is not a valid URI at all.
+    expect(telHref('+49 171 1234567')).toBe('tel:+491711234567')
+    expect(telHref('+1 (555) 010-0199')).toBe('tel:+1(555)010-0199')
+    expect(telHref('030/12 34 56')).toBe('tel:030123456')
   })
 })
 
