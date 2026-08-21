@@ -13,7 +13,7 @@
  */
 
 import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
-import { JmapHttpError, secondaryMailAccounts } from '@waxwing/jmap'
+import { JmapHttpError, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError } from '../../auth'
@@ -119,6 +119,24 @@ function canEditServer(config: WaxwingConfig, target: ConnectTarget): boolean {
  */
 function errToOnboard(error: unknown, host?: string, basic = false): OnboardError {
   if (error instanceof NoAccountError) return { key: 'onboarding.error.noAccount' }
+  /*
+   * The one error that already knows exactly what is wrong, and used to be flattened into
+   * "Something went wrong. Please try again." (U1).
+   *
+   * `packages/jmap` refuses a Session document whose `apiUrl`/`downloadUrl`/… names a different
+   * origin than the one that served it, because every request would attach the Authorization
+   * header to that foreign host. The refusal is right and stays. What was wrong is that it threw
+   * away the only three facts that make the misconfiguration fixable — which field, which URL, and
+   * which origin the credential may go to — and left an operator with a sentence that describes
+   * nothing and an instruction ("try again") that cannot help. Trying again produces the identical
+   * refusal, forever.
+   */
+  if (error instanceof JmapSessionOriginError) {
+    return {
+      key: 'onboarding.error.sessionOrigin',
+      values: { field: error.field, url: error.url, origin: error.expectedOrigin },
+    }
+  }
   if (error instanceof JmapHttpError) {
     if (error.status === 401 || error.status === 403) {
       // A 401 on the PASSWORD path has a second, likelier cause than a typo, and the reader
@@ -396,6 +414,17 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         dispatch({ type: 'showConnect' })
       }
     } catch (error) {
+      /*
+       * NAMED, even when the message on screen cannot name it (U2).
+       *
+       * A start-up that fails without a single failed network call — stale local state was the
+       * observed trigger, though which part of it was never established — reaches this catch and
+       * renders whatever `errToOnboard` can make of it, which for an unrecognised error is the
+       * generic sentence. The error object itself is the only thing that says more, and it was
+       * being dropped here. One console line is not a fix, but it is the difference between a
+       * report that says "it says something went wrong" and one that can be acted on.
+       */
+      console.error('[waxwing] start-up failed', error)
       goToLogin(targetRef.current ?? fallbackTarget(), errToOnboard(error))
     }
   }, [config, ensureController, connectSession, goToLogin, fallbackTarget, services, markEphemeral])
@@ -653,6 +682,20 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     [goToLogin, fallbackTarget],
   )
 
+  /**
+   * "Remove my data" for someone who never got in (U2). See {@link SessionContextValue.wipeLocalState}.
+   *
+   * Deliberately NOT routed through `endSession`: there is no session to end, no engine to stop and
+   * no controller to log out — and `endSession`'s first act is to render the very screen this is
+   * being triggered from. The service drops the storages and reloads; if the reload does not
+   * happen the error stays on screen, which is the honest outcome.
+   */
+  const wipeLocalState = useCallback(() => {
+    void services.resetLocalData().catch((error: unknown) => {
+      console.error('[waxwing] resetting local data failed', error)
+    })
+  }, [services])
+
   const signOut = useCallback(() => endSession(false), [endSession])
   const signOutAndWipe = useCallback(() => endSession(true), [endSession])
   const cancelReauth = useCallback(() => endSession(false), [endSession])
@@ -708,6 +751,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       cancelReauth,
       signOut,
       signOutAndWipe,
+      wipeLocalState,
       getClient,
       getAuthProvider,
     }
@@ -723,6 +767,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
     cancelReauth,
     signOut,
     signOutAndWipe,
+    wipeLocalState,
     getClient,
     getAuthProvider,
   ])

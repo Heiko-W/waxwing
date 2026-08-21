@@ -104,6 +104,19 @@ export interface SessionContextValue {
   signOut(): void
   signOutAndWipe(): void
 
+  /**
+   * The way out of a start-up that will not start — "remove my data" for someone who never got a
+   * session (U2).
+   *
+   * {@link signOutAndWipe} is the same intent from the inside, and it is unreachable here: it hangs
+   * off the account menu, which only exists once the app has come up. When the app stops at the
+   * sign-in screen with an error, the local state is one of the things that could be causing it,
+   * and the only known way to clear it was the browser's developer tools — an instruction an
+   * operator can follow and a user cannot. This drops every local database, cache and stored
+   * setting and reloads; nothing on the server is touched.
+   */
+  wipeLocalState(): void
+
   /** Stable accessor for out-of-React consumers (M1.3 sync engine); null until connected. */
   getClient(): JmapClient | null
   /** The (reauth-wrapped) auth provider the client uses; the sync engine reuses it for push. */

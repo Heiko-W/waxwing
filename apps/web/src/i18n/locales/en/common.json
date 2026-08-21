@@ -55,7 +55,15 @@
       "generic": "Something went wrong. Please try again.",
       "networkHost": "Could not reach {{host}}. If your mail server is at a different address, enter it above.",
       "oauthUnavailable": "This server does not offer secure sign-in. Use your email address and password below.",
-      "oauthUnavailableNoFallback": "This server does not offer secure sign-in, and this deployment allows no other method. Ask whoever runs it."
+      "oauthUnavailableNoFallback": "This server does not offer secure sign-in, and this deployment allows no other method. Ask whoever runs it.",
+      "sessionOrigin": "This server advertises {{field}} at {{url}}, which is not on {{origin}} — so your credentials were not sent there. Whoever runs this server needs to correct the address it publishes."
+    },
+    "reset": {
+      "action": "Reset this app on this device",
+      "title": "Reset this app on this device?",
+      "body": "This deletes everything {{product}} has stored in this browser: the offline copy of your mail, your settings, and any saved sign-in. Nothing on the server is touched, and nothing is deleted from your mailbox.",
+      "confirm": "Delete and reload",
+      "cancel": "Cancel"
     }
   },
   "auth": {

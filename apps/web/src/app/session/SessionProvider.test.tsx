@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { JmapSessionOriginError } from '@waxwing/jmap'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthConfigError } from '../../auth'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
@@ -56,6 +57,9 @@ function Consumer() {
       </button>
       <button type="button" onClick={() => s.signOut()}>
         signout
+      </button>
+      <button type="button" onClick={() => s.wipeLocalState()}>
+        wipe-local
       </button>
     </div>
   )
@@ -415,6 +419,52 @@ describe('SessionProvider — public-computer mode', () => {
     await waitFor(() =>
       expect(screen.getByTestId('error')).toHaveTextContent('auth.error.signOutIncomplete'),
     )
+  })
+})
+
+describe('SessionProvider — an error that already knows what is wrong', () => {
+  it('names the misconfigured session field instead of "something went wrong" (U1)', async () => {
+    // `packages/jmap` refuses a Session whose apiUrl is on another origin — correctly, since every
+    // request would attach the Authorization header to that host. The refusal carried the field,
+    // the URL and the permitted origin; `errToOnboard` threw all three away and rendered the
+    // generic sentence, leaving an operator with nothing to act on and a "try again" that returns
+    // the identical refusal forever.
+    const user = userEvent.setup()
+    renderSession({
+      probePresent: true,
+      connectError: new JmapSessionOriginError(
+        'apiUrl',
+        'https://elsewhere.test/jmap',
+        'https://mail.test',
+      ),
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.sessionOrigin'),
+    )
+  })
+})
+
+describe('SessionProvider — the way out when nothing works', () => {
+  it('hands the local-data reset to the services seam (U2)', async () => {
+    const user = userEvent.setup()
+    const fake = makeFakeServices({ probePresent: true })
+    const resetLocalData = vi.fn(async () => {})
+    render(
+      <ServicesProvider value={{ ...fake.services, resetLocalData }}>
+        <SessionProvider config={DEFAULT_CONFIG}>
+          <Consumer />
+        </SessionProvider>
+      </ServicesProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('wipe-local'))
+
+    expect(resetLocalData).toHaveBeenCalledTimes(1)
   })
 })
 

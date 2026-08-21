@@ -55,7 +55,15 @@
       "generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
       "networkHost": "{{host}} ist nicht erreichbar. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese oben ein.",
       "oauthUnavailable": "Dieser Server bietet keine sichere Anmeldung an. Melden Sie sich unten mit E-Mail-Adresse und Passwort an.",
-      "oauthUnavailableNoFallback": "Dieser Server bietet keine sichere Anmeldung an, und diese Installation lässt keine andere Methode zu. Wenden Sie sich an den Betreiber."
+      "oauthUnavailableNoFallback": "Dieser Server bietet keine sichere Anmeldung an, und diese Installation lässt keine andere Methode zu. Wenden Sie sich an den Betreiber.",
+      "sessionOrigin": "Dieser Server nennt {{field}} mit der Adresse {{url}}; die liegt nicht auf {{origin}} — Ihre Zugangsdaten wurden deshalb nicht dorthin gesendet. Der Betreiber muss die veröffentlichte Adresse korrigieren."
+    },
+    "reset": {
+      "action": "App auf diesem Gerät zurücksetzen",
+      "title": "App auf diesem Gerät zurücksetzen?",
+      "body": "Damit wird alles gelöscht, was {{product}} in diesem Browser gespeichert hat: die Offline-Kopie Ihrer E-Mails, Ihre Einstellungen und eine gespeicherte Anmeldung. Auf dem Server ändert sich nichts, aus Ihrem Postfach wird nichts gelöscht.",
+      "confirm": "Löschen und neu laden",
+      "cancel": "Abbrechen"
     }
   },
   "auth": {
