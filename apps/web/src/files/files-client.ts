@@ -20,10 +20,10 @@ import type {
   Id,
   JmapClient,
   Principal,
-  PrincipalCapability,
 } from '@waxwing/jmap'
-import { Capabilities, hasCapability, Methods, principalSearchFilter } from '@waxwing/jmap'
+import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
+import { searchPrincipals } from '../sharing/principals'
 
 /** Why a write failed, in the terms the UI can explain. */
 export type FileFailure = 'nameTaken' | 'tooLarge' | 'overQuota' | 'forbidden' | 'rejected'
@@ -149,23 +149,8 @@ export interface FilesClient {
   setShareWith(id: Id, shareWith: Record<Id, FileNodeRights>): Promise<void>
 }
 
-/**
- * The user's own principal id, from the account capability.
- *
- * `null` when the server does not advertise it — in which case the picker cannot exclude the user
- * and does not pretend to. Sharing a file with yourself is harmless; silently filtering the wrong
- * row out would not be.
- */
-export function currentUserPrincipalId(
-  session: JmapSession | null,
-  accountId: Id | null,
-): Id | null {
-  if (session === null || accountId === null) return null
-  const capability = session.accounts?.[accountId]?.accountCapabilities?.[
-    Capabilities.principals
-  ] as PrincipalCapability | undefined
-  return capability?.currentUserPrincipalId ?? null
-}
+/** Re-exported so the Files screen keeps one import; the implementation is shared (S-3). */
+export { currentUserPrincipalId } from '../sharing/principals'
 
 export function makeFilesClient(
   client: JmapClient,
@@ -409,24 +394,11 @@ export function makeFilesClient(
     },
 
     async searchPrincipals(query) {
-      const builder = client.request()
-      // `principalSearchFilter` answers `null` for an empty query — "everyone" — and the share
-      // picker opens on exactly that. Same rule as `list` above: "no filter" is an ABSENT key, not
-      // a null one. This one has not been seen to fail, and that is the point of fixing it now:
-      // it is the identical shape one round trip away from the one that took the Files screen out.
-      const filter = principalSearchFilter(query)
-      const found = builder.invoke(Methods.principalQuery, {
-        accountId,
-        // `text`, not `name`: measured, see `principalSearchFilter`.
-        ...(filter === null ? {} : { filter }),
-        limit: 50,
-      })
-      const principals = builder.invoke(Methods.principalGet, {
-        accountId,
-        '#ids': found.ref('/ids'),
-      })
-      const responses = await builder.send()
-      return responses.get(principals).list.filter((principal) => principal.id !== selfPrincipalId)
+      // One implementation, in `../sharing/principals.ts`, because the mail-folder share dialog runs
+      // the identical query (S-3) and the two rules it encodes — `text` rather than the RFC's
+      // `name`, and an ABSENT filter key rather than a null one — are the kind that get re-derived
+      // wrongly the second time.
+      return await searchPrincipals(client, accountId, query, selfPrincipalId)
     },
 
     async setShareWith(id, shareWith) {

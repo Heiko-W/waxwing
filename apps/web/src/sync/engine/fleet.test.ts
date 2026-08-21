@@ -203,6 +203,7 @@ function fakePort(accountId: string, emails: string[]): JmapPort {
               mayRename: true,
               mayDelete: true,
               maySubmit: true,
+              mayShare: false,
             },
             isSubscribed: true,
           },

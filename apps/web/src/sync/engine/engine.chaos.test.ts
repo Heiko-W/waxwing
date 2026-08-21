@@ -322,6 +322,7 @@ class FakeServer {
                 mayRename: true,
                 mayDelete: true,
                 maySubmit: true,
+                mayShare: false,
               },
               isSubscribed: true,
             })),

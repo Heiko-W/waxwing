@@ -1736,6 +1736,58 @@
       "unknown": "Still checking what you may do here — not all messages have loaded yet."
     }
   },
+  "sharing": {
+    "currentHeading": "Who has access",
+    "addHeading": "Give access to someone",
+    "none": "Only you.",
+    "search": "Search people",
+    "searchPlaceholder": "Name or address",
+    "noMatches": "Nobody matches that.",
+    "searchFailed": "The people search failed.",
+    "roleLabel": "They may",
+    "roleFor": "What {{name}} may do",
+    "grant": "Add",
+    "grantTo": "Give {{name}} access",
+    "revoke": "Remove",
+    "revokeFrom": "Remove {{name}}’s access",
+    "done": "Done",
+    "custom": "Custom access",
+    "failed": "That change was not saved. Nothing was altered.",
+    "role": {
+      "viewer": "View",
+      "editor": "Edit",
+      "manager": "Manage"
+    },
+    "explain": {
+      "file": {
+        "viewer": "They can open and download it. They cannot change it.",
+        "editor": "They can open, change, rename and delete it. They cannot share it with anyone else.",
+        "manager": "They can do everything you can, including sharing it with other people — and you will not be told when they do."
+      },
+      "mailbox": {
+        "viewer": "They can read the mail in this folder. Opening a message will not mark it read for you — which also means their own unread count never goes down.",
+        "editor": "They can read the mail, move it in and out of this folder, mark it read and flag it. They cannot rename or delete the folder.",
+        "manager": "They can do everything you can with this folder — read and file the mail, rename it, delete it, and share it with other people without telling you."
+      }
+    },
+    "mailbox": {
+      "action": "Share…",
+      "title": "Share the folder “{{name}}”",
+      "loadFailed": "The current access list could not be loaded, so nothing here can be changed safely.",
+      "noSubmit": "Nobody can send mail from your account, whatever you grant here."
+    },
+    "incoming": {
+      "region": "New shares",
+      "mailbox": "{{who}} shared the folder “{{name}}” with you.",
+      "mailboxUnnamed": "{{who}} shared a mail folder with you.",
+      "revoked": "{{who}} withdrew your access to “{{name}}”.",
+      "revokedUnnamed": "{{who}} withdrew your access to a mail folder.",
+      "someone": "Someone",
+      "open": "Open",
+      "dismiss": "Hide",
+      "dismissOne": "Hide this notice"
+    }
+  },
   "calendar": {
     "offline": "You are offline. Events can only be created while connected.",
     "offlineOpen": "You are offline. Events can only be opened and changed while connected.",
@@ -1863,33 +1915,7 @@
     "more": "More actions for {{name}}",
     "share": {
       "open": "Share {{name}}",
-      "title": "Share “{{name}}”",
-      "currentHeading": "Who has access",
-      "addHeading": "Give access to someone",
-      "none": "Only you.",
-      "search": "Search people",
-      "searchPlaceholder": "Name or address",
-      "noMatches": "Nobody matches that.",
-      "searchFailed": "The people search failed.",
-      "roleLabel": "They may",
-      "roleFor": "What {{name}} may do",
-      "grant": "Add",
-      "grantTo": "Give {{name}} access",
-      "revoke": "Remove",
-      "revokeFrom": "Remove {{name}}’s access",
-      "done": "Done",
-      "custom": "Custom access",
-      "failed": "That change was not saved. Nothing was altered.",
-      "role": {
-        "viewer": "View",
-        "editor": "Edit",
-        "manager": "Manage"
-      },
-      "explain": {
-        "viewer": "They can open and download it. They cannot change it.",
-        "editor": "They can open, change, rename and delete it. They cannot share it with anyone else.",
-        "manager": "They can do everything you can, including sharing it with other people — and you will not be told when they do."
-      }
+      "title": "Share “{{name}}”"
     }
   }
 }

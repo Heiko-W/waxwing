@@ -17,6 +17,7 @@ const fullRights = {
   mayRename: false,
   mayDelete: false,
   maySubmit: true,
+  mayShare: false,
 }
 
 describe('Email/query → Email/get back-reference (typed invoke)', () => {

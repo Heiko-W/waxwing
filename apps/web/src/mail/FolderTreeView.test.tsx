@@ -17,6 +17,7 @@ const RIGHTS = {
   mayRename: true,
   mayDelete: true,
   maySubmit: true,
+  mayShare: false,
 }
 
 function row(id: string, over: Partial<MailboxRow> = {}): MailboxRow {

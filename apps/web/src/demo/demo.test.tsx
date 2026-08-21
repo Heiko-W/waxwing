@@ -34,6 +34,7 @@ function makeMailbox(overrides: Partial<Mailbox>): Mailbox {
       mayRename: true,
       mayDelete: true,
       maySubmit: true,
+      mayShare: false,
     },
     ...overrides,
   }

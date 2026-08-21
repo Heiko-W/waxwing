@@ -30,6 +30,24 @@ export const Capabilities = {
   /** RFC 8620 §8 (JMAP Sharing) — principals. */
   principals: 'urn:ietf:params:jmap:principals',
   /**
+   * RFC 9670 §1.2 — sharing a `Mailbox`: `myRights.mayShare` and the `shareWith` property.
+   *
+   * **Deliberately absent from `PREFIX_TO_CAPABILITY`, and this is the load-bearing part.** The
+   * `Mailbox` prefix already maps to {@link Capabilities.mail}; adding this URN there would put it
+   * in the `using` set of EVERY mailbox request Waxwing makes. RFC 8620 §3.3 obliges a server to
+   * refuse an unknown `using` entry — and Stalwart does it at the REQUEST level: measured against
+   * v0.16.18, one unrecognised URN answers the whole batch with HTTP 400 `notRequest` and no method
+   * responses at all. So a server without the sharing extension would lose its entire mail sync to
+   * a URN sent on its behalf.
+   *
+   * It is not needed anyway, which is the second measurement: on v0.16.18 both
+   * `Mailbox/get properties:['shareWith']` and `Mailbox/set … shareWith` succeed with a `using` of
+   * core + mail alone. The constant exists so a server that DOES demand it can be opted in per call
+   * via {@link CallOptions.using}, once the session has been seen to advertise it — the same rule
+   * {@link Capabilities.emailPush} follows.
+   */
+  mailShare: 'urn:ietf:params:jmap:mail:share',
+  /**
    * RFC 9749 — Use of VAPID in JMAP Web Push. Carries the server's `applicationServerKey`.
    *
    * Not a method capability (nothing is added to `PREFIX_TO_CAPABILITY`): it is a pure session-level

@@ -236,6 +236,7 @@ const OPTIMISTIC_RIGHTS = {
   mayRename: true,
   mayDelete: true,
   maySubmit: true,
+  mayShare: false,
 }
 
 /** Full permissive rights for an optimistically-created address book (M4.2; server corrects on sync). */

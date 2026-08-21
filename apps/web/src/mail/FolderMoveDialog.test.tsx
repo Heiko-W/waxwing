@@ -52,6 +52,7 @@ function renderDialog(subjectId: string, onMove = vi.fn()) {
       mayRename: true,
       mayDelete: true,
       maySubmit: true,
+      mayShare: false,
     },
     isSubscribed: true,
   }
