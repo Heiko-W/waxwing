@@ -28,8 +28,41 @@ export type PreviewSurface = 'image' | 'frame'
  * A short list rather than a family: `text/*` would admit `text/html`, and an HTML document is the
  * one thing this must not hand to a frame — sandboxed or not, it is the whole attack surface the
  * mail body frame exists to contain, and it would arrive here without the sanitizer.
+ *
+ * **PDF IS NOT ON THIS LIST, AND THAT IS A DECISION, NOT AN OMISSION.**
+ *
+ * It was, and it never worked: the frame opened, `aria-expanded` said "true", and the box stayed
+ * empty — Chromium drew its "cannot display" sheet, Firefox nothing. Measured in the same browser
+ * on the same page under the same CSP: the identical PDF in an `<iframe>` WITHOUT `sandbox` renders
+ * perfectly, in `<iframe sandbox="">` it does not, and `text/plain` in `<iframe sandbox="">` does.
+ * The CSP is not involved (`frame-src 'self' blob:` allows the frame either way). So the offer was
+ * a button that promised a preview and delivered a blank rectangle.
+ *
+ * There are exactly three ways to make a PDF appear, and each was weighed:
+ *
+ * 1. **Relax the sandbox.** Chromium's viewer is not a renderer we can address; it is an internal
+ *    HTML document with a plugin in it, and it needs script execution AND a same-origin-ish
+ *    context. `sandbox="allow-scripts"` alone still fails. `sandbox="allow-scripts
+ *    allow-same-origin"` works — and for a `blob:` URL it is not a relaxation, it is a removal:
+ *    a blob URL inherits THIS app's origin, so the framed document would be same-origin with the
+ *    app, able to reach `window.parent`, read the IndexedDB that holds the wrapped credentials,
+ *    call the JMAP API with the user's session, and — because the two tokens together let a frame
+ *    edit its own `sandbox` attribute — take the rest for itself. The bytes come from whoever sent
+ *    the mail or uploaded the file. That is the single most dangerous pair of tokens in the whole
+ *    attribute, and it would be granted to exactly the content that has earned the least trust.
+ * 2. **`<object>`/`<embed>`.** The sandbox attribute does not exist on either, so this would
+ *    silently drop the containment rather than narrow it — and it is blocked outright by
+ *    `object-src 'none'` in `index.html`, which `csp.shipped.test.ts` pins.
+ * 3. **Render it ourselves** (pdf.js or similar) inside a surface we control. This is the only way
+ *    to have both, and it is a feature with a dependency, a lazy chunk and a size budget behind it
+ *    — not a line in this file. If a PDF preview comes back, it comes back this way.
+ *
+ * Until then the honest offer is the one that works: no Preview button for a PDF, and the Download
+ * button that sits beside it in both surfaces already opens it in the reader's own viewer, at full
+ * size, outside this app entirely. A missing button is a smaller loss than a button that lies, and
+ * far smaller than a sandbox opened for the one content type nobody has vetted.
  */
-const FRAMEABLE: ReadonlySet<string> = new Set(['application/pdf', 'text/plain'])
+const FRAMEABLE: ReadonlySet<string> = new Set(['text/plain'])
 
 /**
  * The media type without its parameters, lowercased.

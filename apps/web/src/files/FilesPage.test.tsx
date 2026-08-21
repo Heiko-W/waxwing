@@ -151,11 +151,11 @@ describe('the surface a preview is rendered in', () => {
     expect(container.querySelector('iframe')).toBeNull()
   })
 
-  it('puts a PDF in a frame that is sandboxed to nothing', async () => {
-    listed = [node({ id: '1', name: 'report.pdf', type: 'application/pdf' })]
+  it('puts plain text in a frame that is sandboxed to nothing', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
     const { container } = renderPage()
-    await showing('report.pdf')
-    await userEvent.click(screen.getByRole('button', { name: /Preview report\.pdf/i }))
+    await showing('notes.txt')
+    await userEvent.click(screen.getByRole('button', { name: /Preview notes\.txt/i }))
 
     const frame = await waitFor(() => {
       const found = container.querySelector('iframe')
@@ -165,6 +165,19 @@ describe('the surface a preview is rendered in', () => {
     // Empty, not absent: `sandbox=""` denies same-origin, and a blob: URL carries this app's origin.
     expect(frame.getAttribute('sandbox')).toBe('')
     expect(frame.getAttribute('src')).toBe(created[0])
+  })
+
+  it('offers a PDF no preview at all rather than an empty frame', async () => {
+    // The frame it would need is one this app may not open — `sandbox=""` stops Chromium's viewer
+    // dead, and the only tokens that revive it hand a blob: URL this app's own origin. Download is
+    // the honest offer, and it is the button next to where this one used to be.
+    listed = [node({ id: '1', name: 'report.pdf', type: 'application/pdf' })]
+    const { container } = renderPage()
+    await showing('report.pdf')
+
+    expect(screen.queryByRole('button', { name: /Preview report\.pdf/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download report\.pdf/i })).toBeInTheDocument()
+    expect(container.querySelector('iframe')).toBeNull()
   })
 
   it('reads the type through the policy, parameters and all', async () => {
