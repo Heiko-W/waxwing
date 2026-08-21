@@ -18,6 +18,7 @@
 
 import { JmapMethodError } from '@waxwing/jmap'
 import { sanitize } from '@waxwing/mail-html'
+import type { TFunction } from 'i18next'
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
@@ -39,6 +40,7 @@ import {
   toDraft,
   toPatch,
   type VacationDraft,
+  type VacationErrorCode,
   vacationStatus,
   validateVacation,
 } from './vacation-model'
@@ -53,7 +55,46 @@ export interface VacationSectionProps {
 /** Lazy, exactly as the reading pane loads it: most users never open a preview, let alone trip it. */
 const LinkWarningDialog = lazy(() => import('../mail/LinkWarningDialog'))
 
-type SaveError = { readonly key: string } | null
+/**
+ * What went wrong — and `loadFailed` is a separate member on purpose.
+ *
+ * The section used to carry `{ key: string }` and reach for `error.generic` ("The vacation
+ * responder could not be saved.") when a LOAD failed, because no load-failure string existed. Two
+ * defects in one shortcut: the sentence was false — nothing had been saved — and it was
+ * character-for-character the sentence a real save failure produces, so the reader could not tell a
+ * genuine one from this. Its neighbours already say "The filters could not be LOADED."
+ */
+type Failure = 'loadFailed' | 'conflict' | 'rejected' | 'offline' | 'generic'
+
+/**
+ * Spelled out rather than `t(\`settings.vacation.error.${failure}\`)`: `guards.test.ts` only sees
+ * LITERAL keys, so a computed one passes every gate and then renders the key itself on screen the
+ * day a translation is missing. Identities and filters have spelled theirs out from the start; this
+ * section was the one that did not, which is also how it came to name a key that said the wrong
+ * thing with no check anywhere able to notice.
+ */
+function failureText(t: TFunction, failure: Failure): string {
+  switch (failure) {
+    case 'loadFailed':
+      return t('settings.vacation.error.loadFailed')
+    case 'conflict':
+      return t('settings.vacation.error.conflict')
+    case 'rejected':
+      return t('settings.vacation.error.rejected')
+    case 'offline':
+      return t('settings.vacation.error.offline')
+    case 'generic':
+      return t('settings.vacation.error.generic')
+  }
+}
+
+/** The one thing the form itself can refuse, for the same literal-key reason. */
+function problemText(t: TFunction, problem: VacationErrorCode): string {
+  switch (problem) {
+    case 'endBeforeStart':
+      return t('settings.vacation.error.endBeforeStart')
+  }
+}
 
 export function VacationSection(props: VacationSectionProps) {
   const { t } = useTranslation()
@@ -76,7 +117,7 @@ export function VacationSection(props: VacationSectionProps) {
   const [state, setState] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [error, setError] = useState<SaveError>(null)
+  const [error, setError] = useState<Failure | null>(null)
 
   const ids = {
     enable: useId(),
@@ -119,7 +160,27 @@ export function VacationSection(props: VacationSectionProps) {
 
   useEffect(() => {
     const controller = new AbortController()
-    void load(controller.signal).catch(() => setError({ key: 'settings.vacation.error.generic' }))
+    void load(controller.signal)
+      // A load that SUCCEEDED clears whatever the last one said, or a transient failure stays on
+      // screen for good: nothing else resets it, and it would sit over a form that is demonstrably
+      // fine. Only here — the conflict path repaints through `load()` too, and its message has to
+      // survive that repaint.
+      .then(() => {
+        if (!controller.signal.aborted) setError(null)
+      })
+      .catch((thrown: unknown) => {
+        // An aborted request is not a failure — it is us, tearing the effect down. React
+        // StrictMode double-invokes effects in development and the client identity changes on
+        // reconnect or an account switch, so treating the abort as an error painted a red
+        // `role="alert"` over a form that had loaded perfectly on the second run: "The vacation
+        // responder could not be saved." on a freshly opened section, in six runs out of six,
+        // without the reader having touched a thing. (IdentitiesSection has handled this case
+        // since M5.1; this line had not.)
+        if (controller.signal.aborted) return
+        if (thrown instanceof DOMException && thrown.name === 'AbortError') return
+        // And a LOAD that fails is not a SAVE that failed — see the `Failure` type above.
+        setError('loadFailed')
+      })
     return () => controller.abort()
   }, [load])
 
@@ -158,14 +219,12 @@ export function VacationSection(props: VacationSectionProps) {
       // `notUpdated`. Repaint from the server rather than merge: we cannot know which of the two
       // versions the user meant, and silently keeping ours would discard someone else's change.
       if (thrown instanceof JmapMethodError && thrown.type === 'stateMismatch') {
-        setError({ key: 'settings.vacation.error.conflict' })
+        setError('conflict')
         await load().catch(() => {})
       } else if (thrown instanceof VacationSetError) {
-        setError({ key: 'settings.vacation.error.rejected' })
+        setError('rejected')
       } else {
-        setError({
-          key: offline ? 'settings.vacation.error.offline' : 'settings.vacation.error.generic',
-        })
+        setError(offline ? 'offline' : 'generic')
       }
     } finally {
       setBusy(false)
@@ -182,8 +241,9 @@ export function VacationSection(props: VacationSectionProps) {
 
   const previewHtml = sanitize(cleanOutgoingHtml(draft.bodyHtml), { allowRemote: false }).html
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       <p className={styles.hint}>{t('settings.vacation.description')}</p>
 
       <div className={styles.field}>
@@ -240,23 +300,37 @@ export function VacationSection(props: VacationSectionProps) {
         />
       </div>
 
-      <RichTextEditor
-        ref={editorRef}
-        value={draft.bodyHtml}
-        onChange={(html) => patch({ bodyHtml: html })}
-        ariaLabel={t('settings.vacation.body.label')}
-        {...(props.editorFactory ? { factory: props.editorFactory } : {})}
-      />
+      {/* The editor is a labelled BLOCK, like every other row of this card, rather than a bare
+          child of it. It brings its own border and its own rounded corners, so as a direct child
+          with no inset its corners cut visibly into the straight edge of the card and its toolbar
+          ran to within a pixel of it. It also had no visible label while every field above it did —
+          the name was only ever in `ariaLabel`. */}
+      <div className={styles.group}>
+        {/* A plain <span>, as in IdentityForm: the editor's own `ariaLabel` carries the same
+            words, so the accessible name is right and the visible one no longer missing. */}
+        <span className={styles.label}>{t('settings.vacation.body.label')}</span>
+        <RichTextEditor
+          ref={editorRef}
+          value={draft.bodyHtml}
+          onChange={(html) => patch({ bodyHtml: html })}
+          ariaLabel={t('settings.vacation.body.label')}
+          {...(props.editorFactory ? { factory: props.editorFactory } : {})}
+        />
+      </div>
 
-      <div className={styles.field}>
-        <Button
-          variant="ghost"
-          aria-expanded={previewOpen}
-          aria-controls={ids.preview}
-          onClick={() => setPreviewOpen((open) => !open)}
-        >
-          {previewOpen ? t('settings.vacation.preview.hide') : t('settings.vacation.preview.show')}
-        </Button>
+      <div className={styles.group}>
+        <div className={styles.rowActions}>
+          <Button
+            variant="ghost"
+            aria-expanded={previewOpen}
+            aria-controls={ids.preview}
+            onClick={() => setPreviewOpen((open) => !open)}
+          >
+            {previewOpen
+              ? t('settings.vacation.preview.hide')
+              : t('settings.vacation.preview.show')}
+          </Button>
+        </div>
         {previewOpen && (
           <div id={ids.preview}>
             <MailBodyFrame
@@ -283,21 +357,23 @@ export function VacationSection(props: VacationSectionProps) {
 
       {(invalid !== null || error !== null) && (
         <p id={ids.error} role="alert" className={styles.error}>
-          {invalid !== null ? t(`settings.vacation.error.${invalid}`) : t(error?.key ?? '')}
+          {invalid !== null ? problemText(t, invalid) : error !== null ? failureText(t, error) : ''}
         </p>
       )}
 
-      <div className={styles.field}>
-        <Button
-          variant="primary"
-          disabled={busy || invalid !== null || offline || state === null}
-          aria-describedby={invalid !== null || error !== null ? ids.error : undefined}
-          onClick={() => void save()}
-        >
-          {t('settings.vacation.save')}
-        </Button>
+      <div className={styles.group}>
+        <div className={styles.rowActions}>
+          <Button
+            variant="primary"
+            disabled={busy || invalid !== null || offline || state === null}
+            aria-describedby={invalid !== null || error !== null ? ids.error : undefined}
+            onClick={() => void save()}
+          >
+            {t('settings.vacation.save')}
+          </Button>
+        </div>
         {offline && <p className={styles.hint}>{t('settings.vacation.error.offline')}</p>}
       </div>
-    </div>
+    </>
   )
 }

@@ -322,6 +322,7 @@
       },
       "error": {
         "endBeforeStart": "The end must be after the start.",
+        "loadFailed": "The vacation responder could not be loaded.",
         "conflict": "The vacation responder was changed elsewhere. Your changes were not saved — the current settings are shown above.",
         "rejected": "The server rejected these settings.",
         "offline": "You are offline. The vacation responder can only be changed while connected.",
