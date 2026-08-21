@@ -467,18 +467,46 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
   client relies on was measured against Stalwart 0.16 rather than taken from the draft.
 - **FR-SIEVE-01 (V1.x — shipped M5.2)** — **Filter rules** editor on top of JMAP for Sieve
   (RFC 9661): a visual rule builder (conditions → actions: move, flag, forward, discard,
-  stop) generating a managed Sieve script; round-trip-safe (foreign scripts are shown
-  read-only in a code view rather than destroyed).
+  reject, stop) generating a managed Sieve script; the rules are **ordered**, and the order
+  is editable, because in Sieve the order is the semantics; round-trip-safe (foreign scripts
+  are shown read-only in a code view rather than destroyed).
 
   Round-trip safety is met by **not parsing Sieve at all** (ADR-023): the rule set is
   carried as JSON in a marker comment and read back from there, and anything outside the
   markers is preserved verbatim and in its original position. A foreign script is therefore
   displayed but never edited in place — the offer is to manage rules *alongside* it.
+
+  **Reordering** is a grabber at the trailing edge of each row, dragged with pointer events
+  so that a finger and a mouse behave alike, plus an equivalent keyboard path (Space to pick
+  up, arrows to move, Escape to put back) — ADR-025. WCAG 2.2 SC 2.5.7.
+
+  **`SieveScript/validate` runs on the server before every save**, and a script it refuses to
+  compile is not stored. It is advisory in one direction only: a validate that cannot be
+  performed at all does not block the save, because one broken method must not make filters
+  permanently unsaveable. Note also that a clean validate is **not** proof the script will
+  run — Stalwart compiles a `require` for an extension it does not implement and fails at
+  delivery time instead, so the section checks its own `require` list against the account's
+  advertised `sieveExtensions` as well (ADR-023).
+
+  **Filtering can be switched off and the script deleted.** The master switch is
+  `onSuccessDeactivateScript` and leaves every rule where it is; deleting is
+  `SieveScript/set destroy`, behind a confirmation, and issues the separate deactivate that
+  RFC 9661 §2.4 requires before the active script may be destroyed. Deletion is offered only
+  for the script this client manages — never for a foreign one, which the section exists to
+  leave alone.
+
+  **The condition and action vocabulary is a function of the server, not a constant.** On top
+  of the header, size and attachment tests, the builder offers the SMTP envelope
+  (`envelope`), a spam score (`spamtest` + `relational` + `comparator-i;ascii-numeric`),
+  delivery weekday and hour (`date`), duplicate suppression (`duplicate`) and `reject` — each
+  offered **only** when the account advertised what it needs in `sieveExtensions`, since a
+  `require` the server does not implement can compile and then fail when mail arrives. An
+  account that advertises no list at all gets the base vocabulary.
 - **FR-SIEVE-02 (V1.x, Could — partially shipped M5.2)** — Raw Sieve editor with syntax
   highlighting and server-side validation feedback for power users.
 
-  **Shipped read-only:** the generated script is viewable, and `SieveScript/validate` is
-  bound and used before a save, but the source cannot be edited by hand. An editable raw
+  **Shipped read-only:** the generated script is viewable and every save is validated on the
+  server first (FR-SIEVE-01), but the source cannot be edited by hand. An editable raw
   view would have to re-parse the result to keep the rule list in sync, which is exactly the
   round trip ADR-023 refuses. Syntax highlighting is not implemented.
 
