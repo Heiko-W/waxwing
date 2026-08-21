@@ -40,6 +40,36 @@ export async function enqueueCreateAddressBook(
 }
 
 /**
+ * Rename / re-describe an address book (JMAP gap analysis, B-5). State-guarded, so a concurrent edit
+ * from another client surfaces as a conflict rather than a silent last-writer-wins.
+ */
+export async function enqueueUpdateAddressBook(
+  engine: ContactMutationDispatcher,
+  bookId: Id,
+  props: { name?: string; description?: string | null },
+  newId: IdSource = defaultId,
+): Promise<{ id: Id }> {
+  const id = newId()
+  await engine.dispatch({ kind: 'updateAddressBook', id: bookId, props }, { id })
+  return { id }
+}
+
+/**
+ * Destroy an address book together with the cards that are in NO other book (B-5; RFC 9610 §2.3
+ * `onDestroyRemoveContents`, which the replay sets). State-guarded; `notFound` on replay is a success
+ * ("already gone"), not an undo.
+ */
+export async function enqueueDeleteAddressBook(
+  engine: ContactMutationDispatcher,
+  bookId: Id,
+  newId: IdSource = defaultId,
+): Promise<{ id: Id }> {
+  const id = newId()
+  await engine.dispatch({ kind: 'deleteAddressBook', id: bookId }, { id })
+  return { id }
+}
+
+/**
  * Create a contact card (M4.2). The card's `id` is forced to the `creationId` so the optimistic row
  * and its later server-id reconciliation line up; `card.addressBookIds` MUST already name at least one
  * book (a real id, or the `creationId` of a book created in the same session — reconciliation rewrites

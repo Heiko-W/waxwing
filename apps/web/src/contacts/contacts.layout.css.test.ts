@@ -159,3 +159,30 @@ describe('an ordinary address fits the field it is typed into (N2, second pass)'
     expect(threshold).toBeGreaterThan(picker + value)
   })
 })
+
+describe('the photo well is a target, not a hint (B-1)', () => {
+  /*
+   * The picker used to be a bare `<input type="file">` beside a caption — the browser's own widget,
+   * whose height is neither ours to set nor anywhere near 44px on a phone. It is now a circular
+   * well with the input clipped inside it, which is the Apple Contacts shape and, not by accident,
+   * a target the size of the photo it stands for.
+   */
+  it('never falls below the touch minimum, whatever the design does to the circle', () => {
+    const well = ruleBody('.photoWell')
+    expect(well).toMatch(/min-inline-size:\s*var\(--waxwing-control-min\)/)
+    expect(well).toMatch(/min-block-size:\s*var\(--waxwing-control-min\)/)
+  })
+
+  it('clips the input rather than hiding it, so it keeps its place in the tab order', () => {
+    // `display: none` / `visibility: hidden` would take the only focusable part of the control out
+    // of the tab order and leave the well keyboard-unreachable.
+    const input = ruleBody('.photoInput')
+    expect(input).toMatch(/clip-path:\s*inset\(50%\)/)
+    expect(input).not.toMatch(/display:\s*none/)
+    expect(input).not.toMatch(/visibility:\s*hidden/)
+  })
+
+  it('shows the focus the clipped input takes', () => {
+    expect(ruleBody('.photoPicker:focus-within')).toMatch(/outline:/)
+  })
+})

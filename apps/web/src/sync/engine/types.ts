@@ -207,6 +207,11 @@ export interface JmapPort {
     create?: Record<string, Partial<AddressBook>>
     update?: Record<Id, PatchObject>
     destroy?: Id[]
+    /**
+     * RFC 9610 §2.3: also destroy the ContactCards that are in this book and in NO other. Without
+     * it a book holding a single card cannot be destroyed at all.
+     */
+    onDestroyRemoveContents?: boolean
     ifInState?: string | null
   }): Promise<PortSetResult>
 
@@ -272,6 +277,9 @@ export const CONTACT_CARD_PROPERTIES: readonly (keyof ContactCard | string)[] = 
   'notes',
   'media',
   'links',
+  // Instant messaging (A-5 of the JMAP gap analysis). Absent from this list, the server never sent
+  // it, so the property could not be shown, edited or even preserved through an edit.
+  'onlineServices',
   'keywords',
   'members',
   'vCardProps',

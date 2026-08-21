@@ -147,6 +147,82 @@ test.describe('M4.2 contacts suite', () => {
     // The card is left for `resetContacts` (`wwcon` prefix) to destroy.
   })
 
+  /**
+   * B-1 of the JMAP gap analysis — the defect this file's absence let through.
+   *
+   * Two independent faults, both invisible to the component tests: the picker was `disabled`
+   * because `ContactsScreen` never passed the `uploadPhoto` prop `ContactForm` asked for, and the
+   * write it would have produced (`media[].blobId`) is one Stalwart refuses outright —
+   * `invalidProperties: "blobIds in media is not supported."`. `ContactForm.test.tsx` supplied its
+   * own fake uploader, so it tested the component and neither its wiring nor the wire format.
+   *
+   * Nothing here is injected: a real file goes into the real control, and the assertion is the
+   * photo the SERVER hands back — then the photo the app paints from it.
+   */
+  test('sets a contact photo that round-trips to the server (B-1)', async ({ page }) => {
+    const token = contactsToken('p')
+    // A 1×1 transparent PNG. Small enough to pass the downscaler untouched, so what reaches the
+    // server is exactly these bytes as a `data:` URI.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    )
+
+    await login(page, CREDENTIALS.alice)
+    await openContacts(page)
+
+    await page.getByRole('button', { name: 'New contact', exact: true }).click()
+    await expect(page.getByLabel('First name', { exact: true })).toBeVisible({ timeout: 15_000 })
+    await page.getByLabel('First name', { exact: true }).fill('Wax')
+    await page.getByLabel('Last name', { exact: true }).fill(token)
+
+    // Photo is a progressive-disclosure section: reveal it, then drive its file input.
+    await page.getByRole('button', { name: 'Add photo', exact: true }).click()
+    const picker = page.getByLabel('Choose photo', { exact: true })
+    // The half no component test could see: without the wiring this control is permanently disabled.
+    await expect(picker).toBeEnabled()
+    await picker.setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: png })
+    // The form paints a preview once the photo has been prepared.
+    await expect(page.getByRole('img', { name: 'Contact photo preview' })).toBeVisible({
+      timeout: 15_000,
+    })
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+    // The SERVER is the assertion. `media` is not in the seed's default property set, so ask for it.
+    const cards = await pollContacts(() =>
+      findContactsByToken(alice, aliceAccountId, token, [
+        'uid',
+        'kind',
+        'name',
+        'emails',
+        'media',
+        'addressBookIds',
+      ]),
+    )
+    expect(cards.length, 'exactly one card carries the token').toBe(1)
+    const media = Object.values(cards[0]?.media ?? {})
+    expect(media.length, 'the card carries a photo — the save was not silently dropped').toBe(1)
+    const photo = media[0]
+    expect(photo?.kind).toBe('photo')
+    // Inline, never a blobId: that is the format this server accepts.
+    expect(photo?.uri ?? '').toMatch(/^data:image\/png;base64,/)
+    expect(photo?.blobId, 'Stalwart rejects blobIds in media').toBeUndefined()
+
+    // …and it comes back out: reopen the saved card and the detail pane paints the photo rather
+    // than the initials fallback.
+    await page
+      .getByRole('navigation', { name: 'Address books' })
+      .getByRole('link', { name: 'All Contacts', exact: true })
+      .click()
+    const row = page.getByRole('option', { name: new RegExp(escapeRe(token)) })
+    await expect(row).toBeVisible({ timeout: 20_000 })
+    await row.click()
+    const shown = page.getByRole('region', { name: 'Contact' }).locator('img')
+    await expect(shown).toHaveCount(1, { timeout: 20_000 })
+    await expect(shown).toHaveJSProperty('naturalWidth', 1)
+    // The card is left for `resetContacts` (`wwcon` prefix) to destroy.
+  })
+
   test('adds a member to a new group that round-trips (FR-CON-04)', async ({ page }) => {
     const memberToken = contactsToken('m')
     const groupToken = contactsToken('g')

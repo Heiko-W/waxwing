@@ -579,7 +579,32 @@
       "show": "Adressbücher anzeigen",
       "hide": "Adressbücher ausblenden",
       "loading": "Adressbücher werden geladen",
-      "empty": "Keine Adressbücher."
+      "empty": "Keine Adressbücher.",
+      "new": "Neues Adressbuch",
+      "actions": "Aktionen für {{name}}",
+      "nameLabel": "Name",
+      "create": {
+        "title": "Neues Adressbuch",
+        "submit": "Anlegen"
+      },
+      "rename": {
+        "action": "Umbenennen",
+        "title": "Adressbuch umbenennen",
+        "submit": "Umbenennen"
+      },
+      "delete": {
+        "action": "Löschen",
+        "title": "Adressbuch löschen",
+        "body": "„{{name}}“ löschen?",
+        "contents": "Kontakte, die nur in diesem Adressbuch stehen, werden mitgelöscht.",
+        "confirm": "Löschen",
+        "cancel": "Abbrechen"
+      },
+      "error": {
+        "nameRequired": "Geben Sie einen Namen ein.",
+        "nameTooLong": "Dieser Name ist zu lang.",
+        "nameTaken": "Ein Adressbuch mit diesem Namen gibt es bereits."
+      }
     },
     "list": {
       "title": "Kontakte",
@@ -608,6 +633,8 @@
         "phone": "Telefon",
         "address": "Adresse",
         "birthday": "Geburtstag",
+        "url": "Webseite",
+        "im": "Instant Messaging",
         "note": "Notizen"
       },
       "more": "Weitere Aktionen"
@@ -641,6 +668,8 @@
         "address": "Adresse",
         "org": "Firma",
         "birthday": "Geburtstag",
+        "url": "Webseite",
+        "im": "Instant Messaging",
         "note": "Notizen",
         "photo": "Foto"
       },
@@ -662,12 +691,19 @@
       "addAddress": "Adresse hinzufügen",
       "addCompany": "Firma hinzufügen",
       "addBirthday": "Geburtstag hinzufügen",
+      "addUrl": "Webseite hinzufügen",
+      "addIm": "Instant Messaging hinzufügen",
+      "urlPlaceholder": "https://beispiel.de",
+      "imService": "Dienst",
+      "imPlaceholder": "Adresse oder Name",
       "addNote": "Notiz hinzufügen",
       "addPhoto": "Foto hinzufügen",
       "fieldNames": {
         "email": "E-Mail",
         "phone": "Telefon",
         "address": "Adresse",
+        "url": "Webseite",
+        "im": "Instant Messaging",
         "note": "Notiz"
       },
       "a11y": {
@@ -680,8 +716,9 @@
       "choosePhoto": "Foto auswählen",
       "changePhoto": "Foto ändern",
       "removePhoto": "Foto entfernen",
-      "photoUploading": "Foto wird hochgeladen …",
-      "photoError": "Das Foto konnte nicht hochgeladen werden.",
+      "photoPreparing": "Foto wird vorbereitet …",
+      "photoError": "Das Foto konnte nicht verwendet werden.",
+      "photoTooLarge": "Dieses Foto ist zu groß. Wählen Sie ein kleineres.",
       "photoAlt": "Vorschau des Kontaktfotos"
     },
     "delete": {
@@ -1128,6 +1165,8 @@
     "recipientDidYouMeanApply": "{{suggestion}} verwenden",
     "recipientMoveTo": "In das Feld „{{field}}“ verschieben",
     "recipientMoveMenu": "Empfängeroptionen",
+    "recipientGroupMembers_one": "Gruppe · {{count}} Kontakt",
+    "recipientGroupMembers_other": "Gruppe · {{count}} Kontakte",
     "discard": "Entwurf verwerfen",
     "attach": "Datei anhängen",
     "attachmentsLabel": "Anhänge",

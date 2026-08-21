@@ -14,7 +14,9 @@
 import type { ContactCardMedia, Id } from '@waxwing/jmap'
 import {
   Ellipsis,
+  Globe,
   Mail as MailIcon,
+  MessageCircle,
   Pencil,
   Phone as PhoneIcon,
   Trash2,
@@ -124,6 +126,8 @@ function ContactCardView({
   const emails = preferredEntries(card.emails)
   const phones = preferredEntries(card.phones)
   const addresses = preferredEntries(card.addresses)
+  const links = preferredEntries(card.links)
+  const onlineServices = preferredEntries(card.onlineServices)
   const notes = preferredEntries(card.notes)
 
   return (
@@ -245,6 +249,64 @@ function ContactCardView({
           <FieldRow>
             <span>{formatBirthday(birthday, i18n.language) ?? ''}</span>
           </FieldRow>
+        </DetailSection>
+      )}
+
+      {/*
+       * Websites and instant messaging (A-5). Both were fetched and preserved and shown nowhere:
+       * a URL in a card was invisible, and IM was not modelled at any level.
+       */}
+      {links.length > 0 && (
+        <DetailSection title={t('contacts.detail.sections.url')}>
+          {links.map(([id, link]) => (
+            <FieldRow
+              key={id}
+              label={link.label?.trim() || undefined}
+              icon={<Globe aria-hidden="true" className={styles.fieldIcon} />}
+            >
+              {/* `noreferrer` with `noopener`: a contact's link is a third party's page and has no
+                  business learning which webmail sent the reader. */}
+              <a
+                href={link.uri}
+                className={styles.fieldLink}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {link.uri}
+              </a>
+            </FieldRow>
+          ))}
+        </DetailSection>
+      )}
+
+      {onlineServices.length > 0 && (
+        <DetailSection title={t('contacts.detail.sections.im')}>
+          {onlineServices.map(([id, service]) => {
+            const account = service.uri ?? service.user ?? ''
+            if (account === '') return null
+            return (
+              <FieldRow
+                key={id}
+                label={service.label?.trim() || service.service?.trim() || undefined}
+                icon={<MessageCircle aria-hidden="true" className={styles.fieldIcon} />}
+              >
+                {/* Only a `uri` is dialable. A bare handle is text — rendering it as a link would
+                    produce one that resolves against this app's own origin. */}
+                {service.uri !== undefined ? (
+                  <a
+                    href={service.uri}
+                    className={styles.fieldLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {service.uri}
+                  </a>
+                ) : (
+                  <span>{account}</span>
+                )}
+              </FieldRow>
+            )
+          })}
         </DetailSection>
       )}
 

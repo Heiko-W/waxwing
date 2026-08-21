@@ -22,7 +22,16 @@
 import type { ContactCard, Id, PatchObject } from '@waxwing/jmap'
 import type { BooleanSet, Name } from '@waxwing/jscontact'
 import { deepEqual } from './contact-card-mapping'
-import { contactDisplayName } from './contact-fields'
+import { contactDisplayName, groupMemberUids, groupName } from './contact-fields'
+
+/*
+ * The three group PREDICATES (`isGroupCard`, `groupMemberUids`, `groupName`) now live in
+ * `contact-fields`, whose imports are type-only, and are re-exported here so this module's callers
+ * are unchanged. The move is what lets the composer's recipient expansion (A-4) read a group without
+ * pulling `contact-card-mapping` — which this module imports at runtime for `deepEqual` — into the
+ * composer chunk.
+ */
+export { groupMemberUids, groupName, isGroupCard } from './contact-fields'
 
 /** A client-generated, collision-free key source (injectable for deterministic tests). */
 export type IdSource = () => Id
@@ -34,24 +43,9 @@ export interface GroupDraft {
   readonly memberUids: readonly string[]
 }
 
-/** A card is a group iff its `kind` is `'group'` (RFC 9553 §2.1.4). */
-export function isGroupCard(card: Partial<ContactCard>): boolean {
-  return card.kind === 'group'
-}
-
-/** The member uids of a group card, in stored order (`[]` for a non-group or empty group). */
-export function groupMemberUids(card: Partial<ContactCard>): string[] {
-  return Object.keys(card.members ?? {})
-}
-
 /** A group card → its editable draft (name + member uids). */
 export function groupToDraft(card: Partial<ContactCard>): GroupDraft {
   return { name: groupName(card), memberUids: groupMemberUids(card) }
-}
-
-/** The group's display name — its `name.full`, falling back to the shared display-name helper. */
-export function groupName(card: Partial<ContactCard>): string {
-  return (card.name?.full ?? contactDisplayName(card)).trim()
 }
 
 /** A `members` set from an ordered uid list, or `undefined` when empty (an empty set is not written). */

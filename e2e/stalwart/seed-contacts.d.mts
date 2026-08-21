@@ -20,6 +20,18 @@ export interface JsContactEmail {
   readonly address: string
 }
 
+/**
+ * A JSContact `Media` entry (subset the suite reads). RFC 9610 §1.6.3 permits a `blobId` in place of
+ * the `uri`; Stalwart does not, which is what the photo test asserts.
+ */
+export interface JsContactMedia {
+  readonly '@type'?: string
+  readonly kind?: string
+  readonly uri?: string
+  readonly blobId?: string
+  readonly mediaType?: string
+}
+
 /** A fetched `ContactCard` — a `Partial<ContactCard>`, since a `/get` returns only requested props. */
 export interface ContactCardLike {
   readonly id: string
@@ -27,6 +39,8 @@ export interface ContactCardLike {
   readonly kind?: string
   readonly name?: JsContactName
   readonly emails?: Record<string, JsContactEmail>
+  /** Photos / logos / sounds, keyed by JSContact map id. */
+  readonly media?: Record<string, JsContactMedia>
   /** A group's membership set: JSContact `uid` → `true`. */
   readonly members?: Record<string, boolean>
   readonly addressBookIds?: Record<string, boolean>

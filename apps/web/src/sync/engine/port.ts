@@ -354,6 +354,9 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
         ...(args.create === undefined ? {} : { create: args.create }),
         ...(args.update === undefined ? {} : { update: args.update }),
         ...(args.destroy === undefined ? {} : { destroy: args.destroy }),
+        ...(args.onDestroyRemoveContents === undefined
+          ? {}
+          : { onDestroyRemoveContents: args.onDestroyRemoveContents }),
         ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
       })
       return toSetResult((await builder.send()).get(handle))

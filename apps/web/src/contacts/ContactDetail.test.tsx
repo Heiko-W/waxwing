@@ -236,3 +236,43 @@ describe('ContactDetail', () => {
     await expectNoA11yViolations(container)
   })
 })
+
+/**
+ * A-5 of the JMAP gap analysis. `links` was fetched with every card and rendered nowhere, so a
+ * contact's website was invisible; `onlineServices` was not modelled at all.
+ */
+describe('ContactDetail websites and instant messaging (A-5)', () => {
+  beforeEach(async () => {
+    await putContactCards(db, 'a', [
+      contactCard('c3', {
+        name: { '@type': 'Name', full: 'Linked Lena' },
+        links: { l1: { '@type': 'Link', uri: 'https://lena.test' } },
+        onlineServices: {
+          s1: { '@type': 'OnlineService', service: 'Matrix', uri: 'matrix:u/lena:example.test' },
+          s2: { '@type': 'OnlineService', service: 'Signal', user: 'lena.42' },
+        },
+      }),
+    ])
+  })
+
+  it('shows the website as a link that leaks no referrer', async () => {
+    renderDetail('c3')
+    const link = await screen.findByRole('link', { name: 'https://lena.test' })
+    expect(link).toHaveAttribute('href', 'https://lena.test')
+    // A contact's link is a third party's page and has no business learning which webmail sent us.
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noreferrer'))
+  })
+
+  it('shows an IM account, linking only the one that is a URI', async () => {
+    renderDetail('c3')
+    expect(
+      await screen.findByRole('link', { name: 'matrix:u/lena:example.test' }),
+    ).toBeInTheDocument()
+    // A bare handle is text: as an href it would resolve against this app's own origin.
+    expect(screen.getByText('lena.42')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'lena.42' })).not.toBeInTheDocument()
+    // Named by its service, which is the only thing that says what the address is for.
+    expect(screen.getByRole('heading', { name: 'Instant messaging' })).toBeInTheDocument()
+    expect(screen.getByText('Signal')).toBeInTheDocument()
+  })
+})

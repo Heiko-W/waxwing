@@ -579,7 +579,32 @@
       "show": "Show address books",
       "hide": "Hide address books",
       "loading": "Loading address books",
-      "empty": "No address books."
+      "empty": "No address books.",
+      "new": "New address book",
+      "actions": "Actions for {{name}}",
+      "nameLabel": "Name",
+      "create": {
+        "title": "New address book",
+        "submit": "Create"
+      },
+      "rename": {
+        "action": "Rename",
+        "title": "Rename address book",
+        "submit": "Rename"
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete address book",
+        "body": "Delete \u201c{{name}}\u201d?",
+        "contents": "Contacts that are only in this address book are deleted with it.",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "error": {
+        "nameRequired": "Enter a name.",
+        "nameTooLong": "That name is too long.",
+        "nameTaken": "An address book with that name already exists."
+      }
     },
     "list": {
       "title": "Contacts",
@@ -608,6 +633,8 @@
         "phone": "Phone",
         "address": "Address",
         "birthday": "Birthday",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Notes"
       },
       "more": "More actions"
@@ -641,6 +668,8 @@
         "address": "Address",
         "org": "Company",
         "birthday": "Birthday",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Notes",
         "photo": "Photo"
       },
@@ -662,12 +691,19 @@
       "addAddress": "Add address",
       "addCompany": "Add company",
       "addBirthday": "Add birthday",
+      "addUrl": "Add website",
+      "addIm": "Add instant messaging",
+      "urlPlaceholder": "https://example.com",
+      "imService": "Service",
+      "imPlaceholder": "Address or handle",
       "addNote": "Add note",
       "addPhoto": "Add photo",
       "fieldNames": {
         "email": "Email",
         "phone": "Phone",
         "address": "Address",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Note"
       },
       "a11y": {
@@ -680,8 +716,9 @@
       "choosePhoto": "Choose photo",
       "changePhoto": "Change photo",
       "removePhoto": "Remove photo",
-      "photoUploading": "Uploading photo…",
-      "photoError": "The photo could not be uploaded.",
+      "photoPreparing": "Preparing photo…",
+      "photoError": "The photo could not be used.",
+      "photoTooLarge": "That photo is too large. Choose a smaller one.",
       "photoAlt": "Contact photo preview"
     },
     "delete": {
@@ -1128,6 +1165,8 @@
     "recipientDidYouMeanApply": "Use {{suggestion}}",
     "recipientMoveTo": "Move to {{field}}",
     "recipientMoveMenu": "Recipient options",
+    "recipientGroupMembers_one": "Group · {{count}} contact",
+    "recipientGroupMembers_other": "Group · {{count}} contacts",
     "discard": "Discard draft",
     "attach": "Attach file",
     "attachmentsLabel": "Attachments",
