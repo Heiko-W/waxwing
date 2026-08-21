@@ -21,10 +21,16 @@ import { getEngineFor, type OutboxIntent } from '../sync/engine'
 import { useReplicaOptional } from '../sync/react'
 
 export interface FolderActions {
-  createChild(parentId: string | null, name: string): void
+  createChild(parentId: string | null, name: string, sortOrder?: number | undefined): void
   rename(id: string, name: string): void
   move(id: string, parentId: string | null): void
   remove(id: string): void
+  /** What other clients read to recognise this folder as the Archive (M-6); `null` clears it. */
+  setRole(id: string, role: string | null): void
+  /** JMAP's own "do not show me this folder" (M-5) — the server-side counterpart of hiding it. */
+  setSubscribed(id: string, isSubscribed: boolean): void
+  /** One whole sibling group's `sortOrder`, in ONE request (M-5). */
+  reorder(order: ReadonlyArray<{ readonly id: string; readonly sortOrder: number }>): void
 }
 
 function newId(): string {
@@ -39,15 +45,24 @@ export function useFolderActions(): FolderActions {
   const accountId = useReplicaOptional()?.accountId ?? null
   return useMemo(
     () => ({
-      createChild: (parentId, name) =>
+      createChild: (parentId, name, sortOrder) =>
         dispatch(accountId, {
           kind: 'createMailbox',
           creationId: newId(),
-          props: { name, parentId },
+          // `sortOrder` is omitted unless the sibling group has been hand-ordered, so an untouched
+          // account keeps the server's 0 and the alphabetical tie-break (see `nextSortOrder`).
+          props: { name, parentId, ...(sortOrder === undefined ? {} : { sortOrder }) },
         }),
       rename: (id, name) => dispatch(accountId, { kind: 'renameMailbox', id, name }),
       move: (id, parentId) => dispatch(accountId, { kind: 'moveMailbox', id, parentId }),
       remove: (id) => dispatch(accountId, { kind: 'deleteMailbox', id }),
+      setRole: (id, role) => dispatch(accountId, { kind: 'updateMailbox', id, props: { role } }),
+      setSubscribed: (id, isSubscribed) =>
+        dispatch(accountId, { kind: 'updateMailbox', id, props: { isSubscribed } }),
+      reorder: (order) => {
+        if (order.length === 0) return
+        dispatch(accountId, { kind: 'reorderMailboxes', order })
+      },
     }),
     [accountId],
   )

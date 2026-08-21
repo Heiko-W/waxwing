@@ -926,7 +926,11 @@
       "sent": "Sent",
       "archive": "Archive",
       "junk": "Junk",
-      "trash": "Trash"
+      "trash": "Trash",
+      "important": "Important",
+      "snoozed": "Snoozed",
+      "scheduled": "Scheduled",
+      "memos": "Notes"
     },
     "unread": "{{count}} unread",
     "expand": "Expand {{name}}",
@@ -940,7 +944,28 @@
       "keepOffline": "Keep offline",
       "keepOfflineOff": "Stop keeping offline",
       "move": "Move to…",
-      "import": "Import .eml files…"
+      "import": "Import .eml files…",
+      "info": "Folder info…",
+      "manage": "Manage folders"
+    },
+    "manage": {
+      "title": "Manage folders",
+      "hint": "Drag a folder to change its place, or switch it off to keep it out of the sidebar. Hidden folders stay in this list, and your other mail apps hide them too.",
+      "done": "Done",
+      "alwaysShown": "Always shown",
+      "show": "Show {{name}} in the sidebar",
+      "reorder": "Reorder {{name}}",
+      "reorderHint": "Press Space to pick the folder up, then Up and Down arrow to move it. Space drops it, Escape puts it back.",
+      "movedTo": "{{name}}, folder {{position}} of {{count}}",
+      "dropped": "{{name}} dropped",
+      "dropCanceled": "{{name}} put back"
+    },
+    "info": {
+      "title": "Folder info: {{name}}",
+      "useAs": "Use this folder as…",
+      "useAsNone": "A regular folder",
+      "useAsHint": "Your other mail apps read this. A folder used as the Archive is where they file archived mail too, and it moves up to the standard folders here.",
+      "submit": "Save"
     },
     "create": {
       "title": "New folder",
