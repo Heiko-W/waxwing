@@ -475,3 +475,185 @@ test.describe('M5.1 identity editor', () => {
     expect(await identitiesOf()).toHaveLength(before)
   })
 })
+
+/**
+ * M5.2 filter rules — the three server calls that were implemented and never called (B-3), and the
+ * reorder that Sieve's evaluation order makes mandatory (B-4).
+ *
+ * The drag is here rather than in a component test on purpose: jsdom has no layout engine, so every
+ * rectangle a pointer drag measures there is zero (ADR-025). This is the only place the gesture can
+ * be executed at all.
+ *
+ * Every assertion goes to the SERVER — `SieveScript/get` — rather than to the screen that wrote it.
+ */
+
+const SIEVE = 'urn:ietf:params:jmap:sieve'
+
+interface SieveScriptRow {
+  readonly id: string
+  readonly name: string
+  readonly isActive: boolean
+}
+
+async function scriptsOf(): Promise<SieveScriptRow[]> {
+  const args = await first<{ list: SieveScriptRow[] }>(
+    alice,
+    [CORE, SIEVE],
+    ['SieveScript/get', { accountId: aliceAccountId, ids: null }, '0'],
+  )
+  // The vacation responder writes a script of its own; it is not this suite's business.
+  return args.list.filter((script) => script.name !== 'vacation')
+}
+
+/** Creates one rule through the dialog. */
+async function addFilterRule(page: Page, name: string, subject: string): Promise<void> {
+  const section = page.getByRole('region', { name: 'Filters' })
+  await section.getByRole('button', { name: 'Add rule' }).click()
+  await page.getByLabel('Name').fill(name)
+  await page.getByLabel('Part').first().selectOption('subject')
+  await page.getByLabel('Value').fill(subject)
+  await page.getByRole('button', { name: 'Save rule' }).click()
+  await expect(section.getByText(name, { exact: true })).toBeVisible()
+}
+
+/** The rule names in the order the list shows them. */
+async function listedOrder(page: Page): Promise<string[]> {
+  const handles = page.getByRole('button', { name: /^Reorder / })
+  const labels = await handles.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('aria-label') ?? ''),
+  )
+  return labels.map((label) => label.replace(/^Reorder /, ''))
+}
+
+test.describe('M5.2 filter rules', () => {
+  test.afterEach(async () => {
+    const ours = (await scriptsOf()).filter((script) => script.name === 'waxwing')
+    if (ours.length === 0) return
+    // RFC 9661 §2.4: the active script has to be deactivated in a separate call first.
+    await first(
+      alice,
+      [CORE, SIEVE],
+      ['SieveScript/set', { accountId: aliceAccountId, onSuccessDeactivateScript: true }, '0'],
+    )
+    await first(
+      alice,
+      [CORE, SIEVE],
+      [
+        'SieveScript/set',
+        { accountId: aliceAccountId, destroy: ours.map((script) => script.id) },
+        '0',
+      ],
+    )
+  })
+
+  test('a rule the builder writes compiles on the server and becomes the active script', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+
+    await addFilterRule(page, 'Invoices', 'Invoice')
+
+    // `SieveScript/validate` ran before this was stored — a script Stalwart refuses to compile
+    // never reaches `SieveScript/set` at all, so the mere existence of the row is the proof.
+    await expect
+      .poll(
+        async () => (await scriptsOf()).map((script) => `${script.name}:${script.isActive}`),
+        POLL,
+      )
+      .toContain('waxwing:true')
+    await expect(page.getByRole('region', { name: 'Filters' })).not.toContainText(
+      'rejected the script',
+    )
+  })
+
+  test('reorders two rules by dragging the grabber (ADR-025)', async ({ page }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+
+    await addFilterRule(page, 'First', 'One')
+    await addFilterRule(page, 'Second', 'Two')
+    expect(await listedOrder(page)).toEqual(['First', 'Second'])
+
+    const grabber = page.getByRole('button', { name: 'Reorder First' })
+    const target = page.getByRole('button', { name: 'Reorder Second' })
+    const from = await grabber.boundingBox()
+    const to = await target.boundingBox()
+    if (from === null || to === null) throw new Error('the reorder grabbers have no geometry')
+
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    // Past the row below, not merely onto it: the drop index is decided by the row's MIDPOINT.
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height, { steps: 12 })
+    await page.mouse.up()
+
+    await expect.poll(async () => listedOrder(page), POLL).toEqual(['Second', 'First'])
+
+    // And the order really did reach the script, not just the screen.
+    await page.getByRole('button', { name: 'Show script' }).click()
+    const source = await page
+      .getByRole('figure')
+      .getByText(/@waxwing:rules/)
+      .innerText()
+    expect(source.indexOf('"name":"Second"')).toBeLessThan(source.indexOf('"name":"First"'))
+  })
+
+  test('reorders with the keyboard alone, which is the path WCAG 2.2 SC 2.5.7 requires', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+
+    await addFilterRule(page, 'First', 'One')
+    await addFilterRule(page, 'Second', 'Two')
+
+    await page.getByRole('button', { name: 'Reorder First' }).focus()
+    await page.keyboard.press('Space')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Space')
+
+    await expect.poll(async () => listedOrder(page), POLL).toEqual(['Second', 'First'])
+  })
+
+  test('the master switch stops filtering without deleting a single rule (B-3)', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+    await addFilterRule(page, 'Invoices', 'Invoice')
+
+    await page.getByRole('switch', { name: 'Filtering is on' }).click()
+
+    await expect
+      .poll(async () => (await scriptsOf()).some((script) => script.isActive), POLL)
+      .toBe(false)
+    // The script and its rules are still there — switching filtering off is not deleting it.
+    expect((await scriptsOf()).map((script) => script.name)).toContain('waxwing')
+    await expect(page.getByRole('region', { name: 'Filters' })).toContainText('Invoices')
+
+    await page.getByRole('switch', { name: 'Filtering is on' }).click()
+    await expect
+      .poll(async () => (await scriptsOf()).some((script) => script.isActive), POLL)
+      .toBe(true)
+  })
+
+  test('deleting the script asks first, then removes it from the server (B-3)', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+    await addFilterRule(page, 'Invoices', 'Invoice')
+
+    await page.getByRole('button', { name: 'Delete filter script' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Delete filter script?' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
+
+    // Two calls, not one: RFC 9661 §2.4 refuses to destroy the active script in the call that
+    // deactivates it, and the client is what has to know that.
+    await expect
+      .poll(async () => (await scriptsOf()).map((script) => script.name), POLL)
+      .not.toContain('waxwing')
+    await expect(page.getByRole('region', { name: 'Filters' })).toContainText('No filter rules yet')
+  })
+})
