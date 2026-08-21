@@ -28,7 +28,23 @@
   display: flex;
   flex-direction: column;
   inline-size: min(28rem, 92vw);
-  block-size: min(32rem, 80vh);
+  /*
+   * THE WINDOW GROWS WITH ITS HEADER; THE MESSAGE BODY NEVER PAYS FOR IT.
+   *
+   * `block-size: min(32rem, 80vh)` was a fixed 512px on a 900px-tall screen, and every row that
+   * appeared — Cc, Bcc, a wrapped recipient list, an attachment strip — came out of the editor,
+   * which is the one flexible item. Measured with two To recipients, one Cc and one attachment:
+   * 62 visible pixels of body for 171 of text, formatting toolbar scrolled out of view.
+   *
+   * `block-size: auto` with a FLOOR and a CEILING says it properly: 32rem while there is nothing
+   * to show (the resting size is unchanged), growing to 80vh as the addressing block does, and
+   * never past it. `.editorWrap` takes `flex-basis: 0`, so its own content does NOT enter this
+   * calculation — the window must not jump a line taller with every line typed — while its
+   * `min-block-size` is what the auto height is measured against.
+   */
+  block-size: auto;
+  min-block-size: min(32rem, 80vh);
+  max-block-size: 80vh;
   background-color: var(--waxwing-surface);
   border: 1px solid var(--waxwing-border);
   border-start-start-radius: var(--waxwing-radius-md);
@@ -92,6 +108,8 @@
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
   border-block-end: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface-2);
+  /* Never shrinks: it says which window this is and carries the way out of it. */
+  flex-shrink: 0;
 }
 
 .title {
@@ -142,6 +160,17 @@
   }
 }
 
+/* The addressing block: From, To/Cc/Bcc, Subject, attachments. It takes the height it needs and
+   gives it back by scrolling once the window has hit `max-block-size` — the last thing in the
+   window that may be shortened, rather than the first. */
+.headerFields {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
 .editorWrap {
   /* A flex COLUMN, so the editor inside can be told to take the height this wrapper already has.
      Without it the wrapper filled the window and the editor did not fill the wrapper: the editor
@@ -149,8 +178,12 @@
      more than half the screen — a full-screen composer offering a letterbox to type into. */
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-block-size: 0;
+  /* `flex-basis: 0`, not `auto`: it still takes every pixel the header leaves (`flex-grow: 1`), but
+     its CONTENT does not push the auto-height window taller as the message is typed.
+     `min-block-size` is the floor instead — toolbar (~2.7rem) plus the editing surface's own 8rem
+     plus this element's padding, which is what stopped the toolbar being scrolled out of sight. */
+  flex: 1 1 0;
+  min-block-size: 12rem;
   overflow: auto;
   padding: var(--waxwing-space-2) var(--waxwing-space-3);
 }
@@ -277,6 +310,8 @@
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-3);
   border-block-start: 1px solid var(--waxwing-border);
+  /* Never shrinks: it is how the message gets sent. */
+  flex-shrink: 0;
 }
 
 .footerDiscard {
