@@ -1155,21 +1155,31 @@
     },
     "chip": {
       "remove": "Filter {{filter}} entfernen",
+      "not": "Nicht {{filter}}",
       "from": "Von: {{value}}",
       "to": "An: {{value}}",
       "cc": "Kopie: {{value}}",
+      "bcc": "Blindkopie: {{value}}",
       "subject": "Betreff: {{value}}",
       "body": "Text: {{value}}",
       "hasAttachment": "Mit Anhang",
       "unread": "Ungelesen",
       "read": "Gelesen",
       "flagged": "Markiert",
+      "thread": {
+        "unread": "Ungelesene Konversationen",
+        "read": "Gelesene Konversationen",
+        "flagged": "Markierte Konversationen"
+      },
       "in": "In: {{value}}",
       "before": "Vor {{value}}",
       "after": "Nach {{value}}",
+      "larger": "Größer als {{value}}",
+      "smaller": "Kleiner als {{value}}",
       "text": "Enthält: {{value}}"
     },
-    "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
+    "hintAdvanced": "Für Fortgeschrittene: -wort schließt aus, a OR b findet eines von beiden, thread:unread findet ungeöffnete Konversationen.",
     "results": {
       "empty": "Keine Nachrichten entsprechen Ihrer Suche. Versuchen Sie es in allen Ordnern oder mit weniger Wörtern.",
       "count_one": "{{count}} Treffer",
