@@ -1151,7 +1151,8 @@
     "scope": {
       "label": "Suchen in",
       "folder": "Dieser Ordner",
-      "all": "Alle Ordner"
+      "all": "Alle Ordner",
+      "everywhere": "Alle Ordner, mit Papierkorb & Spam"
     },
     "chip": {
       "remove": "Filter {{filter}} entfernen",

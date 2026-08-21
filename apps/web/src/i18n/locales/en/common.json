@@ -1151,7 +1151,8 @@
     "scope": {
       "label": "Search in",
       "folder": "This folder",
-      "all": "All mailboxes"
+      "all": "All mailboxes",
+      "everywhere": "All mailboxes, incl. Trash & Junk"
     },
     "chip": {
       "remove": "Remove {{filter}} filter",
