@@ -421,6 +421,24 @@ describe('restoreEvent', () => {
     expect(body.alerts).toEqual({ a1: { '@type': 'Alert' } })
     expect(body.participants).toEqual({ p1: { '@type': 'Participant', name: 'Bob' } })
   })
+
+  /**
+   * Measured, not reasoned: Stalwart v0.16.18 refuses `method` in **create** with
+   * `{"type":"invalidProperties","description":"This property is immutable."}` — the same answer
+   * it gives to an update. An event that arrived by iMIP carries one, so without this the delete
+   * would succeed, the Undo toast would appear, and pressing it would fail. Offering an Undo that
+   * cannot run is worse than offering none.
+   */
+  it('drops `method`, which this server refuses on create as well as on update', async () => {
+    const { client, calls } = fakeClient()
+    await makeCalendarClient(client, ACC).restoreEvent(
+      event({ id: '0', method: 'request', title: 'Invitation' }),
+    )
+
+    const body = (calls[0]?.[1] as { create: { e: Record<string, unknown> } }).create.e
+    expect(body.method).toBeUndefined()
+    expect(body.title).toBe('Invitation')
+  })
 })
 
 describe('eventSignature', () => {

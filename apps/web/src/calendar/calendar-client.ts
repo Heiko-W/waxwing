@@ -302,8 +302,16 @@ const CALENDAR_PROPERTIES = [
  * but a snapshot is whatever the server handed back, and on a server that does send one, restoring
  * an event is meant to bring back THAT event — to a CalDAV client on the other side of the same
  * account the uid is what says so.
+ *
+ * `method` IS in it, and that one is not a judgement call — it is measured. Stalwart answers
+ * `{"type":"invalidProperties","description":"This property is immutable.","properties":["method"]}`
+ * to a `method` in **create** as well as in update (probed against v0.16.18 on 2026-08-21; the
+ * update half was already known, the create half is what makes it matter here). A scheduling
+ * event — one that arrived by iMIP and therefore carries `method` — would otherwise snapshot
+ * fine, delete fine, and fail to come back: Undo offered and Undo refused, which is the one
+ * outcome a delete-with-Undo may never produce.
  */
-const SERVER_OWNED = ['id', 'created', 'updated', 'isOrigin', 'baseEventId']
+const SERVER_OWNED = ['id', 'created', 'updated', 'isOrigin', 'baseEventId', 'method']
 
 /** Places one event on the timeline. */
 export function placeEvent(

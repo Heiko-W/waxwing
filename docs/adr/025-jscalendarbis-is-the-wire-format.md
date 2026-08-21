@@ -52,7 +52,14 @@ find it:
   `{"start":"2026-09-07T09:00:00","recurrenceId":"2026-09-07T09:00:00","id":"iaaaaaf","baseEventId":"f"}`.
   It is the server stating the occurrence-to-object mapping that `resolveIdentity` had been
   reconstructing from a field-by-field signature.
-- **`method`** (JSCalendar) is **immutable** here: an update naming it is refused with
+- **`method`** (JSCalendar) is **immutable** here — on **create** as well as on update, which is
+  not what "immutable" usually buys you. Probed against v0.16.18 on 2026-08-21:
+  `CalendarEvent/set create` with `method: "request"` answers
+  `{"type":"invalidProperties","description":"This property is immutable.","properties":["method"]}`,
+  the same sentence an update gets. That is why `method` is in `SERVER_OWNED` and is stripped from
+  the restore payload: an event that arrived by iMIP carries one, and leaving it in would have made
+  the delete succeed, the Undo toast appear, and the Undo itself fail. An update naming it is
+  refused with
   `invalidProperties: "This property is immutable."`
 
 And `Calendar/get` hides half its object unless asked. With no `properties` the answer is
@@ -111,11 +118,6 @@ quite true against this server.
 
 Recorded so nobody mistakes it for verified:
 
-- **Whether `method` is accepted on *create*.** It is refused on update; JMAP's "immutable"
-  normally means *settable once*, and `restoreEvent` re-creates an event from a complete snapshot
-  that would carry it. If create refuses it too, Undo fails for any event that has one — an
-  imported `.ics` invitation does. Not tested, because testing it means writing to a server.
-  `method` was therefore left in the restore payload rather than stripped on a guess.
 - **`sentBy`** is typed on `Participant`, where both drafts define it, and was never seen on the
   wire here. The gap survey listed it as an `Event` property; that is where it is *not*.
 - **The 0.16.14 fixture versus the 0.16.18 probe.** Everything in the table above behaved
