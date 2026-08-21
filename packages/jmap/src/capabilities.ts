@@ -92,6 +92,18 @@ const PREFIX_TO_CAPABILITY: Readonly<Record<string, string>> = {
   ContactCard: Capabilities.contacts,
   Calendar: Capabilities.calendars,
   CalendarEvent: Capabilities.calendars,
+  /*
+   * K-10. Without this line the prefix is unknown and the fallback below sends `using: [core]`
+   * alone — which is not a typed mistake anywhere, just a call that fails at run time on a server
+   * that scopes the type to the calendars URN.
+   *
+   * `CalendarEvent/parse` deliberately does NOT get an entry of its own. The draft assigns it
+   * `urn:ietf:params:jmap:calendars:parse`, and measured against v0.16.18 it answers perfectly well
+   * with the plain calendars URN — while a `using` entry a server does not know costs the WHOLE
+   * request (see `Capabilities.mailShare`). Following the draft here would trade a working call for
+   * a dead batch on every server that has not implemented the extension.
+   */
+  ParticipantIdentity: Capabilities.calendars,
   FileNode: Capabilities.fileNode,
   Principal: Capabilities.principals,
   ShareNotification: Capabilities.principals,

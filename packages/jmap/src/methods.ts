@@ -19,6 +19,8 @@ import { defineMethod, type MethodDef } from './request'
 import type {
   CalendarEventGetRequest,
   CalendarEventGetResponse,
+  CalendarEventParseRequest,
+  CalendarEventParseResponse,
   CalendarEventQueryRequest,
   CalendarEventQueryResponse,
   CalendarEventSetRequest,
@@ -27,6 +29,8 @@ import type {
   CalendarGetResponse,
   CalendarSetRequest,
   CalendarSetResponse,
+  ParticipantIdentityGetRequest,
+  ParticipantIdentityGetResponse,
 } from './types/calendar'
 import type {
   AddressBookChangesRequest,
@@ -250,6 +254,28 @@ export const Methods = {
   calendarEventSet: defineMethod<CalendarEventSetRequest, CalendarEventSetResponse>(
     'CalendarEvent/set',
   ),
+  /**
+   * Reads an uploaded `.ics` blob as JSCalendar events (K-4).
+   *
+   * Answers an ARRAY per blob — one VCALENDAR can hold many VEVENTs. See
+   * {@link CalendarEventParseResponse} for why the `:parse` capability URN is not added to the
+   * `using` set.
+   */
+  calendarEventParse: defineMethod<CalendarEventParseRequest, CalendarEventParseResponse>(
+    'CalendarEvent/parse',
+  ),
+  /**
+   * The addresses the user may act as (K-10).
+   *
+   * Read only, and that is measured rather than cautious: a `create` naming an address the account
+   * does not already own is refused, and `isDefault` cannot be written at all. See
+   * {@link ParticipantIdentity}. `ParticipantIdentity/changes` is deliberately not bound — it
+   * cannot answer.
+   */
+  participantIdentityGet: defineMethod<
+    ParticipantIdentityGetRequest,
+    ParticipantIdentityGetResponse
+  >('ParticipantIdentity/get'),
 
   /**
    * `draft-ietf-jmap-filenode` — FileNode (M5.7, FR-FILE-01). No RFC number yet; the shapes are

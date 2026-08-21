@@ -1837,7 +1837,6 @@
       "save": "Speichern",
       "cancel": "Abbrechen",
       "delete": "Löschen",
-      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet.",
       "unresolvedReadOnly": "Der Server hat dies als Vorkommen geliefert, das sich keinem gespeicherten Termin zuordnen lässt. Es lässt sich hier deshalb ansehen, aber nicht ändern — nur in einer Kalender-App, die den Termin selbst erreicht.",
       "alert": {
         "label": "Hinweis",
@@ -1859,6 +1858,57 @@
         "other": "{{duration}} vor dem Beginn",
         "carried_one": "{{count}} weiterer Hinweis bleibt unverändert erhalten.",
         "carried_other": "{{count}} weitere Hinweise bleiben unverändert erhalten."
+      },
+      "back": "Zurück",
+      "repeat": {
+        "label": "Wiederholen",
+        "none": "Nie",
+        "daily": "Jeden Tag",
+        "weekly": "Jede Woche",
+        "biweekly": "Alle 2 Wochen",
+        "monthly": "Jeden Monat",
+        "yearly": "Jedes Jahr",
+        "custom": "Eigene Regel",
+        "endLabel": "Ende der Wiederholung",
+        "end": {
+          "never": "Nie",
+          "until": "Am Datum",
+          "count": "Nach Anzahl"
+        },
+        "untilDate": "Letzter Tag",
+        "countLabel": "Anzahl der Termine"
+      },
+      "scope": {
+        "saveTitle": "Änderung übernehmen für …",
+        "deleteTitle": "Löschen …",
+        "occurrence": "Nur dieser Termin",
+        "all": "Alle Termine",
+        "note": "Einzeln geänderte Termine dieser Serie behalten ihre Zeit."
+      },
+      "participant": {
+        "none": "Keine",
+        "count_one": "{{count}} Person",
+        "count_other": "{{count}} Personen",
+        "add": "E-Mail-Adresse",
+        "addAction": "Hinzufügen",
+        "empty": "Noch niemand eingeladen.",
+        "organizer": "Organisator",
+        "remove": "{{name}} entfernen",
+        "invalid": "Das sieht nicht nach einer E-Mail-Adresse aus.",
+        "duplicate": "Diese Person steht bereits auf der Liste.",
+        "full": "Mehr als {{max}} Teilnehmer nimmt der Server nicht an.",
+        "status": {
+          "needs-action": "Keine Antwort",
+          "accepted": "Zugesagt",
+          "declined": "Abgesagt",
+          "tentative": "Vielleicht"
+        }
+      },
+      "rsvp": {
+        "label": "Ihre Antwort",
+        "accepted": "Annehmen",
+        "tentative": "Vielleicht",
+        "declined": "Ablehnen"
       }
     },
     "calendars": {
@@ -1893,7 +1943,24 @@
       "purple": "Violett",
       "brown": "Braun",
       "custom": "Aktuelle Farbe"
-    }
+    },
+    "import": {
+      "open": "Termine importieren …",
+      "title": "Termine importieren",
+      "file": "Kalenderdatei (.ics)",
+      "empty": "In dieser Datei steht kein Termin.",
+      "unreadable": "Die Datei konnte nicht gelesen werden.",
+      "failed": "Der Import ist fehlgeschlagen.",
+      "repeats": "wiederholt sich",
+      "action_one": "{{count}} Termin importieren",
+      "action_other": "{{count}} Termine importieren",
+      "done_one": "{{count}} Termin importiert.",
+      "done_other": "{{count}} Termine importiert.",
+      "duplicates_one": "{{count}} Termin war schon im Kalender.",
+      "duplicates_other": "{{count}} Termine waren schon im Kalender."
+    },
+    "rsvpFailed": "Ihre Antwort konnte nicht gesendet werden.",
+    "occurrenceDeleted": "Dieser Termin der Serie wurde entfernt."
   },
   "files": {
     "listOptions": "Listenoptionen",

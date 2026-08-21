@@ -79,10 +79,36 @@
  * master.
  */
 
-import type { Calendar, CalendarEvent, CalendarEventFilter, Id, JmapClient } from '@waxwing/jmap'
+import type {
+  Calendar,
+  CalendarEvent,
+  CalendarEventFilter,
+  Id,
+  JmapClient,
+  ParticipantIdentity,
+  ParticipationStatus,
+} from '@waxwing/jmap'
 import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
 import { alertsToPatch, type EventAlerts } from './event-alerts'
+import { type ParticipantRow, participantsToPatch, rsvpPatch } from './event-participants'
+import {
+  type EditScope,
+  excludeOverride,
+  mergeOverride,
+  overrideFromDraft,
+  overrideKeyFor,
+  type RepeatEnd,
+  type RepeatPreset,
+  ruleToWrite,
+} from './event-recurrence'
+import {
+  candidatesFrom,
+  createsFor,
+  type ImportCandidate,
+  type ImportOutcome,
+  outcomeFrom,
+} from './ics-import'
 import { durationToMs, localToInstant } from './jscalendar-time'
 
 /**
@@ -143,6 +169,31 @@ export interface EventDraft {
    * `event-alerts.ts`.
    */
   readonly alerts?: EventAlerts | undefined
+  /**
+   * How the event repeats, or `undefined` to leave the stored rule exactly as it is.
+   *
+   * The same two-absence rule `alerts` follows, and for the same reason: this object is a PATCH, so
+   * a caller that knows nothing about repetition must be able to save a title without deleting a
+   * weekly meeting's rule. `{ preset: 'none' }` is the reader having said "does not repeat" and
+   * writes `recurrenceRule: null`.
+   */
+  readonly repeat?: { readonly preset: RepeatPreset; readonly end: RepeatEnd } | undefined
+  /**
+   * The event's participants, or `undefined` to leave them alone.
+   *
+   * An EMPTY list is "there are none" and writes `participants: null` — which is how the last
+   * attendee is removed. `EventFacts` used to protect this property by never naming it; now that
+   * the editor names it, the protection has to be this distinction instead.
+   */
+  readonly participants?: readonly ParticipantRow[] | undefined
+  /**
+   * The organiser's address, written beside `participants`.
+   *
+   * `jscalendarbis` requires it whenever a participant carries an address. Measured on v0.16.18:
+   * the server fills it in itself when the client omits it, so this is belt and braces — but the
+   * release notes name a version where it did not, and then sent no scheduling messages at all.
+   */
+  readonly organizerCalendarAddress?: string | undefined
 }
 
 /** What {@link CalendarClient.createCalendar} and {@link CalendarClient.updateCalendar} may set. */
@@ -179,15 +230,73 @@ export interface CalendarClient {
   destroyCalendar(id: Id): Promise<void>
   /** How many events one calendar holds, for the sentence the delete confirmation says. */
   countEvents(calendarId: Id): Promise<number>
-  createEvent(draft: EventDraft): Promise<void>
+  /**
+   * Creates one event.
+   *
+   * `sendInvitations` is the METHOD argument `sendSchedulingMessages`, and it is the only thing
+   * that makes an invitation go out: measured on v0.16.18, a create carrying `participants` and
+   * `organizerCalendarAddress` sends nothing at all without it — no mail, no queue entry, no error.
+   * It is a parameter rather than something inferred from the draft, because "there are
+   * participants" and "invite them now" are different statements and only the screen knows which
+   * one the reader made.
+   */
+  createEvent(draft: EventDraft, sendInvitations?: boolean): Promise<void>
   /**
    * Writes the draft onto the object behind `target`.
    *
    * Takes the placed occurrence rather than an id, and that is not decoration: an `id` parameter is
    * exactly what let a display id reach the wire (T1). With the occurrence in hand, the call site
    * cannot pass the wrong one — there is only one id on it that a write may use.
+   *
+   * `scope` says what a change to an occurrence of a SERIES means. `'all'` patches the master, as
+   * it always did. `'occurrence'` writes a `recurrenceOverrides` entry — see
+   * {@link CalendarClient.updateOccurrence}, which is what it delegates to. For an event that does
+   * not repeat the two are the same thing and the parameter is ignored.
    */
-  updateEvent(target: PlacedEvent, draft: EventDraft): Promise<void>
+  updateEvent(
+    target: PlacedEvent,
+    draft: EventDraft,
+    scope?: EditScope,
+    sendInvitations?: boolean,
+  ): Promise<void>
+  /**
+   * Changes ONE occurrence of a series, by rewriting the master's `recurrenceOverrides`.
+   *
+   * **The whole map is written, and there is no alternative on this server.** A pointer patch
+   * (`"recurrenceOverrides/<rid>": {...}`) is answered `invalidProperties: "Patch operation
+   * failed."` — measured on v0.16.18, with `recurrenceRule/count` accepted in the same request as
+   * the control. See `event-recurrence.ts` for the probe.
+   *
+   * The map is therefore RE-READ inside the same JMAP request that writes it, never taken from the
+   * copy the screen has been holding. That is the whole mitigation: a `/get` and a `/set` in one
+   * batch run in order on the server, so the window in which another client's override could be
+   * overwritten is the width of one request rather than the lifetime of a dialog.
+   */
+  updateOccurrence(target: PlacedEvent, draft: EventDraft): Promise<void>
+  /** Removes ONE occurrence from a series (`recurrenceOverrides[<rid>] = {excluded: true}`). */
+  excludeOccurrence(target: PlacedEvent): Promise<void>
+  /**
+   * Answers an invitation: `"participants/<key>/participationStatus"` and nothing else.
+   *
+   * One pointer, one field. Writing the whole `participants` map to change one word would re-send
+   * every other participant as this client understood them, silently dropping a delegate or a role
+   * it does not model. Measured `updated` on v0.16.18, with the participant's name, roles and
+   * `expectReply` intact afterwards.
+   */
+  rsvp(target: PlacedEvent, participantKey: string, status: ParticipationStatus): Promise<void>
+  /**
+   * The calendar addresses this account may act as (K-10).
+   *
+   * Read only, and that is measured: a `create` naming an address the account does not own is
+   * refused, `isDefault` cannot be written at all, and `/changes` cannot answer. The one thing this
+   * list is for is deciding which participant on an event is the reader, which is what gates the
+   * RSVP bar.
+   */
+  listParticipantIdentities(): Promise<ParticipantIdentity[]>
+  /** Uploads a `.ics` and asks the SERVER to read it. Every event in it, not just the first. */
+  parseIcs(file: Blob): Promise<ImportCandidate[]>
+  /** Creates the chosen events. A `uid` already in the account is a skip, not a failure. */
+  importEvents(candidates: readonly ImportCandidate[], calendarId: Id): Promise<ImportOutcome>
   /**
    * Deletes the object behind `target` and returns a **complete copy of what was deleted**, so the
    * caller can offer Undo. `null` when the copy could not be taken — the delete still happened, and
@@ -199,31 +308,31 @@ export interface CalendarClient {
 }
 
 /**
- * Whether this event may be edited here.
+ * Does this event belong to a repeating series?
  *
- * **Recurring events are refused**, and that is the whole safety property of this editor. Changing
- * one occurrence of a series means deciding between "this one", "this and following" and "all",
- * writing `recurrenceOverrides` accordingly, and getting iTIP right for every participant. An
- * editor that quietly applied one of those three to a meeting other people are in would lose their
- * time, not ours. Series stay read-only until that scope editor exists.
+ * **This used to be `isEditable`, and the rename is the whole of K-2.** Until a scope editor
+ * existed, "repeats" and "cannot be touched" were the same sentence and one function said both.
+ * They are not the same sentence any more: a series IS editable, it just needs the reader to say
+ * whether a change means this occurrence or all of them. Keeping the old name would have left the
+ * refusal reading as a fact about the event rather than a decision of this client.
  *
  * An expanded instance is recognisable by its `recurrenceId`; a master by its `recurrenceRule`.
  */
-export function isEditable(event: CalendarEvent): boolean {
-  if (event.recurrenceId !== undefined) return false
-  return !isSeriesMaster(event)
+export function isSeriesEvent(event: CalendarEvent): boolean {
+  if (event.recurrenceId !== undefined) return true
+  return isSeriesMaster(event)
 }
 
 /**
  * Does this stored object carry a repetition rule?
  *
- * **Both spellings are refused, and only one is asked for.** `recurrenceRule` (singular, one
+ * **Both spellings are recognised, and only one is asked for.** `recurrenceRule` (singular, one
  * object) is `jscalendarbis` and is what this server answers; `recurrenceRules` (plural, an array)
  * is RFC 8984 and is what the client used to ask for and never get. The plural branch is kept
- * because refusing to edit is the safe direction and a server that volunteers the old spelling
- * should not have its series handed to an editor that cannot write them — but it is deliberately
- * NOT in the property lists, because asking a `jscalendarbis` server for it is how this bug
- * started. An empty array is not a series.
+ * because treating a series as a series is the safe direction and a server that volunteers the old
+ * spelling should not have its series handed to an editor that writes a single event — but it is
+ * deliberately NOT in the property lists, because asking a `jscalendarbis` server for it is how
+ * this bug started. An empty array is not a series.
  */
 function isSeriesMaster(event: CalendarEvent): boolean {
   const rule: unknown = event.recurrenceRule
@@ -233,25 +342,47 @@ function isSeriesMaster(event: CalendarEvent): boolean {
 }
 
 /** Why an occurrence cannot be edited, or `null` when it can. */
-export type EditRefusal = 'series' | 'unresolved'
+export type EditRefusal = 'unresolved'
 
 /**
  * The one question the screen asks before opening the editor.
  *
- * Two refusals, because they need two different sentences. `series` is a deliberate limit we can
- * explain ("this repeats; a series needs a scope editor"). `unresolved` is the honest admission
- * that the server handed back an occurrence we cannot trace to a writable object — rare, but the
- * alternative is an editor whose Save is certain to fail, which is precisely the state T1 left the
- * whole calendar in.
+ * **One refusal left, and it is the honest one.** `unresolved` says the server handed back an
+ * occurrence this client cannot trace to a writable object — rare, but the alternative is an editor
+ * whose Save is certain to fail, which is precisely the state T1 left the whole calendar in.
+ *
+ * The other refusal, `series`, is gone: a repeating event no longer turns the editor back, it
+ * raises the scope question after Save instead ({@link needsScope}). That is the change K-2 exists
+ * to make, and the reason it took an ADR to get here is that the failure mode of getting it wrong —
+ * a single-event patch landing on a repeating meeting — costs other people's time.
  */
 export function refuseEdit(placed: PlacedEvent): EditRefusal | null {
-  if (placed.series || !isEditable(placed.event)) return 'series'
-  if (placed.writeId === null) return 'unresolved'
-  return null
+  return placed.writeId === null ? 'unresolved' : null
 }
 
-/** The JSCalendar patch an {@link EventDraft} describes. */
-export function draftToEvent(draft: EventDraft): Record<string, unknown> {
+/**
+ * Does saving this occurrence need the reader to choose a scope?
+ *
+ * Asked of the PLACED event rather than the raw one, so the master's own answer (`series`, resolved
+ * from the identity index or from `baseEventId`) counts as well as the occurrence's `recurrenceId`.
+ * An occurrence whose master lies outside the fetched window carries `recurrenceId` and is caught
+ * by the second half.
+ */
+export function needsScope(placed: PlacedEvent): boolean {
+  return placed.series || isSeriesEvent(placed.event)
+}
+
+/**
+ * The JSCalendar patch an {@link EventDraft} describes.
+ *
+ * `stored` is the event being edited, where there is one. It is read for exactly one thing: a
+ * repetition rule this editor has no control for, which `ruleToWrite` carries through rather than
+ * flattening into the nearest preset it does know.
+ */
+export function draftToEvent(
+  draft: EventDraft,
+  stored?: CalendarEvent | null,
+): Record<string, unknown> {
   return {
     '@type': 'Event',
     calendarIds: { [draft.calendarId]: true },
@@ -275,12 +406,46 @@ export function draftToEvent(draft: EventDraft): Record<string, unknown> {
      */
     ...(draft.alerts === undefined ? {} : { alerts: alertsToPatch(draft.alerts) }),
     /*
-     * Note what is still NOT here: `locations`, `participants`, `recurrenceRule`.
+     * `recurrenceRule` (K-2) follows exactly the same rule, and it matters more here than it did
+     * for alerts: a caller that says nothing about repetition and gets `recurrenceRule: null`
+     * written for it has just turned a weekly meeting into a single appointment, silently, while
+     * saving a title.
+     *
+     * `stored` is passed so a rule this editor cannot name (`custom` — a `byDay`, a `bySetPosition`)
+     * survives an unrelated edit intact. See `ruleToWrite`.
+     */
+    ...(draft.repeat === undefined
+      ? {}
+      : {
+          recurrenceRule: ruleToWrite(
+            draft.repeat.preset,
+            draft.repeat.end,
+            stored?.recurrenceRule,
+          ),
+        }),
+    /*
+     * `participants` (K-3), same rule again. An EMPTY list is the reader having removed the last
+     * one and writes `null`; `undefined` keeps the property out of the patch entirely.
+     *
+     * `organizerCalendarAddress` rides along only when there is somebody to organise, because
+     * naming an organiser on an event with no participants is a claim the server did not ask for.
+     */
+    ...(draft.participants === undefined
+      ? {}
+      : {
+          participants:
+            draft.participants.length === 0 ? null : participantsToPatch(draft.participants),
+          ...(draft.participants.length === 0 || draft.organizerCalendarAddress === undefined
+            ? {}
+            : { organizerCalendarAddress: draft.organizerCalendarAddress }),
+        }),
+    /*
+     * Note what is still NOT here: `locations`.
      *
      * On an update this object is a JMAP PATCH (RFC 8620 §5.3) — every property it does not name is
-     * left exactly as it was. That is what keeps a location and an attendee list the editor cannot
-     * yet EDIT (T11) from being destroyed by saving a title change. `calendar-write.test.ts` pins
-     * it, because the day someone "tidies" this into a full object is the day those fields go.
+     * left exactly as it was. That is what keeps a location the editor cannot yet EDIT (T11) from
+     * being destroyed by saving a title change. `calendar-write.test.ts` pins it, because the day
+     * someone "tidies" this into a full object is the day that field goes.
      */
   }
 }
@@ -341,7 +506,7 @@ const EVENT_PROPERTIES = [
   // phone was invisible here — the editor could not show it, and only the fact that `draftToEvent`
   // is a patch kept a title change from being the moment it disappeared.
   'alerts',
-  // Asked for although no view draws it: `isEditable` tests it, and a property that is never
+  // Asked for although no view draws it: `isSeriesEvent` tests it, and a property that is never
   // fetched always reads as absent — so the master of a series looked like a plain event. It read
   // as absent for a second reason too, until ADR-025: the name is SINGULAR on this server, and the
   // plural RFC 8984 spelling this line used to carry was never going to come back.
@@ -663,19 +828,177 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       )
     },
 
-    async createEvent(draft) {
+    async createEvent(draft, sendInvitations = false) {
       const responses = await client.call([
-        [Methods.calendarEventSet.name, { accountId, create: { e: draftToEvent(draft) } }, 'c0'],
+        [
+          Methods.calendarEventSet.name,
+          {
+            accountId,
+            create: { e: draftToEvent(draft) },
+            // The flag is spread rather than set to `false`, so an ordinary create is byte for byte
+            // the request it always was. See `CalendarClient.createEvent` for why it is a parameter.
+            ...(sendInvitations ? { sendSchedulingMessages: true } : {}),
+          },
+          'c0',
+        ],
       ])
       throwIfRefused(responses.get<SetOutcome>('c0'))
     },
 
-    async updateEvent(target, draft) {
+    async updateEvent(target, draft, scope = 'all', sendInvitations = false) {
+      // The scope question only exists for a series. Routed here rather than at the call site so a
+      // caller that forgets the parameter writes the master — which is what every caller did before
+      // K-2 and is the right answer for the events they were writing.
+      if (scope === 'occurrence' && needsScope(target)) {
+        await this.updateOccurrence(target, draft)
+        return
+      }
       const id = writeIdOf(target)
       const responses = await client.call([
-        [Methods.calendarEventSet.name, { accountId, update: { [id]: draftToEvent(draft) } }, 'c0'],
+        [
+          Methods.calendarEventSet.name,
+          {
+            accountId,
+            update: { [id]: draftToEvent(draft, target.event) },
+            ...(sendInvitations ? { sendSchedulingMessages: true } : {}),
+          },
+          'c0',
+        ],
       ])
       throwIfRefused(responses.get<SetOutcome>('c0'))
+    },
+
+    async updateOccurrence(target, draft) {
+      const id = writeIdOf(target)
+      const builder = client.request()
+      /*
+       * The master is re-read HERE, inside the request that writes it — not taken from
+       * `target.event`, which is whatever the month view fetched when it last loaded.
+       *
+       * That is the entire mitigation for writing the whole map (see `event-recurrence.ts`: a
+       * pointer patch into `recurrenceOverrides` is refused by this server, measured). A JMAP batch
+       * runs in order on the server, so nothing can land between the `/get` and the `/set`. Reading
+       * from the screen's copy instead would widen that window to however long the dialog was open,
+       * and the cost of losing the race is another client's override silently deleted.
+       */
+      const before = builder.invoke(Methods.calendarEventGet, {
+        accountId,
+        ids: [id],
+        properties: [
+          'id',
+          'recurrenceOverrides',
+          ...SIGNATURE_PROPERTIES,
+          'description',
+          'timeZone',
+          'alerts',
+        ],
+      })
+      const responses = await builder.send()
+      const master = responses.get(before).list[0]
+      if (master === undefined) throw new CalendarSetError('notFound', null)
+
+      const key = overrideKeyFor(master, target.event)
+      if (key === null) {
+        // No `recurrenceId` — this is not an occurrence, and inventing a key would store a ghost.
+        // Thrown rather than silently promoted to a whole-series write: "this one" must never
+        // quietly become "all of them".
+        throw new CalendarSetError('invalidArguments', 'This event has no occurrence to override.')
+      }
+      const overrides = mergeOverride(
+        master,
+        key,
+        overrideFromDraft(master, draftToEvent(draft, master)),
+      )
+      const write = await client.call([
+        [
+          Methods.calendarEventSet.name,
+          { accountId, update: { [id]: { recurrenceOverrides: overrides } } },
+          'c0',
+        ],
+      ])
+      throwIfRefused(write.get<SetOutcome>('c0'))
+    },
+
+    async excludeOccurrence(target) {
+      const id = writeIdOf(target)
+      const builder = client.request()
+      const before = builder.invoke(Methods.calendarEventGet, {
+        accountId,
+        ids: [id],
+        properties: ['id', 'recurrenceOverrides'],
+      })
+      const responses = await builder.send()
+      const master = responses.get(before).list[0]
+      if (master === undefined) throw new CalendarSetError('notFound', null)
+      const key = overrideKeyFor(master, target.event)
+      if (key === null) {
+        throw new CalendarSetError('invalidArguments', 'This event has no occurrence to override.')
+      }
+      const write = await client.call([
+        [
+          Methods.calendarEventSet.name,
+          { accountId, update: { [id]: { recurrenceOverrides: excludeOverride(master, key) } } },
+          'c0',
+        ],
+      ])
+      throwIfRefused(write.get<SetOutcome>('c0'))
+    },
+
+    async rsvp(target, participantKey, status) {
+      const id = writeIdOf(target)
+      const responses = await client.call([
+        [
+          Methods.calendarEventSet.name,
+          // ONE pointer, ONE field. See `CalendarClient.rsvp`.
+          { accountId, update: { [id]: rsvpPatch(participantKey, status) } },
+          'c0',
+        ],
+      ])
+      throwIfRefused(responses.get<SetOutcome>('c0'))
+    },
+
+    async listParticipantIdentities() {
+      const responses = await client.call([
+        [Methods.participantIdentityGet.name, { accountId, ids: null }, 'c0'],
+      ])
+      return responses.get<{ list: ParticipantIdentity[] }>('c0').list
+    },
+
+    async parseIcs(file) {
+      // The type is stated rather than taken from the `File`: a `.ics` picked on a machine with no
+      // registered handler arrives with `type: ''`, and a blob uploaded as
+      // `application/octet-stream` is one `CalendarEvent/parse` has no reason to read.
+      const blob = await client.upload(accountId, file, { type: 'text/calendar' })
+      const responses = await client.call([
+        [Methods.calendarEventParse.name, { accountId, blobIds: [blob.blobId] }, 'c0'],
+      ])
+      const answer = responses.get<{ parsed?: Record<string, unknown> | null }>('c0')
+      // Indexed by the blob id we just sent rather than by "the first key", so a server that echoes
+      // something extra cannot make us parse the wrong entry.
+      return candidatesFrom(answer.parsed?.[blob.blobId])
+    },
+
+    async importEvents(candidates, calendarId) {
+      if (candidates.length === 0) return { added: 0, duplicates: 0, failed: 0, reason: null }
+      const responses = await client.call([
+        [
+          Methods.calendarEventSet.name,
+          { accountId, create: createsFor(candidates, calendarId) },
+          'c0',
+        ],
+      ])
+      // NOT `throwIfRefused`: a `uid` already in the account is the expected answer to importing the
+      // same file twice, and turning that into a thrown error would report a working importer as
+      // broken. The counts go back to the screen, which says what happened.
+      return outcomeFrom(
+        responses.get<{
+          created?: Record<string, unknown> | null
+          notCreated?: Record<
+            string,
+            { type: string; description?: string | null; properties?: string[] | null }
+          > | null
+        }>('c0'),
+      )
     },
 
     async destroyEvent(target) {

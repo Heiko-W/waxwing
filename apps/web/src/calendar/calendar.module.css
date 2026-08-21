@@ -902,3 +902,200 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/* ── The event editor's navigation stack (K-2, K-3) ──────────────────────────────────────────
+   Apple's shape: a row is a label, its current value, and a chevron; pressing it replaces the
+   dialog's contents rather than opening a second dialog on top of the first. */
+
+/* The title of a sub-page: back arrow, then the page's name. In the Dialog's title slot, so the
+   arrow lands where Cancel would be — which is where Apple puts it and where a thumb already is. */
+.pageTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.navRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  /* A finger, not a line of text: `--waxwing-control-min` is 44px under `pointer: coarse`. */
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.navRow:hover {
+  background: var(--waxwing-surface-hover);
+}
+
+.navRowLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+/* The value takes the slack, so the chevron sits hard against the trailing edge whatever the value
+   says — a chevron that drifts with the text length reads as decoration, not as "there is more". */
+.navRowValue {
+  flex: 1;
+  min-inline-size: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-align: end;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navRowChevron {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-text-muted);
+}
+
+/* A list of mutually exclusive choices — repetition, and how it ends. */
+.choiceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choiceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.choiceRow:hover:not(:disabled) {
+  background: var(--waxwing-surface-hover);
+}
+
+/* The row a stored rule this editor cannot express occupies. Shown so the reader knows what the
+   event does; not selectable, because choosing it would mean re-writing a rule we cannot build. */
+.choiceRow:disabled {
+  color: var(--waxwing-text-muted);
+  cursor: default;
+}
+
+.choiceCheck {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-accent);
+}
+
+/* ── Participants (K-3) ─────────────────────────────────────────────────────────────────── */
+
+.participantAdd {
+  display: flex;
+  gap: var(--waxwing-space-2);
+  align-items: start;
+}
+
+.participantAdd > :first-child {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.participantList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.participantRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+/* Name on its own line with the organiser note under it, rather than beside it. The same lesson the
+   address books taught: a badge on the same line eats the name it is annotating on a phone. */
+.participantName {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--waxwing-text-sm);
+}
+
+.participantNote {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+/* The answer, as a WORD. Colour is never the only carrier of this (WCAG 1.4.1) — a reader who
+   cannot tell the greens apart still has to be able to see who has said yes. */
+.participantStatus {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+/* ── Answering an invitation (K-3) ──────────────────────────────────────────────────────── */
+
+/* Three buttons in one bar, `aria-pressed` on the current answer. Wraps rather than shrinks: at
+   390px three words plus padding do not fit on one line, and a squeezed row of three 30px targets
+   is worse than two lines of proper ones. */
+.rsvpBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+.rsvpButton {
+  flex: 1 1 auto;
+  min-inline-size: 6rem;
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.rsvpButton[aria-pressed="true"] {
+  border-color: var(--waxwing-accent);
+  background: var(--waxwing-accent);
+  color: var(--waxwing-accent-contrast);
+}
+
+/* ── The scope sheet (K-2) ──────────────────────────────────────────────────────────────── */
+
+/* Full-width stacked answers, which is what an action sheet is on a phone and reads perfectly well
+   on a desktop too. Cancel sits last and apart, because the two answers above it are the question. */
+.scopeSheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}

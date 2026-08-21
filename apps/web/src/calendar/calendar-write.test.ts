@@ -1,9 +1,11 @@
 /**
  * Writing calendar events (M5.11, FR-CAL-01).
  *
- * The load-bearing assertion is the refusal: a recurring event is NOT editable here. Changing one
- * occurrence of a series means choosing between "this one", "this and following" and "all", and an
- * editor that quietly picks one loses other people's time.
+ * The load-bearing assertion used to be a refusal: a recurring event was not editable at all. Since
+ * K-2 it is — what a repeating event needs is not a closed door but a SCOPE, asked after Save. So
+ * the assertion moved rather than disappeared: `needsScope` has to be true for every shape a series
+ * arrives in, because the failure it guards against (a single-event patch landing on a repeating
+ * meeting) is unchanged.
  */
 
 import type { CalendarEvent } from '@waxwing/jmap'
@@ -11,7 +13,8 @@ import { describe, expect, it } from 'vitest'
 import {
   draftToEvent,
   type EventDraft,
-  isEditable,
+  isSeriesEvent,
+  needsScope,
   placeEvent,
   refuseEdit,
 } from './calendar-client'
@@ -31,47 +34,48 @@ const draft = (over: Partial<EventDraft> = {}): EventDraft => ({
 const event = (over: Partial<CalendarEvent> = {}): CalendarEvent =>
   ({ id: 'e1', calendarIds: { c1: true }, start: '2026-08-20T10:00:00', ...over }) as CalendarEvent
 
-describe('isEditable', () => {
-  it('allows a plain single event', () => {
-    expect(isEditable(event())).toBe(true)
+describe('isSeriesEvent', () => {
+  it('says no to a plain single event', () => {
+    expect(isSeriesEvent(event())).toBe(false)
   })
 
-  it('REFUSES an expanded occurrence of a series', () => {
-    // The instance the month view shows is not the master; editing it in place would silently
-    // become an override on a series the user did not know they were touching.
-    expect(isEditable(event({ recurrenceId: '2026-08-20T10:00:00' }))).toBe(false)
+  it('recognises an expanded occurrence of a series', () => {
+    // The instance the month view shows is not the master; a patch written to it as if it were a
+    // single event is a change to every occurrence the reader did not ask for.
+    expect(isSeriesEvent(event({ recurrenceId: '2026-08-20T10:00:00' }))).toBe(true)
   })
 
-  it('REFUSES the master of a series, spelled the way THIS server spells one', () => {
+  it('recognises the master of a series, spelled the way THIS server spells one', () => {
     /*
      * `recurrenceRule`, singular, one object — `draft-ietf-calext-jscalendarbis`, which is what
      * Stalwart implements (ADR-025). This is the assertion the whole correction exists for: before
-     * it, `isEditable` looked only for RFC 8984's `recurrenceRules` array, so a weekly meeting's
-     * master answered "yes, editable" and a series editor built on that would have written a
-     * single-event patch straight onto a series.
+     * it, the test looked only for RFC 8984's `recurrenceRules` array, so a weekly meeting's master
+     * answered "ordinary event" and a save would have written a single-event patch onto a series.
      */
     expect(
-      isEditable(event({ recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly' } })),
-    ).toBe(false)
-    // Without the rule it is an ordinary event again — the refusal is the rule, not the fixture.
-    expect(isEditable(event({ title: 'Weekly-looking but single' }))).toBe(true)
+      isSeriesEvent(event({ recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly' } })),
+    ).toBe(true)
+    // Without the rule it is an ordinary event again — the answer is the rule, not the fixture.
+    expect(isSeriesEvent(event({ title: 'Weekly-looking but single' }))).toBe(false)
   })
 
-  it('also REFUSES the RFC 8984 spelling, which it does not ask for', () => {
-    // Refusing to edit is the safe direction, so a server that volunteers the old plural array
-    // gets the same answer. It is not in EVENT_PROPERTIES, though: asking a jscalendarbis server
-    // for `recurrenceRules` is how the master came back looking like a plain event in the first
-    // place.
+  it('also recognises the RFC 8984 spelling, which it does not ask for', () => {
+    // Treating a series as a series is the safe direction, so a server that volunteers the old
+    // plural array gets the same answer. It is not in EVENT_PROPERTIES, though: asking a
+    // jscalendarbis server for `recurrenceRules` is how the master came back looking like a plain
+    // event in the first place.
     expect(
-      isEditable(event({ recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] })),
-    ).toBe(false)
+      isSeriesEvent(
+        event({ recurrenceRules: [{ '@type': 'RecurrenceRule', frequency: 'weekly' }] }),
+      ),
+    ).toBe(true)
   })
 
-  it('allows an event whose recurrence rule is present but empty', () => {
-    // Neither an empty list nor an absent rule is a series; refusing them would make ordinary
-    // events uneditable on servers that always emit the property.
-    expect(isEditable(event({ recurrenceRules: [] }))).toBe(true)
-    expect(isEditable(event())).toBe(true)
+  it('does not call an empty rule a series', () => {
+    // Neither an empty list nor an absent rule is a series; treating them as one would put a scope
+    // question in front of every ordinary save on servers that always emit the property.
+    expect(isSeriesEvent(event({ recurrenceRules: [] }))).toBe(false)
+    expect(isSeriesEvent(event())).toBe(false)
   })
 })
 
@@ -158,22 +162,39 @@ describe('refuseEdit', () => {
     expect(refuseEdit(placed({}, { writeId: '0', series: false }))).toBeNull()
   })
 
-  it('refuses a series with the SERIES reason, even when it has a write id', () => {
-    // The master is writable; that is not the reason it is refused. Editing one occurrence of a
-    // series is a decision this editor cannot present, so it never opens.
-    expect(refuseEdit(placed({}, { writeId: '7', series: true }))).toBe('series')
+  it('LETS A SERIES THROUGH now that a scope can be asked for (K-2)', () => {
+    // This is the assertion that inverted. The master is writable and the editor can now present the
+    // choice, so the door is open — what used to be a refusal is a question asked after Save.
+    expect(refuseEdit(placed({}, { writeId: '7', series: true }))).toBeNull()
   })
 
-  it('refuses an unresolved occurrence with its own reason', () => {
-    // Two refusals rather than one, because the sentences differ: this one is not a limit we chose,
-    // it is an id we could not trace — and telling the reader "this repeats" would be a lie.
+  it('still refuses an unresolved occurrence', () => {
+    // The one refusal left, and it is not a limit we chose: it is an id we could not trace back to
+    // a stored object, so the editor's Save is certain to fail. Better a note than a doomed form.
     expect(refuseEdit(placed({}, { writeId: null, series: false }))).toBe('unresolved')
   })
+})
 
-  it('calls a recurring event a series even where identity says nothing', () => {
+describe('needsScope', () => {
+  const placed = (
+    over: Partial<CalendarEvent>,
+    identity: { writeId: string | null; series: boolean },
+  ) => placeEvent(event(over), identity)
+
+  it('asks for a scope when identity says series', () => {
+    expect(needsScope(placed({}, { writeId: '7', series: true }))).toBe(true)
+  })
+
+  it('asks for a scope from the OCCURRENCE alone, where identity says nothing', () => {
+    // The master may be outside the fetched window, so the identity index knows nothing about it —
+    // and an occurrence that then saved without a scope question would patch the whole series.
     expect(
-      refuseEdit(placed({ recurrenceId: '2026-08-20T10:00:00' }, { writeId: '0', series: false })),
-    ).toBe('series')
+      needsScope(placed({ recurrenceId: '2026-08-20T10:00:00' }, { writeId: '0', series: false })),
+    ).toBe(true)
+  })
+
+  it('does not ask for a plain event', () => {
+    expect(needsScope(placed({}, { writeId: '0', series: false }))).toBe(false)
   })
 })
 

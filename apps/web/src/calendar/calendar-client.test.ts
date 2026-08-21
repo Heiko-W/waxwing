@@ -36,6 +36,7 @@ import {
   eventSignature,
   indexObjects,
   makeCalendarClient,
+  needsScope,
   placeEvent,
   refusalReason,
   refuseEdit,
@@ -263,7 +264,10 @@ describe('eventsInRange', () => {
     const [placed] = await makeCalendarClient(client, ACC).eventsInRange(FROM, TO)
 
     expect(placed?.series).toBe(true)
-    expect(placed && refuseEdit(placed)).toBe('series')
+    // Editable, and marked — the flag is what raises the scope question after Save (K-2), not what
+    // closes the door. Before K-2 the same fact produced a refusal.
+    expect(placed && refuseEdit(placed)).toBeNull()
+    expect(placed && needsScope(placed)).toBe(true)
   })
 
   it('asks BOTH gets for every field the signature reads', async () => {
@@ -601,7 +605,7 @@ describe('resolveIdentity', () => {
 
   it('refuses an occurrence nothing in the window looks like', () => {
     // An occurrence of a series lands here: it starts at a different time from its master, so it
-    // matches nothing — which is the same answer `isEditable` gives it anyway.
+    // matches nothing — and `baseEventId` is absent here, which is the case this fallback is for.
     expect(
       resolveIdentity(
         event({ id: 'eaaaaa5', title: 'Weekly', start: '2026-08-28T16:00:00' }),
@@ -671,30 +675,30 @@ describe('a series as this server actually reports one', () => {
   const occurrence = (start: string, id: string) =>
     event({ id, title: 'CalDAV Weekly Probe', start, recurrenceId: start })
 
-  it('refuses the FIRST occurrence, which the signature does resolve', () => {
-    // It starts where its master starts, so it is the one instance with a write id — and it must
-    // still not open an editor. `refuseEdit` asks about the series before it asks about the id.
+  it('resolves the FIRST occurrence and asks for a scope', () => {
+    // It starts where its master starts, so it is the one instance the signature gives a write id
+    // to — and it must be recognised as a series all the same, or Save would patch every occurrence.
     const identity = resolveIdentity(
       occurrence('2026-08-03T09:00:00', 'eaaaaab'),
       indexObjects([master]),
     )
     expect(identity.writeId).toBe('b')
     expect(identity.series).toBe(true)
-    expect(refuseEdit(placeEvent(occurrence('2026-08-03T09:00:00', 'eaaaaab'), identity))).toBe(
-      'series',
-    )
+    const placed = placeEvent(occurrence('2026-08-03T09:00:00', 'eaaaaab'), identity)
+    expect(refuseEdit(placed)).toBeNull()
+    expect(needsScope(placed)).toBe(true)
   })
 
-  it('refuses every later occurrence, which the signature resolves to nothing', () => {
+  it('still refuses every later occurrence the signature resolves to nothing', () => {
     const identity = resolveIdentity(
       occurrence('2026-08-10T09:00:00', 'iaaaaab'),
       indexObjects([master]),
     )
     expect(identity.writeId).toBeNull()
-    // `series`, not `unresolved`: the reader is told this repeats, which is true and actionable,
-    // rather than that the server said something we could not follow.
+    // `unresolved` is the honest sentence here: without a write id there is no object to patch,
+    // scope or no scope. On a server that sends `baseEventId` — this one does — it never happens.
     expect(refuseEdit(placeEvent(occurrence('2026-08-10T09:00:00', 'iaaaaab'), identity))).toBe(
-      'series',
+      'unresolved',
     )
   })
 })
@@ -722,11 +726,13 @@ describe('a series with `baseEventId`, as Stalwart really answers one', () => {
     }
   })
 
-  it('refuses to open an editor on any of them all the same', () => {
-    // Resolving is not permitting. A write id makes Undo and delete possible; the series refusal
-    // is what stops a single-event patch reaching a repeating meeting.
+  it('opens the editor on all of them, and asks for a scope on all of them', () => {
+    // Resolving is not permitting, and permitting is not deciding. A write id makes the patch
+    // possible; `needsScope` is what stops it silently meaning "all of them".
     const one = instance('2026-09-14T11:00:00', 'eaaaaaf', 'Wochenmeeting (verschoben)')
-    expect(refuseEdit(placeEvent(one, resolveIdentity(one, indexObjects([]))))).toBe('series')
+    const placed = placeEvent(one, resolveIdentity(one, indexObjects([])))
+    expect(refuseEdit(placed)).toBeNull()
+    expect(needsScope(placed)).toBe(true)
   })
 })
 

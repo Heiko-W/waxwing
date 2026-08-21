@@ -679,7 +679,7 @@
       "delete": {
         "action": "Delete",
         "title": "Delete address book",
-        "body": "Delete \u201c{{name}}\u201d?",
+        "body": "Delete “{{name}}”?",
         "contents": "Contacts that are only in this address book are deleted with it.",
         "confirm": "Delete",
         "cancel": "Cancel"
@@ -1837,7 +1837,6 @@
       "save": "Save",
       "cancel": "Cancel",
       "delete": "Delete",
-      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it.",
       "unresolvedReadOnly": "The server returned this as an occurrence that cannot be traced back to a stored event, so it can be viewed here but not changed — only in a calendar app that reaches the event itself.",
       "alert": {
         "label": "Alert",
@@ -1859,6 +1858,57 @@
         "other": "{{duration}} before the start",
         "carried_one": "{{count}} further reminder is kept unchanged.",
         "carried_other": "{{count}} further reminders are kept unchanged."
+      },
+      "back": "Back",
+      "repeat": {
+        "label": "Repeat",
+        "none": "Never",
+        "daily": "Every day",
+        "weekly": "Every week",
+        "biweekly": "Every 2 weeks",
+        "monthly": "Every month",
+        "yearly": "Every year",
+        "custom": "Custom rule",
+        "endLabel": "End repeat",
+        "end": {
+          "never": "Never",
+          "until": "On date",
+          "count": "After a number"
+        },
+        "untilDate": "Last day",
+        "countLabel": "Number of events"
+      },
+      "scope": {
+        "saveTitle": "Apply the change to …",
+        "deleteTitle": "Delete …",
+        "occurrence": "This event only",
+        "all": "All events",
+        "note": "Individually changed events in this series keep their time."
+      },
+      "participant": {
+        "none": "None",
+        "count_one": "{{count}} person",
+        "count_other": "{{count}} people",
+        "add": "Email address",
+        "addAction": "Add",
+        "empty": "Nobody invited yet.",
+        "organizer": "Organiser",
+        "remove": "Remove {{name}}",
+        "invalid": "That does not look like an email address.",
+        "duplicate": "That person is already on the list.",
+        "full": "The server accepts at most {{max}} participants.",
+        "status": {
+          "needs-action": "No reply",
+          "accepted": "Accepted",
+          "declined": "Declined",
+          "tentative": "Maybe"
+        }
+      },
+      "rsvp": {
+        "label": "Your reply",
+        "accepted": "Accept",
+        "tentative": "Maybe",
+        "declined": "Decline"
       }
     },
     "calendars": {
@@ -1893,7 +1943,24 @@
       "purple": "Purple",
       "brown": "Brown",
       "custom": "Current color"
-    }
+    },
+    "import": {
+      "open": "Import events …",
+      "title": "Import events",
+      "file": "Calendar file (.ics)",
+      "empty": "This file holds no event.",
+      "unreadable": "The file could not be read.",
+      "failed": "The import failed.",
+      "repeats": "repeats",
+      "action_one": "Import {{count}} event",
+      "action_other": "Import {{count}} events",
+      "done_one": "{{count}} event imported.",
+      "done_other": "{{count}} events imported.",
+      "duplicates_one": "{{count}} event was already in the calendar.",
+      "duplicates_other": "{{count}} events were already in the calendar."
+    },
+    "rsvpFailed": "Your reply could not be sent.",
+    "occurrenceDeleted": "That event was removed from the series."
   },
   "files": {
     "listOptions": "List options",
