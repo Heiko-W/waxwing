@@ -310,3 +310,44 @@ describe('useRowSwipe — how it drives the row', () => {
     expect(api?.isSwipeActive()).toBe(false)
   })
 })
+
+describe('what a locked gesture asks the rest of the screen for', () => {
+  /**
+   * The compose button is `position: fixed` in the bottom-trailing corner on a phone, so a swipe on
+   * the row beneath it reveals the action label behind a solid circle. The strip cannot paint over
+   * a fixed overlay and the label cannot move without losing its progressive reveal, so the overlay
+   * yields instead — driven by an attribute on `<body>`, which is the only channel between a row in
+   * `mail/` and a button in `compose/` that costs no render (M12).
+   */
+  const marked = () => document.body.dataset.waxwingSwiping === 'true'
+
+  it('marks the document only once the axis lock has resolved', () => {
+    render(<Harness />)
+    const init = { pointerId: 1, pointerType: 'touch', isPrimary: true, buttons: 1, bubbles: true }
+    fireEvent.pointerDown(row(), { ...init, clientX: 300, clientY: 40 })
+    expect(marked(), 'a touch that has not moved is not a swipe').toBe(false)
+
+    fireEvent.pointerMove(window, { ...init, clientX: 300 - SWIPE_SLOP_PX - 4, clientY: 40 })
+    expect(marked()).toBe(true)
+
+    fireEvent.pointerUp(window, { ...init, clientX: 300 - SWIPE_SLOP_PX - 4, clientY: 40 })
+    expect(marked(), 'and it comes back when the finger lifts').toBe(false)
+  })
+
+  it('never marks it for a gesture the scroller takes', () => {
+    render(<Harness />)
+    swipe(row(), 4, SWIPE_SLOP_PX + 20)
+    expect(marked()).toBe(false)
+  })
+
+  it('unmarks it when the gesture is cancelled rather than lifted', () => {
+    render(<Harness />)
+    const init = { pointerId: 1, pointerType: 'touch', isPrimary: true, buttons: 1, bubbles: true }
+    fireEvent.pointerDown(row(), { ...init, clientX: 300, clientY: 40 })
+    fireEvent.pointerMove(window, { ...init, clientX: 300 - SWIPE_COMMIT_PX, clientY: 40 })
+    expect(marked()).toBe(true)
+
+    fireEvent.pointerCancel(window, { ...init, clientX: 300 - SWIPE_COMMIT_PX, clientY: 40 })
+    expect(marked(), 'a cancelled gesture must not leave the screen half-dressed').toBe(false)
+  })
+})
