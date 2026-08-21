@@ -5,8 +5,18 @@ import {
   combineSuggestionSources,
   createRecentsSuggestionSource,
   EMPTY_SUGGESTION_SOURCE,
+  type RecipientSuggestion,
   scoreAddressStat,
+  suggestionAddresses,
 } from './recipient-suggestions'
+
+/**
+ * The addresses a list of options would commit to. Read through `suggestionAddresses` rather than
+ * off `.email`, because an option is no longer always ONE address: a contact group carries its
+ * members instead (A-4).
+ */
+const emails = (list: readonly RecipientSuggestion[]): string[] =>
+  list.flatMap(suggestionAddresses).map((address) => address.email)
 
 let db: ReplicaDb
 beforeEach(() => {
@@ -67,13 +77,11 @@ describe('createRecentsSuggestionSource', () => {
     const source = createRecentsSuggestionSource(db, 'a')
 
     const byEmail = await source.query('al', 10)
-    expect(byEmail.map((a) => a.email)).toEqual(
-      expect.arrayContaining(['alice@x.com', 'albert@y.com']),
-    )
-    expect(byEmail[0]?.email).toBe('albert@y.com') // more recent → ranked first
+    expect(emails(byEmail)).toEqual(expect.arrayContaining(['alice@x.com', 'albert@y.com']))
+    expect(emails(byEmail)[0]).toBe('albert@y.com') // more recent → ranked first
 
     const byName = await source.query('bob', 10)
-    expect(byName.map((a) => a.email)).toContain('bob@z.com')
+    expect(emails(byName)).toContain('bob@z.com')
 
     expect(await source.query('', 2)).toHaveLength(2)
   })
@@ -94,7 +102,7 @@ describe('combineSuggestionSources', () => {
       ],
     }
     const result = await combineSuggestionSources([s1, s2]).query('', 10)
-    expect(result.map((a) => a.email)).toEqual(['a@x.com', 'b@x.com', 'c@x.com'])
+    expect(emails(result)).toEqual(['a@x.com', 'b@x.com', 'c@x.com'])
   })
 
   it('EMPTY_SUGGESTION_SOURCE yields nothing', async () => {

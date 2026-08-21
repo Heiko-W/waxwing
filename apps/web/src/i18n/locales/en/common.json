@@ -1083,6 +1083,8 @@
     "recipientDidYouMeanApply": "Use {{suggestion}}",
     "recipientMoveTo": "Move to {{field}}",
     "recipientMoveMenu": "Recipient options",
+    "recipientGroupMembers_one": "Group · {{count}} contact",
+    "recipientGroupMembers_other": "Group · {{count}} contacts",
     "discard": "Discard draft",
     "attach": "Attach file",
     "attachmentsLabel": "Attachments",

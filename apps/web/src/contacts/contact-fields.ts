@@ -29,6 +29,10 @@ import type {
  */
 export interface CardLike {
   readonly uid?: string
+  /** RFC 9553 §2.1.4 — `'group'` makes the card a contact group rather than a person. */
+  readonly kind?: string
+  /** A group's membership: the JSContact `uid` of each member (RFC 9553 §2.1.6), never a JMAP id. */
+  readonly members?: Readonly<Record<string, boolean>>
   readonly name?: Name
   readonly nicknames?: Readonly<Record<string, { readonly name: string; readonly pref?: number }>>
   readonly emails?: Readonly<Record<string, EmailAddress>>
@@ -139,6 +143,30 @@ export function contactMatches(card: CardLike, needleLower: string): boolean {
 /** A locale-comparable sort key for the list (Apple Contacts orders alphabetically by display name). */
 export function contactSortKey(card: CardLike): string {
   return contactDisplayName(card).toLowerCase()
+}
+
+// ── Groups ──────────────────────────────────────────────────────────────────────────────────────
+//
+// These three live HERE, in the module with type-only imports, rather than beside the rest of the
+// group code in `contact-group-mapping` — which they used to. That module imports `deepEqual` from
+// `contact-card-mapping` (~25 KB) at runtime, so anything reaching for `groupMemberUids` pulled the
+// whole editor mapping in behind it. The composer's recipient expansion (A-4) needs exactly these
+// predicates and nothing else, and the composer chunk may not carry the contacts editor.
+// `contact-group-mapping` re-exports them, so its own callers are unchanged.
+
+/** A card is a group iff its `kind` is `'group'` (RFC 9553 §2.1.4). */
+export function isGroupCard(card: CardLike): boolean {
+  return card.kind === 'group'
+}
+
+/** The member uids of a group card, in stored order (`[]` for a non-group or empty group). */
+export function groupMemberUids(card: CardLike): string[] {
+  return Object.keys(card.members ?? {})
+}
+
+/** The group's display name — its `name.full`, falling back to the shared display-name helper. */
+export function groupName(card: CardLike): string {
+  return (card.name?.full ?? contactDisplayName(card)).trim()
 }
 
 // ── Detail-view field extraction ────────────────────────────────────────────────────────────────

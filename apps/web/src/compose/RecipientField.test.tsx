@@ -132,6 +132,64 @@ describe('RecipientField', () => {
   })
 })
 
+/**
+ * A-4 of the JMAP gap analysis — a contact group in a recipient field.
+ *
+ * The field used to commit `{ name, email }` off the suggestion, so an option with no address of
+ * its own could not exist and groups were excluded at the source. Committing one now commits its
+ * MEMBERS, individually: a group is a client-side convenience, never an address the server sees.
+ */
+describe('a contact group option expands to its members (A-4)', () => {
+  const groupSource: RecipientSuggestionSource = {
+    query: async () => [
+      {
+        kind: 'group',
+        uid: 'u-team',
+        name: 'Rocket Team',
+        members: [
+          { name: 'Alice', email: 'alice@x.test' },
+          { name: 'Bob', email: 'bob@x.test' },
+        ],
+      },
+    ],
+  }
+
+  it('commits every member as its own pill', async () => {
+    const { onChange, input } = setup([], groupSource)
+    const user = userEvent.setup()
+    await user.type(input, 'rocket')
+    await screen.findByRole('option', { name: /Rocket Team/ })
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(onChange).toHaveBeenCalledWith([
+      { name: 'Alice', email: 'alice@x.test' },
+      { name: 'Bob', email: 'bob@x.test' },
+    ])
+  })
+
+  it('adds only the members that are not already there', async () => {
+    // The de-duplication the field already does for a single address, over a whole list.
+    const { onChange, input } = setup([{ name: null, email: 'ALICE@x.test' }], groupSource)
+    const user = userEvent.setup()
+    await user.type(input, 'rocket')
+    await screen.findByRole('option', { name: /Rocket Team/ })
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(onChange).toHaveBeenCalledWith([
+      { name: null, email: 'ALICE@x.test' },
+      { name: 'Bob', email: 'bob@x.test' },
+    ])
+  })
+
+  it('says how many pills the option is about to add', async () => {
+    // The one thing the reader cannot see about a group before committing it.
+    const { input } = setup([], groupSource)
+    await userEvent.setup().type(input, 'rocket')
+    const option = await screen.findByRole('option', { name: /Rocket Team/ })
+    expect(option).toHaveTextContent('Group · 2 contacts')
+    // A group is a set, not a face — no avatar image is fetched for it.
+    expect(option.querySelector('img')).toBeNull()
+  })
+})
+
 describe('every pill action is reachable by keyboard (M4.7, WCAG 2.1.1)', () => {
   const one = [{ email: 'a@x.test', name: 'Ann' }]
 

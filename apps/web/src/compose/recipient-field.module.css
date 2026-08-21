@@ -177,6 +177,27 @@
   font-size: var(--waxwing-text-xs);
 }
 
+/*
+ * A contact group's option marker (A-4). Exactly the box an `Avatar size="sm"` occupies, so a list
+ * that mixes people and groups keeps ONE text column — a group whose glyph were a different width
+ * would put a visible step in the names beside it.
+ */
+.optionGroupIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: var(--waxwing-radius-full);
+  background-color: var(--waxwing-surface-2);
+  color: var(--waxwing-text-muted);
+}
+
+.optionGroupIcon svg {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+}
+
 .didYouMean {
   margin: 0;
   padding-inline-start: 2.5rem;

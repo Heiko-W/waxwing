@@ -8,7 +8,7 @@
  */
 
 import type { EmailAddress, Id } from '@waxwing/jmap'
-import { Ellipsis, X } from 'lucide-react'
+import { Ellipsis, UsersRound, X } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useContactPhoto } from '../contacts/use-contact-photo'
@@ -16,7 +16,13 @@ import { Avatar, Menu, VisuallyHidden } from '../ui'
 import { formatAddress, isPlausibleEmail, parseAddressList } from './address-validation'
 import type { RecipientField as RecipientFieldName } from './composer-store'
 import styles from './recipient-field.module.css'
-import type { RecipientSuggestion, RecipientSuggestionSource } from './recipient-suggestions'
+import {
+  type AddressSuggestion,
+  type RecipientSuggestion,
+  type RecipientSuggestionSource,
+  suggestionAddresses,
+  suggestionKey,
+} from './recipient-suggestions'
 
 const SUGGEST_DEBOUNCE_MS = 120
 const SUGGEST_LIMIT = 6
@@ -134,8 +140,9 @@ export function RecipientField({
   }
 
   const commitSuggestion = (suggestion: RecipientSuggestion): void => {
-    // Commit the bare address only — the `photo` reference is display-only and never stored.
-    commitAddresses([{ name: suggestion.name, email: suggestion.email }])
+    // One address, or a whole group's members (A-4). `suggestionAddresses` also strips the
+    // display-only `photo` reference, which is never stored on a recipient.
+    commitAddresses(suggestionAddresses(suggestion))
     clearInput()
     inputRef.current?.focus()
   }
@@ -326,7 +333,7 @@ export function RecipientField({
             // biome-ignore lint/a11y/useFocusableInteractive: APG activedescendant options are not focusable by design
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: options are a transient ranked slice
-              key={`${suggestion.email}-${index}`}
+              key={`${suggestionKey(suggestion)}-${index}`}
               id={optionId(index)}
               role="option"
               aria-selected={index === activeIndex}
@@ -338,17 +345,35 @@ export function RecipientField({
                 commitSuggestion(suggestion)
               }}
             >
-              {accountId !== undefined && suggestion.photo !== undefined ? (
-                <OptionAvatar accountId={accountId} suggestion={suggestion} />
+              {suggestion.kind === 'group' ? (
+                // A group is a set, not a face: the glyph says so, and the second line says how
+                // many pills Enter is about to add — the one thing the reader cannot see otherwise.
+                <>
+                  <span className={styles.optionGroupIcon}>
+                    <UsersRound aria-hidden="true" />
+                  </span>
+                  <span className={styles.optionText}>
+                    <span className={styles.optionName}>{suggestion.name}</span>
+                    <span className={styles.optionEmail}>
+                      {t('compose.recipientGroupMembers', { count: suggestion.members.length })}
+                    </span>
+                  </span>
+                </>
               ) : (
-                <Avatar name={suggestion.name || suggestion.email} size="sm" />
+                <>
+                  {accountId !== undefined && suggestion.photo !== undefined ? (
+                    <OptionAvatar accountId={accountId} suggestion={suggestion} />
+                  ) : (
+                    <Avatar name={suggestion.name || suggestion.email} size="sm" />
+                  )}
+                  <span className={styles.optionText}>
+                    <span className={styles.optionName}>{suggestion.name || suggestion.email}</span>
+                    {suggestion.name !== null && suggestion.name !== '' && (
+                      <span className={styles.optionEmail}>{suggestion.email}</span>
+                    )}
+                  </span>
+                </>
               )}
-              <span className={styles.optionText}>
-                <span className={styles.optionName}>{suggestion.name || suggestion.email}</span>
-                {suggestion.name !== null && suggestion.name !== '' && (
-                  <span className={styles.optionEmail}>{suggestion.email}</span>
-                )}
-              </span>
             </div>
           ))}
       </div>
@@ -362,13 +387,7 @@ export function RecipientField({
  * mounted only when there is a photo to load, so a plain recents suggestion never touches the blob
  * cache. Falls back to initials while the blob resolves (or if it fails).
  */
-function OptionAvatar({
-  accountId,
-  suggestion,
-}: {
-  accountId: Id
-  suggestion: RecipientSuggestion
-}) {
+function OptionAvatar({ accountId, suggestion }: { accountId: Id; suggestion: AddressSuggestion }) {
   const photoSrc = useContactPhoto(accountId, suggestion.photo)
   const name = suggestion.name || suggestion.email
   return <Avatar name={name} size="sm" {...(photoSrc !== undefined ? { photoSrc } : {})} />

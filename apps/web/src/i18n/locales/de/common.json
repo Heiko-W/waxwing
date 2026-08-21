@@ -1083,6 +1083,8 @@
     "recipientDidYouMeanApply": "{{suggestion}} verwenden",
     "recipientMoveTo": "In das Feld „{{field}}“ verschieben",
     "recipientMoveMenu": "Empfängeroptionen",
+    "recipientGroupMembers_one": "Gruppe · {{count}} Kontakt",
+    "recipientGroupMembers_other": "Gruppe · {{count}} Kontakte",
     "discard": "Entwurf verwerfen",
     "attach": "Datei anhängen",
     "attachmentsLabel": "Anhänge",
