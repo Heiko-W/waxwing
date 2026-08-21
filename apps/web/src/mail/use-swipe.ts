@@ -33,7 +33,13 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef } from 'react'
+import {
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from 'react'
 
 /**
  * Movement that decides the axis. Fixed pixels, never a fraction of the row or of the viewport:
@@ -109,7 +115,18 @@ export function useRowSwipe(options: RowSwipeOptions): RowSwipe {
   // that changes under the gesture, and neither callback can be a dependency without re-binding
   // `onPointerDown` on every render of the list.
   const optionsRef = useRef(options)
-  useEffect(() => {
+  // `useLayoutEffect`, NOT `useEffect` — B44, and the reason is the whole point of this ref.
+  //
+  // It is read from a NATIVE `pointermove` listener, i.e. from outside React's tree, and a passive
+  // effect does not run at commit: React schedules it and the browser is free to deliver input
+  // first. In that window the ref still holds the PREVIOUS render's callbacks, so a direction the
+  // current render has already made inert (`resolve` → `null`) still resolves to the action it had
+  // one render ago. Measured in jsdom over the account-loses-its-Archive case: 7 of 150 gestures
+  // locked an axis and marked the row for an Archive that no longer existed — while the strips the
+  // same render had painted, which come from the SAME `resolve` called during render, correctly
+  // showed nothing. A layout effect runs synchronously in the commit, before anything can be
+  // dispatched against the new DOM, so the two can no longer disagree.
+  useLayoutEffect(() => {
     optionsRef.current = options
   })
 
