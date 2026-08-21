@@ -79,9 +79,10 @@
  * master.
  */
 
-import type { Calendar, CalendarEvent, Id, JmapClient } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, CalendarEventFilter, Id, JmapClient } from '@waxwing/jmap'
 import { Capabilities, hasCapability, Methods } from '@waxwing/jmap'
 import type { JmapSession } from '../app/session/types'
+import { alertsToPatch, type EventAlerts } from './event-alerts'
 import { durationToMs, localToInstant } from './jscalendar-time'
 
 /**
@@ -132,12 +133,52 @@ export interface EventDraft {
   readonly allDay: boolean
   /** IANA zone; `null` means floating. */
   readonly timeZone: string | null
+  /**
+   * The event's reminders, or `undefined` to leave them exactly as they are.
+   *
+   * **Optional on purpose, and the two absences differ.** `undefined` keeps `alerts` out of the
+   * patch, so the server leaves whatever is stored alone — that is what a caller that knows nothing
+   * about alerts gets, and it is what every save did before K-5. An `EventAlerts` with no offsets
+   * and nothing opaque is the reader having EMPTIED the list, and writes `alerts: null`. See
+   * `event-alerts.ts`.
+   */
+  readonly alerts?: EventAlerts | undefined
+}
+
+/** What {@link CalendarClient.createCalendar} and {@link CalendarClient.updateCalendar} may set. */
+export interface CalendarDraft {
+  readonly name: string
+  /** A CSS colour, or `null` to let the client pick one. Measured: `null` clears a stored colour. */
+  readonly color: string | null
 }
 
 export interface CalendarClient {
   listCalendars(): Promise<Calendar[]>
-  /** Events overlapping `[from, to)`, recurrences expanded, ordered by start. */
+  /**
+   * Events overlapping `[from, to)`, recurrences expanded, ordered by start.
+   *
+   * `calendarIds` has three meanings and all three are used: `undefined` is every calendar the
+   * account has, a non-empty list is those calendars, and an EMPTY list is none — answered here
+   * without a round trip, because a filter that names no calendar is a filter Stalwart would
+   * ignore, and drawing every event under "nothing is shown" is the failure this parameter exists
+   * to prevent.
+   */
   eventsInRange(from: Date, to: Date, calendarIds?: readonly Id[]): Promise<PlacedEvent[]>
+  createCalendar(draft: CalendarDraft): Promise<void>
+  /** Patches one calendar. Only the named properties are sent, so the rest survive untouched. */
+  updateCalendar(id: Id, patch: Partial<CalendarDraft & { isVisible: boolean }>): Promise<void>
+  /**
+   * Destroys a calendar **and every event in it**.
+   *
+   * Measured against Stalwart v0.16.18: a bare `destroy` on a non-empty calendar is refused with
+   * `{"type":"calendarHasEvent","description":"Calendar is not empty."}`, so this call carries
+   * `onDestroyRemoveEvents: true` — which is the server's way of making a client state that it
+   * accepts the cascade. There is no Undo for it: `create` plus n × `CalendarEvent/set` would be a
+   * re-enactment, not a restoration. Hence the confirmation on the screen (see `CalendarList`).
+   */
+  destroyCalendar(id: Id): Promise<void>
+  /** How many events one calendar holds, for the sentence the delete confirmation says. */
+  countEvents(calendarId: Id): Promise<number>
   createEvent(draft: EventDraft): Promise<void>
   /**
    * Writes the draft onto the object behind `target`.
@@ -224,13 +265,56 @@ export function draftToEvent(draft: EventDraft): Record<string, unknown> {
     showWithoutTime: draft.allDay ? true : null,
     timeZone: draft.allDay ? null : draft.timeZone,
     /*
-     * Note what is NOT here: `locations`, `participants`, `recurrenceRule`, `alerts`.
+     * `alerts` is here ONLY when the draft carries them, and that condition is the whole of K-5.
+     *
+     * Spread rather than assigned, so a draft that says nothing about reminders leaves the property
+     * out of the patch entirely and the server keeps what it has. Written unconditionally — even as
+     * `alerts: draft.alerts ?? null` — every save from a caller that does not model them would
+     * silently delete every alarm on the event, which is the exact failure this editor spent its
+     * first year avoiding by not naming the property at all.
+     */
+    ...(draft.alerts === undefined ? {} : { alerts: alertsToPatch(draft.alerts) }),
+    /*
+     * Note what is still NOT here: `locations`, `participants`, `recurrenceRule`.
      *
      * On an update this object is a JMAP PATCH (RFC 8620 §5.3) — every property it does not name is
      * left exactly as it was. That is what keeps a location and an attendee list the editor cannot
      * yet EDIT (T11) from being destroyed by saving a title change. `calendar-write.test.ts` pins
      * it, because the day someone "tidies" this into a full object is the day those fields go.
      */
+  }
+}
+
+/**
+ * The `filter` both halves of the range query carry.
+ *
+ * **`inCalendar`, singular, one id per condition — not the draft's `inCalendars`.** Measured
+ * against Stalwart v0.16.18: `inCalendars: ["g"]` is answered `{"type":"unsupportedFilter"}` as a
+ * METHOD-level error, which fails the whole query and takes the month down with it; so do
+ * `calendarIds` and `calendarId`. Only `inCalendar: "g"` works, and it works with
+ * `expandRecurrences: true` and inside a `FilterOperator`, both measured.
+ *
+ * So more than one calendar is an `OR` of single-calendar conditions, `AND`ed with the window. One
+ * calendar gets the same shape rather than a flattened condition: a single code path is one thing
+ * to be right about, and the `OR`-of-one was measured working too.
+ */
+export function calendarFilter(
+  from: Date,
+  to: Date,
+  calendarIds?: readonly Id[],
+): CalendarEventFilter {
+  // Deliberately un-annotated. `CalendarEventFilterCondition` is an interface, and an interface has
+  // no implicit index signature, so annotating it here makes it unassignable to the core
+  // `FilterCondition` (`Record<string, unknown>`) that a `FilterOperator`'s conditions are typed as.
+  // An inferred object literal type does have one.
+  const window = { after: from.toISOString(), before: to.toISOString() }
+  if (calendarIds === undefined || calendarIds.length === 0) return window
+  return {
+    operator: 'AND',
+    conditions: [
+      window,
+      { operator: 'OR', conditions: calendarIds.map((id) => ({ inCalendar: id })) },
+    ],
   }
 }
 
@@ -253,6 +337,10 @@ const EVENT_PROPERTIES = [
   'locations',
   'participants',
   'recurrenceId',
+  // K-5: asked for at last. `alerts` was in NO property list this client sent, so an alarm set on a
+  // phone was invisible here — the editor could not show it, and only the fact that `draftToEvent`
+  // is a patch kept a title change from being the moment it disappeared.
+  'alerts',
   // Asked for although no view draws it: `isEditable` tests it, and a property that is never
   // fetched always reads as absent — so the master of a series looked like a plain event. It read
   // as absent for a second reason too, until ADR-025: the name is SINGULAR on this server, and the
@@ -463,15 +551,72 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       return responses.get<{ list: Calendar[] }>('c0').list
     },
 
+    async createCalendar(draft) {
+      const responses = await client.call([
+        [
+          Methods.calendarSet.name,
+          {
+            accountId,
+            create: {
+              // `isVisible` and `isSubscribed` are stated rather than left to the server. Measured:
+              // a calendar created without them comes back `isSubscribed: false`, which is the
+              // server saying "made, but not one the user asked to see" — and it would be missing
+              // from the phone's calendar app the moment it was made here.
+              //
+              // What is deliberately NOT sent: `participantIdentities` (measured
+              // `invalidProperties`, which would fail the whole create) and `isDefault` (measured
+              // "Field could not be set." in create AND update — on this server the default
+              // calendar is the DAV collection literally named `default`, so JMAP cannot make one).
+              k: { name: draft.name, color: draft.color, isVisible: true, isSubscribed: true },
+            },
+          },
+          'c0',
+        ],
+      ])
+      throwIfRefused(responses.get<SetOutcome>('c0'))
+    },
+
+    async updateCalendar(id, patch) {
+      const responses = await client.call([
+        [Methods.calendarSet.name, { accountId, update: { [id]: { ...patch } } }, 'c0'],
+      ])
+      throwIfRefused(responses.get<SetOutcome>('c0'))
+    },
+
+    async destroyCalendar(id) {
+      const responses = await client.call([
+        [
+          Methods.calendarSet.name,
+          // See `CalendarClient.destroyCalendar`: without the flag a non-empty calendar is refused.
+          { accountId, destroy: [id], onDestroyRemoveEvents: true },
+          'c0',
+        ],
+      ])
+      throwIfRefused(responses.get<SetOutcome>('c0'))
+    },
+
+    async countEvents(calendarId) {
+      const responses = await client.call([
+        [
+          Methods.calendarEventQuery.name,
+          // `limit: 1` and `calculateTotal`, so the answer is a number and not a list of every id
+          // in the calendar. NOT expanded: the confirmation counts stored events, and expanding a
+          // weekly meeting into "417 events" would be a frightening answer to the wrong question.
+          { accountId, filter: { inCalendar: calendarId }, limit: 1, calculateTotal: true },
+          'c0',
+        ],
+      ])
+      const answer = responses.get<{ total?: number; ids?: Id[] }>('c0')
+      return answer.total ?? answer.ids?.length ?? 0
+    },
+
     async eventsInRange(from, to, calendarIds) {
+      // Nothing is shown, so nothing is asked for. Sending a filter that names no calendar would
+      // ask for EVERYTHING (see `calendarFilter`), which is the opposite of what the caller meant.
+      if (calendarIds !== undefined && calendarIds.length === 0) return []
+
       const builder = client.request()
-      const filter = {
-        after: from.toISOString(),
-        before: to.toISOString(),
-        ...(calendarIds === undefined || calendarIds.length === 0
-          ? {}
-          : { inCalendars: [...calendarIds] }),
-      }
+      const filter = calendarFilter(from, to, calendarIds)
 
       // What the grid draws: one entry per occurrence. See the note at the top — the server owns
       // recurrence expansion, and the ids it answers with are display ids.
@@ -608,6 +753,21 @@ function throwIfRefused(response: SetOutcome): void {
     const first = Object.values(group ?? {})[0]
     if (first !== undefined) throw new CalendarSetError(first.type, first.description)
   }
+}
+
+/**
+ * May this account create a calendar?
+ *
+ * Read from the account's own `urn:ietf:params:jmap:calendars` capability
+ * (`mayCreateCalendar`, measured `true` on the fixture), not assumed from the presence of the
+ * capability: a shared or read-only calendar account grants the URN and refuses the create, and a
+ * `+` that always fails is worse than no `+`. A server that omits the flag is taken at its word —
+ * absent means no, because a refused create is a dead end and a missing button is not.
+ */
+export function mayCreateCalendar(session: JmapSession | null, accountId: string | null): boolean {
+  if (session === null || accountId === null) return false
+  const account = session.accounts?.[accountId]?.accountCapabilities?.[Capabilities.calendars]
+  return (account as { mayCreateCalendar?: boolean } | undefined)?.mayCreateCalendar === true
 }
 
 /** Does this server offer calendars for this account? */

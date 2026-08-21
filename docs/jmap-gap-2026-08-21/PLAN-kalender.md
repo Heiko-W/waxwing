@@ -39,6 +39,23 @@ ausdrückliche Anfrage**. `listCalendars()` stellt heute gar keine `properties` 
 **Abgelehnt:** `participantIdentities` am Kalender → `invalidProperties`. Stattdessen
 `ParticipantIdentity/*`.
 
+**KORREKTUR 21.08. (bei der Umsetzung von K-1 gemessen, v0.16.18, Konto `bob`):**
+
+- **`isSubscribed` ist beim Anlegen `false`.** Ein über `Calendar/set create` erzeugter Kalender
+  kommt ohne ausdrückliche Angabe als `isSubscribed: false` zurück — er existiert, gilt dem Server
+  aber nicht als einer, den der Nutzer sehen will, und fehlt damit in der Kalender-App des Telefons.
+  Der Client sendet `isSubscribed: true` und `isVisible: true` ausdrücklich mit.
+- **`isDefault` ist in `create` *und* `update` schreibgeschützt** (`"Field could not be set."`) —
+  dieselbe Falle wie bei `ParticipantIdentity`. Der Ursprung ist die DAV-Ebene: eine über
+  `MKCALENDAR /dav/cal/<mail>/default/` angelegte Sammlung kommt sofort als `isDefault: true`
+  zurück. Über JMAP lässt sich der Standardkalender also **nicht ernennen**.
+- **Der Standardkalender lässt sich über JMAP löschen.** `myRights.mayDelete` ist auch für ihn
+  `true`, und `destroy` gelingt. Zusammen mit dem Punkt davor heißt das: ein gelöschter
+  Standardkalender ist über JMAP nicht ersetzbar. Die Sperre in Regel 5 des Auftrags ist damit
+  **allein die des Clients** — der Server stellt sie nicht.
+- **Ein leerer Name wird abgelehnt** (`invalidProperties`, `"Field could not be set."`).
+- **`color: null` löscht die Farbe** und wird angenommen.
+
 ### `CalendarEvent` — weitere Abweichungen
 | heute | richtig |
 |---|---|
@@ -74,10 +91,28 @@ werden, sonst steht der Organisator zweimal da.
 ### `alerts`
 Steht in **keiner** Property-Liste des Clients — wird nicht einmal abgefragt. Form:
 `{"k1":{"@type":"Alert","action":"display","trigger":{"@type":"OffsetTrigger","offset":"-PT15M"}}}`.
-Ganztägig: `offset:"-PT9H"` (relativ zum Mitternachtsbeginn).
 
 `draftToEvent()` ist ein **Patch** — `alerts` darf nicht bedingungslos hinein:
 `undefined` = unangetastet (nicht im Patch), `[]` = ausdrücklich geleert (`alerts: null`).
+
+**KORREKTUR 21.08. (K-5, gemessen):**
+
+- **Ganztägig ist `PT9H`, nicht `-PT9H`.** Ein ganztägiger Termin beginnt um Mitternacht, „am Tag
+  des Termins (9:00)" liegt also neun Stunden **danach**. Die Reihe ist `9h − 24h × n`:
+  `PT9H` / `-PT15H` / `-PT39H` / `-PT159H`. Die Angaben `-PT9H` / `-PT33H` / `-PT57H` sind
+  `−(24n + 9)` und legen „am Tag des Termins" auf 15:00 des Vortags. Die Herleitung aus
+  `defaultAlertsWithoutTime` trägt nicht: auf v0.16.18 ist die Karte auf **jedem** Kalender `{}` —
+  es stand dort nichts zu lesen. Alle vier Werte gehen unverändert durch `/set` und `/get`,
+  `PT9H` eingeschlossen; der Server entscheidet also nicht, welche Reihe gemeint ist.
+- **`alerts: {}` löscht ebenso wie `alerts: null`.** Der Client sendet `null` (RFC 8620 §5.3).
+- **Ein `AbsoluteTrigger` kommt mit einem `iCalendar`-Beiwagen zurück**, *innerhalb* des Alerts:
+  `"iCalendar":{"convertedProperties":{"trigger":{"parameters":{"value":"DATE-TIME"}}},"name":"valarm"}`.
+  Kein Entwurf nennt dieses Mitglied. Unverändert zurückgeschrieben wird es angenommen und
+  unverändert wieder geliefert — deshalb prüft `event-alerts.ts` auf eine **Positivliste** von
+  Mitgliedern: alles mit einem unbekannten Feld gilt als nicht modelliert und wird durchgereicht.
+- **`relativeTo: "start"` wird echot**, wenn man es sendet, und fehlt, wenn man es weglässt. Beide
+  Formen müssen als „von uns modelliert" gelten, sonst liest der Client seine eigenen Schreibvorgänge
+  nicht mehr.
 
 ### `recurrenceOverrides` — nur Zeiger-Patches
 Beim Rücklesen enthält die Karte **nur noch** den `excluded`-Eintrag; ein verschobener Termin
@@ -218,6 +253,37 @@ Zahnrad je Zeile; Bearbeiten liegt hinter „Info" bzw. Kontextmenü.
 **Folgewirkung, die den Aufwand rechtfertigt:** `eventsInRange(from, to, calendarIds?)` hat den
 Parameter seit jeher und **keinen Aufrufer**. K-1 füllt ihn — damit hört „ausblenden" auf, ein
 Zeichentrick zu sein.
+
+**KORREKTUR 21.08. — der Filter heißt `inCalendar`, Einzahl.** Das ist die folgenreichste
+Abweichung dieses Plans, weil sie ihn beim Wort genommen unbrauchbar macht:
+
+```jsonc
+filter: { "inCalendars": ["g"] }  → ["error", {"type":"unsupportedFilter","description":"inCalendars"}]
+filter: { "calendarIds":  ["g"] }  → unsupportedFilter
+filter: { "calendarId":    "g"  }  → unsupportedFilter
+filter: { "inCalendar":    "g"  }  → {"ids":["b"]}      // funktioniert
+```
+
+`unsupportedFilter` ist ein **Fehler auf Methodenebene**: nicht der Filter wird ignoriert, die
+ganze Abfrage schlägt fehl. Ein Client, der die Schreibweise des Entwurfs sendet, verliert also
+den Monat, sobald jemand einen Kalender ausblendet — genau das Gegenteil dessen, wofür der
+Parameter da ist. Mehrere Kalender sind daher ein `FilterOperator`:
+
+```jsonc
+{ "operator":"AND", "conditions":[
+    { "after":"…", "before":"…" },
+    { "operator":"OR", "conditions":[ {"inCalendar":"g"}, {"inCalendar":"h"} ] } ] }
+```
+
+Gemessen auch mit `expandRecurrences: true` und mit einer `OR`-Gruppe aus **einer** Bedingung.
+`CalendarEventFilterCondition.inCalendars` ist im Typ ersetzt worden.
+
+**KORREKTUR 21.08. — Löschen braucht `onDestroyRemoveEvents: true`.** Ein `Calendar/set` mit
+`destroy` auf einen Kalender, der Termine enthält, antwortet
+`{"type":"calendarHasEvent","description":"Calendar is not empty."}` und ändert nichts. Mit dem
+Argument gelingt es und nimmt alle Termine mit. Die Rückfrage ist damit nicht nur höflich: das
+Argument ist die Stelle, an der der Client dem Server ausdrücklich sagt, dass er die Kaskade
+in Kauf nimmt.
 
 ### Erinnerungen (K-5)
 Apple: Zeile „Hinweis", Wert rechts in Sekundärfarbe. Feste Werte, keine Zahleneingabe.

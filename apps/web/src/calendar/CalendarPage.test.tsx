@@ -45,6 +45,10 @@ function client(over: Partial<CalendarClient> = {}): CalendarClient {
   return {
     listCalendars: async (): Promise<Calendar[]> => [CALENDAR],
     eventsInRange: async (): Promise<PlacedEvent[]> => [],
+    createCalendar: async (): Promise<void> => {},
+    updateCalendar: async (): Promise<void> => {},
+    destroyCalendar: async (): Promise<void> => {},
+    countEvents: async (): Promise<number> => 0,
     createEvent: async (): Promise<void> => {},
     updateEvent: async (): Promise<void> => {},
     destroyEvent: async (): Promise<CalendarEvent | null> => null,
@@ -582,5 +586,202 @@ describe('the phone header (F1)', () => {
 
     const heading = await screen.findByRole('heading', { level: 1 })
     expect(toolbar().contains(heading)).toBe(true)
+  })
+})
+
+/**
+ * The calendar list (K-1).
+ *
+ * `Calendar/set` had been typed since M5.6 with no caller at all, so the calendars a reader owned
+ * were a list they could look at. The assertion that matters most is not any of the buttons, though
+ * — it is the one about `eventsInRange`: hiding a calendar has to become a question the SERVER is
+ * asked, or it is a drawing trick that stops at the edge of this screen.
+ */
+describe('the calendar list', () => {
+  const calendar = (over: Partial<Calendar> = {}): Calendar =>
+    ({ ...CALENDAR, ...over }) as unknown as Calendar
+
+  const WORK = calendar({ id: 'c1', name: 'Work', isDefault: true })
+  const PRIVATE = calendar({ id: 'c2', name: 'Privat', isDefault: false })
+
+  it('names only the VISIBLE calendars in the range query', async () => {
+    /*
+     * The whole reason K-1 is worth building. `eventsInRange` has taken `calendarIds` since M5.6 and
+     * NOTHING ever passed one — so before this, a hidden calendar's events were fetched, drawn, and
+     * then either filtered out on screen (a lie the moment you open the phone) or not filtered at
+     * all. Now the server is told which calendars to answer about.
+     */
+    const seen: (readonly string[] | undefined)[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, calendar({ id: 'c2', name: 'Privat', isVisible: false })],
+        eventsInRange: async (_from, _to, ids) => {
+          seen.push(ids)
+          return []
+        },
+      }),
+    )
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0))
+    expect(seen.at(-1)).toEqual(['c1'])
+  })
+
+  it('treats a calendar with no `isVisible` at all as shown', async () => {
+    // One-sided on purpose: only `false` hides. A server that does not send the property must not
+    // end up with an empty calendar screen.
+    const seen: (readonly string[] | undefined)[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [{ ...WORK, isVisible: undefined } as unknown as Calendar],
+        eventsInRange: async (_from, _to, ids) => {
+          seen.push(ids)
+          return []
+        },
+      }),
+    )
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0))
+    expect(seen.at(-1)).toEqual(['c1'])
+  })
+
+  it('writes the tick to the SERVER and asks again with what is left', async () => {
+    const user = userEvent.setup()
+    const updates: [string, unknown][] = []
+    const seen: (readonly string[] | undefined)[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        updateCalendar: async (id, patch) => {
+          updates.push([id, patch])
+        },
+        eventsInRange: async (_from, _to, ids) => {
+          seen.push(ids)
+          return []
+        },
+      }),
+    )
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Privat' }))
+
+    await waitFor(() => expect(updates).toEqual([['c2', { isVisible: false }]]))
+    // And the month is re-fetched WITHOUT it: the optimistic tick changes what the query asks for,
+    // which is the difference between hiding a calendar and pretending to.
+    await waitFor(() => expect(seen.at(-1)).toEqual(['c1']))
+  })
+
+  it('puts the tick back when the server refuses', async () => {
+    const user = userEvent.setup()
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        updateCalendar: async () => {
+          throw new CalendarSetError('forbidden', 'Read-only calendar.')
+        },
+      }),
+    )
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Privat' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('The calendar could not be shown or hidden.')).toBeInTheDocument(),
+    )
+    // Re-read rather than patched back, so the screen ends up agreeing with the server rather than
+    // with our guess about it.
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Privat' })).toBeChecked())
+  })
+
+  it('offers no Delete for the DEFAULT calendar', async () => {
+    /*
+     * The server would allow it — measured: `destroy` on the account's default calendar succeeds.
+     * What it will NOT allow is appointing a replacement: `isDefault` is refused in create and in
+     * update ("Field could not be set."), because on this server the flag belongs to the DAV
+     * collection literally named `default`. So deleting it is a one-way door and it is not offered.
+     */
+    const user = userEvent.setup()
+    renderPage(client({ listCalendars: async () => [WORK] }))
+
+    await user.click(await screen.findByRole('button', { name: 'Options for Work' }))
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+
+  it('offers no MENU AT ALL for a calendar the reader cannot write to', async () => {
+    // Rights decide what is on the row, not whether the write is refused afterwards. A control that
+    // always fails is how a screen teaches people to distrust it.
+    renderPage(
+      client({
+        listCalendars: async () => [
+          calendar({ id: 'c3', name: 'Team', myRights: { ...WORK.myRights, mayWriteAll: false } }),
+        ],
+      }),
+    )
+
+    expect(await screen.findByRole('checkbox', { name: 'Team' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Options for Team' })).not.toBeInTheDocument()
+  })
+
+  it('asks before deleting, names the calendar, and counts what goes with it', async () => {
+    /*
+     * The one control on this screen with a confirmation. An event is deleted with an Undo in the
+     * toast because destroying one has an inverse; a calendar does not — measured, the destroy is
+     * refused outright unless the client sends `onDestroyRemoveEvents: true`, and then it takes
+     * every event with it. `create` + n × `CalendarEvent/set` would be a re-enactment with new ids.
+     */
+    const user = userEvent.setup()
+    const destroyed: string[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        countEvents: async () => 12,
+        destroyCalendar: async (id) => {
+          destroyed.push(id)
+        },
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Options for Privat' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('Privat')
+    expect(dialog).toHaveTextContent('12 events')
+    // Nothing has happened yet, which is the point of asking.
+    expect(destroyed).toEqual([])
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(destroyed).toEqual(['c2']))
+  })
+
+  it('will not let the reader agree to lose an unknown number of events', async () => {
+    // The count arrives after the dialog opens, so the answer to a menu click is immediate. Until
+    // it is known, Delete is out of reach: agreeing to lose "some events" is not agreement.
+    const user = userEvent.setup()
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        countEvents: () => new Promise<number>(() => {}),
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Options for Privat' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeDisabled()
+  })
+
+  it('puts the list behind the view menu on a phone, where there is no rail', async () => {
+    // Below 40em the rail is not narrowed, it is not rendered — a 215px rail beside a 390px phone is
+    // two panes that both lose. The list becomes a screen-high sheet from the menu that already
+    // carries Today.
+    const user = userEvent.setup()
+    forcePhone()
+    renderPage(client({ listCalendars: async () => [WORK] }))
+
+    expect(screen.queryByRole('checkbox', { name: 'Work' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Calendar view' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Calendars…' }))
+
+    expect(await screen.findByRole('checkbox', { name: 'Work' })).toBeInTheDocument()
   })
 })

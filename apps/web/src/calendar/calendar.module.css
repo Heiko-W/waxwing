@@ -649,3 +649,256 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- The calendars themselves (K-1) --------------------------------------------------------- */
+
+/*
+ * The rail and the pane, side by side.
+ *
+ * A row inside the page's column, so the grid below keeps filling whatever height is left — the
+ * whole reason `.page` is a flex column in the first place. `min-block-size: 0` on both, or the
+ * six-row month grid pushes the page taller than the viewport and the rail scrolls the document
+ * instead of itself.
+ */
+.body {
+  display: flex;
+  gap: var(--waxwing-space-4);
+  flex: 1;
+  min-block-size: 0;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+/* Not rendered below 40em at all (see CalendarPage) — there is no narrow variant of this, because a
+   215px rail beside a 390px phone is two panes that both lose. */
+.rail {
+  inline-size: 14rem;
+  flex: none;
+  overflow: auto;
+  padding-inline-end: var(--waxwing-space-3);
+  border-inline-end: 1px solid var(--waxwing-border);
+}
+
+.calendars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.calendarsHead {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+/* The same row without the heading — inside the phone sheet, whose dialog title already says
+   "Calendars". The `+` keeps its place at the end of the row rather than jumping to the start. */
+.calendarsHeadBare {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* "New calendar" as the last row of the sheet's list, the way iOS spells it. */
+.calendarAddRow {
+  justify-content: flex-start;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+}
+
+/*
+ * The phone sheet's own height.
+ *
+ * Apple's calendar list is a screen-high sheet on an iPhone, and the reason is not decoration: a
+ * short centred panel over a month grid reads as a message about the month, while a sheet reads as
+ * a place you have gone to. Set here rather than on `Dialog`, because it is this list's decision:
+ * every other dialog in the app is a message and should stay the size of what it says.
+ */
+@media (max-width: 39.999em) {
+  .calendarSheet {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 75vh;
+  }
+}
+
+.railTitle {
+  flex: 1;
+  min-inline-size: 0;
+  margin: 0;
+  padding-inline-start: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--waxwing-tracking-caps);
+}
+
+.railEmpty {
+  margin: 0;
+  padding: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.calendarList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendarRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+  /* The row itself carries the touch height, so the label fills it and the whole line is a target
+     — the checkbox alone is 16px and the name beside it would not be one (FR-A11Y-01). */
+  min-block-size: var(--waxwing-control-min);
+}
+
+/* Takes the room the name needs; the `Checkbox` inside is an inline-flex label that fills it. */
+.calendarTick {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.calendarTick > label {
+  flex: 1;
+  min-inline-size: 0;
+  align-items: start;
+  padding-block: var(--waxwing-space-1);
+}
+
+/* The name wraps rather than truncating. Same lesson as the address-book rail, where a name was cut
+   to make room for what described it: in a list whose whole job is "which calendar is this", the
+   name is the one thing that may not be shortened. */
+.calendarName {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- The colour palette --------------------------------------------------------------------- */
+
+/*
+ * A `<fieldset>` for the radio group, reset to look like every other field.
+ *
+ * The element is the right one — it is what groups a set of radios and gives the legend to a screen
+ * reader as the group's name — and its user-agent border, margin and padding are the wrong ones: a
+ * grooved 2px frame in the middle of a form whose other fields have none reads as a different kind
+ * of control.
+ */
+.field:where(fieldset) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.field > legend {
+  padding: 0;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
+  border-radius: var(--waxwing-radius-full);
+  cursor: pointer;
+}
+
+/* The radio is invisible but present and focusable: arrow keys, `checked` and the accessible name
+   all come from it. `appearance: none` with zero size would take it out of the a11y tree in some
+   engines, so it is sized and clipped instead. */
+.swatchInput {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.swatchDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: var(--waxwing-radius-full);
+  border: 1px solid var(--waxwing-border);
+}
+
+/*
+ * The tick is what says "chosen" — the fill is the thing being chosen and cannot also be the sign
+ * that it was (WCAG 1.4.1).
+ *
+ * waxwing-literal-exempt: the swatch fill is a fixed hex stored on the SERVER (CALENDAR_COLORS,
+ * read by Apple Calendar and CalDAV clients), not a themed surface, so the glyph on top of it must
+ * be fixed too — a themed token resolves to near-black in dark mode and the tick disappears on
+ * every dark-themed swatch. Every value in CALENDAR_COLORS carries at least 3:1 against white by
+ * construction.
+ */
+.swatchTick {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  color: #ffffff;
+  opacity: 0;
+}
+
+.swatchInput:checked + .swatchDot .swatchTick {
+  opacity: 1;
+}
+
+.swatchInput:focus-visible + .swatchDot {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 2px;
+}
+
+/* The colour name, for a screen reader and for anyone who cannot tell these eight apart. Visible
+   only for the one that is chosen — eight names in a row would be a paragraph, and the row is a
+   picker. */
+.swatchLabel {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.swatchChosen {
+  margin: var(--waxwing-space-2) 0 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* The reminders this app carries but does not show. A quiet line, because it reports a fact and
+   asks for nothing. */
+.alertCarried {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
