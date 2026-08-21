@@ -133,45 +133,30 @@ test.describe('M1.9 read suite', () => {
     expect(violations.filter((text) => /img-src/i.test(text))).toEqual([])
   })
 
-  test('previews a PDF attachment — the frame really loads (F2)', async ({ page }) => {
-    // `frame-src 'self'` does not cover a `blob:` URL, so this preview was CSP-blocked in every
-    // build: an empty panel under `aria-expanded="true"`. `blob:` had been added to `img-src`
-    // deliberately, so the need was understood — image previews go through `<img>` and worked,
-    // which is exactly why the PDF path went unnoticed. Only a browser can tell the two apart.
+  test('offers a PDF no preview — download is the honest way out (M2)', async ({ page }) => {
+    /*
+     * This test used to assert the opposite, and it was measuring the wrong thing.
+     *
+     * It checked that the preview frame received a `blob:` URL and that no `frame-src` violation
+     * fired — both true, and the panel was still EMPTY: `<iframe sandbox="">` stops Chromium's
+     * built-in PDF viewer dead, because that viewer is an internal document with a plugin in it and
+     * needs `allow-scripts allow-same-origin` to run. On a `blob:` URL, which inherits this app's
+     * origin, those two tokens together are not a narrower sandbox but no sandbox at all: the
+     * framed document could reach `window.parent`, the credential store and the JMAP session. So
+     * the preview is not offered for a PDF any more (`preview-policy.ts`), and this pins that the
+     * reader is left with the affordance that does work.
+     *
+     * What is NOT pinned here any more is `frame-src blob:` in a real browser — no message in
+     * `seed-read` carries a `text/plain` attachment, which is the one framed type left.
+     * `app/csp.shipped.test.ts` still pins the policy string itself.
+     */
     await login(page)
     await page.getByText(READ_SUBJECTS.pdf).click()
     await expect(page.getByText(READ_PDF.filename)).toBeVisible({ timeout: 20_000 })
 
-    // Read the browser's own verdict rather than guessing from the outside. The preview frame is
-    // `sandbox=""`, i.e. an opaque origin, so the parent cannot inspect it and Playwright reports
-    // its URL as empty whether it loaded or was refused — the two states are indistinguishable from
-    // out here. `securitypolicyviolation` is not.
-    await page.evaluate(() => {
-      const seen: string[] = []
-      ;(window as unknown as { __csp: string[] }).__csp = seen
-      document.addEventListener('securitypolicyviolation', (event) => {
-        seen.push(`${event.violatedDirective} ${event.blockedURI}`)
-      })
-    })
-    await page.getByRole('button', { name: `Preview: ${READ_PDF.filename}` }).click()
-
-    // The object URL reaches the element…
-    await expect
-      .poll(async () =>
-        page.evaluate(
-          () =>
-            document
-              .querySelector('iframe[sandbox=""]')
-              ?.getAttribute('src')
-              ?.startsWith('blob:') ?? false,
-        ),
-      )
-      .toBe(true)
-    // …and the browser did not refuse it. Removing `blob:` from `frame-src` makes this line fail
-    // with `frame-src blob` — verified by reverting the policy and rebuilding.
-    await page.waitForTimeout(1000)
-    const violations = await page.evaluate(() => (window as unknown as { __csp: string[] }).__csp)
-    expect(violations.filter((entry) => entry.startsWith('frame-src'))).toEqual([])
+    await expect(page.getByRole('button', { name: `Preview: ${READ_PDF.filename}` })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: `Download ${READ_PDF.filename}` })).toBeVisible()
+    await expect(page.locator('iframe[sandbox=""]')).toHaveCount(0)
   })
 
   test('shows a threaded conversation with expandable older messages', async ({ page }) => {

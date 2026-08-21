@@ -11,6 +11,8 @@ import {
   ReplicaProvider,
 } from '../sync'
 import { setActiveEngine } from '../sync/engine'
+import type { OutboxIntent } from '../sync/engine/outbox'
+import { deleteContactCards } from '../sync/repo'
 import { addressBook, contactCard, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { clickButton } from '../test/interact'
@@ -74,12 +76,21 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals())
 
 let db: ReplicaDb
+/** Every intent the fake engine was handed, so a test can read the creation id back out of it. */
+let dispatched: OutboxIntent[]
 
 beforeEach(async () => {
   db = freshDb()
+  dispatched = []
   setActiveEngine({
     watchContactQuery: vi.fn(() => 'k'),
     unwatchContactQuery: vi.fn(),
+    // Just the optimistic half of the real `dispatch`: write the card under its creation id, which
+    // is what makes the create/reconcile sequence reproducible here.
+    dispatch: async (intent: OutboxIntent) => {
+      dispatched.push(intent)
+      if (intent.kind === 'createContactCard') await putContactCards(db, 'a', [intent.card])
+    },
   } as unknown as Parameters<typeof setActiveEngine>[0])
   await putAddressBooks(db, 'a', [addressBook('personal', { name: 'Personal', isDefault: true })])
   await putContactCards(db, 'a', [
@@ -157,6 +168,41 @@ describe('ContactsScreen', () => {
     expect(window.location.pathname).toBe('/contacts/personal/c1')
   })
 
+  /**
+   * Every save used to land on "This contact is not available.", over a contact that had been
+   * created perfectly: the route was pointed at the CREATION id, and the acknowledgement re-files
+   * the row under the id the server chose. This drives the whole sequence — optimistic write, then
+   * the reconcile — and asserts the route ends up on the server's id.
+   */
+  it('follows a newly created contact from its creation id to the id the server gave it', async () => {
+    const user = userEvent.setup()
+    renderScreen('/contacts/personal')
+    await screen.findByRole('option', { name: 'Alice Anderson' })
+
+    await clickButton(user, 'New contact')
+    await user.type(screen.getByLabelText('First name'), 'Zoe')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const intent = dispatched.find((entry) => entry.kind === 'createContactCard')
+    if (intent?.kind !== 'createContactCard') throw new Error('no create was dispatched')
+    const creationId = intent.creationId
+    // Until the server answers there is no other id to use, and the optimistic row IS there.
+    await waitFor(() => expect(window.location.pathname).toBe(`/contacts/personal/${creationId}`))
+    expect(await screen.findByRole('heading', { name: 'Zoe' })).toBeInTheDocument()
+
+    // What `reconcileContactCardCreate` does on the acknowledgement: the temp row goes, the same
+    // card comes back under the server's id.
+    await deleteContactCards(db, 'a', [creationId])
+    await putContactCards(db, 'a', [{ ...intent.card, id: 'srv-9' }])
+
+    await waitFor(() => expect(window.location.pathname).toBe('/contacts/personal/srv-9'))
+    // …and the detail pane settles on the card, not on the dead end the old route led to.
+    await waitFor(() =>
+      expect(screen.queryByText('This contact is not available.')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('heading', { name: 'Zoe' })).toBeInTheDocument()
+  })
+
   it('has no axe violations', async () => {
     const { container } = renderScreen('/contacts/personal')
     await screen.findByRole('option', { name: 'Alice Anderson' })
@@ -176,6 +222,39 @@ describe('ContactsScreen', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('heading', { name: 'New contact' })).not.toBeInTheDocument()
+  })
+
+  describe('address-book drawer on a phone', () => {
+    it('closes on a second press of the toggle it opened with', async () => {
+      // It only ever opened: the handler was `setBooksOpen(true)`, and the label stayed "Show
+      // address books" while `aria-expanded` said `true`. Escape and a backdrop tap were the only
+      // ways out, and neither is something a reader can see.
+      forcePhone()
+      const user = userEvent.setup()
+      renderScreen('/contacts/personal')
+
+      const toggle = screen.getByRole('button', { name: 'Show address books' })
+      await user.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'true')
+      expect(toggle).toHaveAccessibleName('Hide address books')
+
+      await user.click(toggle)
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(toggle).toHaveAccessibleName('Show address books')
+    })
+
+    it('closes once a book has been chosen, so the list under it is usable', async () => {
+      forcePhone()
+      const user = userEvent.setup()
+      renderScreen('/contacts')
+
+      const toggle = screen.getByRole('button', { name: 'Show address books' })
+      await user.click(toggle)
+      await user.click(screen.getByRole('link', { name: /Personal/ }))
+
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+      expect(window.location.pathname).toBe('/contacts/personal')
+    })
   })
 
   it('disables New contact in a read-only address book (read-only guard)', async () => {
@@ -204,5 +283,58 @@ describe('ContactsScreen', () => {
     await waitFor(() => expect(edit).toBeEnabled())
     await user.click(edit)
     expect(screen.getByRole('heading', { name: 'Edit contact' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * The row that holds this screen's own controls, wherever the viewport put it.
+ *
+ * Found by walking up from one end of it to the first element that also holds the other, rather
+ * than by class name: the bar is a portal into the shell header on a phone and a strip beside the
+ * panes above 40em, and the question these tests ask ("does the heading share that row?") is the
+ * same either way.
+ */
+function screenBar(): HTMLElement {
+  const create = screen.getByRole('button', { name: 'New contact' })
+  let node: HTMLElement | null = screen.getByRole('button', { name: 'Import or export' })
+  while (node !== null && !node.contains(create)) node = node.parentElement
+  if (node === null) throw new Error('no element holds both ends of the screen bar')
+  return node
+}
+
+describe('the phone header', () => {
+  /*
+   * "Alle Kon…" — the title truncated to eight characters on a 390px phone, because the row it sat
+   * in also carries the drawer toggle, import and new contact at 44px each plus the shell's own
+   * two buttons. This is the crowding F1 fixed for the calendar one screen over, and it has the
+   * same answer: none of those controls may shrink, so the heading leaves the row instead.
+   *
+   * Asserted structurally rather than by measurement — jsdom lays nothing out, and the pixels were
+   * never the invariant. "The reader can see which set of contacts this is" is.
+   */
+  it('takes the heading out of the toolbar row', async () => {
+    forcePhone()
+    renderScreen('/contacts')
+
+    const heading = await screen.findByRole('heading', { name: 'All Contacts' })
+    expect(screenBar().contains(heading), 'the heading shares no row with the buttons').toBe(false)
+  })
+
+  it('states the whole name of the set, not a prefix of it', async () => {
+    forcePhone()
+    renderScreen('/contacts')
+
+    expect(await screen.findByRole('heading', { name: 'All Contacts' })).toHaveTextContent(
+      'All Contacts',
+    )
+  })
+
+  it('leaves the wide layout alone: there the heading IS the middle of the bar', async () => {
+    // The pane's own strip has room for both, and a pane title is where every other screen in this
+    // app states which list it is showing. This is the half that must not change.
+    renderScreen('/contacts')
+
+    const heading = await screen.findByRole('heading', { name: 'All Contacts' })
+    expect(screenBar().contains(heading)).toBe(true)
   })
 })

@@ -3,10 +3,12 @@ import { bearer } from './auth'
 import { JmapClient } from './client'
 import {
   errorFromResponse,
+  httpStatusOf,
   isSetErrorType,
   JmapHttpError,
   JmapMethodError,
   JmapProblemError,
+  JmapRequestError,
   ProblemTypes,
   parseRetryAfter,
 } from './errors'
@@ -22,6 +24,40 @@ describe('parseRetryAfter', () => {
     expect(parseRetryAfter(null)).toBeUndefined()
     expect(parseRetryAfter('')).toBeUndefined()
     expect(parseRetryAfter('soon')).toBeUndefined()
+  })
+})
+
+describe('httpStatusOf — the status, whichever class carries it', () => {
+  it('finds it on all three, because they are siblings and not subclasses', async () => {
+    // The trap this function exists for: `errorFromResponse` picks the class from the SHAPE OF THE
+    // BODY, so the same 401 arrives as a `JmapProblemError` from a server that sends a problem
+    // document and as a `JmapHttpError` from one that does not. An `instanceof JmapHttpError` guard
+    // therefore recognizes a rejected credential on some servers and not on others — which is how
+    // the sync outbox dead-lettered a queue (M3.3) and the sign-in screen answered a mistyped
+    // password with "Something went wrong" plus an offer to wipe the mailbox (U2).
+    const problem = await errorFromResponse(
+      new Response(JSON.stringify({ type: 'about:blank', detail: 'Unauthorized' }), {
+        status: 401,
+        headers: { 'content-type': 'application/problem+json' },
+      }),
+    )
+    const plain = await errorFromResponse(new Response('', { status: 401 }))
+
+    expect(problem).toBeInstanceOf(JmapProblemError)
+    expect(problem).not.toBeInstanceOf(JmapHttpError)
+    expect(httpStatusOf(problem)).toBe(401)
+    expect(httpStatusOf(plain)).toBe(401)
+    expect(
+      httpStatusOf(
+        new JmapRequestError({ '@type': 'RequestError', type: 'about:blank', status: 401 }),
+      ),
+    ).toBe(401)
+  })
+
+  it('answers undefined for anything that carries no status', () => {
+    // "No status" — a failed fetch, an abort, a bug. Callers must not read that as "not an error".
+    expect(httpStatusOf(new TypeError('Failed to fetch'))).toBeUndefined()
+    expect(httpStatusOf(null)).toBeUndefined()
   })
 })
 

@@ -26,5 +26,24 @@
     background-color: var(--waxwing-accent);
     color: var(--waxwing-accent-contrast);
     box-shadow: var(--waxwing-shadow-2);
+    transition: opacity var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+  }
+
+  /*
+   * Out of the way while a row is being swiped (M12).
+   *
+   * A swipe on the row under this corner reveals its action label straight behind a solid accent
+   * circle — measured on the bottom row of the Inbox, where "Archive" was half-covered. The
+   * attribute is set on `<body>` by `mail/use-swipe.ts` for as long as a gesture is locked; this is
+   * the only place it is read. `:global()` because the state does not belong to this component and
+   * the element that owns it is not in its tree.
+   *
+   * Hidden rather than moved: the gesture lasts a moment and ends in an action, and a button that
+   * jumps aside and back is more motion than the thing it is making room for. `pointer-events` goes
+   * with it, so the finger that overshoots the strip cannot open a composer.
+   */
+  :global(body[data-waxwing-swiping]) .newMessage {
+    opacity: 0;
+    pointer-events: none;
   }
 }

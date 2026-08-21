@@ -8,7 +8,7 @@
 
 import { connect } from '@waxwing/jmap'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
-import { AuthController, DEFAULT_CLIENT_ID, DEFAULT_SCOPES } from '../auth'
+import { AuthController, DEFAULT_CLIENT_ID, DEFAULT_SCOPES, wipeLocalData } from '../auth'
 
 export interface ShellServices {
   /** `@waxwing/jmap` connect: `(input, AuthProvider, { fetch? }) => Promise<JmapClient>`. */
@@ -23,6 +23,14 @@ export interface ShellServices {
    * Only 404/410/network failure count as absent, so `connect()` stays the real arbiter.
    */
   readonly probe: (origin: string) => Promise<boolean>
+  /**
+   * Drops everything this origin has stored and reloads the page (U2).
+   *
+   * Here rather than inline in the provider for the reason everything else is here: it is a browser
+   * boundary. `location.reload()` is not implemented in jsdom, and a test that verified the wipe by
+   * actually performing it would be testing `fake-indexeddb`.
+   */
+  readonly resetLocalData: () => Promise<void>
 }
 
 export const defaultServices: ShellServices = {
@@ -41,6 +49,25 @@ export const defaultServices: ShellServices = {
     } catch {
       return false
     }
+  },
+  resetLocalData: async () => {
+    await wipeLocalData({
+      caches: typeof caches !== 'undefined' ? caches : undefined,
+      indexedDB: typeof indexedDB !== 'undefined' ? indexedDB : undefined,
+      serviceWorker: navigator.serviceWorker,
+    })
+    // The web storages too, and by name-blind `clear()`: the durable connect target, the
+    // public-computer stash and every preference live there, and "reset this app" that leaves the
+    // key which is wedging the boot would be the same dead end one round later.
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch {
+      // Private mode / storage disabled: nothing was stored, nothing to clear.
+    }
+    // A full navigation, not a router hop: the point is to start the app from nothing, and a
+    // reload is the only thing that reliably drops the module-scoped state as well.
+    window.location.reload()
   },
 }
 

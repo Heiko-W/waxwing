@@ -91,8 +91,10 @@ export function ConfigGeneratorPanel({ session, origin, checkOAuth }: ConfigGene
     setTimeout(() => URL.revokeObjectURL(url), 0)
   }, [result])
 
+  // `.group`: a label over a block — an explanation, a button, a findings list and a file preview.
+  // `.field` would put that label beside all of it, halfway down an otherwise empty column.
   return (
-    <div className={styles.field}>
+    <div className={styles.group}>
       <span className={styles.label}>{t('settings.server.generate.title')}</span>
       <p className={styles.hint}>{t('settings.server.generate.intro')}</p>
 

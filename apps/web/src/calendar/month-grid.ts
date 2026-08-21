@@ -105,6 +105,43 @@ export function fromIsoDate(value: string | undefined): Date | null {
   return date.getMonth() === Number(match[2]) - 1 ? date : null
 }
 
+/**
+ * Adds `delta` days.
+ *
+ * Built with the local-time constructor rather than by adding `DAY_MS`, for the reason this module
+ * keeps repeating: across a DST transition a day is 23 or 25 hours, and millisecond arithmetic
+ * lands on 23:00 the day before.
+ */
+export function addDays(date: Date, delta: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + delta)
+}
+
+/**
+ * Every local day an interval touches, as `YYYY-MM-DD` keys.
+ *
+ * A month cell asks "is this event on my day?", and keying an event by its start alone answers no
+ * for every day but the first — a three-day whole-day event appeared on the 12th, and the 13th and
+ * 14th were empty (T4).
+ *
+ * **Half-open at the end**, matching `week-grid.ts`: an event ending exactly at midnight belongs to
+ * the day before, not to both. An event of zero length still occupies the day it starts on, which
+ * is what the `startsAt + 1` floor is for.
+ *
+ * `limit` is a stop, not a policy: a corrupt `duration` (JSCalendar allows `P9999Y`) would otherwise
+ * spin here for millions of iterations while the browser looked hung.
+ */
+export function daysBetween(startsAt: number, endsAt: number, limit = 400): string[] {
+  const keys: string[] = []
+  if (!Number.isFinite(startsAt)) return keys
+  const end = Math.max(Number.isFinite(endsAt) ? endsAt : startsAt, startsAt + 1)
+  let cursor = startOfDay(new Date(startsAt))
+  while (cursor.getTime() < end && keys.length < limit) {
+    keys.push(toIsoDate(cursor))
+    cursor = addDays(cursor, 1)
+  }
+  return keys
+}
+
 /** Adds `delta` months, clamping the day so 31 January + 1 month is not 3 March. */
 export function addMonths(date: Date, delta: number): Date {
   const target = new Date(date.getFullYear(), date.getMonth() + delta, 1)

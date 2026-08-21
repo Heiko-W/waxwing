@@ -6,7 +6,16 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { addMonths, fromIsoDate, isSameDay, monthGrid, monthRange, toIsoDate } from './month-grid'
+import {
+  addDays,
+  addMonths,
+  daysBetween,
+  fromIsoDate,
+  isSameDay,
+  monthGrid,
+  monthRange,
+  toIsoDate,
+} from './month-grid'
 
 describe('monthGrid', () => {
   const august = new Date(2026, 7, 15)
@@ -80,5 +89,63 @@ describe('addMonths', () => {
 
   it('goes backwards too', () => {
     expect(addMonths(new Date(2026, 0, 15), -1).getMonth()).toBe(11)
+  })
+})
+
+describe('addDays', () => {
+  it('steps a whole week, across a month boundary', () => {
+    // What the week view's arrows do. They used to call `addMonths` whatever the view, so the
+    // week of 17–23 August was followed by the week of 21–27 September (T6).
+    const next = addDays(new Date(2026, 7, 31), 7)
+    expect(toIsoDate(next)).toBe('2026-09-07')
+  })
+
+  it('keeps the wall clock across a DST transition', () => {
+    // 25 October 2026 is the European autumn transition: that day is 25 hours long, so adding
+    // 86 400 000 ms lands at 23:00 on the 25th and the day repeats.
+    const day = addDays(new Date(2026, 9, 25), 1)
+    expect(toIsoDate(day)).toBe('2026-10-26')
+    expect(day.getHours()).toBe(0)
+  })
+})
+
+describe('daysBetween', () => {
+  const at = (year: number, month: number, day: number, hour = 0): number =>
+    new Date(year, month, day, hour).getTime()
+
+  it('covers every day a multi-day event touches', () => {
+    // The T4 case: a three-day whole-day event was keyed by its start alone, so it appeared on the
+    // 12th while the 13th and 14th sat empty.
+    expect(daysBetween(at(2026, 7, 12), at(2026, 7, 15))).toEqual([
+      '2026-08-12',
+      '2026-08-13',
+      '2026-08-14',
+    ])
+  })
+
+  it('is half-open: an event ending at midnight belongs to the day before', () => {
+    // Matches `week-grid.overlapsDay`, or a one-day event would tint two cells.
+    expect(daysBetween(at(2026, 7, 12), at(2026, 7, 13))).toEqual(['2026-08-12'])
+  })
+
+  it('gives a zero-length event the day it starts on', () => {
+    expect(daysBetween(at(2026, 7, 12, 9), at(2026, 7, 12, 9))).toEqual(['2026-08-12'])
+  })
+
+  it('spans midnight for a timed event that runs into the next day', () => {
+    expect(daysBetween(at(2026, 7, 12, 23), at(2026, 7, 13, 1))).toEqual([
+      '2026-08-12',
+      '2026-08-13',
+    ])
+  })
+
+  it('stops rather than spinning on a nonsense duration', () => {
+    // JSCalendar permits `P9999Y`. A cell asking "is this on my day?" must not hang the browser
+    // while the answer is computed three million times.
+    expect(daysBetween(at(2026, 7, 12), at(3026, 7, 12)).length).toBe(400)
+  })
+
+  it('returns nothing for an unreadable start', () => {
+    expect(daysBetween(Number.NaN, at(2026, 7, 12))).toEqual([])
   })
 })

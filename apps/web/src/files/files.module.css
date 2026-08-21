@@ -73,8 +73,10 @@
 
 .row {
   display: flex;
-  /* So an open preview drops below the name and actions instead of squeezing in beside them. The
-     row itself never wraps without one: `.name` shrinks (min-inline-size: 0) and ellipsizes. */
+  /* Two jobs. An open preview drops below the name and actions instead of squeezing in beside them
+     — and where the actions cannot sit beside a readable name, the line breaks and they take one of
+     their own. That second one is the safety net under `use-row-actions.ts`: with no script the row
+     gets two lines, which is untidy; without either, the name got 33px, which is unusable. */
   flex-wrap: wrap;
   align-items: center;
   gap: var(--waxwing-space-3);
@@ -89,7 +91,24 @@
   flex: 1;
   align-items: center;
   gap: var(--waxwing-space-2);
-  min-inline-size: 0;
+  /*
+   * THE WIDTH THE NAME KEEPS (N-1). This is the whole fix stated in one declaration.
+   *
+   * It used to be 0, which reads as "the name may give way to anything" — and with five 44px
+   * controls in a 342px row on a 390px phone, that is exactly what it did: 33px, one character,
+   * `protokoll-neu.txt` rendered as "p" and two files in a folder indistinguishable. `flex: 1`
+   * means a base size of 0, so the name was never the reason the row ran out of room; it was
+   * simply the only part that could shrink, and it shrank all the way.
+   *
+   * 12rem is roughly 24 characters at `--waxwing-text-sm`, which is the length at which two files
+   * sharing a prefix stop looking the same. Below it the flex line breaks instead and the actions
+   * move to a second line — `use-row-actions.ts` reads this very declaration back and turns that
+   * second line into a `⋯` menu, so the number lives here and only here.
+   *
+   * `.nameText` still ellipsizes inside it: `overflow: hidden` on a flex item sets its own
+   * automatic minimum size to zero, so a long name is cut with an ellipsis rather than pushed out.
+   */
+  min-inline-size: 12rem;
   /* 44 px touch target for the folder rows, which are buttons. */
   min-block-size: var(--waxwing-control-min);
   border: 0;
@@ -125,10 +144,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* `flex: none` — a control that is squeezed is no more usable than one that is missing, so the
+   group never gives way; either it fits beside a readable name or its tail goes into the menu.
+   The auto margin only bites on the line the group has to ITSELF (the no-script fallback above),
+   where it puts the buttons under the row's trailing edge rather than under its name. */
 .rowActions {
   display: flex;
   flex: none;
   gap: var(--waxwing-space-1);
+  margin-inline-start: auto;
 }
 
 .loading,

@@ -149,16 +149,54 @@ function prefOf(line: ContentLine): number | undefined {
   return typeValues(line).includes('pref') ? 1 : undefined
 }
 
+/** The `PROP-ID` a line carries, or `undefined` when it has none. */
+function propIdOf(line: ContentLine): string | undefined {
+  const propId = line.params.get('PROP-ID')?.[0]
+  return propId !== undefined && propId !== '' ? propId : undefined
+}
+
 /**
- * The key for a collection entry.
+ * Hands out one collection key per entry, and no key twice.
  *
  * `PROP-ID` is what RFC 9555 §2.15.1 says to use, and honouring it is what lets a card survive a
  * round trip with its ids intact — an id that changes on every export makes every re-import look
  * like a different set of phone numbers to anything doing a diff.
+ *
+ * The generated fallbacks (`e1`, `e2`, …) share a namespace with those explicit ids, which is why
+ * this is an allocator and not a one-line function of the index. A file mixing the two — vCard's own
+ * `EMAIL;PROP-ID=e2:…` on one line and a bare `EMAIL:…` on the next — produced the key `e2` twice,
+ * and since the entries land in a plain object the second one silently ATE the first. The import
+ * then reported "3 contacts imported" over a contact that had quietly lost an address. Two explicit
+ * lines carrying the same `PROP-ID` collided the same way, as did a single `NICKNAME` line with a
+ * `PROP-ID` and several comma-separated values — all of them shapes a file we did not write can
+ * legitimately have.
+ *
+ * So: every explicit `PROP-ID` in the collection is reserved up front, the fallback counter walks
+ * past anything reserved or already handed out, and a repeated explicit id falls back rather than
+ * overwriting. Nothing is dropped, and a well-formed file keeps exactly the ids it arrived with.
  */
-function entryId(line: ContentLine, fallback: string, index: number): Id {
-  const propId = line.params.get('PROP-ID')?.[0]
-  return propId !== undefined && propId !== '' ? propId : `${fallback}${String(index + 1)}`
+function idAllocator(lines: readonly ContentLine[], prefix: string): (line: ContentLine) => Id {
+  const reserved = new Set<string>()
+  for (const line of lines) {
+    const propId = propIdOf(line)
+    if (propId !== undefined) reserved.add(propId)
+  }
+  const used = new Set<string>()
+  let counter = 0
+  return (line) => {
+    const propId = propIdOf(line)
+    if (propId !== undefined && !used.has(propId)) {
+      used.add(propId)
+      return propId
+    }
+    let candidate = ''
+    do {
+      counter += 1
+      candidate = `${prefix}${String(counter)}`
+    } while (reserved.has(candidate) || used.has(candidate))
+    used.add(candidate)
+    return candidate
+  }
 }
 
 /**
@@ -278,101 +316,100 @@ function buildName(lines: readonly ContentLine[]): Name | undefined {
 
 function buildEmails(lines: readonly ContentLine[]): Record<Id, EmailAddress> | undefined {
   const out: Record<Id, EmailAddress> = {}
-  lines
-    .filter((line) => line.name === 'EMAIL')
-    .forEach((line, index) => {
-      const address = unescapeText(line.value).trim()
-      if (address === '') return
-      out[entryId(line, 'e', index)] = compact<EmailAddress>({
-        address,
-        contexts: contextsOf(line),
-        pref: prefOf(line),
-        label: line.params.get('LABEL')?.[0],
-      })
+  const emailLines = lines.filter((line) => line.name === 'EMAIL')
+  const nextId = idAllocator(emailLines, 'e')
+  for (const line of emailLines) {
+    const address = unescapeText(line.value).trim()
+    if (address === '') continue
+    out[nextId(line)] = compact<EmailAddress>({
+      address,
+      contexts: contextsOf(line),
+      pref: prefOf(line),
+      label: line.params.get('LABEL')?.[0],
     })
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function buildPhones(lines: readonly ContentLine[]): Record<Id, Phone> | undefined {
   const out: Record<Id, Phone> = {}
-  lines
-    .filter((line) => line.name === 'TEL')
-    .forEach((line, index) => {
-      const number = unescapeText(line.value).trim()
-      if (number === '') return
-      const features: Record<string, true> = {}
-      for (const type of typeValues(line)) {
-        const feature = PHONE_FEATURES[type]
-        if (feature !== undefined) features[feature] = true
-      }
-      out[entryId(line, 'tel', index)] = compact<Phone>({
-        number,
-        features: Object.keys(features).length > 0 ? features : undefined,
-        contexts: contextsOf(line),
-        pref: prefOf(line),
-        label: line.params.get('LABEL')?.[0],
-      })
+  const telLines = lines.filter((line) => line.name === 'TEL')
+  const nextId = idAllocator(telLines, 'tel')
+  for (const line of telLines) {
+    const number = unescapeText(line.value).trim()
+    if (number === '') continue
+    const features: Record<string, true> = {}
+    for (const type of typeValues(line)) {
+      const feature = PHONE_FEATURES[type]
+      if (feature !== undefined) features[feature] = true
+    }
+    out[nextId(line)] = compact<Phone>({
+      number,
+      features: Object.keys(features).length > 0 ? features : undefined,
+      contexts: contextsOf(line),
+      pref: prefOf(line),
+      label: line.params.get('LABEL')?.[0],
     })
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function buildAddresses(lines: readonly ContentLine[]): Record<Id, Address> | undefined {
   const out: Record<Id, Address> = {}
-  lines
-    .filter((line) => line.name === 'ADR')
-    .forEach((line, index) => {
-      const parts = structuredComponents(line.value)
-      const components: AddressComponent[] = []
-      ADR_KINDS.forEach((kind, position) => {
-        const part = parts[position]
-        if (part !== undefined && part !== '') components.push({ kind, value: part })
-      })
-      const full = line.params.get('LABEL')?.[0]
-      if (components.length === 0 && full === undefined) return
-      out[entryId(line, 'adr', index)] = compact<Address>({
-        ...(components.length > 0 ? { components } : {}),
-        full,
-        countryCode: line.params.get('CC')?.[0],
-        contexts: contextsOf(line),
-        pref: prefOf(line),
-      })
+  const adrLines = lines.filter((line) => line.name === 'ADR')
+  const nextId = idAllocator(adrLines, 'adr')
+  for (const line of adrLines) {
+    const parts = structuredComponents(line.value)
+    const components: AddressComponent[] = []
+    ADR_KINDS.forEach((kind, position) => {
+      const part = parts[position]
+      if (part !== undefined && part !== '') components.push({ kind, value: part })
     })
+    const full = line.params.get('LABEL')?.[0]
+    if (components.length === 0 && full === undefined) continue
+    out[nextId(line)] = compact<Address>({
+      ...(components.length > 0 ? { components } : {}),
+      full,
+      countryCode: line.params.get('CC')?.[0],
+      contexts: contextsOf(line),
+      pref: prefOf(line),
+    })
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function buildOrganizations(lines: readonly ContentLine[]): Record<Id, Organization> | undefined {
   const out: Record<Id, Organization> = {}
-  lines
-    .filter((line) => line.name === 'ORG')
-    .forEach((line, index) => {
-      // ORG is `name;unit;unit…` (§6.6.4): the first component is the organisation, the rest are
-      // nested units. Flattening them into one string is the common shortcut and it loses the
-      // hierarchy the exporter took the trouble to write.
-      const [name, ...units] = structuredComponents(line.value)
-      const named = units.filter((unit) => unit !== '').map((unit) => ({ name: unit }))
-      if ((name === undefined || name === '') && named.length === 0) return
-      out[entryId(line, 'org', index)] = compact<Organization>({
-        ...(name !== undefined && name !== '' ? { name } : {}),
-        ...(named.length > 0 ? { units: named } : {}),
-        sortAs: line.params.get('SORT-AS')?.[0],
-        contexts: contextsOf(line),
-      })
+  const orgLines = lines.filter((line) => line.name === 'ORG')
+  const nextId = idAllocator(orgLines, 'org')
+  for (const line of orgLines) {
+    // ORG is `name;unit;unit…` (§6.6.4): the first component is the organisation, the rest are
+    // nested units. Flattening them into one string is the common shortcut and it loses the
+    // hierarchy the exporter took the trouble to write.
+    const [name, ...units] = structuredComponents(line.value)
+    const named = units.filter((unit) => unit !== '').map((unit) => ({ name: unit }))
+    if ((name === undefined || name === '') && named.length === 0) continue
+    out[nextId(line)] = compact<Organization>({
+      ...(name !== undefined && name !== '' ? { name } : {}),
+      ...(named.length > 0 ? { units: named } : {}),
+      sortAs: line.params.get('SORT-AS')?.[0],
+      contexts: contextsOf(line),
     })
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function buildTitles(lines: readonly ContentLine[]): Record<Id, Title> | undefined {
   const out: Record<Id, Title> = {}
-  let index = 0
-  for (const line of lines) {
-    if (line.name !== 'TITLE' && line.name !== 'ROLE') continue
+  const titleLines = lines.filter((line) => line.name === 'TITLE' || line.name === 'ROLE')
+  const nextId = idAllocator(titleLines, 't')
+  for (const line of titleLines) {
     const name = unescapeText(line.value).trim()
     if (name === '') continue
-    out[entryId(line, 't', index)] = compact<Title>({
+    out[nextId(line)] = compact<Title>({
       name,
       kind: line.name === 'ROLE' ? ('role' as const) : ('title' as const),
     })
-    index++
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -384,16 +421,16 @@ function buildAnniversaries(lines: readonly ContentLine[]): Record<Id, Anniversa
     ANNIVERSARY: 'wedding',
     DEATHDATE: 'death',
   }
-  let index = 0
-  for (const line of lines) {
+  const dateLines = lines.filter((line) => kinds[line.name] !== undefined)
+  const nextId = idAllocator(dateLines, 'a')
+  for (const line of dateLines) {
     const kind = kinds[line.name]
     if (kind === undefined) continue
     const date = parseVCardDate(unescapeText(line.value))
     // An unparsable date is NOT invented: the raw property stays in `vCardProps` instead, so the
     // information is kept even though this mapping could not read it.
     if (date === undefined) continue
-    out[entryId(line, 'a', index)] = { kind, date }
-    index++
+    out[nextId(line)] = { kind, date }
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -405,18 +442,19 @@ function buildAnniversaries(lines: readonly ContentLine[]): Record<Id, Anniversa
  */
 function buildNicknames(lines: readonly ContentLine[]): Record<Id, Nickname> | undefined {
   const out: Record<Id, Nickname> = {}
-  let index = 0
-  for (const line of lines) {
-    if (line.name !== 'NICKNAME') continue
+  const nickLines = lines.filter((line) => line.name === 'NICKNAME')
+  const nextId = idAllocator(nickLines, 'nick')
+  for (const line of nickLines) {
     for (const value of listValues(line.value)) {
       const name = value.trim()
       if (name === '') continue
-      out[entryId(line, 'nick', index)] = compact<Nickname>({
+      // One line can yield SEVERAL nicknames, so its `PROP-ID` can only name the first of them; the
+      // allocator gives the rest generated keys rather than letting them overwrite it.
+      out[nextId(line)] = compact<Nickname>({
         name,
         contexts: contextsOf(line),
         pref: prefOf(line),
       })
-      index++
     }
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -424,50 +462,49 @@ function buildNicknames(lines: readonly ContentLine[]): Record<Id, Nickname> | u
 
 function buildLinks(lines: readonly ContentLine[]): Record<Id, Link> | undefined {
   const out: Record<Id, Link> = {}
-  lines
-    .filter((line) => line.name === 'URL')
-    .forEach((line, index) => {
-      // A URI value, not text — the same rule as PHOTO. Unescaping it would corrupt a query string.
-      const uri = line.value.trim()
-      if (uri === '') return
-      out[entryId(line, 'link', index)] = compact<Link>({
-        uri,
-        pref: prefOf(line),
-        label: line.params.get('LABEL')?.[0],
-      })
+  const urlLines = lines.filter((line) => line.name === 'URL')
+  const nextId = idAllocator(urlLines, 'link')
+  for (const line of urlLines) {
+    // A URI value, not text — the same rule as PHOTO. Unescaping it would corrupt a query string.
+    const uri = line.value.trim()
+    if (uri === '') continue
+    out[nextId(line)] = compact<Link>({
+      uri,
+      pref: prefOf(line),
+      label: line.params.get('LABEL')?.[0],
     })
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function buildNotes(lines: readonly ContentLine[]): Record<Id, Note> | undefined {
   const out: Record<Id, Note> = {}
-  lines
-    .filter((line) => line.name === 'NOTE')
-    .forEach((line, index) => {
-      const note = unescapeText(line.value)
-      if (note === '') return
-      out[entryId(line, 'n', index)] = { note }
-    })
+  const noteLines = lines.filter((line) => line.name === 'NOTE')
+  const nextId = idAllocator(noteLines, 'n')
+  for (const line of noteLines) {
+    const note = unescapeText(line.value)
+    if (note === '') continue
+    out[nextId(line)] = { note }
+  }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function buildMedia(lines: readonly ContentLine[]): Record<Id, Media> | undefined {
   const out: Record<Id, Media> = {}
-  let index = 0
-  for (const line of lines) {
-    const kind = line.name === 'PHOTO' ? 'photo' : line.name === 'LOGO' ? 'logo' : null
-    if (kind === null) continue
+  const mediaLines = lines.filter((line) => line.name === 'PHOTO' || line.name === 'LOGO')
+  const nextId = idAllocator(mediaLines, 'm')
+  for (const line of mediaLines) {
+    const kind = line.name === 'PHOTO' ? ('photo' as const) : ('logo' as const)
     // The value is a URI (a `data:` URI for an embedded image). It is NOT text-escaped in vCard 4.0,
     // so unescaping it would corrupt any base64 payload containing a comma or a backslash.
     const uri = line.value.trim()
     if (uri === '') continue
-    out[entryId(line, 'm', index)] = compact<Media>({
+    out[nextId(line)] = compact<Media>({
       kind,
       uri,
       mediaType: line.params.get('MEDIATYPE')?.[0],
       pref: prefOf(line),
     })
-    index++
   }
   return Object.keys(out).length > 0 ? out : undefined
 }

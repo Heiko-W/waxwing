@@ -185,6 +185,22 @@
  */
 .senderTrigger {
   display: inline-flex;
+  /*
+   * The TARGET is the token; the avatar inside it stays 36px.
+   *
+   * Measured on a phone, this button was 36x36 — the only tap target in the reading pane under the
+   * 44px a coarse pointer gets (`--waxwing-control-min` switches from 2.125rem to 2.75rem in
+   * tokens.css), while the header buttons, the folder actions and the way back all met it. A
+   * promise the app keeps everywhere except one place is not a promise.
+   *
+   * Growing the avatar instead would have changed a piece of the header's typography to fix a
+   * touch problem, and it would still be 36px on a desktop, where 34 is the house size. Centring a
+   * smaller glyph in a token-sized box is what every icon button here already does.
+   */
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   padding: 0;
   border: none;
@@ -497,6 +513,10 @@
 .attachmentMain {
   display: flex;
   align-items: center;
+  /* The controls wrap onto a second line before the filename gives up its last characters — see
+     `.attachmentName`. Without this the row cannot wrap and the name is the only thing that can
+     yield, which is how "quarterly-report.pdf" became "qu…". */
+  flex-wrap: wrap;
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-1) var(--waxwing-space-2);
   background: var(--waxwing-surface-2);
@@ -512,8 +532,20 @@
 .attachmentName {
   /* Explicit: see docs/design-system.md §2.2 on inherited 1rem. */
   font-size: var(--waxwing-text-sm);
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  /*
+   * A FLOOR, where there used to be `min-width: 0`.
+   *
+   * Zero let the name absorb every pixel the rest of the row wanted. On a tablet, with "Hide
+   * preview" and a download button beside it, `quarterly-report.pdf` was rendered as `qu…` — two
+   * characters of the one piece of information in the row that is not a fixed label, while a
+   * button caption stood at full length next to it. The ellipsis still does its work; it now does
+   * it on a box wide enough to leave something recognisable, and the row wraps instead.
+   *
+   * 8rem, not more: it has to fit beside the size and at least one control on a 390px phone, where
+   * the row does not wrap today and should not start.
+   */
+  min-inline-size: 8rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

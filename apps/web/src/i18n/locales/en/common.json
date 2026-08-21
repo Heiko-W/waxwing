@@ -55,7 +55,15 @@
       "generic": "Something went wrong. Please try again.",
       "networkHost": "Could not reach {{host}}. If your mail server is at a different address, enter it above.",
       "oauthUnavailable": "This server does not offer secure sign-in. Use your email address and password below.",
-      "oauthUnavailableNoFallback": "This server does not offer secure sign-in, and this deployment allows no other method. Ask whoever runs it."
+      "oauthUnavailableNoFallback": "This server does not offer secure sign-in, and this deployment allows no other method. Ask whoever runs it.",
+      "sessionOrigin": "This server advertises {{field}} at {{url}}, which is not on {{origin}} — so your credentials were not sent there. Whoever runs this server needs to correct the address it publishes."
+    },
+    "reset": {
+      "action": "Reset this app on this device",
+      "title": "Reset this app on this device?",
+      "body": "This deletes everything {{product}} has stored in this browser: the offline copy of your mail, your settings, and any saved sign-in. Nothing on the server is touched, and nothing is deleted from your mailbox.",
+      "confirm": "Delete and reload",
+      "cancel": "Cancel"
     }
   },
   "auth": {
@@ -69,6 +77,7 @@
       "username": "Username",
       "password": "Password",
       "staySignedIn": "Stay signed in",
+      "staySignedInHint": "Without this, the sign-in lasts only as long as this page: reloading it or closing the tab signs you out again.",
       "appPasswordHint": "If two-factor authentication is on for your account, your normal password is refused here — use an app password.",
       "submit": "Sign in with a password",
       "publicComputer": "Public or shared computer",
@@ -322,6 +331,7 @@
       },
       "error": {
         "endBeforeStart": "The end must be after the start.",
+        "loadFailed": "The vacation responder could not be loaded.",
         "conflict": "The vacation responder was changed elsewhere. Your changes were not saved — the current settings are shown above.",
         "rejected": "The server rejected these settings.",
         "offline": "You are offline. The vacation responder can only be changed while connected.",
@@ -602,7 +612,6 @@
       "region": "State / Province",
       "postcode": "Postal code",
       "country": "Country",
-      "type": "Type",
       "addEmail": "Add email",
       "addPhone": "Add phone",
       "addField": "Add field",
@@ -611,10 +620,19 @@
       "addBirthday": "Add birthday",
       "addNote": "Add note",
       "addPhoto": "Add photo",
-      "removeEmail": "Remove email",
-      "removePhone": "Remove phone",
-      "removeAddress": "Remove address",
-      "removeNote": "Remove note",
+      "fieldNames": {
+        "email": "Email",
+        "phone": "Phone",
+        "address": "Address",
+        "note": "Note"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "Type of {{field}}",
+        "remove": "Remove {{field}}",
+        "inGroup": "{{field}} ({{group}})"
+      },
+      "invalidEmail": "Enter an email address like name@example.com.",
       "choosePhoto": "Choose photo",
       "changePhoto": "Change photo",
       "removePhoto": "Remove photo",
@@ -698,7 +716,8 @@
       },
       "error": {
         "invalid": "The file could not be read. Check that it is a valid vCard or JSON file.",
-        "failed": "The file could not be imported."
+        "failed": "The file could not be imported.",
+        "export": "The export could not be prepared. Try the other format."
       }
     }
   },
@@ -1475,11 +1494,15 @@
   },
   "calendar": {
     "offline": "You are offline. Events can only be created while connected.",
+    "offlineOpen": "You are offline. Events can only be opened and changed while connected.",
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
     "newEvent": "New event",
     "nextMonth": "Next month",
+    "previousWeek": "Previous week",
+    "nextWeek": "Next week",
+    "weekRange": "{{from}} – {{to}}",
     "viewLabel": "Calendar view",
     "view": {
       "month": "Month",
@@ -1490,9 +1513,15 @@
     "allDay": "All day",
     "more": "+{{count}} more",
     "noEvents": "Nothing coming up.",
+    "noEventsOnDay": "Nothing on this day.",
     "retry": "Try again",
+    "undo": "Undo",
+    "deleted": "Event deleted.",
     "saveFailed": "The event could not be saved.",
+    "deleteFailed": "The event could not be deleted.",
+    "restoreFailed": "The event could not be restored.",
     "loadFailed": "The calendar could not be loaded.",
+    "refreshFailed": "The calendar could not be refreshed — what you see may be out of date.",
     "signedOut": "Sign in to see your calendar.",
     "event": {
       "createTitle": "New event",
@@ -1502,12 +1531,16 @@
       "day": "Day",
       "allDay": "All day",
       "duration": "Length in minutes",
+      "durationInvalid": "Enter a length between 1 and {{max}} minutes.",
       "calendar": "Calendar",
       "description": "Notes",
+      "location": "Location",
+      "participants": "Participants",
       "save": "Save",
       "cancel": "Cancel",
       "delete": "Delete",
-      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it."
+      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it.",
+      "unresolvedReadOnly": "The server returned this as an occurrence that cannot be traced back to a stored event, so it can be viewed here but not changed — only in a calendar app that reaches the event itself."
     }
   },
   "files": {
@@ -1518,12 +1551,19 @@
     "empty": "This folder is empty.",
     "retry": "Try again",
     "loadFailed": "The files could not be loaded.",
+    "savedButNotShown": "That was saved, but the list could not be reloaded — try again to see it.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",
     "newFolder": "New folder",
     "cancel": "Cancel",
     "download": "Download {{name}}",
     "delete": "Delete {{name}}",
+    "rename": {
+      "open": "Rename {{name}}",
+      "title": "Rename “{{name}}”",
+      "label": "New name",
+      "confirm": "Rename"
+    },
     "error": {
       "nameTaken": "Something with that name is already here.",
       "tooLarge": "That file is too large for this server.",
@@ -1539,6 +1579,7 @@
     },
     "preview": "Preview {{name}}",
     "hidePreview": "Hide the preview of {{name}}",
+    "more": "More actions for {{name}}",
     "share": {
       "open": "Share {{name}}",
       "title": "Share “{{name}}”",

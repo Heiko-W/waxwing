@@ -1,6 +1,8 @@
 import type { ContactCard } from '@waxwing/jmap'
+import type { Address } from '@waxwing/jscontact'
 import { describe, expect, it } from 'vitest'
 import {
+  type AddressEntry,
   type ContactFormModel,
   cardToForm,
   diffCardPatch,
@@ -229,6 +231,200 @@ describe('contact-card-mapping photo', () => {
     expect(patch.media).toEqual({
       m2: { '@type': 'Media', kind: 'logo', uri: 'https://example.test/logo.svg' },
     })
+  })
+})
+
+/**
+ * An address carrying EVERY entry-level property RFC 9553 §2.5.1 defines, so the edit path can be
+ * checked field by field rather than on the two the bug report happened to name. Nothing here is
+ * reachable from the form except the five components and the type — which is the point: the module's
+ * contract is that the rest rides through an edit untouched.
+ */
+function fullAddress(): Address {
+  return {
+    '@type': 'Address',
+    components: [
+      { '@type': 'AddressComponent', kind: 'name', value: 'Main Street 1' },
+      { '@type': 'AddressComponent', kind: 'locality', value: 'Berlin' },
+      { '@type': 'AddressComponent', kind: 'region', value: 'BE' },
+      { '@type': 'AddressComponent', kind: 'postcode', value: '10115' },
+      { '@type': 'AddressComponent', kind: 'country', value: 'Germany' },
+    ],
+    full: 'Main Street 1\n10115 Berlin\nGermany',
+    countryCode: 'DE',
+    coordinates: 'geo:52.5,13.4',
+    timeZone: 'Europe/Berlin',
+    contexts: { work: true },
+    pref: 1,
+    isOrdered: true,
+  }
+}
+
+function cardWithAddress(address: Address): ContactCard {
+  return {
+    '@type': 'Card',
+    version: '1.0',
+    uid: 'urn:uuid:addr',
+    id: 'server-addr',
+    addressBookIds: { book1: true },
+    kind: 'individual',
+    addresses: { a1: address },
+  }
+}
+
+function editAddress(
+  card: ContactCard,
+  partial: Partial<AddressEntry>,
+): Record<string, Address> | undefined {
+  const form = cardToForm(card)
+  const entry = form.addresses[0]
+  if (entry === undefined) throw new Error('the fixture card has no address to edit')
+  const edited: ContactFormModel = { ...form, addresses: [{ ...entry, ...partial }] }
+  return formToCard(edited, card, idSource()).addresses as Record<string, Address> | undefined
+}
+
+describe('contact-card-mapping addresses (N4 / N12)', () => {
+  it('changing the street keeps every property the form does not surface', () => {
+    const card = cardWithAddress(fullAddress())
+    const address = editAddress(card, { street: 'Side Street 2' })?.a1
+    if (address === undefined) throw new Error('the address was dropped')
+
+    // Field by field, not just the two the report named — the failure was a whole-object replace,
+    // so a spot check on `full` and `countryCode` would have passed on the next such regression.
+    expect(address.countryCode).toBe('DE')
+    expect(address.coordinates).toBe('geo:52.5,13.4')
+    expect(address.timeZone).toBe('Europe/Berlin')
+    expect(address.pref).toBe(1)
+    expect(address.isOrdered).toBe(true)
+    expect(address.contexts).toEqual({ work: true })
+    expect(address['@type']).toBe('Address')
+    expect(address.components).toContainEqual({
+      '@type': 'AddressComponent',
+      kind: 'name',
+      value: 'Side Street 2',
+    })
+    // The one property that must NOT survive: `full` is the same address pre-formatted, and the
+    // detail view prefers it — kept, it would show the street the user just replaced.
+    expect(address.full).toBeUndefined()
+  })
+
+  it('changing only the type keeps the formatted `full` and every other property', () => {
+    const card = cardWithAddress(fullAddress())
+    const address = editAddress(card, { type: 'private' })?.a1
+    expect(address?.contexts).toEqual({ private: true })
+    expect(address?.full).toBe('Main Street 1\n10115 Berlin\nGermany')
+    expect(address?.countryCode).toBe('DE')
+    expect(address?.timeZone).toBe('Europe/Berlin')
+  })
+
+  it('emptying every field of an existing address removes it instead of sending an empty object', () => {
+    const card = cardWithAddress({
+      '@type': 'Address',
+      components: [{ '@type': 'AddressComponent', kind: 'name', value: 'Main Street 1' }],
+      contexts: { work: true },
+    })
+    const cleared = editAddress(card, {
+      street: '',
+      locality: '',
+      region: '',
+      postcode: '',
+      country: '',
+    })
+    expect(cleared).toBeUndefined()
+    // …and the patch says "remove", rather than replacing the entry with an empty object.
+    const { addresses: _dropped, ...withoutAddresses } = card
+    expect(diffCardPatch(card, withoutAddresses)).toEqual({ addresses: null })
+  })
+
+  it('keeps a `full`-only address when its (always empty) component fields are "cleared"', () => {
+    // Its content never lived in those five fields, so emptying them says nothing about it — and
+    // the form offers no other way to see or keep it.
+    const card = cardWithAddress({ '@type': 'Address', full: 'PO Box 90210\nBeverly Hills' })
+    const kept = editAddress(card, { type: 'private' })
+    expect(kept?.a1?.full).toBe('PO Box 90210\nBeverly Hills')
+    expect(kept?.a1?.contexts).toEqual({ private: true })
+  })
+})
+
+describe('contact-card-mapping type vs. free-text label (N7)', () => {
+  it('retires the stale label when the type changes, so the picker matches what is shown', () => {
+    const card: ContactCard = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'urn:uuid:label',
+      id: 'server-label',
+      addressBookIds: { book1: true },
+      kind: 'individual',
+      emails: {
+        e1: {
+          '@type': 'EmailAddress',
+          address: 'buero@example.com',
+          contexts: { work: true },
+          pref: 1,
+          label: 'Büro',
+        },
+      },
+    }
+    const form = cardToForm(card)
+    const edited: ContactFormModel = {
+      ...form,
+      emails: form.emails.map((entry) => ({ ...entry, type: 'private' })),
+    }
+    const email = formToCard(edited, card, idSource()).emails?.e1
+    expect(email?.contexts).toEqual({ private: true })
+    expect(email?.label).toBeUndefined()
+    // Everything else about the entry is untouched.
+    expect(email?.address).toBe('buero@example.com')
+    expect(email?.pref).toBe(1)
+  })
+
+  it('keeps the label when the type is not touched', () => {
+    const card: ContactCard = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'urn:uuid:label2',
+      id: 'server-label2',
+      addressBookIds: { book1: true },
+      kind: 'individual',
+      emails: {
+        e1: {
+          '@type': 'EmailAddress',
+          address: 'a@b.test',
+          contexts: { work: true },
+          label: 'Büro',
+        },
+      },
+    }
+    const form = cardToForm(card)
+    const edited: ContactFormModel = {
+      ...form,
+      emails: form.emails.map((entry) => ({ ...entry, address: 'c@d.test' })),
+    }
+    expect(formToCard(edited, card, idSource()).emails?.e1?.label).toBe('Büro')
+  })
+})
+
+describe('contact-card-mapping trimming (N11)', () => {
+  it('stores phone numbers and notes without their padding', () => {
+    const newId = idSource()
+    const seed: ContactCard = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'urn:uuid:trim',
+      id: 'placeholder',
+      addressBookIds: { book1: true },
+      kind: 'individual',
+    }
+    const form: ContactFormModel = {
+      ...emptyFormModel(),
+      emails: [{ key: newId(), type: '', address: '  spaced@example.test  ' }],
+      phones: [{ key: newId(), type: '', number: '  +49 123 456  ' }],
+      notes: [{ key: newId(), text: '   Note with an edge   ' }],
+    }
+    const card = formToCard(form, seed, newId)
+    expect(Object.values(card.phones ?? {})[0]?.number).toBe('+49 123 456')
+    expect(Object.values(card.notes ?? {})[0]?.note).toBe('Note with an edge')
+    expect(Object.values(card.emails ?? {})[0]?.address).toBe('spaced@example.test')
   })
 })
 

@@ -29,6 +29,7 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
+import { isPlausibleEmail } from '../compose/address-validation'
 import { type ContactCardRow, useReplica } from '../sync'
 import { Button, IconButton, SectionLabel, Select, TextInput } from '../ui'
 import {
@@ -80,12 +81,40 @@ const EMAIL_TYPE_OPTIONS = ['work', 'private', ''] as const
 const PHONE_TYPE_OPTIONS = ['mobile', 'work', 'private', 'fax', 'pager', ''] as const
 const ADDRESS_TYPE_OPTIONS = ['work', 'private', ''] as const
 
-function replaceAt<T>(items: readonly T[], index: number, partial: Partial<T>): T[] {
-  return items.map((item, i) => (i === index ? { ...item, ...partial } : item))
+/**
+ * Row edits address a row by its KEY, never by its render-time index.
+ *
+ * The index is a property of the last paint, and a handler can outlive it: double-clicking the X on
+ * the first of three email rows removed two, because the second click carried the index the first
+ * click had just vacated and the row that had slid up took the hit. Every row already owns a stable
+ * JSContact map key (that is the point of `contact-card-mapping`), so the handlers use it.
+ */
+interface KeyedRow {
+  readonly key: Id
 }
 
-function removeAt<T>(items: readonly T[], index: number): T[] {
-  return items.filter((_, i) => i !== index)
+function replaceByKey<T extends KeyedRow>(items: readonly T[], key: Id, partial: Partial<T>): T[] {
+  return items.map((item) => (item.key === key ? { ...item, ...partial } : item))
+}
+
+function removeByKey<T extends KeyedRow>(items: readonly T[], key: Id): T[] {
+  return items.filter((item) => item.key !== key)
+}
+
+/**
+ * The accessible name of one row's control.
+ *
+ * Numbered only when the section HAS several rows: with a single email row "Email" is exact and
+ * "Email 1" is noise, while with three of them one name shared by three text boxes leaves a screen
+ * reader user unable to say which one they are in — the same for the type pickers and the X buttons.
+ */
+function rowName(
+  t: ReturnType<typeof useTranslation>['t'],
+  field: string,
+  index: number,
+  total: number,
+): string {
+  return total > 1 ? t('contacts.form.a11y.numbered', { field, index: index + 1 }) : field
 }
 
 export function ContactForm(props: ContactFormProps) {
@@ -143,10 +172,40 @@ export function ContactForm(props: ContactFormProps) {
     birthday: useId(),
   }
 
+  /*
+   * Email addresses the last Save attempt refused, by row key.
+   *
+   * The form used to have NO validation of its own and relied on the browser's `type="email"`
+   * constraint. That is a silent stop: Chrome refuses the submit, shows a bubble in the browser's UI
+   * language, and the app itself says nothing, sets no `aria-invalid` and moves no focus — from the
+   * app's side the Save button simply did nothing. Worse, the native constraint rejects perfectly
+   * real addresses: `björn.müller@exämple.de` is a valid EAI address (RFC 6531) and an address book
+   * must be able to hold one.
+   *
+   * So the form validates itself (`noValidate` below turns the native pass off) with the SAME check
+   * the compose recipient fields use — deliberately lenient, and Unicode-safe.
+   */
+  const [invalidEmails, setInvalidEmails] = useState<ReadonlySet<Id>>(() => new Set())
+  const fieldPrefix = useId()
+  const valueDomId = useCallback((key: Id) => `${fieldPrefix}-value-${key}`, [fieldPrefix])
+  const errorDomId = useCallback((key: Id) => `${fieldPrefix}-error-${key}`, [fieldPrefix])
+
   const handleSubmit = useCallback(
     (event: FormEvent): void => {
       event.preventDefault()
       if (!canWrite) return
+      // A blank row is not an error — it is simply dropped by the mapping. Only something the user
+      // actually typed can be wrong, and then the form says so, in place, and puts the caret there.
+      const rejected = draft.emails.filter(
+        (entry) => entry.address.trim() !== '' && !isPlausibleEmail(entry.address),
+      )
+      const firstRejected = rejected[0]
+      if (firstRejected !== undefined) {
+        setInvalidEmails(new Set(rejected.map((entry) => entry.key)))
+        document.getElementById(valueDomId(firstRejected.key))?.focus()
+        return
+      }
+      setInvalidEmails(new Set())
       const base: ContactCard = baseRef.current ?? {
         '@type': 'Card',
         version: '1.0',
@@ -169,7 +228,7 @@ export function ContactForm(props: ContactFormProps) {
       }
       onSubmit({ kind: 'update', cardId: current.id, patch })
     },
-    [canWrite, bookId, draft, mode, newId, onSubmit, onCancel],
+    [canWrite, bookId, draft, mode, newId, onSubmit, onCancel, valueDomId],
   )
 
   const hiddenSections = (['address', 'org', 'birthday', 'note', 'photo'] as const).filter(
@@ -180,6 +239,9 @@ export function ContactForm(props: ContactFormProps) {
     <form
       className={styles.form}
       aria-label={t(mode === 'create' ? 'contacts.form.newTitle' : 'contacts.form.editTitle')}
+      // The app validates, not the browser: see `invalidEmails` above. Without this the native pass
+      // runs first and blocks the submit before `handleSubmit` is ever called.
+      noValidate
       onSubmit={handleSubmit}
     >
       <div className={styles.formToolbar}>
@@ -260,19 +322,29 @@ export function ContactForm(props: ContactFormProps) {
             typeValue={entry.type}
             typeOptions={EMAIL_TYPE_OPTIONS}
             value={entry.address}
-            valueLabel={t('contacts.form.sections.email')}
+            name={rowName(t, t('contacts.form.fieldNames.email'), index, draft.emails.length)}
             valueType="email"
-            removeLabel={t('contacts.form.removeEmail')}
+            valueId={valueDomId(entry.key)}
+            errorId={errorDomId(entry.key)}
+            {...(invalidEmails.has(entry.key) ? { error: t('contacts.form.invalidEmail') } : {})}
             onType={(type) =>
-              setDraft((p) => ({ ...p, emails: replaceAt(p.emails, index, { type }) }))
+              setDraft((p) => ({ ...p, emails: replaceByKey(p.emails, entry.key, { type }) }))
             }
-            onValue={(address) =>
+            onValue={(address) => {
+              // Editing a rejected row clears its complaint straight away — a message that outlives
+              // the mistake trains the reader to ignore messages.
+              setInvalidEmails((prev) => {
+                if (!prev.has(entry.key)) return prev
+                const next = new Set(prev)
+                next.delete(entry.key)
+                return next
+              })
               setDraft((p) => ({
                 ...p,
-                emails: replaceAt<EmailEntry>(p.emails, index, { address }),
+                emails: replaceByKey<EmailEntry>(p.emails, entry.key, { address }),
               }))
-            }
-            onRemove={() => setDraft((p) => ({ ...p, emails: removeAt(p.emails, index) }))}
+            }}
+            onRemove={() => setDraft((p) => ({ ...p, emails: removeByKey(p.emails, entry.key) }))}
           />
         ))}
         <AddRowButton
@@ -289,19 +361,20 @@ export function ContactForm(props: ContactFormProps) {
             typeValue={entry.type}
             typeOptions={PHONE_TYPE_OPTIONS}
             value={entry.number}
-            valueLabel={t('contacts.form.sections.phone')}
+            name={rowName(t, t('contacts.form.fieldNames.phone'), index, draft.phones.length)}
             valueType="tel"
-            removeLabel={t('contacts.form.removePhone')}
+            valueId={valueDomId(entry.key)}
+            errorId={errorDomId(entry.key)}
             onType={(type) =>
-              setDraft((p) => ({ ...p, phones: replaceAt(p.phones, index, { type }) }))
+              setDraft((p) => ({ ...p, phones: replaceByKey(p.phones, entry.key, { type }) }))
             }
             onValue={(number) =>
               setDraft((p) => ({
                 ...p,
-                phones: replaceAt<PhoneEntry>(p.phones, index, { number }),
+                phones: replaceByKey<PhoneEntry>(p.phones, entry.key, { number }),
               }))
             }
-            onRemove={() => setDraft((p) => ({ ...p, phones: removeAt(p.phones, index) }))}
+            onRemove={() => setDraft((p) => ({ ...p, phones: removeByKey(p.phones, entry.key) }))}
           />
         ))}
         <AddRowButton
@@ -317,13 +390,22 @@ export function ContactForm(props: ContactFormProps) {
             <AddressRow
               key={entry.key}
               entry={entry}
+              name={rowName(
+                t,
+                t('contacts.form.fieldNames.address'),
+                index,
+                draft.addresses.length,
+              )}
+              qualify={draft.addresses.length > 1}
               onChange={(partial) =>
                 setDraft((p) => ({
                   ...p,
-                  addresses: replaceAt<AddressEntry>(p.addresses, index, partial),
+                  addresses: replaceByKey<AddressEntry>(p.addresses, entry.key, partial),
                 }))
               }
-              onRemove={() => setDraft((p) => ({ ...p, addresses: removeAt(p.addresses, index) }))}
+              onRemove={() =>
+                setDraft((p) => ({ ...p, addresses: removeByKey(p.addresses, entry.key) }))
+              }
             />
           ))}
           <AddRowButton
@@ -374,30 +456,35 @@ export function ContactForm(props: ContactFormProps) {
       {/* ── Optional: Notes ── */}
       {revealed.has('note') && (
         <FormSection title={t('contacts.form.sections.note')}>
-          {draft.notes.map((entry, index) => (
-            <div key={entry.key} className={styles.noteRow}>
-              <textarea
-                className={styles.noteInput}
-                aria-label={t('contacts.form.sections.note')}
-                value={entry.text}
-                onChange={(e) =>
-                  setDraft((p) => ({
-                    ...p,
-                    notes: replaceAt(p.notes, index, { text: e.target.value }),
-                  }))
-                }
-              />
-              <IconButton
-                label={t('contacts.form.removeNote')}
-                variant="ghost"
-                size="sm"
-                type="button"
-                onClick={() => setDraft((p) => ({ ...p, notes: removeAt(p.notes, index) }))}
-              >
-                <X />
-              </IconButton>
-            </div>
-          ))}
+          {draft.notes.map((entry, index) => {
+            const name = rowName(t, t('contacts.form.fieldNames.note'), index, draft.notes.length)
+            return (
+              <div key={entry.key} className={styles.noteRow}>
+                <textarea
+                  className={styles.noteInput}
+                  aria-label={name}
+                  value={entry.text}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      notes: replaceByKey(p.notes, entry.key, { text: e.target.value }),
+                    }))
+                  }
+                />
+                <IconButton
+                  label={t('contacts.form.a11y.remove', { field: name })}
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() =>
+                    setDraft((p) => ({ ...p, notes: removeByKey(p.notes, entry.key) }))
+                  }
+                >
+                  <X />
+                </IconButton>
+              </div>
+            )
+          })}
           <AddRowButton
             label={t('contacts.form.addNote')}
             onClick={() => setDraft((p) => ({ ...p, notes: [...p.notes, newNoteEntry(newId)] }))}
@@ -485,34 +572,58 @@ interface CommRowProps {
   readonly typeValue: string
   readonly typeOptions: readonly string[]
   readonly value: string
-  readonly valueLabel: string
+  /** What this row is called — "Email", or "Email 2" once the section has more than one. */
+  readonly name: string
   readonly valueType: 'email' | 'tel'
-  readonly removeLabel: string
+  /** DOM id of the value field, so a rejected row can be focused by the submit handler. */
+  readonly valueId: string
+  readonly errorId: string
+  /** The reason this row was refused, if it was. Shown in place and tied to the field. */
+  readonly error?: string | undefined
   readonly onType: (type: string) => void
   readonly onValue: (value: string) => void
   readonly onRemove: () => void
 }
 
 function CommRow(props: CommRowProps) {
+  const { t } = useTranslation()
+  const invalid = props.error !== undefined
   return (
-    <div className={styles.commRow}>
-      <TypeSelect value={props.typeValue} options={props.typeOptions} onChange={props.onType} />
-      <TextInput
-        className={styles.commValue}
-        type={props.valueType}
-        aria-label={props.valueLabel}
-        value={props.value}
-        onChange={(e) => props.onValue(e.target.value)}
-      />
-      <IconButton
-        label={props.removeLabel}
-        variant="ghost"
-        size="sm"
-        type="button"
-        onClick={props.onRemove}
-      >
-        <X />
-      </IconButton>
+    <div className={styles.commField}>
+      <div className={styles.commRow}>
+        <TypeSelect
+          value={props.typeValue}
+          options={props.typeOptions}
+          label={t('contacts.form.a11y.type', { field: props.name })}
+          onChange={props.onType}
+        />
+        <TextInput
+          id={props.valueId}
+          className={styles.commValue}
+          type={props.valueType}
+          aria-label={props.name}
+          {...(invalid ? { invalid: true, 'aria-describedby': props.errorId } : {})}
+          value={props.value}
+          onChange={(e) => props.onValue(e.target.value)}
+        />
+        <IconButton
+          label={t('contacts.form.a11y.remove', { field: props.name })}
+          variant="ghost"
+          size="sm"
+          type="button"
+          onClick={props.onRemove}
+        >
+          <X />
+        </IconButton>
+      </div>
+      {/* Named by `aria-describedby` rather than announced as an alert: the submit handler moves
+          focus to the field, so the reason is read out on arrival — once, in context, and with the
+          caret already where the fix has to happen. */}
+      {invalid && (
+        <p id={props.errorId} className={styles.formNotice}>
+          {props.error}
+        </p>
+      )}
     </div>
   )
 }
@@ -520,51 +631,70 @@ function CommRow(props: CommRowProps) {
 function TypeSelect({
   value,
   options,
+  label,
   onChange,
 }: {
   value: string
   options: readonly string[]
+  /** Names the picker after the row it belongs to — "Type of Email 2", never a bare "Type". */
+  label: string
   onChange: (value: string) => void
 }) {
   const { t } = useTranslation()
   // Keep an unusual stored type (e.g. a vCard `home`) selectable so a round-trip never drops it.
   const all = options.includes(value) ? options : [...options, value]
   return (
-    <Select
-      className={styles.commType}
-      aria-label={t('contacts.form.type')}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {all.map((option) => (
-        <option key={option} value={option}>
-          {t(`contacts.labels.${option === '' ? 'other' : option}`, { defaultValue: option })}
-        </option>
-      ))}
-    </Select>
+    // The width lives on this wrapper, not on the `Select`: `Select`'s `className` lands on the inner
+    // `<select>`, while the flex child of the row is the wrapper `Select` renders around it (which is
+    // `inline-size: 100%`). See the note on `.commType`. Sizing the shared component from outside
+    // would mean changing it for its eight other callers, so the box that needs the width gets one.
+    <div className={styles.commType}>
+      <Select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+        {all.map((option) => (
+          <option key={option} value={option}>
+            {t(`contacts.labels.${option === '' ? 'other' : option}`, { defaultValue: option })}
+          </option>
+        ))}
+      </Select>
+    </div>
   )
 }
 
 function AddressRow({
   entry,
+  name,
+  qualify,
   onChange,
   onRemove,
 }: {
   entry: AddressEntry
+  /** "Address", or "Address 2" once there is more than one. */
+  name: string
+  /** True when several addresses are on screen and the inner fields need telling apart. */
+  qualify: boolean
   onChange: (partial: Partial<AddressEntry>) => void
   onRemove: () => void
 }) {
   const { t } = useTranslation()
+  /*
+   * "Street", "City", … are exact inside ONE address card and ambiguous across two. They are
+   * qualified by the card rather than numbered: German "Straße 2" reads as a house number, while
+   * "Straße (Adresse 2)" says what it means. The plain label is kept in the single-address case, so
+   * the common form is not made noisier to solve a problem it does not have.
+   */
+  const fieldLabel = (label: string): string =>
+    qualify ? t('contacts.form.a11y.inGroup', { field: label, group: name }) : label
   return (
     <div className={styles.addressRow}>
       <div className={styles.addressHead}>
         <TypeSelect
           value={entry.type}
           options={ADDRESS_TYPE_OPTIONS}
+          label={t('contacts.form.a11y.type', { field: name })}
           onChange={(type) => onChange({ type })}
         />
         <IconButton
-          label={t('contacts.form.removeAddress')}
+          label={t('contacts.form.a11y.remove', { field: name })}
           variant="ghost"
           size="sm"
           type="button"
@@ -574,7 +704,7 @@ function AddressRow({
         </IconButton>
       </div>
       <TextInput
-        aria-label={t('contacts.form.street')}
+        aria-label={fieldLabel(t('contacts.form.street'))}
         placeholder={t('contacts.form.street')}
         autoComplete="address-line1"
         value={entry.street}
@@ -582,14 +712,14 @@ function AddressRow({
       />
       <div className={styles.addressGrid}>
         <TextInput
-          aria-label={t('contacts.form.postcode')}
+          aria-label={fieldLabel(t('contacts.form.postcode'))}
           placeholder={t('contacts.form.postcode')}
           autoComplete="postal-code"
           value={entry.postcode}
           onChange={(e) => onChange({ postcode: e.target.value })}
         />
         <TextInput
-          aria-label={t('contacts.form.city')}
+          aria-label={fieldLabel(t('contacts.form.city'))}
           placeholder={t('contacts.form.city')}
           autoComplete="address-level2"
           value={entry.locality}
@@ -598,14 +728,14 @@ function AddressRow({
       </div>
       <div className={styles.addressGrid}>
         <TextInput
-          aria-label={t('contacts.form.region')}
+          aria-label={fieldLabel(t('contacts.form.region'))}
           placeholder={t('contacts.form.region')}
           autoComplete="address-level1"
           value={entry.region}
           onChange={(e) => onChange({ region: e.target.value })}
         />
         <TextInput
-          aria-label={t('contacts.form.country')}
+          aria-label={fieldLabel(t('contacts.form.country'))}
           placeholder={t('contacts.form.country')}
           autoComplete="country-name"
           value={entry.country}

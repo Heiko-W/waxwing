@@ -308,3 +308,35 @@ describe('focus survives a minimize (M4.7, WCAG 2.4.3)', () => {
     other.remove()
   })
 })
+
+describe('what may be squeezed when the header grows', () => {
+  /** The deepest element that contains both, i.e. the group they actually belong to. */
+  function commonAncestor(a: Element, b: Element): Element {
+    let node: Element | null = a
+    while (node !== null && !node.contains(b)) node = node.parentElement
+    if (node === null) throw new Error('no common ancestor')
+    return node
+  }
+
+  it('keeps the addressing fields in a group the message body is not part of (M4)', () => {
+    /*
+     * The structural half of the fix. While From, To/Cc/Bcc, Subject and the attachment strip were
+     * siblings of the editor inside a fixed-height window, every row that appeared took its space
+     * out of the one flexible item — measured at 448x512 with two To recipients, one Cc and one
+     * attachment: 62 visible pixels of body for 171 of text, toolbar scrolled out of sight.
+     *
+     * The CSS gives that group its own scrolling and the editor a floor; neither is expressible
+     * here (jsdom computes no layout). What IS checkable is the arrangement both depend on: if the
+     * editor ever lands back inside this group, or the group dissolves, the CSS silently stops
+     * meaning anything.
+     */
+    openWindow('docked')
+
+    const to = screen.getAllByLabelText('To')[0] as HTMLElement
+    const subject = screen.getByLabelText('Subject')
+    const editor = screen.getByLabelText('Message body')
+
+    const addressing = commonAncestor(to, subject)
+    expect(addressing.contains(editor)).toBe(false)
+  })
+})

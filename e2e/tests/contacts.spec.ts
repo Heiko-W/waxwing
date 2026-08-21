@@ -112,6 +112,41 @@ test.describe('M4.2 contacts suite', () => {
     // The card is left for `afterAll`/next `beforeEach` (`resetContacts`) to destroy.
   })
 
+  test('opens the saved contact, and opens it again from All Contacts', async ({ page }) => {
+    // Two defects the create test above walks straight past because it asserts on the SERVER:
+    //  - the save navigated to the CREATION id, so the detail pane read "This contact is not
+    //    available." over a contact that had just been created (N3);
+    //  - and in "All Contacts" — the default contacts route, and the only one a phone starts in —
+    //    a row click built `/contacts`, the page it was already on, so nothing ever opened (N1).
+    const token = contactsToken('o')
+    await login(page, CREDENTIALS.alice)
+    await openContacts(page)
+
+    await page.getByRole('button', { name: 'New contact', exact: true }).click()
+    await expect(page.getByLabel('First name', { exact: true })).toBeVisible({ timeout: 15_000 })
+    await page.getByLabel('First name', { exact: true }).fill('Wax')
+    await page.getByLabel('Last name', { exact: true }).fill(token)
+    await page.getByRole('textbox', { name: 'Email', exact: true }).fill(`${token}@${DOMAIN}`)
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+    // The contact the save opened is the contact that was saved.
+    const heading = page.getByRole('heading', { name: new RegExp(escapeRe(token)) })
+    await expect(heading).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText('This contact is not available.')).toHaveCount(0)
+
+    // Now the same card from "All Contacts", where there is no book in the URL to hang it off.
+    await page
+      .getByRole('navigation', { name: 'Address books' })
+      .getByRole('link', { name: 'All Contacts', exact: true })
+      .click()
+    const row = page.getByRole('option', { name: new RegExp(escapeRe(token)) })
+    await expect(row).toBeVisible({ timeout: 20_000 })
+    await row.click()
+    await expect(row).toHaveAttribute('aria-selected', 'true')
+    await expect(heading).toBeVisible()
+    // The card is left for `resetContacts` (`wwcon` prefix) to destroy.
+  })
+
   test('adds a member to a new group that round-trips (FR-CON-04)', async ({ page }) => {
     const memberToken = contactsToken('m')
     const groupToken = contactsToken('g')

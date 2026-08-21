@@ -6,6 +6,7 @@ import { contactCard } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
 import type { PhotoScaler, PhotoUploader } from './contact-photo-upload'
+import styles from './contacts.module.css'
 
 // The photo preview goes through the authenticated blob path — out of scope here. With it stubbed the
 // preview falls back to the local objectURL created on pick.
@@ -93,6 +94,30 @@ describe('ContactForm progressive disclosure (FR-CON-02)', () => {
       await user.click(screen.getByRole('button', { name: button }))
       expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
     }
+  })
+})
+
+describe('ContactForm comm-row layout', () => {
+  /**
+   * The row is `[type] [value] [x]` and the type is the only fixed-width part of it, so whichever box
+   * carries that width decides whether the value field gets a row or a sliver. `Select` forwards
+   * `className` to the INNER `<select>` and lays out through a wrapper of its own — so the width used
+   * to be set on a box that is not the flex child, the wrapper claimed the whole row at its
+   * `inline-size: 100%`, and the email/phone field measured 26px in every viewport.
+   *
+   * Asserted on the DOM rather than on the stylesheet because that is where the mistake was: the rule
+   * itself was always right, it was attached to the wrong element.
+   */
+  it('puts the fixed width on the flex child of the row, not on the inner select', () => {
+    renderForm()
+    const select = screen.getAllByRole('combobox')[0] as HTMLElement
+    expect(select.tagName).toBe('SELECT')
+    // `Select` renders <div wrapper><select/><chevron/></div>; the sized box is outside that wrapper.
+    expect(select).not.toHaveClass(styles.commType as string)
+    expect(select.parentElement).not.toHaveClass(styles.commType as string)
+    expect(select.parentElement?.parentElement).toHaveClass(styles.commType as string)
+    // …and that box is a direct child of the row, so `flex: none` has something to act on.
+    expect(select.parentElement?.parentElement?.parentElement).toHaveClass(styles.commRow as string)
   })
 })
 
@@ -195,6 +220,123 @@ describe('ContactForm submit', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSubmit).not.toHaveBeenCalled()
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ContactForm row identity (N8)', () => {
+  /** Fill the email section with `values`, adding rows as needed. Returns the row text boxes. */
+  async function fillEmails(
+    user: ReturnType<typeof userEvent.setup>,
+    values: readonly string[],
+  ): Promise<void> {
+    for (let index = 1; index < values.length; index += 1) {
+      await user.click(screen.getByRole('button', { name: 'Add email' }))
+    }
+    for (const [index, value] of values.entries()) {
+      const field = screen.getByRole('textbox', { name: `Email ${String(index + 1)}` })
+      await user.clear(field)
+      await user.type(field, value)
+    }
+  }
+
+  it('removes exactly the row whose X was pressed, twice in a row', async () => {
+    // `removeAt` took the index the row had at RENDER time. The second click of a double-click
+    // therefore carried the index the first click had just vacated, and the row that slid up into
+    // it was removed too: three addresses became one.
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+    await fillEmails(user, ['a@example.test', 'b@example.test', 'c@example.test'])
+
+    await user.dblClick(screen.getByRole('button', { name: 'Remove Email 1' }))
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.emails ?? {}).map((entry) => entry.address)).toEqual([
+      'b@example.test',
+      'c@example.test',
+    ])
+  })
+
+  it('names each row of a multi-row section distinctly (N14)', async () => {
+    const user = userEvent.setup()
+    renderForm()
+    await fillEmails(user, ['a@example.test', 'b@example.test'])
+    // Three controls per row, none of them sharing a name with its neighbour.
+    for (const name of [
+      'Email 1',
+      'Email 2',
+      'Type of Email 1',
+      'Type of Email 2',
+      'Remove Email 1',
+      'Remove Email 2',
+    ]) {
+      expect(screen.getByLabelText(name)).toBeInTheDocument()
+    }
+  })
+
+  it('leaves a single row unnumbered — the name is already exact', () => {
+    renderForm()
+    expect(screen.getByRole('textbox', { name: 'Email' })).toBeInTheDocument()
+    // …but the two type pickers on screen (email and phone) still say which is which.
+    expect(screen.getByLabelText('Type of Email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Type of Phone')).toBeInTheDocument()
+  })
+})
+
+describe('ContactForm email validation (N9)', () => {
+  it('refuses an unusable address with a reason, the caret and no submit', async () => {
+    // The browser used to refuse this submit on its own: no JMAP call, no message from the app, no
+    // `aria-invalid`, no moved focus — pressing Save just did nothing.
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+    const field = screen.getByRole('textbox', { name: 'Email' })
+    await user.type(field, 'not-an-address')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveFocus()
+    const message = screen.getByText('Enter an email address like name@example.com.')
+    expect(field).toHaveAttribute('aria-describedby', message.id)
+  })
+
+  it('clears the complaint as soon as the row is edited, and then saves', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+    const field = screen.getByRole('textbox', { name: 'Email' })
+    await user.type(field, 'not-an-address')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+
+    await user.clear(field)
+    expect(field).not.toHaveAttribute('aria-invalid')
+    expect(
+      screen.queryByText('Enter an email address like name@example.com.'),
+    ).not.toBeInTheDocument()
+
+    await user.type(field, 'fine@example.test')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('accepts a non-ASCII address — an address book has to be able to hold one', async () => {
+    // `björn.müller@exämple.de` is a valid internationalised address (RFC 6531) and the native
+    // `type="email"` constraint rejects it. The app's own check does not.
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+    await user.type(screen.getByRole('textbox', { name: 'Email' }), 'björn.müller@exämple.de')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.emails ?? {})[0]?.address).toBe('björn.müller@exämple.de')
+  })
+
+  it('lets an empty row through — a blank row is not a mistake', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+    await user.type(screen.getByLabelText('First name'), 'Bob')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 })
 

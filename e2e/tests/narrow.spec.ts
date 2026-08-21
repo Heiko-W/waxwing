@@ -205,3 +205,98 @@ test('the composer offers no controls that do nothing here', async ({ page }) =>
 
   await noOverflow(page, 'composing')
 })
+
+/**
+ * Every settings section is reachable on a phone.
+ *
+ * The rail IS the screen here, and it is longer than 844px: fourteen destinations behind five group
+ * captions. It carried `flex: 0 0 auto` from the two-column layout, where that pins its WIDTH —
+ * above the panel it pinned its HEIGHT instead, so the box grew to fit its content, its own
+ * `overflow-y: auto` had nothing to scroll, and `.page { overflow: hidden }` cut 146px off without
+ * a scrollbar anywhere. "Offline & storage", "Server" and "About" were not below the fold; they
+ * were outside the page box — `elementFromPoint` returned null over all three, and wheel events of
+ * 300/600/1200/3000px moved nothing at all.
+ *
+ * The check is the one the reader would make: get to the bottom, then tap the last row.
+ */
+test('the settings list scrolls to its last section, and that section opens', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible()
+
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  const last = rail.getByRole('link', { name: 'About', exact: true })
+
+  // It is in the DOM either way; the question is whether the viewport can ever contain it.
+  await last.scrollIntoViewIfNeeded()
+  await expect(last).toBeInViewport()
+
+  // …and whether it is the element actually under that point, rather than something painted over
+  // it. `click()` fails on an unhittable target, which is precisely the reported symptom.
+  await last.click()
+  await expect(page.getByRole('heading', { name: 'About', level: 1 })).toBeVisible()
+
+  await noOverflow(page, 'settings — a section on a phone')
+})
+
+/**
+ * Opening a section must not scroll its own way out off the top (G5).
+ *
+ * Focus follows the navigation into the `<section>`, which sits BELOW the "‹ Settings" link inside
+ * the scrolling panel — so a plain `focus()` scrolled the panel to reveal it and pushed the link
+ * out of the box. Measured at `detail.scrollTop: 60` for every section taller than the panel
+ * (Vacation responder, Server), and 0 for the ones that fit. On a phone that link is the only route
+ * back to the section list this screen offers, so the fix for "focus is nowhere" had cost the
+ * screen its exit. jsdom lays nothing out and can only see the `preventScroll` option; this sees
+ * the thing itself.
+ */
+test('a tall settings section still shows the way back to the list', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  await rail.getByRole('link', { name: 'Server', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Server', level: 1 })).toBeVisible()
+
+  // The rail is unmounted on a phone once a section is open, so the only remaining link named
+  // "Settings" inside <main> is the back link. In the viewport, not merely in the DOM: it was
+  // always in the DOM.
+  const back = page.locator('#main').getByRole('link', { name: 'Settings', exact: true })
+  await expect(back).toBeInViewport()
+})
+
+/**
+ * The section heading is set like the page title it now is (G6).
+ *
+ * The phone override lived inside the layout `@media` block two hundred lines ABOVE the base
+ * `.sectionTitle` rule. A media query does not raise specificity and both are one class, so the
+ * later rule won: every section opened at 18px, barely above the 17px labels under it, and the
+ * intended 28px was dead code. A stylesheet test can see the ORDER; only a browser can see the
+ * size, which is why this is here as well.
+ */
+test('a settings section on a phone opens at the size of a page title', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  const list = page.getByRole('heading', { name: 'Settings', level: 1 })
+  const listSize = await list.evaluate((el) => getComputedStyle(el).fontSize)
+
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  await rail.getByRole('link', { name: 'Compose', exact: true }).click()
+  const section = page.getByRole('heading', { name: 'Compose', level: 1 })
+  const sectionSize = await section.evaluate((el) => getComputedStyle(el).fontSize)
+
+  // The claim is not "28px" — it is that both screens begin with a title, set the same way. That
+  // survives a change to the type scale; a literal would have to be edited with it.
+  expect(sectionSize, 'the detail screen is a screen and opens with its title').toBe(listSize)
+})
+
+/**
+ * The phone's detail screen is a screen, and a screen begins at heading level 1.
+ *
+ * Opening a section REPLACES the rail, and the page's only `<h1>` — "Settings" — went with it. All
+ * fourteen sections therefore started at level 2 with no level 1 anywhere on the page.
+ */
+test('a settings section on a phone has exactly one h1: its own name', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  const rail = page.getByRole('navigation', { name: 'Settings' })
+  await rail.getByRole('link', { name: 'Compose', exact: true }).click()
+
+  const levelOnes = await page.getByRole('heading', { level: 1 }).allTextContents()
+  expect(levelOnes, 'the open section names the screen').toEqual(['Compose'])
+})

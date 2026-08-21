@@ -105,9 +105,13 @@ describe('which files offer a preview', () => {
     listed = [node({ id: '1', name: 'archive.zip', type: 'application/zip' })]
     renderPage()
     await showing('archive.zip')
-    // Only Download and Delete remain — no Preview.
+    // Rename, Download and Delete remain — no Preview.
     const labels = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
-    expect(labels.filter((label) => label?.includes('archive.zip'))).toHaveLength(2)
+    expect(labels.filter((label) => label?.includes('archive.zip'))).toEqual([
+      'Rename archive.zip',
+      'Download archive.zip',
+      'Delete archive.zip',
+    ])
   })
 
   it('offers none for a directory', async () => {
@@ -151,11 +155,11 @@ describe('the surface a preview is rendered in', () => {
     expect(container.querySelector('iframe')).toBeNull()
   })
 
-  it('puts a PDF in a frame that is sandboxed to nothing', async () => {
-    listed = [node({ id: '1', name: 'report.pdf', type: 'application/pdf' })]
+  it('puts plain text in a frame that is sandboxed to nothing', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
     const { container } = renderPage()
-    await showing('report.pdf')
-    await userEvent.click(screen.getByRole('button', { name: /Preview report\.pdf/i }))
+    await showing('notes.txt')
+    await userEvent.click(screen.getByRole('button', { name: /Preview notes\.txt/i }))
 
     const frame = await waitFor(() => {
       const found = container.querySelector('iframe')
@@ -165,6 +169,19 @@ describe('the surface a preview is rendered in', () => {
     // Empty, not absent: `sandbox=""` denies same-origin, and a blob: URL carries this app's origin.
     expect(frame.getAttribute('sandbox')).toBe('')
     expect(frame.getAttribute('src')).toBe(created[0])
+  })
+
+  it('offers a PDF no preview at all rather than an empty frame', async () => {
+    // The frame it would need is one this app may not open — `sandbox=""` stops Chromium's viewer
+    // dead, and the only tokens that revive it hand a blob: URL this app's own origin. Download is
+    // the honest offer, and it is the button next to where this one used to be.
+    listed = [node({ id: '1', name: 'report.pdf', type: 'application/pdf' })]
+    const { container } = renderPage()
+    await showing('report.pdf')
+
+    expect(screen.queryByRole('button', { name: /Preview report\.pdf/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download report\.pdf/i })).toBeInTheDocument()
+    expect(container.querySelector('iframe')).toBeNull()
   })
 
   it('reads the type through the policy, parameters and all', async () => {
@@ -224,6 +241,112 @@ describe('opening and closing', () => {
   })
 })
 
+/**
+ * Renaming (M1).
+ *
+ * `filesClient.rename()` has existed since M5.7 and shipped with no caller outside its own unit
+ * test: the file header listed "rename" among the seven things this screen does, and the row
+ * offered view, share, download and delete. It went unnoticed because the whole screen was dead
+ * until the M1 fix — a missing control on a broken screen looks like the broken screen.
+ */
+describe('renaming a node', () => {
+  it('offers the control, and sends the id and the new name', async () => {
+    const renamed: [string, string][] = []
+    const withRename: FilesClient = {
+      ...client,
+      rename: async (id, name) => {
+        renamed.push([id, name])
+      },
+    }
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    render(
+      <ToastProvider>
+        <FilesPage client={withRename} />
+      </ToastProvider>,
+    )
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
+
+    // Opened with the current name, not empty: a rename is far more often an edit of what is there
+    // than a replacement of it, and an empty field makes the reader retype what they can see.
+    const field = await screen.findByLabelText('New name')
+    expect(field).toHaveValue('notes.txt')
+
+    await userEvent.clear(field)
+    await userEvent.type(field, 'minutes.txt')
+    await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
+
+    await waitFor(() => expect(renamed).toEqual([['1', 'minutes.txt']]))
+  })
+
+  it('does not offer it where the server says the node may not be renamed', async () => {
+    // Gated on the record's own flag, like delete is: the server puts `mayRename` there precisely
+    // so a client does not have to offer a failure and then explain it.
+    listed = [
+      node({
+        id: '1',
+        name: 'shared-with-me.txt',
+        type: 'text/plain',
+        myRights: {
+          mayRead: true,
+          mayAddChildren: false,
+          mayRename: false,
+          mayDelete: false,
+          mayModifyContent: false,
+          mayShare: false,
+        },
+      }),
+    ]
+    renderPage()
+    await showing('shared-with-me.txt')
+
+    expect(screen.queryByRole('button', { name: /^Rename/ })).not.toBeInTheDocument()
+  })
+
+  it('will not spend a round trip on a name that has not changed', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
+    await screen.findByLabelText('New name')
+
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled()
+  })
+})
+
+describe('a write whose reload does not come back', () => {
+  it('still says the upload was saved', async () => {
+    // The measured shape of the outage: the listing is refused, the upload is not. The screen kept
+    // showing "could not be loaded" and said nothing at all about the file that had just landed on
+    // the server — the user uploaded into a void. A failed refresh is not a failed write.
+    const uploaded: string[] = []
+    const failing: FilesClient = {
+      ...client,
+      list: async () => {
+        throw new Error('400 notRequest')
+      },
+      upload: async (file) => {
+        uploaded.push(file.name)
+        return node({ id: '9', name: file.name })
+      },
+    }
+    const { container } = render(
+      <ToastProvider>
+        <FilesPage client={failing} />
+      </ToastProvider>,
+    )
+    await screen.findByText('The files could not be loaded.')
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['bytes'], 'note.txt', { type: 'text/plain' }))
+
+    expect(uploaded).toEqual(['note.txt'])
+    expect(await screen.findByText(/could not be reloaded/i)).toBeInTheDocument()
+  })
+})
+
 describe('accessibility', () => {
   it('states whether the preview is open, and has no violations with one open', async () => {
     listed = [node({ id: '1', name: 'photo.png', type: 'image/png' })]
@@ -239,5 +362,16 @@ describe('accessibility', () => {
       'true',
     )
     await expectNoA11yViolations(container)
+  })
+
+  it('has no violations with the rename dialog open', async () => {
+    // Scanned against document.body, not the RTL container: the dialog renders through a portal.
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
+    await screen.findByLabelText('New name')
+    await expectNoA11yViolations()
   })
 })

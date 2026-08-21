@@ -19,11 +19,14 @@ import type { FileNode } from '@waxwing/jmap'
 import { fileNodeNameProblem } from '@waxwing/jmap'
 import {
   Download,
+  Ellipsis,
   Eye,
   File as FileIcon,
   Folder,
   FolderOpen,
   FolderPlus,
+  type LucideIcon,
+  Pencil,
   Trash2,
   TriangleAlert,
   Upload,
@@ -38,7 +41,17 @@ import { useOnline } from '../app/use-online'
 import { formatBytes } from '../i18n/formatters'
 import { isPreviewable, previewSurface } from '../mail/preview-policy'
 import { safeDownloadName } from '../mail/safe-filename'
-import { Button, Dialog, EmptyState, IconButton, Spinner, TextInput, useToast } from '../ui'
+import {
+  Button,
+  Dialog,
+  EmptyState,
+  IconButton,
+  Menu,
+  type MenuItemSpec,
+  Spinner,
+  TextInput,
+  useToast,
+} from '../ui'
 import styles from './files.module.css'
 import {
   currentUserPrincipalId,
@@ -49,6 +62,7 @@ import {
 } from './files-client'
 import { ShareDialog } from './ShareDialog'
 import { mayShare } from './sharing'
+import { ROW_PART, useRowGeometry, visibleRowActions } from './use-row-actions'
 
 export interface FilesPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
@@ -67,11 +81,31 @@ interface Crumb {
   readonly name: string
 }
 
+/**
+ * One thing a row offers to do with its node — as data, so the row and its `⋯` menu can be built
+ * from the same array (N-1). Five conditional elements cannot be split between two surfaces without
+ * writing the conditions twice, and a menu that drifts out of step with the bar it relieves is how
+ * an action becomes unreachable.
+ */
+interface RowAction {
+  readonly id: string
+  /** Already names its node ("Rename report.txt") — the same string as button and as menu item. */
+  readonly label: string
+  readonly icon: LucideIcon
+  readonly disabled: boolean
+  readonly destructive: boolean
+  /** Whether the surface this toggles is open; `undefined` for everything that is not a toggle. */
+  readonly expanded: boolean | undefined
+  readonly onSelect: () => void
+}
+
 export default function FilesPage(props: FilesPageProps) {
   const { t } = useTranslation()
   const { toast } = useToast()
   const connected = useSessionOptional()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  /** The listing, measured once for every row it holds — see `use-row-actions.ts`. */
+  const listRef = useRef<HTMLUListElement>(null)
 
   const [path, setPath] = useState<Crumb[]>([{ id: null, name: '' }])
   const [nodes, setNodes] = useState<FileNode[] | null>(null)
@@ -92,6 +126,17 @@ export default function FilesPage(props: FilesPageProps) {
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
   // The node whose sharing is being edited, or null.
   const [sharing, setSharing] = useState<FileNode | null>(null)
+  /**
+   * The node being renamed, or null — plus the name being typed for it.
+   *
+   * A dialog rather than an editable cell in the row, for the same reason the folder name is one:
+   * a name is refused for reasons the reader cannot see coming (`fileNodeNameProblem` — a `:`, a
+   * name like `AUX`), and a refusal needs somewhere to be said that is not the list. The field
+   * opens with the CURRENT name selected, because renaming is far more often an edit of what is
+   * there than a replacement of it.
+   */
+  const [renaming, setRenaming] = useState<FileNode | null>(null)
+  const [renameTo, setRenameTo] = useState('')
   // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
   // preview neither downloads the file again nor leaks the superseded URL.
   const urlCacheRef = useRef(new Map<string, string>())
@@ -112,13 +157,16 @@ export default function FilesPage(props: FilesPageProps) {
 
   const here = path[path.length - 1]?.id ?? null
 
-  const load = useCallback(async () => {
-    if (client === null) return
+  /** Reloads this level. Returns whether the listing arrived — see {@link run}. */
+  const load = useCallback(async (): Promise<boolean> => {
+    if (client === null) return false
     try {
       setNodes(await client.list(here))
       setFailed(false)
+      return true
     } catch {
       setFailed(true)
+      return false
     }
   }, [client, here])
 
@@ -136,6 +184,10 @@ export default function FilesPage(props: FilesPageProps) {
     }
   }, [])
 
+  // Above the early return for the same reason, and keyed to `nodes`: a new listing brings new
+  // names and new sizes, and the size column is part of what the row's actions have to fit around.
+  const geometry = useRowGeometry(listRef, nodes)
+
   if (client === null) {
     return (
       <div className={styles.page}>
@@ -149,7 +201,16 @@ export default function FilesPage(props: FilesPageProps) {
     setBusy(true)
     try {
       await action()
-      await load()
+      /*
+       * A WRITE THAT SUCCEEDED IS NEVER SILENT, even when the listing behind it does not come back.
+       *
+       * The normal path needs no toast: the uploaded file appears in the list, which is the
+       * confirmation. But `load()` swallows its own failure into the error state, so while the
+       * root listing was broken an upload landed on the server, the screen kept showing "could not
+       * be loaded", and nothing anywhere said that the file was now there — the user uploaded into
+       * a void. The reload failing is not the write failing, and the two must not look the same.
+       */
+      if (!(await load())) toast({ tone: 'warning', title: t('files.savedButNotShown') })
     } catch (thrown) {
       const key =
         thrown instanceof FileSetError ? `files.error.${thrown.failure}` : 'files.error.rejected'
@@ -300,6 +361,47 @@ export default function FilesPage(props: FilesPageProps) {
         </Dialog>
       )}
 
+      {renaming !== null && (
+        <Dialog
+          open
+          title={t('files.rename.title', { name: renaming.name })}
+          onClose={() => setRenaming(null)}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setRenaming(null)}>
+                {t('files.cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                // Unchanged is not a rename: `FileNode/set` would accept the no-op and the reader
+                // would get a round trip and a reload for nothing.
+                disabled={busy || renameTo.trim() === '' || renameTo.trim() === renaming.name}
+                onClick={() => {
+                  const name = renameTo.trim()
+                  const { id } = renaming
+                  // The same client-side name check the upload and the new folder go through, and
+                  // for the same reason: the server refuses `:` and `AUX` for Windows-compatibility
+                  // reasons that have nothing to do with what the user meant. Left OPEN on a bad
+                  // name — the dialog is where the name is, so it is where the objection belongs.
+                  if (!checkName(name)) return
+                  setRenaming(null)
+                  void run(() => client.rename(id, name))
+                }}
+              >
+                {t('files.rename.confirm')}
+              </Button>
+            </>
+          }
+        >
+          <TextInput
+            autoFocus
+            value={renameTo}
+            aria-label={t('files.rename.label')}
+            onChange={(event) => setRenameTo(event.target.value)}
+          />
+        </Dialog>
+      )}
+
       {/* Failure and emptiness look different now. They used to share one class, so "the server
           said no" and "this folder has nothing in it" were the same grey sentence — and only the
           failure has anything the reader can do about it. */}
@@ -323,97 +425,159 @@ export default function FilesPage(props: FilesPageProps) {
       ) : nodes !== null && nodes.length === 0 ? (
         <EmptyState icon={FolderOpen} title={t('files.empty')} />
       ) : (
-        <ul className={styles.list}>
-          {(nodes ?? []).map((node) => (
-            <li key={node.id} className={styles.row}>
-              {node.nodeType === 'directory' ? (
-                <button
-                  type="button"
-                  className={styles.name}
-                  onClick={() => setPath([...path, { id: node.id, name: node.name }])}
-                >
-                  <Folder aria-hidden="true" className={styles.icon} />
-                  <span className={styles.nameText}>{node.name}</span>
-                </button>
-              ) : (
-                <span className={styles.name}>
-                  <FileIcon aria-hidden="true" className={styles.icon} />
-                  <span className={styles.nameText}>{node.name}</span>
+        <ul className={styles.list} ref={listRef}>
+          {(nodes ?? []).map((node) => {
+            const isDirectory = node.nodeType === 'directory'
+            /*
+             * Every action this node grants, in the order the row has always shown them: view,
+             * share, rename, download, delete. Built as data so the split below can hand the tail
+             * to the `⋯` menu — see the `RowAction` note and `use-row-actions.ts`.
+             */
+            const actions: RowAction[] = []
+            if (!isDirectory && node.myRights.mayRead && isPreviewable(node.type)) {
+              const open = preview?.id === node.id
+              actions.push({
+                id: 'preview',
+                label: open
+                  ? t('files.hidePreview', { name: node.name })
+                  : t('files.preview', { name: node.name }),
+                icon: Eye,
+                disabled: false,
+                destructive: false,
+                expanded: open,
+                onSelect: () => void togglePreview(node),
+              })
+            }
+            if (mayShare(node.myRights)) {
+              actions.push({
+                id: 'share',
+                label: t('files.share.open', { name: node.name }),
+                icon: UsersRound,
+                disabled: false,
+                destructive: false,
+                expanded: undefined,
+                onSelect: () => setSharing(node),
+              })
+            }
+            // Gated on the server's own `mayRename`, like delete is on `mayDelete`: the flag is on
+            // the record precisely so a client does not have to offer the failure. This was the one
+            // action of the seven this screen claims that had no control at all —
+            // `filesClient.rename()` existed and shipped with no caller outside its test.
+            if (node.myRights.mayRename) {
+              actions.push({
+                id: 'rename',
+                label: t('files.rename.open', { name: node.name }),
+                icon: Pencil,
+                disabled: busy,
+                destructive: false,
+                expanded: undefined,
+                onSelect: () => {
+                  setRenaming(node)
+                  setRenameTo(node.name)
+                },
+              })
+            }
+            if (!isDirectory && node.myRights.mayRead) {
+              actions.push({
+                id: 'download',
+                label: t('files.download', { name: node.name }),
+                icon: Download,
+                disabled: false,
+                destructive: false,
+                expanded: undefined,
+                onSelect: () => void download(node),
+              })
+            }
+            if (node.myRights.mayDelete) {
+              actions.push({
+                id: 'delete',
+                label: t('files.delete', { name: node.name }),
+                icon: Trash2,
+                disabled: busy,
+                destructive: true,
+                expanded: undefined,
+                onSelect: () => void run(() => client.destroy(node.id)),
+              })
+            }
+            const visible = visibleRowActions(geometry, actions.length)
+            const hidden: MenuItemSpec[] = actions.slice(visible).map((action) => ({
+              id: action.id,
+              label: action.label,
+              icon: action.icon,
+              disabled: action.disabled,
+              // Spread rather than `destructive={false}`: `MenuItemSpec` states it as optional and
+              // the repo compiles with `exactOptionalPropertyTypes`.
+              ...(action.destructive ? { destructive: true } : {}),
+              onSelect: action.onSelect,
+            }))
+
+            return (
+              <li key={node.id} className={styles.row} {...{ [ROW_PART.row]: '' }}>
+                {isDirectory ? (
+                  <button
+                    type="button"
+                    className={styles.name}
+                    {...{ [ROW_PART.name]: '' }}
+                    onClick={() => setPath([...path, { id: node.id, name: node.name }])}
+                  >
+                    <Folder aria-hidden="true" className={styles.icon} />
+                    <span className={styles.nameText}>{node.name}</span>
+                  </button>
+                ) : (
+                  <span className={styles.name} {...{ [ROW_PART.name]: '' }}>
+                    <FileIcon aria-hidden="true" className={styles.icon} />
+                    <span className={styles.nameText}>{node.name}</span>
+                  </span>
+                )}
+                <span className={styles.size} {...{ [ROW_PART.size]: '' }}>
+                  {isDirectory ? '' : formatBytes(node.size)}
                 </span>
-              )}
-              <span className={styles.size}>
-                {node.nodeType === 'directory' ? '' : formatBytes(node.size)}
-              </span>
-              <span className={styles.rowActions}>
-                {node.nodeType !== 'directory' &&
-                  node.myRights.mayRead &&
-                  isPreviewable(node.type) && (
+                <span className={styles.rowActions} {...{ [ROW_PART.actions]: '' }}>
+                  {actions.slice(0, visible).map((action) => (
                     <IconButton
-                      label={
-                        preview?.id === node.id
-                          ? t('files.hidePreview', { name: node.name })
-                          : t('files.preview', { name: node.name })
-                      }
+                      key={action.id}
+                      label={action.label}
                       variant="ghost"
                       size="sm"
-                      aria-expanded={preview?.id === node.id}
-                      onClick={() => void togglePreview(node)}
+                      disabled={action.disabled}
+                      aria-expanded={action.expanded}
+                      onClick={action.onSelect}
                     >
-                      <Eye />
+                      <action.icon />
                     </IconButton>
-                  )}
-                {mayShare(node.myRights) && (
-                  <IconButton
-                    label={t('files.share.open', { name: node.name })}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setSharing(node)}
-                  >
-                    <UsersRound />
-                  </IconButton>
-                )}
-                {node.nodeType !== 'directory' && node.myRights.mayRead && (
-                  <IconButton
-                    label={t('files.download', { name: node.name })}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void download(node)}
-                  >
-                    <Download />
-                  </IconButton>
-                )}
-                {node.myRights.mayDelete && (
-                  <IconButton
-                    label={t('files.delete', { name: node.name })}
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void run(() => client.destroy(node.id))}
-                  >
-                    <Trash2 />
-                  </IconButton>
-                )}
-              </span>
-              {preview?.id === node.id && (
-                <div className={styles.preview}>
-                  {previewSurface(preview.type) === 'image' ? (
-                    // A blob: URL for the file just downloaded — no second network fetch, and no
-                    // `<img src={downloadUrl}>`, which would send the bytes without our credentials.
-                    <img src={preview.url} alt={node.name} className={styles.previewImage} />
-                  ) : (
-                    // `sandbox=""` denies everything, same-origin included: a blob: URL carries this
-                    // app's origin, and taking it away is the whole reason the frame is safe.
-                    <iframe
-                      src={preview.url}
-                      title={node.name}
-                      sandbox=""
-                      className={styles.previewFrame}
+                  ))}
+                  {hidden.length > 0 && (
+                    <Menu
+                      triggerLabel={t('files.more', { name: node.name })}
+                      trigger={<Ellipsis aria-hidden="true" />}
+                      align="end"
+                      triggerVariant="toolbar"
+                      items={hidden}
                     />
                   )}
-                </div>
-              )}
-            </li>
-          ))}
+                </span>
+                {preview?.id === node.id && (
+                  <div className={styles.preview}>
+                    {previewSurface(preview.type) === 'image' ? (
+                      // A blob: URL for the file just downloaded — no second network fetch, and no
+                      // `<img src={downloadUrl}>`, which would send the bytes without our
+                      // credentials.
+                      <img src={preview.url} alt={node.name} className={styles.previewImage} />
+                    ) : (
+                      // `sandbox=""` denies everything, same-origin included: a blob: URL carries
+                      // this app's origin, and taking it away is the whole reason the frame is safe.
+                      <iframe
+                        src={preview.url}
+                        title={node.name}
+                        sandbox=""
+                        className={styles.previewFrame}
+                      />
+                    )}
+                  </div>
+                )}
+              </li>
+            )
+          })}
         </ul>
       )}
 

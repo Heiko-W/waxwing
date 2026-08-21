@@ -55,7 +55,15 @@
       "generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
       "networkHost": "{{host}} ist nicht erreichbar. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese oben ein.",
       "oauthUnavailable": "Dieser Server bietet keine sichere Anmeldung an. Melden Sie sich unten mit E-Mail-Adresse und Passwort an.",
-      "oauthUnavailableNoFallback": "Dieser Server bietet keine sichere Anmeldung an, und diese Installation lässt keine andere Methode zu. Wenden Sie sich an den Betreiber."
+      "oauthUnavailableNoFallback": "Dieser Server bietet keine sichere Anmeldung an, und diese Installation lässt keine andere Methode zu. Wenden Sie sich an den Betreiber.",
+      "sessionOrigin": "Dieser Server nennt {{field}} mit der Adresse {{url}}; die liegt nicht auf {{origin}} — Ihre Zugangsdaten wurden deshalb nicht dorthin gesendet. Der Betreiber muss die veröffentlichte Adresse korrigieren."
+    },
+    "reset": {
+      "action": "App auf diesem Gerät zurücksetzen",
+      "title": "App auf diesem Gerät zurücksetzen?",
+      "body": "Damit wird alles gelöscht, was {{product}} in diesem Browser gespeichert hat: die Offline-Kopie Ihrer E-Mails, Ihre Einstellungen und eine gespeicherte Anmeldung. Auf dem Server ändert sich nichts, aus Ihrem Postfach wird nichts gelöscht.",
+      "confirm": "Löschen und neu laden",
+      "cancel": "Abbrechen"
     }
   },
   "auth": {
@@ -69,6 +77,7 @@
       "username": "Benutzername",
       "password": "Passwort",
       "staySignedIn": "Angemeldet bleiben",
+      "staySignedInHint": "Ohne dieses Häkchen gilt die Anmeldung nur für diese Seite: Beim Neuladen oder beim Schließen des Tabs sind Sie wieder abgemeldet.",
       "appPasswordHint": "Ist für Ihr Konto Zwei-Faktor-Authentifizierung aktiv, wird Ihr normales Passwort hier abgelehnt — verwenden Sie ein App-Passwort.",
       "submit": "Mit Passwort anmelden",
       "publicComputer": "Öffentlicher oder gemeinsam genutzter Computer",
@@ -322,6 +331,7 @@
       },
       "error": {
         "endBeforeStart": "Das Ende muss nach dem Beginn liegen.",
+        "loadFailed": "Die Abwesenheitsnotiz konnte nicht geladen werden.",
         "conflict": "Die Abwesenheitsnotiz wurde anderswo geändert. Ihre Änderungen wurden nicht gespeichert — oben sehen Sie die aktuellen Einstellungen.",
         "rejected": "Der Server hat diese Einstellungen abgelehnt.",
         "offline": "Sie sind offline. Die Abwesenheitsnotiz lässt sich nur mit Verbindung ändern.",
@@ -602,7 +612,6 @@
       "region": "Bundesland / Region",
       "postcode": "Postleitzahl",
       "country": "Land",
-      "type": "Typ",
       "addEmail": "E-Mail hinzufügen",
       "addPhone": "Telefon hinzufügen",
       "addField": "Feld hinzufügen",
@@ -611,10 +620,19 @@
       "addBirthday": "Geburtstag hinzufügen",
       "addNote": "Notiz hinzufügen",
       "addPhoto": "Foto hinzufügen",
-      "removeEmail": "E-Mail entfernen",
-      "removePhone": "Telefon entfernen",
-      "removeAddress": "Adresse entfernen",
-      "removeNote": "Notiz entfernen",
+      "fieldNames": {
+        "email": "E-Mail",
+        "phone": "Telefon",
+        "address": "Adresse",
+        "note": "Notiz"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "Typ von {{field}}",
+        "remove": "{{field}} entfernen",
+        "inGroup": "{{field}} ({{group}})"
+      },
+      "invalidEmail": "Geben Sie eine E-Mail-Adresse wie name@example.com ein.",
       "choosePhoto": "Foto auswählen",
       "changePhoto": "Foto ändern",
       "removePhoto": "Foto entfernen",
@@ -698,7 +716,8 @@
       },
       "error": {
         "invalid": "Die Datei konnte nicht gelesen werden. Prüfen Sie, ob es eine gültige vCard- oder JSON-Datei ist.",
-        "failed": "Die Datei konnte nicht importiert werden."
+        "failed": "Die Datei konnte nicht importiert werden.",
+        "export": "Der Export konnte nicht erstellt werden. Versuchen Sie das andere Format."
       }
     }
   },
@@ -1399,7 +1418,7 @@
     },
     "groups": {
       "navigation": "Navigation",
-      "triage": "Sortieren",
+      "triage": "Aktionen",
       "compose": "Verfassen",
       "application": "Anwendung"
     },
@@ -1475,11 +1494,15 @@
   },
   "calendar": {
     "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
+    "offlineOpen": "Sie sind offline. Termine lassen sich nur mit Verbindung öffnen und ändern.",
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",
     "newEvent": "Neuer Termin",
     "nextMonth": "Nächster Monat",
+    "previousWeek": "Vorige Woche",
+    "nextWeek": "Nächste Woche",
+    "weekRange": "{{from}} – {{to}}",
     "viewLabel": "Kalenderansicht",
     "view": {
       "month": "Monat",
@@ -1490,9 +1513,15 @@
     "allDay": "Ganztägig",
     "more": "+{{count}} weitere",
     "noEvents": "Nichts in Sicht.",
+    "noEventsOnDay": "An diesem Tag steht nichts an.",
     "retry": "Erneut versuchen",
+    "undo": "Rückgängig",
+    "deleted": "Termin gelöscht.",
     "saveFailed": "Der Termin konnte nicht gespeichert werden.",
+    "deleteFailed": "Der Termin konnte nicht gelöscht werden.",
+    "restoreFailed": "Der Termin konnte nicht wiederhergestellt werden.",
     "loadFailed": "Der Kalender konnte nicht geladen werden.",
+    "refreshFailed": "Der Kalender konnte nicht aktualisiert werden — was Sie sehen, ist möglicherweise veraltet.",
     "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen.",
     "event": {
       "createTitle": "Neuer Termin",
@@ -1502,12 +1531,16 @@
       "day": "Tag",
       "allDay": "Ganztägig",
       "duration": "Dauer in Minuten",
+      "durationInvalid": "Geben Sie eine Dauer zwischen 1 und {{max}} Minuten an.",
       "calendar": "Kalender",
       "description": "Notizen",
+      "location": "Ort",
+      "participants": "Teilnehmer",
       "save": "Speichern",
       "cancel": "Abbrechen",
       "delete": "Löschen",
-      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet."
+      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet.",
+      "unresolvedReadOnly": "Der Server hat dies als Vorkommen geliefert, das sich keinem gespeicherten Termin zuordnen lässt. Es lässt sich hier deshalb ansehen, aber nicht ändern — nur in einer Kalender-App, die den Termin selbst erreicht."
     }
   },
   "files": {
@@ -1518,12 +1551,19 @@
     "empty": "Dieser Ordner ist leer.",
     "retry": "Erneut versuchen",
     "loadFailed": "Die Dateien konnten nicht geladen werden.",
+    "savedButNotShown": "Gespeichert — die Liste ließ sich aber nicht neu laden. Mit „Erneut versuchen“ wird sie geholt.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
     "newFolder": "Neuer Ordner",
     "cancel": "Abbrechen",
     "download": "{{name}} herunterladen",
     "delete": "{{name}} löschen",
+    "rename": {
+      "open": "{{name}} umbenennen",
+      "title": "„{{name}}“ umbenennen",
+      "label": "Neuer Name",
+      "confirm": "Umbenennen"
+    },
     "error": {
       "nameTaken": "Hier gibt es bereits etwas mit diesem Namen.",
       "tooLarge": "Diese Datei ist für diesen Server zu groß.",
@@ -1539,6 +1579,7 @@
     },
     "preview": "{{name}} ansehen",
     "hidePreview": "Vorschau von {{name}} schließen",
+    "more": "Weitere Aktionen für {{name}}",
     "share": {
       "open": "{{name}} freigeben",
       "title": "„{{name}}“ freigeben",

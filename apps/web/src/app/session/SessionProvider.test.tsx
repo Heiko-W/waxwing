@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { JmapProblemError, JmapSessionOriginError } from '@waxwing/jmap'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthConfigError } from '../../auth'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
@@ -56,6 +57,9 @@ function Consumer() {
       </button>
       <button type="button" onClick={() => s.signOut()}>
         signout
+      </button>
+      <button type="button" onClick={() => s.wipeLocalState()}>
+        wipe-local
       </button>
     </div>
   )
@@ -140,6 +144,27 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.generic'),
     )
     expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+  })
+
+  it('reads a 401 out of a JSON problem body too, not only out of a JmapHttpError (U2)', async () => {
+    // `errorFromResponse` picks the error class from the SHAPE OF THE BODY: Stalwart answers a
+    // refused password with an RFC 7807 document, so it arrives as a `JmapProblemError` — which is
+    // NOT a subclass of `JmapHttpError`. The old `instanceof JmapHttpError` check therefore missed
+    // every real rejected credential and called it "something went wrong", and the onboarding
+    // screen — which withholds its "reset this app" offer by matching the credential keys — put
+    // the invitation to delete the local mailbox under a typo.
+    const user = userEvent.setup()
+    renderSession({
+      probePresent: true,
+      connectError: new JmapProblemError({ type: 'about:blank', detail: 'Unauthorized' }, 401),
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('auth.error.invalidCredentialsBasic'),
+    )
   })
 
   it('names the host it could not reach, instead of blaming the connection', async () => {
@@ -415,6 +440,113 @@ describe('SessionProvider — public-computer mode', () => {
     await waitFor(() =>
       expect(screen.getByTestId('error')).toHaveTextContent('auth.error.signOutIncomplete'),
     )
+  })
+})
+
+describe('SessionProvider — an error that already knows what is wrong', () => {
+  it('names the misconfigured session field instead of "something went wrong" (U1)', async () => {
+    // `packages/jmap` refuses a Session whose apiUrl is on another origin — correctly, since every
+    // request would attach the Authorization header to that host. The refusal carried the field,
+    // the URL and the permitted origin; `errToOnboard` threw all three away and rendered the
+    // generic sentence, leaving an operator with nothing to act on and a "try again" that returns
+    // the identical refusal forever.
+    const user = userEvent.setup()
+    renderSession({
+      probePresent: true,
+      connectError: new JmapSessionOriginError(
+        'apiUrl',
+        'https://elsewhere.test/jmap',
+        'https://mail.test',
+      ),
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.sessionOrigin'),
+    )
+  })
+})
+
+describe('SessionProvider — the way out when nothing works', () => {
+  it('hands the local-data reset to the services seam (U2)', async () => {
+    const user = userEvent.setup()
+    const fake = makeFakeServices({ probePresent: true })
+    const resetLocalData = vi.fn(async () => {})
+    render(
+      <ServicesProvider value={{ ...fake.services, resetLocalData }}>
+        <SessionProvider config={DEFAULT_CONFIG}>
+          <Consumer />
+        </SessionProvider>
+      </ServicesProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('wipe-local'))
+
+    expect(resetLocalData).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SessionProvider — sign-out clears the screen first', () => {
+  /** A `logout` that hangs until the test lets go, standing in for the slow half of the teardown. */
+  function pendingLogout(fake: ReturnType<typeof renderSession>): () => void {
+    let release: () => void = () => {}
+    fake.spies.logout.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+    )
+    return () => release()
+  }
+
+  async function signedIn() {
+    const user = userEvent.setup()
+    const fake = renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    return { user, fake }
+  }
+
+  it('shows the login form while the clean-up is still running (M3)', async () => {
+    // The measured defect: the account name, the folder tree and the whole Inbox stayed on screen
+    // for a mean of 6.1 s after the click, because the login dispatch was the LAST statement of the
+    // teardown. Clearing the display is instant and cannot fail; the wipe is I/O. Order matters
+    // most on the shared machine the user is walking away from.
+    const { user, fake } = await signedIn()
+    const release = pendingLogout(fake)
+
+    await user.click(screen.getByText('signout'))
+
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+    expect(screen.getByTestId('account')).toHaveTextContent('')
+
+    await act(async () => {
+      release()
+    })
+  })
+
+  it('holds a new sign-in until the clean-up it would race is done', async () => {
+    // The cost of clearing first: the login form is usable while `resetReplica()` and
+    // `controllerRef.current = null` are still ahead. A session opened in that window would be
+    // dismantled by the teardown that follows it.
+    const { user, fake } = await signedIn()
+    const release = pendingLogout(fake)
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+    expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
   })
 })
 

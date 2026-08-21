@@ -24,7 +24,7 @@ export default mergeConfig(
         ...configDefaults.exclude,
         'src/auth/**',
         'src/ui/**/*.contrast.test.ts',
-        'src/ui/**/*.css.test.ts',
+        'src/**/*.css.test.ts',
         'src/**/*.shipped.test.ts',
       ],
       restoreMocks: true,

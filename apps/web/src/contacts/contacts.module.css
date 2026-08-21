@@ -183,6 +183,28 @@
   flex: 1;
 }
 
+/*
+ * Which set of contacts this is, on a phone, where there is room to read it.
+ *
+ * Rendered only below 40em (`phoneTitle` in ContactsScreen.tsx) — not hidden here with a media
+ * query, because on wider viewports the heading is a different element in a different place, not
+ * this one turned off. The same answer the calendar reached for the same crowding (F1), at the same
+ * size, so the two screens' phone titles are one thing and not two.
+ *
+ * It carries no `text-overflow`: it has the full width of the pane, and the state it replaces was a
+ * heading truncated to "Alle Kon…". The inset matches the search box and the rows below it, so the
+ * pane has one text edge and not two.
+ */
+.pageTitle {
+  margin: 0;
+  padding-block: var(--waxwing-space-3) var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-3);
+  font-size: var(--waxwing-text-xl);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
+}
+
 .paneBody {
   flex: 1;
   min-block-size: 0;
@@ -345,14 +367,40 @@
   gap: var(--waxwing-space-5);
 }
 
+/*
+ * Photo, identity and actions — and none of the three may push another out of the pane (F2).
+ *
+ * It was a single non-wrapping row of three content-sized boxes, which is the arrangement that has
+ * no answer when the three do not fit: measured on a 390px phone, "More actions" sat at x = 373…419
+ * — nineteen pixels of a button on screen and twenty-nine off it — and on an 820px tablet both
+ * "Edit" and "More actions" ran past the edge. A control outside the viewport is not a control, and
+ * nothing about the row said which of the three had to give way.
+ *
+ * `flex-wrap` says it: the ACTIONS go to a line of their own before anything leaves the pane. Which
+ * is also the shape Apple Contacts uses on a phone — photo and name, then a row of actions under
+ * them — so the narrow case is not a degraded wide one.
+ *
+ * NOT `use-action-overflow` (the reading pane's answer to the same arithmetic). That hook trades
+ * VISIBLE actions for menu entries, which pays off across eleven controls in a bar whose width is
+ * dictated by a splitter; here there are three, two of them the whole point of the pane, and the
+ * third IS the menu. There is also nothing for it to measure: this bar is content-sized inside a
+ * flex header rather than laid into a known width, so `clientWidth` would answer with the bar's own
+ * ideal width and never report a shortfall.
+ */
 .detailHeader {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-4);
+  flex-wrap: wrap;
 }
 
+/*
+ * 12rem of basis, so the wrap happens while the name still has a readable column rather than after
+ * it has been squeezed to nothing: below that width the actions take their own line and the name
+ * gets the whole of this one.
+ */
 .detailIdentity {
-  flex: 1;
+  flex: 1 1 12rem;
   min-inline-size: 0;
 }
 
@@ -362,6 +410,16 @@
   font-weight: var(--waxwing-weight-semibold);
   line-height: var(--waxwing-leading-tight);
   letter-spacing: var(--waxwing-tracking-tight);
+  /* A contact name is user data of no fixed length, and this box is only as wide as the row has
+     left over. Without a bound it did not wrap INSIDE its box — it drew straight across the
+     buttons beside it, which is how "Löschen" came to be printed through the second line of a
+     name. Two lines and an ellipsis, the same treatment (and the same reasoning) as a dialog
+     title; the full name stays the accessible name of the article this heads. */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .detailOrg {
@@ -369,9 +427,14 @@
   color: var(--waxwing-text-muted);
 }
 
+/* Never shrinks: a squeezed button is a worse outcome than a second line (the header rule above).
+   The auto margin only bites on the wrapped line, where it keeps the actions on the same edge they
+   sit on when everything fits. */
 .detailActions {
   display: flex;
   gap: var(--waxwing-space-2);
+  flex: 0 0 auto;
+  margin-inline-start: auto;
 }
 
 .detailPhoto {
@@ -526,21 +589,104 @@
   gap: var(--waxwing-space-2);
 }
 
-.commRow,
-.addressHead {
+/*
+ * One communication row and, below it, the reason it was refused (N9).
+ *
+ * Also the QUERY CONTAINER for the row inside it (N2). The rule below needs to know how wide this
+ * one row is, and that has never been the window's width: on an 820px tablet the form is 360px and
+ * the row 312px, so a `@media` query would answer a question nobody asked. The container is
+ * declared here rather than on the pane (`waxwing-pane`, shell.module.css) because the pane's width
+ * is the row's width plus the form's padding plus whatever a scrollbar takes — three subtractions
+ * standing between the number queried and the number that matters. This box IS the row's width.
+ */
+.commField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  container-type: inline-size;
+  container-name: waxwing-comm-row;
+}
+
+/*
+ * The row wraps rather than rationing (N2).
+ *
+ * Type picker and value field both need room the row does not always have: 9rem of picker plus a
+ * remove button leaves whatever is left for the field, and on an 820px tablet — where the list is
+ * 573px and this form 360px — what was left was 108px against the picker's 144px. The field you
+ * TYPE in was smaller than the menu you PICK from, and `vorname.nachname@beispiel-firma.de` showed
+ * as "spiel-firma.de".
+ *
+ * A second fixed width for that one measurement would only move the crossover. The ratio is stated
+ * instead, as a flex basis on the value (see `.commValue`): where both fit, the value is the wider
+ * of the two and takes every spare pixel; where they do not, the value moves to its own line and
+ * takes the width of the row. There is no width at which the picker is the bigger box.
+ */
+.commRow {
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-2);
+  flex-wrap: wrap;
 }
 
+/*
+ * The type picker's OUTER width, and it has to sit on a wrapper of our own.
+ *
+ * `Select` forwards `className` to the inner `<select>` and renders it inside a relatively
+ * positioned wrapper (it hangs the chevron off that wrapper). The wrapper is therefore the flex
+ * child, and it carries `inline-size: 100%` — so a width set through `className` styled the wrong
+ * box, the wrapper took the whole row, and the value field beside it collapsed to ~26px. The row was
+ * unusable in every viewport.
+ *
+ * 9rem rather than the 7.5rem it used to ask for: 7.5rem leaves ~78px of text box after the control's
+ * own padding and chevron, which clips the longest German option ("Geschäftlich") — and a picker that
+ * cannot show what is picked is only half a control.
+ */
 .commType {
   flex: none;
-  inline-size: 7.5rem;
+  inline-size: 9rem;
 }
 
+/*
+ * The basis, not just the growth, is what keeps the proportion right.
+ *
+ * `flex: 1` means `1 1 0%`: the field claimed no width of its own and lived on whatever the picker
+ * and the remove button left behind, which on a narrow form is less than the picker's own 9rem.
+ * A 12rem basis states the opposite — the value asks for MORE than the picker before either of
+ * them grows. Where the row can seat both it does, with every spare pixel going here (the picker
+ * does not grow); where it cannot, flex line-breaking moves this field to the next line. Both
+ * outcomes satisfy the same sentence: the field being typed into is never the smaller of the two.
+ */
 .commValue {
-  flex: 1;
+  flex: 1 1 12rem;
   min-inline-size: 0;
+}
+
+/*
+ * ON THE NEXT LINE IT GETS THE WHOLE LINE, and the remove button goes up beside the picker.
+ *
+ * The last fix said the wrapped field "gets the full width of the row". It does not: wrapping moves
+ * items in order, so the field landed on line two WITH the remove button still after it, and on the
+ * 820px tablet — a 312px row — that left 258px for `vorname.nachname@beispiel-firma.de`, which
+ * needs 265. Seven pixels, the final "e" cut in half, and precisely the promise the fix had made.
+ *
+ * Reordering is what buys them back, and the geometry decides when: picker (9rem) + gap + a field
+ * wide enough for an ordinary work address (~16.75rem, measured) + gap + a touch-sized button
+ * (2.75rem) is just under 30rem. Below that the three cannot share a line at their honest sizes, so
+ * they stop trying — the picker and the button take the first line at its two ends (the shape
+ * `.addressHead` already uses), the field takes the second one whole. Above it nothing changes.
+ *
+ * The visual order moves; the DOM order does not, so the tab order stays picker → field → button,
+ * which is the order the row is filled in.
+ */
+@container waxwing-comm-row (max-width: 30rem) {
+  .commRow {
+    justify-content: space-between;
+  }
+
+  .commValue {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 
 .addRow {
@@ -556,7 +702,13 @@
   border-radius: var(--waxwing-radius-md);
 }
 
+/* The address card's own head row — its label picker and its remove button, pushed to the two ends.
+   It shared a rule with `.commRow` until that one had to learn to wrap, which is not something a
+   two-item head row ever needs to do. */
 .addressHead {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
   justify-content: space-between;
 }
 

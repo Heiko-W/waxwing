@@ -24,6 +24,22 @@
 }
 
 /*
+ * The month, on a phone, where there is room to read it (F1).
+ *
+ * Rendered only below 40em (`phoneTitle` in CalendarPage.tsx) — not hidden here with a media query,
+ * because on wider viewports the heading is a different element in a different place, not this one
+ * turned off. It carries no `text-overflow`, deliberately: it is the full width of the page, and
+ * the state this replaces was a heading truncated to its first letter.
+ */
+.pageTitle {
+  margin: 0;
+  font-size: var(--waxwing-text-xl);
+  font-weight: var(--waxwing-weight-semibold);
+  line-height: var(--waxwing-leading-tight);
+  letter-spacing: var(--waxwing-tracking-tight);
+}
+
+/*
  * A segmented control, not three buttons that happen to sit together.
  *
  * Only the active one had a fill and a border before, so the other two read as plain text beside a
@@ -51,6 +67,30 @@
   box-shadow: var(--waxwing-shadow-1);
 }
 
+/*
+ * A refresh that failed while there is still valid data for THIS window on screen.
+ *
+ * One line, not the full-pane error state: that one is 440px of mostly nothing, and putting it
+ * above a working grid pushed the last week of the month out of the viewport while claiming the
+ * grid below it was broken (T5). The full-pane version is still used — when there is nothing to
+ * show, which is when a large "Try again" is the only thing on the screen worth pressing.
+ */
+.loadError {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2) var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-danger);
+  border-radius: var(--waxwing-radius-md);
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
+.loadErrorText {
+  flex: 1;
+  min-inline-size: 0;
+}
+
 .month {
   display: flex;
   flex-direction: column;
@@ -59,10 +99,19 @@
   flex: 1;
 }
 
+/*
+ * `minmax(0, 1fr)`, not `1fr`.
+ *
+ * `1fr` is `minmax(auto, 1fr)`, and `auto` means "at least as wide as your widest content" — so on
+ * a phone one event title set the width of its column and pushed four of the seven days out of a
+ * grid that clips its overflow. Thursday to Sunday were not narrow: they were GONE, and not
+ * scrollable either (T2). Measured 342px of grid holding 655px of content. The columns are meant to
+ * be equal sevenths of whatever there is, which is what the explicit zero minimum says.
+ */
 .weekdays,
 .grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 /*
@@ -97,20 +146,48 @@
   padding-inline-start: var(--waxwing-space-1);
 }
 
+/*
+ * The cell is a container, not a button — see `MonthView` for why (a button inside a button is
+ * invalid HTML and React said so on every visit, T9). `position: relative` is what lets the fill
+ * below stretch across it, and `min-inline-size: 0` is the per-cell half of the `minmax(0, 1fr)`
+ * above: a flex/grid item's automatic minimum size is its content, so without this the cell would
+ * refuse to be narrower than its longest chip even where the column is willing.
+ */
 .day {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
-  /* Tall enough for the date plus three chips; `grid-auto-rows: 1fr` grows the rows past it. */
+  /* Tall enough for the date plus three tight chip lines; `grid-auto-rows: 1fr` grows the rows
+     past it. */
   min-block-size: 5.5rem;
+  min-inline-size: 0;
   padding: var(--waxwing-space-1);
   border-block-start: 1px solid var(--waxwing-border);
   border-inline-start: 1px solid var(--waxwing-border);
-  background: transparent;
-  color: inherit;
-  font: inherit;
   text-align: start;
+}
+
+/*
+ * The whole-cell target, behind the cell's contents.
+ *
+ * Stretched rather than wrapped: the tap target is the same cell it always was, but the chips are
+ * now its SIBLINGS rather than its descendants, so a click on a chip is simply a click on the chip.
+ * The `stopPropagation` that used to hold the two apart is gone with the nesting that needed it.
+ */
+.dayFill {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
+}
+
+/* Inset, because the fill covers the cell edge-to-edge: the app-wide 2px offset would draw the
+   ring over the neighbouring cells and be clipped away at the grid's own rounded frame. */
+.dayFill:focus-visible {
+  outline-offset: -2px;
 }
 
 /* The frame supplies the outer edges, so the first row and first column keep theirs off. */
@@ -136,6 +213,18 @@
 }
 
 /*
+ * The selected day.
+ *
+ * A ring around the whole cell, which is the shape this app uses for selection — and now there IS
+ * a selection to draw: clicking a day moves the focus day (and the URL with it), so the ring is
+ * the answer to "what did my click just do?" and to "which day will + use?" (T6). It is drawn
+ * inset so it cannot be clipped by the grid's rounded frame.
+ */
+.picked {
+  box-shadow: inset 0 0 0 2px var(--waxwing-accent);
+}
+
+/*
  * Today marks the DATE, not the cell.
  *
  * A ring around the whole cell is the shape this app uses for focus and for selection, so today
@@ -143,6 +232,8 @@
  * the number — which is also the only part of the cell that means "which day".
  */
 .dayNumber {
+  /* Above the fill, so the fill's transparent surface cannot sit over the date. */
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -156,6 +247,7 @@
   font-size: var(--waxwing-text-sm);
   font-weight: var(--waxwing-weight-medium);
   font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .today .dayNumber {
@@ -164,27 +256,104 @@
   font-weight: var(--waxwing-weight-semibold);
 }
 
+/* Above the fill, and taking the pointer: the chips are the reason the fill is a sibling. */
 .dayEvents {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-hair);
   min-inline-size: 0;
+  align-items: flex-start;
+  align-self: stretch;
 }
 
 .chip {
+  display: block;
+  inline-size: 100%;
   overflow: hidden;
+  border: 0;
   padding-inline: var(--waxwing-space-1);
   border-radius: var(--waxwing-radius-sm);
   background: var(--waxwing-surface-selected);
   color: var(--waxwing-text);
   font-size: var(--waxwing-text-xs);
+  /* Tight, deliberately: three chips plus the date have to fit the cell's minimum height, and the
+     inherited body leading spends 18px a line on 12px text. */
+  line-height: var(--waxwing-leading-tight);
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
 }
 
+/*
+ * The counter is a BUTTON, and it opens the day.
+ *
+ * It looked like a caption and behaved like one: a click fell through to the cell and started a new
+ * event, so in the month view the events it counted could not be reached at all (T8). Same type
+ * size and leading as a chip, so the cell's height budget is unchanged whichever line it is.
+ */
 .more {
+  display: block;
+  border: 0;
+  padding-inline: var(--waxwing-space-1);
+  background: transparent;
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-xs);
+  line-height: var(--waxwing-leading-tight);
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .more:hover {
+    color: var(--waxwing-text);
+  }
+}
+
+/* One day's full list, for the cells that cannot show one (T8). */
+.dayList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dayListRow {
+  display: flex;
+  gap: var(--waxwing-space-3);
+  inline-size: 100%;
+  padding: var(--waxwing-space-2);
+  border: 0;
+  border-radius: var(--waxwing-radius-md);
+  background: transparent;
+  color: inherit;
+  font-size: var(--waxwing-text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dayListRow:hover {
+    background: var(--waxwing-surface-hover);
+  }
+}
+
+.dayListTime {
+  flex: none;
+  inline-size: 4.5rem;
+  color: var(--waxwing-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dayListTitle {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agenda {
@@ -196,13 +365,25 @@
   list-style: none;
 }
 
+/* A row is a button: an agenda that lists what is coming and cannot open any of it is a printout.
+   Same rule as everywhere else on this screen — clicking an event opens that event. */
 .agendaRow {
   display: flex;
   gap: var(--waxwing-space-3);
+  inline-size: 100%;
   padding: var(--waxwing-space-2);
   border: 1px solid var(--waxwing-border);
   border-radius: var(--waxwing-radius-md);
   background: var(--waxwing-surface);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .agendaRow:hover {
+    background: var(--waxwing-surface-hover);
+  }
 }
 
 .agendaWhen {
@@ -237,10 +418,6 @@
   white-space: nowrap;
 }
 
-.agendaSpacer {
-  display: none;
-}
-
 .loading,
 .empty {
   margin: 0;
@@ -271,6 +448,14 @@
   font-weight: var(--waxwing-weight-medium);
 }
 
+/* The app's own answer to a value it will not send, in the app's own language and in the layout —
+   where the browser's native bubble was neither (T14). */
+.fieldError {
+  margin: 0;
+  color: var(--waxwing-danger);
+  font-size: var(--waxwing-text-sm);
+}
+
 .checkboxRow {
   display: flex;
   align-items: center;
@@ -288,15 +473,41 @@
   resize: vertical;
 }
 
+/* What the dialog can show and not yet edit — see `EventFacts`. */
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--waxwing-space-1) var(--waxwing-space-3);
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+}
+
+.factLabel {
+  color: var(--waxwing-text-muted);
+}
+
+.factValue {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
 .formActions {
   display: flex;
   justify-content: flex-end;
   gap: var(--waxwing-space-2);
 }
 
-/* Shown instead of the editor for a recurring event — see `isEditable`. */
+/* Delete goes to the far end of the row. Beside Cancel it was one slip away from the one action on
+   this screen that cannot be taken back by pressing Escape (T13). */
+.deleteAction {
+  margin-inline-end: auto;
+}
+
+/* Shown instead of the editor for a recurring event — see `refuseEdit`. */
 .readOnlyNote {
   margin: 0;
+  margin-block-end: var(--waxwing-space-3);
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
@@ -310,11 +521,20 @@
   overflow: auto;
 }
 
+/*
+ * `minmax(6rem, 1fr)` on the day columns.
+ *
+ * Seven equal shares of a 390px phone is about 40px a column, and 40px holds a time and nothing
+ * else: every title was clipped to nothing, so the week view answered WHEN but never WHAT (T10).
+ * Below the floor the strip scrolls sideways inside its own box — the seven days stay seven days,
+ * and the document itself still never scrolls horizontally.
+ */
 .weekHead,
+.weekAllDay,
 .weekBody {
   display: grid;
   /* The gutter, then one equal column per day. */
-  grid-template-columns: 3.5rem repeat(var(--waxwing-week-days, 7), 1fr);
+  grid-template-columns: 3.5rem repeat(var(--waxwing-week-days, 7), minmax(6rem, 1fr));
 }
 
 .weekHead {
@@ -347,6 +567,28 @@
   font-size: var(--waxwing-text-lg);
 }
 
+/* Whole-day events, in a strip of their own above the hour axis — they have no time of day, so
+   there is no honest position for them on it (T4). */
+.weekAllDay {
+  border-block-end: 1px solid var(--waxwing-border);
+}
+
+.weekAllDayLabel {
+  padding: var(--waxwing-space-1);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  text-align: end;
+}
+
+.weekAllDayCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  min-inline-size: 0;
+  padding: var(--waxwing-space-hair);
+  border-inline-start: 1px solid var(--waxwing-border);
+}
+
 .weekBody {
   position: relative;
 }
@@ -363,6 +605,12 @@
   font-size: var(--waxwing-text-xs);
   /* Sits ON the line rather than below it. */
   transform: translateY(-50%);
+}
+
+/* Midnight is the exception: half of it above the first line is half of it under the sticky day
+   header, which is where the reader found it (T10). It sits below its line instead. */
+.hourLabel:first-child {
+  transform: none;
 }
 
 .weekColumn {

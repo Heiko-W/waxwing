@@ -8,6 +8,10 @@
  * the one the shell already uses, so the app changes shape in one place rather than three.
  */
 .page {
+  /* The two columns, named once, so the page can bound itself to exactly what they need. */
+  --settings-rail: 14rem;
+  --settings-measure: 42rem;
+
   display: flex;
   gap: var(--waxwing-space-6);
   padding-inline: var(--waxwing-space-5);
@@ -15,6 +19,24 @@
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden;
+  /*
+   * Centred, not stretched.
+   *
+   * At 1920px the pair ended at x≈1048 and left 872px of nothing to the right of it, which reads
+   * as a page that failed to finish rather than as a decision. Widening the panel is the other
+   * answer and it is the wrong one: 42rem is a reading measure, and a settings row whose label and
+   * value are a thousand pixels apart is a row nobody can pair up by eye — the very complaint the
+   * side-by-side rule below exists to fix. So the empty space stays; it is simply put on BOTH
+   * sides, where the eye reads it as margin instead of as a gap.
+   */
+  max-inline-size: calc(
+    var(--settings-rail) +
+    var(--waxwing-space-6) +
+    var(--settings-measure) +
+    2 *
+    var(--waxwing-space-5)
+  );
+  margin-inline: auto;
 }
 
 .rail {
@@ -22,10 +44,24 @@
   flex-direction: column;
   gap: var(--waxwing-space-4);
   flex: 0 0 auto;
-  inline-size: 14rem;
+  inline-size: var(--settings-rail);
   min-block-size: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/*
+ * The list of destinations, held apart from the page title.
+ *
+ * The `<h1>` used to sit INSIDE `<nav aria-label="Settings">`, so the landmark carried the exact
+ * words of the heading it contained: a screen-reader user heard "Settings" as the name of the
+ * navigation and then "Settings" again as the heading, with nothing distinguishing the two. The
+ * title is a property of the screen, not of the navigation, so it is now the navigation's sibling.
+ */
+.railNav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
 }
 
 .railGroup {
@@ -118,7 +154,7 @@
   flex: 1 1 auto;
   min-inline-size: 0;
   min-block-size: 0;
-  max-inline-size: 42rem;
+  max-inline-size: var(--settings-measure);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -142,8 +178,24 @@
     padding-inline: var(--waxwing-space-4);
   }
 
+  /*
+   * `flex` governs the MAIN axis — and the main axis turns vertical here.
+   *
+   * So the `flex: 0 0 auto` that pins the rail's WIDTH beside the panel pins its HEIGHT once it is
+   * above it. The box then grew to fit its own content, which is precisely why its `overflow-y:
+   * auto` never did anything: a box that is exactly as tall as what is in it has nothing to
+   * scroll. `.page { overflow: hidden }` then cut the surplus off without a scrollbar anywhere, so
+   * on a 390×844 phone the last three of fourteen sections were not merely below the fold — they
+   * were outside the page box, invisible to `elementFromPoint`, and untappable.
+   *
+   * `1 1 0` makes the rail the flexible box instead: a flex basis of zero plus grow means it takes
+   * the height the page has left over and no more. `min-block-size: 0` (set above, and load-
+   * bearing here rather than merely tidy) is what lets it end up shorter than its content, so the
+   * scrolling it has always declared can finally happen.
+   */
   .rail {
     inline-size: auto;
+    flex: 1 1 0;
   }
 }
 
@@ -161,13 +213,46 @@
   gap: var(--waxwing-space-3);
 }
 
+/*
+ * The name of the panel on screen — and it has to read as a title, not as a caption.
+ *
+ * It used to be `text-sm`, uppercase, muted, with caps tracking: the same recipe `.railGroupTitle`
+ * uses two hundred pixels to its left, differing in nothing but 14px against 12px. In the General
+ * section the word "GENERAL" therefore appeared twice in one glance, in the same style, once as
+ * the name of a GROUP OF DESTINATIONS and once as the name of the OPEN PANEL. Two different things
+ * cannot wear the same mark. The rail keeps the caption treatment, because that is what it is; the
+ * heading takes the text colour and a size above body copy, because that is what it is.
+ */
 .sectionTitle {
   margin: 0;
-  font-size: var(--waxwing-text-sm);
+  font-size: var(--waxwing-text-lg);
   font-weight: var(--waxwing-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: var(--waxwing-tracking-caps);
-  color: var(--waxwing-text-muted);
+  color: var(--waxwing-text);
+}
+
+/*
+ * On a phone the panel IS the screen and its heading IS the page title, so it is set like one
+ * rather than like the caption over a panel standing beside something else.
+ *
+ * IT HAS TO STAND HERE, AFTER THE RULE IT OVERRIDES, and that is the entire content of this
+ * comment. It was written two hundred lines above, inside the phone `@media` block with the layout
+ * switch, where it was dead: a media query does not raise specificity, both selectors are one
+ * class, so the LATER rule won and every phone heading rendered at `text-lg` — 18px against the
+ * 17px labels under it, on a screen whose whole point was to open with a title. The measurement
+ * that found it (`matchMedia('(max-width: 39.999em)').matches === true`, `font-size: 18px`) is
+ * what a stylesheet looks like when a rule is stated in the right place and read in the wrong one.
+ *
+ * The other arrangement — hoisting the base rule above the media block — is not open to us either:
+ * Biome's `noDescendingSpecificity` refuses a lower-specificity selector after a higher one for the
+ * same element, and two corrections in this repo have already died on it. An override goes after
+ * what it overrides, next to what it overrides.
+ */
+@media (max-width: 39.999em) {
+  .sectionTitle {
+    font-size: var(--waxwing-text-2xl);
+    line-height: var(--waxwing-leading-tight);
+    letter-spacing: var(--waxwing-tracking-tight);
+  }
 }
 
 /*
@@ -177,6 +262,14 @@
  * the content ended at x≈735 with ~700px of nothing beside it, and the "General" section was a
  * single 350px dropdown on an otherwise empty page. The card gives the section an edge, and the
  * rules between rows give the eye a column to run down.
+ *
+ * **`.controls` is the CARD, and nothing else.** It is rendered in exactly one place — `Section` in
+ * `SettingsPage.tsx` — and a section body hands it ROWS. That distinction is the whole of two
+ * findings: eleven section components used to render a second `.controls` as their own root, which
+ * had been harmless while the class was `display: flex` and a gap, and became a bordered card
+ * inside a bordered card, offset by one pixel, the moment the card was introduced. Ten of fourteen
+ * sections drew two concentric borders; Notifications managed three. If a section needs a second
+ * card, it is a second `Section`, not a `.controls` inside one.
  */
 .controls {
   display: flex;
@@ -187,15 +280,91 @@
   overflow: hidden;
 }
 
+/*
+ * Every direct child of the card is a row — and the row inset belongs to the CARD, not to whatever
+ * happens to be standing in the row.
+ *
+ * It was given to `.field` alone, so a section built from paragraphs, a `<dl>`, a `<ul>`, a
+ * `<fieldset>` or a lone button got `padding: 0`: nine of fourteen sections had text starting one
+ * pixel behind the border, with the first letter of "Waxwing keeps…", "0 folders…" and "Version
+ * 0.14.0" visibly clipped by it. Stated here it cannot be forgotten by the next kind of row
+ * somebody adds, which is exactly how it was forgotten by the last five.
+ */
+.controls > * {
+  padding: var(--waxwing-space-3) var(--waxwing-space-4);
+}
+
 .controls > * + * {
   border-block-start: 1px solid var(--waxwing-border);
 }
 
+/* A row: a label and the value it names. Layout only — the inset comes from the card above, which
+   is what lets the same class work inside a dialog form where there is no card. */
 .field {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
-  padding: var(--waxwing-space-3) var(--waxwing-space-4);
+}
+
+/*
+ * A row whose value is a BLOCK rather than a control: a table of server limits, a list of raw
+ * URNs, a rich-text editor, a generated config file. It stays stacked at every width.
+ *
+ * `.field` puts the label beside its value above 40em, which is right for a select or a text box
+ * and wrong for anything tall — `align-items: center` then parks the label in the vertical middle
+ * of an otherwise empty left column, floating beside a 300px block. Naming the two cases apart is
+ * what stops that rule from collecting an exception per section.
+ */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+/*
+ * A FORM, which is not a settings list.
+ *
+ * A settings list is a column of one-line values, and it earns its shape by putting every label
+ * beside its own so the values line up in a column that can be scanned (`.field`, below 40em).
+ * A form is a sequence of things being filled in, and it stacks — every field the same way, every
+ * field to the same right edge. Keeping the two apart is what settles a rule editor whose "Name"
+ * was a row while its next six fields were not, and an identity editor that ended on three
+ * different right edges in one column.
+ */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+}
+
+/*
+ * A row holding two small labelled controls that belong together — the bounds of the quiet-hours
+ * range, and so far only those. They were a nested `.controls`, which is to say a third card two
+ * levels deep, with "From" and "To" sitting directly on its border.
+ */
+.range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2) var(--waxwing-space-4);
+}
+
+.range > .group {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
+
+/*
+ * A button is as wide as its words, in a stacked row as much as in a side-by-side one.
+ *
+ * A flex column stretches its items, which is right for a text box and wrong for an action: it is
+ * how "Add rule" ended up 668px wide with both ends against the card, and how "Save" ended up
+ * 352px wide with its caption stranded in the middle of it. Six buttons of equal rank appeared in
+ * three different widths on one screen for no reason but which container they had landed in.
+ */
+.field > button,
+.group > button,
+.fieldset > button {
+  align-self: flex-start;
 }
 
 /* A <fieldset> for a group of checkboxes (M3.6): the semantics are worth having, the browser's
@@ -204,7 +373,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
-  max-inline-size: 22rem;
   margin: 0;
   padding: 0;
   border: 0;
@@ -244,10 +412,16 @@
  * rows (`Switch.module.css .rowBlock`) were given this shape by the first audit.
  *
  * `:has(textarea)` opts out: a signature editor beside a label is a text box squeezed into half a
- * card. Those keep the stacked form at every width.
+ * card. Those keep the stacked form at every width, as does `.group`, which says so by name.
+ *
+ * Scoped to `.controls`, and that scope is the point: this is the shape of a SETTINGS LIST, where a
+ * column of values is the thing being scanned. A dialog form is not one — the rule editor put its
+ * "Name" beside its label and the six fields under it below theirs, because each of those sits in
+ * a 22rem `<fieldset>` that a 22rem control plus a label overflows, so they wrapped and merely
+ * LOOKED stacked. One form, two alignments, neither chosen. Outside a card, fields stack.
  */
 @media (min-width: 40em) {
-  .field:not(:has(textarea)) {
+  .controls .field:not(:has(textarea)) {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
@@ -255,18 +429,25 @@
     gap: var(--waxwing-space-1) var(--waxwing-space-4);
   }
 
-  .field:not(:has(textarea)) > .label {
+  .controls .field:not(:has(textarea)) > .label {
     flex: 0 1 auto;
   }
 
-  .field:not(:has(textarea)) > :not(.label):not(.hint) {
+  /* `:not(button)`, because the 22rem share is for a control that holds a VALUE — a select, a text
+     box — where one width down the column is what makes the column scannable. A button holds an
+     action, and stretching one to 352px does not make it easier to find, only harder to read. */
+  .controls .field:not(:has(textarea)) > :not(.label):not(.hint):not(button) {
     flex: 0 1 22rem;
     min-inline-size: 0;
   }
 
+  .controls .field:not(:has(textarea)) > button {
+    align-self: center;
+  }
+
   /* The explanation stays UNDER the row it explains. Left in the flow it landed beside the
      control, reading as a second value for the same setting. */
-  .field:not(:has(textarea)) > .hint {
+  .controls .field:not(:has(textarea)) > .hint {
     flex: 1 0 100%;
   }
 }
@@ -309,12 +490,17 @@
   background: var(--waxwing-accent);
 }
 
+/*
+ * A term/value table. It runs the full width of its row: the 22rem cap it used to carry pulled the
+ * value column into the middle of the card and left up to 317px of nothing to the right of it,
+ * which is the one place a right-aligned figure must not be — a column of numbers is read down its
+ * right edge, and the row's right edge is the only edge every row shares.
+ */
 .breakdown {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-1);
   margin: 0;
-  max-inline-size: 22rem;
   font-size: var(--waxwing-text-sm);
 }
 
@@ -330,9 +516,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The build identifier in About — present but quiet: needed on demand, not while reading settings. */
+/* The build identifier in About — present but quiet: needed on demand, not while reading settings.
+   No margin of its own: it shares a `.group` row with the brand links, and that row's gap is what
+   separates the two. */
 .aboutVersion {
-  margin: 0 0 var(--waxwing-space-2);
+  margin: 0;
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
@@ -340,30 +528,50 @@
 /* ── Identities (M5.1) ───────────────────────────────────────────────────────────────────────
    A list of records, which the rest of this file has no precedent for: every other section is a
    column of single controls. It stays a plain <ul> with the list styling removed rather than a new
-   ui/ primitive — one screen uses it. */
+   ui/ primitive — two sections use it (Identities and Templates), which is what the `identity*`
+   names now under-describe. */
 .identityList {
   margin: 0;
+  /* The ROWS of this list are the <li>s, not this <ul>, so it passes the card's inset down instead
+     of taking it (`.controls > *` would otherwise inset the whole list once and each row not at
+     all). Every other stated width and edge in the card still comes from the card. */
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--waxwing-space-2);
-  max-inline-size: 34rem;
 }
 
-/* Wraps rather than truncates: the row carries an address, and a cut-off address is a wrong one.
-   Below ~30em the actions drop under the text instead of squeezing it (the 390px sweep in
-   e2e/tests/narrow.spec.ts measures exactly this). */
+/*
+ * A row of the card — NOT a card of its own (G2).
+ *
+ * This used to carry `border: 1px solid`, `border-radius` and `background` and therefore drew a
+ * second bordered box exactly 1px inside the first: measured at card `x=480 w=672` against `li
+ * x=481 w=670`, with two concentric arcs at every corner, and stronger in dark than in light. That
+ * is precisely the shape the `.controls` rework removed from thirteen sections; it survived here
+ * because the offender is an `<li>` rather than a nested `.controls`, so the "exactly one card per
+ * section" count in `settings.test.tsx` could not see it. A section has ONE edge. What separates
+ * things inside it is a rule between rows, which is what the card does with its own children and
+ * what this does with its.
+ *
+ * Wraps rather than truncates: the row carries an address, and a cut-off address is a wrong one.
+ * Below ~30em the actions drop under the text instead of squeezing it (the 390px sweep in
+ * e2e/tests/narrow.spec.ts measures exactly this).
+ */
 .identityRow {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--waxwing-space-2);
-  padding: var(--waxwing-space-3);
-  border: 1px solid var(--waxwing-border);
-  border-radius: var(--waxwing-radius-md);
-  background: var(--waxwing-surface);
+  /* The card's own row inset, restated because the inset stops at the `<ul>` — same value, so an
+     identity lines up with every other row on the screen. */
+  padding: var(--waxwing-space-3) var(--waxwing-space-4);
+}
+
+/* Between rows only: the list already sits under the card's rule that separates it from the text
+   above it, and a second line drawn on the first row would double it. */
+.identityRow + .identityRow {
+  border-block-start: 1px solid var(--waxwing-border);
 }
 
 .identityText {
@@ -379,7 +587,9 @@
   font-weight: var(--waxwing-weight-medium);
 }
 
-/* Row-level actions, and the footer of the identity form. */
+/* Row-level actions, the footer of the identity form — and a row of the card that is nothing but
+   buttons. Being a flex ROW is what keeps those at the width of their own words: as direct children
+   of the card they were rows themselves and got stretched across the whole of it. */
 .rowActions {
   display: flex;
   flex-wrap: wrap;
@@ -387,10 +597,13 @@
 }
 
 /* The plain-text signature. `TextInput` is an <input>; there is no multiline primitive in ui/, and
-   one screen does not justify adding one (ContactForm's note field takes the same route). */
+   one screen does not justify adding one (ContactForm's note field takes the same route).
+
+   No width cap of its own: at 34rem it stopped 91px short of the inputs above it and the rich-text
+   editor below it, so one form ended on three different right edges. A field's right edge is the
+   row's right edge, and there is exactly one of those. */
 .textarea {
   inline-size: 100%;
-  max-inline-size: 34rem;
   padding: var(--waxwing-space-2);
   border: 1px solid var(--waxwing-border-strong);
   border-radius: var(--waxwing-radius-md);

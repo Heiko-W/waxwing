@@ -19,8 +19,9 @@ export function SwipeSection() {
   const right = useSwipeRight()
   const ids = { left: useId(), leftHint: useId(), right: useId(), rightHint: useId() }
 
+  // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
-    <div className={styles.controls}>
+    <>
       <div className={styles.field}>
         <label className={styles.label} htmlFor={ids.left}>
           {t('settings.swipe.left.label')}
@@ -66,6 +67,6 @@ export function SwipeSection() {
           {t('settings.swipe.right.hint')}
         </p>
       </div>
-    </div>
+    </>
   )
 }
