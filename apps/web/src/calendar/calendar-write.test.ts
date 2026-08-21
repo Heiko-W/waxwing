@@ -8,7 +8,13 @@
 
 import type { CalendarEvent } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
-import { draftToEvent, type EventDraft, isEditable } from './calendar-client'
+import {
+  draftToEvent,
+  type EventDraft,
+  isEditable,
+  placeEvent,
+  refuseEdit,
+} from './calendar-client'
 
 const draft = (over: Partial<EventDraft> = {}): EventDraft => ({
   calendarId: 'c1',
@@ -86,5 +92,59 @@ describe('draftToEvent', () => {
 
   it('sends the local start verbatim, with no offset attached', () => {
     expect(draftToEvent(draft()).start).toBe('2026-08-20T10:00:00')
+  })
+
+  it('NAMES no field the editor cannot show, so an update cannot destroy one', () => {
+    /*
+     * T11's real risk, and the reason it is a display gap rather than a data-loss bug.
+     *
+     * On an update this object is a JMAP patch: every property it does not mention survives
+     * untouched. A location and an attendee list that the dialog cannot yet edit therefore survive
+     * a title change — but only for as long as this stays a patch. The day someone turns it into a
+     * full event object, saving a renamed meeting silently cancels everyone's attendance.
+     */
+    const keys = Object.keys(draftToEvent(draft()))
+    for (const untouched of [
+      'locations',
+      'virtualLocations',
+      'participants',
+      'recurrenceRules',
+      'recurrenceOverrides',
+      'alerts',
+      'privacy',
+      'freeBusyStatus',
+      'uid',
+    ]) {
+      expect(keys, `${untouched} must not appear in the patch`).not.toContain(untouched)
+    }
+  })
+})
+
+describe('refuseEdit', () => {
+  const placed = (
+    over: Partial<CalendarEvent>,
+    identity: { writeId: string | null; series: boolean },
+  ) => placeEvent(event(over), identity)
+
+  it('lets a resolved single event through', () => {
+    expect(refuseEdit(placed({}, { writeId: '0', series: false }))).toBeNull()
+  })
+
+  it('refuses a series with the SERIES reason, even when it has a write id', () => {
+    // The master is writable; that is not the reason it is refused. Editing one occurrence of a
+    // series is a decision this editor cannot present, so it never opens.
+    expect(refuseEdit(placed({}, { writeId: '7', series: true }))).toBe('series')
+  })
+
+  it('refuses an unresolved occurrence with its own reason', () => {
+    // Two refusals rather than one, because the sentences differ: this one is not a limit we chose,
+    // it is an id we could not trace — and telling the reader "this repeats" would be a lie.
+    expect(refuseEdit(placed({}, { writeId: null, series: false }))).toBe('unresolved')
+  })
+
+  it('calls a recurring event a series even where identity says nothing', () => {
+    expect(
+      refuseEdit(placed({ recurrenceId: '2026-08-20T10:00:00' }, { writeId: '0', series: false })),
+    ).toBe('series')
   })
 })

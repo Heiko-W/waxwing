@@ -1493,11 +1493,15 @@
   },
   "calendar": {
     "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
+    "offlineOpen": "Sie sind offline. Termine lassen sich nur mit Verbindung öffnen und ändern.",
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",
     "newEvent": "Neuer Termin",
     "nextMonth": "Nächster Monat",
+    "previousWeek": "Vorige Woche",
+    "nextWeek": "Nächste Woche",
+    "weekRange": "{{from}} – {{to}}",
     "viewLabel": "Kalenderansicht",
     "view": {
       "month": "Monat",
@@ -1508,9 +1512,15 @@
     "allDay": "Ganztägig",
     "more": "+{{count}} weitere",
     "noEvents": "Nichts in Sicht.",
+    "noEventsOnDay": "An diesem Tag steht nichts an.",
     "retry": "Erneut versuchen",
+    "undo": "Rückgängig",
+    "deleted": "Termin gelöscht.",
     "saveFailed": "Der Termin konnte nicht gespeichert werden.",
+    "deleteFailed": "Der Termin konnte nicht gelöscht werden.",
+    "restoreFailed": "Der Termin konnte nicht wiederhergestellt werden.",
     "loadFailed": "Der Kalender konnte nicht geladen werden.",
+    "refreshFailed": "Der Kalender konnte nicht aktualisiert werden — was Sie sehen, ist möglicherweise veraltet.",
     "signedOut": "Melden Sie sich an, um Ihren Kalender zu sehen.",
     "event": {
       "createTitle": "Neuer Termin",
@@ -1520,12 +1530,16 @@
       "day": "Tag",
       "allDay": "Ganztägig",
       "duration": "Dauer in Minuten",
+      "durationInvalid": "Geben Sie eine Dauer zwischen 1 und {{max}} Minuten an.",
       "calendar": "Kalender",
       "description": "Notizen",
+      "location": "Ort",
+      "participants": "Teilnehmer",
       "save": "Speichern",
       "cancel": "Abbrechen",
       "delete": "Löschen",
-      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet."
+      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet.",
+      "unresolvedReadOnly": "Der Server hat dies als Vorkommen geliefert, das sich keinem gespeicherten Termin zuordnen lässt. Es lässt sich hier deshalb ansehen, aber nicht ändern — nur in einer Kalender-App, die den Termin selbst erreicht."
     }
   },
   "files": {

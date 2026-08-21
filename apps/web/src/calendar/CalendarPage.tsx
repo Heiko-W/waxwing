@@ -1,18 +1,24 @@
 /**
  * The calendar screen (M5.6, FR-CAL-01) — a lazy route chunk.
  *
- * Two views, and the choice of which two is the point: a **month** grid for orientation and an
- * **agenda** list for "what is next". Week and day grids are the two that need a time axis with
- * overlap resolution, and shipping them badly is worse than not shipping them — they are named as
- * open in the plan rather than approximated here.
+ * Three views: a **month** grid for orientation, a **week** grid with a time axis, and an **agenda**
+ * list for "what is next".
  *
  * Single events can be created, edited and deleted (M5.11). A RECURRING one cannot: clicking it
  * opens a read-only note instead of the editor, because changing a series means choosing between
  * "this occurrence", "this and following" and "all", and a calendar that half-edits a repeating
- * meeting loses other people's time. `isEditable` is where that line is drawn.
+ * meeting loses other people's time. `refuseEdit` is where that line is drawn — and it draws a
+ * second one beside it: an occurrence the client cannot trace back to a writable object is refused
+ * too, with its own sentence, because the alternative is the editor T1 described, whose Save could
+ * never work.
+ *
+ * **One interaction rule across all three views:** clicking a DAY selects it, clicking an EVENT
+ * opens it, and the `+` in the bar creates on the day that is selected. A day cell used to open the
+ * new-event dialog directly, which meant the grid had no way to say "I mean this day" — the URL
+ * never moved, so the arrow keys, `Today` and `+` all still pointed somewhere else (T6).
  */
 
-import type { Calendar, CalendarEvent } from '@waxwing/jmap'
+import type { Calendar } from '@waxwing/jmap'
 import type { TFunction } from 'i18next'
 import {
   CalendarDays,
@@ -23,7 +29,7 @@ import {
   SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
@@ -36,16 +42,20 @@ import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from 
 import styles from './calendar.module.css'
 import {
   type CalendarClient,
-  isEditable,
   makeCalendarClient,
   type PlacedEvent,
+  refusalReason,
+  refuseEdit,
 } from './calendar-client'
 
 const EventDialog = lazy(() => import('./EventDialog'))
 
+import { EventFacts } from './EventFacts'
 import { zoneDiffersFromLocal } from './jscalendar-time'
 import {
+  addDays,
   addMonths,
+  daysBetween,
   firstDayOfWeek,
   fromIsoDate,
   isSameDay,
@@ -67,6 +77,17 @@ const VIEW_LABELS: Record<View, (t: TFunction) => string> = {
   week: (t) => t('calendar.view.week'),
   agenda: (t) => t('calendar.view.agenda'),
 }
+
+/**
+ * How many event chips a month cell shows before it starts counting.
+ *
+ * A cell is one row of a six-row grid that fills the pane; it cannot grow, so a fourth line is not
+ * shortened but SLICED at the cell boundary — the "+2 more" line was legible down to about half its
+ * x-height (T8). The cap is therefore honoured by the count as well: a cell that needs the counter
+ * shows one chip fewer to make room for it, so the tallest a cell ever gets is the same three lines
+ * either way.
+ */
+const MAX_CHIPS = 3
 
 export interface CalendarPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
@@ -102,10 +123,24 @@ export default function CalendarPage(props: CalendarPageProps) {
    */
   const online = useOnline()
   const [calendars, setCalendars] = useState<Calendar[]>([])
-  /** `{ event }` edits, `{ event: null }` creates on `day`. */
-  const [editing, setEditing] = useState<{ event: CalendarEvent | null; day: Date } | null>(null)
+  /** `{ placed }` edits, `{ placed: null }` creates on `day`. */
+  const [editing, setEditing] = useState<{ placed: PlacedEvent | null; day: Date } | null>(null)
+  /** The day whose full event list is open (T8) — `null` when none is. */
+  const [expandedDay, setExpandedDay] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
-  const [events, setEvents] = useState<PlacedEvent[] | null>(null)
+  /**
+   * The last answer, **stamped with the window it answers about**.
+   *
+   * Holding a bare list is what let September show August's events: the fetch for the new month was
+   * still in flight, `events` still held the old month's, and the grid drew them under the new
+   * heading as if they were real (T5). Stamping makes staleness a question the render can answer —
+   * a list whose window is not the window on screen is simply not shown.
+   */
+  const [loaded, setLoaded] = useState<{
+    fromMs: number
+    toMs: number
+    list: PlacedEvent[]
+  } | null>(null)
   const [failed, setFailed] = useState(false)
 
   /** The day the view is centred on: the route param, else today. */
@@ -130,23 +165,42 @@ export default function CalendarPage(props: CalendarPageProps) {
    * Held as timestamps rather than `Date`s: a `Date` is a fresh object on every render, so an
    * effect keyed on one re-runs for ever. Numbers compare by value and the dependency list can be
    * honest about what it depends on.
+   *
+   * The week view fetches this same window rather than its own seven days: the six-week grid of the
+   * month containing `focus` always contains the whole week containing `focus`, so stepping between
+   * weeks inside a month costs no request at all.
    */
   const { fromMs, toMs } = useMemo(() => {
     const range = monthRange(focus, locale)
     return { fromMs: range.from.getTime(), toMs: range.to.getTime() }
   }, [focus, locale])
 
+  /**
+   * Which fetch is the current one.
+   *
+   * Two loads can be in flight after quick paging, and they can answer out of order. Without this
+   * the older answer wins and the screen settles on the wrong month's data — the same class of bug
+   * as the stale list above, arriving by a different route.
+   */
+  const request = useRef(0)
+
   const load = useCallback(async () => {
     if (client === null) return
+    request.current += 1
+    const mine = request.current
+    // Clearing the failure at the START of the attempt, so a retry shows that it is trying rather
+    // than leaving the error on screen until it either succeeds or fails again.
+    setFailed(false)
     try {
       const [inRange, list] = await Promise.all([
         client.eventsInRange(new Date(fromMs), new Date(toMs)),
         client.listCalendars(),
       ])
-      setEvents(inRange)
+      if (mine !== request.current) return
+      setLoaded({ fromMs, toMs, list: inRange })
       setCalendars(list)
-      setFailed(false)
     } catch {
+      if (mine !== request.current) return
       setFailed(true)
     }
   }, [client, fromMs, toMs])
@@ -155,29 +209,106 @@ export default function CalendarPage(props: CalendarPageProps) {
     void load()
   }, [load])
 
-  const goto = (date: Date): void => navigate(calendarPath(toIsoDate(date)))
+  const goto = useCallback(
+    (date: Date): void => navigate(calendarPath(toIsoDate(date))),
+    [navigate],
+  )
 
   /**
    * Runs a write, then reloads. Closes the dialog only on success, so a refusal keeps the user's
    * input on screen to correct rather than discarding it.
    *
-   * A failed write raises a TOAST rather than the page-level `failed` flag, and that is the whole
-   * of the fix: `failed` renders inside the page, the dialog is modal and portalled above it, and
-   * `run` leaves the dialog open on failure — so the only report of a failed save was painted
-   * behind the backdrop. It also said "The calendar could not be loaded", which is a different
-   * sentence about a different operation. Pressing Save produced no visible response at all.
+   * A failed write raises a TOAST rather than the page-level `failed` flag: `failed` renders inside
+   * the page, the dialog is modal and portalled above it, and this leaves the dialog open on
+   * failure — so a report painted inside the page would sit behind the backdrop.
+   *
+   * `failureTitle` is a parameter and not a constant, which is the whole of T7: one `run` served
+   * create, update and delete, and all three reported "The event could not be saved." after a
+   * failed DELETE. The server's own reason is passed through underneath it — Stalwart said
+   * "Deleting synthetic ids is not yet supported.", the client received it, and nothing showed it.
    */
-  const run = async (action: () => Promise<unknown>): Promise<void> => {
+  async function run<T>(
+    action: () => Promise<T>,
+    failureTitle: string,
+  ): Promise<{ ok: true; value: T } | { ok: false }> {
     setSaving(true)
     try {
-      await action()
+      const value = await action()
       setEditing(null)
       await load()
-    } catch {
-      toast({ tone: 'danger', title: t('calendar.saveFailed') })
+      return { ok: true, value }
+    } catch (error) {
+      toast({
+        tone: 'danger',
+        title: failureTitle,
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+      return { ok: false }
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * Opens the editor, or explains why it cannot.
+   *
+   * The offline gate lives here rather than on each control because there were three ways in and
+   * only one of them was gated: the `+` button knew, the day cell and the event chip did not. The
+   * dialog is a `lazy()` chunk, so offline the import failed, the chunk boundary rendered nothing,
+   * and the whole application went white (T3). A read-only note needs neither the chunk nor a
+   * connection, so it is still offered offline — it is the editor that cannot work.
+   */
+  const openEvent = (placed: PlacedEvent, day: Date): void => {
+    if (refuseEdit(placed) === null && !online) {
+      toast({ tone: 'warning', title: t('calendar.offlineOpen') })
+      return
+    }
+    setExpandedDay(null)
+    setEditing({ placed, day })
+  }
+
+  const createEvent = (day: Date): void => {
+    if (!online) {
+      toast({ tone: 'warning', title: t('calendar.offline') })
+      return
+    }
+    setExpandedDay(null)
+    setEditing({ placed: null, day })
+  }
+
+  const deleteEvent = async (target: PlacedEvent): Promise<void> => {
+    // Narrowed here rather than relying on the early return below, which comes later in the body.
+    const writer = client
+    if (writer === null) return
+    const outcome = await run(() => writer.destroyEvent(target), t('calendar.deleteFailed'))
+    if (!outcome.ok) return
+    const snapshot = outcome.value
+    /*
+     * Deleted, and undoable — not "are you sure?" first.
+     *
+     * Delete is the one irreversible control on this screen, and the app already answers that
+     * question elsewhere: mail triage moves and then offers the inverse (`use-triage.ts`). A
+     * confirmation taxes every correct deletion to catch the rare wrong one; an Undo taxes none
+     * and catches all of them. The toast does not expire while it carries an action (M4.7, WCAG
+     * 2.2.1) — reaching it by Tab means crossing the shell, which nobody does in five seconds.
+     *
+     * When the copy could not be taken the toast still reports the deletion but offers nothing,
+     * because a button labelled Undo that cannot restore is worse than no button at all.
+     */
+    toast({
+      title: t('calendar.deleted'),
+      ...(snapshot === null
+        ? {}
+        : {
+            duration: 0,
+            action: {
+              label: t('calendar.undo'),
+              onAction: () => {
+                void run(() => writer.restoreEvent(snapshot), t('calendar.restoreFailed'))
+              },
+            },
+          }),
+    })
   }
 
   if (client === null) {
@@ -188,12 +319,41 @@ export default function CalendarPage(props: CalendarPageProps) {
     )
   }
 
+  /** Only ever the list that answers about the window on screen — see `loaded`. */
+  const events =
+    loaded !== null && loaded.fromMs === fromMs && loaded.toMs === toMs ? loaded.list : null
+
   const days = monthGrid(focus, locale, today)
+  const week = weekDays(focus, firstDayOfWeek(locale))
   const byDay = new Map<string, PlacedEvent[]>()
   for (const placed of events ?? []) {
-    const key = toIsoDate(new Date(placed.startsAt as number))
-    byDay.set(key, [...(byDay.get(key) ?? []), placed])
+    /*
+     * Every day the event touches, not only the one it starts on.
+     *
+     * A three-day whole-day event was keyed by its start alone, so it appeared on the 12th and the
+     * 13th and 14th were empty — the event was invisible to anyone looking at the days it actually
+     * covers (T4). The list stays in start order because the source list is.
+     */
+    for (const key of daysBetween(
+      placed.startsAt as number,
+      placed.endsAt ?? (placed.startsAt as number),
+    )) {
+      byDay.set(key, [...(byDay.get(key) ?? []), placed])
+    }
   }
+
+  const step = (delta: number): void =>
+    goto(view === 'week' ? addDays(focus, delta * 7) : addMonths(focus, delta))
+
+  /* The week view names the week it shows. It used to say "August 2026" over a strip of seven days
+     that could start in July, and its arrows said "Next month" and jumped one (T6). */
+  const heading =
+    view === 'week'
+      ? t('calendar.weekRange', {
+          from: formatDate(week[0] ?? focus, { day: 'numeric', month: 'short' }),
+          to: formatDate(week[6] ?? focus, { day: 'numeric', month: 'short', year: 'numeric' }),
+        })
+      : formatDate(focus, { year: 'numeric', month: tier === 'phone' ? 'short' : 'long' })
 
   return (
     <div className={styles.page}>
@@ -204,24 +364,22 @@ export default function CalendarPage(props: CalendarPageProps) {
       <ScreenBar>
         <div className={styles.nav}>
           <IconButton
-            label={t('calendar.previousMonth')}
+            label={view === 'week' ? t('calendar.previousWeek') : t('calendar.previousMonth')}
             variant="ghost"
             size="sm"
-            onClick={() => goto(addMonths(focus, -1))}
+            onClick={() => step(-1)}
           >
             <ChevronLeft />
           </IconButton>
           {/* Abbreviated on a phone. "August 2026" wrapped onto two lines inside a 61px header and
               pushed everything beside it into everything else; "Aug 2026" is the same information
               in the space there is. */}
-          <h1 className={shellStyles.paneTitle}>
-            {formatDate(focus, { year: 'numeric', month: tier === 'phone' ? 'short' : 'long' })}
-          </h1>
+          <h1 className={shellStyles.paneTitle}>{heading}</h1>
           <IconButton
-            label={t('calendar.nextMonth')}
+            label={view === 'week' ? t('calendar.nextWeek') : t('calendar.nextMonth')}
             variant="ghost"
             size="sm"
-            onClick={() => goto(addMonths(focus, 1))}
+            onClick={() => step(1)}
           >
             <ChevronRight />
           </IconButton>
@@ -278,24 +436,29 @@ export default function CalendarPage(props: CalendarPageProps) {
             ))}
           </div>
         )}
-        {/* The primary action, which this screen had none of on any viewport: a day cell opens the
-            dialog when clicked, but nothing said so. Mail has its compose button and Contacts its
-            `+`; the calendar was the one screen you could look at without being told what it is
-            for. It creates on the day in focus, which is what Apple Calendar's does. */}
+        {/* The primary action, which this screen had none of on any viewport: it creates on the day
+            in focus, which is what Apple Calendar's does — and since a click on a day now MOVES the
+            focus, "the day I just tapped" and "the day + will use" are the same day. */}
         <IconButton
           label={t('calendar.newEvent')}
           variant="ghost"
           size="sm"
           unavailableReason={online ? undefined : t('calendar.offline')}
-          onClick={() => setEditing({ event: null, day: focus })}
+          onClick={() => createEvent(focus)}
         >
           <Plus />
         </IconButton>
       </ScreenBar>
 
-      {/* A load that failed, told apart from a month with nothing in it — the two shared one
-          class, so a server error and an empty calendar were the same grey sentence. */}
-      {failed && (
+      {/*
+        Exactly ONE of: the failure, the spinner, the view.
+
+        All three used to be able to stand in the DOM at once, and the combination was the worst of
+        the three: a red "could not be loaded" over a grid that looked complete and was not (T5).
+        A failure with usable data for THIS window keeps the data and reports in one line above it;
+        a failure with nothing to show takes the whole pane, which is where a Try again belongs.
+      */}
+      {failed && events === null ? (
         <EmptyState
           tone="error"
           icon={TriangleAlert}
@@ -306,66 +469,94 @@ export default function CalendarPage(props: CalendarPageProps) {
             </Button>
           }
         />
+      ) : (
+        <>
+          {failed && (
+            <div className={styles.loadError} role="alert">
+              <TriangleAlert aria-hidden="true" />
+              <span className={styles.loadErrorText}>{t('calendar.refreshFailed')}</span>
+              <Button variant="secondary" size="sm" onClick={() => void load()}>
+                {t('calendar.retry')}
+              </Button>
+            </div>
+          )}
+          {events === null ? (
+            <div className={styles.loading}>
+              <Spinner label={t('ui.spinner.label')} />
+            </div>
+          ) : view === 'month' ? (
+            <MonthView
+              days={days}
+              byDay={byDay}
+              locale={locale}
+              focus={focus}
+              onPick={goto}
+              onExpand={setExpandedDay}
+              onOpen={openEvent}
+            />
+          ) : view === 'week' ? (
+            <WeekView
+              days={week}
+              events={events}
+              today={today}
+              focus={focus}
+              onOpen={openEvent}
+              onPick={goto}
+            />
+          ) : (
+            <AgendaView events={events} today={today} onOpen={openEvent} />
+          )}
+        </>
       )}
 
-      {events === null && !failed ? (
-        <div className={styles.loading}>
-          <Spinner label={t('ui.spinner.label')} />
-        </div>
-      ) : view === 'month' ? (
-        <MonthView
-          days={days}
-          byDay={byDay}
-          locale={locale}
-          onPick={goto}
-          onCreate={(day) => setEditing({ event: null, day })}
-          onOpen={(event, day) => setEditing({ event, day })}
+      {expandedDay !== null && (
+        <DayDialog
+          day={expandedDay}
+          events={byDay.get(toIsoDate(expandedDay)) ?? []}
+          onClose={() => setExpandedDay(null)}
+          onOpen={openEvent}
         />
-      ) : view === 'week' ? (
-        <WeekView
-          days={weekDays(focus, firstDayOfWeek(locale))}
-          events={events ?? []}
-          today={today}
-          onOpen={(placed, day) => setEditing({ event: placed.event, day })}
-          onCreate={(day) => setEditing({ event: null, day })}
-        />
-      ) : (
-        <AgendaView events={events ?? []} today={today} />
       )}
 
       {editing !== null &&
-        (editing.event !== null && !isEditable(editing.event) ? (
-          // A series is shown, never edited — see `isEditable` for why.
+        (editing.placed !== null && refuseEdit(editing.placed) !== null ? (
+          // Shown, never edited — see `refuseEdit` for the two reasons and why they read
+          // differently.
           <Dialog
             open
             onClose={() => setEditing(null)}
             size="sm"
-            title={editing.event.title || t('calendar.untitled')}
+            title={editing.placed.event.title || t('calendar.untitled')}
           >
-            <p className={styles.readOnlyNote}>{t('calendar.event.recurringReadOnly')}</p>
+            <p className={styles.readOnlyNote}>
+              {refuseEdit(editing.placed) === 'series'
+                ? t('calendar.event.recurringReadOnly')
+                : t('calendar.event.unresolvedReadOnly')}
+            </p>
+            <EventFacts event={editing.placed.event} />
           </Dialog>
         ) : (
           <Suspense fallback={null}>
             <EventDialog
-              event={editing.event}
+              event={editing.placed?.event ?? null}
               defaultDate={editing.day}
               calendars={calendars}
               busy={saving}
               onCancel={() => setEditing(null)}
               onSubmit={(draft) => {
-                const target = editing.event
-                void run(() =>
-                  target === null
-                    ? client.createEvent(draft)
-                    : client.updateEvent(target.id, draft),
+                const target = editing.placed
+                void run(
+                  () =>
+                    target === null ? client.createEvent(draft) : client.updateEvent(target, draft),
+                  t('calendar.saveFailed'),
                 )
               }}
               onDestroy={
-                editing.event === null
+                editing.placed === null
                   ? undefined
                   : () => {
-                      const target = editing.event as CalendarEvent
-                      void run(() => client.destroyEvent(target.id))
+                      const target = editing.placed as PlacedEvent
+                      void deleteEvent(target)
                     }
               }
             />
@@ -379,14 +570,16 @@ interface MonthViewProps {
   readonly days: ReturnType<typeof monthGrid>
   readonly byDay: Map<string, PlacedEvent[]>
   readonly locale: string
+  /** The selected day, drawn as selected — the answer to "what did my click do?". */
+  readonly focus: Date
   onPick: (date: Date) => void
-  /** The day cell was activated — start a new event there. */
-  onCreate: (date: Date) => void
+  /** The counter under a full cell was activated — show that day's whole list. */
+  onExpand: (date: Date) => void
   /** An event chip was activated. */
-  onOpen: (event: CalendarEvent, day: Date) => void
+  onOpen: (placed: PlacedEvent, day: Date) => void
 }
 
-function MonthView({ days, byDay, locale, onCreate, onOpen }: MonthViewProps) {
+function MonthView({ days, byDay, locale, focus, onPick, onExpand, onOpen }: MonthViewProps) {
   const { t } = useTranslation()
   // Weekday headers taken from the grid's own first row, so they follow the locale's first weekday
   // rather than being hard-coded to Monday.
@@ -409,45 +602,62 @@ function MonthView({ days, byDay, locale, onCreate, onOpen }: MonthViewProps) {
         {days.map((day) => {
           const key = toIsoDate(day.date)
           const dayEvents = byDay.get(key) ?? []
+          // See MAX_CHIPS: a cell shows either three chips or two and a counter, never four lines.
+          const shown = dayEvents.length > MAX_CHIPS ? dayEvents.slice(0, MAX_CHIPS - 1) : dayEvents
+          const hidden = dayEvents.length - shown.length
           return (
-            <button
+            /*
+             * The cell is a DIV with a button stretched across it, not a button containing the
+             * chips.
+             *
+             * `<button>` inside `<button>` is invalid HTML — React said so twice on every visit to
+             * this screen (T9) — and what a browser does with the inner one is undefined. The fill
+             * is a real button that takes the whole cell, so the target is unchanged; the chips are
+             * its siblings, sitting above it in the stacking order, so a click on a chip is a click
+             * on the chip and needs no `stopPropagation` to say so.
+             */
+            <div
               key={key}
-              type="button"
               className={[
                 styles.day,
                 day.inMonth ? '' : styles.outside,
                 day.isToday ? styles.today : '',
+                !day.isToday && isSameDay(day.date, focus) ? styles.picked : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
-              aria-label={formatDate(day.date, { dateStyle: 'full' })}
-              onClick={() => onCreate(day.date)}
             >
-              <span className={styles.dayNumber}>{day.date.getDate()}</span>
+              <button
+                type="button"
+                className={styles.dayFill}
+                aria-label={formatDate(day.date, { dateStyle: 'full' })}
+                {...(day.isToday ? { 'aria-current': 'date' as const } : {})}
+                onClick={() => onPick(day.date)}
+              />
+              <span className={styles.dayNumber} aria-hidden="true">
+                {day.date.getDate()}
+              </span>
               <span className={styles.dayEvents}>
-                {dayEvents.slice(0, 3).map((placed) => (
-                  // A chip is its own button: clicking an event opens THAT event, while clicking
-                  // the empty part of the cell starts a new one. `stopPropagation` is what keeps
-                  // the two apart.
+                {shown.map((placed) => (
                   <button
                     key={`${placed.event.id}-${placed.startsAt}`}
                     type="button"
                     className={styles.chip}
-                    onClick={(clickEvent) => {
-                      clickEvent.stopPropagation()
-                      onOpen(placed.event, day.date)
-                    }}
+                    onClick={() => onOpen(placed, day.date)}
                   >
                     {placed.event.title || t('calendar.untitled')}
                   </button>
                 ))}
-                {dayEvents.length > 3 && (
-                  <span className={styles.more}>
-                    {t('calendar.more', { count: dayEvents.length - 3 })}
-                  </span>
+                {hidden > 0 && (
+                  // A button, not a caption. It read as one and was not: a click went through to
+                  // the cell and opened the new-event dialog, so the events it counted were
+                  // unreachable in this view by any means (T8).
+                  <button type="button" className={styles.more} onClick={() => onExpand(day.date)}>
+                    {t('calendar.more', { count: hidden })}
+                  </button>
                 )}
               </span>
-            </button>
+            </div>
           )
         })}
       </div>
@@ -456,7 +666,58 @@ function MonthView({ days, byDay, locale, onCreate, onOpen }: MonthViewProps) {
   )
 }
 
-function AgendaView({ events, today }: { readonly events: PlacedEvent[]; readonly today: Date }) {
+/** Everything on one day, for the cells that cannot show everything (T8). */
+function DayDialog({
+  day,
+  events,
+  onClose,
+  onOpen,
+}: {
+  readonly day: Date
+  readonly events: readonly PlacedEvent[]
+  onClose: () => void
+  onOpen: (placed: PlacedEvent, day: Date) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <Dialog open onClose={onClose} size="sm" title={formatDate(day, { dateStyle: 'full' })}>
+      {events.length === 0 ? (
+        <p className={styles.readOnlyNote}>{t('calendar.noEventsOnDay')}</p>
+      ) : (
+        <ul className={styles.dayList}>
+          {events.map((placed) => (
+            <li key={`${placed.event.id}-${placed.startsAt}`}>
+              <button
+                type="button"
+                className={styles.dayListRow}
+                onClick={() => onOpen(placed, day)}
+              >
+                <span className={styles.dayListTime}>
+                  {placed.allDay
+                    ? t('calendar.allDay')
+                    : formatDate(new Date(placed.startsAt as number), { timeStyle: 'short' })}
+                </span>
+                <span className={styles.dayListTitle}>
+                  {placed.event.title || t('calendar.untitled')}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  )
+}
+
+function AgendaView({
+  events,
+  today,
+  onOpen,
+}: {
+  readonly events: readonly PlacedEvent[]
+  readonly today: Date
+  onOpen: (placed: PlacedEvent, day: Date) => void
+}) {
   const { t } = useTranslation()
   // Only what is still ahead: an agenda is a list of what is coming, not a log.
   const upcoming = events.filter((placed) => (placed.endsAt ?? 0) >= startOfDay(today).getTime())
@@ -470,27 +731,37 @@ function AgendaView({ events, today }: { readonly events: PlacedEvent[]; readonl
       {upcoming.map((placed) => {
         const start = new Date(placed.startsAt as number)
         return (
-          <li key={`${placed.event.id}-${placed.startsAt}`} className={styles.agendaRow}>
-            <div className={styles.agendaWhen}>
-              <span className={styles.agendaDate}>
-                {formatDate(start, { weekday: 'short', day: 'numeric', month: 'short' })}
+          <li key={`${placed.event.id}-${placed.startsAt}`}>
+            <button
+              type="button"
+              className={styles.agendaRow}
+              onClick={() => onOpen(placed, start)}
+            >
+              <span className={styles.agendaWhen}>
+                <span className={styles.agendaDate}>
+                  {formatDate(start, { weekday: 'short', day: 'numeric', month: 'short' })}
+                </span>
+                <span className={styles.agendaTime}>
+                  {placed.allDay ? t('calendar.allDay') : formatDate(start, { timeStyle: 'short' })}
+                </span>
               </span>
-              <span className={styles.agendaTime}>
-                {placed.allDay ? t('calendar.allDay') : formatDate(start, { timeStyle: 'short' })}
+              <span className={styles.agendaWhat}>
+                <span className={styles.agendaTitle}>
+                  {placed.event.title || t('calendar.untitled')}
+                </span>
+                {/* The zone is shown only when it is NOT the reader's: an event at 10:00 in a
+                    different zone is not at 10:00 for the person reading it, and saying so is the
+                    difference between a calendar and a trap.
+
+                    A whole-day event is excluded outright, whatever the property says. It HAS no
+                    zone by definition, and the expanded query answers `Etc/UTC` for one where a
+                    direct read answers `null` — so the agenda announced a zone for an event that
+                    cannot have one, in the same place it announces a real one (T12). */}
+                {!placed.allDay && zoneDiffersFromLocal(placed.event.timeZone) && (
+                  <span className={styles.agendaZone}>{placed.event.timeZone}</span>
+                )}
               </span>
-            </div>
-            <div className={styles.agendaWhat}>
-              <span className={styles.agendaTitle}>
-                {placed.event.title || t('calendar.untitled')}
-              </span>
-              {/* The zone is shown only when it is NOT the reader's: an event at 10:00 in a
-                  different zone is not at 10:00 for the person reading it, and saying so is the
-                  difference between a calendar and a trap. */}
-              {zoneDiffersFromLocal(placed.event.timeZone) && (
-                <span className={styles.agendaZone}>{placed.event.timeZone}</span>
-              )}
-            </div>
-            {!isSameDay(start, today) && <span className={styles.agendaSpacer} />}
+            </button>
           </li>
         )
       })}
