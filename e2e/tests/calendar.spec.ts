@@ -296,17 +296,32 @@ test('a reminder set here survives a rename, and one set elsewhere is not lost',
   ])
 
   /*
-   * Force a re-read WITHOUT reloading the page: `login()` does not tick "Stay signed in", so a
-   * reload lands back on the sign-in form. Stepping a month away and back changes the window the
-   * screen asks about, which is the app's own way of fetching again.
+   * Wait for the REPLICA to catch up, without reloading the page (`login()` does not tick "Stay
+   * signed in", so a reload lands back on the sign-in form).
+   *
+   * This used to step a month away and back, because that is what made the screen fetch again. Since
+   * K-8 it does not: the month is read out of IndexedDB, keyed by the window, so paging away and
+   * back re-renders the same rows and asks the server nothing. What brings in a change made on
+   * another device is the engine's own `CalendarEvent/changes` delta — pushed, or on the 60 s safety
+   * sweep behind it — and the dialog holds the event it was OPENED with, so it has to be opened
+   * after that has landed rather than refreshed while it is up.
+   *
+   * Re-opening until it is there is therefore the assertion, not a softening of one: it is the proof
+   * that an alarm set elsewhere reaches this screen at all. Measured against v0.16.18 it arrives in
+   * about three seconds, on the push echo.
    */
-  await page.getByRole('button', { name: /Previous month/ }).click()
-  await page.getByRole('button', { name: /Next month/ }).click()
-
-  await row(page, title).click()
   const edit = page.getByRole('dialog')
-  // Reported, and NOT offered for editing — it is not in the picker, it is a sentence.
-  await expect(edit.getByText(/further reminder is kept unchanged/)).toBeVisible()
+  await expect(async () => {
+    if (await edit.isVisible()) {
+      await edit.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await expect(edit).toBeHidden()
+    }
+    await row(page, title).click()
+    // Reported, and NOT offered for editing — it is not in the picker, it is a sentence.
+    await expect(edit.getByText(/further reminder is kept unchanged/)).toBeVisible({
+      timeout: 1_000,
+    })
+  }).toPass({ timeout: 45_000 })
   await edit.getByLabel('Title', { exact: true }).fill(`${title} renamed`)
   await edit.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(edit).toBeHidden()
@@ -359,9 +374,16 @@ test('offline, the calendar keeps showing the month it already has (K-8)', async
   await expect(row(page, title)).toBeVisible()
 
   try {
-    // ---- pull the plug, and wait for the APP to agree rather than for the CDP command
+    /*
+     * Pull the plug, and wait for the APP to agree rather than for the CDP command.
+     *
+     * `/^Offline$/` and not `'Offline'`: a STRING `hasText` is a case-insensitive SUBSTRING match,
+     * so it also catches this screen's own "Not updating while offline." line — two `role="status"`
+     * elements, one locator, and a strict-mode violation that never resolves. The anchored regex
+     * names the shell's chip alone, which is the thing being waited on here.
+     */
     await context.setOffline(true)
-    await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeVisible({
+    await expect(page.getByRole('status').filter({ hasText: /^Offline$/ })).toBeVisible({
       timeout: 15_000,
     })
 
@@ -380,17 +402,28 @@ test('offline, the calendar keeps showing the month it already has (K-8)', async
 
     // ---- what cannot work offline is REFUSED with a reason, not silently broken (Apple's rule:
     // greyed out and explained, never invisible).
-    await page.getByRole('button', { name: 'New event' }).click()
+    const newEvent = page.getByRole('button', { name: 'New event' })
+    await expect(newEvent).toBeDisabled()
     await expect(
       page.getByText('You are offline. Events can only be created while connected.'),
     ).toBeVisible()
+    /*
+     * `force`, because the refusal is `aria-disabled` and NOT the `disabled` attribute: `Button`'s
+     * `unavailableReason` keeps the control focusable on purpose, so the reader who most needs the
+     * explanation can still reach it (FR-A11Y-01), and swallows the activation in the handler.
+     * Playwright's actionability guard honours `aria-disabled` and would wait for the button to
+     * become enabled until the test timed out — which is what a plain `.click()` did here. A real
+     * mouse press does reach this button, so forcing it is the honest simulation, and the assertion
+     * is that it still opens nothing.
+     */
+    await newEvent.click({ force: true })
     await expect(page.getByRole('dialog')).toHaveCount(0)
   } finally {
     await context.setOffline(false)
   }
 
   // ---- clean up: back online, delete the event for good
-  await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeHidden({
+  await expect(page.getByRole('status').filter({ hasText: /^Offline$/ })).toBeHidden({
     timeout: 15_000,
   })
   await openAgenda(page)
