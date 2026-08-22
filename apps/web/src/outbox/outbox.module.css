@@ -79,7 +79,7 @@
   position: fixed;
   inset-block-end: 0;
   inset-inline-start: var(--waxwing-space-4);
-  z-index: 29;
+  z-index: var(--waxwing-layer-queued);
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-2);

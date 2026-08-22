@@ -16,11 +16,15 @@
  * 8 px gap was not in either number, so the toggles started 8 px to the left of the field they
  * belong under. Two hardcoded copies of one measurement, and both wrong by the part neither of them
  * knew about. With a grid the column IS the measurement.
+ *
+ * The WIDTH of that column is `--compose-label`, set on the composer window — see
+ * composer.module.css. It lived here as a literal `2.5rem` and again there as a literal `2.5rem`,
+ * which is two copies of one measurement in the arrangement whose whole point is that there is one.
  */
 .field {
   position: relative;
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--compose-label, 4.5rem) minmax(0, 1fr);
   align-items: start;
   gap: var(--waxwing-space-2);
 }
@@ -216,9 +220,13 @@
   block-size: var(--waxwing-icon-sm);
 }
 
+/* Under the entry box, not under the label — the same alignment the grid above states, and the
+   third place the 2.5rem literal had been copied to. It was 8px short of the column it was aiming
+   at, because the row's own gap was in neither number: exactly the defect `.field`'s comment
+   records, still living here after the grid fixed it two rules up. */
 .didYouMean {
   margin: 0;
-  padding-inline-start: 2.5rem;
+  padding-inline-start: calc(var(--compose-label, 4.5rem) + var(--waxwing-space-2));
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
@@ -237,7 +245,7 @@
    forgetting the gap — which is how these ended up 8 px to the left of the field they belong to. */
 .fieldToggles {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--compose-label, 4.5rem) minmax(0, 1fr);
   gap: var(--waxwing-space-2);
 }
 

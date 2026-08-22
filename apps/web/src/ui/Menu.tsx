@@ -52,11 +52,26 @@ export interface MenuProps {
 const MENU_GAP = 4
 
 /**
- * A rough menu height, for deciding whether one fits below its trigger. Deliberately an estimate:
- * measuring would mean rendering the menu first and moving it afterwards, which is a visible jump.
- * Roughly six items plus padding — enough that a genuinely cramped position is recognised.
+ * How tall this menu wants to be, for deciding whether it fits below its trigger.
+ *
+ * Still an estimate — measuring means rendering first and moving afterwards, which is a visible
+ * jump — but an estimate that COUNTS THE ITEMS rather than assuming six. The fixed 240px it replaces
+ * was written when the longest menu in the app was five entries; the folder-actions menu now carries
+ * nine, and measured 406px on a 390 × 844 phone. With 279px of room below the trigger the flip
+ * therefore declined to fire, and the menu ran 131px past the bottom of the screen with "Folder
+ * info…" and "Share…" — both added this round — off the edge and unreachable.
+ *
+ * 44 is `--waxwing-control-min` at its touch value, which is what `.item`'s `min-block-size`
+ * resolves to on the viewport where this matters. Overestimating on a pointer device is harmless:
+ * it only makes the menu flip a little sooner.
  */
-const MENU_ESTIMATED_BLOCK = 240
+const MENU_ROW_BLOCK = 44
+/** `.menu`'s own padding, both edges (`--waxwing-space-1` × 2). */
+const MENU_PADDING_BLOCK = 8
+
+function estimatedBlock(itemCount: number): number {
+  return itemCount * MENU_ROW_BLOCK + MENU_PADDING_BLOCK
+}
 
 /**
  * Menu button (APG menu-button pattern). The trigger carries `aria-haspopup`/`aria-expanded`;
@@ -84,7 +99,7 @@ export function Menu({
   })
 
   const [open, setOpen] = useState(false)
-  const [coords, setCoords] = useState({ top: 0, left: 0, flipped: false })
+  const [coords, setCoords] = useState({ top: 0, left: 0, flipped: false, maxBlock: 0 })
   const [focusedIndex, setFocusedIndex] = useState(-1)
 
   /** Whether the menu reserves an icon column at all — see the note at the render site. */
@@ -110,18 +125,29 @@ export function Menu({
         // moving afterwards, which is a visible jump. The estimate only has to answer "is there
         // obviously not enough room", and the flip is additionally gated on the space above being
         // larger — so a short menu in a short window stays where it was.
-        const below = window.innerHeight - rect.bottom
-        const flip = below < MENU_ESTIMATED_BLOCK && rect.top > below
+        //
+        // And then a CEILING, which the flip alone never was. Flipping picks the roomier side; it
+        // does not make a menu that is taller than BOTH sides fit into either. Nine items is 406px,
+        // and half of a 844px phone is less than that whichever way it opens — so the chosen side's
+        // room is handed to the menu as a maximum and `.menu` scrolls inside it. That is what makes
+        // the last item reachable at any item count, rather than at the ones we thought to check.
+        const below = window.innerHeight - rect.bottom - MENU_GAP
+        const above = rect.top - MENU_GAP
+        const flip = estimatedBlock(items.length) > below && above > below
         setCoords({
           top: flip ? rect.top - MENU_GAP : rect.bottom + MENU_GAP,
           left: align === 'end' ? rect.right : rect.left,
           flipped: flip,
+          maxBlock: Math.max(flip ? above : below, 0),
         })
       }
       setFocusedIndex(toIndex)
       setOpen(true)
     },
-    [align],
+    // `items.length`, not `items`: a caller that rebuilds its array every render would otherwise
+    // rebuild this callback every render too, and the only thing the position depends on is how
+    // many entries there are.
+    [align, items.length],
   )
 
   const close = useCallback(() => {
@@ -262,7 +288,16 @@ export function Menu({
               align === 'end' && styles.alignEnd,
               coords.flipped && styles.flipped,
             )}
-            style={{ position: 'fixed', top: coords.top, left: coords.left }}
+            // `maxBlockSize` is the room on whichever side the menu opened to; `.menu` scrolls
+            // inside it. Inline rather than in the stylesheet because the number is the viewport's,
+            // not the design's. Zero means the rect was never read (jsdom, or a trigger that has
+            // not laid out), and no ceiling is the right answer there.
+            style={{
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              ...(coords.maxBlock > 0 ? { maxBlockSize: coords.maxBlock } : {}),
+            }}
             onKeyDown={onMenuKeyDown}
           >
             {items.map((item, index) => {

@@ -172,6 +172,37 @@
        below (SC 2.5.5 AAA) so it stays finger-friendly where screen space is tight. */
     --waxwing-control-min: 2.125rem;
 
+    /* ---- Stacking layers ----
+       Every overlay that leaves the document flow renders into a portal appended to <body>
+       (`ui/internal/Portal.tsx`), so its place in the stack is decided by `z-index` alone and by
+       nothing else — no ancestor can contain it, and source order is the order the portals happened
+       to mount in.
+
+       The order below is the one the reader experiences, and the ONE thing about it that is not
+       obvious is why a menu sits ABOVE a dialog. A menu is opened FROM a control; when that control
+       is inside a dialog, a menu ranked under the dialog is painted behind the panel that opened it.
+       Measured on 2026-08-22: the calendar list is a screen-high sheet below 40em, so on a phone the
+       per-calendar "⋯" opened a menu nobody could see or press — renaming, recolouring and deleting
+       a calendar were unreachable on the one viewport where the sheet exists. A dialog is never
+       opened from a menu that has to stay on screen (choosing an item dismisses the menu first), so
+       there is no case that wants the opposite order.
+
+       One rank for every anchored overlay — menus, the sender card, the label picker — because they
+       are the same thing wearing different names, and a scale that ranks them against each other
+       invites the next one to pick a number instead of a layer. A tooltip explains whatever is under
+       the pointer, including a control inside a menu, so it goes above them. Toasts stay on top:
+       they report what just happened and outlive the overlay the action was taken in.
+
+       The two lowest ranks are the persistent ones: the queued-sends strip and the composer are
+       portalled windows the reader keeps working around, so they sit under everything modal — a
+       dialog opened FROM the composer has to cover it. */
+    --waxwing-layer-queued: 29;
+    --waxwing-layer-composer: 30;
+    --waxwing-layer-dialog: 100;
+    --waxwing-layer-popover: 110;
+    --waxwing-layer-tooltip: 115;
+    --waxwing-layer-toast: 120;
+
     /* ---- Icons ----
        Icons are the app's most frequent visual element and were the only category outside the
        token system: eleven distinct sizes across the stylesheets, two of them 0.4 px apart

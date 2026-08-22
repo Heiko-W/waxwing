@@ -39,6 +39,32 @@
   white-space: nowrap;
 }
 
+/*
+ * The NAME takes the row; the controls beside it take what they need and no more.
+ *
+ * `Select`'s wrapper is `inline-size: 100%` — correct in a form column, and wrong in a row whose
+ * content is a person. As a flex item that resolves its base size to the whole row, while
+ * `.shareName` is `flex: 1`, i.e. a base size of ZERO. The name therefore started at nothing and
+ * the picker never gave any of it back. Measured at 834px and 1280px on 2026-08-22:
+ * `carol@waxwing.test` rendered 0px wide, so "Who has access" listed a role picker and a Remove
+ * button and never said whose access it was — on the one surface whose entire subject is who.
+ *
+ * The same declaration fixes the second half of that row: `Button`'s inner `.label` carries
+ * `min-inline-size: 0`, so a shrinking button has no content minimum either and "Remove" was being
+ * broken across two lines as "Rem / ove". `flex: none` is what stops both, because both were the
+ * same mistake — controls sized by what is left over rather than by what they are.
+ */
+.shareRow > :not(.shareName) {
+  flex: none;
+}
+
+/* And the picker's own `inline-size: 100%`, which `flex: none` would otherwise freeze at the full
+   row width. `auto` lets the native control size itself to its longest option, which is what a
+   three-word role list wants anyway. */
+.shareRow > div:has(> select) {
+  inline-size: auto;
+}
+
 .shareEmail {
   flex: none;
   color: var(--waxwing-text-muted);

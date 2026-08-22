@@ -21,7 +21,22 @@
   align-items: center;
   justify-content: center;
   gap: var(--waxwing-space-2);
+  /*
+   * BOTH axes, from the same token.
+   *
+   * Only the block axis was pinned, so a button's width was whatever its label happened to measure
+   * — and `--waxwing-control-min` is 44px under `pointer: coarse`, which a short label does not
+   * reach. Measured on a real touch context, 2026-08-22: the Files breadcrumb's "Files" came to
+   * 43 × 44 and the filter row's "Edit" to 39 × 44. `IconButton` has pinned its own
+   * `min-inline-size` from this token since it was written, and `target-size.spec.ts` has always
+   * asserted that a button reaches the token in both axes — the rule existed, the declaration did
+   * not, and neither screen is one that suite visits.
+   *
+   * `min-` rather than a size, so a labelled button still grows with its text and `.block`'s
+   * `inline-size: 100%` is untouched.
+   */
   min-block-size: var(--waxwing-control-min);
+  min-inline-size: var(--waxwing-control-min);
   padding-inline: var(--waxwing-space-3);
   border: 1px solid transparent;
   border-radius: var(--waxwing-radius-md);

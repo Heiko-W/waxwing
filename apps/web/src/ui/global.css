@@ -48,6 +48,60 @@ button {
 }
 
 /*
+ * The file picker, app-wide.
+ *
+ * Four screens hand the reader a bare `<input type="file">` — importing `.ics` into the calendar,
+ * `.eml` into a folder, a vCard into the address book, and the photo on a contact — and every one of
+ * them shipped the user agent's own control, unstyled. Measured on 2026-08-22 in the ICS dialog:
+ * 21px tall at 390, 834 and 1280 alike, against a `--waxwing-control-min` of 44 on touch and 34 on a
+ * pointer, and below WCAG 2.2 SC 2.5.8's 24px floor at every one of them. It was also the only
+ * control on those screens drawn in a different idiom from everything around it.
+ *
+ * Here rather than in each of the four stylesheets, because it is a fact about the ELEMENT: a fifth
+ * picker added tomorrow gets it without knowing this rule exists, which is the opposite of how the
+ * four that exist got their sizes.
+ *
+ * What this does NOT fix: the button's LABEL. "Choose File" / "Keine Datei ausgewählt" comes from
+ * the browser, in the BROWSER's language, and no CSS reaches it — a picker whose wording follows the
+ * app needs a real button in front of a hidden input, which is a change to four components rather
+ * than to one rule. Recorded rather than quietly left: the size is the accessibility defect, the
+ * wording is a consistency one.
+ */
+input[type="file"] {
+  max-inline-size: 100%;
+  font: inherit;
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text-muted);
+}
+
+input[type="file"]::file-selector-button {
+  min-block-size: var(--waxwing-control-min);
+  min-inline-size: var(--waxwing-control-min);
+  margin-inline-end: var(--waxwing-space-2);
+  padding-inline: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background-color: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  font-weight: var(--waxwing-weight-medium);
+  cursor: pointer;
+}
+
+/* Pointer-only, for the reason `.fieldToggle` gives: on a touchscreen the hover style sticks to
+   whatever the tap landed on and then reads as a selection. */
+@media (hover: hover) {
+  input[type="file"]:not(:disabled)::file-selector-button:hover {
+    background-color: var(--waxwing-surface-2);
+  }
+}
+
+input[type="file"]:disabled::file-selector-button {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/*
  * Search-hit highlighting, app-wide.
  *
  * Without a rule here the user agent's default applies — `#ffff00` on black. That breaks three

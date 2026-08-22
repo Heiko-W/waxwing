@@ -60,6 +60,39 @@ describe('a person row stays readable on a phone', () => {
   })
 })
 
+/**
+ * The same row at every OTHER width, which the block above never looked at.
+ *
+ * The phone case had been thought about and stated in CSS; the wide case had not, and that is where
+ * it was broken. `Select`'s wrapper is `inline-size: 100%` — right in a form column, wrong in a row
+ * whose content is a person — so as a flex item it based itself on the WHOLE row while `.shareName`
+ * (`flex: 1`) based itself on nothing. Measured at 834 px and 1280 px on 2026-08-22:
+ * `carol@waxwing.test` rendered 0 px wide. "Who has access" showed a role picker and a Remove button
+ * and did not say whose access it was, on the one surface whose entire subject is who.
+ *
+ * The second half of the same row: `Button`'s inner `.label` sets `min-inline-size: 0`, so a
+ * shrinking button has no content minimum either and "Remove" came out as "Rem / ove" on two lines.
+ *
+ * Both are one declaration — the controls do not flex — which is why they are one test.
+ */
+describe('a person row stays readable at every other width', () => {
+  /** Everything before the phone block: the rules that apply at all widths. */
+  const wide = css.slice(0, css.search(/@media\s*\(max-width:/))
+
+  it('lets the name flex and nothing else', () => {
+    expect(ruleBody(wide, '.shareName')).toMatch(/flex:\s*1/)
+    expect(
+      ruleBody(wide, '.shareRow > :not(.shareName)'),
+      'a control sized by what is left over is a control that disappears',
+    ).toMatch(/flex:\s*none/)
+  })
+
+  it("undoes the role picker's full-width sizing, which flex: none would otherwise freeze", () => {
+    // `flex: none` keeps the base size, and `Select`'s base size in a row IS the row.
+    expect(ruleBody(wide, '.shareRow > div:has(> select)')).toMatch(/inline-size:\s*auto/)
+  })
+})
+
 describe('the phone rules are scoped to a phone', () => {
   it('uses the same breakpoint the rest of the app does', () => {
     // 39.999em — one em short of 40em, the value eight other stylesheets in this app already use.
