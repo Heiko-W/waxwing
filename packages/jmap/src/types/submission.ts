@@ -37,7 +37,8 @@ export interface Identity {
 
 export type IdentityGetRequest = GetRequest
 export type IdentityGetResponse = GetResponse<Identity>
-// Identity/changes is deferred (M2.5 uses a one-shot get); the bindings are kept for later.
+// `Identity/changes` is deferred (M2.5 uses a one-shot get) and therefore has no {@link Methods}
+// entry; the server does implement it (measured, v0.16.18), so the bindings are kept for later.
 export type IdentityChangesRequest = ChangesRequest
 export type IdentityChangesResponse = ChangesResponse
 

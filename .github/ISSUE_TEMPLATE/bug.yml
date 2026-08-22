@@ -31,7 +31,7 @@ body:
     attributes:
       label: Mail server and version
       description: The JMAP server Waxwing is talking to.
-      placeholder: Stalwart 0.16.14
+      placeholder: Stalwart 0.16.18
     validations: { required: true }
 
   - type: input

@@ -1,11 +1,11 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type ContactCardRow, ReplicaProvider } from '../sync'
-import { contactCard } from '../sync/test-utils'
+import { type AddressBookRow, type ContactCardRow, ReplicaProvider } from '../sync'
+import { addressBook, contactCard } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ContactForm, type ContactFormSubmit } from './ContactForm'
-import type { PhotoScaler, PhotoUploader } from './contact-photo-upload'
+import { PHOTO_MAX_BYTES, type PhotoScaler } from './contact-photo'
 import styles from './contacts.module.css'
 
 // The photo preview goes through the authenticated blob path — out of scope here. With it stubbed the
@@ -86,6 +86,8 @@ describe('ContactForm progressive disclosure (FR-CON-02)', () => {
     const revealers: [string, string][] = [
       ['Add company', 'Company'],
       ['Add birthday', 'Birthday'],
+      ['Add website', 'Website'],
+      ['Add instant messaging', 'Instant messaging'],
       ['Add note', 'Notes'],
       ['Add address', 'Address'],
       ['Add photo', 'Photo'],
@@ -340,38 +342,59 @@ describe('ContactForm email validation (N9)', () => {
   })
 })
 
-describe('ContactForm photo upload', () => {
+describe('ContactForm photo (JMAP gap analysis, B-1)', () => {
   const passthroughScaler: PhotoScaler = async (file) => ({ blob: file, mediaType: file.type })
 
-  it('uploads a picked file and writes its blobId into the media map', async () => {
+  /**
+   * The write format. Stalwart answers a `media[].blobId` with
+   * `invalidProperties: "blobIds in media is not supported."` and accepts the same photo as a
+   * `data:` URI (measured, `docs/jmap-gap-2026-08-21/berichte/D-sharing-pim.md` §3.3) — so this
+   * asserts on the SHAPE of the card the form hands back, which is the thing the old code got
+   * wrong while its test was green.
+   */
+  it('writes the picked file into the media map as a data: URI, never a blobId', async () => {
     const user = userEvent.setup()
-    const uploader: PhotoUploader = vi.fn(async (_blob, mediaType) => ({
-      blobId: 'uploaded-blob',
-      mediaType,
-    }))
-    const { onSubmit } = renderForm({ uploadPhoto: uploader, scalePhoto: passthroughScaler })
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
 
     await user.click(screen.getByRole('button', { name: 'Add photo' }))
     const file = new File(['bytes'], 'me.png', { type: 'image/png' })
     await user.upload(screen.getByLabelText('Choose photo'), file)
 
-    // Preview appears (from the local objectURL) and the uploader ran.
+    // Preview appears (from the local objectURL created while the encode runs).
     expect(await screen.findByRole('img')).toBeInTheDocument()
-    expect(uploader).toHaveBeenCalledTimes(1)
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
     const media = Object.values(submit.card.media ?? {})[0]
-    expect(media).toMatchObject({ kind: 'photo', blobId: 'uploaded-blob', mediaType: 'image/png' })
+    expect(media).toMatchObject({ kind: 'photo', mediaType: 'image/png' })
+    expect(media?.uri ?? '').toMatch(/^data:image\/png;base64,/)
+    expect(media?.blobId).toBeUndefined()
+  })
+
+  /**
+   * The photo rides inside the card now, so there has to be a ceiling — otherwise a 4 MB camera
+   * shot from a browser that cannot downscale becomes a 5.5 MB base64 string in every sync.
+   */
+  it('refuses a photo too large to put in a card, and says so in its own words', async () => {
+    const user = userEvent.setup()
+    // A scaler that cannot help (the real one's behaviour when it cannot decode the file).
+    const giant = new File(['x'.repeat(PHOTO_MAX_BYTES + 1)], 'huge.png', { type: 'image/png' })
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
+
+    await user.click(screen.getByRole('button', { name: 'Add photo' }))
+    await user.upload(screen.getByLabelText('Choose photo'), giant)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That photo is too large. Choose a smaller one.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(submit.card.media).toBeUndefined()
   })
 
   it('removes the photo again', async () => {
     const user = userEvent.setup()
-    const uploader: PhotoUploader = vi.fn(async (_blob, mediaType) => ({
-      blobId: 'uploaded-blob',
-      mediaType,
-    }))
-    const { onSubmit } = renderForm({ uploadPhoto: uploader, scalePhoto: passthroughScaler })
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
 
     await user.click(screen.getByRole('button', { name: 'Add photo' }))
     await user.upload(
@@ -385,6 +408,18 @@ describe('ContactForm photo upload', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
     expect(submit.card.media).toBeUndefined()
+  })
+
+  /**
+   * The half of B-1 that no component test could see: the picker was `disabled` unless a caller
+   * passed an uploader, and no caller did. The form no longer takes one — so this pins that the
+   * control the user is shown is a control the user can operate, with nothing to wire.
+   */
+  it('offers an ENABLED picker with no props beyond the form itself', async () => {
+    const user = userEvent.setup()
+    renderForm()
+    await user.click(screen.getByRole('button', { name: 'Add photo' }))
+    expect(screen.getByLabelText('Choose photo')).toBeEnabled()
   })
 })
 
@@ -402,5 +437,196 @@ describe('ContactForm a11y', () => {
       </ReplicaProvider>,
     )
     await expectNoA11yViolations(container)
+  })
+})
+
+/**
+ * A-5 of the JMAP gap analysis: websites and instant messaging were readable and preserved, and the
+ * form had no field for either — so a card could carry a URL nobody could see or change, and IM was
+ * modelled nowhere at all.
+ */
+describe('ContactForm websites and instant messaging (A-5)', () => {
+  it('writes a typed website into the card`s links', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+
+    await user.click(screen.getByRole('button', { name: 'Add website' }))
+    await user.type(screen.getByLabelText('Website'), 'https://anna.test')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.links ?? {})).toEqual([
+      { '@type': 'Link', uri: 'https://anna.test' },
+    ])
+  })
+
+  it('writes a service and an account into onlineServices', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm()
+
+    await user.click(screen.getByRole('button', { name: 'Add instant messaging' }))
+    await user.type(screen.getByLabelText('Service'), 'Matrix')
+    await user.type(screen.getByLabelText('Instant messaging'), '@anna:example.test')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.onlineServices ?? {})).toEqual([
+      // A handle is not a URI — see `formToOnlineServices`.
+      { '@type': 'OnlineService', service: 'Matrix', user: '@anna:example.test' },
+    ])
+  })
+
+  it('reveals both sections up front for a card that already carries them', () => {
+    // The reveal bar is for fields the card does NOT have; a stored value must never be hidden
+    // behind an "Add …" button, which is how it stays invisible AND uneditable.
+    renderForm({
+      mode: 'edit',
+      card: contactCard('c1', {
+        links: { l1: { '@type': 'Link', uri: 'https://anna.test' } },
+        onlineServices: { s1: { '@type': 'OnlineService', service: 'Matrix', user: '@anna' } },
+      }) as ContactCardRow,
+    })
+    expect(screen.getByLabelText('Website')).toHaveValue('https://anna.test')
+    expect(screen.getByLabelText('Service')).toHaveValue('Matrix')
+    expect(screen.getByLabelText('Instant messaging')).toHaveValue('@anna')
+  })
+})
+
+/**
+ * Filing one contact in several address books (JMAP gap analysis, A-3).
+ *
+ * The gap was written up as "`ContactCard/copy` is unused". It stays unused: measured against
+ * Stalwart v0.16.18 on 2026-08-21, a `/copy` with `accountId === fromAccountId` is refused with
+ * `invalidArguments` — *"From accountId is equal to fromAccountId"* — whatever key the `create` map
+ * uses. `/copy` moves objects between ACCOUNTS. Two books of one account is what a person has, and
+ * JSContact already answers it: `addressBookIds` is a set, so one card can sit in both (also
+ * measured — `ContactCard/query` returns the same id for either book).
+ *
+ * These pin the two halves a copy-based implementation would have got wrong: the patch shape that
+ * reaches the server, and the refusal of the last removal.
+ */
+describe('address book membership', () => {
+  const books: readonly AddressBookRow[] = [
+    { ...addressBook('book1', { name: 'Work', isDefault: true }), accountId: 'a' },
+    { ...addressBook('book2', { name: 'Family' }), accountId: 'a' },
+  ]
+
+  function cardInOneBook(): ContactCardRow {
+    return contactCard('c1', {
+      addressBookIds: { book1: true },
+      name: { '@type': 'Name', full: 'Alice Anderson' },
+    }) as ContactCardRow
+  }
+
+  it('is not offered while the account has a single address book', () => {
+    renderForm({
+      mode: 'edit',
+      card: cardInOneBook(),
+      books: [{ ...addressBook('book1', { name: 'Work' }), accountId: 'a' }],
+    })
+
+    expect(screen.queryByRole('heading', { name: 'Address books' })).not.toBeInTheDocument()
+  })
+
+  it('files the card into a second book with a JSON-Pointer patch, not a copy', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm({ mode: 'edit', card: cardInOneBook(), books })
+
+    expect(screen.getByRole('heading', { name: 'Address books' })).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: 'Family' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0]
+    expect(submit).toMatchObject({ kind: 'update', cardId: 'c1' })
+    // Exactly one key, and it is the pointer form the outbox's temp-book rewrite understands —
+    // NOT a whole-map replace, which would sail past it and name a book id the server never had.
+    expect(submit?.kind === 'update' ? submit.patch : {}).toEqual({ 'addressBookIds/book2': true })
+  })
+
+  it('unfiles with a null pointer when the card is left in another book', async () => {
+    const user = userEvent.setup()
+    const card = contactCard('c1', {
+      addressBookIds: { book1: true, book2: true },
+      name: { '@type': 'Name', full: 'Alice Anderson' },
+    }) as ContactCardRow
+    const { onSubmit } = renderForm({ mode: 'edit', card, books })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Work' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0]
+    expect(submit?.kind === 'update' ? submit.patch : {}).toEqual({ 'addressBookIds/book1': null })
+  })
+
+  it('refuses to empty the set, because the server does', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm({ mode: 'edit', card: cardInOneBook(), books })
+
+    await user.click(screen.getByRole('checkbox', { name: 'Work' }))
+
+    // Measured: `addressBookIds/<last>: null` comes back `invalidProperties` — "Contact has to
+    // belong to at least one address book." Refusing here keeps the card from blinking out of the
+    // list and back on the rejected replay.
+    expect(screen.getByRole('checkbox', { name: 'Work' })).toBeChecked()
+    expect(
+      screen.getByText('A contact has to stay in at least one address book.'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    // Nothing changed, so the form closes without a write at all.
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('creates into every ticked book at once', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderForm({ mode: 'create', bookId: 'book1', books })
+
+    await user.type(screen.getByLabelText('First name'), 'Bob')
+    await user.click(screen.getByRole('checkbox', { name: 'Family' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const submit = onSubmit.mock.calls[0]?.[0]
+    expect(submit?.kind === 'create' ? submit.card.addressBookIds : {}).toEqual({
+      book1: true,
+      book2: true,
+    })
+  })
+
+  it('has no axe violations with the membership checklist open', async () => {
+    const { container } = render(
+      <ReplicaProvider accountId="a">
+        <ContactForm
+          mode="edit"
+          card={cardInOneBook()}
+          bookId="book1"
+          books={books}
+          onSubmit={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </ReplicaProvider>,
+    )
+    await expectNoA11yViolations(container)
+  })
+
+  it('shows a book the reader cannot write to, but does not let them leave it', () => {
+    const shared: AddressBookRow = {
+      ...addressBook('book3', {
+        name: 'Team',
+        myRights: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: false },
+      }),
+      accountId: 'a',
+    }
+    const card = contactCard('c1', {
+      addressBookIds: { book1: true, book3: true },
+      name: { '@type': 'Name', full: 'Alice Anderson' },
+    }) as ContactCardRow
+    renderForm({
+      mode: 'edit',
+      card,
+      books: [...books, shared],
+    })
+
+    expect(screen.getByRole('checkbox', { name: 'Team' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Team' })).toBeChecked()
   })
 })

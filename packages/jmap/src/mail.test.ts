@@ -17,7 +17,33 @@ const fullRights = {
   mayRename: false,
   mayDelete: false,
   maySubmit: true,
+  mayShare: false,
 }
+
+/*
+ * The folder tree is read whole — `Mailbox/get {ids:null}` in `sync/engine/port.ts` — and both
+ * `/query` forms had no caller anywhere (JMAP gap analysis, I-2). They are NOT missing because the
+ * server lacks them: v0.16.18 answers `Mailbox/query` with a full, sorted id list and
+ * `canCalculateChanges: true` (measured). They are missing because a typed binding in the registry
+ * reads as "this client pages its folder list", and it does not — an account has tens of mailboxes,
+ * not a page of them, and the tree needs every one of them to render at all.
+ */
+describe('Mailbox paging is not part of this client', () => {
+  it('has no `Mailbox/query` or `Mailbox/queryChanges` to reach for', () => {
+    expect(Methods).not.toHaveProperty('mailboxQuery')
+    expect(Methods).not.toHaveProperty('mailboxQueryChanges')
+
+    const names = Object.values(Methods).map((method) => method.name)
+    expect(names).not.toContain('Mailbox/query')
+    expect(names).not.toContain('Mailbox/queryChanges')
+  })
+
+  it('still binds the three Mailbox methods it does call', () => {
+    expect(Methods.mailboxGet.name).toBe('Mailbox/get')
+    expect(Methods.mailboxChanges.name).toBe('Mailbox/changes')
+    expect(Methods.mailboxSet.name).toBe('Mailbox/set')
+  })
+})
 
 describe('Email/query → Email/get back-reference (typed invoke)', () => {
   it('chains in a single round-trip, sends a correct ResultReference and infers Email[]', async () => {

@@ -25,6 +25,7 @@ import type {
   Name,
   Nickname,
   Note,
+  OnlineService,
   Organization,
   PartialDate,
   Phone,
@@ -255,6 +256,33 @@ function linkLines(links: Readonly<Record<Id, Link>> | undefined, out: WritableL
   }
 }
 
+/**
+ * `onlineServices` → `IMPP` (RFC 9555 §2.3.2). The value is a URI, so it is NOT text-escaped —
+ * escaping a query string's `,` breaks it, exactly as for `URL` and `PHOTO`; `renderLine` still
+ * strips the control characters an unescaped slot would otherwise let through.
+ *
+ * An entry with no `uri` (a bare `user` handle at a service that has no URI scheme) has no `IMPP`
+ * value to write, and vCard offers no other home for it — it is skipped rather than emitted as an
+ * empty property. Noted in the README's "Known limits".
+ */
+function onlineServiceLines(
+  services: Readonly<Record<Id, OnlineService>> | undefined,
+  out: WritableLine[],
+) {
+  for (const [id, service] of Object.entries(services ?? {})) {
+    const uri = service.uri
+    if (uri === undefined || uri.trim() === '') continue
+    const params = entryParams({
+      id,
+      types: setKeys(service.contexts).map((c) => CONTEXT_TO_TYPE[c] ?? c),
+      pref: service.pref,
+      label: service.label,
+    })
+    if (service.service !== undefined) params.set('SERVICE-TYPE', [service.service])
+    out.push({ name: 'IMPP', params, value: uri })
+  }
+}
+
 function noteLines(notes: Readonly<Record<Id, Note>> | undefined, out: WritableLine[]) {
   for (const [id, note] of Object.entries(notes ?? {})) {
     out.push({ name: 'NOTE', params: entryParams({ id }), value: escapeText(note.note) })
@@ -345,6 +373,7 @@ export function toVCard(card: Card): string {
   noteLines(card.notes, out)
   mediaLines(card.media, out)
   linkLines(card.links, out)
+  onlineServiceLines(card.onlineServices, out)
 
   const keywords = Object.keys(card.keywords ?? {})
   if (keywords.length > 0) out.push({ name: 'CATEGORIES', value: joinList(keywords) })

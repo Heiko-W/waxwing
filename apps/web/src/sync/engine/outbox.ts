@@ -101,15 +101,48 @@ export type OutboxIntent =
   | {
       readonly kind: 'createMailbox'
       readonly creationId: string
+      /**
+       * Deliberately WITHOUT `role`. The field was here from the start and no caller ever set one
+       * (JMAP gap analysis, I-3): the New-folder affordance asks for a name and a parent, which is
+       * all Apple Mail asks for either. Setting a role at create time is not the same operation as
+       * naming a folder, and it already has its own intent — `updateMailbox { props: { role } }`
+       * (M-6). An optional property nobody writes is a claim that the create dialog offers
+       * something it does not, and it made `createMailbox` and `updateMailbox` look like two ways
+       * to do one thing.
+       */
       readonly props: {
         readonly name: string
         readonly parentId: Id | null
-        readonly role?: string | null
+        /**
+         * Where the folder lands among its siblings. Omitted for a group nobody has ordered by
+         * hand, which leaves the server's 0 and RFC 8621's alphabetical tie-break in place.
+         */
+        readonly sortOrder?: number
       }
     }
   | { readonly kind: 'renameMailbox'; readonly id: Id; readonly name: string }
   | { readonly kind: 'moveMailbox'; readonly id: Id; readonly parentId: Id | null }
   | { readonly kind: 'deleteMailbox'; readonly id: Id }
+  | {
+      /**
+       * The two mutable Mailbox properties that are neither a name nor a parent (JMAP gap analysis
+       * M-5/M-6): `role` — what other clients read to recognise a folder as the Archive — and
+       * `isSubscribed`, JMAP's own "do not show me this folder". Only the properties present are
+       * written, so this is one intent rather than two nearly identical ones.
+       */
+      readonly kind: 'updateMailbox'
+      readonly id: Id
+      readonly props: { readonly role?: string | null; readonly isSubscribed?: boolean }
+    }
+  | {
+      /**
+       * A whole sibling group's `sortOrder` in ONE `Mailbox/set` (JMAP gap analysis M-5). A drag
+       * across four folders is one request, not four — the same "one save per drop" rule ADR-026
+       * set for the filter list.
+       */
+      readonly kind: 'reorderMailboxes'
+      readonly order: ReadonlyArray<{ readonly id: Id; readonly sortOrder: number }>
+    }
   | {
       // Save a draft (M2.6): a content change is create-new + destroy-old in ONE Email/set, because
       // an Email is immutable except keywords/mailboxIds (RFC 8621 §4.6).
@@ -138,8 +171,9 @@ export type OutboxIntent =
   // ── Contacts (M4.2, RFC 9610) ──────────────────────────────────────────────────────────────
   // A ContactCard is a standalone object with create/update/destroy over `ContactCard/set`, exactly
   // like a Mailbox over `Mailbox/set` — so these MIRROR `createMailbox`/`renameMailbox`/`deleteMailbox`
-  // (creation-id flow for the create, prior-state undo for update/delete). AddressBook create is the
-  // Mailbox-create analogue; AddressBook update/delete are deliberately NOT part of this stage (5a).
+  // (creation-id flow for the create, prior-state undo for update/delete). The AddressBook trio is
+  // the same shape one level up (JMAP gap analysis B-5: create existed and had no caller; update and
+  // destroy did not exist at all, so a second address book could be neither renamed nor removed).
   | {
       /** Create a card in one or more address books; the full JSContact card rides along with its `id`
        *  set to `creationId` until the server acks (then {@link reconcileContactCardCreate} swaps it). */
@@ -153,6 +187,22 @@ export type OutboxIntent =
       readonly kind: 'createAddressBook'
       readonly creationId: string
       readonly props: { readonly name: string; readonly description?: string | null }
+    }
+  | {
+      /** Rename / re-describe a book. Only the properties present are written. */
+      readonly kind: 'updateAddressBook'
+      readonly id: Id
+      readonly props: { readonly name?: string; readonly description?: string | null }
+    }
+  | {
+      /**
+       * Destroy a book WITH its contents (RFC 9610 §2.3 `onDestroyRemoveContents`) — the cards that
+       * are in no other book go with it. The flag is not optional here: without it a book that still
+       * holds a card cannot be destroyed at all, and "delete this list" would fail for the only
+       * reason anyone ever has a list. The UI says so before it dispatches.
+       */
+      readonly kind: 'deleteAddressBook'
+      readonly id: Id
     }
 
 /**
@@ -169,10 +219,15 @@ export function stateGuardType(kind: OutboxIntent['kind']): GuardedType | null {
     case 'renameMailbox':
     case 'moveMailbox':
     case 'deleteMailbox':
+    case 'updateMailbox':
+    case 'reorderMailboxes':
       return 'Mailbox'
     case 'updateContactCard':
     case 'deleteContactCard':
       return 'ContactCard'
+    case 'updateAddressBook':
+    case 'deleteAddressBook':
+      return 'AddressBook'
     default:
       return null
   }
@@ -189,6 +244,7 @@ const OPTIMISTIC_RIGHTS = {
   mayRename: true,
   mayDelete: true,
   maySubmit: true,
+  mayShare: false,
 }
 
 /** Full permissive rights for an optimistically-created address book (M4.2; server corrects on sync). */
@@ -1408,8 +1464,9 @@ export async function applyOptimistic(
         id: intent.creationId,
         name: intent.props.name,
         parentId: intent.props.parentId,
-        role: intent.props.role ?? null,
-        sortOrder: 0,
+        // A new folder has no role until `updateMailbox` gives it one — see the intent's note.
+        role: null,
+        sortOrder: intent.props.sortOrder ?? 0,
         totalEmails: 0,
         unreadEmails: 0,
         totalThreads: 0,
@@ -1432,6 +1489,43 @@ export async function applyOptimistic(
         await deleteMailbox(db, accountId, intent.id)
       }
       return { kind: 'mailbox', id: intent.id, prior }
+    }
+    case 'updateMailbox': {
+      // Only patch a row we actually hold: a folder a concurrent `Mailbox/changes` has already
+      // destroyed must not be resurrected by an `update` (the guard `adjustMailboxCounts` makes too).
+      const prior = await db.mailboxes.get([accountId, intent.id])
+      if (prior === undefined) return { kind: 'mailboxProps', prior: [] }
+      const patch = {
+        ...(intent.props.role === undefined ? {} : { role: intent.props.role }),
+        ...(intent.props.isSubscribed === undefined
+          ? {}
+          : { isSubscribed: intent.props.isSubscribed }),
+      }
+      await db.mailboxes.update([accountId, intent.id], patch)
+      // The pre-image of exactly the columns written — see the note on `mailboxProps` for why a
+      // whole-row pre-image would be wrong when two updates are queued against the same folder.
+      return {
+        kind: 'mailboxProps',
+        prior: [
+          {
+            id: intent.id,
+            ...(intent.props.role === undefined ? {} : { role: prior.role }),
+            ...(intent.props.isSubscribed === undefined
+              ? {}
+              : { isSubscribed: prior.isSubscribed }),
+          },
+        ],
+      }
+    }
+    case 'reorderMailboxes': {
+      const priors: Array<{ id: Id; sortOrder: number }> = []
+      for (const entry of intent.order) {
+        const prior = await db.mailboxes.get([accountId, entry.id])
+        if (prior === undefined) continue
+        priors.push({ id: entry.id, sortOrder: prior.sortOrder })
+        await db.mailboxes.update([accountId, entry.id], { sortOrder: entry.sortOrder })
+      }
+      return { kind: 'mailboxProps', prior: priors }
     }
     case 'createContactCard': {
       // The card carries its `id === creationId` already; write it verbatim (the derived `abk` index
@@ -1466,6 +1560,34 @@ export async function applyOptimistic(
       }
       await putAddressBooks(db, accountId, [book])
       return { kind: 'addressBook', id: intent.creationId, prior: null }
+    }
+    case 'updateAddressBook': {
+      const prior = (await db.addressBooks.get([accountId, intent.id])) ?? null
+      if (prior !== null) {
+        await db.addressBooks.update([accountId, intent.id], {
+          ...(intent.props.name === undefined ? {} : { name: intent.props.name }),
+          ...(intent.props.description === undefined
+            ? {}
+            : { description: intent.props.description }),
+        })
+      }
+      return { kind: 'addressBook', id: intent.id, prior }
+    }
+    case 'deleteAddressBook': {
+      const prior = (await db.addressBooks.get([accountId, intent.id])) ?? null
+      await deleteAddressBooks(db, accountId, [intent.id])
+      /*
+       * The book row goes; the CARDS in it are left to the `ContactCard/changes` delta.
+       *
+       * Deliberate, and the reason is the undo: it is a persisted row, and restoring a book plus
+       * every card that was only in it would mean carrying those cards in the payload — the payload
+       * growth this module forbids itself (see the note on `insertedKeys`). The server destroys them
+       * (`onDestroyRemoveContents`) and reports them destroyed on the next pass, which is the same
+       * path a card deleted in another client takes. Until it arrives those cards are visible under
+       * "All Contacts" without a book of their own: a transient, not a loss, and a REJECTED destroy
+       * then needs no card restored because none was removed.
+       */
+      return { kind: 'addressBook', id: intent.id, prior }
     }
     case 'saveDraft':
     case 'discardDraft':
@@ -1700,6 +1822,14 @@ export async function applyUndo(
       else await deleteMailbox(db, accountId, undo.id)
       return
     }
+    case 'mailboxProps': {
+      // Column-scoped, so a rollback can only ever take back what THIS intent wrote. A folder the
+      // delta has since destroyed is not re-created: `update` is a no-op on a missing key.
+      for (const { id, ...props } of undo.prior) {
+        if (Object.keys(props).length > 0) await db.mailboxes.update([accountId, id], props)
+      }
+      return
+    }
     case 'contactCard': {
       // The prior row is stored whole (`abk` included), so the restore is exact — a rejected update
       // reinstates the pre-edit card, a rejected create removes it, a rejected delete brings it back.
@@ -1786,8 +1916,26 @@ function executeIntent(
     case 'destroyEmails':
       return port.setEmails({ destroy: intent.emailIds, ifInState })
     case 'createMailbox': {
-      const props: Partial<Mailbox> = { name: intent.props.name, parentId: intent.props.parentId }
-      if (intent.props.role != null) props.role = intent.props.role
+      const props: Partial<Mailbox> = {
+        name: intent.props.name,
+        parentId: intent.props.parentId,
+        /**
+         * Sent EXPLICITLY, and the folder disappears without it. RFC 8621 §2 says `isSubscribed`
+         * "SHOULD default to false for Mailboxes in shared accounts … and true for any new
+         * Mailboxes created by the user themself", but that is a SHOULD and the fixture does not
+         * honour it: measured on Stalwart v0.16.18, a `Mailbox/set create` that omits the property
+         * is stored with `isSubscribed: false`.
+         *
+         * Since M-5 the sidebar hides an unsubscribed folder, so the two together produced a folder
+         * that the user creates, sees (the optimistic row says `true`), and then watches vanish the
+         * moment the server's own copy syncs back — with no way to get it back except "Manage
+         * folders", where it is switched off for a choice nobody made. One word on the wire is the
+         * whole fix; the optimistic row in `applyIntent` has always said `true`, and now agrees
+         * with what the server is told.
+         */
+        isSubscribed: true,
+      }
+      if (intent.props.sortOrder !== undefined) props.sortOrder = intent.props.sortOrder
       return port.setMailboxes({ create: { [intent.creationId]: props }, ifInState })
     }
     case 'renameMailbox':
@@ -1799,6 +1947,20 @@ function executeIntent(
       })
     case 'deleteMailbox':
       return port.setMailboxes({ destroy: [intent.id], ifInState })
+    case 'updateMailbox': {
+      const patch: PatchObject = {}
+      // `role: null` CLEARS the role and is a legitimate value, so the gate is `!== undefined`.
+      if (intent.props.role !== undefined) patch.role = intent.props.role
+      if (intent.props.isSubscribed !== undefined) patch.isSubscribed = intent.props.isSubscribed
+      return port.setMailboxes({ update: { [intent.id]: patch }, ifInState })
+    }
+    case 'reorderMailboxes':
+      return port.setMailboxes({
+        update: Object.fromEntries(
+          intent.order.map((entry) => [entry.id, { sortOrder: entry.sortOrder }]),
+        ),
+        ifInState,
+      })
     case 'createContactCard':
       return port.setContactCards({
         create: { [intent.creationId]: cardCreateProps(intent.card) },
@@ -1813,6 +1975,20 @@ function executeIntent(
       if (intent.props.description != null) props.description = intent.props.description
       return port.setAddressBooks({ create: { [intent.creationId]: props }, ifInState })
     }
+    case 'updateAddressBook': {
+      const patch: PatchObject = {}
+      if (intent.props.name !== undefined) patch.name = intent.props.name
+      if (intent.props.description !== undefined) patch.description = intent.props.description
+      return port.setAddressBooks({ update: { [intent.id]: patch }, ifInState })
+    }
+    case 'deleteAddressBook':
+      // `onDestroyRemoveContents` — see the intent's own note: without it a book holding a single
+      // card cannot be destroyed, and the user has already been told what goes with it.
+      return port.setAddressBooks({
+        destroy: [intent.id],
+        onDestroyRemoveContents: true,
+        ifInState,
+      })
     case 'saveDraft':
       // create-new + destroy-old in one call — RFC 8620 §5.3 processes create before destroy, so the
       // new draft exists before the prior one is removed (gap-free).
@@ -1868,7 +2044,14 @@ function rejections(intent: OutboxIntent, result: PortSetResult): Map<string, Po
       break
     case 'renameMailbox':
     case 'moveMailbox':
+    case 'updateMailbox':
       collect(result.notUpdated, [intent.id])
+      break
+    case 'reorderMailboxes':
+      collect(
+        result.notUpdated,
+        intent.order.map((entry) => entry.id),
+      )
       break
     case 'deleteMailbox':
       collect(result.notDestroyed, [intent.id])
@@ -1884,6 +2067,12 @@ function rejections(intent: OutboxIntent, result: PortSetResult): Map<string, Po
       break
     case 'createAddressBook':
       collect(result.notCreated, [intent.creationId])
+      break
+    case 'updateAddressBook':
+      collect(result.notUpdated, [intent.id])
+      break
+    case 'deleteAddressBook':
+      collect(result.notDestroyed, [intent.id])
       break
     case 'saveDraft':
       collect(result.notCreated, [intent.creationId])
@@ -1990,11 +2179,15 @@ function rewriteContactCardTarget(intent: OutboxIntent, fromId: Id, toId: Id): O
 
 /**
  * A queued intent referencing an address book created in the same session: re-point the book id.
- * Two carriers — a card CREATED into the fresh book (`addressBookIds`), and an UPDATE patch that
- * files a card into it (`addressBookIds/<tempId>` pointer) — both of which would otherwise dangle and
- * be answered with a bogus `notFound` (the D5 defect, contacts edition).
+ * Carriers — a card CREATED into the fresh book (`addressBookIds`), an UPDATE patch that files a
+ * card into it (`addressBookIds/<tempId>` pointer), and a rename/delete of the BOOK itself queued
+ * before its create was acknowledged — all of which would otherwise dangle and be answered with a
+ * bogus `notFound` (the D5 defect, contacts edition).
  */
 function rewriteAddressBookTarget(intent: OutboxIntent, fromId: Id, toId: Id): OutboxIntent | null {
+  if (intent.kind === 'updateAddressBook' || intent.kind === 'deleteAddressBook') {
+    return intent.id === fromId ? { ...intent, id: toId } : null
+  }
   if (intent.kind === 'createContactCard') {
     if (intent.card.addressBookIds[fromId] !== true) return null
     const addressBookIds = { ...intent.card.addressBookIds }
@@ -2177,7 +2370,18 @@ function rewriteIntentTarget(intent: OutboxIntent, fromId: Id, toId: Id): Outbox
       return null
     case 'renameMailbox':
     case 'deleteMailbox':
+    case 'updateMailbox':
       return intent.id === fromId ? { ...intent, id: toId } : null
+    // Create a folder offline, then order it or mark it as the Archive before the create has
+    // replayed: without this the update would still name the creation id and come back `notFound`
+    // (defect D5, the same trap the rename fell into).
+    case 'reorderMailboxes': {
+      if (!intent.order.some((entry) => entry.id === fromId)) return null
+      return {
+        ...intent,
+        order: intent.order.map((entry) => (entry.id === fromId ? { ...entry, id: toId } : entry)),
+      }
+    }
     case 'moveMailbox': {
       const id = intent.id === fromId ? toId : intent.id
       const parentId = intent.parentId === fromId ? toId : intent.parentId
@@ -2553,12 +2757,19 @@ function rejectionKeys(intent: OutboxIntent): string[] {
     case 'renameMailbox':
     case 'moveMailbox':
     case 'deleteMailbox':
+    case 'updateMailbox':
       return [intent.id]
+    // Every sibling in the group: a `Mailbox/set` that rejects one `sortOrder` names that id, and a
+    // throw names none of them — so the whole group is the undo scope.
+    case 'reorderMailboxes':
+      return intent.order.map((entry) => entry.id)
     case 'createContactCard':
     case 'createAddressBook':
       return [intent.creationId]
     case 'updateContactCard':
     case 'deleteContactCard':
+    case 'updateAddressBook':
+    case 'deleteAddressBook':
       return [intent.id]
     case 'saveDraft':
       return [intent.creationId]

@@ -67,9 +67,15 @@
 .menu {
   animation: waxwing-menu-in var(--waxwing-duration-fast) var(--waxwing-ease-standard);
   transform-origin: top center;
-  z-index: 50;
+  z-index: var(--waxwing-layer-popover);
   min-inline-size: 12rem;
   max-inline-size: min(20rem, 90vw);
+  /* The height ceiling itself is set inline, from the room the viewport actually has (Menu.tsx);
+     this is what turns that ceiling into a scroller rather than a clip. The label picker next door
+     has had both since it was written — this menu had neither, and a nine-item folder menu ran
+     131px past the bottom of a phone. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--waxwing-space-1);
   border: 1px solid var(--waxwing-border);
   border-radius: var(--waxwing-radius-md);

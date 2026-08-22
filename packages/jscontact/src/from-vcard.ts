@@ -30,6 +30,7 @@ import type {
   NameComponentKind,
   Nickname,
   Note,
+  OnlineService,
   Organization,
   PartialDate,
   Phone,
@@ -117,6 +118,7 @@ const MAPPED = new Set([
   'PHOTO',
   'LOGO',
   'URL',
+  'IMPP',
   'CATEGORIES',
   'KIND',
   'MEMBER',
@@ -477,6 +479,31 @@ function buildLinks(lines: readonly ContentLine[]): Record<Id, Link> | undefined
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+/**
+ * `IMPP` → `onlineServices` (RFC 9555 §2.3.2).
+ *
+ * The value is a URI (`xmpp:…`, `matrix:…`, `skype:…`) and is NOT text-unescaped, for the same
+ * reason `URL` and `PHOTO` are not: unescaping would corrupt a query string. `SERVICE-TYPE` — the
+ * parameter Apple and Google both write — names the service when the scheme does not.
+ */
+function buildOnlineServices(lines: readonly ContentLine[]): Record<Id, OnlineService> | undefined {
+  const out: Record<Id, OnlineService> = {}
+  const imppLines = lines.filter((line) => line.name === 'IMPP')
+  const nextId = idAllocator(imppLines, 'os')
+  for (const line of imppLines) {
+    const uri = line.value.trim()
+    if (uri === '') continue
+    out[nextId(line)] = compact<OnlineService>({
+      uri,
+      service: line.params.get('SERVICE-TYPE')?.[0],
+      contexts: contextsOf(line),
+      pref: prefOf(line),
+      label: line.params.get('LABEL')?.[0],
+    })
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 function buildNotes(lines: readonly ContentLine[]): Record<Id, Note> | undefined {
   const out: Record<Id, Note> = {}
   const noteLines = lines.filter((line) => line.name === 'NOTE')
@@ -563,6 +590,7 @@ function convertCard(lines: readonly ContentLine[], newUid: () => string): Card 
     notes: buildNotes(lines),
     media: buildMedia(lines),
     links: buildLinks(lines),
+    onlineServices: buildOnlineServices(lines),
     keywords: buildKeywords(lines),
     members: buildMembers(lines),
     ...(vCardProps.length > 0 ? { vCardProps } : {}),

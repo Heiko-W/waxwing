@@ -8,12 +8,13 @@
  *    prompt does not annoy the user, it destroys the feature for them. So the request lives in
  *    `onCheckedChange` and nowhere else.
  *  - **It never claims more about background notifications than the code delivers.** Since M4.0 the
- *    client half exists (ADR-017, owner decision D6a), so the capability probe now selects between
- *    "this server cannot" and "this server can" — but the second case is deliberately THREE
- *    sentences, not one. A closed-app banner names no sender and no subject, the folder list on this
- *    very screen does not apply to it, and the subscription expires after seven days unless the app
- *    is opened. Showing the good news without those would be the same lie in a friendlier register,
- *    and NFR-PRIV-02 is the requirement that forbids it.
+ *    client half exists (ADR-017, owner decision D6a), so the capability probe selects between "this
+ *    server cannot" and "this server can" — but the second case is deliberately FOUR sentences, not
+ *    one. The folder list on this very screen does not apply to a closed-app banner, the
+ *    subscription expires after seven days unless the app is opened, and what the banner SAYS
+ *    depends on a second capability (`urn:ietf:params:jmap:emailpush`) and on the preview switch
+ *    above. Showing the good news without those would be the same lie in a friendlier register, and
+ *    NFR-PRIV-02 is the requirement that forbids it.
  *
  * Lives in the lazy `/settings` chunk, so none of it costs the entry bundle anything.
  */
@@ -30,6 +31,7 @@ import {
   type NotificationPrefs,
   timeValueToMinutes,
   useBackgroundPushSupport,
+  useEmailPushSupport,
   useNotificationPermission,
 } from '../notify'
 import { coerceNotificationPrefs } from '../notify/notify-model'
@@ -50,6 +52,12 @@ export interface NotificationsSectionProps {
   readonly permission?: NotificationPermissionApi
   /** Injected in tests; defaults to the RFC 9749 probe against the live session. */
   readonly backgroundPush?: boolean
+  /**
+   * Injected in tests; defaults to the `urn:ietf:params:jmap:emailpush` probe. Separate from
+   * `backgroundPush` because the two capabilities are independent — a server can sign a push
+   * without being able to put anything in it.
+   */
+  readonly emailPush?: boolean
 }
 
 /**
@@ -98,6 +106,8 @@ export function NotificationsSection(props: NotificationsSectionProps) {
   const permission = props.permission ?? realPermission
   const realBackgroundPush = useBackgroundPushSupport()
   const backgroundPush = props.backgroundPush ?? realBackgroundPush
+  const realEmailPush = useEmailPushSupport()
+  const emailPush = props.emailPush ?? realEmailPush
 
   const install = useInstallPrompt()
   const stored = useLocalPref<unknown>(NOTIFY_PREF_KEY)
@@ -192,6 +202,23 @@ export function NotificationsSection(props: NotificationsSectionProps) {
     install.platform === 'ios' && !install.isStandalone
       ? t('notify.permission.iosInstall', { product })
       : t('notify.permission.unsupported')
+
+  /**
+   * What a closed-app notification will actually say — three cases, each of them true of a real
+   * configuration, none of them a default that flatters the others.
+   *
+   * The `previewOff` case is the one worth building the branch for. It is not "we will hide it": the
+   * subject is never asked for, so it never crosses the push service and never reaches this device.
+   * A line saying only "sender and subject are hidden" would describe a weaker guarantee than the
+   * code gives, and NFR-PRIV-02 is as much against understating as against overstating.
+   */
+  const contentNote = !emailPush
+    ? t('notify.background.contentless')
+    : prefs.preview
+      ? t('notify.background.withContent', { product })
+      : // The switch's own label, interpolated rather than repeated: a user looks for the words they
+        // just read three rows above, and two copies of them would drift on the first rewording.
+        t('notify.background.previewOff', { product, setting: t('notify.preview.label') })
 
   const stateNote = !supported
     ? unsupportedNote
@@ -320,12 +347,13 @@ export function NotificationsSection(props: NotificationsSectionProps) {
           week without a visit. A user who reads only the first line would believe something the code
           does not do, which is the failure NFR-PRIV-02 exists to forbid. */}
       {backgroundPush ? (
-        // ONE row. The three sentences are one statement — the good news and the two limits that
-        // qualify it — and a rule between each pair would present them as three separate settings,
-        // which is exactly the reading NFR-PRIV-02 forbids.
+        // ONE row. The sentences are one statement — the good news and the limits that qualify it —
+        // and a rule between each pair would present them as separate settings, which is exactly the
+        // reading NFR-PRIV-02 forbids.
         <div className={styles.group}>
           <p className={styles.hint}>{t('notify.background.available', { product })}</p>
-          <p className={styles.hint}>{t('notify.background.contentless')}</p>
+          <p className={styles.hint}>{contentNote}</p>
+          <p className={styles.hint}>{t('notify.background.folders', { product })}</p>
           <p className={styles.hint}>{t('notify.background.renewal', { product })}</p>
         </div>
       ) : (

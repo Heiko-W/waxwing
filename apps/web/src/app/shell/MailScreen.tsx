@@ -33,6 +33,7 @@ import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
 import { Button, EmptyState, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
 import {
+  atMailRoot,
   FULL_PARAM,
   isReadingHistoryEntry,
   mailHrefKeepingQuery,
@@ -121,6 +122,30 @@ export function MailScreen() {
   useEffect(() => {
     if (mailboxId !== undefined || browsingWithoutFolder) return
     if (inbox === undefined) return
+    /*
+     * …and ONLY if `/mail` is still where the reader is, asked of the address bar rather than of
+     * this render.
+     *
+     * This effect does not fire when the screen opens — it fires when `inbox` arrives, which is
+     * whenever the replica finishes syncing its mailboxes, and that can be a second or more after
+     * sign-in. `navigate` writes the URL synchronously (`history.pushState`, RouterProvider), so a
+     * reader who has clicked Files, Contacts or Settings in the meantime is ALREADY on that path
+     * when this runs — and `mailboxId`, read from the render this closure belongs to, still says
+     * `undefined`. The `replace: true` then overwrote their destination with `/mail/<inbox>` and
+     * left no history entry behind, so the click looked as though it had simply done nothing.
+     *
+     * MEASURED in the shared E2E suite: the trace for `delegation.spec` "walking into it lists the
+     * owner's files" shows `/` → `/mail` → `/mail/a` and never `/files` at all, with every chunk
+     * including `FilesPage` fetched and 200. Roughly one navigation in twenty lost this race; the
+     * lazier the target chunk, the wider the window. This is very likely the whole of defect B52,
+     * whose two sightings are the same sentence about `/settings`.
+     *
+     * `window.location` and not a ref, because the router itself has no state that a passive effect
+     * can be late for: the URL IS the router's source of truth, written before React is told. The
+     * trailing-slash strip keeps this true under a mount prefix (`<base href>`, FR-DEP-02), where
+     * the path is `/webmail/mail` rather than `/mail`.
+     */
+    if (!atMailRoot(window.location.pathname)) return
     navigate(mailPath(inbox.id), { replace: true })
   }, [mailboxId, browsingWithoutFolder, inbox, navigate])
 

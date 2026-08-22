@@ -74,7 +74,15 @@ async function findOrCreateMailbox(accountId, name) {
   const existing = got.methodResponses[0][1].list.find((mailbox) => mailbox.name === name)
   if (existing) return existing.id
   const created = await jmap([
-    ['Mailbox/set', { accountId, create: { m: { name, parentId: null } } }, '0'],
+    // `isSubscribed` explicitly: Stalwart stores `false` when the property is omitted, and since
+    // M-5 the sidebar hides an unsubscribed folder — so a seeded folder created without it exists
+    // on the server and is invisible in the app. This models a folder a USER made, which is what
+    // the perf suite then clicks on.
+    [
+      'Mailbox/set',
+      { accountId, create: { m: { name, parentId: null, isSubscribed: true } } },
+      '0',
+    ],
   ])
   const id = created.methodResponses[0][1].created?.m?.id
   if (!id)

@@ -23,7 +23,16 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react'
-import { type KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
 import { mailHrefKeepingQuery, READING_HISTORY_MARK, useNavigate, useRoute } from '../app/route'
@@ -464,8 +473,13 @@ export function MessageList({
   // into view; return DOM focus to the grid) plus `open`, so `j`/`k`/`o` behave exactly like a click.
   // The handle is built ONCE and reads the changing `open` through a ref: a fresh handle object every
   // render would write to the store on every render, and the store re-renders this component.
+  // `useLayoutEffect`, NOT `useEffect` — B44's sibling (the long version is in `use-swipe.ts`, with
+  // the test that pins the mechanism). `gridHandle.open` is called from the shortcut provider's
+  // NATIVE `keydown` listener, and a passive effect does not run at commit: React schedules it, and
+  // a keystroke can arrive first. In that window `o` would open the row the roving focus was on one
+  // render ago. A layout effect runs inside the commit, so it cannot lag the DOM it belongs to.
   const openRef = useRef(open)
-  useEffect(() => {
+  useLayoutEffect(() => {
     openRef.current = open
   }, [open])
   const gridHandle = useMemo<GridHandle>(
@@ -993,8 +1007,13 @@ function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: To
           aria-describedby={describedBy}
           onChange={(event) => change('list.sort', event.target.value)}
         >
+          {/* Received and sent date next to each other, then the two address keys, then subject
+              and size — the order Apple Mail's own sort menu uses, and the order someone scanning
+              the list expects to find them in. */}
           <option value="date">{t('list.sort.date')}</option>
+          <option value="sentAt">{t('list.sort.sentAt')}</option>
           <option value="from">{t('list.sort.from')}</option>
+          <option value="to">{t('list.sort.to')}</option>
           <option value="subject">{t('list.sort.subject')}</option>
           <option value="size">{t('list.sort.size')}</option>
         </Select>

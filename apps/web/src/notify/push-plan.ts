@@ -27,6 +27,16 @@ export type PushPlan =
   /** Extend the existing subscription's lifetime: `PushSubscription/set update { expires }`. */
   | { readonly kind: 'renew'; readonly subscriptionId: string }
   /**
+   * The subscription is fine and not near expiry, but the server is configured to push a different
+   * amount of CONTENT than the user now wants: `PushSubscription/set update { emailPush }`.
+   *
+   * Its own kind rather than a flag on `keep`, because it is the one plan that exists purely to
+   * honour a privacy switch. `renew` carries the same patch when both are due (see
+   * `push-subscribe.ts#applyPlan`), so a reconfiguration is never postponed to the next start —
+   * "next start" can be a week away, which is the whole reason this file exists.
+   */
+  | { readonly kind: 'reconfigure'; readonly subscriptionId: string }
+  /**
    * Register from scratch. `destroyId` names a server-side subscription that must go first — set
    * whenever we know of one whose browser endpoint no longer exists, so a stale subscription cannot
    * accumulate on the server every time an endpoint rotates.
@@ -48,6 +58,14 @@ export interface PushPlanInput {
   /** The `expires` the SERVER granted, which may be shorter than anything we asked for. */
   readonly expires: string | null
   readonly now: number
+  /**
+   * Should the server put the MESSAGE in the push (`draft-ietf-jmap-emailpush-03`)?
+   *
+   * True only when the server advertises the capability AND the user's preview toggle is on. A
+   * server without it must see requests identical to the ones the previous build sent, which is what
+   * `false` here produces at every branch below.
+   */
+  readonly wantEmailPush: boolean
 }
 
 /**
@@ -80,7 +98,16 @@ export function planPushSubscription(input: PushPlanInput): PushPlan {
   // We think we have one and the server does not. Nothing to destroy — it is already gone.
   if (!input.serverHasSubscription) return { kind: 'create', destroyId: null }
 
-  if (input.expires === null) return { kind: 'keep', subscriptionId: stored.subscriptionId }
+  // What the server was last told to include, versus what the user wants now. Checked here, after
+  // identity and before lifetime, so it is decided for every surviving subscription — and answered
+  // by `reconfigure` only when the lifetime question does not already produce an update of its own.
+  const contentDiffers = stored.emailPush !== input.wantEmailPush
+
+  if (input.expires === null) {
+    return contentDiffers
+      ? { kind: 'reconfigure', subscriptionId: stored.subscriptionId }
+      : { kind: 'keep', subscriptionId: stored.subscriptionId }
+  }
 
   const expiresAt = Date.parse(input.expires)
   // An unparsable date is the server telling us something we cannot act on. Renewing is the safe
@@ -90,6 +117,8 @@ export function planPushSubscription(input: PushPlanInput): PushPlan {
   if (expiresAt - input.now <= RENEW_BEFORE_MS) {
     return { kind: 'renew', subscriptionId: stored.subscriptionId }
   }
+
+  if (contentDiffers) return { kind: 'reconfigure', subscriptionId: stored.subscriptionId }
 
   return { kind: 'keep', subscriptionId: stored.subscriptionId }
 }

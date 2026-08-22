@@ -458,3 +458,183 @@ describe('contact-card-mapping create', () => {
     expect(card.notes).toBeUndefined()
   })
 })
+
+/**
+ * Websites and instant messaging (A-5 of the JMAP gap analysis).
+ *
+ * `links` was fetched and preserved but had no form field, and `onlineServices` was not modelled at
+ * any level — it survived only as an opaque `vCardProps` entry, which a client can carry but never
+ * show or edit.
+ */
+describe('links and onlineServices', () => {
+  const card = (): ContactCard => ({
+    '@type': 'Card',
+    version: '1.0',
+    uid: 'u1',
+    id: 's1',
+    addressBookIds: { book1: true },
+    links: {
+      l1: { '@type': 'Link', uri: 'https://anna.test', kind: 'contact', pref: 1 },
+    },
+    onlineServices: {
+      s1: {
+        '@type': 'OnlineService',
+        service: 'Matrix',
+        uri: 'matrix:u/anna:example.test',
+        contexts: { work: true },
+      },
+      s2: { '@type': 'OnlineService', service: 'Signal', user: 'anna.42' },
+    },
+  })
+
+  it('reads both into the form, taking whichever of uri/user the account is stored as', () => {
+    const form = cardToForm(card())
+    expect(form.links).toEqual([
+      { key: 'l1', uri: 'https://anna.test', original: card().links?.l1 },
+    ])
+    expect(form.onlineServices.map((entry) => [entry.service, entry.account])).toEqual([
+      ['Matrix', 'matrix:u/anna:example.test'],
+      ['Signal', 'anna.42'],
+    ])
+  })
+
+  it('round-trips unchanged — an untouched card produces an EMPTY patch', () => {
+    const original = card()
+    const next = formToCard(cardToForm(original), original, idSource())
+    expect(next.links).toEqual(original.links)
+    expect(next.onlineServices).toEqual(original.onlineServices)
+    expect(diffCardPatch(original, next)).toEqual({})
+  })
+
+  it('preserves the entry properties the form does not surface', () => {
+    // `kind`/`pref` on the link and `contexts` on the service are not on screen; an edit of the
+    // address itself must not be the moment they disappear.
+    const original = card()
+    const form = cardToForm(original)
+    const edited: ContactFormModel = {
+      ...form,
+      links: [{ ...(form.links[0] as (typeof form.links)[number]), uri: 'https://anna.test/neu' }],
+    }
+    const next = formToCard(edited, original, idSource())
+    expect(next.links?.l1).toEqual({
+      '@type': 'Link',
+      uri: 'https://anna.test/neu',
+      kind: 'contact',
+      pref: 1,
+    })
+    expect(Object.keys(diffCardPatch(original, next))).toEqual(['links'])
+  })
+
+  it('writes a URI-shaped account as `uri` and anything else as `user`', () => {
+    /*
+     * The split is not cosmetic: a Matrix handle put in `uri` becomes a link the browser cannot
+     * follow, and a `matrix:` URI put in `user` stops being one anything can dial.
+     */
+    const blank = emptyFormModel()
+    const seed: ContactCard = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      id: 'i',
+      addressBookIds: { b: true },
+    }
+    const next = formToCard(
+      {
+        ...blank,
+        onlineServices: [
+          { key: 'k1', service: 'Matrix', account: 'matrix:u/anna:example.test' },
+          { key: 'k2', service: 'Matrix', account: '@anna:example.test' },
+        ],
+      },
+      seed,
+      idSource(),
+    )
+    expect(next.onlineServices?.k1).toEqual({
+      '@type': 'OnlineService',
+      service: 'Matrix',
+      uri: 'matrix:u/anna:example.test',
+    })
+    expect(next.onlineServices?.k2).toEqual({
+      '@type': 'OnlineService',
+      service: 'Matrix',
+      user: '@anna:example.test',
+    })
+  })
+
+  it('switching an account from a handle to a URI leaves no stale twin behind', () => {
+    const original = card()
+    const form = cardToForm(original)
+    const signal = form.onlineServices[1] as (typeof form.onlineServices)[number]
+    const next = formToCard(
+      { ...form, onlineServices: [signal ? { ...signal, account: 'sgnl://anna.42' } : signal] },
+      original,
+      idSource(),
+    )
+    // `user` is gone, not left beside the new `uri`.
+    expect(next.onlineServices?.s2).toEqual({
+      '@type': 'OnlineService',
+      service: 'Signal',
+      uri: 'sgnl://anna.42',
+    })
+  })
+
+  it('drops a row with no account, and removes the whole property when the last one goes', () => {
+    const original = card()
+    const form = cardToForm(original)
+    const next = formToCard(
+      { ...form, links: [], onlineServices: [{ key: 'k', service: 'Matrix', account: '   ' }] },
+      original,
+      idSource(),
+    )
+    expect(next.links).toBeUndefined()
+    expect(next.onlineServices).toBeUndefined()
+    expect(diffCardPatch(original, next)).toEqual({ links: null, onlineServices: null })
+  })
+})
+
+/**
+ * `addressBookIds` is a SET, and the patch says so one entry at a time (JMAP gap analysis, A-3).
+ *
+ * A whole-map replace would have worked against the server (measured on Stalwart v0.16.18) and is
+ * still wrong twice over: `sync/engine/outbox.ts` rewrites a book created offline by matching the
+ * `addressBookIds/<tempId>` key shape, and a replace overwrites membership another client added
+ * between the read and the save.
+ */
+describe('address book membership in the patch', () => {
+  const base: ContactCard = {
+    '@type': 'Card',
+    version: '1.0',
+    uid: 'u1',
+    id: 'c1',
+    addressBookIds: { work: true },
+  }
+
+  const both: ContactCard = { ...base, addressBookIds: { work: true, family: true } }
+
+  it('adds with a `true` pointer and leaves everything else alone', () => {
+    expect(diffCardPatch(base, both)).toEqual({ 'addressBookIds/family': true })
+  })
+
+  it('removes with a `null` pointer', () => {
+    expect(diffCardPatch(both, base)).toEqual({ 'addressBookIds/family': null })
+  })
+
+  it('emits nothing when membership is untouched', () => {
+    expect(diffCardPatch(base, { ...base })).toEqual({})
+  })
+
+  it('round-trips membership through the form model', () => {
+    const form = cardToForm(both)
+    expect(form.bookIds).toEqual(['work', 'family'])
+    expect(formToCard(form, both, idSource()).addressBookIds).toEqual({
+      work: true,
+      family: true,
+    })
+  })
+
+  it('never strips membership when the form does not know of a book', () => {
+    // `emptyFormModel()` carries no books; folding it onto a real card must not empty the set, which
+    // the server refuses outright ("Contact has to belong to at least one address book").
+    expect(formToCard(emptyFormModel(), base, idSource()).addressBookIds).toEqual({ work: true })
+  })
+})

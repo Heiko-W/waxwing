@@ -16,7 +16,19 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/shared.spec.ts'],
+  // `delegation.spec.ts` (S-4/S-5) belongs here for the same reason as the other two: it needs a
+  // second real account to have shared something, and it revokes the suite's mail delegations
+  // mid-run to prove a files-only share grows no mail section — which nothing outside a
+  // delegation-aware, serial suite may do.
+  // `sharing-pim.spec.ts` (S-2/S-6) joins them: sharing a calendar or an address book needs a second
+  // real account to share WITH, and the free/busy tests need that account to have a diary. Both
+  // mutate fixture state that later suites read, which is what "serial, own config" is for.
+  testMatch: [
+    '**/shared.spec.ts',
+    '**/sharing.spec.ts',
+    '**/sharing-pim.spec.ts',
+    '**/delegation.spec.ts',
+  ],
   // One account, stateful mutations across two shared mailboxes — serial, and reseeded per test.
   fullyParallel: false,
   workers: 1,

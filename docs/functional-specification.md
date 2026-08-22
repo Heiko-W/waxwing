@@ -61,8 +61,9 @@ webmail is an open gap.
 
 - No server-side component of any kind (no image proxy, no push relay, no search index).
 - No IMAP/SMTP/POP support — JMAP only.
-- ~~No calendar UI in V1~~ — **superseded (M5.6).** A read-only calendar (month + agenda)
-  ships against `urn:ietf:params:jmap:calendars`; see FR-CAL-01 in §6. The non-goal stood on
+- ~~No calendar UI in V1~~ — **superseded (M5.6, extended M5.11).** A calendar (month,
+  week and agenda views, with single events editable) ships against
+  `urn:ietf:params:jmap:calendars`; see FR-CAL-01 in §6. The non-goal stood on
   the assumption that calendars needed CalDAV, i.e. XML over WebDAV verbs a browser cannot
   send cross-origin. JMAP for Calendars removed that obstacle entirely.
 - No server administration (Stalwart's own WebUI covers that).
@@ -339,7 +340,8 @@ webmail is an open gap.
   SSE. Runtime failover (SP.4) remains underneath as a safety net; it is no longer how the
   browser reaches SSE. The library default (WS → SSE → polling) is unchanged for server-side
   callers.
-- **FR-NOTIF-02 (Must, _partially met — contentless; see ADR-017 / decision D6a_)** — **System notifications**
+- **FR-NOTIF-02 (Must, _met against a server offering `urn:ietf:params:jmap:emailpush`; contentless
+  otherwise — see ADR-017 and its amendment of 2026-08-21_)** — **System notifications**
   via Web Push: JMAP `PushSubscription` with RFC 8291 encryption, handled in the service
   worker. No relay server beyond the browser vendor's push service; payloads are end-to-end
   encrypted (the privacy aspect to document, NFR-PRIV-01).
@@ -382,14 +384,32 @@ webmail is an open gap.
   **live push channel** (FR-NOTIF-01) whenever the app is running, a backgrounded or minimised
   tab included. The app probes for the capability and says plainly what it cannot do
   (NFR-PRIV-02).
+  **Amended 2026-08-21 ([ADR-017 amendment](adr/017-web-push-contentless.md)): the content half is
+  now delivered too, and B28 is closed.** Stalwart v0.16.16+ implements
+  `draft-ietf-jmap-emailpush-03`: a `PushSubscription` gains an `emailPush` property and a matching
+  delivery arrives as an `EmailPush` frame carrying `from`, `subject`, `preview` and `receivedAt`.
+  The paragraph above — that a banner naming the sender would need an authenticated fetch from the
+  worker — **no longer holds**: the browser has already decrypted the payload, so the worker reads
+  it and shows it, with no token, no `SecretStore` and no JMAP call. The closed-app banner therefore
+  names the sender and the subject **when the server advertises the capability AND FR-NOTIF-03's
+  preview toggle is on**; against every other server it is contentless exactly as before, and the
+  URN is never sent to one that has not advertised it (RFC 8620 §3.3 would fail the whole request).
+  Two limits above are unchanged and remain surfaced in the UI: no per-folder filtering while closed
+  (the draft's server-side `filter` was deliberately not taken — it suppresses the push entirely, so
+  the channel would go blind for unselected folders) and no FR-NOTIF-05 actions.
 - **FR-NOTIF-03 (Must)** — Notification preferences: per-folder on/off, quiet hours,
   preview content on/off (privacy), sound on/off.
   **Scope split by transport (D6a, ADR-017).** On the live channel (FR-NOTIF-01) all four apply.
   On the closed-app banner (FR-NOTIF-02) the master switch, quiet hours and sound apply — the
   worker reads them from `localPrefs`, which is unencrypted IndexedDB — while **per-folder does
-  not and cannot**, because the push names no mailbox. The preview toggle is met by construction:
-  the closed-app banner carries no content to withhold. Both gaps are stated in the settings UI;
+  not and cannot**, because the push names no mailbox. That gap is stated in the settings UI;
   a preference that cannot take effect must not be left looking effective.
+  **Amended 2026-08-21:** the preview toggle is no longer met "by construction". Against a server
+  offering `urn:ietf:params:jmap:emailpush` there IS content to withhold, and the toggle governs the
+  **wire**: with it off, Waxwing sends no `emailPush` configuration, so the server never puts a
+  subject in a push at all — it is not hidden at the last moment, it is never requested. It is also
+  honoured in the worker, because the server-side configuration is only rewritten on the app's next
+  start and a content-carrying push can be in flight when the switch flips.
 - **FR-NOTIF-04 (Should)** — Unread badge on the installed PWA icon (Badging API where
   supported).
 - **FR-NOTIF-05 (Should)** — Notification actions: archive / mark read / reply (opens
@@ -451,34 +471,98 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
 - **FR-VAC-01 (Must)** — **Vacation responder** UI (`VacationResponse/set`): on/off,
   date range, subject, rich body, preview.
 
-- **FR-CAL-01 (V2 — partially shipped M5.6)** — **Calendar** over JMAP for Calendars
-  (`draft-ietf-jmap-calendars`, JSCalendar/RFC 8984).
+- **FR-CAL-01 (V2 — partially shipped M5.6/M5.11)** — **Calendar** over JMAP for Calendars
+  (`draft-ietf-jmap-calendars`) carrying JSCalendar
+  (`draft-ietf-calext-jscalendarbis`, *not* RFC 8984 — see ADR-025).
 
-  **Shipped:** a month grid and an agenda list, read-only, with recurrence expansion done
-  by the server (`expandRecurrences`) and correct local-time handling — a JSCalendar
-  `start` is a local date-time with its zone beside it, and the agenda shows that zone
-  whenever it is not the reader's.
+  **Shipped:** month, week and agenda views, with recurrence expansion done by the server
+  (`expandRecurrences`) and correct local-time handling — a JSCalendar `start` is a local
+  date-time with its zone beside it, and the agenda shows that zone whenever it is not the
+  reader's. **Single events can be created, edited and deleted**, with Undo on delete; a
+  write always addresses the stored object behind an occurrence, never the synthetic id the
+  grid was drawn with.
 
-  **Not shipped, deliberately:** week and day grids (they need a time axis with overlap
-  resolution) and any form of editing (a recurrence editor plus an RSVP flow). A calendar
-  that lets someone half-edit a recurring meeting loses other people's time.
+  **Not shipped, deliberately:** editing a *recurring* event. That needs a scope editor
+  ("this occurrence / this and following / all") before it can be offered at all — a
+  calendar that lets someone half-edit a recurring meeting loses other people's time — so a
+  series is shown read-only with the reason named on screen. Participants, invitations and
+  RSVP are likewise not shipped.
 
-  **Caveat to record:** the calendars draft has no RFC number yet. Every wire shape the
-  client relies on was measured against Stalwart 0.16 rather than taken from the draft.
+  **Caveat to record:** neither specification is final. The calendars draft has no RFC
+  number, and the payload format is a draft that has not yet obsoleted RFC 8984. Every wire
+  shape the client relies on was **measured against Stalwart 0.16** rather than taken from
+  either document, and where the two disagree the server wins; ADR-025 records which
+  properties that affects and how each one fails.
 - **FR-SIEVE-01 (V1.x — shipped M5.2)** — **Filter rules** editor on top of JMAP for Sieve
   (RFC 9661): a visual rule builder (conditions → actions: move, flag, forward, discard,
-  stop) generating a managed Sieve script; round-trip-safe (foreign scripts are shown
-  read-only in a code view rather than destroyed).
+  reject, stop) generating a managed Sieve script; the rules are **ordered**, and the order
+  is editable, because in Sieve the order is the semantics; round-trip-safe (foreign scripts
+  are shown read-only in a code view rather than destroyed).
 
   Round-trip safety is met by **not parsing Sieve at all** (ADR-023): the rule set is
   carried as JSON in a marker comment and read back from there, and anything outside the
   markers is preserved verbatim and in its original position. A foreign script is therefore
   displayed but never edited in place — the offer is to manage rules *alongside* it.
+
+  **Reordering** is a grabber at the trailing edge of each row, dragged with pointer events
+  so that a finger and a mouse behave alike, plus an equivalent keyboard path (Space to pick
+  up, arrows to move, Escape to put back) — ADR-026. WCAG 2.2 SC 2.5.7.
+
+  **`SieveScript/validate` runs on the server before every save**, and a script it refuses to
+  compile is not stored. It is advisory in one direction only: a validate that cannot be
+  performed at all does not block the save, because one broken method must not make filters
+  permanently unsaveable. Note also that a clean validate is **not** proof the script will
+  run — Stalwart compiles a `require` for an extension it does not implement and fails at
+  delivery time instead, so the section checks its own `require` list against the account's
+  advertised `sieveExtensions` as well (ADR-023).
+
+  **Filtering can be switched off and the script deleted.** The master switch is
+  `onSuccessDeactivateScript` and leaves every rule where it is; deleting is
+  `SieveScript/set destroy`, behind a confirmation, and issues the separate deactivate that
+  RFC 9661 §2.4 requires before the active script may be destroyed. Deletion is offered only
+  for the script this client manages — never for a foreign one, which the section exists to
+  leave alone.
+
+  **The condition and action vocabulary is a function of the server, not a constant.** On top
+  of the header, size and attachment tests, the builder offers the SMTP envelope
+  (`envelope`), a spam score (`spamtest` + `relational` + `comparator-i;ascii-numeric`),
+  delivery weekday and hour (`date`), duplicate suppression (`duplicate`) and `reject` — each
+  offered **only** when the account advertised what it needs in `sieveExtensions`, since a
+  `require` the server does not implement can compile and then fail when mail arrives. An
+  account that advertises no list at all gets the base vocabulary.
+- **FR-ACC-01 (V1.x, Should — shipped)** — **App passwords** (`x:AppPassword/{get,set}`): a
+  separate credential per mail app, created with a name and an optional expiry, listed with the
+  date it was made, revocable one at a time. The secret is generated server-side and shown
+  **exactly once**, with a copy action and a plain sentence saying it will not be shown again;
+  it is never written to storage, a log or the replica. Where another tool has narrowed a
+  password's rights or bound it to an IP range, the row says so — Waxwing sets neither.
+
+- **FR-ACC-02 (V1.x, Should — shipped)** — **Password change**
+  (`x:AccountPassword/set`): current password, new, repeat. Strength is the server's rule, not
+  ours; its refusal is shown with its own sentence in it. A Basic-auth session re-authenticates
+  immediately afterwards (FR-AUTH-06) rather than failing later out of context.
+
+- **FR-ACC-03 (V1.x, Could — shipped)** — **Server-message language and account diagnostics**
+  (`x:AccountSettings/get,set`, `x:PublicKey/get`, `x:SpamTrainingSample/{get,set}`): the
+  language the server writes its own calendar invitations and reminders in; a **read-only**
+  report of encryption at rest, naming the key and what it means for this client; and the spam
+  training samples the server is keeping of the reader's messages, deletable one at a time
+  (the server creates them — an account may not).
+
+- **FR-ACC-04 (Must, for all of FR-ACC-\*)** — All of the above sit behind `urn:stalwart:jmap`,
+  a **proprietary** extension, and are therefore a progressive enhancement in the sense of
+  product principle 6 and FR-SRV-02: on a server that does not advertise it the section does not
+  exist, down to its row in the settings rail. The capability is announced on the ACCOUNT, not
+  on the session — see ADR-027, which also records why **two-factor authentication is not
+  shipped** (enabling TOTP disables HTTP Basic, which is how this client signs in) and why
+  encryption at rest is reported rather than offered (this client cannot read an encrypted
+  mailbox).
+
 - **FR-SIEVE-02 (V1.x, Could — partially shipped M5.2)** — Raw Sieve editor with syntax
   highlighting and server-side validation feedback for power users.
 
-  **Shipped read-only:** the generated script is viewable, and `SieveScript/validate` is
-  bound and used before a save, but the source cannot be edited by hand. An editable raw
+  **Shipped read-only:** the generated script is viewable and every save is validated on the
+  server first (FR-SIEVE-01), but the source cannot be edited by hand. An editable raw
   view would have to re-parse the result to keep the rule list in sync, which is exactly the
   round trip ADR-023 refuses. Syntax highlighting is not implemented.
 

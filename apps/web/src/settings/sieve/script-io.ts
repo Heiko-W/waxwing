@@ -34,12 +34,30 @@ import type {
 } from './rule-model'
 import { generateSieve, renderRequire } from './rule-model'
 
-/** Opens the managed region; the rest of the line is the rule set as JSON. */
-const MARKER_BEGIN = '# @waxwing:rules:v1 '
+/**
+ * Opens the managed region: `# @waxwing:rules:v<N> ` followed by the rule set as JSON.
+ *
+ * The version is in the marker AND in the payload, and the two must agree — a script whose marker
+ * says one thing and whose JSON says another was edited by something that understood neither.
+ */
+const MARKER_BEGIN = /^# @waxwing:rules:v(\d+) (.*)$/gm
 /** Closes the managed region. */
 const MARKER_END = '# @waxwing:rules:end'
-/** The schema version we know how to read. */
-const SCHEMA_VERSION = 1
+/**
+ * The schema version written today.
+ *
+ * v2 widened the vocabulary (envelope, spam score, delivery time, duplicates, reject). Per ADR-023
+ * a build that widens the vocabulary bumps the version, so that an OLDER build meeting a v2 script
+ * finds no marker it recognises and treats the script as opaque — read-only, uneditable, intact —
+ * rather than saving it back with the conditions it could not represent quietly dropped.
+ */
+const SCHEMA_VERSION = 2
+/** The versions this build can read. Writing is always {@link SCHEMA_VERSION}. */
+const READABLE_VERSIONS: ReadonlySet<number> = new Set([1, 2])
+/** The marker line for `version`. */
+function markerFor(version: number): string {
+  return `# @waxwing:rules:v${String(version)} `
+}
 
 /** Header for the foreign section, so a human reading the script knows why it moved. */
 const FOREIGN_HEADER = '# Rules managed outside this client — preserved untouched.'
@@ -181,25 +199,30 @@ function readStrings(fragment: string): string[] {
 export function parseScript(source: string): ManagedScript {
   if (source.trim() === '') return EMPTY_SCRIPT
 
-  const begin = source.indexOf(MARKER_BEGIN)
-  if (begin === -1) {
+  const markers = [...source.matchAll(MARKER_BEGIN)]
+  if (markers.length === 0) {
     // No managed region: the whole script belongs to someone else. Not an error — the common case
-    // on first use against a mailbox that already had filters.
+    // on first use against a mailbox that already had filters, and also what an OLDER build sees
+    // when it meets a script written by a NEWER one.
     return opaqueScript(source)
   }
   // A second opening marker means the file was edited into a shape we cannot reason about.
-  if (source.indexOf(MARKER_BEGIN, begin + 1) !== -1) return opaqueScript(source)
+  if (markers.length > 1) return opaqueScript(source)
 
-  const lineEnd = source.indexOf('\n', begin)
-  if (lineEnd === -1) return opaqueScript(source)
-  const json = source.slice(begin + MARKER_BEGIN.length, lineEnd).trim()
+  const marker = markers[0] as RegExpMatchArray
+  const begin = marker.index ?? -1
+  if (begin === -1) return opaqueScript(source)
+  const version = Number(marker[1])
+  if (!READABLE_VERSIONS.has(version)) return opaqueScript(source)
+  const json = (marker[2] ?? '').trim()
 
+  const lineEnd = begin + marker[0].length
   const endMarker = source.indexOf(MARKER_END, lineEnd)
   if (endMarker === -1) return opaqueScript(source)
   const endLine = source.indexOf('\n', endMarker)
   const afterEnd = endLine === -1 ? source.length : endLine + 1
 
-  const rules = readRules(json)
+  const rules = readRules(json, version)
   if (rules === null) return opaqueScript(source)
 
   const beforeRegion = source.slice(0, begin)
@@ -222,7 +245,7 @@ function stripForeignHeader(source: string): string {
 }
 
 /** Parses and validates the metadata payload. `null` means "do not trust this script". */
-function readRules(json: string): SieveRule[] | null {
+function readRules(json: string, markerVersion: number): SieveRule[] | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(json)
@@ -233,7 +256,9 @@ function readRules(json: string): SieveRule[] | null {
   const payload = parsed as { version?: unknown; rules?: unknown }
   // A script written by a NEWER version may use conditions this build cannot render. Refusing to
   // edit it is the only safe answer: saving would silently drop whatever we failed to understand.
-  if (payload.version !== SCHEMA_VERSION) return null
+  // The payload has to agree with the marker line, too: a script where the two disagree was
+  // rewritten by something that understood neither.
+  if (payload.version !== markerVersion) return null
   if (!Array.isArray(payload.rules)) return null
 
   const rules: SieveRule[] = []
@@ -277,7 +302,15 @@ function readRule(value: unknown): SieveRule | null {
   }
 }
 
-const TEXT_FIELDS: readonly SieveTextField[] = ['from', 'to', 'cc', 'subject', 'body']
+const TEXT_FIELDS: readonly SieveTextField[] = [
+  'from',
+  'to',
+  'cc',
+  'subject',
+  'body',
+  'envelopeFrom',
+  'envelopeTo',
+]
 const MATCHES: readonly SieveMatch[] = ['contains', 'is', 'startsWith', 'endsWith', 'matches']
 
 function readCondition(value: unknown): SieveCondition | null {
@@ -302,6 +335,20 @@ function readCondition(value: unknown): SieveCondition | null {
     }
     case 'hasAttachment':
       return { kind: 'hasAttachment' }
+    case 'spam': {
+      if (raw.operator !== 'atLeast' && raw.operator !== 'atMost') return null
+      if (typeof raw.score !== 'number' || !Number.isFinite(raw.score)) return null
+      return { kind: 'spam', operator: raw.operator, score: raw.score }
+    }
+    case 'currentDate': {
+      if (raw.part !== 'weekday' && raw.part !== 'hour') return null
+      if (raw.operator !== 'is' && raw.operator !== 'atLeast' && raw.operator !== 'atMost')
+        return null
+      if (typeof raw.value !== 'number' || !Number.isFinite(raw.value)) return null
+      return { kind: 'currentDate', part: raw.part, operator: raw.operator, value: raw.value }
+    }
+    case 'duplicate':
+      return { kind: 'duplicate' }
     default:
       return null
   }
@@ -322,6 +369,9 @@ function readAction(value: unknown): SieveAction | null {
       return { kind: 'redirect', address: raw.address }
     case 'discard':
       return { kind: 'discard' }
+    case 'reject':
+      if (typeof raw.reason !== 'string') return null
+      return { kind: 'reject', reason: raw.reason }
     default:
       return null
   }
@@ -337,8 +387,12 @@ function readAction(value: unknown): SieveAction | null {
  * below ours would change what their mail does while claiming to have preserved them. Keeping the
  * position also makes a save idempotent: parse → build → parse lands on the same text.
  */
-export function buildScript(rules: readonly SieveRule[], foreign: ManagedScript): string {
-  const generated = generateSieve(rules)
+export function buildScript(
+  rules: readonly SieveRule[],
+  foreign: ManagedScript,
+  extensions?: readonly string[] | undefined,
+): string {
+  const generated = generateSieve(rules, extensions)
   const requires = [...new Set([...generated.requires, ...foreign.foreignRequires])].sort()
 
   const metadata = JSON.stringify({ version: SCHEMA_VERSION, rules })
@@ -351,7 +405,7 @@ export function buildScript(rules: readonly SieveRule[], foreign: ManagedScript)
 
   // `JSON.stringify` escapes CR and LF inside strings, so a rule name containing a newline cannot
   // terminate the comment early — the metadata always occupies exactly one line.
-  sections.push(`${MARKER_BEGIN}${metadata}`)
+  sections.push(`${markerFor(SCHEMA_VERSION)}${metadata}`)
   if (generated.body !== '') sections.push(generated.body)
   sections.push(MARKER_END)
 
@@ -360,9 +414,12 @@ export function buildScript(rules: readonly SieveRule[], foreign: ManagedScript)
   return `${sections.join('\n\n')}\n`
 }
 
-/** Whether `source` carries a managed region at all. */
+/** Whether `source` carries a managed region at all — of any version this build can read. */
 export function hasManagedRegion(source: string): boolean {
-  return source.includes(MARKER_BEGIN)
+  for (const match of source.matchAll(MARKER_BEGIN)) {
+    if (READABLE_VERSIONS.has(Number(match[1]))) return true
+  }
+  return false
 }
 
 /**

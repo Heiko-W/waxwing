@@ -12,7 +12,7 @@
  * overlay always wins. Two owners for one key is the bug, not the feature.
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useToast } from '../ui'
 import { isInOverlay, isTextEntryTarget } from './dom'
@@ -35,7 +35,7 @@ export function ShortcutProvider() {
   // it, on a language change. So `t` is read through a ref, the same trick `contextRef` below plays on
   // the listener. `toast` is already stable (a `useCallback` inside the toast host).
   const tRef = useRef(t)
-  useEffect(() => {
+  useLayoutEffect(() => {
     tRef.current = t
   })
 
@@ -62,7 +62,14 @@ export function ShortcutProvider() {
 
   // Refresh the snapshot on every render so the listener — subscribed exactly ONCE — never goes
   // stale. (Putting `context` in the effect below's deps would re-subscribe on every keystroke.)
-  useEffect(() => {
+  //
+  // `useLayoutEffect`, NOT `useEffect` — B44's sibling, and the same reasoning as `use-swipe.ts`
+  // (which carries the long version and the test that pins it). This ref is read from a NATIVE
+  // `keydown` listener, and a passive effect does not run at commit: React schedules it and the
+  // browser may deliver the keystroke first. In that window `e` would archive the selection the
+  // reader had one render ago rather than the one on screen. A layout effect runs inside the
+  // commit, so nothing that can observe the new DOM sees the old context with it.
+  useLayoutEffect(() => {
     contextRef.current = context
   })
 

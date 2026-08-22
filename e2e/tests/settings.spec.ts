@@ -21,6 +21,7 @@ const QUOTA = 'urn:ietf:params:jmap:quota'
 const SUBMISSION = 'urn:ietf:params:jmap:submission'
 const MAIL = 'urn:ietf:params:jmap:mail'
 const WEBPUSH_VAPID = 'urn:ietf:params:jmap:webpush-vapid'
+const EMAILPUSH = 'urn:ietf:params:jmap:emailpush'
 
 interface Vacation {
   readonly isEnabled: boolean
@@ -216,17 +217,22 @@ test.describe('M3.7 settings suite', () => {
   /**
    * FR-NOTIF-02 / NFR-PRIV-02, and the ONLY background-push assertion this repo may contain.
    *
-   * **This test has now been rewritten twice by its own instructions, which is the point of it.**
-   * The first form asserted the capability was ABSENT and said it must fail the day a server shipped
-   * RFC 9749; Stalwart v0.16.14 did, on 2026-07-20, and it failed. The second form asserted the app
-   * admitted "we do not deliver it yet" and said it must fail again if the client half ever shipped.
-   * M4.0 shipped it (owner decision D6a, ADR-017), and it failed. Both times the fix was to make the
-   * app honest and follow it here — never to pin a wording that had stopped being true.
+   * **This test has now been rewritten three times by its own instructions, which is the point of
+   * it.** The first form asserted the capability was ABSENT and said it must fail the day a server
+   * shipped RFC 9749; Stalwart v0.16.14 did, on 2026-07-20, and it failed. The second form asserted
+   * the app admitted "we do not deliver it yet" and said it must fail again if the client half ever
+   * shipped. M4.0 shipped it (owner decision D6a, ADR-017), and it failed. The third form pinned
+   * "never the sender or the subject" — and P-1 shipped `draft-ietf-jmap-emailpush-03`, which is
+   * precisely the extension that lets a closed-app banner carry them, so it failed too. Every time
+   * the fix was to make the app honest and follow it here — never to pin a wording that had stopped
+   * being true.
    *
    * What it guards NOW is the shape ADR-017 accepted: the good news may be stated, and never alone.
-   * A closed-app banner names no sender and no subject, the folder list on this very screen does not
-   * reach it, and the subscription lapses after seven days without a visit. All three are limits a
-   * user cannot discover by using the feature — only by being told.
+   * WHICH limits apply is a property of the SERVER, and this one supports `emailPush`, so the
+   * closed-app banner is contentful and the honest statement is that it names the sender and the
+   * subject — the same thing an open Waxwing shows. The two limits that survive that are asserted
+   * below, and the contentless sentence must be ABSENT: on this server it would be a lie, and it is
+   * the exact string this test used to demand.
    *
    * **What this test deliberately does NOT do: verify a delivery.** Playwright cannot observe a
    * closed app, and Chromium here has no push service to mint an endpoint against, so
@@ -241,6 +247,12 @@ test.describe('M3.7 settings suite', () => {
   }) => {
     const session = (await alice.session()) as unknown as SessionDoc
     expect(usableVapidKey(session), premiseFailure(session)).toBe(true)
+    // The other half of the premise, and the one that decides which sentence is true below: with
+    // `emailPush` the server can put the sender and the subject in a closed-app notification.
+    expect(
+      Object.hasOwn(session.capabilities, EMAILPUSH),
+      `the server advertises no \`${EMAILPUSH}\`; the fixture must run Stalwart >= v0.16.16`,
+    ).toBe(true)
 
     await login(page, CREDENTIALS.alice)
     await openSettings(page, 'Notifications')
@@ -256,10 +268,16 @@ test.describe('M3.7 settings suite', () => {
     await expect(notifications).toContainText(
       'This server can also notify you while Waxwing is closed',
     )
-    // The three limits, each of which a user would otherwise discover only by being let down.
-    await expect(notifications).toContainText('never the sender or the subject')
-    await expect(notifications).toContainText('folder setting above does not apply')
+    // What the banner will actually say on THIS server — stated, not left to be discovered.
+    await expect(notifications).toContainText('name the sender and the subject')
+    // The two limits that survive `emailPush`, each of which a user would otherwise discover only by
+    // being let down.
+    await expect(notifications).toContainText('folder selection above does not apply')
     await expect(notifications).toContainText('at least once a week')
+    // …and the contentless promise is NOT also made. It is the string this test demanded before
+    // P-1, so its absence is the assertion that the copy followed the capability rather than being
+    // widened to satisfy both.
+    await expect(notifications).not.toContainText('never the sender or the subject')
 
     // …and it does not simultaneously claim the server cannot. The two strings are mutually
     // exclusive by construction, so this is the assertion a future edit cannot satisfy by rendering
@@ -473,5 +491,187 @@ test.describe('M5.1 identity editor', () => {
     // Counted rather than compared against a fixed list: a server may legitimately start with more
     // than one identity (Stalwart mints one per address the account owns).
     expect(await identitiesOf()).toHaveLength(before)
+  })
+})
+
+/**
+ * M5.2 filter rules — the three server calls that were implemented and never called (B-3), and the
+ * reorder that Sieve's evaluation order makes mandatory (B-4).
+ *
+ * The drag is here rather than in a component test on purpose: jsdom has no layout engine, so every
+ * rectangle a pointer drag measures there is zero (ADR-025). This is the only place the gesture can
+ * be executed at all.
+ *
+ * Every assertion goes to the SERVER — `SieveScript/get` — rather than to the screen that wrote it.
+ */
+
+const SIEVE = 'urn:ietf:params:jmap:sieve'
+
+interface SieveScriptRow {
+  readonly id: string
+  readonly name: string
+  readonly isActive: boolean
+}
+
+async function scriptsOf(): Promise<SieveScriptRow[]> {
+  const args = await first<{ list: SieveScriptRow[] }>(
+    alice,
+    [CORE, SIEVE],
+    ['SieveScript/get', { accountId: aliceAccountId, ids: null }, '0'],
+  )
+  // The vacation responder writes a script of its own; it is not this suite's business.
+  return args.list.filter((script) => script.name !== 'vacation')
+}
+
+/** Creates one rule through the dialog. */
+async function addFilterRule(page: Page, name: string, subject: string): Promise<void> {
+  const section = page.getByRole('region', { name: 'Filters' })
+  await section.getByRole('button', { name: 'Add rule' }).click()
+  await page.getByLabel('Name').fill(name)
+  await page.getByLabel('Part').first().selectOption('subject')
+  await page.getByLabel('Value').fill(subject)
+  await page.getByRole('button', { name: 'Save rule' }).click()
+  await expect(section.getByText(name, { exact: true })).toBeVisible()
+}
+
+/** The rule names in the order the list shows them. */
+async function listedOrder(page: Page): Promise<string[]> {
+  const handles = page.getByRole('button', { name: /^Reorder / })
+  const labels = await handles.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('aria-label') ?? ''),
+  )
+  return labels.map((label) => label.replace(/^Reorder /, ''))
+}
+
+test.describe('M5.2 filter rules', () => {
+  test.afterEach(async () => {
+    const ours = (await scriptsOf()).filter((script) => script.name === 'waxwing')
+    if (ours.length === 0) return
+    // RFC 9661 §2.4: the active script has to be deactivated in a separate call first.
+    await first(
+      alice,
+      [CORE, SIEVE],
+      ['SieveScript/set', { accountId: aliceAccountId, onSuccessDeactivateScript: true }, '0'],
+    )
+    await first(
+      alice,
+      [CORE, SIEVE],
+      [
+        'SieveScript/set',
+        { accountId: aliceAccountId, destroy: ours.map((script) => script.id) },
+        '0',
+      ],
+    )
+  })
+
+  test('a rule the builder writes compiles on the server and becomes the active script', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+
+    await addFilterRule(page, 'Invoices', 'Invoice')
+
+    // `SieveScript/validate` ran before this was stored — a script Stalwart refuses to compile
+    // never reaches `SieveScript/set` at all, so the mere existence of the row is the proof.
+    await expect
+      .poll(
+        async () => (await scriptsOf()).map((script) => `${script.name}:${script.isActive}`),
+        POLL,
+      )
+      .toContain('waxwing:true')
+    await expect(page.getByRole('region', { name: 'Filters' })).not.toContainText(
+      'rejected the script',
+    )
+  })
+
+  test('reorders two rules by dragging the grabber (ADR-025)', async ({ page }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+
+    await addFilterRule(page, 'First', 'One')
+    await addFilterRule(page, 'Second', 'Two')
+    expect(await listedOrder(page)).toEqual(['First', 'Second'])
+
+    const grabber = page.getByRole('button', { name: 'Reorder First' })
+    const target = page.getByRole('button', { name: 'Reorder Second' })
+    const from = await grabber.boundingBox()
+    const to = await target.boundingBox()
+    if (from === null || to === null) throw new Error('the reorder grabbers have no geometry')
+
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await page.mouse.down()
+    // Past the row below, not merely onto it: the drop index is decided by the row's MIDPOINT.
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height, { steps: 12 })
+    await page.mouse.up()
+
+    await expect.poll(async () => listedOrder(page), POLL).toEqual(['Second', 'First'])
+
+    // And the order really did reach the script, not just the screen.
+    await page.getByRole('button', { name: 'Show script' }).click()
+    const source = await page
+      .getByRole('figure')
+      .getByText(/@waxwing:rules/)
+      .innerText()
+    expect(source.indexOf('"name":"Second"')).toBeLessThan(source.indexOf('"name":"First"'))
+  })
+
+  test('reorders with the keyboard alone, which is the path WCAG 2.2 SC 2.5.7 requires', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+
+    await addFilterRule(page, 'First', 'One')
+    await addFilterRule(page, 'Second', 'Two')
+
+    await page.getByRole('button', { name: 'Reorder First' }).focus()
+    await page.keyboard.press('Space')
+    await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Space')
+
+    await expect.poll(async () => listedOrder(page), POLL).toEqual(['Second', 'First'])
+  })
+
+  test('the master switch stops filtering without deleting a single rule (B-3)', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+    await addFilterRule(page, 'Invoices', 'Invoice')
+
+    await page.getByRole('switch', { name: 'Filter incoming mail' }).click()
+
+    await expect
+      .poll(async () => (await scriptsOf()).some((script) => script.isActive), POLL)
+      .toBe(false)
+    // The script and its rules are still there — switching filtering off is not deleting it.
+    expect((await scriptsOf()).map((script) => script.name)).toContain('waxwing')
+    await expect(page.getByRole('region', { name: 'Filters' })).toContainText('Invoices')
+
+    await page.getByRole('switch', { name: 'Filter incoming mail' }).click()
+    await expect
+      .poll(async () => (await scriptsOf()).some((script) => script.isActive), POLL)
+      .toBe(true)
+  })
+
+  test('deleting the script asks first, then removes it from the server (B-3)', async ({
+    page,
+  }) => {
+    await login(page, CREDENTIALS.alice)
+    await openSettings(page, 'Filters')
+    await addFilterRule(page, 'Invoices', 'Invoice')
+
+    await page.getByRole('button', { name: 'Delete filter script' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Delete filter script?' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click()
+
+    // Two calls, not one: RFC 9661 §2.4 refuses to destroy the active script in the call that
+    // deactivates it, and the client is what has to know that.
+    await expect
+      .poll(async () => (await scriptsOf()).map((script) => script.name), POLL)
+      .not.toContain('waxwing')
+    await expect(page.getByRole('region', { name: 'Filters' })).toContainText('No filter rules yet')
   })
 })

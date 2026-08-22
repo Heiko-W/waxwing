@@ -30,12 +30,63 @@ export const Capabilities = {
   /** RFC 8620 §8 (JMAP Sharing) — principals. */
   principals: 'urn:ietf:params:jmap:principals',
   /**
+   * RFC 9670 §5 — `Principal/getAvailability`, the free/busy question (S-6).
+   *
+   * **Deliberately absent from `PREFIX_TO_CAPABILITY`, for the reason the whole table has to obey:
+   * the mapping is by PREFIX, and the prefix `Principal` already means {@link Capabilities.principals}.**
+   * An entry here would put this URN into every `Principal/get` and `Principal/query` the people
+   * picker runs — and one `using` entry a server does not know answers the WHOLE batch with HTTP
+   * 400 `notRequest` (measured on v0.16.18; see {@link Capabilities.mailShare}). The picker is the
+   * one part of sharing that works against any RFC 9670 server, and it would be the first casualty.
+   *
+   * A per-METHOD override table was considered and rejected for the same reason it was rejected for
+   * `CalendarEvent/parse`: it would send the URN unconditionally, on every server, forever. What is
+   * measured is only that the call succeeds when the URN IS sent — the `A-stalwart-methoden.md`
+   * probe used all sixteen session URNs at once, so "does it also work without" was never asked.
+   *
+   * So the rule is the one {@link Capabilities.emailPush} follows: the caller opts in per call via
+   * {@link CallOptions.using}, and only after {@link hasCapability} has seen the session advertise
+   * it. A server that does not advertise it gets a request without the URN — which either works
+   * (the method is not gated) or fails as one method, never as the whole batch.
+   */
+  principalsAvailability: 'urn:ietf:params:jmap:principals:availability',
+  /**
+   * RFC 9670 §1.2 — sharing a `Mailbox`: `myRights.mayShare` and the `shareWith` property.
+   *
+   * **Deliberately absent from `PREFIX_TO_CAPABILITY`, and this is the load-bearing part.** The
+   * `Mailbox` prefix already maps to {@link Capabilities.mail}; adding this URN there would put it
+   * in the `using` set of EVERY mailbox request Waxwing makes. RFC 8620 §3.3 obliges a server to
+   * refuse an unknown `using` entry — and Stalwart does it at the REQUEST level: measured against
+   * v0.16.18, one unrecognised URN answers the whole batch with HTTP 400 `notRequest` and no method
+   * responses at all. So a server without the sharing extension would lose its entire mail sync to
+   * a URN sent on its behalf.
+   *
+   * It is not needed anyway, which is the second measurement: on v0.16.18 both
+   * `Mailbox/get properties:['shareWith']` and `Mailbox/set … shareWith` succeed with a `using` of
+   * core + mail alone. The constant exists so a server that DOES demand it can be opted in per call
+   * via {@link CallOptions.using}, once the session has been seen to advertise it — the same rule
+   * {@link Capabilities.emailPush} follows.
+   */
+  mailShare: 'urn:ietf:params:jmap:mail:share',
+  /**
    * RFC 9749 — Use of VAPID in JMAP Web Push. Carries the server's `applicationServerKey`.
    *
    * Not a method capability (nothing is added to `PREFIX_TO_CAPABILITY`): it is a pure session-level
    * announcement, read by {@link getWebPushVapidCapability}. `PushSubscription/*` is core.
    */
   webPushVapid: 'urn:ietf:params:jmap:webpush-vapid',
+  /**
+   * `draft-ietf-jmap-emailpush-03` — message data carried IN the push (M4.0 amendment to ADR-017).
+   *
+   * Like {@link Capabilities.webPushVapid} it is deliberately absent from `PREFIX_TO_CAPABILITY`,
+   * and for a stronger reason than "it is not a method capability": `PushSubscription/*` is core, so
+   * adding this URN there would put it in the `using` set of **every** subscription request Waxwing
+   * makes. RFC 8620 §3.3 obliges a server to answer an unknown `using` entry with a request-level
+   * `unknownCapability` — i.e. the whole push flow would break against every JMAP server that has
+   * not implemented this draft, which today is nearly all of them. It is therefore opted into per
+   * call, via {@link CallOptions.using}, and only once the session has been seen to advertise it.
+   */
+  emailPush: 'urn:ietf:params:jmap:emailpush',
 } as const
 
 /** Union of the known capability URN string literals. */
@@ -62,6 +113,18 @@ const PREFIX_TO_CAPABILITY: Readonly<Record<string, string>> = {
   ContactCard: Capabilities.contacts,
   Calendar: Capabilities.calendars,
   CalendarEvent: Capabilities.calendars,
+  /*
+   * K-10. Without this line the prefix is unknown and the fallback below sends `using: [core]`
+   * alone — which is not a typed mistake anywhere, just a call that fails at run time on a server
+   * that scopes the type to the calendars URN.
+   *
+   * `CalendarEvent/parse` deliberately does NOT get an entry of its own. The draft assigns it
+   * `urn:ietf:params:jmap:calendars:parse`, and measured against v0.16.18 it answers perfectly well
+   * with the plain calendars URN — while a `using` entry a server does not know costs the WHOLE
+   * request (see `Capabilities.mailShare`). Following the draft here would trade a working call for
+   * a dead batch on every server that has not implemented the extension.
+   */
+  ParticipantIdentity: Capabilities.calendars,
   FileNode: Capabilities.fileNode,
   Principal: Capabilities.principals,
   ShareNotification: Capabilities.principals,

@@ -351,7 +351,12 @@
       "rule": {
         "enabled": "Active",
         "edit": "Edit",
-        "delete": "Delete"
+        "delete": "Delete",
+        "reorder": "Reorder {{name}}",
+        "reorderHint": "Press Space to pick the rule up, then Up and Down arrow to move it. Space drops it, Escape puts it back.",
+        "movedTo": "{{name}}, rule {{position}} of {{count}}",
+        "dropped": "{{name}} dropped",
+        "dropCanceled": "{{name}} put back"
       },
       "foreign": {
         "explain": "This mailbox already has a filter script that was not written here. It is shown as it is, and is left untouched.",
@@ -380,7 +385,12 @@
         "remove": "Remove",
         "stop": "Stop processing further rules",
         "cancel": "Cancel",
-        "submit": "Save rule"
+        "submit": "Save rule",
+        "spamScore": "Score (0–10)",
+        "datePart": "Part",
+        "weekday": "Day",
+        "hour": "Hour (0–23)",
+        "reason": "Reason"
       },
       "field": {
         "from": "Sender",
@@ -389,7 +399,12 @@
         "subject": "Subject",
         "body": "Message text",
         "size": "Size",
-        "hasAttachment": "Has attachment"
+        "hasAttachment": "Has attachment",
+        "envelopeFrom": "Envelope sender",
+        "envelopeTo": "Envelope recipient",
+        "spam": "Spam score",
+        "currentDate": "Delivery time",
+        "duplicate": "Duplicate message"
       },
       "match": {
         "contains": "contains",
@@ -398,13 +413,16 @@
         "endsWith": "ends with",
         "matches": "matches pattern",
         "over": "larger than",
-        "under": "smaller than"
+        "under": "smaller than",
+        "atLeast": "at least",
+        "atMost": "at most"
       },
       "action": {
         "fileInto": "Move to folder",
         "addFlag": "Mark",
         "redirect": "Forward to",
-        "discard": "Discard"
+        "discard": "Discard",
+        "reject": "Refuse with a reason"
       },
       "flag": {
         "seen": "read",
@@ -416,7 +434,33 @@
         "tooLarge": "The script is too large for this server.",
         "offline": "You are offline. Filters can only be changed while connected.",
         "rejected": "The server declined to save the filters.",
-        "generic": "The filters could not be saved."
+        "generic": "The filters could not be saved.",
+        "invalidSieveReason": "The server rejected the script as invalid: {{reason}}. Your rules were not saved."
+      },
+      "active": "Filter incoming mail",
+      "activeHint": "Rules below run on every message the server receives.",
+      "inactiveHint": "Your rules are kept, but nothing is filtered until you turn this back on.",
+      "deleteScript": "Delete filter script",
+      "delete": {
+        "title": "Delete filter script?",
+        "body": "Every rule is removed from the server and incoming mail stops being filtered. This can’t be undone.",
+        "foreignWarning": "This script also holds rules that were not written here. They are deleted too.",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "done": "Filter script deleted"
+      },
+      "date": {
+        "weekday": "Day of week",
+        "hour": "Hour of day"
+      },
+      "weekday": {
+        "sunday": "Sunday",
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday"
       }
     },
     "server": {
@@ -521,6 +565,90 @@
       "mail": "Mail",
       "accounts": "Accounts & rules",
       "system": "System"
+    },
+    "security": {
+      "title": "Account & security",
+      "description": "What your server lets you change about this account yourself.",
+      "loading": "Loading account settings…",
+      "unavailable": "Your server offers none of these settings for this account.",
+      "password": {
+        "label": "Password",
+        "hint": "The password you sign in with — here, and in every mail app that uses this account.",
+        "change": "Change password…",
+        "title": "Change password",
+        "current": "Current password",
+        "next": "New password",
+        "confirm": "Repeat new password",
+        "submit": "Change password",
+        "cancel": "Cancel",
+        "changed": "Password changed",
+        "missing": "Fill in all three fields.",
+        "mismatch": "The two new passwords are not the same.",
+        "devices": "Afterwards you sign in again here, and enter the new password in the mail apps on your other devices. App passwords keep working."
+      },
+      "appPasswords": {
+        "label": "App passwords",
+        "hint": "A separate password for each mail app on your devices. Revoking one leaves your account password and every other app untouched.",
+        "empty": "No app passwords yet.",
+        "create": "Create app password…",
+        "createTitle": "Create app password",
+        "createIntro": "Your server makes a password that only this one app uses.",
+        "name": "What is it for?",
+        "namePlaceholder": "iPhone Mail",
+        "nameMissing": "Give it a name, so you can tell it apart later.",
+        "expiry": "Expires",
+        "expiryNever": "Never",
+        "expiryDays": "In {{days}} days",
+        "submit": "Create",
+        "cancel": "Cancel",
+        "created": "Created {{date}}",
+        "expires": "Expires {{date}}",
+        "expired": "Expired — this password no longer works.",
+        "restricted": "Limited to certain rights or addresses. Set outside {{product}}.",
+        "revoke": "Revoke {{name}}",
+        "revokeTitle": "Revoke app password?",
+        "revokeBody": "{{name}} stops working straight away. Any app still using it asks for a password again.",
+        "revokeConfirm": "Revoke",
+        "revokeCancel": "Keep it",
+        "revoked": "App password revoked",
+        "secretTitle": "Your app password",
+        "secretIntro": "Enter it in the mail app now, together with your email address.",
+        "secretLabel": "App password",
+        "secretWarning": "This is the only time it is shown. If it gets lost, revoke it here and create a new one.",
+        "copy": "Copy",
+        "copied": "Copied",
+        "done": "Done"
+      },
+      "language": {
+        "label": "Language of server messages",
+        "hint": "The language your server writes its own calendar invitations and reminders in. The language of {{product}} itself is set under General.",
+        "saved": "Language saved"
+      },
+      "encryption": {
+        "label": "Encryption at rest",
+        "off": "Off. Your server stores your messages unencrypted.",
+        "on": "On — {{cipher}}",
+        "key": "Key: {{name}}",
+        "explain": "Your server encrypts incoming messages with your own key before storing them. {{product}} has no OpenPGP support and cannot display them.",
+        "manage": "Only your server’s own account console can change this. {{product}} does not offer the switch, because turning it on would leave your mailbox unreadable here."
+      },
+      "spam": {
+        "label": "Spam training samples",
+        "hint": "Copies your server kept of messages you classified, to train its spam filter. Deleting one removes the copy; where the message is filed does not change.",
+        "empty": "Your server kept no copies of your messages.",
+        "isSpam": "Kept as spam",
+        "isHam": "Kept as not spam",
+        "noSubject": "(no subject)",
+        "delete": "Delete the copy of {{subject}}",
+        "deleted": "Copy deleted"
+      },
+      "error": {
+        "loadFailed": "These settings could not be loaded.",
+        "rejected": "Your server refused this change.",
+        "server": "It said: {{detail}}",
+        "offline": "You are offline. These settings can only be changed while connected.",
+        "generic": "The change could not be saved."
+      }
     }
   },
   "contacts": {
@@ -535,7 +663,33 @@
       "show": "Show address books",
       "hide": "Hide address books",
       "loading": "Loading address books",
-      "empty": "No address books."
+      "empty": "No address books.",
+      "new": "New address book",
+      "actions": "Actions for {{name}}",
+      "nameLabel": "Name",
+      "create": {
+        "title": "New address book",
+        "submit": "Create"
+      },
+      "rename": {
+        "action": "Rename",
+        "title": "Rename address book",
+        "submit": "Rename"
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete address book",
+        "body": "Delete “{{name}}”?",
+        "contents": "Contacts that are only in this address book are deleted with it.",
+        "confirm": "Delete",
+        "cancel": "Cancel"
+      },
+      "error": {
+        "nameRequired": "Enter a name.",
+        "nameTooLong": "That name is too long.",
+        "nameTaken": "An address book with that name already exists."
+      },
+      "share": "Share {{name}}"
     },
     "list": {
       "title": "Contacts",
@@ -564,6 +718,8 @@
         "phone": "Phone",
         "address": "Address",
         "birthday": "Birthday",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Notes"
       },
       "more": "More actions"
@@ -597,8 +753,11 @@
         "address": "Address",
         "org": "Company",
         "birthday": "Birthday",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Notes",
-        "photo": "Photo"
+        "photo": "Photo",
+        "books": "Address books"
       },
       "namePrefix": "Prefix",
       "given": "First name",
@@ -618,12 +777,19 @@
       "addAddress": "Add address",
       "addCompany": "Add company",
       "addBirthday": "Add birthday",
+      "addUrl": "Add website",
+      "addIm": "Add instant messaging",
+      "urlPlaceholder": "https://example.com",
+      "imService": "Service",
+      "imPlaceholder": "Address or handle",
       "addNote": "Add note",
       "addPhoto": "Add photo",
       "fieldNames": {
         "email": "Email",
         "phone": "Phone",
         "address": "Address",
+        "url": "Website",
+        "im": "Instant messaging",
         "note": "Note"
       },
       "a11y": {
@@ -636,9 +802,11 @@
       "choosePhoto": "Choose photo",
       "changePhoto": "Change photo",
       "removePhoto": "Remove photo",
-      "photoUploading": "Uploading photo…",
-      "photoError": "The photo could not be uploaded.",
-      "photoAlt": "Contact photo preview"
+      "photoPreparing": "Preparing photo…",
+      "photoError": "The photo could not be used.",
+      "photoTooLarge": "That photo is too large. Choose a smaller one.",
+      "photoAlt": "Contact photo preview",
+      "booksAtLeastOne": "A contact has to stay in at least one address book."
     },
     "delete": {
       "title": "Delete contact",
@@ -761,7 +929,11 @@
       "sent": "Sent",
       "archive": "Archive",
       "junk": "Junk",
-      "trash": "Trash"
+      "trash": "Trash",
+      "important": "Important",
+      "snoozed": "Snoozed",
+      "scheduled": "Scheduled",
+      "memos": "Notes"
     },
     "unread": "{{count}} unread",
     "expand": "Expand {{name}}",
@@ -775,7 +947,28 @@
       "keepOffline": "Keep offline",
       "keepOfflineOff": "Stop keeping offline",
       "move": "Move to…",
-      "import": "Import .eml files…"
+      "import": "Import .eml files…",
+      "info": "Folder info…",
+      "manage": "Manage folders"
+    },
+    "manage": {
+      "title": "Manage folders",
+      "hint": "Drag a folder to change its place, or switch it off to keep it out of the sidebar. Hidden folders stay in this list, and your other mail apps hide them too.",
+      "done": "Done",
+      "alwaysShown": "Always shown",
+      "show": "Show {{name}} in the sidebar",
+      "reorder": "Reorder {{name}}",
+      "reorderHint": "Press Space to pick the folder up, then Up and Down arrow to move it. Space drops it, Escape puts it back.",
+      "movedTo": "{{name}}, folder {{position}} of {{count}}",
+      "dropped": "{{name}} dropped",
+      "dropCanceled": "{{name}} put back"
+    },
+    "info": {
+      "title": "Folder info: {{name}}",
+      "useAs": "Use this folder as…",
+      "useAsNone": "A regular folder",
+      "useAsHint": "Your other mail apps read this. A folder used as the Archive is where they file archived mail too, and it moves up to the standard folders here.",
+      "submit": "Save"
     },
     "create": {
       "title": "New folder",
@@ -852,8 +1045,10 @@
     },
     "sort": {
       "label": "Sort",
-      "date": "Date",
+      "date": "Date received",
+      "sentAt": "Date sent",
       "from": "Sender",
+      "to": "Recipient",
       "subject": "Subject",
       "size": "Size",
       "unreadFirst": "Unread first"
@@ -1082,6 +1277,8 @@
     "recipientDidYouMeanApply": "Use {{suggestion}}",
     "recipientMoveTo": "Move to {{field}}",
     "recipientMoveMenu": "Recipient options",
+    "recipientGroupMembers_one": "Group · {{count}} contact",
+    "recipientGroupMembers_other": "Group · {{count}} contacts",
     "discard": "Discard draft",
     "attach": "Attach file",
     "attachmentsLabel": "Attachments",
@@ -1140,6 +1337,41 @@
     },
     "templates": {
       "insert": "Insert template"
+    },
+    "replyToLabel": "Reply-To",
+    "showReplyToField": "Reply-To",
+    "attachFromDevice": "From this device…",
+    "options": {
+      "open": "Send options",
+      "title": "Send options",
+      "done": "Done",
+      "priority": {
+        "label": "Priority",
+        "high": "High",
+        "normal": "Normal",
+        "low": "Low"
+      },
+      "receipt": {
+        "label": "Request a delivery receipt",
+        "hint": "The mail system replies with a message telling you whether this was delivered."
+      },
+      "tls": {
+        "label": "Require an encrypted connection",
+        "hint": "The message is returned to you rather than handed over unencrypted."
+      }
+    },
+    "attachFromFiles": {
+      "open": "From Files…",
+      "title": "Attach from Files",
+      "path": "Folder path",
+      "root": "Files",
+      "empty": "This folder is empty.",
+      "errorTitle": "Files could not be loaded",
+      "errorBody": "Check your connection and try again.",
+      "cancel": "Cancel",
+      "confirmEmpty": "Attach",
+      "confirm_one": "Attach {{count}} file",
+      "confirm_other": "Attach {{count}} files"
     }
   },
   "search": {
@@ -1149,25 +1381,37 @@
     "scope": {
       "label": "Search in",
       "folder": "This folder",
-      "all": "All mailboxes"
+      "all": "All mailboxes",
+      "everywhere": "All mailboxes, incl. Trash & Junk"
     },
     "chip": {
       "remove": "Remove {{filter}} filter",
+      "not": "Not {{filter}}",
       "from": "From: {{value}}",
       "to": "To: {{value}}",
       "cc": "Cc: {{value}}",
+      "bcc": "Bcc: {{value}}",
       "subject": "Subject: {{value}}",
       "body": "Body: {{value}}",
       "hasAttachment": "Has attachment",
       "unread": "Unread",
       "read": "Read",
       "flagged": "Flagged",
+      "thread": {
+        "unread": "Unread conversations",
+        "read": "Read conversations",
+        "flagged": "Flagged conversations"
+      },
       "in": "In: {{value}}",
       "before": "Before {{value}}",
       "after": "After {{value}}",
+      "larger": "Larger than {{value}}",
+      "smaller": "Smaller than {{value}}",
       "text": "Contains: {{value}}"
     },
-    "hint": "Try from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "hint": "Try from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
+    "hintAdvanced": "Advanced: -word leaves it out, a OR b matches either, thread:unread finds conversations nobody has opened.",
+    "findLarge": "Find large messages",
     "results": {
       "empty": "No messages match your search. Try all mailboxes, or fewer words.",
       "count_one": "{{count}} result",
@@ -1383,7 +1627,10 @@
     "background": {
       "unavailable": "Notifications while {{product}} is fully closed are not available with this server. They need the server to publish a Web-Push signing key (RFC 9749); this one does not. Everything above works whenever {{product}} is open.",
       "available": "This server can also notify you while {{product}} is closed.",
-      "contentless": "Those notifications say only that mail arrived — never the sender or the subject — and the folder setting above does not apply to them.",
+      "contentless": "Those notifications say only that mail arrived — never the sender or the subject.",
+      "withContent": "Those notifications name the sender and the subject, exactly like the ones you see while {{product}} is open.",
+      "previewOff": "“{{setting}}” is off, so {{product}} does not ask this server to put them in the notification at all — not only to hide them. While it is closed, a notification says that mail arrived and nothing else.",
+      "folders": "The folder selection above does not apply while {{product}} is closed: a notification arrives for every folder.",
       "renewal": "Open {{product}} at least once a week to keep them coming: this server renews the background subscription for seven days at a time, and only {{product}} itself can renew it."
     },
     "message": {
@@ -1492,9 +1739,95 @@
       "unknown": "Still checking what you may do here — not all messages have loaded yet."
     }
   },
+  "sharing": {
+    "currentHeading": "Who has access",
+    "addHeading": "Give access to someone",
+    "none": "Only you.",
+    "search": "Search people",
+    "searchPlaceholder": "Name or address",
+    "noMatches": "Nobody matches that.",
+    "searchFailed": "The people search failed.",
+    "roleLabel": "They may",
+    "roleFor": "What {{name}} may do",
+    "grant": "Add",
+    "grantTo": "Give {{name}} access",
+    "revoke": "Remove",
+    "revokeFrom": "Remove {{name}}’s access",
+    "done": "Done",
+    "custom": "Custom access",
+    "failed": "That change was not saved. Nothing was altered.",
+    "role": {
+      "viewer": "View",
+      "editor": "Edit",
+      "manager": "Manage",
+      "freeBusy": "Availability only"
+    },
+    "explain": {
+      "file": {
+        "viewer": "They can open and download it. They cannot change it.",
+        "editor": "They can open, change, rename and delete it. They cannot share it with anyone else.",
+        "manager": "They can do everything you can, including sharing it with other people — and you will not be told when they do."
+      },
+      "mailbox": {
+        "viewer": "They can read the mail in this folder. Opening a message will not mark it read for you — which also means their own unread count never goes down.",
+        "editor": "They can read the mail, move it in and out of this folder, mark it read and flag it. They cannot rename or delete the folder.",
+        "manager": "They can do everything you can with this folder — read and file the mail, rename it, delete it, and share it with other people without telling you."
+      },
+      "calendar": {
+        "freeBusy": "They can see WHEN you are busy, never what you are doing — no titles, no places, no people. This is what you give someone who needs to schedule around you.",
+        "viewer": "They can read every event in this calendar, with its title, time and details. They cannot change anything.",
+        "editor": "They can read, create and change events, answer invitations, and set their own alerts. They cannot delete the calendar or share it.",
+        "manager": "They can do everything you can with this calendar — including deleting it and sharing it with other people, without telling you."
+      },
+      "addressBook": {
+        "viewer": "They can read the contacts in this list. They cannot change them.",
+        "editor": "They can read, add, change and remove contacts in this list. They cannot delete the list or share it.",
+        "manager": "They can do everything you can with this list — including deleting it and sharing it with other people, without telling you."
+      }
+    },
+    "mailbox": {
+      "action": "Share…",
+      "title": "Share the folder “{{name}}”",
+      "loadFailed": "The current access list could not be loaded, so nothing here can be changed safely.",
+      "noSubmit": "Nobody can send mail from your account, whatever you grant here."
+    },
+    "incoming": {
+      "region": "New shares",
+      "mailbox": "{{who}} shared the folder “{{name}}” with you.",
+      "mailboxUnnamed": "{{who}} shared a mail folder with you.",
+      "revoked": "{{who}} withdrew your access to “{{name}}”.",
+      "revokedUnnamed": "{{who}} withdrew your access to a mail folder.",
+      "someone": "Someone",
+      "open": "Open",
+      "dismiss": "Hide",
+      "dismissOne": "Hide this notice",
+      "calendar": "{{who}} shared the calendar “{{name}}” with you.",
+      "calendarUnnamed": "{{who}} shared a calendar with you.",
+      "revokedCalendarUnnamed": "{{who}} withdrew your access to a calendar.",
+      "addressBook": "{{who}} shared the contact list “{{name}}” with you.",
+      "addressBookUnnamed": "{{who}} shared a contact list with you.",
+      "revokedAddressBookUnnamed": "{{who}} withdrew your access to a contact list.",
+      "object": "{{who}} shared “{{name}}” with you.",
+      "objectUnnamed": "{{who}} shared something with you.",
+      "revokedObjectUnnamed": "{{who}} withdrew your access to something."
+    },
+    "calendar": {
+      "title": "Share the calendar “{{name}}”"
+    },
+    "addressBook": {
+      "title": "Share the list “{{name}}”",
+      "loadFailed": "The current access list could not be loaded, so nothing here can be changed safely."
+    }
+  },
   "calendar": {
     "offline": "You are offline. Events can only be created while connected.",
     "offlineOpen": "You are offline. Events can only be opened and changed while connected.",
+    "offlineStale": "Not updating while offline. Last updated {{when}}.",
+    "offlineNotUpdating": "Not updating while offline.",
+    "offlineNever": {
+      "title": "This month has not been synced yet",
+      "body": "Connect once and your calendar will be here the next time you are offline."
+    },
     "title": "Calendar",
     "today": "Today",
     "previousMonth": "Previous month",
@@ -1539,18 +1872,192 @@
       "save": "Save",
       "cancel": "Cancel",
       "delete": "Delete",
-      "recurringReadOnly": "This event repeats. Editing a series needs a choice between this occurrence, this and following, or all of them — until that exists, repeating events can be viewed here but changed only in a calendar app that offers it.",
-      "unresolvedReadOnly": "The server returned this as an occurrence that cannot be traced back to a stored event, so it can be viewed here but not changed — only in a calendar app that reaches the event itself."
+      "unresolvedReadOnly": "The server returned this as an occurrence that cannot be traced back to a stored event, so it can be viewed here but not changed — only in a calendar app that reaches the event itself.",
+      "alert": {
+        "label": "Alert",
+        "second": "Second alert",
+        "none": "None",
+        "atStart": "At time of event",
+        "minutes_one": "{{count}} minute before",
+        "minutes_other": "{{count}} minutes before",
+        "hours_one": "{{count}} hour before",
+        "hours_other": "{{count}} hours before",
+        "days_one": "{{count}} day before",
+        "days_other": "{{count}} days before",
+        "weeks_one": "{{count}} week before",
+        "weeks_other": "{{count}} weeks before",
+        "dayOf": "On the day of the event (9:00)",
+        "dayBefore": "1 day before (9:00)",
+        "twoDaysBefore": "2 days before (9:00)",
+        "weekBefore": "1 week before (9:00)",
+        "other": "{{duration}} before the start",
+        "carried_one": "{{count}} further reminder is kept unchanged.",
+        "carried_other": "{{count}} further reminders are kept unchanged."
+      },
+      "back": "Back",
+      "repeat": {
+        "label": "Repeat",
+        "none": "Never",
+        "daily": "Every day",
+        "weekly": "Every week",
+        "biweekly": "Every 2 weeks",
+        "monthly": "Every month",
+        "yearly": "Every year",
+        "custom": "Custom rule",
+        "endLabel": "End repeat",
+        "end": {
+          "never": "Never",
+          "until": "On date",
+          "count": "After a number"
+        },
+        "untilDate": "Last day",
+        "countLabel": "Number of events"
+      },
+      "scope": {
+        "saveTitle": "Apply the change to …",
+        "deleteTitle": "Delete …",
+        "occurrence": "This event only",
+        "all": "All events",
+        "note": "Individually changed events in this series keep their time."
+      },
+      "participant": {
+        "none": "None",
+        "count_one": "{{count}} person",
+        "count_other": "{{count}} people",
+        "add": "Email address",
+        "addAction": "Add",
+        "empty": "Nobody invited yet.",
+        "organizer": "Organiser",
+        "remove": "Remove {{name}}",
+        "invalid": "That does not look like an email address.",
+        "duplicate": "That person is already on the list.",
+        "full": "The server accepts at most {{max}} participants.",
+        "status": {
+          "needs-action": "No reply",
+          "accepted": "Accepted",
+          "declined": "Declined",
+          "tentative": "Maybe"
+        }
+      },
+      "rsvp": {
+        "label": "Your reply",
+        "accepted": "Accept",
+        "tentative": "Maybe",
+        "declined": "Decline"
+      }
+    },
+    "calendars": {
+      "title": "Calendars",
+      "open": "Calendars…",
+      "create": "New calendar",
+      "createTitle": "New calendar",
+      "editTitle": "Edit calendar",
+      "edit": "Edit",
+      "delete": "Delete",
+      "menu": "Options for {{name}}",
+      "name": "Name",
+      "color": "Color",
+      "colorChosen": "Chosen: {{chosen}}",
+      "empty": "This account has no calendars.",
+      "counting": "Counting the events…",
+      "deleteTitle": "Delete “{{name}}”?",
+      "deleteBody_one": "This calendar and the {{count}} event in it will be deleted. There is no way to bring them back.",
+      "deleteBody_other": "This calendar and the {{count}} events in it will be deleted. There is no way to bring them back.",
+      "deleted": "“{{name}}” deleted.",
+      "deleteFailed": "The calendar could not be deleted.",
+      "saveFailed": "The calendar could not be saved.",
+      "toggleFailed": "The calendar could not be shown or hidden.",
+      "share": "Share {{name}}",
+      "sharedTitle": "Shared"
+    },
+    "colors": {
+      "red": "Red",
+      "orange": "Orange",
+      "ochre": "Ochre",
+      "green": "Green",
+      "teal": "Teal",
+      "blue": "Blue",
+      "purple": "Purple",
+      "brown": "Brown",
+      "custom": "Current color"
+    },
+    "import": {
+      "open": "Import events …",
+      "title": "Import events",
+      "file": "Calendar file (.ics)",
+      "empty": "This file holds no event.",
+      "unreadable": "The file could not be read.",
+      "failed": "The import failed.",
+      "repeats": "repeats",
+      "action_one": "Import {{count}} event",
+      "action_other": "Import {{count}} events",
+      "done_one": "{{count}} event imported.",
+      "done_other": "{{count}} events imported.",
+      "duplicates_one": "{{count}} event was already in the calendar.",
+      "duplicates_other": "{{count}} events were already in the calendar."
+    },
+    "rsvpFailed": "Your reply could not be sent.",
+    "occurrenceDeleted": "That event was removed from the series.",
+    "availability": {
+      "label": "Show availability",
+      "nobody": "Nobody",
+      "noPeople": "There is nobody to ask.",
+      "unavailable": "No availability came back for that person.",
+      "period": "{{name}} is busy on {{day}} from {{from}} to {{to}}."
     }
   },
   "files": {
+    "listOptions": "List options",
+    "deleteAction": "Delete",
+    "confirmDeleteBody_one": "This item will be permanently deleted. This can’t be undone.",
+    "confirmDeleteBody_other": "These {{count}} items will be permanently deleted. This can’t be undone.",
+    "confirmDeleteFolder": "Everything inside the selected folders goes with them.",
+    "truncated": "This account holds more than can be listed at once, so some files are not shown. Search to find one that is missing.",
+    "search": {
+      "label": "Search files",
+      "placeholder": "Search all files",
+      "none": "Nothing matches “{{query}}”.",
+      "in": "in {{name}}",
+      "inRoot": "in Files"
+    },
+    "sort": {
+      "byName": "Sort by name",
+      "bySize": "Sort by size",
+      "byKind": "Sort by kind"
+    },
+    "selection": {
+      "start": "Select",
+      "stop": "Done",
+      "clear": "Clear the selection",
+      "all": "Select everything here",
+      "count_one": "{{count}} selected",
+      "count_other": "{{count}} selected"
+    },
+    "move": {
+      "open": "Move {{name}}",
+      "action": "Move",
+      "title": "Move “{{name}}”",
+      "titleMany": "Move {{count}} items",
+      "here": "Move to {{name}}",
+      "breadcrumb": "Destination folder",
+      "noFolders": "No folders here — “Move” still puts them in this one.",
+      "done": "Moved to {{name}}.",
+      "undo": "Undo"
+    },
     "offline": "You are offline. Files can only be changed while connected.",
+    "offlineStale": "Not updating while offline. Last updated {{when}}.",
+    "offlineNotUpdating": "Not updating while offline.",
+    "offlineNever": {
+      "title": "Your files have not been synced yet",
+      "body": "Connect once and this list will be here the next time you are offline. Opening a file always needs a connection."
+    },
     "title": "Files",
     "root": "Files",
     "breadcrumb": "Folder path",
     "empty": "This folder is empty.",
     "retry": "Try again",
     "loadFailed": "The files could not be loaded.",
+    "refreshFailed": "Your files could not be refreshed — what you see may be out of date.",
     "savedButNotShown": "That was saved, but the list could not be reloaded — try again to see it.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",
@@ -1582,33 +2089,11 @@
     "more": "More actions for {{name}}",
     "share": {
       "open": "Share {{name}}",
-      "title": "Share “{{name}}”",
-      "currentHeading": "Who has access",
-      "addHeading": "Give access to someone",
-      "none": "Only you.",
-      "search": "Search people",
-      "searchPlaceholder": "Name or address",
-      "noMatches": "Nobody matches that.",
-      "searchFailed": "The people search failed.",
-      "roleLabel": "They may",
-      "roleFor": "What {{name}} may do",
-      "grant": "Add",
-      "grantTo": "Give {{name}} access",
-      "revoke": "Remove",
-      "revokeFrom": "Remove {{name}}’s access",
-      "done": "Done",
-      "custom": "Custom access",
-      "failed": "That change was not saved. Nothing was altered.",
-      "role": {
-        "viewer": "View",
-        "editor": "Edit",
-        "manager": "Manage"
-      },
-      "explain": {
-        "viewer": "They can open and download it. They cannot change it.",
-        "editor": "They can open, change, rename and delete it. They cannot share it with anyone else.",
-        "manager": "They can do everything you can, including sharing it with other people — and you will not be told when they do."
-      }
+      "title": "Share “{{name}}”"
+    },
+    "shared": {
+      "title": "Shared with me",
+      "open": "Open the files {{name}} shared with you"
     }
   }
 }

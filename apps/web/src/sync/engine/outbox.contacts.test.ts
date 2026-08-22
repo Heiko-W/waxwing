@@ -14,7 +14,9 @@ import { addressBook, contactCard, freshDb } from '../test-utils'
 import {
   enqueueCreateAddressBook,
   enqueueCreateContactCard,
+  enqueueDeleteAddressBook,
   enqueueDeleteContactCard,
+  enqueueUpdateAddressBook,
   enqueueUpdateContactCard,
 } from './contact-mutations'
 import { enqueueAction, type OutboxIntent, replayOutbox } from './outbox'
@@ -61,6 +63,14 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     queryContactCards: unused,
     queryContactCardChanges: unused,
     setContactCards: unused,
+    getCalendars: unused,
+    calendarChanges: unused,
+    getCalendarEvents: unused,
+    calendarEventChanges: unused,
+    queryCalendarEvents: unused,
+    fileNodePage: unused,
+    getFileNodes: unused,
+    fileNodeChanges: unused,
   }
   return { ...base, ...overrides }
 }
@@ -363,6 +373,162 @@ describe('outbox contacts — createAddressBook', () => {
   })
 })
 
+// ── updateAddressBook / deleteAddressBook (JMAP gap analysis, B-5) ────────────────────────────
+
+describe('outbox contacts — updateAddressBook', () => {
+  it('renames optimistically, guards on the AddressBook state, and sends a minimal patch', async () => {
+    await putAddressBooks(db, ACC, [addressBook('B1', { name: 'Work' })])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateAddressBook', id: 'B1', props: { name: 'Office' } },
+      { id: 'i1', now: 1, ifInState: 'ab-7' },
+    )
+
+    expect((await book('B1'))?.name).toBe('Office')
+    // The undo is the WHOLE prior row, so a rejection restores the old name exactly.
+    expect((await row('i1'))?.undo).toMatchObject({ kind: 'addressBook', id: 'B1' })
+
+    let sent: Parameters<JmapPort['setAddressBooks']>[0] | null = null
+    const port = fakePort({
+      setAddressBooks: async (args) => {
+        sent = args
+        return setResult({ updated: ['B1'] })
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect(sent).toEqual({ update: { B1: { name: 'Office' } }, ifInState: 'ab-7' })
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('optimistic → reject → undo: the old name comes back', async () => {
+    await putAddressBooks(db, ACC, [addressBook('B1', { name: 'Work' })])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateAddressBook', id: 'B1', props: { name: 'Office' } },
+      { id: 'i1', now: 1 },
+    )
+    const port = fakePort({
+      setAddressBooks: async () => setResult({ notUpdated: { B1: { type: 'forbidden' } } }),
+    })
+
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect((await book('B1'))?.name).toBe('Work')
+    expect((await row('i1'))?.conflict?.code).toBe('forbidden')
+  })
+
+  it('a book deleted elsewhere is `folderGone`, not the mail-worded `messageGone`', async () => {
+    await putAddressBooks(db, ACC, [addressBook('B1', { name: 'Work' })])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateAddressBook', id: 'B1', props: { name: 'Office' } },
+      { id: 'i1', now: 1 },
+    )
+    const port = fakePort({
+      setAddressBooks: async () => setResult({ notUpdated: { B1: { type: 'notFound' } } }),
+    })
+
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect((await row('i1'))?.conflict?.code).toBe('folderGone')
+  })
+})
+
+describe('outbox contacts — deleteAddressBook', () => {
+  it('removes the book optimistically and destroys it WITH its contents', async () => {
+    await putAddressBooks(db, ACC, [addressBook('B1', { name: 'Work' })])
+    await putContactCards(db, ACC, [contactCard('c1', { addressBookIds: { B1: true } })])
+    await enqueueAction(db, ACC, { kind: 'deleteAddressBook', id: 'B1' }, { id: 'i1', now: 1 })
+
+    expect(await book('B1')).toBeUndefined()
+    // The CARDS are left to the ContactCard delta — see the note on the optimistic apply.
+    expect(await card('c1')).toBeDefined()
+
+    let sent: Parameters<JmapPort['setAddressBooks']>[0] | null = null
+    const port = fakePort({
+      setAddressBooks: async (args) => {
+        sent = args
+        return setResult({ destroyed: ['B1'] })
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    // Without `onDestroyRemoveContents` the server refuses to destroy a book that still holds a
+    // card — i.e. every book anyone actually keeps.
+    expect(sent).toMatchObject({ destroy: ['B1'], onDestroyRemoveContents: true })
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('optimistic → reject → undo: the book comes back', async () => {
+    await putAddressBooks(db, ACC, [addressBook('B1', { name: 'Work' })])
+    await enqueueAction(db, ACC, { kind: 'deleteAddressBook', id: 'B1' }, { id: 'i1', now: 1 })
+    expect(await book('B1')).toBeUndefined()
+
+    const port = fakePort({
+      setAddressBooks: async () => setResult({ notDestroyed: { B1: { type: 'forbidden' } } }),
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect((await book('B1'))?.name).toBe('Work')
+    expect((await row('i1'))?.conflict?.code).toBe('forbidden')
+  })
+
+  it('a book already gone server-side is a SUCCESS, not a rollback', async () => {
+    await putAddressBooks(db, ACC, [addressBook('B1', { name: 'Work' })])
+    await enqueueAction(db, ACC, { kind: 'deleteAddressBook', id: 'B1' }, { id: 'i1', now: 1 })
+    const port = fakePort({
+      setAddressBooks: async () => setResult({ notDestroyed: { B1: { type: 'notFound' } } }),
+    })
+
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    // Restoring it would resurrect a book the user (or another client) removed.
+    expect(await book('B1')).toBeUndefined()
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('rewrites a rename/delete queued against a book created in the same session', async () => {
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'createAddressBook', creationId: 'tmpB', props: { name: 'Work' } },
+      { id: 'i1', now: 1 },
+    )
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateAddressBook', id: 'tmpB', props: { name: 'Office' } },
+      { id: 'i2', now: 2 },
+    )
+    await enqueueAction(db, ACC, { kind: 'deleteAddressBook', id: 'tmpB' }, { id: 'i3', now: 3 })
+
+    let calls = 0
+    const port = fakePort({
+      setAddressBooks: async () => {
+        calls += 1
+        if (calls === 1) return setResult({ created: { tmpB: { id: 'AB99' } } })
+        throw new TypeError('fetch failed') // stop the pass so the rewrites can be inspected
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    const rename = (await row('i2'))?.payload as Extract<
+      OutboxIntent,
+      { kind: 'updateAddressBook' }
+    >
+    const remove = (await row('i3'))?.payload as Extract<
+      OutboxIntent,
+      { kind: 'deleteAddressBook' }
+    >
+    expect(rename.id).toBe('AB99')
+    expect(remove.id).toBe('AB99')
+  })
+})
+
 // ── creation-id rewrite of chained card intents ──────────────────────────────────────────────────
 
 describe('outbox contacts — creation-id rewrite', () => {
@@ -499,5 +665,17 @@ describe('outbox contacts — enqueue helpers', () => {
     expect((await row(u.id))?.type).toBe('updateContactCard')
     expect((await row(d.id))?.type).toBe('deleteContactCard')
     expect(await card('c1')).toBeUndefined() // the delete applied last, optimistically
+  })
+
+  it('enqueueUpdateAddressBook / enqueueDeleteAddressBook enqueue the right intents (B-5)', async () => {
+    await putAddressBooks(db, ACC, [addressBook('book1', { name: 'Work' })])
+
+    const r = await enqueueUpdateAddressBook(dispatcher, 'book1', { name: 'Office' }, ids)
+    expect((await row(r.id))?.type).toBe('updateAddressBook')
+    expect((await book('book1'))?.name).toBe('Office')
+
+    const x = await enqueueDeleteAddressBook(dispatcher, 'book1', ids)
+    expect((await row(x.id))?.type).toBe('deleteAddressBook')
+    expect(await book('book1')).toBeUndefined()
   })
 })

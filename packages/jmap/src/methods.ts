@@ -23,6 +23,8 @@ import type {
   CalendarEventChangesResponse,
   CalendarEventGetRequest,
   CalendarEventGetResponse,
+  CalendarEventParseRequest,
+  CalendarEventParseResponse,
   CalendarEventQueryRequest,
   CalendarEventQueryResponse,
   CalendarEventSetRequest,
@@ -31,6 +33,8 @@ import type {
   CalendarGetResponse,
   CalendarSetRequest,
   CalendarSetResponse,
+  ParticipantIdentityGetRequest,
+  ParticipantIdentityGetResponse,
 } from './types/calendar'
 import type {
   AddressBookChangesRequest,
@@ -79,10 +83,6 @@ import type {
   MailboxChangesResponse,
   MailboxGetRequest,
   MailboxGetResponse,
-  MailboxQueryChangesRequest,
-  MailboxQueryChangesResponse,
-  MailboxQueryRequest,
-  MailboxQueryResponse,
   MailboxSetRequest,
   MailboxSetResponse,
   SearchSnippetGetRequest,
@@ -93,12 +93,18 @@ import type {
   ThreadGetResponse,
 } from './types/mail'
 import type {
+  PrincipalGetAvailabilityRequest,
+  PrincipalGetAvailabilityResponse,
   PrincipalGetRequest,
   PrincipalGetResponse,
   PrincipalQueryRequest,
   PrincipalQueryResponse,
+  ShareNotificationChangesRequest,
+  ShareNotificationChangesResponse,
   ShareNotificationGetRequest,
   ShareNotificationGetResponse,
+  ShareNotificationQueryRequest,
+  ShareNotificationQueryResponse,
   ShareNotificationSetRequest,
   ShareNotificationSetResponse,
 } from './types/principal'
@@ -112,8 +118,6 @@ import type { QuotaGetRequest, QuotaGetResponse } from './types/quota'
 import type {
   SieveScriptGetRequest,
   SieveScriptGetResponse,
-  SieveScriptQueryRequest,
-  SieveScriptQueryResponse,
   SieveScriptSetRequest,
   SieveScriptSetResponse,
   SieveScriptValidateRequest,
@@ -138,17 +142,39 @@ import type {
   VacationResponseSetResponse,
 } from './types/vacation'
 
-/** Registry of typed method definitions for the SP.1 capability surface. */
+/**
+ * Registry of typed method definitions for the SP.1 capability surface.
+ *
+ * **Membership is a claim, not a catalogue.** An entry here reads as "this client does this", so a
+ * method nobody calls is a lie a reader cannot check. Six were removed for that reason (JMAP gap
+ * analysis, I-2/I-3); each server-side method still EXISTS on Stalwart v0.16.18 — measured — so the
+ * note says why Waxwing has no use for it, not that it is unavailable:
+ *
+ *  - `Mailbox/query` / `Mailbox/queryChanges` — the folder tree is always fetched whole
+ *    (`Mailbox/get {ids:null}`); a partial, sorted, paged mailbox list has no consumer.
+ *  - `SieveScript/query` — the script list comes from `SieveScript/get {ids:null}` for the same
+ *    reason. RFC 9661 accounts hold a handful of scripts, not a page of them.
+ *
+ * Deliberately absent for a HARDER reason, and not to be added on a whim:
+ *  - `Principal/set` — v0.16.18 answers the whole batch HTTP 400 `notRequest` (`sharing.test.ts`).
+ *  - `SieveScript/changes` / `SieveScript/queryChanges` — RFC 9661 defines neither (`sieve.test.ts`).
+ *  - `Blob/*` (RFC 9404) — byte transfer goes through the RFC 8620 §6 endpoints in `blob.ts`.
+ *
+ * Present but with no production caller **on purpose**: `ShareNotification/changes` and
+ * `ShareNotification/query`. Both work on v0.16.18, but the notification list is short-lived and is
+ * read whole by `ShareNotification/get {ids:null}` — see `apps/web/src/sharing/incoming.ts` for the
+ * measurement. They stay because a sharing UI that grows past "read them all" reaches for exactly
+ * these two, and because leaving them out would suggest the server lacks them.
+ */
 export const Methods = {
-  /** RFC 8620 §4 — echoes its arguments; useful as a connectivity check. */
+  /**
+   * RFC 8620 §4 — echoes its arguments. Mandatory for every JMAP server and the cheapest possible
+   * connectivity probe, which is what {@link JmapClient.echo} uses it for.
+   */
   coreEcho: defineMethod<Record<string, unknown>, Record<string, unknown>>('Core/echo'),
 
   mailboxGet: defineMethod<MailboxGetRequest, MailboxGetResponse>('Mailbox/get'),
   mailboxChanges: defineMethod<MailboxChangesRequest, MailboxChangesResponse>('Mailbox/changes'),
-  mailboxQuery: defineMethod<MailboxQueryRequest, MailboxQueryResponse>('Mailbox/query'),
-  mailboxQueryChanges: defineMethod<MailboxQueryChangesRequest, MailboxQueryChangesResponse>(
-    'Mailbox/queryChanges',
-  ),
   mailboxSet: defineMethod<MailboxSetRequest, MailboxSetResponse>('Mailbox/set'),
 
   threadGet: defineMethod<ThreadGetRequest, ThreadGetResponse>('Thread/get'),
@@ -204,14 +230,12 @@ export const Methods = {
   quotaGet: defineMethod<QuotaGetRequest, QuotaGetResponse>('Quota/get'),
 
   /**
-   * RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02). The RFC defines these four and no more:
+   * RFC 9661 — SieveScript (M5.2, FR-SIEVE-01/02). The RFC defines four methods and no more:
    * there is no `/changes` and no `/queryChanges`, so scripts are re-read rather than synced.
+   * `SieveScript/query` is the fourth and is absent by choice — see the note on {@link Methods}.
    */
   sieveScriptGet: defineMethod<SieveScriptGetRequest, SieveScriptGetResponse>('SieveScript/get'),
   sieveScriptSet: defineMethod<SieveScriptSetRequest, SieveScriptSetResponse>('SieveScript/set'),
-  sieveScriptQuery: defineMethod<SieveScriptQueryRequest, SieveScriptQueryResponse>(
-    'SieveScript/query',
-  ),
   /** Compiles the blob without storing it; `error: null` means it parsed (RFC 9661 §2.6). */
   sieveScriptValidate: defineMethod<SieveScriptValidateRequest, SieveScriptValidateResponse>(
     'SieveScript/validate',
@@ -225,6 +249,11 @@ export const Methods = {
    * across DST in local time itself.
    */
   calendarGet: defineMethod<CalendarGetRequest, CalendarGetResponse>('Calendar/get'),
+  /**
+   * The calendar-tree delta (K-8). Bound now because there is finally something to apply it to: the
+   * replica keeps the calendar list between visits, so a colour changed on a phone has to arrive
+   * without re-reading every calendar.
+   */
   calendarChanges: defineMethod<CalendarChangesRequest, CalendarChangesResponse>(
     'Calendar/changes',
   ),
@@ -232,6 +261,12 @@ export const Methods = {
   calendarEventGet: defineMethod<CalendarEventGetRequest, CalendarEventGetResponse>(
     'CalendarEvent/get',
   ),
+  /**
+   * The event delta (K-8) — and note what it reports on: STORED events, never the synthetic
+   * occurrences an `expandRecurrences` query answers with. A changed weekly meeting is ONE id here
+   * and fifty-two rows on screen, so the replica uses this to learn THAT a window is stale, then
+   * re-materializes the window itself (`sync/engine/delta.ts`).
+   */
   calendarEventChanges: defineMethod<CalendarEventChangesRequest, CalendarEventChangesResponse>(
     'CalendarEvent/changes',
   ),
@@ -241,12 +276,42 @@ export const Methods = {
   calendarEventSet: defineMethod<CalendarEventSetRequest, CalendarEventSetResponse>(
     'CalendarEvent/set',
   ),
+  /**
+   * Reads an uploaded `.ics` blob as JSCalendar events (K-4).
+   *
+   * Answers an ARRAY per blob — one VCALENDAR can hold many VEVENTs. See
+   * {@link CalendarEventParseResponse} for why the `:parse` capability URN is not added to the
+   * `using` set.
+   */
+  calendarEventParse: defineMethod<CalendarEventParseRequest, CalendarEventParseResponse>(
+    'CalendarEvent/parse',
+  ),
+  /**
+   * The addresses the user may act as (K-10).
+   *
+   * Read only, and that is measured rather than cautious: a `create` naming an address the account
+   * does not already own is refused, and `isDefault` cannot be written at all. See
+   * {@link ParticipantIdentity}. `ParticipantIdentity/changes` is deliberately not bound — it
+   * cannot answer.
+   */
+  participantIdentityGet: defineMethod<
+    ParticipantIdentityGetRequest,
+    ParticipantIdentityGetResponse
+  >('ParticipantIdentity/get'),
 
   /**
    * `draft-ietf-jmap-filenode` — FileNode (M5.7, FR-FILE-01). No RFC number yet; the shapes are
    * measured against Stalwart 0.16 rather than taken from the draft.
    */
   fileNodeGet: defineMethod<FileNodeGetRequest, FileNodeGetResponse>('FileNode/get'),
+  /**
+   * The file-tree delta (D-4). Bound now that there is a replica to apply it to.
+   *
+   * The measured trap this one exists around: for an account with NO change history the server may
+   * refuse to diff the very state a `/get` just handed out (`cannotCalculateChanges`; fixed for this
+   * method in v0.16.18, but the case — a brand-new account's first sync — is every new user's).
+   * `sync/engine/port.ts` translates that into "read the tree again", never into an error.
+   */
   fileNodeChanges: defineMethod<FileNodeChangesRequest, FileNodeChangesResponse>(
     'FileNode/changes',
   ),
@@ -259,9 +324,30 @@ export const Methods = {
    */
   principalGet: defineMethod<PrincipalGetRequest, PrincipalGetResponse>('Principal/get'),
   principalQuery: defineMethod<PrincipalQueryRequest, PrincipalQueryResponse>('Principal/query'),
+  /**
+   * RFC 9670 §5 — free/busy (S-6).
+   *
+   * **The `using` set this derives is `[core, principals]` and that is on purpose.** The method's
+   * own capability is `urn:ietf:params:jmap:principals:availability`, but `capabilityForMethod`
+   * maps by PREFIX and `Principal` already means `principals` — see
+   * {@link Capabilities.principalsAvailability} for why an override would cost more than it buys.
+   * A caller that has seen the session advertise the URN adds it through `CallOptions.using`.
+   */
+  principalGetAvailability: defineMethod<
+    PrincipalGetAvailabilityRequest,
+    PrincipalGetAvailabilityResponse
+  >('Principal/getAvailability'),
   shareNotificationGet: defineMethod<ShareNotificationGetRequest, ShareNotificationGetResponse>(
     'ShareNotification/get',
   ),
+  shareNotificationChanges: defineMethod<
+    ShareNotificationChangesRequest,
+    ShareNotificationChangesResponse
+  >('ShareNotification/changes'),
+  shareNotificationQuery: defineMethod<
+    ShareNotificationQueryRequest,
+    ShareNotificationQueryResponse
+  >('ShareNotification/query'),
   shareNotificationSet: defineMethod<ShareNotificationSetRequest, ShareNotificationSetResponse>(
     'ShareNotification/set',
   ),

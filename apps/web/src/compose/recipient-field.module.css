@@ -16,11 +16,15 @@
  * 8 px gap was not in either number, so the toggles started 8 px to the left of the field they
  * belong under. Two hardcoded copies of one measurement, and both wrong by the part neither of them
  * knew about. With a grid the column IS the measurement.
+ *
+ * The WIDTH of that column is `--compose-label`, set on the composer window — see
+ * composer.module.css. It lived here as a literal `2.5rem` and again there as a literal `2.5rem`,
+ * which is two copies of one measurement in the arrangement whose whole point is that there is one.
  */
 .field {
   position: relative;
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--compose-label, 4.5rem) minmax(0, 1fr);
   align-items: start;
   gap: var(--waxwing-space-2);
 }
@@ -177,9 +181,52 @@
   font-size: var(--waxwing-text-xs);
 }
 
+/*
+ * The organisation line on a directory hit (S-5).
+ *
+ * Quieter than the address above it — that ordering is the whole point. It is not a badge and not a
+ * source label: it states where the person belongs, which is what tells a reader the row came from
+ * the company directory rather than from their own contacts, and it does so without asking them to
+ * learn what a badge means. `opacity` rather than a second muted colour, so it stays legible
+ * against both themes without a token of its own.
+ */
+.optionOrg {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A contact group's option marker (A-4). Exactly the box an `Avatar size="sm"` occupies, so a list
+ * that mixes people and groups keeps ONE text column — a group whose glyph were a different width
+ * would put a visible step in the names beside it.
+ */
+.optionGroupIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: var(--waxwing-radius-full);
+  background-color: var(--waxwing-surface-2);
+  color: var(--waxwing-text-muted);
+}
+
+.optionGroupIcon svg {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+}
+
+/* Under the entry box, not under the label — the same alignment the grid above states, and the
+   third place the 2.5rem literal had been copied to. It was 8px short of the column it was aiming
+   at, because the row's own gap was in neither number: exactly the defect `.field`'s comment
+   records, still living here after the grid fixed it two rules up. */
 .didYouMean {
   margin: 0;
-  padding-inline-start: 2.5rem;
+  padding-inline-start: calc(var(--compose-label, 4.5rem) + var(--waxwing-space-2));
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
@@ -198,7 +245,7 @@
    forgetting the gap — which is how these ended up 8 px to the left of the field they belong to. */
 .fieldToggles {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--compose-label, 4.5rem) minmax(0, 1fr);
   gap: var(--waxwing-space-2);
 }
 

@@ -53,6 +53,9 @@
 
 import type {
   AddressBook,
+  Calendar,
+  CalendarEvent,
+  CalendarEventFilter,
   ContactCard,
   ContactCardComparator,
   ContactCardFilter,
@@ -61,6 +64,7 @@ import type {
   EmailBodyValue,
   EmailComparator,
   EmailFilter,
+  FileNode,
   Id,
   Identity,
   Mailbox,
@@ -446,6 +450,24 @@ export type OutboxUndo =
   | { readonly kind: 'refetchEmails'; readonly prunedKeys?: string[] }
   | { readonly kind: 'mailbox'; readonly id: Id; readonly prior: MailboxRow | null }
   /**
+   * `updateMailbox` / `reorderMailboxes` (JMAP gap analysis M-5/M-6) — a PROPERTY-scoped rollback:
+   * only the columns the intent wrote, and their pre-image values.
+   *
+   * Not the whole-row `mailbox` variant above, and the difference is behavioural. Two updates
+   * queued against the same folder (mark it the Archive, then hide it) each take their pre-image at
+   * enqueue time, so the second one's pre-image already contains the first one's change. If the
+   * first is then refused, a whole-row restore puts the folder back to before BOTH — silently
+   * undoing a change the server accepted. Restoring one column cannot do that.
+   *
+   * A list rather than a single id because a reorder writes a whole sibling group at once.
+   */
+  | {
+      readonly kind: 'mailboxProps'
+      readonly prior: ReadonlyArray<
+        { readonly id: Id } & Partial<Pick<MailboxRow, 'role' | 'isSubscribed' | 'sortOrder'>>
+      >
+    }
+  /**
    * A ContactCard create/update/delete (M4.2). `prior` is the pre-mutation row (null for a create) —
    * the full stored row, so a rollback is exact regardless of how the optimistic patch was applied.
    * The mirror of the `mailbox` variant for the contact-card object.
@@ -537,6 +559,12 @@ export interface SerializedDraft {
   to: EmailAddress[]
   cc: EmailAddress[]
   bcc: EmailAddress[]
+  /**
+   * The draft's own `Reply-To` (M-11). OPTIONAL, and it has to stay that way: rows written before
+   * this field existed are read back by `deserializeDraft` without a migration, and a required
+   * field would turn every one of them into a draft that cannot be reopened.
+   */
+  replyTo?: EmailAddress[]
   subject: string
   body: string
   inReplyTo: string[] | null
@@ -547,6 +575,23 @@ export interface SerializedDraft {
   /** Reply/forward source id + the keyword to set on it after send (M2.8); `null` for a new draft. */
   sourceEmailId: Id | null
   sourceFlag: '$answered' | '$forwarded' | null
+  /**
+   * Priority / delivery receipt / TLS-only for this send (M-7, M-11). Optional for the same reason
+   * as `replyTo`; absent reads back as {@link DEFAULT_SEND_OPTIONS}.
+   *
+   * Local, not on the server draft. Priority survives a round trip through the Drafts mailbox as a
+   * header, but a receipt and a TLS requirement are ENVELOPE facts with nowhere to live in a stored
+   * message — writing them into `X-Waxwing-*` headers would leak this app's bookkeeping into every
+   * message it sends. The crash-safe local row is where draft edit-state belongs anyway.
+   */
+  sendOptions?: SerializedSendOptions
+}
+
+/** {@link SerializedDraft.sendOptions} — structurally the composer's `SendOptions`. */
+export interface SerializedSendOptions {
+  priority: 'low' | 'normal' | 'high'
+  deliveryReceipt: boolean
+  requireTls: boolean
 }
 
 export type DraftSyncStatus = 'pending' | 'synced' | 'sending' | 'error'
@@ -633,6 +678,126 @@ export interface ContactQueryCacheRow {
   lastUsedAt: number
 }
 
+// ---------------------------------------------------------------------------------------------
+// Calendar (K-8, `draft-ietf-jmap-calendars` + JSCalendar). The calendar list mirrors the folder
+// tree (few, fetched whole); the events are the interesting half.
+//
+// ## Masters or occurrences? BOTH, and they are not interchangeable.
+// A month view is a list of OCCURRENCES, and the server is the one that produces them
+// (`expandRecurrences`) — expanding a rule in local time across a DST boundary is the genuinely
+// hard part of calendaring and this client has never done it. So the render source is the expanded
+// occurrence, synthetic id and all: storing masters alone would mean re-implementing that expansion
+// offline, which is exactly the bug the online path was built to avoid.
+//
+// But an occurrence's id cannot be written to, and `CalendarEvent/changes` reports on stored
+// objects, not on the fifty-two rows a weekly meeting draws. So the same window ALSO stores the
+// unexpanded masters covering it, purely for identity: `resolveIdentity` reads `baseEventId` off
+// the occurrence and the master's `recurrenceRule` off the object, and answers the two questions the
+// screen needs — "what may I write to" and "is this a series". Both kinds live in ONE table keyed by
+// their own id (a server that does not synthesise ids answers both queries with the same id, and
+// then they are legitimately the same row); which ids are which is recorded on the window row.
+//
+// The occurrences are DERIVED data and are treated as such: they are replaced wholesale by the next
+// full re-query and never patched by a delta. `CalendarEvent/changes` is used for what it can
+// honestly say — THAT something changed — after which the window is re-materialized.
+// ---------------------------------------------------------------------------------------------
+
+/** `draft-ietf-jmap-calendars` Calendar mirror — the calendar list (analogue of {@link MailboxRow}). */
+export interface CalendarRow extends Calendar {
+  accountId: Id
+}
+
+/**
+ * One JSCalendar event as the server answered it — an expanded OCCURRENCE or an unexpanded stored
+ * OBJECT (see the note above). The whole event rides through untouched, because the calendar screen
+ * reads a dozen properties and an edit round-trips the rest.
+ */
+export interface CalendarEventRow {
+  accountId: Id
+  id: Id
+  /**
+   * The stored event this row is an instance of — `baseEventId` where the server named one, else the
+   * row's own id. Derived and INDEXED (never `undefined`, or the record would drop out of the index
+   * entirely): it is the link from a synthetic occurrence back to the writable object, which is what
+   * a delta on stored ids has to intersect with to know which windows it invalidated.
+   */
+  base: Id
+  /** `true` when this row came from the expanded query — i.e. it is a row the grid draws. */
+  occurrence: boolean
+  event: CalendarEvent
+}
+
+/**
+ * A watched `CalendarEvent/query` window — one month grid for one set of visible calendars.
+ *
+ * `ids` are the EXPANDED occurrence ids in server order, `objectIds` the unexpanded masters of the
+ * same window. Both are needed to reproduce `eventsInRange` offline, and neither is derivable from
+ * the other. There is no `queryState`/`upToId` pair as on the mail side: an expanded window has no
+ * usable `queryChanges` (the ids are synthetic and the draft binds no such method for them), so this
+ * window is only ever replaced whole — {@link stale} is the flag that says it is due.
+ */
+export interface CalendarQueryCacheRow {
+  accountId: Id
+  /** {@link canonicalCalendarQueryKey} of `{filter, expandRecurrences}`. */
+  key: string
+  ids: Id[]
+  objectIds: Id[]
+  filter: CalendarEventFilter | null
+  /**
+   * Set when a `CalendarEvent/changes` delta touched an object this window covers — or when the
+   * server could not compute a delta at all. The next reconcile re-queries the window whole.
+   */
+  stale: boolean
+  /** When the window was last MATERIALIZED — what the offline notice reads to say "as of". */
+  syncedAt: number
+  lastUsedAt: number
+}
+
+// ---------------------------------------------------------------------------------------------
+// Files (D-4, `draft-ietf-jmap-filenode`). The WHOLE tree, not a window — and that is a fact about
+// this server rather than a preference.
+//
+// `files-client.ts` already reads the whole account to draw one folder: Stalwart 0.16 refuses
+// `filter: {parentId: null}` (and refuses the WHOLE request with it), so the root listing sends no
+// filter at all and the level is reassembled on the client. A replica of the whole tree is therefore
+// not more traffic than the screen was already spending — it is the same walk, done once and kept.
+//
+// Blobs are explicitly NOT part of this. A node's `blobId` addresses bytes on the download endpoint,
+// and caching those is a different feature with a different budget (`blob-cache.ts` + M3.4's
+// eviction). Offline you can see what is there and where it is; opening a file still needs the line.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * One node of the file tree.
+ *
+ * `parent` is derived and INDEXED because `parentId` is `null` at the root, and `null` is not a
+ * valid IndexedDB key — a record whose key path holds one is dropped from that index entirely, so
+ * every root node would be invisible to the query that draws the root folder. The empty string
+ * stands for "the root"; a JMAP id is never empty, so the two cannot be confused.
+ */
+export interface FileNodeRow extends FileNode {
+  accountId: Id
+  parent: Id | ''
+}
+
+/** {@link LocalPrefRow} key: was the last whole-tree walk cut short? See {@link FileTreeState}. */
+export const FILE_TREE_STATE_KEY = 'files.tree'
+
+/**
+ * What the file screen needs to know about the replica beyond the rows themselves.
+ *
+ * Kept in `localPrefs` rather than in a store of its own: it is one row per account, it is local-only,
+ * and a new store would be a schema version for two scalars. `truncated` is the answer to "is this
+ * all of it" (the pager gives up after {@link MAX_PAGES} — see `files-client.ts`), and a listing that
+ * is short while looking complete is the failure that answer exists to prevent.
+ */
+export interface FileTreeState {
+  /** When the whole tree was last walked; `0` = never. */
+  readonly syncedAt: number
+  /** The walk stopped before the end — something is missing from the rows. */
+  readonly truncated: boolean
+}
+
 export class ReplicaDb extends Dexie {
   accounts!: Table<AccountRecord, Id>
   mailboxes!: Table<MailboxRow, [Id, Id]>
@@ -650,6 +815,10 @@ export class ReplicaDb extends Dexie {
   addressBooks!: Table<AddressBookRow, [Id, Id]>
   contactCards!: Table<ContactCardRow, [Id, Id]>
   contactQueryCache!: Table<ContactQueryCacheRow, [Id, string]>
+  calendars!: Table<CalendarRow, [Id, Id]>
+  calendarEvents!: Table<CalendarEventRow, [Id, Id]>
+  calendarQueryCache!: Table<CalendarQueryCacheRow, [Id, string]>
+  fileNodes!: Table<FileNodeRow, [Id, Id]>
 
   constructor(name: string = REPLICA_DB_NAME) {
     super(name)
@@ -729,6 +898,21 @@ export class ReplicaDb extends Dexie {
       addressBooks: '[accountId+id], accountId',
       contactCards: '[accountId+id], accountId, *abk',
       contactQueryCache: '[accountId+key], accountId, [accountId+lastUsedAt]',
+    })
+    // v7 (K-8) — additive: the calendar replica. Three brand-new stores, so no `.upgrade()`.
+    // `calendarEvents` is indexed by `base` so a delta on STORED ids can find the occurrences it
+    // invalidated; `occurrence` gets no index (a boolean is not a valid IndexedDB key and would
+    // silently drop every row — the same trap `addressBooks.isSubscribed` documents above).
+    this.version(7).stores({
+      calendars: '[accountId+id], accountId',
+      calendarEvents: '[accountId+id], accountId, [accountId+base]',
+      calendarQueryCache: '[accountId+key], accountId, [accountId+lastUsedAt]',
+    })
+    // v8 (D-4) — additive: the file tree. One brand-new store, so no `.upgrade()`. Indexed by the
+    // derived `parent` (see {@link FileNodeRow}) because `null` cannot be an IndexedDB key and the
+    // root level is the one every reader starts on.
+    this.version(8).stores({
+      fileNodes: '[accountId+id], accountId, [accountId+parent]',
     })
   }
 }
@@ -814,6 +998,33 @@ export function toContactCardRow(accountId: Id, card: ContactCard): ContactCardR
     addressBookIds,
     abk: Object.keys(addressBookIds).map((bookId) => scopeKey(accountId, bookId)),
   }
+}
+
+/** Map a JMAP Calendar to its stored row (K-8). */
+export function toCalendarRow(accountId: Id, calendar: Calendar): CalendarRow {
+  return { ...calendar, accountId }
+}
+
+/**
+ * Map one JSCalendar event to its stored row (K-8), deriving the master link.
+ *
+ * `base` falls back to the event's own id rather than staying absent: the index is what a delta on
+ * stored ids joins against, and a record missing the key path is not merely unmatched — it is
+ * invisible to that index for good.
+ */
+export function toCalendarEventRow(
+  accountId: Id,
+  event: CalendarEvent,
+  occurrence: boolean,
+): CalendarEventRow {
+  const base =
+    typeof event.baseEventId === 'string' && event.baseEventId !== '' ? event.baseEventId : event.id
+  return { accountId, id: event.id, base, occurrence, event }
+}
+
+/** Map a JMAP FileNode to its stored row (D-4), deriving the root-safe parent key. */
+export function toFileNodeRow(accountId: Id, node: FileNode): FileNodeRow {
+  return { ...node, accountId, parent: node.parentId ?? '' }
 }
 
 // ---------------------------------------------------------------------------------------------

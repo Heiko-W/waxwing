@@ -5,15 +5,18 @@
  * the `push` handler is a notification that never appears, with nothing on screen to say so.
  */
 
-import { EMAIL_DELIVERY_TYPE } from '@waxwing/jmap'
+import { EMAIL_DELIVERY_TYPE, EMAIL_PUSH_TYPE } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
 import {
   classifyPushFrame,
   EMAIL_DELIVERY,
+  EMAIL_PUSH,
   isPushVerificationMessage,
   PUSH_VERIFICATION,
   type PushBannerDecision,
+  type PushBannerStrings,
   parsePushFrame,
+  pushBannerContent,
   shouldRaisePushBanner,
 } from './push-frame'
 import { inQuietHours } from './quiet-hours'
@@ -29,6 +32,10 @@ import { inQuietHours } from './quiet-hours'
  */
 it('agrees with @waxwing/jmap about the delivery type name', () => {
   expect(EMAIL_DELIVERY).toBe(EMAIL_DELIVERY_TYPE)
+})
+
+it('agrees with @waxwing/jmap about the EmailPush type name', () => {
+  expect(EMAIL_PUSH).toBe(EMAIL_PUSH_TYPE)
 })
 
 describe('classifyPushFrame — a StateChange', () => {
@@ -302,6 +309,321 @@ describe('isPushVerificationMessage', () => {
       { type: PUSH_VERIFICATION, pushSubscriptionId: 1, verificationCode: 'b' },
     ]) {
       expect(isPushVerificationMessage(bad)).toBe(false)
+    }
+  })
+})
+
+// -----------------------------------------------------------------------------------------------
+// draft-ietf-jmap-emailpush-03 — the push that carries the mail (ADR-017 amendment, 2026-08-21)
+// -----------------------------------------------------------------------------------------------
+
+/**
+ * The payload captured verbatim at the push endpoint from Stalwart v0.16.18 on 2026-08-21
+ * (`docs/jmap-gap-2026-08-21/berichte/E-emailpush.md`). Not a shape invented here: everything below
+ * asserts against what a real server actually sent.
+ */
+const MEASURED_EMAIL_PUSH = {
+  '@type': 'EmailPush',
+  accountId: 'b',
+  emails: [
+    {
+      from: [{ name: 'Bob Beispiel', email: 'bob@waxwing.test' }],
+      subject: 'Rechnung 2026-08 faellig',
+      preview: 'Hallo Alice, anbei die Rechnung fuer August. Bitte bis Ende der Woche pruefen.',
+      receivedAt: '2026-08-21T16:16:25Z',
+    },
+  ],
+  state: 'sae',
+}
+
+describe('classifyPushFrame — an EmailPush', () => {
+  /**
+   * **THE regression this whole work package could produce, and the reason it is the first test.**
+   *
+   * A server that has an `emailPush` config for an account sends an `EmailPush` for a delivery and
+   * does NOT also send the `StateChange` — measured, `push.rs:332`, and confirmed on the wire with
+   * `types: ["Email","EmailDelivery","Mailbox","Thread"]` still set. So from the moment Waxwing
+   * configures the property, every `StateChange` that used to arrive on this channel stops arriving.
+   * Anything downstream that keys off `kind === 'delivery'` — the banner today, a sync wake-up
+   * tomorrow — must therefore see the two frames as the SAME outcome, naming the SAME account.
+   *
+   * Written as an equality between the two shapes rather than as two separate assertions, because
+   * the failure mode being guarded against is precisely a divergence: a `kind: 'emailPush'` of its
+   * own would pass any test that only looked at the new frame.
+   */
+  it('is the SAME delivery, for the same account, as the StateChange it replaced', () => {
+    const viaStateChange = classifyPushFrame({
+      '@type': 'StateChange',
+      changed: { b: { Thread: 'sae', Mailbox: 'sae', EmailDelivery: 'sae', Email: 'sae' } },
+    })
+    const viaEmailPush = classifyPushFrame(MEASURED_EMAIL_PUSH)
+
+    expect(viaStateChange.kind).toBe('delivery')
+    expect(viaEmailPush.kind).toBe('delivery')
+    // The account is what a sync wake-up would act on, and it must survive the transport change.
+    expect(viaEmailPush.kind === 'delivery' ? viaEmailPush.accountIds : null).toEqual(
+      viaStateChange.kind === 'delivery' ? viaStateChange.accountIds : undefined,
+    )
+  })
+
+  it('carries the change id, which is what a Foo/changes call would resume from', () => {
+    const frame = classifyPushFrame(MEASURED_EMAIL_PUSH)
+    expect(frame.kind === 'delivery' ? frame.state : null).toBe('sae')
+  })
+
+  it('reads sender, subject, preview and arrival out of the measured payload', () => {
+    const frame = classifyPushFrame(MEASURED_EMAIL_PUSH)
+    expect(frame.kind === 'delivery' ? frame.messages : null).toEqual([
+      {
+        sender: 'Bob Beispiel',
+        subject: 'Rechnung 2026-08 faellig',
+        preview: 'Hallo Alice, anbei die Rechnung fuer August. Bitte bis Ende der Woche pruefen.',
+        receivedAt: Date.parse('2026-08-21T16:16:25Z'),
+      },
+    ])
+  })
+
+  it('falls back to the address when the sender has no display name', () => {
+    const frame = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [{ from: [{ name: null, email: 'bob@waxwing.test' }], subject: 'Hi' }],
+      state: 's',
+    })
+    expect(frame.kind === 'delivery' ? frame.messages?.[0]?.sender : null).toBe('bob@waxwing.test')
+  })
+
+  /**
+   * A folded `Subject:` header arrives with embedded CRLF and leading spaces. Left alone it renders
+   * as a blank gap in the banner — and `body` is the one field where a newline is load-bearing
+   * (it separates subject from preview), so a stray one would look like a missing subject.
+   */
+  it('collapses the whitespace a header may legitimately carry', () => {
+    const frame = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [{ subject: '  Quarterly\r\n figures\t ', preview: '\n\nHi there\n' }],
+      state: 's',
+    })
+    expect(frame.kind === 'delivery' ? frame.messages?.[0] : null).toMatchObject({
+      subject: 'Quarterly figures',
+      preview: 'Hi there',
+    })
+  })
+
+  /**
+   * Nothing here comes from us: it is a server we do not control, decrypted by the browser and
+   * handed to a worker that may not throw. Every one of these must classify without an exception,
+   * and every one of them must still be a DELIVERY — the `@type` alone says mail arrived, and
+   * `userVisibleOnly: true` was promised at subscribe time.
+   */
+  it('survives every malformed shape and still counts as a delivery', () => {
+    for (const bad of [
+      { '@type': 'EmailPush' },
+      { '@type': 'EmailPush', accountId: 7, emails: 'nope', state: null },
+      { '@type': 'EmailPush', accountId: '', emails: [null, 3, 'x'], state: '' },
+      { '@type': 'EmailPush', accountId: 'b', emails: [{ from: 'bob', subject: 42 }] },
+      { '@type': 'EmailPush', accountId: 'b', emails: [{ from: [], receivedAt: 'not-a-date' }] },
+    ]) {
+      const frame = classifyPushFrame(bad)
+      expect(frame.kind).toBe('delivery')
+    }
+  })
+
+  it('names no account rather than inventing one when accountId is unusable', () => {
+    const frame = classifyPushFrame({ '@type': 'EmailPush', emails: [], state: 's' })
+    expect(frame).toEqual({ kind: 'delivery', accountIds: [], messages: [], state: 's' })
+  })
+
+  it('parses the measured payload end to end, as it arrives from event.data.text()', () => {
+    const frame = parsePushFrame(JSON.stringify(MEASURED_EMAIL_PUSH))
+    expect(frame.kind).toBe('delivery')
+    expect(frame.kind === 'delivery' ? frame.messages?.[0]?.subject : null).toBe(
+      'Rechnung 2026-08 faellig',
+    )
+  })
+
+  /** A StateChange says nothing about any message, and must not pretend to by carrying `[]`. */
+  it('leaves `messages` ABSENT for a StateChange, not empty', () => {
+    const frame = classifyPushFrame({
+      '@type': 'StateChange',
+      changed: { b: { EmailDelivery: 'sae' } },
+    })
+    expect(frame.kind === 'delivery' && 'messages' in frame).toBe(false)
+  })
+})
+
+describe('pushBannerContent', () => {
+  const strings = (over: Partial<PushBannerStrings> = {}): PushBannerStrings => ({
+    title: 'Waxwing',
+    body: 'New message',
+    unknownSender: 'Unknown sender',
+    noSubject: '(no subject)',
+    preview: true,
+    ...over,
+  })
+
+  /**
+   * The shape Apple's Mail uses: sender on the title line (bold on every platform), subject next,
+   * preview after it. No count, no product name, no ornament — a notification is read in half a
+   * second, and every element that is not one of those three costs one that is.
+   */
+  it('puts the sender in the title and the subject above the preview', () => {
+    const frame = classifyPushFrame(MEASURED_EMAIL_PUSH)
+    expect(pushBannerContent(frame, strings())).toEqual({
+      title: 'Bob Beispiel',
+      body: 'Rechnung 2026-08 faellig\nHallo Alice, anbei die Rechnung fuer August. Bitte bis Ende der Woche pruefen.',
+      timestamp: Date.parse('2026-08-21T16:16:25Z'),
+    })
+  })
+
+  /**
+   * **The privacy toggle, enforced a second time — at the last possible moment.**
+   *
+   * With it off no `emailPush` config is sent, so this frame should not exist at all. It can:
+   * the server-side config is only rewritten on the app's next start, so a content push can be in
+   * flight when the user flips the switch. The push is delivered either way; the banner is ours.
+   */
+  it('shows nothing from the message when the preview toggle is off', () => {
+    const frame = classifyPushFrame(MEASURED_EMAIL_PUSH)
+    const content = pushBannerContent(frame, strings({ preview: false }))
+    expect(content).toEqual({ title: 'Waxwing', body: 'New message', timestamp: null })
+    expect(JSON.stringify(content)).not.toContain('Bob')
+    expect(JSON.stringify(content)).not.toContain('Rechnung')
+  })
+
+  it('falls back to the contentless wording for a StateChange delivery', () => {
+    const frame = classifyPushFrame({
+      '@type': 'StateChange',
+      changed: { b: { EmailDelivery: 'sae' } },
+    })
+    expect(pushBannerContent(frame, strings())).toEqual({
+      title: 'Waxwing',
+      body: 'New message',
+      timestamp: null,
+    })
+  })
+
+  /**
+   * The 4096-byte budget is the server's and it truncates on its own, so a push can arrive with one
+   * half of the pair missing. Whichever half survives is still worth showing, and the gap beside it
+   * gets a translated placeholder — never an empty line, and never an English literal, because the
+   * page put both strings in the handover record for exactly this.
+   */
+  it('names the missing half in the user’s language and shows the half that arrived', () => {
+    const noSubject = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [
+        { from: [{ name: 'Bob Beispiel', email: 'b@x' }], receivedAt: '2026-08-21T16:16:25Z' },
+      ],
+      state: 's',
+    })
+    expect(pushBannerContent(noSubject, strings())).toEqual({
+      title: 'Bob Beispiel',
+      body: '(no subject)',
+      timestamp: Date.parse('2026-08-21T16:16:25Z'),
+    })
+
+    const noSender = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [{ subject: 'Quarterly figures' }],
+      state: 's',
+    })
+    expect(pushBannerContent(noSender, strings())).toEqual({
+      title: 'Unknown sender',
+      body: 'Quarterly figures',
+      timestamp: null,
+    })
+  })
+
+  /**
+   * Nothing showable at all — a push truncated past the point of usefulness, or one asking for
+   * properties this banner does not read. "Unknown sender / (no subject)" would be an alarming way
+   * of saying less than "New message" does; the generic wording is both calmer and more informative.
+   */
+  it('falls back to the contentless wording when a message carries none of the three', () => {
+    const frame = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [{ receivedAt: '2026-08-21T16:16:25Z', id: 'uaaa' }],
+      state: 's',
+    })
+    expect(pushBannerContent(frame, strings())).toEqual({
+      title: 'Waxwing',
+      body: 'New message',
+      timestamp: null,
+    })
+  })
+
+  it('omits the preview line entirely when the server sent none', () => {
+    const frame = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [{ from: [{ name: 'Bob', email: 'b@x' }], subject: 'Hi' }],
+      state: 's',
+    })
+    expect(pushBannerContent(frame, strings()).body).toBe('Hi')
+  })
+
+  /**
+   * Stalwart bundles arrivals inside its `push_throttle` window, so `emails` can hold several. One
+   * banner replaces the last (they share a tag), so the newest is the one worth showing — the choice
+   * iOS makes, and the only one that does not leave a stale name on the lock screen.
+   */
+  it('shows the NEWEST message when the server bundled several into one push', () => {
+    const frame = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [
+        {
+          from: [{ name: 'Old', email: 'o@x' }],
+          subject: 'First',
+          receivedAt: '2026-08-21T10:00:00Z',
+        },
+        {
+          from: [{ name: 'New', email: 'n@x' }],
+          subject: 'Second',
+          receivedAt: '2026-08-21T11:00:00Z',
+        },
+        {
+          from: [{ name: 'Mid', email: 'm@x' }],
+          subject: 'Third',
+          receivedAt: '2026-08-21T10:30:00Z',
+        },
+      ],
+      state: 's',
+    })
+    expect(pushBannerContent(frame, strings())).toMatchObject({ title: 'New', body: 'Second' })
+  })
+
+  it('falls back to the contentless wording when a bundle carried nothing usable', () => {
+    const frame = classifyPushFrame({
+      '@type': 'EmailPush',
+      accountId: 'b',
+      emails: [{ receivedAt: '2026-08-21T10:00:00Z', id: 'x' }, {}],
+      state: 's',
+    })
+    // Every entry is empty of the three things a banner can show, so there is nothing to say.
+    expect(pushBannerContent(frame, strings())).toEqual({
+      title: 'Waxwing',
+      body: 'New message',
+      timestamp: null,
+    })
+  })
+
+  it('says the generic thing for a verification or an unknown frame', () => {
+    for (const frame of [
+      { kind: 'unknown' } as const,
+      { kind: 'stateChange' } as const,
+      { kind: 'verification', pushSubscriptionId: 'a', verificationCode: 'b' } as const,
+    ]) {
+      expect(pushBannerContent(frame, strings())).toEqual({
+        title: 'Waxwing',
+        body: 'New message',
+        timestamp: null,
+      })
     }
   })
 })

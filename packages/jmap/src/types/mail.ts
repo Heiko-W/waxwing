@@ -98,6 +98,16 @@ export interface MailboxRights {
   mayDelete: boolean
   /** May submit (send) messages from this mailbox (IMAP `p`). */
   maySubmit: boolean
+  /**
+   * May change {@link Mailbox.shareWith} — i.e. hand this folder's access to someone else (IMAP `a`).
+   *
+   * Not in RFC 8621's list; it comes from the JMAP Sharing extension
+   * ({@link Capabilities.mailShare}) and Stalwart v0.16.18 returns it in `myRights` on EVERY
+   * `Mailbox/get`, share extension or not — measured against the fixture, ten keys, always. It was
+   * missing from this interface, so the one right that decides whether a "Share…" affordance may be
+   * offered at all was invisible to TypeScript while arriving on the wire.
+   */
+  mayShare: boolean
 }
 
 /** A Mailbox (RFC 8621 §2). Only `name`, `parentId`, `role`, `sortOrder` and `isSubscribed` are mutable. */
@@ -124,6 +134,21 @@ export interface Mailbox {
   myRights: MailboxRights
   /** Whether the user is subscribed to this mailbox. */
   isSubscribed: boolean
+  /**
+   * Who this folder is shared with: principal id → the rights granted (JMAP Sharing, RFC 9670 §1.2).
+   *
+   * **Optional because it is ABSENT unless asked for.** Measured against Stalwart v0.16.18: a
+   * `Mailbox/get` with no `properties` returns eleven keys and `shareWith` is not among them; add
+   * `properties: ['shareWith']` and it arrives. A share dialog therefore cannot read it off a
+   * replica row built from the default `/get` — it has to fetch it, which is also the only way to
+   * be current before overwriting a map another client may have changed.
+   *
+   * The server NORMALISES what it is given: a grant of `{ mayReadItems: true }` reads back as all
+   * ten keys with the rest `false`, and an unknown key is refused per-object with
+   * `invalidProperties` ("Invalid permission …") rather than taking the request down. Sending the
+   * complete ten-key map is therefore both accepted and honest about what was granted.
+   */
+  shareWith?: Record<Id, MailboxRights> | null
 }
 
 /** Filter conditions for `Mailbox/query` (RFC 8621 §2.3). Multiple present fields are ANDed. */

@@ -116,7 +116,7 @@
 
 /* ---- Picker popover (a role=menu of menuitemcheckbox toggles + "New label…"). ---- */
 .menu {
-  z-index: 50;
+  z-index: var(--waxwing-layer-popover);
   display: flex;
   flex-direction: column;
   min-inline-size: 14rem;

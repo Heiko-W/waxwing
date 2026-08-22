@@ -89,12 +89,30 @@ function isDestroy(kind: IntentKind): boolean {
     kind === 'deleteMailbox' ||
     // Deleting a contact card the server already dropped is a SUCCESS ("already gone"), exactly like a
     // message/folder destroy — restoring it would resurrect a card the user (or another client) removed.
-    kind === 'deleteContactCard'
+    kind === 'deleteContactCard' ||
+    kind === 'deleteAddressBook'
   )
 }
 
-function isMailboxIntent(kind: IntentKind): boolean {
-  return kind === 'renameMailbox' || kind === 'moveMailbox' || kind === 'deleteMailbox'
+/**
+ * An intent on a CONTAINER — a mailbox, or (M4.2 / gap analysis B-5) an address book. A `notFound`
+ * on one of these means the container itself is gone, which is `folderGone`.
+ *
+ * The code, and the sentence it maps to, say "folder". For an address book that is imprecise: it is
+ * the contacts-side container and there is no code of its own for it. A separate `addressBookGone`
+ * would need a new string under `outbox.conflict` in every locale, and this change is scoped to the
+ * contacts strings — so the accurate ACTION (dismiss, never retry: the book will not come back) is
+ * kept and the imprecise noun is left as known debt rather than silently mislabelled as `invalid`.
+ */
+function isContainerIntent(kind: IntentKind): boolean {
+  return (
+    kind === 'renameMailbox' ||
+    kind === 'moveMailbox' ||
+    kind === 'deleteMailbox' ||
+    kind === 'updateMailbox' ||
+    kind === 'reorderMailboxes' ||
+    kind === 'updateAddressBook'
+  )
 }
 
 /**
@@ -117,7 +135,7 @@ export function classifySetError(intentKind: IntentKind, error: PortSetError): R
 
     case SetErrorTypes.notFound:
       if (isDestroy(intentKind)) return { kind: 'satisfied' }
-      if (isMailboxIntent(intentKind)) return conflict('folderGone', detail)
+      if (isContainerIntent(intentKind)) return conflict('folderGone', detail)
       // An `update` to a card that was deleted elsewhere: a "gone" notice with its own noun, not the
       // mail-worded `messageGone`. Non-retryable — retrying the patch could only fail `notFound` again.
       if (intentKind === 'updateContactCard') return conflict('contactGone', detail)

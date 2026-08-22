@@ -17,7 +17,7 @@
  */
 
 import type { ContactCard, ContactCardMedia, Id, PatchObject } from '@waxwing/jmap'
-import { Plus, X } from 'lucide-react'
+import { Plus, UserRound, X } from 'lucide-react'
 import {
   type FormEvent,
   type ReactNode,
@@ -30,8 +30,8 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isPlausibleEmail } from '../compose/address-validation'
-import { type ContactCardRow, useReplica } from '../sync'
-import { Button, IconButton, SectionLabel, Select, TextInput } from '../ui'
+import { type AddressBookRow, type ContactCardRow, useReplica } from '../sync'
+import { Button, Checkbox, IconButton, SectionLabel, Select, TextInput } from '../ui'
 import {
   type AddressEntry,
   type ContactFormModel,
@@ -41,14 +41,22 @@ import {
   emptyFormModel,
   formToCard,
   type IdSource,
+  type LinkEntry,
   newAddressEntry,
   newEmailEntry,
+  newLinkEntry,
   newNoteEntry,
+  newOnlineServiceEntry,
   newPhoneEntry,
+  type OnlineServiceEntry,
   type PhoneEntry,
 } from './contact-card-mapping'
-import type { PhotoScaler, PhotoUploader } from './contact-photo-upload'
-import { scalePhoto as defaultScalePhoto } from './contact-photo-upload'
+import type { PhotoScaler } from './contact-photo'
+import {
+  scalePhoto as defaultScalePhoto,
+  PhotoTooLargeError,
+  preparePhotoUri,
+} from './contact-photo'
 import styles from './contacts.module.css'
 import { useContactPhoto } from './use-contact-photo'
 
@@ -63,19 +71,22 @@ export interface ContactFormProps {
   readonly card?: ContactCardRow
   /** Target book for a create / context book for an edit — a card must belong to at least one book. */
   readonly bookId: Id
+  /**
+   * Every address book of the account, for the membership section. Omit (or pass one book) and the
+   * section is not rendered — see {@link AddressBooksField}.
+   */
+  readonly books?: readonly AddressBookRow[]
   readonly onSubmit: (submit: ContactFormSubmit) => void
   readonly onCancel: () => void
   /** Defence in depth: `false` disables Save and shows a read-only notice. Default `true`. */
   readonly canWrite?: boolean
-  /** Injected in tests; production builds one from the session (see the screen wiring). */
-  readonly uploadPhoto?: PhotoUploader
   /** Injected in tests (jsdom has no canvas); defaults to the real downscaler. */
   readonly scalePhoto?: PhotoScaler
   /** Injected in tests for deterministic map keys. */
   readonly newId?: IdSource
 }
 
-type OptionalSection = 'address' | 'org' | 'birthday' | 'note' | 'photo'
+type OptionalSection = 'address' | 'org' | 'birthday' | 'url' | 'im' | 'note' | 'photo'
 
 const EMAIL_TYPE_OPTIONS = ['work', 'private', ''] as const
 const PHONE_TYPE_OPTIONS = ['mobile', 'work', 'private', 'fax', 'pager', ''] as const
@@ -129,7 +140,12 @@ export function ContactForm(props: ContactFormProps) {
   const [draft, setDraft] = useState<ContactFormModel>(() => {
     if (card !== undefined) return cardToForm(card)
     const blank = emptyFormModel()
-    return { ...blank, emails: [newEmailEntry(newId)], phones: [newPhoneEntry(newId)] }
+    return {
+      ...blank,
+      bookIds: [bookId],
+      emails: [newEmailEntry(newId)],
+      phones: [newPhoneEntry(newId)],
+    }
   })
   // The diff base, captured once. `card` may change identity under us (another tab); the diff is
   // still taken against the version the user opened, and the outbox `ifInState` guard catches races.
@@ -140,6 +156,8 @@ export function ContactForm(props: ContactFormProps) {
     if (draft.addresses.length > 0) initial.add('address')
     if (draft.organization !== '' || draft.title !== '') initial.add('org')
     if (draft.birthday !== '') initial.add('birthday')
+    if (draft.links.length > 0) initial.add('url')
+    if (draft.onlineServices.length > 0) initial.add('im')
     if (draft.notes.length > 0) initial.add('note')
     if (draft.photo !== null) initial.add('photo')
     return initial
@@ -155,6 +173,16 @@ export function ContactForm(props: ContactFormProps) {
       } else if (section === 'note') {
         setDraft((prev) =>
           prev.notes.length > 0 ? prev : { ...prev, notes: [newNoteEntry(newId)] },
+        )
+      } else if (section === 'url') {
+        setDraft((prev) =>
+          prev.links.length > 0 ? prev : { ...prev, links: [newLinkEntry(newId)] },
+        )
+      } else if (section === 'im') {
+        setDraft((prev) =>
+          prev.onlineServices.length > 0
+            ? prev
+            : { ...prev, onlineServices: [newOnlineServiceEntry(newId)] },
         )
       }
     },
@@ -231,9 +259,9 @@ export function ContactForm(props: ContactFormProps) {
     [canWrite, bookId, draft, mode, newId, onSubmit, onCancel, valueDomId],
   )
 
-  const hiddenSections = (['address', 'org', 'birthday', 'note', 'photo'] as const).filter(
-    (section) => !revealed.has(section),
-  )
+  const hiddenSections = (
+    ['address', 'org', 'birthday', 'url', 'im', 'note', 'photo'] as const
+  ).filter((section) => !revealed.has(section))
 
   return (
     <form
@@ -453,6 +481,130 @@ export function ContactForm(props: ContactFormProps) {
         </FormSection>
       )}
 
+      {/* ── Optional: Websites (JSContact `links`, vCard URL) ── */}
+      {revealed.has('url') && (
+        <FormSection title={t('contacts.form.sections.url')}>
+          {draft.links.map((entry, index) => {
+            const name = rowName(t, t('contacts.form.fieldNames.url'), index, draft.links.length)
+            return (
+              <div key={entry.key} className={styles.commRow}>
+                <TextInput
+                  className={styles.commValue}
+                  type="url"
+                  inputMode="url"
+                  aria-label={name}
+                  placeholder={t('contacts.form.urlPlaceholder')}
+                  value={entry.uri}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      links: replaceByKey<LinkEntry>(p.links, entry.key, { uri: e.target.value }),
+                    }))
+                  }
+                />
+                <IconButton
+                  label={t('contacts.form.a11y.remove', { field: name })}
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() =>
+                    setDraft((p) => ({ ...p, links: removeByKey(p.links, entry.key) }))
+                  }
+                >
+                  <X />
+                </IconButton>
+              </div>
+            )
+          })}
+          <AddRowButton
+            label={t('contacts.form.addUrl')}
+            onClick={() => setDraft((p) => ({ ...p, links: [...p.links, newLinkEntry(newId)] }))}
+          />
+        </FormSection>
+      )}
+
+      {/* ── Optional: Instant messaging (JSContact `onlineServices`, vCard IMPP) ── */}
+      {revealed.has('im') && (
+        <FormSection title={t('contacts.form.sections.im')}>
+          {draft.onlineServices.map((entry, index) => {
+            const name = rowName(
+              t,
+              t('contacts.form.fieldNames.im'),
+              index,
+              draft.onlineServices.length,
+            )
+            const qualify = draft.onlineServices.length > 1
+            /*
+             * Two boxes, service then account — the order Apple Contacts uses for an IM row, and the
+             * order the fields are read in ("Matrix: @anna:example.test"). The service box is the
+             * narrow one: it holds a word, the account holds an address.
+             */
+            const fieldLabel = (label: string): string =>
+              qualify ? t('contacts.form.a11y.inGroup', { field: label, group: name }) : label
+            return (
+              <div key={entry.key} className={styles.commRow}>
+                <div className={styles.commType}>
+                  <TextInput
+                    aria-label={fieldLabel(t('contacts.form.imService'))}
+                    placeholder={t('contacts.form.imService')}
+                    value={entry.service}
+                    onChange={(e) =>
+                      setDraft((p) => ({
+                        ...p,
+                        onlineServices: replaceByKey<OnlineServiceEntry>(
+                          p.onlineServices,
+                          entry.key,
+                          { service: e.target.value },
+                        ),
+                      }))
+                    }
+                  />
+                </div>
+                <TextInput
+                  className={styles.commValue}
+                  aria-label={qualify ? name : t('contacts.form.fieldNames.im')}
+                  placeholder={t('contacts.form.imPlaceholder')}
+                  value={entry.account}
+                  onChange={(e) =>
+                    setDraft((p) => ({
+                      ...p,
+                      onlineServices: replaceByKey<OnlineServiceEntry>(
+                        p.onlineServices,
+                        entry.key,
+                        { account: e.target.value },
+                      ),
+                    }))
+                  }
+                />
+                <IconButton
+                  label={t('contacts.form.a11y.remove', { field: name })}
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  onClick={() =>
+                    setDraft((p) => ({
+                      ...p,
+                      onlineServices: removeByKey(p.onlineServices, entry.key),
+                    }))
+                  }
+                >
+                  <X />
+                </IconButton>
+              </div>
+            )
+          })}
+          <AddRowButton
+            label={t('contacts.form.addIm')}
+            onClick={() =>
+              setDraft((p) => ({
+                ...p,
+                onlineServices: [...p.onlineServices, newOnlineServiceEntry(newId)],
+              }))
+            }
+          />
+        </FormSection>
+      )}
+
       {/* ── Optional: Notes ── */}
       {revealed.has('note') && (
         <FormSection title={t('contacts.form.sections.note')}>
@@ -497,13 +649,19 @@ export function ContactForm(props: ContactFormProps) {
         <FormSection title={t('contacts.form.sections.photo')}>
           <PhotoField
             photo={draft.photo}
-            uploader={props.uploadPhoto}
             scale={props.scalePhoto ?? defaultScalePhoto}
             newId={newId}
             onChange={(photo) => setDraft((p) => ({ ...p, photo }))}
           />
         </FormSection>
       )}
+
+      <AddressBooksField
+        books={props.books ?? []}
+        selected={draft.bookIds}
+        canWrite={canWrite}
+        onChange={(bookIds) => setDraft((p) => ({ ...p, bookIds }))}
+      />
 
       {hiddenSections.length > 0 && (
         <fieldset className={styles.addField}>
@@ -528,11 +686,95 @@ export function ContactForm(props: ContactFormProps) {
   )
 }
 
+/**
+ * Which address books this card is filed in (JMAP gap analysis, A-3).
+ *
+ * **Why this is a membership editor and not a "Copy to…" command.** `ContactCard/copy` exists and
+ * the obvious reading of the gap was to wire it up. Measured against Stalwart v0.16.18 on
+ * 2026-08-21, that reading is wrong at the protocol level: a `/copy` whose `accountId` equals its
+ * `fromAccountId` is refused outright — `invalidArguments`, *"From accountId is equal to
+ * fromAccountId"* — for every key shape tried. RFC 8620 §5.4 `/copy` moves objects BETWEEN
+ * ACCOUNTS; it cannot address two books of one account, which is the case a person actually has.
+ *
+ * And a copy would be the wrong answer even if it worked. JSContact files a card by a SET
+ * (`addressBookIds`, RFC 9610 §2), so "Anna is in Work and in Family" is one card in two books, not
+ * two cards that drift apart the first time a phone number changes. Measured: a card carrying
+ * `{b:true, c:true}` comes back from `ContactCard/query` for both books, with one id.
+ *
+ * **The shape is Apple's.** iOS and macOS Contacts have no copy command either — membership is a
+ * checklist inside Edit ("Groups"), because it is a property of the person, not an action performed
+ * on them. So: plain checkboxes, in the edit sheet, under everything that describes the human.
+ *
+ * Hidden below two books, where it would be a control with one possible answer. Books the user
+ * cannot write to appear only if the card is ALREADY in one, and then read-only — an unwritable
+ * book is a fact about the card, not an offer.
+ */
+function AddressBooksField({
+  books,
+  selected,
+  canWrite,
+  onChange,
+}: {
+  readonly books: readonly AddressBookRow[]
+  readonly selected: readonly Id[]
+  readonly canWrite: boolean
+  readonly onChange: (bookIds: readonly Id[]) => void
+}) {
+  const { t } = useTranslation()
+  // Shown once and then left alone: the rule only bites when someone tries to break it.
+  const [refused, setRefused] = useState(false)
+
+  const choices = books.filter(
+    (book) => book.myRights.mayWrite === true || selected.includes(book.id),
+  )
+  if (choices.length < 2) return null
+
+  return (
+    <FormSection title={t('contacts.form.sections.books')}>
+      {choices.map((book) => {
+        const checked = selected.includes(book.id)
+        const readOnly = !canWrite || book.myRights.mayWrite !== true
+        return (
+          <Checkbox
+            key={book.id}
+            label={book.name}
+            checked={checked}
+            disabled={readOnly}
+            onChange={(event) => {
+              if (event.target.checked) {
+                setRefused(false)
+                onChange([...selected, book.id])
+                return
+              }
+              // The server refuses the last removal (`invalidProperties`, measured). Refusing it here
+              // means the reader never sends a save that cannot succeed, and never sees the card
+              // vanish from the list and come back.
+              if (selected.length <= 1) {
+                setRefused(true)
+                return
+              }
+              setRefused(false)
+              onChange(selected.filter((id) => id !== book.id))
+            }}
+          />
+        )
+      })}
+      {refused && (
+        <p role="alert" className={styles.formNotice}>
+          {t('contacts.form.booksAtLeastOne')}
+        </p>
+      )}
+    </FormSection>
+  )
+}
+
 /** Reveal-button label per optional section (explicit — `org`'s label key is `addCompany`). */
 const ADD_FIELD_LABELS: Record<OptionalSection, string> = {
   address: 'contacts.form.addAddress',
   org: 'contacts.form.addCompany',
   birthday: 'contacts.form.addBirthday',
+  url: 'contacts.form.addUrl',
+  im: 'contacts.form.addIm',
   note: 'contacts.form.addNote',
   photo: 'contacts.form.addPhoto',
 }
@@ -748,16 +990,34 @@ function AddressRow({
 
 interface PhotoFieldProps {
   readonly photo: ContactFormModel['photo']
-  readonly uploader: PhotoUploader | undefined
   readonly scale: PhotoScaler
   readonly newId: IdSource
   readonly onChange: (photo: ContactFormModel['photo']) => void
 }
 
-function PhotoField({ photo, uploader, scale, newId, onChange }: PhotoFieldProps) {
+/**
+ * The photo well (JMAP gap analysis, B-1).
+ *
+ * **Two defects were fixed here, and the second is why the first was invisible.** The field used to
+ * take an `uploadPhoto` prop and disable its `<input type="file">` when it was absent — which it
+ * always was, because neither of the screen's two `ContactForm` render sites passed one. The label
+ * "Choose photo" stayed visible over a control that could not be operated. And had it been wired,
+ * the write it produced (`media[].blobId`) is one Stalwart rejects outright. So the uploader seam is
+ * GONE rather than passed down: there is nothing left to forget to wire, the bytes are encoded
+ * inline by {@link preparePhotoUri}, and the only injectable is the scaler the tests already need.
+ *
+ * **The shape is Apple's, and deliberately so.** iOS and macOS Contacts put one circular well where
+ * the photo will be, with the action written under it — content first, one target, no chrome around
+ * an empty circle. The whole well IS the file input (one implicit `<label>`, so there is exactly one
+ * accessible name and no `form-field-multiple-labels`), which makes it a target far larger than the
+ * 44px minimum on a phone; the input itself is visually hidden but focusable, and the well takes the
+ * focus ring on its behalf.
+ */
+function PhotoField({ photo, scale, newId, onChange }: PhotoFieldProps) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(false)
+  /** `null` = no complaint; otherwise the i18n key of the one the user needs to read. */
+  const [error, setError] = useState<string | null>(null)
   const previewRef = useRef<string | null>(null)
 
   const setPreview = useCallback((url: string | null): void => {
@@ -774,67 +1034,81 @@ function PhotoField({ photo, uploader, scale, newId, onChange }: PhotoFieldProps
 
   const onPick = useCallback(
     async (file: File): Promise<void> => {
-      if (uploader === undefined) return
       setBusy(true)
-      setError(false)
+      setError(null)
+      // Shown while the scale+encode runs; the stored value is the `data:` URI, not this.
       const previewUrl = URL.createObjectURL(file)
       setPreview(previewUrl)
       try {
-        const prepared = await scale(file)
-        const uploaded = await uploader(prepared.blob, prepared.mediaType)
+        const prepared = await preparePhotoUri(file, scale)
         onChange({
           key: photo?.key ?? newId(),
-          blobId: uploaded.blobId,
-          mediaType: uploaded.mediaType,
+          uri: prepared.uri,
+          mediaType: prepared.mediaType,
           previewUrl,
+          // Keep the entry's other JSContact properties (`pref`, a label, …) across a replacement —
+          // `formToMedia` builds on `original` and drops the `blobId` the new `uri` supersedes.
+          ...(photo?.original !== undefined ? { original: photo.original } : {}),
         })
-      } catch {
+      } catch (thrown) {
         setPreview(null)
-        setError(true)
+        // "Too large" is the one failure the user can act on, so it says so instead of hiding
+        // inside a generic "could not be read".
+        setError(
+          thrown instanceof PhotoTooLargeError
+            ? 'contacts.form.photoTooLarge'
+            : 'contacts.form.photoError',
+        )
       } finally {
         setBusy(false)
       }
     },
-    [uploader, scale, onChange, photo?.key, newId, setPreview],
+    [scale, onChange, photo?.key, photo?.original, newId, setPreview],
   )
 
   const remove = useCallback((): void => {
     setPreview(null)
+    setError(null)
     onChange(null)
   }, [onChange, setPreview])
 
+  const pickLabel = photo !== null ? t('contacts.form.changePhoto') : t('contacts.form.choosePhoto')
+
   return (
     <div className={styles.photoField}>
-      {photo !== null && <PhotoPreview photo={photo} />}
-      <div className={styles.photoActions}>
-        <label className={styles.photoPick}>
-          <span>
-            {photo !== null ? t('contacts.form.changePhoto') : t('contacts.form.choosePhoto')}
-          </span>
-          <input
-            type="file"
-            accept="image/*"
-            disabled={uploader === undefined || busy}
-            aria-label={
-              photo !== null ? t('contacts.form.changePhoto') : t('contacts.form.choosePhoto')
-            }
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file !== undefined) void onPick(file)
-              e.target.value = ''
-            }}
-          />
-        </label>
-        {photo !== null && (
-          <Button variant="ghost" size="sm" type="button" onClick={remove}>
-            {t('contacts.form.removePhoto')}
-          </Button>
-        )}
-      </div>
-      {busy && <p className={styles.formHint}>{t('contacts.form.photoUploading')}</p>}
-      {error && (
+      {/* One <label>, wrapping both the well and its caption: the input has a single accessible
+          name and the whole circle opens the picker. */}
+      <label className={styles.photoPicker}>
+        <span className={styles.photoWell}>
+          {photo !== null ? (
+            <PhotoPreview photo={photo} />
+          ) : (
+            <UserRound aria-hidden="true" className={styles.photoWellIcon} />
+          )}
+        </span>
+        <span className={styles.photoPickText}>{pickLabel}</span>
+        <input
+          className={styles.photoInput}
+          type="file"
+          accept="image/*"
+          disabled={busy}
+          aria-label={pickLabel}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file !== undefined) void onPick(file)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {photo !== null && (
+        <Button variant="ghost" size="sm" type="button" onClick={remove}>
+          {t('contacts.form.removePhoto')}
+        </Button>
+      )}
+      {busy && <p className={styles.formHint}>{t('contacts.form.photoPreparing')}</p>}
+      {error !== null && (
         <p role="alert" className={styles.formNotice}>
-          {t('contacts.form.photoError')}
+          {t(error)}
         </p>
       )}
     </div>
@@ -855,7 +1129,9 @@ function PhotoPreview({ photo }: { photo: NonNullable<ContactFormModel['photo']>
     [photo.blobId, photo.uri, photo.mediaType],
   )
   const fetched = useContactPhoto(accountId, media)
-  const url = photo.previewUrl ?? fetched
+  // `uri` before `fetched`: an inline photo needs no session at all, and this component is mounted
+  // in tests (and on the screen) where the blob path is stubbed out.
+  const url = photo.previewUrl ?? photo.uri ?? fetched
   if (url === undefined) return null
   return <img src={url} alt={t('contacts.form.photoAlt')} className={styles.photoImg} />
 }

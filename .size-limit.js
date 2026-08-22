@@ -79,8 +79,53 @@ export default [
       '!apps/web/dist/assets/FilesPage-*.js',
       // The send-later picker (compose/, M5.4): presets plus the window validation.
       '!apps/web/dist/assets/ScheduleSendDialog-*.js',
+      // The send-options sheet (compose/, M-11): priority, delivery receipt, TLS-only. Opened from
+      // the composer footer, and by the great majority of messages never opened at all.
+      '!apps/web/dist/assets/SendOptionsDialog-*.js',
+      // "Attach from Files" (compose/, D-5) and the files client it browses with. `files-client`
+      // became a chunk of its OWN the day a SECOND lazy chunk started importing it — the same split
+      // `contacts.module` went through. It is a dependency of two lazy chunks and is not
+      // modulepreloaded by index.html, so it loads with the picker or the files screen, never at
+      // first paint.
+      '!apps/web/dist/assets/AttachFromFilesDialog-*.js',
+      '!apps/web/dist/assets/files-client-*.js',
       // The `.eml` import dialog (mail/, M5.3) — restoring an archived message is a rare, deliberate act.
       '!apps/web/dist/assets/EmlImportDialog-*.js',
+      // The calendar's write surfaces (calendar/, K-1…K-5): the event editor, the facts panel it
+      // shares with the detail view, the recurrence vocabulary, the ICS importer, and the client
+      // itself. `calendar-client` and `event-recurrence` became chunks of their own once a SECOND
+      // lazy chunk imported them — the same split `files-client` went through.
+      //
+      // Checked the way that split has to be checked, because the inverted rule means a wrong entry
+      // here hides real weight: none of the five is imported by `index-*.js`. They appear in that
+      // chunk only as STRINGS inside Vite's preload dependency lists, which is what a dynamic import
+      // of a route looks like from the entry side. `index.html` modulepreloads none of them.
+      '!apps/web/dist/assets/EventDialog-*.js',
+      '!apps/web/dist/assets/EventFacts-*.js',
+      '!apps/web/dist/assets/IcsImportDialog-*.js',
+      '!apps/web/dist/assets/calendar-client-*.js',
+      '!apps/web/dist/assets/event-recurrence-*.js',
+      // Sharing (sharing/, S-1…S-4): the generic dialog and the mailbox-specific wrapper. Reached
+      // from a folder's or a file's menu; the great majority of sessions never open either.
+      '!apps/web/dist/assets/ShareDialog-*.js',
+      '!apps/web/dist/assets/MailboxShareDialog-*.js',
+      // The calendar and address-book bindings of the same dialog (S-2), reached from a share icon
+      // on a rail row — and the two ROLE-SPEC modules they share with their rails. `calendar-roles`
+      // and `addressbook-roles` became chunks of their own the moment a second lazy chunk imported
+      // them, the same split `files-client`, `contacts.module` and `calendar-client` went through.
+      // They carry the `-roles` suffix so the globs below cannot also swallow a future eager
+      // `calendar-…` or `addressbook-…` chunk, which is the way this file fails silently.
+      //
+      // Checked the way the inverted rule demands, because a wrong entry here hides real weight:
+      // neither `CalendarShareDialog` nor `AddressBookShareDialog` is named in `index-*.js` at all,
+      // and `calendar-roles-*`/`addressbook-roles-*` appear there ONLY as strings inside Vite's
+      // `__vite__mapDeps` preload table — which is what a dynamic import of a route looks like from
+      // the entry side. `index.html` modulepreloads none of the four (it preloads exactly
+      // `initReactI18next`, `ui`, `sync` and `dist`).
+      '!apps/web/dist/assets/CalendarShareDialog-*.js',
+      '!apps/web/dist/assets/AddressBookShareDialog-*.js',
+      '!apps/web/dist/assets/calendar-roles-*.js',
+      '!apps/web/dist/assets/addressbook-roles-*.js',
       // Lazy i18n locale bundles (one per language, fetched on demand).
       '!apps/web/dist/assets/common-*.js',
     ],

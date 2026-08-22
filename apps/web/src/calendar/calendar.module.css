@@ -649,3 +649,546 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---- The calendars themselves (K-1) --------------------------------------------------------- */
+
+/*
+ * The rail and the pane, side by side.
+ *
+ * A row inside the page's column, so the grid below keeps filling whatever height is left — the
+ * whole reason `.page` is a flex column in the first place. `min-block-size: 0` on both, or the
+ * six-row month grid pushes the page taller than the viewport and the rail scrolls the document
+ * instead of itself.
+ */
+.body {
+  display: flex;
+  gap: var(--waxwing-space-4);
+  flex: 1;
+  min-block-size: 0;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-4);
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+/* Not rendered below 40em at all (see CalendarPage) — there is no narrow variant of this, because a
+   215px rail beside a 390px phone is two panes that both lose. */
+.rail {
+  inline-size: 14rem;
+  flex: none;
+  overflow: auto;
+  padding-inline-end: var(--waxwing-space-3);
+  border-inline-end: 1px solid var(--waxwing-border);
+}
+
+.calendars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+.calendarsHead {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+/* The same row without the heading — inside the phone sheet, whose dialog title already says
+   "Calendars". The `+` keeps its place at the end of the row rather than jumping to the start. */
+.calendarsHeadBare {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* "New calendar" as the last row of the sheet's list, the way iOS spells it. */
+.calendarAddRow {
+  justify-content: flex-start;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+}
+
+/*
+ * The phone sheet's own height.
+ *
+ * Apple's calendar list is a screen-high sheet on an iPhone, and the reason is not decoration: a
+ * short centred panel over a month grid reads as a message about the month, while a sheet reads as
+ * a place you have gone to. Set here rather than on `Dialog`, because it is this list's decision:
+ * every other dialog in the app is a message and should stay the size of what it says.
+ */
+@media (max-width: 39.999em) {
+  .calendarSheet {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 75vh;
+  }
+}
+
+.railTitle {
+  flex: 1;
+  min-inline-size: 0;
+  margin: 0;
+  padding-inline-start: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  font-weight: var(--waxwing-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--waxwing-tracking-caps);
+}
+
+.railEmpty {
+  margin: 0;
+  padding: var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.calendarList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendarRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+  /* The row itself carries the touch height, so the label fills it and the whole line is a target
+     — the checkbox alone is 16px and the name beside it would not be one (FR-A11Y-01). */
+  min-block-size: var(--waxwing-control-min);
+}
+
+/*
+ * The trailing controls keep their size (WCAG 2.5.5 / FR-A11Y-01).
+ *
+ * Without this they are ordinary flex items and shrink: the name beside them wraps rather than
+ * truncating (see `.calendarName` below), so a long calendar name pushes against them. A touch
+ * target that is correct until somebody names a calendar "Familie und Urlaubsplanung" is not a
+ * touch target; the row already grows in height for the wrapped name, and that is where the room
+ * comes from.
+ *
+ * Honest footnote: this was added chasing a reported 43.12px share button, and that measurement
+ * turned out to be something else entirely — the dialog ENTERS at `scale(0.98)` and the probe read
+ * the box mid-animation (44 × 0.98 = 43.12). The rule stays because the shrink it prevents is
+ * real and one long name away; it is simply not what that number was.
+ */
+.calendarRow > :not(.calendarTick) {
+  flex-shrink: 0;
+}
+
+/* Takes the room the name needs; the `Checkbox` inside is an inline-flex label that fills it. */
+.calendarTick {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.calendarTick > label {
+  flex: 1;
+  min-inline-size: 0;
+  align-items: start;
+  padding-block: var(--waxwing-space-1);
+}
+
+/* The name wraps rather than truncating. Same lesson as the address-book rail, where a name was cut
+   to make room for what described it: in a list whose whole job is "which calendar is this", the
+   name is the one thing that may not be shortened. */
+.calendarName {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- The colour palette --------------------------------------------------------------------- */
+
+/*
+ * A `<fieldset>` for the radio group, reset to look like every other field.
+ *
+ * The element is the right one — it is what groups a set of radios and gives the legend to a screen
+ * reader as the group's name — and its user-agent border, margin and padding are the wrong ones: a
+ * grooved 2px frame in the middle of a form whose other fields have none reads as a different kind
+ * of control.
+ */
+.field:where(fieldset) {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.field > legend {
+  padding: 0;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: var(--waxwing-control-min);
+  min-block-size: var(--waxwing-control-min);
+  border-radius: var(--waxwing-radius-full);
+  cursor: pointer;
+}
+
+/* The radio is invisible but present and focusable: arrow keys, `checked` and the accessible name
+   all come from it. `appearance: none` with zero size would take it out of the a11y tree in some
+   engines, so it is sized and clipped instead. */
+.swatchInput {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.swatchDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: var(--waxwing-radius-full);
+  border: 1px solid var(--waxwing-border);
+}
+
+/*
+ * The tick is what says "chosen" — the fill is the thing being chosen and cannot also be the sign
+ * that it was (WCAG 1.4.1).
+ *
+ * waxwing-literal-exempt: the swatch fill is a fixed hex stored on the SERVER (CALENDAR_COLORS,
+ * read by Apple Calendar and CalDAV clients), not a themed surface, so the glyph on top of it must
+ * be fixed too — a themed token resolves to near-black in dark mode and the tick disappears on
+ * every dark-themed swatch. Every value in CALENDAR_COLORS carries at least 3:1 against white by
+ * construction.
+ */
+.swatchTick {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  color: #ffffff;
+  opacity: 0;
+}
+
+.swatchInput:checked + .swatchDot .swatchTick {
+  opacity: 1;
+}
+
+.swatchInput:focus-visible + .swatchDot {
+  outline: 2px solid var(--waxwing-focus-ring);
+  outline-offset: 2px;
+}
+
+/* The colour name, for a screen reader and for anyone who cannot tell these eight apart. Visible
+   only for the one that is chosen — eight names in a row would be a paragraph, and the row is a
+   picker. */
+.swatchLabel {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.swatchChosen {
+  margin: var(--waxwing-space-2) 0 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* The reminders this app carries but does not show. A quiet line, because it reports a fact and
+   asks for nothing. */
+.alertCarried {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* ── The event editor's navigation stack (K-2, K-3) ──────────────────────────────────────────
+   Apple's shape: a row is a label, its current value, and a chevron; pressing it replaces the
+   dialog's contents rather than opening a second dialog on top of the first. */
+
+/* The title of a sub-page: back arrow, then the page's name. In the Dialog's title slot, so the
+   arrow lands where Cancel would be — which is where Apple puts it and where a thumb already is. */
+.pageTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+}
+
+.navRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  /* A finger, not a line of text: `--waxwing-control-min` is 44px under `pointer: coarse`. */
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .navRow:hover {
+    background: var(--waxwing-surface-hover);
+  }
+}
+
+.navRowLabel {
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+/* The value takes the slack, so the chevron sits hard against the trailing edge whatever the value
+   says — a chevron that drifts with the text length reads as decoration, not as "there is more". */
+.navRowValue {
+  flex: 1;
+  min-inline-size: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+  text-align: end;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navRowChevron {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-text-muted);
+}
+
+/* A list of mutually exclusive choices — repetition, and how it ends. */
+.choiceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.choiceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .choiceRow:hover:not(:disabled) {
+    background: var(--waxwing-surface-hover);
+  }
+}
+
+/* The row a stored rule this editor cannot express occupies. Shown so the reader knows what the
+   event does; not selectable, because choosing it would mean re-writing a rule we cannot build. */
+.choiceRow:disabled {
+  color: var(--waxwing-text-muted);
+  cursor: default;
+}
+
+.choiceCheck {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--waxwing-accent);
+}
+
+/* ── Participants (K-3) ─────────────────────────────────────────────────────────────────── */
+
+.participantAdd {
+  display: flex;
+  gap: var(--waxwing-space-2);
+  align-items: start;
+}
+
+.participantAdd > :first-child {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.participantList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.participantRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+}
+
+/* Name on its own line with the organiser note under it, rather than beside it. The same lesson the
+   address books taught: a badge on the same line eats the name it is annotating on a phone. */
+.participantName {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--waxwing-text-sm);
+}
+
+.participantNote {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+/* The answer, as a WORD. Colour is never the only carrier of this (WCAG 1.4.1) — a reader who
+   cannot tell the greens apart still has to be able to see who has said yes. */
+.participantStatus {
+  flex: none;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+/* ── Answering an invitation (K-3) ──────────────────────────────────────────────────────── */
+
+/* Three buttons in one bar, `aria-pressed` on the current answer. Wraps rather than shrinks: at
+   390px three words plus padding do not fit on one line, and a squeezed row of three 30px targets
+   is worse than two lines of proper ones. */
+.rsvpBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--waxwing-space-2);
+}
+
+.rsvpButton {
+  flex: 1 1 auto;
+  min-inline-size: 6rem;
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+  color: var(--waxwing-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.rsvpButton[aria-pressed="true"] {
+  border-color: var(--waxwing-accent);
+  background: var(--waxwing-accent);
+  color: var(--waxwing-accent-contrast);
+}
+
+/* ── The scope sheet (K-2) ──────────────────────────────────────────────────────────────── */
+
+/* Full-width stacked answers, which is what an action sheet is on a phone and reads perfectly well
+   on a desktop too. Cancel sits last and apart, because the two answers above it are the question. */
+.scopeSheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+}
+
+/* ---- Sharing (S-2) --------------------------------------------------------------------------- */
+
+/*
+ * The "this calendar is shared" marker: a small person symbol beside the name, as iCloud draws it.
+ *
+ * Muted rather than tinted — the row already carries one colour and it means the CALENDAR. A second
+ * hue here would compete with it and would be the only carrier of the meaning, which WCAG 1.4.1
+ * forbids; the word lives in a `VisuallyHidden` beside the glyph and in the `title`.
+ */
+.calendarShared {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--waxwing-text-muted);
+}
+
+.calendarSharedIcon {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+}
+
+/* ---- Free/busy, as a background layer (S-6) --------------------------------------------------- */
+
+/*
+ * Somebody else's busy time, behind the reader's own grid.
+ *
+ * A HATCH, not a fill. Three constraints meet here and only a pattern satisfies all three: it may
+ * not obscure a real appointment drawn over it (so it is low-contrast and behind), it may not read
+ * as one of the reader's own calendars (so it is not a hue), and it may not carry its meaning by
+ * colour alone (WCAG 1.4.1 — the diagonals are the marker, and the words are in the
+ * `VisuallyHidden` beside each band). It is the same answer Apple's calendar gives, and the same
+ * one paper diaries gave before that.
+ *
+ * `currentColor` at low alpha rather than a fixed grey: the app has a dark theme, and a grey chosen
+ * for one of them is invisible in the other.
+ */
+.busyBand {
+  position: absolute;
+  inset-inline: 0;
+  /* Never a click target — the column underneath still creates an event where it did. */
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, currentColor 22%, transparent) 0,
+    color-mix(in srgb, currentColor 22%, transparent) 2px,
+    transparent 2px,
+    transparent 7px
+  );
+}
+
+/* The availability picker, at the foot of the calendar rail. */
+.availability {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  padding-block-start: var(--waxwing-space-2);
+  border-block-start: 1px solid var(--waxwing-border);
+}
+
+.availabilityLabel {
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+.availabilityNote {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}

@@ -514,3 +514,60 @@ describe('dates', () => {
     }
   })
 })
+
+/**
+ * `IMPP` ⇄ `onlineServices` (RFC 9555 §2.3.2). Added for A-5 of the JMAP gap analysis: instant
+ * messaging was on no level modelled — it survived only as an opaque `vCardProps` entry, so a client
+ * could preserve it but never show or edit it.
+ */
+describe('IMPP ⇄ onlineServices', () => {
+  const CARD = [
+    'BEGIN:VCARD',
+    'VERSION:4.0',
+    'FN:Anna Meier',
+    'IMPP;PREF=1;TYPE=work;SERVICE-TYPE=Matrix;PROP-ID=im1:matrix:u/anna:example.test',
+    'IMPP:xmpp:anna@example.test',
+    'END:VCARD',
+    '',
+  ].join('\r\n')
+
+  it('reads the URI, the service and the context — not into vCardProps', () => {
+    const card = importOne(CARD)
+    expect(card.onlineServices?.im1).toEqual({
+      uri: 'matrix:u/anna:example.test',
+      service: 'Matrix',
+      contexts: { work: true },
+      pref: 1,
+    })
+    expect(Object.values(card.onlineServices ?? {})).toHaveLength(2)
+    expect((card.vCardProps ?? []).map(([name]) => name)).not.toContain('IMPP')
+  })
+
+  it('round-trips: import → export → import is the same card', () => {
+    const first = importOne(CARD)
+    const second = importOne(toVCard(first))
+    expect(second.onlineServices).toEqual(first.onlineServices)
+  })
+
+  it('never text-escapes the URI — a `,` in one is part of the address, not a list', () => {
+    const card: Card = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      onlineServices: { s1: { uri: 'https://social.test/@anna?a=1,2' } },
+    }
+    const line = parseContentLines(toVCard(card)).lines.find((l) => l.name === 'IMPP')
+    expect(line?.value).toBe('https://social.test/@anna?a=1,2')
+  })
+
+  it('skips an entry vCard has no room for rather than writing an empty property', () => {
+    // A bare `user` handle at a service with no URI scheme: `IMPP`'s value IS a URI.
+    const card: Card = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      onlineServices: { s1: { service: 'Signal', user: 'anna.42' } },
+    }
+    expect(toVCard(card)).not.toContain('IMPP')
+  })
+})

@@ -7,12 +7,39 @@
 // single-account default for exactly this reason, but only on the next `up` — this is the cheap fix
 // at the source.
 
-import { down, revokeDelegations } from './stalwart/fixture.mjs'
+import {
+  clearCalendarEvents,
+  clearShareNotifications,
+  down,
+  revokeAllPimShares,
+  revokeAllShares,
+} from './stalwart/fixture.mjs'
 
 export default async function globalTeardown() {
-  await revokeDelegations().catch((error) => {
+  // `revokeAllShares` rather than `revokeDelegations`: the S-3 tests grant a share through the UI,
+  // from alice's account and on a folder of their choosing, and the fixed DELEGATIONS list knows
+  // nothing about it. One left behind reshapes a later suite's sidebar into account-grouped
+  // sections and makes its `treeitem name=/Inbox/` locators ambiguous.
+  await revokeAllShares().catch((error) => {
     console.warn(`[shared.teardown] revoke failed: ${error?.message ?? error}`)
   })
+  /*
+   * And the calendars and address books (S-2). A share of either is just as account-visible as a
+   * mail one — measured: sharing ONE calendar put carol's whole account into alice's session with
+   * all seventeen capabilities — so one left behind reshapes a later suite exactly the same way.
+   * The busy events the S-6 tests create go too, or the next run's availability assertions start
+   * from somebody else's leftovers.
+   */
+  await revokeAllPimShares().catch((error) => {
+    console.warn(`[shared.teardown] PIM revoke failed: ${error?.message ?? error}`)
+  })
+  await clearCalendarEvents().catch((error) => {
+    console.warn(`[shared.teardown] calendar sweep failed: ${error?.message ?? error}`)
+  })
+  // And the notifications those shares produced, so the S-1 suite starts from none next time.
+  for (const who of ['alice', 'bob', 'carol']) {
+    await clearShareNotifications(who).catch(() => {})
+  }
   if (process.env.WAXWING_KEEP_FIXTURE === '1') {
     console.log('[shared.teardown] WAXWING_KEEP_FIXTURE=1 — shares revoked, leaving the fixture up')
     return

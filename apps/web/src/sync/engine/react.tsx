@@ -67,8 +67,13 @@ function canRunEngine(): boolean {
  * account (M4.4). `[primary]` alone when the server shares nothing — the byte-for-byte single-account
  * case. The primary's display name comes off its own {@link MailAccount} entry, falling back to the
  * login username.
+ *
+ * It reads `connected.accounts` VERBATIM, and that is the whole of the S-4 fix on this side: the
+ * list is already narrowed to the accounts that answered `Mailbox/get`, so an account shared for its
+ * calendar or its address book alone never reaches this function. Exported so that claim can be
+ * asserted without a browser (`app/session/delegation.test.ts`).
  */
-function fleetAccounts(connected: ConnectedSession): FleetAccount[] {
+export function fleetAccounts(connected: ConnectedSession): FleetAccount[] {
   const primary = connected.accounts.find((account) => account.id === connected.accountId)
   return [
     { id: connected.accountId, name: primary?.name ?? connected.username, isPrimary: true },

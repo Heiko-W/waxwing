@@ -59,6 +59,14 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     queryContactCards: unused,
     queryContactCardChanges: unused,
     setContactCards: unused,
+    getCalendars: unused,
+    calendarChanges: unused,
+    getCalendarEvents: unused,
+    calendarEventChanges: unused,
+    queryCalendarEvents: unused,
+    fileNodePage: unused,
+    getFileNodes: unused,
+    fileNodeChanges: unused,
   }
   return { ...base, ...overrides }
 }
@@ -3288,6 +3296,180 @@ describe('outbox — replay resilience', () => {
       return (queued?.payload as Extract<OutboxIntent, { kind: 'deleteMailbox' }>).id
     })
     expect(await Promise.all(targets)).toEqual(['srv-9', 'srv-9', 'srv-9'])
+  })
+
+  /*
+   * JMAP gap analysis M-5 / M-6. `sortOrder`, `isSubscribed` and `role` are all mutable Mailbox
+   * properties (RFC 8621 §2) and none of them was ever sent: the folder tree wrote them nowhere, so
+   * an order made on the laptop was not the order on the phone, and a folder made here was not the
+   * Archive anywhere else. These prove the intents reach the wire.
+   */
+  it('sends a whole sibling group in ONE Mailbox/set (M-5)', async () => {
+    await putMailboxes(db, ACC, [mailbox('mb1', { name: 'One' }), mailbox('mb2', { name: 'Two' })])
+    await enqueueAction(
+      db,
+      ACC,
+      {
+        kind: 'reorderMailboxes',
+        order: [
+          { id: 'mb2', sortOrder: 1 },
+          { id: 'mb1', sortOrder: 2 },
+        ],
+      },
+      { id: 'i1', now: 1 },
+    )
+
+    // The optimistic half: the replica already reads in the new order.
+    expect((await db.mailboxes.get([ACC, 'mb2']))?.sortOrder).toBe(1)
+
+    const calls: unknown[] = []
+    const port = fakePort({
+      setMailboxes: async (args) => {
+        calls.push(args.update)
+        return setResult({ updated: ['mb1', 'mb2'] })
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    // ONE request, not one per folder — a drag across four rows is a single save (ADR-026).
+    expect(calls).toEqual([{ mb2: { sortOrder: 1 }, mb1: { sortOrder: 2 } }])
+    expect(await row('i1')).toBeUndefined()
+  })
+
+  it('puts the whole group back when the server refuses the order (M-5)', async () => {
+    await putMailboxes(db, ACC, [
+      mailbox('mb1', { name: 'One', sortOrder: 7 }),
+      mailbox('mb2', { name: 'Two', sortOrder: 9 }),
+    ])
+    await enqueueAction(
+      db,
+      ACC,
+      {
+        kind: 'reorderMailboxes',
+        order: [
+          { id: 'mb2', sortOrder: 1 },
+          { id: 'mb1', sortOrder: 2 },
+        ],
+      },
+      { id: 'i1', now: 1 },
+    )
+    const port = fakePort({
+      setMailboxes: async () =>
+        setResult({
+          notUpdated: { mb1: { type: 'invalidProperties' }, mb2: { type: 'invalidProperties' } },
+        }),
+    })
+
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect((await db.mailboxes.get([ACC, 'mb1']))?.sortOrder).toBe(7)
+    expect((await db.mailboxes.get([ACC, 'mb2']))?.sortOrder).toBe(9)
+  })
+
+  it('subscribes a folder it creates, so the sidebar keeps it (M-5)', async () => {
+    // RFC 8621 §2 only SHOULDs this, and Stalwart v0.16.18 does not: a create that omits
+    // `isSubscribed` is stored as `false`. Since M-5 the sidebar hides an unsubscribed folder, so
+    // omitting it here meant the folder the user just made vanished the moment the server's copy
+    // synced back. The optimistic row has always said `true`; this is the wire saying the same.
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'createMailbox', creationId: 'tmp', props: { name: 'Receipts', parentId: null } },
+      { id: 'i1', now: 1 },
+    )
+    expect((await db.mailboxes.get([ACC, 'tmp']))?.isSubscribed).toBe(true)
+
+    const sent: unknown[] = []
+    const port = fakePort({
+      setMailboxes: async (args) => {
+        sent.push(args.create)
+        return setResult({ created: { tmp: { id: 'srv-1' } } })
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect(sent).toEqual([{ tmp: { name: 'Receipts', parentId: null, isSubscribed: true } }])
+  })
+
+  it('sends the role and the subscription, and rolls each back on refusal (M-5/M-6)', async () => {
+    await putMailboxes(db, ACC, [mailbox('mb1', { name: 'Old mail' })])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateMailbox', id: 'mb1', props: { role: 'archive' } },
+      { id: 'i1', now: 1 },
+    )
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateMailbox', id: 'mb1', props: { isSubscribed: false } },
+      { id: 'i2', now: 2 },
+    )
+
+    expect((await db.mailboxes.get([ACC, 'mb1']))?.role).toBe('archive')
+    expect((await db.mailboxes.get([ACC, 'mb1']))?.isSubscribed).toBe(false)
+
+    const sent: unknown[] = []
+    const port = fakePort({
+      setMailboxes: async (args) => {
+        sent.push(args.update)
+        // MEASURED refusal shape: a role already taken answers `invalidProperties`. The FIRST
+        // intent is refused, the second accepted — so the rollback must be per-row.
+        return sent.length === 1
+          ? setResult({
+              notUpdated: {
+                mb1: {
+                  type: 'invalidProperties',
+                  description: "A mailbox with role 'archive' already exists.",
+                },
+              },
+            })
+          : setResult({ updated: ['mb1'] })
+      },
+    })
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    expect(sent).toEqual([{ mb1: { role: 'archive' } }, { mb1: { isSubscribed: false } }])
+    const after = await db.mailboxes.get([ACC, 'mb1'])
+    expect(after?.role).toBeNull() // the refused role went back
+    expect(after?.isSubscribed).toBe(false) // the accepted one stayed
+  })
+
+  it('rewrites an order/role update queued against a folder created offline (D5)', async () => {
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'createMailbox', creationId: 'tmp', props: { name: 'New', parentId: null } },
+      { id: 'i1', now: 1 },
+    )
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'updateMailbox', id: 'tmp', props: { role: 'archive' } },
+      { id: 'i2', now: 2 },
+    )
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'reorderMailboxes', order: [{ id: 'tmp', sortOrder: 1 }] },
+      { id: 'i3', now: 3 },
+    )
+    const port = fakePort({
+      setMailboxes: async (args) => {
+        if (args.create) return setResult({ created: { tmp: { id: 'srv-9' } } })
+        throw new TypeError('fetch failed') // stop the pass so the rewrites can be inspected
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { random: NO_JITTER })
+
+    const update = (await row('i2'))?.payload as Extract<OutboxIntent, { kind: 'updateMailbox' }>
+    const reorder = (await row('i3'))?.payload as Extract<
+      OutboxIntent,
+      { kind: 'reorderMailboxes' }
+    >
+    expect(update.id).toBe('srv-9')
+    expect(reorder.order).toEqual([{ id: 'srv-9', sortOrder: 1 }])
   })
 })
 

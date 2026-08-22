@@ -7,6 +7,7 @@
  */
 
 import type { CreationId, Id, Invocation, PatchObject, SetError, UTCDate } from './core'
+import type { EmailAddress, EmailFilter } from './mail'
 
 /**
  * A `StateChange` object (RFC 8620 §7.1): the server's signal that one or more data types
@@ -75,6 +76,100 @@ export interface PushSubscription {
   expires: UTCDate | null
   /** The data types to push, e.g. `["EmailDelivery"]`. `null` = every type. */
   types: string[] | null
+  /**
+   * `draft-ietf-jmap-emailpush-03` — ask the server to put the MESSAGE in the push instead of a bare
+   * {@link StateChange}, per account. Absent/`null` = the RFC 8620 behaviour, which is what every
+   * server without {@link Capabilities.emailPush} does and the only thing they may be sent.
+   *
+   * Keyed by accountId, and only accounts these credentials can see: Stalwart v0.16.18 answers a
+   * foreign one with `invalidProperties` — *"No access to one of the accounts in the emailPush map."*
+   *
+   * **Configuring this changes what the server sends, it does not add to it.** See {@link EmailPush}:
+   * a delivery matching an account's config arrives as an `EmailPush` and the `StateChange` for that
+   * delivery is not sent at all.
+   */
+  emailPush?: Record<Id, EmailPushConfig> | null
+}
+
+/**
+ * `draft-ietf-jmap-emailpush-03` — one account's entry in {@link PushSubscription.emailPush}.
+ *
+ * Measured against Stalwart v0.16.18 (`docs/jmap-gap-2026-08-21/berichte/E-emailpush.md`): the
+ * server stores what it is given, fills in `urgency: "normal"` itself when it is omitted, and
+ * rejects an unknown entry in `properties` with `invalidProperties` — *"Unknown email property."*
+ */
+export interface EmailPushConfig {
+  /**
+   * An ordinary RFC 8621 `Email` filter, or `null` for "every delivery".
+   *
+   * **A non-matching delivery produces NO push at all — not even a `StateChange`** (measured). A
+   * client that also uses this channel to learn that something changed therefore loses that signal
+   * for every filtered-out message, which is why Waxwing sends `null` here; see the ADR-017
+   * amendment of 2026-08-21.
+   */
+  filter?: EmailFilter | null
+  /**
+   * Which `Email` properties to include, e.g. `["from","subject","preview","receivedAt"]`. `null`
+   * or absent leaves the choice to the server.
+   *
+   * Keep it short. The whole push body is capped at 4096 bytes (`WEBPUSH_MAX_BODY_SIZE`), less once
+   * RFC 8291 encryption overhead is counted, and Stalwart truncates the property set or the
+   * `emails` array itself when the budget runs out — silently, from the client's point of view.
+   */
+  properties?: string[] | null
+  /** RFC 8030 §5.3 urgency, verbatim in the push service's `Urgency` header. Stalwart defaults to `"normal"`. */
+  urgency?: 'very-low' | 'low' | 'normal' | 'high' | null
+}
+
+/**
+ * `draft-ietf-jmap-emailpush-03` — the push frame that carries the mail itself.
+ *
+ * **It REPLACES the {@link StateChange} for that delivery; the two never both arrive.** Stalwart
+ * v0.16.18 builds exactly one notification per delivery and downgrades it to a `StateChange` only
+ * when no {@link EmailPushConfig} matches (`crates/services/src/state_manager/push.rs:332`,
+ * confirmed on the wire). Anything that reacted to a `StateChange` on the Web Push channel must
+ * therefore react to this too, or it stops reacting at all the day `emailPush` is configured.
+ *
+ * `state` is the change id for `accountId` — the same string a `StateChange` would have carried, and
+ * enough to drive a `Foo/changes` sync.
+ *
+ * Only the Web Push channel is affected. The RFC 8887 WebSocket and the RFC 8620 EventSource channel
+ * have no `emailPush` configuration and keep delivering plain `StateChange` frames (measured on the
+ * same delivery), which is what keeps Waxwing's sync engine unaffected by any of this.
+ */
+export interface EmailPush {
+  '@type': 'EmailPush'
+  accountId: Id
+  emails: PushedEmail[]
+  /** The account's new state — usable as the `sinceState` of a `Foo/changes` call. */
+  state: string
+}
+
+/** The `@type` of an {@link EmailPush} frame, so a classifier does not restate the literal. */
+export const EMAIL_PUSH_TYPE = 'EmailPush'
+
+/**
+ * One message inside an {@link EmailPush}, carrying exactly the properties the subscription asked
+ * for — so **every field is optional**, and a client must read it as such rather than as an `Email`.
+ *
+ * The `emails` array may hold several messages: Stalwart bundles arrivals inside its `push_throttle`
+ * window. (Bundling was not provoked in the probe; every observed push held one.)
+ */
+export interface PushedEmail {
+  id?: Id
+  blobId?: Id
+  threadId?: Id
+  mailboxIds?: Record<Id, boolean>
+  keywords?: Record<string, boolean>
+  size?: number
+  receivedAt?: UTCDate
+  from?: EmailAddress[] | null
+  to?: EmailAddress[] | null
+  subject?: string | null
+  sentAt?: UTCDate | null
+  preview?: string | null
+  hasAttachment?: boolean
+  [k: string]: unknown
 }
 
 /** RFC 8291 §4 — the browser subscription's public key and auth secret, base64url, unpadded. */

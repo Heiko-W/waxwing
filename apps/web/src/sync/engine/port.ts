@@ -6,7 +6,7 @@
  * against a plain fake port.
  */
 
-import type { ContactCard, Id, PatchObject } from '@waxwing/jmap'
+import type { CalendarEvent, ContactCard, FileNode, Id, PatchObject } from '@waxwing/jmap'
 import {
   creationRef,
   isMethodErrorType,
@@ -19,6 +19,10 @@ import type { EmailEnvelopeInput } from '../db'
 import {
   AUTH_RESULTS_PROPERTY,
   BODY_PART_PROPERTIES,
+  CALENDAR_EVENT_PROPERTIES,
+  CALENDAR_OBJECT_PROPERTIES,
+  CALENDAR_PROPERTIES,
+  type CalendarQuerySpec,
   CannotCalculateChangesError,
   type ChangesResult,
   CONTACT_CARD_PROPERTIES,
@@ -354,6 +358,9 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
         ...(args.create === undefined ? {} : { create: args.create }),
         ...(args.update === undefined ? {} : { update: args.update }),
         ...(args.destroy === undefined ? {} : { destroy: args.destroy }),
+        ...(args.onDestroyRemoveContents === undefined
+          ? {}
+          : { onDestroyRemoveContents: args.onDestroyRemoveContents }),
         ...(args.ifInState === undefined ? {} : { ifInState: args.ifInState }),
       })
       return toSetResult((await builder.send()).get(handle))
@@ -456,6 +463,165 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       })
       return toSetResult((await builder.send()).get(handle))
     },
+
+    // ── Calendar (K-8) ───────────────────────────────────────────────────────────────────────
+
+    async getCalendars(ids) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.calendarGet, {
+        accountId,
+        ids,
+        // Named rather than left to the server: without it the answer silently lacks `isVisible`
+        // and four other opt-in properties. See CALENDAR_PROPERTIES.
+        properties: [...CALENDAR_PROPERTIES],
+      })
+      const response = (await builder.send()).get(handle)
+      return { list: response.list, notFound: response.notFound, state: response.state }
+    },
+
+    async calendarChanges(sinceState, maxChanges) {
+      return changesOrReload(
+        client.request(),
+        Methods.calendarChanges,
+        accountId,
+        sinceState,
+        maxChanges,
+      )
+    },
+
+    async getCalendarEvents(ids, expanded) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.calendarEventGet, {
+        accountId,
+        ids,
+        properties: expanded ? [...CALENDAR_EVENT_PROPERTIES] : [...CALENDAR_OBJECT_PROPERTIES],
+      })
+      const response = (await builder.send()).get(handle)
+      // A partial /get answers `Partial<CalendarEvent>`; the requested properties cover every field
+      // the grid and the identity join read.
+      return {
+        list: response.list as unknown as CalendarEvent[],
+        notFound: response.notFound,
+        state: response.state,
+      }
+    },
+
+    async calendarEventChanges(sinceState, maxChanges) {
+      return changesOrReload(
+        client.request(),
+        Methods.calendarEventChanges,
+        accountId,
+        sinceState,
+        maxChanges,
+      )
+    },
+
+    async queryCalendarEvents(spec: CalendarQuerySpec): Promise<QueryResult> {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.calendarEventQuery, {
+        accountId,
+        ...(spec.filter === undefined || spec.filter === null ? {} : { filter: spec.filter }),
+        ...(spec.expandRecurrences === undefined
+          ? {}
+          : { expandRecurrences: spec.expandRecurrences }),
+        ...(spec.limit === undefined ? {} : { limit: spec.limit }),
+        ...(spec.calculateTotal === undefined ? {} : { calculateTotal: spec.calculateTotal }),
+      })
+      const response = (await builder.send()).get(handle)
+      const result: QueryResult = {
+        ids: response.ids,
+        queryState: response.queryState,
+        canCalculateChanges: response.canCalculateChanges,
+        position: response.position,
+        ...(response.total === undefined ? {} : { total: response.total }),
+      }
+      return result
+    },
+
+    // ── Files (D-4) ──────────────────────────────────────────────────────────────────────────
+
+    async fileNodePage(position, limit) {
+      const builder = client.request()
+      // No `filter` and no `sort`: the tree is read WHOLE (see `JmapPort.fileNodePage`), and the
+      // order the reader sees is decided locally by `file-sort.ts`. An argument this server might
+      // refuse is one that would take the entire request down (HTTP 400 `notRequest`), so the walk
+      // sends the smallest request that can answer.
+      const query = builder.invoke(Methods.fileNodeQuery, {
+        accountId,
+        // Omitted at 0 rather than sent — a default the server already applies is one more argument
+        // it could refuse.
+        ...(position === 0 ? {} : { position }),
+        limit,
+      })
+      const nodes = builder.invoke(Methods.fileNodeGet, { accountId, '#ids': query.ref('/ids') })
+      const responses = await builder.send()
+      const got = responses.get(nodes)
+      return { ids: responses.get(query).ids, list: got.list as FileNode[], state: got.state }
+    },
+
+    async getFileNodes(ids) {
+      const builder = client.request()
+      const handle = builder.invoke(Methods.fileNodeGet, { accountId, ids })
+      const response = (await builder.send()).get(handle)
+      return {
+        list: response.list as FileNode[],
+        notFound: response.notFound,
+        state: response.state,
+      }
+    },
+
+    async fileNodeChanges(sinceState, maxChanges) {
+      return changesOrReload(
+        client.request(),
+        Methods.fileNodeChanges,
+        accountId,
+        sinceState,
+        maxChanges,
+      )
+    },
+  }
+}
+
+/**
+ * Run a `Foo/changes` and translate `cannotCalculateChanges` into the caller's recovery signal.
+ *
+ * Shared by both calendar feeds because both hit the same measured case, and it is not an exotic
+ * one: an account with NO change history yet — a brand-new user's very first sync — is exactly the
+ * state a server cannot compute a delta from. v0.16.18 answered `cannotCalculateChanges` there for
+ * `FileNode/changes` and `CalendarEventNotification/changes` even for the state a `/get` had just
+ * handed out (fixed in that release, but the shape of the failure is the point). Surfacing it as an
+ * error would greet a new account with a broken calendar; it means "read it all again".
+ */
+async function changesOrReload(
+  builder: ReturnType<JmapClient['request']>,
+  // Every feed here is `ChangesRequest → ChangesResponse`, so one definition types them all.
+  method: typeof Methods.calendarChanges,
+  accountId: Id,
+  sinceState: string,
+  maxChanges: number | undefined,
+): Promise<ChangesResult> {
+  const handle = builder.invoke(method, {
+    accountId,
+    sinceState,
+    ...(maxChanges === undefined ? {} : { maxChanges }),
+  })
+  try {
+    const response = (await builder.send()).get(handle)
+    return {
+      newState: response.newState,
+      hasMoreChanges: response.hasMoreChanges,
+      created: response.created,
+      updated: response.updated,
+      destroyed: response.destroyed,
+    }
+  } catch (error) {
+    if (
+      error instanceof JmapMethodError &&
+      isMethodErrorType(error, MethodErrorTypes.cannotCalculateChanges)
+    ) {
+      throw new CannotCalculateChangesError()
+    }
+    throw error
   }
 }
 

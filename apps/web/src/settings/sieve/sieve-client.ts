@@ -49,8 +49,17 @@ export interface SieveScriptWithSource {
 export interface SieveSnapshot {
   /** Every script in the account, minus the server-managed ones. */
   readonly scripts: readonly SieveScript[]
-  /** The active script's source, or `''` when nothing is active. */
+  /** The active script and its source, or `null` when nothing is active. */
   readonly active: SieveScriptWithSource | null
+  /**
+   * The script this client wrote, active or not.
+   *
+   * Read even when it is inactive, because "filtering is switched off" has to keep showing the
+   * rules it switched off — a section that empties itself when the user turns filtering off looks
+   * like it deleted them. Identical to {@link SieveSnapshot.active} when ours is the active one,
+   * so the common case still costs one download.
+   */
+  readonly managed: SieveScriptWithSource | null
   /** The `/get` state string. */
   readonly state: string
 }
@@ -66,18 +75,40 @@ export class SieveSetError extends Error {
   }
 }
 
-export interface SieveClient {
-  /** Lists scripts and downloads the active one's source. */
-  load(signal?: AbortSignal): Promise<SieveSnapshot>
-  /** Downloads one script's source. */
-  read(script: SieveScript, signal?: AbortSignal): Promise<string>
+/** Options for {@link SieveClient.save}. */
+export interface SieveSaveOptions {
   /**
-   * Writes `source` to the managed script, creating it when absent, and activates it.
-   * Returns a fresh snapshot — never the `/set` echo.
+   * Activate the script after writing it. Default `true`.
+   *
+   * `false` is what makes the "filtering is off" switch hold: editing a rule while filtering is
+   * switched off must not quietly switch it back on, and `SieveScript/set` activates only when it
+   * is asked to.
    */
-  save(source: string, existing: SieveScript | null): Promise<SieveSnapshot>
+  readonly activate?: boolean
+}
+
+/**
+ * The operations the filters UI performs. `read(script)` used to sit here too and had no caller
+ * outside this file (JMAP gap analysis, I-3): `load()` already downloads the sources anyone needs —
+ * the active script's and the managed one's — so the extra seam only offered a second, unsynchronised
+ * way to fetch a source that the snapshot already carries. Downloading stays internal.
+ */
+export interface SieveClient {
+  /** Lists scripts and downloads the active one's source (and ours, if that is a different one). */
+  load(signal?: AbortSignal): Promise<SieveSnapshot>
+  /**
+   * Writes `source` to the managed script, creating it when absent, and activates it unless told
+   * not to. Returns a fresh snapshot — never the `/set` echo.
+   */
+  save(
+    source: string,
+    existing: SieveScript | null,
+    options?: SieveSaveOptions,
+  ): Promise<SieveSnapshot>
   /** Asks the server to compile `source` without storing it. `null` means it compiled. */
   validate(source: string, signal?: AbortSignal): Promise<SetError | null>
+  /** Makes `script` the one that filters mail. */
+  activate(script: SieveScript): Promise<SieveSnapshot>
   /** Deactivates all filtering. */
   deactivate(): Promise<SieveSnapshot>
   /** Destroys a script, deactivating it first when it is the active one. */
@@ -124,7 +155,14 @@ export function makeSieveClient(client: JmapClient, accountId: Id): SieveClient 
       activeScript === null
         ? null
         : { script: activeScript, source: await download(activeScript, signal) }
-    return { scripts: visible, active, state }
+    const managedScript = visible.find((script) => script.name === MANAGED_SCRIPT_NAME) ?? null
+    const managed =
+      managedScript === null
+        ? null
+        : managedScript.id === active?.script.id
+          ? active
+          : { script: managedScript, source: await download(managedScript, signal) }
+    return { scripts: visible, active, managed, state }
   }
 
   /** Throws {@link SieveSetError} for the first per-object refusal in a `/set` response. */
@@ -142,22 +180,19 @@ export function makeSieveClient(client: JmapClient, accountId: Id): SieveClient 
   return {
     load: snapshot,
 
-    read: download,
-
-    async save(source, existing) {
+    async save(source, existing, options) {
       const blobId = await uploadSource(source)
-      const args =
+      const activate = options?.activate ?? true
+      const base =
         existing === null
-          ? {
-              accountId,
-              create: { managed: { name: MANAGED_SCRIPT_NAME, blobId } },
-              onSuccessActivateScript: '#managed',
-            }
-          : {
-              accountId,
-              update: { [existing.id]: { blobId } },
-              onSuccessActivateScript: existing.id,
-            }
+          ? { accountId, create: { managed: { name: MANAGED_SCRIPT_NAME, blobId } } }
+          : { accountId, update: { [existing.id]: { blobId } } }
+      // Omitted rather than sent as `null`: RFC 9661 §2.4 requires an absent or unknown id to be
+      // IGNORED, so `onSuccessActivateScript: null` would be indistinguishable from "activate" for
+      // a reader and does nothing for the server.
+      const args = activate
+        ? { ...base, onSuccessActivateScript: existing === null ? '#managed' : existing.id }
+        : base
       const responses = await client.call([[Methods.sieveScriptSet.name, args, 's0']])
       throwIfRefused(
         responses.get<{
@@ -177,6 +212,16 @@ export function makeSieveClient(client: JmapClient, accountId: Id): SieveClient 
         signal ? { signal } : {},
       )
       return responses.get<{ error: SetError | null }>('s0').error
+    },
+
+    async activate(script) {
+      const responses = await client.call([
+        [Methods.sieveScriptSet.name, { accountId, onSuccessActivateScript: script.id }, 's0'],
+      ])
+      throwIfRefused(responses.get<{ notUpdated: Record<string, SetError> | null }>('s0'))
+      // The echo cannot be trusted here either: Stalwart reports an empty `updated` for an
+      // activation-only call, so whether it worked is only knowable by re-reading.
+      return await snapshot()
     },
 
     async deactivate() {

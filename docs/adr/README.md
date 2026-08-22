@@ -51,6 +51,10 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [022](022-identities-are-editable-in-the-client.md) | Identities and signatures are editable in the client, online-only | accepted |
 | [023](023-foreign-sieve-is-preserved-never-parsed.md) | A Sieve script we did not write is preserved verbatim, never parsed | accepted |
 | [024](024-password-sign-in-sits-behind-a-disclosure.md) | Password sign-in sits behind a disclosure; only OAuth can carry a second factor | accepted |
+| [025](025-jscalendarbis-is-the-wire-format.md) | The calendar wire format is `jscalendarbis`, not RFC 8984 | accepted |
+| [026](026-filter-reorder-uses-pointer-events.md) | Reordering filter rules uses pointer events, and has a keyboard path that is not a fallback | accepted |
+| [027](027-stalwart-self-service-is-a-gated-enhancement.md) | Stalwart's self-service registry is a capability-gated enhancement; 2FA is not shipped | accepted |
+| [028](028-folder-order-role-and-visibility.md) | Folder order, use and visibility are server state, and they live behind one "Manage folders" sheet | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

@@ -81,6 +81,9 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
   const quietFrom = prefs.quietHours?.fromMinutes ?? null
   const quietTo = prefs.quietHours?.toMinutes ?? null
   const sound = prefs.sound
+  // The privacy toggle is a DEPENDENCY of the subscription itself, not only of the banner: flipping
+  // it rewrites the server-side `emailPush` config, so a pass has to run when it changes.
+  const preview = prefs.preview
 
   useEffect(() => {
     let cancelled = false
@@ -96,10 +99,18 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
         prefsLoaded,
         permission: permissionState,
         serverSupports,
-        // Exactly what the live channel says with preview OFF. A closed-app banner is contentless by
-        // construction (ADR-017), so both paths use one wording — there is nothing here to drift.
+        // Exactly what the live channel says with preview OFF — the wording a closed-app banner
+        // falls back to whenever the push carries nothing (ADR-017 and its 2026-08-21 amendment).
+        // Both paths use one wording, so there is nothing here to drift.
         title: productName,
         body: t('notify.body.generic'),
+        // The two the CONTENT banner needs, translated here for the same reason as the two above:
+        // `sw.js` has no i18next, no locale detection and no business carrying a catalogue. They are
+        // the very strings the live channel uses (`notify-model.ts#senderLabel`), so a message with
+        // no `from` reads identically whether Waxwing was open or closed when it arrived.
+        unknownSender: t('notify.message.unknownSender'),
+        noSubject: t('notify.message.noSubject'),
+        preview,
         iconUrl: new URL(ICON_FILE, document.baseURI).href,
         badgeUrl: new URL(ICON_FILE, document.baseURI).href,
         quietHours:
@@ -134,6 +145,7 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
     quietFrom,
     quietTo,
     sound,
+    preview,
   ])
 
   // The worker relays a verification code the moment it arrives — the fast path, which saves a

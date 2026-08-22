@@ -17,7 +17,13 @@ import { useConfig } from '../app/config-context'
 import { canonicalQueryKey, type QuerySpec, useQueryWindow } from '../sync'
 import { useAccountEngine, type WindowSpec, windowQueryKey } from '../sync/engine'
 
-export type MessageSort = 'date' | 'from' | 'subject' | 'size'
+/**
+ * The list's sort keys (M-10). `date` is the RECEIVED date — the one a mailbox is ordered by — and
+ * `sentAt` is the date the sender put on it, which differ for anything delayed, imported or
+ * re-delivered. `to` exists for Sent and Drafts, where the recipient is the only useful key and
+ * sorting by sender orders every row identically.
+ */
+export type MessageSort = 'date' | 'sentAt' | 'from' | 'to' | 'subject' | 'size'
 
 /** What the list renders: a folder's recent window, or an arbitrary search query (M3.1). */
 export type ListSource =
@@ -47,15 +53,21 @@ export interface MessageListState {
 const PAGE_SIZE = 50
 const EMPTY_IDS: Id[] = []
 
+// All six are in the session's `emailQuerySortOptions` and were measured working against Stalwart
+// v0.16.14/.18 — dates newest-first, names and subjects A→Z, size largest-first.
 const BASE_SORT: Record<MessageSort, EmailComparator[]> = {
   date: [{ property: 'receivedAt', isAscending: false }],
+  sentAt: [{ property: 'sentAt', isAscending: false }],
   from: [{ property: 'from', isAscending: true }],
+  to: [{ property: 'to', isAscending: true }],
   subject: [{ property: 'subject', isAscending: true }],
   size: [{ property: 'size', isAscending: false }],
 }
 
 function comparators(sort: MessageSort, unreadFirst: boolean): EmailComparator[] {
-  const base = BASE_SORT[sort]
+  // A stored preference is user data and can name a sort this build no longer has; falling back
+  // beats indexing into `undefined` and rendering nothing.
+  const base = BASE_SORT[sort] ?? BASE_SORT.date
   // Unread-first: `hasKeyword $seen` ascending puts unread (no `$seen`) before read.
   return unreadFirst
     ? [{ property: 'hasKeyword', keyword: '$seen', isAscending: true }, ...base]

@@ -120,3 +120,35 @@
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
 }
+
+/*
+ * The reorder grabber (ADR-026).
+ *
+ * `touch-action: none` is the load-bearing declaration: once the compositor has claimed a touch as
+ * a scroll, no `preventDefault()` in any handler can take it back, so the only way a finger can
+ * drag a row is to tell the browser up front that this square is not for scrolling. It is scoped
+ * to the grabber alone — the rest of the row scrolls the page normally, which is what a list of
+ * rules taller than the screen needs.
+ */
+.handle {
+  touch-action: none;
+  color: var(--waxwing-text-muted);
+  cursor: grab;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+/* The row under the finger. Elevation rather than colour: it is the same row, lifted — not a
+   different kind of row. */
+.ruleRow[data-dragging="true"] {
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+/* Picked up from the keyboard. The accent ring is the same signal a focused control gives, because
+   it means the same thing: the arrow keys now belong to this row. */
+.ruleRow[data-lifted="true"] {
+  border-color: var(--waxwing-accent);
+  box-shadow: var(--waxwing-shadow-1);
+}

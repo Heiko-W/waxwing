@@ -649,3 +649,64 @@
   font-family: var(--waxwing-font-mono);
   font-size: var(--waxwing-text-sm);
 }
+
+/* ---- account & security (X-1..X-6: Stalwart self-service) ---- */
+
+/*
+ * A secret that is shown exactly once.
+ *
+ * Big, monospace and centred because it will be READ OFF THE SCREEN and typed into a phone — the
+ * `letter-spacing` is there so `l`/`1` and `0`/`O` are told apart at a glance, and `user-select:
+ * all` makes the whole of it one tap/click to select for anyone whose clipboard button is blocked
+ * (a non-secure context has no `navigator.clipboard`). `overflow-wrap: anywhere` because an app
+ * password is 36 unbroken characters and a phone dialog is not that wide.
+ */
+.secret {
+  display: block;
+  margin: 0;
+  padding: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border-strong);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface-2);
+  color: var(--waxwing-text);
+  font-family: var(--waxwing-font-mono, monospace);
+  font-size: var(--waxwing-text-lg);
+  letter-spacing: var(--waxwing-tracking-caps);
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/*
+ * "You will not see this again" — a fact, not an alarm.
+ *
+ * Deliberately NOT `.error`: nothing has gone wrong, and colouring the sentence in danger red
+ * would tell the reader their new credential is a problem. It is the same weight as a hint one
+ * step darker, so it is read rather than skipped.
+ */
+.secretWarning {
+  margin: 0;
+  color: var(--waxwing-text);
+  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-medium);
+}
+
+/*
+ * A `<fieldset>` standing in as a ROW of the card.
+ *
+ * `.fieldset` cannot do this job: it sets `padding: 0` to shed the browser's default, and on a
+ * DIRECT child of the card that also removes the card's row inset (`.controls > *`) — the very
+ * defect the comment above that rule describes. So the fieldset reset is stated here without the
+ * padding, and the inset is left to the card that owns it.
+ *
+ * `min-inline-size: 0` overrides the `min-content` a fieldset defaults to, which otherwise refuses
+ * to shrink and lets one long app-password name push the whole card wider than the panel.
+ */
+.groupBox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  border: 0;
+  min-inline-size: 0;
+}

@@ -322,6 +322,7 @@ class FakeServer {
                 mayRename: true,
                 mayDelete: true,
                 maySubmit: true,
+                mayShare: false,
               },
               isSubscribed: true,
             })),
@@ -381,6 +382,15 @@ class FakeServer {
       queryContactCardChanges: async () =>
         guard(() => ({ oldQueryState: 'cq', newQueryState: 'cq', removed: [], added: [] })),
       setContactCards: async () => guard(() => this.emptySet()),
+      getCalendars: async () => guard(() => ({ list: [], notFound: [], state: 's' })),
+      calendarChanges: async (state) => guard(() => changes(state)),
+      getCalendarEvents: async () => guard(() => ({ list: [], notFound: [], state: 's' })),
+      calendarEventChanges: async (state) => guard(() => changes(state)),
+      queryCalendarEvents: async () =>
+        guard(() => ({ ids: [], queryState: 'q', canCalculateChanges: true, position: 0 })),
+      fileNodePage: async () => guard(() => ({ ids: [], list: [], state: 's' })),
+      getFileNodes: async () => guard(() => ({ list: [], notFound: [], state: 's' })),
+      fileNodeChanges: async (state) => guard(() => changes(state)),
     }
   }
 }

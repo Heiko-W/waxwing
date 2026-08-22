@@ -8,14 +8,18 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSessionOptional } from '../app/session/context'
+import { currentUserPrincipalId } from '../sharing/principals'
 import { type ContactCardRow, useReplicaOptional } from '../sync'
 import { Button } from '../ui'
 import {
+  type AddressField,
   type DraftWindow,
   type RecipientField as RecipientFieldName,
   useComposerStore,
 } from './composer-store'
 import { createContactSuggestionSource } from './contact-suggestion-source'
+import { createDirectorySuggestionSource } from './directory-suggestion-source'
 import { RecipientField } from './RecipientField'
 import styles from './recipient-field.module.css'
 import {
@@ -26,10 +30,11 @@ import {
 } from './recipient-suggestions'
 import { suggestDomainCorrection } from './typo-heuristic'
 
-const LABEL_KEY: Record<RecipientFieldName, string> = {
+const LABEL_KEY: Record<AddressField, string> = {
   to: 'compose.toLabel',
   cc: 'compose.ccLabel',
   bcc: 'compose.bccLabel',
+  replyTo: 'compose.replyToLabel',
 }
 const ALL_FIELDS = ['to', 'cc', 'bcc'] as const
 
@@ -37,13 +42,20 @@ export interface RecipientFieldsProps {
   readonly draft: DraftWindow
   /** Injected in tests; production builds a recents source from the replica. */
   readonly suggestionSource?: RecipientSuggestionSource | undefined
+  /** Injected in tests; production builds one over `Principal/query` (S-5). */
+  readonly directorySource?: RecipientSuggestionSource | undefined
 }
 
-export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProps) {
+export function RecipientFields({
+  draft,
+  suggestionSource,
+  directorySource,
+}: RecipientFieldsProps) {
   const { t } = useTranslation()
   const setRecipients = useComposerStore((state) => state.setRecipients)
   const moveRecipient = useComposerStore((state) => state.moveRecipient)
   const replica = useReplicaOptional()
+  const connected = useSessionOptional()
 
   // The account's contact cards, provider-SAFE (mirrors `useLocalPrefOptional`): the composer is
   // unit-tested WITHOUT a `ReplicaProvider`, where the throwing `useAccountContactCards` (M4.2) would
@@ -72,10 +84,35 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
     return combineSuggestionSources([contacts, recents])
   }, [suggestionSource, replica, cards])
 
+  /*
+   * The organisation directory (S-5) — a THIRD source, and deliberately not a third member of the
+   * merge above.
+   *
+   * `combineSuggestionSources` awaits its sources together, so folding a network round trip into it
+   * would make the recents and the contact cards — both local, both instant, both available
+   * offline — wait for a server that may be slow or gone. It is handed to the field separately and
+   * appended there. See `RecipientFieldProps.directorySource`.
+   */
+  const directory = useMemo<RecipientSuggestionSource | undefined>(() => {
+    if (directorySource !== undefined) return directorySource
+    if (connected === null) return undefined
+    return createDirectorySuggestionSource({
+      client: connected.client,
+      accountId: connected.accountId,
+      selfPrincipalId: currentUserPrincipalId(connected.jmapSession, connected.accountId),
+    })
+  }, [directorySource, connected])
+
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
+  const [showReplyTo, setShowReplyTo] = useState(false)
   const ccVisible = showCc || draft.cc.length > 0
   const bccVisible = showBcc || draft.bcc.length > 0
+  // Reply-To (M-11) joins Cc and Bcc behind the same toggle row rather than moving into the send
+  // options sheet, because it IS an address: it belongs with the other addresses, edited by the
+  // same pill widget, and a writer looking for "where do replies go" looks at the header block.
+  // It auto-reveals when it already holds one, so a reopened draft never hides a choice already made.
+  const replyToVisible = showReplyTo || draft.replyTo.length > 0
 
   const renderField = (field: RecipientFieldName) => (
     <RecipientField
@@ -83,6 +120,7 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
       label={t(LABEL_KEY[field])}
       value={draft[field]}
       source={source}
+      directorySource={directory}
       accountId={replica?.accountId}
       onChange={(addrs) => setRecipients(draft.id, field, addrs)}
       onMove={(index, to) => moveRecipient(draft.id, field, to, index)}
@@ -116,7 +154,7 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
           </button>
         </p>
       )}
-      {(!ccVisible || !bccVisible) && (
+      {(!ccVisible || !bccVisible || !replyToVisible) && (
         <div className={styles.fieldToggles}>
           {/* Second grid column, so these line up under the entry box rather than under the label —
               see `.fieldToggles` for why hardcoding the offset kept getting it wrong. */}
@@ -141,11 +179,35 @@ export function RecipientFields({ draft, suggestionSource }: RecipientFieldsProp
                 {t('compose.showBccField')}
               </Button>
             )}
+            {!replyToVisible && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={styles.fieldToggle}
+                onClick={() => setShowReplyTo(true)}
+              >
+                {t('compose.showReplyToField')}
+              </Button>
+            )}
           </div>
         </div>
       )}
       {ccVisible && renderField('cc')}
       {bccVisible && renderField('bcc')}
+      {replyToVisible && (
+        <RecipientField
+          field="replyTo"
+          label={t(LABEL_KEY.replyTo)}
+          value={draft.replyTo}
+          source={source}
+          accountId={replica?.accountId}
+          onChange={(addrs) => setRecipients(draft.id, 'replyTo', addrs)}
+          // Never movable: Reply-To is not a recipient, so "move to Cc" from here would be a
+          // promise to deliver somewhere. An empty list hides the pill menu (RecipientField:268).
+          onMove={() => {}}
+          otherFields={[]}
+        />
+      )}
     </div>
   )
 }

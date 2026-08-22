@@ -12,8 +12,14 @@
  * subscription can only be renewed by a client that is running.
  */
 
-import type { Id, JmapClient, PushSubscription, PushSubscriptionSetResponse } from '@waxwing/jmap'
-import { EMAIL_DELIVERY_TYPE, Methods } from '@waxwing/jmap'
+import type {
+  EmailPushConfig,
+  Id,
+  JmapClient,
+  PushSubscription,
+  PushSubscriptionSetResponse,
+} from '@waxwing/jmap'
+import { Capabilities, EMAIL_DELIVERY_TYPE, Methods } from '@waxwing/jmap'
 import { base64UrlToBytes, bytesToBase64Url } from './push-keys'
 import { planPushSubscription } from './push-plan'
 import {
@@ -58,10 +64,52 @@ export interface PushSubscribeDeps {
   readonly badgeUrl: string
   readonly quietHours: QuietHours | null
   readonly sound: boolean
+  /**
+   * What this server understands about `draft-ietf-jmap-emailpush-03`, and what to ask it for.
+   *
+   * **`null` means the server does not advertise the capability** — then the property is never
+   * mentioned, in the body or in `using`, and the request is the one the previous build sent.
+   * A non-null value with an EMPTY `accountIds` is the other case entirely: the server understands
+   * the property and is being told to hold none, which is a patch that must be sent.
+   */
+  readonly emailPush: EmailPushRequest | null
+  /** The user's preview toggle, mirrored into the worker's handover record. */
+  readonly preview: boolean
+  /** Already translated by the caller. */
+  readonly unknownSender: string
+  readonly noSubject: string
   /** Injected in tests. */
   readonly now?: () => number
   readonly idb?: IDBFactory | null
 }
+
+/**
+ * The `emailPush` configuration to send (`draft-ietf-jmap-emailpush-03`). Its EXISTENCE means the
+ * server advertises the capability; its contents say what to ask for.
+ *
+ * `accountIds` is a list because a subscription belongs to the CREDENTIALS: the server pushes for
+ * every account they can see, and each one is configured separately. An account left out of the map
+ * is not silenced — its deliveries simply arrive as the plain `StateChange` they always did. An
+ * EMPTY list means "configure none", i.e. remove whatever the server is holding, which is what the
+ * privacy toggle going off asks for.
+ */
+export interface EmailPushRequest {
+  readonly accountIds: readonly string[]
+}
+
+/**
+ * The `Email` properties a closed-app banner needs, and not one more.
+ *
+ * Sender, subject, preview, arrival time — the four an iOS Mail notification shows. Everything else
+ * on offer (`id`, `blobId`, `threadId`, `mailboxIds`, `keywords`, `bodyValues`, arbitrary headers…)
+ * would spend the 4096-byte budget on data no banner renders; `preview` alone can run to a couple of
+ * hundred bytes, and the server truncates on its own once the budget is gone — silently, so the
+ * symptom of over-asking would be a banner that intermittently loses its subject.
+ *
+ * `receivedAt` earns its place: it becomes `NotificationOptions.timestamp`, so the shade shows when
+ * the mail ARRIVED rather than when a woken worker got around to drawing it.
+ */
+export const EMAIL_PUSH_PROPERTIES: readonly string[] = ['from', 'subject', 'preview', 'receivedAt']
 
 export type PushSubscribeResult =
   | { readonly status: 'subscribed'; readonly subscriptionId: string }
@@ -175,6 +223,8 @@ export async function ensurePushSubscription(
   const mine = onServer.find((row) => row.deviceClientId === deps.deviceClientId) ?? null
   const matchesStored = stored !== null && mine !== null && mine.id === stored.subscriptionId
 
+  const wantEmailPush = isConfigured(emailPushMap(deps))
+
   const plan = planPushSubscription({
     stored,
     endpoint: subscription.endpoint,
@@ -182,10 +232,18 @@ export async function ensurePushSubscription(
     serverHasSubscription: matchesStored,
     expires: mine?.expires ?? null,
     now: now(),
+    wantEmailPush,
   })
 
   try {
-    const subscriptionId = await applyPlan(plan, deps, subscription.endpoint, keys, mine)
+    const subscriptionId = await applyPlan(
+      plan,
+      deps,
+      subscription.endpoint,
+      keys,
+      mine,
+      (stored?.emailPush ?? false) !== wantEmailPush,
+    )
     await writePushRegistration(
       {
         subscriptionId,
@@ -194,6 +252,7 @@ export async function ensurePushSubscription(
         // Re-read: the server may have shortened whatever we asked for, and the renewal clock must
         // run on what was GRANTED. Stalwart grants 7 days for any request, including none.
         expires: await grantedExpiry(deps.client, subscriptionId),
+        emailPush: wantEmailPush,
       },
       idb,
     )
@@ -204,55 +263,119 @@ export async function ensurePushSubscription(
   }
 }
 
+/**
+ * The `emailPush` value to send: a map, `null` to REMOVE the configuration, or `undefined` for
+ * "this server must not see the property at all".
+ *
+ * The three-way return is the whole portability story in one function. `undefined` is a server
+ * without `urn:ietf:params:jmap:emailpush`: the request built below is byte-for-byte the one the
+ * previous build sent, and its `using` set is the one the method names derive — no unknown URN,
+ * nothing for a stock JMAP server to reject. `null` is a server that HAS the capability being told
+ * to hold nothing, which is a real patch and must travel with the URN, or the server would reject
+ * the request and the configuration would silently stay in place.
+ */
+function emailPushMap(deps: PushSubscribeDeps): Record<Id, EmailPushConfig> | null | undefined {
+  if (deps.emailPush === null) return undefined
+  const accountIds = deps.emailPush.accountIds.filter((id) => id !== '')
+  if (accountIds.length === 0) return null
+  const map: Record<Id, EmailPushConfig> = {}
+  for (const accountId of accountIds) {
+    map[accountId] = {
+      // **`null`, deliberately, and it is the one place this feature declines an obvious saving.**
+      // A server-side filter would let the per-folder preference finally apply while the app is
+      // closed and would save the device every push it does not want. It would also make a
+      // non-matching delivery produce NO push whatsoever — not even a `StateChange` (measured) — so
+      // this channel would go blind for every message outside the chosen folders, and any future
+      // use of it to wake a sync would inherit a notification preference as its trigger. That is a
+      // trade the ADR-017 amendment records as deferred, not one to make inside a property bag.
+      filter: null,
+      properties: [...EMAIL_PUSH_PROPERTIES],
+    }
+  }
+  return map
+}
+
 async function applyPlan(
   plan: ReturnType<typeof planPushSubscription>,
   deps: PushSubscribeDeps,
   endpoint: string,
   keys: { p256dh: string; auth: string },
   mine: PushSubscription | null,
+  /** Does the server hold a different `emailPush` config than the user now wants? */
+  emailPushChanged: boolean,
 ): Promise<string> {
   if (plan.kind === 'keep') return plan.subscriptionId
 
-  if (plan.kind === 'renew') {
+  const emailPush = emailPushMap(deps)
+  // The URN travels with any request that MENTIONS the property — including the one that removes it,
+  // which a server would otherwise refuse, leaving the old configuration in place with nothing to
+  // report it. It travels with nothing else: RFC 8620 §3.3 obliges a server to fail the whole
+  // request on an unknown `using` entry, so sending it unconditionally would break every server
+  // without the draft, which is nearly all of them.
+  const mentionsProperty = emailPush !== undefined
+  const callOptions = mentionsProperty ? { using: [Capabilities.emailPush] } : {}
+
+  if (plan.kind === 'renew' || plan.kind === 'reconfigure') {
     // An `expires` in the future is a REQUEST; the server answers with what it is willing to grant.
     // We ask for the far end deliberately and read back what we got rather than assuming.
     const requested = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
-    await deps.client.call([
-      [
-        Methods.pushSubscriptionSet.name,
-        { update: { [plan.subscriptionId]: { expires: requested } } },
-        'p0',
-      ],
-    ])
+    // Both patches ride in ONE update when both are due. A renewal that postponed the content change
+    // to the next pass would postpone it by however long it takes the user to open the app again —
+    // up to a week, on a switch about what appears on their lock screen.
+    const patch = {
+      ...(plan.kind === 'renew' ? { expires: requested } : {}),
+      // `null` is not "leave it alone": it is how the config is REMOVED when the preview toggle went
+      // off. Sent only when it changes, which is what `reconfigure` means and what the renewal path
+      // asks `emailPushChanged` about.
+      ...(emailPushChanged && mentionsProperty ? { emailPush } : {}),
+    }
+    await deps.client.call(
+      [[Methods.pushSubscriptionSet.name, { update: { [plan.subscriptionId]: patch } }, 'p0']],
+      callOptions,
+    )
     return plan.subscriptionId
   }
 
   // `create` — destroy the row we know is stale first, in the SAME request, so a failure cannot
   // leave two subscriptions where the server pushes to a dead endpoint alongside a live one.
   const destroy = plan.destroyId ?? mine?.id ?? null
-  const responses = await deps.client.call([
+  const responses = await deps.client.call(
     [
-      Methods.pushSubscriptionSet.name,
-      {
-        ...(destroy === null ? {} : { destroy: [destroy] }),
-        create: {
-          sub: {
-            deviceClientId: deps.deviceClientId,
-            url: endpoint,
-            keys,
-            // The whole reason the worker needs no token: the SERVER filters, so a push arrives only
-            // when mail was delivered — never when another client merely read a message (ADR-017).
-            types: [EMAIL_DELIVERY_TYPE],
+      [
+        Methods.pushSubscriptionSet.name,
+        {
+          ...(destroy === null ? {} : { destroy: [destroy] }),
+          create: {
+            sub: {
+              deviceClientId: deps.deviceClientId,
+              url: endpoint,
+              keys,
+              // Still the server's filter, and still the reason the worker needs no token: a push
+              // arrives only when mail was delivered, never when another client merely read a
+              // message (ADR-017). What the amendment of 2026-08-21 changed is what the push CARRIES.
+              types: [EMAIL_DELIVERY_TYPE],
+              // Absent entirely when `null` — see `emailPushMap`. A stock JMAP server must see the
+              // exact request the previous build sent.
+              ...(isConfigured(emailPush) ? { emailPush } : {}),
+            },
           },
         },
-      },
-      'p0',
+        'p0',
+      ],
     ],
-  ])
+    callOptions,
+  )
   const response = responses.get<PushSubscriptionSetResponse>('p0')
   const created = firstCreated(response)
   if (created === null) throw new Error(setErrorText(response))
   return created.id
+}
+
+/** Is this a configuration the server should HOLD, as opposed to none and as opposed to absent? */
+function isConfigured(
+  value: Record<Id, EmailPushConfig> | null | undefined,
+): value is Record<Id, EmailPushConfig> {
+  return value !== null && value !== undefined
 }
 
 async function grantedExpiry(client: JmapClient, subscriptionId: Id): Promise<string | null> {
@@ -274,6 +397,9 @@ function workerState(deps: PushSubscribeDeps): PushWorkerState {
     badgeUrl: deps.badgeUrl,
     quietHours: deps.quietHours,
     sound: deps.sound,
+    preview: deps.preview,
+    unknownSender: deps.unknownSender,
+    noSubject: deps.noSubject,
   }
 }
 

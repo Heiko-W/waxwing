@@ -12,8 +12,14 @@ export default defineConfig({
   testMatch: [
     '**/write.spec.ts',
     '**/settings.spec.ts',
+    // Account & security (X-1..X-6): creates and revokes a credential on alice and moves her
+    // account locale, so it belongs with the other stateful suites rather than the read harness.
+    '**/security.spec.ts',
     '**/contacts.spec.ts',
     '**/calendar.spec.ts',
+    // Stateful like the three above, and cleans up after itself for the same reason: there is no
+    // file seed for the setup to reset. See the header of `files.spec.ts` on what it owns.
+    '**/files.spec.ts',
   ],
   // One shared fixture, stateful sends → serial + per-test reset (see write.spec.ts beforeEach).
   fullyParallel: false,

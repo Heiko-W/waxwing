@@ -1,11 +1,12 @@
 /** Public router surface (M1.4, ADR-007). */
 
 export type { NavigateOptions, Router } from './context'
-export { useNavigate, useRoute, useRouter } from './hooks'
+export { useNavigate, useRoute, useRouter, useRouterOptional } from './hooks'
 export { Link, type LinkProps } from './Link'
 export { RouterProvider, type RouterProviderProps } from './RouterProvider'
 export {
   ACCOUNT_PARAM,
+  atMailRoot,
   CALENDAR_PATH,
   CONTACTS_ALL_BOOKS,
   CONTACTS_PATH,

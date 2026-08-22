@@ -6,6 +6,13 @@
  * back from its own metadata. Widening the form without widening both directions is what turns a
  * rule editor into something that quietly rewrites rules it did not understand.
  *
+ * **What this form offers is a function of the server, not a constant.** Stalwart advertises around
+ * fifty Sieve extensions and every deployment advertises its own set; a `require` for one the
+ * server does not implement can compile cleanly and then fail when mail actually arrives. So the
+ * envelope, spam-score, delivery-time, duplicate and reject entries appear only when
+ * `sieveExtensions` listed what they need ({@link sieveFeatures}) — and an entry a rule is already
+ * using stays on offer regardless, so that opening an old rule can never silently rewrite it.
+ *
  * Labelling follows the house pattern rather than the controls: `TextInput` and `Select` are the
  * bare elements, so every field pairs one with a `<label htmlFor>` of its own.
  */
@@ -20,22 +27,31 @@ import styles from './filters.module.css'
 import type {
   SieveAction,
   SieveCondition,
+  SieveFeatures,
   SieveMatch,
   SieveRule,
   SieveTextField,
 } from './rule-model'
+import { sieveFeatures } from './rule-model'
 
 export interface RuleFormProps {
   /** The rule being edited, or `null` to create one. */
   readonly rule: SieveRule | null
   readonly mailboxes: readonly MailboxRow[]
+  /** The account's advertised `sieveExtensions`, or `undefined` when it advertised none. */
+  readonly extensions?: readonly string[] | undefined
   readonly busy: boolean
   onSubmit(rule: SieveRule): void
   onCancel(): void
 }
 
-const TEXT_FIELDS: readonly SieveTextField[] = ['from', 'to', 'cc', 'subject', 'body']
+/** Header-based text fields — always available; every server has `header`. */
+const HEADER_FIELDS: readonly SieveTextField[] = ['from', 'to', 'cc', 'subject', 'body']
+/** The envelope pair, behind the `envelope` extension. */
+const ENVELOPE_FIELDS: readonly SieveTextField[] = ['envelopeFrom', 'envelopeTo']
 const MATCHES: readonly SieveMatch[] = ['contains', 'is', 'startsWith', 'endsWith']
+/** Sunday first, matching RFC 5260's `weekday` part, where "0" is Sunday. */
+const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const
 
 function blankCondition(): SieveCondition {
   return { kind: 'text', field: 'from', match: 'contains', value: '' }
@@ -53,6 +69,11 @@ function blankRule(): SieveRule {
     actions: [{ kind: 'addFlag', flag: '\\Seen' }],
     stop: false,
   }
+}
+
+/** The value the condition `<select>` shows for a condition. */
+function conditionKey(condition: SieveCondition): string {
+  return condition.kind === 'text' ? condition.field : condition.kind
 }
 
 /**
@@ -84,6 +105,7 @@ function Field(props: {
 export function RuleForm(props: RuleFormProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<SieveRule>(props.rule ?? blankRule())
+  const features = sieveFeatures(props.extensions)
 
   const setCondition = (index: number, condition: SieveCondition) => {
     setDraft((current) => ({
@@ -156,6 +178,7 @@ export function RuleForm(props: RuleFormProps) {
               // biome-ignore lint/suspicious/noArrayIndexKey: see above
               key={index}
               condition={condition}
+              features={features}
               onChange={(next) => setCondition(index, next)}
               onRemove={
                 draft.conditions.length > 1
@@ -189,6 +212,7 @@ export function RuleForm(props: RuleFormProps) {
               // biome-ignore lint/suspicious/noArrayIndexKey: actions carry no identity either
               key={index}
               action={action}
+              features={features}
               mailboxes={props.mailboxes}
               onChange={(next) => setAction(index, next)}
               onRemove={
@@ -239,13 +263,39 @@ export function RuleForm(props: RuleFormProps) {
 
 interface ConditionRowProps {
   readonly condition: SieveCondition
+  readonly features: SieveFeatures
   onChange(condition: SieveCondition): void
   onRemove?: (() => void) | undefined
 }
 
+/** Rebuilds a row when its kind changes — the kinds share no fields. */
+function conditionOfKey(key: string, previous: SieveCondition): SieveCondition {
+  switch (key) {
+    case 'size':
+      return { kind: 'size', operator: 'over', bytes: 1_048_576 }
+    case 'hasAttachment':
+      return { kind: 'hasAttachment' }
+    case 'spam':
+      // 5 of 10 is the conventional "probably spam" line, and the value most spam filters default
+      // their own threshold to.
+      return { kind: 'spam', operator: 'atLeast', score: 5 }
+    case 'currentDate':
+      return { kind: 'currentDate', part: 'weekday', operator: 'is', value: 6 }
+    case 'duplicate':
+      return { kind: 'duplicate' }
+    default:
+      return previous.kind === 'text'
+        ? { ...previous, field: key as SieveTextField }
+        : { kind: 'text', field: key as SieveTextField, match: 'contains', value: '' }
+  }
+}
+
 function ConditionRow(props: ConditionRowProps) {
   const { t } = useTranslation()
-  const { condition } = props
+  const { condition, features } = props
+  const key = conditionKey(condition)
+  /** An entry the rule already uses stays offered even if the server stopped advertising it. */
+  const offered = (available: boolean, name: string) => available || key === name
 
   return (
     <div className={styles.row}>
@@ -253,31 +303,30 @@ function ConditionRow(props: ConditionRowProps) {
         {(id) => (
           <Select
             id={id}
-            value={condition.kind === 'text' ? condition.field : condition.kind}
-            onChange={(event) => {
-              const value = event.target.value
-              // The three condition kinds share no fields, so switching kind rebuilds the row.
-              if (value === 'size')
-                props.onChange({ kind: 'size', operator: 'over', bytes: 1_048_576 })
-              else if (value === 'hasAttachment') props.onChange({ kind: 'hasAttachment' })
-              else if (condition.kind === 'text')
-                props.onChange({ ...condition, field: value as SieveTextField })
-              else
-                props.onChange({
-                  kind: 'text',
-                  field: value as SieveTextField,
-                  match: 'contains',
-                  value: '',
-                })
-            }}
+            value={key}
+            onChange={(event) => props.onChange(conditionOfKey(event.target.value, condition))}
           >
-            {TEXT_FIELDS.map((field) => (
+            {HEADER_FIELDS.map((field) => (
+              <option key={field} value={field}>
+                {fieldLabel(t, field)}
+              </option>
+            ))}
+            {ENVELOPE_FIELDS.filter((field) => offered(features.envelope, field)).map((field) => (
               <option key={field} value={field}>
                 {fieldLabel(t, field)}
               </option>
             ))}
             <option value="size">{t('settings.filters.field.size')}</option>
             <option value="hasAttachment">{t('settings.filters.field.hasAttachment')}</option>
+            {offered(features.spam, 'spam') && (
+              <option value="spam">{t('settings.filters.field.spam')}</option>
+            )}
+            {offered(features.currentDate, 'currentDate') && (
+              <option value="currentDate">{t('settings.filters.field.currentDate')}</option>
+            )}
+            {offered(features.duplicate, 'duplicate') && (
+              <option value="duplicate">{t('settings.filters.field.duplicate')}</option>
+            )}
           </Select>
         )}
       </Field>
@@ -348,6 +397,123 @@ function ConditionRow(props: ConditionRowProps) {
         </>
       )}
 
+      {condition.kind === 'spam' && (
+        <>
+          <Field className={styles.rowField} label={t('settings.filters.form.match')}>
+            {(id) => (
+              <Select
+                id={id}
+                value={condition.operator}
+                onChange={(event) =>
+                  props.onChange({
+                    ...condition,
+                    operator: event.target.value === 'atMost' ? 'atMost' : 'atLeast',
+                  })
+                }
+              >
+                <option value="atLeast">{t('settings.filters.match.atLeast')}</option>
+                <option value="atMost">{t('settings.filters.match.atMost')}</option>
+              </Select>
+            )}
+          </Field>
+          <Field className={styles.rowField} label={t('settings.filters.form.spamScore')}>
+            {(id) => (
+              <TextInput
+                id={id}
+                type="number"
+                min={0}
+                max={10}
+                value={String(condition.score)}
+                onChange={(event) =>
+                  props.onChange({ ...condition, score: Number(event.target.value) })
+                }
+              />
+            )}
+          </Field>
+        </>
+      )}
+
+      {condition.kind === 'currentDate' && (
+        <>
+          <Field className={styles.rowField} label={t('settings.filters.form.datePart')}>
+            {(id) => (
+              <Select
+                id={id}
+                value={condition.part}
+                onChange={(event) =>
+                  props.onChange(
+                    event.target.value === 'hour'
+                      ? { kind: 'currentDate', part: 'hour', operator: 'atLeast', value: 18 }
+                      : { kind: 'currentDate', part: 'weekday', operator: 'is', value: 6 },
+                  )
+                }
+              >
+                <option value="weekday">{t('settings.filters.date.weekday')}</option>
+                {/* An hour comparison needs `relational` and the numeric comparator on top of
+                    `date`; a weekday only needs `date`, so the two are gated separately. */}
+                {(features.hourRange || condition.part === 'hour') && (
+                  <option value="hour">{t('settings.filters.date.hour')}</option>
+                )}
+              </Select>
+            )}
+          </Field>
+
+          {condition.part === 'weekday' ? (
+            <Field className={styles.rowField} label={t('settings.filters.form.weekday')}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={String(condition.value)}
+                  onChange={(event) =>
+                    props.onChange({ ...condition, value: Number(event.target.value) })
+                  }
+                >
+                  {WEEKDAYS.map((day) => (
+                    <option key={day} value={day}>
+                      {weekdayLabel(t, day)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          ) : (
+            <>
+              <Field className={styles.rowField} label={t('settings.filters.form.match')}>
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={condition.operator}
+                    onChange={(event) =>
+                      props.onChange({
+                        ...condition,
+                        operator: event.target.value === 'atMost' ? 'atMost' : 'atLeast',
+                      })
+                    }
+                  >
+                    <option value="atLeast">{t('settings.filters.match.atLeast')}</option>
+                    <option value="atMost">{t('settings.filters.match.atMost')}</option>
+                  </Select>
+                )}
+              </Field>
+              <Field className={styles.rowField} label={t('settings.filters.form.hour')}>
+                {(id) => (
+                  <TextInput
+                    id={id}
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={String(condition.value)}
+                    onChange={(event) =>
+                      props.onChange({ ...condition, value: Number(event.target.value) })
+                    }
+                  />
+                )}
+              </Field>
+            </>
+          )}
+        </>
+      )}
+
       {props.onRemove !== undefined && (
         <Button type="button" variant="ghost" size="sm" onClick={props.onRemove}>
           {t('settings.filters.form.remove')}
@@ -359,6 +525,7 @@ function ConditionRow(props: ConditionRowProps) {
 
 interface ActionRowProps {
   readonly action: SieveAction
+  readonly features: SieveFeatures
   readonly mailboxes: readonly MailboxRow[]
   onChange(action: SieveAction): void
   onRemove?: (() => void) | undefined
@@ -366,7 +533,7 @@ interface ActionRowProps {
 
 function ActionRow(props: ActionRowProps) {
   const { t } = useTranslation()
-  const { action, mailboxes } = props
+  const { action, features, mailboxes } = props
   const firstMailbox = mailboxes[0]
 
   return (
@@ -386,6 +553,7 @@ function ActionRow(props: ActionRowProps) {
                 })
               else if (kind === 'redirect') props.onChange({ kind: 'redirect', address: '' })
               else if (kind === 'discard') props.onChange({ kind: 'discard' })
+              else if (kind === 'reject') props.onChange({ kind: 'reject', reason: '' })
               else props.onChange({ kind: 'addFlag', flag: '\\Seen' })
             }}
           >
@@ -393,6 +561,9 @@ function ActionRow(props: ActionRowProps) {
             <option value="addFlag">{t('settings.filters.action.addFlag')}</option>
             <option value="redirect">{t('settings.filters.action.redirect')}</option>
             <option value="discard">{t('settings.filters.action.discard')}</option>
+            {(features.reject || action.kind === 'reject') && (
+              <option value="reject">{t('settings.filters.action.reject')}</option>
+            )}
           </Select>
         )}
       </Field>
@@ -459,6 +630,18 @@ function ActionRow(props: ActionRowProps) {
         </Field>
       )}
 
+      {action.kind === 'reject' && (
+        <Field className={styles.rowField} label={t('settings.filters.form.reason')}>
+          {(id) => (
+            <TextInput
+              id={id}
+              value={action.reason}
+              onChange={(event) => props.onChange({ kind: 'reject', reason: event.target.value })}
+            />
+          )}
+        </Field>
+      )}
+
       {props.onRemove !== undefined && (
         <Button type="button" variant="ghost" size="sm" onClick={props.onRemove}>
           {t('settings.filters.form.remove')}
@@ -481,6 +664,10 @@ function fieldLabel(t: TFunction, field: SieveTextField): string {
       return t('settings.filters.field.subject')
     case 'body':
       return t('settings.filters.field.body')
+    case 'envelopeFrom':
+      return t('settings.filters.field.envelopeFrom')
+    case 'envelopeTo':
+      return t('settings.filters.field.envelopeTo')
   }
 }
 
@@ -496,5 +683,24 @@ function matchLabel(t: TFunction, match: SieveMatch): string {
       return t('settings.filters.match.endsWith')
     case 'matches':
       return t('settings.filters.match.matches')
+  }
+}
+
+function weekdayLabel(t: TFunction, day: (typeof WEEKDAYS)[number]): string {
+  switch (day) {
+    case 0:
+      return t('settings.filters.weekday.sunday')
+    case 1:
+      return t('settings.filters.weekday.monday')
+    case 2:
+      return t('settings.filters.weekday.tuesday')
+    case 3:
+      return t('settings.filters.weekday.wednesday')
+    case 4:
+      return t('settings.filters.weekday.thursday')
+    case 5:
+      return t('settings.filters.weekday.friday')
+    case 6:
+      return t('settings.filters.weekday.saturday')
   }
 }

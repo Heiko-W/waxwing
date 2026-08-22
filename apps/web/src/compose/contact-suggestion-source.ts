@@ -21,10 +21,18 @@ import {
   contactMatches,
   contactPhoto,
   contactSortKey,
+  groupMemberUids,
+  groupName,
+  isGroupCard,
   preferred,
 } from '../contacts/contact-fields'
+// Deliberately the MODULE, not the `../contacts` barrel: the barrel re-exports the group mapping,
+// which reaches `contact-card-mapping` (~25 KB) at runtime. `expand-group` itself imports nothing
+// but `contact-fields`, whose own imports are type-only.
+import { expandGroupMembers, indexCardsByUid } from '../contacts/expand-group'
 import type { AddressStatRow, ContactCardRow, ReplicaDb } from '../sync'
 import {
+  type GroupSuggestion,
   type RecipientSuggestion,
   type RecipientSuggestionSource,
   scoreAddressStat,
@@ -61,10 +69,44 @@ function pickAddress(card: ContactCardRow, needleLower: string): string | undefi
 }
 
 /**
+ * The account's contact GROUPS that match the needle, each already expanded to its members'
+ * addresses (A-4 of the JMAP gap analysis).
+ *
+ * A group is not itself a sendable address, which is why it used to be skipped here entirely — and
+ * that left the one thing a distribution list is FOR without a way to use it. It is offered as its
+ * own kind of option instead: {@link expandGroupMembers} resolves each member `uid` against the same
+ * card list, and committing the option commits those addresses. A group whose members resolve to no
+ * address at all is dropped rather than offered as a pill that would add nothing.
+ *
+ * Matching is on the group's NAME only. `contactMatches` would also search the member cards' fields
+ * through the group card, which is not what it holds — a group card carries `members`, not emails —
+ * so the name is the whole of what a reader can be typing toward.
+ */
+function matchingGroups(cards: readonly ContactCardRow[], needleLower: string): GroupSuggestion[] {
+  const groups = cards.filter((card) => isGroupCard(card) && card.uid !== '')
+  if (groups.length === 0) return []
+  const byUid = indexCardsByUid(cards)
+  const out: GroupSuggestion[] = []
+  for (const group of groups) {
+    const name = groupName(group)
+    if (name === '' || !name.toLowerCase().includes(needleLower)) continue
+    const members = expandGroupMembers(groupMemberUids(group), (uid) => byUid.get(uid))
+    if (members.length === 0) continue
+    out.push({ kind: 'group', uid: group.uid, name, members })
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/**
  * A contacts recipient-suggestion source over `cards` (the account's contact cards; may be `undefined`
- * while the live query resolves — treated as empty, never a crash). Groups (`kind: 'group'`) are
- * excluded: a group is not itself a sendable address. Each matched card yields EXACTLY ONE suggestion
- * (its chosen address), deduped so two cards sharing an address collapse to one.
+ * while the live query resolves — treated as empty, never a crash). Each matched person yields
+ * EXACTLY ONE suggestion (its chosen address), deduped so two cards sharing an address collapse to
+ * one; each matched GROUP yields one option that expands to its members on commit.
+ *
+ * Groups are listed FIRST. There are few of them, they are named deliberately, and a reader who has
+ * typed enough of a list's name to match it is not looking for the person two rows down — while a
+ * group ranked by the usage join would lose to any frequent correspondent and fall off a six-row
+ * listbox exactly when it was wanted.
  */
 export function createContactSuggestionSource(
   cards: readonly ContactCardRow[] | undefined,
@@ -76,14 +118,12 @@ export function createContactSuggestionSource(
       if (list.length === 0 || limit <= 0) return []
       const needleLower = prefix.trim().toLowerCase()
 
+      const groups = matchingGroups(list, needleLower).slice(0, limit)
+
       const candidates: Candidate[] = []
       const seen = new Set<string>()
       for (const card of list) {
-        // A group is not a sendable address (RFC 9553 §2.1.4 — this is `isGroupCard`, inlined). We do
-        // NOT import it from `../contacts`: that barrel re-exports the group-mapping module, which
-        // would drag `contact-card-mapping` (~25 KB) into the composer's initial graph. `contact-fields`
-        // above is type-only-importing and pure, so it is the one safe contacts module to pull in here.
-        if (card.kind === 'group') continue
+        if (isGroupCard(card)) continue
         if (!contactMatches(card, needleLower)) continue
         const email = pickAddress(card, needleLower)
         if (email === undefined) continue
@@ -92,7 +132,7 @@ export function createContactSuggestionSource(
         seen.add(emailLower)
         candidates.push({ card, email, emailLower, media: contactPhoto(card) })
       }
-      if (candidates.length === 0) return []
+      if (candidates.length === 0) return groups
 
       // Usage join: rank by the recents' addressStats when a replica is available, else pure alpha.
       const scoreByEmail = await usageScores(candidates, opts)
@@ -102,7 +142,7 @@ export function createContactSuggestionSource(
         return contactSortKey(a.card).localeCompare(contactSortKey(b.card))
       })
 
-      return ranked.slice(0, limit).map((candidate) => {
+      const people = ranked.slice(0, Math.max(0, limit - groups.length)).map((candidate) => {
         const name = contactDisplayName(candidate.card) || null
         return {
           name,
@@ -110,6 +150,7 @@ export function createContactSuggestionSource(
           ...(candidate.media !== undefined ? { photo: candidate.media } : {}),
         } satisfies RecipientSuggestion
       })
+      return [...groups, ...people]
     },
   }
 }

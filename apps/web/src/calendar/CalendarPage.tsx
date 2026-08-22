@@ -4,32 +4,47 @@
  * Three views: a **month** grid for orientation, a **week** grid with a time axis, and an **agenda**
  * list for "what is next".
  *
- * Single events can be created, edited and deleted (M5.11). A RECURRING one cannot: clicking it
- * opens a read-only note instead of the editor, because changing a series means choosing between
- * "this occurrence", "this and following" and "all", and a calendar that half-edits a repeating
- * meeting loses other people's time. `refuseEdit` is where that line is drawn — and it draws a
- * second one beside it: an occurrence the client cannot trace back to a writable object is refused
- * too, with its own sentence, because the alternative is the editor T1 described, whose Save could
- * never work.
+ * Events can be created, edited and deleted (M5.11) — **including repeating ones (K-2)**. A series
+ * no longer opens a read-only note: it opens the editor, and the scope question ("this event" /
+ * "all events") is asked after Save, which is where Apple asks it and the only place it can be
+ * answered. `refuseEdit` still draws one line: an occurrence the client cannot trace back to a
+ * writable object is refused, with its own sentence, because the alternative is the editor T1
+ * described, whose Save could never work.
+ *
+ * **Participants and RSVP (K-3)** ride in the same editor. The answer bar appears only when one of
+ * the participants carries an address this account owns — which is what `ParticipantIdentity/get`
+ * (K-10) is fetched for, once per mount — and the calendar grants `mayRSVP`. Inviting works because
+ * `CalendarEvent/set` is given `sendSchedulingMessages: true`; measured, it is the only trigger.
  *
  * **One interaction rule across all three views:** clicking a DAY selects it, clicking an EVENT
  * opens it, and the `+` in the bar creates on the day that is selected. A day cell used to open the
  * new-event dialog directly, which meant the grid had no way to say "I mean this day" — the URL
  * never moved, so the arrow keys, `Today` and `+` all still pointed somewhere else (T6).
+ *
+ * **The calendars themselves are managed here too (K-1), and that changes what the grid asks for.**
+ * The list of calendars is a rail from 40em up and a screen-high sheet below it, reached from the
+ * same view menu that already carries Today. Ticking one off writes `isVisible` to the SERVER and
+ * then re-fetches the month naming only the calendars that are on — `eventsInRange`'s third
+ * parameter, which had existed since M5.6 with no caller. So the two loads are no longer
+ * independent: the calendars are fetched first and the events depend on their answer, which costs
+ * one extra round trip on the first paint and none afterwards. The alternative, filtering the drawn
+ * list locally, looks the same on this screen and is a lie on the phone.
  */
 
-import type { Calendar } from '@waxwing/jmap'
+import type { Calendar, Id, Principal } from '@waxwing/jmap'
 import type { TFunction } from 'i18next'
 import {
   CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
+  CloudOff,
+  Import,
   Plus,
   SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
@@ -37,19 +52,44 @@ import { useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { useOnline } from '../app/use-online'
-import { formatDate } from '../i18n/formatters'
-import { Button, Dialog, EmptyState, IconButton, Menu, Spinner, useToast } from '../ui'
+import { formatDate, formatRelativeTime } from '../i18n/formatters'
+import { makeCalendarSharingClient } from '../sharing/calendar-share-client'
+import { IncomingShares } from '../sharing/IncomingShares'
+import { currentUserPrincipalId, principalLabel } from '../sharing/principals'
+import { useIncomingShares } from '../sharing/use-incoming-shares'
+import { useCalendars } from '../sync'
+import { Button, Dialog, EmptyState, IconButton, Menu, Select, Spinner, useToast } from '../ui'
+import { type BusyPeriod, toBusyPeriods } from './availability'
 import styles from './calendar.module.css'
 import {
   type CalendarClient,
+  type CalendarDraft,
   makeCalendarClient,
+  mayCreateCalendar,
+  needsScope,
   type PlacedEvent,
   refusalReason,
   refuseEdit,
 } from './calendar-client'
+import { DEFAULT_MAX_PARTICIPANTS, ownAddresses } from './event-participants'
+import type { EditScope } from './event-recurrence'
+import { useCalendarEvents } from './use-calendar-events'
 
 const EventDialog = lazy(() => import('./EventDialog'))
+/*
+ * The import sheet is a chunk of its own, and not part of `EventDialog`: reading a `.ics` is a rare,
+ * deliberate act, and the editor is opened many times a session. Registered in `.size-limit.js`.
+ */
+const IcsImportDialog = lazy(() => import('./IcsImportDialog'))
+/*
+ * The share dialog is a chunk of its own (registered in `.size-limit.js`), and not part of this
+ * screen's: it pulls in the generic `ShareDialog` and the principal picker, which the great majority
+ * of calendar sessions never open.
+ */
+const CalendarShareDialog = lazy(() => import('../sharing/CalendarShareDialog'))
 
+import CalendarDialog, { CalendarDeleteDialog } from './CalendarDialog'
+import { CalendarList, visibleCalendarIds } from './CalendarList'
 import { EventFacts } from './EventFacts'
 import { zoneDiffersFromLocal } from './jscalendar-time'
 import {
@@ -65,7 +105,7 @@ import {
   toIsoDate,
 } from './month-grid'
 import { WeekView } from './WeekView'
-import { weekDays } from './week-grid'
+import { weekDays, weekRange } from './week-grid'
 
 type View = 'month' | 'week' | 'agenda'
 
@@ -123,25 +163,81 @@ export default function CalendarPage(props: CalendarPageProps) {
    */
   const online = useOnline()
   const [calendars, setCalendars] = useState<Calendar[]>([])
+  /**
+   * Whether {@link calendars} is an ANSWER or just the initial empty value.
+   *
+   * Without it the first paint cannot tell "this account has no calendars" from "the list has not
+   * arrived", and the range query would either fetch nothing for ever or fetch everything once and
+   * then contradict itself.
+   */
+  const [calendarsLoaded, setCalendarsLoaded] = useState(false)
   /** `{ placed }` edits, `{ placed: null }` creates on `day`. */
   const [editing, setEditing] = useState<{ placed: PlacedEvent | null; day: Date } | null>(null)
   /** The day whose full event list is open (T8) — `null` when none is. */
   const [expandedDay, setExpandedDay] = useState<Date | null>(null)
   const [saving, setSaving] = useState(false)
   /**
-   * The last answer, **stamped with the window it answers about**.
+   * The event list no longer needs a stamp, and that is K-8's doing rather than a simplification.
    *
-   * Holding a bare list is what let September show August's events: the fetch for the new month was
-   * still in flight, `events` still held the old month's, and the grid drew them under the new
-   * heading as if they were real (T5). Stamping makes staleness a question the render can answer —
-   * a list whose window is not the window on screen is simply not shown.
+   * It used to hold "the last answer, stamped with the window it answers about", because the answer
+   * arrived asynchronously into component state and the fetch for a new month could land after the
+   * reader had paged again (T5). The list now comes from the replica keyed BY that window, so a
+   * month can only ever render its own rows: the staleness question the stamp answered cannot be
+   * asked any more.
    */
-  const [loaded, setLoaded] = useState<{
-    fromMs: number
-    toMs: number
-    list: PlacedEvent[]
-  } | null>(null)
   const [failed, setFailed] = useState(false)
+  /** `{ calendar }` edits, `{ calendar: null }` creates. */
+  const [editingCalendar, setEditingCalendar] = useState<{ calendar: Calendar | null } | null>(null)
+  /** The calendar the reader asked to delete, and how many events go with it (`null` = counting). */
+  const [deleting, setDeleting] = useState<{ calendar: Calendar; count: number | null } | null>(
+    null,
+  )
+  /** The calendar list on a phone, where there is no rail to put it in. */
+  const [calendarsOpen, setCalendarsOpen] = useState(false)
+  /**
+   * This account's own calendar addresses (K-10) — fetched once, read only to answer "which of
+   * these participants is me".
+   *
+   * Failure is silent and empty on purpose: a server without `ParticipantIdentity` is a server on
+   * which the RSVP bar cannot be shown, which is a missing control rather than a broken screen. The
+   * session's calendar capability was expected to carry the same address and would have cost no
+   * round trip at all — measured on v0.16.18, it does not.
+   */
+  const [myAddresses, setMyAddresses] = useState<readonly string[]>([])
+  /*
+   * Incoming calendar shares (S-1, extended to this type by S-2).
+   *
+   * No `onOpen` is passed to the strip: following the card means opening someone ELSE's calendar,
+   * and this screen is wired to `connected.accountId` throughout — `sharing/probe.ts` does not even
+   * have a `calendar` area, because there is no rail that could render one. The card announces the
+   * share; a button that led back to the reader's own calendars would be a lie.
+   */
+  const incoming = useIncomingShares('Calendar')
+  /** The `.ics` import sheet (K-4). */
+  const [importing, setImporting] = useState(false)
+  /** The calendar whose share dialog is open (S-2), or `null`. */
+  const [sharing, setSharing] = useState<Calendar | null>(null)
+  /**
+   * Whose availability is drawn behind the week grid (S-6) — a principal id, or `null` for nobody.
+   *
+   * Deliberately NOT persisted. It is a question ("when is Bob free this week?"), not a preference,
+   * and a hatch that was still there next week over somebody the reader had forgotten choosing
+   * would be read as their own calendar being wrong.
+   */
+  const [availabilityOf, setAvailabilityOf] = useState<Id | null>(null)
+  /** The directory to choose from — fetched once, and only once the picker is on screen. */
+  const [people, setPeople] = useState<readonly Principal[] | null>(null)
+  /** The answer for {@link availabilityOf}, or `null` for "no answer" — never `[]` for it. */
+  const [busy, setBusy] = useState<readonly BusyPeriod[] | null>(null)
+  /**
+   * Whether that answer is still on its way.
+   *
+   * Its own flag rather than "busy is null", because those are two different sentences and one of
+   * them is a claim: without it, the moment between choosing somebody and their diary arriving
+   * showed "No availability came back for that person" — a false statement, flashed at the reader,
+   * that reads as a failure and then vanishes.
+   */
+  const [busyPending, setBusyPending] = useState(false)
 
   /** The day the view is centred on: the route param, else today. */
   const focusDay = route.params.date
@@ -150,6 +246,22 @@ export default function CalendarPage(props: CalendarPageProps) {
   const injected = props.client
   const sessionClient = connected?.client ?? null
   const accountId = connected?.accountId ?? null
+
+  /**
+   * The server's own ceiling on participants, from the account capability (measured `20`).
+   *
+   * Read rather than assumed so the editor refuses the 21st attendee here, with a sentence, instead
+   * of letting the whole save come back `tooManyParticipants` after the reader has finished typing.
+   */
+  const maxParticipants = useMemo(() => {
+    const capability =
+      accountId === null
+        ? undefined
+        : (connected?.jmapSession?.accounts?.[accountId]?.accountCapabilities?.[
+            'urn:ietf:params:jmap:calendars'
+          ] as { maxParticipantsPerEvent?: number | null } | undefined)
+    return capability?.maxParticipantsPerEvent ?? DEFAULT_MAX_PARTICIPANTS
+  }, [connected, accountId])
   const client = useMemo(
     () =>
       injected ??
@@ -176,38 +288,196 @@ export default function CalendarPage(props: CalendarPageProps) {
   }, [focus, locale])
 
   /**
-   * Which fetch is the current one.
+   * The calendar list, read the way the folder tree is: from the replica.
    *
-   * Two loads can be in flight after quick paging, and they can answer out of order. Without this
-   * the older answer wins and the screen settles on the wrong month's data — the same class of bug
-   * as the stale list above, arriving by a different route.
+   * The network read below still runs and still wins — it is how a calendar created on this device
+   * appears before the next sweep. What changed is what happens when it does not answer: the
+   * replica's copy is drawn instead of an empty rail, which is the difference between a calendar
+   * that shows the events it already holds under their own names and one that shows nothing at all
+   * because it does not know which calendars to ask for.
    */
-  const request = useRef(0)
+  const replicaCalendars = useCalendars()
 
-  const load = useCallback(async () => {
+  /**
+   * What the rail draws and what the month filter names — the network's answer once it has one, the
+   * replica's until then. `null` while neither has answered.
+   */
+  const effectiveCalendars = useMemo<Calendar[] | null>(
+    () => (calendarsLoaded ? calendars : (replicaCalendars ?? null)),
+    [calendars, calendarsLoaded, replicaCalendars],
+  )
+
+  /**
+   * `null` until the calendars are known; then the ids whose events to ask for.
+   *
+   * The distinction matters: an EMPTY list is "every calendar is switched off" and must draw an
+   * empty month, while "not known yet" must not fetch at all — asking with no filter would draw
+   * every event for one paint and then take the hidden ones away again.
+   */
+  const visibleIds = useMemo(
+    () => (effectiveCalendars === null ? null : visibleCalendarIds(effectiveCalendars)),
+    [effectiveCalendars],
+  )
+
+  /** The month, from the replica (K-8). The engine keeps it fresh; this never fetches. */
+  const { events, syncedAt, neverSynced, refresh } = useCalendarEvents(fromMs, toMs, visibleIds)
+
+  /**
+   * Whether the availability layer has anywhere to go (S-6).
+   *
+   * The week view alone: it is the only one of the three with a time axis, and free/busy without a
+   * time axis is a list of intervals nobody can compare against anything. Rather than draw a picker
+   * in the month view that quietly does nothing, the picker itself is week-only — so there is no
+   * control on screen whose effect the reader cannot see.
+   */
+  const showAvailability = view === 'week'
+
+  /**
+   * The week on screen, as timestamps.
+   *
+   * Timestamps rather than `Date`s for the same reason `fromMs`/`toMs` are: a `Date` is a fresh
+   * object every render, so an effect keyed on one never settles.
+   */
+  const { weekFromMs, weekToMs } = useMemo(() => {
+    const range = weekRange(focus, firstDayOfWeek(locale))
+    return { weekFromMs: range.from.getTime(), weekToMs: range.to.getTime() }
+  }, [focus, locale])
+
+  /**
+   * Whose availability the hatch is, as a name.
+   *
+   * `null` until the directory has come back with a name for the chosen id, and the week view draws
+   * nothing while it is — a hatch nobody is named beside is a pattern the reader has to guess at.
+   */
+  const busyName = useMemo(() => {
+    if (availabilityOf === null) return null
+    const person = (people ?? []).find((entry) => entry.id === availabilityOf)
+    return person === undefined ? null : principalLabel(person)
+  }, [people, availabilityOf])
+
+  /**
+   * The share seam (S-2) — `Calendar/set … shareWith`, classified separately from the editor's write.
+   *
+   * `null` when there is no session, which is what removes the affordance from every row rather
+   * than letting one open a dialog that cannot save.
+   */
+  const sharingClient = useMemo(
+    () =>
+      sessionClient === null || accountId === null
+        ? null
+        : makeCalendarSharingClient(
+            sessionClient,
+            accountId,
+            currentUserPrincipalId(connected?.jmapSession ?? null, accountId),
+          ),
+    [sessionClient, accountId, connected],
+  )
+
+  const loadCalendars = useCallback(async () => {
     if (client === null) return
-    request.current += 1
-    const mine = request.current
-    // Clearing the failure at the START of the attempt, so a retry shows that it is trying rather
-    // than leaving the error on screen until it either succeeds or fails again.
-    setFailed(false)
     try {
-      const [inRange, list] = await Promise.all([
-        client.eventsInRange(new Date(fromMs), new Date(toMs)),
-        client.listCalendars(),
-      ])
-      if (mine !== request.current) return
-      setLoaded({ fromMs, toMs, list: inRange })
-      setCalendars(list)
+      setCalendars(await client.listCalendars())
+      setCalendarsLoaded(true)
+      setFailed(false)
     } catch {
-      if (mine !== request.current) return
       setFailed(true)
     }
-  }, [client, fromMs, toMs])
+  }, [client])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void loadCalendars()
+  }, [loadCalendars])
+
+  useEffect(() => {
+    if (client === null) return
+    let live = true
+    void client
+      .listParticipantIdentities()
+      .then((identities) => {
+        if (live) setMyAddresses(ownAddresses(identities))
+      })
+      // Swallowed: see `myAddresses`. Nothing on this screen depends on it except one optional bar.
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [client])
+
+  /**
+   * Try everything the screen needs again — the calendar list AND the month.
+   *
+   * Both, because they fail together and independently: the rail is a `Calendar/get` and the grid a
+   * pair of `CalendarEvent` calls, and a "Try again" that re-read only one of them would leave the
+   * other's failure on screen with no way to clear it.
+   */
+  const retry = useCallback(async () => {
+    await loadCalendars()
+    await refresh()
+  }, [loadCalendars, refresh])
+
+  /*
+   * The directory, fetched at most once and only when the picker is actually on screen.
+   *
+   * `Principal/query` + `/get` is a round trip that says nothing about the reader's own calendar, so
+   * it may not ride along with the month load. `showAvailability` gates it: the picker exists in the
+   * week view alone (that is the only view with a time axis to hatch), so a reader who never opens
+   * the week view never sends it.
+   *
+   * A failure sets an EMPTY list rather than leaving `null`: `null` is "still asking" and would spin
+   * for ever. An empty directory renders the picker disabled with its "nobody to ask" note, which is
+   * the honest outcome of a server that will not answer.
+   */
+  useEffect(() => {
+    if (client === null || !showAvailability || people !== null) return
+    let live = true
+    void client
+      .listPrincipals()
+      .then((list) => {
+        if (live) setPeople(list)
+      })
+      .catch(() => {
+        if (live) setPeople([])
+      })
+    return () => {
+      live = false
+    }
+  }, [client, showAvailability, people])
+
+  /*
+   * The busy periods for the chosen person, over the week on screen.
+   *
+   * The WEEK, not the month the events are fetched for: the hatch is only ever drawn in the week
+   * view, and asking for six weeks of somebody else's diary to draw one is six times the answer for
+   * nothing. Well inside `maxAvailabilityDuration` (`P52W1D`) either way — which the server was
+   * measured NOT to enforce, so staying inside it is this client's own discipline.
+   *
+   * `null` on failure, and `null` while in flight: both mean "nothing to draw", and neither is `[]`,
+   * which would be the claim that the person is free all week.
+   */
+  useEffect(() => {
+    if (client === null || availabilityOf === null || !showAvailability) {
+      setBusy(null)
+      setBusyPending(false)
+      return
+    }
+    let live = true
+    setBusyPending(true)
+    void client
+      .getAvailability(availabilityOf, new Date(weekFromMs), new Date(weekToMs))
+      .then((list) => {
+        if (!live) return
+        setBusy(list === null ? null : toBusyPeriods(list))
+        setBusyPending(false)
+      })
+      .catch(() => {
+        if (!live) return
+        setBusy(null)
+        setBusyPending(false)
+      })
+    return () => {
+      live = false
+    }
+  }, [client, availabilityOf, showAvailability, weekFromMs, weekToMs])
 
   const goto = useCallback(
     (date: Date): void => navigate(calendarPath(toIsoDate(date))),
@@ -235,7 +505,7 @@ export default function CalendarPage(props: CalendarPageProps) {
     try {
       const value = await action()
       setEditing(null)
-      await load()
+      await refresh()
       return { ok: true, value }
     } catch (error) {
       toast({
@@ -276,10 +546,21 @@ export default function CalendarPage(props: CalendarPageProps) {
     setEditing({ placed: null, day })
   }
 
-  const deleteEvent = async (target: PlacedEvent): Promise<void> => {
+  const deleteEvent = async (target: PlacedEvent, scope: EditScope = 'all'): Promise<void> => {
     // Narrowed here rather than relying on the early return below, which comes later in the body.
     const writer = client
     if (writer === null) return
+    /*
+     * Removing ONE occurrence of a series is an `excluded` override on the master, not a delete —
+     * so there is nothing to snapshot and nothing to restore, and the toast must not offer an Undo
+     * it cannot honour. Undoing it would mean removing the override again, which is a different
+     * write with a different failure mode; it is left out rather than approximated.
+     */
+    if (scope === 'occurrence' && needsScope(target)) {
+      const removed = await run(() => writer.excludeOccurrence(target), t('calendar.deleteFailed'))
+      if (removed.ok) toast({ title: t('calendar.occurrenceDeleted') })
+      return
+    }
     const outcome = await run(() => writer.destroyEvent(target), t('calendar.deleteFailed'))
     if (!outcome.ok) return
     const snapshot = outcome.value
@@ -311,6 +592,93 @@ export default function CalendarPage(props: CalendarPageProps) {
     })
   }
 
+  /**
+   * Ticking a calendar on or off.
+   *
+   * Optimistic, and the optimism is not decoration: the write is followed by a fresh range query,
+   * so waiting for the round trip before moving the tick would leave the reader looking at a
+   * checkbox that ignored them for as long as the server took. On refusal the tick goes back where
+   * it was and the toast says why — the list is re-read rather than patched back, so the screen
+   * ends up agreeing with the server rather than with our guess about it.
+   */
+  const toggleCalendar = async (calendar: Calendar, visible: boolean): Promise<void> => {
+    if (client === null) return
+    setCalendars((current) =>
+      current.map((entry) => (entry.id === calendar.id ? { ...entry, isVisible: visible } : entry)),
+    )
+    try {
+      await client.updateCalendar(calendar.id, { isVisible: visible })
+    } catch (error) {
+      await loadCalendars()
+      toast({
+        tone: 'danger',
+        title: t('calendar.calendars.toggleFailed'),
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+    }
+  }
+
+  const saveCalendar = async (draft: CalendarDraft): Promise<void> => {
+    if (client === null || editingCalendar === null) return
+    const target = editingCalendar.calendar
+    setSaving(true)
+    try {
+      if (target === null) await client.createCalendar(draft)
+      else await client.updateCalendar(target.id, draft)
+      setEditingCalendar(null)
+      await loadCalendars()
+    } catch (error) {
+      toast({
+        tone: 'danger',
+        title: t('calendar.calendars.saveFailed'),
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * Opens the confirmation, then fetches what it has to say.
+   *
+   * The count is asked for AFTER the dialog is on screen rather than before it, so the answer to a
+   * menu click is immediate. Until it arrives the confirm button is out of reach — see
+   * `CalendarDeleteDialog`: agreeing to lose an unknown number of events is not agreement.
+   */
+  const askDelete = async (calendar: Calendar): Promise<void> => {
+    if (client === null) return
+    setCalendarsOpen(false)
+    setDeleting({ calendar, count: null })
+    try {
+      const count = await client.countEvents(calendar.id)
+      setDeleting((current) =>
+        current?.calendar.id === calendar.id ? { calendar, count } : current,
+      )
+    } catch {
+      // A count we could not take must not become a zero. Nothing changes; the dialog keeps saying
+      // it is counting and Delete stays unavailable, which is the honest end of this path.
+    }
+  }
+
+  const confirmDelete = async (): Promise<void> => {
+    if (client === null || deleting === null) return
+    setSaving(true)
+    try {
+      await client.destroyCalendar(deleting.calendar.id)
+      setDeleting(null)
+      await loadCalendars()
+      toast({ title: t('calendar.calendars.deleted', { name: deleting.calendar.name }) })
+    } catch (error) {
+      toast({
+        tone: 'danger',
+        title: t('calendar.calendars.deleteFailed'),
+        ...(refusalReason(error) === null ? {} : { description: refusalReason(error) }),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (client === null) {
     return (
       <div className={styles.page}>
@@ -318,10 +686,6 @@ export default function CalendarPage(props: CalendarPageProps) {
       </div>
     )
   }
-
-  /** Only ever the list that answers about the window on screen — see `loaded`. */
-  const events =
-    loaded !== null && loaded.fromMs === fromMs && loaded.toMs === toMs ? loaded.list : null
 
   const days = monthGrid(focus, locale, today)
   const week = weekDays(focus, firstDayOfWeek(locale))
@@ -433,6 +797,26 @@ export default function CalendarPage(props: CalendarPageProps) {
             align="end"
             items={[
               { id: 'today', label: t('calendar.today'), onSelect: () => goto(today) },
+              /* Below 40em there is no rail to hold the calendar list, so it becomes a screen-high
+                 sheet from the one menu this screen already has. Same list, same controls — the
+                 difference is where it is anchored, which is the difference Apple's own calendar
+                 makes between an iPad and an iPhone. */
+              {
+                id: 'calendars',
+                label: t('calendar.calendars.open'),
+                onSelect: () => setCalendarsOpen(true),
+              },
+              // Importing a file is rare and deliberate; it belongs in a menu on every viewport,
+              // not beside the one control this screen uses constantly.
+              ...(online && calendars.length > 0
+                ? [
+                    {
+                      id: 'import',
+                      label: t('calendar.import.open'),
+                      onSelect: () => setImporting(true),
+                    },
+                  ]
+                : []),
               ...VIEWS.map((id) => ({
                 id,
                 label: VIEW_LABELS[id](t),
@@ -444,19 +828,33 @@ export default function CalendarPage(props: CalendarPageProps) {
             ]}
           />
         ) : (
-          <div className={styles.views}>
-            {VIEWS.map((id) => (
-              <Button
-                key={id}
-                variant={view === id ? 'secondary' : 'ghost'}
-                size="sm"
-                aria-pressed={view === id}
-                onClick={() => setView(id)}
-              >
-                {VIEW_LABELS[id](t)}
-              </Button>
-            ))}
-          </div>
+          <>
+            <div className={styles.views}>
+              {VIEWS.map((id) => (
+                <Button
+                  key={id}
+                  variant={view === id ? 'secondary' : 'ghost'}
+                  size="sm"
+                  aria-pressed={view === id}
+                  onClick={() => setView(id)}
+                >
+                  {VIEW_LABELS[id](t)}
+                </Button>
+              ))}
+            </div>
+            {/* From 40em up there is no overflow menu to hide it in, so import is its own control —
+                an icon button, beside `+` and quieter than it. */}
+            <IconButton
+              label={t('calendar.import.open')}
+              variant="ghost"
+              size="sm"
+              disabled={calendars.length === 0}
+              unavailableReason={online ? undefined : t('calendar.offline')}
+              onClick={() => setImporting(true)}
+            >
+              <Import aria-hidden="true" />
+            </IconButton>
+          </>
         )}
         {/* The primary action, which this screen had none of on any viewport: it creates on the day
             in focus, which is what Apple Calendar's does — and since a click on a day now MOVES the
@@ -478,63 +876,130 @@ export default function CalendarPage(props: CalendarPageProps) {
       {phoneTitle && <h1 className={styles.pageTitle}>{heading}</h1>}
 
       {/*
-        Exactly ONE of: the failure, the spinner, the view.
+        The month and the calendars, side by side from 40em up.
 
-        All three used to be able to stand in the DOM at once, and the combination was the worst of
-        the three: a red "could not be loaded" over a grid that looked complete and was not (T5).
-        A failure with usable data for THIS window keeps the data and reports in one line above it;
-        a failure with nothing to show takes the whole pane, which is where a Try again belongs.
+        The rail is the same shape as the address-book rail and the folder tree, because it is the
+        same kind of thing: a short list of containers, one line each, that decides what the pane
+        beside it shows. Below 40em it is not narrowed — it is not rendered, and the list lives in a
+        sheet instead (see the view menu above). A 215px rail beside a 390px phone is two panes that
+        both lose.
       */}
-      {failed && events === null ? (
-        <EmptyState
-          tone="error"
-          icon={TriangleAlert}
-          title={t('calendar.loadFailed')}
-          action={
-            <Button variant="secondary" onClick={() => void load()}>
-              {t('calendar.retry')}
-            </Button>
-          }
-        />
-      ) : (
-        <>
-          {failed && (
-            <div className={styles.loadError} role="alert">
-              <TriangleAlert aria-hidden="true" />
-              <span className={styles.loadErrorText}>{t('calendar.refreshFailed')}</span>
-              <Button variant="secondary" size="sm" onClick={() => void load()}>
-                {t('calendar.retry')}
-              </Button>
-            </div>
-          )}
-          {events === null ? (
-            <div className={styles.loading}>
-              <Spinner label={t('ui.spinner.label')} />
-            </div>
-          ) : view === 'month' ? (
-            <MonthView
-              days={days}
-              byDay={byDay}
-              locale={locale}
-              focus={focus}
-              onPick={goto}
-              onExpand={setExpandedDay}
-              onOpen={openEvent}
+      <div className={styles.body}>
+        {tier !== 'phone' && (
+          <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
+            <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
+            <CalendarList
+              calendars={calendars}
+              canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
+              disabled={saving || !online}
+              onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
+              onCreate={() => setEditingCalendar({ calendar: null })}
+              onEdit={(calendar) => setEditingCalendar({ calendar })}
+              onDelete={(calendar) => void askDelete(calendar)}
+              {...(sharingClient === null || !online
+                ? {}
+                : { onShare: (calendar: Calendar) => setSharing(calendar) })}
             />
-          ) : view === 'week' ? (
-            <WeekView
-              days={week}
-              events={events}
-              today={today}
-              focus={focus}
-              onOpen={openEvent}
-              onPick={goto}
+            {/* The availability layer's control, under the list of layers it joins — a calendar is
+                "whose events are drawn", this is "whose free/busy is drawn behind them". */}
+            {showAvailability && (
+              <AvailabilityPicker
+                people={people}
+                value={availabilityOf}
+                answered={busy !== null}
+                pending={busyPending}
+                disabled={!online}
+                onChange={setAvailabilityOf}
+              />
+            )}
+          </aside>
+        )}
+        <div className={styles.main}>
+          {/*
+            Exactly ONE of: the "nothing here yet" pane, the spinner, the view.
+
+            The order is what K-8 changed. It used to be failure-first, so ONE refused request turned
+            a month the device already held into "The calendar could not be loaded" — the reader was
+            shown an error instead of their own data. Now a window that has ever synced is DRAWN,
+            whatever the network is doing, and the fact that it is not updating right now is said in
+            one line above it. The full-pane state is reserved for the case where there is genuinely
+            nothing to draw: a month this device has never synced.
+
+            The failure line still exists, and it is still one line: a stale grid with a note is a far
+            better answer than a red pane over data (T5).
+          */}
+          {events !== undefined && neverSynced && events.length === 0 ? (
+            <EmptyState
+              tone={online ? 'error' : 'empty'}
+              icon={online ? TriangleAlert : CloudOff}
+              title={online ? t('calendar.loadFailed') : t('calendar.offlineNever.title')}
+              {...(online
+                ? {
+                    action: (
+                      <Button variant="secondary" onClick={() => void retry()}>
+                        {t('calendar.retry')}
+                      </Button>
+                    ),
+                  }
+                : { description: t('calendar.offlineNever.body') })}
             />
           ) : (
-            <AgendaView events={events} today={today} onOpen={openEvent} />
+            <>
+              {/*
+                Apple's answer to "the data on screen is not live": say so quietly, beside the data,
+                and never take the data away. `role="status"` rather than `alert` — nothing is wrong,
+                and a screen reader should hear it after whatever the reader was doing, not instead.
+              */}
+              {!online && events !== undefined && (
+                <div className={styles.loadError} role="status">
+                  <CloudOff aria-hidden="true" />
+                  <span className={styles.loadErrorText}>
+                    {syncedAt > 0
+                      ? t('calendar.offlineStale', { when: formatRelativeTime(syncedAt) })
+                      : t('calendar.offlineNotUpdating')}
+                  </span>
+                </div>
+              )}
+              {online && failed && (
+                <div className={styles.loadError} role="alert">
+                  <TriangleAlert aria-hidden="true" />
+                  <span className={styles.loadErrorText}>{t('calendar.refreshFailed')}</span>
+                  <Button variant="secondary" size="sm" onClick={() => void retry()}>
+                    {t('calendar.retry')}
+                  </Button>
+                </div>
+              )}
+              {events === undefined ? (
+                <div className={styles.loading}>
+                  <Spinner label={t('ui.spinner.label')} />
+                </div>
+              ) : view === 'month' ? (
+                <MonthView
+                  days={days}
+                  byDay={byDay}
+                  locale={locale}
+                  focus={focus}
+                  onPick={goto}
+                  onExpand={setExpandedDay}
+                  onOpen={openEvent}
+                />
+              ) : view === 'week' ? (
+                <WeekView
+                  days={week}
+                  events={events}
+                  today={today}
+                  focus={focus}
+                  onOpen={openEvent}
+                  onPick={goto}
+                  {...(busy === null || busyName === null ? {} : { busy, busyName })}
+                />
+              ) : (
+                <AgendaView events={events} today={today} onOpen={openEvent} />
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </div>
 
       {expandedDay !== null && (
         <DayDialog
@@ -545,21 +1010,116 @@ export default function CalendarPage(props: CalendarPageProps) {
         />
       )}
 
+      {/* The phone's calendar list: the same component, in a screen-high sheet. `size="lg"` is what
+          the Dialog offers that comes closest to Apple's presentation, and below 40em the panel is
+          full-bleed anyway. */}
+      {calendarsOpen && (
+        <Dialog
+          open
+          onClose={() => setCalendarsOpen(false)}
+          size="lg"
+          title={t('calendar.calendars.title')}
+        >
+          <div className={styles.calendarSheet}>
+            <CalendarList
+              calendars={calendars}
+              heading={false}
+              canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
+              disabled={saving || !online}
+              onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
+              onCreate={() => {
+                setCalendarsOpen(false)
+                setEditingCalendar({ calendar: null })
+              }}
+              onEdit={(calendar) => {
+                setCalendarsOpen(false)
+                setEditingCalendar({ calendar })
+              }}
+              onDelete={(calendar) => void askDelete(calendar)}
+              {...(sharingClient === null || !online
+                ? {}
+                : {
+                    onShare: (calendar: Calendar) => {
+                      setCalendarsOpen(false)
+                      setSharing(calendar)
+                    },
+                  })}
+            />
+            {showAvailability && (
+              <AvailabilityPicker
+                people={people}
+                value={availabilityOf}
+                answered={busy !== null}
+                pending={busyPending}
+                disabled={!online}
+                onChange={setAvailabilityOf}
+              />
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      {sharing !== null && sharingClient !== null && (
+        <Suspense fallback={null}>
+          <CalendarShareDialog
+            calendarId={sharing.id}
+            name={sharing.name}
+            // The map the last `Calendar/get` returned — `CALENDAR_PROPERTIES` names `shareWith`, so
+            // it is really here and the dialog needs no fetch of its own.
+            shareWith={sharing.shareWith}
+            client={sharingClient}
+            onClose={() => setSharing(null)}
+            // Re-read, so the row's "shared" marker is the server's answer rather than this
+            // screen's guess — and so the dialog, which adopts the prop, shows what really landed.
+            onChanged={() => void loadCalendars()}
+          />
+        </Suspense>
+      )}
+
+      {editingCalendar !== null && (
+        <CalendarDialog
+          calendar={editingCalendar.calendar}
+          busy={saving}
+          onCancel={() => setEditingCalendar(null)}
+          onSubmit={(draft) => void saveCalendar(draft)}
+        />
+      )}
+
+      {deleting !== null && (
+        <CalendarDeleteDialog
+          calendar={deleting.calendar}
+          eventCount={deleting.count}
+          busy={saving}
+          onCancel={() => setDeleting(null)}
+          onConfirm={() => void confirmDelete()}
+        />
+      )}
+
+      {importing && (
+        <Suspense fallback={null}>
+          <IcsImportDialog
+            client={client}
+            calendars={calendars}
+            onClose={() => setImporting(false)}
+            onImported={() => {
+              setImporting(false)
+              void refresh()
+            }}
+          />
+        </Suspense>
+      )}
+
       {editing !== null &&
         (editing.placed !== null && refuseEdit(editing.placed) !== null ? (
-          // Shown, never edited — see `refuseEdit` for the two reasons and why they read
-          // differently.
+          // Shown, never edited — one reason left, see `refuseEdit`. A SERIES is no longer one of
+          // them: it opens the editor and answers the scope question after Save (K-2).
           <Dialog
             open
             onClose={() => setEditing(null)}
             size="sm"
             title={editing.placed.event.title || t('calendar.untitled')}
           >
-            <p className={styles.readOnlyNote}>
-              {refuseEdit(editing.placed) === 'series'
-                ? t('calendar.event.recurringReadOnly')
-                : t('calendar.event.unresolvedReadOnly')}
-            </p>
+            <p className={styles.readOnlyNote}>{t('calendar.event.unresolvedReadOnly')}</p>
             <EventFacts event={editing.placed.event} />
           </Dialog>
         ) : (
@@ -569,26 +1129,129 @@ export default function CalendarPage(props: CalendarPageProps) {
               defaultDate={editing.day}
               calendars={calendars}
               busy={saving}
+              isSeries={editing.placed !== null && needsScope(editing.placed)}
+              ownAddresses={myAddresses}
+              // `mayRSVP` is read from the calendar the event is IN, not from the account: a shared
+              // calendar can grant reading and refuse answering, and a bar that always fails is
+              // worse than no bar.
+              mayRsvp={rsvpAllowed(calendars, editing.placed)}
+              maxParticipants={maxParticipants}
               onCancel={() => setEditing(null)}
-              onSubmit={(draft) => {
+              onSubmit={(draft, scope, invite) => {
                 const target = editing.placed
                 void run(
                   () =>
-                    target === null ? client.createEvent(draft) : client.updateEvent(target, draft),
+                    target === null
+                      ? client.createEvent(draft, invite)
+                      : client.updateEvent(target, draft, scope, invite),
                   t('calendar.saveFailed'),
                 )
               }}
+              onRsvp={
+                editing.placed === null
+                  ? undefined
+                  : (key, status) => {
+                      const target = editing.placed as PlacedEvent
+                      void run(() => client.rsvp(target, key, status), t('calendar.rsvpFailed'))
+                    }
+              }
               onDestroy={
                 editing.placed === null
                   ? undefined
-                  : () => {
+                  : (scope) => {
                       const target = editing.placed as PlacedEvent
-                      void deleteEvent(target)
+                      void deleteEvent(target, scope)
                     }
               }
             />
           </Suspense>
         ))}
+    </div>
+  )
+}
+
+/**
+ * May the reader answer an invitation on this event?
+ *
+ * Asked of the CALENDAR the event is in, because that is where the right lives: `myRights.mayRSVP`
+ * is per calendar, and a calendar shared read-only grants everything except this. An event in a
+ * calendar this list does not hold answers `false` — an unknown right is not a granted one.
+ */
+function rsvpAllowed(calendars: readonly Calendar[], placed: PlacedEvent | null): boolean {
+  if (placed === null) return false
+  const ids = Object.keys(placed.event.calendarIds ?? {})
+  return calendars.some(
+    (calendar) => ids.includes(calendar.id) && calendar.myRights?.mayRSVP === true,
+  )
+}
+
+interface AvailabilityPickerProps {
+  /** The directory, or `null` while it is still being fetched. */
+  readonly people: readonly Principal[] | null
+  /** The chosen principal, or `null` for nobody. */
+  readonly value: Id | null
+  /** Whether the server has actually answered for {@link value} — see the note in the body. */
+  readonly answered: boolean
+  /** Whether that answer is still on its way. Distinct from `!answered`, which is a claim. */
+  readonly pending: boolean
+  readonly disabled: boolean
+  onChange: (principalId: Id | null) => void
+}
+
+/**
+ * "Show availability: …" — the control behind the week view's hatched layer (S-6).
+ *
+ * **A native `<Select>`, and one line of explanation.** The alternative that was considered and
+ * rejected is a participant picker inside the event editor: an availability answer is only useful
+ * next to the reader's OWN commitments, and the editor has no time axis to put it on — it would
+ * have needed a timeline widget of its own, fetched per keystroke, to say anything more than a
+ * yes/no about an instant that may not even be chosen yet. This costs one round trip per person per
+ * week, reuses the week grid's geometry entirely, and answers the question people actually have
+ * before they create the meeting.
+ *
+ * **It needs no share of any kind**, which is the measurement that makes it worth building at all:
+ * `Principal/getAvailability` is answerable about anyone in the directory, and it returns times
+ * without titles. So a reader may plan around a colleague they have no access to whatsoever.
+ *
+ * `answered === false` with somebody chosen is the honest empty case: the request failed, or the
+ * server has no such method. It says so rather than leaving an unhatched week to be read as "free".
+ */
+function AvailabilityPicker({
+  people,
+  value,
+  answered,
+  pending,
+  disabled,
+  onChange,
+}: AvailabilityPickerProps) {
+  const { t } = useTranslation()
+  const selectId = useId()
+  const empty = people !== null && people.length === 0
+
+  return (
+    <div className={styles.availability}>
+      <label className={styles.availabilityLabel} htmlFor={selectId}>
+        {t('calendar.availability.label')}
+      </label>
+      {/* A native select on every viewport: on a phone this is the platform's own picker wheel,
+          which is a 44px target and a gesture people already know. */}
+      <Select
+        id={selectId}
+        value={value ?? ''}
+        disabled={disabled || people === null || empty}
+        onChange={(event) => onChange(event.target.value === '' ? null : event.target.value)}
+      >
+        <option value="">{t('calendar.availability.nobody')}</option>
+        {(people ?? []).map((person) => (
+          <option key={person.id} value={person.id}>
+            {principalLabel(person)}
+          </option>
+        ))}
+      </Select>
+      {empty && <p className={styles.availabilityNote}>{t('calendar.availability.noPeople')}</p>}
+      {value !== null && !answered && !pending && (
+        <p className={styles.availabilityNote}>{t('calendar.availability.unavailable')}</p>
+      )}
     </div>
   )
 }

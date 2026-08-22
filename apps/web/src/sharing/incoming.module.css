@@ -1,0 +1,36 @@
+/* The incoming-share strip (S-1). Deliberately the quietest card in the app: a subtle surface, no
+   accent bar, no icon. It is news, not an alarm — the moment it looks like an error the reader
+   learns to dismiss it without reading, which is the one failure this feature cannot survive. */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  padding: var(--waxwing-space-3);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.text {
+  margin: 0;
+  font-size: var(--waxwing-text-sm);
+  color: var(--waxwing-text);
+  /* The folder name can be long and the rail is narrow. Wrapping is right here — an ellipsised
+     sentence would hide the very word that says which folder this is about. */
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--waxwing-space-1);
+}

@@ -159,3 +159,74 @@ describe('a menu near the bottom of the window opens upward', () => {
     expect(normal.className).not.toContain('flipped')
   })
 })
+
+/**
+ * A menu never leaves the viewport, however many items it has.
+ *
+ * Flipping alone was never enough, and the folder-actions menu is where that showed. It carries nine
+ * entries since "Folder info…" and "Share…" were added; measured on a 390 × 844 phone it is 406 px
+ * tall. The old rule asked whether 240 px fitted below the trigger, 279 px did, so the menu opened
+ * downward and ran to y = 975 — 131 px past the bottom of the screen, with its last two items
+ * unreachable by pointer and invisible.
+ *
+ * Two halves, and both are needed. The ESTIMATE has to know how tall this menu wants to be, or the
+ * flip keeps declining for anything longer than six items. The CEILING has to exist, or a menu
+ * taller than both sides is merely off the other edge instead — nine items do not fit in half of a
+ * phone whichever way they open.
+ *
+ * jsdom lays nothing out, so the geometry is supplied. That is the whole of the decision anyway:
+ * arithmetic on a rect, a viewport and a count.
+ */
+describe('a long menu is bounded by the viewport', () => {
+  const rect = (top: number) =>
+    ({
+      top,
+      bottom: top + 40,
+      left: 10,
+      right: 44,
+      width: 34,
+      height: 40,
+      x: 10,
+      y: top,
+    }) as DOMRect
+
+  const nine = () =>
+    Array.from({ length: 9 }, (_, index) => ({
+      id: `i${index}`,
+      label: `Item ${index}`,
+      onSelect: () => {},
+    }))
+
+  it('flips a nine-item menu that the old six-item estimate said would fit', async () => {
+    const user = userEvent.setup()
+    render(<Menu triggerLabel="Actions" trigger="A" items={nine()} />)
+    const trigger = screen.getByRole('button', { name: 'Actions' })
+
+    // The measured case: a folder row at y = 525 in an 844px phone. 275px below, 521px above.
+    window.innerHeight = 844
+    trigger.getBoundingClientRect = () => rect(525)
+    await user.click(trigger)
+
+    const menu = screen.getByRole('menu')
+    // 275px is more than the old fixed 240, which is exactly why this used to open downward.
+    expect(menu.className, 'nine items do not fit in 275px').toContain('flipped')
+    // And it is given the room above as a ceiling, so `translateY(-100%)` cannot take it past y = 0.
+    expect(menu.style.maxBlockSize).toBe('521px')
+  })
+
+  it('bounds a menu that opens downward to the room below it', async () => {
+    const user = userEvent.setup()
+    render(<Menu triggerLabel="Actions" trigger="A" items={nine()} />)
+    const trigger = screen.getByRole('button', { name: 'Actions' })
+
+    window.innerHeight = 844
+    trigger.getBoundingClientRect = () => rect(60)
+    await user.click(trigger)
+
+    const menu = screen.getByRole('menu')
+    expect(menu.className).not.toContain('flipped')
+    // 844 − 100 − 4. The menu is shorter than that today; the ceiling is what keeps it true when a
+    // tenth item is added by someone who never reads this file.
+    expect(menu.style.maxBlockSize).toBe('740px')
+  })
+})

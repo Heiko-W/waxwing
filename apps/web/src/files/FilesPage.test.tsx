@@ -7,14 +7,25 @@
  * someone later "simplifies" the render into a single `<iframe>` for everything.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { FileNode } from '@waxwing/jmap'
+import type { FileNode, FileNodeCapability } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SessionContext } from '../app/session/context'
+import type { SessionContextValue } from '../app/session/types'
+import {
+  deleteFileNodes,
+  putFileNodes,
+  type ReplicaDb,
+  ReplicaProvider,
+  setFileTreeState,
+} from '../sync'
+import { clearEngines, type SyncEngine, setEngineFor } from '../sync/engine'
+import { freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import FilesPage from './FilesPage'
-import type { FilesClient } from './files-client'
+import type { FileSearchHit, FilesClient } from './files-client'
 
 function node(over: Partial<FileNode> & { id: string; name: string }): FileNode {
   return {
@@ -46,12 +57,23 @@ function node(over: Partial<FileNode> & { id: string; name: string }): FileNode 
 
 const download = vi.fn(async () => new Blob(['bytes']))
 let listed: FileNode[] = []
+/** What `list` reports about its own completeness — the B-6 seam. */
+let truncated = false
+/** What `search` answers with, paired with the folder each hit was found in. */
+let searchHits: FileSearchHit[] = []
+/** Makes the ENGINE's re-read fail — the outage that used to be `list` throwing. */
+let refreshFails = false
+/** When the replica was last walked; `0` = never, which is a different screen from "empty". */
+let syncedAt = 1
 
 const client: FilesClient = {
-  list: async () => listed,
+  list: async () => ({ nodes: listed, truncated }),
+  search: async () => searchHits,
+  ancestors: async () => [],
   upload: async () => null,
   createFolder: async () => {},
   rename: async () => {},
+  move: async () => {},
   destroy: async () => {},
   download,
   searchPrincipals: async () => [],
@@ -77,16 +99,94 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
+afterEach(async () => {
   listed = []
+  searchHits = []
+  truncated = false
+  refreshFails = false
+  syncedAt = 1
+  clearEngines()
+  // Unmount before the database goes: a live query still subscribed to a deleted Dexie handle
+  // raises `DatabaseClosedError` as an unhandled rejection, outside any test.
+  cleanup()
+  await db?.delete()
 })
 
-function renderPage() {
+/**
+ * The session the screen reads its LIMITS from, measured against Stalwart 0.16.18.
+ *
+ * Not decoration in a test: `fileNodeQuerySortOptions` is what the sort menu may offer (a
+ * comparator this server has not advertised fails the whole request, not just the sort), and
+ * `forbiddenNameChars` / `forbiddenNodeNames` are what a name is refused for before the round trip.
+ * Rendering without a session leaves both unanswered, which is a different screen from the one that
+ * ships.
+ */
+const CAPABILITY: FileNodeCapability = {
+  maxFileNodeDepth: null,
+  maxSizeFileNodeName: 255,
+  forbiddenNameChars: '/<>:"\\|?*',
+  forbiddenNodeNames: ['.', '..', 'CON', 'PRN', 'AUX', 'NUL'],
+  fileNodeQuerySortOptions: ['name', 'size', 'nodeType'],
+}
+
+const session = {
+  connected: {
+    client: {},
+    accountId: 'a',
+    // Nothing shared: the "Shared with me" section is absent and this is the pre-S-4 screen.
+    delegated: [],
+    jmapSession: {
+      accounts: { a: { accountCapabilities: { 'urn:ietf:params:jmap:filenode': CAPABILITY } } },
+    },
+  },
+} as unknown as SessionContextValue
+
+const ACC = 'a'
+let db: ReplicaDb
+
+/**
+ * The reader's own file tree lives in the replica now (D-4), so the screen reads Dexie rather than
+ * the injected client. `listed` and `truncated` — which every test in this file already writes — are
+ * seeded into it, and the fake engine's `refreshFileTree` re-seeds from whatever they hold at that
+ * moment, which is how a test changes what a reload finds.
+ *
+ * The client is still injected, and still does everything it did: writes, downloads and shares.
+ */
+function seedTree(): Promise<void> {
+  return (async () => {
+    const known = await db.fileNodes.where('accountId').equals(ACC).primaryKeys()
+    const fresh = new Set(listed.map((node) => node.id))
+    const gone = known.map(([, id]) => id).filter((id) => !fresh.has(id))
+    if (gone.length > 0) await deleteFileNodes(db, ACC, gone)
+    await putFileNodes(db, ACC, [...listed])
+    await setFileTreeState(db, ACC, { syncedAt, truncated })
+  })().catch(() => {})
+}
+
+function mount(injected: FilesClient = client) {
+  db = freshDb()
+  void seedTree()
+  setEngineFor(ACC, {
+    accountId: ACC,
+    refreshFileTree: async () => {
+      if (refreshFails) return false
+      await seedTree()
+      return true
+    },
+  } as unknown as SyncEngine)
   return render(
-    <ToastProvider>
-      <FilesPage client={client} />
-    </ToastProvider>,
+    <SessionContext.Provider value={session}>
+      <ToastProvider>
+        <ReplicaProvider accountId={ACC} db={db}>
+          <FilesPage client={injected} />
+        </ReplicaProvider>
+      </ToastProvider>
+    </SessionContext.Provider>,
   )
+}
+
+function renderPage() {
+  return mount()
 }
 
 async function showing(name: string) {
@@ -109,6 +209,7 @@ describe('which files offer a preview', () => {
     const labels = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
     expect(labels.filter((label) => label?.includes('archive.zip'))).toEqual([
       'Rename archive.zip',
+      'Move archive.zip',
       'Download archive.zip',
       'Delete archive.zip',
     ])
@@ -259,11 +360,7 @@ describe('renaming a node', () => {
       },
     }
     listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
-    render(
-      <ToastProvider>
-        <FilesPage client={withRename} />
-      </ToastProvider>,
-    )
+    mount(withRename)
     await showing('notes.txt')
 
     await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
@@ -324,19 +421,14 @@ describe('a write whose reload does not come back', () => {
     const uploaded: string[] = []
     const failing: FilesClient = {
       ...client,
-      list: async () => {
-        throw new Error('400 notRequest')
-      },
       upload: async (file) => {
         uploaded.push(file.name)
         return node({ id: '9', name: file.name })
       },
     }
-    const { container } = render(
-      <ToastProvider>
-        <FilesPage client={failing} />
-      </ToastProvider>,
-    )
+    // The re-read is the engine's now, so that is where the outage goes.
+    refreshFails = true
+    const { container } = mount(failing)
     await screen.findByText('The files could not be loaded.')
 
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
@@ -344,6 +436,63 @@ describe('a write whose reload does not come back', () => {
 
     expect(uploaded).toEqual(['note.txt'])
     expect(await screen.findByText(/could not be reloaded/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * Files offline (D-4).
+ *
+ * The screen used to answer a lost connection with "Your files could not be loaded." over a folder
+ * the device had listed a minute earlier. It reads the replica now, so the listing survives; what
+ * cannot work without a line is offered greyed out with a reason, never removed.
+ */
+describe('offline', () => {
+  afterEach(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+
+  it('keeps showing the folder it already had, and says it is not updating', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    // Every request this screen could make fails; the rows come out of IndexedDB.
+    refreshFails = true
+    mount({
+      ...client,
+      list: async () => {
+        throw new Error('offline')
+      },
+    })
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toMatch(/Not updating while offline/)
+    // And emphatically NOT the failure the screen used to show over exactly this data.
+    expect(screen.queryByText('The files could not be loaded.')).not.toBeInTheDocument()
+  })
+
+  it('says a tree it has never synced is not synced, rather than reporting a failure', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = []
+    refreshFails = true
+    // A replica that has NEVER been walked — `syncedAt: 0`, which is a different sentence from
+    // "this folder is empty". Set BEFORE mounting: seeding races the render otherwise.
+    syncedAt = 0
+    const view = mount()
+
+    expect(await screen.findByText('Your files have not been synced yet')).toBeInTheDocument()
+    expect(view.container.textContent).not.toContain('The files could not be loaded.')
+  })
+
+  it('offers Upload and New folder greyed out with a reason, never hidden', async () => {
+    // Apple's rule, and the one this screen already followed: what cannot work offline is visible
+    // and explained. A control that disappears teaches the reader the feature is gone.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount()
+    await showing('notes.txt')
+
+    expect(screen.getByRole('button', { name: /New folder/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Upload/ })).toBeInTheDocument()
   })
 })
 
@@ -373,5 +522,581 @@ describe('accessibility', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
     await screen.findByLabelText('New name')
     await expectNoA11yViolations()
+  })
+})
+
+/**
+ * D-1 — moving, which did not exist.
+ *
+ * The server changes `parentId` without complaint and the client offered no way to ask, so folders
+ * could be created and nothing could be put in one. That makes the tree decoration, and it is why
+ * this is the first of the four 2026-08-21 findings.
+ *
+ * ADR-012 is why the picker is a dialog rather than a drag: HTML5 drag does not reach the phone, so
+ * a drag-only move would be no move at all there. What is asserted below is therefore the whole
+ * mechanism on every viewport — a control, a destination, and the write.
+ */
+describe('moving a node', () => {
+  function withMove() {
+    const moved: [readonly string[], string | null][] = []
+    const spy: FilesClient = {
+      ...client,
+      move: async (ids, parentId) => {
+        moved.push([[...ids], parentId])
+      },
+    }
+    return { moved, spy }
+  }
+
+  it('offers the control on every node, and sends the chosen destination', async () => {
+    const { moved, spy } = withMove()
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({ id: '1', name: 'notes.txt', type: 'text/plain' }),
+    ]
+    mount(spy)
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move notes.txt' }))
+    // The picker walks the tree rather than listing it flat: a file tree has no replica and no
+    // bound on its depth, so "every folder at once" would be a crawl of the account.
+    const picker = await screen.findByRole('dialog', { name: /Move “notes.txt”/ })
+    await userEvent.click(await within(picker).findByRole('button', { name: 'invoices' }))
+    await userEvent.click(await within(picker).findByRole('button', { name: 'Move to invoices' }))
+
+    await waitFor(() => expect(moved).toEqual([[['1'], 'd1']]))
+  })
+
+  it('refuses to move a node into the folder it is already in', async () => {
+    const { spy } = withMove()
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain', parentId: null })]
+    mount(spy)
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move notes.txt' }))
+    // The picker opens at the root, which is where this node already lives. A round trip and a
+    // reload that change nothing are not a move.
+    expect(await screen.findByRole('button', { name: 'Move to Files' })).toBeDisabled()
+  })
+
+  it('never offers a folder as a destination for itself', async () => {
+    const { spy } = withMove()
+    listed = [node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null })]
+    mount(spy)
+    await showing('invoices')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move invoices' }))
+    const dialog = await screen.findByRole('dialog')
+    // Structural rather than a check: the folder being moved is absent from every level the picker
+    // lists, so its own descendants cannot be walked to either.
+    expect(within(dialog).queryByRole('button', { name: 'invoices' })).not.toBeInTheDocument()
+  })
+
+  it('offers to put it back (ADR-021), because a move is the one file write that reverses', async () => {
+    const { moved, spy } = withMove()
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({ id: '1', name: 'notes.txt', type: 'text/plain', parentId: null }),
+    ]
+    mount(spy)
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move notes.txt' }))
+    const picker = await screen.findByRole('dialog')
+    await userEvent.click(await within(picker).findByRole('button', { name: 'invoices' }))
+    await userEvent.click(await within(picker).findByRole('button', { name: 'Move to invoices' }))
+    await waitFor(() => expect(moved).toHaveLength(1))
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+
+    // Back to where it came from — `null`, the root — not to wherever the screen happens to be.
+    await waitFor(() => expect(moved[1]).toEqual([['1'], null]))
+  })
+
+  it('offers the control even where myRights says nothing is allowed (D-7)', async () => {
+    // Measured server behaviour: under a shared FOLDER the download access is inherited correctly
+    // while every flag on the CHILD comes back false. Gating move on `mayRename` would hide it
+    // exactly where a grantee has been given the run of a folder.
+    const { spy } = withMove()
+    listed = [
+      node({
+        id: '1',
+        name: 'shared.txt',
+        type: 'text/plain',
+        myRights: {
+          mayRead: false,
+          mayAddChildren: false,
+          mayRename: false,
+          mayDelete: false,
+          mayModifyContent: false,
+          mayShare: false,
+        },
+      }),
+    ]
+    mount(spy)
+    await showing('shared.txt')
+
+    expect(screen.getByRole('button', { name: 'Move shared.txt' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * B-7 — the one delete in this app that never asked.
+ *
+ * Every other destroy in Waxwing is either confirmed (mail) or undoable (triage). This one was
+ * neither: one tap on an icon-only button, and the file was gone from a server that keeps no trash
+ * for file nodes. Undo was considered and cannot be built — `FileNode/set destroy` has nowhere to
+ * restore from, and an Undo that silently does nothing is worse than no Undo at all. So the
+ * question is asked first, which is also what the Finder does for a delete that skips the trash.
+ */
+describe('deleting a node', () => {
+  function withDestroy() {
+    const destroyed: string[][] = []
+    const spy: FilesClient = {
+      ...client,
+      destroy: async (ids) => {
+        destroyed.push([...ids])
+      },
+    }
+    return { destroyed, spy }
+  }
+
+  it('asks before it destroys anything', async () => {
+    const { destroyed, spy } = withDestroy()
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount(spy)
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete notes.txt' }))
+
+    await screen.findByText(/permanently deleted/i)
+    expect(destroyed).toEqual([])
+  })
+
+  it('destroys once the question is answered', async () => {
+    const { destroyed, spy } = withDestroy()
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount(spy)
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete notes.txt' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(destroyed).toEqual([['1']]))
+  })
+
+  it('destroys nothing when the question is declined', async () => {
+    const { destroyed, spy } = withDestroy()
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount(spy)
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete notes.txt' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(destroyed).toEqual([])
+  })
+
+  it('warns that a folder takes its contents with it', async () => {
+    const { spy } = withDestroy()
+    listed = [node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null })]
+    mount(spy)
+    await showing('invoices')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete invoices' }))
+
+    expect(await screen.findByText(/Everything inside/i)).toBeInTheDocument()
+  })
+})
+
+/**
+ * D-2 — one file per operation, both ways.
+ *
+ * Selecting is a MODE, entered on purpose: an ordinary tap still opens a folder, which is what a
+ * tap on a file row means every other day. That is iOS Files' arrangement and the reason it works
+ * on a phone, where there is no modifier key to hold.
+ */
+describe('selecting several nodes', () => {
+  const open = () => userEvent.click(screen.getByRole('button', { name: 'List options' }))
+
+  it('takes several files in one trip to the picker', async () => {
+    const uploaded: string[] = []
+    const spy: FilesClient = {
+      ...client,
+      upload: async (file) => {
+        uploaded.push(file.name)
+        return null
+      },
+    }
+    listed = []
+    const { container } = mount(spy)
+    await screen.findByText('This folder is empty.')
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input.multiple).toBe(true)
+    await userEvent.upload(input, [
+      new File(['a'], 'one.txt', { type: 'text/plain' }),
+      new File(['b'], 'two.txt', { type: 'text/plain' }),
+    ])
+
+    await waitFor(() => expect(uploaded).toEqual(['one.txt', 'two.txt']))
+  })
+
+  it('turns the rows into checkboxes only once selecting has been asked for', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+    expect(screen.queryByRole('checkbox', { name: /notes\.txt/ })).not.toBeInTheDocument()
+
+    await open()
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Select' }))
+
+    expect(await screen.findByRole('checkbox', { name: /notes\.txt/ })).toBeInTheDocument()
+  })
+
+  it('deletes the whole selection in one write', async () => {
+    const destroyed: string[][] = []
+    const spy: FilesClient = {
+      ...client,
+      destroy: async (ids) => {
+        destroyed.push([...ids])
+      },
+    }
+    listed = [
+      node({ id: '1', name: 'one.txt', type: 'text/plain' }),
+      node({ id: '2', name: 'two.txt', type: 'text/plain' }),
+    ]
+    mount(spy)
+    await showing('one.txt')
+
+    await open()
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Select' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select everything here' }))
+    expect(screen.getByText('2 selected')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+    // ONE `FileNode/set`, not two: half a deleted selection is the outcome nothing on screen can
+    // describe afterwards.
+    await waitFor(() => expect(destroyed).toEqual([['1', '2']]))
+  })
+
+  it('moves the whole selection to one destination', async () => {
+    const moved: [readonly string[], string | null][] = []
+    const spy: FilesClient = {
+      ...client,
+      move: async (ids, parentId) => {
+        moved.push([[...ids], parentId])
+      },
+    }
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({ id: '1', name: 'one.txt', type: 'text/plain' }),
+      node({ id: '2', name: 'two.txt', type: 'text/plain' }),
+    ]
+    mount(spy)
+    await showing('one.txt')
+
+    await open()
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Select' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /one\.txt/ }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /two\.txt/ }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move' }))
+    const picker = await screen.findByRole('dialog')
+    await userEvent.click(await within(picker).findByRole('button', { name: 'invoices' }))
+    await userEvent.click(await within(picker).findByRole('button', { name: 'Move to invoices' }))
+
+    await waitFor(() => expect(moved).toEqual([[['1', '2'], 'd1']]))
+  })
+})
+
+/** D-3 — `FileNode/query` takes a name condition and a comparator; nothing was using either. */
+describe('searching and sorting', () => {
+  const open = () => userEvent.click(screen.getByRole('button', { name: 'List options' }))
+
+  it('searches the WHOLE tree from the replica, and says which folder each hit is in', async () => {
+    /*
+     * The search is local now (D-4): the replica holds every node, so a round trip per keystroke
+     * bought nothing the client could not answer — and cost the answer when there is no line.
+     *
+     * It still spans the whole account, which is why the row has to say WHICH `report.txt` it is:
+     * a search that finds three files of the same name and shows three identical rows is worse than
+     * no search at all.
+     */
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({ id: '1', name: 'report.txt', parentId: 'd1' }),
+    ]
+    // `report.txt` is INSIDE `invoices`, so the root shows only the folder — until the search runs.
+    mount()
+    await showing('invoices')
+
+    await userEvent.type(screen.getByLabelText('Search files'), 'report')
+
+    expect(await screen.findByText('report.txt')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'in invoices' })).toBeInTheDocument()
+  })
+
+  it('finds nothing without a network, rather than failing', async () => {
+    // The whole point of moving the search off the wire: it is the same search offline.
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    refreshFails = true
+    mount()
+    await showing('notes.txt')
+
+    await userEvent.type(screen.getByLabelText('Search files'), 'note')
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument()
+  })
+
+  it('says so when nothing matches, rather than showing an empty folder', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount()
+    await showing('notes.txt')
+
+    await userEvent.type(screen.getByLabelText('Search files'), 'zzz')
+
+    expect(await screen.findByText(/Nothing matches/)).toBeInTheDocument()
+  })
+
+  it('reorders the list without a second request', async () => {
+    let calls = 0
+    const spy: FilesClient = {
+      ...client,
+      list: async () => {
+        calls += 1
+        return { nodes: listed, truncated: false }
+      },
+    }
+    listed = [
+      node({ id: '1', name: 'a.txt', size: 900, type: 'text/plain' }),
+      node({ id: '2', name: 'b.txt', size: 10, type: 'text/plain' }),
+    ]
+    mount(spy)
+    await showing('a.txt')
+
+    await open()
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Sort by size' }))
+
+    // Ordered HERE, over rows the replica already holds — so a server that ignores a comparator
+    // cannot change what is on screen. Since D-4 the reorder costs no request at all, which is the
+    // strongest form of the claim this test has always made.
+    await waitFor(() => {
+      const names = screen.getAllByText(/\.txt$/).map((element) => element.textContent)
+      expect(names).toEqual(['b.txt', 'a.txt'])
+    })
+    expect(calls).toBe(0)
+  })
+})
+
+/**
+ * B-6 — the listing that stopped at 500 nodes and said nothing.
+ *
+ * The silence is the defect, not the limit: a folder that is short and LOOKS complete makes every
+ * conclusion the reader draws from it wrong.
+ */
+describe('a listing the server could not give in full', () => {
+  it('says that something is missing', async () => {
+    truncated = true
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    expect(await screen.findByText(/some files are not shown/i)).toBeInTheDocument()
+  })
+
+  it('says nothing when the listing is complete', async () => {
+    truncated = false
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    expect(screen.queryByText(/some files are not shown/i)).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * The server's own name rules, honoured before the round trip.
+ *
+ * `forbiddenNameChars` and `forbiddenNodeNames` are session facts (`/<>:"\|?*`, plus `.`, `..`,
+ * `CON`, `AUX`, `COM0`–`COM9`, …). They are refused for Windows-compatibility reasons that have
+ * nothing to do with what the user meant, so "the server said no" is not an explanation anyone can
+ * act on — and with a MULTI-file upload the round trip is the wrong place to find out, because a
+ * batch that fails halfway leaves the reader working out which of eleven files landed.
+ */
+describe('names the server would refuse', () => {
+  it('stops a whole upload batch on the first bad name, before any bytes go up', async () => {
+    const uploaded: string[] = []
+    const spy: FilesClient = {
+      ...client,
+      upload: async (file) => {
+        uploaded.push(file.name)
+        return null
+      },
+    }
+    listed = []
+    const { container } = mount(spy)
+    await screen.findByText('This folder is empty.')
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, [
+      new File(['a'], 'fine.txt', { type: 'text/plain' }),
+      new File(['b'], 'a:b.txt', { type: 'text/plain' }),
+    ])
+
+    expect(await screen.findByText(/character the server does not allow/i)).toBeInTheDocument()
+    expect(uploaded).toEqual([])
+  })
+
+  it('refuses a reserved DOS name for a new folder without asking the server', async () => {
+    const created: string[] = []
+    const spy: FilesClient = {
+      ...client,
+      createFolder: async (name) => {
+        created.push(name)
+      },
+    }
+    listed = []
+    mount(spy)
+    await screen.findByText('This folder is empty.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'New folder' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('New folder'), 'aux')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'New folder' }))
+
+    expect(await screen.findByText(/reserved/i)).toBeInTheDocument()
+    expect(created).toEqual([])
+  })
+})
+
+describe('accessibility of the surfaces added on 2026-08-21', () => {
+  it('has no violations with the move picker open', async () => {
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({ id: '1', name: 'notes.txt', type: 'text/plain' }),
+    ]
+    renderPage()
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move notes.txt' }))
+    await screen.findByRole('dialog')
+    // Against document.body, not the RTL container: the dialog renders through a portal.
+    await expectNoA11yViolations()
+  })
+
+  it('has no violations while the list is in selection mode', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    const { container } = renderPage()
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'List options' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Select' }))
+    await screen.findByRole('checkbox', { name: /notes\.txt/ })
+
+    await expectNoA11yViolations(container)
+  })
+
+  it('has no violations with the delete question on screen', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete notes.txt' }))
+    await screen.findByRole('dialog')
+    await expectNoA11yViolations()
+  })
+})
+
+/**
+ * What the screen's own bar carries at each width (2026-08-22 visual pass).
+ *
+ * Below 40em `ScreenBar` portals this bar into the SHELL header, so the row is shared with the
+ * command palette and the account button. Measured on a 390px touch context, the bar then held the
+ * breadcrumb, the folder name, "New folder", "Upload", "⋯" and the shell's two — five 44px controls
+ * — and the folder name was the only element able to shrink. It came out at 24px: `Sicht phone
+ * 9502` rendered as `S…`, on the one screen whose subject is which folder you are in.
+ *
+ * Nothing existing could see it. `files.layout.css.test.ts` governs a file ROW, `use-row-actions`
+ * measures the row's actions, and the bar is neither; the e2e viewport sweeps assert that nothing
+ * crosses the viewport edge, and an ellipsis crosses nothing.
+ *
+ * So the claim is pinned where it is decidable: at the phone tier the two creation actions are menu
+ * items and not buttons in the bar, and at the desktop tier they are buttons. Assert only one half
+ * and the other is free to drift — a screen that hides them everywhere passes the first, and the
+ * defect itself passes the second.
+ */
+describe('the screen bar at each width', () => {
+  const originalMatchMedia = window.matchMedia
+
+  /** Force the phone tier — no `matchMedia` match makes `useLayoutTier()` report 'phone'. */
+  function forcePhone(): void {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent() {
+          return false
+        },
+      }),
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia,
+    })
+  })
+
+  it('keeps New folder and Upload out of the bar on a phone, and in the menu', async () => {
+    forcePhone()
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    expect(screen.queryByRole('button', { name: 'New folder' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Upload' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'List options' }))
+    expect(await screen.findByRole('menuitem', { name: 'New folder' })).toBeInTheDocument()
+    expect(await screen.findByRole('menuitem', { name: 'Upload' })).toBeInTheDocument()
+  })
+
+  it('still opens the new-folder dialog from the menu', async () => {
+    // The half that makes the first half honest: an action moved into a menu and wired to nothing
+    // also passes "not in the bar".
+    forcePhone()
+    listed = []
+    renderPage()
+    await screen.findByRole('button', { name: 'List options' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'List options' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'New folder' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('keeps them as buttons in the bar from 40em up', async () => {
+    // jsdom without a stub answers every media query false → `useLayoutTier()` returns 'desktop'.
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    expect(screen.getByRole('button', { name: 'New folder' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument()
   })
 })

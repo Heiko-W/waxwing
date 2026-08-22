@@ -24,7 +24,17 @@ export interface FakeSharedAccount {
   readonly id: string
   readonly name?: string
   readonly isReadOnly?: boolean
-  /** Whether the share carries the mail capability at ACCOUNT level (default true). */
+  /**
+   * Whether the share carries the mail capability at ACCOUNT level (default true).
+   *
+   * **`mail: false` is a server that does not exist, and it is kept on purpose.** Measured against
+   * Stalwart v0.16.18 on 2026-08-21: sharing one CALENDAR made the account appear with ALL
+   * SEVENTEEN capabilities, `urn:ietf:params:jmap:mail` among them — the session never narrows.
+   * What this flag exercises is `secondaryMailAccounts()`'s account-level filter in isolation,
+   * which is a real unit and still the right first gate. The behaviour against the real server is
+   * pinned by `sharing/probe.ts` and `mail/AccountTrees.sharing.test.tsx`, which model the
+   * capability as always-present and let a `forbidden` on `Mailbox/get` be the answer instead.
+   */
   readonly mail?: boolean
 }
 
@@ -52,7 +62,8 @@ export function fakeJmapSession(
       isPersonal: false,
       isReadOnly: share.isReadOnly ?? false,
       // A calendars/contacts-only share (`mail: false`) carries no mail capability, so the
-      // account-level filter must exclude it (M4.4).
+      // account-level filter must exclude it (M4.4). See the note on `mail` above for why the real
+      // server does not behave this way, and what covers that instead.
       accountCapabilities: (share.mail ?? true) ? { [JMAP_MAIL]: {} } : {},
     }
   }
@@ -85,6 +96,14 @@ export interface FakeServicesOptions {
   readonly startLoginError?: Error
   /** The session `connect()` resolves to. Default: {@link fakeJmapSession} (single account). */
   readonly session?: JmapClient['session']
+  /**
+   * The whole client `connect()` resolves to, when a test needs one that can ANSWER (S-4).
+   *
+   * {@link fakeJmapClient} carries a session and no `call`, which is right for the auth flows and
+   * makes the delegation probe fail harmlessly (a failed probe grants everything — see
+   * `sharing/probe.ts`). A test about what the probe DOES has to supply a client that replies.
+   */
+  readonly client?: JmapClient
 }
 
 export interface FakeServices {
@@ -122,7 +141,7 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
   const connect = vi.fn(async (_input: string, provider: AuthProvider) => {
     captured = provider
     if (options.connectError) throw options.connectError
-    return fakeJmapClient(options.session ?? fakeJmapSession())
+    return options.client ?? fakeJmapClient(options.session ?? fakeJmapSession())
   })
 
   const provider: AuthProvider = {

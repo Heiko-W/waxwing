@@ -23,6 +23,7 @@ import type {
   QueryResponse,
   SetRequest,
   SetResponse,
+  UTCDate,
 } from './core'
 
 /**
@@ -60,10 +61,16 @@ export interface Principal {
 
 export type PrincipalGetRequest = GetRequest
 export type PrincipalGetResponse = GetResponse<Principal>
+/** `Principal/changes` exists on v0.16.18 but has no registry entry: nothing caches principals. */
 export type PrincipalChangesRequest = ChangesRequest
 export type PrincipalChangesResponse = ChangesResponse
-export type PrincipalSetRequest = SetRequest<Principal>
-export type PrincipalSetResponse = SetResponse<Principal>
+/*
+ * `Principal/set` has NO types here on purpose, and this is the one absence that is a safety
+ * property rather than a preference: v0.16.18 answers any batch containing that method with HTTP
+ * 400 `notRequest` and no `methodResponses` at all, destroying every sibling call (measured —
+ * `sharing.test.ts`). The method is absent from {@link Methods}; leaving `SetRequest<Principal>`
+ * behind would be the one remaining way to type the arguments for a call that must never be made.
+ */
 
 /**
  * RFC 9670 §2.3.
@@ -90,9 +97,22 @@ export type PrincipalQueryResponse = QueryResponse
 /**
  * The filter for a free-text principal search.
  *
- * `text` rather than `name`: measured against Stalwart 0.16, `name` matches nothing while `text`
- * matches substrings of both the name and the address. An empty query returns `null` — "no filter"
- * — which lists everyone the account may see, and is the right starting state for a picker.
+ * `text` rather than `name`: measured against Stalwart 0.16, `name` matches only the FULL login
+ * address (`{name:"bob@waxwing.test"}` → the hit, `{name:"alice"}` → nothing) while `text` searches
+ * the name, the description and the address together. An empty query returns `null` — "no filter" —
+ * which lists everyone the account may see, and is the right starting state for a picker.
+ *
+ * **It matches WHOLE WORDS, not prefixes, and a caller has to design around that** (re-measured
+ * against v0.16.18 on 2026-08-21, correcting an earlier note here that called it a substring match):
+ * ```
+ * text:"Baker" → [c]     text:"bak"  → []      text:"bak*" → []
+ * text:"alice" → [b]     text:"ali"  → []      text:"b*"   → []
+ * text:"carol chen" → [d]   (several words AND together)
+ * text:"bob@waxwing.test" → []   (the address is tokenised; the whole of it matches nothing)
+ * ```
+ * So an as-you-type search stays empty until a complete word has been typed, and then answers. No
+ * wildcard syntax is accepted. `{email:"bob@waxwing.test"}` is an exact match and is the way to
+ * find someone by an address typed in full.
  */
 export function principalSearchFilter(query: string): PrincipalFilterCondition | null {
   const trimmed = query.trim()
@@ -120,11 +140,98 @@ export interface ShareNotification {
   name?: string | null
 }
 
+/**
+ * How busy a period is (RFC 9670 §5, JSCalendar `freeBusyStatus`).
+ *
+ * Measured on Stalwart v0.16.18: a plain event with `freeBusyStatus: "busy"` comes back as
+ * `confirmed`. `unavailable` is the RFC's word for "out of office"; both are typed because the
+ * distinction is the only thing a client may render differently, and neither is guessable.
+ */
+export type BusyStatus = 'confirmed' | 'tentative' | 'unavailable'
+
+/**
+ * One busy period on someone's calendar — **times, never titles**.
+ *
+ * That is the property that makes this method worth having: it answers "is Bob free on Tuesday at
+ * ten" **without any share at all**, so it needs no grant, no delegated account and no trust. The
+ * `event` field is the escape hatch for a caller that also has read access, and on this server it
+ * is almost always `null`: measured, `eventProperties` accepts only `id` and `baseEventId`
+ * (`invalidArguments: "Only 'id' and 'baseEventId' properties are supported in results"`), so
+ * asking for a title is an error rather than a redaction.
+ */
+export interface AvailabilityPeriod {
+  utcStart: UTCDate
+  utcEnd: UTCDate
+  busyStatus: BusyStatus
+  /** Only when `showDetails` was asked for AND the caller may read the event. Usually `null`. */
+  event?: { id?: Id; baseEventId?: Id } | null
+}
+
+/**
+ * `Principal/getAvailability` (RFC 9670 §5) — the free/busy question.
+ *
+ * **`id` is required and its absence is an error, not an empty answer** — measured:
+ * `invalidArguments "Missing principal id"`. `utcStart`/`utcEnd` are absolute instants (`Z`), not
+ * local date-times: unlike everything in JSCalendar, this method deals in a window on the clock of
+ * the world rather than on the clock of the calendar.
+ *
+ * The calendars capability publishes `maxAvailabilityDuration` (`P52W1D` on this server) as the
+ * widest window it will answer. Measured, v0.16.18 **does not enforce it** — a ten-year window came
+ * back with a result rather than an error — so a client that wants the limit respected has to
+ * respect it itself.
+ */
+export interface PrincipalGetAvailabilityRequest {
+  accountId: Id
+  /** The principal being asked about. Any principal the account can see — no share required. */
+  id: Id
+  utcStart: UTCDate
+  utcEnd: UTCDate
+  /** Ask for `event` on each period. Only `id`/`baseEventId` can ever come back — see the type. */
+  showDetails?: boolean
+  eventProperties?: readonly string[] | null
+}
+
+export interface PrincipalGetAvailabilityResponse {
+  accountId?: Id
+  list: AvailabilityPeriod[]
+}
+
 export type ShareNotificationGetRequest = GetRequest
 export type ShareNotificationGetResponse = GetResponse<ShareNotification>
 export type ShareNotificationChangesRequest = ChangesRequest
 export type ShareNotificationChangesResponse = ChangesResponse
 export type ShareNotificationSetRequest = SetRequest<ShareNotification>
 export type ShareNotificationSetResponse = SetResponse<ShareNotification>
-export type ShareNotificationQueryRequest = QueryRequest
+
+/**
+ * RFC 9670 §3.3 filter conditions. `objectType` is measured — Stalwart v0.16.18 answers
+ * `{ objectType: "Mailbox" }` with exactly the mailbox notifications and drops the calendar ones.
+ *
+ * `before`/`after` are the RFC's and are NOT measured here; a caller that needs "only since X"
+ * should sort by `created` and stop reading rather than trust an untested condition.
+ */
+export interface ShareNotificationFilterCondition {
+  before?: UTCDate
+  after?: UTCDate
+  objectType?: string
+  objectAccountId?: Id
+}
+
+export type ShareNotificationFilter = FilterOperator | ShareNotificationFilterCondition
+
+export type ShareNotificationQueryRequest = Omit<QueryRequest, 'filter'> & {
+  filter?: ShareNotificationFilter | null
+}
 export type ShareNotificationQueryResponse = QueryResponse
+
+/**
+ * The RFC 8620 §7.1 `StateChange` type name for share notifications.
+ *
+ * **Measured, and the answer decides the whole design of an "incoming shares" surface.** Over a
+ * WebSocket with `WebSocketPushEnable`, Stalwart v0.16.18 emits
+ * `{"@type":"StateChange","changed":{"<own account>":{"ShareNotification":"<state>"}}}` the moment
+ * someone else's `Mailbox/set … shareWith` names this user — a separate frame from the `Mailbox`
+ * one the OWNER gets. So a client can LISTEN; it does not have to poll. The name has to be in the
+ * push subscription's `types`, or the server filters the frame out before it is sent.
+ */
+export const SHARE_NOTIFICATION_TYPE = 'ShareNotification'

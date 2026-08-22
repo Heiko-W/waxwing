@@ -129,3 +129,14 @@
   white-space: nowrap;
   border: 0;
 }
+
+/*
+ * The advanced half of the hint (`-` and `OR`). A second line rather than a second element: the
+ * field must keep exactly one description, and this is the sentence the ordinary user never needs.
+ * Set apart by weight and spacing alone — no box, no icon, nothing that asks to be read.
+ */
+.hintAdvanced {
+  display: block;
+  margin-block-start: var(--waxwing-space-1);
+  opacity: 0.85;
+}

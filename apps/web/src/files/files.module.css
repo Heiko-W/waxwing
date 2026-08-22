@@ -122,6 +122,37 @@
   cursor: pointer;
 }
 
+/* The icon and the name, as one run. Split out of `.name` so the same markup can sit inside a
+   `<button>`, inside a `<span>`, or inside a checkbox's `<label>` without three copies of it. */
+.nameInner {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-inline-size: 0;
+}
+
+/*
+ * `.name`'s job while the list is in selection mode.
+ *
+ * Same reserve, same minimum — the name is no less the point of the row because a checkbox is in
+ * front of it. The child selector reaches the `<label>` that `Checkbox` renders, whose class is
+ * hashed at build time and therefore cannot be named here; making it the flexible box is what stops
+ * a long file name pushing the row's trailing edge off screen.
+ */
+.selectName {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-inline-size: 12rem;
+  min-block-size: var(--waxwing-control-min);
+}
+
+.selectName > * {
+  flex: 1;
+  min-inline-size: 0;
+}
+
 .icon {
   flex: none;
   inline-size: var(--waxwing-icon-sm);
@@ -163,6 +194,147 @@
   text-align: center;
 }
 
+/* ---- search, sorting and selection (D-2, D-3, B-6) ---- */
+
+/* The field sits above the list and spans it: a search box narrower than what it searches reads as
+   a filter on one column. The icon is inside the field's own box, which is why this is relative. */
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search input {
+  flex: 1;
+  /* Room for the glyph. `space-6` + the icon's own width, stated as a padding so the text never
+     runs under it however long the query gets. */
+  padding-inline-start: var(--waxwing-space-7);
+}
+
+.searchIcon {
+  position: absolute;
+  inset-inline-start: var(--waxwing-space-3);
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  color: var(--waxwing-text-muted);
+  pointer-events: none;
+}
+
+/* Where a search hit was found. `flex: none` for the same reason `.rowActions` is: it is a fact
+   about the row, and a fact squeezed to three characters states nothing. */
+.location {
+  display: flex;
+  flex: none;
+  align-items: center;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/*
+ * The bar the selection acts through.
+ *
+ * Above the list rather than under it: this app's other bulk bar (mail's) is above its list, and
+ * one app that puts the same control in two places is worse than either placement. It WRAPS, which
+ * is the phone answer — five controls at 44px do not fit 390px, and a second line is honest where a
+ * horizontal scroll nobody can see is not.
+ */
+.selectionBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  padding: var(--waxwing-space-2);
+  border: 1px solid var(--waxwing-border);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface-2);
+}
+
+.selectionCount {
+  flex: 1;
+  min-inline-size: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/*
+ * "There is more than this" (B-6).
+ *
+ * Muted and at the END of the list, not a banner at the top. It is a fact about the listing rather
+ * than a failure of it, and a red strip above the files would say the folder is broken when the
+ * folder is fine — it is merely larger than one request.
+ */
+.truncated {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  margin: 0;
+  padding: var(--waxwing-space-3) var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+/* ---- the move picker (D-1) ---- */
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-3);
+  /* The dialog must not grow with the folder: a level of forty folders would push the footer —
+     and with it "Move here" — off the bottom of a phone. */
+  max-block-size: 60vh;
+}
+
+.pickerList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* A whole-width row, because picking a destination on a phone should not need aim. */
+.pickerItem {
+  display: flex;
+  inline-size: 100%;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-1) var(--waxwing-space-2);
+  border: 0;
+  border-radius: var(--waxwing-radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+/* Pointer only: on touch the browser leaves the hover on whatever the finger last landed on, which
+   in a destination picker reads as "this one is chosen" — the one thing this dialog must not say
+   before the reader presses Move. */
+@media (hover: hover) {
+  .pickerItem:hover {
+    background: var(--waxwing-surface-hover);
+  }
+}
+
+.pickerChevron {
+  flex: none;
+  margin-inline-start: auto;
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  color: var(--waxwing-text-muted);
+}
+
+.pickerEmpty {
+  margin: 0;
+  padding: var(--waxwing-space-4) var(--waxwing-space-2);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
 /* ---- inline preview (M5.17) ---- */
 
 .preview {
@@ -191,88 +363,24 @@
   background: #ffffff;
 }
 
-/* ---- sharing (M5.18) ---- */
-
-/* Each labelled block inside the share dialog. The gap used to live as a bottom margin on the
-   heading itself; it belongs to the block, so one rule sets it for every child. */
-.shareSection {
+/*
+ * "Shared with me" — the other people's-content section of the root listing (S-4).
+ *
+ * A quiet heading over ordinary folder rows, the way iCloud Drive and the mail rail both do it:
+ * shared content is a place in the same hierarchy, not a mode with its own chrome. The rows are
+ * `.row`/`.name` verbatim, so they inherit the 44px target and the name's minimum width without a
+ * second set of rules to keep in step.
+ */
+.sharedSection {
   display: flex;
   flex-direction: column;
   gap: var(--waxwing-space-2);
+  margin-block-end: var(--waxwing-space-4);
 }
 
-.share {
-  display: flex;
-  flex-direction: column;
-  gap: var(--waxwing-space-5);
-}
-
-.shareList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--waxwing-space-1);
+.sharedHeading {
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.shareRow {
-  display: flex;
-  align-items: center;
-  gap: var(--waxwing-space-2);
-  padding: var(--waxwing-space-1) 0;
-}
-
-.shareName {
-  flex: 1;
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.shareEmail {
-  flex: none;
   color: var(--waxwing-text-muted);
   font-size: var(--waxwing-text-sm);
-}
-
-.shareRole {
-  flex: none;
-  color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-sm);
-  font-style: italic;
-}
-
-.shareControls {
-  display: flex;
-  gap: var(--waxwing-space-3);
-  align-items: flex-end;
-}
-
-.shareField {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--waxwing-space-1);
-}
-
-.shareLabel {
-  font-size: var(--waxwing-text-sm);
-  color: var(--waxwing-text);
-  /* medium at full strength, like the six other field labels in the app. Left lighter and muted,
-     a label reads as help text about the control rather than the name of it. */
-  font-weight: var(--waxwing-weight-medium);
-}
-
-.shareHint {
-  margin: var(--waxwing-space-2) 0 0;
-  color: var(--waxwing-text-muted);
-  font-size: var(--waxwing-text-sm);
-}
-
-.shareStatus {
-  margin: 0;
-  color: var(--waxwing-danger);
-  font-size: var(--waxwing-text-sm);
+  font-weight: var(--waxwing-weight-semibold);
 }

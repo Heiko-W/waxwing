@@ -1,10 +1,16 @@
 /**
- * JMAP for Calendars (M5.6) — `draft-ietf-jmap-calendars` + JSCalendar (RFC 8984).
+ * JMAP for Calendars (M5.6) — `draft-ietf-jmap-calendars` + JSCalendar (`jscalendarbis`).
  *
  * The shapes asserted here were **measured against Stalwart 0.16**, not transcribed from the
  * draft: a `Calendar/get` and a `CalendarEvent/set` were run against the live fixture and the
  * responses are reproduced below. That matters for a spec still in the RFC Editor queue — the
  * server is the thing this client has to work with.
+ *
+ * It matters for the payload too, and that is the correction this file now carries. The event body
+ * is **not** RFC 8984: Stalwart implements `draft-ietf-calext-jscalendarbis`, the revision meant to
+ * obsolete it, and the two disagree on names a client cannot get wrong quietly — except that two of
+ * them fail *silently*. See `docs/adr/025-jscalendarbis-is-the-wire-format.md`; the assertions
+ * below reproduce the measurements it rests on.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -13,7 +19,7 @@ import { usingForMethods } from './capabilities'
 import { JmapClient } from './client'
 import { Methods } from './methods'
 import { at, jmapPostMock, makeSession } from './test-support'
-import type { CalendarEvent, Invocation } from './types/index'
+import type { CalendarEvent, Invocation, Participant, RecurrenceRule } from './types/index'
 
 const ACC = 'b'
 
@@ -30,6 +36,39 @@ const MEASURED_EVENT: CalendarEvent = {
   isOrigin: true,
 }
 
+/**
+ * A weekly repetition, exactly as the fixture answered `CalendarEvent/parse` on a real `.ics`.
+ *
+ * SINGULAR. RFC 8984 §4.3.3 spells this `recurrenceRules` and types it as an array; the create
+ * carrying that name is refused `invalidProperties: ["recurrenceRules"]`, and the one carrying
+ * `recurrenceRule` succeeds and reads back the same way.
+ */
+const MEASURED_RECURRENCE: RecurrenceRule = { frequency: 'weekly', count: 4 }
+
+/**
+ * Participants as the fixture stored and echoed them.
+ *
+ * `calendarAddress` is a bare URI string, not RFC 8984's `sendTo` map. The old name is the more
+ * dangerous of the two mistakes because it does not fail: `CalendarEvent/set` answers `created`
+ * and the stored event simply has no `participants` at all.
+ */
+const MEASURED_PARTICIPANTS: Record<string, Participant> = {
+  pc: {
+    '@type': 'Participant',
+    name: 'Carol Chen',
+    calendarAddress: 'mailto:carol@waxwing.test',
+    roles: { owner: true, attendee: true },
+    participationStatus: 'accepted',
+  },
+  pa: {
+    '@type': 'Participant',
+    calendarAddress: 'mailto:alice@waxwing.test',
+    roles: { attendee: true, required: true },
+    participationStatus: 'needs-action',
+    expectReply: true,
+  },
+}
+
 describe('capability wiring', () => {
   it('binds the calendar methods', () => {
     expect(Methods.calendarGet.name).toBe('Calendar/get')
@@ -42,6 +81,17 @@ describe('capability wiring', () => {
     const using = usingForMethods(['Calendar/get', 'CalendarEvent/query'])
     expect(using).toContain('urn:ietf:params:jmap:calendars')
     expect(using).toContain('urn:ietf:params:jmap:core')
+  })
+
+  /*
+   * Both `/changes` methods exist on v0.16.18 — measured, they reject only a bogus `sinceState` —
+   * and both had no caller until K-8, because a delta is only worth asking for when there is local
+   * state to apply it to and the calendar had none. It has one now: `sync/engine/delta.ts` keeps a
+   * calendar replica, so the registry entries are a claim this client can finally honour.
+   */
+  it('binds both calendar `/changes` methods, now that there is a replica to update', () => {
+    expect(Methods.calendarChanges.name).toBe('Calendar/changes')
+    expect(Methods.calendarEventChanges.name).toBe('CalendarEvent/changes')
   })
 })
 
@@ -96,6 +146,64 @@ describe('CalendarEvent/query', () => {
       filter: { after: '2026-08-01T00:00:00Z', before: '2026-09-01T00:00:00Z' },
       expandRecurrences: true,
     })
+  })
+})
+
+describe('the JSCalendar dialect this server speaks', () => {
+  it('names ONE recurrence rule, not a list of them', () => {
+    // The property that made a stored series look like a plain event for months: the client asked
+    // for `recurrenceRules`, the server answers `recurrenceRule`, and an absent property is
+    // indistinguishable from "does not repeat".
+    const master: CalendarEvent = { ...MEASURED_EVENT, recurrenceRule: MEASURED_RECURRENCE }
+
+    expect(master.recurrenceRule?.frequency).toBe('weekly')
+    expect(Array.isArray(master.recurrenceRule)).toBe(false)
+    expect(Object.keys(master)).not.toContain('recurrenceRules')
+  })
+
+  it('states months as STRINGS, because a lunisolar leap month is `5L`', () => {
+    // The one field of a recurrence rule whose type surprises everybody. `byMonthDay` beside it
+    // really is numeric; `byMonth` cannot be, and a client that sends numbers is sending the wrong
+    // JSON type.
+    const yearly: RecurrenceRule = { frequency: 'yearly', byMonth: ['1', '5L'], byMonthDay: [1] }
+
+    expect(yearly.byMonth?.every((month) => typeof month === 'string')).toBe(true)
+  })
+
+  it('addresses a participant with `calendarAddress` and NEVER with `sendTo`', () => {
+    /*
+     * The silent trap, measured: a create whose participants carry RFC 8984's
+     * `sendTo: {imip: "mailto:…"}` is answered `created` — no error, no `invalidProperties` — and
+     * reading the event back shows no `participants` whatsoever. The entire map is discarded. So
+     * the assertion is about the object that goes OUT: `sendTo` must not appear anywhere in it,
+     * because nothing downstream will ever tell us that it did.
+     */
+    const wire = JSON.stringify({
+      organizerCalendarAddress: 'mailto:carol@waxwing.test',
+      participants: MEASURED_PARTICIPANTS,
+    })
+
+    expect(wire).not.toContain('sendTo')
+    expect(MEASURED_PARTICIPANTS.pa?.calendarAddress).toBe('mailto:alice@waxwing.test')
+    expect(typeof MEASURED_PARTICIPANTS.pa?.calendarAddress).toBe('string')
+    // `jscalendarbis` requires the organiser's address whenever a participant has one, and 0.16.18
+    // fixed a bug where the server failed to assign it and then sent no invitations at all.
+    expect(JSON.parse(wire).organizerCalendarAddress).toBe('mailto:carol@waxwing.test')
+  })
+
+  it('names the master of an expanded instance in `baseEventId`', () => {
+    // `{"start":"2026-09-07T09:00:00","recurrenceId":"2026-09-07T09:00:00","id":"iaaaaaf",
+    //   "baseEventId":"f"}` — the id `iaaaaaf` is synthetic and cannot be written to; `f` can.
+    const instance: CalendarEvent = {
+      ...MEASURED_EVENT,
+      id: 'iaaaaaf',
+      start: '2026-09-07T09:00:00',
+      recurrenceId: '2026-09-07T09:00:00',
+      baseEventId: 'f',
+    }
+
+    expect(instance.baseEventId).toBe('f')
+    expect(instance.baseEventId).not.toBe(instance.id)
   })
 })
 

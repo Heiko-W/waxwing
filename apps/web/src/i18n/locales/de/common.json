@@ -351,7 +351,12 @@
       "rule": {
         "enabled": "Aktiv",
         "edit": "Bearbeiten",
-        "delete": "Löschen"
+        "delete": "Löschen",
+        "reorder": "{{name}} verschieben",
+        "reorderHint": "Leertaste hebt die Regel an, Pfeil hoch und runter verschieben sie. Leertaste legt sie ab, Escape stellt sie zurück.",
+        "movedTo": "{{name}}, Regel {{position}} von {{count}}",
+        "dropped": "{{name}} abgelegt",
+        "dropCanceled": "{{name}} zurückgestellt"
       },
       "foreign": {
         "explain": "Für dieses Postfach existiert bereits ein Filterskript, das nicht hier erstellt wurde. Es wird unverändert angezeigt und nicht angetastet.",
@@ -380,7 +385,12 @@
         "remove": "Entfernen",
         "stop": "Weitere Regeln nicht mehr anwenden",
         "cancel": "Abbrechen",
-        "submit": "Regel speichern"
+        "submit": "Regel speichern",
+        "spamScore": "Bewertung (0–10)",
+        "datePart": "Teil",
+        "weekday": "Tag",
+        "hour": "Stunde (0–23)",
+        "reason": "Begründung"
       },
       "field": {
         "from": "Absender",
@@ -389,7 +399,12 @@
         "subject": "Betreff",
         "body": "Nachrichtentext",
         "size": "Größe",
-        "hasAttachment": "Hat Anhang"
+        "hasAttachment": "Hat Anhang",
+        "envelopeFrom": "Umschlag-Absender",
+        "envelopeTo": "Umschlag-Empfänger",
+        "spam": "Spam-Bewertung",
+        "currentDate": "Zustellzeitpunkt",
+        "duplicate": "Doppelte Nachricht"
       },
       "match": {
         "contains": "enthält",
@@ -398,13 +413,16 @@
         "endsWith": "endet mit",
         "matches": "entspricht Muster",
         "over": "größer als",
-        "under": "kleiner als"
+        "under": "kleiner als",
+        "atLeast": "mindestens",
+        "atMost": "höchstens"
       },
       "action": {
         "fileInto": "In Ordner verschieben",
         "addFlag": "Markieren",
         "redirect": "Weiterleiten an",
-        "discard": "Verwerfen"
+        "discard": "Verwerfen",
+        "reject": "Mit Begründung abweisen"
       },
       "flag": {
         "seen": "gelesen",
@@ -416,7 +434,33 @@
         "tooLarge": "Das Skript ist für diesen Server zu groß.",
         "offline": "Sie sind offline. Filter lassen sich nur mit Verbindung ändern.",
         "rejected": "Der Server hat das Speichern der Filter abgelehnt.",
-        "generic": "Die Filter konnten nicht gespeichert werden."
+        "generic": "Die Filter konnten nicht gespeichert werden.",
+        "invalidSieveReason": "Der Server hat das Skript als ungültig abgelehnt: {{reason}}. Ihre Regeln wurden nicht gespeichert."
+      },
+      "active": "Eingehende Nachrichten filtern",
+      "activeHint": "Die Regeln unten laufen für jede Nachricht, die der Server annimmt.",
+      "inactiveHint": "Ihre Regeln bleiben erhalten, es wird aber nichts gefiltert, bis Sie das wieder einschalten.",
+      "deleteScript": "Filterskript löschen",
+      "delete": {
+        "title": "Filterskript löschen?",
+        "body": "Alle Regeln werden vom Server entfernt und eingehende Nachrichten nicht mehr gefiltert. Das lässt sich nicht rückgängig machen.",
+        "foreignWarning": "In diesem Skript stehen auch Regeln, die nicht hier geschrieben wurden. Sie werden mitgelöscht.",
+        "cancel": "Abbrechen",
+        "confirm": "Löschen",
+        "done": "Filterskript gelöscht"
+      },
+      "date": {
+        "weekday": "Wochentag",
+        "hour": "Stunde"
+      },
+      "weekday": {
+        "sunday": "Sonntag",
+        "monday": "Montag",
+        "tuesday": "Dienstag",
+        "wednesday": "Mittwoch",
+        "thursday": "Donnerstag",
+        "friday": "Freitag",
+        "saturday": "Samstag"
       }
     },
     "server": {
@@ -521,6 +565,90 @@
       "mail": "E-Mail",
       "accounts": "Konten & Regeln",
       "system": "System"
+    },
+    "security": {
+      "title": "Konto & Sicherheit",
+      "description": "Was du an diesem Konto auf dem Server selbst ändern kannst.",
+      "loading": "Kontoeinstellungen werden geladen…",
+      "unavailable": "Dein Server bietet für dieses Konto keine dieser Einstellungen an.",
+      "password": {
+        "label": "Passwort",
+        "hint": "Das Passwort, mit dem du dich anmeldest — hier und in jedem Mailprogramm, das dieses Konto benutzt.",
+        "change": "Passwort ändern…",
+        "title": "Passwort ändern",
+        "current": "Aktuelles Passwort",
+        "next": "Neues Passwort",
+        "confirm": "Neues Passwort wiederholen",
+        "submit": "Passwort ändern",
+        "cancel": "Abbrechen",
+        "changed": "Passwort geändert",
+        "missing": "Fülle alle drei Felder aus.",
+        "mismatch": "Die beiden neuen Passwörter sind nicht gleich.",
+        "devices": "Danach meldest du dich hier neu an und trägst das neue Passwort in den Mailprogrammen auf deinen anderen Geräten nach. App-Passwörter gelten weiter."
+      },
+      "appPasswords": {
+        "label": "App-Passwörter",
+        "hint": "Ein eigenes Passwort für jedes Mailprogramm auf deinen Geräten. Widerrufst du eines, bleiben dein Kontopasswort und alle anderen Programme unberührt.",
+        "empty": "Noch keine App-Passwörter.",
+        "create": "App-Passwort erstellen…",
+        "createTitle": "App-Passwort erstellen",
+        "createIntro": "Dein Server erzeugt ein Passwort, das nur dieses eine Programm benutzt.",
+        "name": "Wofür ist es?",
+        "namePlaceholder": "iPhone Mail",
+        "nameMissing": "Gib ihm einen Namen, damit du es später wiedererkennst.",
+        "expiry": "Läuft ab",
+        "expiryNever": "Nie",
+        "expiryDays": "In {{days}} Tagen",
+        "submit": "Erstellen",
+        "cancel": "Abbrechen",
+        "created": "Erstellt am {{date}}",
+        "expires": "Läuft ab am {{date}}",
+        "expired": "Abgelaufen — dieses Passwort funktioniert nicht mehr.",
+        "restricted": "Auf bestimmte Rechte oder Adressen eingeschränkt. Nicht in {{product}} gesetzt.",
+        "revoke": "{{name}} widerrufen",
+        "revokeTitle": "App-Passwort widerrufen?",
+        "revokeBody": "{{name}} funktioniert ab sofort nicht mehr. Jedes Programm, das es noch benutzt, fragt wieder nach einem Passwort.",
+        "revokeConfirm": "Widerrufen",
+        "revokeCancel": "Behalten",
+        "revoked": "App-Passwort widerrufen",
+        "secretTitle": "Dein App-Passwort",
+        "secretIntro": "Trage es jetzt zusammen mit deiner E-Mail-Adresse in das Mailprogramm ein.",
+        "secretLabel": "App-Passwort",
+        "secretWarning": "Nur dieses eine Mal wird es angezeigt. Geht es verloren, widerrufe es hier und erstelle ein neues.",
+        "copy": "Kopieren",
+        "copied": "Kopiert",
+        "done": "Fertig"
+      },
+      "language": {
+        "label": "Sprache der Servermeldungen",
+        "hint": "Die Sprache, in der dein Server seine eigenen Kalendereinladungen und Erinnerungen schreibt. Die Sprache von {{product}} selbst stellst du unter Allgemein ein.",
+        "saved": "Sprache gespeichert"
+      },
+      "encryption": {
+        "label": "Verschlüsselung im Ruhezustand",
+        "off": "Aus. Dein Server legt deine Nachrichten unverschlüsselt ab.",
+        "on": "An — {{cipher}}",
+        "key": "Schlüssel: {{name}}",
+        "explain": "Dein Server verschlüsselt eingehende Nachrichten mit deinem eigenen Schlüssel, bevor er sie ablegt. {{product}} hat keine OpenPGP-Unterstützung und kann sie nicht anzeigen.",
+        "manage": "Ändern lässt sich das nur in der Kontoverwaltung deines Servers. {{product}} bietet den Schalter nicht an, weil dein Postfach hier danach unlesbar wäre."
+      },
+      "spam": {
+        "label": "Spam-Trainingsproben",
+        "hint": "Kopien, die dein Server von Nachrichten behalten hat, die du eingeordnet hast, um seinen Spamfilter zu trainieren. Löschen entfernt die Kopie; wo die Nachricht liegt, ändert sich dadurch nicht.",
+        "empty": "Dein Server hat keine Kopien deiner Nachrichten behalten.",
+        "isSpam": "Als Spam behalten",
+        "isHam": "Als kein Spam behalten",
+        "noSubject": "(kein Betreff)",
+        "delete": "Kopie von {{subject}} löschen",
+        "deleted": "Kopie gelöscht"
+      },
+      "error": {
+        "loadFailed": "Diese Einstellungen konnten nicht geladen werden.",
+        "rejected": "Dein Server hat diese Änderung abgelehnt.",
+        "server": "Er meldet: {{detail}}",
+        "offline": "Du bist offline. Diese Einstellungen lassen sich nur mit Verbindung ändern.",
+        "generic": "Die Änderung konnte nicht gespeichert werden."
+      }
     }
   },
   "contacts": {
@@ -535,7 +663,33 @@
       "show": "Adressbücher anzeigen",
       "hide": "Adressbücher ausblenden",
       "loading": "Adressbücher werden geladen",
-      "empty": "Keine Adressbücher."
+      "empty": "Keine Adressbücher.",
+      "new": "Neues Adressbuch",
+      "actions": "Aktionen für {{name}}",
+      "nameLabel": "Name",
+      "create": {
+        "title": "Neues Adressbuch",
+        "submit": "Anlegen"
+      },
+      "rename": {
+        "action": "Umbenennen",
+        "title": "Adressbuch umbenennen",
+        "submit": "Umbenennen"
+      },
+      "delete": {
+        "action": "Löschen",
+        "title": "Adressbuch löschen",
+        "body": "„{{name}}“ löschen?",
+        "contents": "Kontakte, die nur in diesem Adressbuch stehen, werden mitgelöscht.",
+        "confirm": "Löschen",
+        "cancel": "Abbrechen"
+      },
+      "error": {
+        "nameRequired": "Geben Sie einen Namen ein.",
+        "nameTooLong": "Dieser Name ist zu lang.",
+        "nameTaken": "Ein Adressbuch mit diesem Namen gibt es bereits."
+      },
+      "share": "{{name}} freigeben"
     },
     "list": {
       "title": "Kontakte",
@@ -564,6 +718,8 @@
         "phone": "Telefon",
         "address": "Adresse",
         "birthday": "Geburtstag",
+        "url": "Webseite",
+        "im": "Instant Messaging",
         "note": "Notizen"
       },
       "more": "Weitere Aktionen"
@@ -597,8 +753,11 @@
         "address": "Adresse",
         "org": "Firma",
         "birthday": "Geburtstag",
+        "url": "Webseite",
+        "im": "Instant Messaging",
         "note": "Notizen",
-        "photo": "Foto"
+        "photo": "Foto",
+        "books": "Adressbücher"
       },
       "namePrefix": "Titel",
       "given": "Vorname",
@@ -618,12 +777,19 @@
       "addAddress": "Adresse hinzufügen",
       "addCompany": "Firma hinzufügen",
       "addBirthday": "Geburtstag hinzufügen",
+      "addUrl": "Webseite hinzufügen",
+      "addIm": "Instant Messaging hinzufügen",
+      "urlPlaceholder": "https://beispiel.de",
+      "imService": "Dienst",
+      "imPlaceholder": "Adresse oder Name",
       "addNote": "Notiz hinzufügen",
       "addPhoto": "Foto hinzufügen",
       "fieldNames": {
         "email": "E-Mail",
         "phone": "Telefon",
         "address": "Adresse",
+        "url": "Webseite",
+        "im": "Instant Messaging",
         "note": "Notiz"
       },
       "a11y": {
@@ -636,9 +802,11 @@
       "choosePhoto": "Foto auswählen",
       "changePhoto": "Foto ändern",
       "removePhoto": "Foto entfernen",
-      "photoUploading": "Foto wird hochgeladen …",
-      "photoError": "Das Foto konnte nicht hochgeladen werden.",
-      "photoAlt": "Vorschau des Kontaktfotos"
+      "photoPreparing": "Foto wird vorbereitet …",
+      "photoError": "Das Foto konnte nicht verwendet werden.",
+      "photoTooLarge": "Dieses Foto ist zu groß. Wählen Sie ein kleineres.",
+      "photoAlt": "Vorschau des Kontaktfotos",
+      "booksAtLeastOne": "Ein Kontakt muss in mindestens einem Adressbuch bleiben."
     },
     "delete": {
       "title": "Kontakt löschen",
@@ -761,7 +929,11 @@
       "sent": "Gesendet",
       "archive": "Archiv",
       "junk": "Spam",
-      "trash": "Papierkorb"
+      "trash": "Papierkorb",
+      "important": "Wichtig",
+      "snoozed": "Zurückgestellt",
+      "scheduled": "Geplant",
+      "memos": "Notizen"
     },
     "unread": "{{count}} ungelesen",
     "expand": "{{name}} aufklappen",
@@ -775,7 +947,28 @@
       "keepOffline": "Offline behalten",
       "keepOfflineOff": "Nicht mehr offline behalten",
       "move": "Verschieben nach…",
-      "import": "EML-Dateien importieren…"
+      "import": "EML-Dateien importieren…",
+      "info": "Ordnerinformationen…",
+      "manage": "Ordner verwalten"
+    },
+    "manage": {
+      "title": "Ordner verwalten",
+      "hint": "Ordner ziehen, um die Reihenfolge zu ändern, oder ausschalten, damit er nicht mehr in der Seitenleiste steht. Ausgeblendete Ordner bleiben in dieser Liste, und Ihre anderen E-Mail-Programme blenden sie ebenfalls aus.",
+      "done": "Fertig",
+      "alwaysShown": "Immer sichtbar",
+      "show": "{{name}} in der Seitenleiste zeigen",
+      "reorder": "{{name}} verschieben",
+      "reorderHint": "Leertaste hebt den Ordner an, Pfeil hoch und runter verschieben ihn. Leertaste legt ihn ab, Escape stellt ihn zurück.",
+      "movedTo": "{{name}}, Ordner {{position}} von {{count}}",
+      "dropped": "{{name}} abgelegt",
+      "dropCanceled": "{{name}} zurückgestellt"
+    },
+    "info": {
+      "title": "Ordnerinformationen: {{name}}",
+      "useAs": "Diesen Ordner verwenden als…",
+      "useAsNone": "Normaler Ordner",
+      "useAsHint": "Ihre anderen E-Mail-Programme lesen das mit. Ein Ordner, der als Archiv verwendet wird, ist auch dort das Archiv — und rückt hier zu den Standardordnern nach oben.",
+      "submit": "Sichern"
     },
     "create": {
       "title": "Neuer Ordner",
@@ -852,8 +1045,10 @@
     },
     "sort": {
       "label": "Sortieren",
-      "date": "Datum",
+      "date": "Empfangsdatum",
+      "sentAt": "Sendedatum",
       "from": "Absender",
+      "to": "Empfänger",
       "subject": "Betreff",
       "size": "Größe",
       "unreadFirst": "Ungelesene zuerst"
@@ -1082,6 +1277,8 @@
     "recipientDidYouMeanApply": "{{suggestion}} verwenden",
     "recipientMoveTo": "In das Feld „{{field}}“ verschieben",
     "recipientMoveMenu": "Empfängeroptionen",
+    "recipientGroupMembers_one": "Gruppe · {{count}} Kontakt",
+    "recipientGroupMembers_other": "Gruppe · {{count}} Kontakte",
     "discard": "Entwurf verwerfen",
     "attach": "Datei anhängen",
     "attachmentsLabel": "Anhänge",
@@ -1140,6 +1337,41 @@
     },
     "templates": {
       "insert": "Vorlage einfügen"
+    },
+    "replyToLabel": "Antwort an",
+    "showReplyToField": "Antwort an",
+    "attachFromDevice": "Von diesem Gerät…",
+    "options": {
+      "open": "Sendeoptionen",
+      "title": "Sendeoptionen",
+      "done": "Fertig",
+      "priority": {
+        "label": "Priorität",
+        "high": "Hoch",
+        "normal": "Normal",
+        "low": "Niedrig"
+      },
+      "receipt": {
+        "label": "Zustellbestätigung anfordern",
+        "hint": "Das Mailsystem antwortet mit einer Nachricht, ob diese Mail zugestellt wurde."
+      },
+      "tls": {
+        "label": "Nur verschlüsselt zustellen",
+        "hint": "Die Nachricht kommt zurück, statt unverschlüsselt weitergereicht zu werden."
+      }
+    },
+    "attachFromFiles": {
+      "open": "Aus Dateien…",
+      "title": "Aus Dateien anhängen",
+      "path": "Ordnerpfad",
+      "root": "Dateien",
+      "empty": "Dieser Ordner ist leer.",
+      "errorTitle": "Dateien konnten nicht geladen werden",
+      "errorBody": "Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+      "cancel": "Abbrechen",
+      "confirmEmpty": "Anhängen",
+      "confirm_one": "{{count}} Datei anhängen",
+      "confirm_other": "{{count}} Dateien anhängen"
     }
   },
   "search": {
@@ -1149,25 +1381,37 @@
     "scope": {
       "label": "Suchen in",
       "folder": "Dieser Ordner",
-      "all": "Alle Ordner"
+      "all": "Alle Ordner",
+      "everywhere": "Alle Ordner, mit Papierkorb & Spam"
     },
     "chip": {
       "remove": "Filter {{filter}} entfernen",
+      "not": "Nicht {{filter}}",
       "from": "Von: {{value}}",
       "to": "An: {{value}}",
       "cc": "Kopie: {{value}}",
+      "bcc": "Blindkopie: {{value}}",
       "subject": "Betreff: {{value}}",
       "body": "Text: {{value}}",
       "hasAttachment": "Mit Anhang",
       "unread": "Ungelesen",
       "read": "Gelesen",
       "flagged": "Markiert",
+      "thread": {
+        "unread": "Ungelesene Konversationen",
+        "read": "Gelesene Konversationen",
+        "flagged": "Markierte Konversationen"
+      },
       "in": "In: {{value}}",
       "before": "Vor {{value}}",
       "after": "Nach {{value}}",
+      "larger": "Größer als {{value}}",
+      "smaller": "Kleiner als {{value}}",
       "text": "Enthält: {{value}}"
     },
-    "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, in:, before:, after:",
+    "hint": "Versuchen Sie: from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
+    "hintAdvanced": "Für Fortgeschrittene: -wort schließt aus, a OR b findet eines von beiden, thread:unread findet ungeöffnete Konversationen.",
+    "findLarge": "Große Nachrichten finden",
     "results": {
       "empty": "Keine Nachrichten entsprechen Ihrer Suche. Versuchen Sie es in allen Ordnern oder mit weniger Wörtern.",
       "count_one": "{{count}} Treffer",
@@ -1383,7 +1627,10 @@
     "background": {
       "unavailable": "Mitteilungen bei vollständig geschlossenem {{product}} sind mit diesem Server nicht möglich. Sie setzen voraus, dass der Server einen Web-Push-Signaturschlüssel veröffentlicht (RFC 9749); dieser tut es nicht. Alles Obige funktioniert, solange {{product}} geöffnet ist.",
       "available": "Dieser Server kann Sie auch benachrichtigen, während {{product}} geschlossen ist.",
-      "contentless": "Diese Mitteilungen melden nur, dass Post eingegangen ist — nie Absender oder Betreff. Die Ordner-Auswahl oben gilt für sie nicht.",
+      "contentless": "Diese Mitteilungen melden nur, dass Post eingegangen ist — nie Absender oder Betreff.",
+      "withContent": "Diese Mitteilungen nennen Absender und Betreff — genau wie die, die Sie sehen, während {{product}} geöffnet ist.",
+      "previewOff": "„{{setting}}\" ist ausgeschaltet. {{product}} bittet diesen Server deshalb gar nicht erst darum, sie mitzuschicken — nicht nur darum, sie zu verbergen. Bei geschlossenem {{product}} meldet eine Mitteilung nur, dass Post da ist.",
+      "folders": "Die Ordner-Auswahl oben gilt nicht, während {{product}} geschlossen ist: Eine Mitteilung kommt für jeden Ordner.",
       "renewal": "Öffnen Sie {{product}} mindestens einmal pro Woche, damit sie weiter ankommen: Dieser Server verlängert das Hintergrund-Abonnement jeweils um sieben Tage, und nur {{product}} selbst kann es verlängern."
     },
     "message": {
@@ -1492,9 +1739,95 @@
       "unknown": "Ihre Berechtigungen werden noch geprüft — es sind noch nicht alle Nachrichten geladen."
     }
   },
+  "sharing": {
+    "currentHeading": "Wer Zugriff hat",
+    "addHeading": "Jemandem Zugriff geben",
+    "none": "Nur Sie.",
+    "search": "Personen suchen",
+    "searchPlaceholder": "Name oder Adresse",
+    "noMatches": "Dazu passt niemand.",
+    "searchFailed": "Die Personensuche ist fehlgeschlagen.",
+    "roleLabel": "Darf",
+    "roleFor": "Was {{name}} darf",
+    "grant": "Hinzufügen",
+    "grantTo": "{{name}} Zugriff geben",
+    "revoke": "Entfernen",
+    "revokeFrom": "Zugriff von {{name}} entfernen",
+    "done": "Fertig",
+    "custom": "Eigene Rechte",
+    "failed": "Die Änderung wurde nicht gespeichert. Es hat sich nichts geändert.",
+    "role": {
+      "viewer": "Ansehen",
+      "editor": "Bearbeiten",
+      "manager": "Verwalten",
+      "freeBusy": "Nur Verfügbarkeit"
+    },
+    "explain": {
+      "file": {
+        "viewer": "Öffnen und herunterladen. Ändern nicht.",
+        "editor": "Öffnen, ändern, umbenennen und löschen. Weitergeben an andere nicht.",
+        "manager": "Alles, was Sie auch dürfen — einschließlich der Weitergabe an andere, ohne dass Sie davon erfahren."
+      },
+      "mailbox": {
+        "viewer": "Die Post in diesem Ordner lesen. Geöffnete Nachrichten gelten für Sie weiterhin als ungelesen — dafür sinkt aber auch die Ungelesen-Zahl der anderen Person nie.",
+        "editor": "Die Post lesen, in den Ordner und aus ihm heraus verschieben, als gelesen markieren und kennzeichnen. Den Ordner umbenennen oder löschen nicht.",
+        "manager": "Alles, was Sie mit diesem Ordner dürfen — Post lesen und einsortieren, umbenennen, löschen und ohne Ihr Wissen an weitere Personen freigeben."
+      },
+      "calendar": {
+        "freeBusy": "Sieht, WANN Sie belegt sind, aber nie womit — keine Titel, keine Orte, keine Teilnehmer. Das gibt man jemandem, der um Sie herum planen soll.",
+        "viewer": "Liest jeden Termin dieses Kalenders mit Titel, Zeit und Details. Ändern kann diese Person nichts.",
+        "editor": "Liest, legt an und ändert Termine, sagt Einladungen zu oder ab und setzt eigene Erinnerungen. Den Kalender löschen oder weitergeben nicht.",
+        "manager": "Alles, was Sie mit diesem Kalender dürfen — einschließlich Löschen und Weitergeben an andere, ohne dass Sie davon erfahren."
+      },
+      "addressBook": {
+        "viewer": "Liest die Kontakte in dieser Liste. Ändern nicht.",
+        "editor": "Liest, ergänzt, ändert und entfernt Kontakte in dieser Liste. Die Liste löschen oder weitergeben nicht.",
+        "manager": "Alles, was Sie mit dieser Liste dürfen — einschließlich Löschen und Weitergeben an andere, ohne dass Sie davon erfahren."
+      }
+    },
+    "mailbox": {
+      "action": "Freigeben…",
+      "title": "Ordner „{{name}}“ freigeben",
+      "loadFailed": "Die aktuellen Zugriffsrechte ließen sich nicht laden. Solange lässt sich hier nichts gefahrlos ändern.",
+      "noSubmit": "Aus Ihrem Konto senden kann niemand, egal was Sie hier vergeben."
+    },
+    "incoming": {
+      "region": "Neue Freigaben",
+      "mailbox": "{{who}} hat den Ordner „{{name}}“ für Sie freigegeben.",
+      "mailboxUnnamed": "{{who}} hat einen Mailordner für Sie freigegeben.",
+      "revoked": "{{who}} hat Ihren Zugriff auf „{{name}}“ zurückgenommen.",
+      "revokedUnnamed": "{{who}} hat Ihren Zugriff auf einen Mailordner zurückgenommen.",
+      "someone": "Jemand",
+      "open": "Öffnen",
+      "dismiss": "Ausblenden",
+      "dismissOne": "Diesen Hinweis ausblenden",
+      "calendar": "{{who}} hat den Kalender „{{name}}“ für Sie freigegeben.",
+      "calendarUnnamed": "{{who}} hat einen Kalender für Sie freigegeben.",
+      "revokedCalendarUnnamed": "{{who}} hat Ihren Zugriff auf einen Kalender zurückgenommen.",
+      "addressBook": "{{who}} hat die Kontaktliste „{{name}}“ für Sie freigegeben.",
+      "addressBookUnnamed": "{{who}} hat eine Kontaktliste für Sie freigegeben.",
+      "revokedAddressBookUnnamed": "{{who}} hat Ihren Zugriff auf eine Kontaktliste zurückgenommen.",
+      "object": "{{who}} hat „{{name}}“ für Sie freigegeben.",
+      "objectUnnamed": "{{who}} hat etwas für Sie freigegeben.",
+      "revokedObjectUnnamed": "{{who}} hat Ihren Zugriff auf etwas zurückgenommen."
+    },
+    "calendar": {
+      "title": "Kalender „{{name}}“ freigeben"
+    },
+    "addressBook": {
+      "title": "Liste „{{name}}“ freigeben",
+      "loadFailed": "Die aktuellen Zugriffsrechte ließen sich nicht laden. Solange lässt sich hier nichts gefahrlos ändern."
+    }
+  },
   "calendar": {
     "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung anlegen.",
     "offlineOpen": "Sie sind offline. Termine lassen sich nur mit Verbindung öffnen und ändern.",
+    "offlineStale": "Offline — wird gerade nicht aktualisiert. Zuletzt aktualisiert {{when}}.",
+    "offlineNotUpdating": "Offline — wird gerade nicht aktualisiert.",
+    "offlineNever": {
+      "title": "Dieser Monat wurde noch nicht synchronisiert",
+      "body": "Einmal verbinden, dann ist Ihr Kalender beim nächsten Mal auch offline da."
+    },
     "title": "Kalender",
     "today": "Heute",
     "previousMonth": "Voriger Monat",
@@ -1539,18 +1872,192 @@
       "save": "Speichern",
       "cancel": "Abbrechen",
       "delete": "Löschen",
-      "recurringReadOnly": "Dieser Termin wiederholt sich. Eine Serie zu ändern verlangt die Wahl zwischen diesem Termin, diesem und folgenden oder allen — solange es die nicht gibt, lassen sich Serientermine hier ansehen, aber nur in einer Kalender-App ändern, die diese Wahl bietet.",
-      "unresolvedReadOnly": "Der Server hat dies als Vorkommen geliefert, das sich keinem gespeicherten Termin zuordnen lässt. Es lässt sich hier deshalb ansehen, aber nicht ändern — nur in einer Kalender-App, die den Termin selbst erreicht."
+      "unresolvedReadOnly": "Der Server hat dies als Vorkommen geliefert, das sich keinem gespeicherten Termin zuordnen lässt. Es lässt sich hier deshalb ansehen, aber nicht ändern — nur in einer Kalender-App, die den Termin selbst erreicht.",
+      "alert": {
+        "label": "Hinweis",
+        "second": "Zweiter Hinweis",
+        "none": "Keiner",
+        "atStart": "Zur Startzeit",
+        "minutes_one": "{{count}} Minute vorher",
+        "minutes_other": "{{count}} Minuten vorher",
+        "hours_one": "{{count}} Stunde vorher",
+        "hours_other": "{{count}} Stunden vorher",
+        "days_one": "{{count}} Tag vorher",
+        "days_other": "{{count}} Tage vorher",
+        "weeks_one": "{{count}} Woche vorher",
+        "weeks_other": "{{count}} Wochen vorher",
+        "dayOf": "Am Tag des Termins (9:00)",
+        "dayBefore": "1 Tag vorher (9:00)",
+        "twoDaysBefore": "2 Tage vorher (9:00)",
+        "weekBefore": "1 Woche vorher (9:00)",
+        "other": "{{duration}} vor dem Beginn",
+        "carried_one": "{{count}} weiterer Hinweis bleibt unverändert erhalten.",
+        "carried_other": "{{count}} weitere Hinweise bleiben unverändert erhalten."
+      },
+      "back": "Zurück",
+      "repeat": {
+        "label": "Wiederholen",
+        "none": "Nie",
+        "daily": "Jeden Tag",
+        "weekly": "Jede Woche",
+        "biweekly": "Alle 2 Wochen",
+        "monthly": "Jeden Monat",
+        "yearly": "Jedes Jahr",
+        "custom": "Eigene Regel",
+        "endLabel": "Ende der Wiederholung",
+        "end": {
+          "never": "Nie",
+          "until": "Am Datum",
+          "count": "Nach Anzahl"
+        },
+        "untilDate": "Letzter Tag",
+        "countLabel": "Anzahl der Termine"
+      },
+      "scope": {
+        "saveTitle": "Änderung übernehmen für …",
+        "deleteTitle": "Löschen …",
+        "occurrence": "Nur dieser Termin",
+        "all": "Alle Termine",
+        "note": "Einzeln geänderte Termine dieser Serie behalten ihre Zeit."
+      },
+      "participant": {
+        "none": "Keine",
+        "count_one": "{{count}} Person",
+        "count_other": "{{count}} Personen",
+        "add": "E-Mail-Adresse",
+        "addAction": "Hinzufügen",
+        "empty": "Noch niemand eingeladen.",
+        "organizer": "Organisator",
+        "remove": "{{name}} entfernen",
+        "invalid": "Das sieht nicht nach einer E-Mail-Adresse aus.",
+        "duplicate": "Diese Person steht bereits auf der Liste.",
+        "full": "Mehr als {{max}} Teilnehmer nimmt der Server nicht an.",
+        "status": {
+          "needs-action": "Keine Antwort",
+          "accepted": "Zugesagt",
+          "declined": "Abgesagt",
+          "tentative": "Vielleicht"
+        }
+      },
+      "rsvp": {
+        "label": "Ihre Antwort",
+        "accepted": "Annehmen",
+        "tentative": "Vielleicht",
+        "declined": "Ablehnen"
+      }
+    },
+    "calendars": {
+      "title": "Kalender",
+      "open": "Kalender …",
+      "create": "Neuer Kalender",
+      "createTitle": "Neuer Kalender",
+      "editTitle": "Kalender bearbeiten",
+      "edit": "Bearbeiten",
+      "delete": "Löschen",
+      "menu": "Optionen für {{name}}",
+      "name": "Name",
+      "color": "Farbe",
+      "colorChosen": "Gewählt: {{chosen}}",
+      "empty": "Dieses Konto hat keine Kalender.",
+      "counting": "Termine werden gezählt …",
+      "deleteTitle": "„{{name}}“ löschen?",
+      "deleteBody_one": "Dieser Kalender und der {{count}} Termin darin werden gelöscht. Es gibt keinen Weg zurück.",
+      "deleteBody_other": "Dieser Kalender und die {{count}} Termine darin werden gelöscht. Es gibt keinen Weg zurück.",
+      "deleted": "„{{name}}“ gelöscht.",
+      "deleteFailed": "Der Kalender konnte nicht gelöscht werden.",
+      "saveFailed": "Der Kalender konnte nicht gespeichert werden.",
+      "toggleFailed": "Der Kalender konnte nicht ein- oder ausgeblendet werden.",
+      "share": "{{name}} freigeben",
+      "sharedTitle": "Freigegeben"
+    },
+    "colors": {
+      "red": "Rot",
+      "orange": "Orange",
+      "ochre": "Ocker",
+      "green": "Grün",
+      "teal": "Petrol",
+      "blue": "Blau",
+      "purple": "Violett",
+      "brown": "Braun",
+      "custom": "Aktuelle Farbe"
+    },
+    "import": {
+      "open": "Termine importieren …",
+      "title": "Termine importieren",
+      "file": "Kalenderdatei (.ics)",
+      "empty": "In dieser Datei steht kein Termin.",
+      "unreadable": "Die Datei konnte nicht gelesen werden.",
+      "failed": "Der Import ist fehlgeschlagen.",
+      "repeats": "wiederholt sich",
+      "action_one": "{{count}} Termin importieren",
+      "action_other": "{{count}} Termine importieren",
+      "done_one": "{{count}} Termin importiert.",
+      "done_other": "{{count}} Termine importiert.",
+      "duplicates_one": "{{count}} Termin war schon im Kalender.",
+      "duplicates_other": "{{count}} Termine waren schon im Kalender."
+    },
+    "rsvpFailed": "Ihre Antwort konnte nicht gesendet werden.",
+    "occurrenceDeleted": "Dieser Termin der Serie wurde entfernt.",
+    "availability": {
+      "label": "Verfügbarkeit einblenden",
+      "nobody": "Niemand",
+      "noPeople": "Es gibt niemanden, den man fragen könnte.",
+      "unavailable": "Für diese Person kam keine Verfügbarkeit zurück.",
+      "period": "{{name}} ist am {{day}} von {{from}} bis {{to}} belegt."
     }
   },
   "files": {
+    "listOptions": "Listenoptionen",
+    "deleteAction": "Löschen",
+    "confirmDeleteBody_one": "Dieses Element wird endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "confirmDeleteBody_other": "Diese {{count}} Elemente werden endgültig gelöscht. Das lässt sich nicht rückgängig machen.",
+    "confirmDeleteFolder": "Alles in den gewählten Ordnern geht mit.",
+    "truncated": "Dieses Konto enthält mehr, als sich auf einmal auflisten lässt; ein Teil der Dateien fehlt hier. Suchen Sie nach einer, die Sie vermissen.",
+    "search": {
+      "label": "Dateien durchsuchen",
+      "placeholder": "Alle Dateien durchsuchen",
+      "none": "Nichts passt zu „{{query}}“.",
+      "in": "in {{name}}",
+      "inRoot": "in Dateien"
+    },
+    "sort": {
+      "byName": "Nach Name sortieren",
+      "bySize": "Nach Größe sortieren",
+      "byKind": "Nach Art sortieren"
+    },
+    "selection": {
+      "start": "Auswählen",
+      "stop": "Fertig",
+      "clear": "Auswahl aufheben",
+      "all": "Alles hier auswählen",
+      "count_one": "{{count}} ausgewählt",
+      "count_other": "{{count}} ausgewählt"
+    },
+    "move": {
+      "open": "{{name}} bewegen",
+      "action": "Bewegen",
+      "title": "„{{name}}“ bewegen",
+      "titleMany": "{{count}} Elemente bewegen",
+      "here": "Nach {{name}} bewegen",
+      "breadcrumb": "Zielordner",
+      "noFolders": "Hier gibt es keine Ordner — „Bewegen“ legt sie trotzdem in diesen.",
+      "done": "Nach {{name}} bewegt.",
+      "undo": "Rückgängig"
+    },
     "offline": "Sie sind offline. Dateien lassen sich nur mit Verbindung ändern.",
+    "offlineStale": "Offline — wird gerade nicht aktualisiert. Zuletzt aktualisiert {{when}}.",
+    "offlineNotUpdating": "Offline — wird gerade nicht aktualisiert.",
+    "offlineNever": {
+      "title": "Ihre Dateien wurden noch nicht synchronisiert",
+      "body": "Einmal verbinden, dann ist diese Liste beim nächsten Mal auch offline da. Zum Öffnen einer Datei ist immer eine Verbindung nötig."
+    },
     "title": "Dateien",
     "root": "Dateien",
     "breadcrumb": "Ordnerpfad",
     "empty": "Dieser Ordner ist leer.",
     "retry": "Erneut versuchen",
     "loadFailed": "Die Dateien konnten nicht geladen werden.",
+    "refreshFailed": "Ihre Dateien konnten nicht aktualisiert werden — was Sie sehen, ist möglicherweise veraltet.",
     "savedButNotShown": "Gespeichert — die Liste ließ sich aber nicht neu laden. Mit „Erneut versuchen“ wird sie geholt.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
@@ -1582,33 +2089,11 @@
     "more": "Weitere Aktionen für {{name}}",
     "share": {
       "open": "{{name}} freigeben",
-      "title": "„{{name}}“ freigeben",
-      "currentHeading": "Wer Zugriff hat",
-      "addHeading": "Jemandem Zugriff geben",
-      "none": "Nur Sie.",
-      "search": "Personen suchen",
-      "searchPlaceholder": "Name oder Adresse",
-      "noMatches": "Dazu passt niemand.",
-      "searchFailed": "Die Personensuche ist fehlgeschlagen.",
-      "roleLabel": "Darf",
-      "roleFor": "Was {{name}} darf",
-      "grant": "Hinzufügen",
-      "grantTo": "{{name}} Zugriff geben",
-      "revoke": "Entfernen",
-      "revokeFrom": "Zugriff von {{name}} entfernen",
-      "done": "Fertig",
-      "custom": "Eigene Rechte",
-      "failed": "Die Änderung wurde nicht gespeichert. Es hat sich nichts geändert.",
-      "role": {
-        "viewer": "Ansehen",
-        "editor": "Bearbeiten",
-        "manager": "Verwalten"
-      },
-      "explain": {
-        "viewer": "Öffnen und herunterladen. Ändern nicht.",
-        "editor": "Öffnen, ändern, umbenennen und löschen. Weitergeben an andere nicht.",
-        "manager": "Alles, was Sie auch dürfen — einschließlich der Weitergabe an andere, ohne dass Sie davon erfahren."
-      }
+      "title": "„{{name}}“ freigeben"
+    },
+    "shared": {
+      "title": "Für mich freigegeben",
+      "open": "Von {{name}} freigegebene Dateien öffnen"
     }
   }
 }

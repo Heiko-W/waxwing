@@ -132,6 +132,21 @@ for (const tier of TIERS) {
 
     await page.getByRole('link', { name: 'Contacts', exact: true }).click()
     await noOverflow(page, `${tier.name}: contacts`)
+
+    /*
+     * Files, which this sweep has never covered — and which on 2026-08-21 gained a search field, a
+     * selection bar and a third control in its header.
+     *
+     * The phone header is the tight one: below 40em the screen's own bar is PORTALLED into it
+     * (`ScreenBar` / `SCREEN_BAR_ID`), so the breadcrumb, the folder title and every control share
+     * one 390px row with the palette and account buttons. Nothing else in the suite would notice a
+     * box crossing that edge, which is precisely the silence the same day's B-6 finding was about.
+     */
+    await page.getByRole('link', { name: 'Files', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
+      timeout: 30_000,
+    })
+    await noOverflow(page, `${tier.name}: files`)
   })
 }
 

@@ -6,7 +6,7 @@
  * when the folder is non-empty.
  */
 
-import { FolderPlus } from 'lucide-react'
+import { FolderPlus, SlidersHorizontal } from 'lucide-react'
 import {
   type FormEvent,
   lazy,
@@ -21,6 +21,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
+import { makeMailboxSharingClient } from '../sharing/mailbox-client'
+import { currentUserPrincipalId } from '../sharing/principals'
 import { type MailboxRow, setPref, useLocalPref, useMailboxes, useReplica } from '../sync'
 import { Button, Dialog, IconButton, Spinner, TextInput, useToast } from '../ui'
 import { DeleteOlderDialog, EmptyFolderDialog } from './cleanup/CleanupDialogs'
@@ -35,9 +37,20 @@ import {
 import { makeEmlImporter } from './eml-import'
 
 const EmlImportDialog = lazy(() => import('./EmlImportDialog'))
+// Lazy for the same reason: sharing a folder is a deliberate, occasional act, and the dialog drags
+// in the principal picker. Keeping it out of the initial chunk is what the size budget asks for.
+const MailboxShareDialog = lazy(() => import('../sharing/MailboxShareDialog'))
 
+import { FolderInfoDialog } from './FolderInfoDialog'
+import { FolderManageDialog } from './FolderManageDialog'
 import { FolderMoveDialog } from './FolderMoveDialog'
 import { FolderTreeView } from './FolderTreeView'
+import {
+  isStandardFolder,
+  nextSortOrder,
+  orderableSiblings,
+  visibleMailboxes,
+} from './folder-order'
 import { buildFolderTree, folderDisplayName, legalParents } from './folder-tree'
 import styles from './folder-tree.module.css'
 import { useListStore } from './list-store'
@@ -60,6 +73,9 @@ type DialogState =
   | { readonly kind: 'empty'; readonly mailbox: MailboxRow }
   | { readonly kind: 'deleteOlder'; readonly mailbox: MailboxRow }
   | { readonly kind: 'import'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'info'; readonly mailbox: MailboxRow }
+  | { readonly kind: 'manage' }
+  | { readonly kind: 'share'; readonly mailbox: MailboxRow }
 
 export interface FolderTreeProps {
   /**
@@ -98,6 +114,23 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
     () => (connected === null ? null : makeEmlImporter(connected.client, accountId)),
     [connected, accountId],
   )
+  /*
+   * The share seam for THIS tree's account (S-3). Bound to `useReplica().accountId`, not to the
+   * primary: the account-grouped sidebar renders one tree per account, and a `Mailbox/set` sent to
+   * the wrong account would find a real, different folder there — the per-account ids are short and
+   * they collide. Same reasoning as `use-folder-actions.ts`.
+   */
+  const sharingClient = useMemo(
+    () =>
+      connected === null
+        ? null
+        : makeMailboxSharingClient(
+            connected.client,
+            accountId,
+            currentUserPrincipalId(connected.jmapSession, accountId),
+          ),
+    [connected, accountId],
+  )
   const route = useRoute()
   const navigate = useNavigate()
   const actions = useFolderActions()
@@ -132,7 +165,17 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
     [onSelectMailbox, navigate, route.params.mailboxId, onNavigate],
   )
 
-  const tree = useMemo(() => buildFolderTree(mailboxes ?? []), [mailboxes])
+  /**
+   * What the sidebar shows: everything the user has not switched off in "Manage folders" (M-5). The
+   * routed folder is exempt — being inside an invisible folder is the one state hiding must not
+   * produce — and `legalParents` below is deliberately given the UNFILTERED list, so a hidden
+   * folder is still a legal destination for a move.
+   */
+  const shown = useMemo(
+    () => visibleMailboxes(mailboxes ?? [], route.params.mailboxId),
+    [mailboxes, route.params.mailboxId],
+  )
+  const tree = useMemo(() => buildFolderTree(shown), [shown])
   const collapsed = useMemo(() => new Set(collapsedList ?? []), [collapsedList])
 
   function toggleCollapse(id: string): void {
@@ -193,21 +236,41 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
   }
 
   const trashMailbox = mailboxes.find((mailbox) => mailbox.role === 'trash')
-  const siblingsOf = (parentId: string | null, excludeId?: string): MailboxRow[] =>
-    mailboxes.filter((mailbox) => mailbox.parentId === parentId && mailbox.id !== excludeId)
+  /** The names already in use beside a folder — the "name taken" check of the name dialogs. */
+  const takenNames = (parentId: string | null, excludeId?: string): string[] =>
+    mailboxes
+      .filter((mailbox) => mailbox.parentId === parentId && mailbox.id !== excludeId)
+      .map((mailbox) => mailbox.name)
+  /** Is there anything here that "Manage folders" could do something to? */
+  const manageable = mailboxes.some((mailbox) => !isStandardFolder(mailbox))
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <span className={styles.headerTitle}>{t('shell.folders.title')}</span>
-        <IconButton
-          label={t('mailbox.actions.newFolder')}
-          variant="ghost"
-          size="sm"
-          onClick={() => setDialog({ kind: 'create', parentId: null })}
-        >
-          <FolderPlus />
-        </IconButton>
+        <span className={styles.headerActions}>
+          {manageable && (
+            // The "Edit" affordance of an iOS mailbox list: order and visibility, behind one quiet
+            // button rather than on every row. Always present once there is a folder of one's own,
+            // so a hidden folder is never more than one click from being visible again.
+            <IconButton
+              label={t('mailbox.actions.manage')}
+              variant="ghost"
+              size="sm"
+              onClick={() => setDialog({ kind: 'manage' })}
+            >
+              <SlidersHorizontal />
+            </IconButton>
+          )}
+          <IconButton
+            label={t('mailbox.actions.newFolder')}
+            variant="ghost"
+            size="sm"
+            onClick={() => setDialog({ kind: 'create', parentId: null })}
+          >
+            <FolderPlus />
+          </IconButton>
+        </span>
       </div>
 
       <FolderTreeView
@@ -221,6 +284,10 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
         onRequestMove={(mailbox) => setDialog({ kind: 'move', mailbox })}
         onRequestDelete={(mailbox) => setDialog({ kind: 'delete', mailbox })}
         onRequestImport={(mailbox) => setDialog({ kind: 'import', mailbox })}
+        onRequestInfo={(mailbox) => setDialog({ kind: 'info', mailbox })}
+        {...(sharingClient === null
+          ? {}
+          : { onRequestShare: (mailbox: MailboxRow) => setDialog({ kind: 'share', mailbox }) })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
         onDragStartMailbox={(mailbox) =>
@@ -269,10 +336,16 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
           }
           submitLabel={t('mailbox.create.submit')}
           initialName=""
-          taken={siblingsOf(dialog.parentId).map((mailbox) => mailbox.name)}
+          taken={takenNames(dialog.parentId)}
           onClose={() => setDialog(null)}
           onSubmit={(name) => {
-            actions.createChild(dialog.parentId, name)
+            // Land at the END of a group the user has ordered by hand; `undefined` (an untouched
+            // group) leaves the server's 0 and the alphabetical tie-break alone.
+            actions.createChild(
+              dialog.parentId,
+              name,
+              nextSortOrder(orderableSiblings(mailboxes, dialog.parentId)),
+            )
             setDialog(null)
           }}
         />
@@ -283,9 +356,7 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
           title={t('mailbox.rename.title')}
           submitLabel={t('mailbox.rename.submit')}
           initialName={dialog.mailbox.name}
-          taken={siblingsOf(dialog.mailbox.parentId, dialog.mailbox.id).map(
-            (mailbox) => mailbox.name,
-          )}
+          taken={takenNames(dialog.mailbox.parentId, dialog.mailbox.id)}
           onClose={() => setDialog(null)}
           onSubmit={(name) => {
             actions.rename(dialog.mailbox.id, name)
@@ -343,6 +414,36 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
             setDialog(null)
           }}
         />
+      )}
+
+      {dialog?.kind === 'info' && (
+        <FolderInfoDialog
+          mailbox={dialog.mailbox}
+          mailboxes={mailboxes}
+          onClose={() => setDialog(null)}
+          onSetRole={(role) => actions.setRole(dialog.mailbox.id, role)}
+        />
+      )}
+
+      {dialog?.kind === 'manage' && (
+        // The UNFILTERED list on purpose: this is the one surface a hidden folder is still on.
+        <FolderManageDialog
+          mailboxes={mailboxes}
+          onClose={() => setDialog(null)}
+          onReorder={(order) => actions.reorder(order)}
+          onSetSubscribed={(id, isSubscribed) => actions.setSubscribed(id, isSubscribed)}
+        />
+      )}
+
+      {dialog?.kind === 'share' && sharingClient !== null && (
+        <Suspense fallback={null}>
+          <MailboxShareDialog
+            mailboxId={dialog.mailbox.id}
+            name={folderDisplayName(dialog.mailbox, t)}
+            client={sharingClient}
+            onClose={() => setDialog(null)}
+          />
+        </Suspense>
       )}
 
       {dialog?.kind === 'import' && importer !== null && (

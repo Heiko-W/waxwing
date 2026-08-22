@@ -42,12 +42,19 @@ x-stalwart-common: &stalwart-common
 
 services:
   # Pinned baseline — NFR-COMPAT-02 (Stalwart v0.16.x). What dev + CI test against.
-  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.14 (non-alpine)
+  # If the -alpine tag ever misbehaves, swap to stalwartlabs/stalwart:v0.16.18 (non-alpine)
   # and note it in README.md; the fixture is otherwise identical.
+  #
+  # Raised 0.16.14 -> 0.16.18 on 2026-08-21 (finding I-1). The pin had fallen BEHIND the
+  # production server, and not harmlessly: 0.16.16 added `urn:ietf:params:jmap:emailpush`,
+  # 0.16.17 fixed `FUTURERELEASE HOLDUNTIL` (RFC 3339 instead of Unix stamps — scheduled send
+  # is untestable below it) and made ACL grants reach the session at all, and 0.16.18 made
+  # `CalendarEvent/set` actually send invitations. Testing against the old pin meant testing
+  # against a server that demonstrably behaves differently from the one this ships against.
   stalwart:
     <<: *stalwart-common
     profiles: [dev]
-    image: stalwartlabs/stalwart:v0.16.14-alpine
+    image: stalwartlabs/stalwart:v0.16.18-alpine
     container_name: waxwing-stalwart-dev
     # A real DNS-shaped hostname, and it is load-bearing for Web Push on Safari. Stalwart's VAPID
     # `sub` claim falls back to `mailto:postmaster@{hostname}`, and without this the hostname is the

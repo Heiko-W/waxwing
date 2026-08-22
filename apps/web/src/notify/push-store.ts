@@ -35,9 +35,9 @@ export interface PushWorkerState {
    * reload replaces its own subscription instead of accumulating one per launch.
    */
   readonly deviceClientId: string
-  /** Already translated by the page — see the header. */
+  /** Already translated by the page — see the header. The product name, and the CONTENTLESS title. */
   readonly title: string
-  /** Already translated by the page. Says that mail arrived and nothing about it (ADR-017). */
+  /** Already translated by the page. The contentless body: mail arrived and nothing about it. */
   readonly body: string
   /** Absolute URLs; the worker cannot resolve `document.baseURI`. */
   readonly iconUrl: string
@@ -46,6 +46,21 @@ export interface PushWorkerState {
   readonly quietHours: QuietHours | null
   /** `silent: !sound`. */
   readonly sound: boolean
+  /**
+   * FR-NOTIF-03's privacy toggle, mirrored into the worker (ADR-017 amendment, 2026-08-21).
+   *
+   * It is ALSO what decides whether the page configures `emailPush` server-side at all — a push that
+   * carries a subject is content whether or not a banner shows it. This copy is the second half of
+   * the same rule, and it exists because the two cannot change at the same instant: the server-side
+   * config is only rewritten on the app's next start, so a content-carrying push can still be in
+   * flight when the user has just switched the toggle off. The banner obeys the switch, not the
+   * server.
+   */
+  readonly preview: boolean
+  /** Already translated. Title when a pushed message carries no usable `from`. */
+  readonly unknownSender: string
+  /** Already translated. First body line when a pushed message carries no subject. */
+  readonly noSubject: string
 }
 
 /**
@@ -80,6 +95,17 @@ export interface PushRegistrationRecord {
   readonly applicationServerKey: string
   /** What the server GRANTED (not what we asked for) — the renewal clock. `null` = never expires. */
   readonly expires: string | null
+  /**
+   * Is this server-side subscription configured to put the MESSAGE in the push
+   * (`draft-ietf-jmap-emailpush-03`)?
+   *
+   * `PushSubscription/get` will not answer this for us — it returns the row without echoing what we
+   * set, the same way it refuses to echo `keys` — so, like `endpoint`, the only way to know is to
+   * remember. It matters because the privacy toggle can flip while the subscription stays perfectly
+   * valid, and a subscription left configured after the user said "no sender and subject" keeps
+   * receiving subjects on a device that has been told not to want them.
+   */
+  readonly emailPush: boolean
 }
 
 /** Injectable so tests can drive `fake-indexeddb` and the worker can pass its own global. */
@@ -164,6 +190,19 @@ function coercePushState(value: unknown): PushWorkerState | null {
     badgeUrl: v.badgeUrl,
     quietHours: isQuietHours(v.quietHours) ? v.quietHours : null,
     sound: v.sound !== false,
+    // **Absent reads as OFF here, the opposite of `sound` above, and the asymmetry is the point.**
+    // A record written by the build before this one predates content pushes entirely; reading its
+    // silence as "show sender and subject" would put a subject on a lock screen on the strength of a
+    // field nobody ever wrote. Silence about a privacy switch is not consent. The page rewrites this
+    // record on its next start, so the cost is one contentless banner in the window between a deploy
+    // and the next launch.
+    preview: v.preview === true,
+    // Fall back to the contentless wording rather than to an English literal: those two strings are
+    // translated and present in every record this coercer accepts, so there is always something in
+    // the user's own language to say. `sw.js` cannot translate anything.
+    unknownSender:
+      typeof v.unknownSender === 'string' && v.unknownSender !== '' ? v.unknownSender : v.title,
+    noSubject: typeof v.noSubject === 'string' && v.noSubject !== '' ? v.noSubject : v.body,
   }
 }
 
@@ -275,6 +314,9 @@ function coerceRegistration(value: unknown): PushRegistrationRecord | null {
     endpoint: v.endpoint,
     applicationServerKey: v.applicationServerKey,
     expires: typeof v.expires === 'string' ? v.expires : null,
+    // A record from the build before content pushes existed says nothing here, and "nothing" is
+    // exactly right: that build never sent an `emailPush` config, so the server has none.
+    emailPush: v.emailPush === true,
   }
 }
 

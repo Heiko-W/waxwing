@@ -27,10 +27,13 @@ export {
   type ContactMutationDispatcher,
   enqueueCreateAddressBook,
   enqueueCreateContactCard,
+  enqueueDeleteAddressBook,
   enqueueDeleteContactCard,
+  enqueueUpdateAddressBook,
   enqueueUpdateContactCard,
   type IdSource,
 } from './contact-mutations'
+export type { CalendarQuerySpecInput } from './delta'
 export {
   clearEngines,
   createSyncEngine,

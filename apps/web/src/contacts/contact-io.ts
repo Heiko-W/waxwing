@@ -22,6 +22,29 @@
  *    embeds it). A photo the server externalised as a `blobId` (no inline `uri`) is NOT embedded on
  *    export — fetching the blob is out of scope for this etape — so such media entries are dropped
  *    from the exported card rather than emitted as a broken/`blobId`-bearing property.
+ *
+ * ## Why not `ContactCard/parse` (JMAP gap analysis, A-2 — checked, not built)
+ *
+ * The server can do this: Stalwart advertises `urn:ietf:params:jmap:contacts:parse` and
+ * `ContactCard/parse` turns an uploaded vCard blob into JSContact. It was measured against v0.16.18
+ * on 2026-08-21, side by side with `fromVCard`, on one vCard **3.0** card (the legacy dialect an
+ * Outlook or Google export produces, and the case a server fallback would exist for). The server's
+ * answer is not better — it is worse in three specific ways:
+ *
+ *  - `EMAIL;TYPE=INTERNET,PREF` came back as `contexts: {internet: true, pref: true}`. Neither is a
+ *    JSContact context; `pref` is a separate integer property (RFC 9553 §1.5.3). `fromVCard`
+ *    returns `{address, pref: 1}`.
+ *  - Unmapped properties came back under a key called `vCard`. RFC 9555 §2.15.2 names it
+ *    `vCardProps`, which is what `fromVCard` writes and what the round-trip back out depends on.
+ *  - The parsed card carried **no `uid` at all**. RFC 9555 §2.1.1 requires one to be generated when
+ *    the vCard has none; `fromVCard` does, and the import dedup above is built on it.
+ *
+ * There is also nothing to fall back FROM. `fromVCard` never throws and never drops a line in
+ * silence: an unparsable line lands in `skipped` and is shown, and a property with no JSContact home
+ * survives in `vCardProps`. So a fallback would trade an offline, better-conforming parser for an
+ * upload plus a round trip that only works online — and pay for it in bytes. Not built; this note is
+ * the result. Revisit if a real-world vCard is ever found that `fromVCard` mangles and the server
+ * gets right.
  */
 
 import type { ContactCard, ContactCardMedia, Id } from '@waxwing/jmap'

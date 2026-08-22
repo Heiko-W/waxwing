@@ -1,8 +1,18 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { Calendar, CalendarEvent } from '@waxwing/jmap'
+import type { Calendar, CalendarEvent, CalendarEventFilter, Id } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../app/route'
+import {
+  canonicalCalendarQueryKey,
+  putCalendarEvents,
+  putCalendarQueryCache,
+  putCalendars,
+  type ReplicaDb,
+  ReplicaProvider,
+} from '../sync'
+import { clearEngines, type SyncEngine, setEngineFor } from '../sync/engine'
+import { freshDb } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
 import CalendarPage from './CalendarPage'
 import {
@@ -45,10 +55,26 @@ function client(over: Partial<CalendarClient> = {}): CalendarClient {
   return {
     listCalendars: async (): Promise<Calendar[]> => [CALENDAR],
     eventsInRange: async (): Promise<PlacedEvent[]> => [],
+    createCalendar: async (): Promise<void> => {},
+    updateCalendar: async (): Promise<void> => {},
+    destroyCalendar: async (): Promise<void> => {},
+    countEvents: async (): Promise<number> => 0,
     createEvent: async (): Promise<void> => {},
     updateEvent: async (): Promise<void> => {},
+    updateOccurrence: async (): Promise<void> => {},
+    excludeOccurrence: async (): Promise<void> => {},
+    rsvp: async (): Promise<void> => {},
+    // Empty by default: without a matching own address the RSVP bar is not shown, which is what
+    // every test written before K-3 assumes.
+    listParticipantIdentities: async () => [],
+    parseIcs: async () => [],
+    importEvents: async () => ({ added: 0, duplicates: 0, failed: 0, reason: null }),
     destroyEvent: async (): Promise<CalendarEvent | null> => null,
     restoreEvent: async (): Promise<void> => {},
+    // S-6. Empty directory + no answer by default: the availability picker then renders disabled
+    // and the week view draws no hatch, which is what every test written before S-6 assumes.
+    listPrincipals: async () => [],
+    getAvailability: async () => null,
     ...over,
   }
 }
@@ -83,11 +109,140 @@ function occurrence(
   )
 }
 
+const ACC = 'acc'
+
+let db: ReplicaDb
+
+/**
+ * The window `[after, before)` and the calendar ids a watch spec names.
+ *
+ * The screen no longer calls `eventsInRange` — it registers a window with the sync engine and reads
+ * the replica (K-8). This unpicks the filter the engine was handed so the fake below can answer with
+ * the very same `eventsInRange` every test in this file already writes, and so the assertions about
+ * WHICH calendars are asked about still assert exactly what they always did.
+ */
+function unpackFilter(filter: CalendarEventFilter | null | undefined): {
+  from: Date
+  to: Date
+  ids: Id[]
+} {
+  type Node = {
+    operator?: string
+    conditions?: Node[]
+    after?: string
+    before?: string
+    inCalendar?: Id
+  }
+  let from = new Date(0)
+  let to = new Date(0)
+  const ids: Id[] = []
+  const visit = (node: Node | null | undefined): void => {
+    if (node === null || node === undefined) return
+    if (node.operator !== undefined) {
+      for (const inner of node.conditions ?? []) visit(inner)
+      return
+    }
+    if (node.after !== undefined) from = new Date(node.after)
+    if (node.before !== undefined) to = new Date(node.before)
+    if (node.inCalendar !== undefined) ids.push(node.inCalendar)
+  }
+  visit(filter as Node | null | undefined)
+  return { from, to, ids }
+}
+
+/**
+ * Write what `eventsInRange` answered into the replica, the way the real delta does.
+ *
+ * The identity half is RECONSTRUCTED from each `PlacedEvent`'s `writeId`/`series` — a stored object
+ * per distinct write id, carrying a `recurrenceRule` when the occurrence claimed to be part of a
+ * series — because that is what the server actually sends and what `resolveIdentity` reads back. A
+ * test asking for `{ writeId: null }` seeds no object, so the occurrence resolves to nothing, which
+ * is the "cannot be traced" case.
+ */
+async function materialize(
+  key: string,
+  spec: { filter?: CalendarEventFilter | null },
+  c: CalendarClient,
+): Promise<void> {
+  const { from, to, ids } = unpackFilter(spec.filter)
+  let placed: PlacedEvent[]
+  try {
+    placed = await c.eventsInRange(from, to, ids)
+  } catch {
+    // Exactly what the engine does with a refused window it has never materialized: a placeholder
+    // row, so the screen can tell "tried and failed" from "still loading".
+    await putCalendarQueryCache(db, {
+      accountId: ACC,
+      key,
+      ids: [],
+      objectIds: [],
+      filter: spec.filter ?? null,
+      stale: true,
+      syncedAt: 0,
+      lastUsedAt: 1,
+    })
+    return
+  }
+
+  const occurrences = placed.map((item) =>
+    item.writeId === null
+      ? item.event
+      : ({ ...item.event, baseEventId: item.writeId } as CalendarEvent),
+  )
+  const objects = new Map<Id, CalendarEvent>()
+  for (const item of placed) {
+    if (item.writeId === null) continue
+    objects.set(item.writeId, {
+      ...item.event,
+      id: item.writeId,
+      ...(item.series ? { recurrenceRule: { frequency: 'weekly' } } : {}),
+    } as CalendarEvent)
+  }
+
+  await putCalendarEvents(db, ACC, [...objects.values()], false)
+  await putCalendarEvents(db, ACC, occurrences, true)
+  await putCalendarQueryCache(db, {
+    accountId: ACC,
+    key,
+    ids: occurrences.map((event) => event.id),
+    objectIds: [...objects.keys()],
+    filter: spec.filter ?? null,
+    stale: false,
+    syncedAt: 1,
+    lastUsedAt: 1,
+  })
+}
+
+/** The narrow slice of the engine this screen touches, backed by the injected client. */
+function fakeEngine(c: CalendarClient): SyncEngine {
+  const keyOf = (spec: { filter?: CalendarEventFilter | null }): string =>
+    canonicalCalendarQueryKey({ filter: spec.filter ?? null, expandRecurrences: true })
+  return {
+    accountId: ACC,
+    watchCalendarQuery(spec: { filter?: CalendarEventFilter | null }) {
+      const key = keyOf(spec)
+      // Swallowed: `afterEach` deletes the replica, and a seed still in flight then rejects with
+      // `DatabaseClosedError` — an unhandled rejection that fails the run from outside any test.
+      void materialize(key, spec, c).catch(() => {})
+      return key
+    },
+    unwatchCalendarQuery() {},
+    async refreshCalendarWindow(spec: { filter?: CalendarEventFilter | null }) {
+      await materialize(keyOf(spec), spec, c).catch(() => {})
+    },
+  } as unknown as SyncEngine
+}
+
 function renderPage(c: CalendarClient) {
+  db = freshDb()
+  setEngineFor(ACC, fakeEngine(c))
+  void putCalendars(db, ACC, [CALENDAR]).catch(() => {})
   return render(
     <RouterProvider>
       <ToastProvider>
-        <CalendarPage client={c} today={TODAY} />
+        <ReplicaProvider accountId={ACC} db={db}>
+          <CalendarPage client={c} today={TODAY} />
+        </ReplicaProvider>
       </ToastProvider>
     </RouterProvider>,
   )
@@ -119,12 +274,17 @@ function forcePhone(): void {
   })
 }
 
-afterEach(() => {
+afterEach(async () => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     writable: true,
     value: originalMatchMedia,
   })
+  clearEngines()
+  // Unmount BEFORE the database goes away: a live query still subscribed to a deleted Dexie handle
+  // raises `DatabaseClosedError` as an unhandled rejection, which fails the run from outside any test.
+  cleanup()
+  await db?.delete()
 })
 
 /**
@@ -221,20 +381,33 @@ describe('writing an event (T1)', () => {
     expect(target.event.id).toBe('eaaaaa0')
   })
 
-  it('shows a series occurrence instead of pretending to edit it', async () => {
+  it('OPENS a series occurrence and asks for a scope after Save (K-2)', async () => {
+    /*
+     * The inversion. Until K-2 this test asserted that a repeating event opened a read-only note;
+     * now it opens the editor, and the safety property moved from "no editor" to "no silent scope":
+     * Save does not write, it asks, and the two answers are the two things the reader could mean.
+     */
     const user = userEvent.setup()
+    const updateEvent = vi.fn<CalendarClient['updateEvent']>(async () => {})
     renderPage(
       client({
         eventsInRange: async () => [
           occurrence({ title: 'Weekly' }, { writeId: '7', series: true }),
         ],
+        updateEvent,
       }),
     )
 
     await user.click(await screen.findByRole('button', { name: 'Weekly' }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText(/This event repeats/)).toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    // Nothing has been written yet — the question is the whole point.
+    expect(updateEvent).not.toHaveBeenCalled()
+    expect(within(dialog).getByRole('button', { name: 'This event only' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'This event only' }))
+    expect(updateEvent.mock.calls[0]?.[2]).toBe('occurrence')
   })
 
   it('says so when it cannot trace an occurrence back to a stored event', async () => {
@@ -465,6 +638,90 @@ describe('the week view (T6)', () => {
   })
 })
 
+/**
+ * The availability layer (S-6).
+ *
+ * Three claims, and each is about a state the screen must NOT be allowed to reach:
+ *
+ *  - the picker exists only where the answer can be drawn (the week view has the time axis; the
+ *    month and agenda do not), so there is no control whose effect the reader cannot see;
+ *  - nothing is fetched until somebody is chosen — a person's diary is not something to ask for on
+ *    the off-chance;
+ *  - a `null` answer draws no hatch and SAYS so. An unhatched week would otherwise read as
+ *    "free all week", which is a statement the client has no business making on the server's behalf.
+ */
+describe('showing somebody’s availability (S-6)', () => {
+  const BOB = { id: 'p-bob', type: 'individual' as const, name: 'Bob Baker', email: 'bob@x.test' }
+
+  it('offers the picker in the week view only', async () => {
+    const user = userEvent.setup()
+    renderPage(client({ listPrincipals: async () => [BOB] }))
+
+    // The month view is the default, and it has no time axis to hatch.
+    await screen.findByRole('button', { name: 'Week' })
+    expect(screen.queryByLabelText('Show availability')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Week' }))
+    expect(await screen.findByLabelText('Show availability')).toBeInTheDocument()
+  })
+
+  it('asks nobody about anybody until a person is chosen', async () => {
+    const user = userEvent.setup()
+    const getAvailability = vi.fn(async () => null)
+    renderPage(client({ listPrincipals: async () => [BOB], getAvailability }))
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    await screen.findByLabelText('Show availability')
+    expect(getAvailability).not.toHaveBeenCalled()
+  })
+
+  it('draws a band per busy period once somebody is chosen', async () => {
+    const user = userEvent.setup()
+    renderPage(
+      client({
+        listPrincipals: async () => [BOB],
+        getAvailability: async () => [
+          {
+            utcStart: new Date(2026, 7, 18, 10).toISOString(),
+            utcEnd: new Date(2026, 7, 18, 12).toISOString(),
+            busyStatus: 'confirmed' as const,
+          },
+        ],
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    await user.selectOptions(await screen.findByLabelText('Show availability'), 'p-bob')
+
+    // The band itself is decoration; this sentence is the only form of it a screen reader gets,
+    // and asserting on it is also the only honest way to assert on a background layer.
+    expect(
+      await screen.findByText(/Bob Baker is busy on .* from .* to .*/, { exact: false }),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing came back rather than drawing an empty, free-looking week', async () => {
+    const user = userEvent.setup()
+    renderPage(client({ listPrincipals: async () => [BOB], getAvailability: async () => null }))
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    await user.selectOptions(await screen.findByLabelText('Show availability'), 'p-bob')
+
+    expect(
+      await screen.findByText('No availability came back for that person.'),
+    ).toBeInTheDocument()
+  })
+
+  it('is disabled, with a reason, when the directory is empty', async () => {
+    const user = userEvent.setup()
+    renderPage(client({ listPrincipals: async () => [] }))
+
+    await user.click(await screen.findByRole('button', { name: 'Week' }))
+    expect(await screen.findByText('There is nobody to ask.')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Show availability')).toBeDisabled()
+  })
+})
+
 describe('the agenda', () => {
   it('shows a zone that differs from the reader’s', async () => {
     renderPage(
@@ -510,6 +767,131 @@ describe('offline (T3)', () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
   })
 
+  /**
+   * Render the screen with a replica that ALREADY holds August, and a server that answers nothing.
+   *
+   * This is the state a phone is in on a train: the month was synced this morning, the radio is off
+   * now, and every request the screen could make will fail. Before K-8 that produced "The calendar
+   * could not be loaded." over data the device was holding the whole time.
+   */
+  function renderWithReplicaOnly(placed: PlacedEvent[]) {
+    db = freshDb()
+    let seeded: Promise<void> = Promise.resolve()
+
+    /**
+     * Stands in for a window this device synced EARLIER and is now holding with no way to refresh
+     * it: `stale: true` (a refresh is owed) and a `syncedAt` an hour old. The window is written
+     * under the key the screen itself asks for, so the test cannot drift from the page's own idea of
+     * which month it is looking at.
+     */
+    // The calendar list first and unconditionally: the screen has to know WHICH calendars to ask
+    // about before it registers a window at all, so seeding it inside `seedFor` would deadlock.
+    seeded = putCalendars(db, ACC, [CALENDAR]).catch(() => {})
+
+    const seedFor = (key: string): void => {
+      seeded = (async () => {
+        const occurrences = placed.map(
+          (item) => ({ ...item.event, baseEventId: item.writeId }) as CalendarEvent,
+        )
+        await putCalendarEvents(
+          db,
+          ACC,
+          placed.map((item) => ({ ...item.event, id: item.writeId }) as CalendarEvent),
+          false,
+        )
+        await putCalendarEvents(db, ACC, occurrences, true)
+        await putCalendarQueryCache(db, {
+          accountId: ACC,
+          key,
+          ids: occurrences.map((event) => event.id),
+          objectIds: placed.map((item) => item.writeId as string),
+          filter: null,
+          stale: true,
+          syncedAt: TODAY.getTime() - 3_600_000,
+          lastUsedAt: 1,
+        })
+      })().catch(() => {})
+    }
+
+    // An engine that can reach nothing. It registers the window and refreshes NOTHING — which is
+    // the offline contract: what the replica holds must survive a materialization that cannot run.
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: (spec: { filter?: CalendarEventFilter | null }) => {
+        const key = canonicalCalendarQueryKey({
+          filter: spec.filter ?? null,
+          expandRecurrences: true,
+        })
+        seedFor(key)
+        return key
+      },
+      unwatchCalendarQuery: () => {},
+      refreshCalendarWindow: async () => {},
+    } as unknown as SyncEngine)
+
+    // Every request this screen can make fails, exactly as it does with the radio off.
+    const offlineClient = client({
+      listCalendars: async () => {
+        throw new Error('offline')
+      },
+      eventsInRange: async () => {
+        throw new Error('offline')
+      },
+    })
+    render(
+      <RouterProvider>
+        <ToastProvider>
+          <ReplicaProvider accountId={ACC} db={db}>
+            <CalendarPage client={offlineClient} today={TODAY} />
+          </ReplicaProvider>
+        </ToastProvider>
+      </RouterProvider>,
+    )
+    return { seeded: () => seeded }
+  }
+
+  it('keeps showing the month it already had, and says it is not updating', async () => {
+    /*
+     * The whole of K-8 in one assertion. Every request this screen can make fails, and the event is
+     * still on the grid — drawn from the replica, under a quiet line saying it is not being kept up
+     * to date. Not an error pane, not a spinner, not an empty month.
+     */
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderWithReplicaOnly([occurrence()])
+
+    expect(await screen.findByRole('button', { name: 'Standup' })).toBeInTheDocument()
+    const notice = await screen.findByRole('status')
+    expect(notice.textContent).toContain('Not updating while offline')
+    // And emphatically NOT the failure the screen used to show over exactly this data.
+    expect(screen.queryByText('The calendar could not be loaded.')).not.toBeInTheDocument()
+  })
+
+  it('knows which calendars to draw even though the calendar list request failed', async () => {
+    // The rail is read from the replica too. Without it the screen would not know WHICH calendars
+    // to ask about, so the month filter would name none and the grid would be empty — the events
+    // would be sitting in the replica, unreachable.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderWithReplicaOnly([occurrence()])
+
+    expect(await screen.findByRole('button', { name: 'Standup' })).toBeInTheDocument()
+  })
+
+  it('says a month it has never synced is not synced, rather than reporting a failure', async () => {
+    // The other offline first-visit: nothing was ever stored for this window. That is "not synced
+    // yet" with a sentence about what to do, not "could not be loaded" with a Try again that cannot.
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderPage(
+      client({
+        eventsInRange: async () => {
+          throw new Error('offline')
+        },
+      }),
+    )
+
+    expect(await screen.findByText('This month has not been synced yet')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+  })
+
   it('refuses to open the editor and says why, instead of loading a chunk that is not there', async () => {
     /*
      * The `+` button was gated and the day cell and the chip were not. The dialog is a `lazy()`
@@ -531,18 +913,18 @@ describe('offline (T3)', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('still shows a series occurrence, which needs neither chunk nor connection', async () => {
+  it('still refuses to open an occurrence it cannot trace, which needs no chunk', async () => {
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
     const user = userEvent.setup()
     renderPage(
       client({
         eventsInRange: async () => [
-          occurrence({ title: 'Weekly' }, { writeId: '7', series: true }),
+          occurrence({ title: 'Orphan' }, { writeId: null, series: false }),
         ],
       }),
     )
 
-    await user.click(await screen.findByRole('button', { name: 'Weekly' }))
+    await user.click(await screen.findByRole('button', { name: 'Orphan' }))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 })
@@ -582,5 +964,202 @@ describe('the phone header (F1)', () => {
 
     const heading = await screen.findByRole('heading', { level: 1 })
     expect(toolbar().contains(heading)).toBe(true)
+  })
+})
+
+/**
+ * The calendar list (K-1).
+ *
+ * `Calendar/set` had been typed since M5.6 with no caller at all, so the calendars a reader owned
+ * were a list they could look at. The assertion that matters most is not any of the buttons, though
+ * — it is the one about `eventsInRange`: hiding a calendar has to become a question the SERVER is
+ * asked, or it is a drawing trick that stops at the edge of this screen.
+ */
+describe('the calendar list', () => {
+  const calendar = (over: Partial<Calendar> = {}): Calendar =>
+    ({ ...CALENDAR, ...over }) as unknown as Calendar
+
+  const WORK = calendar({ id: 'c1', name: 'Work', isDefault: true })
+  const PRIVATE = calendar({ id: 'c2', name: 'Privat', isDefault: false })
+
+  it('names only the VISIBLE calendars in the range query', async () => {
+    /*
+     * The whole reason K-1 is worth building. `eventsInRange` has taken `calendarIds` since M5.6 and
+     * NOTHING ever passed one — so before this, a hidden calendar's events were fetched, drawn, and
+     * then either filtered out on screen (a lie the moment you open the phone) or not filtered at
+     * all. Now the server is told which calendars to answer about.
+     */
+    const seen: (readonly string[] | undefined)[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, calendar({ id: 'c2', name: 'Privat', isVisible: false })],
+        eventsInRange: async (_from, _to, ids) => {
+          seen.push(ids)
+          return []
+        },
+      }),
+    )
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0))
+    expect(seen.at(-1)).toEqual(['c1'])
+  })
+
+  it('treats a calendar with no `isVisible` at all as shown', async () => {
+    // One-sided on purpose: only `false` hides. A server that does not send the property must not
+    // end up with an empty calendar screen.
+    const seen: (readonly string[] | undefined)[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [{ ...WORK, isVisible: undefined } as unknown as Calendar],
+        eventsInRange: async (_from, _to, ids) => {
+          seen.push(ids)
+          return []
+        },
+      }),
+    )
+
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0))
+    expect(seen.at(-1)).toEqual(['c1'])
+  })
+
+  it('writes the tick to the SERVER and asks again with what is left', async () => {
+    const user = userEvent.setup()
+    const updates: [string, unknown][] = []
+    const seen: (readonly string[] | undefined)[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        updateCalendar: async (id, patch) => {
+          updates.push([id, patch])
+        },
+        eventsInRange: async (_from, _to, ids) => {
+          seen.push(ids)
+          return []
+        },
+      }),
+    )
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Privat' }))
+
+    await waitFor(() => expect(updates).toEqual([['c2', { isVisible: false }]]))
+    // And the month is re-fetched WITHOUT it: the optimistic tick changes what the query asks for,
+    // which is the difference between hiding a calendar and pretending to.
+    await waitFor(() => expect(seen.at(-1)).toEqual(['c1']))
+  })
+
+  it('puts the tick back when the server refuses', async () => {
+    const user = userEvent.setup()
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        updateCalendar: async () => {
+          throw new CalendarSetError('forbidden', 'Read-only calendar.')
+        },
+      }),
+    )
+
+    await user.click(await screen.findByRole('checkbox', { name: 'Privat' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('The calendar could not be shown or hidden.')).toBeInTheDocument(),
+    )
+    // Re-read rather than patched back, so the screen ends up agreeing with the server rather than
+    // with our guess about it.
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Privat' })).toBeChecked())
+  })
+
+  it('offers no Delete for the DEFAULT calendar', async () => {
+    /*
+     * The server would allow it — measured: `destroy` on the account's default calendar succeeds.
+     * What it will NOT allow is appointing a replacement: `isDefault` is refused in create and in
+     * update ("Field could not be set."), because on this server the flag belongs to the DAV
+     * collection literally named `default`. So deleting it is a one-way door and it is not offered.
+     */
+    const user = userEvent.setup()
+    renderPage(client({ listCalendars: async () => [WORK] }))
+
+    await user.click(await screen.findByRole('button', { name: 'Options for Work' }))
+    expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+
+  it('offers no MENU AT ALL for a calendar the reader cannot write to', async () => {
+    // Rights decide what is on the row, not whether the write is refused afterwards. A control that
+    // always fails is how a screen teaches people to distrust it.
+    renderPage(
+      client({
+        listCalendars: async () => [
+          calendar({ id: 'c3', name: 'Team', myRights: { ...WORK.myRights, mayWriteAll: false } }),
+        ],
+      }),
+    )
+
+    expect(await screen.findByRole('checkbox', { name: 'Team' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Options for Team' })).not.toBeInTheDocument()
+  })
+
+  it('asks before deleting, names the calendar, and counts what goes with it', async () => {
+    /*
+     * The one control on this screen with a confirmation. An event is deleted with an Undo in the
+     * toast because destroying one has an inverse; a calendar does not — measured, the destroy is
+     * refused outright unless the client sends `onDestroyRemoveEvents: true`, and then it takes
+     * every event with it. `create` + n × `CalendarEvent/set` would be a re-enactment with new ids.
+     */
+    const user = userEvent.setup()
+    const destroyed: string[] = []
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        countEvents: async () => 12,
+        destroyCalendar: async (id) => {
+          destroyed.push(id)
+        },
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Options for Privat' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent('Privat')
+    expect(dialog).toHaveTextContent('12 events')
+    // Nothing has happened yet, which is the point of asking.
+    expect(destroyed).toEqual([])
+
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(destroyed).toEqual(['c2']))
+  })
+
+  it('will not let the reader agree to lose an unknown number of events', async () => {
+    // The count arrives after the dialog opens, so the answer to a menu click is immediate. Until
+    // it is known, Delete is out of reach: agreeing to lose "some events" is not agreement.
+    const user = userEvent.setup()
+    renderPage(
+      client({
+        listCalendars: async () => [WORK, PRIVATE],
+        countEvents: () => new Promise<number>(() => {}),
+      }),
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Options for Privat' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('button', { name: 'Delete' })).toBeDisabled()
+  })
+
+  it('puts the list behind the view menu on a phone, where there is no rail', async () => {
+    // Below 40em the rail is not narrowed, it is not rendered — a 215px rail beside a 390px phone is
+    // two panes that both lose. The list becomes a screen-high sheet from the menu that already
+    // carries Today.
+    const user = userEvent.setup()
+    forcePhone()
+    renderPage(client({ listCalendars: async () => [WORK] }))
+
+    expect(screen.queryByRole('checkbox', { name: 'Work' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Calendar view' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Calendars…' }))
+
+    expect(await screen.findByRole('checkbox', { name: 'Work' })).toBeInTheDocument()
   })
 })

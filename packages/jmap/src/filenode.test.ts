@@ -56,6 +56,15 @@ describe('wiring', () => {
   it('auto-adds the filenode capability to `using`', () => {
     expect(usingForMethods(['FileNode/get'])).toContain('urn:ietf:params:jmap:filenode')
   })
+
+  /*
+   * `FileNode/changes` exists on v0.16.18 (measured) and had no caller until D-4, because file
+   * browsing kept no local state for a delta to be applied to. It keeps a replica now
+   * (`sync/engine/delta.ts` `syncFileNodes`), so the binding is a claim this client honours.
+   */
+  it('binds `FileNode/changes`, now that the file tree is replicated', () => {
+    expect(Methods.fileNodeChanges.name).toBe('FileNode/changes')
+  })
 })
 
 describe('the measured node shape', () => {

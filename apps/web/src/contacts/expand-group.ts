@@ -16,8 +16,10 @@
 
 import type { EmailAddress, Id } from '@waxwing/jmap'
 import type { ReplicaDb } from '../sync'
-import { type CardLike, contactDisplayName, preferred } from './contact-fields'
-import { groupMemberUids } from './contact-group-mapping'
+// `contact-fields`, not `contact-group-mapping`: this module is imported by the COMPOSER (A-4), and
+// the group mapping reaches `contact-card-mapping` (~25 KB) at runtime for its `deepEqual`. Every
+// runtime import here has to stay pure and small, or the recipient field carries the contact editor.
+import { type CardLike, contactDisplayName, groupMemberUids, preferred } from './contact-fields'
 
 /** A card's preferred email address (RFC 9553 §1.4.5 order), trimmed, or `undefined` when it has none. */
 function preferredEmail(card: CardLike): string | undefined {

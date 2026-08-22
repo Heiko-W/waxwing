@@ -304,3 +304,94 @@
   justify-content: center;
   padding: var(--waxwing-space-4);
 }
+
+/* ── "Manage folders" (JMAP gap analysis M-5) ────────────────────────────────────────────────────
+   The sidebar in edit mode: order on the leading edge, visibility on the trailing one. */
+
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+}
+
+.manageHint {
+  margin: 0 0 var(--waxwing-space-3);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
+.manageList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manageRow {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding-inline: var(--waxwing-space-1);
+  border-radius: var(--waxwing-radius-md);
+  background: var(--waxwing-surface);
+}
+
+.manageName {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manageStandard {
+  flex: 0 0 auto;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+}
+
+/*
+ * The reorder grabber. `touch-action: none` is the load-bearing declaration (ADR-026): once the
+ * compositor has claimed a touch as a scroll, no `preventDefault()` in any handler can take it
+ * back, so the only way a finger can drag a row is to say up front that this square is not for
+ * scrolling. Scoped to the grabber alone, because a folder list taller than the screen has to
+ * scroll everywhere else.
+ */
+.handle {
+  touch-action: none;
+  flex: 0 0 auto;
+  color: var(--waxwing-text-muted);
+  cursor: grab;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+/* Keeps a standard folder's name on the same left edge as the rest, without a control it has no
+   use for. */
+.handlePlaceholder {
+  flex: 0 0 auto;
+  inline-size: var(--waxwing-control-min);
+}
+
+/* The row under the finger. Elevation rather than colour: it is the same row, lifted. */
+.manageRow[data-dragging="true"] {
+  box-shadow: var(--waxwing-shadow-2);
+}
+
+/* Picked up from the keyboard — the accent ring means what a focus ring means: the arrow keys
+   belong to this row now. */
+.manageRow[data-lifted="true"] {
+  box-shadow: 0 0 0 2px var(--waxwing-accent);
+}
+
+/* The consequence line under "use this folder as…" (M-6). */
+.formHint {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}

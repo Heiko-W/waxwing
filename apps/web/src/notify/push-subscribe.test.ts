@@ -94,15 +94,21 @@ function fakeClient(options: {
   list?: Record<string, unknown>[]
   onSet?: (args: Record<string, unknown>) => Record<string, unknown>
   throwOn?: string
-}): JmapClient & { calls: Call[] } {
+}): JmapClient & { calls: Call[]; usingOf: (readonly string[] | undefined)[] } {
   const calls: Call[] = []
+  // Recorded per INVOCATION, aligned with `calls`, because the `using` set is the difference between
+  // a request a stock JMAP server answers and one it rejects outright (RFC 8620 §3.3), and the flow
+  // makes several calls per pass — the last of them a bookkeeping `get` that carries none.
+  const usingOf: (readonly string[] | undefined)[] = []
   let list = options.list ?? []
   const client = {
     calls,
-    async call(invocations: Call[]) {
+    usingOf,
+    async call(invocations: Call[], opts: { using?: readonly string[] } = {}) {
       const responses: Call[] = []
       for (const [name, args, id] of invocations) {
         calls.push([name, args, id])
+        usingOf.push(opts.using)
         if (options.throwOn === name) throw new Error(`${name} failed`)
         if (name === 'PushSubscription/get') {
           responses.push(['PushSubscription/get', { list, notFound: [] }, id])
@@ -134,7 +140,10 @@ function fakeClient(options: {
       return new MethodResponses(responses, 'state-1', undefined)
     },
   }
-  return client as unknown as JmapClient & { calls: Call[] }
+  return client as unknown as JmapClient & {
+    calls: Call[]
+    usingOf: (readonly string[] | undefined)[]
+  }
 }
 
 function deps(
@@ -153,6 +162,13 @@ function deps(
     badgeUrl: 'https://mail.example/branding/icon-192.png',
     quietHours: null,
     sound: true,
+    // The DEFAULT in this file is a server WITHOUT `urn:ietf:params:jmap:emailpush`, so every case
+    // below asserts the unchanged, contentless behaviour that must survive the amendment. The
+    // content path is opted into per test and lives in its own `describe`.
+    emailPush: null,
+    preview: true,
+    unknownSender: 'Unknown sender',
+    noSubject: '(no subject)',
     now: () => NOW,
     idb,
     ...over,
@@ -161,6 +177,12 @@ function deps(
 
 const setCalls = (client: { calls: Call[] }) =>
   client.calls.filter(([name]) => name === 'PushSubscription/set')
+
+/** The `using` extension of the first `PushSubscription/set` — the only call that may carry one. */
+const setUsing = (client: { calls: Call[]; usingOf: (readonly string[] | undefined)[] }) => {
+  const index = client.calls.findIndex(([name]) => name === 'PushSubscription/set')
+  return index === -1 ? undefined : client.usingOf[index]
+}
 
 // --- the flow ---------------------------------------------------------------------------------
 
@@ -177,6 +199,7 @@ describe('ensurePushSubscription — a first subscribe', () => {
       endpoint: ENDPOINT,
       applicationServerKey: KEY,
       expires: FAR,
+      emailPush: false,
     })
     const state = await readPushState(idb)
     expect(state?.title).toBe('Waxwing')
@@ -220,6 +243,7 @@ describe('ensurePushSubscription — an existing subscription', () => {
         endpoint: ENDPOINT,
         applicationServerKey: KEY,
         expires: FAR,
+        emailPush: false,
         ...over,
       },
       idb,
@@ -377,7 +401,13 @@ describe('submitPushVerification', () => {
 describe('unsubscribePush', () => {
   it('destroys the server row, unsubscribes the browser and forgets the registration', async () => {
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     const existing = fakeSubscription()
@@ -396,7 +426,13 @@ describe('unsubscribePush', () => {
    */
   it('still unsubscribes the browser when the JMAP call fails', async () => {
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     const existing = fakeSubscription()
@@ -432,7 +468,13 @@ describe('tearDownPushSubscription (sign-out)', () => {
    */
   it('destroys the subscription and wipes the whole store', async () => {
     await writePushRegistration(
-      { subscriptionId: 'sub-1', endpoint: ENDPOINT, applicationServerKey: KEY, expires: FAR },
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
       idb,
     )
     await writePushState(
@@ -444,6 +486,9 @@ describe('tearDownPushSubscription (sign-out)', () => {
         badgeUrl: 'https://mail.example/branding/icon-192.png',
         quietHours: null,
         sound: true,
+        preview: true,
+        unknownSender: 'Unknown sender',
+        noSubject: '(no subject)',
       },
       idb,
     )
@@ -489,5 +534,190 @@ describe('newDeviceClientId', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+})
+
+// -----------------------------------------------------------------------------------------------
+// draft-ietf-jmap-emailpush-03 (ADR-017 amendment, 2026-08-21)
+// -----------------------------------------------------------------------------------------------
+
+/** The configuration the measured probe sent and Stalwart v0.16.18 accepted, keyed by accountId. */
+const WANTED_CONFIG = {
+  b: { filter: null, properties: ['from', 'subject', 'preview', 'receivedAt'] },
+}
+
+const createBody = (client: { calls: Call[] }): Record<string, unknown> => {
+  for (const [, args] of setCalls(client)) {
+    const create = args.create as Record<string, Record<string, unknown>> | undefined
+    const body = create === undefined ? undefined : Object.values(create)[0]
+    if (body !== undefined) return body
+  }
+  return {}
+}
+
+describe('ensurePushSubscription — asking the server to put the message in the push', () => {
+  it('sends the emailPush map, keyed by account, with only the properties a banner needs', async () => {
+    const client = fakeClient({})
+    await ensurePushSubscription(
+      deps(fakeRegistration(), client, { emailPush: { accountIds: ['b'] } }),
+    )
+    expect(createBody(client).emailPush).toEqual(WANTED_CONFIG)
+  })
+
+  /**
+   * **`filter: null` is a decision, not an omission.**
+   *
+   * A server-side filter would let the per-folder preference finally apply while the app is closed
+   * and would save the device every push it does not want. It would also mean a non-matching
+   * delivery produces NO push at all — not even a `StateChange` (measured, v0.16.18) — so this
+   * channel would go blind for every message outside the chosen folders. Waxwing does not use the
+   * channel to drive sync today; making it unable to is a bigger step than a battery saving, and the
+   * ADR-017 amendment records it as deferred rather than taken.
+   */
+  it('never sends a filter — the channel must not go blind for a folder', async () => {
+    const client = fakeClient({})
+    await ensurePushSubscription(
+      deps(fakeRegistration(), client, { emailPush: { accountIds: ['b'] } }),
+    )
+    const map = createBody(client).emailPush as Record<string, { filter: unknown } | undefined>
+    expect(map.b?.filter).toBeNull()
+  })
+
+  /**
+   * RFC 8620 §3.3: a server MUST fail the whole request when `using` names a capability it does not
+   * implement. `PushSubscription/*` is core, so nothing derives this URN from the method name — it
+   * has to be opted into per call, and only on the call that actually carries the property.
+   */
+  it('adds the emailpush URN to `using`, and ONLY when the property is sent', async () => {
+    const withContent = fakeClient({})
+    await ensurePushSubscription(
+      deps(fakeRegistration(), withContent, { emailPush: { accountIds: ['b'] } }),
+    )
+    expect(setUsing(withContent)).toEqual(['urn:ietf:params:jmap:emailpush'])
+
+    const without = fakeClient({})
+    await ensurePushSubscription(deps(fakeRegistration(), without, { emailPush: null }))
+    for (const using of without.usingOf) expect(using).toBeUndefined()
+  })
+
+  /**
+   * The portability guarantee, asserted as an ABSENCE. A server without the draft must see the
+   * request the previous build sent — `emailPush: null` in the body would be a property it does not
+   * know, and RFC 8620 §3.3 lets it reject the lot.
+   */
+  it('omits the property entirely against a server that does not offer it', async () => {
+    const client = fakeClient({})
+    await ensurePushSubscription(deps(fakeRegistration(), client, { emailPush: null }))
+    expect(Object.hasOwn(createBody(client), 'emailPush')).toBe(false)
+    expect(createBody(client)).toEqual({
+      deviceClientId: 'waxwing-device-1',
+      url: ENDPOINT,
+      keys: { p256dh: expect.any(String), auth: expect.any(String) },
+      types: ['EmailDelivery'],
+    })
+  })
+
+  /**
+   * A capable server, nothing to configure (the preview toggle is off, or the session names no
+   * primary mail account). A CREATE says nothing: absent already is the default, and sending
+   * `emailPush: null` would spend the URN on a no-op.
+   */
+  it('sends no map on a create when there is nothing to configure', async () => {
+    const client = fakeClient({})
+    await ensurePushSubscription(
+      deps(fakeRegistration(), client, { emailPush: { accountIds: [] } }),
+    )
+    expect(Object.hasOwn(createBody(client), 'emailPush')).toBe(false)
+  })
+
+  it('remembers what the server was told, so the next pass can notice a change', async () => {
+    const client = fakeClient({})
+    await ensurePushSubscription(
+      deps(fakeRegistration(), client, { emailPush: { accountIds: ['b'] } }),
+    )
+    expect((await readPushRegistration(idb))?.emailPush).toBe(true)
+  })
+
+  /**
+   * The privacy switch going off, on a subscription that is otherwise perfectly healthy. `null`
+   * REMOVES the configuration — leaving it in place would keep subjects arriving on a device whose
+   * owner has just said they do not want them, with nothing anywhere to report it.
+   */
+  it('clears the configuration server-side when the preview toggle goes off', async () => {
+    await writePushRegistration(
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: true,
+      },
+      idb,
+    )
+    const client = fakeClient({
+      list: [{ id: 'sub-1', deviceClientId: 'waxwing-device-1', expires: FAR }],
+    })
+
+    await ensurePushSubscription(
+      deps(fakeRegistration(fakeSubscription()), client, {
+        // Capability present, nothing wanted — the case a `null` would have flattened into "server
+        // does not support it", which is exactly how the patch below would have been lost.
+        emailPush: { accountIds: [] },
+        preview: false,
+      }),
+    )
+
+    const [, args] = setCalls(client)[0] ?? []
+    const update = (args?.update ?? {}) as Record<string, Record<string, unknown>>
+    expect(update['sub-1']).toEqual({ emailPush: null })
+    expect((await readPushRegistration(idb))?.emailPush).toBe(false)
+    // **The removal patch MUST carry the URN.** RFC 8620 §3.3 lets a server refuse a request that
+    // uses a capability it was not told about, and a refused removal is the worst outcome in this
+    // whole file: the server keeps putting subjects in a push for a user who has just said no, the
+    // local record says it was cleared, and no error is raised anywhere.
+    expect(setUsing(client)).toEqual(['urn:ietf:params:jmap:emailpush'])
+  })
+
+  /** Turning it on again on an existing subscription — an update, not a destroy-and-recreate. */
+  it('adds the configuration to a subscription that already exists', async () => {
+    await writePushRegistration(
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
+      idb,
+    )
+    const client = fakeClient({
+      list: [{ id: 'sub-1', deviceClientId: 'waxwing-device-1', expires: FAR }],
+    })
+
+    await ensurePushSubscription(
+      deps(fakeRegistration(fakeSubscription()), client, { emailPush: { accountIds: ['b'] } }),
+    )
+
+    const [, args] = setCalls(client)[0] ?? []
+    const update = (args?.update ?? {}) as Record<string, Record<string, unknown>>
+    expect(update['sub-1']).toEqual({ emailPush: WANTED_CONFIG })
+    expect(setCalls(client)[0]?.[1].create).toBeUndefined()
+  })
+
+  /** The worker renders what the page wrote; the switch has to reach it, not only the wire. */
+  it('mirrors the preview toggle and both fallback strings into the worker handover', async () => {
+    const client = fakeClient({})
+    await ensurePushSubscription(
+      deps(fakeRegistration(), client, {
+        emailPush: null,
+        preview: false,
+        unknownSender: 'Unbekannter Absender',
+        noSubject: '(kein Betreff)',
+      }),
+    )
+    const state = await readPushState(idb)
+    expect(state?.preview).toBe(false)
+    expect(state?.unknownSender).toBe('Unbekannter Absender')
+    expect(state?.noSubject).toBe('(kein Betreff)')
   })
 })

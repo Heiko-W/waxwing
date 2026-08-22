@@ -214,14 +214,38 @@ test.describe('M4.4 shared accounts', () => {
     await expect(header).toBeVisible({ timeout: 30_000 })
     const before = await header.boundingBox()
 
-    // Scroll the rail far enough that the header's normal position is off the top.
+    /*
+     * Scroll far enough that the header's normal position is off the top — and NOT so far that the
+     * section it belongs to has gone with it. A sticky header holds only while its own box is still
+     * in the scrollport; once alice's whole section has scrolled past, the header leaving is the
+     * correct behaviour and not the bug this test is about. A flat `scrollTop = 200` did exactly
+     * that at this 300 px viewport, where the section is barely taller than the distance, so the
+     * test failed on the one arrangement it was set up to measure.
+     *
+     * Half the section, floored at "past the header", is both: unambiguously past the static
+     * position, unambiguously still inside the box sticky applies to. The throws are deliberate —
+     * a rail that has stopped scrolling at all would otherwise make this pass by never moving.
+     */
     const rail = page.getByRole('navigation', { name: 'Folders' })
-    await rail.evaluate((nav) => {
+    await rail.evaluate((nav, own) => {
       const scroller = Array.from(nav.querySelectorAll('*')).find(
         (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto',
       )
-      if (scroller) scroller.scrollTop = 200
-    })
+      if (!(scroller instanceof HTMLElement)) throw new Error('the rail has no scroll container')
+      const section = nav.querySelector(`[aria-label="${own}"]`)
+      if (!(section instanceof HTMLElement)) throw new Error(`no section for ${own}`)
+      const header = section.firstElementChild
+      const headerHeight = header instanceof HTMLElement ? header.offsetHeight : 24
+      const distance = Math.max(headerHeight + 8, Math.round(section.offsetHeight / 2))
+      if (distance + headerHeight >= section.offsetHeight) {
+        throw new Error(`the ${own} section is too short to scroll within: ${section.offsetHeight}`)
+      }
+      scroller.scrollTop =
+        section.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop +
+        distance
+    }, OWN)
 
     // Still on screen, and pinned to the top of the rail rather than carried away with the rows.
     await expect(header).toBeInViewport()

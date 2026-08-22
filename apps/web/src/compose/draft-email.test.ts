@@ -10,6 +10,7 @@ import {
   toEmailCreate,
 } from './draft-email'
 import { htmlToPlainText } from './html-to-text'
+import { DEFAULT_SEND_OPTIONS } from './send-options'
 
 function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
   return {
@@ -18,6 +19,7 @@ function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
     to: [],
     cc: [],
     bcc: [],
+    replyTo: [],
     subject: '',
     body: '',
     inReplyTo: null,
@@ -27,6 +29,7 @@ function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
     attachments: [],
     sourceEmailId: undefined,
     sourceFlag: undefined,
+    sendOptions: DEFAULT_SEND_OPTIONS,
     dirty: false,
     createdAt: 0,
     ...over,

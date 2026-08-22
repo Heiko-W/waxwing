@@ -203,6 +203,7 @@ function fakePort(accountId: string, emails: string[]): JmapPort {
               mayRename: true,
               mayDelete: true,
               maySubmit: true,
+              mayShare: false,
             },
             isSubscribed: true,
           },
@@ -293,6 +294,30 @@ function fakePort(accountId: string, emails: string[]): JmapPort {
     },
     async setContactCards() {
       return emptySet()
+    },
+    async getCalendars() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async calendarChanges(s: string) {
+      return emptyChanges(s)
+    },
+    async getCalendarEvents() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async calendarEventChanges(s: string) {
+      return emptyChanges(s)
+    },
+    async queryCalendarEvents() {
+      return { ids: [], queryState: 'q', canCalculateChanges: true, position: 0 }
+    },
+    async fileNodePage() {
+      return { ids: [], list: [], state: 's' }
+    },
+    async getFileNodes() {
+      return { list: [], notFound: [], state: 's' }
+    },
+    async fileNodeChanges(s: string) {
+      return emptyChanges(s)
     },
   }
 }

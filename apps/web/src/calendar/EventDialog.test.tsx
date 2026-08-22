@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
 import { describe, expect, it, vi } from 'vitest'
@@ -105,7 +105,9 @@ describe('the length field (T14)', () => {
     expect(screen.queryByText(/Enter a length/)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ durationMinutes: 30 }))
+    // The draft is argument ONE of three now (draft, scope, invite) — asserted positionally so the
+    // scope a series would carry cannot slip past unnoticed.
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ durationMinutes: 30 }))
   })
 
   it('is not asked for at all on a whole-day event', async () => {
@@ -117,42 +119,29 @@ describe('the length field (T14)', () => {
     expect(screen.queryByLabelText('Length in minutes')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save' }))
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ allDay: true }))
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ allDay: true }))
   })
 })
 
 describe('what the editor cannot edit (T11)', () => {
-  it('shows a location and the attendees the event carries', async () => {
+  it('shows a location the event carries', async () => {
     renderDialog({
       event: {
         ...EXISTING,
         locations: { l1: { '@type': 'Location', name: 'Besprechungsraum 3, Verl' } },
-        participants: { p1: { '@type': 'Participant', name: 'Bob Baker' } },
       } as unknown as CalendarEvent,
     })
 
     expect(screen.getByText('Location')).toBeInTheDocument()
     expect(screen.getByText('Besprechungsraum 3, Verl')).toBeInTheDocument()
-    expect(screen.getByText('Participants')).toBeInTheDocument()
-    expect(screen.getByText('Bob Baker')).toBeInTheDocument()
   })
 
-  it('falls back to a participant’s address when it has no name', () => {
-    renderDialog({
-      event: {
-        ...EXISTING,
-        participants: { p1: { '@type': 'Participant', email: 'bob@waxwing.test' } },
-      } as unknown as CalendarEvent,
-    })
-
-    expect(screen.getByText('bob@waxwing.test')).toBeInTheDocument()
-  })
-
-  it('says nothing where there is nothing to say', () => {
+  it('says nothing where there is no location', () => {
     // An empty "Location: —" row is a field the dialog does not have, dressed up as one it does.
+    // Participants are NOT asserted absent any more: since K-3 they are a row that leads to a page,
+    // so the word is on screen whether or not the event has any — with "None" beside it.
     renderDialog({ event: EXISTING })
     expect(screen.queryByText('Location')).not.toBeInTheDocument()
-    expect(screen.queryByText('Participants')).not.toBeInTheDocument()
   })
 })
 
@@ -171,5 +160,158 @@ describe('the actions row (T13)', () => {
   it('offers no Delete while creating', () => {
     renderDialog()
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+  })
+})
+
+/**
+ * Reminders (K-5) in the editor.
+ *
+ * The gap: `alerts` reached no property list, so an alarm set on a phone was invisible here. The
+ * risk in closing it: the editor now NAMES the property in a patch, so everything it cannot model is
+ * one save away from deletion. Both halves are asserted.
+ */
+describe('reminders', () => {
+  const withAlerts = (alerts: Record<string, unknown>): CalendarEvent =>
+    ({ ...EXISTING, alerts }) as unknown as CalendarEvent
+
+  const DISPLAY_15 = {
+    '@type': 'Alert',
+    action: 'display',
+    trigger: { '@type': 'OffsetTrigger', offset: '-PT15M' },
+  }
+  const EMAIL_1H = {
+    '@type': 'Alert',
+    action: 'email',
+    trigger: { '@type': 'OffsetTrigger', offset: '-PT1H' },
+  }
+
+  it('SHOWS the reminder the server sent, which nothing in this app used to', async () => {
+    renderDialog({ event: withAlerts({ k1: DISPLAY_15 }) })
+    expect(await screen.findByLabelText('Alert')).toHaveValue('-PT15M')
+  })
+
+  it('offers a second reminder only once the first is set', async () => {
+    const user = userEvent.setup()
+    renderDialog({ event: EXISTING })
+
+    // One empty row, and no invitation to fill in a second: two blank "Alert" rows tell every
+    // reader that two are expected.
+    expect(screen.queryByLabelText('Second alert')).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Alert'), '-PT15M')
+    expect(await screen.findByLabelText('Second alert')).toBeInTheDocument()
+  })
+
+  it('sends the chosen reminder with the save', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: EXISTING })
+
+    await user.selectOptions(screen.getByLabelText('Alert'), '-PT30M')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit.mock.calls[0]?.[0].alerts.offsets).toEqual(['-PT30M'])
+  })
+
+  it('says an emptied list is EMPTIED, not untouched', async () => {
+    // The distinction the whole design turns on: `undefined` leaves `alerts` out of the patch,
+    // an empty EventAlerts writes `alerts: null`. The dialog always knows which, because it read
+    // the alerts on the way in.
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: withAlerts({ k1: DISPLAY_15 }) })
+
+    await user.selectOptions(screen.getByLabelText('Alert'), '')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit.mock.calls[0]?.[0].alerts).toEqual({ offsets: [], opaque: {} })
+  })
+
+  it('reports an EMAIL reminder without offering to edit it, and carries it through', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: withAlerts({ k1: DISPLAY_15, k2: EMAIL_1H }) })
+
+    // Counted, not listed: saying how many there are is the difference between "this app keeps
+    // them" and a reader concluding they are gone.
+    expect(screen.getByText(/1 further reminder is kept unchanged/)).toBeInTheDocument()
+    // And not editable — the only value in the picker is the display alarm.
+    expect(screen.getByLabelText('Alert')).toHaveValue('-PT15M')
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit.mock.calls[0]?.[0].alerts.opaque).toEqual({ k2: EMAIL_1H })
+  })
+
+  it('offers the WHOLE-DAY values once the event has no time of day', async () => {
+    // A whole-day event starts at midnight, so a reminder has to name a clock time or it fires
+    // while the reader is asleep. Apple's values, and the first one is nine hours AFTER the start.
+    const user = userEvent.setup()
+    renderDialog({ event: EXISTING })
+
+    await user.click(screen.getByLabelText('All day'))
+    const options = within(screen.getByLabelText('Alert')).getAllByRole('option')
+    expect(options.map((option) => (option as HTMLOptionElement).value)).toEqual([
+      '',
+      'PT9H',
+      '-PT15H',
+      '-PT39H',
+      '-PT159H',
+    ])
+  })
+
+  it('keeps a stored value the fixed list does not contain', async () => {
+    // Same stance as the calendar colour picker: a value this app did not offer is still a value
+    // somebody chose, and switching the row to "All day" must not silently discard it.
+    renderDialog({
+      event: withAlerts({
+        k1: {
+          '@type': 'Alert',
+          action: 'display',
+          trigger: { '@type': 'OffsetTrigger', offset: '-PT7M' },
+        },
+      }),
+    })
+    expect(await screen.findByLabelText('Alert')).toHaveValue('-PT7M')
+  })
+})
+
+describe('reminders beyond the rows on offer', () => {
+  const three = {
+    k1: {
+      '@type': 'Alert',
+      action: 'display',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT5M' },
+    },
+    k2: {
+      '@type': 'Alert',
+      action: 'display',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT10M' },
+    },
+    k3: {
+      '@type': 'Alert',
+      action: 'display',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT15M' },
+    },
+  }
+
+  it('reports the third as kept, and keeps it', async () => {
+    // Two rows is how many the editor OFFERS, not how many an event may have. The third is counted
+    // in the same sentence as the alarms this client cannot model, because from where the reader
+    // sits the two facts are the same one: kept, and not shown.
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({
+      event: { ...EXISTING, alerts: three } as unknown as CalendarEvent,
+    })
+
+    expect(screen.getByText(/1 further reminder is kept unchanged/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit.mock.calls[0]?.[0].alerts.offsets).toEqual(['-PT5M', '-PT10M', '-PT15M'])
+  })
+
+  it('does not lose it when a row the reader CAN reach is changed', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({
+      event: { ...EXISTING, alerts: three } as unknown as CalendarEvent,
+    })
+
+    await user.selectOptions(screen.getByLabelText('Alert'), '-PT30M')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit.mock.calls[0]?.[0].alerts.offsets).toEqual(['-PT30M', '-PT10M', '-PT15M'])
   })
 })

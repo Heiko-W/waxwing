@@ -13,7 +13,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
 import {
   type AddressBookRow,
+  type CalendarEventRow,
+  type CalendarRow,
   type ContactCardRow,
+  type FileNodeRow,
+  type FileTreeState,
   getReplica,
   type IdentityRow,
   type LocalPrefRow,
@@ -23,9 +27,15 @@ import {
 } from './db'
 import {
   addressBooksForAccount,
+  calendarEventsByIds,
+  calendarsForAccount,
   contactCardsByIds,
   emailsByIds,
+  fileNodesForAccount,
+  fileNodesForParent,
+  getCalendarQueryCache,
   getContactQueryCache,
+  getFileTreeState,
   identitiesForAccount,
   mailboxByRole,
   mailboxesForAccount,
@@ -230,6 +240,113 @@ export function useContactCardResolved(id: Id): {
     [id],
   )
   return { settled: result !== undefined, card: result?.card }
+}
+
+// ── Calendar (K-8) ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The calendar list for the account, in draw order (K-8) — the analogue of {@link useAddressBooks}.
+ *
+ * OPTIONAL over the provider, for the reason {@link useMailboxOptional} documents: `SyncEngineHost`
+ * renders its children WITHOUT a provider for as long as the session takes to restore, and the
+ * calendar screen is one of those children. A throwing hook there is a white page on every reload.
+ */
+export function useCalendars(): CalendarRow[] | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<CalendarRow[] | undefined>(
+    async () =>
+      context === null ? undefined : await calendarsForAccount(context.db, context.accountId),
+    [context?.db, context?.accountId],
+  )
+}
+
+/** What one materialized calendar window holds, or `undefined` while the query resolves. */
+export interface CalendarWindow {
+  /** The expanded occurrences the grid draws, in server order; `undefined` per id not yet stored. */
+  readonly occurrences: (CalendarEventRow | undefined)[]
+  /** The stored objects behind them — the identity half; see {@link CalendarQueryCacheRow}. */
+  readonly objects: (CalendarEventRow | undefined)[]
+  /** When the window was last read from the server; `0` = never (nothing has arrived yet). */
+  readonly syncedAt: number
+  /** `true` when the window has never been materialized — "nothing yet", not "no events". */
+  readonly empty: boolean
+}
+
+/**
+ * A watched calendar window, read from the replica alone (K-8; key from `watchCalendarQuery`).
+ *
+ * THREE answers, and conflating any two of them produces a visible bug:
+ *  - `undefined` — the live query has not resolved, or there is no window to read (no provider, no
+ *    key yet). Nothing is known: show a spinner.
+ *  - `null` — the query answered and there is NO ROW. The engine has been asked for this window and
+ *    has not finished; a first visit is here for as long as the request takes. Also a spinner —
+ *    reading it as "empty" is what would flash "could not be loaded" over every first load.
+ *  - a window — the row exists. `syncedAt === 0` then means the engine TRIED and failed (it writes
+ *    that placeholder itself), which is the state the offline notice belongs to.
+ */
+export function useCalendarWindow(key: string): CalendarWindow | null | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<CalendarWindow | null | undefined>(async () => {
+    // Same provider-optional reasoning as {@link useCalendars} — and `''` is the "watch nothing"
+    // key the caller passes before the calendar list has arrived.
+    if (context === null || key === '') return undefined
+    const { db, accountId } = context
+    const row = await getCalendarQueryCache(db, accountId, key)
+    if (row === undefined) return null
+    return {
+      occurrences: await calendarEventsByIds(db, accountId, row.ids),
+      objects: await calendarEventsByIds(db, accountId, row.objectIds),
+      syncedAt: row.syncedAt,
+      empty: row.syncedAt === 0,
+    }
+  }, [context?.db, context?.accountId, key])
+}
+
+// ── Files (D-4) ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One level of the file tree from the replica — the children of `parentId`, the roots for `null`.
+ *
+ * `undefined` while the query is in flight; an EMPTY array is a real answer. Unsorted: the order
+ * the reader sees is `file-sort.ts`'s job, applied to whatever came back.
+ *
+ * Provider-optional for the same reason {@link useCalendars} is — `SyncEngineHost` renders its
+ * children without a provider until the session restores, and the Files screen is one of them.
+ */
+export function useFileNodes(parentId: Id | null): FileNodeRow[] | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<FileNodeRow[] | undefined>(
+    async () =>
+      context === null
+        ? undefined
+        : await fileNodesForParent(context.db, context.accountId, parentId),
+    [context?.db, context?.accountId, parentId],
+  )
+}
+
+/**
+ * Every node in the account (D-4) — what an account-wide search reads.
+ *
+ * `enabled` is a parameter rather than a conditional hook call, and it earns its place: the whole
+ * tree is needed only while a search is running, and reading it on every render of a folder listing
+ * would be work nobody asked for. Disabled, it answers `[]` without touching the database.
+ */
+export function useAllFileNodes(enabled: boolean): FileNodeRow[] | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<FileNodeRow[] | undefined>(async () => {
+    if (!enabled) return []
+    return context === null ? undefined : await fileNodesForAccount(context.db, context.accountId)
+  }, [context?.db, context?.accountId, enabled])
+}
+
+/** When the file tree was last walked, and whether that walk saw all of it (D-4). */
+export function useFileTreeState(): FileTreeState | undefined {
+  const context = useReplicaOptional()
+  return useLiveQuery<FileTreeState | undefined>(
+    async () =>
+      context === null ? undefined : await getFileTreeState(context.db, context.accountId),
+    [context?.db, context?.accountId],
+  )
 }
 
 /** A local preference value (FR-MBX-04), typed by the caller. */
