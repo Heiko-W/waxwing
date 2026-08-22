@@ -2291,6 +2291,72 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
+### v0.15.0 (unreleased) — measuring the server instead of reading the draft
+
+Sixty-seven findings from a JMAP gap survey: fifty-eight implemented, six confirmed as no-ops,
+two deliberately not built, one still unexplained. Stalwart offers 86 JMAP methods; this client
+typed 53 and called 43 when the survey started.
+
+The survey itself was run against two live servers rather than against documentation — the
+pinned fixture and a v0.16.18 probe started for the purpose — and **that turned out to matter
+more than the findings**. The fixture had drifted a version BEHIND production (0.16.14 against
+0.16.17), and not harmlessly: 0.16.16 added `urn:ietf:params:jmap:emailpush`, 0.16.17 fixed
+`FUTURERELEASE HOLDUNTIL` and made ACL grants reach the session at all, 0.16.18 made
+`CalendarEvent/set` send invitations. Several findings were untestable until the pin moved.
+
+**Four plans written from drafts were contradicted by the server.** `inCalendars` is
+`inCalendar`, singular — and the wrong spelling answers `unsupportedFilter` for the whole call,
+so the month view would have emptied itself the first time anyone hid a calendar. A pointer
+patch into `recurrenceOverrides` is refused, so the map must be re-read and written whole.
+`method` is immutable on **create** as well as update, which would have made Undo fail silently
+for any invited event. All-day alert offsets are `9h − 24h·n`, not `−(24n+9)h`.
+
+**Two measurements only a probe could produce.** `CalendarEvent/set` sends an iMIP invitation
+only when the method argument `sendSchedulingMessages: true` is present — without it there is no
+mail, no error and no log line, which is why an earlier probe concluded the feature was missing.
+And an unknown URN in `using` discards the ENTIRE request: the answer comes back with no
+`methodResponses` at all. That one is load-bearing twice over — every capability URN is now sent
+only when the session advertises it, and the calendar had to be isolated inside the sync pass,
+because unguarded it would have left **mail** permanently in `phase: 'error'` on any server
+without the calendar capability.
+
+**The suites found four bugs this release introduced, and the unit tests were green for all
+four.** `createMailbox` stopped sending `isSubscribed`, so Stalwart stored `false` and the new
+hide logic swallowed the folder — a folder you created vanished on the next sync. A delete
+dialog promised "everything inside goes with it" and sent no `onDestroyRemoveChildren`. Undoing
+a file move reloaded the folder you had just left. And durations were compared as text, so
+`PT60M` and `PT1H` read as different: every single-occurrence edit would have frozen the
+duration, and lengthening the series later would have skipped that one occurrence — visible
+weeks afterwards, with nothing on screen to explain it.
+
+Worth recording separately: `verify:e2e` stops at the first failing step. What was reported as
+"7 failures" was the read suite alone; write, shared and deploy had not run at all. There were
+21.
+
+**B44 and B52 are closed, and neither was a test problem.** B44 was a ref updated by a *passive*
+`useEffect` but read from a native event listener — in the window between commit and effect the
+ref still holds the previous render's callbacks. Reproduced at 7 gestures in 150.
+`useLayoutEffect` fixes it, and two more sites of the same construction went with it, including
+`ShortcutProvider`, where `e` could have archived the selection of a render ago. B52 was the
+mail screen's inbox default firing after sync and `replace`-ing whatever screen had just been
+chosen.
+
+**The visual pass is why seven more never shipped**: 72 surfaces at 390, 834 and 1280 px, with
+`hasTouch` set so the 44 px floor was measured rather than the 34 px one. The worst was a menu
+sitting behind its dialog — on a phone, renaming, recolouring and deleting a calendar were
+simply unreachable. Also: a folder name squeezed to 24 px of 132, a share dialog whose person
+column was 0 px wide, and a nine-item menu running 131 px off the bottom of the screen.
+
+Deliberately not built: two-factor authentication (enabling TOTP disables HTTP Basic, which is
+how this client signs in — and the app-password escape hatch bypasses the second factor
+entirely, so it would be the appearance of 2FA rather than 2FA), encryption-at-rest as a switch
+(this client cannot read an encrypted mailbox, so the switch would lock the reader out of their
+own mail), and ICS export over JMAP, which was measured impossible: every property spelling is
+silently dropped, `CalendarEvent/export` does not exist, and an event has no blob.
+
+`pnpm verify` 4879 tests / 279.11 KB gz of 300.
+
+
 ### v0.14.0 (2026-08-21) — the second UI review, and what a first pass leaves behind
 
 Sixty findings fixed, three withdrawn, four that were corrections to the previous audit's own
