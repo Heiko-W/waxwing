@@ -1,6 +1,6 @@
 {
   "name": "@waxwing/jmap",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "description": "Typed JMAP client (RFC 8620/8621 and extensions) \u2014 the JMAP core for Waxwing.",
   "keywords": [
