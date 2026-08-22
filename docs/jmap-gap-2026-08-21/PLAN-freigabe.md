@@ -150,7 +150,18 @@ Damit ist zugleich **Frage 4 beantwortet**: die aus dem Bericht übernommenen Sc
 exakt. Anders als beim Mailordner, wo es zehn statt neun waren, gibt es hier keine Überraschung.
 
 **2. `Principal/getAvailability` verlangt seine URN NICHT.** Derselbe Aufruf liefert mit und ohne
-`urn:ietf:params:jmap:principals:availability` im `using` dieselben echten Frei/Belegt-Zeiten.
+`urn:ietf:params:jmap:principals:availability` im `using` dieselben Frei/Belegt-Zeiten.
+
+**Aber eine Freigabe verlangt es sehr wohl — und das hatte ich falsch.** Die Messung oben lief
+gegen das *eigene* Konto und sagte daher nichts über den interessanten Fall. Sauber nachgemessen
+am 22.08. (alice fragt bobs Kalender ab, in dem ein Termin liegt):
+```
+ohne Freigabe                       → {"list":[]}
+mit shareWith { mayReadFreeBusy }   → {"list":[{"utcStart":"…08:00:00Z","utcEnd":"…10:00:00Z",
+                                                "busyStatus":"confirmed","event":null}]}
+```
+Frei/Belegt ist damit **keine** Auskunft, die das Verzeichnis von sich aus gibt. Ein E2E-Test für
+S-6 muss die Freigabe folglich einrichten — das ist Vorbedingung, nicht Schönfärberei.
 
 **Der Gegentest ist dabei der eigentliche Ertrag:** eine *unbekannte* URN im `using` lässt die
 Antwort ohne `methodResponses` zurückkommen — die ganze Anfrage fällt aus. Genau das war die

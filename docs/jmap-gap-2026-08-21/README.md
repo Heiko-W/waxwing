@@ -292,6 +292,14 @@ beim Verfassen — Kollegen finden, ohne die Adresse zu kennen — wird es nicht
 `maxAvailabilityDuration: P52W1D`) liefert echte Frei/Belegt-Zeiten kontoübergreifend —
 verifiziert. Ohne das ist Terminplanung mit mehreren Personen Raten.
 
+> **Korrektur vom 22.08.2026.** Hier stand ursprünglich, die Methode antworte „ohne jede
+> Freigabe". **Das war falsch** und stammte aus einer Messung, bei der ein Konto sich
+> *selbst* befragte. Sauber nachgemessen: ohne Freigabe `{"list":[]}`, mit
+> `mayReadFreeBusy` auf dem fremden Kalender sofort die Belegtzeit. Frei/Belegt ist also
+> **keine** Auskunft, die das Verzeichnis von sich aus gibt — sie setzt voraus, dass der
+> Kollege seinen Kalender wenigstens auf dieser Stufe geteilt hat. Das ist zugleich die
+> Rechtfertigung für die vierte Kalender-Rolle „nur Verfügbarkeit" aus S-2.
+
 Die Roadmap führt „availability" bereits unter V2; hiermit ist belegt, dass der Server
 es kann.
 
