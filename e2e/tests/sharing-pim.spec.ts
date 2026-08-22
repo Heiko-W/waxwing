@@ -244,10 +244,19 @@ test.describe('S-2 — sharing a calendar', () => {
 
       const button = sheet.getByRole('button', { name: /^Share / }).first()
       await expect(button).toBeVisible()
-      const box = await button.boundingBox()
-      expect(box).not.toBeNull()
-      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
-      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44)
+      /*
+       * `toPass` rather than a single read, and the reason is worth writing down: the dialog ENTERS
+       * with `transform: translateY(8px) scale(0.98)` (`Dialog.module.css`). A `boundingBox()` taken
+       * while that is still running reports 44 × 0.98 = **43.12px** — a WCAG 2.5.5 failure that is
+       * not one. Two separate passes reported it as a real defect before the animation was noticed;
+       * the computed `min-inline-size`/`min-block-size` were 44px the whole time.
+       */
+      await expect(async () => {
+        const box = await button.boundingBox()
+        expect(box).not.toBeNull()
+        expect(box?.height ?? 0).toBeGreaterThanOrEqual(44)
+        expect(box?.width ?? 0).toBeGreaterThanOrEqual(44)
+      }).toPass({ timeout: 10_000 })
     } finally {
       await context.close()
     }
