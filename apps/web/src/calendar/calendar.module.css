@@ -766,6 +766,19 @@
   min-block-size: var(--waxwing-control-min);
 }
 
+/*
+ * The trailing controls keep their size (WCAG 2.5.5 / FR-A11Y-01).
+ *
+ * Without this they are ordinary flex items and shrink: the name beside them wraps rather than
+ * truncating (see `.calendarName` below), so a long calendar name pushes against them and the
+ * share button was measured at **43.12px against a 44px floor** on a phone. A touch target that
+ * is correct until somebody names a calendar "Familie und Urlaubsplanung" is not a touch target;
+ * the row already grows in height for the wrapped name, and that is where the room comes from.
+ */
+.calendarRow > :not(.calendarTick) {
+  flex-shrink: 0;
+}
+
 /* Takes the room the name needs; the `Checkbox` inside is an inline-flex label that fills it. */
 .calendarTick {
   display: flex;

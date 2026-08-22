@@ -21,7 +21,7 @@ import { revealPasswordForm } from './helpers'
  *    lists the person at the level that was chosen;
  *  - a `ShareNotification` for a calendar can only be created by somebody else sharing one;
  *  - free/busy needs a diary to be busy in, and it must belong to an account that is NOT the reader
- *    — the whole point of `Principal/getAvailability` is that it answers without a share.
+ *    — `Principal/getAvailability` needs the free/busy share and nothing beyond it (measured).
  *
  * Everything granted here is revoked; `shared.teardown.mjs` sweeps whatever an aborted run leaves
  * (`revokeAllPimShares`, `clearCalendarEvents`), because a calendar left shared puts the owner's
@@ -395,6 +395,12 @@ test.describe('S-6 — somebody else’s availability', () => {
   test.beforeEach(async () => {
     await clearCalendarEvents()
     await addBusyEvent('carol', { start: `${BUSY_DAY}T10:00:00`, duration: 'PT2H' })
+    // The WEAKEST of the four calendar roles, and it is the point of the test rather than setup
+    // noise: free/busy is not something the directory gives away. Measured 2026-08-22 — alice
+    // asking about carol's calendar with no share gets `{"list":[]}`; with `mayReadFreeBusy` and
+    // nothing else she gets the times. An earlier note in this file claimed the opposite; it came
+    // from a probe where an account asked about ITSELF, which answers whatever is granted or not.
+    await shareCalendar('carol', 'alice', 'freeBusy')
   })
 
   test.afterEach(async () => {
@@ -403,11 +409,15 @@ test.describe('S-6 — somebody else’s availability', () => {
   })
 
   /*
-   * THE claim of S-6, and the reason it is worth building at all: **no share exists in this test.**
-   * Carol has given alice nothing. `Principal/getAvailability` answers anyway, with times and no
-   * titles, so alice can plan around a colleague whose diary she may not read.
+   * THE claim of S-6: the WEAKEST share is enough. Carol has granted `mayReadFreeBusy` and nothing
+   * else — she has not let alice read a single event — and alice can still plan around her, because
+   * `Principal/getAvailability` answers with times and no titles.
+   *
+   * That is exactly what the fourth calendar role from S-2 exists for, and why it is not a
+   * decoration: without a role that gives away availability ALONE, the only way to be plannable
+   * would be to let colleagues read the diary.
    */
-  test('answers WITHOUT any share, and gives away times but not titles', async ({ page }) => {
+  test('needs only the free/busy share, and gives away times but not titles', async ({ page }) => {
     // `{ stay: true }` because the line below RELOADS: `page.goto` is a full document load, and a
     // token that lives only in memory (NFR-SEC-02) does not survive one — without it every test in
     // this block landed back on the sign-in form and waited thirty seconds for a button that is on
