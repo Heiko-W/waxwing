@@ -1,6 +1,6 @@
 {
   "name": "@waxwing/e2e",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "type": "module",
   "description": "Playwright end-to-end suites and the Stalwart JMAP dev/test fixture.",
@@ -10,6 +10,7 @@
     "e2e:mount": "playwright test -c playwright.mount.config.ts",
     "e2e:deploy": "playwright test -c playwright.deploy.config.ts",
     "e2e:read": "playwright test -c playwright.read.config.ts",
+    "e2e:webkit": "playwright test -c playwright.webkit.config.ts",
     "e2e:shared": "playwright test -c playwright.shared.config.ts",
     "e2e:write": "playwright test -c playwright.write.config.ts",
     "e2e:demo": "playwright test -c playwright.demo.config.ts",

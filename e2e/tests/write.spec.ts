@@ -147,6 +147,111 @@ test.describe('M2.9 write suite', () => {
     await expect(messageList(page).getByText(subject)).toBeVisible({ timeout: 30_000 })
   })
 
+  /*
+   * A draft this browser has NO local copy of — written on another device, or here before the site
+   * data was cleared. Both ways out of the composer were broken for it, because `use-draft-opener`
+   * opened a window with no link back to the server message:
+   *
+   *  - Discard closed the window and left the draft on the server. That is what was reported.
+   *  - Close saved with no prior id, so the server CREATED a second draft beside the untouched
+   *     original — open and close a few times and the folder fills with copies.
+   *
+   * Seeded over JMAP rather than through the UI on purpose: a draft the app itself wrote has a local
+   * row, which is the path that always worked and cannot see either bug.
+   */
+  async function seedServerDraft(subject: string): Promise<string> {
+    const alice = jmapAs(ACCOUNTS.alice)
+    const account = await alice.account()
+    const boxes = await alice.mailboxes()
+    const drafts = boxes.find((box) => box.role === 'drafts')
+    if (drafts === undefined) throw new Error('no Drafts mailbox')
+    const result = await alice.call(
+      ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+      [
+        [
+          'Email/set',
+          {
+            accountId: account,
+            create: {
+              d1: {
+                mailboxIds: { [drafts.id]: true },
+                keywords: { $draft: true },
+                from: [{ name: 'Alice', email: ACCOUNTS.alice }],
+                to: [{ name: 'Bob', email: ACCOUNTS.bob }],
+                subject,
+                textBody: [{ partId: 't', type: 'text/plain' }],
+                bodyValues: { t: { value: 'Written elsewhere, opened here.' } },
+              },
+            },
+          },
+          '0',
+        ],
+      ],
+    )
+    const response = result.methodResponses[0]?.[1] as
+      | { created?: Record<string, { id: string }> }
+      | undefined
+    const created = response?.created?.d1
+    if (created === undefined) throw new Error('draft not created')
+    return created.id
+  }
+
+  /** The Drafts-folder row for `subject`, opened into the composer. */
+  async function openSeededDraft(page: import('@playwright/test').Page, subject: string) {
+    await openFolder(page, /Drafts/)
+    await messageList(page).getByText(subject).click({ timeout: 30_000 })
+    await expect(page.getByRole('textbox', { name: 'Message body' })).toBeVisible({
+      timeout: 30_000,
+    })
+  }
+
+  test('discarding a draft with no local copy removes it from the server', async ({ page }) => {
+    const token = uniqueToken('serverdraft')
+    const subject = `${WRITE_PREFIX} ${token}`
+    await seedServerDraft(subject)
+    const alice = jmapAs(ACCOUNTS.alice)
+    // The search has to FIND it first. Without this the assertion below passes on a query that
+    // matches nothing — which is exactly how this test was green while the bug was still there.
+    // (`WRITE_PREFIX` is not searchable on its own: `[wwrite]` does not survive tokenisation.)
+    expect(await alice.query(token, ['subject'])).toHaveLength(1)
+
+    await login(page, CREDENTIALS.alice)
+    await openSeededDraft(page, subject)
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Discard', exact: true }).click()
+
+    await expect
+      .poll(async () => (await alice.query(token, ['subject'])).length, { timeout: 30_000 })
+      .toBe(0)
+  })
+
+  test('closing a draft with no local copy REPLACES it rather than duplicating it', async ({
+    page,
+  }) => {
+    const token = uniqueToken('serverdraft')
+    const subject = `${WRITE_PREFIX} ${token}`
+    await seedServerDraft(subject)
+    const alice = jmapAs(ACCOUNTS.alice)
+    expect(await alice.query(token, ['subject'])).toHaveLength(1)
+
+    await login(page, CREDENTIALS.alice)
+    await openSeededDraft(page, subject)
+
+    // Edit, then let the 3 s idle autosave fire BEFORE closing. Without that wait the close raced
+    // the editor's own state and often saved nothing at all — which made this test pass whether or
+    // not the draft was linked to its server copy, i.e. it guarded nothing (verified by reverting
+    // the fix: it stayed green).
+    await typeBody(page, ' — edited here.')
+    await page.waitForTimeout(4_000)
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
+
+    // Still exactly ONE draft. Before the fix there were two: the untouched original plus the copy
+    // the save created, because it went out with no prior id to replace.
+    await expect
+      .poll(async () => (await alice.query(token, ['subject'])).length, { timeout: 30_000 })
+      .toBe(1)
+  })
+
   test('undo send cancels delivery and reopens the draft (FR-CMP-08)', async ({ page }) => {
     const token = uniqueToken('undo')
     const subject = `${WRITE_PREFIX} ${token}`

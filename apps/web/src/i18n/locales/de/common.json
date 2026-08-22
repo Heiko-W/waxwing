@@ -198,6 +198,10 @@
       "autoMarkRead": {
         "label": "Nachrichten beim Öffnen als gelesen markieren",
         "hint": "Nach einer kurzen Pause — bloßes Vorbeiscrollen markiert nichts."
+      },
+      "prefetch": {
+        "label": "Nachrichten schon vor dem Öffnen laden",
+        "hint": "Hält die Texte der angezeigten Liste auf diesem Gerät bereit, damit eine Nachricht ohne Warten auf den Server aufgeht. Verbraucht unterwegs Mobilfunkdaten — Browser können WLAN und Mobilfunk nicht unterscheiden, deshalb ist dieser Schalter die einzige Stellschraube."
       }
     },
     "swipe": {

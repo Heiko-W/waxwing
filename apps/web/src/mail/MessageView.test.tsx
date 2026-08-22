@@ -932,7 +932,7 @@ describe('MessageView', () => {
    * the click is dispatched from the FRAME's realm — the only way this reaches the app at all
    * (see the cross-realm note in `@waxwing/mail-html`'s `frame.ts`).
    */
-  async function clickBodyLink(href: string, text: string): Promise<void> {
+  async function clickBodyLink(href: string, text: string) {
     const frame = (await screen.findByTitle(/^Message:/)) as HTMLIFrameElement
     // The iframe being IN the DOM does not mean it has been mounted: `mountMailFrame` runs in a
     // passive effect, and findByTitle's MutationObserver can resolve before React flushes it. An
@@ -940,36 +940,51 @@ describe('MessageView', () => {
     // this whole helper depends on exists. (Without this wait the tests pass or fail on tick
     // alignment; they were doing exactly that.)
     await waitFor(() => expect(frame.srcdoc).not.toBe(''))
+    const doc = frame.contentDocument
+    if (doc === null) throw new Error('no contentDocument')
+    // Body first, THEN `load` — the order a browser delivers, and the order the frame's link
+    // rewrite depends on: it runs in the load handler and must find the anchor already parsed.
+    doc.body.innerHTML = `<a href="${href}">${text}</a>`
     await act(async () => {
       frame.dispatchEvent(new Event('load'))
     })
-    const doc = frame.contentDocument
-    if (doc === null) throw new Error('no contentDocument')
-    doc.body.innerHTML = `<a href="${href}">${text}</a>`
     const link = doc.querySelector('a')
     const view = doc.defaultView
     if (link === null || view === null) throw new Error('no link')
+    const event = new view.MouseEvent('click', { bubbles: true, cancelable: true })
     await act(async () => {
-      link.dispatchEvent(new view.MouseEvent('click', { bubbles: true, cancelable: true }))
+      link.dispatchEvent(event)
     })
+    // `defaultPrevented` is now half the contract: an unremarkable web link is RELEASED to the
+    // browser, which opens the new tab the frame prepared (the only route that works on Safari),
+    // and anything the gate stopped must still be suppressed here.
+    return { link, suppressed: event.defaultPrevented }
   }
 
-  it('opens a benign link straight away, with no dialog and no opener handle', async () => {
+  it('lets a benign link open in a new tab, with no dialog and no opener handle', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(seen())
-    await clickBodyLink('https://bank.test/login', 'bank.test')
-    expect(openSpy).toHaveBeenCalledWith('https://bank.test/login', '_blank', 'noopener,noreferrer')
+    const { link, suppressed } = await clickBodyLink('https://bank.test/login', 'bank.test')
+    // The BROWSER opens it, not the app (M5.15): released click, and the anchor the frame prepared
+    // carries the isolation `window.open('…','_blank','noopener,noreferrer')` used to supply.
+    expect(suppressed).toBe(false)
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(openSpy).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('raises the interstitial for a link whose text names a different host', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     renderView(seen())
-    await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
+    const { suppressed } = await clickBodyLink('https://paypa1-secure.ru/login', 'bank.test')
     const dialog = await screen.findByRole('dialog', { name: 'This link may not be genuine' })
-    // Both hosts named, and nothing opened while the reader decides.
+    // Both hosts named, and nothing opened while the reader decides — by the app OR by the browser.
+    // The second half is new and load-bearing: the anchor carries `target="_blank"` like any other,
+    // so only the suppressed click keeps the tab from opening behind the dialog.
     expect(within(dialog).getByText('bank.test')).toBeInTheDocument()
     expect(within(dialog).getByText('paypa1-secure.ru')).toBeInTheDocument()
+    expect(suppressed).toBe(true)
     expect(openSpy).not.toHaveBeenCalled()
   })
 

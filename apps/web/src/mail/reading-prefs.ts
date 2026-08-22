@@ -23,6 +23,8 @@ export const READING_PREF_KEYS = {
   remoteContent: 'reading.remoteContent',
   /** Existing (M1.7). Senders whose remote content always loads. */
   remoteAllow: 'reading.remoteAllow',
+  /** M5.16. `false` stops the list from fetching message texts before they are opened. */
+  prefetchBodies: 'reading.prefetchBodies',
 } as const
 
 export function coerceRemoteContent(value: unknown): RemoteContentDefault | null {
@@ -32,6 +34,23 @@ export function coerceRemoteContent(value: unknown): RemoteContentDefault | null
 /** FR-RD-07. Default ON — the stored value only ever turns it off. */
 export function useAutoMarkRead(): boolean {
   return useLocalPrefOptional<unknown>(READING_PREF_KEYS.autoMarkRead) !== false
+}
+
+/**
+ * M5.16. Default ON — the stored value only ever turns it off, like {@link useAutoMarkRead}.
+ *
+ * ON by default because the cost of being wrong is asymmetric: with it on, a reader on a metered
+ * connection spends data they may not have wanted to spend; with it off, EVERY message anyone opens
+ * waits for the network first, which is the complaint this exists to answer. The switch is in
+ * Settings → Reading, so the metered case has an answer that is one click away and remembered.
+ *
+ * Deliberately NOT keyed on the connection type. `navigator.connection` does not exist in WebKit at
+ * all (measured 2026-08-22), and in Chromium `type` is `null` — only a coarse `effectiveType`. There
+ * is no browser API that distinguishes Wi-Fi from cellular, so a preference that claimed to is a
+ * preference that lies.
+ */
+export function usePrefetchBodies(): boolean {
+  return useLocalPrefOptional<unknown>(READING_PREF_KEYS.prefetchBodies) !== false
 }
 
 /** FR-RD-02. The user's choice, else the deployment default, else block (the privacy-safe side). */

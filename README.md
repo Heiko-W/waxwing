@@ -101,14 +101,35 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.15.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.16.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 4 879 unit tests, 18
-integration tests against a live Stalwart, and 195 end-to-end tests across the five Playwright
-suites the gate runs, all green. Performance and accessibility are measured rather than asserted
-— the numbers are in the [implementation plan](docs/implementation-plan.md).
+Every planned work package is done and the release gate is signed off: 4 892 unit tests, 18
+integration tests against a live Stalwart, and 200 end-to-end tests across the seven Playwright
+suites the gate runs — plus a WebKit smoke suite of 3 that runs beside it. Performance and
+accessibility are measured rather than asserted — the numbers are in the
+[implementation plan](docs/implementation-plan.md).
 
-**v0.15.0 closes the JMAP gap.** A survey of what Stalwart offers against what this client used
+**v0.16.0 is what Safari found.** Three defects reported from a running deployment, none of which
+any test here could see, because every suite in this repository ran on Chromium:
+
+- **No link in a message opened.** WebKit delivers the outer page *no* click events from a
+  sandboxed frame — not on the document, the body or the anchor, in either phase, for any event
+  type. The app opened links from exactly such a listener, so clicking one did nothing at all. The
+  phishing gate could not stay a veto over a click either; it now decides which links the browser
+  is handed, before any click ([ADR-029](docs/adr/029-safari-cannot-intercept-clicks-in-a-sandboxed-frame.md)).
+- **An empty mailbox rendered no mail screen.** WebKit cannot open a `nextunique` cursor on an
+  empty multiEntry index, and the label rail read one — so every account's first paint, and every
+  paint of a mailbox that never receives mail, threw into the route error boundary.
+- **Discarding a draft did nothing, and closing one duplicated it.** A draft this browser held no
+  local copy of — written on another device, or before the site data was cleared — opened with no
+  link to its server message, so neither the delete nor the replace could name it.
+
+A WebKit smoke suite now runs beside the Chromium ones so the engine difference stays visible.
+Opening a message also no longer waits for the network: the texts of the list in view are fetched
+ahead of the click (2 395 ms → 102 ms on a 1 Mbit / 150 ms link), with a switch in
+Settings → Reading, because no browser API can tell Wi-Fi from cellular.
+
+**v0.15.0 closed the JMAP gap.** A survey of what Stalwart offers against what this client used
 produced 67 findings; 58 are implemented here. Calendars can be created and shared, series and
 reminders edited, invitations sent and answered, `.ics` files imported; folders reorder, hide and
 take a role; mail search leaves the trash out and understands `OR`, `NOT` and size; push

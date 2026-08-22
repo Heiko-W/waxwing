@@ -8,18 +8,29 @@ import { buildFrameDocument, linkTextOf, type MailLinkInfo, mountMailFrame } fro
  * `frame.ts`).
  *
  * jsdom does not parse `srcdoc` into the child document and does not fire `load` when `srcdoc` is
- * assigned to an attached iframe, so the two things a browser does for us are done by hand: dispatch
- * `load`, then write the body. Everything after that — the listener wiring, the target resolution,
- * the text extraction — is the real `mountMailFrame` code path.
+ * assigned to an attached iframe, so the two things a browser does for us are done by hand: write
+ * the body, then dispatch `load`. Everything after that — the per-link gate, the listener wiring,
+ * the target resolution, the text extraction — is the real `mountMailFrame` code path.
  */
-function mountWithBody(bodyHtml: string, onLink: (href: string, info: MailLinkInfo) => void) {
+function mountWithBody(
+  bodyHtml: string,
+  onLink: (href: string, info: MailLinkInfo) => void,
+  gateLink?: (href: string, info: MailLinkInfo) => boolean,
+) {
   const iframe = document.createElement('iframe')
   document.body.append(iframe)
-  const controller = mountMailFrame(iframe, buildFrameDocument(bodyHtml), { onLink })
-  iframe.dispatchEvent(new Event('load'))
+  const controller = mountMailFrame(iframe, buildFrameDocument(bodyHtml), {
+    onLink,
+    ...(gateLink ? { gateLink } : {}),
+  })
   const doc = iframe.contentDocument
   if (doc === null) throw new Error('no contentDocument')
+  // BEFORE the `load` dispatch, which is the order a browser delivers: `load` fires once the
+  // document is parsed, so the handler finds the anchors already there. Written the other way round
+  // this file silently skipped the per-link gate (`prepareLinks` runs inside that handler) and every
+  // assertion about `target`/`rel` below would have passed on an empty document.
   doc.body.innerHTML = bodyHtml
+  iframe.dispatchEvent(new Event('load'))
   return { iframe, doc, controller }
 }
 
@@ -90,9 +101,14 @@ describe('mountMailFrame', () => {
     const controller = mountMailFrame(iframe, buildFrameDocument('<p>hi</p>'))
 
     const sandbox = iframe.getAttribute('sandbox') ?? ''
-    expect(sandbox).toBe('allow-same-origin')
+    // The popup pair is what lets a clicked link open on Safari at all (see the file header). The
+    // three that are absent are the ones that would let the MESSAGE act: run code, navigate the app
+    // out from under the reader, or submit somewhere. Asserted by absence rather than by an exact
+    // string, so this keeps meaning what it says if another token is ever added.
+    expect(sandbox).toBe('allow-same-origin allow-popups allow-popups-to-escape-sandbox')
     expect(sandbox).not.toContain('allow-scripts')
     expect(sandbox).not.toContain('allow-top-navigation')
+    expect(sandbox).not.toContain('allow-forms')
     expect(iframe.srcdoc).toContain('<p>hi</p>')
 
     // Teardown is safe to call even when nothing was wired (no ResizeObserver in this environment
@@ -263,6 +279,88 @@ describe('mountMailFrame — link interception (FR-RD-08)', () => {
     const event = new view.MouseEvent('click', { bubbles: true, cancelable: true })
     link.dispatchEvent(event)
     expect(event.defaultPrevented).toBe(true)
+  })
+
+  /*
+   * The gate contract that carries the Safari fix, both directions.
+   *
+   * `gateLink` answering `false` is the app saying "I have looked at this one and the browser may
+   * have it" — the anchor gets a `target` and its click is no longer intercepted. Anything else
+   * KEEPS the link: no `target`, click suppressed, handed to `onLink`. `undefined` and a missing
+   * callback are deliberately in that group, so a caller written before `gateLink` existed — every
+   * other test in this file — keeps the all-intercepted behaviour it was written against.
+   *
+   * Getting this backwards is not a cosmetic bug: on WebKit a `target="_blank"` anchor inside the
+   * frame is opened WITHOUT the click listener ever running, so a link released by mistake cannot be
+   * stopped by anything downstream.
+   */
+  it('suppresses a kept link’s click and leaves a released one to the browser', () => {
+    const dispatch = (doc: Document): boolean => {
+      const link = doc.querySelector('a')
+      const view = doc.defaultView
+      if (link === null || view === null) throw new Error('no link')
+      const event = new view.MouseEvent('click', { bubbles: true, cancelable: true })
+      link.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    const anchor = '<a href="https://example.test/x">go</a>'
+    const released = mountWithBody(anchor, vi.fn(), () => false)
+    const kept = mountWithBody(anchor, vi.fn(), () => true)
+    const byDefault = mountWithBody(anchor, vi.fn())
+    expect(released.doc.querySelector('a')?.getAttribute('target')).toBe('_blank')
+    expect(kept.doc.querySelector('a')?.getAttribute('target')).toBeNull()
+    expect(byDefault.doc.querySelector('a')?.getAttribute('target')).toBeNull()
+    expect(dispatch(released.doc)).toBe(false)
+    expect(dispatch(kept.doc)).toBe(true)
+    expect(dispatch(byDefault.doc)).toBe(true)
+  })
+
+  it('a released link never reaches onLink, in any engine', () => {
+    // Chromium DOES fire the listener for a `target="_blank"` anchor and WebKit does not. Without
+    // the frame stepping aside for a released link, the same message would behave differently in
+    // the two — routed back through the app in one, opened by the browser in the other.
+    const onLink = vi.fn()
+    const { doc } = mountWithBody('<a href="https://example.test/x">go</a>', onLink, () => false)
+    clickIn(doc, 'a')
+    expect(onLink).not.toHaveBeenCalled()
+  })
+
+  it('points released web links at a new tab, resolved and with no opener handle', () => {
+    const { doc } = mountWithBody(
+      '<a href="https://example.test/a">abs</a>' +
+        '<a href="//example.test/b">protocol-relative</a>' +
+        '<area href="https://example.test/c" alt="area">',
+      vi.fn(),
+      () => false,
+    )
+    for (const link of doc.querySelectorAll('a, area')) {
+      expect(link.getAttribute('target')).toBe('_blank')
+      expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+    }
+    // Resolved against the APP's document, because the browser now navigates by itself and would
+    // otherwise resolve a protocol-relative href against `about:srcdoc` — which goes nowhere. The
+    // scheme it picks up is the app's own (`http:` under jsdom, `https:` in production), which is
+    // exactly what `window.open` from the app did with the same string.
+    const base = new URL(document.baseURI)
+    expect(doc.querySelectorAll('a')[1]?.getAttribute('href')).toBe(
+      `${base.protocol}//example.test/b`,
+    )
+  })
+
+  it('leaves a mailto: alone — never released, whatever the gate says', () => {
+    const onLink = vi.fn()
+    // `() => false` would release it if the frame asked; it does not ask, because a `mailto:` has no
+    // web URL to hand the browser and a `target` on it would open an empty tab.
+    const { doc } = mountWithBody(
+      '<a href="mailto:bob@example.test">write</a>',
+      onLink,
+      () => false,
+    )
+    const link = doc.querySelector('a')
+    expect(link?.getAttribute('target')).toBeNull()
+    expect(link?.getAttribute('href')).toBe('mailto:bob@example.test')
+    clickIn(doc, 'a')
+    expect(onLink).toHaveBeenCalledWith('mailto:bob@example.test', expect.anything())
   })
 
   it('yields empty text for an image-only link', () => {

@@ -3,20 +3,49 @@
  * isolated `srcdoc` document with its OWN strict CSP and a conservative light theme.
  *
  * ## Security posture — a script-FREE sandbox
- * The frame is mounted with `sandbox="allow-same-origin"` and NOTHING else: no `allow-scripts`, no
- * `allow-top-navigation`, no `allow-forms`, no `allow-popups`. Because no script can execute inside
- * the frame, a sanitizer miss cannot run JS at all — a strictly stronger guarantee than the
- * postMessage-based auto-height the plan sketched, which would require `allow-scripts`.
- * `allow-same-origin` (WITHOUT `allow-scripts`) is the safe combination: it lets the OUTER page read
- * the frame's height and intercept its link clicks with zero code running inside the frame. The
- * inner `<meta>` CSP (`script-src 'none'`) is a second wall, and the app's own CSP is the third.
+ * The frame is mounted WITHOUT `allow-scripts`, `allow-top-navigation` and `allow-forms`. Because no
+ * script can execute inside the frame, a sanitizer miss cannot run JS at all — a strictly stronger
+ * guarantee than the postMessage-based auto-height the plan sketched, which would require
+ * `allow-scripts`. `allow-same-origin` (WITHOUT `allow-scripts`) is the safe combination: it lets
+ * the OUTER page read the frame's height and reach into its DOM with zero code running inside the
+ * frame. The inner `<meta>` CSP (`script-src 'none'`) is a second wall, and the app's own CSP is the
+ * third. (Reaching into the DOM works in every engine. Observing EVENTS in it does not — see below,
+ * and note that the link handling deliberately depends only on the half that does.)
+ *
+ * ## What WebKit does NOT let the outer page do (measured 2026-08-22, WebKit 2311 vs Chromium)
+ * **A click inside a sandboxed frame is not observable from the outer page at all.** Not on the
+ * frame's `document`, its `documentElement`, its `body`, its `defaultView`, nor on the anchor
+ * itself; not in the bubble phase and not in the capture phase; not as `click`, `mousedown`,
+ * `pointerdown` or `auxclick`. The identical frame with NO `sandbox` attribute delivers every one of
+ * them. Chromium delivers all of them either way, which is why none of this was visible here: the
+ * E2E suite is Chromium.
+ *
+ * So on Safari the interception below has never run, and neither has anything downstream of it. A
+ * reader clicked a link in a message and NOTHING happened — no navigation, no new tab, no dialog —
+ * because the app's `window.open` sat behind a listener that was never called. That is the bug this
+ * design answers, and it cannot be answered by intercepting better.
+ *
+ * ## What it does let us do, and what that costs
+ * A NATIVE `target="_blank"` navigation out of a sandboxed frame works, provided the sandbox carries
+ * `allow-popups`. `allow-popups` alone opens a tab that inherits the sandbox — including the missing
+ * `allow-scripts`, so the destination renders blank; `allow-popups-to-escape-sandbox` is what makes
+ * it an ordinary page. Neither token grants the MESSAGE anything: no script runs in the frame, so
+ * nothing can open a window the reader did not click.
+ *
+ * Handing the browser the navigation means the app cannot veto it afterwards — there is no
+ * afterwards. The phishing gate therefore stops being a veto over a click and becomes a decision
+ * about which links the browser is trusted with at all, taken while the document loads:
+ * {@link MailFrameCallbacks.gateLink}. A link it keeps gets no `target`, so on Safari a click on it
+ * still does nothing (the reader is not sent anywhere, and is not told why either — the interstitial
+ * needs a click event to raise it, which is exactly what WebKit withholds), and on Chromium the
+ * interception below raises the dialog as it always has.
  *
  * ## Dark mode
  * Mail CSS assumes a light canvas; forcing a dark background misrenders most mail. The frame keeps a
  * conservative light background and dark text regardless of the host theme (documented trade-off).
  */
 
-import { joinLinkText, type LinkText } from './link-host'
+import { joinLinkText, type LinkText, webUrl } from './link-host'
 
 export interface FrameOptions {
   /** Allow remote `https:` images in the inner CSP (paired with a remote-allowing sanitize pass). */
@@ -87,11 +116,30 @@ export interface MailLinkInfo {
 
 export interface MailFrameCallbacks {
   /**
-   * A link inside the frame was clicked; the app opens it (`noopener` + visible host, FR-RD-08).
-   * `info.text` is what the reader saw — the app compares it against the real host (`link-host.ts`)
-   * before opening, which is a check only the app can do: nothing executes in the frame.
+   * An INTERCEPTED link click: the frame has already called `preventDefault()`, so nothing happens
+   * until the app makes it happen. `info.text` is what the reader saw — the app compares it against
+   * the real host (`link-host.ts`), which is a check only the app can do: nothing executes in the
+   * frame.
+   *
+   * Only links {@link MailFrameCallbacks.gateLink} kept are delivered here. A link it released is
+   * opened by the browser and never reaches this callback, in any engine.
    */
   readonly onLink?: (href: string, info: MailLinkInfo) => void
+  /**
+   * Asked ONCE PER LINK when the document loads, before any click: may the browser open this one by
+   * itself? `true` (and a missing callback) keeps the link under the frame's interception — a click
+   * on it is suppressed and handed to {@link MailFrameCallbacks.onLink}. `false` releases it: the
+   * frame rewrites it to an absolute `target="_blank"` anchor and the browser opens the new tab.
+   *
+   * ## Why the decision has to happen HERE and not in the click
+   * WebKit delivers the outer page no click events from a sandboxed frame at all (file header), so
+   * a gate that vetoes a click cannot run on Safari — it would pass every test in this repo and
+   * protect nobody. Releasing a link is therefore irreversible by construction, and this callback is
+   * the only place the decision exists.
+   *
+   * Nothing about the anchor can change between this call and the click: the frame runs no script.
+   */
+  readonly gateLink?: (href: string, info: MailLinkInfo) => boolean
   /** The rendered content height changed (px) — the app may mirror it onto the iframe. */
   readonly onHeight?: (px: number) => void
 }
@@ -353,8 +401,9 @@ export function mountMailFrame(
   srcdoc: string,
   callbacks: MailFrameCallbacks = {},
 ): MailFrameController {
-  // No allow-scripts / allow-top-navigation / allow-forms / allow-popups (see the file header).
-  iframe.setAttribute('sandbox', 'allow-same-origin')
+  // No allow-scripts / allow-top-navigation / allow-forms. The two popup tokens are what lets a
+  // clicked link open at all on Safari, and grant the message nothing on their own — file header.
+  iframe.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox')
 
   let observer: ResizeObserver | undefined
   let clickTarget: Document | undefined
@@ -372,6 +421,17 @@ export function mountMailFrame(
     if (link === null) return
     const href = link.getAttribute('href')
     if (href === null) return
+    /*
+     * A RELEASED link is the browser's, and this listener steps aside for it.
+     *
+     * Only reachable in engines that fire the listener for a `target="_blank"` anchor at all —
+     * Chromium does, WebKit does not (see {@link MailFrameCallbacks.gateLink}). Without this branch
+     * the two would disagree about the same message: Chromium would suppress the navigation and
+     * route every link back through the app, Safari would open them. The attribute is written by
+     * `prepareLinks` below and only for links the app released, so reading it here is reading the
+     * decision that was already made, not making a new one.
+     */
+    if (link.getAttribute('target') === '_blank') return
     event.preventDefault()
     // Deliberately unclamped — see MailLinkInfo.text.
     const parts = linkTextOf(link)
@@ -381,6 +441,42 @@ export function mountMailFrame(
       raw: parts.raw,
       separated: parts.separated,
     })
+  }
+
+  /**
+   * Ask the app about every link BEFORE any of them can be clicked, and point the released ones at
+   * a new tab.
+   *
+   * Deliberately here rather than in `sanitize()`, and the placement is the safety property: a
+   * `target` is written only on the path that also installs the click listener below, so in a
+   * runtime where `contentDocument` is unreachable neither happens and every link keeps the
+   * interception it had before this existed. Same reason `gateLink` defaults to keeping a link:
+   * a caller that does not pass one gets the old all-intercepted behaviour, unchanged.
+   *
+   * A released href is rewritten to its ABSOLUTE form because the browser will now resolve it
+   * against `about:srcdoc`, where a relative or protocol-relative href resolves to nothing — see
+   * {@link webUrl}. `mailto:`/`tel:` cannot be released at all: `webUrl` answers `null` for them, so
+   * they keep no `target` and the click handler above still hands them to the app.
+   */
+  const prepareLinks = (doc: Document): void => {
+    const base = iframe.ownerDocument?.baseURI
+    for (const link of doc.querySelectorAll('a[href], area[href]')) {
+      const absolute = webUrl(link.getAttribute('href') ?? '', base)
+      if (absolute === null) continue
+      const parts = linkTextOf(link)
+      const gated = callbacks.gateLink?.(absolute, {
+        href: absolute,
+        text: joinLinkText(parts),
+        raw: parts.raw,
+        separated: parts.separated,
+      })
+      if (gated !== false) continue
+      link.setAttribute('href', absolute)
+      link.setAttribute('target', '_blank')
+      // `noopener` (no `window.opener` handle back into the app) + `noreferrer` (no Referer), the
+      // same pair the app's own `window.open` has always passed.
+      link.setAttribute('rel', 'noopener noreferrer')
+    }
   }
 
   const onLoad = (): void => {
@@ -425,6 +521,7 @@ export function mountMailFrame(
     doc.addEventListener('click', onClick)
     doc.addEventListener('auxclick', onClick)
     clickTarget = doc
+    prepareLinks(doc)
   }
 
   iframe.addEventListener('load', onLoad)

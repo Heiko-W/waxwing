@@ -371,11 +371,28 @@ export function countEmailsWithKeyword(
  * account-scoped slice of the `akw` multiEntry index by prefix — the NUL separator in {@link scopeKey}
  * guarantees no bleed from an account id that is a string prefix of another — and strips the scope,
  * so it is a single indexed range, not a full-table scan. Reflects only the windowed replica subset.
+ *
+ * `keys()` + a `Set`, NOT Dexie's `uniqueKeys()`, and this is a browser bug rather than a
+ * preference. `uniqueKeys()` opens the key cursor with direction `nextunique`, and WebKit cannot
+ * open such a cursor on an EMPTY multiEntry index: it fails the request with
+ * `UnknownError: Unable to open cursor` (measured 2026-08-22 against WebKit 2311 and Chromium side
+ * by side — empty index + `nextunique` is the only one of the four combinations that fails, and
+ * `next` over the same empty index answers with zero keys as it should).
+ *
+ * An empty `akw` slice is not an edge case, it is every account's FIRST paint: the label rail runs
+ * this query before the first sync has written a single message, so on Safari the very first render
+ * of the mail screen threw — and a mailbox that never receives mail (an admin login) threw on every
+ * render. The throw reached the route error boundary, which replaced the whole screen, folder tree
+ * included, with "part of the app could not be loaded".
+ *
+ * Deduplicating in JS costs one key per (message × keyword) pair over the account's replica window
+ * instead of one per distinct keyword. That is a key cursor with no row loads, over a windowed
+ * subset — and correctness on the browser half our users are on is not a trade against it.
  */
 export async function distinctKeywords(db: ReplicaDb, accountId: Id): Promise<string[]> {
   const prefix = scopeKey(accountId, '')
-  const keys = (await db.emails.where('akw').startsWith(prefix).uniqueKeys()) as string[]
-  return keys.map((key) => key.slice(prefix.length))
+  const keys = (await db.emails.where('akw').startsWith(prefix).keys()) as string[]
+  return [...new Set(keys.map((key) => key.slice(prefix.length)))]
 }
 
 /** Per-keyword unread (`$seen`-absent) counts over the account's cached mail (M3.2 label badges). */

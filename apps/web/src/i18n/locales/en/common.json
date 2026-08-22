@@ -198,6 +198,10 @@
       "autoMarkRead": {
         "label": "Mark messages as read when opened",
         "hint": "After a short pause, so scrolling past a message does not mark it."
+      },
+      "prefetch": {
+        "label": "Load messages before opening them",
+        "hint": "Keeps the texts of the list you are looking at ready on this device, so a message opens without waiting for the server. Uses mobile data when you are not on Wi-Fi — browsers cannot tell the two apart, so this switch is the only say either of us has."
       }
     },
     "swipe": {

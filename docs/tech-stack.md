@@ -166,9 +166,18 @@ Defense in depth, in order:
 2. **Isolate** in `<iframe sandbox="allow-same-origin-less">` via `srcdoc` — hard
    security boundary, own document, no script, no top navigation, `csp` attribute where
    supported; height auto-sizing via ResizeObserver messaging.
-3. **App-level strict CSP** (no inline script/eval) as the outer wall; link clicks are
-   intercepted and re-dispatched with `noopener` + visible target host (NFR-SEC-01,
-   FR-RD-08).
+3. **App-level strict CSP** (no inline script/eval) as the outer wall; every link in a
+   message is classified when the message loads and only the unremarkable ones are handed
+   to the browser, as `target="_blank" rel="noopener noreferrer"` anchors. A link whose text
+   names a different host than its href is kept behind the frame's click interception and
+   raises the interstitial (NFR-SEC-01, FR-RD-08).
+
+   The sandbox therefore carries `allow-popups allow-popups-to-escape-sandbox` beside
+   `allow-same-origin`; neither grants the message anything, since no script runs in the
+   frame. Classifying at load rather than vetoing the click is not a preference: WebKit
+   delivers the outer page **no** click events from a sandboxed frame, so a click-time gate
+   cannot run on Safari at all — where, until this was found, no link in a message opened.
+   Measured, with the alternatives that do not work, in **ADR-029**.
 
 No client-side MIME parsing is needed for display: JMAP servers deliver decoded
 `bodyValues`/`htmlBody` (RFC 8621 §4.1.4), and attached `message/rfc822` parts are
