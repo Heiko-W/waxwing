@@ -251,9 +251,16 @@ test('offline, the file list keeps showing what it already has (D-4)', async ({
   await expect(row(page, folder)).toBeVisible()
 
   try {
-    // ---- pull the plug, and wait for the APP to agree rather than for the CDP command
+    /*
+     * Pull the plug, and wait for the APP to agree rather than for the CDP command.
+     *
+     * `/^Offline$/` and not `'Offline'`: a STRING `hasText` is a case-insensitive SUBSTRING match,
+     * so it also catches this screen's own "Not updating while offline." line — two `role="status"`
+     * elements, one locator, and a strict-mode violation that never resolves. The anchored regex
+     * names the shell's chip alone, which is the thing being waited on here.
+     */
     await context.setOffline(true)
-    await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeVisible({
+    await expect(page.getByRole('status').filter({ hasText: /^Offline$/ })).toBeVisible({
       timeout: 15_000,
     })
 
@@ -276,7 +283,7 @@ test('offline, the file list keeps showing what it already has (D-4)', async ({
   }
 
   // ---- clean up, back online
-  await expect(page.getByRole('status').filter({ hasText: 'Offline' })).toBeHidden({
+  await expect(page.getByRole('status').filter({ hasText: /^Offline$/ })).toBeHidden({
     timeout: 15_000,
   })
   await rowAction(page, `Delete ${folder}`, folder)
