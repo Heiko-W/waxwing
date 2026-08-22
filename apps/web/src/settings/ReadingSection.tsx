@@ -13,6 +13,7 @@ import {
   clearRemoteAllowList,
   READING_PREF_KEYS,
   useAutoMarkRead,
+  usePrefetchBodies,
   useRemoteAllowList,
   useRemoteContentDefault,
 } from '../mail/reading-prefs'
@@ -28,8 +29,9 @@ export function ReadingSection() {
   const remoteContent = useRemoteContentDefault()
   const allowList = useRemoteAllowList()
   const autoMarkRead = useAutoMarkRead()
+  const prefetchBodies = usePrefetchBodies()
 
-  const ids = { remote: useId(), autoMark: useId() }
+  const ids = { remote: useId(), autoMark: useId(), prefetch: useId() }
 
   // Rows, not a card: `Section` wraps whatever a section returns in the one `.controls` there is.
   return (
@@ -79,6 +81,21 @@ export function ReadingSection() {
         />
         <p id={ids.autoMark} className={styles.hint}>
           {t('settings.reading.autoMarkRead.hint')}
+        </p>
+      </div>
+
+      <div className={styles.field}>
+        <Switch
+          block
+          checked={prefetchBodies}
+          label={t('settings.reading.prefetch.label')}
+          aria-describedby={ids.prefetch}
+          onCheckedChange={(next) => {
+            void setPref(db, accountId, READING_PREF_KEYS.prefetchBodies, next)
+          }}
+        />
+        <p id={ids.prefetch} className={styles.hint}>
+          {t('settings.reading.prefetch.hint')}
         </p>
       </div>
     </>

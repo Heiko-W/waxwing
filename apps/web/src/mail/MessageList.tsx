@@ -73,6 +73,7 @@ import { OVERFLOW_TRIGGER_ATTR, useActionOverflow } from './use-action-overflow'
 import { useMessageActions } from './use-message-actions'
 import { type ListSource, type MessageSort, useMessageList } from './use-message-list'
 import { useAccountIsReadOnly, useMessageRightsFor } from './use-message-rights'
+import { usePrefetchBodies } from './use-prefetch-bodies'
 import { type ResolvedSwipe, useRowSwipe } from './use-swipe'
 import { useTriage } from './use-triage'
 
@@ -179,6 +180,9 @@ export function MessageList({
     unreadFirst,
     flat,
   })
+  // Warm the texts of the visible window so opening a message does not wait for the network (M5.16).
+  // Off when the reader turns it off; bounded and yielding — see `use-prefetch-bodies.ts`.
+  usePrefetchBodies(ids)
   const actions = useMessageActions()
   // The list's own move picker (`v`, and the bulk bar's Move) dispatches through the same triage seam
   // the chords use, so it gets the undo toast rather than a bare `actions.move`.
