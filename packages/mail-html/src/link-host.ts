@@ -549,6 +549,22 @@ export function displayHost(href: string, base?: string): string | null {
 }
 
 /**
+ * The ABSOLUTE `http(s)` URL an href opens, or `null` for anything else — the same test
+ * {@link displayHost} applies, returning the whole URL rather than just its host.
+ *
+ * `frame.ts` needs the resolved form, not merely a yes/no. A message body is rendered inside an
+ * `about:srcdoc` document, so a relative `/help` or a protocol-relative `//bank.test/x` resolves
+ * against `about:srcdoc` there and goes nowhere — while the app's own `window.open` resolved it
+ * against the app's URL. Rewriting the href to this absolute form before the browser is allowed to
+ * navigate keeps the two paths landing in the same place, which is also what makes the phishing
+ * gate's verdict and the browser's destination the same URL rather than two hopefully-equal ones.
+ */
+export function webUrl(href: string, base?: string): string | null {
+  const url = parseHttpUrl(href, base)
+  return url === null ? null : url.href
+}
+
+/**
  * Compare where a link SAYS it goes against where it actually goes.
  *
  * `unparsable` means "not a web link" (`mailto:`, `tel:`, malformed) — the caller opens it normally.

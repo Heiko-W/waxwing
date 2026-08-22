@@ -48,14 +48,27 @@ export interface MailBodyFrameProps {
   readonly allowRemote: boolean
   readonly title: string
   /**
-   * An intercepted link click. `info.text` carries what the reader saw, so the app can check the
-   * claim against the real host before opening (FR-RD-08 — `use-link-opener.ts`). Memoize it: it is
-   * an effect dependency, and a new identity remounts the frame.
+   * An intercepted link click — only for links `onGateLink` kept. `info.text` carries what the
+   * reader saw, so the app can check the claim against the real host before opening (FR-RD-08 —
+   * `use-link-opener.ts`). Memoize it: it is an effect dependency, and a new identity remounts
+   * the frame.
    */
   readonly onOpenLink: (href: string, info: MailLinkInfo) => void
+  /**
+   * Asked per link when the message loads, before any click: `false` lets the BROWSER open it in a
+   * new tab, `true` (and omitting this) keeps it behind `onOpenLink`. See `frame.ts` — on Safari the
+   * decision cannot wait for the click. Memoize it, same reason as above.
+   */
+  readonly onGateLink?: ((href: string, info: MailLinkInfo) => boolean) | undefined
 }
 
-export function MailBodyFrame({ bodyHtml, allowRemote, title, onOpenLink }: MailBodyFrameProps) {
+export function MailBodyFrame({
+  bodyHtml,
+  allowRemote,
+  title,
+  onOpenLink,
+  onGateLink,
+}: MailBodyFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const srcdoc = useMemo(() => {
     if (AUTHORED.test(bodyHtml)) return buildFrameDocument(bodyHtml, { allowRemote })
@@ -75,9 +88,12 @@ export function MailBodyFrame({ bodyHtml, allowRemote, title, onOpenLink }: Mail
   useEffect(() => {
     const iframe = iframeRef.current
     if (iframe === null) return
-    const controller = mountMailFrame(iframe, srcdoc, { onLink: onOpenLink })
+    const controller = mountMailFrame(iframe, srcdoc, {
+      onLink: onOpenLink,
+      ...(onGateLink ? { gateLink: onGateLink } : {}),
+    })
     return () => controller.destroy()
-  }, [srcdoc, onOpenLink])
+  }, [srcdoc, onOpenLink, onGateLink])
 
   return <iframe ref={iframeRef} title={title} aria-label={title} className={styles.frame} />
 }

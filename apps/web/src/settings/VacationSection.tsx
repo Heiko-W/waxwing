@@ -338,6 +338,7 @@ export function VacationSection(props: VacationSectionProps) {
               allowRemote={false}
               title={t('settings.vacation.preview.title')}
               onOpenLink={links.onOpenLink}
+              onGateLink={links.gateLink}
             />
           </div>
         )}

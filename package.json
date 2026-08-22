@@ -22,6 +22,7 @@
     "e2e:mount": "pnpm --filter @waxwing/e2e run e2e:mount",
     "e2e:deploy": "pnpm --filter @waxwing/e2e run e2e:deploy",
     "e2e:read": "pnpm --filter @waxwing/e2e run e2e:read",
+    "e2e:webkit": "pnpm --filter @waxwing/e2e run e2e:webkit",
     "e2e:shared": "pnpm --filter @waxwing/e2e run e2e:shared",
     "e2e:write": "pnpm --filter @waxwing/e2e run e2e:write",
     "e2e:demo": "pnpm --filter @waxwing/e2e run e2e:demo",

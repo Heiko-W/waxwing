@@ -15,7 +15,7 @@ export {
   type MailLinkInfo,
   mountMailFrame,
 } from './frame'
-export { classifyLink, displayHost, type LinkVerdict } from './link-host'
+export { classifyLink, displayHost, type LinkVerdict, webUrl } from './link-host'
 export {
   type BlockedResource,
   type SanitizeOptions,

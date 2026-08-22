@@ -19,7 +19,7 @@
  * The dialog is raised at most once per click and holds no state beyond the pending link.
  */
 
-import { classifyLink, type MailLinkInfo } from '@waxwing/mail-html'
+import { classifyLink, displayHost, type MailLinkInfo } from '@waxwing/mail-html'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface PendingLink {
@@ -31,8 +31,14 @@ export interface PendingLink {
 }
 
 export interface LinkOpener {
-  /** Pass to `MailBodyFrame`'s `onOpenLink`. Stable. */
+  /** Pass to `MailBodyFrame`'s `onOpenLink`. Stable. Only intercepted links arrive here. */
   readonly onOpenLink: (href: string, info: MailLinkInfo) => void
+  /**
+   * Pass to `MailBodyFrame`'s `onGateLink`. Stable. Answers, per link and before any click, whether
+   * the app keeps it (`true`) or the browser may open it (`false`) — see `frame.ts` on why that
+   * decision cannot wait for the click on Safari.
+   */
+  readonly gateLink: (href: string, info: MailLinkInfo) => boolean
   /** The link awaiting a decision, or `null` when nothing is pending (the dialog is then unmounted). */
   readonly pending: PendingLink | null
   /** Open the pending link and dismiss. */
@@ -58,20 +64,33 @@ export function useLinkOpener(): LinkOpener {
     pendingRef.current = pending
   }, [pending])
 
+  /**
+   * Asked once per link when the message loads, long before any click (see `frame.ts`'s `gateLink`).
+   * `false` hands the link to the browser; `true` keeps it here.
+   *
+   * The base is not optional in a browser, it is the whole check. A protocol-relative `//evil.tld/x`
+   * resolves against THIS document and lands on `https://evil.tld/x` — and `classifyLink` without a
+   * base cannot parse that href at all, calls it `unparsable`, and would release it. Classify the
+   * href the way it will actually be opened, or classify nothing at all. (The frame resolves it with
+   * the same base before asking, so both sides are looking at one URL.)
+   */
+  const gateLink = useCallback((href: string, info: MailLinkInfo): boolean => {
+    const verdict = classifyLink(href, info.text, window.location.href)
+    if (verdict.kind === 'mismatch') return true
+    // A web link nothing is wrong with: the browser opens it, in the new tab the frame prepares.
+    // `noopener`/`noreferrer` ride on the anchor, so it is as isolated as `window.open` made it.
+    // Anything else — `mailto:`, `tel:`, an href with no host to compare — stays with the app.
+    return displayHost(href, window.location.href) === null
+  }, [])
+
   const onOpenLink = useCallback((href: string, info: MailLinkInfo): void => {
-    // The base is not optional in a browser, it is the whole check. `window.open('//evil.tld/x')`
-    // resolves against THIS document, so a protocol-relative href lands on `https://evil.tld/x` —
-    // and `classifyLink` without a base cannot parse that href at all, calls it `unparsable`, and
-    // drops straight to `openExternal` below. Same destination as `https://evil.tld/x`, no dialog.
-    // Classify the href the way the `window.open` two lines down will resolve it, or classify
-    // nothing at all.
+    // Reached only by links `gateLink` KEPT, and the frame has already suppressed the click.
     const verdict = classifyLink(href, info.text, window.location.href)
     if (verdict.kind === 'mismatch') {
       setPending({ href, claimedHost: verdict.claimedHost, targetHost: verdict.targetHost })
       return
     }
-    // `ok` and `unparsable` alike open exactly as they always have: a link whose text claims no
-    // host, and a `mailto:`/`tel:`/relative href with no host to compare, are both unremarkable.
+    // `mailto:`/`tel:` — the app opens them itself, exactly as it always has.
     openExternal(href)
   }, [])
 
@@ -83,5 +102,5 @@ export function useLinkOpener(): LinkOpener {
     if (target !== null) openExternal(target.href)
   }, [])
 
-  return { onOpenLink, pending, confirm, cancel }
+  return { onOpenLink, gateLink, pending, confirm, cancel }
 }

@@ -1178,6 +1178,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             allowRemote={allowRemote}
             title={t('reading.frameTitle', { subject: email.subject || t('list.noSubject') })}
             onOpenLink={links.onOpenLink}
+            onGateLink={links.gateLink}
           />
         )}
       </div>

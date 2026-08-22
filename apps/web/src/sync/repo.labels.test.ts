@@ -57,6 +57,30 @@ describe('distinctKeywords', () => {
     expect(await distinctKeywords(db, 'a')).toEqual(['alpha'])
     expect(await distinctKeywords(db, 'ab')).toEqual(['beta'])
   })
+
+  /*
+   * DISTINCT is now this function's own job, not the cursor's — see the note on `distinctKeywords`
+   * about WebKit and `nextunique`. The test above cannot see a regression here: it compares through
+   * `new Set(...)`, which is blind to exactly the duplicates the `Set` in the implementation exists
+   * to remove. Twenty messages sharing one keyword must still yield one label, not twenty.
+   */
+  it('returns each keyword once, however many messages carry it', async () => {
+    await putEmails(db, 'a', [
+      email('e1', { keywords: { work: true } }),
+      email('e2', { keywords: { work: true } }),
+      email('e3', { keywords: { work: true, urgent: true } }),
+    ])
+    expect(await distinctKeywords(db, 'a')).toEqual(['urgent', 'work'])
+  })
+
+  /*
+   * The empty slice, which is every account's first paint (and an admin mailbox's every paint).
+   * Cheap here — fake-indexeddb does not reproduce WebKit's failure — but it pins the contract the
+   * label rail depends on: no throw, and an empty list rather than `undefined`.
+   */
+  it('answers with an empty list when the account has no cached mail', async () => {
+    expect(await distinctKeywords(db, 'a')).toEqual([])
+  })
 })
 
 describe('labelUnreadCounts', () => {

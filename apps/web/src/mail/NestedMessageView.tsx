@@ -98,6 +98,7 @@ export function NestedMessageView({ accountId, blobId }: NestedMessageViewProps)
         allowRemote={false}
         title={t('reading.nested.frameTitle', { subject })}
         onOpenLink={links.onOpenLink}
+        onGateLink={links.gateLink}
       />
       {links.pending !== null && (
         <Suspense fallback={null}>

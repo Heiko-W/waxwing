@@ -15,13 +15,30 @@ beforeEach(() => {
   openSpy.mockClear()
 })
 
-/** Drive the hook the way `MailBodyFrame`'s click interception does. */
+/**
+ * Drive the hook the way `MailBodyFrame` does, in the same order: ask about the link when the
+ * message loads, then click it only if the app kept it. `kept === false` is the released case —
+ * the frame gave that anchor a `target="_blank"` and the browser opens it, which is the only route
+ * that opens a link at all on Safari.
+ */
 function click(href: string, text: string) {
   const { result } = renderHook(() => useLinkOpener())
+  // `gateLink` is answered FIRST, exactly as the frame does it: once per link when the message
+  // loads. `kept === false` means the frame handed that link to the browser and no click ever
+  // reaches `onOpenLink` — so the test only drives the click for links the app actually keeps.
+  const kept = result.current.gateLink(href, { href, text })
   act(() => {
-    result.current.onOpenLink(href, { href, text })
+    if (kept) result.current.onOpenLink(href, { href, text })
   })
-  return result
+  // `result` is frozen by @testing-library, so the answer travels beside it rather than on it —
+  // and `current` stays a getter, because the tests that call `confirm()`/`cancel()` afterwards read
+  // it again and must see the state as it is then, not as it was at the click.
+  return {
+    get current() {
+      return result.current
+    },
+    kept,
+  }
 }
 
 describe('useLinkOpener — the base the frame cannot supply', () => {
@@ -50,10 +67,14 @@ describe('useLinkOpener — the base the frame cannot supply', () => {
     expect(openSpy).not.toHaveBeenCalled()
   })
 
-  it('opens a protocol-relative href whose claim IS honoured', () => {
+  it('releases a protocol-relative href whose claim IS honoured to the browser', () => {
     const result = click('//bank.test/login', 'bank.test')
     expect(result.current.pending).toBeNull()
-    expect(openSpy).toHaveBeenCalledWith('//bank.test/login', '_blank', 'noopener,noreferrer')
+    // Not the app's to open any more (M5.15): the frame rewrites it to its absolute form and points
+    // it at a new tab, and `kept === false` is what puts it there. `window.open` from the app is
+    // what Safari blocks, silently, for every link in every message.
+    expect(result.kept).toBe(false)
+    expect(openSpy).not.toHaveBeenCalled()
   })
 
   it('resolves a single-slash `https:/` href against THIS document, scheme included', () => {
@@ -68,9 +89,10 @@ describe('useLinkOpener — the base the frame cannot supply', () => {
     expect(openSpy).not.toHaveBeenCalled()
   })
 
-  it('still opens a mailto: without a dialog — a base does not make it a web link', () => {
+  it('still opens a mailto: itself — it has no host, so the frame left it no `target`', () => {
     const result = click('mailto:security@bank.test', 'bank.test')
     expect(result.current.pending).toBeNull()
+    expect(result.kept).toBe(true)
     expect(openSpy).toHaveBeenCalledWith(
       'mailto:security@bank.test',
       '_blank',
@@ -80,18 +102,24 @@ describe('useLinkOpener — the base the frame cannot supply', () => {
 })
 
 describe('useLinkOpener — the verdicts it routes', () => {
-  it('opens a link whose text claims no host at all', () => {
+  it('releases a link whose text claims no host at all', () => {
     const result = click('https://cdn.example.test/invoice.pdf', 'invoice.pdf')
     expect(result.current.pending).toBeNull()
-    expect(openSpy).toHaveBeenCalledOnce()
+    expect(result.kept).toBe(false)
+    expect(openSpy).not.toHaveBeenCalled()
   })
 
   it('raises the dialog for a host named inside prose', () => {
-    expect(click('https://evil.ru/x', 'Login at bank.test').current.pending).toEqual({
+    const result = click('https://evil.ru/x', 'Login at bank.test')
+    expect(result.current.pending).toEqual({
       href: 'https://evil.ru/x',
       claimedHost: 'bank.test',
       targetHost: 'evil.ru',
     })
+    // KEPT, and this is the assertion the whole gate rests on now that an unremarkable link is
+    // released: the frame gives this anchor no `target`, so the browser never opens it on its own
+    // and the click stays interceptable while the reader is being asked.
+    expect(result.kept).toBe(true)
     expect(openSpy).not.toHaveBeenCalled()
   })
 
