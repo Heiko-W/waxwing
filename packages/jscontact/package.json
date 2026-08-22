@@ -1,6 +1,6 @@
 {
   "name": "@waxwing/jscontact",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "description": "JSContact (RFC 9553) <-> vCard 4.0 (RFC 6350) conversion.",
   "keywords": [

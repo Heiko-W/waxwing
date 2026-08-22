@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.14.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.15.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -101,14 +101,32 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.14.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.15.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 3 823 unit tests, 18
-integration tests against a live Stalwart, and 125 end-to-end tests across six Playwright
-suites, all green. Performance and accessibility are measured rather than asserted — the
-numbers are in the [implementation plan](docs/implementation-plan.md).
+Every planned work package is done and the release gate is signed off: 4 879 unit tests, 18
+integration tests against a live Stalwart, and 195 end-to-end tests across the five Playwright
+suites the gate runs, all green. Performance and accessibility are measured rather than asserted
+— the numbers are in the [implementation plan](docs/implementation-plan.md).
 
-**v0.14.0 is the second UI review, fixed.** Sixty findings from a follow-up pass over the
+**v0.15.0 closes the JMAP gap.** A survey of what Stalwart offers against what this client used
+produced 67 findings; 58 are implemented here. Calendars can be created and shared, series and
+reminders edited, invitations sent and answered, `.ics` files imported; folders reorder, hide and
+take a role; mail search leaves the trash out and understands `OR`, `NOT` and size; push
+notifications carry sender and subject; files move, multi-select and search; calendars and files
+read from the replica when there is no network; and app passwords and the account password can be
+managed without leaving the client.
+
+The survey was run against two live servers rather than against documentation, and that is what
+it was worth. **The pinned test fixture had drifted a version behind production** — several
+findings were untestable until it moved. **Four plans written from drafts were contradicted by
+the server**, one of which (`inCalendars` for `inCalendar`) would have emptied the month view the
+first time anyone hid a calendar. **The end-to-end suites caught four bugs this release itself
+introduced**, with the unit tests green for all four. And the visual pass over 72 surfaces at
+three widths stopped seven more, including a menu behind its dialog that made renaming a calendar
+unreachable on a phone. The findings, the measurements and what was deliberately *not* built are
+in [the survey](docs/jmap-gap-2026-08-21/README.md).
+
+**v0.14.0 was the second UI review, fixed.** Sixty findings from a follow-up pass over the
 running client at three viewport tiers, in both themes and across all six accent palettes —
 including two settings that turned out to apply only half-way (the dark palette had four
 surface tokens on one value, and five of six accents left the selection tint blue), and a

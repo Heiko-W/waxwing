@@ -2291,7 +2291,7 @@ Also: `packages/mail-html` declared AGPL-3.0 with no LICENSE file; added. CODE_O
 a PR template, an index over all 21 ADRs, and real screenshots against the live fixture.
 
 
-### v0.15.0 (unreleased) — measuring the server instead of reading the draft
+### v0.15.0 (2026-08-22) — measuring the server instead of reading the draft
 
 Sixty-seven findings from a JMAP gap survey: fifty-eight implemented, six confirmed as no-ops,
 two deliberately not built, one still unexplained. Stalwart offers 86 JMAP methods; this client
