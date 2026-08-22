@@ -408,7 +408,11 @@ test.describe('S-6 — somebody else’s availability', () => {
    * titles, so alice can plan around a colleague whose diary she may not read.
    */
   test('answers WITHOUT any share, and gives away times but not titles', async ({ page }) => {
-    await login(page)
+    // `{ stay: true }` because the line below RELOADS: `page.goto` is a full document load, and a
+    // token that lives only in memory (NFR-SEC-02) does not survive one — without it every test in
+    // this block landed back on the sign-in form and waited thirty seconds for a button that is on
+    // the other side of it.
+    await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
     await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
@@ -431,7 +435,11 @@ test.describe('S-6 — somebody else’s availability', () => {
   test('the picker exists only where the answer can be drawn', async ({ page }) => {
     // The month and agenda views have no time axis; a control whose effect the reader cannot see is
     // worse than a missing one.
-    await login(page)
+    // `{ stay: true }` because the line below RELOADS: `page.goto` is a full document load, and a
+    // token that lives only in memory (NFR-SEC-02) does not survive one — without it every test in
+    // this block landed back on the sign-in form and waited thirty seconds for a button that is on
+    // the other side of it.
+    await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
     await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
 
@@ -449,7 +457,11 @@ test.describe('S-6 — somebody else’s availability', () => {
      * testable, i.e. the top element at its centre is the event, not the band.
      */
     await addBusyEvent('alice', { start: `${BUSY_DAY}T10:30:00`, duration: 'PT1H', title: 'Mine' })
-    await login(page)
+    // `{ stay: true }` because the line below RELOADS: `page.goto` is a full document load, and a
+    // token that lives only in memory (NFR-SEC-02) does not survive one — without it every test in
+    // this block landed back on the sign-in form and waited thirty seconds for a button that is on
+    // the other side of it.
+    await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
     await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
@@ -469,7 +481,11 @@ test.describe('S-6 — somebody else’s availability', () => {
   })
 
   test('choosing nobody puts the layer away again', async ({ page }) => {
-    await login(page)
+    // `{ stay: true }` because the line below RELOADS: `page.goto` is a full document load, and a
+    // token that lives only in memory (NFR-SEC-02) does not survive one — without it every test in
+    // this block landed back on the sign-in form and waited thirty seconds for a button that is on
+    // the other side of it.
+    await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
     await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
