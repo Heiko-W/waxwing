@@ -8,7 +8,7 @@
   position: fixed;
   inset-block-end: 0;
   inset-inline: 0;
-  z-index: 30;
+  z-index: var(--waxwing-layer-composer);
   display: flex;
   flex-direction: row;
   align-items: flex-end;
@@ -21,6 +21,29 @@
 .window,
 .chip {
   pointer-events: auto;
+}
+
+/*
+ * The label column, declared ONCE for the whole window.
+ *
+ * Every addressing row — From and Subject here, To/Cc/Bcc/Reply-To in
+ * `recipient-field.module.css` — is a grid with this as its first track, and the two files used to
+ * state `2.5rem` separately. 2.5rem is 40px, which "To", "Cc", "Bcc" and "From" fit and the two
+ * newest labels do not: `Reply-To` measures ~60px and broke at its hyphen, so the row read
+ * "Reply-" over "To" and stood 50px tall beside a 29px "To". German is worse and older: `Blindkopie`
+ * is one word of ~70px with nowhere to break, so it simply left the column.
+ *
+ * 4.5rem clears the longest label in both shipped languages. A custom property rather than a third
+ * copy of the number: the whole point of the shared column is that the two halves of one form
+ * cannot drift apart, and two literals is how they did.
+ *
+ * NOT `--waxwing-`-prefixed. That namespace is the design system's, and `tokens.references.css.test`
+ * enforces that every name in it is defined in `tokens.css` and nowhere else — a rule this would
+ * break, and should not weaken. This is one window's internal measurement, the same shape as
+ * `--settings-rail` in settings.module.css.
+ */
+.window {
+  --compose-label: 4.5rem;
 }
 
 /* ---- docked window ---- */
@@ -138,7 +161,7 @@
  */
 .field {
   display: grid;
-  grid-template-columns: 2.5rem minmax(0, 1fr);
+  grid-template-columns: var(--compose-label, 4.5rem) minmax(0, 1fr);
   align-items: center;
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-2) var(--waxwing-space-3);

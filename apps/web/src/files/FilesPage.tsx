@@ -24,7 +24,9 @@
  *
  * - **The bar holds what you do HERE** (new folder, upload) and hands everything about the LISTING
  *   — how it is ordered, and whether you are picking things out of it — to one `⋯` menu. A phone
- *   header is one row; five controls in it is not a design, it is a queue.
+ *   header is one row; five controls in it is not a design, it is a queue. Below 40em even those
+ *   two join the menu, because the row is shared with the shell's own controls and the folder name
+ *   was what gave way (measured at 24px on 2026-08-22 — see the ScreenBar block).
  * - **Selecting is a MODE, entered on purpose.** "Select" turns every row into a checkbox and
  *   raises one bar of actions over the whole selection. Nothing is selectable until you say so, so
  *   an ordinary tap still opens a folder — which is what a tap on a file row means every other day.
@@ -64,6 +66,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useTranslation } from 'react-i18next'
 import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
+import { useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
 import { useOnline } from '../app/use-online'
@@ -207,6 +210,8 @@ export default function FilesPage(props: FilesPageProps) {
    * is not being refreshed.
    */
   const online = useOnline()
+  /** Which shape the screen's own bar takes — see the ScreenBar block below. */
+  const tier = useLayoutTier()
   // The open preview, or null. Holds the object URL so the render stays synchronous.
   const [preview, setPreview] = useState<{ id: string; type: string; url: string } | null>(null)
   // The node whose sharing is being edited, or null.
@@ -631,6 +636,31 @@ export default function FilesPage(props: FilesPageProps) {
   })
 
   const barMenuItems: MenuItemSpec[] = [
+    /*
+     * On a phone the two creation actions live here rather than in the bar — see the ScreenBar
+     * below for the measurement. First, and in the order they sit in on a wider screen, because
+     * this is where a reader looks for them.
+     *
+     * Offline they are simply absent rather than present-and-refused: a menu has no room for the
+     * `unavailableReason` an IconButton carries, and an item that does nothing is worse than one
+     * that is not offered.
+     */
+    ...(tier === 'phone' && online && !busy
+      ? [
+          {
+            id: 'newFolder',
+            label: t('files.newFolder'),
+            icon: FolderPlus,
+            onSelect: () => setFolderDialogOpen(true),
+          },
+          {
+            id: 'upload',
+            label: t('files.upload'),
+            icon: Upload,
+            onSelect: () => fileInputRef.current?.click(),
+          },
+        ]
+      : []),
     {
       id: 'select',
       label: selecting ? t('files.selection.stop') : t('files.selection.start'),
@@ -678,27 +708,42 @@ export default function FilesPage(props: FilesPageProps) {
         <h1 className={shellStyles.paneTitle}>
           {here === null ? rootName : (path.at(-1)?.name ?? t('files.title'))}
         </h1>
-        <IconButton
-          label={t('files.newFolder')}
-          variant="ghost"
-          disabled={busy}
-          unavailableReason={online ? undefined : t('files.offline')}
-          onClick={() => setFolderDialogOpen(true)}
-        >
-          <FolderPlus />
-        </IconButton>
-        <IconButton
-          label={t('files.upload')}
-          variant="ghost"
-          disabled={busy}
-          unavailableReason={online ? undefined : t('files.offline')}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload />
-        </IconButton>
+        {/*
+          On a phone these two are IN the menu below, not beside it.
+          Measured at 390px, 2026-08-22: the bar carried the trail, the folder name, these two, the
+          `⋯` and the shell's own two — five 44px controls and a breadcrumb — and the only element
+          able to give way was the name, which came out at 24px. "Sicht phone 9502" read as "S…";
+          the one thing the screen has to state was the one thing it did not.
+
+          Same answer the calendar gives at the same width, in the same words: a control where
+          there is room for one, a menu entry where there is not. The screen keeps a `⋯` either
+          way, so nothing moves out of reach.
+        */}
+        {tier !== 'phone' && (
+          <>
+            <IconButton
+              label={t('files.newFolder')}
+              variant="ghost"
+              disabled={busy}
+              unavailableReason={online ? undefined : t('files.offline')}
+              onClick={() => setFolderDialogOpen(true)}
+            >
+              <FolderPlus />
+            </IconButton>
+            <IconButton
+              label={t('files.upload')}
+              variant="ghost"
+              disabled={busy}
+              unavailableReason={online ? undefined : t('files.offline')}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload />
+            </IconButton>
+          </>
+        )}
         {/* Everything about the LISTING rather than about this folder — how it is ordered, and
             whether you are picking things out of it. One trigger, because a phone header is one
-            row and the two visible buttons above are the two things you came here to do. */}
+            row. */}
         <Menu
           triggerLabel={t('files.listOptions')}
           trigger={<Ellipsis aria-hidden="true" />}

@@ -1013,3 +1013,90 @@ describe('accessibility of the surfaces added on 2026-08-21', () => {
     await expectNoA11yViolations()
   })
 })
+
+/**
+ * What the screen's own bar carries at each width (2026-08-22 visual pass).
+ *
+ * Below 40em `ScreenBar` portals this bar into the SHELL header, so the row is shared with the
+ * command palette and the account button. Measured on a 390px touch context, the bar then held the
+ * breadcrumb, the folder name, "New folder", "Upload", "⋯" and the shell's two — five 44px controls
+ * — and the folder name was the only element able to shrink. It came out at 24px: `Sicht phone
+ * 9502` rendered as `S…`, on the one screen whose subject is which folder you are in.
+ *
+ * Nothing existing could see it. `files.layout.css.test.ts` governs a file ROW, `use-row-actions`
+ * measures the row's actions, and the bar is neither; the e2e viewport sweeps assert that nothing
+ * crosses the viewport edge, and an ellipsis crosses nothing.
+ *
+ * So the claim is pinned where it is decidable: at the phone tier the two creation actions are menu
+ * items and not buttons in the bar, and at the desktop tier they are buttons. Assert only one half
+ * and the other is free to drift — a screen that hides them everywhere passes the first, and the
+ * defect itself passes the second.
+ */
+describe('the screen bar at each width', () => {
+  const originalMatchMedia = window.matchMedia
+
+  /** Force the phone tier — no `matchMedia` match makes `useLayoutTier()` report 'phone'. */
+  function forcePhone(): void {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent() {
+          return false
+        },
+      }),
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia,
+    })
+  })
+
+  it('keeps New folder and Upload out of the bar on a phone, and in the menu', async () => {
+    forcePhone()
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    expect(screen.queryByRole('button', { name: 'New folder' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Upload' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'List options' }))
+    expect(await screen.findByRole('menuitem', { name: 'New folder' })).toBeInTheDocument()
+    expect(await screen.findByRole('menuitem', { name: 'Upload' })).toBeInTheDocument()
+  })
+
+  it('still opens the new-folder dialog from the menu', async () => {
+    // The half that makes the first half honest: an action moved into a menu and wired to nothing
+    // also passes "not in the bar".
+    forcePhone()
+    listed = []
+    renderPage()
+    await screen.findByRole('button', { name: 'List options' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'List options' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'New folder' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('keeps them as buttons in the bar from 40em up', async () => {
+    // jsdom without a stub answers every media query false → `useLayoutTier()` returns 'desktop'.
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    renderPage()
+    await showing('notes.txt')
+
+    expect(screen.getByRole('button', { name: 'New folder' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeInTheDocument()
+  })
+})
