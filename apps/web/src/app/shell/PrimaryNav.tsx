@@ -3,6 +3,12 @@
  * a bottom bar on the phone (FR-UI-03 bottom-reachable actions). The active section is marked
  * with `aria-current="page"`; the links are real {@link Link}s (base-path-safe, open-in-new-tab
  * friendly).
+ *
+ * The label is written once and shown in exactly one of the two layouts. On the phone bar it is
+ * visible, the way every platform's bottom tab bar labels its tabs; in the rail it is
+ * visually-hidden by `.primaryNavLabel` (see the 40em block in shell.module.css), which keeps it in
+ * the accessible name and in the tab order while the rail narrows to its icons. `title` carries the
+ * same text to a pointer as the tooltip that replaces the printed label.
  */
 
 import { CalendarDays, FolderOpen, type LucideIcon, Mail, Settings, Users } from 'lucide-react'
@@ -48,10 +54,11 @@ export function PrimaryNav() {
           key={id}
           to={to}
           className={styles.primaryNavItem}
+          title={t(labelKey)}
           {...(route.id === id ? { 'aria-current': 'page' as const } : {})}
         >
           <Icon aria-hidden="true" className={styles.primaryNavIcon} />
-          <span>{t(labelKey)}</span>
+          <span className={styles.primaryNavLabel}>{t(labelKey)}</span>
         </Link>
       ))}
     </nav>

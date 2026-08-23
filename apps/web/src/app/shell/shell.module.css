@@ -222,8 +222,9 @@
 
 /* The label can never escape its own box, whatever a translator writes. German is what exposed this
    (see the rail sizing at the tablet breakpoint), but the guard is language-agnostic: the full name
-   stays the link's accessible name either way. */
-.primaryNavItem span {
+   stays the link's accessible name either way. This is the PHONE bar's label; the rail hides it
+   (40em block below). */
+.primaryNavLabel {
   max-inline-size: 100%;
   overflow: hidden;
   white-space: nowrap;
@@ -541,30 +542,51 @@
   }
 
   /*
-   * 6rem, not 4.5rem — the rail has to hold its own labels.
+   * Icons alone, and the rail is as wide as an icon target — no more.
    *
-   * At 4.5rem (72px) the item box is 56px and its text area 40px, while the German "Einstellungen"
-   * measures 72px at `--waxwing-text-xs`. The span is centred, so it spilled 8px past each edge of
-   * the item and started at x = -1: the top-level navigation was clipped by the viewport in the
-   * second shipped language. English ("Settings", 48px) fits, which is why it went unseen — and no
-   * suite could have caught it, because the only overflow sweep in the repo runs at 390px, where
-   * this nav is a bottom bar.
+   * The printed label cost 96px of every screen to repeat five words the icons already say, and it
+   * was the harder half to get right: 6rem was itself a fix for German ("Einstellungen" measures
+   * 72px at `--waxwing-text-xs`, against a 40px text area at the old 4.5rem — it spilled past both
+   * edges of its own box and shipped that way). A label that no layout prints cannot be clipped by
+   * any translation, which is why this is a simplification and not a trade.
    *
-   * 96px gives an 80px item; dropping the item's own inline padding here (the rail already supplies
-   * 8px on each side) leaves ~76px of text — enough for the longest of the three labels with room to
-   * spare, and the ellipsis guard above catches anything longer.
+   * Nothing is lost to a reader who needs the words: the span is visually-hidden rather than
+   * removed, so it stays the link's accessible name and its `title` shows it to a pointer. The
+   * phone's bottom bar still prints it — a tab bar without labels is not the convention there, and
+   * that layout has the width for both.
+   *
+   * `inline-size: auto`, not a number: the item states the control minimum in both axes, and that
+   * minimum is 34px on a pointer device and 44px on a touchscreen (tokens.css). Letting the content
+   * size the rail gets a 50px rail on the desktop and a 60px one on a tablet — the right answer in
+   * both places, from one declaration.
    */
   .primaryNav {
     flex-direction: column;
     justify-content: flex-start;
-    inline-size: 6rem;
+    inline-size: auto;
     padding: var(--waxwing-space-2);
     border-block-start: none;
     border-inline-end: 1px solid var(--waxwing-border);
   }
 
   .primaryNavItem {
-    padding-inline: var(--waxwing-space-hair);
+    min-inline-size: var(--waxwing-control-min);
+    padding: var(--waxwing-space-2);
+  }
+
+  /* Standard visually-hidden technique (the same one `VisuallyHidden.module.css` uses): out of
+     sight, still in the accessibility tree, and — because it is out of FLOW — taking none of the
+     width the rail just gave back. `display: none` would take the name away from the link. */
+  .primaryNavLabel {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 }
 

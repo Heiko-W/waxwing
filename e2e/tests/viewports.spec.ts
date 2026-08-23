@@ -153,37 +153,74 @@ for (const tier of TIERS) {
 }
 
 /**
- * The rail label defect itself, named rather than merely swept up.
+ * The rail label defect itself, named rather than merely swept up — in the two shapes it now has.
  *
- * `noOverflow` above would catch it, but only as an anonymous entry in a list of boxes; this states
- * the rule that was broken — a navigation label stays inside the rail that holds it — so a future
- * change that narrows the rail fails with a message that says what is wrong rather than what moved.
+ * The original rule was "a navigation label stays inside the rail that holds it", and the defect it
+ * came from was German: "Einstellungen" measures 72px at `--waxwing-text-xs` against the 40px text
+ * area the rail gave it, so it spilled past both edges of its own box and shipped that way.
+ *
+ * The rail no longer PRINTS its labels — it is icons at 40em and up, and the span is
+ * visually-hidden. That retires half the rule and makes the other half load-bearing: a label nobody
+ * can see is exactly the kind of thing a later refactor deletes, and deleting it would take the
+ * link's accessible name with it and leave the top-level navigation unusable by a screen reader
+ * with no visible symptom at all. So both are asserted at both widths: nothing printed spills, and
+ * every link is named either way.
  */
-test('every navigation label stays inside the rail', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible()
+test('the rail is icons with names, and the phone bar prints them inside their boxes', async ({
+  page,
+}) => {
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    const nav = page.getByRole('navigation', { name: 'Primary navigation' })
+    await expect(nav).toBeVisible()
 
-  const spilling = await page.evaluate(() => {
-    const nav = document.querySelector('nav[aria-label="Primary navigation"]')
-    if (nav === null) return ['no main navigation']
-    const rail = nav.getBoundingClientRect()
-    return Array.from(nav.querySelectorAll('a')).flatMap((link) => {
-      const span = link.querySelector('span')
-      if (span === null) return []
-      const box = span.getBoundingClientRect()
-      const clipped = box.left < rail.left - 1 || box.right > rail.right + 1
-      return clipped
-        ? [`${span.textContent?.trim()} [${Math.round(box.left)}…${Math.round(box.right)}]`]
-        : []
+    const measured = await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Primary navigation"]')
+      if (nav === null) return null
+      const rail = nav.getBoundingClientRect()
+      return Array.from(nav.querySelectorAll('a')).map((link) => {
+        const span = link.querySelector('span')
+        const box = span?.getBoundingClientRect()
+        const printed = span !== null && getComputedStyle(span).clipPath === 'none'
+        return {
+          name: (link.getAttribute('aria-label') ?? span?.textContent ?? '').trim(),
+          printed,
+          spilling:
+            printed && box !== undefined
+              ? box.left < rail.left - 1 || box.right > rail.right + 1
+              : false,
+        }
+      })
     })
-  })
 
-  expect(
-    spilling,
-    'a navigation label is wider than the rail that holds it — widen `.primaryNav`, or shorten the ' +
-      'label. German exposed this first ("Einstellungen" at 72px in a 40px text area); any language ' +
-      'with long compounds can.',
-  ).toEqual([])
+    expect(measured, 'no main navigation').not.toBeNull()
+    const links = measured ?? []
+    expect(links.length, `${width}px: the nav has no links`).toBeGreaterThan(0)
+    expect(
+      links.filter((link) => link.name === ''),
+      `${width}px: a navigation link has no accessible name — the label span is what supplies it, ` +
+        'and in the rail it is visually-hidden rather than absent for exactly this reason.',
+    ).toEqual([])
+    expect(
+      links.filter((link) => link.spilling).map((link) => link.name),
+      `${width}px: a printed navigation label is wider than the bar that holds it. German exposed ` +
+        'this first ("Einstellungen" at 72px in a 40px text area); any language with long ' +
+        'compounds can.',
+    ).toEqual([])
+    // And the rail really is the compact one: a printed label at 1440 means the icons-only rule
+    // stopped applying, which is the regression this width is here to catch.
+    if (width === 1440) {
+      expect(
+        links.filter((link) => link.printed).map((link) => link.name),
+        'the tablet/desktop rail prints no labels — see the 40em block in shell.module.css',
+      ).toEqual([])
+    } else {
+      expect(
+        links.filter((link) => link.printed).length,
+        'the phone bottom bar still prints its labels',
+      ).toBeGreaterThan(0)
+    }
+  }
 })
 
 /**
