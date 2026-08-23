@@ -101,13 +101,40 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.17.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.18.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 4 899 unit tests, 18
-integration tests against a live Stalwart, and 199 end-to-end tests across the six Playwright suites
-the gate runs — plus a WebKit smoke suite of 3 that runs beside it. Performance and accessibility are
+Every planned work package is done and the release gate is signed off: 4 905 unit tests, 18
+integration tests against a live Stalwart, and 200 end-to-end tests across the six Playwright suites
+the gate runs — plus a WebKit smoke suite of 4 that runs beside it. Performance and accessibility are
 measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
+
+**v0.18.0 is the folder rail, read from two screenshots of the running deployment.** With three
+accounts in it the rail was one long column of near-identical folder names, and the top-level
+navigation spent 96 px repeating what its icons already said:
+
+- **An account folds away, and stays folded.** The header row is the control; the state is stored
+  per device, so it survives a reload. A folded account keeps its Inbox unread count on its header —
+  folding must not hide the one thing about an account that is time-sensitive.
+- **A bracket down each section's leading edge**, accented for the account whose mail is on screen.
+  Continuous on purpose: a header answers "whose folders are these" only until it scrolls away.
+- **The scrollbar was drawn in pieces, and only on macOS.** The rail has exactly one scroll
+  container, so the reported gaps could not be two scrollbars — they line up with the account
+  headers, which are opaque and carry a `z-index`, and a stacking context is what gets painted over
+  an *overlay* scrollbar. It cannot happen where the bar has its own gutter, which is why no suite
+  here could have seen it: they all run Chromium on Linux. The app now measures the platform's real
+  scrollbar at boot and reserves a lane only where one is needed.
+- **The navigation gave back 43 px** — icons at 53 px on a desktop and 61 px on a touch tablet,
+  against 96 px before, with the touch target intact. The label is kept for screen readers and shown
+  as a tooltip, and the phone's bottom bar still prints it.
+
+**The flake that came with it was two test defects, and neither was in the app.** One assertion
+counted a list before it had arrived and then waited five seconds for a correct icon to disappear;
+another aimed a click by hovering, in a rail that moves when a share notice arrives. Sixteen
+consecutive runs of the suite passed afterwards, and CI recorded no retries for the first time since
+v0.17.0. A third instance of the same class turned up in the test written to prove the first fix —
+recorded, with the rule it produced: if a value crosses a store, a database or the network, wait for
+it.
 
 **v0.17.0 is what the traces found.** Six end-to-end suites had been failing intermittently for
 months and it was being read as flakiness. It was not. Recording what actually went over the wire —
