@@ -423,6 +423,29 @@ test.describe('S-6 — somebody else’s availability', () => {
     await revokeAllPimShares()
   })
 
+  /**
+   * Choose whose availability to draw, once the picker can actually offer them.
+   *
+   * The `<select>` renders as soon as the week view does; its OPTIONS come from the principals the
+   * reader may ask about, which arrive on a later sync pass. `selectOption` does retry until the
+   * option exists — so a picker that never fills up does not fail where the problem is, it burns the
+   * whole sixty-second budget inside `locator.selectOption` and reports "Test timeout exceeded" with
+   * no hint that an option list is what was missing. Four of the twenty-nine flaky attempts across
+   * forty CI runs were this call, in this shape.
+   *
+   * Waiting for the option explicitly costs nothing when it is already there and names the real
+   * problem when it is not.
+   */
+  async function chooseAvailability(page: Page, label: string): Promise<void> {
+    const picker = page.getByLabel('Show availability')
+    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    await expect(
+      picker.getByRole('option', { name: label, exact: true }),
+      `the availability picker never offered ${label}`,
+    ).toBeAttached({ timeout: SYNC_BUDGET_MS })
+    await picker.selectOption({ label })
+  }
+
   /*
    * THE claim of S-6: the WEAKEST share is enough. Carol has granted `mayReadFreeBusy` and nothing
    * else — she has not let alice read a single event — and alice can still plan around her, because
@@ -444,9 +467,7 @@ test.describe('S-6 — somebody else’s availability', () => {
     })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
 
-    const picker = page.getByLabel('Show availability')
-    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    await picker.selectOption({ label: CAROL_LABEL })
+    await chooseAvailability(page, CAROL_LABEL)
 
     // The band is a background layer and `aria-hidden`; the sentence beside it is the whole of what
     // a screen reader gets, and asserting on it is the only honest way to assert on a hatch.
@@ -497,9 +518,7 @@ test.describe('S-6 — somebody else’s availability', () => {
     })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
 
-    const picker = page.getByLabel('Show availability')
-    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    await picker.selectOption({ label: CAROL_LABEL })
+    await chooseAvailability(page, CAROL_LABEL)
     await expect(page.getByText(new RegExp(`${CAROL_LABEL} is busy on `))).toBeAttached({
       timeout: SYNC_BUDGET_MS,
     })
@@ -523,14 +542,12 @@ test.describe('S-6 — somebody else’s availability', () => {
     })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
 
-    const picker = page.getByLabel('Show availability')
-    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    await picker.selectOption({ label: CAROL_LABEL })
+    await chooseAvailability(page, CAROL_LABEL)
     await expect(page.getByText(new RegExp(`${CAROL_LABEL} is busy on `))).toBeAttached({
       timeout: SYNC_BUDGET_MS,
     })
 
-    await picker.selectOption('')
+    await page.getByLabel('Show availability').selectOption('')
     await expect(page.getByText(/is busy on /)).toHaveCount(0)
   })
 })

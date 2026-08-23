@@ -139,8 +139,24 @@
   white-space: nowrap;
 }
 
+/*
+ * The unread pill. `pointer-events: none` because it is DECORATIVE — `FolderTreeView` marks the
+ * visible badge `aria-hidden` and announces the number separately — so there is nothing here for a
+ * pointer to want, and leaving it hit-testable had a cost.
+ *
+ * Where the device hovers, `.rowMenu` below is positioned ON TOP of this pill and the pill is
+ * hidden while the row is hovered. Lose the hover for an instant — the row reflows as a sync lands,
+ * the pointer drifts a pixel — and the pill comes back UNDER the pointer and swallows the click
+ * meant for the action button. Playwright reports it exactly: `<span class=_badge_…>2</span> …
+ * subtree intercepts pointer events`, retried until the test times out, on `sharing.spec.ts`'s
+ * folder-actions clicks. A person meets the same thing as a click that simply does nothing.
+ *
+ * The row's own click target is the treeitem underneath, which still receives the event — so a
+ * click that lands on the pill selects the folder, as it always looked like it would.
+ */
 .count {
   flex: 0 0 auto;
+  pointer-events: none;
 }
 
 /* "Kept offline" (M3.4): a muted pin on the row; the state itself is announced via VisuallyHidden. */

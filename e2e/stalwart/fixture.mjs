@@ -407,6 +407,92 @@ async function ensureDelegation({ owner, grantee, access }) {
   return { ownerAccountId, inboxId: inbox.id, granteePrincipal }
 }
 
+/**
+ * Requests per minute the fixture allows one signed-in account (B53/B54).
+ *
+ * Stalwart's default is 1000/min PER AUTHENTICATED USER (`x:Http.rateLimitAuthenticated`,
+ * `{count: 1000, period: 60000}`), and that default is a sensible production number. It is the
+ * wrong number here, for a reason that is about the harness rather than about the app:
+ *
+ *  - A real client's whole sign-in — session, mailboxes, identities, the inbox window, threads, the
+ *    email delta, address books, calendars — is **14 requests**, measured against this fixture. One
+ *    user spends ~1.4 % of the default budget and then goes quiet.
+ *  - The read suite performs **108 of those sign-ins back to back in five minutes**, all as alice,
+ *    plus a full reseed before every test. Serial, `workers: 1`, no pauses. That is not a user; it
+ *    is one account being driven roughly thirty times faster than any person could, and the budget
+ *    is per account.
+ *
+ * So the suite ran permanently at the edge of the bucket and tipped over it at random — measured:
+ * nine of one test's twenty-seven requests came back `429` with `retry-after: 14`. What the app then
+ * met was not "the server's real behaviour" but a limit the previous hundred tests had spent, and
+ * every consequence was read as flakiness for months (B45, B53, B54).
+ *
+ * ## Why this is not the fixture going soft
+ * `stalwart/http.mjs` argues — correctly, and it is worth reading before touching this — that a
+ * fixture tuned looser than production hides the class of bug worth finding. It did find one: the
+ * 429s exposed a real defect in which a sync pass that failed AFTER committing mail silently
+ * swallowed its new-mail notification for good (see engine.ts#mailDeltaRan). That is exactly the
+ * argument's payoff, and it is why the number below is a change of scale rather than a removal:
+ *
+ *  - the app still meets `Retry-After`, backs off, and is asserted to cope — deterministically, in
+ *    unit tests that inject the 429 where it matters (`engine.test.ts` B45/B54, the outbox backoff
+ *    suite, `errors.test.ts` for the header itself). Those run on every commit; the fixture's
+ *    throttle only ever fired by luck, roughly one run in three.
+ *  - the seeders keep their retry in `http.mjs`. They are scaffolding either way.
+ *  - fifty times the production default is still a ceiling: a runaway retry loop in the app would
+ *    have to sustain 833 req/s to reach it, and would still be caught.
+ */
+const RATE_LIMIT_PER_MINUTE = 50_000
+
+/**
+ * Lift the per-account request throttle off the SUITE. See {@link RATE_LIMIT_PER_MINUTE}.
+ *
+ * `x:Http` is a singleton whose id is literally `singleton`, and it does not exist until something
+ * creates it — an absent object means "all defaults". `create` on an existing one is rejected, so
+ * this reads first, and it asks by ID: `x:Http/get` with `ids: null` answers with an EMPTY LIST even
+ * when the object is there (measured), which looks exactly like "not created" and is not. Ask for
+ * `singleton` by name or this turns into a create that fails on every run after the first.
+ */
+async function ensureRateLimit() {
+  const rate = { count: RATE_LIMIT_PER_MINUTE, period: 60_000 }
+  const args = await jmap([['x:Http/get', { ids: ['singleton'] }, '0']])
+  const existing = args.list?.[0]
+  const props = { rateLimitAuthenticated: rate, rateLimitAnonymous: rate }
+  if (existing?.rateLimitAuthenticated?.count === RATE_LIMIT_PER_MINUTE) return 'exists'
+  await jmap([
+    existing === undefined
+      ? ['x:Http/set', { create: { h: props } }, '0']
+      : ['x:Http/set', { update: { singleton: props } }, '0'],
+  ])
+  await restartForConfig()
+  return 'applied'
+}
+
+/**
+ * Restart the server so the setting just written is actually IN FORCE.
+ *
+ * Writing `x:Http` is not the same as applying it, and the gap is silent — which cost a whole
+ * debugging round. Measured, on a fresh fixture: `x:Http/get` reads back
+ * `{count: 50000, period: 60000}` immediately, and the very next burst is still cut off at **999
+ * requests** with `ratelimit-policy: "requests";q=1000`. The server answers from a config snapshot
+ * it took at startup, so `provision()` — which necessarily runs AFTER the container is up — writes a
+ * value that only becomes real later.
+ *
+ * That gap is exactly the width of a short suite. `e2e:read` runs six minutes and mostly outlives
+ * it (which is why the read suite went green and looked like proof); `e2e:shared` runs 1.7 minutes
+ * and sits entirely inside it, so it kept meeting the OLD limit while the log cheerfully reported
+ * the new one. A restart is 1.4 s plus about 2 s to become ready again, it is paid once per fresh
+ * fixture, and it turns "written" into "in force" deterministically instead of eventually.
+ *
+ * Both profiles, like `down` — compose skips a service whose profile is not active, so naming only
+ * one would silently do nothing for the other.
+ */
+async function restartForConfig() {
+  console.log('[fixture] restarting so the rate limit takes effect ...')
+  compose(['--profile', 'dev', '--profile', 'main', 'restart'])
+  await waitForReady()
+}
+
 // Idempotent: query-before-create, so it is safe to run on every `up`.
 export async function provision() {
   const domain = await ensureDomain()
@@ -417,6 +503,8 @@ export async function provision() {
     await ensureQuota(result.id)
     console.log(`  account ${result.login} -> ${result.id} ${state} quota=${ACCOUNT_QUOTA_BYTES}`)
   }
+  const rate = await ensureRateLimit()
+  console.log(`  rate limit ${RATE_LIMIT_PER_MINUTE}/min per account (${rate})`)
 }
 
 /**

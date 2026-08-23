@@ -154,9 +154,12 @@ export interface NotifyDecisionInput {
  *  3. we are inside the quiet window                       → no
  *  4. `$draft` — our own draft save, not an arrival        → no
  *  5. `$seen`  — already read on another device            → no
- *  6. `receivedAt` is not strictly newer than `sinceMs`    → no  (an UNPARSEABLE date lands here too:
- *                                                                 `NaN > x` is false, and an email we
- *                                                                 cannot date is not provably new)
+ *  6. `receivedAt` predates the session floor              → no  (see {@link floorToSecond} for why
+ *                                                                 that comparison is made in whole
+ *                                                                 seconds; an UNPARSEABLE date lands
+ *                                                                 here too, since `NaN >= x` is false
+ *                                                                 and mail we cannot date is not
+ *                                                                 provably new)
  *  7. it is in none of the enabled mailboxes               → no
  *  8. otherwise                                            → yes
  *
@@ -169,6 +172,32 @@ export interface NotifyDecisionInput {
  * in here would be caught by the engine and take the WHOLE pass's notifications down with it, the
  * well-formed ones included, without leaving a trace.
  */
+/**
+ * Drop a millisecond timestamp to the start of its second.
+ *
+ * The notification floor and the timestamp it is compared against are **not in the same units**, and
+ * the mismatch silently swallowed real arrivals. `sinceMs` is stamped from the CLIENT's clock in
+ * milliseconds (`clock.now()` at leadership, clamped down to the newest `receivedAt` the replica
+ * holds); `receivedAt` comes from the SERVER as RFC 3339 with **one-second resolution** — measured
+ * against Stalwart v0.16.18, which answers `2026-08-23T11:49:02Z` for a message created at
+ * `11:49:02.015`, i.e. a stamp 15 ms EARLIER than the moment of creation.
+ *
+ * So `receivedAt > sinceMs` made a whole second invisible: sign in at `…:02.500`, receive mail at
+ * `…:02.900`, and the server reports `…:02.000`, which is not greater than the floor. No banner, no
+ * error, no second chance — the delta has already reported the id, so the next pass carries nothing.
+ * That is the residual half of B54: roughly one `notify.spec.ts` run in five, and for a real reader
+ * a blind spot of up to a second after every sign-in and every leadership hand-over.
+ *
+ * Comparing seconds against seconds is the honest fix, and `>=` is the right boundary once both
+ * sides are truncated: mail that was already there when the session began is silenced structurally
+ * by the engine's catch-up guard (`notifyArmed`), not by this floor, so the only mail that reaches
+ * this comparison is mail the delta reported as new. Erring towards announcing a borderline message
+ * beats dropping one — the failure this replaces was silent, and silence is the worse of the two.
+ */
+function floorToSecond(ms: number): number {
+  return Math.floor(ms / 1000) * 1000
+}
+
 export function shouldNotify(input: NotifyDecisionInput): boolean {
   const { email, prefs, permission, minutesOfDay, sinceMs } = input
   if (permission !== 'granted') return false
@@ -177,7 +206,7 @@ export function shouldNotify(input: NotifyDecisionInput): boolean {
   const keywords = email.keywords ?? {}
   if (keywords.$draft === true) return false
   if (keywords.$seen === true) return false
-  if (!(Date.parse(email.receivedAt) > sinceMs)) return false
+  if (!(Date.parse(email.receivedAt) >= floorToSecond(sinceMs))) return false
   const mailboxIds = email.mailboxIds ?? {}
   return prefs.mailboxIds.some((id) => mailboxIds[id] === true)
 }

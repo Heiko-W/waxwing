@@ -313,6 +313,27 @@ export class SyncEngine {
    */
   private notifyArmed = false
   /**
+   * Has the MAIL delta run at all in this leadership session (i.e. has `syncEmails` returned once)?
+   *
+   * This is what decides whether the catch-up exemption above has been used up, and it is a separate
+   * question from "did the pass succeed". A sync pass makes ten-odd round-trips and `syncEmails` is
+   * the sixth: a throttle, a blip or a server hiccup on any of the four after it fails the PASS long
+   * after the catch-up itself is done and committed.
+   *
+   * Keying the exemption on pass success got that backwards, and the cost was a lost notification —
+   * measured, not theorised. Under the E2E fixture's real Stalwart throttle: pass 1 syncs the
+   * mailbox (its mail is visible in the list), then meets `429` on a later leg and is recorded as
+   * failed; mail arrives; pass 2 succeeds, is treated as the catch-up, and stays silent. The banner
+   * for genuinely new mail was never raised — and never could be afterwards, because `syncEmails`
+   * had already advanced `Email/changes` past it. Roughly one run in six of `notify.spec.ts`, read
+   * as flakiness for months (B45/B53).
+   *
+   * The other direction still holds, which is why this is not simply "arm on the first pass": a pass
+   * that fails BEFORE the mail delta — offline, an expired session, a throttled first request —
+   * caught up on nothing and leaves the exemption where it found it.
+   */
+  private mailDeltaRan = false
+  /**
    * Stamped when leadership is acquired; mail not strictly newer than this is never notified.
    *
    * `clock.now()` is the CLIENT's clock while `receivedAt` is the SERVER's, so the floor is clamped
@@ -1169,6 +1190,7 @@ export class SyncEngine {
     // Re-arm M3.6's storm guard for THIS leadership session: the next successful pass is the catch-up
     // and stays silent, and nothing older than this instant may ever notify.
     this.notifyArmed = false
+    this.mailDeltaRan = false
     this.notifySinceMs = this.clock.now()
     // Started, NOT awaited. `onLeadership` must not yield before `sync()` has marked itself busy —
     // everything from the lock grant to that point runs in one task, and callers observe a freshly
@@ -1428,11 +1450,16 @@ export class SyncEngine {
   private async runSyncPass(forceFull: boolean): Promise<void> {
     try {
       let deltaError: unknown
-      let created: EmailEnvelopeInput[] = []
+      // Filled BY the delta block rather than returned from it, so a failure in a later leg cannot
+      // discard what an earlier one already found. See {@link runDeltaBlock} — `syncEmails` commits
+      // its envelopes AND advances the `Email/changes` state before four more round-trips run, so a
+      // throw after it used to lose those ids for good: the retry asks the server what changed since
+      // a state that already includes them, and is told "nothing".
+      const created: EmailEnvelopeInput[] = []
       let recoveredFull = forceFull
       try {
         try {
-          created = await this.runDeltaBlock(recoveredFull)
+          await this.runDeltaBlock(recoveredFull, created)
         } catch (error) {
           if (!(error instanceof CannotCalculateChangesError)) throw error
           // The server cannot calculate the delta from our state. Drop the states and re-run the
@@ -1440,13 +1467,21 @@ export class SyncEngine {
           // surfaced like any other.
           await this.resetWatchedStates()
           recoveredFull = true
-          created = await this.runDeltaBlock(true)
+          // The re-run reports the same mail again from a clean baseline; keep ONE copy of it.
+          created.length = 0
+          await this.runDeltaBlock(true, created)
         }
       } catch (error) {
         if (isAuthExpiry(error)) throw error
         deltaError = error
       }
       await this.runReplayCoalesced()
+      // Announce what the delta DID find, before reporting what it did not. This runs on the failure
+      // path too, and deliberately: a partial pass still delivered mail to the replica — the reader
+      // can SEE it in the list — and a banner is the only thing that tells them it is there while
+      // they are elsewhere. Arming is not spent by a pass that never reached the mail delta, so an
+      // offline first pass still leaves the catch-up exemption intact (see below).
+      await this.raiseNewMailNotifications(created)
       if (deltaError !== undefined) {
         // Offline is not a failure to back off from — the online transition schedules its own pass,
         // and counting it would push the first retry after reconnect out to the far end of the curve.
@@ -1457,7 +1492,6 @@ export class SyncEngine {
         })
         return
       }
-      await this.raiseNewMailNotifications(created)
       await this.runMaintenance()
       this.noteSyncSuccess()
       this.patch({ phase: 'idle', lastSyncedAt: this.clock.now(), error: null })
@@ -1466,8 +1500,14 @@ export class SyncEngine {
     }
   }
 
-  /** The delta half of a sync pass, factored out so the `cannotCalculateChanges` recovery can re-run it. */
-  private async runDeltaBlock(forceFull: boolean): Promise<EmailEnvelopeInput[]> {
+  /**
+   * The delta half of a sync pass, factored out so the `cannotCalculateChanges` recovery can re-run it.
+   *
+   * @param created Sink for the mail this pass found. NOT a return value: everything after
+   *   `syncEmails` below is a further round-trip that can fail, and a thrown error must not take the
+   *   ids with it — see {@link runSyncPass}.
+   */
+  private async runDeltaBlock(forceFull: boolean, created: EmailEnvelopeInput[]): Promise<void> {
     const mailboxWrites = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
     // The folder badges an unsent intent has already moved (M3.10, gap B7). `syncMailboxes`
     // writes the server's ABSOLUTE count, and it runs BEFORE the replay in `runSyncPass` — so a
@@ -1484,7 +1524,10 @@ export class SyncEngine {
     }
     await this.ensureInboxWindow()
     await syncThreads(this.port, this.db, this.accountId, this.clock)
-    const created = await syncEmails(this.port, this.db, this.accountId, this.clock)
+    created.push(...(await syncEmails(this.port, this.db, this.accountId, this.clock)))
+    // The catch-up has now happened, whatever becomes of the rest of this pass. This is what arms
+    // M3.6's storm guard — not the pass SUCCEEDING, which is a different claim and was the wrong one.
+    this.mailDeltaRan = true
     await this.reconcileWatched(forceFull)
     // Contacts (M4.2): the address-book tree (pulled whole) + the ContactCard delta + the watched
     // contact query windows. Independent of mail; the same `forceFull` SP.4 re-probe applies.
@@ -1528,16 +1571,18 @@ export class SyncEngine {
     } catch (error) {
       if (isAuthExpiry(error)) throw error
     }
-    return created
   }
 
   /**
    * The engine-session guard around M3.6's notifier. Four conditions, and every one of them is a bug
    * someone would otherwise ship:
    *
-   *  - **Armed.** The first successful pass of a leadership session is the catch-up and stays silent
-   *    (see {@link notifyArmed}). A FAILED pass does not arm it — otherwise an offline first pass
-   *    would spend the exemption on nothing and the real catch-up would then buzz.
+   *  - **Armed.** The first pass of a leadership session to REACH the mail delta is the catch-up and
+   *    stays silent (see {@link notifyArmed} and {@link mailDeltaRan}). A pass that fails before
+   *    `syncEmails` does not arm it — otherwise an offline first pass would spend the exemption on
+   *    nothing and the real catch-up would then buzz. A pass that fails AFTER it does arm it, because
+   *    by then the catch-up has happened; keying this on the whole pass succeeding is what silently
+   *    swallowed the first banner after any late-leg failure.
    *  - **Still the leader.** `runSyncPass` awaits half a dozen round-trips, and a sign-out or a
    *    hand-over can flip `isLeader` under it. Without this re-check the departing tab notifies while
    *    the incoming leader is silently catching up — a banner nobody is left to explain.
@@ -1548,7 +1593,8 @@ export class SyncEngine {
    */
   private async raiseNewMailNotifications(created: EmailEnvelopeInput[]): Promise<void> {
     const wasArmed = this.notifyArmed
-    this.notifyArmed = true
+    // Arm on the catch-up having HAPPENED, not on the pass having succeeded — see {@link mailDeltaRan}.
+    if (this.mailDeltaRan) this.notifyArmed = true
     if (!wasArmed) return
     if (created.length === 0) return
     if (!this.isLeader || this.stopController.signal.aborted) return

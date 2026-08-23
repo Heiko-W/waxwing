@@ -138,14 +138,38 @@ describe('shouldNotify', () => {
     expect(shouldNotify({ ...BASE, email: email({ keywords: { $seen: true } }) })).toBe(false)
   })
 
-  it('never for mail that is not strictly newer than the floor', () => {
+  it('never for mail that predates the session floor', () => {
     expect(shouldNotify({ ...BASE, email: email({ receivedAt: '2026-07-13T08:00:00Z' }) })).toBe(
       false,
     )
-    // exactly at the floor: not STRICTLY newer
+  })
+
+  /*
+   * B54, second half. This assertion used to read the other way — "exactly at the floor: not STRICTLY
+   * newer" → false — and that was the defect rather than the rule.
+   *
+   * The two sides are not in the same units. `sinceMs` is the CLIENT's clock in milliseconds;
+   * `receivedAt` is the SERVER's, at one-second resolution (measured against Stalwart v0.16.18:
+   * a message created at `…:02.015` comes back as `…:02Z`). A strict `>` against a millisecond floor
+   * therefore blanked out the floor's whole second — sign in at `…:02.500`, receive mail at
+   * `…:02.900`, get nothing, for ever, because the delta had already reported the id.
+   *
+   * Mail that was already there when the session began is silenced by the engine's catch-up guard,
+   * not by this floor, so admitting the boundary second costs nothing and stops dropping arrivals.
+   */
+  it('DOES notify at the floor second — the floor is seconds, not milliseconds (B54)', () => {
     expect(shouldNotify({ ...BASE, email: email({ receivedAt: '2026-07-13T09:00:00Z' }) })).toBe(
-      false,
+      true,
     )
+    // The client stamp lands mid-second; the server can only ever report the second it began in.
+    const midSecond = { ...BASE, sinceMs: Date.parse('2026-07-13T09:00:00.500Z') }
+    expect(
+      shouldNotify({ ...midSecond, email: email({ receivedAt: '2026-07-13T09:00:00Z' }) }),
+    ).toBe(true)
+    // …and the second BEFORE it is still out, so the floor still floors.
+    expect(
+      shouldNotify({ ...midSecond, email: email({ receivedAt: '2026-07-13T08:59:59Z' }) }),
+    ).toBe(false)
   })
 
   it('never for an UNPARSEABLE receivedAt — an email we cannot date is not provably new', () => {

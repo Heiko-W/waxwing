@@ -11,10 +11,22 @@
  * test, and a red run that means "the test rig was impatient" costs more than it can ever catch.
  *
  * ## Why retrying, and not a more permissive fixture
- * Raising Stalwart's limit would be the shorter change and the wrong one. The throttle is the
- * server's real behaviour; an application that trips it has to cope with it, and a fixture tuned
- * looser than production hides exactly the class of bug worth finding. So the SEEDERS wait — the
- * app under test does not get this treatment and still meets the real limit.
+ * Raising Stalwart's limit for the SEEDERS would be the shorter change and the wrong one: they are
+ * scaffolding, they burst by nature, and waiting costs nothing but seconds. So the seeders wait.
+ *
+ * The APP's side of that sentence used to read "and still meets the real limit" — it no longer
+ * does, and the correction is worth stating rather than quietly editing away. The limit is per
+ * AUTHENTICATED ACCOUNT (1000/min), and the suite drives one account through 108 sign-ins in five
+ * minutes where a real client's entire sign-in is fourteen requests. What the app met was therefore
+ * not the server's real behaviour but a budget the previous hundred tests had spent, at random,
+ * about one run in three. `fixture.mjs#RATE_LIMIT_PER_MINUTE` now lifts that ceiling for the
+ * fixture and explains the whole measurement; read it before changing either file.
+ *
+ * The original argument was not wrong, and it paid off before it was retired: the 429s it let
+ * through exposed a genuine defect (a pass that failed after committing mail swallowed its
+ * notification for good — engine.ts#mailDeltaRan). That behaviour is now asserted where a test can
+ * assert it deterministically, in unit tests that inject the 429 on purpose, instead of depending
+ * on the fixture happening to be exhausted.
  *
  * ## What this deliberately does NOT do
  * It does not retry anything but 429. A 5xx, a 401 or a malformed response is a result, and

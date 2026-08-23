@@ -697,6 +697,22 @@ test.describe('M-5 / M-6 folder order, use and visibility', () => {
     return (await serverMailboxes()).find((mailbox) => mailbox.name === name)
   }
 
+  /**
+   * Create a folder through the UI and wait until the SERVER has it.
+   *
+   * The treeitem appearing is NOT enough, and the difference is the whole flake. The row is written
+   * optimistically the moment Create is clicked, while the `Mailbox/set` sits in the outbox; every
+   * test in this block then asserts a SERVER property (`sortOrder`, `role`, `isSubscribed`) of that
+   * folder. Waiting only for the row means the assertion races the intent.
+   *
+   * Measured, on the keyboard-reorder test: the outbox intent met an `HTTP 429` from the fixture's
+   * rate limiter and backed off; `syncMailboxes` then wrote the server's mailbox list over the
+   * optimistic rows and both probe folders VANISHED from the dialog mid-test — the trace shows the
+   * reorder announced ("ZzOne dropped") against folders the server had never heard of. The poll then
+   * waited out its whole budget on a `sortOrder` that could not exist. Asserting the precondition
+   * where it belongs turns that into an honest, immediate failure instead of a timeout sixty seconds
+   * later in an unrelated assertion.
+   */
   async function newFolder(page: Page, name: string): Promise<void> {
     await page.getByRole('button', { name: 'New folder' }).click()
     await page.getByLabel('Folder name', { exact: true }).fill(name)
@@ -704,6 +720,7 @@ test.describe('M-5 / M-6 folder order, use and visibility', () => {
     await expect(page.getByRole('treeitem', { name: new RegExp(name) })).toBeVisible({
       timeout: 15_000,
     })
+    await expect.poll(async () => (await serverFolder(name)) !== undefined, POLL).toBe(true)
   }
 
   /**

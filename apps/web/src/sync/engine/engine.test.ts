@@ -2101,6 +2101,138 @@ describe('SyncEngine — new-mail notifications (M3.6)', () => {
     await engine.stop()
   })
 
+  /*
+   * B54 — the catch-up exemption belongs to the pass that CAUGHT UP, not to the first one that
+   * happens to survive to the end.
+   *
+   * Found by reading a trace rather than by reasoning: `notify.spec.ts`'s positive control failed
+   * locally, and the page snapshot showed the live message SITTING IN THE LIST while no banner had
+   * been raised. The network log said why — nine of that context's twenty-seven JMAP requests came
+   * back `429` from the fixture's deliberately un-loosened Stalwart throttle (see stalwart/http.mjs,
+   * which throttles the seeders and pointedly does NOT give the app the same concession).
+   *
+   * `syncEmails` is the sixth of ten-odd round-trips in `runDeltaBlock`, and it COMMITS: the
+   * envelopes land in the replica and `Email/changes` advances past them. Four more round-trips
+   * follow. A throttle on any of those failed the PASS long after the catch-up itself was done —
+   * and the old rule ("the first SUCCESSFUL pass is the catch-up") then spent the exemption a
+   * second time, on a pass carrying genuinely new mail. The banner was not delayed; it was gone,
+   * because the retry asks what changed since a state that already includes it and is told
+   * "nothing".
+   *
+   * Both halves are asserted separately below, because they are separate claims and the fix has two
+   * moving parts: WHAT arms the guard, and whether `created` survives a late failure at all.
+   */
+  it('a failure AFTER the mail delta still spends the catch-up, so the next pass speaks (B54)', async () => {
+    let throttled = true
+    const base = notifyingPort()
+    const port: JmapPort = {
+      ...base,
+      // The first leg after `syncEmails`. Stalwart's 429 lands wherever the burst crosses the limit;
+      // what matters is only that it is downstream of the commit.
+      async getAddressBooks(ids) {
+        if (throttled) throw new Error('HTTP 429 Too Many Requests')
+        return base.getAddressBooks(ids)
+      },
+    }
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    // Pass 1 reaches the mail delta, commits it, and only THEN meets the throttle.
+    await waitFor(() => engine.getStatus().phase === 'error')
+    expect(calls, 'the catch-up pass must stay silent however it ends').toEqual([])
+
+    // Pass 2 carries mail that arrived after sign-in. It is not a catch-up and must say so.
+    throttled = false
+    await anotherPass(push)
+    expect(
+      calls.map((call) => call.ids),
+      'the pass after the catch-up was silenced too',
+    ).toEqual([['new-2']])
+
+    await engine.stop()
+  })
+
+  it('announces the mail a late-leg failure found, rather than dropping it (B54)', async () => {
+    let throttled = false
+    const base = notifyingPort()
+    const port: JmapPort = {
+      ...base,
+      // `addressBookChanges` rather than `getAddressBooks`, because this test needs to fail a LATER
+      // pass: `syncAddressBooks` pulls the books whole only from a null state and is delta-only
+      // afterwards, so the `get` is not on the path any more by the time we get here.
+      async addressBookChanges(state) {
+        if (throttled) throw new Error('HTTP 429 Too Many Requests')
+        return base.addressBookChanges(state)
+      },
+    }
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await anotherPass(push) // past the storm guard
+    const armed = calls.length
+
+    // Now a pass commits new mail and then fails. The ids are already in the replica and the server
+    // state has moved past them, so this pass is the ONLY chance to announce them.
+    throttled = true
+    push.fireStateChange()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    expect(calls.length, 'mail the delta committed was never announced').toBe(armed + 1)
+    expect(calls.at(-1)?.ids).toEqual(['new-3'])
+    await engine.stop()
+  })
+
+  it('a failure BEFORE the mail delta leaves the catch-up exemption unspent (B54)', async () => {
+    /*
+     * The other direction, and the reason this is not simply "arm on the first pass". An offline or
+     * rejected first pass has caught up on nothing; if it spent the exemption, the REAL catch-up
+     * would then buzz with every id in the account. Asserted so a future simplification of the rule
+     * above cannot quietly reintroduce the storm.
+     */
+    let refusing = true
+    const base = notifyingPort()
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(state) {
+        if (refusing) throw new Error('HTTP 429 Too Many Requests')
+        return base.emailChanges(state)
+      },
+    }
+    const push = new FakePush()
+    const { calls, notify } = notifySpy()
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, push),
+      notify,
+      isForeground: () => false,
+    })
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    // This pass IS the catch-up — the first one to reach the mail at all — and stays silent.
+    refusing = false
+    await anotherPass(push)
+    expect(calls, 'the real catch-up was allowed to storm').toEqual([])
+
+    // The one after it is an ordinary pass again.
+    await anotherPass(push)
+    expect(calls).toHaveLength(1)
+    await engine.stop()
+  })
+
   it('a notifier that THROWS does not fail the sync pass', async () => {
     const push = new FakePush()
     const engine = new SyncEngine({
