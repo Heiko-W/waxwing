@@ -1508,6 +1508,25 @@ export class SyncEngine {
    *   ids with it — see {@link runSyncPass}.
    */
   private async runDeltaBlock(forceFull: boolean, created: EmailEnvelopeInput[]): Promise<void> {
+    /*
+     * SEQUENTIAL, and that is a decision rather than an oversight — see ADR-032 and B55.
+     *
+     * Mail, contacts and calendar/files share no state key, no table and no ordering requirement, so
+     * running them concurrently is the obvious latency win and it was measured: a warm pass at 50 ms
+     * RTT went from **15 requests at sequential depth 11 to 13 at depth 8**. It was then REVERTED,
+     * because the read suite produced a failure it had never produced in forty CI runs or fifty local
+     * ones — a folder deleted through the UI came BACK, and stayed.
+     *
+     * The mechanism is a race this code already half-acknowledges. A mailbox create/destroy is
+     * applied optimistically while its intent waits in the outbox, and `syncMailboxes` writes the
+     * server's ABSOLUTE list — which still contains the folder — over the top of it. The replay that
+     * would make the server agree runs AFTER this whole block, so shortening the block simply widens
+     * the window in which a delta pass can revert an optimistic mutation. `reapplyPendingCounts`
+     * below exists for exactly this hazard on the COUNT fields; nothing covers creates and destroys.
+     *
+     * So the concurrency is not wrong, it is blocked: it needs that gap closed first. Restoring it
+     * before then trades a real correctness race for ~150 ms, which is a bad trade in a mail client.
+     */
     const mailboxWrites = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
     // The folder badges an unsent intent has already moved (M3.10, gap B7). `syncMailboxes`
     // writes the server's ABSOLUTE count, and it runs BEFORE the replay in `runSyncPass` — so a

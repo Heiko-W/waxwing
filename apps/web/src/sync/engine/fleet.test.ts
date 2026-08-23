@@ -21,7 +21,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AccountRecord, ReplicaDb } from '../db'
 import { getAccount, upsertAccount } from '../repo'
-import { freshDb } from '../test-utils'
+import { freshDb, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import { SyncEngine, type SyncEngineDeps } from './engine'
 import {
@@ -169,7 +169,7 @@ class FakePush implements PushChannel {
 
 /** A JmapPort that populates an inbox + the given email ids under ONE account, empty for the rest. */
 function fakePort(accountId: string, emails: string[]): JmapPort {
-  return {
+  return withBatchedQuery({
     accountId,
     async mailboxChanges(s) {
       return emptyChanges(s)
@@ -319,7 +319,7 @@ function fakePort(accountId: string, emails: string[]): JmapPort {
     async fileNodeChanges(s: string) {
       return emptyChanges(s)
     },
-  }
+  })
 }
 
 /** Build real-engine deps from a resolved {@link EngineSpec} (fake port/locks/push, fake clock). */

@@ -10,7 +10,7 @@ import { JmapMethodError } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OutboxRow, ReplicaDb } from '../db'
 import { pendingOutbox, putAddressBooks, putContactCards } from '../repo'
-import { addressBook, contactCard, freshDb } from '../test-utils'
+import { addressBook, contactCard, freshDb, withBatchedQuery } from '../test-utils'
 import {
   enqueueCreateAddressBook,
   enqueueCreateContactCard,
@@ -39,7 +39,7 @@ function unused(): never {
 }
 
 function fakePort(overrides: Partial<JmapPort>): JmapPort {
-  const base: JmapPort = {
+  const base = withBatchedQuery({
     accountId: ACC,
     mailboxChanges: unused,
     threadChanges: unused,
@@ -71,7 +71,7 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     fileNodePage: unused,
     getFileNodes: unused,
     fileNodeChanges: unused,
-  }
+  })
   return { ...base, ...overrides }
 }
 

@@ -10,7 +10,7 @@ import {
   putMailboxes,
   putQueryCache,
 } from '../repo'
-import { email, freshDb, mailbox } from '../test-utils'
+import { email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import { STUCK_AFTER_ATTEMPTS } from './backoff'
 import { reconcileQuery } from './delta'
 import { enqueueAction, type OutboxIntent, reapplyPendingCounts, replayOutbox } from './outbox'
@@ -35,7 +35,7 @@ function unused(): never {
 }
 
 function fakePort(overrides: Partial<JmapPort>): JmapPort {
-  const base: JmapPort = {
+  const base = withBatchedQuery({
     accountId: ACC,
     mailboxChanges: unused,
     threadChanges: unused,
@@ -67,7 +67,7 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     fileNodePage: unused,
     getFileNodes: unused,
     fileNodeChanges: unused,
-  }
+  })
   return { ...base, ...overrides }
 }
 
