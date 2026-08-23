@@ -205,7 +205,16 @@ describe('AccountTrees', () => {
     expect(fold).toHaveAttribute('aria-expanded', 'true')
     await user.click(fold)
 
-    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    /*
+     * `waitFor`, not a bare assertion: the click does not set React state, it writes a PREFERENCE —
+     * `setPref` → Dexie → the liveQuery → the render. That round trip is fast on a developer's
+     * machine and was not on a CI runner, where this exact line read `aria-expanded="true"` and
+     * failed the build. The same class of defect as B59 (a snapshot taken before the thing it
+     * counts has arrived), in the test written to prove B59's own fix.
+     */
+    await waitFor(() => {
+      expect(fold).toHaveAttribute('aria-expanded', 'false')
+    })
     expect(within(sharedRegion).queryByText('Team Folder')).not.toBeInTheDocument()
     // Its neighbour is untouched: one collapse is one account, not the rail.
     const primaryRegion = screen.getByRole('region', { name: PRIMARY.name })
