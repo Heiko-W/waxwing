@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { openSettingsSection, revealPasswordForm } from './helpers'
+import { openSettingsSection, revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * M4.7 — target size (WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA), against the live fixture.
@@ -57,9 +57,13 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /**
@@ -221,7 +225,7 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
     await login(page)
     await messageList(page).getByText(READ_SUBJECTS.plain).click()
     await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     const found = await targets(page)
     expect(found.length).toBeGreaterThan(10)
@@ -234,7 +238,7 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
     await login(page)
     await page.getByRole('button', { name: /New message|Compose/ }).click()
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     const found = await targets(page)
     expect(found.length).toBeGreaterThan(10)
@@ -280,7 +284,7 @@ test.describe('M4.7 target size (SC 2.5.8, Level AA)', () => {
     // screen, and the sweep would then measure the login form under the name "settings".
     await page.getByRole('link', { name: 'Settings', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     // Master/detail: the rail is always on screen, and one panel with it. Offline & storage is the
     // richest panel — a meter, a switch, a destructive button — so it is the one worth sweeping.

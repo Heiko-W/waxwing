@@ -9,7 +9,7 @@ import {
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
 import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS, SYNC_POLL } from './helpers'
 
 /**
  * A reading-pane action, wherever the bar has put it. See `bulkAction` in offline.spec.ts for why
@@ -25,7 +25,7 @@ async function readingAction(page: import('@playwright/test').Page, name: string
     }
     await trigger.click({ timeout: 2_000 })
     await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
-  }).toPass({ timeout: 30_000 })
+  }).toPass({ timeout: SYNC_BUDGET_MS })
 }
 
 /**
@@ -79,9 +79,13 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
 
 /** Wait for the connected shell, open the Inbox and wait for the seeded corpus to sync in. */
 async function openInbox(page: Page): Promise<void> {
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 // Reseed before every test so triage mutations never leak across tests (each test = fresh corpus).
@@ -491,9 +495,11 @@ test.describe('M3.9 move paths', () => {
     // The half that matters and that no unit test can reach: reload from the server. An optimistic
     // patch that the server rejected would snap back here.
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await expect(page.getByRole('treeitem', { name: /ZzSrc/ })).toHaveAttribute('aria-level', '2', {
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
 
     await removeFolder(page, 'ZzDst') // takes ZzSrc with it (it is now a child)
@@ -624,7 +630,7 @@ test.describe('full-screen reading', () => {
     await login(page)
     const list = messageList(page)
     const row = list.getByText(READ_SUBJECTS.plain)
-    await expect(row).toBeVisible({ timeout: 30_000 })
+    await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     await row.dblclick()
 
@@ -656,7 +662,7 @@ test.describe('full-screen reading', () => {
  */
 test.describe('M-5 / M-6 folder order, use and visibility', () => {
   const jmap = jmapAs(ACCOUNTS.alice)
-  const POLL = { timeout: 20_000, intervals: [500, 1000, 1000, 2000] }
+  const POLL = SYNC_POLL
 
   interface ServerMailbox {
     readonly id: string
@@ -823,7 +829,9 @@ test.describe('M-5 / M-6 folder order, use and visibility', () => {
     // after a reload proves the role came from the server and not from the optimistic patch that
     // wrote it — which is the half no unit test can reach.
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     const reopened = await openFolderInfo(page, 'ZzRole')
     await expect(reopened.getByLabel('Use this folder as…')).toHaveValue('important', {
       timeout: 20_000,
@@ -875,5 +883,128 @@ test.describe('M-5 / M-6 folder order, use and visibility', () => {
 
     await page.getByRole('button', { name: 'Done', exact: true }).click()
     await expect(page.getByRole('treeitem', { name: /ZzHidden/ })).toHaveCount(0)
+  })
+})
+
+/**
+ * M-13 — a folder shows the folder, not the last 30 days of it.
+ *
+ * Reported from production, with a screenshot: a folder of older mail rendered the note "No messages
+ * from the last 30 days. Older mail is on the server — this device only keeps the last 30 days."
+ * beside a sidebar listing the folder. The cause was in the QUERY, not the cache: `backfill.ts` built
+ * `inMailbox AND receivedAt >= now − offline.cacheDays`, and `loadMore` pages a window's own filter,
+ * so no amount of scrolling could reach past the bound. Mail older than a month was unreachable in
+ * its folder — findable only through search, which never carried the bound.
+ *
+ * `backfill.test.ts` holds the filter itself. This is the end-to-end statement of the same thing,
+ * and the one that would have caught it: against the real Stalwart, in the real bundle, with mail
+ * aged the way the user's was. Every message here is deliberately far outside the old window — the
+ * newest is 45 days old — so a build with the bound restored renders an empty list.
+ */
+test.describe('M-13 mail older than the cache window', () => {
+  const TOKEN = 'wold13'
+  const AGES_DAYS = [45, 100, 210, 400] // the newest is already past the old 30-day bound
+  const FOLDER = 'ZzOldMail'
+
+  test.beforeAll(async () => {
+    const client = jmapAs(ACCOUNTS.alice)
+    const accountId = await client.account()
+
+    const existing = (await client.mailboxes()).find((m) => m.name === FOLDER)
+    let mailboxId = existing?.id
+    if (!mailboxId) {
+      const made = await client.call(
+        ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+        [
+          [
+            'Mailbox/set',
+            {
+              accountId,
+              create: { m: { name: FOLDER, parentId: null, isSubscribed: true } },
+            },
+            '0',
+          ],
+        ],
+      )
+      const response = made.methodResponses[0]?.[1] as
+        | { created?: Record<string, { id: string }> }
+        | undefined
+      mailboxId = response?.created?.m?.id
+      if (!mailboxId) throw new Error(`could not create ${FOLDER}`)
+    }
+
+    // Idempotent: the suite may run against a container that already has them.
+    const already = await client.call(
+      ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+      [['Email/query', { accountId, filter: { inMailbox: mailboxId } }, '0']],
+    )
+    const seeded = already.methodResponses[0]?.[1] as { ids: string[] } | undefined
+    if ((seeded?.ids.length ?? 0) >= AGES_DAYS.length) return
+
+    const DAY = 86_400_000
+    const now = Date.now()
+    const create = Object.fromEntries(
+      AGES_DAYS.map((age, i) => [
+        `e${i}`,
+        {
+          mailboxIds: { [mailboxId]: true },
+          keywords: { $seen: true },
+          receivedAt: `${new Date(now - age * DAY).toISOString().slice(0, 19)}Z`,
+          from: [{ name: 'Archivist', email: `archive@waxwing.test` }],
+          to: [{ name: 'Alice', email: ACCOUNTS.alice }],
+          subject: `${TOKEN} aged ${age} days`,
+          bodyStructure: { type: 'text/plain', partId: 'p' },
+          bodyValues: { p: { value: `Aged ${age} days.\n` } },
+        },
+      ]),
+    )
+    const set = await client.call(
+      ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+      [['Email/set', { accountId, create }, '0']],
+    )
+    const result = set.methodResponses[0]?.[1] as
+      | { created?: Record<string, unknown>; notCreated?: Record<string, unknown> }
+      | undefined
+    if (Object.keys(result?.created ?? {}).length !== AGES_DAYS.length) {
+      throw new Error(`seed failed: ${JSON.stringify(result?.notCreated ?? {})}`)
+    }
+  })
+
+  test('a folder holding only year-old mail lists it, and says nothing about 30 days', async ({
+    page,
+  }) => {
+    await login(page)
+    await page.getByRole('treeitem', { name: new RegExp(FOLDER) }).click()
+
+    const list = page.getByRole('grid', { name: 'Messages' })
+    // The rows themselves — this is the assertion the old build failed, and it fails on the OLDEST
+    // one too, not just the one nearest the boundary.
+    for (const age of AGES_DAYS) {
+      await expect(list.getByRole('row', { name: new RegExp(`aged ${age} days`) })).toBeVisible({
+        timeout: SYNC_BUDGET_MS,
+      })
+    }
+
+    // The apology for the missing mail is gone because the mail is not missing.
+    await expect(page.getByText(/last 30 days/)).toHaveCount(0)
+    await expect(page.getByText('No messages in this folder.')).toHaveCount(0)
+  })
+
+  test('opening the oldest one reads its body — the envelope is not a stub', async ({ page }) => {
+    await login(page)
+    await page.getByRole('treeitem', { name: new RegExp(FOLDER) }).click()
+
+    const oldest = AGES_DAYS.at(-1) ?? 400
+    await page
+      .getByRole('grid', { name: 'Messages' })
+      .getByRole('row', { name: new RegExp(`aged ${oldest} days`) })
+      .click({ timeout: SYNC_BUDGET_MS })
+
+    // Listing an id the replica cannot hydrate would still show a row; reading the body proves the
+    // whole path (query → envelope → body fetch) works past the old horizon.
+    const frame = page
+      .locator(`iframe[title="Message: ${TOKEN} aged ${oldest} days"]`)
+      .contentFrame()
+    await expect(frame.getByText(`Aged ${oldest} days.`)).toBeVisible({ timeout: SYNC_BUDGET_MS })
   })
 })

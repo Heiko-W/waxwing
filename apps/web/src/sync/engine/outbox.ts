@@ -499,9 +499,11 @@ function sortUsesKeyword(sort: EmailComparator[] | null, keyword: string): boole
 /**
  * Does `row` provably satisfy EVERY condition of `filter` (M3.10, gap B2)? The question
  * {@link filterPinsMailbox} deliberately does NOT answer: it proves only that the window is pinned to
- * the destination mailbox, which is *necessary, not sufficient* — a folder window's real filter is
- * `AND(inMailbox, after: <cacheDays boundary>)` (backfill.ts), so a message moved into the Inbox that
- * is older than the horizon does NOT belong in that window and must not be spliced into it.
+ * the destination mailbox, which is *necessary, not sufficient* — a window carries the rest of its
+ * filter too (a SEARCH window is the general case, and since M-13 a folder window's own filter is
+ * `AND(inMailbox, notKeyword $snoozed)`), so a message that fails one of those conditions does not
+ * belong in the window and must not be spliced into it. The `after`/`before` arms below are what a
+ * folder filter used to need and a search filter still does (`before:`/`after:` operators, M3.1).
  *
  * A strict ALLOW-LIST over the condition KEYS, and it must stay one. `false` here means "not proven",
  * which conflates "does not match" with "cannot tell" — sound only under `AND` (an unprovable branch
@@ -1117,10 +1119,11 @@ function countDeltasFor(
  * B7).
  *
  * WHY NOT A RECOMPUTE. `db.emails` is a bounded, actively-SHRINKING horizon, not the folder:
- * `backfill.ts`'s `windowFilter` is `inMailbox AND receivedAt >= now - cacheDays`, and
- * `maintenance.ts` bulk-deletes the envelopes outside it. A local `count()` over a 50k-message Inbox
- * with `cacheDays: 30` is not merely stale, it is categorically wrong — it would replace a briefly
- * stale badge with a permanently and confidently wrong one. (`labelUnreadCounts` in `repo.ts` DOES
+ * `maintenance.ts` bulk-deletes the envelopes past `cacheDays + grace` that no live window holds. A
+ * local `count()` over a 50k-message Inbox is not merely stale, it is categorically wrong — it would
+ * replace a briefly stale badge with a permanently and confidently wrong one. (M-13 removed the date
+ * bound from the QUERY, which changes nothing here: the query pages 50 at a time, so the replica
+ * still holds a fraction of a large folder, and the prune horizon is untouched.) (`labelUnreadCounts` in `repo.ts` DOES
  * recompute, and its own doc admits it "reflects only the windowed replica subset": a label is a
  * client-side concept whose carriers are mostly recent. `Mailbox.unreadEmails` is a server-owned
  * absolute over mail this client has never seen, and the only sound local edit to it is ±1.) A

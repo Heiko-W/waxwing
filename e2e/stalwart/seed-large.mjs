@@ -26,16 +26,19 @@ const CHUNK = 500
 /**
  * Spacing between consecutive messages, and the reason this seeder is not free to choose it.
  *
- * The app syncs a RECENT WINDOW, not a whole mailbox: `backfill.ts` queries
- * `inMailbox AND receivedAt >= now − offline.cacheDays` (default 30 days). A corpus spread wider
- * than that window is invisible to the client no matter how large it is.
+ * HISTORICAL, and worth keeping: the app used to sync a RECENT WINDOW rather than the folder —
+ * `backfill.ts` queried `inMailbox AND receivedAt >= now − offline.cacheDays` — so a corpus spread
+ * wider than 30 days was invisible to the client no matter how large it was. Measured at the time:
+ * at the original one-minute spacing, 100 000 messages spanned 69 days from a HARDCODED base of
+ * 2026-07-01, every one of them fell outside the window, `Email/query` returned `total: 0`, and the
+ * perf suite reported an empty folder while the server happily answered 100 000 to the same
+ * question. (Test data with a pinned timestamp has an expiry date — that part still holds.)
  *
- * This bit, measured: at the original one-minute spacing, 100 000 messages spanned 69 days from a
- * HARDCODED base of 2026-07-01 — so every single one fell outside the window, `Email/query` returned
- * `total: 0`, and the perf suite reported an empty folder while the server happily answered 100 000
- * to the same question. Test data with a pinned timestamp has an expiry date.
- *
- * 20 s × 100 000 = 23 days, comfortably inside a 30-day window with room for a slower default.
+ * The fix then was to shrink the spacing until the corpus fit the window: 20 s × 100 000 = 23 days.
+ * That was the fixture bending around a product defect, and M-13 removed the defect — the folder
+ * query carries no date bound now, so a corpus of any age is reachable. The spacing STAYS at 20 s
+ * regardless: the perf baselines in the plan (§M4.8) were measured against this exact corpus, and
+ * re-spreading it would invalidate them for no gain the suite is trying to measure.
  */
 const SPACING_MS = 20_000
 

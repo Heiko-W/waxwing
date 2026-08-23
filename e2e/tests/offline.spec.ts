@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 import { jmapAs } from '../stalwart/seed-write.mjs'
-import { openSettingsSection, revealPasswordForm, setUndoGrace } from './helpers'
+import { openSettingsSection, revealPasswordForm, SYNC_BUDGET_MS, setUndoGrace } from './helpers'
 
 /**
  * A bulk-bar action, wherever the bar has put it.
@@ -26,7 +26,7 @@ async function bulkAction(page: import('@playwright/test').Page, name: string): 
     }
     await trigger.click({ timeout: 2_000 })
     await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
-  }).toPass({ timeout: 30_000 })
+  }).toPass({ timeout: SYNC_BUDGET_MS })
 }
 
 /**
@@ -71,9 +71,13 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /**
@@ -305,12 +309,12 @@ test.describe('M3.10 offline', () => {
     await expect(queue).toContainText('Will send when you’re back online')
 
     await goOnline(page)
-    await expect(queue).toBeHidden({ timeout: 30_000 })
+    await expect(queue).toBeHidden({ timeout: SYNC_BUDGET_MS })
 
     // Verified at the SERVER, not in the app that queued it. Exactly one copy: the no-duplicate half
     // of the guarantee is the reason this polls for a count rather than for presence.
     await expect
-      .poll(async () => (await bob.query(token, ['subject'])).length, { timeout: 30_000 })
+      .poll(async () => (await bob.query(token, ['subject'])).length, { timeout: SYNC_BUDGET_MS })
       .toBe(1)
 
     // Clean up after ourselves: this message carries no `wread` keyword and lives in BOB's account,
@@ -610,7 +614,7 @@ test.describe('M3.10 offline', () => {
       // appears. It is hidden entirely while the queue is clean, which is what makes its presence
       // an assertion rather than a coincidence.
       const problems = page.getByRole('button', { name: /didn’t go through/ })
-      await expect(problems).toBeVisible({ timeout: 30_000 })
+      await expect(problems).toBeVisible({ timeout: SYNC_BUDGET_MS })
       await problems.click()
 
       const dialog = page.getByRole('dialog', { name: 'Some actions didn’t go through' })

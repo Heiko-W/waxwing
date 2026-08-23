@@ -503,13 +503,20 @@ describe('Settings — Offline & storage (M3.4)', () => {
     expect(await screen.findByText('Nothing to free up')).toBeInTheDocument()
   })
 
-  it('states the offline window and the pin count', async () => {
+  /**
+   * The sentence has to say what the window IS, and M-13 is why it also has to say what it is not.
+   * It used to read "Mail from the last 30 days is kept offline.", which was true of the cache and
+   * read — correctly, at the time — as a statement about what the app would show you: the folder
+   * query carried the same 30-day bound, so older mail really was unreachable (ADR-030). The bound
+   * is gone from the query and the sentence now names both halves, so nobody has to guess which one
+   * it meant.
+   */
+  it('states the offline window, that older mail still loads, and the pin count', async () => {
     await db.localPrefs.put({ accountId: ACC, key: 'offline.pinnedMailboxes', value: ['work'] })
     renderStorage()
 
-    expect(
-      await screen.findByText('Mail from the last 30 days is kept offline.'),
-    ).toBeInTheDocument()
+    const note = await screen.findByText(/Mail from the last 30 days is kept on this device/)
+    expect(note).toHaveTextContent(/Older mail stays on the server and loads when you open it/)
     expect(await screen.findByText('1 folder kept offline')).toBeInTheDocument()
   })
 

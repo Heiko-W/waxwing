@@ -1077,9 +1077,14 @@ describe('outbox — the cached list window (M3.8)', () => {
     })
 
     it('refuses an arrival the window’s own `after` boundary excludes', async () => {
-      // A folder window is `AND(inMailbox, after: <cacheDays midnight>)` (backfill.ts). Pinning the
-      // mailbox is NECESSARY, not sufficient: a message older than the horizon does not belong in the
-      // window at all, and "it sorts after every loaded row" would have placed it there anyway.
+      // A window carries more than its mailbox pin, so pinning the mailbox is NECESSARY, not
+      // sufficient: a message the rest of the filter excludes does not belong in the window at all,
+      // and "it sorts after every loaded row" would have placed it there anyway.
+      //
+      // The window seeded here has an `after` bound. Since M-13 a FOLDER window has none — that
+      // bound is what made mail older than `cacheDays` unreachable (ADR-030) — so the live carrier
+      // of this shape is a SEARCH window, which still gets one from the `before:`/`after:` operators
+      // (M3.1). The rule under test is the general one and did not change with M-13.
       await seedArchive()
       await putEmails(db, ACC, [inbox('e1', { receivedAt: '2026-05-01T00:00:00Z' })])
 

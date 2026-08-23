@@ -1,9 +1,26 @@
 /**
- * Windowed backfill (M1.3, FR-OFF-02): seed and page the replica's watched `Email/query` windows —
- * the recent-N-days-per-mailbox horizon from `config.json` `offline.cacheDays` — and the "load more"
- * older pages. Operates on the narrow {@link JmapPort} so it is testable against a plain fake. The
- * ordered id window lives in `queryCache`; the virtualized list (M1.6) renders from it. Full
- * queryState reconciliation lives in `delta.reconcileQuery`; here we only seed and append.
+ * Backfill (M1.3, FR-OFF-02): seed and page the replica's watched `Email/query` windows, and the
+ * "load more" older pages. Operates on the narrow {@link JmapPort} so it is testable against a plain
+ * fake. The ordered id window lives in `queryCache`; the virtualized list (M1.6) renders from it.
+ * Full queryState reconciliation lives in `delta.reconcileQuery`; here we only seed and append.
+ *
+ * ## A folder query is NOT date-limited, and the cache still is
+ * Until M-13 the folder filter carried `receivedAt >= now − offline.cacheDays`, which made the
+ * 30-day CACHE horizon double as a 30-day VISIBILITY horizon: a folder whose mail was all older
+ * simply had no reachable messages. `loadMore` could not rescue it either — it pages the row's own
+ * `filter`, so every page it asked for was bounded by the same `after` and came back empty. Measured
+ * against the fixture: 12 messages in the folder, `Mailbox.totalEmails: 12`, and the query the app
+ * ran returned `total: 0`. Mail older than a month was unreachable except through search.
+ *
+ * The two horizons are now separate, which is what they always should have been. What a folder SHOWS
+ * is the whole folder, paged 50 at a time by `loadMore` exactly as before — the page limit, not a
+ * date, is what keeps the first screen cheap. What the replica KEEPS is still `cacheDays`: the M3.4
+ * prune (`maintenance.ts`) is untouched and still drops envelopes past `cacheDays + grace` that no
+ * live window references. Scrolling deep into an old folder therefore holds those envelopes for as
+ * long as the window is watched, and the ordinary reap + prune reclaims them afterwards.
+ *
+ * A second effect, free: the key no longer contains a date, so it is stable indefinitely rather than
+ * only within a UTC day. The midnight roll used to orphan every folder window and re-backfill it.
  */
 
 import type { EmailComparator, EmailFilter, Id } from '@waxwing/jmap'
@@ -21,25 +38,19 @@ import {
 } from '../repo'
 import type { JmapPort } from './types'
 
-const DAY_MS = 86_400_000
 const DEFAULT_LIMIT = 50
 const DEFAULT_SORT: readonly EmailComparator[] = [{ property: 'receivedAt', isAscending: false }]
 
 /**
- * The recent-window filter for a mailbox: `inMailbox AND receivedAt >= now - cacheDays`. The
- * boundary is floored to UTC midnight so the canonical query key is STABLE across a day (and across
- * leader hand-overs within it) instead of drifting every millisecond, which would orphan the cached
- * window and re-backfill on every new leader. (Reaping day-old orphaned windows is cache policy, M3.4.)
+ * A folder's filter: every message in it, newest first — the server pages it, `loadMore` walks it.
+ * Deliberately carries no date bound; see the file header for why one used to be here and what the
+ * `cacheDays` horizon governs instead.
  */
-export function windowFilter(mailboxId: Id, cacheDays: number, now: number): EmailFilter {
-  const boundaryMs = now - cacheDays * DAY_MS
-  const midnightMs = boundaryMs - (boundaryMs % DAY_MS)
-  const after = new Date(midnightMs).toISOString()
+export function folderFilter(mailboxId: Id): EmailFilter {
   return {
     operator: 'AND',
     conditions: [
       { inMailbox: mailboxId },
-      { after },
       // Snoozed messages are hidden until their time comes (M5.8, FR-ORG-03). Excluding them in
       // the QUERY rather than after the fact is what keeps the window counts and the paging
       // honest — a client-side filter would leave gaps in a page the server considers full.
@@ -55,17 +66,15 @@ export interface WindowSpec {
 }
 
 /**
- * The canonical key + spec for a mailbox's recent window — lets a leader ADOPT an existing window
- * and lets the M1.6 list compute the SAME key the engine watches (per mailbox + sort + threading).
+ * The canonical key + spec for a mailbox's window — lets a leader ADOPT an existing window and lets
+ * the M1.6 list compute the SAME key the engine watches (per mailbox + sort + threading).
  */
-export function windowQueryKey(
+export function folderQueryKey(
   mailboxId: Id,
-  cacheDays: number,
-  now: number,
   opts: WindowSpec = {},
 ): { key: string; spec: QuerySpec } {
   const spec: QuerySpec = {
-    filter: windowFilter(mailboxId, cacheDays, now),
+    filter: folderFilter(mailboxId),
     sort: opts.sort ?? [...DEFAULT_SORT],
     collapseThreads: opts.collapseThreads ?? true,
   }
@@ -73,7 +82,6 @@ export function windowQueryKey(
 }
 
 export interface BackfillOptions {
-  readonly cacheDays: number
   readonly limit?: number
   readonly sort?: EmailComparator[]
   readonly collapseThreads?: boolean
@@ -157,7 +165,7 @@ export async function backfillQuery(
   return { key, ids: result.ids, total: result.total }
 }
 
-/** Seed a mailbox's recent window — the `inMailbox AND recent` filter over {@link backfillQuery}. */
+/** Seed a mailbox's window — the `inMailbox` filter over {@link backfillQuery}. */
 export async function backfillMailbox(
   port: JmapPort,
   db: ReplicaDb,
@@ -166,7 +174,7 @@ export async function backfillMailbox(
   opts: BackfillOptions,
 ): Promise<BackfillResult> {
   const spec: QuerySpec = {
-    filter: windowFilter(mailboxId, opts.cacheDays, opts.now),
+    filter: folderFilter(mailboxId),
     sort: opts.sort ?? [...DEFAULT_SORT],
     collapseThreads: opts.collapseThreads ?? true,
   }

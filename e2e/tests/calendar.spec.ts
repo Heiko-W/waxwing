@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
-import { login } from './helpers'
+import { login, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * The calendar's write path against the LIVE fixture (T1, T13).
@@ -27,7 +27,9 @@ const CHANGED = `${TITLE} changed`
 /** The calendar screen, reached the way a reader reaches it. */
 async function openCalendar(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Calendar', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /**
@@ -392,7 +394,7 @@ test('offline, the calendar keeps showing the month it already has (K-8)', async
     await page.getByRole('link', { name: 'Calendar', exact: true }).click()
     await openAgenda(page)
 
-    await expect(row(page, title)).toBeVisible({ timeout: 30_000 })
+    await expect(row(page, title)).toBeVisible({ timeout: SYNC_BUDGET_MS })
     // …and the screen says so, quietly, instead of claiming to be live.
     await expect(
       page.getByRole('status').filter({ hasText: /Not updating while offline/ }),

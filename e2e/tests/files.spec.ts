@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test'
-import { login } from './helpers'
+import { login, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * The files screen against the LIVE fixture — the first E2E this area has ever had.
@@ -52,7 +52,7 @@ const NOTE = `e2e-note-${STAMP}.txt`
 async function openFiles(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Files', exact: true }).click()
   await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
-    timeout: 30_000,
+    timeout: SYNC_BUDGET_MS,
   })
 }
 
@@ -71,7 +71,7 @@ async function rowAction(page: Page, label: string, node: string): Promise<void>
   // "no" simply because the listing has not arrived, and the else-branch below then waited the full
   // test timeout for a `⋯` that this row never grows. The failure read like a missing menu and was
   // a missing millisecond.
-  await expect(inRow.or(menu).first()).toBeVisible({ timeout: 30_000 })
+  await expect(inRow.or(menu).first()).toBeVisible({ timeout: SYNC_BUDGET_MS })
   if (await inRow.isVisible()) {
     await inRow.click()
     return
@@ -110,7 +110,7 @@ test('a file can be filed away, lost, found by name and followed home', async ({
     mimeType: 'text/plain',
     buffer: Buffer.from('waxwing e2e\n'),
   })
-  await expect(row(page, NOTE)).toBeVisible({ timeout: 30_000 })
+  await expect(row(page, NOTE)).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
   // ---- move it into the inner folder (D-1). The whole finding: the server changes `parentId`
   // without complaint and the client had no way to ask.
@@ -136,7 +136,7 @@ test('a file can be filed away, lost, found by name and followed home', async ({
   // ---- find it by name from anywhere (D-3). Account-wide, so the row states the folder it is in.
   await page.getByRole('link', { name: 'Files', exact: true }).click()
   await page.getByLabel('Search files', { exact: true }).fill(NOTE)
-  await expect(row(page, NOTE)).toBeVisible({ timeout: 30_000 })
+  await expect(row(page, NOTE)).toBeVisible({ timeout: SYNC_BUDGET_MS })
   const location = page.getByRole('button', { name: `in ${ROOT}`, exact: true })
   await expect(location).toBeVisible()
 
@@ -182,7 +182,7 @@ test('several files can be picked out at once and filed together', async ({ page
     { name: one, mimeType: 'text/plain', buffer: Buffer.from('a') },
     { name: two, mimeType: 'text/plain', buffer: Buffer.from('b') },
   ])
-  await expect(row(page, one)).toBeVisible({ timeout: 30_000 })
+  await expect(row(page, one)).toBeVisible({ timeout: SYNC_BUDGET_MS })
   await expect(row(page, two)).toBeVisible()
 
   // Selecting is a mode, entered on purpose — an ordinary tap still opens a folder.
@@ -268,7 +268,7 @@ test('offline, the file list keeps showing what it already has (D-4)', async ({
     await page.getByRole('link', { name: 'Mail', exact: true }).click()
     await page.getByRole('link', { name: 'Files', exact: true }).click()
 
-    await expect(row(page, folder)).toBeVisible({ timeout: 30_000 })
+    await expect(row(page, folder)).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(
       page.getByRole('status').filter({ hasText: /Not updating while offline/ }),
     ).toBeVisible()

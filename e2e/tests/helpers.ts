@@ -12,6 +12,42 @@ export const messageList = (page: Page) =>
   page.getByRole('region', { name: 'Messages', exact: true })
 
 /**
+ * How long a live suite may wait for something that has to come back from the server (B53).
+ *
+ * ## The measurement, and a hypothesis it killed
+ * Across ten full `e2e:read` runs, individual tests span a factor of 10–50 between their fastest
+ * and slowest run — `read.spec.ts`'s folder-role test took **2.4 s and 33.8 s**, the reorder test
+ * **2.1 s and 33.2 s**, the nested-message test **0.6 s and 30.4 s** — while the suite's MEDIAN test
+ * duration stays flat at 0.6–1.7 s and shows no upward trend across positions. So a 30 s budget was
+ * below the observed maximum of tests that legitimately pass: the budget, not the app, decided the
+ * outcome. That is what this constant fixes, and the justification is the measured spread — nothing
+ * more.
+ *
+ * **It is NOT the throttle, and that was the first guess.** `stalwart/http.mjs` throttles the
+ * seeders deliberately and gives the app under test no retry concession, so the obvious story was:
+ * the app meets a 429, backs off on `SYNC_RETRY_BACKOFF` (`baseMs: 2_000, factor: 2`, cumulative
+ * 2/6/14/30 s), and burns the budget before its fourth attempt. Measured instead, with the response
+ * status of every `/jmap` call recorded across five runs of a login behind a full reseed:
+ * **zero 429s, and the inbox rendered in 384–486 ms every time.** The app is not being throttled at
+ * all. The backoff curve is real but never entered, so it explains nothing here and this constant
+ * must not be read as being derived from it.
+ *
+ * ## Why 60 s
+ * Twice the largest passing observation (33.8 s), which leaves room for the same spread to widen
+ * somewhat without turning into a red run, and still keeps a genuine hang cheap to spot. It is NOT
+ * a licence to paper over slowness: raising this instead of reading it would be the same mistake one
+ * size larger — and note that a failure at the full 60 s is a DIFFERENT animal from one at 30 s,
+ * because nothing measured here takes anywhere near that long.
+ */
+export const SYNC_BUDGET_MS = 60_000
+
+/** `expect.poll` options for a server round-trip; same budget, same reasoning as {@link SYNC_BUDGET_MS}. */
+export const SYNC_POLL: { timeout: number; intervals: number[] } = {
+  timeout: SYNC_BUDGET_MS,
+  intervals: [500, 1000, 1000, 2000],
+}
+
+/**
  * Override the app's `undoSendSeconds` for this page by intercepting `config.json` (deep-merged over
  * the built-in defaults, so branding/auth are untouched). Call BEFORE navigating.
  */

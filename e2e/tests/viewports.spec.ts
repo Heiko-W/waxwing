@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 import { noOverflow } from './no-overflow'
 
 /**
@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(messageList(page)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page)).toBeVisible({ timeout: SYNC_BUDGET_MS })
 })
 
 /**
@@ -119,7 +119,9 @@ for (const tier of TIERS) {
     await page.setViewportSize({ width: tier.width, height: tier.height })
 
     // The Inbox resolves itself now — `/mail` with no folder used to render "choose a folder".
-    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await noOverflow(page, `${tier.name}: message list`)
 
     await messageList(page).getByText(READ_SUBJECTS.newsletter, { exact: true }).click()
@@ -144,7 +146,7 @@ for (const tier of TIERS) {
      */
     await page.getByRole('link', { name: 'Files', exact: true }).click()
     await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     await noOverflow(page, `${tier.name}: files`)
   })
@@ -200,7 +202,7 @@ test('the attachment filename keeps more than a stub of itself on a tablet (M7)'
   await page.setViewportSize({ width: 834, height: 1112 })
   await messageList(page).getByText(READ_SUBJECTS.pdf, { exact: true }).click()
   const name = page.getByText('quarterly-report.pdf')
-  await expect(name).toBeVisible({ timeout: 30_000 })
+  await expect(name).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
   const width = await name.evaluate((node) => node.getBoundingClientRect().width)
   // 8rem is the floor the stylesheet commits to; anything at or below the two-character case is the
@@ -223,7 +225,7 @@ test('every tap target in the reading pane meets the coarse-pointer size on a ph
   await page.setViewportSize({ width: 390, height: 844 })
   await messageList(page).getByText(READ_SUBJECTS.plain, { exact: true }).click()
   await expect(page.getByRole('button', { name: /Show contact card for/ })).toBeVisible({
-    timeout: 30_000,
+    timeout: SYNC_BUDGET_MS,
   })
 
   const minimum = await page.evaluate(() => {

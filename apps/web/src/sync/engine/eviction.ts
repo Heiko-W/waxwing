@@ -34,8 +34,11 @@ export const PRESSURE_RATIO = 0.9
 /** Never claim more than 80 % of the browser's quota — the origin holds more than the mail cache. */
 export const QUOTA_SAFETY = 0.8
 
-/** Envelopes must be `cacheDays` + this grace old before pruning: a day-stable window key one boundary
- *  behind must never lose rows out from under it. */
+/** Envelopes must be `cacheDays` + this grace old before pruning, so nothing is reclaimed the moment
+ *  it crosses the horizon. (The original reason was narrower — the window key used to be floored to
+ *  UTC midnight, so a key one boundary behind was still live; M-13 removed the date from the key
+ *  entirely. The grace stays: a window a user is scrolling may list rows either side of the horizon,
+ *  and the prune must not race it.) */
 export const PRUNE_GRACE_MS = 7 * 86_400_000
 
 /** An unwatched `queryCache` window older than this is reaped (a closed search, a folder from last week). */

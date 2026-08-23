@@ -17,7 +17,7 @@ import {
   type ReplicaDb,
   ReplicaProvider,
 } from '../sync'
-import { setActiveEngine, windowQueryKey } from '../sync/engine'
+import { folderQueryKey, setActiveEngine } from '../sync/engine'
 import { email, freshDb, mailbox } from '../sync/test-utils'
 import { TextInput, ToastProvider } from '../ui'
 import { ShortcutProvider } from './ShortcutProvider'
@@ -59,7 +59,7 @@ const dispatch = vi.fn()
 let db: ReplicaDb
 
 function inboxKey(): string {
-  return windowQueryKey('inbox', DEFAULT_CONFIG.offline.cacheDays, Date.now(), {
+  return folderQueryKey('inbox', {
     sort: [{ property: 'receivedAt', isAscending: false }],
     collapseThreads: true,
   }).key

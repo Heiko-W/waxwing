@@ -64,9 +64,9 @@ import { browserEstimate, type EstimateFn, isQuotaExceeded, reportStorageFull } 
 import {
   backfillMailbox,
   backfillQuery,
+  folderQueryKey,
   loadMore,
   type WindowSpec,
-  windowQueryKey,
 } from './backfill'
 import { backoffDelayMs, clampRetryAfter, STUCK_AFTER_ATTEMPTS } from './backoff'
 import { type BroadcastChannelLike, defaultBroadcast, EngineBus } from './bus'
@@ -643,7 +643,7 @@ export class SyncEngine {
    * own watched set — cross-tab watch propagation via the bus is a follow-up.
    */
   watchWindow(mailboxId: Id, opts: WindowSpec = {}): string {
-    const { key } = windowQueryKey(mailboxId, this.deps.config.cacheDays, this.clock.now(), opts)
+    const { key } = folderQueryKey(mailboxId, opts)
     if (this.watched.has(key)) return key
     this.watched.add(key)
     void this.backfillWindowIfAbsent(mailboxId, key, opts)
@@ -661,7 +661,6 @@ export class SyncEngine {
       return
     }
     await backfillMailbox(this.port, this.db, this.accountId, mailboxId, {
-      cacheDays: this.deps.config.cacheDays,
       now: this.clock.now(),
       ...(opts.sort ? { sort: opts.sort } : {}),
       ...(opts.collapseThreads !== undefined ? { collapseThreads: opts.collapseThreads } : {}),
@@ -1617,15 +1616,14 @@ export class SyncEngine {
     const inbox = await mailboxByRole(this.db, this.accountId, 'inbox')
     if (!inbox) return
     const now = this.clock.now()
-    const { key } = windowQueryKey(inbox.id, this.deps.config.cacheDays, now)
-    // A prior leader may already have backfilled today's window (the key is day-stable) — adopt it
+    const { key } = folderQueryKey(inbox.id)
+    // A prior leader may already have backfilled this window (the key is stable, M-13) — adopt it
     // instead of re-querying the whole window on every hand-over.
     if ((await getQueryCache(this.db, this.accountId, key)) !== undefined) {
       this.watched.add(key)
       return
     }
     const result = await backfillMailbox(this.port, this.db, this.accountId, inbox.id, {
-      cacheDays: this.deps.config.cacheDays,
       now,
     })
     this.watched.add(result.key)

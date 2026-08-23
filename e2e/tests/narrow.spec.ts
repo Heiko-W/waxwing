@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 import { noOverflow } from './no-overflow'
 
 /**
@@ -37,14 +37,16 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(messageList(page)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page)).toBeVisible({ timeout: SYNC_BUDGET_MS })
 })
 
 /** Open the Inbox the way a phone user does: through the drawer. */
 async function openInbox(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Show folders' }).click()
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 test('the shell fits the viewport on every screen', async ({ page }) => {

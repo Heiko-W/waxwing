@@ -19,7 +19,7 @@ import {
   ReplicaProvider,
   setPref,
 } from '../sync'
-import { setActiveEngine, windowQueryKey } from '../sync/engine'
+import { folderQueryKey, setActiveEngine } from '../sync/engine'
 import { email, FULL_RIGHTS, freshDb, mailbox } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
@@ -66,7 +66,7 @@ let db: ReplicaDb
 
 /** The exact key useMessageList computes for a folder with the default (date desc, threaded) view. */
 function folderKey(mailboxId: string): string {
-  return windowQueryKey(mailboxId, DEFAULT_CONFIG.offline.cacheDays, Date.now(), {
+  return folderQueryKey(mailboxId, {
     sort: [{ property: 'receivedAt', isAscending: false }],
     collapseThreads: true,
   }).key
@@ -2127,16 +2127,20 @@ describe('MessageList', () => {
   })
 
   /**
-   * An empty WINDOW is not an empty folder (M4.8).
+   * "Empty" means empty again (M-13).
    *
-   * The replica holds `inMailbox AND receivedAt >= now − offline.cacheDays`, so a folder whose mail
-   * is all older than that syncs to an empty window. The list said "No messages in this folder."
-   * while the sidebar beside it showed the folder's real unread count — two parts of one screen
-   * contradicting each other with no way to tell which was wrong. Found against the 100 k perf
-   * fixture, where the whole corpus sat outside the window and the app reported an empty folder
-   * against a server answering 100 000 to the same query.
+   * This block used to assert the OPPOSITE, and the assertion was right for the code it guarded: the
+   * folder query carried `receivedAt >= now − offline.cacheDays`, so a folder whose mail was all
+   * older synced to an empty window, and the list had to explain — beside a sidebar showing the
+   * folder's real count — that the mail existed but this device would not fetch it. The copy was an
+   * apology for a limit that should never have been in the query. M-13 removed the date bound (see
+   * `backfill.folderFilter`, which now has a test forbidding one), so the folder shows the folder,
+   * a still-loading one shows the spinner, and an empty list means an empty folder.
+   *
+   * Kept as a REGRESSION guard, not as coverage of new prose: if the bound ever returns, the note
+   * comes back with it and `queryByText` below fails.
    */
-  describe('the empty state distinguishes empty from out-of-window', () => {
+  describe('the empty state', () => {
     async function renderEmpty(totalEmails: number) {
       await putMailboxes(db, 'a', [mailbox('empty', { name: 'Empty', totalEmails })])
       await putQueryCache(db, {
@@ -2159,20 +2163,12 @@ describe('MessageList', () => {
       expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
     })
 
-    it('explains the offline window when the folder has mail the window excludes', async () => {
+    it('says the same thing for a folder of old mail — and never blames a 30-day window', async () => {
       await renderEmpty(100_000)
 
-      const note = await screen.findByText(/No messages from the last 30 days/)
-      expect(note).toBeInTheDocument()
-      // The old text would have been a flat contradiction of the sidebar's count.
-      expect(screen.queryByText('No messages in this folder.')).toBeNull()
-      // …and it must NOT send the user to Settings. This assertion used to demand the opposite —
-      // it required the sentence to name "the setting that changes it" — but no such setting
-      // exists: `offline.cacheDays` comes from the deployment's config.json and StorageSection only
-      // PRINTS it. So the copy promised a control the user would then hunt for and never find,
-      // which is worse than saying nothing, and the test was holding that promise in place.
-      expect(note).not.toHaveTextContent(/Settings/)
-      expect(note).toHaveTextContent(/this device only keeps the last 30 days/)
+      expect(await screen.findByText('No messages in this folder.')).toBeInTheDocument()
+      expect(screen.queryByText(/last 30 days/)).toBeNull()
+      expect(screen.queryByText(/on the server/)).toBeNull()
     })
   })
 })

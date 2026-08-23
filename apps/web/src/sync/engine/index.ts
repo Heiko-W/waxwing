@@ -6,7 +6,7 @@
 
 // The conflict/undo row types live with the schema (`../db`) but are part of the engine's contract.
 export type { ConflictCode, OutboxConflict, OutboxUndo } from '../db'
-export { type WindowSpec, windowQueryKey } from './backfill'
+export { folderQueryKey, type WindowSpec } from './backfill'
 export {
   backoffDelayMs,
   DEFAULT_OUTBOX_BACKOFF,
