@@ -224,6 +224,22 @@ test.describe('M4.4 shared accounts', () => {
     await page.setViewportSize({ width: 1280, height: 300 })
     await login(page)
 
+    /*
+     * Wait for the rail to be FINISHED, not merely present, and the difference is this test's whole
+     * flake history — ten of the twenty-nine flaky attempts across forty CI runs were this one
+     * assertion. A section's region appears as soon as the account is known; its FOLDERS arrive on a
+     * later sync pass. Measuring geometry in between measures a rail that is still growing, and the
+     * numbers the scroll is computed from go stale between the evaluate and the assertion.
+     *
+     * The three inboxes are the honest "settled" signal: they are the last thing to arrive and the
+     * thing the scroll distance is derived from.
+     */
+    for (const account of [OWN, SHARED_RW, SHARED_RO]) {
+      await expect(
+        accountSection(page, account).getByRole('treeitem', { name: /Inbox/ }),
+      ).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    }
+
     const header = accountSection(page, OWN).getByText(OWN, { exact: true })
     await expect(header).toBeVisible({ timeout: SYNC_BUDGET_MS })
     const before = await header.boundingBox()
@@ -242,13 +258,28 @@ test.describe('M4.4 shared accounts', () => {
      */
     const rail = page.getByRole('navigation', { name: 'Folders' })
     await rail.evaluate((nav, own) => {
-      const scroller = Array.from(nav.querySelectorAll('*')).find(
-        (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === 'auto',
-      )
-      if (!(scroller instanceof HTMLElement)) throw new Error('the rail has no scroll container')
       const section = nav.querySelector(`[aria-label="${own}"]`)
       if (!(section instanceof HTMLElement)) throw new Error(`no section for ${own}`)
       const header = section.firstElementChild
+      /*
+       * The scroller the header actually STICKS TO — its nearest scrolling ancestor, found by walking
+       * UP from the header itself. Not "the first element in the rail that happens to overflow",
+       * which is what this used to do and is a different element whenever the rail has more than one
+       * scrolling box. `position: sticky` resolves against the nearest scrollport and nothing else,
+       * so scrolling any OTHER container carries the sticky header away bodily — which is exactly
+       * the `viewport ratio 0` this test kept reporting, on a header that was behaving correctly.
+       */
+      let scroller: HTMLElement | null = header instanceof HTMLElement ? header.parentElement : null
+      while (
+        scroller !== null &&
+        !(
+          scroller.scrollHeight > scroller.clientHeight &&
+          ['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY)
+        )
+      ) {
+        scroller = scroller.parentElement
+      }
+      if (!(scroller instanceof HTMLElement)) throw new Error('the rail has no scroll container')
       const headerHeight = header instanceof HTMLElement ? header.offsetHeight : 24
       const distance = Math.max(headerHeight + 8, Math.round(section.offsetHeight / 2))
       if (distance + headerHeight >= section.offsetHeight) {
