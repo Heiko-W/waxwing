@@ -101,33 +101,43 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.16.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.17.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 4 892 unit tests, 18
-integration tests against a live Stalwart, and 200 end-to-end tests across the seven Playwright
-suites the gate runs — plus a WebKit smoke suite of 3 that runs beside it. Performance and
-accessibility are measured rather than asserted — the numbers are in the
+Every planned work package is done and the release gate is signed off: 4 899 unit tests, 18
+integration tests against a live Stalwart, and 199 end-to-end tests across the six Playwright suites
+the gate runs — plus a WebKit smoke suite of 3 that runs beside it. Performance and accessibility are
+measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
 
-**v0.16.0 is what Safari found.** Three defects reported from a running deployment, none of which
-any test here could see, because every suite in this repository ran on Chromium:
+**v0.17.0 is what the traces found.** Six end-to-end suites had been failing intermittently for
+months and it was being read as flakiness. It was not. Recording what actually went over the wire —
+rather than reasoning about the code — turned the same symptom into five separate defects, four of
+them in the app:
 
-- **No link in a message opened.** WebKit delivers the outer page *no* click events from a
-  sandboxed frame — not on the document, the body or the anchor, in either phase, for any event
-  type. The app opened links from exactly such a listener, so clicking one did nothing at all. The
-  phishing gate could not stay a veto over a click either; it now decides which links the browser
-  is handed, before any click ([ADR-029](docs/adr/029-safari-cannot-intercept-clicks-in-a-sandboxed-frame.md)).
-- **An empty mailbox rendered no mail screen.** WebKit cannot open a `nextunique` cursor on an
-  empty multiEntry index, and the label rail read one — so every account's first paint, and every
-  paint of a mailbox that never receives mail, threw into the route error boundary.
-- **Discarding a draft did nothing, and closing one duplicated it.** A draft this browser held no
-  local copy of — written on another device, or before the site data was cleared — opened with no
-  link to its server message, so neither the delete nor the replace could name it.
+- **A folder showed only the last 30 days of itself.** One setting governed two different horizons:
+  how much mail the device *keeps* offline, and how much a folder *shows*. Opening a folder of older
+  mail said "No messages from the last 30 days" beside a sidebar listing it as a normal folder. The
+  cache window now bounds only what is kept
+  ([ADR-030](docs/adr/030-a-folder-shows-the-folder-not-a-30-day-window.md)).
+- **New mail could arrive with no notification, and never get one.** Two independent causes with one
+  symptom. A sync pass that failed *after* committing mail discarded the ids it had already
+  found — and the retry asks the server what changed since a state that already includes them, so
+  the banner was gone rather than late. Underneath it, the "is this new?" threshold was a
+  millisecond client stamp compared against a server timestamp that has one-second resolution, which
+  blanked out a whole second after every sign-in and every leadership hand-over.
+- **A calendar you had just shared said nobody had access.** The share dialog rendered a snapshot of
+  the calendar taken when the row was clicked, so the grant that landed afterwards never reached it.
+  Grant, close, reopen — and be told "Only you.", for a calendar the server had already shared.
+- **Two things in the folder rail could not be clicked.** The unread badge sat on top of the folder
+  menu and swallowed the click; and a row scrolled into view — which is what happens every time
+  keyboard focus moves down the tree — landed under the opaque sticky account header.
 
-A WebKit smoke suite now runs beside the Chromium ones so the engine difference stays visible.
-Opening a message also no longer waits for the network: the texts of the list in view are fetched
-ahead of the click (2 395 ms → 102 ms on a 1 Mbit / 150 ms link), with a switch in
-Settings → Reading, because no browser API can tell Wi-Fi from cellular.
+The harness was hiding all of it. Stalwart rate-limits **per account**, and the suites drive one
+account through a hundred sign-ins in five minutes where a real client's entire sign-in is fourteen
+requests — so the app kept meeting a budget the previous hundred tests had spent
+([ADR-031](docs/adr/031-the-fixture-throttle-was-measuring-the-harness.md)). Opening a window is
+also one request rather than two now, using the back-references JMAP has for exactly that
+([ADR-032](docs/adr/032-a-window-is-one-request.md)).
 
 **v0.15.0 closed the JMAP gap.** A survey of what Stalwart offers against what this client used
 produced 67 findings; 58 are implemented here. Calendars can be created and shared, series and
