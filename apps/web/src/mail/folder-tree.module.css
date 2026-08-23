@@ -63,6 +63,26 @@
   font-size: var(--waxwing-text-sm);
   cursor: pointer;
   user-select: none;
+  /*
+   * Leave room for the sticky account header when something scrolls this row into view.
+   *
+   * `.accountHeader` below is `position: sticky` and opaque, so it OVERLAYS whatever is beneath it.
+   * A browser scrolling a row to the top of the scrollport — which is what `scrollIntoView` does,
+   * and what happens every time keyboard focus moves down the tree — parks it exactly under that
+   * header, where it is invisible and cannot be clicked. `scroll-margin-block-start` is the property
+   * that exists for this: it tells the scroll a row's box starts a header's height higher than it
+   * really does.
+   *
+   * Found by Playwright, which says it plainly: `<span class=_accountName_…>alice@waxwing.test</span>
+   * from <div class=_accountHeader_…> subtree intercepts pointer events`, retried until the test
+   * timed out on a folder-actions button that was on screen the whole time. A keyboard user meets
+   * the same thing as a row that takes focus and then disappears.
+   *
+   * The value is the header's own box: one line of `--waxwing-text-xs` plus its symmetric
+   * `--waxwing-space-1` padding, rounded up rather than computed, because being a little generous
+   * costs nothing and being a pixel short costs the whole affordance.
+   */
+  scroll-margin-block-start: calc(var(--waxwing-space-1) * 2 + 1.5rem);
 }
 
 /* Pointer-only affordance, and on the RECESSED rail it lifts rather than darkens: the row under the
