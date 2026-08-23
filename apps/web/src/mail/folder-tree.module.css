@@ -339,6 +339,21 @@
   padding-inline: var(--waxwing-space-2);
   padding-block: var(--waxwing-space-1);
   background-color: var(--waxwing-surface-sunken);
+  /*
+   * Stop short of an OVERLAY scrollbar, or this header paints over it.
+   *
+   * Reported with a screenshot from the live app: the rail's scrollbar was drawn in PIECES, broken
+   * at the account headers. The rail holds exactly one scroll container (measured, both engines),
+   * so the gaps are not two scrollers — they are this row, which is opaque and, because of the
+   * `z-index` above, a stacking context of its own. That is what gets painted over an overlay bar;
+   * the folder rows beside it are `position: relative` with no z-index and leave the thumb alone,
+   * which is exactly what the screenshot shows.
+   *
+   * `0px` wherever the bar has its own gutter, so this costs nothing on Windows or Linux — see
+   * `ui/scrollbar-metrics.ts`, which measures rather than guesses, because the macOS setting can
+   * make a Mac behave either way.
+   */
+  margin-inline-end: var(--waxwing-scrollbar-overlay);
 }
 
 /*

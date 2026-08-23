@@ -6,6 +6,7 @@ import { loadConfig } from './app/config'
 import { applyBranding, initTheme, loadThemeOverride } from './app/theme'
 import { initI18n } from './i18n'
 import { initInstallCapture } from './pwa/install/use-install-prompt'
+import { initScrollbarMetrics } from './ui/scrollbar-metrics'
 import './ui/global.css'
 
 async function boot(): Promise<void> {
@@ -25,6 +26,9 @@ async function boot(): Promise<void> {
   // After the theme, before first paint: the palette writes per-theme slots that `initTheme`'s
   // `data-theme` then selects between (FR-THEME-03). A locked deployment clears any stale choice.
   initAccent({ locked: config.branding.accentLocked })
+  // Measure the platform's scrollbar before anything that has to keep clear of it paints — see
+  // `scrollbar-metrics.ts` for the defect this exists for (an overlay bar drawn in pieces).
+  initScrollbarMetrics()
   await initI18n()
 
   const container = document.getElementById('root')

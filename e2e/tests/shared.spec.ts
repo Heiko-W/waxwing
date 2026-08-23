@@ -308,7 +308,14 @@ test.describe('M4.4 shared accounts', () => {
     await rail.evaluate((nav, own) => {
       const section = nav.querySelector(`[aria-label="${own}"]`)
       if (!(section instanceof HTMLElement)) throw new Error(`no section for ${own}`)
-      const header = section.firstElementChild
+      /*
+       * The header is the row holding the fold control, found through that control rather than as
+       * "the section's first child" — which it stopped being when the account name became the
+       * tree's own chrome (B60). The old form did not fail; it measured the whole TREE as the
+       * header height, which silently makes `distance` too large and turns this into a test about
+       * a section that is "too short to scroll within".
+       */
+      const header = section.querySelector('button[aria-expanded]')?.parentElement ?? null
       /*
        * The scroller the header actually STICKS TO — its nearest scrolling ancestor, found by walking
        * UP from the header itself. Not "the first element in the rail that happens to overflow",

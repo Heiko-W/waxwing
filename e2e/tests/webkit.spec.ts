@@ -74,3 +74,46 @@ test('a deceptive link is not handed to the browser', async ({ page, context }) 
   await page.waitForTimeout(2000)
   expect(context.pages()).toHaveLength(before)
 })
+
+/**
+ * The overlay scrollbar gets a lane of its own — an engine difference by construction.
+ *
+ * Reported from the live app with a screenshot: the folder rail's scrollbar was drawn in PIECES,
+ * broken at the account headers. The rail holds exactly one scroll container (measured in both
+ * engines), so the gaps were not two scrollers: `.accountHeader` is opaque and `z-index: 1`, and a
+ * stacking context is what gets painted over an OVERLAY bar. The folder rows beside it are
+ * `position: relative` with no z-index and leave the thumb alone — which is what the screenshot
+ * showed.
+ *
+ * It belongs in THIS suite because it cannot happen in the others: Chromium here draws a classic
+ * bar in a gutter outside the content box, where nothing in the content can reach it. WebKit draws
+ * the macOS overlay bar, so this is the only engine in the repo that measures 0 for the gutter and
+ * the only one where the lane has to be reserved.
+ */
+test('the overlay scrollbar is given a lane the sticky header cannot paint over', async ({
+  page,
+}) => {
+  await login(page)
+
+  const measured = await page.evaluate(() => {
+    const probe = document.createElement('div')
+    probe.style.cssText =
+      'position:absolute;top:-9999px;inline-size:100px;block-size:100px;overflow-y:scroll'
+    document.body.append(probe)
+    const gutter = probe.offsetWidth - probe.clientWidth
+    probe.remove()
+    return {
+      gutter,
+      lane: getComputedStyle(document.documentElement)
+        .getPropertyValue('--waxwing-scrollbar-overlay')
+        .trim(),
+    }
+  })
+
+  // WebKit here is the overlay case: the bar takes no layout room at all.
+  expect(measured.gutter, 'WebKit draws an overlay scrollbar — this suite exists for that').toBe(0)
+  // …so the app must have measured that at boot and reserved a lane. `0px` means either the probe
+  // never ran or it read the wrong thing, and the symptom is a scrollbar in pieces.
+  expect(measured.lane, 'ui/scrollbar-metrics.ts did not reserve a lane').not.toBe('0px')
+  expect(Number.parseFloat(measured.lane)).toBeGreaterThan(0)
+})

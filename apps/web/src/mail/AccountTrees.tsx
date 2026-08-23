@@ -17,7 +17,7 @@
 
 import type { Id, MailAccount } from '@waxwing/jmap'
 import { ChevronRight, Lock } from 'lucide-react'
-import { useCallback, useId, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { IncomingShares } from '../sharing/IncomingShares'
@@ -262,41 +262,55 @@ function AccountSection({
   onSelectMailbox,
 }: AccountSectionProps) {
   const { t } = useTranslation()
-  const treeId = useId()
   return (
     <ReplicaProvider accountId={accountId} db={db}>
       <section className={styles.accountSection} aria-label={name} data-active={active}>
-        <div className={styles.accountHeader}>
-          {/*
-           * The whole name is the control, not a chevron beside it. A 16px glyph is the smallest
-           * target in the rail and the least obvious one; a header row that folds when clicked is
-           * what every mail client's account list does, and it gives the gesture a 24px+ box
-           * without adding a second thing to aim at.
-           */}
-          <button
-            type="button"
-            className={styles.accountToggle}
-            aria-expanded={expanded}
-            aria-controls={treeId}
-            onClick={onToggle}
-          >
-            <ChevronRight aria-hidden="true" className={styles.accountChevron} />
-            <span className={styles.accountName}>{name}</span>
-          </button>
-          {!expanded && <AccountUnread />}
-          {shared && <Badge tone="neutral">{t('shell.accounts.shared')}</Badge>}
-          {isReadOnly && (
-            <span className={styles.accountReadOnly}>
-              <Lock aria-hidden="true" className={styles.accountReadOnlyIcon} />
-              <span>{t('shell.accounts.readOnly')}</span>
-            </span>
+        {/*
+         * ONE header per account, and it is the tree's own — see `renderChrome` in FolderTree.
+         * There used to be two: the account name, and then a "FOLDERS" caption under it carrying
+         * the new-folder button. The second said nothing the first had not, and three accounts
+         * paid for it three times.
+         */}
+        <FolderTree
+          collapsed={!expanded}
+          onSelectMailbox={onSelectMailbox}
+          active={active}
+          renderChrome={(actions) => (
+            <div className={styles.accountHeader}>
+              {/*
+               * The whole name is the control, not a chevron beside it. A 16px glyph is the
+               * smallest target in the rail and the least obvious one; a header row that folds
+               * when clicked is what every mail client's account list does, and it gives the
+               * gesture a 24px+ box without adding a second thing to aim at.
+               */}
+              <button
+                type="button"
+                className={styles.accountToggle}
+                aria-expanded={expanded}
+                // An address is user data of unbounded length and the row also holds a badge and a
+                // button, so the name ellipsises sooner here than it did — the tooltip is what
+                // keeps the full address one hover away. The accessible name is unaffected either
+                // way: it comes from the span's text, which is complete in the DOM.
+                title={name}
+                onClick={onToggle}
+              >
+                <ChevronRight aria-hidden="true" className={styles.accountChevron} />
+                <span className={styles.accountName}>{name}</span>
+              </button>
+              {!expanded && <AccountUnread />}
+              {shared && <Badge tone="neutral">{t('shell.accounts.shared')}</Badge>}
+              {isReadOnly && (
+                <span className={styles.accountReadOnly}>
+                  <Lock aria-hidden="true" className={styles.accountReadOnlyIcon} />
+                  <span>{t('shell.accounts.readOnly')}</span>
+                </span>
+              )}
+              {/* Folded, the actions go with the folders they act on: a "New folder" button over a
+                  section with no visible folders points at nothing the reader can see. */}
+              {expanded && actions}
+            </div>
           )}
-        </div>
-        {expanded && (
-          <div id={treeId}>
-            <FolderTree onSelectMailbox={onSelectMailbox} active={active} />
-          </div>
-        )}
+        />
       </section>
     </ReplicaProvider>
   )
