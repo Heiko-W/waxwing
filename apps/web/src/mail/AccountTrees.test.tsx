@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { MailAccount } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -191,6 +191,68 @@ describe('AccountTrees', () => {
     expect(useActiveAccountStore.getState().accountId).toBeNull() // never left the primary
     expect(useListStore.getState().selection.selected.size).toBe(1)
     expect(useReadingStore.getState().handlers).not.toBeNull()
+  })
+
+  it('folds an account away and back, and remembers which (local pref)', async () => {
+    const user = userEvent.setup()
+    const view = renderTrees([PRIMARY, SHARED])
+
+    const sharedRegion = await screen.findByRole('region', { name: SHARED.name })
+    expect(await within(sharedRegion).findByText('Team Folder')).toBeInTheDocument()
+
+    // The header row IS the control — clicking the account name folds the section.
+    const fold = within(sharedRegion).getByRole('button', { name: SHARED.name })
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
+    await user.click(fold)
+
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    expect(within(sharedRegion).queryByText('Team Folder')).not.toBeInTheDocument()
+    // Its neighbour is untouched: one collapse is one account, not the rail.
+    const primaryRegion = screen.getByRole('region', { name: PRIMARY.name })
+    expect(within(primaryRegion).getByText('Work')).toBeInTheDocument()
+
+    /*
+     * And it SURVIVES a remount. The state lives in the replica's local prefs, so a reload — or the
+     * drawer being unmounted on a phone, which happens on every folder pick — comes back folded.
+     * An in-component `useState` would pass every assertion above and fail exactly here.
+     */
+    view.unmount()
+    renderTrees([PRIMARY, SHARED])
+    const reopened = await screen.findByRole('region', { name: SHARED.name })
+    await waitFor(() => {
+      expect(within(reopened).getByRole('button', { name: SHARED.name })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      )
+    })
+    expect(within(reopened).queryByText('Team Folder')).not.toBeInTheDocument()
+  })
+
+  it('keeps a folded account\u2019s unread count on its header', async () => {
+    // Otherwise folding an account away hides the one thing about it that is time-sensitive, and
+    // nothing on screen suggests unfolding it.
+    await putMailboxes(db, 'acctS', [
+      mailbox('a', { role: 'inbox', name: 'Inbox', unreadEmails: 4 }),
+      mailbox('team', { name: 'Team Folder', unreadEmails: 9 }),
+    ])
+    const user = userEvent.setup()
+    renderTrees([PRIMARY, SHARED])
+
+    const sharedRegion = await screen.findByRole('region', { name: SHARED.name })
+    const header = within(sharedRegion).getByRole('button', { name: SHARED.name }).parentElement
+    if (header === null) throw new Error('no header')
+
+    // Expanded: no count on the header — the Inbox row four pixels below already carries it, and
+    // two copies of one number read as two numbers.
+    expect(within(header).queryByText('4')).not.toBeInTheDocument()
+
+    await user.click(within(sharedRegion).getByRole('button', { name: SHARED.name }))
+
+    // The INBOX's 4, not the account's 13: summing folders would count Junk and Archive, which is
+    // the choice `use-app-badge.ts` states for the same number in the same words.
+    expect(await within(header).findByText('4')).toBeInTheDocument()
+    expect(within(header).queryByText('13')).not.toBeInTheDocument()
+    expect(within(header).getByText('4 unread')).toBeInTheDocument()
   })
 
   it('has no a11y violations when grouped', async () => {

@@ -16,20 +16,38 @@
  */
 
 import type { Id, MailAccount } from '@waxwing/jmap'
-import { Lock } from 'lucide-react'
-import { useCallback } from 'react'
+import { ChevronRight, Lock } from 'lucide-react'
+import { useCallback, useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
 import { IncomingShares } from '../sharing/IncomingShares'
 import type { ShareAnnouncement } from '../sharing/incoming'
 import { useIncomingShares } from '../sharing/use-incoming-shares'
-import { type ReplicaDb, ReplicaProvider, useReplica, useReplicaQuery } from '../sync'
-import { Badge } from '../ui'
+import {
+  type ReplicaDb,
+  ReplicaProvider,
+  setPref,
+  useLocalPref,
+  useMailboxByRole,
+  useReplica,
+  useReplicaQuery,
+} from '../sync'
+import { Badge, VisuallyHidden } from '../ui'
 import { resetMailScopedStores, useActiveAccountId, useActiveAccountStore } from './active-account'
 import { FolderTree } from './FolderTree'
 import { folderDisplayName } from './folder-tree'
 import styles from './folder-tree.module.css'
 import { SavedSearchList } from './search/SavedSearchList'
+
+/**
+ * Which account sections the reader has folded away, on THIS device.
+ *
+ * Local, like `folders.collapsed` next door and for the same reason: it is a view state, not
+ * something the server has an opinion about. Stored against the PRIMARY account — the rail belongs
+ * to the signed-in user, not to whichever delegated account a row happens to be in — so one entry
+ * describes the whole rail and a revoked share simply stops being read.
+ */
+const COLLAPSED_ACCOUNTS_PREF = 'accounts.collapsed'
 
 export interface AccountTreesProps {
   /**
@@ -54,6 +72,21 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
   const activeAccountId = stored ?? primaryAccountId
   const incoming = useIncomingShares('Mailbox')
   const sharedNames = useSharedFolderNames(incoming.announcements)
+  const collapsedList = useLocalPref<string[]>(COLLAPSED_ACCOUNTS_PREF)
+  const collapsed = useMemo(() => new Set(collapsedList ?? []), [collapsedList])
+
+  const toggleAccount = useCallback(
+    (accountId: Id) => {
+      const next = new Set(collapsed)
+      if (next.has(accountId)) next.delete(accountId)
+      else next.add(accountId)
+      // `db` + the PRIMARY id, not `useReplica()` inside the section: each section runs under its
+      // own account's provider, and a preference written there would be one collapse list per
+      // account — half of them in a delegated account's replica, which a revoked share takes away.
+      void setPref(db, primaryAccountId, COLLAPSED_ACCOUNTS_PREF, [...next])
+    },
+    [collapsed, db, primaryAccountId],
+  )
 
   const selectMailbox = useCallback(
     (accountId: Id, mailboxId: string) => {
@@ -139,6 +172,8 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
         db={db}
         active={activeAccountId === primaryAccountId}
         isReadOnly={primary?.isReadOnly ?? false}
+        expanded={!collapsed.has(primaryAccountId)}
+        onToggle={() => toggleAccount(primaryAccountId)}
         onSelectMailbox={(mailboxId) => selectMailbox(primaryAccountId, mailboxId)}
       />
       {shared.map((account) => (
@@ -150,6 +185,8 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
           shared
           active={activeAccountId === account.id}
           isReadOnly={account.isReadOnly}
+          expanded={!collapsed.has(account.id)}
+          onToggle={() => toggleAccount(account.id)}
           onSelectMailbox={(mailboxId) => selectMailbox(account.id, mailboxId)}
         />
       ))}
@@ -199,9 +236,20 @@ interface AccountSectionProps {
   readonly isReadOnly: boolean
   /** Delegated/shared (not the user's own) — carries the "Shared" marker. */
   readonly shared?: boolean
+  /** Folded open. Collapsed, the section is its header alone — see {@link COLLAPSED_ACCOUNTS_PREF}. */
+  readonly expanded: boolean
+  readonly onToggle: () => void
   readonly onSelectMailbox: (mailboxId: string) => void
 }
 
+/**
+ * One account's block of the rail: a header that folds it away, and its tree.
+ *
+ * The `ReplicaProvider` now wraps the WHOLE section rather than just the tree, so the header can ask
+ * this account's replica what it is holding — which is what {@link AccountUnread} needs to keep a
+ * folded-away account from hiding new mail. Everything below it resolves against the same account
+ * it did before; the provider simply starts one element higher.
+ */
 function AccountSection({
   name,
   accountId,
@@ -209,24 +257,74 @@ function AccountSection({
   active,
   isReadOnly,
   shared = false,
+  expanded,
+  onToggle,
   onSelectMailbox,
 }: AccountSectionProps) {
   const { t } = useTranslation()
+  const treeId = useId()
   return (
-    <section className={styles.accountSection} aria-label={name}>
-      <div className={styles.accountHeader}>
-        <span className={styles.accountName}>{name}</span>
-        {shared && <Badge tone="neutral">{t('shell.accounts.shared')}</Badge>}
-        {isReadOnly && (
-          <span className={styles.accountReadOnly}>
-            <Lock aria-hidden="true" className={styles.accountReadOnlyIcon} />
-            <span>{t('shell.accounts.readOnly')}</span>
-          </span>
+    <ReplicaProvider accountId={accountId} db={db}>
+      <section className={styles.accountSection} aria-label={name} data-active={active}>
+        <div className={styles.accountHeader}>
+          {/*
+           * The whole name is the control, not a chevron beside it. A 16px glyph is the smallest
+           * target in the rail and the least obvious one; a header row that folds when clicked is
+           * what every mail client's account list does, and it gives the gesture a 24px+ box
+           * without adding a second thing to aim at.
+           */}
+          <button
+            type="button"
+            className={styles.accountToggle}
+            aria-expanded={expanded}
+            aria-controls={treeId}
+            onClick={onToggle}
+          >
+            <ChevronRight aria-hidden="true" className={styles.accountChevron} />
+            <span className={styles.accountName}>{name}</span>
+          </button>
+          {!expanded && <AccountUnread />}
+          {shared && <Badge tone="neutral">{t('shell.accounts.shared')}</Badge>}
+          {isReadOnly && (
+            <span className={styles.accountReadOnly}>
+              <Lock aria-hidden="true" className={styles.accountReadOnlyIcon} />
+              <span>{t('shell.accounts.readOnly')}</span>
+            </span>
+          )}
+        </div>
+        {expanded && (
+          <div id={treeId}>
+            <FolderTree onSelectMailbox={onSelectMailbox} active={active} />
+          </div>
         )}
-      </div>
-      <ReplicaProvider accountId={accountId} db={db}>
-        <FolderTree onSelectMailbox={onSelectMailbox} active={active} />
-      </ReplicaProvider>
-    </section>
+      </section>
+    </ReplicaProvider>
+  )
+}
+
+/**
+ * The unread count of a FOLDED account, shown on its header.
+ *
+ * Without it, folding an account away hides the one thing about it that is time-sensitive, and the
+ * reader has no way to know they should unfold it. The number is the INBOX's, and deliberately not
+ * a sum over the account's folders — the same choice `use-app-badge.ts` makes and for the same
+ * reason: summing would count Junk and Archive, and one number on one header has to mean one thing.
+ *
+ * Only while folded. Expanded, the Inbox row below shows the same number, and two copies of it four
+ * rows apart read as two different counts.
+ */
+function AccountUnread() {
+  const { t } = useTranslation()
+  const inbox = useMailboxByRole('inbox')
+  const unread = inbox?.unreadEmails ?? 0
+  if (unread === 0) return null
+  return (
+    <span className={styles.accountUnread}>
+      {/* Decorative, announced once through the hidden text — the same split as the folder rows. */}
+      <span aria-hidden="true">
+        <Badge tone="neutral">{unread}</Badge>
+      </span>
+      <VisuallyHidden>{t('mailbox.unread', { count: unread })}</VisuallyHidden>
+    </span>
   )
 }
