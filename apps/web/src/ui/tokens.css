@@ -213,6 +213,16 @@
     --waxwing-icon-md: 1.25rem;
     --waxwing-icon-lg: 1.5rem;
 
+    /* ---- Scrollbar ----
+       The lane to leave clear where the platform draws its scrollbar OVER the content instead of
+       in a gutter beside it (macOS by default). `0px` is the value for a classic bar, and the
+       default here because it is also the right answer when JavaScript has not run: nothing is
+       covered, nothing is reserved. `ui/scrollbar-metrics.ts` measures the real gutter at boot and
+       overwrites this on `<html>` — it cannot be decided in CSS, because there is no media feature
+       for it and the macOS setting can make a Mac behave either way. Only rules that would
+       otherwise paint OVER the bar read it. */
+    --waxwing-scrollbar-overlay: 0px;
+
     /* ---- Motion ---- */
     /* Writing-direction sign, for the one thing logical CSS has no property for: a directional
      `translateX`. Multiply a physical offset by this and it follows `dir` — an off-canvas drawer

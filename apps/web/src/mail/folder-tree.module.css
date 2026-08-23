@@ -78,11 +78,13 @@
    * timed out on a folder-actions button that was on screen the whole time. A keyboard user meets
    * the same thing as a row that takes focus and then disappears.
    *
-   * The value is the header's own box: one line of `--waxwing-text-xs` plus its symmetric
-   * `--waxwing-space-1` padding, rounded up rather than computed, because being a little generous
-   * costs nothing and being a pixel short costs the whole affordance.
+   * The value is the header's own box: the fold control inside it is a real target and states
+   * `--waxwing-control-min` (34px fine, 44px coarse), plus the header's symmetric
+   * `--waxwing-space-1` padding. Written from the tokens rather than as a number, because the
+   * control minimum is one media query away from being the other value and a literal would pick
+   * the wrong one on every touch device.
    */
-  scroll-margin-block-start: calc(var(--waxwing-space-1) * 2 + 1.5rem);
+  scroll-margin-block-start: calc(var(--waxwing-control-min) + var(--waxwing-space-1) * 2);
 }
 
 /* Pointer-only affordance, and on the RECESSED rail it lifts rather than darkens: the row under the
@@ -279,10 +281,43 @@
   flex-direction: column;
   flex: 0 0 auto;
   min-block-size: 0;
+  /*
+   * The bracket that says which folders belong to which account.
+   *
+   * Grouped, the rail reads as one long list: three accounts' worth of Inbox/Drafts/Sent/Junk/Trash
+   * in the same column, in the same type, with only a caption every dozen rows to say the owner
+   * changed — and the caption scrolls with them. A line down the leading edge is the cheapest thing
+   * that survives scrolling, because it is CONTINUOUS: wherever the reader looks there is a mark
+   * beside the row saying "still this account", which no header can do once it is off screen.
+   *
+   * A border, not a background fill. `.item:hover` and `aria-selected` both resolve to a fill on
+   * `--waxwing-surface`, and a section-wide fill under them would have to be a third value between
+   * `surface-sunken` and `surface` — which is where the fill-against-fill check in
+   * tokens.contrast.test.ts refuses to go, and rightly: two fills 1.03:1 apart are not a boundary,
+   * they are a smudge.
+   *
+   * `--waxwing-border-strong`, not `--waxwing-border`: tokens.css states that the plain one is a
+   * subtle hairline, "< 3:1 by design … decorative". This line is not decorative — it is the only
+   * mark that says which rows belong together once the header has scrolled off, and a divider
+   * nobody can see does not group anything.
+   */
+  border-inline-start: 2px solid var(--waxwing-border-strong);
+  border-start-start-radius: var(--waxwing-radius-sm);
+  border-end-start-radius: var(--waxwing-radius-sm);
+  padding-inline-start: var(--waxwing-space-1);
 }
 
+/* The account whose mail is in the panes. The bracket carries it because the bracket is the only
+   part of a section that is visible from anywhere in it — a header does not answer "which account
+   am I in" once it has scrolled away, and with three accounts open that is most of the time. */
+.accountSection[data-active="true"] {
+  border-inline-start-color: var(--waxwing-accent);
+}
+
+/* One step wider than the old `space-3`. The bracket only reads as a bracket if the gap between two
+   of them is clearly bigger than the gap between two rows inside one. */
 .accountSection + .accountSection {
-  margin-block-start: var(--waxwing-space-3);
+  margin-block-start: var(--waxwing-space-4);
 }
 
 /*
@@ -304,6 +339,67 @@
   padding-inline: var(--waxwing-space-2);
   padding-block: var(--waxwing-space-1);
   background-color: var(--waxwing-surface-sunken);
+  /*
+   * Stop short of an OVERLAY scrollbar, or this header paints over it.
+   *
+   * Reported with a screenshot from the live app: the rail's scrollbar was drawn in PIECES, broken
+   * at the account headers. The rail holds exactly one scroll container (measured, both engines),
+   * so the gaps are not two scrollers — they are this row, which is opaque and, because of the
+   * `z-index` above, a stacking context of its own. That is what gets painted over an overlay bar;
+   * the folder rows beside it are `position: relative` with no z-index and leave the thumb alone,
+   * which is exactly what the screenshot shows.
+   *
+   * `0px` wherever the bar has its own gutter, so this costs nothing on Windows or Linux — see
+   * `ui/scrollbar-metrics.ts`, which measures rather than guesses, because the macOS setting can
+   * make a Mac behave either way.
+   */
+  margin-inline-end: var(--waxwing-scrollbar-overlay);
+}
+
+/*
+ * The fold control: the account name IS the button, so the target is the header row rather than a
+ * 16px chevron beside it. `min-block-size` from the token, because this is now a real target and
+ * the rail is used with a finger on a tablet (SC 2.5.8 asks 24px; the token is 34/44).
+ *
+ * A reset rather than the `Button` primitive: this is a caption that happens to be pressable, and
+ * the primitive would bring a fill, a border and a 34px INLINE minimum into a row whose whole job
+ * is to be quiet. The focus ring comes from the app's `:focus-visible` net in global.css — nothing
+ * here switches an outline off.
+ */
+.accountToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-hair);
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: var(--waxwing-control-min);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--waxwing-radius-sm);
+  background: none;
+  cursor: pointer;
+  text-align: start;
+}
+
+/* Rotated rather than exchanged, the same as the folder rows' own chevron above — turning one glyph
+   says WHAT changed where swapping two glyphs only says that something did. */
+.accountChevron {
+  inline-size: var(--waxwing-icon-sm);
+  block-size: var(--waxwing-icon-sm);
+  flex: 0 0 auto;
+  color: var(--waxwing-text-muted);
+  transition: transform var(--waxwing-duration-fast) var(--waxwing-ease-standard);
+}
+
+.accountToggle[aria-expanded="true"] .accountChevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accountChevron {
+    transition: none;
+  }
 }
 
 .accountName {
@@ -317,6 +413,22 @@
   color: var(--waxwing-text-muted);
   text-transform: uppercase;
   letter-spacing: var(--waxwing-tracking-caps);
+}
+
+/* Written AFTER `.accountName` on purpose: it is (0,3,0) against that rule's (0,1,0), and Biome's
+   `noDescendingSpecificity` refuses the other order — the more specific rule reading first is how a
+   rule quietly stops applying. */
+@media (hover: hover) {
+  .accountToggle:hover .accountName {
+    color: var(--waxwing-text);
+  }
+}
+
+/* The folded account's unread count. Beside the name rather than over it: unlike the folder rows
+   there is no hover-revealed menu here to make room for. */
+.accountUnread {
+  flex: 0 0 auto;
+  pointer-events: none;
 }
 
 .accountReadOnly {

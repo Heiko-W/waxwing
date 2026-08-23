@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Locator, type Page, test } from '@playwright/test'
 import {
   clearShareNotifications,
   ensureDelegations,
@@ -58,13 +58,33 @@ function ownInbox(page: Page) {
   return page.getByRole('region', { name: OWN }).getByRole('treeitem', { name: /Inbox/ })
 }
 
+/**
+ * Open a folder row's ⋯ menu — by FOCUSING the button, not by hovering it.
+ *
+ * B59. The button is revealed by `.item:hover` OR `.item:focus-within`, and where the device hovers
+ * it is `position: absolute` with `pointer-events: none` until one of those fires (folder-tree.
+ * module.css says why: an invisible button that still takes clicks is worse than none).
+ *
+ * A hover is a POSITION, and the rail moves: the share-notice strip sits above the tree, so a card
+ * arriving mid-test pushes every row down by its height. The pointer then hovers a different row,
+ * the target button goes back to `pointer-events: none`, and the click lands on the treeitem
+ * underneath — which Playwright reports exactly, and which cost this suite a 60 s timeout in 1 run
+ * of 5: `<div role="treeitem" … class="_item_…"> intercepts pointer events`, after `element is not
+ * stable`.
+ *
+ * Focus is a REFERENCE. It survives the row moving, so `:focus-within` holds and the control stays
+ * hittable. `press('Enter')` then activates it without a coordinate at all. A real reader meets the
+ * same hazard — a click that opens the folder instead of its menu because the list shifted — but
+ * that is a product question about where the strip lives, and it is not what this suite is for.
+ */
+async function openFolderMenu(row: Locator): Promise<void> {
+  await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
+  await row.getByRole('button', { name: /Folder actions/ }).press('Enter')
+}
+
 /** Open the folder's ⋯ menu and pick "Share…". */
 async function openShareDialog(page: Page): Promise<void> {
-  const row = ownInbox(page)
-  await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
-  // The menu button lives inside the row and only reveals on hover/focus.
-  await row.hover()
-  await row.getByRole('button', { name: /Folder actions/ }).click()
+  await openFolderMenu(ownInbox(page))
   await page.getByRole('menuitem', { name: 'Share…' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
 }
@@ -92,8 +112,7 @@ test.describe('S-3 — sharing a mail folder', () => {
     await login(page)
     const row = ownInbox(page)
     await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    await row.hover()
-    await row.getByRole('button', { name: /Folder actions/ }).click()
+    await openFolderMenu(row)
     // `myRights.mayShare` is true for an owner — measured, the server returns it on every
     // `Mailbox/get`, ten permission keys and not the RFC's nine.
     await expect(page.getByRole('menuitem', { name: 'Share…' })).toBeVisible()
@@ -107,11 +126,11 @@ test.describe('S-3 — sharing a mail folder', () => {
       .getByRole('region', { name: CAROL })
       .getByRole('treeitem', { name: /Inbox/ })
     await expect(carolInbox).toBeVisible({ timeout: SYNC_BUDGET_MS })
-    await carolInbox.hover()
     const menu = carolInbox.getByRole('button', { name: /Folder actions/ })
     // A read-only share may have no menu at all — every entry is rights-gated. Either way, no Share.
     if (await menu.isVisible()) {
-      await menu.click()
+      // Keyboard, for the reason `openFolderMenu` states: a hover is a position and this rail moves.
+      await menu.press('Enter')
       await expect(page.getByRole('menuitem', { name: 'Share…' })).toHaveCount(0)
       await page.keyboard.press('Escape')
     }

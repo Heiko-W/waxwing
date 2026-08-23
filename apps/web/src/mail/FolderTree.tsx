@@ -10,6 +10,7 @@ import { FolderPlus, SlidersHorizontal } from 'lucide-react'
 import {
   type FormEvent,
   lazy,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -92,6 +93,27 @@ export interface FolderTreeProps {
    */
   readonly active?: boolean
   /**
+   * Replace the tree's own "FOLDERS" caption with the caller's chrome, keeping its actions.
+   *
+   * The account-grouped rail (M4.4) supplies this. Without it every account carried TWO headers —
+   * its name, and then a "FOLDERS" caption with the new-folder button under it — which is one
+   * caption per account saying what the caption above it already said, and about 30 px per account
+   * spent saying it. The owner put it plainly: *"Die Überschrift ist ja der Postfachname."*
+   *
+   * It receives the tree's action buttons and decides where they go; `null` while the mailboxes are
+   * still loading, because "New folder" cannot do anything useful before the folder list exists.
+   * The chrome renders in EVERY state — loading, empty, populated — so a section keeps its name and
+   * its fold control while its tree is still arriving.
+   */
+  readonly renderChrome?: (actions: ReactNode | null) => ReactNode
+  /**
+   * Folded away: render the chrome and nothing else (M4.4 / B60).
+   *
+   * The tree stays MOUNTED — its liveQuery is what the folded header's unread count reads — but no
+   * row is rendered, so a folded account costs one row of height and no tab stops.
+   */
+  readonly collapsed?: boolean
+  /**
    * Fired whenever the user picks a folder — INCLUDING the one that is already open.
    *
    * The narrow layout uses it to close the drawer. That used to be inferred in `MailScreen` from a
@@ -103,7 +125,13 @@ export interface FolderTreeProps {
   readonly onNavigate?: (() => void) | undefined
 }
 
-export function FolderTree({ onSelectMailbox, active = true, onNavigate }: FolderTreeProps = {}) {
+export function FolderTree({
+  onSelectMailbox,
+  active = true,
+  onNavigate,
+  renderChrome,
+  collapsed: foldedAway = false,
+}: FolderTreeProps = {}) {
   const { t } = useTranslation()
   const mailboxes = useMailboxes()
   const { db, accountId } = useReplica()
@@ -221,18 +249,73 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
     void started.catch(report)
   }
 
+  /*
+   * The header, resolved BEFORE the early returns below, because the caller's chrome carries the
+   * account name and the control that folds it — and a section that loses its name while its
+   * folders load is a section the reader cannot identify at the one moment they are waiting.
+   *
+   * The actions are withheld until the mailboxes are in: "New folder" opens a dialog that reads
+   * `takenNames` off a list that does not exist yet, and "Manage folders" has nothing to manage.
+   */
+  const actionButtons =
+    mailboxes === undefined ? null : (
+      <span className={styles.headerActions}>
+        {mailboxes.some((mailbox) => !isStandardFolder(mailbox)) && (
+          // The "Edit" affordance of an iOS mailbox list: order and visibility, behind one quiet
+          // button rather than on every row. Always present once there is a folder of one's own,
+          // so a hidden folder is never more than one click from being visible again.
+          <IconButton
+            label={t('mailbox.actions.manage')}
+            variant="ghost"
+            size="sm"
+            onClick={() => setDialog({ kind: 'manage' })}
+          >
+            <SlidersHorizontal />
+          </IconButton>
+        )}
+        <IconButton
+          label={t('mailbox.actions.newFolder')}
+          variant="ghost"
+          size="sm"
+          onClick={() => setDialog({ kind: 'create', parentId: null })}
+        >
+          <FolderPlus />
+        </IconButton>
+      </span>
+    )
+  const chrome =
+    renderChrome === undefined ? (
+      <div className={styles.header}>
+        <span className={styles.headerTitle}>{t('shell.folders.title')}</span>
+        {actionButtons}
+      </div>
+    ) : (
+      renderChrome(actionButtons)
+    )
+
+  // Folded away by the account rail: the header, and nothing under it.
+  if (foldedAway) return <div className={styles.container}>{chrome}</div>
+
   // B20.8: `null` while the liveQuery is in flight rendered NOTHING — the sidebar looked like an
   // account with no folders, and said nothing at all, while the message list beside it showed a
   // spinner. Same affordance as the list, so the two panes explain themselves the same way.
   if (mailboxes === undefined) {
     return (
-      <div className={styles.loading}>
-        <Spinner size="sm" label={t('shell.folders.loading')} />
+      <div className={styles.container}>
+        {chrome}
+        <div className={styles.loading}>
+          <Spinner size="sm" label={t('shell.folders.loading')} />
+        </div>
       </div>
     )
   }
   if (mailboxes.length === 0) {
-    return <p className={styles.empty}>{t('shell.folders.empty')}</p>
+    return (
+      <div className={styles.container}>
+        {chrome}
+        <p className={styles.empty}>{t('shell.folders.empty')}</p>
+      </div>
+    )
   }
 
   const trashMailbox = mailboxes.find((mailbox) => mailbox.role === 'trash')
@@ -241,37 +324,9 @@ export function FolderTree({ onSelectMailbox, active = true, onNavigate }: Folde
     mailboxes
       .filter((mailbox) => mailbox.parentId === parentId && mailbox.id !== excludeId)
       .map((mailbox) => mailbox.name)
-  /** Is there anything here that "Manage folders" could do something to? */
-  const manageable = mailboxes.some((mailbox) => !isStandardFolder(mailbox))
-
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>{t('shell.folders.title')}</span>
-        <span className={styles.headerActions}>
-          {manageable && (
-            // The "Edit" affordance of an iOS mailbox list: order and visibility, behind one quiet
-            // button rather than on every row. Always present once there is a folder of one's own,
-            // so a hidden folder is never more than one click from being visible again.
-            <IconButton
-              label={t('mailbox.actions.manage')}
-              variant="ghost"
-              size="sm"
-              onClick={() => setDialog({ kind: 'manage' })}
-            >
-              <SlidersHorizontal />
-            </IconButton>
-          )}
-          <IconButton
-            label={t('mailbox.actions.newFolder')}
-            variant="ghost"
-            size="sm"
-            onClick={() => setDialog({ kind: 'create', parentId: null })}
-          >
-            <FolderPlus />
-          </IconButton>
-        </span>
-      </div>
+      {chrome}
 
       <FolderTreeView
         tree={tree}

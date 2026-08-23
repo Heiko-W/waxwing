@@ -216,6 +216,54 @@ test.describe('M4.4 shared accounts', () => {
   })
 
   /**
+   * An account folds away, and stays folded.
+   *
+   * Three accounts of Inbox/Drafts/Sent/Junk/Trash is thirty rows of near-identical names in one
+   * column, and the reader's own is at the top of it. Folding is what makes the rail navigable, and
+   * it is only worth having if it OUTLIVES the page: a fold that resets on every reload is a
+   * gesture the reader has to repeat, which is worse than not offering it.
+   *
+   * Asserted end to end rather than in the unit test alone because the persistence crosses two
+   * boundaries a jsdom test does not have: IndexedDB survives the reload, and the preference is
+   * written against the PRIMARY account's replica while the section being folded belongs to a
+   * delegated one.
+   */
+  test('an account folds away, and is still folded after a reload', async ({ page }) => {
+    await login(page, { stay: true })
+
+    const folded = accountSection(page, SHARED_RW)
+    const inbox = folded.getByRole('treeitem', { name: /Inbox/ })
+    await expect(inbox).toBeVisible({ timeout: SYNC_BUDGET_MS })
+
+    // The header row is the control: its accessible name is the account, and it says whether the
+    // section is open.
+    const toggle = folded.getByRole('button', { name: SHARED_RW, exact: true })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await toggle.click()
+
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await expect(inbox).toHaveCount(0)
+    // One account, not the rail: the reader's own tree is untouched.
+    await expect(accountSection(page, OWN).getByRole('treeitem', { name: /Inbox/ })).toBeVisible()
+
+    await page.reload()
+    const after = accountSection(page, SHARED_RW).getByRole('button', {
+      name: SHARED_RW,
+      exact: true,
+    })
+    await expect(after).toHaveAttribute('aria-expanded', 'false', { timeout: SYNC_BUDGET_MS })
+    await expect(
+      accountSection(page, SHARED_RW).getByRole('treeitem', { name: /Inbox/ }),
+    ).toHaveCount(0)
+
+    // Unfolding restores it — and leaves the rail as it was, so nothing here is a one-way door.
+    await after.click()
+    await expect(
+      accountSection(page, SHARED_RW).getByRole('treeitem', { name: /Inbox/ }),
+    ).toBeVisible({ timeout: SYNC_BUDGET_MS })
+  })
+
+  /**
    * The other half of making the rail one scroller: scrolled past, an account's folders lose the
    * only label that says whose they are — and a delegated mailbox's folders carry the SAME names as
    * the user's own (both fixtures' inboxes are literally mailbox `a`). So the account header sticks.
@@ -260,7 +308,14 @@ test.describe('M4.4 shared accounts', () => {
     await rail.evaluate((nav, own) => {
       const section = nav.querySelector(`[aria-label="${own}"]`)
       if (!(section instanceof HTMLElement)) throw new Error(`no section for ${own}`)
-      const header = section.firstElementChild
+      /*
+       * The header is the row holding the fold control, found through that control rather than as
+       * "the section's first child" — which it stopped being when the account name became the
+       * tree's own chrome (B60). The old form did not fail; it measured the whole TREE as the
+       * header height, which silently makes `distance` too large and turns this into a test about
+       * a section that is "too short to scroll within".
+       */
+      const header = section.querySelector('button[aria-expanded]')?.parentElement ?? null
       /*
        * The scroller the header actually STICKS TO — its nearest scrolling ancestor, found by walking
        * UP from the header itself. Not "the first element in the rail that happens to overflow",

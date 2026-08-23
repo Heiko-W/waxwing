@@ -212,18 +212,41 @@ test.describe('S-2 — sharing a calendar', () => {
      * ever sees the grant map. The icon must not be drawn: it would open a dialog listing nobody,
      * over something the server will refuse to change.
      *
-     * Alice's own calendars all carry `mayShare`, so the count of share icons must equal the count
-     * of calendars she owns — one more calendar in the rail, no more icons.
+     * Alice's own calendars all carry `mayShare`, so the count of share icons must equal the number
+     * of rows in her rail.
+     *
+     * **This test used to say "one more calendar in the rail, no more icons", and that was never
+     * measured.** Probed for 30 s after the grant: the row count stays at ONE — alice's own. A
+     * calendar shared WITH her does not appear in this rail at all, because `useCalendars` is scoped
+     * to the ACTIVE account and the rail lists that account's calendars. The assertion below still
+     * holds and still has teeth: a foreign calendar leaking in would add a row WITHOUT an icon, and
+     * the counts would part company.
      */
     await shareCalendar('carol', 'alice', 'viewer')
     await login(page)
     await openCalendar(page)
 
     const rail = calendarRail(page)
-    await expect(rail).toBeVisible({ timeout: SYNC_BUDGET_MS })
     const rows = rail.getByRole('listitem')
     const icons = shareCalendarButton(page)
-    await expect(icons).toHaveCount(await rows.count())
+
+    /*
+     * Wait for the list to be POPULATED, not merely for the rail to EXIST — this is B59, the flake
+     * this suite carried from the v0.17.0 release onward, and there was never anything wrong with
+     * the app.
+     *
+     * The rail renders its heading, and the share-notice strip, before the first calendar arrives.
+     * So `expect(rail).toBeVisible()` resolved against an EMPTY list, `await rows.count()` froze a
+     * **0**, and `toHaveCount(0)` then spent its five seconds waiting for the one legitimate icon to
+     * go away. Measured on this fixture: rows=0 the instant `openCalendar` returns, rows=1 one
+     * second later — which is exactly how a race that lands three times in forty-two runs looks.
+     *
+     * A snapshot count is only safe once the thing being counted has arrived.
+     */
+    await expect(rows.first()).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    const owned = await rows.count()
+    expect(owned, 'the rail is empty — this assertion would prove nothing').toBeGreaterThan(0)
+    await expect(icons).toHaveCount(owned)
   })
 
   test('the control is a real touch target on a phone', async ({ browser }) => {
