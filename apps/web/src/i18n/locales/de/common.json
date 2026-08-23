@@ -177,8 +177,8 @@
       "freeUp": "Jetzt Speicher freigeben",
       "freedToast": "{{size}} freigegeben",
       "nothingToFree": "Es gibt nichts freizugeben.",
-      "window_one": "E-Mails vom letzten Tag werden offline behalten.",
-      "window_other": "E-Mails der letzten {{count}} Tage werden offline behalten.",
+      "window_one": "E-Mails vom letzten Tag bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
+      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
       "pinned_one": "{{count}} Ordner wird offline behalten",
       "pinned_other": "{{count}} Ordner werden offline behalten"
     },
@@ -1082,7 +1082,6 @@
       "trash": "In den Papierkorb verschoben",
       "folder": "Nach „{{folder}}“ verschoben"
     },
-    "emptyOutsideWindow": "Keine Nachrichten aus den letzten {{count}} Tagen. Ältere Nachrichten liegen auf dem Server — dieses Gerät hält nur die letzten {{count}} Tage bereit.",
     "viewOptions": {
       "show": "Ansichtsoptionen anzeigen",
       "hide": "Ansichtsoptionen ausblenden",

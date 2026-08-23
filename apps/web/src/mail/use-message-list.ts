@@ -1,7 +1,7 @@
 /**
  * Message-list data hook (M1.6). Binds a (mailbox + sort + threading) query to the replica's
  * server-ordered `queryCache` window that the M1.3 engine keeps fresh:
- *  - it computes the SAME canonical key the engine watches (via {@link windowQueryKey}) so it can
+ *  - it computes the SAME canonical key the engine watches (via {@link folderQueryKey}) so it can
  *    subscribe immediately, and asks the engine to `watchWindow` it (register + backfill-if-absent);
  *  - it returns the ordered id window + total for the virtualizer, plus `loadMore` for infinite
  *    scroll. Row hydration for the VISIBLE slice is the list component's job (`useEmailWindow`), so
@@ -13,9 +13,8 @@
 
 import type { EmailComparator, Id } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo } from 'react'
-import { useConfig } from '../app/config-context'
 import { canonicalQueryKey, type QuerySpec, useQueryWindow } from '../sync'
-import { useAccountEngine, type WindowSpec, windowQueryKey } from '../sync/engine'
+import { folderQueryKey, useAccountEngine, type WindowSpec } from '../sync/engine'
 
 /**
  * The list's sort keys (M-10). `date` is the RECEIVED date — the one a mailbox is ordered by — and
@@ -79,7 +78,6 @@ export function useMessageList(
   sort: MessageSort = 'date',
   options: MessageListOptions = {},
 ): MessageListState {
-  const cacheDays = useConfig().offline.cacheDays
   const { unreadFirst = false, flat = false } = options
 
   // Folder windows key off (mailbox + sort + threading); a search keys off its own spec.
@@ -91,8 +89,8 @@ export function useMessageList(
   const key = useMemo(() => {
     if (source === undefined) return ''
     if (source.kind === 'search') return canonicalQueryKey(source.spec)
-    return windowQueryKey(source.mailboxId, cacheDays, Date.now(), folderSpec).key
-  }, [source, cacheDays, folderSpec])
+    return folderQueryKey(source.mailboxId, folderSpec).key
+  }, [source, folderSpec])
 
   // Depend on the reactive engine so the watch re-runs the moment the engine appears (it is set by
   // SyncEngineHost's effect, which can commit AFTER this child's) — otherwise a deep-linked/reloaded
@@ -101,7 +99,7 @@ export function useMessageList(
   //
   // The engine of THIS pane's account (M4.4 Etappe 4). The watch has to run on the same engine whose
   // account the window is read back under (`useQueryWindow` → `queryCache[[accountId, key]]`), and
-  // `windowQueryKey` carries no account. On the primary engine a shared account's Inbox happened to
+  // `folderQueryKey` carries no account. On the primary engine a shared account's Inbox happened to
   // work by accident — the shared engine's own `ensureInboxWindow` produces a byte-identical key at
   // the default sort — but any other folder, sort, unread-first, flat, search or label view backfills
   // under the wrong account's key and spins forever, and `loadMoreFor` pages the PRIMARY's

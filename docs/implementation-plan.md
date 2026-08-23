@@ -853,10 +853,12 @@ Spec: FR-NOTIF-01, FR-OFF-03 (skeleton), tech-stack §4.3. Size: L.
       (multi-page `drainChanges`, Mailbox partial-prop patch, removed-then-index-splice-added
       reconciliation, `CannotCalculateChangesError` → `fullRequery`). SP.4 "absence ≠ freshness":
       the engine periodically forces a full re-query (`forceFull` every Nth safety sweep).
-- [x] Windowed backfill: recent N days/messages per mailbox (default from `config.json`
-      `offline.cacheDays`), oldest-window bookkeeping for "load more". — `engine/backfill.ts`
-      (`windowFilter` = `inMailbox AND after=now−cacheDays`; `backfillMailbox`/`loadMore` page by
+- [x] Paged backfill per mailbox, oldest-window bookkeeping for "load more". — `engine/backfill.ts`
+      (`folderFilter` = `inMailbox AND notKeyword $snoozed`; `backfillMailbox`/`loadMore` page by
       `position`; the window key is stable — spec read back from the persisted `QueryCacheRow`).
+      **M-13 removed the `after=now−cacheDays` bound this line used to describe** — it made the
+      FR-OFF-02 cache horizon double as a visibility horizon, so a folder of older mail was
+      unreachable (ADR-030). `offline.cacheDays` still governs the M3.4 prune, and only that.
 - [x] **Action queue (outbox) skeleton** … optimistic local apply → replay → confirm/rollback;
       `ifInState`. M1 scope: online replay + basic retry. — `engine/outbox.ts`
       (`applyOptimistic` returns a rollback closure; `replayOutbox` FIFO, per-object rejection →
@@ -974,7 +976,7 @@ Spec: FR-LST-01/02/03/04/05/07, FR-ORG-01 (flows). Size: L.
       selected id-set via `useMessageActions` → outbox (archive/junk/trash resolved via `useMailboxByRole`).
 - [x] Sorting: date/from/subject/size + unread-first toggle (FR-LST-05) — each sort is its own watched
       query. — `MessageSort` presets; unread-first prepends a `hasKeyword $seen` comparator; each is a
-      distinct `windowQueryKey`.
+      distinct `folderQueryKey`.
 - [x] Density comfortable/compact (FR-LST-07). — a density Select, persisted locally.
 - [x] Infinite scroll = backfill trigger ("load more" into the window). — the virtualizer triggers
       `loadMore` (→ `engine.loadMoreFor`) near the window end while `ids.length < total`.
@@ -1373,7 +1375,9 @@ Done when: chaos suite shows zero lost actions and correct conflict surfacing.
 Spec: FR-OFF-02/04. Size: M.
 
 - [x] Enforce windowed cache per config (`offline.cacheDays`, `offline.maxStorageMB`);
-      LRU eviction of bodies/attachments beyond budget (never evict outbox/drafts).
+      LRU eviction of bodies/attachments beyond budget (never evict outbox/drafts). Note (M-13,
+      ADR-030): `cacheDays` bounds what the replica KEEPS, never what a folder SHOWS — it was doing
+      both until 2026-08-23, and the second job was never a requirement.
 - [x] `navigator.storage.persist()` requested on install; `estimate()`-based usage UI in
       settings with per-category breakdown (FR-OFF-04).
 - [x] "Keep offline" pin per folder (exempt from eviction).

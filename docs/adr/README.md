@@ -56,6 +56,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [027](027-stalwart-self-service-is-a-gated-enhancement.md) | Stalwart's self-service registry is a capability-gated enhancement; 2FA is not shipped | accepted |
 | [028](028-folder-order-role-and-visibility.md) | Folder order, use and visibility are server state, and they live behind one "Manage folders" sheet | accepted |
 | [029](029-safari-cannot-intercept-clicks-in-a-sandboxed-frame.md) | Safari delivers no click events out of a sandboxed frame, so the phishing gate decides before the click | accepted |
+| [030](030-a-folder-shows-the-folder-not-a-30-day-window.md) | A folder query carries no date bound — `offline.cacheDays` is a cache horizon, never a visibility one | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

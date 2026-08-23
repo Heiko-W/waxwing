@@ -425,6 +425,10 @@ webmail is an open gap.
 - **FR-OFF-02 (Must)** — Local cache (IndexedDB): mailbox tree, message index of recent N
   days/messages per folder (configurable), full bodies of everything the user has opened
   plus a configurable recent window; attachments on demand.
+  **This bounds what the replica KEEPS, never what a folder SHOWS.** Opening a folder lists
+  the whole folder, paged from the server as it is scrolled, however old its mail is — the
+  offline window governs eviction only. Stated because the two were conflated in the code
+  until 2026-08-23, and a folder of older mail then read as empty (ADR-030).
 - **FR-OFF-03 (Must)** — **Offline outbox:** actions performed offline (send, move, flag,
   delete, drafts) queue locally and replay on reconnect using JMAP state strings for
   conflict detection; conflicts surface as gentle, actionable notices — never silent data

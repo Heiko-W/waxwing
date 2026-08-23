@@ -142,7 +142,8 @@ So Waxwing ships its own thin client as a separate package:
 - Outbox entries are idempotent JMAP `set` intents with client-generated creation ids;
   replay uses `ifInState` where appropriate; conflicts → surfaced per FR-OFF-03.
 - Cache policy per FR-OFF-02/04 (windowed index + opened bodies, LRU eviction,
-  `navigator.storage.persist()` requested on install).
+  `navigator.storage.persist()` requested on install). The window is an EVICTION horizon:
+  folder queries carry no date bound, so what a folder shows is the folder (ADR-030).
 
 ### 4.4 Composer: Squire
 

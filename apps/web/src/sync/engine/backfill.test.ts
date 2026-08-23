@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from '../db'
 import { getQueryCache, getSyncState } from '../repo'
 import { email, freshDb, thread } from '../test-utils'
-import { backfillMailbox, loadMore, windowFilter } from './backfill'
+import { backfillMailbox, folderFilter, loadMore } from './backfill'
 import type { JmapPort, QueryResult } from './types'
 
 let db: ReplicaDb
@@ -48,19 +48,47 @@ const query = (ids: string[], queryState: string, total: number): QueryResult =>
   total,
 })
 
-describe('windowFilter', () => {
-  it('builds an AND(inMailbox, after, not snoozed) recent window', () => {
-    expect(windowFilter('inbox', 30, NOW)).toEqual({
+describe('folderFilter', () => {
+  it('builds an AND(inMailbox, not snoozed) over the WHOLE folder', () => {
+    expect(folderFilter('inbox')).toEqual({
       operator: 'AND',
       conditions: [
         { inMailbox: 'inbox' },
-        { after: new Date(NOW - 30 * 86_400_000).toISOString() },
         // M5.8: snoozed messages are excluded in the QUERY, not after it — filtering client-side
         // would leave gaps in a page the server considers full, and the counts would disagree
         // with the list.
         { notKeyword: '$snoozed' },
       ],
     })
+  })
+
+  /**
+   * THE regression this file exists to hold (M-13). The filter used to carry
+   * `after: now − offline.cacheDays`, which silently made a 30-day CACHE horizon into a 30-day
+   * VISIBILITY horizon: a folder whose mail was all older returned `total: 0` against a server
+   * holding it, and `loadMore` — which pages the row's own filter — could never reach past the
+   * bound. Measured against the fixture before the fix: 12 messages in the folder,
+   * `Mailbox.totalEmails: 12`, and the app's own query answering 0.
+   *
+   * Asserted over the condition KEYS rather than by comparing to a literal, so re-introducing the
+   * bound under any spelling (`after`, `before`, a nested `AND`) fails here.
+   */
+  it('carries NO date bound — the cache horizon must not become a visibility horizon', () => {
+    const filter = folderFilter('inbox')
+    const keys = new Set<string>()
+    const walk = (node: unknown): void => {
+      if (node === null || typeof node !== 'object') return
+      if ('operator' in node) {
+        for (const child of (node as unknown as { conditions: unknown[] }).conditions) walk(child)
+        return
+      }
+      for (const key of Object.keys(node)) keys.add(key)
+    }
+    walk(filter)
+
+    expect(keys.has('after')).toBe(false)
+    expect(keys.has('before')).toBe(false)
+    expect([...keys].sort()).toEqual(['inMailbox', 'notKeyword'])
   })
 })
 
@@ -80,11 +108,7 @@ describe('backfillMailbox', () => {
       }),
     })
 
-    const res = await backfillMailbox(port, db, ACC, 'inbox', {
-      cacheDays: 30,
-      limit: 50,
-      now: NOW,
-    })
+    const res = await backfillMailbox(port, db, ACC, 'inbox', { limit: 50, now: NOW })
 
     expect(res.ids).toEqual(['e1', 'e2'])
     const row = await getQueryCache(db, ACC, res.key)
@@ -115,7 +139,7 @@ describe('backfillMailbox', () => {
     // Pretend delta already advanced the Email state.
     await db.syncState.put({ accountId: ACC, type: 'Email', state: 'already', updatedAt: 1 })
 
-    await backfillMailbox(port, db, ACC, 'inbox', { cacheDays: 30, limit: 50, now: NOW })
+    await backfillMailbox(port, db, ACC, 'inbox', { limit: 50, now: NOW })
 
     expect(await getSyncState(db, ACC, 'Email')).toBe('already')
   })
@@ -141,11 +165,7 @@ describe('loadMore', () => {
       }),
     })
 
-    const { key } = await backfillMailbox(port, db, ACC, 'inbox', {
-      cacheDays: 30,
-      limit: 2,
-      now: NOW,
-    })
+    const { key } = await backfillMailbox(port, db, ACC, 'inbox', { limit: 2, now: NOW })
     const res = await loadMore(port, db, ACC, key, { limit: 2, now: NOW + 1 })
 
     expect(res.added).toBe(2) // e3, e4 (e2 deduped)
@@ -181,11 +201,7 @@ describe('loadMore', () => {
       }),
     })
 
-    const { key } = await backfillMailbox(port, db, ACC, 'inbox', {
-      cacheDays: 30,
-      limit: 2,
-      now: NOW,
-    })
+    const { key } = await backfillMailbox(port, db, ACC, 'inbox', { limit: 2, now: NOW })
     // What an optimistic archive leaves behind: `e1` pruned out of the ids, the baseline voided.
     const seeded = await getQueryCache(db, ACC, key)
     if (!seeded) throw new Error('no window')
