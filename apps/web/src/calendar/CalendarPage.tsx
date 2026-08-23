@@ -216,7 +216,25 @@ export default function CalendarPage(props: CalendarPageProps) {
   /** The `.ics` import sheet (K-4). */
   const [importing, setImporting] = useState(false)
   /** The calendar whose share dialog is open (S-2), or `null`. */
-  const [sharing, setSharing] = useState<Calendar | null>(null)
+  /**
+   * WHICH calendar the share dialog is for — an id, never the object.
+   *
+   * It used to hold the `Calendar` itself, and that snapshot was a defect rather than a shortcut:
+   * `onChanged` re-reads the list, but a snapshot taken when the row was clicked is not part of that
+   * list and never hears about it. So a grant that landed while the dialog was open — or between the
+   * click and the re-read arriving — left the dialog rendering `shareWith: {}` for ever, under the
+   * heading "Who has access": **"Only you."**, for a calendar the server had already shared.
+   *
+   * Reproduced against the live fixture, and the transcript is unambiguous: `Calendar/set` writes
+   * the grant, both following `Calendar/get`s return it, the RAIL redraws with its "Shared" marker —
+   * and the dialog beside it still says "Only you." A reader would conclude the grant was lost, and
+   * grant it again.
+   *
+   * Deriving from `calendars` by id means the dialog is a VIEW of the list rather than a copy of one
+   * of its rows, so every refresh reaches it. That is what the note on `onChanged` below always
+   * claimed was happening.
+   */
+  const [sharingId, setSharingId] = useState<Id | null>(null)
   /**
    * Whose availability is drawn behind the week grid (S-6) — a principal id, or `null` for nobody.
    *
@@ -387,6 +405,9 @@ export default function CalendarPage(props: CalendarPageProps) {
   useEffect(() => {
     void loadCalendars()
   }, [loadCalendars])
+
+  /** The share dialog's subject, read from the LIVE list — see {@link sharingId}. */
+  const sharing = sharingId === null ? null : (calendars.find((c) => c.id === sharingId) ?? null)
 
   useEffect(() => {
     if (client === null) return
@@ -898,7 +919,7 @@ export default function CalendarPage(props: CalendarPageProps) {
               onDelete={(calendar) => void askDelete(calendar)}
               {...(sharingClient === null || !online
                 ? {}
-                : { onShare: (calendar: Calendar) => setSharing(calendar) })}
+                : { onShare: (calendar: Calendar) => setSharingId(calendar.id) })}
             />
             {/* The availability layer's control, under the list of layers it joins — a calendar is
                 "whose events are drawn", this is "whose free/busy is drawn behind them". */}
@@ -1041,7 +1062,7 @@ export default function CalendarPage(props: CalendarPageProps) {
                 : {
                     onShare: (calendar: Calendar) => {
                       setCalendarsOpen(false)
-                      setSharing(calendar)
+                      setSharingId(calendar.id)
                     },
                   })}
             />
@@ -1068,7 +1089,7 @@ export default function CalendarPage(props: CalendarPageProps) {
             // it is really here and the dialog needs no fetch of its own.
             shareWith={sharing.shareWith}
             client={sharingClient}
-            onClose={() => setSharing(null)}
+            onClose={() => setSharingId(null)}
             // Re-read, so the row's "shared" marker is the server's answer rather than this
             // screen's guess — and so the dialog, which adopts the prop, shows what really landed.
             onChanged={() => void loadCalendars()}
