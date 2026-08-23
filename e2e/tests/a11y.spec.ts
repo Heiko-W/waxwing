@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * M4.7 — axe across the real screens, in a real engine, in BOTH themes (FR-A11Y-01).
@@ -36,9 +36,13 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /**
@@ -130,7 +134,7 @@ const SCREENS: readonly { name: string; open: (page: Page) => Promise<void> }[] 
     open: async (page) => {
       await messageList(page).getByText(READ_SUBJECTS.plain).click()
       await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeVisible({
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       })
     },
   },
@@ -139,7 +143,7 @@ const SCREENS: readonly { name: string; open: (page: Page) => Promise<void> }[] 
     open: async (page) => {
       await page.getByRole('button', { name: 'New message', exact: true }).click()
       await expect(page.getByRole('textbox', { name: 'Message body' })).toBeVisible({
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       })
     },
   },
@@ -148,7 +152,7 @@ const SCREENS: readonly { name: string; open: (page: Page) => Promise<void> }[] 
     open: async (page) => {
       await page.getByRole('link', { name: 'Settings', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible({
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       })
     },
   },
@@ -159,7 +163,7 @@ const SCREENS: readonly { name: string; open: (page: Page) => Promise<void> }[] 
       // The address-book rail, the same landmark `contacts.spec.ts` waits for — the Contacts area
       // has no level-1 heading of its own.
       await expect(page.getByRole('navigation', { name: 'Address books' })).toBeVisible({
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       })
     },
   },
@@ -168,7 +172,7 @@ const SCREENS: readonly { name: string; open: (page: Page) => Promise<void> }[] 
     open: async (page) => {
       await page.keyboard.press('ControlOrMeta+k')
       const palette = page.getByRole('dialog', { name: 'Command palette' })
-      await expect(palette).toBeVisible({ timeout: 30_000 })
+      await expect(palette).toBeVisible({ timeout: SYNC_BUDGET_MS })
       // Settled, not merely present. Overlays fade in (200ms), and axe computes contrast from what
       // is on screen AT THE MOMENT it looks — a panel caught at opacity 0.6 fails `color-contrast`
       // on text that is perfectly legible once it arrives. Asserting the end state is both the
@@ -208,7 +212,7 @@ test.describe('M4.7 axe sweep — real screens, both themes', () => {
     test(`the sign-in screen has no WCAG A/AA violations (${theme})`, async ({ page }) => {
       await page.goto('/')
       await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       })
       await setTheme(page, theme)
       expect(await scan(page), `sign-in / ${theme}`).toEqual([])

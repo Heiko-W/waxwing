@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * M3.9 step 5 — swipe gestures on touch (FR-LST-06), against the live Stalwart fixture.
@@ -32,7 +32,7 @@ async function login(page: Page): Promise<void> {
   // a disclosure instead of beside the list, which is why this suite cannot reuse read.spec's
   // desktop login. Opening it is part of the touch story, not incidental setup.
   const showFolders = page.getByRole('button', { name: 'Show folders' })
-  await expect(showFolders).toBeVisible({ timeout: 30_000 })
+  await expect(showFolders).toBeVisible({ timeout: SYNC_BUDGET_MS })
   await showFolders.click()
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
 
@@ -45,7 +45,9 @@ async function login(page: Page): Promise<void> {
   await page.keyboard.press('Escape')
   await expect(page.locator('nav[aria-label="Folders"]')).not.toHaveClass(/folderRegionOpen/)
 
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   // Nothing may overlay the row the gestures target, or a "nothing happened" assertion below would
   // pass for the wrong reason.
   const list = messageList(page)

@@ -9,7 +9,7 @@ import {
   seedReadMail,
 } from '../stalwart/seed-read.mjs'
 import { ACCOUNTS, jmapAs } from '../stalwart/seed-write.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS, SYNC_POLL } from './helpers'
 
 /**
  * A reading-pane action, wherever the bar has put it. See `bulkAction` in offline.spec.ts for why
@@ -25,7 +25,7 @@ async function readingAction(page: import('@playwright/test').Page, name: string
     }
     await trigger.click({ timeout: 2_000 })
     await page.getByRole('menuitem', { name: new RegExp(`^${name}`) }).click({ timeout: 2_000 })
-  }).toPass({ timeout: 30_000 })
+  }).toPass({ timeout: SYNC_BUDGET_MS })
 }
 
 /**
@@ -79,9 +79,13 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
 
 /** Wait for the connected shell, open the Inbox and wait for the seeded corpus to sync in. */
 async function openInbox(page: Page): Promise<void> {
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 // Reseed before every test so triage mutations never leak across tests (each test = fresh corpus).
@@ -491,9 +495,11 @@ test.describe('M3.9 move paths', () => {
     // The half that matters and that no unit test can reach: reload from the server. An optimistic
     // patch that the server rejected would snap back here.
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await expect(page.getByRole('treeitem', { name: /ZzSrc/ })).toHaveAttribute('aria-level', '2', {
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
 
     await removeFolder(page, 'ZzDst') // takes ZzSrc with it (it is now a child)
@@ -624,7 +630,7 @@ test.describe('full-screen reading', () => {
     await login(page)
     const list = messageList(page)
     const row = list.getByText(READ_SUBJECTS.plain)
-    await expect(row).toBeVisible({ timeout: 30_000 })
+    await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     await row.dblclick()
 
@@ -656,7 +662,7 @@ test.describe('full-screen reading', () => {
  */
 test.describe('M-5 / M-6 folder order, use and visibility', () => {
   const jmap = jmapAs(ACCOUNTS.alice)
-  const POLL = { timeout: 20_000, intervals: [500, 1000, 1000, 2000] }
+  const POLL = SYNC_POLL
 
   interface ServerMailbox {
     readonly id: string
@@ -823,7 +829,9 @@ test.describe('M-5 / M-6 folder order, use and visibility', () => {
     // after a reload proves the role came from the server and not from the optimistic patch that
     // wrote it — which is the half no unit test can reach.
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     const reopened = await openFolderInfo(page, 'ZzRole')
     await expect(reopened.getByLabel('Use this folder as…')).toHaveValue('important', {
       timeout: 20_000,
@@ -973,7 +981,7 @@ test.describe('M-13 mail older than the cache window', () => {
     // one too, not just the one nearest the boundary.
     for (const age of AGES_DAYS) {
       await expect(list.getByRole('row', { name: new RegExp(`aged ${age} days`) })).toBeVisible({
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       })
     }
 
@@ -990,13 +998,13 @@ test.describe('M-13 mail older than the cache window', () => {
     await page
       .getByRole('grid', { name: 'Messages' })
       .getByRole('row', { name: new RegExp(`aged ${oldest} days`) })
-      .click({ timeout: 30_000 })
+      .click({ timeout: SYNC_BUDGET_MS })
 
     // Listing an id the replica cannot hydrate would still show a row; reading the body proves the
     // whole path (query → envelope → body fetch) works past the old horizon.
     const frame = page
       .locator(`iframe[title="Message: ${TOKEN} aged ${oldest} days"]`)
       .contentFrame()
-    await expect(frame.getByText(`Aged ${oldest} days.`)).toBeVisible({ timeout: 30_000 })
+    await expect(frame.getByText(`Aged ${oldest} days.`)).toBeVisible({ timeout: SYNC_BUDGET_MS })
   })
 })

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * M3.10 PWA suite — the first tests in this repo whose subject is the SERVICE WORKER (FR-OFF-01,
@@ -45,9 +45,13 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   if (options.stay) await page.getByLabel('Stay signed in').check()
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /**
@@ -125,7 +129,9 @@ test.describe('M3.10 pwa', () => {
 
     // The corpus is on screen and in the replica BEFORE we pull the plug, so "the mail was never
     // there" cannot be confused with "the mail was there and could not be reached".
-    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
 
     await context.setOffline(true)
 
@@ -135,7 +141,7 @@ test.describe('M3.10 pwa', () => {
     // The shell booted: the document, the entry chunk and every eager chunk came out of the
     // precache with no network at all. This is the assertion the precache exists for.
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Webmail for', {
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     expect(broken).toEqual([])
 
@@ -168,7 +174,7 @@ test.describe('M3.10 pwa', () => {
     // could look green while proving nothing.
     await messageList(page).getByText(READ_SUBJECTS.plain).click()
     await expect(page.getByRole('heading', { level: 2 })).toContainText(READ_SUBJECTS.plain, {
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
 
     const cached = await page.evaluate(async () => {

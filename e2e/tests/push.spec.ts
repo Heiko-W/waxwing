@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * M3.10 push suite (gap B4, decision D2 / ADR-005) — the regression that hid for a milestone.
@@ -37,9 +37,13 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 test.beforeEach(async () => {
@@ -63,7 +67,7 @@ test.describe('M3.10 push transport (B4)', () => {
     // POSITIVE ANCHOR FIRST, and this is the whole design of the test. "No WebSocket within N ms" is
     // a race by construction; "no WebSocket by the time the working transport had connected" is
     // deterministic, because the app cannot have got push running without having chosen a transport.
-    await expect.poll(() => sseRequests.length, { timeout: 30_000 }).toBeGreaterThan(0)
+    await expect.poll(() => sseRequests.length, { timeout: SYNC_BUDGET_MS }).toBeGreaterThan(0)
 
     // POSITIVE CONTROL for the instrument itself. `page.on('websocket')` firing at all is not
     // observable from a green absence assertion, so prove the listener works by opening a socket

@@ -22,7 +22,7 @@
 
 import { expect, test } from '@playwright/test'
 import { READ_PHISHING, READ_SUBJECTS } from '../stalwart/seed-read.mjs'
-import { login } from './helpers'
+import { login, SYNC_BUDGET_MS } from './helpers'
 
 test('the mail screen renders — folders AND the label rail (empty akw index)', async ({ page }) => {
   await login(page)
@@ -31,7 +31,7 @@ test('the mail screen renders — folders AND the label rail (empty akw index)',
   await expect(page.getByText('Something went wrong')).toHaveCount(0)
   // The label rail is where it threw. It renders its own heading even with no labels at all, which
   // is exactly the state that broke: no cached mail yet ⇒ empty index ⇒ the cursor WebKit refuses.
-  await expect(page.getByText('Labels', { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Labels', { exact: true })).toBeVisible({ timeout: SYNC_BUDGET_MS })
 })
 
 test('an honest link in a message opens in a new tab', async ({ page, context }) => {
@@ -40,7 +40,7 @@ test('an honest link in a message opens in a new tab', async ({ page, context })
   const frame = page.frameLocator('iframe[title^="Message:"]')
   // The one link in that message whose text claims no host at all, so the gate releases it.
   const benign = frame.locator('a[target="_blank"]').first()
-  await expect(benign).toBeVisible({ timeout: 30_000 })
+  await expect(benign).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
   // Where it points is read off the anchor, not off the tab: the destination is a host that does not
   // resolve from the fixture, so the new page sits at `about:blank` with the navigation still
@@ -67,7 +67,7 @@ test('a deceptive link is not handed to the browser', async ({ page, context }) 
   await page.getByText(READ_SUBJECTS.phishing).first().click()
   const frame = page.frameLocator('iframe[title^="Message:"]')
   const deceptive = frame.locator('a:not([target])').first()
-  await expect(deceptive).toBeVisible({ timeout: 30_000 })
+  await expect(deceptive).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
   const before = context.pages().length
   await deceptive.click()

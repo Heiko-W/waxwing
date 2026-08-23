@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { ACCOUNTS, type JmapClient, jmapAs } from '../stalwart/seed-write.mjs'
-import { CREDENTIALS, login, openComposer, openSettings, typeInEditor } from './helpers'
+import { CREDENTIALS, login, openComposer, openSettings, SYNC_POLL, typeInEditor } from './helpers'
 
 /**
  * M3.7 settings suite — the REAL production bundle against the live Stalwart fixture.
@@ -53,7 +53,7 @@ const alice: JmapClient = jmapAs(ACCOUNTS.alice)
 let aliceAccountId = ''
 
 /** Poll intervals: gentle enough that Stalwart's abuse limiter never sees a burst. */
-const POLL = { timeout: 20_000, intervals: [500, 1000, 1000, 2000] }
+const POLL = SYNC_POLL
 
 test.beforeAll(async () => {
   aliceAccountId = await alice.account()

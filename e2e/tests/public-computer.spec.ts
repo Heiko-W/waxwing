@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * Public-computer mode, end to end (FR-AUTH-09).
@@ -66,7 +66,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     await page.getByRole('button', { name: 'Account' }).click()
     await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
 
     await expect(async () => {
@@ -76,7 +76,9 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
 
   test('a crashed session is swept at the next start', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('heading', { level: 1, name: /^Webmail for/ }).waitFor({ timeout: 30_000 })
+    await page
+      .getByRole('heading', { level: 1, name: /^Webmail for/ })
+      .waitFor({ timeout: SYNC_BUDGET_MS })
 
     // Exactly what a killed browser leaves: the database, and no index entry pointing at it —
     // because the entry is written at sign-in and cleared by the sweep, not by the crash.
@@ -94,7 +96,9 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     expect((await databases(page)).some((n) => n.startsWith(EPHEMERAL_PREFIX))).toBe(true)
 
     await page.reload()
-    await page.getByRole('heading', { level: 1, name: /^Webmail for/ }).waitFor({ timeout: 30_000 })
+    await page
+      .getByRole('heading', { level: 1, name: /^Webmail for/ })
+      .waitFor({ timeout: SYNC_BUDGET_MS })
 
     // The whole point of the mode: the previous person's mail is gone before this one sees a thing.
     await expect(async () => {
@@ -129,7 +133,7 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     // library terminal is worse than the cached mail — it fetches the mail again.
     await page.reload()
     await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
   })
 
@@ -147,7 +151,9 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
 
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     expect(await databases(page)).toContain(DURABLE)
   })
 

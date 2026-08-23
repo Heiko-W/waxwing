@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 // M3.8 keyboard suite (FR-UI-04) — the WP's exit criterion, proven against the live Stalwart fixture:
 // a FULL triage session without touching the mouse, plus the ⌘K palette and the `?` cheat-sheet.
@@ -17,9 +17,13 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await page.getByRole('treeitem', { name: /Inbox/ }).click()
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /**

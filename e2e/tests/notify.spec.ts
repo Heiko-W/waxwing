@@ -1,6 +1,6 @@
 import { type BrowserContext, expect, type Page, test } from '@playwright/test'
 import { deliverLiveMail, READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
-import { CREDENTIALS, login, messageList, openFolder } from './helpers'
+import { CREDENTIALS, login, messageList, openFolder, SYNC_BUDGET_MS } from './helpers'
 import {
   banners,
   bringForeground,
@@ -98,11 +98,15 @@ async function focusHolder(context: BrowserContext): Promise<Page> {
  */
 async function signInWithNotifications(page: Page): Promise<void> {
   await login(page, CREDENTIALS.alice, { stay: true })
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
   await enableNotifications(page)
   await page.getByRole('link', { name: 'Mail', exact: true }).click()
   await openFolder(page, /Inbox/)
-  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+  await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 test.describe('M3.10 notifications (M3.6 handover)', () => {
@@ -132,7 +136,7 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     const subject = await deliverLiveMail('t-notify')
 
     await expect
-      .poll(async () => (await banners(page)).length, { timeout: 30_000 })
+      .poll(async () => (await banners(page)).length, { timeout: SYNC_BUDGET_MS })
       .toBeGreaterThan(0)
 
     // The app asked for the right banner: sender in the title, subject in the body, and `data`
@@ -188,7 +192,7 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
 
     const subject = await deliverLiveMail('t-click')
     await expect
-      .poll(async () => (await banners(page)).length, { timeout: 30_000 })
+      .poll(async () => (await banners(page)).length, { timeout: SYNC_BUDGET_MS })
       .toBeGreaterThan(0)
     const data = (await banners(page))[0]?.data
     expect(data?.emailId).toBeTruthy()
@@ -273,7 +277,9 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     const b = await context.newPage()
     await goBackground(b, holder)
     await b.goto(`/mail/${inboxId}`)
-    await expect(messageList(b).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(b).getByText(READ_SUBJECTS.plain)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
 
     await goBackground(page, holder)
     await goBackground(b, holder)
@@ -283,8 +289,8 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     // ANCHOR on a positive event, not on a sleep: both tabs showing the new row means the pass that
     // would have notified has completed in each of them. Only then is "exactly one" a settled fact
     // rather than a race the follower might still win.
-    await expect(messageList(page).getByText(subject)).toBeVisible({ timeout: 30_000 })
-    await expect(messageList(b).getByText(subject)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(page).getByText(subject)).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    await expect(messageList(b).getByText(subject)).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await page.waitForTimeout(SETTLE_MS)
 
     const fromA = await banners(page)
@@ -358,7 +364,7 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     // otherwise make this test green forever.
     const live = await deliverLiveMail('t-storm-armed')
     await expect
-      .poll(async () => (await banners(reopened)).map((x) => x.body), { timeout: 30_000 })
+      .poll(async () => (await banners(reopened)).map((x) => x.body), { timeout: SYNC_BUDGET_MS })
       .toEqual([live])
   })
 
@@ -387,7 +393,9 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     const b = await context.newPage()
     await goBackground(b, holder)
     await b.goto(`/mail/${inboxId}`)
-    await expect(messageList(b).getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(b).getByText(READ_SUBJECTS.plain)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
 
     // The leader is hidden; the OTHER tab is the one the user is looking at. Both states are real
     // window focus and both helpers assert their own effect, so a lever that silently stopped working
@@ -399,8 +407,8 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
 
     // ANCHOR on the arrival reaching both tabs: the pass that would have notified is complete, so
     // "no banner" is a settled outcome and not a race with the delivery.
-    await expect(messageList(page).getByText(quiet)).toBeVisible({ timeout: 30_000 })
-    await expect(messageList(b).getByText(quiet)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(page).getByText(quiet)).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    await expect(messageList(b).getByText(quiet)).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await page.waitForTimeout(SETTLE_MS)
 
     expect(await banners(page)).toEqual([])
@@ -413,7 +421,7 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
     await goBackground(b, holder)
     const loud = await deliverLiveMail('t-veto-control')
     await expect
-      .poll(async () => (await banners(page)).map((x) => x.body), { timeout: 30_000 })
+      .poll(async () => (await banners(page)).map((x) => x.body), { timeout: SYNC_BUDGET_MS })
       .toEqual([loud])
     expect(await banners(b)).toEqual([])
   })
@@ -446,7 +454,9 @@ test.describe('M3.10 notifications (M3.6 handover)', () => {
 
     const subject = await deliverLiveMail('t-signout')
     await expect
-      .poll(async () => (await liveNotifications(page)).map((n) => n.body), { timeout: 30_000 })
+      .poll(async () => (await liveNotifications(page)).map((n) => n.body), {
+        timeout: SYNC_BUDGET_MS,
+      })
       .toContain(subject)
 
     await bringForeground(page)

@@ -7,7 +7,7 @@ import {
   shareAddressBook,
   shareCalendar,
 } from '../stalwart/fixture.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * Sharing a calendar and an address book (S-2), and asking what somebody else is doing (S-6) — end
@@ -53,19 +53,23 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
       .getByRole('navigation', { name: 'Folders' })
       .or(page.getByRole('button', { name: 'Folders' }))
       .first(),
-  ).toBeVisible({ timeout: 30_000 })
+  ).toBeVisible({ timeout: SYNC_BUDGET_MS })
 }
 
 /** The calendar screen, reached the way a reader reaches it. */
 async function openCalendar(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Calendar', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /** The contacts screen. */
 async function openContacts(page: Page): Promise<void> {
   await page.getByRole('link', { name: 'Contacts', exact: true }).click()
-  await expect(page.getByRole('link', { name: /All Contacts/ })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('link', { name: /All Contacts/ })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 /** The calendar rail — a real `<aside>` from 40em up, which every desktop project is. */
@@ -94,7 +98,7 @@ test.describe('S-2 — sharing a calendar', () => {
     await login(page)
     await openCalendar(page)
     const button = shareCalendarButton(page).first()
-    await expect(button).toBeVisible({ timeout: 30_000 })
+    await expect(button).toBeVisible({ timeout: SYNC_BUDGET_MS })
     // Not a menu item: it is reachable with one activation and no menu is open.
     await expect(page.getByRole('menu')).toHaveCount(0)
   })
@@ -105,7 +109,7 @@ test.describe('S-2 — sharing a calendar', () => {
     await shareCalendarButton(page).first().click()
 
     const dialog = page.getByRole('dialog')
-    await expect(dialog).toBeVisible({ timeout: 30_000 })
+    await expect(dialog).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(dialog.getByText('Only you.')).toBeVisible()
 
     await dialog.getByLabel('Search people').fill('carol')
@@ -197,7 +201,9 @@ test.describe('S-2 — sharing a calendar', () => {
 
     // WCAG 1.4.1: the person glyph is decoration and the word is the marker. It is visually hidden,
     // so this asserts what a screen reader gets — which is the only thing that can be asserted here.
-    await expect(calendarRail(page).getByText('Shared').first()).toBeAttached({ timeout: 30_000 })
+    await expect(calendarRail(page).getByText('Shared').first()).toBeAttached({
+      timeout: SYNC_BUDGET_MS,
+    })
   })
 
   test('the calendar shared WITH alice offers no way to share it on', async ({ page }) => {
@@ -214,7 +220,7 @@ test.describe('S-2 — sharing a calendar', () => {
     await openCalendar(page)
 
     const rail = calendarRail(page)
-    await expect(rail).toBeVisible({ timeout: 30_000 })
+    await expect(rail).toBeVisible({ timeout: SYNC_BUDGET_MS })
     const rows = rail.getByRole('listitem')
     const icons = shareCalendarButton(page)
     await expect(icons).toHaveCount(await rows.count())
@@ -240,7 +246,7 @@ test.describe('S-2 — sharing a calendar', () => {
       await page.getByRole('button', { name: 'Calendar view' }).click()
       await page.getByRole('menuitem', { name: /^Calendars/ }).click()
       const sheet = page.getByRole('dialog')
-      await expect(sheet).toBeVisible({ timeout: 30_000 })
+      await expect(sheet).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
       const button = sheet.getByRole('button', { name: /^Share / }).first()
       await expect(button).toBeVisible()
@@ -290,12 +296,12 @@ test.describe('S-2 — sharing an address book', () => {
     await openContacts(page)
 
     const button = shareBookButton(page)
-    await expect(button).toBeVisible({ timeout: 30_000 })
+    await expect(button).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await button.click()
 
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByText('Only you.')).toBeVisible({ timeout: 30_000 })
+    await expect(dialog.getByText('Only you.')).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     await dialog.getByLabel('Search people').fill('carol')
     const grant = dialog.getByRole('button', { name: /Give .*[Cc]arol.* access/ })
@@ -314,7 +320,7 @@ test.describe('S-2 — sharing an address book', () => {
     await login(page)
     await openContacts(page)
     const button = shareBookButton(page)
-    await expect(button).toBeVisible({ timeout: 30_000 })
+    await expect(button).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await button.click()
 
     const dialog = page.getByRole('dialog')
@@ -342,7 +348,7 @@ test.describe('S-1 — a calendar and an address-book share are ANNOUNCED', () =
     await openCalendar(page)
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(strip.getByText(/shared a calendar with you|shared the calendar/i)).toBeVisible()
     await expect(strip.getByText(/folder/i)).toHaveCount(0)
   })
@@ -359,7 +365,7 @@ test.describe('S-1 — a calendar and an address-book share are ANNOUNCED', () =
     await openCalendar(page)
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(strip.getByRole('button', { name: 'Open' })).toHaveCount(0)
     await expect(strip.getByRole('button', { name: 'Hide this notice' })).toBeVisible()
   })
@@ -371,7 +377,7 @@ test.describe('S-1 — a calendar and an address-book share are ANNOUNCED', () =
     await openCalendar(page)
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await strip.getByRole('button', { name: 'Hide this notice' }).click()
     await expect(strip).toHaveCount(0)
 
@@ -389,7 +395,7 @@ test.describe('S-1 — a calendar and an address-book share are ANNOUNCED', () =
     await openContacts(page)
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(
       strip.getByText(/shared a contact list with you|shared the contact list/i),
     ).toBeVisible()
@@ -433,18 +439,20 @@ test.describe('S-6 — somebody else’s availability', () => {
     // the other side of it.
     await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
-    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
 
     const picker = page.getByLabel('Show availability')
-    await expect(picker).toBeVisible({ timeout: 30_000 })
+    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await picker.selectOption({ label: CAROL_LABEL })
 
     // The band is a background layer and `aria-hidden`; the sentence beside it is the whole of what
     // a screen reader gets, and asserting on it is the only honest way to assert on a hatch.
     await expect(
       page.getByText(new RegExp(`${CAROL_LABEL} is busy on .* from .* to `)),
-    ).toBeAttached({ timeout: 30_000 })
+    ).toBeAttached({ timeout: SYNC_BUDGET_MS })
     // And NOT the title. Carol's event is called "Busy" by the fixture; nothing on alice's screen
     // may carry it, because `Principal/getAvailability` refuses to return titles at all
     // (`eventProperties` accepts only `id` and `baseEventId` — measured).
@@ -460,7 +468,9 @@ test.describe('S-6 — somebody else’s availability', () => {
     // the other side of it.
     await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
-    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
 
     await expect(page.getByLabel('Show availability')).toHaveCount(0)
     await page.getByRole('button', { name: 'Week', exact: true }).click()
@@ -482,14 +492,16 @@ test.describe('S-6 — somebody else’s availability', () => {
     // the other side of it.
     await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
-    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
 
     const picker = page.getByLabel('Show availability')
-    await expect(picker).toBeVisible({ timeout: 30_000 })
+    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await picker.selectOption({ label: CAROL_LABEL })
     await expect(page.getByText(new RegExp(`${CAROL_LABEL} is busy on `))).toBeAttached({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
 
     // If the band were on top, or were a click target, this would time out or open nothing.
@@ -506,14 +518,16 @@ test.describe('S-6 — somebody else’s availability', () => {
     // the other side of it.
     await login(page, { stay: true })
     await page.goto(`/calendar/${BUSY_DAY}`)
-    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await page.getByRole('button', { name: 'Week', exact: true }).click()
 
     const picker = page.getByLabel('Show availability')
-    await expect(picker).toBeVisible({ timeout: 30_000 })
+    await expect(picker).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await picker.selectOption({ label: CAROL_LABEL })
     await expect(page.getByText(new RegExp(`${CAROL_LABEL} is busy on `))).toBeAttached({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
 
     await picker.selectOption('')

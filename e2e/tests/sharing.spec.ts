@@ -6,7 +6,7 @@ import {
   shareInbox,
 } from '../stalwart/fixture.mjs'
 import { seedReadMail } from '../stalwart/seed-read.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * Sharing a mail folder (S-3) and being told about one (S-1), end to end against a live Stalwart
@@ -50,7 +50,7 @@ async function login(page: Page, options: { stay?: boolean } = {}): Promise<void
       .getByRole('navigation', { name: 'Folders' })
       .or(page.getByRole('button', { name: 'Folders' }))
       .first(),
-  ).toBeVisible({ timeout: 30_000 })
+  ).toBeVisible({ timeout: SYNC_BUDGET_MS })
 }
 
 /** Alice's OWN Inbox row — the one she owns and may therefore share. */
@@ -61,7 +61,7 @@ function ownInbox(page: Page) {
 /** Open the folder's ⋯ menu and pick "Share…". */
 async function openShareDialog(page: Page): Promise<void> {
   const row = ownInbox(page)
-  await expect(row).toBeVisible({ timeout: 30_000 })
+  await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
   // The menu button lives inside the row and only reveals on hover/focus.
   await row.hover()
   await row.getByRole('button', { name: /Folder actions/ }).click()
@@ -91,7 +91,7 @@ test.describe('S-3 — sharing a mail folder', () => {
   test('the “Share…” entry is offered on a folder the user OWNS', async ({ page }) => {
     await login(page)
     const row = ownInbox(page)
-    await expect(row).toBeVisible({ timeout: 30_000 })
+    await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await row.hover()
     await row.getByRole('button', { name: /Folder actions/ }).click()
     // `myRights.mayShare` is true for an owner — measured, the server returns it on every
@@ -106,7 +106,7 @@ test.describe('S-3 — sharing a mail folder', () => {
     const carolInbox = page
       .getByRole('region', { name: CAROL })
       .getByRole('treeitem', { name: /Inbox/ })
-    await expect(carolInbox).toBeVisible({ timeout: 30_000 })
+    await expect(carolInbox).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await carolInbox.hover()
     const menu = carolInbox.getByRole('button', { name: /Folder actions/ })
     // A read-only share may have no menu at all — every entry is rights-gated. Either way, no Share.
@@ -122,7 +122,7 @@ test.describe('S-3 — sharing a mail folder', () => {
     await openShareDialog(page)
 
     // Before: nobody.
-    await expect(page.getByText('Only you.')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Only you.')).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     // Grant carol "View". The role names are what the user picks; the ten permission keys are what
     // goes on the wire, and `maySetSeen` is false in this one on purpose.
@@ -174,7 +174,7 @@ test.describe('S-3 — sharing a mail folder', () => {
     await page.getByRole('button', { name: 'Done' }).click()
 
     await openShareDialog(page)
-    await expect(page.getByText('Only you.')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Only you.')).toBeVisible({ timeout: SYNC_BUDGET_MS })
   })
 
   test('the dialog says what “View” costs, in words', async ({ page }) => {
@@ -185,7 +185,9 @@ test.describe('S-3 — sharing a mail folder', () => {
      */
     await login(page)
     await openShareDialog(page)
-    await expect(page.getByText(/will not mark it read for you/i)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(/will not mark it read for you/i)).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
   })
 })
 
@@ -216,7 +218,7 @@ test.describe('S-1 — being told that something was shared', () => {
     await login(page)
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(strip).toContainText(CAROL)
     // NOT the server's own recovery admin, which is who Stalwart v0.16.18 attributes a mailbox ACL
     // change to (measured). The card resolves the name from `objectAccountId` instead.
@@ -229,14 +231,14 @@ test.describe('S-1 — being told that something was shared', () => {
     await login(page)
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await strip.getByRole('button', { name: 'Open' }).click()
 
     // Both halves of the address. Every account's Inbox on this server is mailbox `a`, so a card
     // that carried only the mailbox id would land in alice's own Inbox and look entirely plausible.
     await expect(page).toHaveURL(/account=/)
     await expect(page.getByRole('region', { name: 'Messages', exact: true })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     // Alice's own seeded corpus must NOT be here: this is carol's inbox.
     const { READ_SUBJECTS } = await import('../stalwart/seed-read.mjs')
@@ -257,12 +259,14 @@ test.describe('S-1 — being told that something was shared', () => {
     await login(page, { stay: true })
 
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await strip.getByRole('button', { name: 'Hide this notice' }).click()
     await expect(strip).toHaveCount(0)
 
     await page.reload()
-    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
     await expect(page.getByRole('region', { name: 'New shares' })).toHaveCount(0)
   })
 
@@ -271,7 +275,7 @@ test.describe('S-1 — being told that something was shared', () => {
     // all — no empty box, no zero badge.
     await clearShareNotifications('alice')
     await login(page)
-    await expect(page.getByRole('region', { name: OWN })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('region', { name: OWN })).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(page.getByRole('region', { name: 'New shares' })).toHaveCount(0)
   })
 
@@ -285,7 +289,7 @@ test.describe('S-1 — being told that something was shared', () => {
 
     await page.getByRole('button', { name: 'Folders' }).click()
     const strip = page.getByRole('region', { name: 'New shares' })
-    await expect(strip).toBeVisible({ timeout: 30_000 })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
     // Both actions still reachable and still 44 px.
     for (const name of ['Open', 'Hide this notice']) {
       const button = strip.getByRole('button', { name })

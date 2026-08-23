@@ -19,6 +19,7 @@ import {
   messageList,
   openComposer,
   openFolder,
+  SYNC_BUDGET_MS,
   setUndoGrace,
   typeBody,
 } from './helpers'
@@ -144,7 +145,7 @@ test.describe('M2.9 write suite', () => {
     await page.reload()
     await login(page, CREDENTIALS.alice)
     await openFolder(page, /Drafts/)
-    await expect(messageList(page).getByText(subject)).toBeVisible({ timeout: 30_000 })
+    await expect(messageList(page).getByText(subject)).toBeVisible({ timeout: SYNC_BUDGET_MS })
   })
 
   /*
@@ -199,9 +200,9 @@ test.describe('M2.9 write suite', () => {
   /** The Drafts-folder row for `subject`, opened into the composer. */
   async function openSeededDraft(page: import('@playwright/test').Page, subject: string) {
     await openFolder(page, /Drafts/)
-    await messageList(page).getByText(subject).click({ timeout: 30_000 })
+    await messageList(page).getByText(subject).click({ timeout: SYNC_BUDGET_MS })
     await expect(page.getByRole('textbox', { name: 'Message body' })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
   }
 
@@ -221,7 +222,7 @@ test.describe('M2.9 write suite', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Discard', exact: true }).click()
 
     await expect
-      .poll(async () => (await alice.query(token, ['subject'])).length, { timeout: 30_000 })
+      .poll(async () => (await alice.query(token, ['subject'])).length, { timeout: SYNC_BUDGET_MS })
       .toBe(0)
   })
 
@@ -248,7 +249,7 @@ test.describe('M2.9 write suite', () => {
     // Still exactly ONE draft. Before the fix there were two: the untouched original plus the copy
     // the save created, because it went out with no prior id to replace.
     await expect
-      .poll(async () => (await alice.query(token, ['subject'])).length, { timeout: 30_000 })
+      .poll(async () => (await alice.query(token, ['subject'])).length, { timeout: SYNC_BUDGET_MS })
       .toBe(1)
   })
 
@@ -419,14 +420,14 @@ test.describe('compose: send options + stored attachments (M-7, M-11, D-5)', () 
     // ---- put a file in the account the ordinary way (this part DOES upload).
     await page.getByRole('link', { name: 'Files', exact: true }).click()
     await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     await page.locator('input[type="file"]').setInputFiles({
       name: fileName,
       mimeType: 'text/plain',
       buffer: Buffer.from(payload),
     })
-    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(fileName, { exact: true })).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     // ---- from here on, COUNT every upload. The whole finding is that attaching a stored file
     // costs none: the message references the file's existing blob. A counter is the only way to
@@ -473,7 +474,7 @@ test.describe('compose: send options + stored attachments (M-7, M-11, D-5)', () 
     // row or behind the `⋯` depending on how wide the row is, and `isVisible()` does not wait. Asked
     // straight after this navigation it answers "no" because the listing has not arrived yet, and
     // the else-branch then waited the whole test timeout for a menu this row never grows.
-    await expect(inRow.or(rowMenu).first()).toBeVisible({ timeout: 30_000 })
+    await expect(inRow.or(rowMenu).first()).toBeVisible({ timeout: SYNC_BUDGET_MS })
     if (await inRow.isVisible()) await inRow.click()
     else {
       await rowMenu.click()

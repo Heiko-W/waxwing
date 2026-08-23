@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test'
 import { clearFileNodes, ensureDelegations, shareFileFolder } from '../stalwart/fixture.mjs'
-import { revealPasswordForm } from './helpers'
+import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 
 /**
  * Opening someone else's files (S-4), and finding a colleague who is in no address book (S-5) —
@@ -38,7 +38,9 @@ async function login(page: Page): Promise<void> {
   await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
   await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
   await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
-  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('navigation', { name: 'Folders' })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
 }
 
 async function openFiles(page: Page): Promise<void> {
@@ -50,10 +52,10 @@ async function openFiles(page: Page): Promise<void> {
   // waited out; which of the two screens the assertion lands on is a race, and it was won and lost
   // by two tests in the same file in the same run.
   await expect(page.getByRole('heading', { level: 1, name: 'Files' })).toBeVisible({
-    timeout: 30_000,
+    timeout: SYNC_BUDGET_MS,
   })
   await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeVisible({
-    timeout: 30_000,
+    timeout: SYNC_BUDGET_MS,
   })
 }
 
@@ -82,7 +84,7 @@ test.describe('S-4 — opening files someone shared', () => {
 
     // iCloud's arrangement, and the mail rail's: one place, two sections, no account switcher.
     const shared = page.getByRole('region', { name: 'Shared with me' })
-    await expect(shared).toBeVisible({ timeout: 30_000 })
+    await expect(shared).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await expect(shared.getByRole('button', { name: new RegExp(CAROL) })).toBeVisible()
   })
 
@@ -96,7 +98,7 @@ test.describe('S-4 — opening files someone shared', () => {
 
     // The heading names whose root this is — the reader is never in doubt which account they are in.
     await expect(page.getByRole('heading', { level: 1, name: CAROL })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     await expect(page.getByText(SHARED_FOLDER, { exact: true })).toBeVisible()
 
@@ -135,7 +137,7 @@ test.describe('S-4 — opening files someone shared', () => {
     // No contacts section either — nothing in the contacts area names carol.
     await page.getByRole('link', { name: 'Contacts', exact: true }).click()
     await expect(page.getByRole('navigation', { name: 'Address books' })).toBeVisible({
-      timeout: 30_000,
+      timeout: SYNC_BUDGET_MS,
     })
     await expect(page.getByText(CAROL, { exact: true })).toHaveCount(0)
 
@@ -153,7 +155,7 @@ test.describe('S-5 — finding a colleague who is in no address book', () => {
     // S-5 this field could not produce his address at all.
     await page.getByRole('button', { name: 'New message', exact: true }).click()
     const to = page.getByRole('combobox', { name: 'To' })
-    await expect(to).toBeVisible({ timeout: 30_000 })
+    await expect(to).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     /*
      * "Baker", not "Bak". `Principal/query`'s `text` filter matches WHOLE WORDS — measured:
@@ -186,7 +188,7 @@ test.describe('S-5 — finding a colleague who is in no address book', () => {
     await login(page)
     await page.getByRole('button', { name: 'New message', exact: true }).click()
     const to = page.getByRole('combobox', { name: 'To' })
-    await expect(to).toBeVisible({ timeout: 30_000 })
+    await expect(to).toBeVisible({ timeout: SYNC_BUDGET_MS })
 
     // Break ONLY the directory call. The recents and contact-card sources are replica reads and
     // must be untouched by it — that asymmetry is the reason the directory is queried separately.

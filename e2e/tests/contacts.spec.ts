@@ -17,7 +17,7 @@ import {
   seedMemberContact,
   seedSenderMessage,
 } from '../stalwart/seed-contacts.mjs'
-import { CREDENTIALS, login, messageList } from './helpers'
+import { CREDENTIALS, login, messageList, SYNC_BUDGET_MS, SYNC_POLL } from './helpers'
 
 /**
  * M4.2 contacts suite — the REAL production bundle against the live Stalwart fixture (it runs in the
@@ -44,7 +44,7 @@ let aliceAccountId = ''
 let roBook: AddressBookLike | null = null
 
 /** Gentle poll: never bursts Stalwart's abuse limiter, ample for an outbox flush to reach the server. */
-const POLL = { timeout: 20_000, intervals: [500, 1000, 1000, 2000] }
+const POLL = SYNC_POLL
 
 /** Escape a token for use inside a `RegExp` accessible-name matcher. */
 const escapeRe = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -70,7 +70,7 @@ test.afterAll(async () => {
 async function openContacts(page: import('@playwright/test').Page): Promise<void> {
   await page.getByRole('link', { name: 'Contacts', exact: true }).click()
   await expect(page.getByRole('navigation', { name: 'Address books' })).toBeVisible({
-    timeout: 30_000,
+    timeout: SYNC_BUDGET_MS,
   })
 }
 
@@ -239,7 +239,7 @@ test.describe('M4.2 contacts suite', () => {
     // The seeded member must be in the replica before it can be picked as a candidate.
     await expect(page.getByRole('option', { name: new RegExp(escapeRe(memberToken)) })).toBeVisible(
       {
-        timeout: 30_000,
+        timeout: SYNC_BUDGET_MS,
       },
     )
 
@@ -279,7 +279,7 @@ test.describe('M4.2 contacts suite', () => {
     await login(page, CREDENTIALS.alice)
     // `login()` lands on the Inbox; wait for the seeded message to sync into the list, then open it.
     const row = messageList(page).getByText(seeded.subject)
-    await expect(row).toBeVisible({ timeout: 30_000 })
+    await expect(row).toBeVisible({ timeout: SYNC_BUDGET_MS })
     await row.click()
 
     // The reading-pane sender trigger is named after the sender's DISPLAY name
