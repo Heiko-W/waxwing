@@ -161,6 +161,18 @@ export interface JmapPort {
   getEmailBodies(ids: Id[]): Promise<GetResult<EmailBodyInput>>
 
   queryEmails(spec: EmailQuerySpec): Promise<QueryResult>
+  /**
+   * `Email/query` + the `Email/get` that reads its ids, in ONE request (B55, RFC 8620 §3.7).
+   *
+   * The pair is the commonest shape in this client — a window is always "which ids, then what is in
+   * them" — and issued separately the second call cannot start until the first has returned. Both
+   * results come back because the caller needs the query's `queryState`/`total` AND has to persist
+   * the window row before the envelopes.
+   */
+  queryEmailsWithEnvelopes(spec: EmailQuerySpec): Promise<{
+    query: QueryResult
+    envelopes: GetResult<EmailEnvelopeInput>
+  }>
   queryEmailChanges(spec: EmailQueryChangesSpec): Promise<QueryChangesResult>
   /** Highlighted (`<mark>` markup) subject/preview for the visible slice of a search (M3.1). */
   getSearchSnippets(

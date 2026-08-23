@@ -13,6 +13,7 @@ import type {
   Thread,
 } from '@waxwing/jmap'
 import { type EmailEnvelopeInput, ReplicaDb } from './db'
+import type { JmapPort } from './engine/types'
 
 let seq = 0
 
@@ -105,4 +106,30 @@ export function contactCard(id: string, over: Partial<ContactCard> = {}): Contac
     addressBookIds: { book1: true },
     ...over,
   }
+}
+
+/**
+ * Give a fake port the batched `Email/query` + `Email/get` pair (B55) for free.
+ *
+ * Real batching is one REQUEST; here it is the two calls the fake already answers, which is exactly
+ * right — what a unit test controls is the two ANSWERS, not the transport that carries them. A fake
+ * that wants to observe the batched call itself simply defines the method and this leaves it alone.
+ *
+ * Typed against `Omit<JmapPort, …>` rather than a loose record so the object literal at the call
+ * site still gets its contextual types: without that, every `async (ids) => …` in a fake port loses
+ * its parameter types and `noImplicitAny` fails the file.
+ */
+export function withBatchedQuery<P extends Omit<JmapPort, 'queryEmailsWithEnvelopes'>>(
+  port: P,
+): JmapPort {
+  const own = (port as Partial<JmapPort>).queryEmailsWithEnvelopes
+  if (own !== undefined) return port as unknown as JmapPort
+  return {
+    ...port,
+    queryEmailsWithEnvelopes: async (spec: Parameters<JmapPort['queryEmails']>[0]) => {
+      const query = await port.queryEmails(spec)
+      const envelopes = await port.getEmailEnvelopes(query.ids)
+      return { query, envelopes }
+    },
+  } as unknown as JmapPort
 }

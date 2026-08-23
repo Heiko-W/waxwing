@@ -123,14 +123,24 @@ export async function backfillQuery(
   const collapseThreads = spec.collapseThreads ?? true
   const key = canonicalQueryKey(spec)
 
-  const result = await port.queryEmails({ ...spec, position: 0, limit, calculateTotal: true })
+  // One request, two method calls (B55): `Email/query` and the `Email/get` that reads its ids, with
+  // the server resolving `#ids` between them. The write ORDER below is unchanged and still
+  // load-bearing — see the note on the window row — but the second round-trip is gone.
+  const { query: result, envelopes } = await port.queryEmailsWithEnvelopes({
+    ...spec,
+    position: 0,
+    limit,
+    calculateTotal: true,
+  })
 
   // The window row is persisted BEFORE the envelopes it lists — deliberately, and M3.4's envelope
   // prune depends on it. A window is what makes its ids un-prunable, so if the envelopes landed first
   // there would be a wide interval (this function makes a NETWORK round-trip for the threads between
   // the two writes) in which a maintenance pass sees old envelopes that no window claims yet — and
   // prunes the results of the search that is still loading them. Writing the claim first means an
-  // envelope can never exist un-claimed. The reverse gap — a window listing ids whose envelopes have
+  // envelope can never exist un-claimed. (Since B55 the envelopes arrive in the SAME response as the
+  // ids, so the interval is now the width of two `await`s rather than a round-trip — narrower, but
+  // the ordering is what makes it impossible rather than merely unlikely, so it stays.) The reverse gap — a window listing ids whose envelopes have
   // not arrived — is the state `hydrateMissing` already exists to handle, and the next reconcile fills.
   const row: QueryCacheRow = {
     accountId,
@@ -146,7 +156,6 @@ export async function backfillQuery(
   }
   await putQueryCache(db, row)
 
-  const envelopes = await port.getEmailEnvelopes(result.ids)
   await putEmails(db, accountId, envelopes.list)
   // Recents accumulation (M2.4) is best-effort — a failure must never break the backfill.
   try {
@@ -210,7 +219,11 @@ export async function loadMore(
     sort: row.sort,
     collapseThreads: row.collapseThreads,
   }
-  const result = await port.queryEmails({
+  // Batched exactly like `backfillQuery` (B55). The `get` covers every id the query returned, so the
+  // envelopes are filtered down to the FRESH ones below — the page is normally all-fresh (the query
+  // starts at `position: row.ids.length`), and filtering keeps `recordAddressStats` from counting a
+  // recipient twice on the rare overlap.
+  const { query: result, envelopes: page } = await port.queryEmailsWithEnvelopes({
     ...spec,
     position: row.ids.length,
     limit,
@@ -238,7 +251,8 @@ export async function loadMore(
   await putQueryCache(db, updated)
 
   if (fresh.length > 0) {
-    const envelopes = await port.getEmailEnvelopes(fresh)
+    const wanted = new Set(fresh)
+    const envelopes = { ...page, list: page.list.filter((email) => wanted.has(email.id)) }
     await putEmails(db, accountId, envelopes.list)
     try {
       await recordAddressStats(db, accountId, envelopes.list)

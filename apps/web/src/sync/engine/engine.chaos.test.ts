@@ -22,7 +22,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from '../db'
 import { failedOutbox, putEmails } from '../repo'
-import { email, freshDb } from '../test-utils'
+import { email, freshDb, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike, EngineBusMessage } from './bus'
 import { SyncEngine, type SyncEngineDeps } from './engine'
 import type { LockManagerLike } from './leader'
@@ -289,7 +289,7 @@ class FakeServer {
     })
     const guard = <T>(fn: () => T): T => (isOnline() ? fn() : offline())
 
-    return {
+    return withBatchedQuery({
       accountId: ACC,
       mailboxChanges: async (state) =>
         guard(() => {
@@ -391,7 +391,7 @@ class FakeServer {
       fileNodePage: async () => guard(() => ({ ids: [], list: [], state: 's' })),
       getFileNodes: async () => guard(() => ({ list: [], notFound: [], state: 's' })),
       fileNodeChanges: async (state) => guard(() => changes(state)),
-    }
+    })
   }
 }
 

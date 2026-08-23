@@ -227,6 +227,55 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
       return result
     },
 
+    async queryEmailsWithEnvelopes(spec: EmailQuerySpec) {
+      /*
+       * `Email/query` and the `Email/get` that reads its ids, in ONE request (B55).
+       *
+       * This is what RFC 8620 §3.7's back-references are for, and the pair is the single most
+       * common shape in this client: a window is always "which ids, then what is in them". Issued
+       * as two requests it costs two round-trips, and the second cannot even start until the first
+       * has come back — on localhost that is invisible, at 50 ms RTT it is 100 ms of pure waiting
+       * on the path that decides how soon a folder paints.
+       *
+       * `#ids` names the query's `/ids` and the SERVER resolves it, so there is no client-side
+       * ordering to get wrong. The query result is still returned alongside, because the caller
+       * needs `queryState`/`total`/`position` and must persist the window row BEFORE the envelopes
+       * (see `backfillMailbox` on why that order is load-bearing for the M3.4 prune).
+       */
+      const builder = client.request()
+      const query = builder.invoke(Methods.emailQuery, {
+        accountId,
+        ...(spec.filter === undefined ? {} : { filter: spec.filter }),
+        ...(spec.sort === undefined ? {} : { sort: spec.sort }),
+        ...(spec.collapseThreads === undefined ? {} : { collapseThreads: spec.collapseThreads }),
+        ...(spec.position === undefined ? {} : { position: spec.position }),
+        ...(spec.limit === undefined ? {} : { limit: spec.limit }),
+        ...(spec.calculateTotal === undefined ? {} : { calculateTotal: spec.calculateTotal }),
+      })
+      const get = builder.invoke(Methods.emailGet, {
+        accountId,
+        '#ids': query.ref('/ids'),
+        properties: [...EMAIL_ENVELOPE_PROPERTIES] as string[],
+      })
+      const responses = await builder.send()
+      const queried = responses.get(query)
+      const got = responses.get(get)
+      return {
+        query: {
+          ids: queried.ids,
+          queryState: queried.queryState,
+          canCalculateChanges: queried.canCalculateChanges,
+          position: queried.position,
+          ...(queried.total === undefined ? {} : { total: queried.total }),
+        },
+        envelopes: {
+          list: got.list as unknown as EmailEnvelopeInput[],
+          notFound: got.notFound,
+          state: got.state,
+        },
+      }
+    },
+
     async queryEmailChanges(spec: EmailQueryChangesSpec): Promise<QueryChangesResult> {
       const builder = client.request()
       const handle = builder.invoke(Methods.emailQueryChanges, {

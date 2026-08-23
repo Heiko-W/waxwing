@@ -19,7 +19,7 @@ import {
   putQueryCache,
   setSyncState,
 } from '../repo'
-import { addressBook, contactCard, email, freshDb, mailbox } from '../test-utils'
+import { addressBook, contactCard, email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import {
   fullRequeryCalendar,
   reconcileCalendarQuery,
@@ -63,7 +63,7 @@ function emptyQuery(): QueryResult {
 }
 
 function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
-  return {
+  return withBatchedQuery({
     accountId: ACC,
     mailboxChanges: async () => emptyChanges('s'),
     threadChanges: async () => emptyChanges('s'),
@@ -120,7 +120,7 @@ function fakePort(overrides: Partial<JmapPort> = {}): JmapPort {
     getFileNodes: async () => ({ list: [], notFound: [], state: 's' }),
     fileNodeChanges: async () => emptyChanges('s'),
     ...overrides,
-  }
+  })
 }
 
 function emptySet() {

@@ -12,7 +12,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
 import { getQueryCache, putEmailBody, putEmails } from '../repo'
-import { email, freshDb } from '../test-utils'
+import { email, freshDb, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
   isDocumentForeground,
@@ -115,7 +115,7 @@ interface PortScript {
 
 function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } {
   const setEmailsCalls: unknown[] = []
-  return {
+  return withBatchedQuery({
     accountId: ACC,
     setEmailsCalls,
     async mailboxChanges(s) {
@@ -284,7 +284,7 @@ function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } 
     async fileNodeChanges(s: string) {
       return emptyChanges(s)
     },
-  }
+  }) as JmapPort & { setEmailsCalls: unknown[] }
 }
 
 function makeDeps(db: ReplicaDb, port: JmapPort, push: FakePush): SyncEngineDeps {

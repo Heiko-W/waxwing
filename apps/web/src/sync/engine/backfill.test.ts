@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from '../db'
 import { getQueryCache, getSyncState } from '../repo'
-import { email, freshDb, thread } from '../test-utils'
+import { email, freshDb, thread, withBatchedQuery } from '../test-utils'
 import { backfillMailbox, folderFilter, loadMore } from './backfill'
 import type { JmapPort, QueryResult } from './types'
 
@@ -17,12 +17,17 @@ afterEach(async () => {
   await db.delete()
 })
 
-/** A JmapPort whose methods throw unless overridden — backfill only uses three. */
+/**
+ * A JmapPort whose methods throw unless overridden — backfill only uses a handful.
+ *
+ * Wrapped in `withBatchedQuery`, so the `queryEmails` / `getEmailEnvelopes` a test overrides are
+ * still what answers, even though `backfillQuery` now asks for both in one call (B55).
+ */
 function fakePort(overrides: Partial<JmapPort>): JmapPort {
   const unimplemented = (name: string) => (): never => {
     throw new Error(`not implemented: ${name}`)
   }
-  return {
+  const base = {
     accountId: ACC,
     mailboxChanges: unimplemented('mailboxChanges'),
     threadChanges: unimplemented('threadChanges'),
@@ -37,7 +42,8 @@ function fakePort(overrides: Partial<JmapPort>): JmapPort {
     submitEmail: unimplemented('submitEmail'),
     getSearchSnippets: async () => ({ list: [], notFound: [] }),
     ...overrides,
-  } as JmapPort
+  } as unknown as Omit<JmapPort, 'queryEmailsWithEnvelopes'>
+  return withBatchedQuery(base)
 }
 
 const query = (ids: string[], queryState: string, total: number): QueryResult => ({

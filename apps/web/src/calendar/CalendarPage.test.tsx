@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import type { Calendar, CalendarEvent, CalendarEventFilter, Id } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RouterProvider } from '../app/route'
+import { SessionContext } from '../app/session/context'
+import type { SessionContextValue } from '../app/session/types'
 import {
   canonicalCalendarQueryKey,
   putCalendarEvents,
@@ -1161,5 +1163,102 @@ describe('the calendar list', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Calendars…' }))
 
     expect(await screen.findByRole('checkbox', { name: 'Work' })).toBeInTheDocument()
+  })
+})
+
+/*
+ * B56 — the share dialog must be a VIEW of the calendar list, not a copy of one of its rows.
+ *
+ * `sharing` used to hold the `Calendar` object captured when the row was clicked. `onChanged`
+ * re-reads the list, but a snapshot is not part of that list and never hears about it — so a grant
+ * that landed while the dialog was open, or between the click and the re-read arriving, left the
+ * dialog rendering `shareWith: {}` under "Who has access": **"Only you."**, for a calendar the
+ * server had already shared.
+ *
+ * Reproduced against the live fixture before it was changed, and the transcript is unambiguous:
+ * `Calendar/set` writes the grant, both following `Calendar/get`s return it, the rail redraws with
+ * its "Shared" marker — and the dialog beside it still says "Only you.". A reader would conclude the
+ * grant was lost and grant it again.
+ *
+ * The dialog is STUBBED rather than driven: what is under test is which object the screen hands it,
+ * not what the dialog does with one. The stub prints the prop so the assertion can read it.
+ */
+vi.mock('../sharing/CalendarShareDialog', () => ({
+  default: ({
+    shareWith,
+    onChanged,
+  }: {
+    shareWith: Record<string, unknown> | null | undefined
+    onChanged: () => void
+  }) => (
+    <div data-testid="share-dialog">
+      {`shareWith:${Object.keys(shareWith ?? {}).join(',') || 'none'}`}
+      <button type="button" onClick={onChanged}>
+        stub: changed
+      </button>
+    </div>
+  ),
+}))
+
+describe('the share dialog reads the live calendar (B56)', () => {
+  /** The file's fixture carries no `mayShare`, and without it the row has no Share button at all. */
+  const SHAREABLE = {
+    ...CALENDAR,
+    myRights: { ...CALENDAR.myRights, mayShare: true },
+  } as unknown as Calendar
+  const SHARED = {
+    ...SHAREABLE,
+    shareWith: { 'p-carol': { mayReadFreeBusy: true } },
+  } as unknown as Calendar
+
+  // The offline block above pins `navigator.onLine` false and never puts it back, and the share
+  // affordance is gated on being online — so without this the row simply has no Share button and
+  // the test fails on its own setup rather than on its subject.
+  beforeEach(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  })
+
+  function renderWithSession(c: CalendarClient) {
+    db = freshDb()
+    setEngineFor(ACC, fakeEngine(c))
+    void putCalendars(db, ACC, [CALENDAR]).catch(() => {})
+    const value = {
+      connected: {
+        client: { call: async () => ({ get: () => ({ list: [] }) }) },
+        accountId: ACC,
+        accounts: [],
+        delegated: [],
+        jmapSession: { accounts: { [ACC]: { accountCapabilities: {} } } },
+      },
+    } as unknown as SessionContextValue
+    return render(
+      <SessionContext.Provider value={value}>
+        <RouterProvider>
+          <ToastProvider>
+            <ReplicaProvider accountId={ACC} db={db}>
+              <CalendarPage client={c} today={TODAY} />
+            </ReplicaProvider>
+          </ToastProvider>
+        </RouterProvider>
+      </SessionContext.Provider>,
+    )
+  }
+
+  it('shows a grant that lands AFTER the dialog was opened', async () => {
+    let shared = false
+    const c = client({ listCalendars: async () => [shared ? SHARED : SHAREABLE] })
+    renderWithSession(c)
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: /^Share / }))
+    expect(await screen.findByTestId('share-dialog')).toHaveTextContent('shareWith:none')
+
+    // The grant lands and the list is re-read — exactly what `onChanged` does.
+    shared = true
+    await user.click(screen.getByRole('button', { name: 'stub: changed' }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('share-dialog')).toHaveTextContent('shareWith:p-carol'),
+    )
   })
 })

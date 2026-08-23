@@ -15,7 +15,11 @@ function fakeClient(script: Script): { client: JmapClient; calls: RecordedCall[]
       const pending: { handle: object; methodDef: unknown; args: Record<string, unknown> }[] = []
       return {
         invoke(methodDef: unknown, args: Record<string, unknown>) {
-          const handle = {}
+          // `ref` is what a back-reference is built from (RFC 8620 §3.7); a handle without it cannot
+          // express "the ids the previous call returned", which is the whole of B55's batching.
+          const handle = {
+            ref: (path: string) => ({ resultOf: `c${pending.length}`, name: 'ref', path }),
+          }
           pending.push({ handle, methodDef, args })
           return handle
         },
@@ -451,5 +455,37 @@ describe('createJmapPort', () => {
       notUpdated: {},
       notDestroyed: { c2: { type: 'notFound' } },
     })
+  })
+
+  /*
+   * B55 — the commonest shape in this client is "which ids, then what is in them", and it used to
+   * cost two round-trips because the `Email/get` could not start until the `Email/query` had come
+   * back. RFC 8620 §3.7 exists precisely so it does not have to: `#ids` names the query's result and
+   * the SERVER resolves it between the two calls of ONE request.
+   *
+   * Asserted as the wire shape rather than as a timing, because that is what is actually being
+   * claimed: one request, two method calls, and the second addressing the first by reference rather
+   * than by a list of ids the client had to wait for.
+   */
+  it('asks for a window and its envelopes in ONE request, by back-reference (B55)', async () => {
+    const { client, calls } = fakeClient((methodDef) =>
+      methodDef === Methods.emailQuery
+        ? { ids: ['e1', 'e2'], queryState: 'q1', canCalculateChanges: true, position: 0, total: 2 }
+        : { list: [{ id: 'e1' }, { id: 'e2' }], notFound: [], state: 's1' },
+    )
+    const port = createJmapPort(client, ACC)
+
+    const result = await port.queryEmailsWithEnvelopes({ filter: { inMailbox: 'inbox' }, limit: 2 })
+
+    expect(calls).toHaveLength(2)
+    expect(calls[0]?.methodDef).toBe(Methods.emailQuery)
+    expect(calls[1]?.methodDef).toBe(Methods.emailGet)
+    // The `get` carries NO `ids` of its own — it points at the query's, which is the point.
+    expect(calls[1]?.args.ids).toBeUndefined()
+    expect(calls[1]?.args['#ids']).toEqual(expect.objectContaining({ path: '/ids' }))
+    // …and both halves come back, because the caller needs the query state as well as the rows.
+    expect(result.query.ids).toEqual(['e1', 'e2'])
+    expect(result.query.total).toBe(2)
+    expect(result.envelopes.list.map((email) => email.id)).toEqual(['e1', 'e2'])
   })
 })
