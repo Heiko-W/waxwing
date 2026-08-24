@@ -3,9 +3,12 @@ import {
   Fragment,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react'
@@ -36,11 +39,42 @@ export interface MenuItemSpec {
   group?: string
 }
 
+/** The imperative surface of {@link Menu}. */
+export interface MenuHandle {
+  /** Open the popup at a viewport point, focusing its first enabled item. */
+  openAt(x: number, y: number): void
+}
+
 export interface MenuProps {
   /** Accessible name for the trigger button. */
   triggerLabel: string
-  /** Visible trigger content (icon and/or text). */
-  trigger: ReactNode
+  /**
+   * Visible trigger content (icon and/or text).
+   *
+   * `null` renders no button at all — the popup then belongs entirely to {@link contextTarget}, and
+   * the menu is reached by a secondary click. Every command in such a menu must also exist in the
+   * main interface (HIG `context-menus`: "Always make context menu items available in the main
+   * interface, too"), because a menu with no visible affordance is a menu nobody discovers.
+   */
+  trigger: ReactNode | null
+  /**
+   * Also open this menu on a secondary click (right-click, two-finger tap, Shift+F10 / the menu
+   * key) anywhere inside this element.
+   *
+   * `onContextMenu` did not appear once in the source tree before this. HIG `pointing-devices` lists
+   * secondary click as "Reveal contextual menus" for both macOS pointer devices, and `context-menus`
+   * uses a Mail message in the Inbox as its worked example.
+   */
+  contextTarget?: RefObject<HTMLElement | null> | (() => HTMLElement | null)
+  /**
+   * Open the popup at a point, from the outside.
+   *
+   * For a list whose rows share ONE menu: the row under the pointer decides what the items are, so
+   * the caller has to set that first and open in the effect that follows. Subscribing a listener
+   * per row instead would mean one live-query subscription per visible row for the rights each item
+   * gates on — see the note in MessageList.
+   */
+  ref?: Ref<MenuHandle>
   items: MenuItemSpec[]
   /** Which trigger edge the menu aligns to. Default 'start'. */
   align?: 'start' | 'end'
@@ -107,11 +141,13 @@ function estimatedBlock(items: readonly MenuItemSpec[]): number {
 export function Menu({
   triggerLabel,
   trigger,
+  contextTarget,
   items,
   align = 'start',
   className,
   triggerTabIndex,
   triggerVariant = 'default',
+  ref,
 }: MenuProps) {
   const triggerId = useId()
   const menuId = useId()
@@ -133,6 +169,34 @@ export function Menu({
   const menuBlock = estimatedBlock(items)
   const firstEnabled = items.findIndex((item) => !item.disabled)
   const lastEnabled = items.reduce((last, item, index) => (item.disabled ? last : index), -1)
+
+  /**
+   * Open at a POINT rather than against the trigger — the context-menu path.
+   *
+   * Same flip and ceiling logic as below, with a 1x1 rect standing in for the trigger, so a menu
+   * summoned near the bottom of the window behaves exactly like one opened from a button there.
+   */
+  const openAt = useCallback(
+    (x: number, y: number, toIndex: number) => {
+      const below = window.innerHeight - y - MENU_GAP
+      const above = y - MENU_GAP
+      const flip = menuBlock > below && above > below
+      setCoords({
+        top: flip ? y - MENU_GAP : y + MENU_GAP,
+        left: x,
+        flipped: flip,
+        maxBlock: Math.max(flip ? above : below, 0),
+      })
+      setFocusedIndex(toIndex)
+      setOpen(true)
+    },
+    [menuBlock],
+  )
+
+  useImperativeHandle(ref, () => ({ openAt: (x, y) => openAt(x, y, firstEnabled) }), [
+    openAt,
+    firstEnabled,
+  ])
 
   const openMenu = useCallback(
     (toIndex: number) => {
@@ -180,8 +244,49 @@ export function Menu({
 
   const close = useCallback(() => {
     setOpen(false)
-    triggerRef.current?.focus()
-  }, [])
+    // Back where it came from: the trigger when there is one, otherwise the row that was
+    // right-clicked — closing a menu must never drop focus to <body>, which sends the next Tab to
+    // the top of the document (WCAG 2.4.3).
+    const restore =
+      triggerRef.current ??
+      (typeof contextTarget === 'function' ? contextTarget() : contextTarget?.current)
+    restore?.focus()
+  }, [contextTarget])
+
+  /*
+   * The secondary-click seam.
+   *
+   * `preventDefault()` is the deliberate part: the browser's own menu is suppressed here, so this
+   * one must carry the two entries a reader can lose by that ("open in a new tab", "copy link") if
+   * the target has a URL — the callers that pass those do. Shift+right-click is let through
+   * untouched, which is the platform's own escape hatch back to the browser menu.
+   *
+   * Shift+F10 and the Menu key are the keyboard equivalents and are dispatched by the browser as a
+   * `contextmenu` event on the focused element, so they arrive here for free — a keyboard user gets
+   * the same commands, which is what makes this an addition rather than a pointer-only shortcut.
+   */
+  useEffect(() => {
+    // A ref OR a getter. The getter form exists for rows built in a `.map()`, where a per-row
+    // `useRef` is not available and the element lives in the list's own ref map.
+    const node = typeof contextTarget === 'function' ? contextTarget() : contextTarget?.current
+    if (!node) return
+    const onContextMenu = (event: MouseEvent): void => {
+      if (event.shiftKey) return
+      event.preventDefault()
+      // A keyboard-raised menu reports (0, 0) or the element's corner; anchor those to the element
+      // rather than to the top-left of the window.
+      const point =
+        event.clientX === 0 && event.clientY === 0
+          ? (() => {
+              const rect = node.getBoundingClientRect()
+              return { x: rect.left, y: rect.bottom }
+            })()
+          : { x: event.clientX, y: event.clientY }
+      openAt(point.x, point.y, firstEnabled)
+    }
+    node.addEventListener('contextmenu', onContextMenu)
+    return () => node.removeEventListener('contextmenu', onContextMenu)
+  }, [contextTarget, openAt, firstEnabled])
 
   // Move focus to the newly-focused menu item after it renders.
   useEffect(() => {
@@ -284,33 +389,37 @@ export function Menu({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        id={triggerId}
-        type="button"
-        aria-label={triggerLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
-        className={cx(
-          styles.trigger,
-          triggerVariant === 'ghost' && styles.triggerGhost,
-          triggerVariant === 'toolbar' && styles.triggerToolbar,
-          className,
-        )}
-        onClick={() => (open ? close() : openMenu(firstEnabled))}
-        onKeyDown={onTriggerKeyDown}
-      >
-        {trigger}
-      </button>
+      {trigger === null ? null : (
+        <button
+          ref={triggerRef}
+          id={triggerId}
+          type="button"
+          aria-label={triggerLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
+          className={cx(
+            styles.trigger,
+            triggerVariant === 'ghost' && styles.triggerGhost,
+            triggerVariant === 'toolbar' && styles.triggerToolbar,
+            className,
+          )}
+          onClick={() => (open ? close() : openMenu(firstEnabled))}
+          onKeyDown={onTriggerKeyDown}
+        >
+          {trigger}
+        </button>
+      )}
       {open ? (
         <Portal>
           <div
             ref={menuRef}
             id={menuId}
             role="menu"
-            aria-labelledby={triggerId}
+            {...(trigger === null
+              ? { 'aria-label': triggerLabel }
+              : { 'aria-labelledby': triggerId })}
             className={cx(
               styles.menu,
               align === 'end' && styles.alignEnd,

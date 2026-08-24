@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import { Menu, type MenuItemSpec } from './Menu'
@@ -304,5 +305,74 @@ describe('Menu — group separators', () => {
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Delete' }))
     await user.keyboard('{Home}')
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'New' }))
+  })
+})
+
+/**
+ * The secondary click (D-01).
+ *
+ * `onContextMenu` did not appear once in the source tree. HIG `pointing-devices` lists secondary
+ * click as "Reveal contextual menus" for every macOS pointing device, and `context-menus` uses this
+ * app's exact case as its worked example — "the context menu for a Mail message in the Inbox
+ * includes commands for replying and moving the message". A right-click on a message, a folder, a
+ * label or a file got the browser's menu and nothing about the thing under the pointer.
+ *
+ * Two things here are load-bearing beyond "a menu opens". Shift+right-click must still reach the
+ * browser, because that is the platform's own escape hatch and taking it would make the app the
+ * only place a reader cannot get at "copy link". And a keyboard-raised menu (Shift+F10, the Menu
+ * key) arrives as a `contextmenu` event at (0, 0) — anchoring that to the top-left of the window
+ * would put the menu nowhere near the row it belongs to.
+ */
+describe('Menu — the secondary click', () => {
+  function ContextFixture({ withTrigger = false }: { withTrigger?: boolean }) {
+    const rowRef = useRef<HTMLDivElement>(null)
+    return (
+      <div ref={rowRef} data-testid="row">
+        a row
+        <Menu
+          triggerLabel="Row actions"
+          trigger={withTrigger ? '⋯' : null}
+          contextTarget={rowRef}
+          items={[{ id: 'archive', label: 'Archive', onSelect: () => {} }]}
+        />
+      </div>
+    )
+  }
+
+  it('opens on a secondary click inside the target', () => {
+    render(<ContextFixture />)
+    fireEvent.contextMenu(screen.getByTestId('row'), { clientX: 120, clientY: 240 })
+    expect(screen.getByRole('menu', { name: 'Row actions' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+  })
+
+  it('renders no button when there is no trigger', () => {
+    // A context-only menu must not add a tab stop to every row it is attached to.
+    render(<ContextFixture />)
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('leaves Shift+secondary-click to the browser', () => {
+    render(<ContextFixture />)
+    const event = createEvent.contextMenu(screen.getByTestId('row'), { shiftKey: true })
+    fireEvent(screen.getByTestId('row'), event)
+    expect(event.defaultPrevented, 'the app took the browser menu away').toBe(false)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('suppresses the browser menu when it opens its own', () => {
+    render(<ContextFixture />)
+    const event = createEvent.contextMenu(screen.getByTestId('row'), { clientX: 10, clientY: 10 })
+    fireEvent(screen.getByTestId('row'), event)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('still opens from its own trigger when it has one', () => {
+    // The folder tree and the label list keep their visible ⋯; the context menu is an addition,
+    // never a replacement — `context-menus`: "Always make context menu items available in the main
+    // interface, too."
+    render(<ContextFixture withTrigger />)
+    fireEvent.click(screen.getByRole('button', { name: 'Row actions' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
   })
 })

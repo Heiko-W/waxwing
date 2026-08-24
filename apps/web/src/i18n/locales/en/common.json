@@ -861,11 +861,14 @@
         "none": "No address book you can write to."
       },
       "import": {
-        "heading": "Import",
+        "cancel": "Stop",
         "choose": "Choose a file (.vcf or .json)",
-        "parsing": "Reading file…",
         "confirm_one": "Import {{count}} contact",
-        "confirm_other": "Import {{count}} contacts"
+        "confirm_other": "Import {{count}} contacts",
+        "heading": "Import",
+        "parsing": "Reading file…",
+        "progress": "{{done}} of {{total}}",
+        "progressLabel": "Import progress"
       },
       "export": {
         "heading": "Export",
@@ -1040,17 +1043,20 @@
     "selected": "{{count}} selected",
     "clearSelection": "Clear selection",
     "actions": {
-      "read": "Mark as read",
-      "unread": "Mark as unread",
-      "flag": "Flag",
-      "unflag": "Unflag",
       "archive": "Archive",
-      "junk": "Mark as junk",
-      "notJunk": "Not junk",
-      "trash": "Move to Trash",
       "delete": "Delete",
+      "flag": "Flag",
+      "junk": "Mark as junk",
+      "menu": "Message actions",
+      "more": "More actions for the selection",
       "move": "Move to…",
-      "more": "More actions for the selection"
+      "notJunk": "Not junk",
+      "open": "Open",
+      "openFull": "Open full screen",
+      "read": "Mark as read",
+      "trash": "Move to Trash",
+      "unflag": "Unflag",
+      "unread": "Mark as unread"
     },
     "sort": {
       "label": "Sort",

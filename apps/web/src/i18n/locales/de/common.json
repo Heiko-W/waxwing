@@ -861,11 +861,14 @@
         "none": "Kein Adressbuch mit Schreibrecht vorhanden."
       },
       "import": {
-        "heading": "Importieren",
+        "cancel": "Anhalten",
         "choose": "Datei auswählen (.vcf oder .json)",
-        "parsing": "Datei wird gelesen…",
         "confirm_one": "{{count}} Kontakt importieren",
-        "confirm_other": "{{count}} Kontakte importieren"
+        "confirm_other": "{{count}} Kontakte importieren",
+        "heading": "Importieren",
+        "parsing": "Datei wird gelesen…",
+        "progress": "{{done}} von {{total}}",
+        "progressLabel": "Importfortschritt"
       },
       "export": {
         "heading": "Exportieren",
@@ -1040,17 +1043,20 @@
     "selected": "{{count}} ausgewählt",
     "clearSelection": "Auswahl aufheben",
     "actions": {
-      "read": "Als gelesen markieren",
-      "unread": "Als ungelesen markieren",
-      "flag": "Markieren",
-      "unflag": "Markierung entfernen",
       "archive": "Archivieren",
-      "junk": "Als Spam markieren",
-      "notJunk": "Kein Spam",
-      "trash": "In den Papierkorb",
       "delete": "Löschen",
+      "flag": "Markieren",
+      "junk": "Als Spam markieren",
+      "menu": "Nachrichtenaktionen",
+      "more": "Weitere Aktionen für die Auswahl",
       "move": "Verschieben nach…",
-      "more": "Weitere Aktionen für die Auswahl"
+      "notJunk": "Kein Spam",
+      "open": "Öffnen",
+      "openFull": "Im Vollbild öffnen",
+      "read": "Als gelesen markieren",
+      "trash": "In den Papierkorb",
+      "unflag": "Markierung entfernen",
+      "unread": "Als ungelesen markieren"
     },
     "sort": {
       "label": "Sortieren",

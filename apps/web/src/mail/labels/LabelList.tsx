@@ -140,6 +140,11 @@ export function LabelList({
                   // column of identical entries and voice control has nothing to disambiguate on.
                   triggerLabel={t('labels.actions.menu', { name: label.name })}
                   trigger={<Ellipsis aria-hidden="true" className={styles.check} />}
+                  // …and the same commands on a secondary click anywhere in the row, like the
+                  // folder tree beside it. Consistency is the rule here, not a nicety: HIG
+                  // `context-menus` — "If you provide context menus for items in some places but
+                  // not in others, people won't know where they can use the feature."
+                  contextTarget={() => itemRefs.current.get(label.keyword) ?? null}
                   items={menuItems}
                   triggerTabIndex={label.keyword === tabbable ? 0 : -1}
                 />

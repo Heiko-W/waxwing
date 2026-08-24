@@ -60,6 +60,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [031](031-the-fixture-throttle-was-measuring-the-harness.md) | The fixture's rate limit was measuring the harness, not the app | accepted |
 | [032](032-a-window-is-one-request.md) | A window is one request; the sync pass stays one queue | accepted |
 | [033](033-the-pwa-launch-screen-cannot-follow-the-system-theme.md) | The PWA launch screen cannot follow the system theme, so it stays light and says so | accepted |
+| [034](034-upload-progress-is-not-available-behind-the-fetch-seam.md) | Upload progress is not available behind the `fetch` seam; the chip states the size instead | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

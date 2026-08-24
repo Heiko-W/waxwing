@@ -314,6 +314,10 @@ export function FolderTreeView({
                       name: folderDisplayName(mailbox, t),
                     })}
                     trigger={<Ellipsis aria-hidden="true" className={styles.icon} />}
+                    // …and the same commands on a secondary click anywhere in the row. The ⋯ button
+                    // is only visible on hover (folder-tree.module.css), so on a Mac the menu was
+                    // reachable by pointing at exactly the right 34 px and in no other way.
+                    contextTarget={() => itemRefs.current.get(mailbox.id) ?? null}
                     items={menuItems}
                     // Keep the tree a single tab stop: only the active row's action button is tabbable.
                     triggerTabIndex={mailbox.id === tabbableId ? 0 : -1}
