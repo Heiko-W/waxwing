@@ -117,8 +117,9 @@
   "status": {
     "offline": "Offline",
     "sync": {
+      "error": "Sync problem — retrying",
       "syncing": "Syncing…",
-      "error": "Sync problem — retrying"
+      "updated": "Updated {{when}}"
     },
     "outbox": {
       "stuck_one": "Still trying to reach the server ({{count}})",

@@ -37,6 +37,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { FULL_PARAM, mailHrefKeepingQuery, useNavigate, useRoute } from '../app/route'
 import { useSession } from '../app/session/context'
+import { useLayoutTier } from '../app/shell/layout'
 import {
   buildReplyDraft,
   forwardAttachments,
@@ -911,6 +912,81 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     [barActions, visibleActions, overflowItems],
   )
 
+  /*
+   * WHERE the actions sit, which is not the same question on a phone.
+   *
+   * On a tablet or a desktop this row is the first thing under the header and stays in view,
+   * because the pane is tall and the reader's hand is on a pointer. On a 390 x 844 phone it is in
+   * the top third — the zone furthest from a thumb — and it is a plain block INSIDE the scrolling
+   * conversation, so after reading a normal message it is off the screen entirely. The only bar
+   * that stays put there carries the way back and nothing else, there are no keyboard shortcuts,
+   * and the row swipe covers three actions out of eleven.
+   *
+   * HIG `designing-for-ios`: "it tends to be easier and more comfortable for people to reach a
+   * control when it's located in the middle or bottom area of the display"; `toolbars`: "A toolbar
+   * consists of one or more sets of controls arranged horizontally along the top OR BOTTOM edge of
+   * the view."
+   *
+   * Moved in the DOM rather than with `order` in CSS, deliberately. Flexbox `order` would do this
+   * in one line and would leave the tab order running through a row drawn at the other end of the
+   * screen (WCAG 2.4.3) — the visual and the focus order have to agree, and on a phone "read, then
+   * act" is the honest sequence anyway.
+   */
+  const actionBarPlacement = useLayoutTier() === 'phone' ? 'end' : 'start'
+  /*
+   * B20.2: the role was here with none of the keyboard model behind it, so a screen reader
+   * announced "toolbar" and arrow keys did nothing — while eleven controls each took their own tab
+   * stop. `useToolbarRoving` supplies the model the role promises.
+   *
+   * ONE row, always (B49), and at most PRIMARY_ACTIONS of them. The wider gap where the
+   * meaning-family changes is C5's fix, restored: B49 removed the group wrappers along with the ten
+   * glyphs that made them necessary, but the measuring version kept showing all eleven wherever
+   * they fit, so the strip came back at desktop widths. The gap is an attribute rather than a
+   * wrapper because the row has to stay a flat list of buttons for `useToolbarRoving`.
+   */
+  const actionBar = (
+    <div
+      ref={actionBarRef}
+      className={styles.actionBar}
+      role="toolbar"
+      aria-label={t('reading.actions')}
+      {...actionBarKeys}
+    >
+      {barActions.slice(0, visibleActions).map((action, index, shown) => (
+        <IconButton
+          key={action.id}
+          // First of its family, and not first overall: the gap goes BEFORE it.
+          data-group-start={index > 0 && shown[index - 1]?.group !== action.group ? '' : undefined}
+          // Only the label picker takes a ref, and it needs one: its popover positions against
+          // this button and returns focus to it on close.
+          ref={action.popover === true ? labelButtonRef : null}
+          label={action.label}
+          variant="ghost"
+          disabled={action.disabled}
+          unavailableReason={action.unavailableReason}
+          aria-haspopup={action.popover === true ? 'menu' : undefined}
+          aria-expanded={action.popover === true ? labelsOpen : undefined}
+          onClick={action.onSelect}
+        >
+          <action.icon className={action.iconClassName} />
+        </IconButton>
+      ))}
+      {/* Wrapped rather than given `className` directly — the same shape FolderTreeView uses, and
+          the span is what the `@media print` rule hides. It also carries the attribute the
+          overflow measurement finds one control by, and the ref the label popover falls back to
+          when its own button is inside this menu. */}
+      <span className={styles.overflowMenu} ref={overflowRef} {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}>
+        <Menu
+          triggerLabel={t('reading.more')}
+          trigger={<Ellipsis aria-hidden="true" />}
+          align="end"
+          triggerVariant="toolbar"
+          items={menuItems}
+        />
+      </span>
+    </div>
+  )
+
   return (
     <article className={styles.message} aria-label={email.subject || t('list.noSubject')}>
       <header className={styles.header}>
@@ -1045,61 +1121,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         </div>
       </header>
 
-      {/* B20.2: the role was here with none of the keyboard model behind it, so a screen reader
-          announced "toolbar" and arrow keys did nothing — while eleven controls each took their own
-          tab stop. `useToolbarRoving` supplies the model the role promises. */}
-      {/* ONE row, always (B49), and at most PRIMARY_ACTIONS of them. The wider gap where the
-          meaning-family changes is C5's fix, restored: B49 removed the group wrappers along with
-          the ten glyphs that made them necessary, but the measuring version kept showing all
-          eleven wherever they fit, so the strip came back at desktop widths. The gap is an
-          attribute rather than a wrapper because the row has to stay a flat list of buttons for
-          `useToolbarRoving`. */}
-      <div
-        ref={actionBarRef}
-        className={styles.actionBar}
-        role="toolbar"
-        aria-label={t('reading.actions')}
-        {...actionBarKeys}
-      >
-        {barActions.slice(0, visibleActions).map((action, index, shown) => (
-          <IconButton
-            key={action.id}
-            // First of its family, and not first overall: the gap goes BEFORE it.
-            data-group-start={
-              index > 0 && shown[index - 1]?.group !== action.group ? '' : undefined
-            }
-            // Only the label picker takes a ref, and it needs one: its popover positions against
-            // this button and returns focus to it on close.
-            ref={action.popover === true ? labelButtonRef : null}
-            label={action.label}
-            variant="ghost"
-            disabled={action.disabled}
-            unavailableReason={action.unavailableReason}
-            aria-haspopup={action.popover === true ? 'menu' : undefined}
-            aria-expanded={action.popover === true ? labelsOpen : undefined}
-            onClick={action.onSelect}
-          >
-            <action.icon className={action.iconClassName} />
-          </IconButton>
-        ))}
-        {/* Wrapped rather than given `className` directly — the same shape FolderTreeView uses, and
-            the span is what the `@media print` rule hides. It also carries the attribute the
-            overflow measurement finds one control by, and the ref the label popover falls back to
-            when its own button is inside this menu. */}
-        <span
-          className={styles.overflowMenu}
-          ref={overflowRef}
-          {...{ [OVERFLOW_TRIGGER_ATTR]: '' }}
-        >
-          <Menu
-            triggerLabel={t('reading.more')}
-            trigger={<Ellipsis aria-hidden="true" />}
-            align="end"
-            triggerVariant="toolbar"
-            items={menuItems}
-          />
-        </span>
-      </div>
+      {actionBarPlacement !== 'end' && actionBar}
 
       {hasRemoteContent && !allowRemote && (
         <RemoteContentBanner
@@ -1288,6 +1310,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           <p>{t('reading.confirmDeleteBody')}</p>
         </Dialog>
       )}
+
+      {actionBarPlacement === 'end' && actionBar}
     </article>
   )
 }

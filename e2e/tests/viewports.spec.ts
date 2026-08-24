@@ -351,11 +351,19 @@ test('the folder rail hides on a desktop, by button and by shortcut, and stays h
   // The name follows the state — it used to read "Show folders" while `aria-expanded` said true.
   await expect(page.getByRole('button', { name: 'Show folders' })).toBeVisible()
 
-  await page.reload()
-  await expect(messageList(page)).toBeVisible({ timeout: SYNC_BUDGET_MS })
-  await expect(folders, 'the choice did not survive a reload').toBeHidden()
+  // The choice is written down, not just held in a component.
+  //
+  // Asserted through storage rather than by reloading: a reload here needs the "stay signed in"
+  // path (without it the token lives only in memory, NFR-SEC-02, and the page lands back on the
+  // sign-in screen — see read.spec.ts), and that is a different test's subject. What restores the
+  // value on the next boot is covered by app/shell/layout.test.ts.
+  expect(
+    await page.evaluate(() => localStorage.getItem('waxwing.folderRail')),
+    'the choice was never written down',
+  ).toBe('false')
 
   // …and the second way back, which is what `split-views` asks for by name.
   await page.locator('body').press('b')
   await expect(folders).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('waxwing.folderRail'))).toBe('true')
 })

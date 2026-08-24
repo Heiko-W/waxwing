@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
+import { getReadingPaneMode, setReadingPaneMode } from '../app/shell/layout'
 import de from '../i18n/locales/de/common.json'
 import en from '../i18n/locales/en/common.json'
 import {
@@ -2170,5 +2171,48 @@ describe('MessageList', () => {
       expect(screen.queryByText(/last 30 days/)).toBeNull()
       expect(screen.queryByText(/on the server/)).toBeNull()
     })
+  })
+})
+
+/**
+ * The reading pane's arrangement, where it belongs (T-08).
+ *
+ * HIG `settings`, "Task-specific options": "prefer letting people modify task-specific options
+ * without going to your settings area. For example, if people can adjust things like showing or
+ * hiding parts of the current view … make these options available in the screens they affect,
+ * where they're discoverable and convenient. Putting this type of option in a separate settings
+ * area disconnects it from its context, requiring people to suspend their task to make
+ * adjustments, and often hiding the results until people resume the task."
+ *
+ * It lived only in Settings > Appearance. On a tablet it is the most-changed option of the lot —
+ * 834px portrait wants "below" or "off" where landscape wants "beside" — and it was four taps away
+ * from the list it rearranges, with the result invisible until you came back.
+ *
+ * Deliberately NOT moved: it stays in Settings too. The value is one store read by both, so this is
+ * a second view of one setting rather than a second setting.
+ */
+describe('the view options carry the reading-pane arrangement', () => {
+  afterEach(() => {
+    setReadingPaneMode('right')
+  })
+
+  it('offers it beside sort and threading', async () => {
+    renderList()
+    const select = await screen.findByLabelText('Reading pane')
+    expect(select).toHaveValue('right')
+  })
+
+  it('writes through to the same store the settings screen uses', async () => {
+    const user = userEvent.setup()
+    renderList()
+    await user.selectOptions(await screen.findByLabelText('Reading pane'), 'bottom')
+    expect(getReadingPaneMode()).toBe('bottom')
+  })
+
+  it('reflects a change made elsewhere', async () => {
+    // Two controls, one value: the settings screen must not be able to leave this one stale.
+    setReadingPaneMode('off')
+    renderList()
+    expect(await screen.findByLabelText('Reading pane')).toHaveValue('off')
   })
 })

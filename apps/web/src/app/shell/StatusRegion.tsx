@@ -12,17 +12,39 @@
  */
 
 import { CloudOff, Loader2, TriangleAlert, WifiOff } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatRelativeTime } from '../../i18n/formatters'
 import { useEngineStatus } from '../../sync/engine'
 import { useOnline } from '../use-online'
 import styles from './shell.module.css'
+
+/** How often the "updated …" line re-reads the clock. */
+const TICK_MS = 60_000
+
+/**
+ * A minute hand for the relative timestamp.
+ *
+ * Without it the line is written once and then lies for the rest of the session — "updated just
+ * now" an hour later is worse than saying nothing, because it is the same sentence the app would
+ * use if it HAD just synced. One interval per shell, only while there is something to re-read.
+ */
+function useMinuteTick(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    const timer = setInterval(() => setNow(Date.now()), TICK_MS)
+    return () => clearInterval(timer)
+  }, [active])
+  return now
+}
 
 type Alert = 'offline' | 'error' | 'stuck' | null
 
 export function StatusRegion() {
   const { t } = useTranslation()
   const online = useOnline()
-  const { phase, stuckActions } = useEngineStatus()
+  const { phase, stuckActions, lastSyncedAt } = useEngineStatus()
 
   // Precedence: offline > error > stuck. Being offline already explains a stalled queue, and a sync
   // error is the more actionable of the two, so only announce "still trying" when neither applies.
@@ -43,8 +65,29 @@ export function StatusRegion() {
           ? `${styles.status} ${styles.statusOffline}`
           : styles.status
 
+  /*
+   * At rest, say when the mail last arrived (HIG `feedback`: "Consider integrating status feedback
+   * into your interface. … Mail in iOS and iPadOS describes the most recent update … making the
+   * information unobtrusive but easy for people to check").
+   *
+   * The value has existed since M1.3 — `lastSyncedAt`, set on every completed pass and shared over
+   * the tab bus — and was read at exactly two places, both as a TRIGGER; no surface showed it. In
+   * the idle state this region rendered nothing at all, so "is this list current?" had no answer
+   * anywhere in the app short of watching the spinner go by.
+   *
+   * Not in the live region: this is not an alert, and a screen reader repeating "updated 3 minutes
+   * ago" every minute would be the noise this file already refuses to make for sync itself.
+   */
+  const showUpdated = alert === null && !syncing && lastSyncedAt !== null
+  const now = useMinuteTick(showUpdated)
+
   return (
     <div className={styles.status}>
+      {showUpdated && lastSyncedAt !== null && (
+        <span className={`${styles.status} ${styles.statusUpdated}`}>
+          {t('status.sync.updated', { when: formatRelativeTime(lastSyncedAt, now) })}
+        </span>
+      )}
       {syncing && (
         <span className={styles.status}>
           <Loader2 aria-hidden="true" className={`${styles.statusIcon} ${styles.statusSpin}`} />

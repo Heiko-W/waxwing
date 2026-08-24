@@ -124,6 +124,25 @@
   font-size: var(--waxwing-text-sm);
 }
 
+/*
+ * The "updated …" line, and the one viewport it does not appear on.
+ *
+ * A phone header carries the whole mail chrome in one row — drawer toggle, folder title, view
+ * options, palette, compose, outbox, status, account menu — and it has already overflowed once
+ * (412px against a 390px viewport, B-audit). This line is a convenience on a desktop and a
+ * squeeze there, so below 40em it is not printed.
+ */
+.statusUpdated {
+  color: var(--waxwing-text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 39.999em) {
+  .statusUpdated {
+    display: none;
+  }
+}
+
 .statusOffline {
   color: var(--waxwing-warning);
 }

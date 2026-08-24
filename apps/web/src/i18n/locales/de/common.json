@@ -117,8 +117,9 @@
   "status": {
     "offline": "Offline",
     "sync": {
+      "error": "Synchronisation gestört — wird erneut versucht",
       "syncing": "Wird synchronisiert…",
-      "error": "Synchronisation gestört — wird erneut versucht"
+      "updated": "Aktualisiert {{when}}"
     },
     "outbox": {
       "stuck_one": "Server nicht erreichbar — es wird weiter versucht ({{count}})",

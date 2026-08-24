@@ -35,6 +35,13 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailHrefKeepingQuery, READING_HISTORY_MARK, useNavigate, useRoute } from '../app/route'
+import {
+  READING_PANE_MODES,
+  type ReadingPaneMode,
+  setReadingPaneMode,
+  useLayoutTier,
+  useReadingPaneMode,
+} from '../app/shell/layout'
 import { useDraftOpener } from '../compose'
 import {
   type EmailRow,
@@ -973,7 +980,27 @@ function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: To
   const { t } = useTranslation()
   const sortId = useId()
   const viewId = useId()
+  const paneId = useId()
   const reasonId = useId()
+  /*
+   * The reading pane's arrangement, in the panel that governs the view it changes.
+   *
+   * HIG `settings`, "Task-specific options": "prefer letting people modify task-specific options
+   * without going to your settings area. For example, if people can adjust things like showing or
+   * hiding parts of the current view … make these options available in the screens they affect,
+   * where they're discoverable and convenient. Putting this type of option in a separate settings
+   * area disconnects it from its context."
+   *
+   * On a tablet this is the most-changed of the lot — 834px portrait wants "below" or "off" and
+   * landscape wants "beside" — and it lived only in Settings > Appearance, four taps from the list
+   * it rearranges, with the result invisible until you came back.
+   *
+   * The same store as the settings screen (`layout.ts`), so the two controls are two views of one
+   * value rather than two values. Not a copy of the setting: it stays in Settings as well, where
+   * someone looking for it will still find it.
+   */
+  const tier = useLayoutTier()
+  const readingPane = useReadingPaneMode()
   /**
    * One gate for both halves of the promise. `disabled` makes the control inoperable — and in a
    * browser that alone stops the write, since a disabled control fires no change event — while this
@@ -1029,6 +1056,26 @@ function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: To
           <option value="flat">{t('list.view.flat')}</option>
         </Select>
       </div>
+      {/* Only where there are panes to arrange: on a phone every message is full-width whatever
+          this says, and an option that changes nothing you can see is worse than an absent one. */}
+      {tier !== 'phone' && (
+        <div className={styles.control}>
+          <label htmlFor={paneId} className={styles.controlLabel}>
+            {t('settings.appearance.readingPane.label')}
+          </label>
+          <Select
+            id={paneId}
+            value={readingPane}
+            onChange={(event) => setReadingPaneMode(event.target.value as ReadingPaneMode)}
+          >
+            {READING_PANE_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`settings.appearance.readingPane.${mode}`)}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       <Checkbox
         label={t('list.sort.unreadFirst')}
         checked={unreadFirst}

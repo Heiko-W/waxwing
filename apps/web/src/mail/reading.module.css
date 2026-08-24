@@ -333,6 +333,38 @@
   border-block-end: 1px solid var(--waxwing-border);
 }
 
+/*
+ * On a phone the actions dock to the bottom of the reading pane and stay there.
+ *
+ * The row is the LAST child of the article on this tier (MessageView decides that in the DOM, not
+ * with `order` — see the note there), so `inset-block-end: 0` pulls it UP to the bottom edge of the
+ * scroll port and holds it while the message is in view. The other way round — the row at the top
+ * of a long article with `bottom: 0` — leaves its natural slot empty and the bar floating, which is
+ * why the DOM order had to change first.
+ *
+ * Opaque, because it now has content passing underneath it, and bordered on the leading block edge
+ * rather than the trailing one: the line belongs between the bar and the message, and the message
+ * is above it here.
+ *
+ * The negative inline margin cancels `.conversation`'s own padding so the bar reaches both edges of
+ * the pane; without it the message shows through two 24px gutters beside a floating strip.
+ */
+@media (max-width: 39.999em) {
+  .actionBar {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: 1;
+    margin-inline: calc(-1 * var(--waxwing-space-5));
+    padding-inline: var(--waxwing-space-5);
+    padding-block: var(--waxwing-space-2);
+    /* The home indicator, on an installed app. 0 everywhere else. */
+    padding-block-end: calc(var(--waxwing-space-2) + var(--waxwing-safe-block-end));
+    border-block-end: 0;
+    border-block-start: 1px solid var(--waxwing-border);
+    background-color: var(--waxwing-surface);
+  }
+}
+
 /* Where the meaning-family changes: replying is not filing, and filing is not marking. Four times
    the base gap, which is the distance C5 asked for and `a685633` shipped before B49 removed the
    wrappers that carried it. As a margin on the button itself it survives the row being cut short
