@@ -23,20 +23,25 @@ import styles from './shell.module.css'
 const TICK_MS = 60_000
 
 /**
- * A minute hand for the relative timestamp.
+ * A minute hand for the relative timestamp: re-render once a minute, so the line stays true.
  *
  * Without it the line is written once and then lies for the rest of the session — "updated just
  * now" an hour later is worse than saying nothing, because it is the same sentence the app would
  * use if it HAD just synced. One interval per shell, only while there is something to re-read.
+ *
+ * It returns nothing on purpose. Holding the clock in state and reading it back is what produced
+ * "Updated in 9 seconds" on a tablet in the visual sweep: the state was captured when the shell
+ * mounted, the sync finished nine seconds later, and the label compared a fresh stamp against a
+ * stale base — so it reported the future, for up to a minute, every time. The clock belongs to the
+ * render that uses it; this hook only says WHEN to render.
  */
-function useMinuteTick(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now())
+function useMinuteTick(active: boolean): void {
+  const [, setTick] = useState(0)
   useEffect(() => {
     if (!active) return
-    const timer = setInterval(() => setNow(Date.now()), TICK_MS)
+    const timer = setInterval(() => setTick((value) => value + 1), TICK_MS)
     return () => clearInterval(timer)
   }, [active])
-  return now
 }
 
 type Alert = 'offline' | 'error' | 'stuck' | null
@@ -79,13 +84,22 @@ export function StatusRegion() {
    * ago" every minute would be the noise this file already refuses to make for sync itself.
    */
   const showUpdated = alert === null && !syncing && lastSyncedAt !== null
-  const now = useMinuteTick(showUpdated)
+  useMinuteTick(showUpdated)
 
   return (
     <div className={styles.status}>
       {showUpdated && lastSyncedAt !== null && (
         <span className={`${styles.status} ${styles.statusUpdated}`}>
-          {t('status.sync.updated', { when: formatRelativeTime(lastSyncedAt, now) })}
+          {/* The clock is read HERE, in the render that prints it, and the stamp is CLAMPED to it.
+              Both halves come from one defect, seen in the visual sweep on a tablet: "Updated in 9
+              seconds". The base was captured when the shell mounted, the sync finished nine seconds
+              later, and `Intl.RelativeTimeFormat` reported precisely what it was given — a future.
+              Reading the clock at render fixes the nine seconds; the clamp covers the millisecond
+              case, where the engine's stamp is a hair ahead of this line. A just-finished sync then
+              reads "now", which is the only true thing to say about it. */}
+          {t('status.sync.updated', {
+            when: formatRelativeTime(Math.min(lastSyncedAt, Date.now()), Date.now()),
+          })}
         </span>
       )}
       {syncing && (

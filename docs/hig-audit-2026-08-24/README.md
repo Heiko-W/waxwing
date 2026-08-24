@@ -152,6 +152,32 @@ Zwei Dinge sind bewusst NICHT behoben und tragen dafür eine Begründung: das PW
 nicht die App — und in beiden Fällen war die Alternative eine stille Umgehung einer Naht, die es
 aus gutem Grund gibt.
 
-**Was diese Liste nicht ersetzt:** ein Gerätetest. Zwölf Befunde waren als *„Nur am Gerät
-endgültig entscheidbar"* markiert; ihre Umsetzung ist am Quelltext und in der Testsuite belegt,
-aber die Wirkung auf einem echten iPhone hat niemand gesehen. Das bleibt der nächste Schritt.
+## Die Sichtprüfung, und was sie gefunden hat
+
+Nach der Umsetzung lief der visuelle Durchgang (`e2e/audit/sicht-*`, 390 / 834 / 1280 px, alle drei
+mit dem echten Fixture; die schmalen zwei mit `hasTouch`, sonst misst der Lauf 34-px-Ziele statt
+44er). 213 Aufnahmen, angesehen statt nur gezählt.
+
+Bestätigt, sichtbar: die Tablet-Schiene beschriftet ihre Symbole wieder (T-02) und die Desktop-
+Schiene nicht; „Reading pane → Beside the list" steht im Ansichtsoptionen-Panel (T-08); „Save rule"
+ist blau neben einem grauen „Cancel" (D-04); das native Datums-/Zeitfeld im dunklen Termin-Dialog
+ist **dunkel** gezeichnet (D-07); der Ordnerleisten-Umschalter existiert auf 1280 px (D-05); der
+Trenner ist eine Haarlinie (D-14); der Zurück-Knopf sagt „‹ Inbox" (P-10).
+
+**Und ein Fehler, den nur das Hinsehen gefunden hat.** Die Kopfzeile meldete auf dem Tablet
+*„Updated in 9 seconds"* — eine Zukunftsangabe. Die Uhr wurde beim Mounten der Shell gelesen und in
+State gehalten; der Sync endet neun Sekunden später, und `Intl.RelativeTimeFormat` sagt exakt, was
+man ihm gibt. Für eine ganze Minute, nach jedem Sync. Sechs Tests zu dieser Anzeige waren grün —
+sie prüfen alle „vor 3 Minuten", und das Vorzeichen kippt nur im ersten Moment. Die Uhr wird jetzt
+in dem Render gelesen, das sie druckt, und der Zeitstempel auf die Gegenwart geklemmt.
+
+Zwei Befunde im Prüfwerkzeug selbst kamen dazu, beide aus dieser Runde: `truncated()` meldete
+visuell versteckte Beschriftungen als „abgeschnitten" (fünf Zeilen Rauschen je Fläche, unter denen
+echte Abschnitte verschwinden), und `closeFolders()` schloss auf dem Desktop die Ordnerleiste,
+weil es den neuen Umschalter für den Schubladen-Umschalter hielt.
+
+**Was auch die Sichtprüfung nicht ersetzt:** ein Gerätetest. Zwölf Befunde waren als *„Nur am Gerät
+endgültig entscheidbar"* markiert. Zwei Dinge kann ein Browser hier grundsätzlich nicht zeigen: die
+Bildschirmtastatur (T-01, P-04) — headless öffnet sich keine —, und wie sich die angedockte
+Aktionsleiste an einer langen echten Mail anfühlt, weil die Nachrichten des Fixtures zu kurz zum
+Scrollen sind. Das bleibt der nächste Schritt, und er braucht ein Telefon.

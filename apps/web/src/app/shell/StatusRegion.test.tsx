@@ -128,3 +128,38 @@ describe('StatusRegion — when the mail last arrived', () => {
     }
   })
 })
+
+describe('StatusRegion — the clock never runs backwards', () => {
+  it('reads the clock at render, not at mount', async () => {
+    // The tablet defect, exactly: the shell mounts, nine seconds later a sync finishes, and a base
+    // captured at mount makes the fresh stamp a FUTURE one — "Updated in 9 seconds", for a whole
+    // minute, after every sync. Nothing about "3 minutes ago" can see this.
+    vi.useFakeTimers()
+    try {
+      status({ phase: 'idle', lastSyncedAt: Date.now() - 60_000 })
+      render(<StatusRegion />)
+      expect(screen.getByText(/1 minute ago/)).toBeInTheDocument()
+      // A sync completes nine seconds later, while the ticker has not fired.
+      await act(async () => {
+        vi.advanceTimersByTime(9_000)
+        status({ phase: 'idle', lastSyncedAt: Date.now() })
+      })
+      expect(screen.queryByText(/\bin\b/), 'the label reported a future').toBeNull()
+      expect(screen.getByText(/Updated now/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never says the mail arrived in the FUTURE', () => {
+    // `lastSyncedAt` is stamped by the engine when a pass completes; this component reads its own
+    // clock when it mounts. A sync finishing a moment after a render puts the stamp ahead of that
+    // clock, and Intl.RelativeTimeFormat then says precisely what it was given — "Updated in 1
+    // second", which is not a thing that can be true. Found in the visual sweep, not by a test:
+    // every assertion about "3 minutes ago" passes while this is broken.
+    status({ phase: 'idle', lastSyncedAt: Date.now() + 900 })
+    render(<StatusRegion />)
+    expect(screen.queryByText(/\bin\b/)).toBeNull()
+    expect(screen.getByText(/Updated now/)).toBeInTheDocument()
+  })
+})

@@ -29,12 +29,17 @@ async function closeFolders(page: Page): Promise<void> {
   const toggle = page.locator('#waxwing-folder-toggle')
   if ((await toggle.count()) === 0) return
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') return
-  // The drawer's own close button rather than Escape: it is what a finger has, and it is inside
-  // the panel, so it works whatever the focus did when the dialog above it closed.
-  await page
+  // Only a DRAWER needs putting away. Since the HIG round (D-05) the same toggle also shows and
+  // hides the PERSISTENT rail on the desktop tier — where nothing is covered, there is no close
+  // button inside the panel, and collapsing it would take away the folders the next step wants.
+  // The close button's presence is what tells the two apart; the toggle's no longer does.
+  const close = page
     .getByRole('navigation', { name: 'Folders' })
     .getByRole('button', { name: 'Hide folders', exact: true })
-    .click()
+  if ((await close.count()) === 0) return
+  // The drawer's own close button rather than Escape: it is what a finger has, and it is inside
+  // the panel, so it works whatever the focus did when the dialog above it closed.
+  await close.click()
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
 }
 
