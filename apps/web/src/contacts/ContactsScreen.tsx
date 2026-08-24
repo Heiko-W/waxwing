@@ -500,7 +500,11 @@ export function ContactsScreen() {
           <SplitPane
             orientation={layout.splitOrientation}
             label={t('contacts.list.resize')}
-            defaultPrimarySize={340}
+            // Same reasoning as the mail screen: a share of the room rather than a constant, and
+            // the size the reader chose is remembered. The list here holds a name and a secondary
+            // line, so it needs less than the message list does.
+            defaultPrimary={{ fraction: 0.32, min: 280, max: 420 }}
+            storageKey="waxwing.contactsSplit"
             minPrimarySize={260}
             maxPrimarySize={560}
           >

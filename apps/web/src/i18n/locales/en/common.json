@@ -1709,9 +1709,10 @@
         "forward": "Forward"
       },
       "app": {
-        "search": "Search",
+        "folders": "Show or hide the folders",
+        "help": "Keyboard shortcuts",
         "palette": "Command palette",
-        "help": "Keyboard shortcuts"
+        "search": "Search"
       },
       "reading": {
         "print": "Print message"

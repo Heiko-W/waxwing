@@ -13,6 +13,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { mailHrefKeepingQuery } from '../app/route'
+import { getLayoutTier, toggleFolderRail } from '../app/shell/layout'
 import { SEARCH_INPUT_ID } from '../mail/search/SearchBox'
 import type { ShortcutAction, ShortcutContext } from './types'
 
@@ -520,6 +521,28 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     paletteHidden: true,
     enabled: () => true,
     run: (context) => context.openPalette(),
+  },
+  {
+    id: 'app.folders',
+    titleKey: 'shortcuts.actions.app.folders',
+    /*
+     * The SECOND way to the folder rail, which `split-views` (macOS) asks for by name: "Provide
+     * multiple ways to reveal hidden panes. For example, you might provide a toolbar button or a
+     * menu command — including a keyboard shortcut." A web app has no menu bar to fall back on, so
+     * the toolbar button and this are the two.
+     *
+     * A bare letter rather than a chord, like every other view command in this app. `b` is free
+     * (the registry's 22 other bindings are listed above), it is what a desktop app of this shape
+     * usually uses for a sidebar, and a bare letter is silenced while the reader is typing — which
+     * a chord would not be.
+     */
+    keys: ['b'],
+    scopes: ['global'],
+    group: 'application',
+    // Below 64em the rail is a drawer with its own state and its own visible control; toggling the
+    // desktop preference there would change nothing on screen and something on the next reload.
+    enabled: () => getLayoutTier() === 'desktop',
+    run: () => toggleFolderRail(),
   },
   {
     id: 'app.help',

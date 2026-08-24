@@ -116,6 +116,8 @@
  * menu, and the folder menu now has two of them.
  */
 .separator {
+  /* `<hr>` brings its own inset border and block margin; both are replaced here. */
+  border: 0;
   block-size: 1px;
   margin-block: var(--waxwing-space-1);
   margin-inline: var(--waxwing-space-2);

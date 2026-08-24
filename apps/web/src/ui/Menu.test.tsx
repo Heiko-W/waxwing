@@ -284,9 +284,7 @@ describe('Menu — group separators', () => {
     // folder may not take children; the rule must still fall between Rename and Share.
     await openWith([item('Rename', 'structure'), item('Share', 'content'), item('Info', 'content')])
     const menu = screen.getByRole('menu')
-    const rows = [...menu.children].map((node) =>
-      node.getAttribute('role') === 'separator' ? '—' : node.textContent,
-    )
+    const rows = [...menu.children].map((node) => (node.tagName === 'HR' ? '—' : node.textContent))
     expect(rows).toEqual(['Rename', '—', 'Share', 'Info'])
   })
 

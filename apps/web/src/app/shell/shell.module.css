@@ -451,6 +451,16 @@
 
 /* Which list this is. Takes the slack so the two buttons sit at the ends, and truncates rather than
    wrapping — a folder name is user data with no length limit. */
+/* The reading pane's way back carries the LIST's name, which is user data on a label route and a
+   folder name the server chose otherwise — so it truncates rather than pushing the row wide. On a
+   phone this button is the only thing in the shell header. */
+.backTarget {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .paneTitle {
   flex: 1;
   min-inline-size: 0;
@@ -609,10 +619,26 @@
     min-inline-size: var(--waxwing-control-min);
     padding: var(--waxwing-space-2);
   }
+}
 
-  /* Standard visually-hidden technique (the same one `VisuallyHidden.module.css` uses): out of
-     sight, still in the accessibility tree, and — because it is out of FLOW — taking none of the
-     width the rail just gave back. `display: none` would take the name away from the link. */
+/*
+ * …and the label goes only where something else can still say it.
+ *
+ * The rule above used to hide it at every width from 40em up, and the comment on it named the
+ * compensation: "its `title` shows it to a pointer". On a touch tablet there IS no pointer —
+ * `hover: none`, so the title never appears — and the top level of the app's navigation was five
+ * unlabelled glyphs with no way at all to find out what they were. HIG `tab-bars`: "Include tab
+ * labels to help with navigation."
+ *
+ * So the condition is not the width, it is whether the fallback exists. A trackpad or mouse keeps
+ * the narrow icon rail this was built for; a finger gets the word. The label is visually-hidden
+ * rather than removed either way, so it remains the link's accessible name in both.
+ *
+ * Standard visually-hidden technique (the same one `VisuallyHidden.module.css` uses): out of sight,
+ * still in the accessibility tree, and — because it is out of FLOW — taking none of the width the
+ * rail just gave back. `display: none` would take the name away from the link.
+ */
+@media (min-width: 40em) and (hover: hover) {
   .primaryNavLabel {
     position: absolute;
     inline-size: 1px;

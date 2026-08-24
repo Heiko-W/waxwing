@@ -1709,9 +1709,10 @@
         "forward": "Weiterleiten"
       },
       "app": {
-        "search": "Suchen",
+        "folders": "Ordnerleiste ein- oder ausblenden",
+        "help": "Tastaturkürzel",
         "palette": "Befehlspalette",
-        "help": "Tastaturkürzel"
+        "search": "Suchen"
       },
       "reading": {
         "print": "Nachricht drucken"

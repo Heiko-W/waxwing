@@ -335,13 +335,10 @@ export function Menu({
               const startsGroup = index > 0 && items[index - 1]?.group !== item.group
               return (
                 <Fragment key={item.id}>
-                  {startsGroup ? (
-                    <div
-                      role="separator"
-                      className={styles.separator}
-                      aria-orientation="horizontal"
-                    />
-                  ) : null}
+                  {/* An `<hr>`, not a `div[role=separator]`: the implicit role is the same one, and
+                      a separator with a ROLE attribute reads as the focusable window-splitter kind
+                      (which is what SplitPane draws). This one is a divider and takes no focus. */}
+                  {startsGroup ? <hr className={styles.separator} /> : null}
                   <button
                     ref={(node) => {
                       itemRefs.current[index] = node

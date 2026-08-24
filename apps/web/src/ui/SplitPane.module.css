@@ -27,13 +27,46 @@
   overflow: auto;
 }
 
+/*
+ * A HAIRLINE in a wide hit band, not a painted gutter.
+ *
+ * This used to fill its whole 24px with `--waxwing-bg`, which is a different colour from the panes
+ * on either side of it (`--waxwing-surface`): #f5f5f7 against #ffffff in light, #1c1c1e against
+ * #2c2c2e in dark. So between the list and the reading pane there was a 24px stripe of another
+ * colour at every desktop width — HIG `split-views` (macOS): "Prefer the thin divider style. The
+ * thin divider measures one point in width, giving you maximum space for content while remaining
+ * easy for people to use."
+ *
+ * The 24px stay, because they are the TARGET (WCAG 2.5.8, documented in design-system.md §2.6) —
+ * only the paint changes. `transparent` rather than `--waxwing-surface`, so the band belongs to
+ * whatever the panes are and cannot drift from them; the visible line is drawn by the pseudo
+ * element below, one pixel wide, in the token that exists for exactly this (a divider, decorative,
+ * exempt from 1.4.11 — see tokens.css).
+ */
 .separator {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--waxwing-bg);
+  background-color: transparent;
   touch-action: none;
+}
+
+.separator::before {
+  content: "";
+  position: absolute;
+  background-color: var(--waxwing-border);
+}
+
+.horizontal > .separator::before {
+  inset-block: 0;
+  inline-size: 1px;
+}
+
+.vertical > .separator::before {
+  inset-inline: 0;
+  block-size: 1px;
 }
 
 /* 24px hit band (WCAG 2.5.8 target size) around a thin visual grip. A splitter at the blanket
