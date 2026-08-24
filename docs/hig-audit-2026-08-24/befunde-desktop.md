@@ -22,6 +22,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-01 — Sekundärklick öffnet nirgends ein Kontextmenü
 
+- **Stand (2026-08-24):** Behoben. `Menu` hat einen `contextTarget` (Ref oder Getter) und einen optionalen Trigger; Ordner-, Label-, Datei- und Nachrichtenzeilen antworten auf den Sekundärklick. Umschalt+Rechtsklick bleibt beim Browser, Shift+F10 öffnet dasselbe Menü. Die Nachrichtenliste teilt sich EIN Menü fürs Raster — ein Menü je Zeile hätte je Zeile eine Live-Subscription für die Rechte gekostet.
 - **Schwere:** hoch
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `pointing-devices`, macOS-Tabelle: „Secondary click | Reveal contextual menus. |
@@ -60,6 +61,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-02 — Nur-Symbol-Bedienelemente haben auf dem Mac keinen Tooltip; die Tooltip-Komponente ist ungenutzt
 
+- **Stand (2026-08-24):** Behoben. `IconButton` gibt `label` zusätzlich als `title` aus — einmal in der Primitive statt 62-mal an den Fundstellen. Überschreibbar; auf Touch zeigt es nichts, was richtig ist.
 - **Schwere:** mittel *(korrigiert von „hoch" — jedes Element trägt ein `aria-label`, es fehlt der
   sichtbare Hinweis, nicht der zugängliche Name)*
 - **Einordnung:** uebernehmen
@@ -94,6 +96,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-03 — Formulardialoge verwerfen Eingaben bei Escape oder Klick daneben ohne Rückfrage
 
+- **Stand (2026-08-24):** Behoben. `Dialog` bekam `confirmDiscard`: Escape, Backdrop und Schliessen-Knopf fragen, sobald im Dialog etwas eingegeben wurde. Opt-in, an den fünf Formulardialogen gesetzt; einfeldrige Namensdialoge bleiben bewusst ungefragt.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `modality`: „When necessary, help people avoid data loss by getting confirmation
@@ -125,6 +128,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-04 — Der bestätigende Knopf ist in mehreren Dialogen nicht als Vorzugswahl erkennbar
 
+- **Stand (2026-08-24):** Behoben. Zwölf bestätigende Knöpfe tragen jetzt `variant="primary"`, und `button-variant.shipped.test.ts` verlangt das Attribut überall — eine Voreinstellung ist nicht überprüfbar.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `buttons`: „Assign the primary role to the button people are most likely to choose.
@@ -156,6 +160,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-05 — Die Ordnerspalte lässt sich auf Desktop-Breite weder ausblenden noch sonst verstellen
 
+- **Stand (2026-08-24):** Behoben. Der Umschalter wird auch ab 64em gerendert, die Beschriftung folgt dem Zustand, `b` ist der zweite Weg, und der Zustand liegt in `localStorage`.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `sidebars`: „Consider letting people hide the sidebar. People sometimes want to hide
@@ -192,6 +197,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-06 — Die Spaltenbreite des Split-Views überlebt kein Neuladen und folgt keinem Tier-Wechsel
 
+- **Stand (2026-08-24):** Behoben. `SplitPane` nimmt `defaultPrimary` (Anteil mit Deckel) und `storageKey`; die gezogene Breite wird als Anteil gespeichert und schlägt eine geänderte Voreinstellung.
 - **Schwere:** mittel
 - **Einordnung:** anpassen
 - **HIG-Regel:** `designing-for-macos`: „Let people resize, hide, show, and move your windows to fit
@@ -223,6 +229,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-07 — Kein `color-scheme` gesetzt: Scrollbalken, Auswahllisten und Datumsfelder bleiben im Dunkelmodus hell
 
+- **Stand (2026-08-24):** Behoben. `color-scheme` je Themenblock in `tokens.css`, geprüft von `color-scheme.css.test.ts`.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `dark-mode`: „Ensure that your app looks good in both appearance modes. In addition
@@ -256,6 +263,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-08 — Keine Farbvariante für die Systemeinstellung „Kontrast erhöhen"
 
+- **Stand (2026-08-24):** Behoben. Vier Paletten statt zwei; `prefers-contrast: more` hebt Rand, Sekundärtext, beide Zeilenzustände, Fokusring und Deaktiviert-Opazität. Die AA-Matrix läuft gegen alle vier.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `color`: „If you define a custom color, make sure to supply light and dark variants,
@@ -290,6 +298,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-09 — Der Spinner friert bei „Bewegung reduzieren" ein
 
+- **Stand (2026-08-24):** Behoben. Beide Spinner drehen unter `reduce` mit 2,4 s weiter statt stillzustehen; der universelle Reset bleibt unangetastet.
 - **Schwere:** mittel
 - **Einordnung:** anpassen
 - **HIG-Regel:** `progress-indicators`: „Keep progress indicators moving so people know something is
@@ -320,6 +329,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-10 — Rückgängig hat kein Cmd-Z
 
+- **Stand (2026-08-24):** Behoben. `keys: ['z', 'Mod+z']` plus `yieldsToTyping`, damit ⌘Z im Eingabefeld dem Browser gehört. Beide Hälften mutationsgeprüft.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `undo-and-redo`, macOS: „Place undo and redo commands in the Edit menu and support
@@ -344,6 +354,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-11 — Menüs kennen keine Gruppen und keine Trenner; das längste Menü ist ein Block aus zehn Einträgen
 
+- **Stand (2026-08-24):** Behoben. `MenuItemSpec.group` plus Trennlinien; Ordnermenü in drei Bänder, die Leseleiste reicht ihre vorhandenen Gruppen durch. Die Höhenschätzung zählt die Trenner mit.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `menus`: „Consider grouping logically related items. … To help people visually
@@ -370,6 +381,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-12 — Kein determinierter Fortschritt, obwohl die Gesamtmenge bekannt ist
 
+- **Stand (2026-08-24):** Behoben für den Kontaktimport: `<progress>` mit "n von m" und ein Anhalten, das vor dem Schreiben prüft. Der Kalenderimport bekommt bewusst keinen — er ist ein einziges `CalendarEvent/set` ohne Schleife, dort ist unbestimmt die richtige Anzeige.
 - **Schwere:** mittel
 - **Einordnung:** anpassen *(korrigiert von „uebernehmen")*
 - **HIG-Regel:** `progress-indicators`: „When possible, use a determinate progress indicator. …
@@ -401,6 +413,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-13 — Fenstertitel fällt in Kalender und Dateien auf den blossen App-Namen zurück
 
+- **Stand (2026-08-24):** Behoben. Zwei `case`-Zweige für Kalender und Dateien, plus der erste Test für `document.title` überhaupt.
 - **Schwere:** niedrig
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `toolbars`: „Provide a useful title for each window. A title helps people confirm
@@ -424,6 +437,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-14 — Der Split-Trenner ist eine 24 px breite eingefärbte Rinne statt einer Haarlinie mit grosser Trefferfläche
 
+- **Stand (2026-08-24):** Behoben. Die 24 px bleiben als Trefferfläche, die Farbe geht weg; sichtbar ist eine 1-px-Haarlinie.
 - **Schwere:** niedrig
 - **Einordnung:** anpassen
 - **HIG-Regel:** `split-views` (macOS): „Prefer the thin divider style. The thin divider measures one
@@ -452,6 +466,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-15 — Der Zeitpunkt der letzten Aktualisierung wird nie angezeigt, obwohl der Wert vorliegt
 
+- **Stand (2026-08-24):** Behoben. Im Ruhezustand "Aktualisiert vor …", mit Minutenzeiger, ausserhalb der Live-Region und unterhalb von 40em nicht gedruckt.
 - **Schwere:** niedrig
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `feedback`: „Consider integrating status feedback into your interface. When status
@@ -479,6 +494,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-16 — Auslassungspunkte innerhalb desselben Menüs uneinheitlich
 
+- **Stand (2026-08-24):** Behoben. Zwei Befehle bekamen ihre Auslassungspunkte, vierzehn Zeichenketten die einheitliche Schreibweise, und `locales.test.ts` hält beides fest.
 - **Schwere:** niedrig
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `menus`: „Append an ellipsis to a menu item's label when the action requires more
@@ -501,6 +517,7 @@ Schwereverteilung der verbleibenden Befunde: 1 hoch · 11 mittel · 5 niedrig.
 
 ### D-17 — Icons nur auf zwei von zehn Einträgen desselben Menüs
 
+- **Stand (2026-08-24):** Behoben. Das Ordnermenü trägt keine Symbole mehr; die reservierte Spalte bleibt für Menüs, die welche benutzen.
 - **Schwere:** niedrig
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** `menus`: „Apply a uniform visual treatment across menu items in the same group. For

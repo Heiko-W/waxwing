@@ -548,75 +548,6 @@ export function MessageList({
     }
   }
 
-  if (source === undefined) {
-    return <p className={styles.empty}>{t('list.noMailbox')}</p>
-  }
-
-  const selectedIds = [...selection.selected]
-  const allSelected = ids.length > 0 && selection.selected.size === ids.length
-  const someSelected = selection.selected.size > 0 && !allSelected
-  const activeId = ids[focusIndex]
-  const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
-  /**
-   * "Empty" and "out of date" are not the same state, and `loading` alone cannot tell them apart: it
-   * is true only while the window ROW itself is missing (`use-message-list.ts`), so a window that
-   * EXISTS with `ids: []` and a non-zero `total` reads as loaded-and-empty. It is neither — the
-   * window says it has mail and holds none of it. This is NOT a closed set — an earlier revision of
-   * this comment enumerated "three paths" and a checker found a fourth by reading `delta.ts`. What
-   * follows are the paths KNOWN to produce the shape, and the recovery argument is stated so that an
-   * unknown fifth does not silently inherit a promise written for these.
-   *
-   * KNOWN producers, all of which VOID the window (`queryState: null`):
-   *   1. a bulk move's OPTIMISTIC prune, which retracts a whole loaded head page (a folder of 200
-   *      with a 50-id window leaves `ids: []`, `total: 150`);
-   *   2. the ROLLBACK of one from a server REJECTION (`outbox.ts`'s `retractWindows`, whose tail
-   *      eviction the undo cannot record);
-   *   3. the same rollback reached from a DISCARDED dead letter.
-   * Painting the confident empty state in any of these contradicts the `aria-rowcount` rendered
-   * beside it and makes the live region announce "no results" for a folder that has some, so this
-   * state suppresses them all — and suppresses the shape itself, however it arose, which is why an
-   * unenumerated producer still gets the right rendering even where the wording below over-promises.
-   *
-   * What it does NOT do is claim progress, and the honest statement of WHY is a NETWORK call:
-   * `delta.ts`'s `Email/query` (`fullRequery`). Two things reach it, and only the first is a
-   * detector: a VOIDED window is re-queried on the next pass, and — independently of voiding —
-   * `engine.ts` forces a full pass every `FULL_SWEEP_EVERY` (5) sync passes, with a safety sweep
-   * every 60 s under it. There is NO detector for empty-ids-with-non-zero-total anywhere in the
-   * engine: a producer that leaves `queryState` NON-null is not recovered by the voiding mechanism
-   * at all, only by that periodic sweep, and only online. `delta.ts`'s `applyQueryChanges` is
-   * exactly such a producer on paper (it drops `added` entries whose index lands past the shortened
-   * `ids`, so a removal of the whole head page can write `ids: []` with a carried-over `total` and a
-   * live `queryState`). UNPROVEN against a real server and filed as §13 **B17** — go there rather
-   * than re-deriving the argument here.
-   *
-   * On the three known paths, connectivity is what separates them, and none of them is guaranteed
-   * prompt. A rejection IS a server answer, so path 2 proves we were online at ROLLBACK time — not
-   * at RECOVERY time: the connection can drop in between, and on the replay path (`reconcileWatched`
-   * with `onlyVoided`, which is the one a rollback's re-query takes) `engine.ts` re-voids and DEFERS
-   * rather than writing the answer whenever `pendingOutbox` is non-empty, so during a triage burst
-   * the re-query is not immediate either. Paths 1 and 3 have no guarantee at
-   * all. The optimistic prune runs offline by design; and the rollback has an offline arm —
-   * `discardFailed` (`engine.ts`) runs an OWED undo with NO connectivity check, reached from
-   * `use-outbox-problems.ts`, `replayOutbox`'s `online === false` bail does not cover it, and
-   * `applyUndo`'s `mailboxIds` arm is a purely LOCAL transaction, so offline it does not fail, it
-   * SUCCEEDS and retracts the window right there. Discard a dead letter offline and the state
-   * persists until the connection returns: nothing is retrying, `loadMore` is gated on
-   * `ids.length > 0` and will not rescue it either. Nothing here can tell the paths apart, so this
-   * message is written for the reconnect-bound ones — the same limitation already recorded for B2's
-   * arrival direction. Hence its own message
-   * (`list.stale`) rather than the spinner's "Loading messages": it names the CONDITION (out of
-   * date, refreshing on the next sync) instead of claiming progress that, offline, is not happening.
-   * `outbox.ts`'s `retractWindows` / `invalidateWindows` docs carry the other half of this and hedge
-   * the same way ("USUALLY that is immediate"); the two halves reference each other on purpose, so
-   * correct both or neither.
-   *
-   * Only this INCOHERENT combination is caught. `total === 0` and an unknown `total` (a persisted
-   * `null`, which `use-message-list.ts` surfaces as `undefined`) are the genuine empty cases and
-   * still say so out loud — a swallowed empty state would be the worse bug.
-   */
-  const retracted = ids.length === 0 && total !== undefined && total > 0
-  const resolving = loading || retracted
-
   /*
    * The secondary-click menu for a message row (D-01).
    *
@@ -633,7 +564,16 @@ export function MessageList({
    * follows, by which time the items describe that row.
    */
   const contextMenuRef = useRef<MenuHandle>(null)
-  const [contextId, setContextId] = useState<Id | null>(null)
+  /*
+   * An OBJECT holding the id, not the id itself, and that is load-bearing.
+   *
+   * A bare `useState<Id | null>` bails out when the value is unchanged, so the second right-click
+   * on the same row would set the same string, skip the re-render, never run the effect below, and
+   * do nothing at all — which is the normal case: open the menu, pick nothing, right-click the same
+   * row again. A fresh object is a fresh identity, so the effect fires every time.
+   */
+  const [context, setContext] = useState<{ id: Id } | null>(null)
+  const contextId = context?.id ?? null
   const contextPoint = useRef<{ x: number; y: number } | null>(null)
 
   const onGridContextMenu = useCallback(
@@ -648,17 +588,17 @@ export function MessageList({
       if (rowById.get(id) === undefined) return
       event.preventDefault()
       contextPoint.current = { x: event.clientX, y: event.clientY }
-      setContextId(id)
+      setContext({ id })
     },
     [gridId, rowById],
   )
 
   useEffect(() => {
     const point = contextPoint.current
-    if (contextId === null || point === null) return
+    if (context === null || point === null) return
     contextPoint.current = null
     contextMenuRef.current?.openAt(point.x, point.y)
-  }, [contextId])
+  }, [context])
 
   /**
    * What that menu offers, for the one row it was raised on.
@@ -732,6 +672,75 @@ export function MessageList({
     }
     return items
   }, [contextId, rowById, rowRights, sourceMailboxId, triage, requestMove, open, t])
+
+  if (source === undefined) {
+    return <p className={styles.empty}>{t('list.noMailbox')}</p>
+  }
+
+  const selectedIds = [...selection.selected]
+  const allSelected = ids.length > 0 && selection.selected.size === ids.length
+  const someSelected = selection.selected.size > 0 && !allSelected
+  const activeId = ids[focusIndex]
+  const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
+  /**
+   * "Empty" and "out of date" are not the same state, and `loading` alone cannot tell them apart: it
+   * is true only while the window ROW itself is missing (`use-message-list.ts`), so a window that
+   * EXISTS with `ids: []` and a non-zero `total` reads as loaded-and-empty. It is neither — the
+   * window says it has mail and holds none of it. This is NOT a closed set — an earlier revision of
+   * this comment enumerated "three paths" and a checker found a fourth by reading `delta.ts`. What
+   * follows are the paths KNOWN to produce the shape, and the recovery argument is stated so that an
+   * unknown fifth does not silently inherit a promise written for these.
+   *
+   * KNOWN producers, all of which VOID the window (`queryState: null`):
+   *   1. a bulk move's OPTIMISTIC prune, which retracts a whole loaded head page (a folder of 200
+   *      with a 50-id window leaves `ids: []`, `total: 150`);
+   *   2. the ROLLBACK of one from a server REJECTION (`outbox.ts`'s `retractWindows`, whose tail
+   *      eviction the undo cannot record);
+   *   3. the same rollback reached from a DISCARDED dead letter.
+   * Painting the confident empty state in any of these contradicts the `aria-rowcount` rendered
+   * beside it and makes the live region announce "no results" for a folder that has some, so this
+   * state suppresses them all — and suppresses the shape itself, however it arose, which is why an
+   * unenumerated producer still gets the right rendering even where the wording below over-promises.
+   *
+   * What it does NOT do is claim progress, and the honest statement of WHY is a NETWORK call:
+   * `delta.ts`'s `Email/query` (`fullRequery`). Two things reach it, and only the first is a
+   * detector: a VOIDED window is re-queried on the next pass, and — independently of voiding —
+   * `engine.ts` forces a full pass every `FULL_SWEEP_EVERY` (5) sync passes, with a safety sweep
+   * every 60 s under it. There is NO detector for empty-ids-with-non-zero-total anywhere in the
+   * engine: a producer that leaves `queryState` NON-null is not recovered by the voiding mechanism
+   * at all, only by that periodic sweep, and only online. `delta.ts`'s `applyQueryChanges` is
+   * exactly such a producer on paper (it drops `added` entries whose index lands past the shortened
+   * `ids`, so a removal of the whole head page can write `ids: []` with a carried-over `total` and a
+   * live `queryState`). UNPROVEN against a real server and filed as §13 **B17** — go there rather
+   * than re-deriving the argument here.
+   *
+   * On the three known paths, connectivity is what separates them, and none of them is guaranteed
+   * prompt. A rejection IS a server answer, so path 2 proves we were online at ROLLBACK time — not
+   * at RECOVERY time: the connection can drop in between, and on the replay path (`reconcileWatched`
+   * with `onlyVoided`, which is the one a rollback's re-query takes) `engine.ts` re-voids and DEFERS
+   * rather than writing the answer whenever `pendingOutbox` is non-empty, so during a triage burst
+   * the re-query is not immediate either. Paths 1 and 3 have no guarantee at
+   * all. The optimistic prune runs offline by design; and the rollback has an offline arm —
+   * `discardFailed` (`engine.ts`) runs an OWED undo with NO connectivity check, reached from
+   * `use-outbox-problems.ts`, `replayOutbox`'s `online === false` bail does not cover it, and
+   * `applyUndo`'s `mailboxIds` arm is a purely LOCAL transaction, so offline it does not fail, it
+   * SUCCEEDS and retracts the window right there. Discard a dead letter offline and the state
+   * persists until the connection returns: nothing is retrying, `loadMore` is gated on
+   * `ids.length > 0` and will not rescue it either. Nothing here can tell the paths apart, so this
+   * message is written for the reconnect-bound ones — the same limitation already recorded for B2's
+   * arrival direction. Hence its own message
+   * (`list.stale`) rather than the spinner's "Loading messages": it names the CONDITION (out of
+   * date, refreshing on the next sync) instead of claiming progress that, offline, is not happening.
+   * `outbox.ts`'s `retractWindows` / `invalidateWindows` docs carry the other half of this and hedge
+   * the same way ("USUALLY that is immediate"); the two halves reference each other on purpose, so
+   * correct both or neither.
+   *
+   * Only this INCOHERENT combination is caught. `total === 0` and an unknown `total` (a persisted
+   * `null`, which `use-message-list.ts` surfaces as `undefined`) are the genuine empty cases and
+   * still say so out loud — a swallowed empty state would be the worse bug.
+   */
+  const retracted = ids.length === 0 && total !== undefined && total > 0
+  const resolving = loading || retracted
 
   const barOpen = selection.selected.size > 0 || viewOptionsOpen
 

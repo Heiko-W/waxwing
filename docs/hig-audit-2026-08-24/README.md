@@ -4,9 +4,15 @@
 Stil der UI-Begehung (`docs/ui-audit.md`) und der JMAP-Erhebung
 (`docs/jmap-gap-2026-08-21/`).
 
-**Dieses Dokument ändert nichts.** Es ist eine Arbeitsliste. Jeder Befund trägt einen Beleg —
-eine Quellcodezeile oder eine Messung — und jede zitierte Regel trägt ihre HIG-Seite, damit
-beides nachprüfbar ist statt geglaubt werden zu müssen.
+Jeder Befund trägt einen Beleg — eine Quellcodezeile oder eine Messung — und jede zitierte Regel
+trägt ihre HIG-Seite, damit beides nachprüfbar ist statt geglaubt werden zu müssen.
+
+> **Alle 39 Befunde sind abgearbeitet** (Stand 24.08.2026). 37 sind behoben, 2 sind als
+> Plattformgrenze *entschieden* statt behoben und tragen dafür einen ADR — P-12
+> ([ADR-033](../adr/033-the-pwa-launch-screen-cannot-follow-the-system-theme.md), das PWA-Startbild)
+> und P-13 ([ADR-034](../adr/034-upload-progress-is-not-available-behind-the-fetch-seam.md), der
+> Upload-Fortschritt). Jeder Befund trägt unter seiner Überschrift eine Zeile **Stand**, die sagt,
+> was daraus geworden ist.
 
 | | |
 |---|---|
@@ -124,13 +130,28 @@ Fünf Ursachen erzeugen zwölf der 39 Befunde. Wer sie zuerst angeht, räumt am 
   `MessageView.tsx:876`); es fehlt nur der Aufhänger. Apple nennt in `context-menus`
   ausgerechnet das Kontextmenü einer Mail im Posteingang als Beispiel.
 
-## Wie damit weitergearbeitet wird
+## Was daraus geworden ist
 
-Die Befunde sind **noch keine B-Nummern** in `docs/implementation-plan.md`. Der nächste Schritt
-ist eine Auswahl: was in ein Release einfliesst, wird dort als Zeile aufgenommen und mit einem
-Test belegt; was zurückgestellt wird, bleibt hier stehen und behält seinen Beleg.
+Abgearbeitet in acht Bündeln nach gemeinsamer Ursache statt in 39 Einzeleingriffen — die fünf
+Querschnitts-Ursachen oben erzeugten zwölf der Befunde, und eine Ursache einmal zu beheben ist
+weniger Änderungsfläche als zwölfmal ihr Symptom.
 
-Reihenfolge, wenn nichts dagegen spricht: erst die fünf Querschnitts-Ursachen oben (drei davon
-Aufwand S), dann die schweren Telefon-Befunde, dann der Desktop. Der Desktop hat die meisten
-Befunde, aber nur einen schweren — dort geht es um Verfeinerung, auf dem Telefon um
-Bedienbarkeit.
+Neu entstanden dabei, und das ist der Teil, der über diese Liste hinaus wirkt:
+
+| | |
+|---|---|
+| `ui/viewport-metrics.ts` | misst das sichtbare Fenster aus `visualViewport` — die einzige Antwort auf „was hat die Tastatur verdeckt" |
+| `ui/color-scheme.css.test.ts` | die vier Themenblöcke deklarieren `color-scheme`, jeder den passenden |
+| `ui/safe-area.css.test.ts` | `env(safe-area-inset-*)` nur in `tokens.css` — sonst ist der Rand physisch und RTL bricht |
+| `ui/button-variant.shipped.test.ts` | jeder `<Button>` nennt seine Rolle; eine Voreinstellung ist nicht überprüfbar |
+| `app/shell/layout.test.ts` | die erste Prüfung für `layout.ts` überhaupt — dort lebte die Regel, die nur die Breite kannte |
+| Vier neue Prüfungen in vorhandenen Dateien | Kontrastvariante, laufende Ladeanzeigen, Auslassungspunkte, Fenstertitel |
+
+Zwei Dinge sind bewusst NICHT behoben und tragen dafür eine Begründung: das PWA-Startbild
+(ADR-033) und der Upload-Fortschritt (ADR-034). In beiden Fällen ist die Grenze die Plattform,
+nicht die App — und in beiden Fällen war die Alternative eine stille Umgehung einer Naht, die es
+aus gutem Grund gibt.
+
+**Was diese Liste nicht ersetzt:** ein Gerätetest. Zwölf Befunde waren als *„Nur am Gerät
+endgültig entscheidbar"* markiert; ihre Umsetzung ist am Quelltext und in der Testsuite belegt,
+aber die Wirkung auf einem echten iPhone hat niemand gesehen. Das bleibt der nächste Schritt.

@@ -17,6 +17,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-01 — Sichere Bereiche oben und seitlich werden nirgends ausgewertet
 
+- **Stand (2026-08-24):** Behoben. Kopfzeile, Navigationsleiste, Ordnerleiste und Panes lesen die Ränder über vier logische Token.
 - **Schwere:** hoch
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *layout* — „A safe area defines the area within a view that isn't covered by a toolbar, tab bar, or other views a window might provide. Safe areas are essential for avoiding a device's interactive and display features, like Dynamic Island on iPhone or the camera housing on some Mac models." Dazu *status-bars* (Plattform: iOS/iPadOS, keine weiteren Einschränkungen): „If controls are visible behind the status bar, people may attempt to interact with them and be unable to do so. Be sure to keep the status bar readable, and don't imply that content behind it is interactive." (Slugs: `layout`, `status-bars`)
@@ -28,6 +29,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-02 — Toasts und Sende-Warteschlange liegen auf der unteren Navigationsleiste, und Undo-Toasts bleiben dort stehen
 
+- **Stand (2026-08-24):** Behoben. Toast-Region und Postausgang-Streifen rechnen die Leistenhöhe und den unteren Rand mit; `narrow.spec.ts` misst die echte Leiste gegen das Token.
 - **Schwere:** hoch
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *tab-bars* — „Make sure the tab bar is visible when people navigate to different sections of your app. If you hide the tab bar, people can forget which area of the app they're in. The exception is when a modal view covers the tab bar, because a modal is temporary and self-contained." Dazu *layout* (Safe Areas, s. P-01) für den Home-Indikator. (Slugs: `tab-bars`, `layout`)
@@ -38,6 +40,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-03 — Nachrichtenaktionen scrollen im Lesebereich weg und liegen ausserhalb des Daumenbereichs
 
+- **Stand (2026-08-24):** Behoben. Auf dem Telefon steht die Aktionsleiste am Ende des Artikels und klebt an der Unterkante. Verschoben wird im DOM, nicht mit `order` — Fokus- und Sichtreihenfolge müssen übereinstimmen (WCAG 2.4.3).
 - **Schwere:** hoch
 - **Einordnung:** anpassen
 - **HIG-Regel:** *designing-for-ios* — „Support interactions that accommodate the way people usually hold their device. For example, it tends to be easier and more comfortable for people to reach a control when it's located in the middle or bottom area of the display". Dazu *toolbars* (Einleitung, plattformneutral): „A toolbar consists of one or more sets of controls arranged horizontally along the top **or bottom** edge of the view". (Slugs: `designing-for-ios`, `toolbars`)
@@ -49,6 +52,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-04 — Verfassen auf dem Telefon: Senden, Anhängen und Verwerfen liegen unter der Bildschirmtastatur
 
+- **Stand (2026-08-24):** Behoben — siehe T-01. Zusätzlich `interactive-widget=resizes-content` im Viewport-Meta.
 - **Schwere:** hoch
 - **Einordnung:** anpassen
 - **HIG-Regel:** *virtual-keyboards*, Abschnitt „iOS, iPadOS" — „Use the keyboard layout guide to make the keyboard feel like an integrated part of your interface. Using the layout guide also helps you keep important parts of your interface visible while the virtual keyboard is onscreen." (Slug: `virtual-keyboards`)
@@ -60,6 +64,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-05 — Empfängerfeld und Anmelde-Benutzername bekommen keine E-Mail-Tastatur
 
+- **Stand (2026-08-24):** Behoben — siehe T-03.
 - **Schwere:** hoch
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *virtual-keyboards* — „A virtual keyboard can provide a specific set of keys that are optimized for the current task; for example, a keyboard that supports entering email addresses can include the '@' character and a period or even '.com'." und „Choose a keyboard that matches the type of content people are editing." (Slug: `virtual-keyboards`)
@@ -75,6 +80,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-06 — Das iPhone im Querformat bekommt Tablet-Layout mit Split-Ansicht
 
+- **Stand (2026-08-24):** Behoben. Ein Split verlangt jetzt auch 544 px Höhe — unter jedem Tablet, über jedem Telefon auf der Seite.
 - **Schwere:** mittel
 - **Einordnung:** anpassen
 - **HIG-Regel:** *split-views*, Abschnitt „iOS" — „Prefer using a split view in a regular — not a compact — environment. A split view needs horizontal space in which to display multiple panes. In a compact environment, such as iPhone in portrait orientation, it's difficult to display multiple panes without wrapping or truncating the content, making it less legible and harder to interact with." Dazu *layout*, Abschnitt „iOS": „Aim to support both portrait and landscape orientations." (Slugs: `split-views`, `layout`)
@@ -87,6 +93,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-07 — Dialoge und das Datei-Sheet messen sich an `100vh`
 
+- **Stand (2026-08-24):** Behoben. `vh` -> `dvh` -> `var(--waxwing-viewport-block)` als dreistufiger Rückfall in Dialog und Composer-Sheet.
 - **Schwere:** mittel
 - **Einordnung:** anpassen
 - **HIG-Regel:** *layout*, Abschnitt „Adaptability" — „Design a layout that adapts gracefully to context changes while remaining recognizably consistent. … You can help ensure an adaptable interface by respecting system-defined safe areas, margins, and guides". (Slug: `layout`)
@@ -98,6 +105,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-08 — Bei reduzierter Bewegung friert jeder Ladeindikator ein
 
+- **Stand (2026-08-24):** Behoben — siehe D-09.
 - **Schwere:** mittel
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *progress-indicators*, Abschnitt „Best practices" (plattformneutral) — „Keep progress indicators moving so people know something is continuing to happen. People tend to associate a stationary indicator with a stalled process or a frozen app." (Slug: `progress-indicators`)
@@ -109,6 +117,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-09 — Formulardialoge verwerfen ungespeicherte Eingaben beim Tippen neben das Panel, ohne Rückfrage
 
+- **Stand (2026-08-24):** Behoben — siehe D-03.
 - **Schwere:** mittel
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *modality*, Abschnitt „Best practices" (plattformneutral) — „When necessary, help people avoid data loss by getting confirmation before closing a modal view. Regardless of whether people use a dismiss gesture or a button, if closing the view could result in the loss of user-generated content, be sure to explain the situation and give people ways to resolve it." (Slug: `modality`)
@@ -124,6 +133,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-10 — Zurück-Knopf trägt den Text „Zurück zu den Nachrichten" statt des Ziels
 
+- **Stand (2026-08-24):** Behoben. "‹ Posteingang" sichtbar, der lange Satz als zugänglicher Name.
 - **Schwere:** niedrig
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *toolbars*, Abschnitt „Navigation" — „Use the standard Back and Close buttons. People know that the standard Back button lets them retrace their steps through a hierarchy of information … Prefer the standard symbols for each, and don't use a text label that says Back or Close." (Slug: `toolbars`)
@@ -135,6 +145,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-11 — Kein Feld beschriftet die Eingabetaste der Bildschirmtastatur (`enterKeyHint` fehlt app-weit)
 
+- **Stand (2026-08-24):** Behoben für die Felder, die auf dem Telefon getippt werden. Das Suchfeld bleibt bewusst aussen vor: `type="search"` leitet das in WebKit bereits ab.
 - **Schwere:** niedrig
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *virtual-keyboards* — „Consider customizing the Return key type if it helps clarify the text-entry experience. … For example, if your app initiates a search, you can use a search Return key type rather than the standard one so the experience is consistent with other places people initiate search." (Slug: `virtual-keyboards`)
@@ -147,6 +158,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-12 — Startbild der installierten App ist immer hell
 
+- **Stand (2026-08-24):** Entschieden statt behoben: das Manifest hat genau ein `background_color` und keinen Media-Query-Mechanismus. [ADR-033](../adr/033-the-pwa-launch-screen-cannot-follow-the-system-theme.md), plus eine Zeile in `docs/theming.md`.
 - **Schwere:** niedrig
 - **Einordnung:** anpassen
 - **HIG-Regel:** *launching*, Abschnitt „Launch screens" (gilt für iOS/iPadOS/tvOS) — „Design a launch screen that's nearly identical to the first screen of your app or game. If you include elements that look different when launching completes, people may experience an unpleasant flash between the launch screen and your first screen. … Also make sure that your launch screen matches the device's current orientation and appearance mode." (Slug: `launching`)
@@ -159,6 +171,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-13 — Anhänge laden ohne Fortschritt hoch
 
+- **Stand (2026-08-24):** Entschieden statt behoben: `fetch` hat kein Upload-Fortschrittsereignis, und `XMLHttpRequest` läge hinter der `Transport`-Naht. [ADR-034](../adr/034-upload-progress-is-not-available-behind-the-fetch-seam.md). Der falsche Kommentar ("the server cannot stream upload progress") ist korrigiert.
 - **Schwere:** niedrig
 - **Einordnung:** anpassen
 - **HIG-Regel:** *progress-indicators*, „Best practices" — „When possible, use a determinate progress indicator. An indeterminate progress indicator shows that a process is occurring, but it doesn't help people estimate how long a task will take. A determinate progress indicator can help people decide whether to do something else while waiting". (Slug: `progress-indicators`)

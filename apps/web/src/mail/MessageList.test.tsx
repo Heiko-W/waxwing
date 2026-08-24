@@ -2274,6 +2274,21 @@ describe('the message row answers a secondary click', () => {
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
   })
 
+  it('reopens on a second secondary click on the SAME row', async () => {
+    // The normal case, and the one a naive implementation gets wrong: recording the row as state
+    // makes the second click a no-op, because React bails out on an unchanged value.
+    const user = userEvent.setup()
+    renderList()
+    const row = await screen.findByRole('row', { name: /First/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+    await screen.findByRole('menu')
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+    expect(await screen.findByRole('menu')).toBeInTheDocument()
+  })
+
   it('leaves a click that is not on a row to the browser', async () => {
     // The empty space below the last row is the page, not a message.
     renderList()

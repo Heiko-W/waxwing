@@ -22,6 +22,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-01 — Verfassen-Fenster und Dialoge weichen der Bildschirmtastatur nicht aus
 *(vormals T2-01, bestätigt)*
 
+- **Stand (2026-08-24):** Behoben. `ui/viewport-metrics.ts` misst das sichtbare Band aus `visualViewport` und veröffentlicht Höhe UND Versatz; Shell, Dialog und Composer lesen es.
 - **Schwere:** hoch
 - **Einordnung:** anpassen
 - **HIG-Regel:** „Use the keyboard layout guide to make the keyboard feel like an integrated part
@@ -58,6 +59,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-02 — Sektionsnavigation auf dem Tablet ohne sichtbare Beschriftung
 *(vormals T-03 und T2-03, zusammengefasst, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben. Das Ausblenden der Beschriftung hängt jetzt an `(hover: hover)` statt an der Breite — also daran, ob es die Kompensation überhaupt gibt.
 - **Schwere:** mittel
 - **Einordnung:** anpassen
 - **HIG-Regel:** „Include tab labels to help with navigation. A tab label appears beneath or beside
@@ -93,6 +95,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-03 — Empfänger-, Benutzer- und Serverfeld ohne Eingabesemantik
 *(vormals T2-02, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben. `TextInput` leitet `autoCapitalize`/`autoCorrect`/`spellCheck` aus dem ab, was die Fundstelle bereits über das Feld sagt; das Empfängerfeld trägt sie ausgeschrieben.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** „Choose a keyboard that matches the type of content people are editing. … When you
@@ -129,6 +132,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-04 — Kein `color-scheme`: systemgezeichnete Teile bleiben im Dunkelmodus hell
 *(vormals T-06, bestätigt)*
 
+- **Stand (2026-08-24):** Behoben — siehe D-07.
 - **Schwere:** mittel
 - **Einordnung:** anpassen
 - **HIG-Regel:** „Ensure that your app looks good in both appearance modes." und „Embrace colors
@@ -159,6 +163,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-05 — Untere Safe Area wird oberhalb von 40em nirgends berücksichtigt
 *(vormals T-02, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben. Vier Safe-Area-Token, RTL-sicher, und `safe-area.css.test.ts` verbietet `env()` ausserhalb von `tokens.css`.
 - **Schwere:** mittel
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** „A safe area defines the area within a view that isn't covered by a toolbar, tab
@@ -198,6 +203,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-06 — Split-Breite: Tier-Konstante, einmal beim Mounten gelesen, nie gespeichert
 *(vormals T-01, T-09 und T2-08, zusammengefasst, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben — siehe D-06. 37 % ergibt bei 1440 px wieder die gemessenen 420 und gibt dem iPad quer rund 300 statt 420.
 - **Schwere:** niedrig
 - **Einordnung:** anpassen
 - **HIG-Regel:** „Account for narrow, compact, and intermediate window widths. Since iPad windows
@@ -248,6 +254,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-07 — Ordnerleiste lässt sich im Querformat nicht ausblenden
 *(vormals T-04, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben — siehe D-05.
 - **Schwere:** niedrig
 - **Einordnung:** anpassen
 - **HIG-Regel:** „Consider letting people hide the sidebar. People sometimes want to hide the
@@ -282,6 +289,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-08 — Anordnung der Leseansicht nur in den Einstellungen änderbar
 *(vormals T2-06, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben. Die Anordnung steht zusätzlich im Ansichtsoptionen-Panel, aus demselben Store; auf dem Telefon nicht angeboten, weil sie dort nichts ändert.
 - **Schwere:** niedrig
 - **Einordnung:** uebernehmen
 - **HIG-Regel:** „When possible, prefer letting people modify task-specific options without going
@@ -313,6 +321,7 @@ Windows/Linux/Android beschädigen würde.
 ### T-09 — Ladeindikator steht bei aktivem „Bewegung reduzieren" still
 *(vormals T2-05, korrigiert)*
 
+- **Stand (2026-08-24):** Behoben — siehe D-09.
 - **Schwere:** niedrig
 - **Einordnung:** anpassen
 - **HIG-Regel:** „Keep progress indicators moving so people know something is continuing to happen.
