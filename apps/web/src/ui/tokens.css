@@ -183,6 +183,41 @@
        WCAG 2.2 AA SC 2.5.8's 24px minimum); raised to 44px on touch by the pointer:coarse rule
        below (SC 2.5.5 AAA) so it stays finger-friendly where screen space is tight. */
     --waxwing-control-min: 2.125rem;
+    /* ---- Safe areas (HIG `layout`, "Guides and safe areas") ----
+       The document ships `viewport-fit=cover` and the manifest is `display: standalone`, so an
+       installed app draws edge to edge — under the Dynamic Island at the top and the home
+       indicator at the bottom, and past the rounded corners at the sides in landscape. Exactly ONE
+       of the four insets was ever read (`-bottom`, in two rules), so the phone header — which
+       carries the entire mail chrome on that viewport — padded 8 px against the status bar.
+
+       Tokens rather than bare `env()` at each call site for the inline pair: `env(safe-area-inset-
+       left)` is PHYSICAL and every layout rule in this app is logical, so under RTL a hand-written
+       `padding-inline: … env(safe-area-inset-left)` pads the wrong edge — the exact class of bug
+       tokens.literals.css.test.ts exists to catch. The swap below is the same trick as
+       `--waxwing-flip`, one rule further down: name the two edges logically, and flip them once. */
+    --waxwing-safe-block-start: env(safe-area-inset-top, 0px);
+    --waxwing-safe-block-end: env(safe-area-inset-bottom, 0px);
+    --waxwing-safe-inline-start: env(safe-area-inset-left, 0px);
+    --waxwing-safe-inline-end: env(safe-area-inset-right, 0px);
+    /* Height of the phone's bottom navigation bar, for the three things that float above it: the
+       compose button, the toast region and the outbox strip. It was a bare `3.75rem` in the first
+       of those and absent from the other two, which is why an undo toast could sit ON the tab bar
+       and swallow the tap meant for it — with ADR-021 giving action-bearing toasts `duration: 0`,
+       that covered the app's main navigation until the reader found the toast and dismissed it.
+       Asserted against the REAL bar in e2e/tests/viewports.spec.ts, because a constant standing in
+       for a measurement is only honest while something measures it. */
+    --waxwing-bottom-bar: 3.75rem;
+    /* The visible band of the window, written by ui/viewport-metrics.ts on <html> as soon as the
+       app boots — the height the on-screen keyboard has left, and how far it has slid the band
+       down inside the layout viewport. The values here are only what holds for the first frame and
+       on an engine with no `visualViewport`.
+
+       `100vh` rather than `100dvh` for that default on purpose: a custom property is substituted
+       textually, so a unit the engine does not know makes the whole declaration that reads it
+       invalid at computed-value time — the shell would lose its height entirely instead of falling
+       back. The call sites keep their own `vh`/`dvh` pair above this one for that progression. */
+    --waxwing-viewport-block: 100vh;
+    --waxwing-viewport-offset: 0px;
     /* Thickness of the focus ring drawn by `:focus-visible` in global.css. A token rather than a
        literal so `prefers-contrast: more` at the foot of this file can thicken every ring in the
        app at once — the ring is the one indicator a low-vision reader navigates by. */
@@ -508,5 +543,8 @@
      follows. Kept here beside the token rather than in the components that use it. */
   [dir="rtl"] {
     --waxwing-flip: -1;
+    /* The safe-area pair, named logically above and flipped here — see the comment beside them. */
+    --waxwing-safe-inline-start: env(safe-area-inset-right, 0px);
+    --waxwing-safe-inline-end: env(safe-area-inset-left, 0px);
   }
 }

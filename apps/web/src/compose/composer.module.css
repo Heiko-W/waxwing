@@ -283,6 +283,16 @@
 @media (max-width: 39.999em) {
   .fullscreen {
     inset: 0;
+    /*
+     * The one composer that meets the keyboard head-on: on a phone this is always the full-screen
+     * shape (ComposerWindow.tsx), and its last flex child is the row carrying Send, Send later,
+     * Attach, Options and Discard. Pinned to the LAYOUT viewport it sat behind the keyboard —
+     * the primary action of the app's central task, invisible for the whole time the reader was
+     * typing. Height and offset both, because the keyboard shrinks the visible band AND slides it.
+     */
+    inset-block-start: var(--waxwing-viewport-offset);
+    inset-block-end: auto;
+    block-size: var(--waxwing-viewport-block);
     border: 0;
     border-radius: 0;
   }
@@ -401,6 +411,10 @@
  */
 .pickerPanel {
   block-size: min(32rem, calc(100vh - 4 * var(--waxwing-space-4)));
+  /* biome-ignore lint/suspicious/noDuplicateProperties: deliberate progressive fallback — `vh` is
+     the LARGE viewport on iOS, which is not the box this sheet actually sits in. See Dialog.module.css. */
+  block-size: min(32rem, calc(100dvh - 4 * var(--waxwing-space-4)));
+  block-size: min(32rem, calc(var(--waxwing-viewport-block) - 4 * var(--waxwing-space-4)));
 }
 
 .pickerBody {
@@ -525,9 +539,15 @@
     margin: calc(-1 * var(--waxwing-space-4));
     inline-size: 100vw;
     block-size: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: deliberate progressive fallback — see Dialog.module.css */
+    block-size: 100dvh;
+    block-size: var(--waxwing-viewport-block);
     max-block-size: none;
     max-inline-size: none;
     border: 0;
     border-radius: 0;
+    /* Edge to edge means edge to edge: the last row of the file list would otherwise sit under the
+       home indicator in an installed app. */
+    padding-block-end: var(--waxwing-safe-block-end);
   }
 }

@@ -57,6 +57,9 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [028](028-folder-order-role-and-visibility.md) | Folder order, use and visibility are server state, and they live behind one "Manage folders" sheet | accepted |
 | [029](029-safari-cannot-intercept-clicks-in-a-sandboxed-frame.md) | Safari delivers no click events out of a sandboxed frame, so the phishing gate decides before the click | accepted |
 | [030](030-a-folder-shows-the-folder-not-a-30-day-window.md) | A folder query carries no date bound — `offline.cacheDays` is a cache horizon, never a visibility one | accepted |
+| [031](031-the-fixture-throttle-was-measuring-the-harness.md) | The fixture's rate limit was measuring the harness, not the app | accepted |
+| [032](032-a-window-is-one-request.md) | A window is one request; the sync pass stays one queue | accepted |
+| [033](033-the-pwa-launch-screen-cannot-follow-the-system-theme.md) | The PWA launch screen cannot follow the system theme, so it stays light and says so | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

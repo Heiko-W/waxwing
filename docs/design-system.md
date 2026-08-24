@@ -159,6 +159,18 @@ from this scale; no arbitrary pixel spacing.
   **One documented exception:** the SplitPane resize separator uses a 24 px hit band (meeting
   SC 2.5.8) rather than the control minimum — a wide divider is dead space between panes, and
   keyboard resize (arrows/Home/End) is its primary operable path.
+- `--waxwing-safe-block-start` / `-block-end` / `-inline-start` / `-inline-end` — the display safe
+  areas, wrapped once so the rest of the app stays logical. `env(safe-area-inset-left)` is a
+  PHYSICAL edge; `[dir="rtl"]` swaps the inline pair, the same trick as `--waxwing-flip`. Nothing
+  outside `tokens.css` may spell `env(safe-area-inset-*)` — `safe-area.css.test.ts` enforces it.
+- `--waxwing-bottom-bar` — height of the phone's bottom navigation bar, for the three things that
+  float above it (compose button, toast region, outbox strip). A constant, compared against the
+  measured bar in `e2e/tests/narrow.spec.ts`.
+- `--waxwing-viewport-block` / `--waxwing-viewport-offset` — the visible band of the window, written
+  by `ui/viewport-metrics.ts` from `window.visualViewport`. This is the only way to know what the
+  on-screen keyboard has covered: `svh`/`dvh`/`lvh` describe the browser's chrome, not a keyboard,
+  and Safari ignores `interactive-widget=resizes-content`. Read by `.app`, `Dialog .panel` and the
+  phone composer, each behind a `vh` → `dvh` → `var()` progression.
 - `--waxwing-focus-width` — thickness of the `:focus-visible` ring drawn once in `global.css`.
   `2px`, and `3px` under `prefers-contrast: more`.
 - `--waxwing-disabled-opacity` — how far a disabled control fades. `0.5`, and `0.75` under

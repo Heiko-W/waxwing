@@ -187,10 +187,18 @@ Under `branding/`, keeping the filenames or updating the references in `config.j
 | `apple-touch-icon-180.png` | iOS home screen |
 
 **`manifest.json` is part of the rebrand and is not covered by `config.json`.** Its `name`,
-`short_name`, `description` and `theme_color` are read by the operating system at install time, not
-by the app, so they cannot be themed at runtime. Edit them alongside the icons — it is the same
-deployment directory and the same "no rebuild" promise, but it is a separate file and it is the one
-people forget.
+`short_name`, `description`, `theme_color` and `background_color` are read by the operating system
+at install time, not by the app, so they cannot be themed at runtime. Edit them alongside the icons
+— it is the same deployment directory and the same "no rebuild" promise, but it is a separate file
+and it is the one people forget.
+
+> **`background_color` cannot follow the system appearance, and that is a format limit rather than
+> an omission** ([ADR-033](./adr/033-the-pwa-launch-screen-cannot-follow-the-system-theme.md)). iOS
+> builds the launch screen of a home-screen app from it, the manifest holds exactly one value, and
+> there is no media-query mechanism — which is also why `theme-color` is declared *twice* in
+> `index.html`, with `media` attributes, instead of being left to the manifest. Waxwing ships the
+> light value, so a dark-mode reader sees a brief light flash at cold start. If you ship to an
+> audience whose preference you know, set it to your dark value; nothing in the app reads it.
 
 ## 4. Check your theme before you ship it
 

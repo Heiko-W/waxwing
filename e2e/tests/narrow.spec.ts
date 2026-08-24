@@ -302,3 +302,56 @@ test('a settings section on a phone has exactly one h1: its own name', async ({ 
   const levelOnes = await page.getByRole('heading', { level: 1 }).allTextContents()
   expect(levelOnes, 'the open section names the screen').toEqual(['Compose'])
 })
+
+/**
+ * Nothing floats on the bottom navigation bar — and `--waxwing-bottom-bar` is a real number.
+ *
+ * Three elements are pinned to the bottom of a phone viewport: the compose button, the toast
+ * region and the outbox strip. Only the first one cleared the bar; the other two were docked to
+ * the viewport edge, i.e. ON it. `.region` is `pointer-events: none`, `.toast` is not — so the tap
+ * meant for a tab was swallowed by the toast lying over it. ADR-021 is what makes that more than a
+ * nuisance: a toast carrying an action gets `duration: 0` and waits, so after archiving a message
+ * the reader's way out of the screen stayed covered until they found the thing covering it.
+ *
+ * The second half is the one that cannot be checked anywhere else. `--waxwing-bottom-bar` is a
+ * CONSTANT (3.75rem) standing in for the height of a bar that is laid out from an icon, a label
+ * and two paddings — so it is only honest while something compares it to the real thing. This is
+ * that something. A hidden `title` on the nav items, a larger icon or a second line of German
+ * would grow the bar past the constant, and every floating element would quietly sit on it again.
+ */
+test('nothing floats on the bottom navigation bar', async ({ page }) => {
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' })
+  await expect(nav).toBeVisible()
+
+  const measured = await page.evaluate(() => {
+    const bar = document.querySelector('nav[aria-label="Primary navigation"]')
+    const toast = document.querySelector('section[aria-label="Status messages"]')
+    // The token, resolved to pixels the way the browser resolves it — `3.75rem` is a string until
+    // something lays it out.
+    const probe = document.createElement('div')
+    probe.style.cssText = 'position:absolute;visibility:hidden;block-size:var(--waxwing-bottom-bar)'
+    document.body.append(probe)
+    const token = probe.getBoundingClientRect().height
+    probe.remove()
+    return {
+      token,
+      barTop: bar?.getBoundingClientRect().top ?? 0,
+      barHeight: bar?.getBoundingClientRect().height ?? 0,
+      toastBottom: toast?.getBoundingClientRect().bottom ?? 0,
+    }
+  })
+
+  // The bar really is at the bottom on this viewport (guards the whole test going vacuous if the
+  // rail ever moves to the side here).
+  expect(measured.barHeight).toBeGreaterThan(0)
+  expect(
+    measured.token,
+    `--waxwing-bottom-bar is ${measured.token}px, the bar measures ${measured.barHeight}px`,
+  ).toBeGreaterThanOrEqual(measured.barHeight)
+
+  // And the region that would hold an undo toast is clear of it.
+  expect(
+    measured.toastBottom,
+    `the toast region ends at ${measured.toastBottom}px, the bar starts at ${measured.barTop}px`,
+  ).toBeLessThanOrEqual(measured.barTop)
+})

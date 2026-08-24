@@ -31,6 +31,10 @@
      without `dvh` keeps the `vh` line above, one with it takes this. Not a mistake; the pair IS the
      feature detection. */
   block-size: 100dvh;
+  /* …and one step further: `dvh` follows the browser's collapsing toolbars, not the on-screen
+     KEYBOARD. ui/viewport-metrics.ts measures what is actually visible and publishes it here, so
+     an open keyboard shrinks the shell instead of covering its bottom row. */
+  block-size: var(--waxwing-viewport-block);
   overflow: hidden;
 }
 
@@ -55,8 +59,15 @@
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-3);
-  padding-inline: var(--waxwing-space-4);
-  padding-block: var(--waxwing-space-2);
+  /* The safe areas the header actually meets. On a phone this ONE row carries the whole mail
+     chrome — drawer toggle, folder title, view options, palette, compose, outbox, status, account
+     menu (Header.tsx) — and it padded 8 px against the Dynamic Island. The background is opaque, so
+     consuming the top inset here also gives the status bar the solid backing HIG `status-bars`
+     asks for, instead of controls the reader can see behind it and cannot press. */
+  padding-inline: calc(var(--waxwing-space-4) + var(--waxwing-safe-inline-start))
+    calc(var(--waxwing-space-4) + var(--waxwing-safe-inline-end));
+  padding-block: calc(var(--waxwing-space-2) + var(--waxwing-safe-block-start))
+    var(--waxwing-space-2);
   border-block-end: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface);
   /* A flex row whose children cannot be shrunk pushes its overflow OUT of the viewport rather
@@ -177,7 +188,9 @@
   justify-content: space-around;
   gap: var(--waxwing-space-1);
   padding: var(--waxwing-space-1);
-  padding-block-end: calc(var(--waxwing-space-1) + env(safe-area-inset-bottom, 0px));
+  padding-block-end: calc(var(--waxwing-space-1) + var(--waxwing-safe-block-end));
+  padding-inline: calc(var(--waxwing-space-1) + var(--waxwing-safe-inline-start))
+    calc(var(--waxwing-space-1) + var(--waxwing-safe-inline-end));
   border-block-start: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface-sunken);
 }
@@ -275,6 +288,11 @@
   inline-size: min(80vw, 18rem);
   padding: var(--waxwing-space-3);
   padding-block-start: 0;
+  /* The rail's last child is the storage bar, deliberately outside the scroll area (MailScreen) —
+     so on an installed app in landscape it sat in the home-indicator strip. The inset is 0 on every
+     device without one, and in Safari itself, where the browser's own bar fills it. */
+  padding-block-end: calc(var(--waxwing-space-3) + var(--waxwing-safe-block-end));
+  padding-inline-start: calc(var(--waxwing-space-3) + var(--waxwing-safe-inline-start));
   border-inline-end: 1px solid var(--waxwing-border);
   /* Recessed, not raised. This rail frames the content; it is not the content. */
   background-color: var(--waxwing-surface-sunken);
@@ -476,6 +494,10 @@
   container-name: waxwing-pane;
   flex: 1;
   overflow: auto;
+  /* Scroll PAST the home indicator rather than under it: as padding the inset becomes end-of-list
+     room, so the last message row and the foot of a reading pane can be brought clear. Deliberately
+     not on `.app` — there it would shrink the whole grid instead of extending one scroll range. */
+  padding-block-end: var(--waxwing-safe-block-end);
 }
 
 .emptyPane {
@@ -575,6 +597,10 @@
     justify-content: flex-start;
     inline-size: auto;
     padding: var(--waxwing-space-2);
+    /* The shorthand above deliberately drops the phone bar's block-end inset — as a leading rail
+       its items sit at flex-start and nothing of it touches the home indicator. What it DOES meet
+       is the rounded corner in landscape, which is this line. */
+    padding-inline-start: calc(var(--waxwing-space-2) + var(--waxwing-safe-inline-start));
     border-block-start: none;
     border-inline-end: 1px solid var(--waxwing-border);
   }
