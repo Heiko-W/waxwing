@@ -615,6 +615,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       // bar because it is a deliberate act, not a triage reflex.
       ...SNOOZE_PRESETS.map((preset) => ({
         id: `snooze-${preset.id}`,
+        group: 'snooze',
         label: snoozeLabel(t, preset.id),
         onSelect: () => snooze([email.id], preset.at(new Date())),
       })),
@@ -622,6 +623,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       // message ITSELF is the point (a bounce to diagnose, a phishing mail to hand to an admin).
       {
         id: 'forwardAsAttachment',
+        group: 'more',
         label: t('reading.forwardAsAttachment'),
         onSelect: () => onCompose('forwardAsAttachment'),
       },
@@ -633,12 +635,23 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       // is also where a reader goes looking for a thing they saw once and cannot remember.
       {
         id: 'fullScreen',
+        group: 'more',
         label: fullScreen ? t('reading.exitFullScreen') : t('reading.fullScreen'),
         onSelect: onToggleFullScreen,
       },
-      { id: 'print', label: t('reading.print'), onSelect: () => window.print() },
-      { id: 'viewSource', label: t('reading.source.view'), onSelect: () => setSourceOpen('view') },
-      { id: 'saveEml', label: t('reading.source.save'), onSelect: () => setSourceOpen('save') },
+      { id: 'print', group: 'more', label: t('reading.print'), onSelect: () => window.print() },
+      {
+        id: 'viewSource',
+        group: 'more',
+        label: t('reading.source.view'),
+        onSelect: () => setSourceOpen('view'),
+      },
+      {
+        id: 'saveEml',
+        group: 'more',
+        label: t('reading.source.save'),
+        onSelect: () => setSourceOpen('save'),
+      },
     ],
     [t, onCompose, snooze, email.id, fullScreen, onToggleFullScreen],
   )
@@ -877,6 +890,11 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     () => [
       ...barActions.slice(visibleActions).map((action) => ({
         id: action.id,
+        // The bar has carried these groups since it was built — it draws them with
+        // `data-group-start` — and the menu lost them at exactly the point where the reader can no
+        // longer see the bar's spacing. HIG `menus`: "Consider grouping logically related items …
+        // use a separator."
+        group: action.group,
         label:
           action.unavailableReason === undefined
             ? action.label

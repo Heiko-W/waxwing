@@ -230,3 +230,81 @@ describe('a long menu is bounded by the viewport', () => {
     expect(menu.style.maxBlockSize).toBe('740px')
   })
 })
+
+/**
+ * Group separators (D-11; HIG `menus`: "Consider grouping logically related items. … To help people
+ * visually distinguish such groups, use a separator", and `context-menus`: "In general, you don't
+ * want more than about three groups in a context menu").
+ *
+ * The folder menu was the case that earned this: ten entries — create, rename, move, keep offline,
+ * import, share, empty, delete older, folder info, delete — in one flat block, with two destructive
+ * commands sitting flush against "Folder info…". The reading pane made it plainer still: its action
+ * bar has carried groups since it was built and draws them with `data-group-start`, and the overflow
+ * menu threw them away at exactly the point where the reader can no longer see the bar's spacing.
+ *
+ * A `group` STRING rather than a "starts a group" flag, and that choice is the reason for the third
+ * test: this menu builds itself from up to ten permissions and any of them can be absent, so a flag
+ * on the first item of a band puts the separator on the wrong row the moment that item is filtered
+ * out.
+ */
+describe('Menu — group separators', () => {
+  const item = (id: string, group?: string): MenuItemSpec => ({
+    id,
+    label: id,
+    onSelect: () => {},
+    ...(group === undefined ? {} : { group }),
+  })
+
+  async function openWith(items: MenuItemSpec[]): Promise<void> {
+    const user = userEvent.setup()
+    render(<Menu triggerLabel="Actions" trigger="⋯" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+  }
+
+  it('draws one separator per boundary and none at the edges', async () => {
+    await openWith([
+      item('New', 'structure'),
+      item('Rename', 'structure'),
+      item('Share', 'content'),
+      item('Delete', 'destructive'),
+    ])
+    // Three bands, two boundaries. A separator above the first item or below the last would read
+    // as the menu's own edge.
+    expect(screen.getAllByRole('separator')).toHaveLength(2)
+  })
+
+  it('leaves an ungrouped menu exactly as it was', async () => {
+    // Every other menu in the app passes no groups, and none of them may grow a rule from this.
+    await openWith([item('One'), item('Two'), item('Three')])
+    expect(screen.queryAllByRole('separator')).toHaveLength(0)
+  })
+
+  it('keeps the boundary in the right place when a band loses its first item', async () => {
+    // The permission case, and the reason `group` is a string. Here "New" is absent because the
+    // folder may not take children; the rule must still fall between Rename and Share.
+    await openWith([item('Rename', 'structure'), item('Share', 'content'), item('Info', 'content')])
+    const menu = screen.getByRole('menu')
+    const rows = [...menu.children].map((node) =>
+      node.getAttribute('role') === 'separator' ? '—' : node.textContent,
+    )
+    expect(rows).toEqual(['Rename', '—', 'Share', 'Info'])
+  })
+
+  it('still reaches the last item by keyboard across a separator', async () => {
+    // Roving focus walks `itemRefs`, which is indexed by ITEM. A separator that took an index
+    // would leave End on a divider and the last command unreachable from the keyboard.
+    const user = userEvent.setup()
+    render(
+      <Menu
+        triggerLabel="Actions"
+        trigger="⋯"
+        items={[item('New', 'structure'), item('Share', 'content'), item('Delete', 'destructive')]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+    await user.keyboard('{End}')
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Delete' }))
+    await user.keyboard('{Home}')
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'New' }))
+  })
+})

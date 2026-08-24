@@ -117,7 +117,7 @@
   "status": {
     "offline": "Offline",
     "sync": {
-      "syncing": "Wird synchronisiert …",
+      "syncing": "Wird synchronisiert…",
       "error": "Synchronisation gestört — wird erneut versucht"
     },
     "outbox": {
@@ -240,7 +240,7 @@
     "identities": {
       "title": "Identitäten",
       "description": "Die Adressen, von denen Sie senden können, mit Signatur und Antwortadresse. Änderungen gelten für neue Nachrichten.",
-      "loading": "Identitäten werden geladen …",
+      "loading": "Identitäten werden geladen…",
       "empty": "Dieses Konto hat keine Absenderidentitäten.",
       "protected": "Standardadresse — der Server erlaubt kein Löschen.",
       "created": "Identität angelegt",
@@ -529,7 +529,7 @@
         "title": "Deployment-Konfiguration",
         "intro": "Erzeugt die config.json für dieses Deployment anhand des Servers, an dem Sie angemeldet sind. Legen Sie sie neben index.html ab.",
         "action": "config.json erzeugen",
-        "checking": "Wird geprüft …",
+        "checking": "Wird geprüft…",
         "save": "config.json speichern",
         "warnLabel": "Bitte prüfen:",
         "infoLabel": "Hinweis:",
@@ -806,7 +806,7 @@
       "choosePhoto": "Foto auswählen",
       "changePhoto": "Foto ändern",
       "removePhoto": "Foto entfernen",
-      "photoPreparing": "Foto wird vorbereitet …",
+      "photoPreparing": "Foto wird vorbereitet…",
       "photoError": "Das Foto konnte nicht verwendet werden.",
       "photoTooLarge": "Dieses Foto ist zu groß. Wählen Sie ein kleineres.",
       "photoAlt": "Vorschau des Kontaktfotos",
@@ -948,9 +948,9 @@
     "collapse": "{{name}} zuklappen",
     "actions": {
       "menu": "Ordner-Aktionen: {{name}}",
-      "newSubfolder": "Neuer Unterordner",
+      "newSubfolder": "Neuer Unterordner…",
       "newFolder": "Neuer Ordner",
-      "rename": "Umbenennen",
+      "rename": "Umbenennen…",
       "delete": "Löschen",
       "keepOffline": "Offline behalten",
       "keepOfflineOff": "Nicht mehr offline behalten",
@@ -1221,7 +1221,7 @@
       "note": "Es wurde nichts gesendet. Mit dem Bestätigen erfährt {{address}}, dass Sie diese Nachricht geöffnet haben.",
       "noteElsewhere": "Es wurde nichts gesendet. Mit dem Bestätigen erfährt {{address}} — nicht die Absenderadresse dieser Nachricht —, dass Sie sie geöffnet haben.",
       "confirm": "Gelesen bestätigen",
-      "sending": "Wird gesendet …",
+      "sending": "Wird gesendet…",
       "decline": "Nein",
       "failed": "Das ließ sich nicht senden. Es wurde niemand benachrichtigt.",
       "sent": "Sie haben das Lesen bestätigt",
@@ -1292,7 +1292,7 @@
     "attachRemove": "{{name}} entfernen",
     "attachRetry": "{{name}} erneut versuchen",
     "attachCancel": "Upload abbrechen",
-    "attachUploading": "{{name}} wird hochgeladen …",
+    "attachUploading": "{{name}} wird hochgeladen…",
     "attachError": "Upload fehlgeschlagen",
     "attachTooLarge": "{{name}} ist zu groß (max. {{max}})",
     "attachTotalTooLarge": "Anhänge überschreiten das Limit von {{max}}",
@@ -1921,8 +1921,8 @@
         "countLabel": "Anzahl der Termine"
       },
       "scope": {
-        "saveTitle": "Änderung übernehmen für …",
-        "deleteTitle": "Löschen …",
+        "saveTitle": "Änderung übernehmen für…",
+        "deleteTitle": "Löschen…",
         "occurrence": "Nur dieser Termin",
         "all": "Alle Termine",
         "note": "Einzeln geänderte Termine dieser Serie behalten ihre Zeit."
@@ -1955,7 +1955,7 @@
     },
     "calendars": {
       "title": "Kalender",
-      "open": "Kalender …",
+      "open": "Kalender…",
       "create": "Neuer Kalender",
       "createTitle": "Neuer Kalender",
       "editTitle": "Kalender bearbeiten",
@@ -1966,7 +1966,7 @@
       "color": "Farbe",
       "colorChosen": "Gewählt: {{chosen}}",
       "empty": "Dieses Konto hat keine Kalender.",
-      "counting": "Termine werden gezählt …",
+      "counting": "Termine werden gezählt…",
       "deleteTitle": "„{{name}}“ löschen?",
       "deleteBody_one": "Dieser Kalender und der {{count}} Termin darin werden gelöscht. Es gibt keinen Weg zurück.",
       "deleteBody_other": "Dieser Kalender und die {{count}} Termine darin werden gelöscht. Es gibt keinen Weg zurück.",
@@ -1989,7 +1989,7 @@
       "custom": "Aktuelle Farbe"
     },
     "import": {
-      "open": "Termine importieren …",
+      "open": "Termine importieren…",
       "title": "Termine importieren",
       "file": "Kalenderdatei (.ics)",
       "empty": "In dieser Datei steht kein Termin.",

@@ -706,3 +706,66 @@ describe('ShortcutProvider — reading scope', () => {
     expect(spies.openLabels).toHaveBeenCalled()
   })
 })
+
+/**
+ * ⌘Z, and the one place it must NOT be ours (D-10).
+ *
+ * HIG `undo-and-redo`, macOS: "they also expect to use Command–Z … to perform undo". The registry
+ * bound `z` alone, and that was never a decision — ADR-021 argues at length for the letter and does
+ * not mention the chord anywhere. On a Mac the chord is not a nicety; it is the gesture the hand
+ * makes without being asked.
+ *
+ * The second test is the load-bearing one. The dispatcher's rule is "a bare letter belongs to the
+ * field, a Mod chord does not", which is right for ⌘K and wrong for exactly this chord: inside an
+ * input, ⌘Z is the BROWSER's undo, and taking it there to un-archive a message would be a worse
+ * surprise than not having the chord at all.
+ */
+describe('ShortcutProvider — undo takes the standard chord', () => {
+  it('⌘Z undoes, like z', async () => {
+    await mounted()
+    press('e')
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    dispatch.mockReset()
+
+    press('z', { metaKey: true })
+
+    // The undo runs the toast's action, which sends the message back where it came from.
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'inbox' })
+  })
+
+  it('Ctrl+Z undoes too (the same token prints ⌘ on a Mac and Strg elsewhere)', async () => {
+    await mounted()
+    press('e')
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    dispatch.mockReset()
+
+    press('z', { ctrlKey: true })
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+  })
+
+  it('leaves ⌘Z alone inside a text field — there it belongs to the browser', async () => {
+    await mounted()
+    press('e')
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    dispatch.mockReset()
+
+    press('z', { metaKey: true }, screen.getByLabelText('Elsewhere'))
+
+    expect(dispatch, 'the app took the browser undo out of a text field').not.toHaveBeenCalled()
+    // …and the undo is still there to be taken the ordinary way.
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+  })
+
+  it('leaves ⌘Z alone in the message body, which is a contenteditable', async () => {
+    await mounted()
+    press('e')
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    dispatch.mockReset()
+
+    press('z', { metaKey: true }, screen.getByLabelText('Body'))
+
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+})

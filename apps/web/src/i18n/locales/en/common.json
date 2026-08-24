@@ -948,9 +948,9 @@
     "collapse": "Collapse {{name}}",
     "actions": {
       "menu": "Folder actions: {{name}}",
-      "newSubfolder": "New subfolder",
+      "newSubfolder": "New subfolder…",
       "newFolder": "New folder",
-      "rename": "Rename",
+      "rename": "Rename…",
       "delete": "Delete",
       "keepOffline": "Keep offline",
       "keepOfflineOff": "Stop keeping offline",
@@ -1921,8 +1921,8 @@
         "countLabel": "Number of events"
       },
       "scope": {
-        "saveTitle": "Apply the change to …",
-        "deleteTitle": "Delete …",
+        "saveTitle": "Apply the change to…",
+        "deleteTitle": "Delete…",
         "occurrence": "This event only",
         "all": "All events",
         "note": "Individually changed events in this series keep their time."
@@ -1989,7 +1989,7 @@
       "custom": "Current color"
     },
     "import": {
-      "open": "Import events …",
+      "open": "Import events…",
       "title": "Import events",
       "file": "Calendar file (.ics)",
       "empty": "This file holds no event.",

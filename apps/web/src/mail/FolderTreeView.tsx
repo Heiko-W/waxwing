@@ -23,7 +23,6 @@ import {
   Pin,
   Send,
   Trash2,
-  UserPlus,
 } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -361,6 +360,7 @@ function actionItems(
   if (mailbox.myRights.mayCreateChild) {
     items.push({
       id: 'new',
+      group: 'structure',
       label: t('mailbox.actions.newSubfolder'),
       onSelect: () => handlers.onRequestCreate(mailbox.id),
     })
@@ -368,6 +368,7 @@ function actionItems(
   if (mailbox.myRights.mayRename) {
     items.push({
       id: 'rename',
+      group: 'structure',
       label: t('mailbox.actions.rename'),
       onSelect: () => handlers.onRequestRename(mailbox),
     })
@@ -379,6 +380,7 @@ function actionItems(
     const onRequestMove = handlers.onRequestMove
     items.push({
       id: 'move',
+      group: 'structure',
       label: t('mailbox.actions.move'),
       onSelect: () => onRequestMove(mailbox),
     })
@@ -390,8 +392,8 @@ function actionItems(
     const onTogglePin = handlers.onTogglePin
     items.push({
       id: 'keepOffline',
+      group: 'content',
       label: isPinned ? t('mailbox.actions.keepOfflineOff') : t('mailbox.actions.keepOffline'),
-      icon: Pin,
       onSelect: () => onTogglePin(mailbox),
     })
   }
@@ -401,6 +403,7 @@ function actionItems(
     const onRequestImport = handlers.onRequestImport
     items.push({
       id: 'import',
+      group: 'content',
       label: t('mailbox.actions.import'),
       onSelect: () => onRequestImport(mailbox),
     })
@@ -418,8 +421,8 @@ function actionItems(
     const onRequestShare = handlers.onRequestShare
     items.push({
       id: 'share',
+      group: 'content',
       label: t('sharing.mailbox.action'),
-      icon: UserPlus,
       onSelect: () => onRequestShare(mailbox),
     })
   }
@@ -436,6 +439,7 @@ function actionItems(
     const onRequestEmpty = handlers.onRequestEmpty
     items.push({
       id: 'empty',
+      group: 'destructive',
       label: mailbox.role === 'trash' ? t('cleanup.menu.emptyTrash') : t('cleanup.menu.emptyJunk'),
       destructive: true,
       onSelect: () => onRequestEmpty(mailbox),
@@ -445,6 +449,7 @@ function actionItems(
     const onRequestDeleteOlder = handlers.onRequestDeleteOlder
     items.push({
       id: 'deleteOlder',
+      group: 'destructive',
       label: t('cleanup.menu.deleteOlder'),
       onSelect: () => onRequestDeleteOlder(mailbox),
     })
@@ -456,6 +461,7 @@ function actionItems(
     const onRequestInfo = handlers.onRequestInfo
     items.push({
       id: 'info',
+      group: 'content',
       label: t('mailbox.actions.info'),
       onSelect: () => onRequestInfo(mailbox),
     })
@@ -463,6 +469,7 @@ function actionItems(
   if (mailbox.myRights.mayDelete) {
     items.push({
       id: 'delete',
+      group: 'destructive',
       label: t('mailbox.actions.delete'),
       destructive: true,
       onSelect: () => handlers.onRequestDelete(mailbox),

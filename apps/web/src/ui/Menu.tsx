@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  Fragment,
   type KeyboardEvent,
   type ReactNode,
   useCallback,
@@ -20,6 +21,19 @@ export interface MenuItemSpec {
   onSelect: () => void
   disabled?: boolean
   destructive?: boolean
+  /**
+   * Which band of the menu this item belongs to. Items sharing a value are drawn together and a
+   * separator is placed wherever the value changes (HIG `menus`: "Consider grouping logically
+   * related items. … To help people visually distinguish such groups, use a separator").
+   *
+   * A string rather than a boolean "startsGroup", so the grouping survives an item being filtered
+   * out by a permission — which is the normal case here: the folder menu builds itself from up to
+   * ten rights and any of them can be absent. With a "starts a group" flag, dropping the first
+   * item of a band silently moves the separator onto the wrong row.
+   *
+   * Items with no group come first, ungrouped — an existing menu keeps its exact shape.
+   */
+  group?: string
 }
 
 export interface MenuProps {
@@ -68,9 +82,20 @@ const MENU_GAP = 4
 const MENU_ROW_BLOCK = 44
 /** `.menu`'s own padding, both edges (`--waxwing-space-1` × 2). */
 const MENU_PADDING_BLOCK = 8
+/** A group separator: 1px rule plus `--waxwing-space-1` above and below. */
+const MENU_SEPARATOR_BLOCK = 9
 
-function estimatedBlock(itemCount: number): number {
-  return itemCount * MENU_ROW_BLOCK + MENU_PADDING_BLOCK
+/**
+ * Separators count. They are the reason the estimate exists at all — it was written after a
+ * nine-item folder menu ran 131 px off the bottom of a phone because the old constant assumed six
+ * items, and adding two rules to that same menu without counting them would put the estimate 18 px
+ * back under the truth.
+ */
+function estimatedBlock(items: readonly MenuItemSpec[]): number {
+  const separators = items.filter(
+    (item, index) => index > 0 && items[index - 1]?.group !== item.group,
+  ).length
+  return items.length * MENU_ROW_BLOCK + separators * MENU_SEPARATOR_BLOCK + MENU_PADDING_BLOCK
 }
 
 /**
@@ -104,6 +129,8 @@ export function Menu({
 
   /** Whether the menu reserves an icon column at all — see the note at the render site. */
   const anyIcon = items.some((item) => item.icon !== undefined)
+  /** How tall this menu will be, separators included — the input to the flip decision below. */
+  const menuBlock = estimatedBlock(items)
   const firstEnabled = items.findIndex((item) => !item.disabled)
   const lastEnabled = items.reduce((last, item, index) => (item.disabled ? last : index), -1)
 
@@ -133,7 +160,7 @@ export function Menu({
         // the last item reachable at any item count, rather than at the ones we thought to check.
         const below = window.innerHeight - rect.bottom - MENU_GAP
         const above = rect.top - MENU_GAP
-        const flip = estimatedBlock(items.length) > below && above > below
+        const flip = menuBlock > below && above > below
         setCoords({
           top: flip ? rect.top - MENU_GAP : rect.bottom + MENU_GAP,
           left: align === 'end' ? rect.right : rect.left,
@@ -144,10 +171,11 @@ export function Menu({
       setFocusedIndex(toIndex)
       setOpen(true)
     },
-    // `items.length`, not `items`: a caller that rebuilds its array every render would otherwise
+    // `menuBlock`, not `items`: a caller that rebuilds its array every render would otherwise
     // rebuild this callback every render too, and the only thing the position depends on is how
-    // many entries there are.
-    [align, items.length],
+    // TALL the menu will be. It replaces `items.length`, which stopped being the whole answer once
+    // group separators started adding height of their own.
+    [align, menuBlock],
   )
 
   const close = useCallback(() => {
@@ -302,34 +330,49 @@ export function Menu({
           >
             {items.map((item, index) => {
               const Icon = item.icon
+              // A boundary between two bands, drawn before the first item of the new one. `index > 0`
+              // keeps a leading separator off the top of the menu when the first band is empty.
+              const startsGroup = index > 0 && items[index - 1]?.group !== item.group
               return (
-                <button
-                  key={item.id}
-                  ref={(node) => {
-                    itemRefs.current[index] = node
-                  }}
-                  type="button"
-                  role="menuitem"
-                  tabIndex={-1}
-                  // aria-disabled (not native `disabled`) so the item stays perceivable to a
-                  // screen reader; activate() is a no-op for it and roving focus skips it.
-                  aria-disabled={item.disabled || undefined}
-                  className={cx(styles.item, item.destructive && styles.destructive)}
-                  onClick={() => activate(index)}
-                >
-                  {/* One text edge for the whole menu. The folder menu carries an icon on exactly
-                      one of its seven entries ("Keep offline"), which indented that entry's label
-                      past the other six — a menu with two left edges, and the single glyph pulling
-                      the eye to the least important row. Reserving the column where ANY entry uses
-                      it costs nothing and removes the choice between "an icon on all seven" and
-                      "no icons at all". */}
-                  {anyIcon ? (
-                    <span className={styles.iconSlot}>
-                      {Icon ? <Icon aria-hidden="true" className={styles.icon} /> : null}
-                    </span>
+                <Fragment key={item.id}>
+                  {startsGroup ? (
+                    <div
+                      role="separator"
+                      className={styles.separator}
+                      aria-orientation="horizontal"
+                    />
                   ) : null}
-                  <span className={styles.itemLabel}>{item.label}</span>
-                </button>
+                  <button
+                    ref={(node) => {
+                      itemRefs.current[index] = node
+                    }}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    // aria-disabled (not native `disabled`) so the item stays perceivable to a
+                    // screen reader; activate() is a no-op for it and roving focus skips it.
+                    aria-disabled={item.disabled || undefined}
+                    className={cx(styles.item, item.destructive && styles.destructive)}
+                    onClick={() => activate(index)}
+                  >
+                    {/* One text edge for the whole menu: reserve the icon column as soon as ANY entry
+                      uses one, so a single glyph cannot indent its own label past every other.
+
+                      This was written when the folder menu carried an icon on two of its ten
+                      entries. HIG `menus` asks for the other answer — "provide icons for all menu
+                      items in a group, or none of them" — and for that menu "none" was the
+                      honest one, because Rename, Folder info and "Delete older than…" have no
+                      symbol that means them. The reservation stays: it is what keeps a menu that
+                      DOES use icons from having two left edges, and it is what makes "none" a
+                      choice about meaning rather than about alignment. */}
+                    {anyIcon ? (
+                      <span className={styles.iconSlot}>
+                        {Icon ? <Icon aria-hidden="true" className={styles.icon} /> : null}
+                      </span>
+                    ) : null}
+                    <span className={styles.itemLabel}>{item.label}</span>
+                  </button>
+                </Fragment>
               )
             })}
           </div>

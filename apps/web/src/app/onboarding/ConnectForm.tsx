@@ -60,7 +60,8 @@ export function ConnectForm({
             type="text"
             inputMode="email"
             autoComplete="email"
-            spellCheck={false}
+            // The only field on the screen, and its Return key submits the form.
+            enterKeyHint="go"
             placeholder={t('onboarding.connect.placeholder')}
             value={value}
             invalid={error !== undefined}

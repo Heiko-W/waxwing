@@ -102,6 +102,8 @@ export function ShortcutProvider() {
 
       const context = contextRef.current
       for (const action of SHORTCUTS) {
+        // …with one documented exception, where the chord belongs to the FIELD (see `yieldsToTyping`).
+        if (typing && action.yieldsToTyping === true) continue
         const keys = typing ? action.keys.filter((chord) => parseChord(chord).mod) : action.keys
         if (keys.length === 0) continue
         if (!matchesAny(event, keys)) continue

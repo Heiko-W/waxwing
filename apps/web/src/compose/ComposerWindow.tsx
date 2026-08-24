@@ -488,6 +488,10 @@ export function ComposerWindow({
             <TextInput
               ref={subjectRef}
               id={subjectId}
+              // Prose, so capitalisation and autocorrect stay ON here — the opposite of the
+              // recipient field above it, and for the same reason: the keyboard should match what
+              // is being typed. The Return key moves on to the body.
+              enterKeyHint="next"
               value={draft.subject}
               onChange={(event) => updateSubject(draft.id, event.target.value)}
             />

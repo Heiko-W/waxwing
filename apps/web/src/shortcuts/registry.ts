@@ -383,7 +383,18 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
   {
     id: 'triage.undo',
     titleKey: 'shortcuts.actions.triage.undo',
-    keys: ['z'],
+    /*
+     * ⌘Z as well as `z` (HIG `undo-and-redo`, macOS: "they also expect to use Command–Z … to
+     * perform undo"). `z` alone was never a decision — ADR-021 argues for the letter and does not
+     * mention the chord at all — and on a Mac the chord is not a nicety: it is the gesture the
+     * reader's hand makes without being asked.
+     *
+     * `formatChord` prints ⌘ on Apple platforms and Strg elsewhere from the same `Mod+` token, so
+     * this is right on Windows and Linux too. `yieldsToTyping` is the necessary other half: inside
+     * a text field ⌘Z is the browser's undo and must stay so.
+     */
+    keys: ['z', 'Mod+z'],
+    yieldsToTyping: true,
     scopes: ['list', 'reading'],
     group: 'triage',
     // Always offered: whether an undo is PENDING is not knowable from the context (the toasts live

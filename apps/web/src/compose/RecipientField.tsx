@@ -385,6 +385,20 @@ export function RecipientField({
           ref={inputRef}
           className={styles.input}
           type="text"
+          /*
+           * A bare <input> rather than ui/TextInput (it carries the combobox ARIA and the pill
+           * chrome), so the keyboard semantics TextInput derives have to be spelled out here.
+           * Without them iOS opens a prose keyboard on the field this app is most typed into: no
+           * `@` on the first layer, a capital letter at the start of every address, and autocorrect
+           * running over domain names. HIG `virtual-keyboards`.
+           */
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          // Enter commits the address and keeps the field: "next" is the closest standard label for
+          // "on to the following one" — none of the seven means "add".
+          enterKeyHint="next"
           role="combobox"
           aria-expanded={open}
           aria-controls={listboxId}
