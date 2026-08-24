@@ -45,6 +45,31 @@ function parseBlock(selectorSource: string): Record<string, string> {
 const light = parseBlock(':root')
 const dark = { ...light, ...parseBlock(':root\\[data-theme="dark"\\]') }
 
+/**
+ * The increased-contrast variants (`prefers-contrast: more`), layered over their base theme the
+ * same way the dark block is layered over light.
+ *
+ * These exist because the HIG asks for four variants where this file shipped two — "supply light
+ * and dark variants, AND an increased contrast option for each" (`color`) — and because an
+ * untested high-contrast palette is worse than none: it is the one palette whose reader cannot
+ * shrug off a mistake. So the whole matrix below runs against them as well, at the same AA floors,
+ * with the raised floors asserted separately at the foot of this file.
+ *
+ * Anchored on the media query rather than on the selector: `:root` alone would match the base
+ * block, and the test would then measure the palette it is supposed to be checking the alternative
+ * to — passing while asserting nothing.
+ */
+const moreLight = {
+  ...light,
+  ...parseBlock('@media \\(prefers-contrast: more\\) \\{\\s*:root'),
+}
+const moreDark = {
+  ...dark,
+  ...parseBlock(
+    '@media \\(prefers-contrast: more\\) and \\(prefers-color-scheme: dark\\) \\{\\s*:root:not\\(\\[data-theme="light"\\]\\)',
+  ),
+}
+
 const TEXT_AA = 4.5 // WCAG 1.4.3 normal text
 const UI_AA = 3.0 // WCAG 1.4.11 non-text UI components
 
@@ -195,6 +220,8 @@ const DISTINCT_PAIRS: DistinctPair[] = [
 for (const [themeName, palette] of [
   ['light', light],
   ['dark', dark],
+  ['light + increased contrast', moreLight],
+  ['dark + increased contrast', moreDark],
 ] as const) {
   describe(`fill against fill — ${themeName} theme`, () => {
     for (const pair of FILL_PAIRS) {
@@ -240,3 +267,82 @@ for (const [themeName, palette] of [
     }
   })
 }
+
+/**
+ * What "increased contrast" has to actually BUY, over and above passing the same AA matrix.
+ *
+ * A variant that merely re-passes the floors it already passed is decoration. These are the three
+ * roles that sit near a threshold at rest and are the reason a reader turns the setting on:
+ *
+ *  - `--waxwing-border` is documented as a sub-3:1 hairline (tokens.css header) and is used all
+ *    over as a divider. Under this setting it has to be a boundary you can see.
+ *  - `--waxwing-text-muted` clears AA at rest and no more; here it clears AAA.
+ *  - the two row fills are the states a reader with low contrast sensitivity reported invisible;
+ *    each has to move measurably further from the plane it sits on, without leaving the corridor
+ *    the fills are held in (a hover that reads as a selection is its own defect — see FILL_PAIRS).
+ */
+const HIGHER = [
+  { name: 'light', base: light, more: moreLight },
+  { name: 'dark', base: dark, more: moreDark },
+] as const
+
+/** Every plane a border or muted label is drawn on. */
+const PLANES = ['bg', 'surface', 'surface-2', 'surface-sunken'] as const
+
+function value(palette: Record<string, string>, token: string): string {
+  const found = palette[token]
+  if (found === undefined) throw new Error(`missing token: --waxwing-${token}`)
+  return found
+}
+
+for (const { name, base, more } of HIGHER) {
+  describe(`increased contrast raises the thresholds it exists for — ${name} theme`, () => {
+    it.each([...PLANES])('the hairline border becomes a real boundary on %s', (plane) => {
+      const ratio = roundRatio(contrastRatio(value(more, 'border'), value(more, plane)))
+      expect(ratio, `border on ${plane} = ${ratio}:1`).toBeGreaterThanOrEqual(UI_AA)
+    })
+
+    it.each([...PLANES])('secondary text reaches AAA on %s', (plane) => {
+      const ratio = roundRatio(contrastRatio(value(more, 'text-muted'), value(more, plane)))
+      expect(ratio, `text-muted on ${plane} = ${ratio}:1`).toBeGreaterThanOrEqual(7)
+    })
+
+    it.each([
+      'surface-hover',
+      'surface-selected-idle',
+    ] as const)('%s stands further off the content plane than it does at rest', (token) => {
+      const surface = value(more, 'surface')
+      const rest = roundRatio(contrastRatio(value(base, token), value(base, 'surface')))
+      const raised = roundRatio(contrastRatio(value(more, token), surface))
+      expect(raised, `${token}: ${rest}:1 at rest, ${raised}:1 raised`).toBeGreaterThan(rest)
+      // The upper bound still applies: this palette is for seeing states, not for shouting.
+      expect(raised, `${token} = ${raised}:1`).toBeLessThanOrEqual(FILL_MAX)
+    })
+
+    it('is a different palette from its base at all (the media query can go unmatched)', () => {
+      // If the anchor above ever stops matching, `more` silently becomes `base` and every
+      // assertion in this block passes by measuring the palette it was written to distinguish.
+      const moved = (
+        ['border', 'text-muted', 'surface-hover', 'surface-selected-idle'] as const
+      ).filter((token) => value(more, token) !== value(base, token))
+      expect(moved, 'the increased-contrast block did not override anything').toHaveLength(4)
+    })
+  })
+}
+
+describe('increased contrast reaches the two non-colour tokens as well', () => {
+  it('thickens the focus ring', () => {
+    // The ring is the one indicator a keyboard-only, low-vision reader navigates by, and it is
+    // drawn once in global.css — so it can only be widened from here.
+    const at = css.indexOf('@media (prefers-contrast: more)')
+    expect(at, 'no prefers-contrast block in tokens.css').toBeGreaterThan(-1)
+    expect(css.slice(at)).toMatch(/--waxwing-focus-width:\s*3px/)
+    expect(css.slice(0, at)).toMatch(/--waxwing-focus-width:\s*2px/)
+  })
+
+  it('lifts disabled controls out of the fog', () => {
+    const at = css.indexOf('@media (prefers-contrast: more)')
+    expect(css.slice(at)).toMatch(/--waxwing-disabled-opacity:\s*0\.75/)
+    expect(css.slice(0, at)).toMatch(/--waxwing-disabled-opacity:\s*0\.5/)
+  })
+})

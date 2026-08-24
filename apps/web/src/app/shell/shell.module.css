@@ -136,9 +136,19 @@
   }
 }
 
+/*
+ * The header's sync mark is a progress indicator, so it slows down rather than stopping
+ * (waxwing-motion-exempt: a stalled-looking sync mark is worse than a slow one — see
+ * Spinner.module.css for the full reasoning and the HIG citation). It used to read
+ * `animation: none`, which left the reader of "Wird synchronisiert …" looking at a still
+ * circle for the whole pass.
+ */
 @media (prefers-reduced-motion: reduce) {
   .statusSpin {
-    animation: none;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank the universal reduced-motion reset */
+    animation-duration: var(--waxwing-duration-spin-reduced) !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank the universal reduced-motion reset */
+    animation-iteration-count: infinite !important;
   }
 }
 

@@ -34,6 +34,19 @@ first run (see the changelog at the end).
   SC 2.5.5 figure on the devices where it matters most.
 - **Contrast.** No shipped token pair sits at exactly 4.5:1; the accent palettes carry
   margin on every surface they can land on.
+- **A fourth palette for `prefers-contrast: more`** (added 2026-08-24, from the HIG review).
+  Apple asks for "an increased contrast option for each variant"; the app now ships one per
+  theme. The hairline `--waxwing-border` — deliberately sub-3:1 at rest, because a divider is
+  exempt — becomes a real 3:1 boundary, secondary text clears **AAA (7:1)** on all four planes,
+  the two row-state fills move measurably further off the content plane, the focus ring goes from
+  2 px to 3 px and disabled controls fade to 0.75 instead of 0.5. The whole AA matrix runs against
+  these palettes too (`tokens.contrast.test.ts`, four themes), plus assertions that each of them
+  actually *raised* something — an untested high-contrast palette is worse than none.
+- **Progress indicators keep moving under `prefers-reduced-motion`** (2026-08-24). The universal
+  reset in `global.css` is right for decoration and was wrong for exactly one thing: WCAG 2.3.3
+  asks for reduced motion, not for none, and a spinner that stands still is what a *frozen* app
+  looks like. The two spinners now slow to a 2.4 s period instead of stopping; the skeleton
+  shimmer still stops, because a placeholder that stops shimmering still shows its shape.
 
 ## Known limitations
 
@@ -91,7 +104,18 @@ spacing exception, which the automated check implements rather than skips. The e
 real and correctly applied (verified at both densities), but a 24 px checkbox would be
 better than a conforming 18.4 px one.
 
-### 6. Not audited by a third party
+### 6. Unavailable controls are still dimmed rather than redrawn
+
+Nine rules said "disabled" with `opacity: 0.5`, which dims the **text** as well — the one thing a
+reader who turned on Increase Contrast is fighting. They now share one token
+(`--waxwing-disabled-opacity`) and that token lifts to 0.75 under `prefers-contrast: more`, which
+raises the floor everywhere at once. It is the cheap half of the answer, and it is worth saying
+plainly that it is not the right one: opacity is a weak way to express unavailability.
+
+*To close it:* a disabled treatment built from a border and a text colour rather than from
+transparency, so the label stays at full contrast while the control reads as inert.
+
+### 7. Not audited by a third party
 
 This is a self-assessment. No external accessibility audit has been commissioned, and no
 formal VPAT/ACR exists.
