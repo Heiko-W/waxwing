@@ -916,7 +916,11 @@
   },
   "ui": {
     "dialog": {
-      "close": "Close"
+      "close": "Close",
+      "discardBody": "What you have entered here will be lost.",
+      "discardCancel": "Keep editing",
+      "discardConfirm": "Discard",
+      "discardTitle": "Discard your changes?"
     },
     "toast": {
       "region": "Status messages",

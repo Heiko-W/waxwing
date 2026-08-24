@@ -93,7 +93,12 @@ export function PasswordChangeDialog(props: PasswordChangeDialogProps) {
           <Button variant="ghost" onClick={props.onClose}>
             {t('settings.security.password.cancel')}
           </Button>
-          <Button loading={busy} disabled={props.offline} onClick={() => void submit()}>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={props.offline}
+            onClick={() => void submit()}
+          >
             {t('settings.security.password.submit')}
           </Button>
         </>

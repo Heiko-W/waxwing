@@ -267,6 +267,9 @@ export default function EventDialog(props: EventDialogProps) {
       // Escape goes ONE level up, and only closes from `main`. A reader who stepped into "Repeat"
       // and pressed Escape meant "not that page", not "throw the whole event away".
       onClose={page === 'main' ? props.onCancel : backTo('main')}
+      // Only on `main`: from a sub-page Escape means "not that page", and asking there would put a
+      // discard prompt in front of a navigation the reader did not intend as one.
+      confirmDiscard={page === 'main'}
       size="md"
       title={
         page === 'main' ? (
@@ -477,7 +480,7 @@ export default function EventDialog(props: EventDialogProps) {
             <Button type="button" variant="secondary" onClick={props.onCancel}>
               {t('calendar.event.cancel')}
             </Button>
-            <Button type="submit" loading={props.busy} disabled={!canSubmit}>
+            <Button variant="primary" type="submit" loading={props.busy} disabled={!canSubmit}>
               {t('calendar.event.save')}
             </Button>
           </div>

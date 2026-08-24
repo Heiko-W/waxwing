@@ -159,6 +159,7 @@ export default function ScheduleSendDialog(props: ScheduleSendDialogProps) {
             }}
           />
           <Button
+            variant="primary"
             onClick={() => {
               // An empty or half-typed value parses to Invalid Date; treat it as "in the past"
               // rather than sending something unintelligible to the server.

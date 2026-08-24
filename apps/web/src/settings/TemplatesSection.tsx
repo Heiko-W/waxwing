@@ -123,6 +123,7 @@ function TemplateDialog(props: TemplateDialogProps) {
     <Dialog
       open
       onClose={props.onCancel}
+      confirmDiscard
       size="md"
       title={t('settings.templates.dialogTitle')}
       footer={
@@ -131,6 +132,7 @@ function TemplateDialog(props: TemplateDialogProps) {
             {t('settings.templates.cancel')}
           </Button>
           <Button
+            variant="primary"
             disabled={name.trim() === ''}
             onClick={() =>
               props.onSubmit({

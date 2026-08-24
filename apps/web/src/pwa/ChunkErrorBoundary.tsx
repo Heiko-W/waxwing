@@ -116,7 +116,9 @@ function ChunkErrorFallback({ onReload }: { onReload: () => void }) {
     <div className={styles.panel} role="alert">
       <h1 className={styles.title}>{t('pwa.error.chunk.title')}</h1>
       <p className={styles.body}>{t('pwa.error.chunk.body')}</p>
-      <Button onClick={onReload}>{t('pwa.error.chunk.action')}</Button>
+      <Button variant="primary" onClick={onReload}>
+        {t('pwa.error.chunk.action')}
+      </Button>
     </div>
   )
 }

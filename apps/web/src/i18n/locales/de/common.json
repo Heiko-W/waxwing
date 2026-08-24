@@ -916,7 +916,11 @@
   },
   "ui": {
     "dialog": {
-      "close": "Schließen"
+      "close": "Schließen",
+      "discardBody": "Was Sie hier eingegeben haben, geht verloren.",
+      "discardCancel": "Weiter bearbeiten",
+      "discardConfirm": "Verwerfen",
+      "discardTitle": "Änderungen verwerfen?"
     },
     "toast": {
       "region": "Statusmeldungen",

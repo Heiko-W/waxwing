@@ -123,13 +123,20 @@ export function AppPasswordDialog(props: AppPasswordDialogProps) {
       dismissOnBackdrop={!revealing}
       footer={
         revealing ? (
-          <Button onClick={props.onClose}>{t('settings.security.appPasswords.done')}</Button>
+          <Button variant="primary" onClick={props.onClose}>
+            {t('settings.security.appPasswords.done')}
+          </Button>
         ) : (
           <>
             <Button variant="ghost" onClick={props.onClose}>
               {t('settings.security.appPasswords.cancel')}
             </Button>
-            <Button loading={busy} disabled={props.offline} onClick={() => void submit()}>
+            <Button
+              variant="primary"
+              loading={busy}
+              disabled={props.offline}
+              onClick={() => void submit()}
+            >
               {t('settings.security.appPasswords.submit')}
             </Button>
           </>

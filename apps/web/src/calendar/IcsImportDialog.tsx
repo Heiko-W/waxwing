@@ -195,6 +195,7 @@ export default function IcsImportDialog(props: IcsImportDialogProps) {
             {t('calendar.event.cancel')}
           </Button>
           <Button
+            variant="primary"
             type="button"
             loading={busy}
             disabled={selected === 0 || calendar === ''}

@@ -127,6 +127,7 @@ export function RuleForm(props: RuleFormProps) {
     <Dialog
       open
       onClose={props.onCancel}
+      confirmDiscard
       size="md"
       title={
         props.rule === null
@@ -252,7 +253,7 @@ export function RuleForm(props: RuleFormProps) {
           <Button type="button" variant="secondary" onClick={props.onCancel}>
             {t('settings.filters.form.cancel')}
           </Button>
-          <Button type="submit" loading={props.busy} disabled={nameMissing}>
+          <Button variant="primary" type="submit" loading={props.busy} disabled={nameMissing}>
             {t('settings.filters.form.submit')}
           </Button>
         </div>
