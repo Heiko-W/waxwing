@@ -198,7 +198,7 @@ export function LoginForm({
               ref={usernameRef}
               type="text"
               autoComplete="username"
-              spellCheck={false}
+              enterKeyHint="next"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               required
@@ -212,6 +212,8 @@ export function LoginForm({
               id={passwordId}
               type="password"
               autoComplete="current-password"
+              // Last field of the form; its Return key signs in.
+              enterKeyHint="go"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required

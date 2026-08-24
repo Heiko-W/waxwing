@@ -39,7 +39,22 @@
   display: flex;
   flex-direction: column;
   inline-size: 100%;
+  /*
+   * `dvh`, not `vh` — the same progressive pair `.app` uses in shell.module.css, and here it is
+   * not cosmetic. On iOS `100vh` is the LARGE viewport (browser bars collapsed), while this
+   * panel's backdrop is `position: fixed` and only ever covers what is actually visible. A tall
+   * dialog was therefore allowed to be taller than the box containing it, and the footer — Cancel
+   * and Save — started life below the fold. Scrolling INSIDE the dialog does not bring it back
+   * either: `.body` is the scroller, so the buttons move only if the reader thinks to scroll the
+   * BACKDROP, which nobody does.
+   */
   max-block-size: calc(100vh - 2 * var(--waxwing-space-4));
+  /* biome-ignore lint/suspicious/noDuplicateProperties: deliberate progressive fallback — see above */
+  max-block-size: calc(100dvh - 2 * var(--waxwing-space-4));
+  /* And the keyboard, which `dvh` does not describe: with a ~300 px keyboard open, the footer of a
+     tall dialog (Cancel / Save) was below the visible band and unreachable by scrolling the dialog,
+     because `.body` is the scroller. See ui/viewport-metrics.ts. */
+  max-block-size: calc(var(--waxwing-viewport-block) - 2 * var(--waxwing-space-4));
   border: 1px solid var(--waxwing-border);
   border-radius: var(--waxwing-radius-lg);
   background-color: var(--waxwing-surface);

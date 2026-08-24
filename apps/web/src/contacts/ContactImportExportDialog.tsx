@@ -20,7 +20,7 @@
  */
 
 import type { ContactCard, Id } from '@waxwing/jmap'
-import { type ChangeEvent, useCallback, useId, useMemo, useState } from 'react'
+import { type ChangeEvent, useCallback, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AddressBookRow } from '../sync'
 import { Button, Checkbox, Dialog, SectionLabel, Select } from '../ui'
@@ -111,6 +111,22 @@ export default function ContactImportExportDialog({
   const [parseState, setParseState] = useState<ParseState>({ status: 'idle' })
   const [importing, setImporting] = useState(false)
   const [importedCount, setImportedCount] = useState<number | null>(null)
+  /*
+   * How far the import has got, and a way to stop it.
+   *
+   * The loop below creates one card per round trip and used to report only afterwards, so a 500-card
+   * vCard file was a spinner for a minute or more with no way to tell a slow import from a stalled
+   * one and no way out of it. HIG `progress-indicators`: "When possible, use a determinate progress
+   * indicator. An indeterminate progress indicator shows that a process is occurring, but it doesn't
+   * help people estimate how long a task will take"; and "When it's feasible, let people halt
+   * processing. If people can interrupt a process without causing negative side effects, include a
+   * Cancel button."
+   *
+   * The side effect here is real and is therefore SAID rather than hidden: the cards already created
+   * stay created. Cancel means "stop", not "undo".
+   */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const cancelledRef = useRef(false)
   const [exporting, setExporting] = useState(false)
   /*
    * Whether the last Download attempt failed.
@@ -170,14 +186,23 @@ export default function ContactImportExportDialog({
       : ready.dedupe.toCreate
     const cards = chosen.slice(0, MAX_IMPORT_CARDS)
     setImporting(true)
+    cancelledRef.current = false
+    setProgress({ done: 0, total: cards.length })
+    let done = 0
     try {
       for (const card of cards) {
+        // Checked BEFORE the write, so Cancel never leaves a half-written card and the count the
+        // dialog reports is the count the address book actually holds.
+        if (cancelledRef.current) break
         await createCard(toContactCard(card, targetBook.id))
+        done += 1
+        setProgress({ done, total: cards.length })
       }
-      setImportedCount(cards.length)
+      setImportedCount(done)
       setParseState({ status: 'idle' })
     } finally {
       setImporting(false)
+      setProgress(null)
     }
   }, [ready, targetBook, keepDuplicates, createCard])
 
@@ -322,6 +347,34 @@ export default function ContactImportExportDialog({
                       {t('contacts.io.import.confirm', { count: cappedImport })}
                     </Button>
                   </div>
+
+                  {/* Determinate, because the total IS known: the loop is one round trip per card
+                      over a list it already holds. `<progress>` rather than a bar of our own — it
+                      carries the value to assistive tech without an ARIA translation, and it is the
+                      element the two storage readouts in this app already use. */}
+                  {progress !== null && (
+                    <div className={styles.importProgress}>
+                      <progress
+                        value={progress.done}
+                        max={progress.total}
+                        aria-label={t('contacts.io.import.progressLabel')}
+                      />
+                      <span className={styles.formHint}>
+                        {t('contacts.io.import.progress', {
+                          done: progress.done,
+                          total: progress.total,
+                        })}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          cancelledRef.current = true
+                        }}
+                      >
+                        {t('contacts.io.import.cancel')}
+                      </Button>
+                    </div>
+                  )}
                 </>
               ))}
 

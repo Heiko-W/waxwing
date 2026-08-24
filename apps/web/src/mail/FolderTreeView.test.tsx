@@ -108,7 +108,7 @@ describe('FolderTreeView', () => {
     const user = userEvent.setup()
     renderTree([row('inbox', { role: 'inbox', myRights: { ...RIGHTS, mayDelete: false } })])
     await user.click(screen.getByRole('button', { name: /^Folder actions/ }))
-    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Rename…' })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
   })
 

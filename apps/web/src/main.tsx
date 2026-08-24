@@ -7,6 +7,7 @@ import { applyBranding, initTheme, loadThemeOverride } from './app/theme'
 import { initI18n } from './i18n'
 import { initInstallCapture } from './pwa/install/use-install-prompt'
 import { initScrollbarMetrics } from './ui/scrollbar-metrics'
+import { initViewportMetrics } from './ui/viewport-metrics'
 import './ui/global.css'
 
 async function boot(): Promise<void> {
@@ -29,6 +30,7 @@ async function boot(): Promise<void> {
   // Measure the platform's scrollbar before anything that has to keep clear of it paints — see
   // `scrollbar-metrics.ts` for the defect this exists for (an overlay bar drawn in pieces).
   initScrollbarMetrics()
+  initViewportMetrics()
   await initI18n()
 
   const container = document.getElementById('root')

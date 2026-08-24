@@ -104,6 +104,26 @@
   cursor: pointer;
 }
 
+/*
+ * A group boundary (HIG `menus`: "Consider grouping logically related items … use a separator";
+ * `context-menus`: "In general, you don't want more than about three groups").
+ *
+ * `--waxwing-border` on purpose, and it is the one role that token is FOR: a divider is decorative
+ * and WCAG 1.4.11 exempts it, which is why tokens.css documents it as deliberately sub-3:1. The
+ * grouping is never the only thing saying what an item does — the label is.
+ *
+ * Inset to the text edge rather than run wall to wall: a full-bleed rule reads as the end of the
+ * menu, and the folder menu now has two of them.
+ */
+.separator {
+  /* `<hr>` brings its own inset border and block margin; both are replaced here. */
+  border: 0;
+  block-size: 1px;
+  margin-block: var(--waxwing-space-1);
+  margin-inline: var(--waxwing-space-2);
+  background-color: var(--waxwing-border);
+}
+
 .item:focus-visible {
   background-color: var(--waxwing-surface-2);
 }
@@ -119,7 +139,7 @@
 .item[aria-disabled="true"] {
   color: var(--waxwing-text-muted);
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: var(--waxwing-disabled-opacity);
 }
 
 .destructive {

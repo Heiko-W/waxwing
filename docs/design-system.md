@@ -159,10 +159,44 @@ from this scale; no arbitrary pixel spacing.
   **One documented exception:** the SplitPane resize separator uses a 24 px hit band (meeting
   SC 2.5.8) rather than the control minimum — a wide divider is dead space between panes, and
   keyboard resize (arrows/Home/End) is its primary operable path.
-- Durations: `fast` 120ms · `base` 200ms · `slow` 320ms. Easing: `--waxwing-ease-standard`
+- `--waxwing-safe-block-start` / `-block-end` / `-inline-start` / `-inline-end` — the display safe
+  areas, wrapped once so the rest of the app stays logical. `env(safe-area-inset-left)` is a
+  PHYSICAL edge; `[dir="rtl"]` swaps the inline pair, the same trick as `--waxwing-flip`. Nothing
+  outside `tokens.css` may spell `env(safe-area-inset-*)` — `safe-area.css.test.ts` enforces it.
+- `--waxwing-bottom-bar` — height of the phone's bottom navigation bar, for the three things that
+  float above it (compose button, toast region, outbox strip). A constant, compared against the
+  measured bar in `e2e/tests/narrow.spec.ts`.
+- `--waxwing-viewport-block` / `--waxwing-viewport-offset` — the visible band of the window, written
+  by `ui/viewport-metrics.ts` from `window.visualViewport`. This is the only way to know what the
+  on-screen keyboard has covered: `svh`/`dvh`/`lvh` describe the browser's chrome, not a keyboard,
+  and Safari ignores `interactive-widget=resizes-content`. Read by `.app`, `Dialog .panel` and the
+  phone composer, each behind a `vh` → `dvh` → `var()` progression.
+- `--waxwing-focus-width` — thickness of the `:focus-visible` ring drawn once in `global.css`.
+  `2px`, and `3px` under `prefers-contrast: more`.
+- `--waxwing-disabled-opacity` — how far a disabled control fades. `0.5`, and `0.75` under
+  `prefers-contrast: more`. One token for nine rules that each carried their own number; see
+  `docs/accessibility.md` §6 for why opacity is the wrong instrument for this and what would
+  replace it.
+- Durations: `fast` 120ms · `base` 200ms · `slow` 320ms. Loop periods: `spin` 900ms ·
+  `shimmer` 1400ms · `spin-reduced` 2400ms. Easing: `--waxwing-ease-standard`
   `cubic-bezier(0.2, 0, 0, 1)`.
 - **Reduced motion:** `global.css` collapses all animation/transition/scroll for
   `prefers-reduced-motion: reduce`. Components must not encode meaning in motion alone.
+  **One documented exception, and it is the reverse of the rule:** the two progress spinners
+  (`Spinner.module.css .ring`, `shell.module.css .statusSpin`) keep turning, at
+  `--waxwing-duration-spin-reduced`. WCAG 2.3.3 asks for reduction, not removal, and the HIG is
+  explicit — "People tend to associate a stationary indicator with a stalled process or a frozen
+  app" (`progress-indicators`). The override sits at (0,1,0) with `!important` so it outranks the
+  universal reset whatever order the bundler emits; the reset itself is untouched.
+  Guarded by `reduced-motion.css.test.ts`.
+- **Increased contrast:** four palettes, not two. `prefers-contrast: more` raises
+  `--waxwing-border` to a real 3:1 boundary, `--waxwing-text-muted` to AAA, both row-state fills
+  further off the content plane, and the two tokens above. Blocks live at the foot of
+  `tokens.css` because they win on source order; asserted in `tokens.contrast.test.ts`.
+- **`color-scheme`** is declared per theme block — the only channel that reaches the parts the
+  browser draws itself (scrollbars, the open list of a native `<select>`, date pickers, the
+  selection highlight). Per block rather than `light dark`, because `data-theme` overrides the OS
+  in both directions. Asserted in `color-scheme.css.test.ts`.
 
 ---
 

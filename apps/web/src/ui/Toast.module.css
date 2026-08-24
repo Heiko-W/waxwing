@@ -90,3 +90,26 @@
   flex: none;
   align-self: center;
 }
+
+/*
+ * Below 40em the app's main navigation is a bar at the bottom of the screen, and this region was
+ * pinned 16 px above the viewport edge — i.e. ON it. `.region` is `pointer-events: none` but
+ * `.toast` is not, so the tap meant for a tab was swallowed by the toast lying over it.
+ *
+ * ADR-021 is what turns that from a nuisance into a defect: a toast that carries an action gets
+ * `duration: 0` and waits to be dismissed, so after archiving a message the reader's way out of
+ * the screen was covered until they noticed the thing covering it. Nothing about ADR-021 changes
+ * here — only WHERE the toast waits.
+ *
+ * Same arithmetic as the compose button (new-message-button.module.css), from the same tokens, so
+ * the two cannot drift apart again.
+ */
+@media (max-width: 39.999em) {
+  .region {
+    inset-block-end: calc(
+      var(--waxwing-space-4) +
+      var(--waxwing-bottom-bar) +
+      var(--waxwing-safe-block-end)
+    );
+  }
+}

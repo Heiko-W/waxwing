@@ -45,7 +45,15 @@ export interface UploadItem {
   /** ObjectURL for an inline preview thumbnail (inline only). */
   readonly previewUrl: string | null
   readonly status: AttachmentStatus
-  /** 0..1 (0 at start, 1 at completion — the server cannot stream upload progress). */
+  /**
+   * 0..1, and only ever those two values.
+   *
+   * NOT because "the server cannot stream upload progress", which is what this said and is not
+   * true of any party involved: `fetch` has no upload-progress event, and `XMLHttpRequest` — the
+   * one browser API that does — would have to be called inside `uploadBlob`, going around the
+   * `Transport` seam that every test, `applyAuth` and any proxy deployment hangs on. Recorded as
+   * ADR-034, together with the shape a determinate bar would have to arrive in.
+   */
   readonly progress: number
   readonly error: UploadError | null
 }

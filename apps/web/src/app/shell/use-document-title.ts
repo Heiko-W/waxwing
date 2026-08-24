@@ -36,6 +36,14 @@ export function useDocumentTitle(productName: string): void {
       switch (route.id) {
         case 'contacts':
           return t('shell.menu.contacts')
+        // Calendar and Files fell into `default` below, where `mailbox` is undefined on a route
+        // that has no mailbox — so both screens were titled with the bare product name. HIG
+        // `toolbars`: "Don't title windows with your app name. Your app's name doesn't provide
+        // useful information about your content hierarchy."
+        case 'calendar':
+          return t('shell.menu.calendar')
+        case 'files':
+          return t('shell.menu.files')
         case 'settings':
           return t('shell.menu.settings')
         case 'notFound':

@@ -158,3 +158,112 @@ describe('Dialog', () => {
     expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument()
   })
 })
+
+/**
+ * The discard guard (HIG `modality`: "help people avoid data loss by getting confirmation before
+ * closing a modal view … regardless of whether people use a dismiss gesture or a button").
+ *
+ * The case this was written for is not exotic. On a 390 px phone the backdrop is not a thin margin
+ * — the panel is centred in `position: fixed; inset: 0`, so above and below a short dialog there is
+ * a large press target, and a thumb reaching to dismiss the keyboard lands on it. The event editor,
+ * the Sieve rule form and the label form all closed on that press and threw the form away, with no
+ * undo behind them.
+ */
+function GuardedHarness({ onClosed = vi.fn() }: { onClosed?: () => void }) {
+  const [open, setOpen] = useState(true)
+  const close = useCallback(() => {
+    setOpen(false)
+    onClosed()
+  }, [onClosed])
+  return (
+    <Dialog open={open} onClose={close} title="Edit event" confirmDiscard>
+      <label htmlFor="t">
+        Title
+        <input id="t" />
+      </label>
+    </Dialog>
+  )
+}
+
+describe('Dialog — confirming a discard', () => {
+  it('closes without asking while nothing has been entered', async () => {
+    // The guard must not tax the reader who opened a form and changed their mind about opening it.
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<GuardedHarness onClosed={onClosed} />)
+    await user.keyboard('{Escape}')
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks before Escape throws typed input away', async () => {
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<GuardedHarness onClosed={onClosed} />)
+    await user.type(screen.getByLabelText('Title'), 'Dentist')
+    await user.keyboard('{Escape}')
+    expect(onClosed, 'Escape discarded the form without asking').not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Discard your changes?' })).toBeInTheDocument()
+  })
+
+  it('asks before a backdrop press throws typed input away', async () => {
+    // The phone case. `fireEvent` rather than `user.click`, because the assertion is specifically
+    // about a press landing on the backdrop element itself and not on the panel.
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    const { container } = render(<GuardedHarness onClosed={onClosed} />)
+    await user.type(screen.getByLabelText('Title'), 'Dentist')
+    const backdrop = container.ownerDocument.querySelector('[role="dialog"]')?.parentElement
+    expect(backdrop).not.toBeNull()
+    if (backdrop) fireEvent.mouseDown(backdrop)
+    expect(onClosed).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Discard your changes?' })).toBeInTheDocument()
+  })
+
+  it('asks before the close button throws typed input away', async () => {
+    // Three ways out, one guard. Leaving the button unguarded would only move the loss.
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<GuardedHarness onClosed={onClosed} />)
+    await user.type(screen.getByLabelText('Title'), 'Dentist')
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClosed).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Discard your changes?' })).toBeInTheDocument()
+  })
+
+  it('keeps editing when the confirmation is declined', async () => {
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<GuardedHarness onClosed={onClosed} />)
+    await user.type(screen.getByLabelText('Title'), 'Dentist')
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect(onClosed).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Edit event' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Title')).toHaveValue('Dentist')
+  })
+
+  it('discards when the confirmation is accepted', async () => {
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<GuardedHarness onClosed={onClosed} />)
+    await user.type(screen.getByLabelText('Title'), 'Dentist')
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not guard a dialog that did not ask for it', async () => {
+    // Most dialogs here hold a choice rather than typing; an extra confirmation on those is
+    // friction for nothing, which is why the guard is opt-in.
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(
+      <Dialog open onClose={onClosed} title="Move to">
+        <input aria-label="Filter" />
+      </Dialog>,
+    )
+    await user.type(screen.getByLabelText('Filter'), 'arch')
+    await user.keyboard('{Escape}')
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+})

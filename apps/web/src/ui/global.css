@@ -29,7 +29,7 @@ body {
    own border-radius, so we must NOT force a radius here (that would snap pill controls
    like the theme/language switches to a square-ish focus ring). */
 :focus-visible {
-  outline: 2px solid var(--waxwing-focus-ring);
+  outline: var(--waxwing-focus-width) solid var(--waxwing-focus-ring);
   outline-offset: 2px;
 }
 
@@ -98,7 +98,7 @@ input[type="file"]::file-selector-button {
 
 input[type="file"]:disabled::file-selector-button {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: var(--waxwing-disabled-opacity);
 }
 
 /*

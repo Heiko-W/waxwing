@@ -208,6 +208,12 @@ export async function truncated(page: Page, keepAtLeast = 0): Promise<string[]> 
       const style = getComputedStyle(el)
       if (style.textOverflow !== 'ellipsis') continue
       if (style.visibility === 'hidden' || style.display === 'none') continue
+      // …and the VISUALLY-HIDDEN technique, which is neither of those: `position: absolute` at 1px
+      // with `clip-path: inset(50%)`, the shape `VisuallyHidden.module.css` and the navigation
+      // rail's label both use. Such a span is 1px wide by design and its text is intact in the
+      // accessibility tree — reporting it as "cut to 1px of 43px" is not a finding, it is five
+      // lines of noise per surface that hide the real truncation underneath them.
+      if (style.clipPath.startsWith('inset(50%')) continue
       if (el.scrollWidth <= el.clientWidth + 1) continue
       // `keepAtLeast` separates "a long name ellipsised" from "a name squeezed by its neighbours".
       // 0 reports every cut; 0.5 reports only the ones that lost half of what they asked for.

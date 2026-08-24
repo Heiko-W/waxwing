@@ -1,10 +1,19 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { UserEvent } from '@testing-library/user-event'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
+import { getReadingPaneMode, setReadingPaneMode } from '../app/shell/layout'
 import de from '../i18n/locales/de/common.json'
 import en from '../i18n/locales/en/common.json'
 import {
@@ -2170,5 +2179,124 @@ describe('MessageList', () => {
       expect(screen.queryByText(/last 30 days/)).toBeNull()
       expect(screen.queryByText(/on the server/)).toBeNull()
     })
+  })
+})
+
+/**
+ * The reading pane's arrangement, where it belongs (T-08).
+ *
+ * HIG `settings`, "Task-specific options": "prefer letting people modify task-specific options
+ * without going to your settings area. For example, if people can adjust things like showing or
+ * hiding parts of the current view … make these options available in the screens they affect,
+ * where they're discoverable and convenient. Putting this type of option in a separate settings
+ * area disconnects it from its context, requiring people to suspend their task to make
+ * adjustments, and often hiding the results until people resume the task."
+ *
+ * It lived only in Settings > Appearance. On a tablet it is the most-changed option of the lot —
+ * 834px portrait wants "below" or "off" where landscape wants "beside" — and it was four taps away
+ * from the list it rearranges, with the result invisible until you came back.
+ *
+ * Deliberately NOT moved: it stays in Settings too. The value is one store read by both, so this is
+ * a second view of one setting rather than a second setting.
+ */
+describe('the view options carry the reading-pane arrangement', () => {
+  afterEach(() => {
+    setReadingPaneMode('right')
+  })
+
+  it('offers it beside sort and threading', async () => {
+    renderList()
+    const select = await screen.findByLabelText('Reading pane')
+    expect(select).toHaveValue('right')
+  })
+
+  it('writes through to the same store the settings screen uses', async () => {
+    const user = userEvent.setup()
+    renderList()
+    await user.selectOptions(await screen.findByLabelText('Reading pane'), 'bottom')
+    expect(getReadingPaneMode()).toBe('bottom')
+  })
+
+  it('reflects a change made elsewhere', async () => {
+    // Two controls, one value: the settings screen must not be able to leave this one stale.
+    setReadingPaneMode('off')
+    renderList()
+    expect(await screen.findByLabelText('Reading pane')).toHaveValue('off')
+  })
+})
+
+/**
+ * A secondary click on a message row (D-01).
+ *
+ * HIG `context-menus` uses this exact case as its worked example — "the context menu for a Mail
+ * message in the Inbox includes commands for replying and moving the message" — and `onContextMenu`
+ * appeared nowhere in this source tree, so a right-click here got the browser's menu and nothing
+ * about the message under the pointer. On the desktop the row also has no ⋯ of its own: every
+ * command needed a checkbox first.
+ *
+ * ONE menu for the grid, opened imperatively after the row is recorded. A per-row menu would need
+ * that row's rights, and rights come from row data — twenty visible rows would be twenty more live
+ * subscriptions in the component this file already documents as carrying three too many.
+ */
+describe('the message row answers a secondary click', () => {
+  it('offers the row’s own commands', async () => {
+    renderList()
+    const row = await screen.findByRole('row', { name: /First/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+
+    const menu = await screen.findByRole('menu')
+    const names = within(menu)
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent)
+    expect(names).toContain('Open')
+    expect(names).toContain('Archive')
+    expect(names).toContain('Move to…')
+  })
+
+  it('names the state it would change, not the state it is in', async () => {
+    // The same toggle discipline the bulk bar and the `s` chord follow: a menu entry permanently
+    // called "Flag" that unflags is a lie to a screen reader, not a cosmetic slip.
+    renderList()
+    const row = await screen.findByRole('row', { name: /First/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Flag' })).toBeInTheDocument()
+  })
+
+  it('does the thing it says', async () => {
+    const user = userEvent.setup()
+    renderList()
+    const row = await screen.findByRole('row', { name: /First/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }))
+    // Through the same undo seam as the chord and the bulk bar — so a context-menu archive can be
+    // taken back like any other.
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+  })
+
+  it('reopens on a second secondary click on the SAME row', async () => {
+    // The normal case, and the one a naive implementation gets wrong: recording the row as state
+    // makes the second click a no-op, because React bails out on an unchanged value.
+    const user = userEvent.setup()
+    renderList()
+    const row = await screen.findByRole('row', { name: /First/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+    await screen.findByRole('menu')
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+    expect(await screen.findByRole('menu')).toBeInTheDocument()
+  })
+
+  it('leaves a click that is not on a row to the browser', async () => {
+    // The empty space below the last row is the page, not a message.
+    renderList()
+    await screen.findByRole('row', { name: /First/ })
+    const grid = screen.getByRole('grid')
+    const event = createEvent.contextMenu(grid, { clientX: 5, clientY: 5 })
+    fireEvent(grid, event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })

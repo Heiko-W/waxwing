@@ -99,6 +99,7 @@ export default function CalendarDialog(props: CalendarDialogProps) {
     <Dialog
       open
       onClose={props.onCancel}
+      confirmDiscard
       size="sm"
       title={
         existing === null ? t('calendar.calendars.createTitle') : t('calendar.calendars.editTitle')
@@ -165,7 +166,7 @@ export default function CalendarDialog(props: CalendarDialogProps) {
           <Button type="button" variant="secondary" onClick={props.onCancel}>
             {t('calendar.event.cancel')}
           </Button>
-          <Button type="submit" loading={props.busy} disabled={!canSubmit}>
+          <Button variant="primary" type="submit" loading={props.busy} disabled={!canSubmit}>
             {t('calendar.event.save')}
           </Button>
         </div>

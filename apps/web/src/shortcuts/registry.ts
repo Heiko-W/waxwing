@@ -13,6 +13,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { mailHrefKeepingQuery } from '../app/route'
+import { getLayoutTier, toggleFolderRail } from '../app/shell/layout'
 import { SEARCH_INPUT_ID } from '../mail/search/SearchBox'
 import type { ShortcutAction, ShortcutContext } from './types'
 
@@ -383,7 +384,18 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
   {
     id: 'triage.undo',
     titleKey: 'shortcuts.actions.triage.undo',
-    keys: ['z'],
+    /*
+     * ⌘Z as well as `z` (HIG `undo-and-redo`, macOS: "they also expect to use Command–Z … to
+     * perform undo"). `z` alone was never a decision — ADR-021 argues for the letter and does not
+     * mention the chord at all — and on a Mac the chord is not a nicety: it is the gesture the
+     * reader's hand makes without being asked.
+     *
+     * `formatChord` prints ⌘ on Apple platforms and Strg elsewhere from the same `Mod+` token, so
+     * this is right on Windows and Linux too. `yieldsToTyping` is the necessary other half: inside
+     * a text field ⌘Z is the browser's undo and must stay so.
+     */
+    keys: ['z', 'Mod+z'],
+    yieldsToTyping: true,
     scopes: ['list', 'reading'],
     group: 'triage',
     // Always offered: whether an undo is PENDING is not knowable from the context (the toasts live
@@ -509,6 +521,28 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     paletteHidden: true,
     enabled: () => true,
     run: (context) => context.openPalette(),
+  },
+  {
+    id: 'app.folders',
+    titleKey: 'shortcuts.actions.app.folders',
+    /*
+     * The SECOND way to the folder rail, which `split-views` (macOS) asks for by name: "Provide
+     * multiple ways to reveal hidden panes. For example, you might provide a toolbar button or a
+     * menu command — including a keyboard shortcut." A web app has no menu bar to fall back on, so
+     * the toolbar button and this are the two.
+     *
+     * A bare letter rather than a chord, like every other view command in this app. `b` is free
+     * (the registry's 22 other bindings are listed above), it is what a desktop app of this shape
+     * usually uses for a sidebar, and a bare letter is silenced while the reader is typing — which
+     * a chord would not be.
+     */
+    keys: ['b'],
+    scopes: ['global'],
+    group: 'application',
+    // Below 64em the rail is a drawer with its own state and its own visible control; toggling the
+    // desktop preference there would change nothing on screen and something on the next reload.
+    enabled: () => getLayoutTier() === 'desktop',
+    run: () => toggleFolderRail(),
   },
   {
     id: 'app.help',

@@ -20,7 +20,11 @@
   .newMessage {
     position: fixed;
     inset-inline-end: var(--waxwing-space-4);
-    inset-block-end: calc(var(--waxwing-space-4) + 3.75rem + env(safe-area-inset-bottom, 0px));
+    inset-block-end: calc(
+      var(--waxwing-space-4) +
+      var(--waxwing-bottom-bar) +
+      var(--waxwing-safe-block-end)
+    );
     z-index: 12;
     border-radius: var(--waxwing-radius-full);
     background-color: var(--waxwing-accent);

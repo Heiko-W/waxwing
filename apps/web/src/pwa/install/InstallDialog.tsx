@@ -40,6 +40,7 @@ export default function InstallDialog({
         {t('pwa.install.cancel')}
       </Button>
       <Button
+        variant="primary"
         onClick={() => {
           onInstall()
           onClose()

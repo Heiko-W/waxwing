@@ -87,6 +87,18 @@
   max-inline-size: min(22rem, 90vw);
 }
 
+/* Docked to the viewport edge — which below 40em is where the navigation bar lives. Same lift as
+   the toast region and the compose button, from the same tokens. */
+@media (max-width: 39.999em) {
+  .queue {
+    padding-block-end: calc(
+      var(--waxwing-space-3) +
+      var(--waxwing-bottom-bar) +
+      var(--waxwing-safe-block-end)
+    );
+  }
+}
+
 .queued {
   display: flex;
   align-items: center;

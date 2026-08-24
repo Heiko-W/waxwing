@@ -153,48 +153,57 @@ for (const tier of TIERS) {
 }
 
 /**
- * The rail label defect itself, named rather than merely swept up — in the two shapes it now has.
+ * The rail label, and the two separate things that can go wrong with it.
  *
- * The original rule was "a navigation label stays inside the rail that holds it", and the defect it
- * came from was German: "Einstellungen" measures 72px at `--waxwing-text-xs` against the 40px text
- * area the rail gave it, so it spilled past both edges of its own box and shipped that way.
+ * The original defect was German: "Einstellungen" measures 72px at `--waxwing-text-xs` against the
+ * 40px text area the rail gave it, so it spilled past both edges of its own box and shipped that
+ * way. That rule — a printed label stays inside the bar that holds it — still applies wherever a
+ * label IS printed, which since T-02 is every touch device and the phone bar.
  *
- * The rail no longer PRINTS its labels — it is icons at 40em and up, and the span is
- * visually-hidden. That retires half the rule and makes the other half load-bearing: a label nobody
- * can see is exactly the kind of thing a later refactor deletes, and deleting it would take the
- * link's accessible name with it and leave the top-level navigation unusable by a screen reader
- * with no visible symptom at all. So both are asserted at both widths: nothing printed spills, and
- * every link is named either way.
+ * The second rule is the one that has no visible symptom. Where the label is visually-hidden it is
+ * still the link's accessible NAME, and a span nobody can see is exactly what a later refactor
+ * deletes — leaving the app's top-level navigation unusable by a screen reader with nothing on
+ * screen to show for it. So both are asserted, at every width.
+ *
+ * WHO gets the printed word is asserted separately below, because it is a rule about the input
+ * device rather than about the width.
  */
-test('the rail is icons with names, and the phone bar prints them inside their boxes', async ({
-  page,
-}) => {
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 900 })
-    const nav = page.getByRole('navigation', { name: 'Primary navigation' })
-    await expect(nav).toBeVisible()
 
-    const measured = await page.evaluate(() => {
-      const nav = document.querySelector('nav[aria-label="Primary navigation"]')
-      if (nav === null) return null
-      const rail = nav.getBoundingClientRect()
-      return Array.from(nav.querySelectorAll('a')).map((link) => {
-        const span = link.querySelector('span')
-        const box = span?.getBoundingClientRect()
-        const printed = span !== null && getComputedStyle(span).clipPath === 'none'
-        return {
-          name: (link.getAttribute('aria-label') ?? span?.textContent ?? '').trim(),
-          printed,
-          spilling:
-            printed && box !== undefined
-              ? box.left < rail.left - 1 || box.right > rail.right + 1
-              : false,
-        }
-      })
+/**
+ * Read every navigation link: its accessible name, whether the label is PRINTED, and whether a
+ * printed one fits the bar that holds it.
+ */
+async function readNav(
+  page: Page,
+): Promise<{ name: string; printed: boolean; spilling: boolean }[]> {
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' })
+  await expect(nav).toBeVisible()
+  const measured = await page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Primary navigation"]')
+    if (nav === null) return null
+    const rail = nav.getBoundingClientRect()
+    return Array.from(nav.querySelectorAll('a')).map((link) => {
+      const span = link.querySelector('span')
+      const box = span?.getBoundingClientRect()
+      const printed = span !== null && getComputedStyle(span).clipPath === 'none'
+      return {
+        name: (link.getAttribute('aria-label') ?? span?.textContent ?? '').trim(),
+        printed,
+        spilling:
+          printed && box !== undefined
+            ? box.left < rail.left - 1 || box.right > rail.right + 1
+            : false,
+      }
     })
+  })
+  expect(measured, 'no main navigation').not.toBeNull()
+  return measured ?? []
+}
 
-    expect(measured, 'no main navigation').not.toBeNull()
-    const links = measured ?? []
+test('every navigation link keeps its name, and a printed label fits its bar', async ({ page }) => {
+  for (const width of [1440, 834, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    const links = await readNav(page)
     expect(links.length, `${width}px: the nav has no links`).toBeGreaterThan(0)
     expect(
       links.filter((link) => link.name === ''),
@@ -207,20 +216,54 @@ test('the rail is icons with names, and the phone bar prints them inside their b
         'this first ("Einstellungen" at 72px in a 40px text area); any language with long ' +
         'compounds can.',
     ).toEqual([])
-    // And the rail really is the compact one: a printed label at 1440 means the icons-only rule
-    // stopped applying, which is the regression this width is here to catch.
-    if (width === 1440) {
-      expect(
-        links.filter((link) => link.printed).map((link) => link.name),
-        'the tablet/desktop rail prints no labels — see the 40em block in shell.module.css',
-      ).toEqual([])
-    } else {
-      expect(
-        links.filter((link) => link.printed).length,
-        'the phone bottom bar still prints its labels',
-      ).toBeGreaterThan(0)
-    }
   }
+})
+
+/**
+ * WHO gets the word, and who gets the glyph alone (T-02).
+ *
+ * The rail became icons-only at 40em in v0.18.0, and the CSS comment named the compensation: "its
+ * `title` shows it to a pointer". On a touchscreen there is no pointer — `hover: none`, so the
+ * title never appears — and the top level of the app's navigation was five unlabelled glyphs with
+ * no way at all to find out what they were. HIG `tab-bars`: "Include tab labels to help with
+ * navigation."
+ *
+ * The rule is therefore not about WIDTH but about whether the fallback exists, and these two blocks
+ * are the same viewport with the two answers. Both matter: dropping the first would let the rail
+ * quietly go back to 96px on a desktop, which is the regression v0.18.0 was about.
+ */
+test.describe('with a pointer', () => {
+  test.use({ hasTouch: false, isMobile: false })
+
+  test('the rail is glyphs alone — the tooltip carries the name', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const links = await readNav(page)
+    expect(
+      links.filter((link) => link.printed).map((link) => link.name),
+      'a pointer device prints no rail labels — see the (hover: hover) block in shell.module.css',
+    ).toEqual([])
+    // …and the name is still there for everything that reads names.
+    expect(links.filter((link) => link.name === '')).toEqual([])
+  })
+})
+
+test.describe('with a finger', () => {
+  test('the tablet rail prints the labels, because nothing else can show them', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 834, height: 1112 })
+    const links = await readNav(page)
+    expect(
+      links.filter((link) => link.printed).length,
+      'a touch device has no hover, so the rail must say what its icons mean',
+    ).toBeGreaterThan(0)
+  })
+
+  test('the phone bottom bar prints them too', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const links = await readNav(page)
+    expect(links.filter((link) => link.printed).length).toBeGreaterThan(0)
+  })
 })
 
 /**
@@ -278,4 +321,52 @@ test('every tap target in the reading pane meets the coarse-pointer size on a ph
   })
   expect(box.width, 'contact-card trigger width').toBeGreaterThanOrEqual(minimum)
   expect(box.height, 'contact-card trigger height').toBeGreaterThanOrEqual(minimum)
+})
+
+/**
+ * The folder rail can be put away on a desktop, and stays away (D-05, T-07).
+ *
+ * HIG `sidebars`: "Consider letting people hide the sidebar. People sometimes want to hide the
+ * sidebar to create more room for content details or to reduce distraction … in macOS, you can
+ * include a show/hide button." And `split-views`: "Provide multiple ways to reveal hidden panes.
+ * For example, you might provide a toolbar button or a menu command — including a keyboard
+ * shortcut."
+ *
+ * The toggle existed and was rendered only below 64em (`drawerCapable = tier !== 'desktop'`), so on
+ * the tier where the rail is permanent there was no way to move it — and a web app has no menu bar
+ * to fall back on, which makes the missing button the missing second way as well. The registry's 22
+ * actions contained nothing about the sidebar either.
+ *
+ * The reload is the half that would otherwise be easy to get wrong: a toggle that forgets is worse
+ * than no toggle, because the reader has to redo it on every visit.
+ */
+test('the folder rail hides on a desktop, by button and by shortcut, and stays hidden', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const folders = page.getByRole('navigation', { name: 'Folders' })
+  await expect(folders).toBeVisible()
+
+  const toggle = page.getByRole('button', { name: 'Hide folders' })
+  await expect(toggle, 'no show/hide control on the tier where the rail is permanent').toBeVisible()
+  await toggle.click()
+  await expect(folders).toBeHidden()
+  // The name follows the state — it used to read "Show folders" while `aria-expanded` said true.
+  await expect(page.getByRole('button', { name: 'Show folders' })).toBeVisible()
+
+  // The choice is written down, not just held in a component.
+  //
+  // Asserted through storage rather than by reloading: a reload here needs the "stay signed in"
+  // path (without it the token lives only in memory, NFR-SEC-02, and the page lands back on the
+  // sign-in screen — see read.spec.ts), and that is a different test's subject. What restores the
+  // value on the next boot is covered by app/shell/layout.test.ts.
+  expect(
+    await page.evaluate(() => localStorage.getItem('waxwing.folderRail')),
+    'the choice was never written down',
+  ).toBe('false')
+
+  // …and the second way back, which is what `split-views` asks for by name.
+  await page.locator('body').press('b')
+  await expect(folders).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('waxwing.folderRail'))).toBe('true')
 })

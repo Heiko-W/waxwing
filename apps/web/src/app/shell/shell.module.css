@@ -31,6 +31,10 @@
      without `dvh` keeps the `vh` line above, one with it takes this. Not a mistake; the pair IS the
      feature detection. */
   block-size: 100dvh;
+  /* …and one step further: `dvh` follows the browser's collapsing toolbars, not the on-screen
+     KEYBOARD. ui/viewport-metrics.ts measures what is actually visible and publishes it here, so
+     an open keyboard shrinks the shell instead of covering its bottom row. */
+  block-size: var(--waxwing-viewport-block);
   overflow: hidden;
 }
 
@@ -55,8 +59,15 @@
   display: flex;
   align-items: center;
   gap: var(--waxwing-space-3);
-  padding-inline: var(--waxwing-space-4);
-  padding-block: var(--waxwing-space-2);
+  /* The safe areas the header actually meets. On a phone this ONE row carries the whole mail
+     chrome — drawer toggle, folder title, view options, palette, compose, outbox, status, account
+     menu (Header.tsx) — and it padded 8 px against the Dynamic Island. The background is opaque, so
+     consuming the top inset here also gives the status bar the solid backing HIG `status-bars`
+     asks for, instead of controls the reader can see behind it and cannot press. */
+  padding-inline: calc(var(--waxwing-space-4) + var(--waxwing-safe-inline-start))
+    calc(var(--waxwing-space-4) + var(--waxwing-safe-inline-end));
+  padding-block: calc(var(--waxwing-space-2) + var(--waxwing-safe-block-start))
+    var(--waxwing-space-2);
   border-block-end: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface);
   /* A flex row whose children cannot be shrunk pushes its overflow OUT of the viewport rather
@@ -113,6 +124,25 @@
   font-size: var(--waxwing-text-sm);
 }
 
+/*
+ * The "updated …" line, and the one viewport it does not appear on.
+ *
+ * A phone header carries the whole mail chrome in one row — drawer toggle, folder title, view
+ * options, palette, compose, outbox, status, account menu — and it has already overflowed once
+ * (412px against a 390px viewport, B-audit). This line is a convenience on a desktop and a
+ * squeeze there, so below 40em it is not printed.
+ */
+.statusUpdated {
+  color: var(--waxwing-text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 39.999em) {
+  .statusUpdated {
+    display: none;
+  }
+}
+
 .statusOffline {
   color: var(--waxwing-warning);
 }
@@ -136,9 +166,19 @@
   }
 }
 
+/*
+ * The header's sync mark is a progress indicator, so it slows down rather than stopping
+ * (waxwing-motion-exempt: a stalled-looking sync mark is worse than a slow one — see
+ * Spinner.module.css for the full reasoning and the HIG citation). It used to read
+ * `animation: none`, which left the reader of "Wird synchronisiert …" looking at a still
+ * circle for the whole pass.
+ */
 @media (prefers-reduced-motion: reduce) {
   .statusSpin {
-    animation: none;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank the universal reduced-motion reset */
+    animation-duration: var(--waxwing-duration-spin-reduced) !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank the universal reduced-motion reset */
+    animation-iteration-count: infinite !important;
   }
 }
 
@@ -167,7 +207,9 @@
   justify-content: space-around;
   gap: var(--waxwing-space-1);
   padding: var(--waxwing-space-1);
-  padding-block-end: calc(var(--waxwing-space-1) + env(safe-area-inset-bottom, 0px));
+  padding-block-end: calc(var(--waxwing-space-1) + var(--waxwing-safe-block-end));
+  padding-inline: calc(var(--waxwing-space-1) + var(--waxwing-safe-inline-start))
+    calc(var(--waxwing-space-1) + var(--waxwing-safe-inline-end));
   border-block-start: 1px solid var(--waxwing-border);
   background-color: var(--waxwing-surface-sunken);
 }
@@ -265,6 +307,11 @@
   inline-size: min(80vw, 18rem);
   padding: var(--waxwing-space-3);
   padding-block-start: 0;
+  /* The rail's last child is the storage bar, deliberately outside the scroll area (MailScreen) —
+     so on an installed app in landscape it sat in the home-indicator strip. The inset is 0 on every
+     device without one, and in Safari itself, where the browser's own bar fills it. */
+  padding-block-end: calc(var(--waxwing-space-3) + var(--waxwing-safe-block-end));
+  padding-inline-start: calc(var(--waxwing-space-3) + var(--waxwing-safe-inline-start));
   border-inline-end: 1px solid var(--waxwing-border);
   /* Recessed, not raised. This rail frames the content; it is not the content. */
   background-color: var(--waxwing-surface-sunken);
@@ -423,6 +470,16 @@
 
 /* Which list this is. Takes the slack so the two buttons sit at the ends, and truncates rather than
    wrapping — a folder name is user data with no length limit. */
+/* The reading pane's way back carries the LIST's name, which is user data on a label route and a
+   folder name the server chose otherwise — so it truncates rather than pushing the row wide. On a
+   phone this button is the only thing in the shell header. */
+.backTarget {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .paneTitle {
   flex: 1;
   min-inline-size: 0;
@@ -466,6 +523,10 @@
   container-name: waxwing-pane;
   flex: 1;
   overflow: auto;
+  /* Scroll PAST the home indicator rather than under it: as padding the inset becomes end-of-list
+     room, so the last message row and the foot of a reading pane can be brought clear. Deliberately
+     not on `.app` — there it would shrink the whole grid instead of extending one scroll range. */
+  padding-block-end: var(--waxwing-safe-block-end);
 }
 
 .emptyPane {
@@ -565,6 +626,10 @@
     justify-content: flex-start;
     inline-size: auto;
     padding: var(--waxwing-space-2);
+    /* The shorthand above deliberately drops the phone bar's block-end inset — as a leading rail
+       its items sit at flex-start and nothing of it touches the home indicator. What it DOES meet
+       is the rounded corner in landscape, which is this line. */
+    padding-inline-start: calc(var(--waxwing-space-2) + var(--waxwing-safe-inline-start));
     border-block-start: none;
     border-inline-end: 1px solid var(--waxwing-border);
   }
@@ -573,10 +638,26 @@
     min-inline-size: var(--waxwing-control-min);
     padding: var(--waxwing-space-2);
   }
+}
 
-  /* Standard visually-hidden technique (the same one `VisuallyHidden.module.css` uses): out of
-     sight, still in the accessibility tree, and — because it is out of FLOW — taking none of the
-     width the rail just gave back. `display: none` would take the name away from the link. */
+/*
+ * …and the label goes only where something else can still say it.
+ *
+ * The rule above used to hide it at every width from 40em up, and the comment on it named the
+ * compensation: "its `title` shows it to a pointer". On a touch tablet there IS no pointer —
+ * `hover: none`, so the title never appears — and the top level of the app's navigation was five
+ * unlabelled glyphs with no way at all to find out what they were. HIG `tab-bars`: "Include tab
+ * labels to help with navigation."
+ *
+ * So the condition is not the width, it is whether the fallback exists. A trackpad or mouse keeps
+ * the narrow icon rail this was built for; a finger gets the word. The label is visually-hidden
+ * rather than removed either way, so it remains the link's accessible name in both.
+ *
+ * Standard visually-hidden technique (the same one `VisuallyHidden.module.css` uses): out of sight,
+ * still in the accessibility tree, and — because it is out of FLOW — taking none of the width the
+ * rail just gave back. `display: none` would take the name away from the link.
+ */
+@media (min-width: 40em) and (hover: hover) {
   .primaryNavLabel {
     position: absolute;
     inline-size: 1px;

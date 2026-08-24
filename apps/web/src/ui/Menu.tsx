@@ -1,10 +1,14 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  Fragment,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
 } from 'react'
@@ -20,13 +24,57 @@ export interface MenuItemSpec {
   onSelect: () => void
   disabled?: boolean
   destructive?: boolean
+  /**
+   * Which band of the menu this item belongs to. Items sharing a value are drawn together and a
+   * separator is placed wherever the value changes (HIG `menus`: "Consider grouping logically
+   * related items. … To help people visually distinguish such groups, use a separator").
+   *
+   * A string rather than a boolean "startsGroup", so the grouping survives an item being filtered
+   * out by a permission — which is the normal case here: the folder menu builds itself from up to
+   * ten rights and any of them can be absent. With a "starts a group" flag, dropping the first
+   * item of a band silently moves the separator onto the wrong row.
+   *
+   * Items with no group come first, ungrouped — an existing menu keeps its exact shape.
+   */
+  group?: string
+}
+
+/** The imperative surface of {@link Menu}. */
+export interface MenuHandle {
+  /** Open the popup at a viewport point, focusing its first enabled item. */
+  openAt(x: number, y: number): void
 }
 
 export interface MenuProps {
   /** Accessible name for the trigger button. */
   triggerLabel: string
-  /** Visible trigger content (icon and/or text). */
-  trigger: ReactNode
+  /**
+   * Visible trigger content (icon and/or text).
+   *
+   * `null` renders no button at all — the popup then belongs entirely to {@link contextTarget}, and
+   * the menu is reached by a secondary click. Every command in such a menu must also exist in the
+   * main interface (HIG `context-menus`: "Always make context menu items available in the main
+   * interface, too"), because a menu with no visible affordance is a menu nobody discovers.
+   */
+  trigger: ReactNode | null
+  /**
+   * Also open this menu on a secondary click (right-click, two-finger tap, Shift+F10 / the menu
+   * key) anywhere inside this element.
+   *
+   * `onContextMenu` did not appear once in the source tree before this. HIG `pointing-devices` lists
+   * secondary click as "Reveal contextual menus" for both macOS pointer devices, and `context-menus`
+   * uses a Mail message in the Inbox as its worked example.
+   */
+  contextTarget?: RefObject<HTMLElement | null> | (() => HTMLElement | null)
+  /**
+   * Open the popup at a point, from the outside.
+   *
+   * For a list whose rows share ONE menu: the row under the pointer decides what the items are, so
+   * the caller has to set that first and open in the effect that follows. Subscribing a listener
+   * per row instead would mean one live-query subscription per visible row for the rights each item
+   * gates on — see the note in MessageList.
+   */
+  ref?: Ref<MenuHandle>
   items: MenuItemSpec[]
   /** Which trigger edge the menu aligns to. Default 'start'. */
   align?: 'start' | 'end'
@@ -68,9 +116,20 @@ const MENU_GAP = 4
 const MENU_ROW_BLOCK = 44
 /** `.menu`'s own padding, both edges (`--waxwing-space-1` × 2). */
 const MENU_PADDING_BLOCK = 8
+/** A group separator: 1px rule plus `--waxwing-space-1` above and below. */
+const MENU_SEPARATOR_BLOCK = 9
 
-function estimatedBlock(itemCount: number): number {
-  return itemCount * MENU_ROW_BLOCK + MENU_PADDING_BLOCK
+/**
+ * Separators count. They are the reason the estimate exists at all — it was written after a
+ * nine-item folder menu ran 131 px off the bottom of a phone because the old constant assumed six
+ * items, and adding two rules to that same menu without counting them would put the estimate 18 px
+ * back under the truth.
+ */
+function estimatedBlock(items: readonly MenuItemSpec[]): number {
+  const separators = items.filter(
+    (item, index) => index > 0 && items[index - 1]?.group !== item.group,
+  ).length
+  return items.length * MENU_ROW_BLOCK + separators * MENU_SEPARATOR_BLOCK + MENU_PADDING_BLOCK
 }
 
 /**
@@ -82,11 +141,13 @@ function estimatedBlock(itemCount: number): number {
 export function Menu({
   triggerLabel,
   trigger,
+  contextTarget,
   items,
   align = 'start',
   className,
   triggerTabIndex,
   triggerVariant = 'default',
+  ref,
 }: MenuProps) {
   const triggerId = useId()
   const menuId = useId()
@@ -104,8 +165,38 @@ export function Menu({
 
   /** Whether the menu reserves an icon column at all — see the note at the render site. */
   const anyIcon = items.some((item) => item.icon !== undefined)
+  /** How tall this menu will be, separators included — the input to the flip decision below. */
+  const menuBlock = estimatedBlock(items)
   const firstEnabled = items.findIndex((item) => !item.disabled)
   const lastEnabled = items.reduce((last, item, index) => (item.disabled ? last : index), -1)
+
+  /**
+   * Open at a POINT rather than against the trigger — the context-menu path.
+   *
+   * Same flip and ceiling logic as below, with a 1x1 rect standing in for the trigger, so a menu
+   * summoned near the bottom of the window behaves exactly like one opened from a button there.
+   */
+  const openAt = useCallback(
+    (x: number, y: number, toIndex: number) => {
+      const below = window.innerHeight - y - MENU_GAP
+      const above = y - MENU_GAP
+      const flip = menuBlock > below && above > below
+      setCoords({
+        top: flip ? y - MENU_GAP : y + MENU_GAP,
+        left: x,
+        flipped: flip,
+        maxBlock: Math.max(flip ? above : below, 0),
+      })
+      setFocusedIndex(toIndex)
+      setOpen(true)
+    },
+    [menuBlock],
+  )
+
+  useImperativeHandle(ref, () => ({ openAt: (x, y) => openAt(x, y, firstEnabled) }), [
+    openAt,
+    firstEnabled,
+  ])
 
   const openMenu = useCallback(
     (toIndex: number) => {
@@ -133,7 +224,7 @@ export function Menu({
         // the last item reachable at any item count, rather than at the ones we thought to check.
         const below = window.innerHeight - rect.bottom - MENU_GAP
         const above = rect.top - MENU_GAP
-        const flip = estimatedBlock(items.length) > below && above > below
+        const flip = menuBlock > below && above > below
         setCoords({
           top: flip ? rect.top - MENU_GAP : rect.bottom + MENU_GAP,
           left: align === 'end' ? rect.right : rect.left,
@@ -144,16 +235,58 @@ export function Menu({
       setFocusedIndex(toIndex)
       setOpen(true)
     },
-    // `items.length`, not `items`: a caller that rebuilds its array every render would otherwise
+    // `menuBlock`, not `items`: a caller that rebuilds its array every render would otherwise
     // rebuild this callback every render too, and the only thing the position depends on is how
-    // many entries there are.
-    [align, items.length],
+    // TALL the menu will be. It replaces `items.length`, which stopped being the whole answer once
+    // group separators started adding height of their own.
+    [align, menuBlock],
   )
 
   const close = useCallback(() => {
     setOpen(false)
-    triggerRef.current?.focus()
-  }, [])
+    // Back where it came from: the trigger when there is one, otherwise the row that was
+    // right-clicked — closing a menu must never drop focus to <body>, which sends the next Tab to
+    // the top of the document (WCAG 2.4.3).
+    const restore =
+      triggerRef.current ??
+      (typeof contextTarget === 'function' ? contextTarget() : contextTarget?.current)
+    restore?.focus()
+  }, [contextTarget])
+
+  /*
+   * The secondary-click seam.
+   *
+   * `preventDefault()` is the deliberate part: the browser's own menu is suppressed here, so this
+   * one must carry the two entries a reader can lose by that ("open in a new tab", "copy link") if
+   * the target has a URL — the callers that pass those do. Shift+right-click is let through
+   * untouched, which is the platform's own escape hatch back to the browser menu.
+   *
+   * Shift+F10 and the Menu key are the keyboard equivalents and are dispatched by the browser as a
+   * `contextmenu` event on the focused element, so they arrive here for free — a keyboard user gets
+   * the same commands, which is what makes this an addition rather than a pointer-only shortcut.
+   */
+  useEffect(() => {
+    // A ref OR a getter. The getter form exists for rows built in a `.map()`, where a per-row
+    // `useRef` is not available and the element lives in the list's own ref map.
+    const node = typeof contextTarget === 'function' ? contextTarget() : contextTarget?.current
+    if (!node) return
+    const onContextMenu = (event: MouseEvent): void => {
+      if (event.shiftKey) return
+      event.preventDefault()
+      // A keyboard-raised menu reports (0, 0) or the element's corner; anchor those to the element
+      // rather than to the top-left of the window.
+      const point =
+        event.clientX === 0 && event.clientY === 0
+          ? (() => {
+              const rect = node.getBoundingClientRect()
+              return { x: rect.left, y: rect.bottom }
+            })()
+          : { x: event.clientX, y: event.clientY }
+      openAt(point.x, point.y, firstEnabled)
+    }
+    node.addEventListener('contextmenu', onContextMenu)
+    return () => node.removeEventListener('contextmenu', onContextMenu)
+  }, [contextTarget, openAt, firstEnabled])
 
   // Move focus to the newly-focused menu item after it renders.
   useEffect(() => {
@@ -256,33 +389,37 @@ export function Menu({
 
   return (
     <>
-      <button
-        ref={triggerRef}
-        id={triggerId}
-        type="button"
-        aria-label={triggerLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
-        className={cx(
-          styles.trigger,
-          triggerVariant === 'ghost' && styles.triggerGhost,
-          triggerVariant === 'toolbar' && styles.triggerToolbar,
-          className,
-        )}
-        onClick={() => (open ? close() : openMenu(firstEnabled))}
-        onKeyDown={onTriggerKeyDown}
-      >
-        {trigger}
-      </button>
+      {trigger === null ? null : (
+        <button
+          ref={triggerRef}
+          id={triggerId}
+          type="button"
+          aria-label={triggerLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          {...(triggerTabIndex === undefined ? {} : { tabIndex: triggerTabIndex })}
+          className={cx(
+            styles.trigger,
+            triggerVariant === 'ghost' && styles.triggerGhost,
+            triggerVariant === 'toolbar' && styles.triggerToolbar,
+            className,
+          )}
+          onClick={() => (open ? close() : openMenu(firstEnabled))}
+          onKeyDown={onTriggerKeyDown}
+        >
+          {trigger}
+        </button>
+      )}
       {open ? (
         <Portal>
           <div
             ref={menuRef}
             id={menuId}
             role="menu"
-            aria-labelledby={triggerId}
+            {...(trigger === null
+              ? { 'aria-label': triggerLabel }
+              : { 'aria-labelledby': triggerId })}
             className={cx(
               styles.menu,
               align === 'end' && styles.alignEnd,
@@ -302,34 +439,46 @@ export function Menu({
           >
             {items.map((item, index) => {
               const Icon = item.icon
+              // A boundary between two bands, drawn before the first item of the new one. `index > 0`
+              // keeps a leading separator off the top of the menu when the first band is empty.
+              const startsGroup = index > 0 && items[index - 1]?.group !== item.group
               return (
-                <button
-                  key={item.id}
-                  ref={(node) => {
-                    itemRefs.current[index] = node
-                  }}
-                  type="button"
-                  role="menuitem"
-                  tabIndex={-1}
-                  // aria-disabled (not native `disabled`) so the item stays perceivable to a
-                  // screen reader; activate() is a no-op for it and roving focus skips it.
-                  aria-disabled={item.disabled || undefined}
-                  className={cx(styles.item, item.destructive && styles.destructive)}
-                  onClick={() => activate(index)}
-                >
-                  {/* One text edge for the whole menu. The folder menu carries an icon on exactly
-                      one of its seven entries ("Keep offline"), which indented that entry's label
-                      past the other six — a menu with two left edges, and the single glyph pulling
-                      the eye to the least important row. Reserving the column where ANY entry uses
-                      it costs nothing and removes the choice between "an icon on all seven" and
-                      "no icons at all". */}
-                  {anyIcon ? (
-                    <span className={styles.iconSlot}>
-                      {Icon ? <Icon aria-hidden="true" className={styles.icon} /> : null}
-                    </span>
-                  ) : null}
-                  <span className={styles.itemLabel}>{item.label}</span>
-                </button>
+                <Fragment key={item.id}>
+                  {/* An `<hr>`, not a `div[role=separator]`: the implicit role is the same one, and
+                      a separator with a ROLE attribute reads as the focusable window-splitter kind
+                      (which is what SplitPane draws). This one is a divider and takes no focus. */}
+                  {startsGroup ? <hr className={styles.separator} /> : null}
+                  <button
+                    ref={(node) => {
+                      itemRefs.current[index] = node
+                    }}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    // aria-disabled (not native `disabled`) so the item stays perceivable to a
+                    // screen reader; activate() is a no-op for it and roving focus skips it.
+                    aria-disabled={item.disabled || undefined}
+                    className={cx(styles.item, item.destructive && styles.destructive)}
+                    onClick={() => activate(index)}
+                  >
+                    {/* One text edge for the whole menu: reserve the icon column as soon as ANY entry
+                      uses one, so a single glyph cannot indent its own label past every other.
+
+                      This was written when the folder menu carried an icon on two of its ten
+                      entries. HIG `menus` asks for the other answer — "provide icons for all menu
+                      items in a group, or none of them" — and for that menu "none" was the
+                      honest one, because Rename, Folder info and "Delete older than…" have no
+                      symbol that means them. The reservation stays: it is what keeps a menu that
+                      DOES use icons from having two left edges, and it is what makes "none" a
+                      choice about meaning rather than about alignment. */}
+                    {anyIcon ? (
+                      <span className={styles.iconSlot}>
+                        {Icon ? <Icon aria-hidden="true" className={styles.icon} /> : null}
+                      </span>
+                    ) : null}
+                    <span className={styles.itemLabel}>{item.label}</span>
+                  </button>
+                </Fragment>
               )
             })}
           </div>

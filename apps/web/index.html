@@ -13,7 +13,21 @@
       a rewriter that pattern-matches would otherwise find the wrong one first.
     -->
     <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!--
+      `viewport-fit=cover` is what lets the app draw under the Dynamic Island and over the home
+      indicator; the four `--waxwing-safe-*` tokens in ui/tokens.css are what keep content out of
+      those bands (without the pair, one of them is a bug rather than a feature).
+
+      `interactive-widget=resizes-content` asks the browser to shrink the LAYOUT viewport when the
+      on-screen keyboard opens, instead of leaving the page its full height and sliding it. Safari
+      ignores it today, which is why ui/viewport-metrics.ts measures the visible band from
+      `window.visualViewport` as well — this line costs nothing and lets Chromium do the work
+      natively where it can.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <!--
       Browser chrome color, per theme. The manifest carries a single theme_color and cannot follow
       the OS setting; these two can. The values are --waxwing-bg from ui/tokens.css (light / dark).

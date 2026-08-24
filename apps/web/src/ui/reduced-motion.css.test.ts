@@ -98,3 +98,57 @@ describe('prefers-reduced-motion is honoured by construction', () => {
     expect(scripts.length).toBeGreaterThan(100)
   })
 })
+
+/**
+ * The one deliberate hole in the reset, and the reason it has to be a test.
+ *
+ * The reset is universal on purpose, and that is right for decoration — but a PROGRESS indicator
+ * is the case where "no motion" and "no progress" look identical, so a reader with the preference
+ * set was shown a still circle for the whole wait and told, by the app's own vocabulary, that it
+ * had hung. HIG `progress-indicators`: "Keep progress indicators moving so people know something is
+ * continuing to happen." WCAG 2.3.3 asks for reduction, not removal.
+ *
+ * The exemption is a `!important` override at (0,1,0), which beats the reset's `*` whatever order
+ * the bundler emits — so it cannot be undone by a stylesheet reshuffle, only by deleting it. This
+ * is what notices the deletion. It is deliberately narrow: `.shimmer` in Skeleton.module.css is NOT
+ * exempt, because a placeholder that stops shimmering still shows its shape.
+ */
+describe('progress indicators keep moving under reduced motion', () => {
+  it.each([
+    { file: 'src/ui/Spinner.module.css', selector: '.ring' },
+    { file: 'src/app/shell/shell.module.css', selector: '.statusSpin' },
+  ])('$selector in $file slows down instead of stopping', ({ file, selector }) => {
+    // Every reduced-motion block in the file, not just the first: shell.module.css has two, and a
+    // test that reads only one of them would go quietly vacuous the day they are reordered.
+    const css = readAppFile(file).text
+    const blocks: string[] = []
+    for (let rest = css; ; ) {
+      const block = reducedMotionBlock(rest)
+      if (block === null) break
+      blocks.push(block)
+      rest = rest.slice(rest.indexOf(block) + block.length)
+    }
+    expect(blocks.length, `no reduced-motion block in ${file}`).toBeGreaterThan(0)
+    const reduce = blocks.join('\n')
+    // `animation: none` is the shape this replaced — it satisfies the reset and defeats the point.
+    expect(reduce, `${selector} must stay in motion, slowly`).toMatch(
+      new RegExp(
+        `\\${selector}\\s*\\{[^}]*animation-iteration-count\\s*:\\s*infinite\\s*!important`,
+        's',
+      ),
+    )
+    expect(reduce).toMatch(
+      /animation-duration:\s*var\(--waxwing-duration-spin-reduced\)\s*!important/,
+    )
+  })
+
+  it('keeps the slow period well clear of the normal one', () => {
+    // A "reduced" period that is not visibly slower is a placebo. The normal spin is 900ms.
+    const tokens = readAppFile('src/ui/tokens.css').text
+    const normal = /--waxwing-duration-spin:\s*(\d+)ms/.exec(tokens)?.[1]
+    const reduced = /--waxwing-duration-spin-reduced:\s*(\d+)ms/.exec(tokens)?.[1]
+    expect(normal, 'no --waxwing-duration-spin in tokens.css').toBeDefined()
+    expect(reduced, 'no --waxwing-duration-spin-reduced in tokens.css').toBeDefined()
+    expect(Number(reduced)).toBeGreaterThanOrEqual(2 * Number(normal))
+  })
+})

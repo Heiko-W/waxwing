@@ -56,7 +56,9 @@ export default function OutboxProblemsDialog({ onClose }: OutboxProblemsDialogPr
               {t('outbox.problems.discardAll')}
             </Button>
           )}
-          <Button onClick={onClose}>{t('ui.dialog.close')}</Button>
+          <Button variant="primary" onClick={onClose}>
+            {t('ui.dialog.close')}
+          </Button>
         </>
       }
     >

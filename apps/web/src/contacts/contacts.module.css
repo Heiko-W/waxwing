@@ -1095,3 +1095,21 @@
   outline: 2px solid var(--waxwing-focus-ring);
   outline-offset: -2px;
 }
+
+/*
+ * The import's progress row: bar, count, and the way out.
+ *
+ * Laid out rather than styled — `<progress>` keeps the platform's own appearance on purpose, which
+ * is also what makes it follow `color-scheme` (ui/tokens.css) without a line of CSS here.
+ */
+.importProgress {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-3);
+  margin-block-start: var(--waxwing-space-2);
+}
+
+.importProgress > progress {
+  flex: 1;
+  min-inline-size: 0;
+}

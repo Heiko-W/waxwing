@@ -143,4 +143,13 @@ export interface ShortcutAction {
   readonly allowRepeat?: boolean
   /** Hide from the command palette (a "next message" palette entry is meaningless). */
   readonly paletteHidden?: boolean
+  /**
+   * Yield this action's chords to a text field, even though chords normally survive typing.
+   *
+   * The dispatcher's rule is that a bare letter belongs to the field the reader is typing into
+   * while a Mod chord does not (ShortcutProvider). ⌘Z is the exception that proves it: inside an
+   * input it is the BROWSER's undo, and taking it there to un-archive a message would be a worse
+   * surprise than not having the chord at all.
+   */
+  readonly yieldsToTyping?: boolean
 }

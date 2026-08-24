@@ -123,6 +123,40 @@ describe('typographic consistency', () => {
     )
   })
 
+  /**
+   * One spelling for the ellipsis, and it is a two-part rule because the character does two jobs.
+   *
+   * TRAILING, it belongs to the word before it: "Move to…", "Verschieben nach…", "Syncing…". That
+   * is Apple's convention in both languages, and it is what the majority of this bundle already
+   * did — eleven German strings and three English ones had drifted to " …" with a space, so
+   * "Wird synchronisiert …" and "Wird geladen…" could appear on the same screen.
+   *
+   * MID-STRING, it stands in for an omitted word and keeps a space on each side: "Älter als …
+   * löschen" is not "Älterals…löschen". Only the trailing form is checked here; the other is rare
+   * and correct where it appears.
+   */
+  it('attaches a trailing ellipsis to the word before it', () => {
+    const offenders: string[] = []
+    for (const [language, strings] of locales) {
+      for (const [key, value] of strings) {
+        if (/\s…\s*$/.test(value)) offenders.push(`${language}: ${key} — ${value}`)
+      }
+    }
+    expect(offenders, 'write "Loading…", not "Loading …"').toEqual([])
+  })
+
+  it('writes the ellipsis as one character, never as three dots', () => {
+    // Three periods are not an ellipsis: they line-break differently, they read differently to a
+    // screen reader, and one of the two forms always looks like a typo beside the other.
+    const offenders: string[] = []
+    for (const [language, strings] of locales) {
+      for (const [key, value] of strings) {
+        if (value.includes('...')) offenders.push(`${language}: ${key} — ${value}`)
+      }
+    }
+    expect(offenders, 'use … (U+2026), not three periods').toEqual([])
+  })
+
   it('spells each word one way', () => {
     // One spelling per word, not one variety per file: the bundle is otherwise American, so these
     // three are the outliers rather than the rule.

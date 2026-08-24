@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { createEvent, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import { Menu, type MenuItemSpec } from './Menu'
@@ -228,5 +229,150 @@ describe('a long menu is bounded by the viewport', () => {
     // 844 − 100 − 4. The menu is shorter than that today; the ceiling is what keeps it true when a
     // tenth item is added by someone who never reads this file.
     expect(menu.style.maxBlockSize).toBe('740px')
+  })
+})
+
+/**
+ * Group separators (D-11; HIG `menus`: "Consider grouping logically related items. … To help people
+ * visually distinguish such groups, use a separator", and `context-menus`: "In general, you don't
+ * want more than about three groups in a context menu").
+ *
+ * The folder menu was the case that earned this: ten entries — create, rename, move, keep offline,
+ * import, share, empty, delete older, folder info, delete — in one flat block, with two destructive
+ * commands sitting flush against "Folder info…". The reading pane made it plainer still: its action
+ * bar has carried groups since it was built and draws them with `data-group-start`, and the overflow
+ * menu threw them away at exactly the point where the reader can no longer see the bar's spacing.
+ *
+ * A `group` STRING rather than a "starts a group" flag, and that choice is the reason for the third
+ * test: this menu builds itself from up to ten permissions and any of them can be absent, so a flag
+ * on the first item of a band puts the separator on the wrong row the moment that item is filtered
+ * out.
+ */
+describe('Menu — group separators', () => {
+  const item = (id: string, group?: string): MenuItemSpec => ({
+    id,
+    label: id,
+    onSelect: () => {},
+    ...(group === undefined ? {} : { group }),
+  })
+
+  async function openWith(items: MenuItemSpec[]): Promise<void> {
+    const user = userEvent.setup()
+    render(<Menu triggerLabel="Actions" trigger="⋯" items={items} />)
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+  }
+
+  it('draws one separator per boundary and none at the edges', async () => {
+    await openWith([
+      item('New', 'structure'),
+      item('Rename', 'structure'),
+      item('Share', 'content'),
+      item('Delete', 'destructive'),
+    ])
+    // Three bands, two boundaries. A separator above the first item or below the last would read
+    // as the menu's own edge.
+    expect(screen.getAllByRole('separator')).toHaveLength(2)
+  })
+
+  it('leaves an ungrouped menu exactly as it was', async () => {
+    // Every other menu in the app passes no groups, and none of them may grow a rule from this.
+    await openWith([item('One'), item('Two'), item('Three')])
+    expect(screen.queryAllByRole('separator')).toHaveLength(0)
+  })
+
+  it('keeps the boundary in the right place when a band loses its first item', async () => {
+    // The permission case, and the reason `group` is a string. Here "New" is absent because the
+    // folder may not take children; the rule must still fall between Rename and Share.
+    await openWith([item('Rename', 'structure'), item('Share', 'content'), item('Info', 'content')])
+    const menu = screen.getByRole('menu')
+    const rows = [...menu.children].map((node) => (node.tagName === 'HR' ? '—' : node.textContent))
+    expect(rows).toEqual(['Rename', '—', 'Share', 'Info'])
+  })
+
+  it('still reaches the last item by keyboard across a separator', async () => {
+    // Roving focus walks `itemRefs`, which is indexed by ITEM. A separator that took an index
+    // would leave End on a divider and the last command unreachable from the keyboard.
+    const user = userEvent.setup()
+    render(
+      <Menu
+        triggerLabel="Actions"
+        trigger="⋯"
+        items={[item('New', 'structure'), item('Share', 'content'), item('Delete', 'destructive')]}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+    await user.keyboard('{End}')
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Delete' }))
+    await user.keyboard('{Home}')
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'New' }))
+  })
+})
+
+/**
+ * The secondary click (D-01).
+ *
+ * `onContextMenu` did not appear once in the source tree. HIG `pointing-devices` lists secondary
+ * click as "Reveal contextual menus" for every macOS pointing device, and `context-menus` uses this
+ * app's exact case as its worked example — "the context menu for a Mail message in the Inbox
+ * includes commands for replying and moving the message". A right-click on a message, a folder, a
+ * label or a file got the browser's menu and nothing about the thing under the pointer.
+ *
+ * Two things here are load-bearing beyond "a menu opens". Shift+right-click must still reach the
+ * browser, because that is the platform's own escape hatch and taking it would make the app the
+ * only place a reader cannot get at "copy link". And a keyboard-raised menu (Shift+F10, the Menu
+ * key) arrives as a `contextmenu` event at (0, 0) — anchoring that to the top-left of the window
+ * would put the menu nowhere near the row it belongs to.
+ */
+describe('Menu — the secondary click', () => {
+  function ContextFixture({ withTrigger = false }: { withTrigger?: boolean }) {
+    const rowRef = useRef<HTMLDivElement>(null)
+    return (
+      <div ref={rowRef} data-testid="row">
+        a row
+        <Menu
+          triggerLabel="Row actions"
+          trigger={withTrigger ? '⋯' : null}
+          contextTarget={rowRef}
+          items={[{ id: 'archive', label: 'Archive', onSelect: () => {} }]}
+        />
+      </div>
+    )
+  }
+
+  it('opens on a secondary click inside the target', () => {
+    render(<ContextFixture />)
+    fireEvent.contextMenu(screen.getByTestId('row'), { clientX: 120, clientY: 240 })
+    expect(screen.getByRole('menu', { name: 'Row actions' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+  })
+
+  it('renders no button when there is no trigger', () => {
+    // A context-only menu must not add a tab stop to every row it is attached to.
+    render(<ContextFixture />)
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('leaves Shift+secondary-click to the browser', () => {
+    render(<ContextFixture />)
+    const event = createEvent.contextMenu(screen.getByTestId('row'), { shiftKey: true })
+    fireEvent(screen.getByTestId('row'), event)
+    expect(event.defaultPrevented, 'the app took the browser menu away').toBe(false)
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('suppresses the browser menu when it opens its own', () => {
+    render(<ContextFixture />)
+    const event = createEvent.contextMenu(screen.getByTestId('row'), { clientX: 10, clientY: 10 })
+    fireEvent(screen.getByTestId('row'), event)
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('still opens from its own trigger when it has one', () => {
+    // The folder tree and the label list keep their visible ⋯; the context menu is an addition,
+    // never a replacement — `context-menus`: "Always make context menu items available in the main
+    // interface, too."
+    render(<ContextFixture withTrigger />)
+    fireEvent.click(screen.getByRole('button', { name: 'Row actions' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
   })
 })

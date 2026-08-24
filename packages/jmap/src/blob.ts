@@ -104,6 +104,9 @@ export async function uploadBlob(
     { 'Content-Type': type, Accept: 'application/json' },
     transport.auth,
   )
+  // Two calls, at the ends, and that is all `fetch` can give: it has no upload-progress event, and
+  // the API that does (`XMLHttpRequest`) is on the wrong side of this package's `Transport` seam.
+  // See ADR-034 — the callback stays because it is where a future upload channel would report.
   options.onProgress?.({ loaded: 0, total })
   const init: Parameters<Transport['fetch']>[1] = { method: 'POST', headers, body: data }
   if (options.signal) init.signal = options.signal

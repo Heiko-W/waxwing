@@ -117,6 +117,7 @@ export function LabelFormDialog({
     <Dialog
       open
       onClose={onClose}
+      confirmDiscard
       title={title}
       size="sm"
       {...(showName ? { initialFocusRef: inputRef } : {})}

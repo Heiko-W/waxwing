@@ -34,3 +34,28 @@
     transform: rotate(360deg);
   }
 }
+
+/*
+ * The one animation in the app that must NOT stop under `prefers-reduced-motion: reduce`
+ * (waxwing-motion-exempt: a progress indicator that stands still says "frozen", which is the
+ * opposite of what it is there to say).
+ *
+ * `global.css` resets `*` with `animation-duration: 0.01ms !important; animation-iteration-count:
+ * 1 !important`, so the ring used to complete one turn in a hundredth of a millisecond and then
+ * stand still for the rest of the wait. HIG `progress-indicators`: "Keep progress indicators moving
+ * so people know something is continuing to happen. People tend to associate a stationary indicator
+ * with a stalled process or a frozen app." WCAG 2.3.3 asks for reduced motion, not for none, and
+ * iOS' own Reduce Motion leaves the system activity indicator turning.
+ *
+ * `.ring` is (0,1,0) against the reset's (0,0,0) — with `!important` on both, specificity decides
+ * and this wins wherever the bundler happens to order the two files. The reset itself is untouched,
+ * which is what `reduced-motion.css.test.ts` guards.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank the universal reduced-motion reset */
+    animation-duration: var(--waxwing-duration-spin-reduced) !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must outrank the universal reduced-motion reset */
+    animation-iteration-count: infinite !important;
+  }
+}

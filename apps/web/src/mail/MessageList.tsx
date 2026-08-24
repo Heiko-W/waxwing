@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import {
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useId,
@@ -35,6 +36,13 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailHrefKeepingQuery, READING_HISTORY_MARK, useNavigate, useRoute } from '../app/route'
+import {
+  READING_PANE_MODES,
+  type ReadingPaneMode,
+  setReadingPaneMode,
+  useLayoutTier,
+  useReadingPaneMode,
+} from '../app/shell/layout'
 import { useDraftOpener } from '../compose'
 import {
   type EmailRow,
@@ -52,6 +60,7 @@ import {
   Dialog,
   IconButton,
   Menu,
+  type MenuHandle,
   type MenuItemSpec,
   Select,
   VisuallyHidden,
@@ -539,6 +548,131 @@ export function MessageList({
     }
   }
 
+  /*
+   * The secondary-click menu for a message row (D-01).
+   *
+   * `onContextMenu` appeared NOWHERE in this source tree, so a right-click on a message did what a
+   * right-click on any page does: the browser's menu, offering nothing about the message. HIG
+   * `pointing-devices` lists secondary click as "Reveal contextual menus" for every macOS pointing
+   * device, and `context-menus` uses this exact case as its worked example — "the context menu for
+   * a Mail message in the Inbox includes commands for replying and moving the message".
+   *
+   * ONE menu for the whole grid, opened imperatively, rather than one per row. A per-row menu would
+   * need that row's rights, and rights come from the row data — twenty visible rows would mean
+   * twenty more live subscriptions in the component this file already documents as carrying three
+   * too many. So the row under the pointer is recorded first, and the menu opens in the effect that
+   * follows, by which time the items describe that row.
+   */
+  const contextMenuRef = useRef<MenuHandle>(null)
+  /*
+   * An OBJECT holding the id, not the id itself, and that is load-bearing.
+   *
+   * A bare `useState<Id | null>` bails out when the value is unchanged, so the second right-click
+   * on the same row would set the same string, skip the re-render, never run the effect below, and
+   * do nothing at all — which is the normal case: open the menu, pick nothing, right-click the same
+   * row again. A fresh object is a fresh identity, so the effect fires every time.
+   */
+  const [context, setContext] = useState<{ id: Id } | null>(null)
+  const contextId = context?.id ?? null
+  const contextPoint = useRef<{ x: number; y: number } | null>(null)
+
+  const onGridContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>): void => {
+      // Shift+right-click is the platform's own way back to the browser menu; never take it.
+      if (event.shiftKey) return
+      const row = (event.target as HTMLElement).closest('[role="row"]')
+      const domId = row?.id ?? ''
+      const prefix = `${gridId}-r-`
+      if (!domId.startsWith(prefix)) return
+      const id = domId.slice(prefix.length)
+      if (rowById.get(id) === undefined) return
+      event.preventDefault()
+      contextPoint.current = { x: event.clientX, y: event.clientY }
+      setContext({ id })
+    },
+    [gridId, rowById],
+  )
+
+  useEffect(() => {
+    const point = contextPoint.current
+    if (context === null || point === null) return
+    contextPoint.current = null
+    contextMenuRef.current?.openAt(point.x, point.y)
+  }, [context])
+
+  /**
+   * What that menu offers, for the one row it was raised on.
+   *
+   * Every entry here also exists in the main interface — the bulk bar after a tick, the reading
+   * pane's toolbar, or a swipe — which is what `context-menus` asks for ("Always make context menu
+   * items available in the main interface, too"): a menu with no visible affordance is a shortcut,
+   * never the only door. Unavailable commands are OMITTED rather than dimmed, which is the same
+   * page's other rule and the discipline `folderMenuItems` already follows.
+   */
+  const contextItems = useMemo<MenuItemSpec[]>(() => {
+    const row = contextId === null ? undefined : rowById.get(contextId)
+    if (contextId === null || row === undefined) return []
+    const target = [contextId]
+    const rights = rowRights(row)
+    const items: MenuItemSpec[] = [
+      { id: 'open', group: 'open', label: t('list.actions.open'), onSelect: () => open(contextId) },
+      {
+        id: 'openFull',
+        group: 'open',
+        label: t('list.actions.openFull'),
+        onSelect: () => open(contextId, { full: true }),
+      },
+    ]
+    if (rights.reason('seen') === null) {
+      const seen = row.keywords.$seen === true
+      items.push({
+        id: 'seen',
+        group: 'mark',
+        label: seen ? t('list.actions.unread') : t('list.actions.read'),
+        onSelect: () => triage.setSeen(target, !seen),
+      })
+    }
+    if (rights.reason('keywords') === null) {
+      const flagged = row.keywords.$flagged === true
+      items.push({
+        id: 'flag',
+        group: 'mark',
+        label: flagged ? t('list.actions.unflag') : t('list.actions.flag'),
+        onSelect: () => triage.setFlagged(target, !flagged),
+      })
+    }
+    if (rights.removeReason(sourceMailboxId ?? null) === null) {
+      items.push(
+        {
+          id: 'archive',
+          group: 'file',
+          label: t('list.actions.archive'),
+          onSelect: () => triage.archive(target, sourceMailboxId ?? null),
+        },
+        {
+          id: 'junk',
+          group: 'file',
+          label: t('list.actions.junk'),
+          onSelect: () => triage.junk(target, sourceMailboxId ?? null),
+        },
+        {
+          id: 'move',
+          group: 'file',
+          label: t('list.actions.move'),
+          onSelect: () => requestMove(target),
+        },
+        {
+          id: 'trash',
+          group: 'destructive',
+          label: t('list.actions.trash'),
+          destructive: true,
+          onSelect: () => triage.trash(target, sourceMailboxId ?? null),
+        },
+      )
+    }
+    return items
+  }, [contextId, rowById, rowRights, sourceMailboxId, triage, requestMove, open, t])
+
   if (source === undefined) {
     return <p className={styles.empty}>{t('list.noMailbox')}</p>
   }
@@ -612,6 +746,14 @@ export function MessageList({
 
   return (
     <div className={styles.container} ref={containerRef}>
+      {/* No trigger: this popup belongs to the grid's secondary click alone. It renders nothing
+          until it is opened, so the cost of it standing here is a few hooks. */}
+      <Menu
+        ref={contextMenuRef}
+        trigger={null}
+        triggerLabel={t('list.actions.menu')}
+        items={contextItems}
+      />
       {/*
         The bar OPENS rather than appearing. Selecting the first row mounted a 44px bar above the
         list and pushed every row down by it — including the one the pointer had just landed on,
@@ -690,6 +832,7 @@ export function MessageList({
           aria-label={t('shell.list.title')}
           aria-rowcount={total ?? ids.length}
           aria-activedescendant={activeDescendant}
+          onContextMenu={onGridContextMenu}
           onKeyDown={onKeyDown}
         >
           {loading && ids.length === 0 && (
@@ -973,7 +1116,27 @@ function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: To
   const { t } = useTranslation()
   const sortId = useId()
   const viewId = useId()
+  const paneId = useId()
   const reasonId = useId()
+  /*
+   * The reading pane's arrangement, in the panel that governs the view it changes.
+   *
+   * HIG `settings`, "Task-specific options": "prefer letting people modify task-specific options
+   * without going to your settings area. For example, if people can adjust things like showing or
+   * hiding parts of the current view … make these options available in the screens they affect,
+   * where they're discoverable and convenient. Putting this type of option in a separate settings
+   * area disconnects it from its context."
+   *
+   * On a tablet this is the most-changed of the lot — 834px portrait wants "below" or "off" and
+   * landscape wants "beside" — and it lived only in Settings > Appearance, four taps from the list
+   * it rearranges, with the result invisible until you came back.
+   *
+   * The same store as the settings screen (`layout.ts`), so the two controls are two views of one
+   * value rather than two values. Not a copy of the setting: it stays in Settings as well, where
+   * someone looking for it will still find it.
+   */
+  const tier = useLayoutTier()
+  const readingPane = useReadingPaneMode()
   /**
    * One gate for both halves of the promise. `disabled` makes the control inoperable — and in a
    * browser that alone stops the write, since a disabled control fires no change event — while this
@@ -1029,6 +1192,26 @@ function Toolbar({ sort, unreadFirst, flat, viewOptionsApply, onChange, id }: To
           <option value="flat">{t('list.view.flat')}</option>
         </Select>
       </div>
+      {/* Only where there are panes to arrange: on a phone every message is full-width whatever
+          this says, and an option that changes nothing you can see is worse than an absent one. */}
+      {tier !== 'phone' && (
+        <div className={styles.control}>
+          <label htmlFor={paneId} className={styles.controlLabel}>
+            {t('settings.appearance.readingPane.label')}
+          </label>
+          <Select
+            id={paneId}
+            value={readingPane}
+            onChange={(event) => setReadingPaneMode(event.target.value as ReadingPaneMode)}
+          >
+            {READING_PANE_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`settings.appearance.readingPane.${mode}`)}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       <Checkbox
         label={t('list.sort.unreadFirst')}
         checked={unreadFirst}

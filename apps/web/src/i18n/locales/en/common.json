@@ -117,8 +117,9 @@
   "status": {
     "offline": "Offline",
     "sync": {
+      "error": "Sync problem — retrying",
       "syncing": "Syncing…",
-      "error": "Sync problem — retrying"
+      "updated": "Updated {{when}}"
     },
     "outbox": {
       "stuck_one": "Still trying to reach the server ({{count}})",
@@ -860,11 +861,14 @@
         "none": "No address book you can write to."
       },
       "import": {
-        "heading": "Import",
+        "cancel": "Stop",
         "choose": "Choose a file (.vcf or .json)",
-        "parsing": "Reading file…",
         "confirm_one": "Import {{count}} contact",
-        "confirm_other": "Import {{count}} contacts"
+        "confirm_other": "Import {{count}} contacts",
+        "heading": "Import",
+        "parsing": "Reading file…",
+        "progress": "{{done}} of {{total}}",
+        "progressLabel": "Import progress"
       },
       "export": {
         "heading": "Export",
@@ -916,7 +920,11 @@
   },
   "ui": {
     "dialog": {
-      "close": "Close"
+      "close": "Close",
+      "discardBody": "What you have entered here will be lost.",
+      "discardCancel": "Keep editing",
+      "discardConfirm": "Discard",
+      "discardTitle": "Discard your changes?"
     },
     "toast": {
       "region": "Status messages",
@@ -944,9 +952,9 @@
     "collapse": "Collapse {{name}}",
     "actions": {
       "menu": "Folder actions: {{name}}",
-      "newSubfolder": "New subfolder",
+      "newSubfolder": "New subfolder…",
       "newFolder": "New folder",
-      "rename": "Rename",
+      "rename": "Rename…",
       "delete": "Delete",
       "keepOffline": "Keep offline",
       "keepOfflineOff": "Stop keeping offline",
@@ -1035,17 +1043,20 @@
     "selected": "{{count}} selected",
     "clearSelection": "Clear selection",
     "actions": {
-      "read": "Mark as read",
-      "unread": "Mark as unread",
-      "flag": "Flag",
-      "unflag": "Unflag",
       "archive": "Archive",
-      "junk": "Mark as junk",
-      "notJunk": "Not junk",
-      "trash": "Move to Trash",
       "delete": "Delete",
+      "flag": "Flag",
+      "junk": "Mark as junk",
+      "menu": "Message actions",
+      "more": "More actions for the selection",
       "move": "Move to…",
-      "more": "More actions for the selection"
+      "notJunk": "Not junk",
+      "open": "Open",
+      "openFull": "Open full screen",
+      "read": "Mark as read",
+      "trash": "Move to Trash",
+      "unflag": "Unflag",
+      "unread": "Mark as unread"
     },
     "sort": {
       "label": "Sort",
@@ -1705,9 +1716,10 @@
         "forward": "Forward"
       },
       "app": {
-        "search": "Search",
+        "folders": "Show or hide the folders",
+        "help": "Keyboard shortcuts",
         "palette": "Command palette",
-        "help": "Keyboard shortcuts"
+        "search": "Search"
       },
       "reading": {
         "print": "Print message"
@@ -1917,8 +1929,8 @@
         "countLabel": "Number of events"
       },
       "scope": {
-        "saveTitle": "Apply the change to …",
-        "deleteTitle": "Delete …",
+        "saveTitle": "Apply the change to…",
+        "deleteTitle": "Delete…",
         "occurrence": "This event only",
         "all": "All events",
         "note": "Individually changed events in this series keep their time."
@@ -1985,7 +1997,7 @@
       "custom": "Current color"
     },
     "import": {
-      "open": "Import events …",
+      "open": "Import events…",
       "title": "Import events",
       "file": "Calendar file (.ics)",
       "empty": "This file holds no event.",

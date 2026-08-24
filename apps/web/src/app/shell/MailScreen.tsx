@@ -43,7 +43,14 @@ import {
   useRouter,
 } from '../route'
 import { useSession } from '../session/context'
-import { computePaneLayout, useLayoutTier, useReadingPaneMode } from './layout'
+import {
+  computePaneLayout,
+  toggleFolderRail,
+  useFolderRailVisible,
+  useLayoutTier,
+  useReadingPaneMode,
+  useSplitBlockRoom,
+} from './layout'
 import { useScreenBarSlot } from './ScreenBar'
 import styles from './shell.module.css'
 
@@ -54,6 +61,8 @@ const VIEW_OPTIONS_ID = 'waxwing-view-options'
 export function MailScreen() {
   const { t } = useTranslation()
   const tier = useLayoutTier()
+  // A phone on its side is 844px wide — the tablet tier by width alone. See MIN_SPLIT_BLOCK_PX.
+  const hasBlockRoom = useSplitBlockRoom()
   const mode = useReadingPaneMode()
   const route = useRoute()
   const navigate = useNavigate()
@@ -84,7 +93,12 @@ export function MailScreen() {
    * with no exit and no name, so `mailHrefKeepingQuery` drops the flag on the way back (route.ts).
    */
   const fullScreen = emailId !== undefined && route.search.get(FULL_PARAM) === '1'
-  const layout = computePaneLayout(tier, fullScreen ? 'off' : mode, emailId !== undefined)
+  const layout = computePaneLayout(
+    tier,
+    fullScreen ? 'off' : mode,
+    emailId !== undefined,
+    hasBlockRoom,
+  )
 
   // A STABLE search-descriptor for the list — a fresh object each render would re-fire the list's
   // watch effect (and re-kick a sync) on every render (M3.1 review).
@@ -159,6 +173,22 @@ export function MailScreen() {
 
   const drawerCapable = tier !== 'desktop' && !fullScreen
   const [foldersOpen, setFoldersOpen] = useState(false)
+  /*
+   * The persistent rail's own visibility, on the one tier where it IS persistent.
+   *
+   * HIG `sidebars`: "Consider letting people hide the sidebar. People sometimes want to hide the
+   * sidebar to create more room for content details or to reduce distraction … in macOS, you can
+   * include a show/hide button". And `split-views`: "Provide multiple ways to reveal hidden panes.
+   * For example, you might provide a toolbar button or a menu command — including a keyboard
+   * shortcut." A web app has no menu bar to fall back on, so the missing button WAS the missing
+   * second way; `b` in shortcuts/registry.ts is the other.
+   *
+   * The state is per device (localStorage, like the reading-pane mode) and read only here: below
+   * 64em the rail is a drawer with its own open state, and someone who hid it on a wide window must
+   * not find their folders gone on a phone.
+   */
+  const railVisible = useFolderRailVisible()
+  const railHidden = tier === 'desktop' && !railVisible
   /**
    * The list's sort / threading / unread-first controls, collapsed by default.
    *
@@ -269,13 +299,20 @@ export function MailScreen() {
    */
   const listBar = (
     <>
-      {drawerCapable && (
+      {(drawerCapable || tier === 'desktop') && !fullScreen && (
         <IconButton
           id={FOLDER_TOGGLE_ID}
-          label={t('shell.folders.show')}
+          // The label follows the state, which it did not before: a control whose `aria-expanded`
+          // flips while its name says "Show folders" tells a screen-reader user one thing and its
+          // own attribute another.
+          label={
+            (drawerCapable ? foldersOpen : railVisible)
+              ? t('shell.folders.hide')
+              : t('shell.folders.show')
+          }
           variant="ghost"
-          onClick={() => setFoldersOpen(true)}
-          aria-expanded={foldersOpen}
+          onClick={() => (drawerCapable ? setFoldersOpen(true) : toggleFolderRail())}
+          aria-expanded={drawerCapable ? foldersOpen : railVisible}
           aria-controls={FOLDER_REGION_ID}
         >
           <PanelLeft />
@@ -295,10 +332,27 @@ export function MailScreen() {
   )
 
   /** The reading pane's way back, on the one tier where the list is not beside it. */
+  /*
+   * The way back names its DESTINATION, not the act of going there.
+   *
+   * On a phone this button is the only content of the shell header while a message is open — no
+   * folder name, no subject — so "Zurück zu den Nachrichten" spent the whole row saying what the
+   * chevron beside it already said, and the one question the row could have answered (back to
+   * WHERE) went unanswered. It is also the iOS convention: the back button carries the title of the
+   * screen it returns to.
+   *
+   * The long sentence stays as the accessible name. A screen-reader user gets "Zurück zu den
+   * Nachrichten: Posteingang" — the action and the target; a sighted reader gets "‹ Posteingang".
+   * `listTitle` is the same string the list's own heading uses, so the two cannot disagree.
+   */
   const readingBar = (
-    <Button variant="ghost" onClick={backToList}>
+    <Button
+      variant="ghost"
+      onClick={backToList}
+      aria-label={`${t('shell.reading.back')}: ${listTitle}`}
+    >
       <ChevronLeft aria-hidden="true" />
-      {t('shell.reading.back')}
+      <span className={styles.backTarget}>{listTitle}</span>
     </Button>
   )
 
@@ -349,20 +403,29 @@ export function MailScreen() {
       orientation={layout.splitOrientation}
       label={t('shell.list.resize')}
       /*
-       * 420 on a desktop, 340 on a tablet.
+       * A SHARE of the room, clamped — not a constant per tier.
        *
-       * The desktop number is the first audit's answer to A5: the column carries the search field,
-       * the folder title and the view toggle, and at 360px those competed for the width of a phone
-       * while ~930px of header sat empty beside them.
+       * It used to be 420 on a desktop and 340 on a tablet, and both numbers were right for the
+       * width they were measured at and wrong at the other end of their own tier. The desktop 420
+       * is the first audit's answer to A5: the column carries the search field, the folder title
+       * and the view toggle, and at 360px those competed for the width of a phone while ~930px of
+       * header sat empty beside them. But the desktop tier starts at 1024px, and there the same
+       * 420 left an iPad in LANDSCAPE with a 352px reading pane — narrower than the 410 the same
+       * device gets in portrait, on 278px more screen.
        *
-       * A tablet has no such spare width, and applying the desktop number there left the READING
-       * pane with 318px of an 834px screen — measured, its placeholder sentence wrapped onto two
-       * lines, which is a pane too narrow to read a message in but wide enough to cost the list
-       * the room. iPad Mail runs roughly 320/500 in portrait for the same reason. This is the
-       * split that makes both halves usable rather than the one that makes the list comfortable
-       * and the other half decorative.
+       * 37% reproduces the 420 at 1440px, gives the iPad landscape ~300 and a 1920px screen 460
+       * rather than a list nobody asked to be that wide. The floor is what the list needs to hold
+       * its own chrome; the ceiling is where more width stops buying anything.
        */
-      defaultPrimarySize={tier === 'tablet' ? 340 : 420}
+      defaultPrimary={{ fraction: 0.37, min: 300, max: 460 }}
+      /*
+       * …and the size the reader drags to survives a reload. Everything else in this screen is
+       * remembered (sort, threading, unread-first, collapsed accounts, pinned folders, the
+       * reading-pane mode); the one thing they set with their hands was the one thing that reset.
+       * iPadOS unloads background tabs and installed apps often enough that this is not a rare
+       * event there.
+       */
+      storageKey="waxwing.mailSplit"
       minPrimarySize={260}
       maxPrimarySize={640}
     >
@@ -400,7 +463,7 @@ export function MailScreen() {
       */}
       {/* No rail in full screen: the whole point of the view is that nothing frames the message.
           Removed rather than hidden, so it takes no space and no tab stop. */}
-      {!fullScreen && (
+      {!fullScreen && !railHidden && (
         <nav
           id={FOLDER_REGION_ID}
           ref={folderRegionRef}

@@ -241,6 +241,8 @@ export default function FilesPage(props: FilesPageProps) {
   // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
   // preview neither downloads the file again nor leaks the superseded URL.
   const urlCacheRef = useRef(new Map<string, string>())
+  /** Row elements, so each row's secondary click can find its own <li>. */
+  const rowRefs = useRef(new Map<string, HTMLLIElement>())
 
   const injected = props.client
   const injectedFor = props.clientFor
@@ -1166,16 +1168,21 @@ export default function FilesPage(props: FilesPageProps) {
               })
             }
             const visible = visibleRowActions(geometry, actions.length)
-            const hidden: MenuItemSpec[] = actions.slice(visible).map((action) => ({
-              id: action.id,
-              label: action.label,
-              icon: action.icon,
-              disabled: action.disabled,
-              // Spread rather than `destructive={false}`: `MenuItemSpec` states it as optional and
-              // the repo compiles with `exactOptionalPropertyTypes`.
-              ...(action.destructive ? { destructive: true } : {}),
-              onSelect: action.onSelect,
-            }))
+            const asMenuItems = (list: typeof actions): MenuItemSpec[] =>
+              list.map((action) => ({
+                id: action.id,
+                label: action.label,
+                icon: action.icon,
+                disabled: action.disabled,
+                // Spread rather than `destructive={false}`: `MenuItemSpec` states it as optional and
+                // the repo compiles with `exactOptionalPropertyTypes`.
+                ...(action.destructive ? { destructive: true } : {}),
+                onSelect: action.onSelect,
+              }))
+            // The overflow menu carries what did not fit; the CONTEXT menu carries everything, which
+            // is the difference between a spill-over and a menu of the row's commands.
+            const hidden: MenuItemSpec[] = asMenuItems(actions.slice(visible))
+            const rowMenuItems: MenuItemSpec[] = asMenuItems(actions)
 
             const label = (
               <span className={styles.nameInner}>
@@ -1189,7 +1196,26 @@ export default function FilesPage(props: FilesPageProps) {
             )
 
             return (
-              <li key={node.id} className={styles.row} {...{ [ROW_PART.row]: '' }}>
+              <li
+                key={node.id}
+                ref={(element) => {
+                  if (element) rowRefs.current.set(node.id, element)
+                  else rowRefs.current.delete(node.id)
+                }}
+                className={styles.row}
+                {...{ [ROW_PART.row]: '' }}
+              >
+                {/* A secondary click anywhere in the row opens the row's commands — the same rule
+                    the folder tree, the label list and the message list follow. HIG `context-menus`
+                    asks for consistency by name: a feature offered on some rows and not others is
+                    one nobody learns. No trigger of its own; the visible affordances are the row's
+                    buttons and the ⋯ beside them. */}
+                <Menu
+                  trigger={null}
+                  triggerLabel={t('files.more', { name: node.name })}
+                  contextTarget={() => rowRefs.current.get(node.id) ?? null}
+                  items={rowMenuItems}
+                />
                 {selecting ? (
                   // The checkbox IS the row: its own `<label>` carries the icon and the name, so
                   // the whole line is the target rather than a 1.15rem square beside one. Wrapped
