@@ -153,19 +153,22 @@ for (const tier of TIERS) {
 }
 
 /**
- * The rail label defect itself, named rather than merely swept up — in the two shapes it now has.
+ * The rail label, and the two separate things that can go wrong with it.
  *
- * The original rule was "a navigation label stays inside the rail that holds it", and the defect it
- * came from was German: "Einstellungen" measures 72px at `--waxwing-text-xs` against the 40px text
- * area the rail gave it, so it spilled past both edges of its own box and shipped that way.
+ * The original defect was German: "Einstellungen" measures 72px at `--waxwing-text-xs` against the
+ * 40px text area the rail gave it, so it spilled past both edges of its own box and shipped that
+ * way. That rule — a printed label stays inside the bar that holds it — still applies wherever a
+ * label IS printed, which since T-02 is every touch device and the phone bar.
  *
- * The rail no longer PRINTS its labels — it is icons at 40em and up, and the span is
- * visually-hidden. That retires half the rule and makes the other half load-bearing: a label nobody
- * can see is exactly the kind of thing a later refactor deletes, and deleting it would take the
- * link's accessible name with it and leave the top-level navigation unusable by a screen reader
- * with no visible symptom at all. So both are asserted at both widths: nothing printed spills, and
- * every link is named either way.
+ * The second rule is the one that has no visible symptom. Where the label is visually-hidden it is
+ * still the link's accessible NAME, and a span nobody can see is exactly what a later refactor
+ * deletes — leaving the app's top-level navigation unusable by a screen reader with nothing on
+ * screen to show for it. So both are asserted, at every width.
+ *
+ * WHO gets the printed word is asserted separately below, because it is a rule about the input
+ * device rather than about the width.
  */
+
 /**
  * Read every navigation link: its accessible name, whether the label is PRINTED, and whether a
  * printed one fits the bar that holds it.

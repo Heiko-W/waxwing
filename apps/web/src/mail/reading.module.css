@@ -347,15 +347,21 @@
  * is above it here.
  *
  * The negative inline margin cancels `.conversation`'s own padding so the bar reaches both edges of
- * the pane; without it the message shows through two 24px gutters beside a floating strip.
+ * the pane; without it the message shows through two gutters beside a floating strip.
+ *
+ * `--waxwing-space-3` and not `-5`: BELOW 40em the conversation's own padding drops to space-3 (see
+ * the rule further down in this file), and cancelling the wider one put the bar 12px past both
+ * edges of a 390px viewport — caught by `noOverflow` in narrow.spec.ts, which is the test that
+ * exists for exactly this class of arithmetic. The two numbers have to be read together; if one
+ * moves, so does the other.
  */
 @media (max-width: 39.999em) {
   .actionBar {
     position: sticky;
     inset-block-end: 0;
     z-index: 1;
-    margin-inline: calc(-1 * var(--waxwing-space-5));
-    padding-inline: var(--waxwing-space-5);
+    margin-inline: calc(-1 * var(--waxwing-space-3));
+    padding-inline: var(--waxwing-space-3);
     padding-block: var(--waxwing-space-2);
     /* The home indicator, on an installed app. 0 everywhere else. */
     padding-block-end: calc(var(--waxwing-space-2) + var(--waxwing-safe-block-end));
@@ -381,6 +387,9 @@
 @container waxwing-pane (max-width: 30rem) {
   /* 24px of margin on each side is a quarter of a narrow pane. */
   .conversation {
+    /* Read together with `.actionBar` above: the docked bar cancels exactly this padding to reach
+       both edges of the pane, so the two numbers are one number. Cancelling the wider desktop value
+       here put the bar 12px past both edges of a 390px viewport. */
     padding-inline: var(--waxwing-space-3);
   }
 }

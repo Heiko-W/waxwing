@@ -145,7 +145,7 @@ Nummerierung neu und fortlaufend, sortiert nach Schwere.
 
 ### P-11 — Kein Feld beschriftet die Eingabetaste der Bildschirmtastatur (`enterKeyHint` fehlt app-weit)
 
-- **Stand (2026-08-24):** Behoben für die Felder, die auf dem Telefon getippt werden. Das Suchfeld bleibt bewusst aussen vor: `type="search"` leitet das in WebKit bereits ab.
+- **Stand (2026-08-24):** Behoben für die Felder, deren Eingabetaste wirklich etwas tut: Serveradresse und Passwort (`go`, sie senden das Formular ab), Benutzername und Betreff (`next`), Empfängerfeld (`next`, Enter macht die Adresse zu einem Chip). Bewusst NICHT flächendeckend auf jedes Formularfeld: `enterKeyHint="next"` bewegt den Fokus nicht, es beschriftet nur die Taste — auf einem Feld, dessen Enter nichts tut, wäre das Versprechen falsch. Das Suchfeld bleibt aussen vor, weil `type="search"` die Beschriftung in WebKit bereits ableitet.
 - **Schwere:** niedrig
 - **Einordnung:** übernehmen
 - **HIG-Regel:** *virtual-keyboards* — „Consider customizing the Return key type if it helps clarify the text-entry experience. … For example, if your app initiates a search, you can use a search Return key type rather than the standard one so the experience is consistent with other places people initiate search." (Slug: `virtual-keyboards`)
