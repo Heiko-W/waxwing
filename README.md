@@ -101,13 +101,63 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.18.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.19.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 4 905 unit tests, 18
-integration tests against a live Stalwart, and 200 end-to-end tests across the six Playwright suites
+Every planned work package is done and the release gate is signed off: 5 137 unit tests, 18
+integration tests against a live Stalwart, and 205 end-to-end tests across the six Playwright suites
 the gate runs — plus a WebKit smoke suite of 4 that runs beside it. Performance and accessibility are
 measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
+
+**v0.19.0 is Waxwing read against Apple's Human Interface Guidelines** — 39 findings for the
+desktop, the tablet and the phone, all of them worked off
+([the survey](docs/hig-audit-2026-08-24/README.md)).
+
+Full conformance was never the goal, and the audit says so on its first page: this is a web app
+that also runs on Windows, Linux and Android, and part of the HIG presupposes a system menu bar,
+window traffic lights and real vibrancy materials. What transfers is the other part — and it turned
+out to be the larger one. Every finding carries a verdict of *adopt*, *adapt* or *deliberately
+differ*; the third category came out empty, which is itself a result.
+
+Five causes produced twelve of the findings:
+
+- **`color-scheme` was declared nowhere.** The tokens could paint the app dark; the parts the
+  *browser* draws stayed light — scrollbars, the open list of every native `<select>` (a system
+  popover on an iPad), date fields, the selection highlight.
+- **The blanket reduced-motion reset froze every progress indicator.**
+  `animation-iteration-count: 1` for *everything* meant the spinner turned once in a hundredth of a
+  millisecond and then stood still: the app told its reader "stalled" with the very mark that means
+  "working". WCAG 2.3.3 asks for reduced motion, not for none.
+- **`visualViewport` appeared zero times.** Send, Discard and every dialog footer sat under the
+  on-screen keyboard — the primary action of this app's central task, invisible for as long as
+  someone was typing.
+- **One of four safe-area insets was read**, under `viewport-fit=cover` and `display: standalone`.
+  The phone header — which carries the entire mail chrome on that viewport — padded 8 px against
+  the Dynamic Island.
+- **Form dialogs threw typed input away** on Escape and on a press beside them. On a 390 px phone
+  that backdrop is not a thin margin; it is where a thumb lands reaching for the keyboard.
+
+Plus context menus on four surfaces, ⌘Z for undo, grouped menus with separators, a folder rail that
+can be put away and stays away, a split whose width is a share of the room rather than a per-tier
+constant, an action bar docked in the thumb zone on a phone, and keyboard semantics for address
+fields.
+
+Two findings are **decided rather than fixed**, each with an ADR: the PWA launch screen cannot
+follow the system appearance because the manifest holds one `background_color` and no media-query
+mechanism ([ADR-033](docs/adr/033-the-pwa-launch-screen-cannot-follow-the-system-theme.md)), and
+upload progress is not available behind the `fetch` seam
+([ADR-034](docs/adr/034-upload-progress-is-not-available-behind-the-fetch-seam.md)).
+
+**What the checks are for.** Every one of those defects is invisible on a developer's machine, so
+the round leaves five new static guards behind — `color-scheme` per theme block, `env(safe-area-*)`
+only in `tokens.css` (the inset is *physical*, so a hand-written rule pads the wrong edge under
+RTL), an explicit variant on every `<Button>`, the first test `layout.ts` has ever had, and the
+contrast matrix over four palettes instead of two.
+
+**And what only looking found.** A visual sweep at 390 / 834 / 1280 px against the live fixture
+caught a defect six passing assertions could not: the header reported *"Updated in 9 seconds"* — a
+time in the future, for a minute after every sync. The clock was read when the shell mounted and
+kept in state; every test asked about "3 minutes ago", and the sign only flips in the first moment.
 
 **v0.18.0 is the folder rail, read from two screenshots of the running deployment.** With three
 accounts in it the rail was one long column of near-identical folder names, and the top-level
