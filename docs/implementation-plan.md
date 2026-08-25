@@ -2664,6 +2664,16 @@ open. Verification and decryption are not started, and §5.1 of
 - Decryption, either scheme, needs private keys and therefore a key store, a shared-computer
   answer, a fresh XSS threat model and a recovery story. That is a milestone of its own.
 
+- **Push notifications with CONTENT while the app is closed (§13 B28).** Confirmed post-V1 by the
+  owner on 2026-08-25, when every other §13 finding was closed. V1 ships contentless push: a JMAP
+  push payload is a bare `StateChange` (RFC 8620 §7.1), so a banner naming a sender and a subject
+  needs the service worker to fetch the message itself — which means the access token, the AES-GCM
+  `SecretStore` and the OAuth refresh path all crossing into a DOM-free worker, with the refresh
+  ROTATION then living in two contexts that must not both run it. As shipped, none of that enters
+  the worker, and that is the property NFR-SEC-02 promises. **It is listed here as well as in §13 on
+  purpose**: B23 was a commitment that lived in one work-package note, was handed on, and went
+  unbuilt for a milestone because nobody was looking where it was written.
+
 Measured 2026-08-19 against Stalwart 0.16, **corrected 2026-08-21 against 0.16.18**: no
 SENDER key material is reachable over JMAP. The earlier wording — "`urn:stalwart:jmap` is
 absent from the session and its account capability is `{}`" — was misleading in its first
