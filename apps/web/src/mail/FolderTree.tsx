@@ -345,6 +345,7 @@ export function FolderTree({
           : { onRequestShare: (mailbox: MailboxRow) => setDialog({ kind: 'share', mailbox }) })}
         onRequestEmpty={(mailbox) => setDialog({ kind: 'empty', mailbox })}
         onRequestDeleteOlder={(mailbox) => setDialog({ kind: 'deleteOlder', mailbox })}
+        deleteOlderDestroys={(mailbox) => olderMode(mailbox, trashMailbox) === 'destroy'}
         onDragStartMailbox={(mailbox) =>
           setActiveDrag({
             kind: 'mailbox',
@@ -447,7 +448,11 @@ export function FolderTree({
           mailbox={dialog.mailbox}
           onClose={() => setDialog(null)}
           onConfirm={() => {
-            runCleanup(dialog.mailbox.name, cleanup.emptyMailbox(dialog.mailbox.id))
+            // The toast names the folder the way the menu and the dialog just did (B21).
+            runCleanup(
+              folderDisplayName(dialog.mailbox, t),
+              cleanup.emptyMailbox(dialog.mailbox.id),
+            )
             setDialog(null)
           }}
         />
@@ -461,7 +466,7 @@ export function FolderTree({
           onConfirm={(days) => {
             const mailbox = dialog.mailbox
             runCleanup(
-              mailbox.name,
+              folderDisplayName(mailbox, t),
               olderMode(mailbox, trashMailbox) === 'trash' && trashMailbox
                 ? cleanup.trashOlderThan(mailbox.id, trashMailbox.id, days)
                 : cleanup.deleteOlderThan(mailbox.id, days),
@@ -659,8 +664,11 @@ function DeleteDialog({ mailbox, onClose, onConfirm }: DeleteDialogProps) {
   const { t } = useTranslation()
   const message =
     mailbox.totalEmails > 0
-      ? t('mailbox.delete.messageNonEmpty', { name: mailbox.name, count: mailbox.totalEmails })
-      : t('mailbox.delete.message', { name: mailbox.name })
+      ? t('mailbox.delete.messageNonEmpty', {
+          name: folderDisplayName(mailbox, t),
+          count: mailbox.totalEmails,
+        })
+      : t('mailbox.delete.message', { name: folderDisplayName(mailbox, t) })
   return (
     <Dialog
       open

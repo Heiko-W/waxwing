@@ -75,6 +75,19 @@ export interface Triage {
   moveTo(ids: Id[], from: Id | null, to: Id, toName: string): boolean
   setSeen(ids: Id[], seen: boolean): void
   setFlagged(ids: Id[], flagged: boolean): void
+  /**
+   * Take a LABEL off messages, with an Undo (B21) — the bulk bar's "Remove from this label".
+   *
+   * It belongs here rather than beside {@link setFlagged} because of what it costs to get wrong. A
+   * label is a keyword like any other, but this particular write is the only one in the bar that
+   * removes the very thing the current view is FILTERED by: the rows leave the list as they are
+   * written, so the mistake takes its own evidence with it. It was a bare `setKeyword(…, false)` —
+   * silent, and irreversible from the UI — sitting inches away from a folder move that has
+   * toasted with an Undo since M3.8.
+   *
+   * `false` when the account denies keyword writes, on the same contract as the moves above.
+   */
+  removeLabel(ids: Id[], keyword: string): boolean
 }
 
 export function useTriage(): Triage {
@@ -149,6 +162,23 @@ export function useTriage(): Triage {
       setFlagged: (ids, flagged) => {
         if (!rights.maySetKeywords) return
         actions.setFlagged(ids, flagged)
+      },
+      removeLabel: (ids, keyword) => {
+        if (!rights.maySetKeywords || ids.length === 0 || !actions.available) return false
+        actions.setKeyword(ids, keyword, false)
+        toast({
+          title: t('list.moved.removedLabel', { label: keyword }),
+          // Non-expiring, like the moves': the Undo has to be reachable by keyboard, and the toast
+          // region is portalled to the end of the document (M4.7, WCAG 2.2.1).
+          duration: 0,
+          // The inverse is the same write with `true`, and it needs no separate rights check: the
+          // right that permitted the removal is the one that permits putting it back.
+          action: {
+            label: t('list.undo'),
+            onAction: () => actions.setKeyword(ids, keyword, true),
+          },
+        })
+        return true
       },
     }
   }, [actions, toast, t, archiveBox, junkBox, inboxBox, trashBox, rights])

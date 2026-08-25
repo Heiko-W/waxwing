@@ -4,7 +4,7 @@
  * exposes setters that navigate. Because chips/spec derive from the SAME `q`, the box and the chips
  * can never drift. Search results sort by date and show each matching message (no thread collapse).
  *
- * Three scopes, not two (B-2). "All mailboxes" used to send NO mailbox condition at all, so every
+ * Three scopes, not two (B-2). "All folders" used to send NO mailbox condition at all, so every
  * search raked through Trash and Junk and offered the deleted draft beside the sent one. It now
  * excludes those two by `inMailboxOtherThan`, and a third scope keeps them reachable for the one
  * case that wants them ("where did that deleted message go?", "what is filling my quota?").

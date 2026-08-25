@@ -125,6 +125,21 @@ export interface ShortcutAction {
   readonly id: string
   /** i18n key in `common` (e.g. `shortcuts.actions.triage.archive`); `en` + `de` required. */
   readonly titleKey: string
+  /**
+   * A title that depends on WHERE the chord is about to act — overrides {@link titleKey} in the
+   * cheat sheet and the palette (B21).
+   *
+   * Exactly one action needs this and it is the one that earned the row: `#` moves to Trash
+   * everywhere except INSIDE Trash, where it permanently destroys. Both surfaces called it "Move to
+   * Trash" regardless, so the palette offered a destroy under the name of a recoverable move — and
+   * the cheat sheet taught it that way. Every on-screen control for this action already swaps its
+   * label (`inTrash` in `MessageList`'s bulk bar and in `MessageView`'s toolbar); this is the same
+   * swap for the two surfaces that are generated from the registry.
+   *
+   * Deliberately NOT a second `enabled`-style gate: it changes what the action is CALLED, never
+   * whether it runs.
+   */
+  titleKeyFor?(context: ShortcutContext): string
   /** Chords, primary first (see `keys.ts` for the grammar): `['e']`, `['c', 'Mod+n']`. */
   readonly keys: readonly string[]
   readonly scopes: readonly ShortcutScope[]

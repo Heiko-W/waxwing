@@ -1092,6 +1092,7 @@
       "folder": "Moved to {{folder}}",
       "junk": "Moved to Junk",
       "notJunk": "Moved to Inbox",
+      "removedLabel": "Removed from {{label}}",
       "trash": "Moved to Trash"
     },
     "viewOptions": {
@@ -1396,8 +1397,8 @@
     "scope": {
       "label": "Search in",
       "folder": "This folder",
-      "all": "All mailboxes",
-      "everywhere": "All mailboxes, incl. Trash & Junk"
+      "all": "All folders",
+      "everywhere": "All folders, incl. Trash & Junk"
     },
     "chip": {
       "remove": "Remove {{filter}} filter",
@@ -1428,7 +1429,7 @@
     "hintAdvanced": "Advanced: -word leaves it out, a OR b matches either, thread:unread finds conversations nobody has opened.",
     "findLarge": "Find large messages",
     "results": {
-      "empty": "No messages match your search. Try all mailboxes, or fewer words.",
+      "empty": "No messages match your search. Try all folders, or fewer words.",
       "count_one": "{{count}} result",
       "count_other": "{{count}} results"
     },
@@ -1678,7 +1679,15 @@
       "hint": "Press V to pick a folder instead.",
       "undo": "Nothing to undo."
     },
+    "keys": {
+      "space": "Space",
+      "enter": "Enter",
+      "esc": "Esc",
+      "home": "Home",
+      "end": "End"
+    },
     "groups": {
+      "list": "Message list",
       "navigation": "Navigation",
       "triage": "Triage",
       "compose": "Compose",
@@ -1698,11 +1707,18 @@
         "full": "Open the message full screen"
       },
       "list": {
-        "select": "Select or deselect message"
+        "move": "Move the focus",
+        "extend": "Extend the selection",
+        "ends": "First or last message",
+        "select": "Select or deselect message",
+        "open": "Open the focused message",
+        "selectAll": "Select everything in the list",
+        "clear": "Clear the selection"
       },
       "triage": {
         "archive": "Archive",
         "trash": "Move to Trash",
+        "destroy": "Delete permanently",
         "junk": "Mark as junk",
         "unread": "Mark as read or unread",
         "flag": "Flag or unflag",

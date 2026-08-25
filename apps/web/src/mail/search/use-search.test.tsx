@@ -2,7 +2,7 @@
  * The search hook's SCOPE wiring (B-2).
  *
  * `search-query.test.ts` proves that an `excludeMailboxIds` context produces `inMailboxOtherThan`.
- * This file proves the other half — that choosing "All mailboxes" actually fills that list, from the
+ * This file proves the other half — that choosing "All folders" actually fills that list, from the
  * live mailbox tree, by ROLE. The defect lived exactly in this seam: the parser was fine, the scope
  * simply handed it nothing, so every all-mailboxes search returned Trash and Junk with no way to say
  * otherwise.

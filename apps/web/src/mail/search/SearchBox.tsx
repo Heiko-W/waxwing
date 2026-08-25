@@ -1,6 +1,6 @@
 /**
  * The search entry (M3.1): a `role="search"` field bound to the URL `q` (debounced replace on type,
- * push on submit), a scope control (this folder / all mailboxes), a clear button, and a removable
+ * push on submit), a scope control (this folder / all folders), a clear button, and a removable
  * chip strip derived from the parsed operators. All state lives in the URL via {@link useSearch}, so
  * the box and its chips can never drift.
  */
@@ -174,7 +174,7 @@ export function SearchBox({ search }: { readonly search: SearchState }) {
             onChange={(event) => search.setScope(event.target.value as SearchScope)}
           >
             <option value="folder">{t('search.scope.folder')}</option>
-            {/* "All mailboxes" leaves Trash and Junk out (B-2) — the same default Apple Mail ships.
+            {/* "All folders" leaves Trash and Junk out (B-2) — the same default Apple Mail ships.
                 The third entry is the way back in, and it names what it adds rather than hiding
                 behind a preference: two words the reader can compare against the line above. */}
             <option value="all">{t('search.scope.all')}</option>

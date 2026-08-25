@@ -93,7 +93,7 @@ async function pressUntil(key: string, assert: () => void): Promise<void> {
 }
 
 /** The shell the dispatcher lives in: the list (which owns the window) + a search box + the provider. */
-function renderShell() {
+function renderShell(mailboxId = 'inbox') {
   return render(
     <RouterProvider>
       <ConfigProvider config={DEFAULT_CONFIG}>
@@ -110,7 +110,7 @@ function renderShell() {
               tabIndex={0}
               suppressContentEditableWarning
             />
-            <MessageList mailboxId="inbox" />
+            <MessageList mailboxId={mailboxId} />
             <ShortcutProvider />
           </ReplicaProvider>
         </ToastProvider>
@@ -170,6 +170,33 @@ async function mounted() {
   renderShell()
   await screen.findByText('First')
   await waitFor(() => expect(useListStore.getState().ids).toHaveLength(3))
+}
+
+/** The same shell, standing IN Trash — where `#` means destroy rather than move (B21). */
+async function mountedInTrash(): Promise<void> {
+  window.history.pushState(null, '', '/mail/trash')
+  await putEmails(db, 'a', [
+    email('t1', { subject: 'Discarded one', mailboxIds: { trash: true }, keywords: {} }),
+    email('t2', { subject: 'Discarded two', mailboxIds: { trash: true }, keywords: {} }),
+  ])
+  await putQueryCache(db, {
+    accountId: 'a',
+    key: folderQueryKey('trash', {
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: true,
+    }).key,
+    ids: ['t1', 't2'],
+    queryState: 'q',
+    total: 2,
+    upToId: 't2',
+    filter: null,
+    sort: null,
+    collapseThreads: true,
+    lastUsedAt: 1,
+  })
+  renderShell('trash')
+  await screen.findByText('Discarded one')
+  await waitFor(() => expect(useListStore.getState().ids).toHaveLength(2))
 }
 
 describe('ShortcutProvider — navigation', () => {
@@ -233,6 +260,74 @@ describe('ShortcutProvider — triage', () => {
     press('#', { shiftKey: true }) // en-US: Shift+3
     await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'trash' })
+  })
+
+  /**
+   * `#` INSIDE Trash, where the same chord means a permanent destroy (B21).
+   *
+   * Three defects in one key, all of them from the chord being wired to the reading pane's
+   * single-message dialog and nothing else:
+   *   1. with several messages ticked it destroyed the OPEN one and left the rest;
+   *   2. in the list, with nothing open, `enabled` was false — so it did nothing, and said nothing,
+   *      because the `unavailable` beside it correctly reports no reason when destroy IS permitted;
+   *   3. both generated surfaces called it "Move to Trash" while it destroyed permanently.
+   */
+  it('# in Trash asks before destroying the whole selection, not just one message', async () => {
+    await mountedInTrash()
+    press('x') // t1
+    press('j')
+    press('x') // t2
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+
+    press('#', { shiftKey: true })
+    // The confirmation, over BOTH — a destroy is irreversible, so the chord may not skip it.
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByText(/These 2 messages will be permanently deleted/),
+    ).toBeInTheDocument()
+    expect(dispatch).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'destroyEmails',
+      emailIds: ['t1', 't2'],
+    })
+  })
+
+  it('# in Trash reaches the focused row with nothing open and nothing ticked', async () => {
+    // The silent refusal: the chord required an open message, so in the list it was inert — and
+    // inert without a word, which is the shape B3 exists to prevent.
+    await mountedInTrash()
+    press('#', { shiftKey: true })
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/This message will be permanently deleted/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'destroyEmails',
+        emailIds: ['t1'],
+      }),
+    )
+  })
+
+  it('# still MOVES to Trash from anywhere else, and never asks', async () => {
+    // The swap is per-folder. Outside Trash the action is recoverable and a confirmation would be
+    // a dialog in the way of the commonest key in the app.
+    await mounted()
+    press('#', { shiftKey: true })
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'trash' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('the cheat sheet names the destroy in Trash and the move everywhere else', async () => {
+    await mountedInTrash()
+    press('?', { shiftKey: true })
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByText('Delete permanently')).toBeInTheDocument()
+    expect(within(sheet).queryByText('Move to Trash')).toBeNull()
   })
 
   // `u` marks the UNREAD `e1` read since B16 — it is a toggle now, like `s`. This test used to

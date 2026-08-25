@@ -44,7 +44,7 @@ describe('SearchBox', () => {
   })
 
   /**
-   * B-2. "All mailboxes" now leaves Trash and Junk out, so there has to be a third choice that puts
+   * B-2. "All folders" now leaves Trash and Junk out, so there has to be a third choice that puts
    * them back — otherwise the fix takes something away without offering a way to ask for it.
    */
   it('offers three scopes, and the widest one names what it adds', async () => {
@@ -56,8 +56,8 @@ describe('SearchBox', () => {
     const picker = screen.getByRole('combobox', { name: 'Search in' })
     expect([...picker.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
       'This folder',
-      'All mailboxes',
-      'All mailboxes, incl. Trash & Junk',
+      'All folders',
+      'All folders, incl. Trash & Junk',
     ])
 
     await user.selectOptions(picker, 'everywhere')

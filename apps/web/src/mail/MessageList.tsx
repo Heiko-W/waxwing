@@ -194,7 +194,6 @@ export function MessageList({
   // The list's own move picker (`v`, and the bulk bar's Move) dispatches through the same triage seam
   // the chords use, so it gets the undo toast rather than a bare `actions.move`.
   const triage = useTriage()
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Selection, roving focus and the label-picker request live in the hoisted list store (M3.8), so the
   // keyboard layer and the command palette can drive the list from outside this component. The
@@ -203,10 +202,12 @@ export function MessageList({
   const focusIndex = useListStore((state) => state.focusIndex)
   const labelTargets = useListStore((state) => state.labelTargets)
   const moveTargets = useListStore((state) => state.moveTargets)
+  const destroyTargets = useListStore((state) => state.destroyTargets)
   const dispatchSelection = useListStore((state) => state.select)
   const focusIndexTo = useListStore((state) => state.focusIndexTo)
   const requestLabels = useListStore((state) => state.requestLabels)
   const requestMove = useListStore((state) => state.requestMove)
+  const requestDestroy = useListStore((state) => state.requestDestroy)
   const setWindow = useListStore((state) => state.setWindow)
   const setGridHandle = useListStore((state) => state.setGridHandle)
 
@@ -218,7 +219,7 @@ export function MessageList({
    *
    * Browsing a label runs through the same `search` prop as a typed query (see `MailScreen`'s
    * `effectiveSearch`), so this branch used to tell someone who clicked a label in the sidebar:
-   * "No messages match your search. Try all mailboxes, or fewer words." They had searched for
+   * "No messages match your search. Try all folders, or fewer words." They had searched for
    * nothing and were being advised to search differently.
    */
   // "This folder is empty" is now the plain truth again. Until M-13 it was not: the folder query
@@ -806,10 +807,9 @@ export function MessageList({
               fromMailbox={sourceMailboxId ?? undefined}
               allSelected={allSelected}
               someSelected={someSelected}
-              actions={actions}
               onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
               onClear={() => dispatchSelection({ type: 'clear' })}
-              onRequestDelete={() => setConfirmDelete(true)}
+              onRequestDelete={() => requestDestroy(selectedIds)}
               onRequestMove={() => requestMove(selectedIds)}
             />
           ) : viewOptionsOpen ? (
@@ -1008,23 +1008,27 @@ export function MessageList({
         </div>
       )}
 
-      {confirmDelete && (
+      {/* The targets come from the STORE, not from the live selection (B21): `#` inside Trash opens
+          this same dialog over whatever it was about to act on, which may be the focused row with
+          nothing ticked at all. Reading `selectedIds` here would then destroy nothing, or — worse
+          — something else. */}
+      {destroyTargets !== null && (
         <Dialog
           open
-          onClose={() => setConfirmDelete(false)}
+          onClose={() => requestDestroy(null)}
           title={t('list.actions.delete')}
           size="sm"
           footer={
             <>
-              <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+              <Button variant="ghost" onClick={() => requestDestroy(null)}>
                 {t('mailbox.cancel')}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => {
-                  actions.destroy(selectedIds)
+                  actions.destroy(destroyTargets)
                   dispatchSelection({ type: 'clear' })
-                  setConfirmDelete(false)
+                  requestDestroy(null)
                 }}
               >
                 {t('list.actions.delete')}
@@ -1035,7 +1039,7 @@ export function MessageList({
           {/* The count alone ("3 selected") restates the bulk bar; it is not a warning, and this is
               an irreversible action reached from an icon-only button. Say what it does — the same
               thing `reading.confirmDeleteBody` says for the single-message destroy. */}
-          <p>{t('list.confirmDeleteBody', { count: selection.selected.size })}</p>
+          <p>{t('list.confirmDeleteBody', { count: destroyTargets.length })}</p>
         </Dialog>
       )}
 
@@ -1274,7 +1278,6 @@ interface BulkBarProps {
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
-  readonly actions: ReturnType<typeof useMessageActions>
   readonly onSelectAll: () => void
   readonly onClear: () => void
   readonly onRequestDelete: () => void
@@ -1314,7 +1317,6 @@ function BulkBar({
   fromMailbox,
   allSelected,
   someSelected,
-  actions,
   onSelectAll,
   onClear,
   onRequestDelete,
@@ -1662,7 +1664,11 @@ function BulkBar({
           variant="ghost"
           unavailableReason={reasonText(rights.reason('keywords'))}
           onClick={() => {
-            actions.setKeyword(ids, activeLabel, false)
+            // Through the triage seam, so it toasts with an Undo like every other bulk action
+            // (B21). `actions.setKeyword` direct was silent and had no way back — and this is the
+            // one write in the bar that removes what the view is filtered BY, so the rows leave the
+            // list as it lands and take the evidence of the mistake with them.
+            triage.removeLabel(ids, activeLabel)
             onClear()
           }}
         >

@@ -5,6 +5,11 @@
  *  - {@link DeleteOlderDialog} — a day-count input (default 30) + destructive confirm for
  *    "Delete older than…".
  * Both raise intent only; the {@link FolderTree} container wires the confirmed action to the engine.
+ *
+ * Every folder name here goes through {@link folderDisplayName} (B21). They used the raw
+ * `mailbox.name`, so on a server whose Trash is called "Deleted Items" the menu entry read "Empty
+ * Trash" and the dialog it opened asked about a folder by a name that appears nowhere in the app —
+ * on the one screen where the reader is being asked to confirm something irreversible.
  */
 
 import { type FormEvent, useId, useState } from 'react'
@@ -12,6 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { useConfig } from '../../app/config-context'
 import type { MailboxRow } from '../../sync'
 import { Button, Dialog, TextInput } from '../../ui'
+import { folderDisplayName } from '../folder-tree'
 import styles from './cleanup.module.css'
 
 export interface EmptyFolderDialogProps {
@@ -27,7 +33,7 @@ export function EmptyFolderDialog({ mailbox, onClose, onConfirm }: EmptyFolderDi
     <Dialog
       open
       onClose={onClose}
-      title={t('cleanup.empty.title', { name: mailbox.name })}
+      title={t('cleanup.empty.title', { name: folderDisplayName(mailbox, t) })}
       size="sm"
       footer={
         <>
@@ -41,7 +47,12 @@ export function EmptyFolderDialog({ mailbox, onClose, onConfirm }: EmptyFolderDi
       }
     >
       <div className={styles.body}>
-        <p>{t('cleanup.empty.message', { name: mailbox.name, count: mailbox.totalEmails })}</p>
+        <p>
+          {t('cleanup.empty.message', {
+            name: folderDisplayName(mailbox, t),
+            count: mailbox.totalEmails,
+          })}
+        </p>
         <p className={styles.retention}>{t('cleanup.empty.retention', { product })}</p>
       </div>
     </Dialog>
@@ -127,7 +138,7 @@ export function DeleteOlderDialog({ mailbox, mode, onClose, onConfirm }: DeleteO
         </div>
         <p>
           {t(mode === 'trash' ? 'cleanup.older.messageTrash' : 'cleanup.older.messageDestroy', {
-            name: mailbox.name,
+            name: folderDisplayName(mailbox, t),
             count,
           })}
         </p>

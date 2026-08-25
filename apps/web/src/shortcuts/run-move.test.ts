@@ -50,6 +50,7 @@ function triageStub(dispatched: boolean): Triage {
     moveTo: vi.fn(() => dispatched),
     setSeen: vi.fn(),
     setFlagged: vi.fn(),
+    removeLabel: vi.fn(() => dispatched),
   }
 }
 

@@ -43,6 +43,15 @@ export interface ListState {
   readonly labelTargets: Id[] | null
   /** The `v` picker's targets — rendered by `MessageList`; `null` = closed. */
   readonly moveTargets: Id[] | null
+  /**
+   * The permanent-destroy confirmation's targets — rendered by `MessageList`; `null` = closed.
+   *
+   * Same shape as the two pickers above, and here for the same reason (B21): inside Trash `#` means
+   * DESTROY, and it used to reach only the reading pane's single-message dialog. With three messages
+   * ticked it destroyed the open one and left the other two, and with nothing open it did nothing at
+   * all and said nothing. The dialog belongs to the list, so the request has to be able to get there.
+   */
+  readonly destroyTargets: Id[] | null
   readonly grid: GridHandle | null
 }
 
@@ -69,6 +78,8 @@ export interface ListController {
   /** Open the move picker over `ids`, or close it with `null`. A bare setter, like {@link requestLabels}
    *  — whether a move is possible at all is the caller's gate, not this store's. */
   requestMove(ids: Id[] | null): void
+  /** Open the permanent-destroy confirmation over `ids`, or close it with `null`. */
+  requestDestroy(ids: Id[] | null): void
   setGridHandle(handle: GridHandle | null): void
 }
 
@@ -82,6 +93,7 @@ export const EMPTY_LIST_STATE: ListState = {
   sourceMailboxId: null,
   labelTargets: null,
   moveTargets: null,
+  destroyTargets: null,
   grid: null,
 }
 
@@ -144,6 +156,7 @@ export const useListStore = create<ListStore>()((set, get) => ({
       selection: EMPTY_SELECTION,
       labelTargets: null,
       moveTargets: null,
+      destroyTargets: null,
     })
   },
 
@@ -173,6 +186,10 @@ export const useListStore = create<ListStore>()((set, get) => ({
 
   requestLabels(ids) {
     set({ labelTargets: ids })
+  },
+
+  requestDestroy(ids) {
+    set({ destroyTargets: ids })
   },
 
   requestMove(ids) {

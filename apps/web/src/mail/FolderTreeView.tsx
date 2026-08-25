@@ -70,6 +70,16 @@ export interface FolderTreeViewProps {
   readonly onRequestEmpty?: (mailbox: MailboxRow) => void
   /** Delete messages older than N days from any purgeable mailbox (M3.2 cleanup); omit to hide. */
   readonly onRequestDeleteOlder?: (mailbox: MailboxRow) => void
+  /**
+   * Whether that cleanup DESTROYS in this mailbox rather than moving to Trash — the entry is styled
+   * destructive exactly when it is (B21).
+   *
+   * A callback rather than the trash mailbox itself, because the answer is `FolderTree`'s
+   * `olderMode` and there must go on being ONE authority for it: this view importing that module
+   * would close an import cycle, and re-deriving the rule here would make two. Absent, the answer
+   * is "yes": colouring a recoverable command as destructive is the smaller of the two errors.
+   */
+  readonly deleteOlderDestroys?: (mailbox: MailboxRow) => boolean
   /** Mailboxes kept offline (M3.4) — exempt from eviction and prefetched. */
   readonly pinned?: ReadonlySet<string>
   /** Toggle a folder's "keep offline" pin (M3.4); omit to hide the entry. */
@@ -94,6 +104,7 @@ export function FolderTreeView({
   onDragStartMailbox,
   onRequestEmpty,
   onRequestDeleteOlder,
+  deleteOlderDestroys,
   pinned,
   onTogglePin,
 }: FolderTreeViewProps) {
@@ -202,6 +213,7 @@ export function FolderTreeView({
             onRequestShare,
             onRequestEmpty,
             onRequestDeleteOlder,
+            deleteOlderDestroys,
             onTogglePin,
           })
           return (
@@ -357,6 +369,7 @@ function actionItems(
     onRequestShare?: ((mailbox: MailboxRow) => void) | undefined
     onRequestEmpty?: ((mailbox: MailboxRow) => void) | undefined
     onRequestDeleteOlder?: ((mailbox: MailboxRow) => void) | undefined
+    deleteOlderDestroys?: ((mailbox: MailboxRow) => boolean) | undefined
     onTogglePin?: ((mailbox: MailboxRow) => void) | undefined
   },
 ): MenuItemSpec[] {
@@ -455,6 +468,11 @@ function actionItems(
       id: 'deleteOlder',
       group: 'destructive',
       label: t('cleanup.menu.deleteOlder'),
+      // Destructive where it DESTROYS, which is Trash, Junk, and any folder with no Trash to move
+      // to (B21). It sat in the destructive band already but carried none of the colour, so the one
+      // entry in that band that can permanently delete a year of mail read like the recoverable
+      // ones — while "Empty Trash" beside it, which does the same thing, was coloured.
+      destructive: handlers.deleteOlderDestroys?.(mailbox) ?? true,
       onSelect: () => onRequestDeleteOlder(mailbox),
     })
   }

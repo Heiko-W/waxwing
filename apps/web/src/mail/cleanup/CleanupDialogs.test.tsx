@@ -36,6 +36,30 @@ describe('EmptyFolderDialog', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
+  /**
+   * The name in the dialog is the name in the menu (B21).
+   *
+   * A JMAP role folder carries the SERVER's name — Stalwart calls its trash "Deleted Items", and
+   * other servers have their own — while every other surface in the app shows the localized role
+   * name. So the entry read "Empty Trash" and the confirmation it opened asked about "Deleted
+   * Items", a folder by a name the reader has never seen, at the exact moment they are being asked
+   * to approve something irreversible.
+   */
+  it('names the folder the way the rest of the app does, not the way the server does', async () => {
+    render(
+      withConfig(
+        <EmptyFolderDialog
+          mailbox={box({ name: 'Deleted Items', totalEmails: 5 })}
+          onClose={() => {}}
+          onConfirm={() => {}}
+        />,
+      ),
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('Trash')
+    expect(dialog).not.toHaveTextContent('Deleted Items')
+  })
+
   it('has no axe violations', async () => {
     render(
       withConfig(

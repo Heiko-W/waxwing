@@ -13,11 +13,17 @@
  */
 
 import type { Id } from '@waxwing/jmap'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type MailboxRow, useMailboxes } from '../sync'
 import { Dialog } from '../ui'
-import { buildFolderTree, folderDisplayName, legalParents, visibleRows } from './folder-tree'
+import {
+  buildFolderTree,
+  folderDisplayName,
+  folderPath,
+  legalParents,
+  visibleRows,
+} from './folder-tree'
 import styles from './reading.module.css'
 import { useMoveLimits } from './use-move-limits'
 
@@ -44,30 +50,12 @@ export function FolderMoveDialog({ mailbox, onClose, onMove }: FolderMoveDialogP
     [mailboxes, legal],
   )
 
-  /**
-   * The full path of a target — `Archive › 2024`, not just `2024`.
-   *
-   * The indentation carries the hierarchy for a sighted user, but CSS padding is not a structure
-   * anyone can query (WCAG 1.3.1). JMAP only requires names to be unique among SIBLINGS, so
-   * `Archive › 2024` and `Projects › 2024` both render as a button reading "2024": a screen reader
-   * would announce two identical targets and a re-parent, unlike a message move, has no Undo. The
-   * path goes in the accessible NAME (it contains the visible label, so SC 2.5.3 still holds) and
-   * the visible row stays short.
-   */
-  const pathOf = useMemo(() => {
-    const index = new Map(mailboxes.map((m) => [m.id, m]))
-    return (target: MailboxRow): string => {
-      const parts: string[] = []
-      const seen = new Set<string>()
-      let current: MailboxRow | undefined = target
-      while (current !== undefined && !seen.has(current.id)) {
-        seen.add(current.id) // a replica mid-sync may briefly hold a parentId cycle
-        parts.unshift(folderDisplayName(current, t))
-        current = current.parentId !== null ? index.get(current.parentId) : undefined
-      }
-      return parts.join(' › ')
-    }
-  }, [mailboxes, t])
+  // The full path of a target — `Archive › 2024`, not just `2024`. The reasoning lives with the
+  // helper (`folder-tree.ts`), which the message move picker shares since B21.
+  const pathOf = useCallback(
+    (target: MailboxRow): string => folderPath(mailboxes, target, t),
+    [mailboxes, t],
+  )
 
   return (
     <Dialog

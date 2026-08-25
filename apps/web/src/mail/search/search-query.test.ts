@@ -131,7 +131,7 @@ describe('parseSearchQuery + serializeTokens', () => {
 })
 
 /**
- * B-2. "All mailboxes" used to send NO mailbox condition at all — every search returned deleted and
+ * B-2. "All folders" used to send NO mailbox condition at all — every search returned deleted and
  * spam mail beside the live copies, with no way to turn it off. `inMailboxOtherThan` is the operator
  * for it (measured against Stalwart v0.16.14/.18, report C §2).
  */

@@ -1092,6 +1092,7 @@
       "folder": "Nach „{{folder}}“ verschoben",
       "junk": "In den Spam-Ordner verschoben",
       "notJunk": "In den Posteingang verschoben",
+      "removedLabel": "Aus „{{label}}“ entfernt",
       "trash": "In den Papierkorb verschoben"
     },
     "viewOptions": {
@@ -1678,7 +1679,15 @@
       "hint": "Drücken Sie V, um stattdessen einen Ordner auszuwählen.",
       "undo": "Nichts rückgängig zu machen."
     },
+    "keys": {
+      "space": "Leertaste",
+      "enter": "Enter",
+      "esc": "Esc",
+      "home": "Pos 1",
+      "end": "Ende"
+    },
     "groups": {
+      "list": "Nachrichtenliste",
       "navigation": "Navigation",
       "triage": "Aktionen",
       "compose": "Verfassen",
@@ -1698,11 +1707,18 @@
         "full": "Nachricht im Vollbild öffnen"
       },
       "list": {
-        "select": "Nachricht aus- oder abwählen"
+        "move": "Auswahlrahmen bewegen",
+        "extend": "Auswahl erweitern",
+        "ends": "Erste oder letzte Nachricht",
+        "select": "Nachricht aus- oder abwählen",
+        "open": "Fokussierte Nachricht öffnen",
+        "selectAll": "Alles in der Liste auswählen",
+        "clear": "Auswahl aufheben"
       },
       "triage": {
         "archive": "Archivieren",
         "trash": "In den Papierkorb",
+        "destroy": "Endgültig löschen",
         "junk": "Als Spam markieren",
         "unread": "Als gelesen oder ungelesen markieren",
         "flag": "Markierung setzen oder entfernen",

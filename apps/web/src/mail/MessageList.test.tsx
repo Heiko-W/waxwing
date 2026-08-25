@@ -1447,6 +1447,91 @@ describe('MessageList', () => {
   })
 
   /**
+   * "Remove from this label" (B21).
+   *
+   * The bar's odd one out: every other bulk action toasts with an Undo, and this one wrote the
+   * keyword straight through `useMessageActions` — silent, and with no way back from the UI. It is
+   * also the write with the least margin for error, because the view is FILTERED by the very label
+   * it removes: the rows leave the list as it lands, taking the evidence of the mistake with them.
+   */
+  describe('remove from this label', () => {
+    async function renderLabelView(): Promise<void> {
+      const spec: QuerySpec = {
+        filter: { hasKeyword: 'work' },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        collapseThreads: false,
+      }
+      await putEmails(db, 'a', [
+        email('x1', {
+          subject: 'Labeled',
+          mailboxIds: { archive: true },
+          keywords: { work: true },
+        }),
+      ])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: canonicalQueryKey(spec),
+        ids: ['x1'],
+        queryState: 'q',
+        total: 1,
+        upToId: 'x1',
+        filter: spec.filter ?? null,
+        sort: spec.sort ?? null,
+        collapseThreads: false,
+        lastUsedAt: 1,
+      })
+      render(
+        <RouterProvider>
+          <ConfigProvider config={DEFAULT_CONFIG}>
+            <ToastProvider>
+              <ReplicaProvider accountId="a" db={db}>
+                <MessageList
+                  mailboxId={undefined}
+                  search={{ spec, scopeMailboxId: undefined }}
+                  activeLabel="work"
+                />
+              </ReplicaProvider>
+            </ToastProvider>
+          </ConfigProvider>
+        </RouterProvider>,
+      )
+      await screen.findByText('Labeled')
+    }
+
+    it('offers an Undo, and it puts the label back', async () => {
+      const user = userEvent.setup()
+      await renderLabelView()
+      await user.click(
+        screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement,
+      )
+      await screen.findByText('1 selected')
+
+      await user.click(screen.getByRole('button', { name: 'Remove from this label' }))
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'setKeywords',
+        keyword: 'work',
+        value: false,
+        emailIds: ['x1'],
+      })
+      // The toast names the label rather than saying "done": with the row already gone from the
+      // filtered list, the toast is the only remaining statement of what happened.
+      expect(await screen.findByText('Removed from work')).toBeInTheDocument()
+
+      await user.click(await screen.findByRole('button', { name: 'Undo' }))
+      expect(dispatch.mock.calls[1]?.[0]).toMatchObject({
+        kind: 'setKeywords',
+        keyword: 'work',
+        value: true,
+        emailIds: ['x1'],
+      })
+    })
+
+    it('names the removal in German too', () => {
+      expect(de.list.moved.removedLabel).toBe('Aus „{{label}}“ entfernt')
+    })
+  })
+
+  /**
    * A minimal DataTransfer that records setData calls. jsdom ships none, so it is hand-stubbed on
    * the fireEvent init, exactly as ComposerWindow.test does for file drops. Shared with the swipe
    * block below, which asserts that a drag started mid-gesture writes NOTHING to it (ADR-012).

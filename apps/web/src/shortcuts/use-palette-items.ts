@@ -41,7 +41,7 @@ export function usePaletteItems(context: ShortcutContext): readonly PaletteItem[
       if (!isRunnable(action, context)) continue
       items.push({
         id: `action:${action.id}`,
-        label: t(action.titleKey),
+        label: t(action.titleKeyFor?.(context) ?? action.titleKey),
         group: action.group,
         keys: action.keys,
         run: () => action.run(context),
