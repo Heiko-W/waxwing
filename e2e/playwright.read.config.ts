@@ -27,6 +27,7 @@ export default defineConfig({
     '**/notify.spec.ts',
     '**/target-size.spec.ts',
     '**/focus-visible.spec.ts',
+    '**/security.spec.ts',
     '**/a11y.spec.ts',
     '**/perf.spec.ts',
     '**/public-computer.spec.ts',

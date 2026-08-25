@@ -211,6 +211,54 @@ test.describe('/mail/ mount', () => {
 
     expect(await page.evaluate(() => navigator.onLine)).toBe(false)
   })
+
+  /**
+   * B25 (4) — can a navigation to a JMAP path be answered by the worker under a `/mail/` mount?
+   *
+   * The review's worry was structural: `navigateDenylist` anchors its reserved words to the app
+   * ROOT, so under `/mail/` it denies `/mail/jmap` and says nothing about `/jmap` — where Stalwart's
+   * API actually lives. Read from the denylist alone, that looks like a hole big enough to answer an
+   * authenticated API navigation out of the precached shell.
+   *
+   * It is not, and the reason is one level up: a service worker only intercepts requests for clients
+   * within its SCOPE, and the scope here is `/mail/` (asserted two tests above, read from the
+   * worker's own location). `/jmap` is a different scope — no worker of ours is consulted for it.
+   * The denylist's job is the paths INSIDE the scope, which is exactly what it covers.
+   *
+   * That is a specification argument, and B25 filed these questions precisely because arguments were
+   * what it had. So this measures it: offline, with the worker controlling, a navigation to `/jmap`
+   * must FAIL at the network rather than come back as the app. If the worker were answering it, the
+   * page would boot — offline — with an `<h1>`, which is the same signal the tests above use for
+   * success and here is the failure.
+   */
+  test('the worker does not answer a JMAP navigation under the mount (B25.4)', async ({
+    page,
+    context,
+  }) => {
+    await page.goto(MOUNT)
+    await booted(page)
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => {}))
+    await page.reload()
+    await expect
+      .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+        timeout: 15_000,
+      })
+      .toBe(true)
+
+    // The control first, in the same conditions: an APP route offline IS answered from the shell.
+    // Without it, a network failure below would prove only that the browser is offline.
+    await context.setOffline(true)
+    await page.goto(`${MOUNT}mail/inbox`)
+    await booted(page)
+
+    const outcome = await page
+      .goto('/jmap')
+      .then((response) => `responded ${response?.status() ?? 'null'}`)
+      .catch((error: Error) => `failed ${error.message.split('\n')[0]}`)
+    expect(outcome, 'a JMAP navigation was answered while offline').toMatch(/^failed/)
+    // And nothing of ours rendered: no shell, no `<h1>`.
+    expect(await page.getByRole('heading', { level: 1 }).count()).toBe(0)
+  })
 })
 
 /**
