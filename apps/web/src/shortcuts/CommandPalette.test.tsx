@@ -86,9 +86,14 @@ afterEach(async () => {
 describe('CommandPalette', () => {
   it('lists actions, folders and labels — the palette reaches everything', async () => {
     await mountAndOpen()
+    // TWO barriers, one per subscription. Folders and labels are different queries and land on
+    // different ticks — since B10 the folder list comes from the app's ONE shared mailbox
+    // subscription, which resolves independently of `useLabels`. Waiting on the folder and then
+    // ASSERTING the label is exactly the hazard B10's row names: a barrier on A proves nothing
+    // about B.
     await waitFor(() => expect(screen.getByText('Go to folder: Inbox')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Go to label: Work')).toBeInTheDocument())
     expect(screen.getByText('Go to folder: Team')).toBeInTheDocument()
-    expect(screen.getByText('Go to label: Work')).toBeInTheDocument()
     expect(screen.getByText('Go to Settings')).toBeInTheDocument()
     expect(screen.getByText('New message')).toBeInTheDocument()
     expect(screen.getByText('Archive')).toBeInTheDocument()

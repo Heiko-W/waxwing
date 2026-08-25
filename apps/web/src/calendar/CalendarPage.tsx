@@ -908,7 +908,6 @@ export default function CalendarPage(props: CalendarPageProps) {
       <div className={styles.body}>
         {tier !== 'phone' && (
           <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
-            <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
             <CalendarList
               calendars={calendars}
               canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
@@ -933,6 +932,10 @@ export default function CalendarPage(props: CalendarPageProps) {
                 onChange={setAvailabilityOf}
               />
             )}
+            {/* LAST in the rail (B61): a share card arrives on a sync pass, and above the calendar
+                list it moved every row out from under the pointer mid-click. Below it, nothing is
+                pushed. */}
+            <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
           </aside>
         )}
         <div className={styles.main}>

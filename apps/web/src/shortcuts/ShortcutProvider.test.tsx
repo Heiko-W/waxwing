@@ -93,7 +93,7 @@ async function pressUntil(key: string, assert: () => void): Promise<void> {
 }
 
 /** The shell the dispatcher lives in: the list (which owns the window) + a search box + the provider. */
-function renderShell() {
+function renderShell(mailboxId = 'inbox') {
   return render(
     <RouterProvider>
       <ConfigProvider config={DEFAULT_CONFIG}>
@@ -110,7 +110,7 @@ function renderShell() {
               tabIndex={0}
               suppressContentEditableWarning
             />
-            <MessageList mailboxId="inbox" />
+            <MessageList mailboxId={mailboxId} />
             <ShortcutProvider />
           </ReplicaProvider>
         </ToastProvider>
@@ -141,8 +141,9 @@ beforeEach(async () => {
   await putEmails(db, 'a', [
     email('e1', { subject: 'First', keywords: {} }),
     email('e2', { subject: 'Second', keywords: {} }),
-    // Already flagged — so `s` over it has to UNflag (it is a toggle, like the star button).
-    email('e3', { subject: 'Third', keywords: { $flagged: true } }),
+    // Already flagged AND already read — so `s` over it has to UNflag and `u` has to mark it
+    // unread, while over `e1`, which is neither, both have to set. Both are toggles (B16).
+    email('e3', { subject: 'Third', keywords: { $flagged: true, $seen: true } }),
   ])
   await putQueryCache(db, {
     accountId: 'a',
@@ -169,6 +170,33 @@ async function mounted() {
   renderShell()
   await screen.findByText('First')
   await waitFor(() => expect(useListStore.getState().ids).toHaveLength(3))
+}
+
+/** The same shell, standing IN Trash — where `#` means destroy rather than move (B21). */
+async function mountedInTrash(): Promise<void> {
+  window.history.pushState(null, '', '/mail/trash')
+  await putEmails(db, 'a', [
+    email('t1', { subject: 'Discarded one', mailboxIds: { trash: true }, keywords: {} }),
+    email('t2', { subject: 'Discarded two', mailboxIds: { trash: true }, keywords: {} }),
+  ])
+  await putQueryCache(db, {
+    accountId: 'a',
+    key: folderQueryKey('trash', {
+      sort: [{ property: 'receivedAt', isAscending: false }],
+      collapseThreads: true,
+    }).key,
+    ids: ['t1', 't2'],
+    queryState: 'q',
+    total: 2,
+    upToId: 't2',
+    filter: null,
+    sort: null,
+    collapseThreads: true,
+    lastUsedAt: 1,
+  })
+  renderShell('trash')
+  await screen.findByText('Discarded one')
+  await waitFor(() => expect(useListStore.getState().ids).toHaveLength(2))
 }
 
 describe('ShortcutProvider — navigation', () => {
@@ -234,16 +262,88 @@ describe('ShortcutProvider — triage', () => {
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'trash' })
   })
 
-  it('u in the list marks the target unread', async () => {
-    await mounted()
-    press('u')
+  /**
+   * `#` INSIDE Trash, where the same chord means a permanent destroy (B21).
+   *
+   * Three defects in one key, all of them from the chord being wired to the reading pane's
+   * single-message dialog and nothing else:
+   *   1. with several messages ticked it destroyed the OPEN one and left the rest;
+   *   2. in the list, with nothing open, `enabled` was false — so it did nothing, and said nothing,
+   *      because the `unavailable` beside it correctly reports no reason when destroy IS permitted;
+   *   3. both generated surfaces called it "Move to Trash" while it destroyed permanently.
+   */
+  it('# in Trash asks before destroying the whole selection, not just one message', async () => {
+    await mountedInTrash()
+    press('x') // t1
+    press('j')
+    press('x') // t2
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+
+    press('#', { shiftKey: true })
+    // The confirmation, over BOTH — a destroy is irreversible, so the chord may not skip it.
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByText(/These 2 messages will be permanently deleted/),
+    ).toBeInTheDocument()
+    expect(dispatch).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
     await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
-      kind: 'setKeywords',
-      keyword: '$seen',
-      value: false,
-      emailIds: ['e1'],
+      kind: 'destroyEmails',
+      emailIds: ['t1', 't2'],
     })
+  })
+
+  it('# in Trash reaches the focused row with nothing open and nothing ticked', async () => {
+    // The silent refusal: the chord required an open message, so in the list it was inert — and
+    // inert without a word, which is the shape B3 exists to prevent.
+    await mountedInTrash()
+    press('#', { shiftKey: true })
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/This message will be permanently deleted/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'destroyEmails',
+        emailIds: ['t1'],
+      }),
+    )
+  })
+
+  it('# still MOVES to Trash from anywhere else, and never asks', async () => {
+    // The swap is per-folder. Outside Trash the action is recoverable and a confirmation would be
+    // a dialog in the way of the commonest key in the app.
+    await mounted()
+    press('#', { shiftKey: true })
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'trash' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('the cheat sheet names the destroy in Trash and the move everywhere else', async () => {
+    await mountedInTrash()
+    press('?', { shiftKey: true })
+    const sheet = await screen.findByRole('dialog')
+    expect(within(sheet).getByText('Delete permanently')).toBeInTheDocument()
+    expect(within(sheet).queryByText('Move to Trash')).toBeNull()
+  })
+
+  // `u` marks the UNREAD `e1` read since B16 — it is a toggle now, like `s`. This test used to
+  // assert `value: false` here and was asserting the defect: the app had no keyboard route to
+  // "read" at all. The unread direction is covered by the block further down, over a row seeded
+  // read.
+  it('u in the list marks the target read', async () => {
+    await mounted()
+    await pressUntil('u', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'setKeywords',
+        keyword: '$seen',
+        value: true,
+        emailIds: ['e1'],
+      }),
+    )
   })
 
   it('l opens the label picker over the target', async () => {
@@ -568,6 +668,7 @@ describe('ShortcutProvider — reading scope', () => {
       compose: vi.fn(),
       archive: vi.fn(),
       junk: vi.fn(),
+      notJunk: vi.fn(),
       trash: vi.fn(),
       toggleFlag: vi.fn(),
       markUnread: vi.fn(),
@@ -720,6 +821,48 @@ describe('ShortcutProvider — reading scope', () => {
  * input, ⌘Z is the BROWSER's undo, and taking it there to un-archive a message would be a worse
  * surprise than not having the chord at all.
  */
+/**
+ * `u` toggles (B16).
+ *
+ * It was an unconditional mark-UNread, which left the app with no keyboard route to "read" at all —
+ * every other triage verb the bulk bar exposes had one, and B9's comment claimed `s`/`u` parity
+ * while only half of it was true.
+ *
+ * The third test is the one worth having: an unhydrated target must not read as "already all
+ * read", because the safe direction is to SET. Marking a message read that already is costs
+ * nothing; marking one unread that the reader just read is a small lie about their own history.
+ */
+describe('ShortcutProvider — u marks read as well as unread', () => {
+  it('marks a READ target unread', async () => {
+    await mounted()
+    // Walk to `e3`, the one seeded `$seen: true`. `pressUntil`, like the `s` tests beside it: the
+    // predicate comes from a liveQuery over the new target and is not resolved on the first press.
+    press('j')
+    press('j')
+    await pressUntil('u', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        emailIds: ['e3'],
+        keyword: '$seen',
+        value: false,
+      }),
+    )
+  })
+
+  it('marks a MIXED selection read — it only unmarks when every target already is', async () => {
+    // Same rule as `s`, and the safe direction: marking a message read that already is costs
+    // nothing, while marking one unread that the reader just read is a small lie about their own
+    // history. An unhydrated row must therefore never count as "already read" either.
+    await mounted()
+    press('x') // e1, unread
+    press('j')
+    press('j')
+    press('x') // e3, read
+    await pressUntil('u', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ keyword: '$seen', value: true }),
+    )
+  })
+})
+
 describe('ShortcutProvider — undo takes the standard chord', () => {
   it('⌘Z undoes, like z', async () => {
     await mounted()

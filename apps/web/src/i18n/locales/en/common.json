@@ -44,14 +44,12 @@
       "label": "Email address or server",
       "placeholder": "you@example.com",
       "hint": "Enter your email address — {{product}} will try your email domain. If your mail server is at a different address, enter that instead.",
-      "submit": "Continue",
-      "discovering": "Finding your server…"
+      "submit": "Continue"
     },
     "error": {
       "discovery": "No mail server was found for {{domain}}.",
       "network": "Could not reach the server. Check your connection and try again.",
       "noAccount": "This server has no mail account for you.",
-      "config": "This deployment has no server configured to connect to.",
       "generic": "Something went wrong. Please try again.",
       "networkHost": "Could not reach {{host}}. If your mail server is at a different address, enter it above.",
       "oauthUnavailable": "This server does not offer secure sign-in. Use your email address and password below.",
@@ -88,7 +86,6 @@
     "back": "Use a different server",
     "error": {
       "invalidCredentials": "Wrong username or password.",
-      "oauthUnavailable": "This server requires secure (HTTPS) sign-in, which is not available here.",
       "generic": "Sign-in failed. Please try again.",
       "signOutIncomplete": "You are signed out, but the local copy of your mail could not be removed — another tab may still be open. Close every tab and sign out again.",
       "invalidCredentialsBasic": "Wrong username or password. If two-factor authentication is on for this account, only an app password works here."
@@ -156,32 +153,36 @@
       }
     },
     "offline": {
-      "title": "Offline & storage",
-      "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
-      "meter": {
-        "label": "Storage used"
-      },
-      "total": "{{used}} of {{total}} used",
-      "quotaUnknown": "Your browser does not report a storage quota.",
       "category": {
         "messages": "Message index (estimated)",
         "bodies": "Message bodies",
         "attachments": "Attachments",
         "other": "Other (app & offline shell)"
       },
+      "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
+      "freeUp": "Free up space now",
+      "freedToast": "Freed {{size}}",
+      "meter": {
+        "label": "Storage used"
+      },
+      "nothingToFree": "Nothing to free up",
       "persist": {
         "label": "Keep data on this device",
         "hint": "Ask your browser not to delete cached mail when storage runs low.",
         "granted": "Granted — your browser will keep cached mail even when storage runs low.",
         "denied": "Not granted — your browser may clear cached mail when storage runs low."
       },
-      "freeUp": "Free up space now",
-      "freedToast": "Freed {{size}}",
-      "nothingToFree": "Nothing to free up",
-      "window_one": "Mail from the last {{count}} day is kept on this device. Older mail stays on the server and loads when you open it.",
-      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it.",
       "pinned_one": "{{count}} folder kept offline",
-      "pinned_other": "{{count}} folders kept offline"
+      "pinned_other": "{{count}} folders kept offline",
+      "quotaUnknown": "Your browser does not report a storage quota.",
+      "title": "Offline & storage",
+      "total": "{{used}} of {{total}} used",
+      "windowApplies": "A shorter window frees space at the next cleanup, not immediately — \"Free up space\" above does not wait.",
+      "windowChoice_one": "{{count}} day",
+      "windowChoice_other": "{{count}} days",
+      "windowLabel": "Keep mail on this device for",
+      "window_one": "Mail from the last {{count}} day is kept on this device. Older mail stays on the server and loads when you open it.",
+      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it."
     },
     "general": {
       "title": "General"
@@ -990,7 +991,6 @@
     },
     "rename": {
       "title": "Rename folder",
-      "nameLabel": "Folder name",
       "submit": "Rename"
     },
     "delete": {
@@ -1089,9 +1089,11 @@
     "undo": "Undo",
     "moved": {
       "archive": "Moved to Archive",
+      "folder": "Moved to {{folder}}",
       "junk": "Moved to Junk",
-      "trash": "Moved to Trash",
-      "folder": "Moved to {{folder}}"
+      "notJunk": "Moved to Inbox",
+      "removedLabel": "Removed from {{label}}",
+      "trash": "Moved to Trash"
     },
     "viewOptions": {
       "show": "Show view options",
@@ -1395,8 +1397,8 @@
     "scope": {
       "label": "Search in",
       "folder": "This folder",
-      "all": "All mailboxes",
-      "everywhere": "All mailboxes, incl. Trash & Junk"
+      "all": "All folders",
+      "everywhere": "All folders, incl. Trash & Junk"
     },
     "chip": {
       "remove": "Remove {{filter}} filter",
@@ -1427,7 +1429,7 @@
     "hintAdvanced": "Advanced: -word leaves it out, a OR b matches either, thread:unread finds conversations nobody has opened.",
     "findLarge": "Find large messages",
     "results": {
-      "empty": "No messages match your search. Try all mailboxes, or fewer words.",
+      "empty": "No messages match your search. Try all folders, or fewer words.",
       "count_one": "{{count}} result",
       "count_other": "{{count}} results"
     },
@@ -1677,7 +1679,15 @@
       "hint": "Press V to pick a folder instead.",
       "undo": "Nothing to undo."
     },
+    "keys": {
+      "space": "Space",
+      "enter": "Enter",
+      "esc": "Esc",
+      "home": "Home",
+      "end": "End"
+    },
     "groups": {
+      "list": "Message list",
       "navigation": "Navigation",
       "triage": "Triage",
       "compose": "Compose",
@@ -1697,13 +1707,20 @@
         "full": "Open the message full screen"
       },
       "list": {
-        "select": "Select or deselect message"
+        "move": "Move the focus",
+        "extend": "Extend the selection",
+        "ends": "First or last message",
+        "select": "Select or deselect message",
+        "open": "Open the focused message",
+        "selectAll": "Select everything in the list",
+        "clear": "Clear the selection"
       },
       "triage": {
         "archive": "Archive",
         "trash": "Move to Trash",
+        "destroy": "Delete permanently",
         "junk": "Mark as junk",
-        "unread": "Mark as unread",
+        "unread": "Mark as read or unread",
         "flag": "Flag or unflag",
         "label": "Apply labels",
         "move": "Move to folder",

@@ -39,6 +39,8 @@ interface Rule {
   readonly body: string
   /** Raw text between the previous rule and this one — where the exempt marker lives. */
   readonly leading: string
+  /** Offset of `leading` in the file, so a USED exemption can be named by the marker's own line. */
+  readonly leadingStart: number
 }
 
 /** Blank out comments in place so brace scanning and declaration matching ignore them. */
@@ -75,6 +77,7 @@ function parseRules(file: SourceFile): Rule[] {
         selectors: selectorText.split(',').map((s) => s.trim().replace(/\s+/g, ' ')),
         body: scan.slice(frame.bodyStart, i),
         leading: file.text.slice(frame.start, frame.bodyStart - 1),
+        leadingStart: frame.start,
       })
     }
   }
@@ -115,6 +118,12 @@ for (const rule of rules) {
   for (const selector of rule.selectors) {
     if (/:not\(\s*:focus-visible\s*\)/.test(selector)) continue // suppression already scoped away
     const where = `${rule.file}:${rule.line}`
+    // Where the MARKER is, not where the rule is: the staleness check below compares this against
+    // the markers it finds by scanning, and the two are a line or two apart.
+    const markerAt =
+      exemption?.index === undefined
+        ? null
+        : `${rule.file}:${lineOf(cssFiles.find((f) => f.path === rule.file)?.text ?? '', rule.leadingStart + exemption.index)}`
     let why: string | undefined
     if (selector.includes(':focus-visible')) {
       // Switching the outline off on the very state that needs it. Only a ring drawn in the
@@ -127,7 +136,7 @@ for (const rule of rules) {
     }
     if (why === undefined) continue
     if (exemption) {
-      usedExemptions.add(where)
+      if (markerAt !== null) usedExemptions.add(markerAt)
       continue
     }
     findings.push({ where, selector, why })
@@ -153,11 +162,22 @@ describe('focus indicators', () => {
   it('carries no stale focus exemptions', () => {
     // An exemption that no longer suppresses anything is a licence nobody is using; it would
     // silently pre-approve the next defect written on that selector.
+    //
+    // Compared by IDENTITY, not by COUNT (B27). It used to assert `declared.length ===
+    // usedExemptions.size`, which a removed exemption and an added one cancel out of: the file
+    // that lost its licence and the file that gained one net to zero, and the check waves both
+    // through. Set difference names the actual file and line either way.
     const declared = cssFiles.flatMap((file) =>
       [...file.text.matchAll(/waxwing-focus-exempt:/g)].map(
         (m) => `${file.path}:${lineOf(file.text, m.index)}`,
       ),
     )
-    expect(declared.length, `declared exemptions: ${declared.join(', ')}`).toBe(usedExemptions.size)
+    const stale = declared.filter((entry) => !usedExemptions.has(entry))
+    expect(stale, 'focus exemptions that no longer suppress anything').toEqual([])
+    const unrecorded = [...usedExemptions].filter((entry) => !declared.includes(entry))
+    expect(
+      unrecorded,
+      'an exemption was consumed that the scan cannot find — the two disagree',
+    ).toEqual([])
   })
 })

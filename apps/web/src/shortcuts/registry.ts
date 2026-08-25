@@ -314,24 +314,41 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
   {
     id: 'triage.trash',
     titleKey: 'shortcuts.actions.triage.trash',
+    // What the chord is about to DO, in the two surfaces generated from this registry (B21). Inside
+    // Trash it destroys permanently, and both of them called it "Move to Trash" — the palette
+    // therefore offered an irreversible destroy under the name of a recoverable move. Every
+    // on-screen control for the same action already makes this swap.
+    titleKeyFor: (context) =>
+      context.inTrash ? 'shortcuts.actions.triage.destroy' : 'shortcuts.actions.triage.trash',
     keys: ['#'],
     scopes: ['list', 'reading'],
     group: 'triage',
     enabled: (context) =>
       context.inTrash
-        ? // in Trash the chord means DESTROY — only from the open message, and only if permitted
-          context.reading !== null && context.rights.reason('destroy') === null
+        ? // In Trash the chord means DESTROY. It needs TARGETS, not an open message: it used to
+          // require `reading !== null`, so in the list it was inert — and inert without a word,
+          // because the `unavailable` beside it correctly reports nothing when destroy is permitted.
+          context.targetIds.length > 0 && context.rights.reason('destroy') === null
         : canMove(context, context.roles.trash),
-    // Inside Trash the chord means DESTROY and needs no role mailbox at all, so there is nothing an
-    // account could be missing — its only refusal there is "no message open", which is ordinary.
+    // Inside Trash the chord needs no role mailbox at all, so there is nothing an account could be
+    // missing — its only permanent refusal there is a rights one.
     unavailable: (context) =>
       context.inTrash
         ? context.rights.reason('destroy')
         : moveUnavailable(context, context.roles.trash, 'shortcuts.unavailable.trash'),
     run: (context) => {
-      // Already in Trash: "delete" can only mean permanently — go through the existing confirmation.
+      // Already in Trash: "delete" can only mean permanently — go through a confirmation, never
+      // straight to the destroy.
       if (context.inTrash) {
-        context.reading?.requestDelete()
+        // Precedence exactly as `l` and `v` have it, and for the same reason: an explicit selection
+        // wins over the open message. Without this the chord destroyed the OPEN message and left
+        // the other two ticked ones sitting there, which is the failure the row describes.
+        const reading = context.reading
+        if (context.scope === 'reading' && !context.hasSelection && reading !== null) {
+          reading.requestDelete()
+          return
+        }
+        context.list.requestDestroy([...context.targetIds])
         return
       }
       runMove(context, 'trash')
@@ -358,7 +375,26 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     // No hint: `shortcuts.unavailable.hint` points at the folder picker, and there is no picker that
     // grants a permission. A refusal with a way forward and one without must not read alike.
     unavailable: (context) => context.rights.reason('seen'),
-    run: (context) => context.triage.setSeen([...context.targetIds], false),
+    /*
+     * A TOGGLE since B16, matching `s` beside it and the bulk bar's own read button: mark read,
+     * unless every target already is — then mark unread.
+     *
+     * It used to be an unconditional `setSeen(ids, false)`, which left this app with no keyboard
+     * route to "read" at all. Every other triage verb the bar exposes had one; read did not, in the
+     * read direction. B9's comment even claimed `s`/`u` parity, and only half of it was true.
+     *
+     * `targetsSeenKnown` is not the same question as `!targetsAllSeen`, and conflating them is the
+     * mistake this comment exists to stop. Where the rows are not hydrated the answer is UNKNOWN,
+     * and the key falls back to what it always did — mark UNREAD. Marking something read that the
+     * reader has not read can make them miss it; marking something unread that they have read is
+     * noticed and undone in one keystroke. `s` may fold the two together because setting a flag
+     * twice is free; `$seen` may not.
+     */
+    run: (context) =>
+      context.triage.setSeen(
+        [...context.targetIds],
+        context.targetsSeenKnown ? !context.targetsAllSeen : false,
+      ),
   },
   {
     id: 'triage.flag',

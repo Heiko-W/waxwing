@@ -423,12 +423,22 @@ webmail is an open gap.
 - **FR-OFF-01 (Must)** — The app shell loads offline (service worker precache); opening
   the installed app without network shows cached mail, clearly marked "offline".
 - **FR-OFF-02 (Must)** — Local cache (IndexedDB): mailbox tree, message index of recent N
-  days/messages per folder (configurable), full bodies of everything the user has opened
-  plus a configurable recent window; attachments on demand.
+  days/messages per folder, full bodies of everything the user has opened plus a recent
+  window; attachments on demand.
   **This bounds what the replica KEEPS, never what a folder SHOWS.** Opening a folder lists
   the whole folder, paged from the server as it is scrolled, however old its mail is — the
   offline window governs eviction only. Stated because the two were conflated in the code
   until 2026-08-23, and a folder of older mail then read as empty (ADR-030).
+  **"Configurable" means BY THE USER**, and `config.json` supplies the default they start
+  with. Decided 2026-08-25, closing an ambiguity this line carried from the beginning: the
+  word could be read as hoster-configurable (true since M3.4) or user-configurable (not
+  built), M3.4 handed the user control to M3.7, and M3.7 shipped without it because the
+  deferral lived in a work-package note rather than in a decision row (B23). The reading is
+  now fixed rather than left open, and the reason is the product's own shape — Waxwing is a
+  client, and this setting bounds space on the reader's own device. Settings →
+  *Offline & storage* offers 7/30/90/180/365 days, per device. `maxStorageMB` is
+  deliberately NOT user-settable: it bounds the same cache from the other side, and two
+  controls trimming one budget is a state neither of them explains.
 - **FR-OFF-03 (Must)** — **Offline outbox:** actions performed offline (send, move, flag,
   delete, drafts) queue locally and replay on reconnect using JMAP state strings for
   conflict detection; conflicts surface as gentle, actionable notices — never silent data
@@ -699,7 +709,7 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
     "imageProxyUrl": null,             // optional external privacy proxy
     "undoSendSeconds": 15
   },
-  "offline": { "cacheDays": 30, "maxStorageMB": 512 }
+  "offline": { "cacheDays": 90, "maxStorageMB": 512 }
 }
 ```
 

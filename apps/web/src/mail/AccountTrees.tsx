@@ -20,9 +20,7 @@ import { ChevronRight, Lock } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { mailPath, useNavigate, useRoute } from '../app/route'
-import { IncomingShares } from '../sharing/IncomingShares'
 import type { ShareAnnouncement } from '../sharing/incoming'
-import { useIncomingShares } from '../sharing/use-incoming-shares'
 import {
   type ReplicaDb,
   ReplicaProvider,
@@ -64,31 +62,32 @@ export interface AccountTreesProps {
   readonly onNavigate?: (() => void) | undefined
 }
 
-export function AccountTrees({ accounts, primaryAccountId, onNavigate }: AccountTreesProps) {
-  const { db } = useReplica()
+/**
+ * Open a folder, switching account first where the two differ.
+ *
+ * Extracted from the rail so the share-notice strip can use the same path (B61). It had to move
+ * anyway: the strip now renders AFTER the trees and the labels rather than above them, which put
+ * it outside the component that owned this callback. One copy, because the account switch below is
+ * correctness-critical and a second one would drift silently — the failure is a stale selection,
+ * which looks like nothing at all until the wrong message opens.
+ */
+export function useSelectMailbox(
+  /**
+   * The account whose mail is on screen, ALREADY resolved against the primary.
+   *
+   * Passed in rather than read here, and that is not a style choice: `useActiveAccountId()` is
+   * `null` until something has been switched to, so a hook that read it alone would compare the
+   * primary against `null`, decide the accounts differ, and reset the list window and the open
+   * message on a click within the account the reader was already in. That is what the extraction
+   * broke first, and the test that caught it — "does not reset when selecting within the
+   * already-active account" — is exactly the one written for that failure the first time.
+   */
+  activeAccountId: Id,
+  onNavigate?: () => void,
+): (accountId: Id, mailboxId: string) => void {
   const navigate = useNavigate()
   const route = useRoute()
-  const stored = useActiveAccountId()
-  const activeAccountId = stored ?? primaryAccountId
-  const incoming = useIncomingShares('Mailbox')
-  const sharedNames = useSharedFolderNames(incoming.announcements)
-  const collapsedList = useLocalPref<string[]>(COLLAPSED_ACCOUNTS_PREF)
-  const collapsed = useMemo(() => new Set(collapsedList ?? []), [collapsedList])
-
-  const toggleAccount = useCallback(
-    (accountId: Id) => {
-      const next = new Set(collapsed)
-      if (next.has(accountId)) next.delete(accountId)
-      else next.add(accountId)
-      // `db` + the PRIMARY id, not `useReplica()` inside the section: each section runs under its
-      // own account's provider, and a preference written there would be one collapse list per
-      // account — half of them in a delegated account's replica, which a revoked share takes away.
-      void setPref(db, primaryAccountId, COLLAPSED_ACCOUNTS_PREF, [...next])
-    },
-    [collapsed, db, primaryAccountId],
-  )
-
-  const selectMailbox = useCallback(
+  return useCallback(
     (accountId: Id, mailboxId: string) => {
       if (accountId !== activeAccountId) {
         // Correctness-critical: clear the previous account's list window + selection + open message
@@ -117,35 +116,29 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
     },
     [activeAccountId, navigate, route.params.mailboxId, onNavigate],
   )
+}
 
-  const openShare = useCallback(
-    (announcement: ShareAnnouncement) => {
-      // Both halves of the address, because a mailbox id alone is ambiguous: they are per-account
-      // and short, and `a` exists in nearly every account. Same rule as `selectMailbox` above.
-      selectMailbox(announcement.accountId, announcement.objectId)
-      // Read, and therefore done with. Leaving it up after the user has followed it would turn the
-      // strip into a list of things they have already dealt with.
-      incoming.dismiss(announcement.id)
+export function AccountTrees({ accounts, primaryAccountId, onNavigate }: AccountTreesProps) {
+  const { db } = useReplica()
+  const stored = useActiveAccountId()
+  const activeAccountId = stored ?? primaryAccountId
+  const collapsedList = useLocalPref<string[]>(COLLAPSED_ACCOUNTS_PREF)
+  const collapsed = useMemo(() => new Set(collapsedList ?? []), [collapsedList])
+
+  const toggleAccount = useCallback(
+    (accountId: Id) => {
+      const next = new Set(collapsed)
+      if (next.has(accountId)) next.delete(accountId)
+      else next.add(accountId)
+      // `db` + the PRIMARY id, not `useReplica()` inside the section: each section runs under its
+      // own account's provider, and a preference written there would be one collapse list per
+      // account — half of them in a delegated account's replica, which a revoked share takes away.
+      void setPref(db, primaryAccountId, COLLAPSED_ACCOUNTS_PREF, [...next])
     },
-    [selectMailbox, incoming],
+    [collapsed, db, primaryAccountId],
   )
 
-  /*
-   * The strip sits ABOVE the trees and outside the pass-through check, so a first-ever share is
-   * announced even while the rail is still a single ungrouped tree — which is precisely the moment
-   * it matters: the section it is telling the user about has not appeared yet. It renders nothing
-   * when there is nothing, so the single-account sidebar stays byte-for-byte what it was.
-   */
-  const strip = (
-    <IncomingShares
-      announcements={incoming.announcements}
-      nameOf={(announcement) =>
-        sharedNames[`${announcement.accountId}/${announcement.objectId}`] ?? null
-      }
-      onOpen={openShare}
-      onDismiss={incoming.dismiss}
-    />
-  )
+  const selectMailbox = useSelectMailbox(activeAccountId, onNavigate)
 
   const shared = accounts.filter((account) => account.id !== primaryAccountId)
 
@@ -153,7 +146,6 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
   if (shared.length === 0) {
     return (
       <>
-        {strip}
         <FolderTree onNavigate={onNavigate} />
         {/* Saved searches belong to the account whose mail is on screen, so they hang off the
             primary tree rather than the shell (M5.5, FR-SRCH-03). */}
@@ -165,7 +157,6 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
   const primary = accounts.find((account) => account.id === primaryAccountId)
   return (
     <>
-      {strip}
       <AccountSection
         name={primary?.name ?? primaryAccountId}
         accountId={primaryAccountId}
@@ -206,7 +197,9 @@ export function AccountTrees({ accounts, primaryAccountId, onNavigate }: Account
  * sync has run, and the strip has a wording that needs no name for exactly that window. Nothing here
  * waits for it — a card the user cannot read yet would be worse than one that says "a mail folder".
  */
-function useSharedFolderNames(announcements: readonly ShareAnnouncement[]): Record<string, string> {
+export function useSharedFolderNames(
+  announcements: readonly ShareAnnouncement[],
+): Record<string, string> {
   const { t } = useTranslation()
   const key = announcements.map((entry) => `${entry.accountId}/${entry.objectId}`).join(',')
   const names = useReplicaQuery(

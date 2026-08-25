@@ -18,6 +18,7 @@ import {
   FolderInput,
   type LucideIcon,
   Mail,
+  MailCheck,
   MailOpen,
   Star,
   Tag,
@@ -193,7 +194,6 @@ export function MessageList({
   // The list's own move picker (`v`, and the bulk bar's Move) dispatches through the same triage seam
   // the chords use, so it gets the undo toast rather than a bare `actions.move`.
   const triage = useTriage()
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   // Selection, roving focus and the label-picker request live in the hoisted list store (M3.8), so the
   // keyboard layer and the command palette can drive the list from outside this component. The
@@ -202,10 +202,12 @@ export function MessageList({
   const focusIndex = useListStore((state) => state.focusIndex)
   const labelTargets = useListStore((state) => state.labelTargets)
   const moveTargets = useListStore((state) => state.moveTargets)
+  const destroyTargets = useListStore((state) => state.destroyTargets)
   const dispatchSelection = useListStore((state) => state.select)
   const focusIndexTo = useListStore((state) => state.focusIndexTo)
   const requestLabels = useListStore((state) => state.requestLabels)
   const requestMove = useListStore((state) => state.requestMove)
+  const requestDestroy = useListStore((state) => state.requestDestroy)
   const setWindow = useListStore((state) => state.setWindow)
   const setGridHandle = useListStore((state) => state.setGridHandle)
 
@@ -217,7 +219,7 @@ export function MessageList({
    *
    * Browsing a label runs through the same `search` prop as a typed query (see `MailScreen`'s
    * `effectiveSearch`), so this branch used to tell someone who clicked a label in the sidebar:
-   * "No messages match your search. Try all mailboxes, or fewer words." They had searched for
+   * "No messages match your search. Try all folders, or fewer words." They had searched for
    * nothing and were being advised to search differently.
    */
   // "This folder is empty" is now the plain truth again. Until M-13 it was not: the folder query
@@ -251,6 +253,10 @@ export function MessageList({
   const rolesReady = mailboxes !== undefined
   const archiveId = mailboxes?.find((box) => box.role === 'archive')?.id
   const trashId = mailboxes?.find((box) => box.role === 'trash')?.id
+  // Read off the SAME query for the junk pair (B24), for the reason the comment above gives: two
+  // more `useMailboxByRole` calls would be two more liveQueries resolving on their own ticks.
+  const junkId = mailboxes?.find((box) => box.role === 'junk')?.id
+  const inboxId = mailboxes?.find((box) => box.role === 'inbox')?.id
   const accountReadOnly = useAccountIsReadOnly()
   /**
    * The per-ROW rights verdict (B34), computed rather than subscribed: both inputs are already here,
@@ -649,12 +655,36 @@ export function MessageList({
           label: t('list.actions.archive'),
           onSelect: () => triage.archive(target, sourceMailboxId ?? null),
         },
-        {
-          id: 'junk',
-          group: 'file',
-          label: t('list.actions.junk'),
-          onSelect: () => triage.junk(target, sourceMailboxId ?? null),
-        },
+        // Inside Junk the entry becomes its inverse (B24) — the same swap the bulk bar and the
+        // reading pane make, so a row offers the same verb however it is reached. Note the entry
+        // it REPLACES was inert there: "Junk" inside Junk is a move to the mailbox the message is
+        // already in, which `useTriage` refuses. `...(cond ? [x] : [])` rather than a ternary
+        // because either side may resolve to NOTHING — an account missing the role each side needs
+        // gets no entry at all, which is this menu's rule for unavailable commands (omit, never
+        // dim). The `junkId === undefined` arm is not symmetry for its own sake: without it, an
+        // account with no Junk folder was offered "Mark as junk" and the click went nowhere
+        // (`useTriage` refuses an undefined target and says so only in its return value).
+        ...(junkId !== undefined && junkId === sourceMailboxId
+          ? inboxId === undefined
+            ? []
+            : [
+                {
+                  id: 'notJunk',
+                  group: 'file',
+                  label: t('list.actions.notJunk'),
+                  onSelect: () => triage.notJunk(target, sourceMailboxId),
+                } satisfies MenuItemSpec,
+              ]
+          : junkId === undefined
+            ? []
+            : [
+                {
+                  id: 'junk',
+                  group: 'file',
+                  label: t('list.actions.junk'),
+                  onSelect: () => triage.junk(target, sourceMailboxId ?? null),
+                } satisfies MenuItemSpec,
+              ]),
         {
           id: 'move',
           group: 'file',
@@ -671,7 +701,18 @@ export function MessageList({
       )
     }
     return items
-  }, [contextId, rowById, rowRights, sourceMailboxId, triage, requestMove, open, t])
+  }, [
+    contextId,
+    rowById,
+    rowRights,
+    sourceMailboxId,
+    junkId,
+    inboxId,
+    triage,
+    requestMove,
+    open,
+    t,
+  ])
 
   if (source === undefined) {
     return <p className={styles.empty}>{t('list.noMailbox')}</p>
@@ -771,10 +812,9 @@ export function MessageList({
               fromMailbox={sourceMailboxId ?? undefined}
               allSelected={allSelected}
               someSelected={someSelected}
-              actions={actions}
               onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
               onClear={() => dispatchSelection({ type: 'clear' })}
-              onRequestDelete={() => setConfirmDelete(true)}
+              onRequestDelete={() => requestDestroy(selectedIds)}
               onRequestMove={() => requestMove(selectedIds)}
             />
           ) : viewOptionsOpen ? (
@@ -973,23 +1013,27 @@ export function MessageList({
         </div>
       )}
 
-      {confirmDelete && (
+      {/* The targets come from the STORE, not from the live selection (B21): `#` inside Trash opens
+          this same dialog over whatever it was about to act on, which may be the focused row with
+          nothing ticked at all. Reading `selectedIds` here would then destroy nothing, or — worse
+          — something else. */}
+      {destroyTargets !== null && (
         <Dialog
           open
-          onClose={() => setConfirmDelete(false)}
+          onClose={() => requestDestroy(null)}
           title={t('list.actions.delete')}
           size="sm"
           footer={
             <>
-              <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+              <Button variant="ghost" onClick={() => requestDestroy(null)}>
                 {t('mailbox.cancel')}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => {
-                  actions.destroy(selectedIds)
+                  actions.destroy(destroyTargets)
                   dispatchSelection({ type: 'clear' })
-                  setConfirmDelete(false)
+                  requestDestroy(null)
                 }}
               >
                 {t('list.actions.delete')}
@@ -1000,7 +1044,7 @@ export function MessageList({
           {/* The count alone ("3 selected") restates the bulk bar; it is not a warning, and this is
               an irreversible action reached from an icon-only button. Say what it does — the same
               thing `reading.confirmDeleteBody` says for the single-message destroy. */}
-          <p>{t('list.confirmDeleteBody', { count: selection.selected.size })}</p>
+          <p>{t('list.confirmDeleteBody', { count: destroyTargets.length })}</p>
         </Dialog>
       )}
 
@@ -1239,7 +1283,6 @@ interface BulkBarProps {
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
-  readonly actions: ReturnType<typeof useMessageActions>
   readonly onSelectAll: () => void
   readonly onClear: () => void
   readonly onRequestDelete: () => void
@@ -1279,7 +1322,6 @@ function BulkBar({
   fromMailbox,
   allSelected,
   someSelected,
-  actions,
   onSelectAll,
   onClear,
   onRequestDelete,
@@ -1291,6 +1333,7 @@ function BulkBar({
   const triage = useTriage()
   const archive = useMailboxByRole('archive')
   const junk = useMailboxByRole('junk')
+  const inbox = useMailboxByRole('inbox')
   const trash = useMailboxByRole('trash')
 
   /**
@@ -1387,6 +1430,8 @@ function BulkBar({
    * junk with trash; it governs folder-level purges, which this bar does not perform.
    */
   const inTrash = trash !== undefined && fromMailbox !== undefined && trash.id === fromMailbox
+  // Same shape, for the junk pair (B24): inside Junk the button means the way back, not the way in.
+  const inJunk = junk !== undefined && fromMailbox !== undefined && junk.id === fromMailbox
   /**
    * Both lines here are DEFENSIVE, and neither is load-bearing at the three call sites below today.
    * Saying so plainly, because an earlier version of this comment asserted the opposite and a
@@ -1547,14 +1592,35 @@ function BulkBar({
       popover: true,
       onSelect: () => setLabelsOpen((open) => !open),
     },
-    {
-      id: 'junk',
-      when: canMoveTo(junk?.id),
-      label: t('list.actions.junk'),
-      icon: Ban,
-      unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, junk?.id)),
-      onSelect: () => moveThenClear(triage.junk),
-    },
+    /*
+     * Junk, and its inverse (B24).
+     *
+     * Inside the Junk folder the useful action is the way BACK — "this is not junk" — and until now
+     * there was none: junk was the only triage verb without an inverse, while flag and read both
+     * had one. The string for it was translated in both locales and rendered nowhere.
+     *
+     * Same shape as Trash above, which already swaps to a permanent destroy inside Trash: one
+     * button whose meaning follows the folder, rather than two buttons of which one is always
+     * pointless. `notJunk` moves to the Inbox and is offered ONLY here, because outside Junk
+     * "not junk" is not a statement anyone is making.
+     */
+    inJunk
+      ? {
+          id: 'notJunk',
+          when: canMoveTo(inbox?.id),
+          label: t('list.actions.notJunk'),
+          icon: MailCheck,
+          unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, inbox?.id)),
+          onSelect: () => moveThenClear(triage.notJunk),
+        }
+      : {
+          id: 'junk',
+          when: canMoveTo(junk?.id),
+          label: t('list.actions.junk'),
+          icon: Ban,
+          unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, junk?.id)),
+          onSelect: () => moveThenClear(triage.junk),
+        },
     /**
      * Move to an arbitrary folder — the only non-pointer path to it, and the one WCAG 2.2
      * SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
@@ -1603,7 +1669,11 @@ function BulkBar({
           variant="ghost"
           unavailableReason={reasonText(rights.reason('keywords'))}
           onClick={() => {
-            actions.setKeyword(ids, activeLabel, false)
+            // Through the triage seam, so it toasts with an Undo like every other bulk action
+            // (B21). `actions.setKeyword` direct was silent and had no way back — and this is the
+            // one write in the bar that removes what the view is filtered BY, so the rows leave the
+            // list as it lands and take the evidence of the mistake with them.
+            triage.removeLabel(ids, activeLabel)
             onClear()
           }}
         >

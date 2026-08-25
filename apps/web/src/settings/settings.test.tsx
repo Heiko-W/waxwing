@@ -3,6 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
+import {
+  effectiveCacheDays,
+  getCacheDaysOverride,
+  setCacheDaysOverride,
+} from '../app/offline-prefs'
 import { RouterProvider } from '../app/route'
 import { getReadingPaneMode, setReadingPaneMode } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
@@ -135,6 +140,9 @@ afterEach(async () => {
     value: originalMatchMedia,
   })
   window.history.pushState(null, '', '/settings')
+  // The offline horizon is a module-level store backed by localStorage; a test that sets it would
+  // otherwise decide the starting value of every test after it in this file.
+  setCacheDaysOverride(null)
   await db.delete()
 })
 
@@ -515,9 +523,55 @@ describe('Settings — Offline & storage (M3.4)', () => {
     await db.localPrefs.put({ accountId: ACC, key: 'offline.pinnedMailboxes', value: ['work'] })
     renderStorage()
 
-    const note = await screen.findByText(/Mail from the last 30 days is kept on this device/)
+    // 90, not 30: the default moved on 2026-08-25 with the decision that made this a user setting
+    // (B23). The number here is the deployment's, which the reader has not overridden.
+    const note = await screen.findByText(/Mail from the last 90 days is kept on this device/)
     expect(note).toHaveTextContent(/Older mail stays on the server and loads when you open it/)
     expect(await screen.findByText('1 folder kept offline')).toBeInTheDocument()
+  })
+
+  /**
+   * The horizon is the reader's to set (B23, decided 2026-08-25): Waxwing is a client, and this
+   * bounds space on their own device. `config.json` says what a fresh install starts with and
+   * nothing after that.
+   *
+   * The third assertion is the one worth having. The engine resolves the horizon through
+   * `effectiveCacheDays` at every maintenance pass, and this screen resolves it through the same
+   * function — so what the sentence claims is kept is what the prune actually keeps. Two
+   * independent `??` expressions would read identically and drift the first time one changed.
+   */
+  it('lets the reader change the offline window, and says what they chose', async () => {
+    const user = userEvent.setup()
+    renderStorage()
+
+    const control = await screen.findByLabelText('Keep mail on this device for')
+    expect(control, 'the control starts on the deployment value').toHaveValue('90')
+
+    await user.selectOptions(control, '180')
+
+    expect(getCacheDaysOverride()).toBe(180)
+    expect(effectiveCacheDays(DEFAULT_CONFIG.offline.cacheDays)).toBe(180)
+    expect(
+      await screen.findByText(/Mail from the last 180 days is kept on this device/),
+    ).toBeInTheDocument()
+  })
+
+  it('says that shortening the window is not immediate', async () => {
+    // Otherwise the reader picks 7 days, watches the storage meter not move, and concludes the
+    // setting is broken. The prune runs on the maintenance interval, not on the change.
+    renderStorage()
+    expect(
+      await screen.findByText(/frees space at the next cleanup, not immediately/),
+    ).toBeInTheDocument()
+  })
+
+  it('ignores a stored value it did not write', async () => {
+    // A hand-edited or corrupted entry must fall back to the deployment's value rather than be
+    // clamped into a number nobody chose — the same refusal `clampCacheDays` makes for a hoster
+    // typo, for the same reason.
+    localStorage.setItem('waxwing.cacheDays', '0')
+    setCacheDaysOverride(null)
+    expect(effectiveCacheDays(DEFAULT_CONFIG.offline.cacheDays)).toBe(90)
   })
 
   it('has no axe violations', async () => {

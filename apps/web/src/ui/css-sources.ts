@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /**
- * Test-only file collector for the static CSS checks (`*.css.test.ts`, B5).
+ * Test-only file collector for the static source checks (`*.css.test.ts`, B5 — and since B21 the
+ * `*.source.test.ts` family, which reads TypeScript with the same walk).
  *
  * CSS is the one layer nothing else in this repo verifies: custom properties are not
  * typechecked, Biome has no cross-file `var()` resolution, and jsdom computes no styles —

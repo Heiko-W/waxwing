@@ -20,11 +20,6 @@ export function setEngineStatus(status: EngineStatus): void {
   for (const listener of listeners) listener()
 }
 
-/** Merge a partial update into the current status (convenience for the facade). */
-export function patchEngineStatus(patch: Partial<EngineStatus>): void {
-  setEngineStatus({ ...current, ...patch })
-}
-
 function subscribe(onChange: () => void): () => void {
   listeners.add(onChange)
   return () => {

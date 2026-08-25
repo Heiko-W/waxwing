@@ -25,6 +25,7 @@ import {
   Forward,
   Lock,
   Mail,
+  MailCheck,
   Reply,
   ReplyAll,
   ShieldCheck,
@@ -89,6 +90,7 @@ import { SenderCard } from './SenderCard'
 import type { SenderIdentity } from './sender-contact'
 import { SNOOZE_PRESETS } from './snooze'
 import { UnsubscribeBanner } from './UnsubscribeBanner'
+import { onMarkedUnread } from './unread-signal'
 import { hasUnsubscribeOffer, readUnsubscribeOffer, sendOneClickUnsubscribe } from './unsubscribe'
 import { OVERFLOW_TRIGGER_ATTR, useActionOverflow } from './use-action-overflow'
 import { useLinkOpener } from './use-link-opener'
@@ -215,6 +217,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
 
   const archiveBox = useMailboxByRole('archive')
   const junkBox = useMailboxByRole('junk')
+  const inboxBox = useMailboxByRole('inbox')
   const trashBox = useMailboxByRole('trash')
   const inThisMailbox = mailboxId ?? null
 
@@ -322,16 +325,16 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
    *   produces the identical true → false edge with nobody having marked anything, and cancelling on
    *   it broke auto-mark-read outright for that sequence.
    *
-   * WHAT THIS PAIR DOES NOT COVER, so it is not read as complete: a mark-unread issued from OUTSIDE
-   * this pane against a message that is ALREADY unread. It produces no `$seen` transition and never
-   * reaches `markUnread`, so an armed dwell survives it and fires ~1.5 s after the open, against the
-   * reader's stated intent. Do not assume the list's controls cannot issue such a thing because they
-   * are toggles: `BulkBar`'s `allSeen` is derived from `useEmailWindow(ids)`, a Dexie `useLiveQuery`
-   * that keeps returning its LAST RESOLVED value while a query for a changed `ids` is in flight, and
-   * the only freshness guard there is `selectedRows.length === ids.length` — which a stale result of
-   * equal cardinality satisfies. That timing is not exercised by any test in this repo and no claim
-   * is made either way; it is treated as reachable. Closing this needs the cancel to hang off the
-   * dispatched intent, in the triage seam, where the target ids are known regardless of any row.
+   * - the third effect cancels on the INTENT, via `onMarkedUnread` (B26). It is the one that covers
+   *   what the two above cannot: a mark-unread issued from OUTSIDE this pane against a message that
+   *   is ALREADY unread. That produces no `$seen` transition and never reaches `markUnread`, so
+   *   before it the armed dwell survived and fired ~1.5 s after the open, against the reader's
+   *   stated intent. Do not assume the list's controls cannot issue such a thing because they are
+   *   toggles: `BulkBar`'s `allSeen` is derived from `useEmailWindow(ids)`, a Dexie `useLiveQuery`
+   *   that keeps returning its LAST RESOLVED value while a query for a changed `ids` is in flight,
+   *   and the only freshness guard there is `selectedRows.length === ids.length` — which a stale
+   *   result of equal cardinality satisfies. The signal is published by `use-message-actions.ts`'s
+   *   `dispatch`, the single email-write seam, so it does not matter which surface issued it.
    *
    * The list-scoped `u` chord is not part of any of the above — it cannot fire while this component
    * is mounted at all; the scope proof is on the arming effect below.
@@ -345,6 +348,24 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     window.clearTimeout(dwellTimer.current)
     dwellTimer.current = null
   }, [])
+  /**
+   * The third cancel (B26): the INTENT, not the row.
+   *
+   * Declared here rather than folded into the `$seen` watcher below, because it answers a different
+   * question. That one asks "did this message's read state move?"; this one asks "did anyone ask
+   * for this message to be unread?" — and the whole hole it closes is the case where the answer to
+   * the first is no and to the second is yes.
+   *
+   * Cheap to hold open: the subscriber set is module-level, the listener is one `includes` over the
+   * ids of an intent the reader just issued by hand, and it unsubscribes with the component.
+   */
+  useEffect(
+    () =>
+      onMarkedUnread((ids) => {
+        if (ids.includes(email.id)) cancelDwell()
+      }),
+    [email.id, cancelDwell],
+  )
   /**
    * `email.keywords.$seen` is NOT a dependency, and that omission is the whole fix. FR-RD-07 is
    * "the reader dwelled on a message they OPENED" — a property of the opening, not of the current
@@ -692,6 +713,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       compose: onCompose,
       archive: () => triage.archive([email.id], inThisMailbox),
       junk: () => triage.junk([email.id], inThisMailbox),
+      notJunk: () => triage.notJunk([email.id], inThisMailbox),
       trash: () => triage.trash([email.id], inThisMailbox),
       toggleFlag: () => triage.setFlagged([email.id], email.keywords.$flagged !== true),
       // Cancel first: an armed dwell that fires after this would mark read the very message the
@@ -827,15 +849,34 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         popover: true,
         onSelect: () => setLabelsOpen((open) => !open),
       },
-      {
-        id: 'junk',
-        group: 'file',
-        label: t('list.actions.junk'),
-        icon: Ban,
-        disabled: junkBox === undefined || inJunk,
-        unavailableReason: reasonText(rights.moveReason(inThisMailbox, junkBox?.id)),
-        onSelect: handlers.junk,
-      },
+      /*
+       * Junk, or its inverse while reading IN Junk (B24).
+       *
+       * `inTrash` above swaps Trash for a permanent destroy; this is the same move for the junk
+       * pair, and it replaces a strictly worse state: inside Junk the button used to sit there
+       * DISABLED, spending a toolbar slot on the one action that is meaningless here while the
+       * action a reader actually wants in this folder — "this is not junk" — had no button at all.
+       * `list.actions.notJunk` was translated in both locales and rendered nowhere.
+       */
+      inJunk
+        ? {
+            id: 'notJunk',
+            group: 'file',
+            label: t('list.actions.notJunk'),
+            icon: MailCheck,
+            disabled: inboxBox === undefined,
+            unavailableReason: reasonText(rights.moveReason(inThisMailbox, inboxBox?.id)),
+            onSelect: handlers.notJunk,
+          }
+        : {
+            id: 'junk',
+            group: 'file',
+            label: t('list.actions.junk'),
+            icon: Ban,
+            disabled: junkBox === undefined,
+            unavailableReason: reasonText(rights.moveReason(inThisMailbox, junkBox?.id)),
+            onSelect: handlers.junk,
+          },
       {
         id: 'flag',
         group: 'mark',
@@ -870,6 +911,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       trashBox,
       archiveBox,
       junkBox,
+      inboxBox,
       email.keywords.$flagged,
     ],
   )

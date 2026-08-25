@@ -37,6 +37,12 @@ export default defineConfig({
             // friends) read from disk. Same reason as the CSS family: the jsdom project cannot
             // read them, and what ships is the thing worth checking.
             'apps/web/src/**/*.shipped.test.ts',
+            // `*.source.test.ts` — static analysis over the app's own TypeScript, for the cases
+            // where one file has to STAY IN STEP with another and no type can say so: the cheat
+            // sheet's grid-key table against the switch statement it documents (B21). Here for the
+            // same mechanical reason as the two families above — these read the source with
+            // `node:fs` off `import.meta.url`, and under jsdom that URL is not a file: URL.
+            'apps/web/src/**/*.source.test.ts',
           ],
           setupFiles: ['fake-indexeddb/auto'],
           // No passWithNoTests: this project spans all packages/* and jmap always

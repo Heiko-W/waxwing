@@ -100,6 +100,43 @@ export function folderDisplayName(
   return mailbox.name
 }
 
+/** Index `id → mailbox` once; the guards below walk parent chains repeatedly. */
+function byId(mailboxes: readonly MailboxRow[]): Map<string, MailboxRow> {
+  return new Map(mailboxes.map((mailbox) => [mailbox.id, mailbox]))
+}
+
+/**
+ * The full path of a mailbox — `Archive › 2024`, not just `2024`.
+ *
+ * JMAP only requires a name to be unique among SIBLINGS, so two folders called `2024` under
+ * different parents are two buttons with the same label. Indentation tells a sighted reader them
+ * apart; CSS padding is not a structure anyone can query (WCAG 1.3.1), so the path belongs in the
+ * accessible NAME — it contains the visible label, which keeps SC 2.5.3 (label in name) intact.
+ *
+ * Shared by BOTH pickers (B21). It began as a local helper in the folder re-parent dialog, while
+ * the MESSAGE move picker beside it listed folders flat and alphabetically with no path at all —
+ * so the same ambiguity the one dialog had reasoned its way out of was live in the other.
+ *
+ * Cycle-tolerant: a replica mid-sync may briefly hold a `parentId` cycle, and a picker that hangs
+ * is worse than one that shows a short path.
+ */
+export function folderPath(
+  mailboxes: readonly MailboxRow[],
+  target: MailboxRow,
+  t: (key: string) => string,
+): string {
+  const index = byId(mailboxes)
+  const parts: string[] = []
+  const seen = new Set<string>()
+  let current: MailboxRow | undefined = target
+  while (current !== undefined && !seen.has(current.id)) {
+    seen.add(current.id)
+    parts.unshift(folderDisplayName(current, t))
+    current = current.parentId !== null ? index.get(current.parentId) : undefined
+  }
+  return parts.join(' › ')
+}
+
 /**
  * The account limits a re-parent has to respect. `maxMailboxDepth: null` means UNLIMITED (RFC 8621
  * §1.4) — never conflate it with 0, and never let `undefined` reach here: the session capability is
@@ -110,11 +147,6 @@ export function folderDisplayName(
 export interface MoveLimits {
   readonly maxMailboxDepth: number | null
   readonly mayCreateTopLevelMailbox: boolean
-}
-
-/** Index `id → mailbox` once; the guards below walk parent chains repeatedly. */
-function byId(mailboxes: readonly MailboxRow[]): Map<string, MailboxRow> {
-  return new Map(mailboxes.map((mailbox) => [mailbox.id, mailbox]))
 }
 
 /**

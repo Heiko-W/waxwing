@@ -102,6 +102,21 @@ export function useShortcutContext(
     targetRows !== undefined &&
     targetRows.length === targetIds.length &&
     targetRows.every((row) => row?.keywords.$flagged === true)
+  /*
+   * The same shape for `u` (B16) — with one clause SPLIT OFF, and the split is the whole
+   * correctness argument.
+   *
+   * `s` folds "not hydrated yet" into "not all flagged" and then SETS, which is safe there:
+   * flagging a message that already carries the flag costs nothing. `$seen` is not symmetric that
+   * way. Marking something read that the reader has not read can make them miss it entirely;
+   * marking something unread that they have read is noticed and undone in one keystroke. So the
+   * two states are kept apart: `targetsSeenKnown` says whether the answer is knowable at all, and
+   * where it is not, `u` does what it always did — mark UNREAD.
+   */
+  const targetsSeenKnown =
+    targetIds.length > 0 && targetRows !== undefined && targetRows.length === targetIds.length
+  const targetsAllSeen =
+    targetsSeenKnown && (targetRows ?? []).every((row) => row?.keywords.$seen === true)
 
   return useMemo<ShortcutContext>(
     () => ({
@@ -115,6 +130,8 @@ export function useShortcutContext(
       focusedEmailId,
       hasSelection,
       targetsAllFlagged,
+      targetsAllSeen,
+      targetsSeenKnown,
       rights,
       runNewestToastAction,
       roles,
@@ -144,6 +161,8 @@ export function useShortcutContext(
       focusedEmailId,
       hasSelection,
       targetsAllFlagged,
+      targetsAllSeen,
+      targetsSeenKnown,
       rights,
       runNewestToastAction,
       roles,

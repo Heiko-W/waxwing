@@ -16,11 +16,17 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useConfig } from '../app/config-context'
+import {
+  CACHE_DAYS_CHOICES,
+  effectiveCacheDays,
+  setCacheDaysOverride,
+  useCacheDaysOverride,
+} from '../app/offline-prefs'
 import { formatBytes } from '../i18n/formatters'
 import { usePinnedMailboxes } from '../mail/pinned/use-pinned-folders'
 import type { EstimateFn } from '../sync'
 import { getActiveEngine } from '../sync/engine'
-import { Button, Switch, useToast } from '../ui'
+import { Button, Select, Switch, useToast } from '../ui'
 import styles from './settings.module.css'
 import { useRequestPersistence, useStorageUsage } from './use-storage-usage'
 
@@ -60,6 +66,12 @@ export function StorageSection(props: StorageSectionProps) {
   const meterId = useId()
   const summaryId = useId()
   const persistHintId = useId()
+  const windowId = useId()
+  const windowHintId = useId()
+  // One resolution of the horizon, shared by the control and its own explanation — the sync engine
+  // calls the same function, so the number on screen is the number the prune uses.
+  useCacheDaysOverride()
+  const cacheDays = effectiveCacheDays(config.offline.cacheDays)
   const [persistDenied, setPersistDenied] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -174,12 +186,41 @@ export function StorageSection(props: StorageSectionProps) {
         </Button>
       </div>
 
-      {/* One row: two facts about the same thing, and a rule drawn between them would claim they
-          are two settings. */}
-      <div className={styles.group}>
-        <p className={styles.hint}>
-          {t('settings.offline.window', { count: config.offline.cacheDays })}
+      {/*
+        The horizon, as a CONTROL rather than a readout (B23, decided 2026-08-25).
+        `config.json` supplies the value a fresh install starts with; the reader owns it from then
+        on, because it bounds space on their own device — a hoster may state a default, not how
+        much of someone else's disk a mail cache may use.
+
+        Deliberately not offered beside it: `maxStorageMB`. It bounds the same cache from the other
+        side, and two controls trimming one budget from two directions is how a state neither of
+        them explains gets built.
+      */}
+      <div className={styles.field}>
+        <label htmlFor={windowId} className={styles.label}>
+          {t('settings.offline.windowLabel')}
+        </label>
+        <Select
+          id={windowId}
+          value={String(cacheDays)}
+          aria-describedby={windowHintId}
+          onChange={(event) => setCacheDaysOverride(Number.parseInt(event.target.value, 10))}
+        >
+          {CACHE_DAYS_CHOICES.map((days) => (
+            <option key={days} value={days}>
+              {t('settings.offline.windowChoice', { count: days })}
+            </option>
+          ))}
+        </Select>
+        <p id={windowHintId} className={styles.hint}>
+          {t('settings.offline.window', { count: cacheDays })}
         </p>
+        {/* Said out loud because it is invisible otherwise: shortening the horizon frees nothing
+            until the next cleanup, and "Free up space" above is the button that does not wait. */}
+        <p className={styles.hint}>{t('settings.offline.windowApplies')}</p>
+      </div>
+
+      <div className={styles.group}>
         <p className={styles.hint}>{t('settings.offline.pinned', { count: pinned?.size ?? 0 })}</p>
       </div>
     </>

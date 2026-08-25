@@ -29,6 +29,7 @@ import { MessageList } from '../../mail/MessageList'
 import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
 import { QuotaBar } from '../../quota'
+import { MailboxShareNotices } from '../../sharing/MailboxShareNotices'
 import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
 import { Button, EmptyState, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
@@ -492,6 +493,28 @@ export function MailScreen() {
               />
             )}
             <Labels onNavigate={closeFolders} />
+            {/* LAST in the scroll column, and PLAIN — no pin, no footer (B61, and its two wrong
+                turns, both measured against the shared-account suite rather than reasoned about).
+
+                A share card arrives on a sync pass, and anything that grows ABOVE an interactive
+                row moves that row out from under the pointer: that is how a click meant for a
+                folder's ⋯ button opened the folder instead. So it belongs after everything.
+
+                It was then pinned here with `position: sticky; inset-block-end: 0`, so the end
+                would not also mean "out of sight" — and an opaque strip floating over the tree is a
+                row nobody can click at all (`<section aria-label="New shares"> subtree intercepts
+                pointer events`, six tests).
+
+                It was then lifted OUT of the scroll column, as a footer beside `QuotaBar` — which
+                overlays nothing, and takes its height out of the SCROLL VIEWPORT. Two cards are
+                236 px of a 669 px rail, which leaves the trees a band short enough that a row can
+                no longer be scrolled fully into it: the same interception, from a third direction.
+
+                Inside the column and last, it takes its space in the scroll FLOW, where the tree
+                keeps its full viewport, nothing is pushed and nothing is covered. The cost is that
+                a long rail has to be scrolled to reveal it — the trade the contacts and calendar
+                rails already take with the same component. */}
+            <MailboxShareNotices onNavigate={closeFolders} />
           </div>
           <QuotaBar />
         </nav>

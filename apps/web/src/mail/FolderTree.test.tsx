@@ -273,6 +273,46 @@ describe('FolderTree (container)', () => {
       await user.click(await screen.findByRole('menuitem', { name: 'Delete older than…' }))
     }
 
+    /**
+     * The COLOUR, not just the arm (B21).
+     *
+     * "Delete older than…" sat in the destructive band of this menu and carried none of its
+     * styling, so the one entry there that can permanently delete a year of mail read like the
+     * recoverable ones — while "Empty Trash" directly above it, which does exactly the same thing
+     * to the same folder, was coloured. It is destructive exactly where `olderMode` destroys, which
+     * is why the assertion is per-folder rather than global: in a plain folder the command moves to
+     * Trash and colouring it would cry wolf.
+     */
+    it('colours the cleanup entry destructive only where it destroys', async () => {
+      const user = userEvent.setup()
+      await putMailboxes(db, 'a', [
+        mailbox('trash', { name: 'Trash', role: 'trash' }),
+        mailbox('junk', { name: 'Junk', role: 'junk' }),
+        mailbox('work', { name: 'Work' }),
+      ])
+      renderTree()
+
+      for (const [folder, destructive] of [
+        [/Junk/, true],
+        [/Work/, false],
+      ] as const) {
+        const row = await screen.findByRole('treeitem', { name: folder })
+        await user.click(within(row).getByRole('button', { name: /^Folder actions/ }))
+        const entry = await screen.findByRole('menuitem', { name: 'Delete older than…' })
+        const empty = screen.queryByRole('menuitem', { name: /^Empty/ })
+        // Read the reference off the sibling that has always been destructive, rather than
+        // hardcoding a class name a CSS-module rename would silently invalidate.
+        const destructiveClass = empty?.className.split(' ').find((c) => /destructive/i.test(c))
+        if (destructive) {
+          expect(destructiveClass).toBeDefined()
+          expect(entry.className).toContain(destructiveClass as string)
+        } else {
+          expect(entry.className).not.toMatch(/destructive/i)
+        }
+        await user.keyboard('{Escape}')
+      }
+    })
+
     // The load-bearing case: a Trash mailbox EXISTS, so the recoverable arm is available — and Junk
     // still takes the permanent one. Without the `role === 'junk'` term this folder would silently
     // get "Move to Trash" instead, which is the whole difference the term encodes.

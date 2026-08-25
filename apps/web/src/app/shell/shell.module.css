@@ -553,6 +553,12 @@
   letter-spacing: var(--waxwing-tracking-tight);
 }
 
+/* The 404's way back to the mail (B24). A link, not a button: it navigates, and the browser's own
+   affordances — middle-click, "open in new tab" — should keep working on it. */
+.notFoundHome {
+  color: var(--waxwing-accent);
+}
+
 .screenLead {
   margin: 0;
   max-inline-size: 60ch;

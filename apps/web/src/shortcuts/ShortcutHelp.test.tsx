@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
 import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
+import de from '../i18n/locales/de/common.json'
 import { EMPTY_LIST_STATE, useListStore } from '../mail/list-store'
 import { useReadingStore } from '../mail/reading-store'
 import { putMailboxes, type ReplicaDb, ReplicaProvider } from '../sync'
@@ -112,6 +113,46 @@ describe('ShortcutHelp', () => {
     // first tick, before `useMailboxes()` had answered anything.
     expect(await within(dialog).findByText('This account has no Junk folder.')).toBeInTheDocument()
     expect(within(dialog).queryByText('This account has no Archive folder.')).toBeNull()
+  })
+
+  /**
+   * The message grid's own keys (B21) — the half of the keyboard this sheet never mentioned.
+   *
+   * The sheet is generated from the registry, and the APG `grid` keys are not registry rows: they
+   * belong to the focused widget and are handled in `MessageList`'s `onKeyDown`. So a reader who
+   * pressed `?` was shown every chord EXCEPT the ones they use most, and select-all — which has no
+   * button, no menu entry and no other keyboard route anywhere in the app — was documented nowhere
+   * at all.
+   */
+  it('lists the grid keys, including the one with no other route: select-all', async () => {
+    const dialog = await openHelp()
+    for (const title of [
+      'Move the focus',
+      'Extend the selection',
+      'First or last message',
+      'Select or deselect message',
+      'Open the focused message',
+      'Select everything in the list',
+      'Clear the selection',
+    ]) {
+      expect(within(dialog).getAllByText(title).length, title).toBeGreaterThan(0)
+    }
+    const chips = within(dialog)
+      .getAllByText(/.*/, { selector: 'kbd' })
+      .map((chip) => chip.textContent)
+    expect(chips).toContain('A') // ⌘A — select all
+    expect(chips).toContain('Space')
+    expect(chips).toContain('Esc')
+    expect(chips).toContain('↓')
+    expect(chips).toContain('⇧')
+  })
+
+  it('names the key caps in German too — they are what is printed on the keyboard', () => {
+    // The one class of string that MUST be localised even though it is not prose: a German board
+    // has no key labelled "Home". `formatChord` already does this for Ctrl/Strg.
+    expect(de.shortcuts.keys.space).toBe('Leertaste')
+    expect(de.shortcuts.keys.home).toBe('Pos 1')
+    expect(de.shortcuts.groups.list).toBe('Nachrichtenliste')
   })
 
   it('has no a11y violations', async () => {

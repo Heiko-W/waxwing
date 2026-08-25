@@ -26,6 +26,7 @@ export default mergeConfig(
         'src/ui/**/*.contrast.test.ts',
         'src/**/*.css.test.ts',
         'src/**/*.shipped.test.ts',
+        'src/**/*.source.test.ts',
       ],
       restoreMocks: true,
       // No passWithNoTests: the App example tests always exist, so a zero-test

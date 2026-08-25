@@ -244,6 +244,42 @@ test.describe('S-1 — being told that something was shared', () => {
     await expect(strip).not.toContainText(/Recovery admin/i)
   })
 
+  /**
+   * B61 — the card arrives, and the folder rows do not move.
+   *
+   * The strip used to render ABOVE the trees inside the rail's one scroll container, so a card
+   * appearing mid-interaction pushed every row below it down by the card's height. That is the only
+   * way it ever appears: a share notice comes in on a sync pass, while the reader is doing
+   * something. This suite met it as `element is not stable` and then
+   * `<div role="treeitem"> intercepts pointer events` on a click meant for a folder's ⋯ button
+   * (B59, second cause); a reader meets it as a menu that does not open and a folder that opens.
+   *
+   * Measured rather than asserted structurally, because the claim is about PIXELS: sign in with no
+   * notice pending, note where a folder row is, let the card arrive, and look again.
+   */
+  test('a card arriving does not move the folder rows under the pointer', async ({ page }) => {
+    await clearShareNotifications('alice')
+    await login(page)
+
+    const inbox = page.getByRole('treeitem', { name: /Inbox/ }).first()
+    await expect(inbox).toBeVisible({ timeout: SYNC_BUDGET_MS })
+    const before = await inbox.boundingBox()
+    expect(before, 'no folder row to measure').not.toBeNull()
+
+    // The grant lands while the app is open — the case the defect is about.
+    await shareInbox('carol', 'alice', 'rw')
+    const strip = page.getByRole('region', { name: 'New shares' })
+    await expect(strip).toBeVisible({ timeout: SYNC_BUDGET_MS })
+
+    const after = await inbox.boundingBox()
+    expect(after, 'the folder row vanished when the card arrived').not.toBeNull()
+    expect(
+      Math.round(after?.y ?? 0),
+      `the Inbox row moved from y=${before?.y} to y=${after?.y} when the share card arrived — ` +
+        'anything above an interactive row that grows takes that row out from under the pointer',
+    ).toBe(Math.round(before?.y ?? 0))
+  })
+
   test('“Open” goes to the shared folder, in the right account', async ({ page }) => {
     await clearShareNotifications('alice')
     await shareInbox('carol', 'alice', 'rw')

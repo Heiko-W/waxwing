@@ -9,6 +9,7 @@ import type { Id } from '@waxwing/jmap'
 import { createPushChannel } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
+import { effectiveCacheDays } from '../../app/offline-prefs'
 import { secondaryMailAccounts } from '../../app/session/accounts'
 import { useSession } from '../../app/session/context'
 import type { ConnectedSession } from '../../app/session/types'
@@ -88,9 +89,22 @@ export function fleetAccounts(connected: ConnectedSession): FleetAccount[] {
 export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode {
   const { connected, getAuthProvider, reportAuthExpired } = useSession()
   const config = useConfig()
-  const cacheDays = config.offline.cacheDays
+  const hosterCacheDays = config.offline.cacheDays
   const maxStorageMB = config.offline.maxStorageMB
   const productName = config.branding.productName
+
+  /**
+   * The offline budget the engines read, resolved at every maintenance pass rather than captured.
+   *
+   * `hosterCacheDays` is `config.json`'s value and never changes after boot, so this callback is
+   * stable — which is the point: the reader's own horizon (B23, `app/offline-prefs.ts`) can change
+   * without this effect re-running, and therefore without tearing down every engine, re-electing
+   * the leader and re-subscribing the push channel for a number that only the next prune reads.
+   */
+  const offlineConfig = useCallback(
+    () => ({ cacheDays: effectiveCacheDays(hosterCacheDays), maxStorageMB }),
+    [hosterCacheDays, maxStorageMB],
+  )
 
   useEffect(() => {
     if (!connected || !canRunEngine()) return
@@ -109,7 +123,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
         port: createJmapPort(connected.client, spec.account.id),
         session: connected.client.session,
         auth,
-        config: { cacheDays, maxStorageMB },
+        config: offlineConfig,
         onAuthExpired: reportAuthExpired,
         // Only the PRIMARY notifies (M3.6): a background shared account must never raise banners, and
         // this is the one place that has the replica, the account and the branding at once.
@@ -148,7 +162,7 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
         })
       },
     })
-  }, [connected, getAuthProvider, reportAuthExpired, cacheDays, maxStorageMB, productName])
+  }, [connected, getAuthProvider, reportAuthExpired, offlineConfig, productName])
 
   if (!connected) return children
   return (

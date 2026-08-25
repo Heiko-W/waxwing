@@ -14,8 +14,8 @@
 //      suite. It used to live in `scripts/ci.mjs`, which only `pnpm gate` reaches and only
 //      `release.yml` calls, so on the hosted pipeline these tests ran once per release and never
 //      on a pull request at all.
-//   4. run the M1.9 read, M2.9 write and M3.10 deploy suites (pnpm e2e:read / e2e:write /
-//      e2e:deploy) — they self-manage the Stalwart fixture: their Playwright globalSetup brings the
+//   4. run the M1.9 read, M2.9 write, M5.15 webkit and M3.10 deploy suites (pnpm e2e:read /
+//      e2e:write / e2e:webkit / e2e:deploy) — they self-manage the Stalwart fixture: their Playwright globalSetup brings the
 //      fixture up advertising the app origin + seeds alice's inbox (self-smokes per ADR-002), and
 //      globalTeardown tears it down
 //   5. ALWAYS tear the fixture down as a backstop, even if a step above failed or was killed
@@ -82,6 +82,18 @@ try {
     'install',
     'chromium',
   ])
+  // WebKit too, since B11. Two Safari-only defects shipped that passed every Chromium suite here
+  // (ADR-029), and the suite that would have caught them was reachable only by typing its script
+  // by hand — which this file's own header calls "not covered". One more browser download on a cold
+  // runner; nothing on a warm one.
+  run('install pinned webkit', [
+    '--filter',
+    '@waxwing/e2e',
+    'exec',
+    'playwright',
+    'install',
+    'webkit',
+  ])
   run('placeholder e2e suite', ['e2e'])
   // The /mail/ mount suite (M3.10). Fixture-free and fast, so it runs BEFORE the Docker-backed
   // suites: it asserts the built bundle boots under a path prefix, which is the deployment shape
@@ -101,6 +113,12 @@ try {
   // sidebar IS (account-grouped sections) and would make every other suite's `treeitem name=/Inbox/`
   // ambiguous. Listed here or it is not gated — see the header.
   run('shared-account e2e suite', ['e2e:shared'])
+  // The WebKit suite (B11). It runs the READ suite plus its own smoke tests on the one engine
+  // whose disagreements have actually cost this project defects — the reading pane, the sanitizer
+  // and the sandboxed frame — so it goes where a failure is still cheap to read: after the Chromium
+  // read suite has already said whether the app works at all, and before the double-building deploy
+  // suite. Its own fixture, its own port (4187).
+  run('webkit e2e suite', ['e2e:webkit'])
   // The M3.10 deploy suite runs LAST: it is the only one that builds the app TWICE (a staged second
   // deploy, e2e/pwa-stage.vite.config.mjs), so putting it earlier would make every other suite wait
   // on work none of them need. It self-manages the fixture like read/write.

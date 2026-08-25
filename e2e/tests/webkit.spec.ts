@@ -15,9 +15,14 @@
  *     sandboxed frame, so the interception the app opened links from never ran (see `frame.ts`).
  *     Clicking a link did nothing whatsoever.
  *
- * So this suite is deliberately small and deliberately about those two things: it exists to keep the
+ * So this FILE is deliberately small and deliberately about those two things: it exists to keep the
  * engine difference visible, not to re-test behaviour the Chromium suites already own. Add to it
  * only what genuinely differs BETWEEN engines.
+ *
+ * The RUN around it is no longer small (B11). `playwright.webkit.config.ts` also collects
+ * `read.spec.ts`, because "the reading pane works" was a Chromium claim and the reading pane is
+ * where both defects above lived — an argument for keeping the FILE focused is not an argument for
+ * leaving the engine untested. That config says what the run covers and what it still does not.
  */
 
 import { expect, test } from '@playwright/test'

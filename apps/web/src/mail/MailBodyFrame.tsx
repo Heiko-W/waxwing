@@ -48,10 +48,16 @@ export interface MailBodyFrameProps {
   readonly allowRemote: boolean
   readonly title: string
   /**
-   * An intercepted link click — only for links `onGateLink` kept. `info.text` carries what the
-   * reader saw, so the app can check the claim against the real host before opening (FR-RD-08 —
-   * `use-link-opener.ts`). Memoize it: it is an effect dependency, and a new identity remounts
-   * the frame.
+   * An intercepted link click — only for links `onGateLink` kept, so the app can check the claim
+   * against the real host before opening (FR-RD-08 — `use-link-opener.ts`).
+   *
+   * `info.text` is the CLASSIFICATION rendering, not the display string: since the gate started
+   * classifying over two renderings plus attribute labels, `text` is what the check runs on and
+   * `raw` is what the reader actually saw. This doc said "what the reader saw" of `text` for two
+   * milestones after that changed (B27) — a comment asserting a property the code no longer had,
+   * and the field a warning dialog should quote is `raw`.
+   *
+   * Memoize it: it is an effect dependency, and a new identity remounts the frame.
    */
   readonly onOpenLink: (href: string, info: MailLinkInfo) => void
   /**
@@ -94,6 +100,43 @@ export function MailBodyFrame({
     })
     return () => controller.destroy()
   }, [srcdoc, onOpenLink, onGateLink])
+
+  /*
+   * Does the frame have the keyboard focus? (B6, WCAG 2.4.7.)
+   *
+   * The frame is a TAB STOP and NOTHING indicated it, because across the iframe boundary there is
+   * nothing to hang a rule on. Measured in Chromium against the live fixture, with focus on the
+   * frame: the `<iframe>` element matches neither `:focus`, `:focus-visible` nor `:focus-within`,
+   * and fires no focus event — while `document.activeElement` IS the iframe and
+   * `contentDocument.hasFocus()` is true. A rule inside the framed document does not help either:
+   * its `activeElement` is the default `<body>`, which is not a focused element, so
+   * `html:focus-within` does not match there.
+   *
+   * What DOES happen is that the host document loses focus. `window` blur + "the last focused thing
+   * here was the frame" is therefore the signal, and it is the standard way this is detected. The
+   * `focusin` listener is the other half: it clears the flag the moment focus lands anywhere in this
+   * document again, so a ring cannot outlive the visit.
+   *
+   * A tab switch also blurs the window, so an unattended tab can leave the ring drawn — the browser
+   * returns focus into the frame on the way back, which is the state the ring describes anyway.
+   */
+  useEffect(() => {
+    const mark = (focused: boolean): void => {
+      // The ATTRIBUTE directly, not React state, and that is load-bearing rather than a
+      // micro-optimisation: a state update is scheduled, and the ring has to be on screen for the
+      // paint that follows the keystroke. React does not manage this attribute, so nothing it
+      // re-renders can wipe it.
+      iframeRef.current?.toggleAttribute('data-focused', focused)
+    }
+    const onBlur = (): void => mark(document.activeElement === iframeRef.current)
+    const onFocusIn = (): void => mark(false)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('focusin', onFocusIn)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('focusin', onFocusIn)
+    }
+  }, [])
 
   return <iframe ref={iframeRef} title={title} aria-label={title} className={styles.frame} />
 }

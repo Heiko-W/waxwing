@@ -373,7 +373,23 @@ test.describe('M3.9 reading polish', () => {
   test('a link whose text names another host is interrupted; Cancel opens nothing', async ({
     page,
     context,
+    browserName,
   }) => {
+    /*
+     * CHROMIUM ONLY, and the reason is a decided one rather than a gap (B11, ADR-029).
+     *
+     * The interstitial is raised from a click listener the outer page installs on the framed
+     * document, and **WebKit delivers the outer page no events from a sandboxed frame at all** —
+     * measured across `click`, `mousedown`, `pointerdown` and `auxclick`, bubbling and capturing.
+     * So on Safari a deceptive link does nothing and says nothing: the reader is not sent to the
+     * attacker (the safe outcome), but this dialog cannot appear. ADR-029 §Consequences records
+     * that as an accepted, named cost, and `webkit.spec.ts` asserts the WebKit half — that such a
+     * link opens no tab.
+     *
+     * Skipped rather than deleted or engine-branched: the assertions below are what Chromium must
+     * keep doing, and a branch would blur two different promises into one test.
+     */
+    test.skip(browserName !== 'chromium', 'ADR-029: WebKit cannot intercept a click in the frame')
     await login(page)
     // `.first()`: the row renders the subject in its cell AND in the preview line, so a bare
     // getByText matches two nodes and Playwright refuses in strict mode.

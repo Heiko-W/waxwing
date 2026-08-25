@@ -342,7 +342,7 @@ function engineDeps(opts: {
     port: opts.port,
     session: {} as SyncEngineDeps['session'],
     auth: { scheme: 'bearer', authorization: () => 'x' },
-    config: { cacheDays: 30, maxStorageMB: 512 },
+    config: () => ({ cacheDays: 30, maxStorageMB: 512 }),
     clock,
     locks: opts.locks,
     createBus: spec.createBus ?? noopBus,

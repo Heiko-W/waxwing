@@ -44,14 +44,12 @@
       "label": "E-Mail-Adresse oder Server",
       "placeholder": "name@example.com",
       "hint": "Geben Sie Ihre E-Mail-Adresse ein — {{product}} versucht es mit Ihrer E-Mail-Domain. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese ein.",
-      "submit": "Weiter",
-      "discovering": "Server wird gesucht…"
+      "submit": "Weiter"
     },
     "error": {
       "discovery": "Für {{domain}} wurde kein Mailserver gefunden.",
       "network": "Der Server ist nicht erreichbar. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
       "noAccount": "Dieser Server hat kein Postfach für Sie.",
-      "config": "Für diese Installation ist kein Server zum Verbinden konfiguriert.",
       "generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
       "networkHost": "{{host}} ist nicht erreichbar. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese oben ein.",
       "oauthUnavailable": "Dieser Server bietet keine sichere Anmeldung an. Melden Sie sich unten mit E-Mail-Adresse und Passwort an.",
@@ -88,7 +86,6 @@
     "back": "Anderen Server verwenden",
     "error": {
       "invalidCredentials": "Falscher Benutzername oder falsches Passwort.",
-      "oauthUnavailable": "Dieser Server erfordert eine sichere (HTTPS-)Anmeldung, die hier nicht verfügbar ist.",
       "generic": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut.",
       "signOutIncomplete": "Sie sind abgemeldet, aber die lokale Kopie Ihrer Nachrichten konnte nicht entfernt werden — möglicherweise ist noch ein anderer Tab geöffnet. Schließen Sie alle Tabs und melden Sie sich erneut ab.",
       "invalidCredentialsBasic": "Falscher Benutzername oder falsches Passwort. Ist für dieses Konto Zwei-Faktor-Authentifizierung aktiv, funktioniert hier nur ein App-Passwort."
@@ -156,32 +153,36 @@
       }
     },
     "offline": {
-      "title": "Offline & Speicher",
-      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sich sofort öffnen lassen und offline verfügbar sind.",
-      "meter": {
-        "label": "Belegter Speicher"
-      },
-      "total": "{{used}} von {{total}} belegt",
-      "quotaUnknown": "Ihr Browser meldet kein Speicherkontingent.",
       "category": {
         "messages": "Nachrichtenindex (geschätzt)",
         "bodies": "Nachrichtentexte",
         "attachments": "Anhänge",
         "other": "Sonstiges (App und Offline-Grundgerüst)"
       },
+      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sich sofort öffnen lassen und offline verfügbar sind.",
+      "freeUp": "Jetzt Speicher freigeben",
+      "freedToast": "{{size}} freigegeben",
+      "meter": {
+        "label": "Belegter Speicher"
+      },
+      "nothingToFree": "Es gibt nichts freizugeben.",
       "persist": {
         "label": "Daten auf diesem Gerät behalten",
         "hint": "Bitten Sie Ihren Browser, zwischengespeicherte E-Mails nicht zu löschen, wenn der Speicher knapp wird.",
         "granted": "Erteilt — Ihr Browser behält zwischengespeicherte E-Mails auch bei knappem Speicher.",
         "denied": "Nicht erteilt — Ihr Browser kann zwischengespeicherte E-Mails löschen, wenn der Speicher knapp wird."
       },
-      "freeUp": "Jetzt Speicher freigeben",
-      "freedToast": "{{size}} freigegeben",
-      "nothingToFree": "Es gibt nichts freizugeben.",
-      "window_one": "E-Mails vom letzten Tag bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
-      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
       "pinned_one": "{{count}} Ordner wird offline behalten",
-      "pinned_other": "{{count}} Ordner werden offline behalten"
+      "pinned_other": "{{count}} Ordner werden offline behalten",
+      "quotaUnknown": "Ihr Browser meldet kein Speicherkontingent.",
+      "title": "Offline & Speicher",
+      "total": "{{used}} von {{total}} belegt",
+      "windowApplies": "Ein kürzeres Fenster gibt Speicher beim nächsten Aufräumen frei, nicht sofort — „Speicher freigeben\" oben wartet nicht.",
+      "windowChoice_one": "{{count}} Tag",
+      "windowChoice_other": "{{count}} Tage",
+      "windowLabel": "E-Mails auf diesem Gerät behalten für",
+      "window_one": "E-Mails vom letzten Tag bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
+      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen."
     },
     "general": {
       "title": "Allgemein"
@@ -990,7 +991,6 @@
     },
     "rename": {
       "title": "Ordner umbenennen",
-      "nameLabel": "Ordnername",
       "submit": "Umbenennen"
     },
     "delete": {
@@ -1089,9 +1089,11 @@
     "undo": "Rückgängig",
     "moved": {
       "archive": "Ins Archiv verschoben",
+      "folder": "Nach „{{folder}}“ verschoben",
       "junk": "In den Spam-Ordner verschoben",
-      "trash": "In den Papierkorb verschoben",
-      "folder": "Nach „{{folder}}“ verschoben"
+      "notJunk": "In den Posteingang verschoben",
+      "removedLabel": "Aus „{{label}}“ entfernt",
+      "trash": "In den Papierkorb verschoben"
     },
     "viewOptions": {
       "show": "Ansichtsoptionen anzeigen",
@@ -1677,7 +1679,15 @@
       "hint": "Drücken Sie V, um stattdessen einen Ordner auszuwählen.",
       "undo": "Nichts rückgängig zu machen."
     },
+    "keys": {
+      "space": "Leertaste",
+      "enter": "Enter",
+      "esc": "Esc",
+      "home": "Pos 1",
+      "end": "Ende"
+    },
     "groups": {
+      "list": "Nachrichtenliste",
       "navigation": "Navigation",
       "triage": "Aktionen",
       "compose": "Verfassen",
@@ -1697,13 +1707,20 @@
         "full": "Nachricht im Vollbild öffnen"
       },
       "list": {
-        "select": "Nachricht aus- oder abwählen"
+        "move": "Auswahlrahmen bewegen",
+        "extend": "Auswahl erweitern",
+        "ends": "Erste oder letzte Nachricht",
+        "select": "Nachricht aus- oder abwählen",
+        "open": "Fokussierte Nachricht öffnen",
+        "selectAll": "Alles in der Liste auswählen",
+        "clear": "Auswahl aufheben"
       },
       "triage": {
         "archive": "Archivieren",
         "trash": "In den Papierkorb",
+        "destroy": "Endgültig löschen",
         "junk": "Als Spam markieren",
-        "unread": "Als ungelesen markieren",
+        "unread": "Als gelesen oder ungelesen markieren",
         "flag": "Markierung setzen oder entfernen",
         "label": "Labels anwenden",
         "move": "In Ordner verschieben",

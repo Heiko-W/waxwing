@@ -114,7 +114,6 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
 
   return (
     <div className={styles.books}>
-      <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
       <div className={styles.railHeader}>
         <h2 className={styles.railTitle}>{t('contacts.books.title')}</h2>
         <IconButton
@@ -162,6 +161,10 @@ export function AddressBookList({ selectedBookId, onSelectBook }: AddressBookLis
           ))
         )}
       </ul>
+
+      {/* LAST in the rail (B61): a share card arrives on a sync pass, and above the list it moved
+          every row out from under the pointer mid-click. Below it, nothing is pushed. */}
+      <IncomingShares announcements={incoming.announcements} onDismiss={incoming.dismiss} />
 
       {dialog?.kind === 'create' && (
         <NameDialog

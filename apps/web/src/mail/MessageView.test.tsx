@@ -25,6 +25,7 @@ import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { AUTO_MARK_READ_DELAY_MS, MessageView } from './MessageView'
 import { useReadingStore } from './reading-store'
+import { announceMarkedUnread } from './unread-signal'
 import { useBlobFetcher } from './use-blob'
 
 /**
@@ -485,6 +486,34 @@ describe('MessageView', () => {
     expect(isOffered(menu, 'Archive')).toBe(false)
   })
 
+  /**
+   * The junk verb's missing inverse, on the reading pane (B24).
+   *
+   * The state this replaces was strictly worse than a missing button: inside Junk the toolbar spent
+   * a slot on a DISABLED "Mark as junk" — the one action that cannot mean anything in this folder —
+   * while the action a reader opens a junk message to take, "this is not junk", had no control at
+   * all. `list.actions.notJunk` was translated in both locales and referenced by no component.
+   */
+  it('offers Not junk while reading IN Junk, in place of the inert Mark as junk', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen(), 'junk')
+    const menu = await openOverflow(user)
+    await waitFor(() => expect(isOffered(menu, 'Not junk')).toBe(true))
+    expect(within(menu).queryByRole('menuitem', { name: /^Mark as junk/ })).toBeNull()
+  })
+
+  it('moves a Not-junk message back to the Inbox', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen(), 'junk')
+    await clickAction(user, 'Not junk')
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'move', emailIds: ['e1'], from: 'junk', to: 'inbox' }),
+      expect.anything(),
+    )
+  })
+
   it('marks unread by dispatching a $seen=false keyword change', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()
@@ -683,9 +712,9 @@ describe('MessageView', () => {
     // The transitions are driven at the replica boundary (a new `email` row), which is exactly how
     // a `triage.setSeen` from either control reaches this component — `MessageList` is not mounted
     // here, so what is proven is this component's response to that row sequence, not the list's
-    // dispatch of it. NOT proven, and still open: an outside mark-unread against a message that is
-    // ALREADY unread. It moves no row, so there is nothing for this effect to see; see the
-    // "what this pair does not cover" note on `dwellTimer`.
+    // dispatch of it. The remaining case — an outside mark-unread against a message that is ALREADY
+    // unread, which moves no row and so gives this effect nothing to see — is covered by the INTENT
+    // cancel, and has its own test below (B26).
     await putEmailBody(db, textBodyRow('e1', 'body'))
     vi.useFakeTimers()
     const { rerender } = renderView(unseen())
@@ -720,6 +749,49 @@ describe('MessageView', () => {
     inPane.rerender(tree(unseen())) // the optimistic apply lands
     await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
     expect(seenIntents()).toEqual([false])
+  })
+
+  /**
+   * The case the two row-based cancels structurally cannot see (B26): a mark-unread issued from
+   * OUTSIDE the pane against a message that is ALREADY unread.
+   *
+   * Nothing changes. No action reaches `markUnread`, no `$seen` edge reaches the transition effect,
+   * and before the intent cancel the armed dwell went off ~1.5 s after the open and marked read the
+   * message the reader had just asked to keep unread.
+   *
+   * The write goes through `useMessageActions`, which is the seam every surface uses — the bulk
+   * bar's read button, `commitSwipe`'s read branch, the row context menu. It is called directly
+   * here because the point is not which control issued it: it is that the pane hears the INTENT at
+   * all, and the intent is the only place the answer exists when no row moves.
+   */
+  it('cancels an armed dwell on a mark-unread against an ALREADY unread message', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    renderView(unseen())
+    await vi.advanceTimersByTimeAsync(500)
+
+    // What the list does when its stale `allSeen` predicate reads the wrong way round: mark unread
+    // something that is unread already. The row does not move, because it is already in that state.
+    act(() => {
+      announceMarkedUnread(['e1'])
+    })
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    expect(seenIntents()).toEqual([])
+  })
+
+  it('ignores a mark-unread aimed at some OTHER message', async () => {
+    // The positive control. A cancel that fired on every announcement would pass the test above
+    // while breaking auto-mark-read for anyone who triages a second message in the list while
+    // reading a first — which is the everyday two-pane sequence.
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    vi.useFakeTimers()
+    renderView(unseen())
+    await vi.advanceTimersByTimeAsync(500)
+    act(() => {
+      announceMarkedUnread(['e2', 'e3'])
+    })
+    await vi.advanceTimersByTimeAsync(AUTO_MARK_READ_DELAY_MS * 4)
+    expect(seenIntents()).toEqual([true])
   })
 
   it('arms for an unread message opened right after a READ one (navigation)', async () => {

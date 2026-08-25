@@ -55,7 +55,6 @@ import {
   type ReplicaDb,
   type SyncStateRow,
   scopeKey,
-  type ThreadRow,
   toAddressBookRow,
   toCalendarEventRow,
   toCalendarRow,
@@ -82,10 +81,8 @@ export async function upsertAccount(db: ReplicaDb, account: AccountRecord): Prom
   await db.accounts.put(account)
 }
 
-export function listAccounts(db: ReplicaDb): Promise<AccountRecord[]> {
-  return db.accounts.orderBy('addedAt').toArray()
-}
-
+/** One registry row. Like {@link emailsInMailbox}, a test reader — the app holds accounts in the
+ * fleet store, not by re-reading them (B24). */
 export function getAccount(db: ReplicaDb, accountId: Id): Promise<AccountRecord | undefined> {
   return db.accounts.get(accountId)
 }
@@ -175,10 +172,6 @@ export async function identitiesForAccount(db: ReplicaDb, accountId: Id): Promis
 
 export async function putThreads(db: ReplicaDb, accountId: Id, threads: Thread[]): Promise<void> {
   await db.threads.bulkPut(threads.map((thread) => toThreadRow(accountId, thread)))
-}
-
-export function getThread(db: ReplicaDb, accountId: Id, id: Id): Promise<ThreadRow | undefined> {
-  return db.threads.get([accountId, id])
 }
 
 export function deleteThreads(db: ReplicaDb, accountId: Id, ids: Id[]): Promise<void> {
@@ -311,7 +304,16 @@ export function emailsByIds(
   return db.emails.bulkGet(ids.map((id) => [accountId, id]))
 }
 
-/** All emails in a mailbox (offline filtering / counts) via the account-scoped membership index. */
+/**
+ * Every email row in a mailbox, via the account-scoped membership index.
+ *
+ * A TEST reader (B24): the app never loads a folder this way — a folder view is the server's ordered
+ * `Email/query` window (`queryCache`) hydrated by `emailsByIds`, and "select all in folder" takes
+ * the ids-only `emailIdsInMailbox` below. What this is good for is asserting membership after a
+ * move or a rollback, which three suites do. Kept and labelled rather than deleted: the alternative
+ * is the same `where('amb')` query copy-pasted into each of them, one `scopeKey` call away from
+ * silently asserting nothing.
+ */
 export function emailsInMailbox(db: ReplicaDb, accountId: Id, mailboxId: Id): Promise<EmailRow[]> {
   return db.emails.where('amb').equals(scopeKey(accountId, mailboxId)).toArray()
 }
@@ -422,11 +424,6 @@ export async function labelUnreadCounts(
   return new Map(counts)
 }
 
-/** The messages of a thread, for threaded rendering and collapse (FR-LST-02). */
-export function emailsInThread(db: ReplicaDb, accountId: Id, threadId: Id): Promise<EmailRow[]> {
-  return db.emails.where('[accountId+threadId]').equals([accountId, threadId]).toArray()
-}
-
 /**
  * Delete envelopes AND cascade to their bodies in ONE `rw` transaction (M3.4). Before the cascade a
  * delta sync that destroyed N emails orphaned N `emailBodies` rows FOREVER — they are keyed by email
@@ -504,15 +501,6 @@ export function getEmailBody(
     if (body) await db.emailBodies.update([accountId, id], { lastAccessedAt: now })
     return body
   })
-}
-
-/** Oldest-accessed body rows for an account, for LRU eviction (FR-OFF-04). */
-export function lruBodies(db: ReplicaDb, accountId: Id, limit: number): Promise<EmailBodyRow[]> {
-  return db.emailBodies
-    .where('[accountId+lastAccessedAt]')
-    .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey])
-    .limit(limit)
-    .toArray()
 }
 
 /**
@@ -803,11 +791,6 @@ export async function failedOutboxForAccounts(
 export async function queuedSends(db: ReplicaDb, accountId: Id): Promise<OutboxRow[]> {
   const rows = await db.outbox.where('[accountId+status]').equals([accountId, 'pending']).toArray()
   return rows.filter((row) => row.type === 'sendEmail').sort((a, b) => a.createdAt - b.createdAt)
-}
-
-/** One outbox row by its client-generated intent id. */
-export function outboxRow(db: ReplicaDb, accountId: Id, id: Id): Promise<OutboxRow | undefined> {
-  return db.outbox.get([accountId, id])
 }
 
 // -------------------------------------------------------------------------------------------

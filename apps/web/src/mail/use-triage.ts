@@ -52,6 +52,16 @@ export interface Triage {
    */
   archive(ids: Id[], from: Id | null): boolean
   junk(ids: Id[], from: Id | null): boolean
+  /**
+   * The inverse of {@link junk}: back to the Inbox (B24).
+   *
+   * Junk was the one triage verb with no way back, while flag and read both had one — the string
+   * for it ("Not junk") was translated in both locales and referenced nowhere, which is a missing
+   * FEATURE hiding as a stale key. It is not a general "move to Inbox": it is offered only from
+   * inside Junk, because that is the only place where "this is not junk" is a statement about the
+   * message rather than a folder pick, and it is the shape every mail client uses.
+   */
+  notJunk(ids: Id[], from: Id | null): boolean
   trash(ids: Id[], from: Id | null): boolean
   /**
    * Move to an ARBITRARY mailbox the user picked, naming it in the toast. `toName` is the label
@@ -65,6 +75,19 @@ export interface Triage {
   moveTo(ids: Id[], from: Id | null, to: Id, toName: string): boolean
   setSeen(ids: Id[], seen: boolean): void
   setFlagged(ids: Id[], flagged: boolean): void
+  /**
+   * Take a LABEL off messages, with an Undo (B21) — the bulk bar's "Remove from this label".
+   *
+   * It belongs here rather than beside {@link setFlagged} because of what it costs to get wrong. A
+   * label is a keyword like any other, but this particular write is the only one in the bar that
+   * removes the very thing the current view is FILTERED by: the rows leave the list as they are
+   * written, so the mistake takes its own evidence with it. It was a bare `setKeyword(…, false)` —
+   * silent, and irreversible from the UI — sitting inches away from a folder move that has
+   * toasted with an Undo since M3.8.
+   *
+   * `false` when the account denies keyword writes, on the same contract as the moves above.
+   */
+  removeLabel(ids: Id[], keyword: string): boolean
 }
 
 export function useTriage(): Triage {
@@ -73,6 +96,7 @@ export function useTriage(): Triage {
   const { toast } = useToast()
   const archiveBox = useMailboxByRole('archive')
   const junkBox = useMailboxByRole('junk')
+  const inboxBox = useMailboxByRole('inbox')
   const trashBox = useMailboxByRole('trash')
   // Defence in depth for B34. The surfaces gate their own controls — that is where a refusal can be
   // EXPLAINED — but this seam is what both a click and a chord funnel through, so a write that got
@@ -124,6 +148,7 @@ export function useTriage(): Triage {
     return {
       archive: (ids, from) => moveWithUndo(ids, from, archiveBox?.id, t('list.moved.archive')),
       junk: (ids, from) => moveWithUndo(ids, from, junkBox?.id, t('list.moved.junk')),
+      notJunk: (ids, from) => moveWithUndo(ids, from, inboxBox?.id, t('list.moved.notJunk')),
       trash: (ids, from) => moveWithUndo(ids, from, trashBox?.id, t('list.moved.trash')),
       moveTo: (ids, from, to, toName) =>
         moveWithUndo(ids, from, to, t('list.moved.folder', { folder: toName })),
@@ -138,6 +163,23 @@ export function useTriage(): Triage {
         if (!rights.maySetKeywords) return
         actions.setFlagged(ids, flagged)
       },
+      removeLabel: (ids, keyword) => {
+        if (!rights.maySetKeywords || ids.length === 0 || !actions.available) return false
+        actions.setKeyword(ids, keyword, false)
+        toast({
+          title: t('list.moved.removedLabel', { label: keyword }),
+          // Non-expiring, like the moves': the Undo has to be reachable by keyboard, and the toast
+          // region is portalled to the end of the document (M4.7, WCAG 2.2.1).
+          duration: 0,
+          // The inverse is the same write with `true`, and it needs no separate rights check: the
+          // right that permitted the removal is the one that permits putting it back.
+          action: {
+            label: t('list.undo'),
+            onAction: () => actions.setKeyword(ids, keyword, true),
+          },
+        })
+        return true
+      },
     }
-  }, [actions, toast, t, archiveBox, junkBox, trashBox, rights])
+  }, [actions, toast, t, archiveBox, junkBox, inboxBox, trashBox, rights])
 }

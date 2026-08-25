@@ -20,8 +20,11 @@
  *  4. Prune threads whose members are all gone.
  *  5. Top up the pinned folders (bounded, and it stops at the low watermark).
  *
- * It NEVER throws: a failing chunk stops that stage and is retried next pass, so a pass interrupted by
- * a quota abort still commits the bytes it already freed.
+ * A failing WRITE never throws: a failing chunk stops that stage and is retried next pass, so a pass
+ * interrupted by a quota abort still commits the bytes it already freed. The GATHER steps are a
+ * different matter and this function deliberately does NOT swallow them — see the note above
+ * `runMaintenance` for why, and for the caller's obligation. This line used to read "It NEVER
+ * throws", which the note thirty lines down already contradicted (B27).
  */
 
 import type { Id } from '@waxwing/jmap'
