@@ -12,11 +12,23 @@
  * tell JavaScript what it hid. So the width is measured here and the split is made once, in one
  * place, with the menu built from the same array the bar renders.
  *
- * WHAT IS MEASURED, and why it is not a table of breakpoints. The unit is the rendered width of the
- * overflow trigger, read off the DOM rather than computed from tokens: it is a sibling of every
- * other control in the bar and carries the same `--waxwing-control-min`, so it already reflects
- * whichever of 34/44px this pointer type gets, at this font size, under this theme — three things a
- * hardcoded number would each have to track separately.
+ * WHAT IS MEASURED, and why it is not a table of breakpoints. The unit is the rendered width of ONE
+ * control, read off the DOM rather than computed from tokens: every control in this row carries the
+ * same `--waxwing-control-min`, so one of them already reflects whichever of 34/44px this pointer
+ * type gets, at this font size, under this theme — three things a hardcoded number would each have
+ * to track separately.
+ *
+ * The trigger is preferred as that one control, and ANY button in the bar is the fallback. That
+ * fallback is not belt-and-braces: measuring the trigger ALONE has a fixed point that traps the
+ * hook (B10 surfaced it, by removing the accident that used to hide it). When nothing is hidden the
+ * trigger is not rendered, so `unit` is 0, so the hook answers "everything fits" — which keeps the
+ * trigger unrendered. A bar that GAINS actions after mount can therefore never discover that they
+ * no longer fit, and draws them outside its own box, which is the exact defect this hook exists to
+ * prevent. It used to be masked by luck: the bulk bar's role mailboxes each arrived on their own
+ * liveQuery tick, so the action count grew past a `visible` that had been initialised smaller, the
+ * trigger appeared for one commit, and the hook got its measurement. One shared subscription
+ * (ADR-035) delivers them in a single step, and the bar mounts with its final count — no
+ * intermediate commit, no trigger, no unit.
  *
  * DEGRADES TO "SHOW EVERYTHING". Without layout there is nothing to measure: jsdom reports every
  * width as 0, and so does a bar that has not been laid out yet. Both answer `count`, which is what
@@ -42,7 +54,10 @@ export function useActionOverflow(ref: RefObject<HTMLElement | null>, count: num
     const measure = (): void => {
       const width = bar.clientWidth
       const trigger = bar.querySelector<HTMLElement>(`[${OVERFLOW_TRIGGER_ATTR}] button`)
-      const unit = trigger?.offsetWidth ?? 0
+      // Any button will do as the unit; see the note above for why the trigger cannot be the only
+      // candidate. `?? 0` still stands for "no layout at all", which is the degrade-to-everything
+      // case one line down.
+      const unit = (trigger ?? bar.querySelector<HTMLElement>('button'))?.offsetWidth ?? 0
       if (width === 0 || unit === 0) {
         setVisible(count)
         return

@@ -25,6 +25,7 @@ import {
   type QueryCacheRow,
   type ReplicaDb,
 } from './db'
+import { useSharedMailboxes } from './mailbox-store'
 import {
   addressBooksForAccount,
   calendarEventsByIds,
@@ -37,8 +38,6 @@ import {
   getContactQueryCache,
   getFileTreeState,
   identitiesForAccount,
-  mailboxByRole,
-  mailboxesForAccount,
 } from './repo'
 
 export interface ReplicaContextValue {
@@ -136,9 +135,16 @@ export function useReplicaQuery<T>(
   return useLiveQuery(() => querier(context), [context.db, context.accountId, ...extraDeps])
 }
 
-/** The folder tree source: all mailboxes for the account, ordered (M1.5). */
+/**
+ * The folder tree source: all mailboxes for the account, ordered (M1.5).
+ *
+ * Reads THE shared subscription (B10, `mailbox-store.ts`), not a `liveQuery` of its own. Every
+ * mailbox consumer in the app funnels through here or through {@link useMailboxByRole} below, so
+ * there is exactly one query per account and no second subscription that can be a tick behind.
+ */
 export function useMailboxes(): MailboxRow[] | undefined {
-  return useReplicaQuery(({ db, accountId }) => mailboxesForAccount(db, accountId))
+  const { db, accountId } = useReplica()
+  return useSharedMailboxes(db, accountId)
 }
 
 /**
@@ -148,7 +154,7 @@ export function useMailboxes(): MailboxRow[] | undefined {
  */
 export function useMailboxesFor(accountId: Id): MailboxRow[] | undefined {
   const { db } = useReplica()
-  return useLiveQuery(() => mailboxesForAccount(db, accountId), [db, accountId])
+  return useSharedMailboxes(db, accountId)
 }
 
 /** The From-selector source: all send identities for the account (M2.5). */
@@ -161,9 +167,21 @@ export function useMailbox(id: Id): MailboxRow | undefined {
   return useReplicaQuery(({ db, accountId }) => db.mailboxes.get([accountId, id]), [id])
 }
 
-/** A role mailbox (`inbox`, …) — e.g. the default folder to open. */
+/**
+ * A role mailbox (`inbox`, …) — e.g. the default folder to open.
+ *
+ * DERIVED from the shared list rather than queried on its own (B10). That is the whole point: this
+ * hook was the most-repeated independent subscription in the app (five in `useTriage` alone), and
+ * five liveQueries resolving on five ticks is exactly how `e` came to dispatch a move into a
+ * mailbox another component already knew was gone.
+ *
+ * The lookup is `find` over the ordered list where it used to be `.first()` on the `[accountId+role]`
+ * index. For any well-formed account those pick the same row: RFC 8621 §2 gives a role to at most
+ * one mailbox per account. They can differ only where an account carries the SAME role twice, which
+ * is malformed — and then the tree order this one follows is at least the order the reader sees.
+ */
 export function useMailboxByRole(role: string): MailboxRow | undefined {
-  return useReplicaQuery(({ db, accountId }) => mailboxByRole(db, accountId, role), [role])
+  return useMailboxes()?.find((box) => box.role === role)
 }
 
 /** The cached window for a watched query key (M1.6 list; key from `canonicalQueryKey`). */
@@ -382,12 +400,23 @@ export function useMailboxOptional(id: Id | undefined): MailboxRow | undefined {
  */
 export function useMailboxByRoleOptional(role: string): MailboxRow | undefined {
   const context = useReplicaOptional()
-  return useLiveQuery<MailboxRow | undefined>(
-    async () =>
-      context === null ? undefined : await mailboxByRole(context.db, context.accountId, role),
-    [context?.db, context?.accountId, role],
-  )
+  return useMailboxesOptional(context)?.find((box) => box.role === role)
 }
+
+/**
+ * The shared list for a context that may be `null`. Hooks cannot be called conditionally, so the
+ * `null` case subscribes to a PLACEHOLDER account id on the shared database — no such account has
+ * rows, so the query resolves empty and the caller maps it to `undefined`. The alternative (a second
+ * hook path for the outside-provider case) would put back the independent subscription this file
+ * exists to remove.
+ */
+function useMailboxesOptional(context: ReplicaContextValue | null): MailboxRow[] | undefined {
+  const rows = useSharedMailboxes(context?.db ?? getReplica(), context?.accountId ?? NO_ACCOUNT)
+  return context === null ? undefined : rows
+}
+
+/** An account id no server can issue, for the outside-a-provider case above. */
+const NO_ACCOUNT = '\u0000no-account'
 
 /**
  * Like {@link useLocalPref}, but yields `undefined` OUTSIDE a `ReplicaProvider` instead of throwing
