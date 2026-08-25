@@ -82,16 +82,27 @@ try {
     'install',
     'chromium',
   ])
-  // WebKit too, since B11. Two Safari-only defects shipped that passed every Chromium suite here
-  // (ADR-029), and the suite that would have caught them was reachable only by typing its script
-  // by hand — which this file's own header calls "not covered". One more browser download on a cold
-  // runner; nothing on a warm one.
+  /*
+   * WebKit too, since B11. Two Safari-only defects shipped that passed every Chromium suite here
+   * (ADR-029), and the suite that would have caught them was reachable only by typing its script by
+   * hand — which this file's own header calls "not covered". One more browser download on a cold
+   * runner; nothing on a warm one.
+   *
+   * `--with-deps` ON CI ONLY, and the asymmetry is deliberate rather than lazy. Chromium runs on a
+   * bare GitHub runner; WebKit does not — the first hosted run said so plainly ("Host system is
+   * missing dependencies to run browsers: libwoff2dec.so.1.0.2") and then failed all 32 tests in
+   * 60 ms each. `--with-deps` fixes that by running the platform's package manager, which is right
+   * on a disposable runner and wrong on a developer's machine: it wants sudo, and it installs system
+   * packages nobody asked it to. Locally the browser either runs or Playwright says which library
+   * is missing, which is a better answer than a silent apt-get.
+   */
   run('install pinned webkit', [
     '--filter',
     '@waxwing/e2e',
     'exec',
     'playwright',
     'install',
+    ...(process.env.CI ? ['--with-deps'] : []),
     'webkit',
   ])
   run('placeholder e2e suite', ['e2e'])

@@ -305,11 +305,26 @@ function recordExemptions(stops: readonly Stop[]): void {
   }
 }
 
-async function sweep(page: Page, screen: string): Promise<void> {
+/**
+ * @param mustReach - a control this screen certainly has, by accessible name.
+ */
+async function sweep(page: Page, screen: string, mustReach: string): Promise<void> {
   const stops = await tabStops(page)
-  // B22's lesson, and the one that matters most in a sweep: a Tab walk that finds nothing makes
-  // every assertion below vacuously true.
-  expect(stops.length, `no tab stops found on ${screen} — the sweep is broken`).toBeGreaterThan(4)
+  /*
+   * B22's lesson, and the one that matters most in a sweep: a Tab walk that finds nothing makes
+   * every assertion below vacuously true.
+   *
+   * By NAME, not by count. The first version demanded more than four stops, which is a number
+   * measured on one machine: the reading screen has five here and four on the hosted runner, and
+   * the guard failed for being tight rather than for anything being wrong. A count cannot tell "the
+   * sweep never reached the surface under test" from "this surface has one control fewer than the
+   * developer's did" — naming a control that is certainly there can, and it says which surface it
+   * means.
+   */
+  expect(
+    stops.map((stop) => stop.name),
+    `the Tab walk on ${screen} never reached "${mustReach}" — the sweep is not measuring this screen`,
+  ).toContain(mustReach)
   recordExemptions(stops)
   const ratios = stops.map(indicatorContrast).filter((r): r is number => r !== null)
   console.log(
@@ -328,7 +343,7 @@ test.beforeEach(async () => {
 test.describe('B6 focus is visible, and visible enough', () => {
   test('the message list and its chrome', async ({ page }) => {
     await login(page)
-    await sweep(page, 'list')
+    await sweep(page, 'list', 'Search')
   })
 
   test('the reading pane and its action bar', async ({ page }) => {
@@ -337,7 +352,7 @@ test.describe('B6 focus is visible, and visible enough', () => {
     await expect(page.getByRole('button', { name: 'Reply', exact: true })).toBeVisible({
       timeout: SYNC_BUDGET_MS,
     })
-    await sweep(page, 'reading')
+    await sweep(page, 'reading', 'Reply')
   })
 
   test('the composer', async ({ page }) => {
@@ -346,7 +361,7 @@ test.describe('B6 focus is visible, and visible enough', () => {
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible({
       timeout: SYNC_BUDGET_MS,
     })
-    await sweep(page, 'composer')
+    await sweep(page, 'composer', 'Message body')
   })
 
   test('settings', async ({ page }) => {
@@ -360,7 +375,7 @@ test.describe('B6 focus is visible, and visible enough', () => {
     // The richest panel is the one worth walking, and it is the one `target-size.spec.ts` picks for
     // the same reason.
     await openSettingsSection(page, 'Offline & storage')
-    await sweep(page, 'settings')
+    await sweep(page, 'settings', 'Offline & storage')
   })
 
   test('the dark theme, where a retuned token is likeliest to disappear', async ({ page }) => {
@@ -369,7 +384,7 @@ test.describe('B6 focus is visible, and visible enough', () => {
     await login(page)
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    await sweep(page, 'dark')
+    await sweep(page, 'dark', 'Search')
   })
 
   test('carries no stale focus exemptions', async ({ page }) => {
@@ -377,7 +392,7 @@ test.describe('B6 focus is visible, and visible enough', () => {
     // licence nobody is using, and it would silently pre-approve the next defect on that control.
     // Runs last, over the screens above — so it needs one sweep of its own to have a full picture.
     await login(page)
-    await sweep(page, 'list (staleness)')
+    await sweep(page, 'list (staleness)', 'Search')
     const declared = [...EXEMPT.keys()]
     expect(
       declared.filter((name) => !used.has(name)),
