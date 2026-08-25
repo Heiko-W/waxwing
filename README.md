@@ -101,13 +101,58 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.19.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.20.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 137 unit tests, 18
-integration tests against a live Stalwart, and 205 end-to-end tests across the six Playwright suites
-the gate runs — plus a WebKit smoke suite of 4 that runs beside it. Performance and accessibility are
-measured rather than asserted — the numbers are in the
+Every planned work package is done and the release gate is signed off: 5 191 unit tests, 20
+integration tests against a live Stalwart, and 246 end-to-end tests across the **seven** Playwright
+suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
+see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
+
+**v0.20.0 is the §13 finding list, worked to the end** — ten `Bxx` findings fixed, three closed as
+accepted trade-offs, one left open on the owner's decision.
+
+Three of them were not tidying:
+
+- **A folder could be emptied and never recover (B17).** Filed UNPROVEN for a month, reproduced
+  against the live fixture: Stalwart honours `upToId` in deciding *which* changes to report and
+  numbers the additions against the whole result set, so an "unread first" window of 50 over 120
+  messages answers `removed: 50, added: 50` with every addition at index 70–119. The client dropped
+  all fifty and wrote the window back **empty**, with a carried-over total and a *live* query state —
+  and only a *voided* window is ever re-queried. The folder would have shown nothing, online,
+  indefinitely. An addition that cannot be placed now means "this delta cannot be applied", which is
+  what `cannotCalculateChanges` already means.
+- **Every mailbox consumer had its own subscription (B10, [ADR-035](docs/adr/035-one-mailbox-subscription-for-the-whole-app.md)).**
+  Twenty-nine of them, resolving on their own ticks. Demonstrated rather than argued: with the
+  reveal layer already re-rendered without Archive, `e` still dispatched a move *into* the mailbox
+  that had just been deleted. One shared subscription now — which also removed an accident another
+  component was quietly living on, and is the more interesting half of that story.
+- **The message body frame is a tab stop and nothing said so (B6).** Found by a new browser-side
+  focus sweep on its first run. Across the iframe boundary there is nothing to hang a CSS rule on:
+  with focus in the frame the `<iframe>` matches neither `:focus`, `:focus-visible` nor
+  `:focus-within` and fires no focus event, while the framed document reports `hasFocus()`.
+
+**Four security questions, answered by experiment rather than by argument (B25).** The app's CSP
+*does* bind inside the mail frame — the intersection of the two policies applies, which
+`csp.shipped.test.ts` has reasoned from for two milestones without anything ever measuring it. Five
+namespace-confusion payloads pasted through the real paste path leave nothing behind. And a JMAP
+navigation cannot reach the service worker under a `/mail/` mount, because scope decides that, not
+the denylist.
+
+**WebKit is in the gate now (B11).** It used to be four smoke tests run by hand; it runs the whole
+read suite — the sanitizer, the reading pane, the split pane, the message list — on the one engine
+whose disagreements have actually cost this project defects. One test is skipped there with the
+reason at the skip ([ADR-029](docs/adr/029-safari-cannot-intercept-clicks-in-a-sandboxed-frame.md)).
+
+**Three findings are closed as accepted rather than fixed**, each with the condition under which it
+would be re-opened: an inexact window retraction whose exact form needs a versioned undo payload
+(B14), a void gate that is deliberately not filter-aware because over-voiding costs a round trip and
+under-voiding costs a wrong list (B15), and a count patch that is not re-applied for an intent the
+server may already have processed, because a double-count never self-corrects (B18).
+
+**One stays open**: content in a push notification while the app is closed (B28) would move the
+access token, the `SecretStore` and the OAuth refresh into the service worker. Nothing of that is
+there today, and that is what NFR-SEC-02 promises. Post-V1, on the owner's decision.
 
 **v0.19.0 is Waxwing read against Apple's Human Interface Guidelines** — 39 findings for the
 desktop, the tablet and the phone, all of them worked off
