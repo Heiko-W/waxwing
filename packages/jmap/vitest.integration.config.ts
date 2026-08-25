@@ -22,5 +22,19 @@ export default defineConfig({
     // Network + a cold Stalwart container: give calls generous headroom.
     testTimeout: 30_000,
     hookTimeout: 60_000,
+    /*
+     * ONE FILE AT A TIME. These suites share a single live Stalwart, and vitest runs files in
+     * parallel by default — so their setups compete for the same server with no coordination at all.
+     *
+     * That was theoretical until B17's suite arrived: it seeds 120 messages to build a result set
+     * larger than the client's window, and on the hosted runner the sharing suite's `beforeAll`
+     * came back `TypeError: fetch failed` / `SocketError: other side closed` while it ran. Nine
+     * tests skipped, on a green local run — the difference being how much the machine can do at
+     * once, which is exactly the kind of thing a shared fixture must not depend on.
+     *
+     * Every Playwright config against this fixture already says `workers: 1` for the same reason.
+     * This is that decision, for the suites that talk to it without a browser.
+     */
+    fileParallelism: false,
   },
 })
