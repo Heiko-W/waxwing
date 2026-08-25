@@ -97,6 +97,7 @@ import {
   enqueueAction,
   type OutboxIntent,
   reapplyPendingCounts,
+  reapplyPendingMailboxes,
   replayOutbox,
   stateGuardType,
 } from './outbox'
@@ -1387,6 +1388,9 @@ export class SyncEngine {
             // Same hazard as in `runSyncPass` (gap B7): this refresh writes the server's ABSOLUTE
             // counts mid-replay, over mailboxes that unsent intents have already patched.
             await reapplyPendingCounts(this.db, this.accountId, writes)
+            // …and the folder ROWS themselves (B55): this refresh also writes the server's absolute
+            // mailbox LIST, so a folder an unsent intent created or deleted is reverted by it.
+            await reapplyPendingMailboxes(this.db, this.accountId)
           } else if (type === 'ContactCard') {
             // A guarded contact update/delete lost the `stateMismatch` race: re-pull the ContactCard
             // delta so the re-execute carries the fresh state (M4.2). No badge hazard — cards move no
@@ -1544,6 +1548,17 @@ export class SyncEngine {
     // `status === 'pending'`, since several paths return an already-dispatched row to `pending`.
     // See {@link reapplyPendingCounts} and `unsentOutbox`.
     await reapplyPendingCounts(this.db, this.accountId, mailboxWrites)
+    /*
+     * And the folder ROWS (B55). The counts were only half of it: `syncMailboxes` writes the
+     * server's ABSOLUTE list, so a folder created or deleted optimistically while its intent waits
+     * in the outbox is reverted by any pass that reports the mailbox list — the created one
+     * vanishes, the deleted one comes back and STAYS, because the replay that would make the server
+     * agree runs after this block and nothing re-reports the mailbox afterwards.
+     *
+     * This is the gap the reverted concurrency experiment ran into (see the block above), and
+     * closing it is what that experiment was blocked on.
+     */
+    await reapplyPendingMailboxes(this.db, this.accountId)
     if (!this.identitiesSynced) {
       await syncIdentities(this.port, this.db, this.accountId, this.clock)
       this.identitiesSynced = true // only after success, so an offline first pass retries

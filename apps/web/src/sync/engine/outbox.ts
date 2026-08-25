@@ -1237,6 +1237,77 @@ export async function reapplyPendingCounts(
   })
 }
 
+/**
+ * Re-apply the STRUCTURAL effect of unsent mailbox intents, over a folder list a `syncMailboxes`
+ * pass has just rewritten with the server's ABSOLUTE one (B55).
+ *
+ * ## The gap this closes
+ *
+ * {@link reapplyPendingCounts} beside it covers the count FIELDS. Nothing covered the rows
+ * themselves — a folder created or deleted through the UI is applied optimistically while its
+ * intent waits in the outbox, and a delta pass that reports the mailbox list writes the server's
+ * version over it: the created folder disappears, the deleted one COMES BACK. It comes back and
+ * stays, because the replay that would make the server agree runs after the pass, and once the
+ * intent lands nothing re-reports the mailbox again.
+ *
+ * That is not theoretical. It is the failure the M5-era concurrency experiment produced against the
+ * live fixture — "a folder deleted through the UI came back, and stayed" — which is why that
+ * experiment was reverted, and why `engine.ts` records the concurrency as BLOCKED on this function
+ * existing rather than as rejected.
+ *
+ * ## The same three narrowings, for the same reasons
+ *
+ * {@link unsentOutbox}, not `pendingOutbox`: only intents that have PROVABLY never been dispatched.
+ * An intent the server may already have processed must not be re-applied — for a create/destroy the
+ * server's list is then the truth, and re-applying would resurrect a folder the server has actually
+ * deleted (or hide one it has actually created) until something changes the mailbox again.
+ *
+ * Unlike the counts, there is no per-field narrowing to make: `syncMailboxes` either reports a
+ * mailbox or it does not, and the re-apply is idempotent in both directions — putting a row that is
+ * already there, or deleting one that is already gone, is a no-op. That is why this needs no
+ * equivalent of `MailboxCountWrites`.
+ *
+ * ## What it deliberately does NOT do
+ *
+ * Rename and re-parent are left to the count-free path they already had: `patchMailboxes` assigns
+ * the server's absolute `name`/`parentId`, so an unsent rename does revert until it lands — the
+ * same accepted staleness B18 records for the badges, and self-correcting in the same way. Only
+ * EXISTENCE is restored here, because existence is the one that does not self-correct: a
+ * resurrected folder is a row the user deleted, sitting in their tree, indefinitely.
+ */
+export async function reapplyPendingMailboxes(db: ReplicaDb, accountId: Id): Promise<void> {
+  const rows = await unsentOutbox(db, accountId)
+  if (rows.length === 0) return
+  await db.transaction('rw', db.mailboxes, async () => {
+    for (const row of rows) {
+      const intent = row.payload as OutboxIntent
+      if (intent.kind === 'createMailbox') {
+        // Re-put the optimistic row only if the pass removed it. `get` first, so a row the server
+        // DOES know about (the intent landed between the pass and here) keeps the server's version
+        // — rights, counts and role included — rather than being flattened to the optimistic one.
+        if ((await db.mailboxes.get([accountId, intent.creationId])) !== undefined) continue
+        await db.mailboxes.put(
+          toMailboxRow(accountId, {
+            id: intent.creationId,
+            name: intent.props.name,
+            parentId: intent.props.parentId,
+            role: null,
+            sortOrder: intent.props.sortOrder ?? 0,
+            totalEmails: 0,
+            unreadEmails: 0,
+            totalThreads: 0,
+            unreadThreads: 0,
+            myRights: OPTIMISTIC_RIGHTS,
+            isSubscribed: true,
+          }),
+        )
+      } else if (intent.kind === 'deleteMailbox') {
+        await deleteMailbox(db, accountId, intent.id)
+      }
+    }
+  })
+}
+
 /** Re-derive one unsent row's count delta from its persisted undo and the CURRENT envelopes. */
 async function unsentCountDeltas(
   db: ReplicaDb,

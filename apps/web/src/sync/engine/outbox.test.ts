@@ -13,7 +13,13 @@ import {
 import { email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import { STUCK_AFTER_ATTEMPTS } from './backoff'
 import { reconcileQuery } from './delta'
-import { enqueueAction, type OutboxIntent, reapplyPendingCounts, replayOutbox } from './outbox'
+import {
+  enqueueAction,
+  type OutboxIntent,
+  reapplyPendingCounts,
+  reapplyPendingMailboxes,
+  replayOutbox,
+} from './outbox'
 import type { EngineClock, JmapPort, PortSetResult } from './types'
 
 let db: ReplicaDb
@@ -2556,6 +2562,106 @@ describe('outbox — the folder counts (M3.10, gap B7)', () => {
 
       expect(await db.emails.get([ACC, 'e2'])).toBeUndefined()
       expect(await counts('inbox')).toEqual({ total: 9, unread: 3 }) // +1, not +2
+    })
+  })
+
+  /**
+   * `reapplyPendingMailboxes` — the same durability argument, for the folder ROWS (B55).
+   *
+   * The counts were only half of the hazard. `syncMailboxes` writes the server's ABSOLUTE mailbox
+   * LIST, so a folder created or deleted optimistically while its intent waits in the outbox is
+   * reverted by any pass that reports the list: the created one vanishes, and the deleted one comes
+   * back and STAYS — the replay that would make the server agree runs after the pass, and nothing
+   * re-reports the mailbox afterwards. That exact failure is what the reverted concurrency
+   * experiment produced against the live fixture.
+   */
+  describe('re-applying a folder create/delete after a sync pass', () => {
+    it('deletes again a folder the pass resurrected', async () => {
+      await seedBoxes()
+      await enqueueAction(db, ACC, { kind: 'deleteMailbox', id: 'work' }, { id: 'i1', now: 1 })
+      expect(await db.mailboxes.get([ACC, 'work'])).toBeUndefined() // optimistically gone
+
+      // The pass hands back the server's list, which still has it.
+      await putMailboxes(db, ACC, [mailbox('work', { totalEmails: 5, unreadEmails: 5 })])
+      expect(await db.mailboxes.get([ACC, 'work'])).toBeDefined()
+
+      await reapplyPendingMailboxes(db, ACC)
+      expect(await db.mailboxes.get([ACC, 'work'])).toBeUndefined()
+    })
+
+    it('puts back a folder the pass removed', async () => {
+      await seedBoxes()
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'createMailbox', creationId: 'new1', props: { name: 'Ideas', parentId: null } },
+        { id: 'i1', now: 1 },
+      )
+      expect(await db.mailboxes.get([ACC, 'new1'])).toBeDefined() // optimistically there
+
+      // A pass that reports the whole list: the server has never heard of it.
+      await db.mailboxes.delete([ACC, 'new1'])
+
+      await reapplyPendingMailboxes(db, ACC)
+      const row = await db.mailboxes.get([ACC, 'new1'])
+      expect(row?.name).toBe('Ideas')
+    })
+
+    it('leaves the SERVER’s version alone once the create has landed', async () => {
+      // The intent is still unsent by this row's own bookkeeping, but the mailbox exists — the
+      // server knows it. Overwriting it with the optimistic row would flatten the real rights,
+      // counts and role back to the placeholder ones.
+      await seedBoxes()
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'createMailbox', creationId: 'new1', props: { name: 'Ideas', parentId: null } },
+        { id: 'i1', now: 1 },
+      )
+      await putMailboxes(db, ACC, [
+        mailbox('new1', { name: 'Ideas', totalEmails: 3, unreadEmails: 1 }),
+      ])
+
+      await reapplyPendingMailboxes(db, ACC)
+      expect((await db.mailboxes.get([ACC, 'new1']))?.totalEmails).toBe(3)
+    })
+
+    /**
+     * THE SAME `inflight` EXCLUSION, and here it is sharper than for the counts: an intent whose
+     * request is already out may have been PROCESSED, and then the server's list is the truth.
+     * Re-applying a delete on top of it would resurrect nothing, but re-applying a CREATE would put
+     * back a folder the server may have refused — and re-applying a DELETE after the server has
+     * already created the folder for some other client is a row the user never asked to remove.
+     */
+    it('never re-applies an INFLIGHT intent', async () => {
+      await seedBoxes()
+      await enqueueAction(db, ACC, { kind: 'deleteMailbox', id: 'work' }, { id: 'i1', now: 1 })
+      await db.outbox.update([ACC, 'i1'], { status: 'inflight' })
+      await putMailboxes(db, ACC, [mailbox('work', { totalEmails: 5, unreadEmails: 5 })])
+
+      await reapplyPendingMailboxes(db, ACC)
+      expect(await db.mailboxes.get([ACC, 'work']), 'the server’s word must stand').toBeDefined()
+    })
+
+    it('leaves a rename alone — that one self-corrects', async () => {
+      // Deliberately NOT re-applied: `patchMailboxes` assigns the server's absolute `name`, so an
+      // unsent rename reverts until the intent lands — the same accepted staleness B18 records for
+      // the badges, and self-correcting in the same way. Only EXISTENCE is restored, because that
+      // is the one that does not self-correct: a resurrected folder sits in the tree indefinitely.
+      //
+      // Asserted rather than asserted-in-prose, so widening this function later is a decision
+      // somebody makes on purpose.
+      await seedBoxes()
+      await enqueueAction(
+        db,
+        ACC,
+        { kind: 'renameMailbox', id: 'work', name: 'Projects' },
+        { id: 'i1', now: 1 },
+      )
+      await putMailboxes(db, ACC, [mailbox('work', { name: 'Work' })]) // the pass reverts it
+
+      await reapplyPendingMailboxes(db, ACC)
+      expect((await db.mailboxes.get([ACC, 'work']))?.name).toBe('Work')
     })
   })
 
