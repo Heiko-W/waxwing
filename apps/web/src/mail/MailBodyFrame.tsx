@@ -101,5 +101,42 @@ export function MailBodyFrame({
     return () => controller.destroy()
   }, [srcdoc, onOpenLink, onGateLink])
 
+  /*
+   * Does the frame have the keyboard focus? (B6, WCAG 2.4.7.)
+   *
+   * The frame is a TAB STOP and NOTHING indicated it, because across the iframe boundary there is
+   * nothing to hang a rule on. Measured in Chromium against the live fixture, with focus on the
+   * frame: the `<iframe>` element matches neither `:focus`, `:focus-visible` nor `:focus-within`,
+   * and fires no focus event — while `document.activeElement` IS the iframe and
+   * `contentDocument.hasFocus()` is true. A rule inside the framed document does not help either:
+   * its `activeElement` is the default `<body>`, which is not a focused element, so
+   * `html:focus-within` does not match there.
+   *
+   * What DOES happen is that the host document loses focus. `window` blur + "the last focused thing
+   * here was the frame" is therefore the signal, and it is the standard way this is detected. The
+   * `focusin` listener is the other half: it clears the flag the moment focus lands anywhere in this
+   * document again, so a ring cannot outlive the visit.
+   *
+   * A tab switch also blurs the window, so an unattended tab can leave the ring drawn — the browser
+   * returns focus into the frame on the way back, which is the state the ring describes anyway.
+   */
+  useEffect(() => {
+    const mark = (focused: boolean): void => {
+      // The ATTRIBUTE directly, not React state, and that is load-bearing rather than a
+      // micro-optimisation: a state update is scheduled, and the ring has to be on screen for the
+      // paint that follows the keystroke. React does not manage this attribute, so nothing it
+      // re-renders can wipe it.
+      iframeRef.current?.toggleAttribute('data-focused', focused)
+    }
+    const onBlur = (): void => mark(document.activeElement === iframeRef.current)
+    const onFocusIn = (): void => mark(false)
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('focusin', onFocusIn)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('focusin', onFocusIn)
+    }
+  }, [])
+
   return <iframe ref={iframeRef} title={title} aria-label={title} className={styles.frame} />
 }

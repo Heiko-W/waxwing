@@ -426,6 +426,25 @@
 }
 
 /*
+ * The body frame is a TAB STOP, and its focus ring is NOT here (B6, WCAG 2.4.7).
+ *
+ * Measured in Chromium against the live fixture: tabbing to the frame moves focus into the FRAMED
+ * document — `contentDocument.hasFocus()` is true — while in this document the `<iframe>` element
+ * matches neither `:focus`, `:focus-visible` nor `:focus-within`, and fires no focus event. There
+ * is no hook here to hang a rule on, and none inside the frame either — its `activeElement` is the
+ * default `<body>`, which is not a focused element, so `html:focus-within` does not match there.
+ * `MailBodyFrame` detects the state instead (window blur + "the frame was the last thing focused
+ * here") and sets `data-focused`; the long version of the measurement is there.
+ *
+ * Inset, because the frame is as wide as its column and an outward ring would be clipped on both
+ * sides by the pane's own overflow — a focus indicator visible only top and bottom.
+ */
+.frame[data-focused] {
+  outline: var(--waxwing-focus-width) solid var(--waxwing-focus-ring);
+  outline-offset: -2px;
+}
+
+/*
  * The same height the frame will take (`.frame`'s 8rem minimum), so the body does not jump when it
  * arrives. Opening a message used to step through THREE different heights: the conversation
  * skeleton (140px), then this box with a centred spinner (whatever 32px of padding made it), then
