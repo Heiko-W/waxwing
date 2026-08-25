@@ -356,11 +356,42 @@ export async function reconcileQuery(
 
   const removed = new Set(changes.removed)
   const ids = row.ids.filter((id) => !removed.has(id))
-  // `added` is index-ascending (RFC 8620 §5.6): splice each into place in order. Defensively drop
-  // any item whose index lands past the current window (a server that ignored upToId) rather than
-  // letting splice append it at the wrong position.
-  for (const item of changes.added) {
-    if (item.index <= ids.length) ids.splice(item.index, 0, item.id)
+  /*
+   * `added` is index-ascending (RFC 8620 §5.6): splice each into place in order.
+   *
+   * An item whose index lands past the current window cannot be placed — the position is a fact
+   * about a result set larger than what we hold. Dropping it and carrying on is what this used to
+   * do, and B17 proved against the live fixture where that ends: with an "unread first" window of
+   * 50 over 120 messages, marking the head page read out of band answers `removed: 50, added: 50`
+   * with every add at index 70..119. All fifty are dropped, the row is written EMPTY with a
+   * carried-over `total` of 120 — and with a LIVE `queryState`, so nothing voids it. `fullRequery`
+   * only runs for a voided window; the next pass computes from `newQueryState`, finds nothing
+   * changed, and the folder stays empty while online, indefinitely.
+   *
+   * (Whether the server is wrong to number adds against the whole result set while honouring
+   * `upToId` is a reading of §5.6 this client does not get to settle. What it can do is not corrupt
+   * its own window over the disagreement.)
+   *
+   * So an unplaceable add is treated as what it is — "this delta cannot be applied faithfully" —
+   * and the window is re-queried, exactly as `cannotCalculateChanges` already is. Over-voiding
+   * costs one round trip; under-voiding costs a folder that shows nothing and never recovers.
+   */
+  const unplaceable = changes.added.filter((item) => item.index > ids.length)
+  if (unplaceable.length > 0) {
+    await fullRequery(port, db, accountId, queryKey, spec, clock, windowLimit)
+    return
+  }
+  for (const item of changes.added) ids.splice(item.index, 0, item.id)
+
+  /*
+   * The backstop, for a producer nobody has enumerated: a window that ends up EMPTY while its total
+   * says otherwise is the unrecoverable shape, whatever produced it. B9's guard renders that state
+   * honestly (no confident "no results"); it does not repair it, and repair is only possible here,
+   * where we still know both halves. Cheap: it can only fire on a delta that removed everything.
+   */
+  if (ids.length === 0 && (changes.total ?? row.total ?? 0) > 0) {
+    await fullRequery(port, db, accountId, queryKey, spec, clock, windowLimit)
+    return
   }
 
   await hydrateMissing(

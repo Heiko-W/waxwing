@@ -731,44 +731,150 @@ describe('reconcileContactQuery', () => {
 })
 
 describe('reconcileQuery — windowed delta (M1.3 review)', () => {
-  it('passes the window upToId and clamps beyond-window adds', async () => {
+  async function seedWindow(ids: string[], total: number): Promise<void> {
     await putQueryCache(db, {
       accountId: ACC,
       key: 'k',
-      ids: ['i0', 'i1', 'i2'],
+      ids,
       queryState: 'q0',
-      total: 100,
-      upToId: 'i2',
+      total,
+      upToId: ids[ids.length - 1] ?? null,
       filter: null,
       sort: null,
       collapseThreads: false,
       lastUsedAt: 1,
     })
+  }
+
+  const SPEC = { filter: null, sort: null, collapseThreads: false }
+
+  it('passes the window upToId', async () => {
+    await seedWindow(['i0', 'i1', 'i2'], 100)
     let seenUpToId: unknown = 'MISSING'
     const port = fakePort({
       queryEmailChanges: async (spec): Promise<QueryChangesResult> => {
         seenUpToId = (spec as { upToId?: unknown }).upToId
-        return {
-          oldQueryState: 'q0',
-          newQueryState: 'q1',
-          removed: [],
-          added: [{ id: 'far', index: 99 }],
-        }
+        return { oldQueryState: 'q0', newQueryState: 'q1', removed: [], added: [] }
       },
     })
 
-    await reconcileQuery(
-      port,
-      db,
-      ACC,
-      'k',
-      { filter: null, sort: null, collapseThreads: false },
-      clock,
-    )
-
+    await reconcileQuery(port, db, ACC, 'k', SPEC, clock)
     expect(seenUpToId).toBe('i2')
+  })
+
+  /**
+   * B17, reproduced against the live fixture and fixed here.
+   *
+   * This used to assert the opposite — that a beyond-window add is dropped and the window kept —
+   * and that behaviour is what the integration experiment
+   * (`packages/jmap/test/integration/query-changes.integration.test.ts`) showed ends in an
+   * unrecoverable window: with an "unread first" window of 50 over 120 messages, marking the head
+   * page read out of band answers `removed: 50, added: 50` with EVERY add at index 70..119, so all
+   * fifty are dropped and the row is written empty with `total: 120` and a LIVE `queryState`.
+   * Nothing voids it, so nothing ever re-queries it, and the folder shows nothing while online.
+   *
+   * An add that cannot be placed means the delta cannot be applied faithfully. That is what
+   * `cannotCalculateChanges` means, and it now takes the same road.
+   */
+  it('re-queries rather than dropping an add it cannot place (B17)', async () => {
+    await seedWindow(['i0', 'i1', 'i2'], 100)
+    let requeried = false
+    const port = fakePort({
+      queryEmailChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'q0',
+        newQueryState: 'q1',
+        removed: [],
+        added: [{ id: 'far', index: 99 }],
+      }),
+      queryEmails: async (): Promise<QueryResult> => {
+        requeried = true
+        return { ids: ['fresh'], queryState: 'q2', canCalculateChanges: true, position: 0 }
+      },
+    })
+
+    await reconcileQuery(port, db, ACC, 'k', SPEC, clock)
+
+    expect(requeried, 'the unplaceable add was dropped instead of triggering a re-query').toBe(true)
     const row = await getQueryCache(db, ACC, 'k')
-    expect(row?.ids).toEqual(['i0', 'i1', 'i2'])
+    expect(row?.ids).toEqual(['fresh'])
+  })
+
+  it('applies an add that DOES fit, without re-querying', async () => {
+    // The positive control for the rule above: a normal delta must still be a delta. Without this,
+    // "always re-query" would pass the test above and throw the whole cheap path away.
+    await seedWindow(['i0', 'i1', 'i2'], 100)
+    let requeried = false
+    const port = fakePort({
+      queryEmailChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'q0',
+        newQueryState: 'q1',
+        removed: ['i1'],
+        added: [{ id: 'new', index: 1 }],
+      }),
+      queryEmails: async (): Promise<QueryResult> => {
+        requeried = true
+        return { ids: [], queryState: 'q2', canCalculateChanges: true, position: 0 }
+      },
+    })
+
+    await reconcileQuery(port, db, ACC, 'k', SPEC, clock)
+
+    expect(requeried).toBe(false)
+    const row = await getQueryCache(db, ACC, 'k')
+    expect(row?.ids).toEqual(['i0', 'new', 'i2'])
+    expect(row?.queryState).toBe('q1')
+  })
+
+  it('re-queries a window a delta emptied while the total says otherwise (B17 backstop)', async () => {
+    // The unrecoverable SHAPE, whatever produced it. Every enumerated producer voids the window;
+    // this one catches an unenumerated one, and it can only fire on a delta that removed everything.
+    await seedWindow(['i0', 'i1'], 100)
+    let requeried = false
+    const port = fakePort({
+      queryEmailChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'q0',
+        newQueryState: 'q1',
+        removed: ['i0', 'i1'],
+        added: [],
+        total: 100,
+      }),
+      queryEmails: async (): Promise<QueryResult> => {
+        requeried = true
+        return { ids: ['fresh'], queryState: 'q2', canCalculateChanges: true, position: 0 }
+      },
+    })
+
+    await reconcileQuery(port, db, ACC, 'k', SPEC, clock)
+
+    expect(requeried).toBe(true)
+    expect((await getQueryCache(db, ACC, 'k'))?.ids).toEqual(['fresh'])
+  })
+
+  it('leaves a legitimately empty result empty — no re-query loop', async () => {
+    // The other side of the backstop: a folder that really has nothing in it reports `total: 0`,
+    // and re-querying that on every pass would be a permanent round trip for every empty folder.
+    await seedWindow(['i0'], 1)
+    let requeries = 0
+    const port = fakePort({
+      queryEmailChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'q0',
+        newQueryState: 'q1',
+        removed: ['i0'],
+        added: [],
+        total: 0,
+      }),
+      queryEmails: async (): Promise<QueryResult> => {
+        requeries += 1
+        return { ids: [], queryState: 'q2', canCalculateChanges: true, position: 0 }
+      },
+    })
+
+    await reconcileQuery(port, db, ACC, 'k', SPEC, clock)
+
+    expect(requeries).toBe(0)
+    const row = await getQueryCache(db, ACC, 'k')
+    expect(row?.ids).toEqual([])
+    expect(row?.total).toBe(0)
   })
 })
 
