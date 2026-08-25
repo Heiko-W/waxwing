@@ -48,10 +48,16 @@ export interface MailBodyFrameProps {
   readonly allowRemote: boolean
   readonly title: string
   /**
-   * An intercepted link click — only for links `onGateLink` kept. `info.text` carries what the
-   * reader saw, so the app can check the claim against the real host before opening (FR-RD-08 —
-   * `use-link-opener.ts`). Memoize it: it is an effect dependency, and a new identity remounts
-   * the frame.
+   * An intercepted link click — only for links `onGateLink` kept, so the app can check the claim
+   * against the real host before opening (FR-RD-08 — `use-link-opener.ts`).
+   *
+   * `info.text` is the CLASSIFICATION rendering, not the display string: since the gate started
+   * classifying over two renderings plus attribute labels, `text` is what the check runs on and
+   * `raw` is what the reader actually saw. This doc said "what the reader saw" of `text` for two
+   * milestones after that changed (B27) — a comment asserting a property the code no longer had,
+   * and the field a warning dialog should quote is `raw`.
+   *
+   * Memoize it: it is an effect dependency, and a new identity remounts the frame.
    */
   readonly onOpenLink: (href: string, info: MailLinkInfo) => void
   /**

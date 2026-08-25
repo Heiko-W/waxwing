@@ -15,8 +15,13 @@
  *    screen. The only path to `skipWaiting()` is the SKIP_WAITING message the page sends after the
  *    user clicked "Reload" (src/pwa/use-update-prompt.ts).
  *  - **No route that can match a JMAP path.** Unmatched requests get no `respondWith` at all and go
- *    straight to the network. Every route below is anchored to the app's own directory — see the
- *    invariant in sw-routes.ts, which also explains why an anchor rather than a denylist.
+ *    straight to the network. Every ASSET route below is anchored to the app's own directory — see
+ *    the invariant in sw-routes.ts, which also explains why an anchor rather than a denylist. The
+ *    one exception is the `NavigationRoute`, which by construction matches navigations rather than
+ *    a path prefix; it is safe here for a different reason — a JMAP request is never a navigation
+ *    (`request.mode === 'navigate'` is false for `fetch`), so it cannot reach that route at all.
+ *    Stated because the sentence used to say "every route" without qualification (B27), and the
+ *    next person to add a route would have taken the anchor as already guaranteed.
  *  - **No JMAP call, no access token, and no `SecretStore` access — including in the `push` handler.**
  *    This is the security property M4.0 was scoped around (ADR-017, owner decision D6a), not an
  *    accident of what has been built so far. The subscription is created with

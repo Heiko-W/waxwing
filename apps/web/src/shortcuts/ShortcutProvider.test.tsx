@@ -141,8 +141,9 @@ beforeEach(async () => {
   await putEmails(db, 'a', [
     email('e1', { subject: 'First', keywords: {} }),
     email('e2', { subject: 'Second', keywords: {} }),
-    // Already flagged — so `s` over it has to UNflag (it is a toggle, like the star button).
-    email('e3', { subject: 'Third', keywords: { $flagged: true } }),
+    // Already flagged AND already read — so `s` over it has to UNflag and `u` has to mark it
+    // unread, while over `e1`, which is neither, both have to set. Both are toggles (B16).
+    email('e3', { subject: 'Third', keywords: { $flagged: true, $seen: true } }),
   ])
   await putQueryCache(db, {
     accountId: 'a',
@@ -234,16 +235,20 @@ describe('ShortcutProvider — triage', () => {
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', to: 'trash' })
   })
 
-  it('u in the list marks the target unread', async () => {
+  // `u` marks the UNREAD `e1` read since B16 — it is a toggle now, like `s`. This test used to
+  // assert `value: false` here and was asserting the defect: the app had no keyboard route to
+  // "read" at all. The unread direction is covered by the block further down, over a row seeded
+  // read.
+  it('u in the list marks the target read', async () => {
     await mounted()
-    press('u')
-    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
-    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
-      kind: 'setKeywords',
-      keyword: '$seen',
-      value: false,
-      emailIds: ['e1'],
-    })
+    await pressUntil('u', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'setKeywords',
+        keyword: '$seen',
+        value: true,
+        emailIds: ['e1'],
+      }),
+    )
   })
 
   it('l opens the label picker over the target', async () => {
@@ -720,6 +725,48 @@ describe('ShortcutProvider — reading scope', () => {
  * input, ⌘Z is the BROWSER's undo, and taking it there to un-archive a message would be a worse
  * surprise than not having the chord at all.
  */
+/**
+ * `u` toggles (B16).
+ *
+ * It was an unconditional mark-UNread, which left the app with no keyboard route to "read" at all —
+ * every other triage verb the bulk bar exposes had one, and B9's comment claimed `s`/`u` parity
+ * while only half of it was true.
+ *
+ * The third test is the one worth having: an unhydrated target must not read as "already all
+ * read", because the safe direction is to SET. Marking a message read that already is costs
+ * nothing; marking one unread that the reader just read is a small lie about their own history.
+ */
+describe('ShortcutProvider — u marks read as well as unread', () => {
+  it('marks a READ target unread', async () => {
+    await mounted()
+    // Walk to `e3`, the one seeded `$seen: true`. `pressUntil`, like the `s` tests beside it: the
+    // predicate comes from a liveQuery over the new target and is not resolved on the first press.
+    press('j')
+    press('j')
+    await pressUntil('u', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        emailIds: ['e3'],
+        keyword: '$seen',
+        value: false,
+      }),
+    )
+  })
+
+  it('marks a MIXED selection read — it only unmarks when every target already is', async () => {
+    // Same rule as `s`, and the safe direction: marking a message read that already is costs
+    // nothing, while marking one unread that the reader just read is a small lie about their own
+    // history. An unhydrated row must therefore never count as "already read" either.
+    await mounted()
+    press('x') // e1, unread
+    press('j')
+    press('j')
+    press('x') // e3, read
+    await pressUntil('u', () =>
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ keyword: '$seen', value: true }),
+    )
+  })
+})
+
 describe('ShortcutProvider — undo takes the standard chord', () => {
   it('⌘Z undoes, like z', async () => {
     await mounted()

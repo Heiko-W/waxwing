@@ -358,7 +358,26 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
     // No hint: `shortcuts.unavailable.hint` points at the folder picker, and there is no picker that
     // grants a permission. A refusal with a way forward and one without must not read alike.
     unavailable: (context) => context.rights.reason('seen'),
-    run: (context) => context.triage.setSeen([...context.targetIds], false),
+    /*
+     * A TOGGLE since B16, matching `s` beside it and the bulk bar's own read button: mark read,
+     * unless every target already is — then mark unread.
+     *
+     * It used to be an unconditional `setSeen(ids, false)`, which left this app with no keyboard
+     * route to "read" at all. Every other triage verb the bar exposes had one; read did not, in the
+     * read direction. B9's comment even claimed `s`/`u` parity, and only half of it was true.
+     *
+     * `targetsSeenKnown` is not the same question as `!targetsAllSeen`, and conflating them is the
+     * mistake this comment exists to stop. Where the rows are not hydrated the answer is UNKNOWN,
+     * and the key falls back to what it always did — mark UNREAD. Marking something read that the
+     * reader has not read can make them miss it; marking something unread that they have read is
+     * noticed and undone in one keystroke. `s` may fold the two together because setting a flag
+     * twice is free; `$seen` may not.
+     */
+    run: (context) =>
+      context.triage.setSeen(
+        [...context.targetIds],
+        context.targetsSeenKnown ? !context.targetsAllSeen : false,
+      ),
   },
   {
     id: 'triage.flag',

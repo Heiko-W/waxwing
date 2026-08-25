@@ -1707,7 +1707,7 @@
         "archive": "Archive",
         "trash": "Move to Trash",
         "junk": "Mark as junk",
-        "unread": "Mark as unread",
+        "unread": "Mark as read or unread",
         "flag": "Flag or unflag",
         "label": "Apply labels",
         "move": "Move to folder",

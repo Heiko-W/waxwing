@@ -65,6 +65,14 @@ export interface ShortcutContext {
   readonly hasSelection: boolean
   /** True when EVERY target already carries `$flagged` — so `s` knows to unflag rather than flag. */
   readonly targetsAllFlagged: boolean
+  /** Whether every target already carries `$seen` — the toggle predicate for `u` (B16). */
+  readonly targetsAllSeen: boolean
+  /**
+   * Whether the read state of the targets is KNOWN (every row hydrated), as opposed to merely not
+   * all-seen. Kept apart from {@link targetsAllSeen} because the two directions of `$seen` do not
+   * cost the same: see the note beside them in `use-shortcut-context.ts`.
+   */
+  readonly targetsSeenKnown: boolean
   /**
    * What the acting account permits on {@link ShortcutContext.targetIds} (B34).
    *

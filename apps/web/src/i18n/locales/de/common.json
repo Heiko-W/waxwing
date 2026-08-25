@@ -1707,7 +1707,7 @@
         "archive": "Archivieren",
         "trash": "In den Papierkorb",
         "junk": "Als Spam markieren",
-        "unread": "Als ungelesen markieren",
+        "unread": "Als gelesen oder ungelesen markieren",
         "flag": "Markierung setzen oder entfernen",
         "label": "Labels anwenden",
         "move": "In Ordner verschieben",
