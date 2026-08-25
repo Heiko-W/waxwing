@@ -190,10 +190,28 @@ test.describe('B25 (2) — SVG and MathML in the composer’s sanitizer', () => 
     /**
      * The POSITIVE CONTROL, and it is not optional. A synthetic `paste` event that the editor
      * ignores leaves the body empty, and then every assertion below passes for the wrong reason —
-     * "nothing executed" because nothing arrived. Benign markup is pasted through the identical
-     * path first, and asserted to LAND, so the negative results afterwards mean something.
+     * "nothing executed" because nothing arrived. Benign markup goes through the identical path
+     * first and must LAND, so the negative results afterwards mean something.
+     *
+     * RETRIED, because a paste is an EVENT and an event that arrives too early is simply gone.
+     * Squire is a lazy chunk: `RichTextEditor` renders its surface before the engine is mounted,
+     * and a `setHTML` in that window is documented as a no-op. Waiting on the assertion cannot help
+     * — there is nothing to re-deliver. On the hosted runner this cost the whole test one attempt,
+     * and it passed on the retry, which is the signature of a race rather than a defect. So the
+     * paste itself is what repeats, until the editor is there to take it.
+     *
+     * Repeats insert another copy once it starts working; `toContain` is indifferent to that, and
+     * the payload assertions below only ask about handlers and about this marker's survival.
      */
-    await paste(page, '<b>waxwing-control</b>')
+    await expect
+      .poll(
+        async () => {
+          await paste(page, '<b>waxwing-control</b>')
+          return await bodyHtml(page)
+        },
+        { timeout: 20_000, message: 'the paste path never reached the editor' },
+      )
+      .toContain('waxwing-control')
     await expect(body).toContainText('waxwing-control')
     const controlHtml = await bodyHtml(page)
     expect(controlHtml.toLowerCase(), 'the paste path did not reach the sanitizer').toContain('<b>')
