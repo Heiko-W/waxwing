@@ -16,12 +16,24 @@
  * labels render as its sibling in `MailScreen`, so the strip had to leave the trees to get below
  * them.
  *
- * ## …and why the bottom is not a demotion
+ * ## Two wrong turns after that, both measured rather than reasoned about
  *
- * `incoming.module.css` pins it to the bottom edge of the rail's scroll port (`position: sticky`),
- * so on a rail long enough to scroll it stays on screen rather than waiting to be found. A share
- * notice is news the reader has not asked for; putting it where it can be missed would be a worse
- * outcome than the reflow this fixes.
+ * "Below everything" was first built pinned — `position: sticky; inset-block-end: 0`, still inside
+ * the scroll column — so the end would not also mean "out of sight". That stops the pushing and
+ * replaces it with something worse: an opaque strip floating over the tree is a row nobody can
+ * click. The shared-account suite failed six tests with `<section aria-label="New shares"> subtree
+ * intercepts pointer events`, which is a reader unable to open Bob's Inbox, not a test artifact.
+ *
+ * It was then lifted OUT of the scroll column, as a footer beside `QuotaBar`. That overlays
+ * nothing — and takes its height out of the scroll VIEWPORT instead: two cards are 236 px of a
+ * 669 px rail, which leaves the trees a band short enough that a row can no longer be scrolled
+ * fully into it. Playwright then clicks the row's centre, which lands in the strip. The same
+ * interception, from a third direction.
+ *
+ * So it is the LAST BLOCK IN THE FLOW, and nothing else. There it costs the tree neither position
+ * nor viewport. The cost it does carry is that a long rail must be scrolled to reveal it — the
+ * trade the contacts and calendar rails already take with this same component, and the right one:
+ * a missed notice is a notice, a covered row is a folder that cannot be opened.
  */
 
 import { useCallback } from 'react'

@@ -8,16 +8,19 @@
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-2);
   /*
-   * At the FOOT of its rail, and pinned there (B61).
+   * THE LAST BLOCK of its rail's scroll column, and nothing more (B61).
    *
-   * The strip used to sit above the folder trees, inside the rail's one scroll container, so a card
-   * arriving on a sync pass pushed every row below it down — and a click meant for a folder's ⋯
-   * button landed on the folder. Nothing above an interactive row may grow, so it moved to the end;
-   * `inset-block-end: 0` is what stops the end from also meaning "out of sight" on a rail long
-   * enough to scroll. Opaque, because content now passes underneath it.
+   * No `position`, deliberately, and the absence is the decision. Pinned to the bottom edge
+   * (`sticky` + `inset-block-end: 0`) it floated over the tree, and an opaque strip over a treeitem
+   * is a row nobody can click — six shared-account tests, `<section aria-label="New shares">
+   * subtree intercepts pointer events`. Lifted out of the column as a rail FOOTER it overlays
+   * nothing but takes its height out of the scroll VIEWPORT, and two cards are 236 px of a 669 px
+   * rail: the trees were left a band too short to scroll a row fully into, which is the same
+   * interception from a third direction.
+   *
+   * In the flow and last, it costs the tree nothing at all. What it costs instead is that a long
+   * rail must be scrolled to reveal it — accepted, and the same trade all three rails now take.
    */
-  position: sticky;
-  inset-block-end: 0;
   background-color: var(--waxwing-surface-sunken);
 }
 
