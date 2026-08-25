@@ -52,6 +52,16 @@ export interface Triage {
    */
   archive(ids: Id[], from: Id | null): boolean
   junk(ids: Id[], from: Id | null): boolean
+  /**
+   * The inverse of {@link junk}: back to the Inbox (B24).
+   *
+   * Junk was the one triage verb with no way back, while flag and read both had one — the string
+   * for it ("Not junk") was translated in both locales and referenced nowhere, which is a missing
+   * FEATURE hiding as a stale key. It is not a general "move to Inbox": it is offered only from
+   * inside Junk, because that is the only place where "this is not junk" is a statement about the
+   * message rather than a folder pick, and it is the shape every mail client uses.
+   */
+  notJunk(ids: Id[], from: Id | null): boolean
   trash(ids: Id[], from: Id | null): boolean
   /**
    * Move to an ARBITRARY mailbox the user picked, naming it in the toast. `toName` is the label
@@ -73,6 +83,7 @@ export function useTriage(): Triage {
   const { toast } = useToast()
   const archiveBox = useMailboxByRole('archive')
   const junkBox = useMailboxByRole('junk')
+  const inboxBox = useMailboxByRole('inbox')
   const trashBox = useMailboxByRole('trash')
   // Defence in depth for B34. The surfaces gate their own controls — that is where a refusal can be
   // EXPLAINED — but this seam is what both a click and a chord funnel through, so a write that got
@@ -124,6 +135,7 @@ export function useTriage(): Triage {
     return {
       archive: (ids, from) => moveWithUndo(ids, from, archiveBox?.id, t('list.moved.archive')),
       junk: (ids, from) => moveWithUndo(ids, from, junkBox?.id, t('list.moved.junk')),
+      notJunk: (ids, from) => moveWithUndo(ids, from, inboxBox?.id, t('list.moved.notJunk')),
       trash: (ids, from) => moveWithUndo(ids, from, trashBox?.id, t('list.moved.trash')),
       moveTo: (ids, from, to, toName) =>
         moveWithUndo(ids, from, to, t('list.moved.folder', { folder: toName })),
@@ -139,5 +151,5 @@ export function useTriage(): Triage {
         actions.setFlagged(ids, flagged)
       },
     }
-  }, [actions, toast, t, archiveBox, junkBox, trashBox, rights])
+  }, [actions, toast, t, archiveBox, junkBox, inboxBox, trashBox, rights])
 }

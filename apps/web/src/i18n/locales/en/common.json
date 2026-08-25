@@ -44,14 +44,12 @@
       "label": "Email address or server",
       "placeholder": "you@example.com",
       "hint": "Enter your email address — {{product}} will try your email domain. If your mail server is at a different address, enter that instead.",
-      "submit": "Continue",
-      "discovering": "Finding your server…"
+      "submit": "Continue"
     },
     "error": {
       "discovery": "No mail server was found for {{domain}}.",
       "network": "Could not reach the server. Check your connection and try again.",
       "noAccount": "This server has no mail account for you.",
-      "config": "This deployment has no server configured to connect to.",
       "generic": "Something went wrong. Please try again.",
       "networkHost": "Could not reach {{host}}. If your mail server is at a different address, enter it above.",
       "oauthUnavailable": "This server does not offer secure sign-in. Use your email address and password below.",
@@ -88,7 +86,6 @@
     "back": "Use a different server",
     "error": {
       "invalidCredentials": "Wrong username or password.",
-      "oauthUnavailable": "This server requires secure (HTTPS) sign-in, which is not available here.",
       "generic": "Sign-in failed. Please try again.",
       "signOutIncomplete": "You are signed out, but the local copy of your mail could not be removed — another tab may still be open. Close every tab and sign out again.",
       "invalidCredentialsBasic": "Wrong username or password. If two-factor authentication is on for this account, only an app password works here."
@@ -994,7 +991,6 @@
     },
     "rename": {
       "title": "Rename folder",
-      "nameLabel": "Folder name",
       "submit": "Rename"
     },
     "delete": {
@@ -1093,9 +1089,10 @@
     "undo": "Undo",
     "moved": {
       "archive": "Moved to Archive",
+      "folder": "Moved to {{folder}}",
       "junk": "Moved to Junk",
-      "trash": "Moved to Trash",
-      "folder": "Moved to {{folder}}"
+      "notJunk": "Moved to Inbox",
+      "trash": "Moved to Trash"
     },
     "viewOptions": {
       "show": "Show view options",

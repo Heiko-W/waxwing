@@ -57,7 +57,7 @@ export const SKIP_WAITING = 'SKIP_WAITING'
  * the app offline. `manifest.json` is in this list for the same reason: name, colors and icons are
  * white-label surface.
  */
-export const DEPLOYMENT_FILES: readonly string[] = ['config.json', 'theme.css', 'manifest.json']
+export const DEPLOYMENT_FILES: readonly string[] = ['config.json', 'theme.css', MANIFEST_FILENAME]
 
 /** The same set, as globs for `globIgnores` (the whole `branding/` tree is excluded wholesale). */
 export const NEVER_PRECACHE: readonly string[] = [...DEPLOYMENT_FILES, 'branding/**']

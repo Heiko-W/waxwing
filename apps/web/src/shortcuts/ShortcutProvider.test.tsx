@@ -573,6 +573,7 @@ describe('ShortcutProvider — reading scope', () => {
       compose: vi.fn(),
       archive: vi.fn(),
       junk: vi.fn(),
+      notJunk: vi.fn(),
       trash: vi.fn(),
       toggleFlag: vi.fn(),
       markUnread: vi.fn(),

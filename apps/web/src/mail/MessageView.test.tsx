@@ -485,6 +485,34 @@ describe('MessageView', () => {
     expect(isOffered(menu, 'Archive')).toBe(false)
   })
 
+  /**
+   * The junk verb's missing inverse, on the reading pane (B24).
+   *
+   * The state this replaces was strictly worse than a missing button: inside Junk the toolbar spent
+   * a slot on a DISABLED "Mark as junk" — the one action that cannot mean anything in this folder —
+   * while the action a reader opens a junk message to take, "this is not junk", had no control at
+   * all. `list.actions.notJunk` was translated in both locales and referenced by no component.
+   */
+  it('offers Not junk while reading IN Junk, in place of the inert Mark as junk', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen(), 'junk')
+    const menu = await openOverflow(user)
+    await waitFor(() => expect(isOffered(menu, 'Not junk')).toBe(true))
+    expect(within(menu).queryByRole('menuitem', { name: /^Mark as junk/ })).toBeNull()
+  })
+
+  it('moves a Not-junk message back to the Inbox', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'body'))
+    const user = userEvent.setup()
+    renderView(seen(), 'junk')
+    await clickAction(user, 'Not junk')
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'move', emailIds: ['e1'], from: 'junk', to: 'inbox' }),
+      expect.anything(),
+    )
+  })
+
   it('marks unread by dispatching a $seen=false keyword change', async () => {
     await putEmailBody(db, textBodyRow('e1', 'body'))
     const user = userEvent.setup()

@@ -36,6 +36,8 @@ export interface ReadingHandlers {
    */
   archive(): boolean
   junk(): boolean
+  /** The inverse of {@link junk}: move back to the Inbox. Only reachable while reading IN Junk. */
+  notJunk(): boolean
   trash(): boolean
   toggleFlag(): void
   markUnread(): void

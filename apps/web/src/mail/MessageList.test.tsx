@@ -985,6 +985,61 @@ describe('MessageList', () => {
       }
     })
 
+    /**
+     * The junk verb's missing inverse (B24).
+     *
+     * Every other triage pair in this bar can be taken back by the same control that applied it —
+     * flag/unflag, read/unread, and (one folder over) Move to Trash/Delete. Junk could not: the
+     * bar offered "Mark as junk" everywhere it was a real move and NOTHING inside Junk, so the one
+     * folder whose contents are there BY A GUESS was the one folder with no button to correct the
+     * guess. `list.actions.notJunk` was translated in `en` and `de` and rendered by no component.
+     */
+    it('offers the way back OUT of Junk, where the way in would be inert', async () => {
+      const user = userEvent.setup()
+      await putMailboxes(db, 'a', [mailbox('junk', { role: 'junk' })])
+      await seedFolder('junk', 'Spam')
+      renderList('junk')
+      await selectOne(user, 'Spam')
+
+      expect(await screen.findByRole('button', { name: 'Not junk' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Mark as junk' })).toBeNull()
+    })
+
+    it('moves a Not-junk selection to the Inbox, undoably', async () => {
+      const user = userEvent.setup()
+      await putMailboxes(db, 'a', [mailbox('junk', { role: 'junk' })])
+      await seedFolder('junk', 'Spam')
+      renderList('junk')
+      await selectOne(user, 'Spam')
+
+      await user.click(await screen.findByRole('button', { name: 'Not junk' }))
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        kind: 'move',
+        emailIds: ['x1'],
+        from: 'junk',
+        to: 'inbox',
+      })
+      // Through the shared undo seam, like every other move this bar makes: a misfired
+      // rehabilitation is as recoverable as a misfired classification.
+      expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    })
+
+    it('offers the way IN everywhere else, and never both at once', async () => {
+      // The swap is per-FOLDER, so the inverse must not leak into the folders where "not junk" is
+      // not a statement anyone is making.
+      const user = userEvent.setup()
+      await putMailboxes(db, 'a', [mailbox('junk', { role: 'junk' })])
+      renderList()
+      await selectOne(user, 'First')
+
+      expect(await screen.findByRole('button', { name: 'Mark as junk' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Not junk' })).toBeNull()
+    })
+
+    it('names it in German too', () => {
+      expect(de.list.actions.notJunk).toBe('Kein Spam')
+    })
+
     it('names the permanence warning in German too, in the formal register', () => {
       expect(de.list.confirmDeleteBody_other).toMatch(/endgültig gelöscht/)
       expect(de.list.confirmDeleteBody_one).toMatch(/endgültig gelöscht/)
@@ -2287,6 +2342,35 @@ describe('the message row answers a secondary click', () => {
 
     fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
     expect(await screen.findByRole('menu')).toBeInTheDocument()
+  })
+
+  it('swaps the junk verb for its inverse inside Junk (B24)', async () => {
+    // Three surfaces reach the same row — this menu, the bulk bar, the reading pane — and all three
+    // now make the same swap. The entry it replaces was inert here: a move to the mailbox the
+    // message is already in, which `useTriage` refuses without a word.
+    await putMailboxes(db, 'a', [mailbox('junk', { role: 'junk' })])
+    await putEmails(db, 'a', [
+      email('x1', { subject: 'Spam', mailboxIds: { junk: true }, keywords: {} }),
+    ])
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: folderKey('junk'),
+      ids: ['x1'],
+      queryState: 'q',
+      total: 1,
+      upToId: 'x1',
+      filter: null,
+      sort: null,
+      collapseThreads: false,
+      lastUsedAt: 1,
+    })
+    renderList('junk')
+    const row = await screen.findByRole('row', { name: /Spam/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Not junk' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Mark as junk' })).toBeNull()
   })
 
   it('leaves a click that is not on a row to the browser', async () => {

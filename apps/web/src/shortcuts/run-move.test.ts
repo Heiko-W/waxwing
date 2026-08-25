@@ -45,6 +45,7 @@ function triageStub(dispatched: boolean): Triage {
   return {
     archive: vi.fn(() => dispatched),
     junk: vi.fn(() => dispatched),
+    notJunk: vi.fn(() => dispatched),
     trash: vi.fn(() => dispatched),
     moveTo: vi.fn(() => dispatched),
     setSeen: vi.fn(),
@@ -61,6 +62,7 @@ function readingStub(dispatched: boolean): ReadingHandlers {
     compose: vi.fn(),
     archive: vi.fn(() => dispatched),
     junk: vi.fn(() => dispatched),
+    notJunk: vi.fn(() => dispatched),
     trash: vi.fn(() => dispatched),
     toggleFlag: vi.fn(),
     markUnread: vi.fn(),

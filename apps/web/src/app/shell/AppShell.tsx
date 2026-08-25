@@ -18,7 +18,7 @@ import { useQuotaNotifier } from '../../quota'
 import { ShortcutProvider } from '../../shortcuts'
 import { Spinner } from '../../ui'
 import type { WaxwingConfig } from '../config'
-import { FULL_PARAM, HOME_PATH, useNavigate, useRoute } from '../route'
+import { FULL_PARAM, HOME_PATH, Link, useNavigate, useRoute } from '../route'
 import { useSession } from '../session/context'
 import { Header } from './Header'
 import { MailScreen } from './MailScreen'
@@ -111,6 +111,15 @@ export function AppShell({ config }: AppShellProps) {
         <div className={styles.screen}>
           <h1 className={styles.screenTitle}>{t('shell.notFound.title')}</h1>
           <p className={styles.screenLead}>{t('shell.notFound.body')}</p>
+          {/* A way out (B24). `shell.notFound.home` was translated in both locales and rendered
+              nowhere, so this screen said "that address does not exist" and left the reader with
+              the browser's back button and nothing else. The string was written for exactly this
+              and never wired — a missing affordance hiding as a stale key. */}
+          <p>
+            <Link to={HOME_PATH} className={styles.notFoundHome}>
+              {t('shell.notFound.home')}
+            </Link>
+          </p>
         </div>
       )
       break

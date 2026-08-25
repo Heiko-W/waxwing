@@ -302,6 +302,7 @@ describe('SessionProvider', () => {
         compose: () => {},
         archive: () => true,
         junk: () => true,
+        notJunk: () => true,
         trash: () => true,
         toggleFlag: () => {},
         markUnread: () => {},

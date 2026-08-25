@@ -58,6 +58,9 @@ function Probe({ from }: { readonly from: string | null }) {
       <button type="button" onClick={() => triage.junk(['e1'], from)}>
         probe-junk
       </button>
+      <button type="button" onClick={() => setResult(triage.notJunk(['e1'], from))}>
+        probe-not-junk
+      </button>
       <button type="button" onClick={() => setResult(triage.trash(['e1'], from))}>
         probe-trash
       </button>
@@ -170,6 +173,43 @@ describe('useTriage', () => {
 
     expect(dispatch).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  /**
+   * The inverse of `junk` (B24). Same seam, opposite direction: out of Junk and back to the Inbox.
+   *
+   * It resolves the INBOX role rather than remembering where the message came from, which is a real
+   * limitation worth naming — a message the classifier took out of a label or a custom folder comes
+   * back to the Inbox, not to where it was. JMAP keeps no such history (the move that put it in Junk
+   * left no trace beyond `mailboxIds`), so the alternative is not a better target but a worse
+   * promise. The undo entry covers the accurate case: it puts the message back exactly where it was.
+   */
+  it('notJunk dispatches ONE move into the inbox role mailbox', async () => {
+    const user = userEvent.setup()
+    await renderProbe('junk')
+    await user.click(screen.getByRole('button', { name: 'probe-not-junk' }))
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+      kind: 'move',
+      emailIds: ['e1'],
+      from: 'junk',
+      to: 'inbox',
+    })
+    expect(await screen.findByText('Moved to Inbox')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+  })
+
+  it('notJunk refuses the self-move: Not junk while already in the Inbox', async () => {
+    // The button is only offered inside Junk, so this is the keyboard/handler path rather than a
+    // reachable click — and it is exactly the path where a `to === from` patch would order the
+    // message out of the only mailbox it is in.
+    const user = userEvent.setup()
+    await renderProbe('inbox')
+    await user.click(screen.getByRole('button', { name: 'probe-not-junk' }))
+
+    expect(await screen.findByText('result:false')).toBeInTheDocument()
+    expect(dispatch).not.toHaveBeenCalled()
   })
 
   // A self-move (`to === from`) is destructive, not idle: the replay patch writes

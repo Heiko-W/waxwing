@@ -9,7 +9,6 @@ import {
   emailIdsInMailbox,
   emailIdsWithKeyword,
   emailsByIds,
-  emailsInThread,
   emailsWithKeyword,
   enqueue,
   failedOutbox,
@@ -18,9 +17,7 @@ import {
   getPref,
   getQueryCache,
   getSyncState,
-  getThread,
   labelUnreadCounts,
-  lruBodies,
   mailboxByRole,
   mailboxesForAccount,
   pendingOutbox,
@@ -87,11 +84,6 @@ describe('message-list queries (M1.6)', () => {
     const ids = await emailIdsInMailbox(db, ACC, 'inbox')
     expect(ids.sort()).toEqual(['e1', 'e2'])
   })
-
-  it('groups emails by thread', async () => {
-    const rows = await emailsInThread(db, ACC, 'tX')
-    expect(rows.map((row) => row.id).sort()).toEqual(['e1', 'e2'])
-  })
 })
 
 describe('keyword membership (flagged / labels — FR-LST, M3.2)', () => {
@@ -154,8 +146,18 @@ describe('keyword membership (flagged / labels — FR-LST, M3.2)', () => {
   })
 })
 
+/*
+ * `getEmailBody`'s side effect, which is the whole reason it is not a plain `db.emailBodies.get`.
+ *
+ * This block used to assert the order through `lruBodies`, a second reader of the same data that no
+ * production path called (B24): eviction runs off the KEY-ONLY span over
+ * `[accountId+lastAccessedAt+bytes]` (`evictableBodies` → `planEviction`), which never deserializes
+ * a row. Asserting through the dead reader made the test look like eviction coverage while proving
+ * nothing about the code that actually evicts. What survives is the input BOTH readers depend on:
+ * that a read stamps `lastAccessedAt`, so the oldest-accessed body is the one either of them finds.
+ */
 describe('email bodies + LRU (M1.8 / FR-OFF-04)', () => {
-  it('stamps lastAccessedAt on read and orders eviction oldest-first', async () => {
+  it('stamps lastAccessedAt on read, which is what orders eviction', async () => {
     const structure = { partId: '1', blobId: 'b', size: 1 } as never
     await putEmailBody(db, {
       accountId: ACC,
@@ -184,13 +186,16 @@ describe('email bodies + LRU (M1.8 / FR-OFF-04)', () => {
       lastAccessedAt: 2,
     })
 
-    // e1 is oldest.
-    expect((await lruBodies(db, ACC, 1)).map((row) => row.id)).toEqual(['e1'])
+    const oldestFirst = async (): Promise<string[]> =>
+      (await db.emailBodies.orderBy('[accountId+lastAccessedAt]').toArray()).map((row) => row.id)
 
-    // Touching e1 moves it to the front; e2 becomes the eviction candidate.
+    // e1 is oldest, so it is the first eviction candidate.
+    expect(await oldestFirst()).toEqual(['e1', 'e2'])
+
+    // Reading e1 moves it to the front; e2 becomes the candidate.
     const touched = await getEmailBody(db, ACC, 'e1', 99)
     expect(touched?.id).toBe('e1')
-    expect((await lruBodies(db, ACC, 1)).map((row) => row.id)).toEqual(['e2'])
+    expect(await oldestFirst()).toEqual(['e2', 'e1'])
   })
 })
 
@@ -313,10 +318,13 @@ describe('sync state, query cache, prefs, outbox', () => {
 })
 
 describe('threads helper', () => {
-  it('round-trips a stored thread via getThread', async () => {
+  // Read back through Dexie rather than through a `getThread` wrapper: the reader the app uses is
+  // `useThread` (`react.tsx`), which does exactly this `db.threads.get`. The wrapper existed only
+  // for this test (B24), so asserting through it proved the wrapper, not the write.
+  it('round-trips a stored thread', async () => {
     await putThreads(db, ACC, [thread('t1', ['e1', 'e2'])])
-    expect((await getThread(db, ACC, 't1'))?.emailIds).toEqual(['e1', 'e2'])
-    expect(await getThread(db, ACC, 'no-such-thread')).toBeUndefined()
+    expect((await db.threads.get([ACC, 't1']))?.emailIds).toEqual(['e1', 'e2'])
+    expect(await db.threads.get([ACC, 'no-such-thread'])).toBeUndefined()
   })
 })
 

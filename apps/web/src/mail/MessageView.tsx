@@ -25,6 +25,7 @@ import {
   Forward,
   Lock,
   Mail,
+  MailCheck,
   Reply,
   ReplyAll,
   ShieldCheck,
@@ -215,6 +216,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
 
   const archiveBox = useMailboxByRole('archive')
   const junkBox = useMailboxByRole('junk')
+  const inboxBox = useMailboxByRole('inbox')
   const trashBox = useMailboxByRole('trash')
   const inThisMailbox = mailboxId ?? null
 
@@ -692,6 +694,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       compose: onCompose,
       archive: () => triage.archive([email.id], inThisMailbox),
       junk: () => triage.junk([email.id], inThisMailbox),
+      notJunk: () => triage.notJunk([email.id], inThisMailbox),
       trash: () => triage.trash([email.id], inThisMailbox),
       toggleFlag: () => triage.setFlagged([email.id], email.keywords.$flagged !== true),
       // Cancel first: an armed dwell that fires after this would mark read the very message the
@@ -827,15 +830,34 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
         popover: true,
         onSelect: () => setLabelsOpen((open) => !open),
       },
-      {
-        id: 'junk',
-        group: 'file',
-        label: t('list.actions.junk'),
-        icon: Ban,
-        disabled: junkBox === undefined || inJunk,
-        unavailableReason: reasonText(rights.moveReason(inThisMailbox, junkBox?.id)),
-        onSelect: handlers.junk,
-      },
+      /*
+       * Junk, or its inverse while reading IN Junk (B24).
+       *
+       * `inTrash` above swaps Trash for a permanent destroy; this is the same move for the junk
+       * pair, and it replaces a strictly worse state: inside Junk the button used to sit there
+       * DISABLED, spending a toolbar slot on the one action that is meaningless here while the
+       * action a reader actually wants in this folder — "this is not junk" — had no button at all.
+       * `list.actions.notJunk` was translated in both locales and rendered nowhere.
+       */
+      inJunk
+        ? {
+            id: 'notJunk',
+            group: 'file',
+            label: t('list.actions.notJunk'),
+            icon: MailCheck,
+            disabled: inboxBox === undefined,
+            unavailableReason: reasonText(rights.moveReason(inThisMailbox, inboxBox?.id)),
+            onSelect: handlers.notJunk,
+          }
+        : {
+            id: 'junk',
+            group: 'file',
+            label: t('list.actions.junk'),
+            icon: Ban,
+            disabled: junkBox === undefined,
+            unavailableReason: reasonText(rights.moveReason(inThisMailbox, junkBox?.id)),
+            onSelect: handlers.junk,
+          },
       {
         id: 'flag',
         group: 'mark',
@@ -870,6 +892,7 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
       trashBox,
       archiveBox,
       junkBox,
+      inboxBox,
       email.keywords.$flagged,
     ],
   )

@@ -18,6 +18,7 @@ import {
   FolderInput,
   type LucideIcon,
   Mail,
+  MailCheck,
   MailOpen,
   Star,
   Tag,
@@ -251,6 +252,10 @@ export function MessageList({
   const rolesReady = mailboxes !== undefined
   const archiveId = mailboxes?.find((box) => box.role === 'archive')?.id
   const trashId = mailboxes?.find((box) => box.role === 'trash')?.id
+  // Read off the SAME query for the junk pair (B24), for the reason the comment above gives: two
+  // more `useMailboxByRole` calls would be two more liveQueries resolving on their own ticks.
+  const junkId = mailboxes?.find((box) => box.role === 'junk')?.id
+  const inboxId = mailboxes?.find((box) => box.role === 'inbox')?.id
   const accountReadOnly = useAccountIsReadOnly()
   /**
    * The per-ROW rights verdict (B34), computed rather than subscribed: both inputs are already here,
@@ -649,12 +654,31 @@ export function MessageList({
           label: t('list.actions.archive'),
           onSelect: () => triage.archive(target, sourceMailboxId ?? null),
         },
-        {
-          id: 'junk',
-          group: 'file',
-          label: t('list.actions.junk'),
-          onSelect: () => triage.junk(target, sourceMailboxId ?? null),
-        },
+        // Inside Junk the entry becomes its inverse (B24) — the same swap the bulk bar and the
+        // reading pane make, so a row offers the same verb however it is reached. Note the entry
+        // it REPLACES was inert there: "Junk" inside Junk is a move to the mailbox the message is
+        // already in, which `useTriage` refuses. `...(cond ? [x] : [])` rather than a ternary
+        // because either side may resolve to NOTHING — an account with no Inbox role gets no entry
+        // at all, which is this menu's rule for unavailable commands (omit, never dim).
+        ...(junkId !== undefined && junkId === sourceMailboxId
+          ? inboxId === undefined
+            ? []
+            : [
+                {
+                  id: 'notJunk',
+                  group: 'file',
+                  label: t('list.actions.notJunk'),
+                  onSelect: () => triage.notJunk(target, sourceMailboxId),
+                } satisfies MenuItemSpec,
+              ]
+          : [
+              {
+                id: 'junk',
+                group: 'file',
+                label: t('list.actions.junk'),
+                onSelect: () => triage.junk(target, sourceMailboxId ?? null),
+              } satisfies MenuItemSpec,
+            ]),
         {
           id: 'move',
           group: 'file',
@@ -671,7 +695,18 @@ export function MessageList({
       )
     }
     return items
-  }, [contextId, rowById, rowRights, sourceMailboxId, triage, requestMove, open, t])
+  }, [
+    contextId,
+    rowById,
+    rowRights,
+    sourceMailboxId,
+    junkId,
+    inboxId,
+    triage,
+    requestMove,
+    open,
+    t,
+  ])
 
   if (source === undefined) {
     return <p className={styles.empty}>{t('list.noMailbox')}</p>
@@ -1291,6 +1326,7 @@ function BulkBar({
   const triage = useTriage()
   const archive = useMailboxByRole('archive')
   const junk = useMailboxByRole('junk')
+  const inbox = useMailboxByRole('inbox')
   const trash = useMailboxByRole('trash')
 
   /**
@@ -1387,6 +1423,8 @@ function BulkBar({
    * junk with trash; it governs folder-level purges, which this bar does not perform.
    */
   const inTrash = trash !== undefined && fromMailbox !== undefined && trash.id === fromMailbox
+  // Same shape, for the junk pair (B24): inside Junk the button means the way back, not the way in.
+  const inJunk = junk !== undefined && fromMailbox !== undefined && junk.id === fromMailbox
   /**
    * Both lines here are DEFENSIVE, and neither is load-bearing at the three call sites below today.
    * Saying so plainly, because an earlier version of this comment asserted the opposite and a
@@ -1547,14 +1585,35 @@ function BulkBar({
       popover: true,
       onSelect: () => setLabelsOpen((open) => !open),
     },
-    {
-      id: 'junk',
-      when: canMoveTo(junk?.id),
-      label: t('list.actions.junk'),
-      icon: Ban,
-      unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, junk?.id)),
-      onSelect: () => moveThenClear(triage.junk),
-    },
+    /*
+     * Junk, and its inverse (B24).
+     *
+     * Inside the Junk folder the useful action is the way BACK — "this is not junk" — and until now
+     * there was none: junk was the only triage verb without an inverse, while flag and read both
+     * had one. The string for it was translated in both locales and rendered nowhere.
+     *
+     * Same shape as Trash above, which already swaps to a permanent destroy inside Trash: one
+     * button whose meaning follows the folder, rather than two buttons of which one is always
+     * pointless. `notJunk` moves to the Inbox and is offered ONLY here, because outside Junk
+     * "not junk" is not a statement anyone is making.
+     */
+    inJunk
+      ? {
+          id: 'notJunk',
+          when: canMoveTo(inbox?.id),
+          label: t('list.actions.notJunk'),
+          icon: MailCheck,
+          unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, inbox?.id)),
+          onSelect: () => moveThenClear(triage.notJunk),
+        }
+      : {
+          id: 'junk',
+          when: canMoveTo(junk?.id),
+          label: t('list.actions.junk'),
+          icon: Ban,
+          unavailableReason: reasonText(rights.moveReason(fromMailbox ?? null, junk?.id)),
+          onSelect: () => moveThenClear(triage.junk),
+        },
     /**
      * Move to an arbitrary folder — the only non-pointer path to it, and the one WCAG 2.2
      * SC 2.5.7 requires the drag (5b) to have. Opens the picker via the store, so `v` and this
