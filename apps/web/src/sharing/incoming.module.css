@@ -7,6 +7,24 @@
   flex-direction: column;
   gap: var(--waxwing-space-2);
   padding: var(--waxwing-space-2);
+  /*
+   * At the FOOT of its rail, and pinned there (B61).
+   *
+   * The strip used to sit above the folder trees, inside the rail's one scroll container, so a card
+   * arriving on a sync pass pushed every row below it down — and a click meant for a folder's ⋯
+   * button landed on the folder. Nothing above an interactive row may grow, so it moved to the end;
+   * `inset-block-end: 0` is what stops the end from also meaning "out of sight" on a rail long
+   * enough to scroll. Opaque, because content now passes underneath it.
+   */
+  position: sticky;
+  inset-block-end: 0;
+  background-color: var(--waxwing-surface-sunken);
+}
+
+/* Nothing to announce, nothing to draw: without this an empty strip would still paint its own
+   background across the foot of every rail. */
+.strip:empty {
+  display: none;
 }
 
 .card {

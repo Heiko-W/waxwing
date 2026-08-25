@@ -25,6 +25,7 @@ import { ConfigProvider } from '../app/config-context'
 import { RouterProvider } from '../app/route'
 import { SessionContext } from '../app/session/context'
 import type { ConnectedSession, SessionContextValue } from '../app/session/types'
+import { MailboxShareNotices } from '../sharing/MailboxShareNotices'
 import { putMailboxes, type ReplicaDb, ReplicaProvider } from '../sync'
 import { setActiveEngine } from '../sync/engine'
 import { freshDb, mailbox } from '../sync/test-utils'
@@ -162,7 +163,17 @@ function renderRail(client: JmapClient, accounts: readonly MailAccount[] = [OWN,
       </ConfigProvider>
     </RouterProvider>
   )
-  render(wrap(<AccountTrees accounts={accounts} primaryAccountId="b" />))
+  // The rail as `MailScreen` composes it: the trees, then the share strip UNDER them. The strip
+  // left `AccountTrees` with B61 — a card arriving above the folder rows moved them out from
+  // under the pointer mid-click — so a test that renders only the trees would no longer see it.
+  render(
+    wrap(
+      <>
+        <AccountTrees accounts={accounts} primaryAccountId="b" />
+        <MailboxShareNotices />
+      </>,
+    ),
+  )
 }
 
 describe('a shared account that has no mail in it', () => {

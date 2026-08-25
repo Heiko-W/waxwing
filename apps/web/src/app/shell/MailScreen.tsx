@@ -29,6 +29,7 @@ import { MessageList } from '../../mail/MessageList'
 import { SearchBox } from '../../mail/search/SearchBox'
 import { useSearch } from '../../mail/search/use-search'
 import { QuotaBar } from '../../quota'
+import { MailboxShareNotices } from '../../sharing/MailboxShareNotices'
 import { useMailbox, useMailboxByRole, useReplica } from '../../sync'
 import { Button, EmptyState, IconButton, SplitPane } from '../../ui'
 import { useFocusTrap } from '../../ui/internal/useFocusTrap'
@@ -492,6 +493,11 @@ export function MailScreen() {
               />
             )}
             <Labels onNavigate={closeFolders} />
+            {/* LAST in the rail, deliberately (B61): a share card arrives on a sync pass, and
+                anything above an interactive row that grows moves that row out from under the
+                pointer. Below everything it pushes nothing; `incoming.module.css` pins it to the
+                bottom edge so it is still seen on a rail long enough to scroll. */}
+            <MailboxShareNotices onNavigate={closeFolders} />
           </div>
           <QuotaBar />
         </nav>
