@@ -38,7 +38,7 @@ Hosted CI runs on every pull request and every push to `main`, in two jobs that 
 | Job | Runs | Takes |
 | --- | --- | --- |
 | `verify (typecheck, lint, tests, size)` | `pnpm verify` — the hermetic half | ~2 min |
-| `e2e (Stalwart fixture + Playwright)` | `pnpm verify:e2e` — Docker, the JMAP integration suites, six Playwright suites | ~7 min |
+| `e2e (Stalwart fixture + Playwright)` | `pnpm verify:e2e` — Docker, the JMAP integration suites, seven Playwright suites (WebKit is one of them since B11) | ~9 min |
 
 Both call the same pnpm scripts the local gate does, which is ADR-003's rule: a workflow that
 reimplements a script drifts from it. So there is nothing CI runs that you cannot run here, and

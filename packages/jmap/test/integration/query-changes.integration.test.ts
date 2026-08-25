@@ -38,7 +38,7 @@ import {
   Methods,
   type PatchObject,
 } from '@waxwing/jmap'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const BASE = 'http://localhost:18080'
 const USERNAME = 'alice@waxwing.test'
@@ -105,6 +105,26 @@ beforeAll(async () => {
     expect(Object.keys(result.created ?? {}).length, 'seeding batch failed').toBe(20)
   }
 }, 120_000)
+
+/*
+ * Take the 120 messages and the probe mailbox back out.
+ *
+ * Not politeness: the fixture outlives this suite inside one `verify:e2e` run, and the read, write
+ * and shared suites after it sync this very account. A folder of 120 left behind is sync work every
+ * one of them pays for, and a count several of them assert on.
+ */
+afterAll(async () => {
+  if (mailboxId === '') return
+  const request = client.request()
+  request.invoke(Methods.mailboxSet, {
+    accountId,
+    destroy: [mailboxId],
+    // The messages go with it. Without this Stalwart refuses to destroy a non-empty mailbox, and
+    // the cleanup would fail silently at the moment it matters most — on a run that is already busy.
+    onDestroyRemoveEmails: true,
+  })
+  await request.send()
+}, 60_000)
 
 describe('B17 · Email/queryChanges on a bounded window (live Stalwart)', () => {
   it('does not leave the window empty with a live query state', async () => {

@@ -294,7 +294,7 @@ try {
       stage('jmap integration suites (B22)', ['verify:integration'])
       console.log('\n[ci] --no-e2e: skipping the Playwright suites.')
     } else {
-      stage('e2e (Docker fixture + jmap integration + six Playwright suites)', ['verify:e2e'])
+      stage('e2e (Docker fixture + jmap integration + seven Playwright suites)', ['verify:e2e'])
     }
   }
 
