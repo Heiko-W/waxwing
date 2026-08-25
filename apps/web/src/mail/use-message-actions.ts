@@ -21,6 +21,7 @@ import type { Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
 import { getEngineFor, type OutboxIntent, useAccountEngine } from '../sync/engine'
 import { useReplicaOptional } from '../sync/react'
+import { announceMarkedUnread } from './unread-signal'
 
 export interface MessageActions {
   /**
@@ -43,6 +44,15 @@ export interface MessageActions {
 function dispatch(accountId: Id | null, intent: OutboxIntent): void {
   if (intent.kind === 'setKeywords' || intent.kind === 'move' || intent.kind === 'destroyEmails') {
     if (intent.emailIds.length === 0) return
+  }
+  // A mark-unread is announced HERE, at the one seam every surface writes through, so that an
+  // auto-mark-read dwell running in an open reading pane can cancel itself (B26). The row-based
+  // cancels in `MessageView` see only what CHANGED, and this is precisely the case where nothing
+  // does: a mark-unread against a message that is already unread. Announced BEFORE the dispatch —
+  // the point is the reader's stated intent, which stands whether or not an engine is there to
+  // queue it, and a dwell that fires against it would be wrong either way.
+  if (intent.kind === 'setKeywords' && intent.keyword === '$seen' && intent.value === false) {
+    announceMarkedUnread(intent.emailIds)
   }
   void getEngineFor(accountId)?.dispatch(intent, { id: crypto.randomUUID() })
 }

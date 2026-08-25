@@ -6,6 +6,7 @@ import { putMailboxes, type ReplicaDb, ReplicaProvider, useMailboxByRole } from 
 import { setActiveEngine } from '../sync/engine'
 import { FULL_RIGHTS, freshDb, mailbox } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
+import { onMarkedUnread } from './unread-signal'
 import { useTriage } from './use-triage'
 
 const dispatch = vi.fn()
@@ -173,6 +174,32 @@ describe('useTriage', () => {
 
     expect(dispatch).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+  })
+
+  /**
+   * The seam ANNOUNCES a mark-unread (B26) — the half of that fix which lives in the write path.
+   *
+   * `MessageView`'s own test proves what the pane does when it hears the signal; this proves that a
+   * real mark-unread through the seam every surface writes through emits one, and that a mark-READ
+   * does not. Without the second half the pane would cancel its dwell on the very intent the dwell
+   * itself dispatches, and auto-mark-read would stop working altogether.
+   */
+  it('announces a mark-unread to whoever is listening, and only for unread', async () => {
+    const user = userEvent.setup()
+    const heard: (readonly string[])[] = []
+    const stop = onMarkedUnread((ids) => heard.push(ids))
+    try {
+      await renderProbe()
+      await user.click(screen.getByRole('button', { name: 'probe-unread' }))
+      expect(heard).toEqual([['e1']])
+
+      // A mark-READ is not an announcement. The dwell dispatches exactly that.
+      heard.length = 0
+      await user.click(screen.getByRole('button', { name: 'probe-archive' }))
+      expect(heard).toEqual([])
+    } finally {
+      stop()
+    }
   })
 
   /**
