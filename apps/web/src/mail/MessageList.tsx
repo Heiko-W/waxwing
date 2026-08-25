@@ -659,8 +659,11 @@ export function MessageList({
         // reading pane make, so a row offers the same verb however it is reached. Note the entry
         // it REPLACES was inert there: "Junk" inside Junk is a move to the mailbox the message is
         // already in, which `useTriage` refuses. `...(cond ? [x] : [])` rather than a ternary
-        // because either side may resolve to NOTHING — an account with no Inbox role gets no entry
-        // at all, which is this menu's rule for unavailable commands (omit, never dim).
+        // because either side may resolve to NOTHING — an account missing the role each side needs
+        // gets no entry at all, which is this menu's rule for unavailable commands (omit, never
+        // dim). The `junkId === undefined` arm is not symmetry for its own sake: without it, an
+        // account with no Junk folder was offered "Mark as junk" and the click went nowhere
+        // (`useTriage` refuses an undefined target and says so only in its return value).
         ...(junkId !== undefined && junkId === sourceMailboxId
           ? inboxId === undefined
             ? []
@@ -672,14 +675,16 @@ export function MessageList({
                   onSelect: () => triage.notJunk(target, sourceMailboxId),
                 } satisfies MenuItemSpec,
               ]
-          : [
-              {
-                id: 'junk',
-                group: 'file',
-                label: t('list.actions.junk'),
-                onSelect: () => triage.junk(target, sourceMailboxId ?? null),
-              } satisfies MenuItemSpec,
-            ]),
+          : junkId === undefined
+            ? []
+            : [
+                {
+                  id: 'junk',
+                  group: 'file',
+                  label: t('list.actions.junk'),
+                  onSelect: () => triage.junk(target, sourceMailboxId ?? null),
+                } satisfies MenuItemSpec,
+              ]),
         {
           id: 'move',
           group: 'file',

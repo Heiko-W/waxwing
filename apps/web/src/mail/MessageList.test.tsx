@@ -2429,6 +2429,20 @@ describe('the message row answers a secondary click', () => {
     expect(await screen.findByRole('menu')).toBeInTheDocument()
   })
 
+  it('offers no junk entry at all on an account without a Junk folder', async () => {
+    // The menu's rule is omit-never-dim, and this entry broke it: with no Junk role the click went
+    // nowhere — `useTriage` refuses an undefined target and reports it only in a return value the
+    // menu does not read. The base fixture seeds inbox/archive/trash and no junk, which is exactly
+    // the account this is about.
+    renderList()
+    const row = await screen.findByRole('row', { name: /First/ })
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Mark as junk' })).toBeNull()
+  })
+
   it('swaps the junk verb for its inverse inside Junk (B24)', async () => {
     // Three surfaces reach the same row — this menu, the bulk bar, the reading pane — and all three
     // now make the same swap. The entry it replaces was inert here: a move to the mailbox the
