@@ -156,32 +156,36 @@
       }
     },
     "offline": {
-      "title": "Offline & storage",
-      "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
-      "meter": {
-        "label": "Storage used"
-      },
-      "total": "{{used}} of {{total}} used",
-      "quotaUnknown": "Your browser does not report a storage quota.",
       "category": {
         "messages": "Message index (estimated)",
         "bodies": "Message bodies",
         "attachments": "Attachments",
         "other": "Other (app & offline shell)"
       },
+      "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
+      "freeUp": "Free up space now",
+      "freedToast": "Freed {{size}}",
+      "meter": {
+        "label": "Storage used"
+      },
+      "nothingToFree": "Nothing to free up",
       "persist": {
         "label": "Keep data on this device",
         "hint": "Ask your browser not to delete cached mail when storage runs low.",
         "granted": "Granted — your browser will keep cached mail even when storage runs low.",
         "denied": "Not granted — your browser may clear cached mail when storage runs low."
       },
-      "freeUp": "Free up space now",
-      "freedToast": "Freed {{size}}",
-      "nothingToFree": "Nothing to free up",
-      "window_one": "Mail from the last {{count}} day is kept on this device. Older mail stays on the server and loads when you open it.",
-      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it.",
       "pinned_one": "{{count}} folder kept offline",
-      "pinned_other": "{{count}} folders kept offline"
+      "pinned_other": "{{count}} folders kept offline",
+      "quotaUnknown": "Your browser does not report a storage quota.",
+      "title": "Offline & storage",
+      "total": "{{used}} of {{total}} used",
+      "windowApplies": "A shorter window frees space at the next cleanup, not immediately — \"Free up space\" above does not wait.",
+      "windowChoice_one": "{{count}} day",
+      "windowChoice_other": "{{count}} days",
+      "windowLabel": "Keep mail on this device for",
+      "window_one": "Mail from the last {{count}} day is kept on this device. Older mail stays on the server and loads when you open it.",
+      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it."
     },
     "general": {
       "title": "General"

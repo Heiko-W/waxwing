@@ -41,20 +41,23 @@ const withOffline = (offline: Partial<WaxwingConfig['offline']>): WaxwingConfig 
 
 describe('normalizeConfig — offline clamps (M3.4)', () => {
   it('keeps the defaults', () => {
-    expect(DEFAULT_CONFIG.offline).toEqual({ cacheDays: 30, maxStorageMB: 512 })
+    // 90 since 2026-08-25 (B23): the horizon became a USER setting and this is what a fresh
+    // install starts with. Asserted as a literal on purpose — it is the number a hoster inherits
+    // by doing nothing, so it should not be able to move without someone reading this line.
+    expect(DEFAULT_CONFIG.offline).toEqual({ cacheDays: 90, maxStorageMB: 512 })
   })
 
   it('rejects a cacheDays of 0 or less — it would push the window filter into the FUTURE', () => {
     // `windowFilter` builds `receivedAt >= now − cacheDays`: at 0 that boundary is today (and at −5 it
     // is in five days), so every mailbox would render permanently empty.
-    expect(normalizeConfig(withOffline({ cacheDays: 0 })).offline.cacheDays).toBe(30)
-    expect(normalizeConfig(withOffline({ cacheDays: -5 })).offline.cacheDays).toBe(30)
+    expect(normalizeConfig(withOffline({ cacheDays: 0 })).offline.cacheDays).toBe(90)
+    expect(normalizeConfig(withOffline({ cacheDays: -5 })).offline.cacheDays).toBe(90)
   })
 
   it('falls back to the default for a non-numeric cacheDays, and caps an absurd one', () => {
     expect(
       normalizeConfig(withOffline({ cacheDays: 'x' as unknown as number })).offline.cacheDays,
-    ).toBe(30)
+    ).toBe(90)
     expect(normalizeConfig(withOffline({ cacheDays: 99_999 })).offline.cacheDays).toBe(3650)
     expect(normalizeConfig(withOffline({ cacheDays: 14.6 })).offline.cacheDays).toBe(15)
   })

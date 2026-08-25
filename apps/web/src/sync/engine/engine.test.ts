@@ -299,7 +299,7 @@ function makeDeps(db: ReplicaDb, port: JmapPort, push: FakePush): SyncEngineDeps
     port,
     session: {} as Session,
     auth: { scheme: 'bearer', authorization: () => 'x' },
-    config: { cacheDays: 30, maxStorageMB: 512 },
+    config: () => ({ cacheDays: 30, maxStorageMB: 512 }),
     clock,
     locks: immediateLock,
     createBus: noopBus,
@@ -1519,6 +1519,48 @@ describe('SyncEngine — cache maintenance (M3.4)', () => {
       ...over,
     }
   }
+
+  /**
+   * The offline horizon is a live read, not a snapshot (B23, decided 2026-08-25).
+   *
+   * `SyncEngineHost` used to hand the engine `{ cacheDays, maxStorageMB }` as a value, which made
+   * it a dependency of the effect that builds the fleet: changing a settings dropdown would have
+   * torn down every engine, re-elected the leader and re-subscribed the push channel — a real cost
+   * for a number only the next prune reads. Passing a FUNCTION moves the read to where it is used.
+   *
+   * This is the half the settings screen's own tests cannot see: they prove the sentence on screen
+   * follows the preference, not that the PRUNE does. Without this, `react.tsx` could resolve the
+   * hoster's value and every settings assertion would still pass.
+   */
+  it('reads the offline budget at every pass, so a changed preference lands without a rebuild', async () => {
+    const time = virtualClock()
+    const push = new FakePush()
+    let cacheDays = 30
+    let reads = 0
+    const engine = new SyncEngine(
+      maintenanceDeps(time, push, {
+        config: () => {
+          reads += 1
+          return { cacheDays, maxStorageMB: 512 }
+        },
+      }),
+    )
+
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle')
+    await waitFor(() => reads > 0)
+    const afterFirst = reads
+
+    // The reader changes the setting. Nothing rebuilds; the engine is the same instance.
+    cacheDays = 180
+    const pass = await engine.runMaintenance({ force: true })
+
+    expect(pass, 'the forced pass did not run').not.toBeNull()
+    expect(reads, 'the budget was captured once instead of read per pass').toBeGreaterThan(
+      afterFirst,
+    )
+    engine.stop()
+  })
 
   it('runs ONCE after the first leader sync, then honours the interval gate', async () => {
     const time = virtualClock()

@@ -72,7 +72,12 @@ export const DEFAULT_CONFIG: WaxwingConfig = {
     imageProxyUrl: null,
     undoSendSeconds: 15,
   },
-  offline: { cacheDays: 30, maxStorageMB: 512 },
+  // 90 days, not 30 (2026-08-25, owner decision closing B23). The number a fresh install starts
+  // with, and no longer the last word: `app/offline-prefs.ts` lets the reader change it, because
+  // this bounds space on THEIR device. 30 was chosen when the horizon also governed what a folder
+  // SHOWED; since ADR-030 it governs eviction alone, so a longer default costs disk (bounded by
+  // `maxStorageMB` either way) and buys offline reach.
+  offline: { cacheDays: 90, maxStorageMB: 512 },
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

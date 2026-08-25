@@ -24,7 +24,7 @@
     "undoSendSeconds": 15
   },
   "offline": {
-    "cacheDays": 30,
+    "cacheDays": 90,
     "maxStorageMB": 512
   }
 }

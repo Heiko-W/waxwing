@@ -38,7 +38,7 @@ for key, so this page cannot quietly go stale.
     "imageProxyUrl": null,
     "undoSendSeconds": 15
   },
-  "offline": { "cacheDays": 30, "maxStorageMB": 512 }
+  "offline": { "cacheDays": 90, "maxStorageMB": 512 }
 }
 ```
 
@@ -188,21 +188,32 @@ never a lock.
 
 ## `offline`
 
-### `cacheDays` — `number`, default `30`
+### `cacheDays` — `number`, default `90`, **and only a default**
 
-How much recent mail is kept locally, in days. This is the single setting with the widest
-reach in the app: the sync engine queries `inMailbox AND receivedAt >= now − cacheDays`, so it
-decides what is searchable offline, what a folder shows, and how much of a shared machine's
-disk holds someone's mail.
+How much recent mail is kept locally, in days.
 
-A folder whose mail is all older than this shows an empty list — with an explanation naming
-this setting, rather than the flat "no messages" it used to give.
+**Two things about this entry changed and the old text was wrong on both, so read it rather than
+skim it.**
+
+**It bounds what is KEPT, never what is SHOWN.** Until 2026-08-23 one constant governed both, and
+a folder whose mail was older than the window rendered as an empty list — reported from a live
+deployment, fixed in [ADR-030](adr/030-a-folder-shows-the-folder-not-a-30-day-window.md). The
+folder query now carries no date bound at all: opening a folder lists the whole folder, paged from
+the server as it is scrolled, however old its mail is. What this setting decides is what survives
+on the device, and therefore what is readable and searchable **offline**.
+
+**The reader can change it, and their choice wins.** Since 2026-08-25 this value is the one a fresh
+install starts with; Settings → *Offline & storage* offers 7 / 30 / 90 / 180 / 365 days, stored per
+device. The reasoning is short: Waxwing is a client, and this bounds space on someone else's disk —
+a hoster may state a default, not how much of a reader's machine a mail cache may use. Set it to
+what suits your audience; do not treat it as an enforced ceiling, because it is not one.
+`maxStorageMB` below **is** enforced and is not user-settable.
 
 **Range: 1–3650 days.** A value above the range is clamped; a value of `0` or below is
-**ignored** and the default used instead. That asymmetry is deliberate: `windowFilter` builds
-`receivedAt >= now − cacheDays`, so `0` puts the boundary at today and a negative one in the
-future — every mailbox would render permanently empty. An operator typo must not silently
-become "keep one day of mail", so it is refused rather than approximated.
+**ignored** and the default used instead. That asymmetry is deliberate: a `0` would once have put
+the query boundary at today and a negative one in the future, and although the query no longer
+carries the bound, the prune horizon still does — an operator typo must not silently become "keep
+one day of mail", so it is refused rather than approximated.
 
 There is no way for a HOSTER to ask for no local history at all — Waxwing is offline-first and a
 zero window is not a supported deployment. A **user** can, per session: ticking "Public or

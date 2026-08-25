@@ -178,7 +178,16 @@ export interface SyncEngineDeps {
   /** The JMAP session, for the push channel. */
   readonly session: Session
   readonly auth: AuthProvider
-  readonly config: { readonly cacheDays: number; readonly maxStorageMB: number }
+  /**
+   * The offline budget, read at EVERY maintenance pass rather than captured once.
+   *
+   * A function, because since B23 the horizon is a user preference layered over the deployment's
+   * value (`app/offline-prefs.ts`). As a snapshot it would have to be a dependency of the host
+   * effect that builds the fleet, so changing a settings dropdown would tear down every engine,
+   * re-elect the leader and re-subscribe the push channel — real cost, for a number that only
+   * matters to the next prune.
+   */
+  readonly config: () => { readonly cacheDays: number; readonly maxStorageMB: number }
   readonly clock: EngineClock
   /** Origin storage estimate (M3.4); defaults to {@link browserEstimate}. Injected in tests. */
   readonly estimate?: EstimateFn
@@ -1007,10 +1016,8 @@ export class SyncEngine {
     const pass = runMaintenance({
       db: this.db,
       accountId: this.accountId,
-      config: {
-        cacheDays: this.deps.config.cacheDays,
-        maxStorageMB: this.deps.config.maxStorageMB,
-      },
+      // Resolved HERE, once per pass: this is the read that makes the preference live.
+      config: this.deps.config(),
       estimate: this.estimate,
       now,
       watchedKeys: this.watched,
@@ -1937,7 +1944,7 @@ export function createSyncEngine(deps: {
   port: JmapPort
   session: Session
   auth: AuthProvider
-  config: { cacheDays: number; maxStorageMB: number }
+  config: () => { cacheDays: number; maxStorageMB: number }
   onAuthExpired?: () => void
   clock?: EngineClock
   safetyIntervalMs?: number

@@ -156,32 +156,36 @@
       }
     },
     "offline": {
-      "title": "Offline & Speicher",
-      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sich sofort öffnen lassen und offline verfügbar sind.",
-      "meter": {
-        "label": "Belegter Speicher"
-      },
-      "total": "{{used}} von {{total}} belegt",
-      "quotaUnknown": "Ihr Browser meldet kein Speicherkontingent.",
       "category": {
         "messages": "Nachrichtenindex (geschätzt)",
         "bodies": "Nachrichtentexte",
         "attachments": "Anhänge",
         "other": "Sonstiges (App und Offline-Grundgerüst)"
       },
+      "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sich sofort öffnen lassen und offline verfügbar sind.",
+      "freeUp": "Jetzt Speicher freigeben",
+      "freedToast": "{{size}} freigegeben",
+      "meter": {
+        "label": "Belegter Speicher"
+      },
+      "nothingToFree": "Es gibt nichts freizugeben.",
       "persist": {
         "label": "Daten auf diesem Gerät behalten",
         "hint": "Bitten Sie Ihren Browser, zwischengespeicherte E-Mails nicht zu löschen, wenn der Speicher knapp wird.",
         "granted": "Erteilt — Ihr Browser behält zwischengespeicherte E-Mails auch bei knappem Speicher.",
         "denied": "Nicht erteilt — Ihr Browser kann zwischengespeicherte E-Mails löschen, wenn der Speicher knapp wird."
       },
-      "freeUp": "Jetzt Speicher freigeben",
-      "freedToast": "{{size}} freigegeben",
-      "nothingToFree": "Es gibt nichts freizugeben.",
-      "window_one": "E-Mails vom letzten Tag bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
-      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
       "pinned_one": "{{count}} Ordner wird offline behalten",
-      "pinned_other": "{{count}} Ordner werden offline behalten"
+      "pinned_other": "{{count}} Ordner werden offline behalten",
+      "quotaUnknown": "Ihr Browser meldet kein Speicherkontingent.",
+      "title": "Offline & Speicher",
+      "total": "{{used}} von {{total}} belegt",
+      "windowApplies": "Ein kürzeres Fenster gibt Speicher beim nächsten Aufräumen frei, nicht sofort — „Speicher freigeben\" oben wartet nicht.",
+      "windowChoice_one": "{{count}} Tag",
+      "windowChoice_other": "{{count}} Tage",
+      "windowLabel": "E-Mails auf diesem Gerät behalten für",
+      "window_one": "E-Mails vom letzten Tag bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
+      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen."
     },
     "general": {
       "title": "Allgemein"
