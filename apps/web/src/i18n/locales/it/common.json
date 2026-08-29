@@ -159,6 +159,7 @@
         "messages": "Indice dei messaggi (stimato)",
         "bodies": "Testo dei messaggi",
         "attachments": "Allegati",
+        "personalData": "Contatti, calendario e file",
         "other": "Altro (app e struttura offline)"
       },
       "description": "{{product}} conserva la posta recente su questo dispositivo, così si apre subito e funziona anche offline.",

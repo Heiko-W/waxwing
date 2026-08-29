@@ -159,6 +159,7 @@
         "messages": "Index des messages (estimation)",
         "bodies": "Corps des messages",
         "attachments": "Pièces jointes",
+        "personalData": "Contacts, agenda et fichiers",
         "other": "Autres (application et ressources hors ligne)"
       },
       "description": "{{product}} conserve vos e-mails récents sur cet appareil pour qu’ils s’ouvrent instantanément et restent accessibles hors ligne.",

@@ -157,6 +157,7 @@
         "messages": "邮件索引（估算）",
         "bodies": "邮件正文",
         "attachments": "附件",
+        "personalData": "联系人、日历和文件",
         "other": "其他（应用与离线框架）"
       },
       "description": "{{product}}会把近期邮件保留在此设备上，让邮件即刻打开，并可离线使用。",

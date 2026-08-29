@@ -158,6 +158,7 @@
         "messages": "İleti dizini (tahmini)",
         "bodies": "İleti metinleri",
         "attachments": "Ekler",
+        "personalData": "Kişiler, takvim ve dosyalar",
         "other": "Diğer (uygulama ve çevrimdışı bileşenler)"
       },
       "description": "{{product}} yakın tarihli e-postaları bu cihazda tutar; böylece anında açılırlar ve çevrimdışıyken de çalışırlar.",

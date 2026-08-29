@@ -159,6 +159,7 @@
         "messages": "Índice de mensajes (estimado)",
         "bodies": "Cuerpo de los mensajes",
         "attachments": "Adjuntos",
+        "personalData": "Contactos, calendario y archivos",
         "other": "Otros (aplicación y modo sin conexión)"
       },
       "description": "{{product}} guarda el correo reciente en este dispositivo para que se abra al instante y funcione sin conexión.",

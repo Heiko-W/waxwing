@@ -158,6 +158,7 @@
         "messages": "Nachrichtenindex (geschätzt)",
         "bodies": "Nachrichtentexte",
         "attachments": "Anhänge",
+        "personalData": "Kontakte, Kalender und Dateien",
         "other": "Sonstiges (App und Offline-Grundgerüst)"
       },
       "description": "{{product}} behält aktuelle E-Mails auf diesem Gerät, damit sie sich sofort öffnen lassen und offline verfügbar sind.",

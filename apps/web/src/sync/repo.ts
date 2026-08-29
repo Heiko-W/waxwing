@@ -457,6 +457,28 @@ export function envelopeCount(db: ReplicaDb, accountId: Id): Promise<number> {
   return db.emails.where('accountId').equals(accountId).count()
 }
 
+/**
+ * Row counts for the tables the cache breakdown did not account for (W-18).
+ *
+ * Counts, not byte scans, and for the same reason `envelopeCount` is a count: an index count reads
+ * no records. The per-row estimates live in `cache-usage.ts` next to the envelope one.
+ */
+export async function personalDataCounts(
+  db: ReplicaDb,
+  accountId: Id,
+): Promise<{ contacts: number; calendarEvents: number; files: number; addressStats: number }> {
+  const where = (table: {
+    where: (index: string) => { equals: (value: Id) => { count: () => Promise<number> } }
+  }) => table.where('accountId').equals(accountId).count()
+  const [contacts, calendarEvents, files, addressStats] = await Promise.all([
+    where(db.contactCards),
+    where(db.calendarEvents),
+    where(db.fileNodes),
+    where(db.addressStats),
+  ])
+  return { contacts, calendarEvents, files, addressStats }
+}
+
 /** Every envelope id in the replica for an account — primary keys only (the M3.4 orphan check). */
 export async function allEmailIds(db: ReplicaDb, accountId: Id): Promise<Id[]> {
   const keys = (await db.emails.where('accountId').equals(accountId).primaryKeys()) as [Id, Id][]
@@ -1119,6 +1141,39 @@ export function calendarQueryCacheForAccount(
   accountId: Id,
 ): Promise<CalendarQueryCacheRow[]> {
   return db.calendarQueryCache.where('accountId').equals(accountId).toArray()
+}
+
+/** Every contact window for an account — the reap candidates, mirroring {@link queryCacheRows}. */
+export function contactQueryCacheForAccount(
+  db: ReplicaDb,
+  accountId: Id,
+): Promise<ContactQueryCacheRow[]> {
+  return db.contactQueryCache.where('accountId').equals(accountId).toArray()
+}
+
+export function deleteContactQueryCacheRows(
+  db: ReplicaDb,
+  accountId: Id,
+  keys: string[],
+): Promise<void> {
+  return db.contactQueryCache.bulkDelete(keys.map((key) => [accountId, key]))
+}
+
+export function deleteCalendarQueryCacheRows(
+  db: ReplicaDb,
+  accountId: Id,
+  keys: string[],
+): Promise<void> {
+  return db.calendarQueryCache.bulkDelete(keys.map((key) => [accountId, key]))
+}
+
+/** Every expanded occurrence row for an account — the prune candidates (see `runMaintenance`). */
+export function calendarOccurrences(db: ReplicaDb, accountId: Id): Promise<CalendarEventRow[]> {
+  return db.calendarEvents
+    .where('accountId')
+    .equals(accountId)
+    .filter((row) => row.occurrence)
+    .toArray()
 }
 
 /**

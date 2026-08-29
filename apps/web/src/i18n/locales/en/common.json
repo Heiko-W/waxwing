@@ -158,6 +158,7 @@
         "messages": "Message index (estimated)",
         "bodies": "Message bodies",
         "attachments": "Attachments",
+        "personalData": "Contacts, calendar and files",
         "other": "Other (app & offline shell)"
       },
       "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",

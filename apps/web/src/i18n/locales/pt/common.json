@@ -159,6 +159,7 @@
         "messages": "Índice de mensagens (estimativa)",
         "bodies": "Corpo das mensagens",
         "attachments": "Anexos",
+        "personalData": "Contactos, calendário e ficheiros",
         "other": "Outros (aplicação e módulo offline)"
       },
       "description": "O {{product}} mantém o e-mail recente neste dispositivo, para que abra de imediato e funcione offline.",

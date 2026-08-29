@@ -152,6 +152,10 @@ export function StorageSection(props: StorageSectionProps) {
           <dt>{t('settings.offline.category.attachments')}</dt>
           <dd>{formatBytes(usage.blobs.bytes)}</dd>
         </div>
+        <div className={styles.breakdownRow}>
+          <dt>{t('settings.offline.category.personalData')}</dt>
+          <dd>{formatBytes(usage.personalData.bytes)}</dd>
+        </div>
         {usage.otherBytes !== null && (
           <div className={styles.breakdownRow}>
             <dt>{t('settings.offline.category.other')}</dt>

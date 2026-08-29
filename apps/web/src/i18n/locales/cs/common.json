@@ -160,6 +160,7 @@
         "messages": "Index zpráv (odhad)",
         "bodies": "Texty zpráv",
         "attachments": "Přílohy",
+        "personalData": "Kontakty, kalendář a soubory",
         "other": "Ostatní (aplikace a offline základ)"
       },
       "description": "{{product}} uchovává nedávnou poštu na tomto zařízení, aby se otevírala okamžitě a fungovala i offline.",

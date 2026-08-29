@@ -158,6 +158,7 @@
         "messages": "Berichtenindex (schatting)",
         "bodies": "Berichtteksten",
         "attachments": "Bijlagen",
+        "personalData": "Contacten, agenda en bestanden",
         "other": "Overig (app en offlineomgeving)"
       },
       "description": "{{product}} bewaart recente e-mail op dit apparaat, zodat berichten meteen openen en ook offline werken.",

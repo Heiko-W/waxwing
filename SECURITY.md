@@ -158,6 +158,12 @@ signed in.
   a folder shows. The shipped default is stated once, in
   [`docs/configuration.md`](docs/configuration.md), rather than repeated here where it drifted:
   this document said 30 days for months while 90 was being installed.
+
+  **What it does and does not reach.** The horizon prunes mail — envelopes, bodies, attachments.
+  Contacts and the file tree are the address book and the drive as the server holds them, not a
+  cache of them, so they stay until you sign out and remove data: they are bounded by the account,
+  not by a number of days. Calendar windows and the occurrences they expand ARE cached and are
+  reaped like any other window.
 - **Two sign-outs, and the difference is the point.** Plain *Sign out* ends the session and
   stops the sync engines but **leaves the local replica in place**, so signing back in does
   not re-download a month of mail. ***Sign out & remove data*** (FR-AUTH-05) additionally

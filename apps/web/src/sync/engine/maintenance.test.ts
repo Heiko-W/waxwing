@@ -539,6 +539,121 @@ describe('runMaintenance — pruning', () => {
   })
 })
 
+/**
+ * The tables the pass never looked at (W-18).
+ *
+ * `planWindowReap` already took `Pick<…, 'key' | 'lastUsedAt'>`, and both the contact and calendar
+ * window tables carry those fields with the same index — they were simply never passed to it. Every
+ * calendar month a reader opened therefore left a window row behind for good, and with it every
+ * occurrence it expanded: title, location, attendees, description. None of it fell under the
+ * `cacheDays` horizon SECURITY.md names as the exposure bound, and none of it could be released
+ * through "Free up space".
+ */
+describe('runMaintenance — the contact and calendar windows', () => {
+  const STALE = NOW - 3 * DAY // past QUERY_WINDOW_TTL_MS (2 days)
+  const FRESH = NOW - 1_000
+
+  function contactWindow(key: string, lastUsedAt: number) {
+    return {
+      accountId: ACC,
+      key,
+      ids: [],
+      queryState: 'q',
+      total: 0,
+      upToId: null,
+      filter: null,
+      sort: null,
+      lastUsedAt,
+    }
+  }
+
+  function calendarWindow(key: string, ids: string[], lastUsedAt: number) {
+    return {
+      accountId: ACC,
+      key,
+      ids,
+      queryState: 'q',
+      total: ids.length,
+      from: '2026-08-01T00:00:00Z',
+      to: '2026-08-31T23:59:59Z',
+      stale: false,
+      lastUsedAt,
+    }
+  }
+
+  function occurrence(id: string, base: string) {
+    return {
+      accountId: ACC,
+      id,
+      base,
+      occurrence: true,
+      event: { id, '@type': 'Event', title: 'Standup' },
+    } as unknown as Parameters<typeof db.calendarEvents.put>[0]
+  }
+
+  it('reaps a stale contact window and keeps a fresh one', async () => {
+    await db.contactQueryCache.bulkPut([
+      contactWindow('contacts:stale', STALE),
+      contactWindow('contacts:fresh', FRESH),
+    ])
+
+    const result = await runMaintenance(deps())
+
+    expect(result.reapedContactWindows).toBe(1)
+    expect(await db.contactQueryCache.get([ACC, 'contacts:stale'])).toBeUndefined()
+    expect(await db.contactQueryCache.get([ACC, 'contacts:fresh'])).toBeDefined()
+  })
+
+  it('reaps a stale calendar window together with the occurrences only it named', async () => {
+    await db.calendarQueryCache.bulkPut([
+      calendarWindow('cal:august', ['occ-1', 'occ-2'], STALE),
+      calendarWindow('cal:september', ['occ-3'], FRESH),
+    ])
+    await db.calendarEvents.bulkPut([
+      occurrence('occ-1', 'master-1'),
+      occurrence('occ-2', 'master-1'),
+      occurrence('occ-3', 'master-2'),
+    ])
+    // The writable master, which is NOT an occurrence and must survive: deleting one would be data
+    // loss, not eviction.
+    await db.calendarEvents.put({
+      accountId: ACC,
+      id: 'master-1',
+      base: 'master-1',
+      occurrence: false,
+      event: { id: 'master-1', '@type': 'Event', title: 'Standup' },
+    } as unknown as Parameters<typeof db.calendarEvents.put>[0])
+
+    const result = await runMaintenance(deps())
+
+    expect(result.reapedCalendarWindows).toBe(1)
+    expect(result.reapedOccurrences).toBe(2)
+    expect(await db.calendarEvents.get([ACC, 'occ-1'])).toBeUndefined()
+    expect(await db.calendarEvents.get([ACC, 'occ-2'])).toBeUndefined()
+    // Still named by the surviving window.
+    expect(await db.calendarEvents.get([ACC, 'occ-3'])).toBeDefined()
+    // Never touched: the master is the object, not a cached view of it.
+    expect(await db.calendarEvents.get([ACC, 'master-1'])).toBeDefined()
+  })
+
+  it('counts contacts, calendar and files as their own category, not as "Other"', async () => {
+    await db.contactCards.put({
+      accountId: ACC,
+      id: 'c1',
+      addressBookIds: {},
+      card: { '@type': 'Card', version: '1.0', uid: 'u1' },
+    } as unknown as Parameters<typeof db.contactCards.put>[0])
+
+    const result = await runMaintenance(deps())
+
+    expect(result.usage.personalData.count).toBe(1)
+    expect(result.usage.personalData.bytes).toBeGreaterThan(0)
+    // And the accounted total includes it, so the eviction budget and the settings breakdown are
+    // measuring the same thing — which is the Done-when this accounting exists for.
+    expect(result.usage.accountedBytes).toBeGreaterThanOrEqual(result.usage.personalData.bytes)
+  })
+})
+
 describe('runMaintenance — resilience', () => {
   it('survives a QuotaExceededError mid-pass: partial results, no throw, freed bytes committed', async () => {
     const count = EVICT_CHUNK + 50

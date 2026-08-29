@@ -160,6 +160,7 @@
         "messages": "Indeks wiadomości (szacunkowo)",
         "bodies": "Treści wiadomości",
         "attachments": "Załączniki",
+        "personalData": "Kontakty, kalendarz i pliki",
         "other": "Pozostałe (aplikacja i zasoby offline)"
       },
       "description": "{{product}} przechowuje najnowszą pocztę na tym urządzeniu, dzięki czemu otwiera się ona natychmiast i działa w trybie offline.",

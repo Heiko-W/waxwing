@@ -43,7 +43,13 @@ import {
   blobOwners,
   bodyCacheEntries,
   type CacheItem,
+  calendarOccurrences,
+  calendarQueryCacheForAccount,
+  contactQueryCacheForAccount,
   deleteBlobs,
+  deleteCalendarEvents,
+  deleteCalendarQueryCacheRows,
+  deleteContactQueryCacheRows,
   deleteEmailBodies,
   deleteQueryCacheRows,
   emailIdsInMailbox,
@@ -66,6 +72,9 @@ import {
 import type { OutboxIntent } from './outbox'
 
 const DAY_MS = 86_400_000
+
+/** Contact and calendar windows have no watch registry — see the note at their reap. */
+const EMPTY_WATCHED: ReadonlySet<string> = new Set()
 
 /** Primary keys deleted per `rw` transaction — a quota abort mid-pass then loses at most one chunk. */
 export const EVICT_CHUNK = 200
@@ -104,6 +113,10 @@ export interface MaintenanceResult {
   readonly freedBytes: number
   readonly prunedEnvelopes: number
   readonly reapedWindows: number
+  /** Contact + calendar windows reaped, and the calendar occurrences that went with them (W-18). */
+  readonly reapedContactWindows: number
+  readonly reapedCalendarWindows: number
+  readonly reapedOccurrences: number
   readonly prefetchedBodies: number
   readonly usage: CacheUsage
 }
@@ -252,6 +265,47 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
     deleteQueryCacheRows(db, accountId, chunk),
   )
 
+  // ---- 1b. The contact and calendar windows, by the same rule (W-18). ----
+  //
+  // `planWindowReap` already takes `Pick<…, 'key' | 'lastUsedAt'>` and both tables carry both
+  // fields with the same `[accountId+lastUsedAt]` index — they were simply never passed to it. Every
+  // calendar month a reader visited therefore left a window row behind for good, and with it every
+  // occurrence it expanded: title, location, attendees, description. None of that fell under the
+  // `cacheDays` horizon SECURITY.md names as the exposure bound, and none of it could be released
+  // through "Free up space".
+  //
+  // No `watchedKeys` for these two: that set exists because a mail window can be on screen with a
+  // `lastUsedAt` older than the TTL while the list is idle. Contact and calendar windows stamp
+  // `lastUsedAt` on every read of the view that draws them, so a window in use is by construction
+  // younger than the two-day TTL.
+  const contactWindows = await contactQueryCacheForAccount(db, accountId)
+  const reapedContactWindows = await deleteInChunks(
+    planWindowReap(contactWindows, EMPTY_WATCHED, now),
+    (chunk) => deleteContactQueryCacheRows(db, accountId, chunk),
+  )
+  const calendarWindows = await calendarQueryCacheForAccount(db, accountId)
+  const reapedCalendarWindows = await deleteInChunks(
+    planWindowReap(calendarWindows, EMPTY_WATCHED, now),
+    (chunk) => deleteCalendarQueryCacheRows(db, accountId, chunk),
+  )
+
+  // ---- 1c. …and the occurrences no surviving calendar window still names. ----
+  //
+  // Only rows with `occurrence: true`: those are the expansion of a recurrence rule, reproducible
+  // from the master at any time, and the thing that actually accumulates per visited month. The
+  // masters (`occurrence: false`) are the writable objects and stay — deleting one would be data
+  // loss, not eviction. Contact cards are left alone for the same reason: a card is the address
+  // book replica, not a by-product of a window.
+  const survivingWindows = await calendarQueryCacheForAccount(db, accountId)
+  const referenced = new Set<Id>()
+  for (const window of survivingWindows) for (const id of window.ids) referenced.add(id)
+  const orphanOccurrences = (await calendarOccurrences(db, accountId))
+    .filter((row) => !referenced.has(row.id))
+    .map((row) => row.id)
+  const reapedOccurrences = await deleteInChunks(orphanOccurrences, (chunk) =>
+    deleteCalendarEvents(db, accountId, chunk),
+  )
+
   // ---- 2. Evict bytes. ----
   const usageBefore = await collectCacheUsage(db, accountId, deps.estimate)
   const pinned = await pinnedMailboxes(db, accountId)
@@ -374,6 +428,9 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
     freedBytes,
     prunedEnvelopes,
     reapedWindows,
+    reapedContactWindows,
+    reapedCalendarWindows,
+    reapedOccurrences,
     prefetchedBodies,
     usage,
   }
