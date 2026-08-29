@@ -51,7 +51,8 @@
     "check:actions:deep": "node scripts/check-action-tree.mjs",
     "shots": "pnpm --filter @waxwing/e2e exec playwright test -c playwright.shots.config.ts && node scripts/shots-convert.mjs",
     "shots:convert": "node scripts/shots-convert.mjs",
-    "check:site": "node scripts/check-site.mjs"
+    "check:site": "node scripts/check-site.mjs",
+    "check:locales": "node scripts/check-locales.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",

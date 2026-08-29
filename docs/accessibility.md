@@ -4,7 +4,10 @@
 **Status:** self-assessed. Last reviewed 2026-08-16 (M4.7).
 **Scope:** the Waxwing web client at every route it ships — sign-in, mail list, reading
 pane, composer, contacts, settings, and the command palette — in both the light and the
-dark theme, in English and German.
+dark theme. The a11y review was carried out in English and German; the twelve languages
+added in v0.21.0 share every markup path with them, and none of them is right-to-left, so
+the structural findings carry over — the string LENGTHS do not, and a layout that a longer
+translation breaks would be a defect nobody has yet looked for.
 
 This document is written to be useful rather than reassuring. What is verified says how.
 What is not verified says so plainly, and says what would be needed to verify it.

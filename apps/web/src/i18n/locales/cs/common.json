@@ -1,0 +1,2199 @@
+{
+  "shell": {
+    "nav": "Hlavní navigace",
+    "skip": "Přejít na obsah",
+    "brand": "{{product}} — domů",
+    "menu": {
+      "mail": "Pošta",
+      "contacts": "Kontakty",
+      "settings": "Nastavení",
+      "calendar": "Kalendář",
+      "files": "Soubory"
+    },
+    "folders": {
+      "show": "Zobrazit složky",
+      "hide": "Skrýt složky",
+      "title": "Složky",
+      "empty": "Zde se zobrazí vaše složky.",
+      "loading": "Načítání složek"
+    },
+    "accounts": {
+      "shared": "Sdílené",
+      "readOnly": "Jen pro čtení"
+    },
+    "list": {
+      "title": "Zprávy",
+      "resize": "Změnit šířku seznamu zpráv",
+      "searchTitle": "Výsledky hledání"
+    },
+    "reading": {
+      "title": "Čtení",
+      "empty": "Vyberte zprávu, kterou si chcete přečíst.",
+      "back": "Zpět na zprávy"
+    },
+    "notFound": {
+      "title": "Stránka nenalezena",
+      "body": "Tato stránka neexistuje.",
+      "home": "Přejít na Poštu"
+    }
+  },
+  "onboarding": {
+    "welcome": "Vítá vás {{product}}",
+    "connect": {
+      "title": "Připojení k poštovní schránce",
+      "label": "E-mailová adresa nebo server",
+      "placeholder": "jmeno@example.com",
+      "hint": "Zadejte svou e-mailovou adresu — {{product}} zkusí doménu z této adresy. Pokud je váš poštovní server na jiné adrese, zadejte místo toho ji.",
+      "submit": "Pokračovat"
+    },
+    "error": {
+      "discovery": "Pro doménu {{domain}} nebyl nalezen žádný poštovní server.",
+      "network": "Server není dostupný. Zkontrolujte připojení a zkuste to znovu.",
+      "noAccount": "Tento server pro vás nemá žádnou poštovní schránku.",
+      "generic": "Něco se pokazilo. Zkuste to prosím znovu.",
+      "networkHost": "Server {{host}} není dostupný. Pokud je váš poštovní server na jiné adrese, zadejte ji výše.",
+      "oauthUnavailable": "Tento server nenabízí zabezpečené přihlášení. Přihlaste se níže e-mailovou adresou a heslem.",
+      "oauthUnavailableNoFallback": "Tento server nenabízí zabezpečené přihlášení a tato instalace nepřipouští jiný způsob. Obraťte se na jejího provozovatele.",
+      "sessionOrigin": "Tento server uvádí {{field}} na adrese {{url}}, která neleží na {{origin}} — vaše přihlašovací údaje tam proto nebyly odeslány. Provozovatel serveru musí zveřejněnou adresu opravit."
+    },
+    "reset": {
+      "action": "Obnovit aplikaci na tomto zařízení",
+      "title": "Obnovit aplikaci na tomto zařízení?",
+      "body": "Tím se smaže vše, co {{product}} uložil v tomto prohlížeči: offline kopie vaší pošty, vaše nastavení i uložené přihlášení. Na serveru se nic nezmění a z vaší schránky se nic nesmaže.",
+      "confirm": "Smazat a načíst znovu",
+      "cancel": "Zrušit"
+    }
+  },
+  "auth": {
+    "signInTitle": "Webmail pro {{host}}",
+    "oauth": {
+      "button": "Přihlásit se",
+      "unavailable": "Přihlášení prostřednictvím serveru vyžaduje připojení HTTPS. Použijte níže uživatelské jméno a heslo.",
+      "explain": "Přihlásíte se přímo na {{host}} — heslem a, pokud jej váš účet používá, také dvoufázovým kódem."
+    },
+    "basic": {
+      "username": "Uživatelské jméno",
+      "password": "Heslo",
+      "staySignedIn": "Zůstat přihlášeni",
+      "staySignedInHint": "Bez tohoto zaškrtnutí platí přihlášení jen po dobu zobrazení této stránky: po jejím načtení znovu nebo po zavření karty budete opět odhlášeni.",
+      "appPasswordHint": "Pokud je pro váš účet zapnuté dvoufázové ověření, běžné heslo zde bude odmítnuto — použijte heslo aplikace.",
+      "submit": "Přihlásit se heslem",
+      "publicComputer": "Veřejný nebo sdílený počítač",
+      "publicComputerHint": "Na tomto zařízení nezůstanou žádné zprávy ani přihlášení, ať se přihlásíte jakkoli. Obojí se odstraní při odhlášení, při zavření karty a — pokud prohlížeč předtím spadne — při příštím spuštění aplikace {{product}} na tomto počítači.",
+      "disclose": "Přihlásit se místo toho heslem",
+      "appPasswordHintOAuth": "Pokud je pro váš účet zapnuté dvoufázové ověření, běžné heslo zde bude odmítnuto — použijte heslo aplikace, nebo se přihlaste výše prostřednictvím serveru."
+    },
+    "back": "Použít jiný server",
+    "error": {
+      "invalidCredentials": "Nesprávné uživatelské jméno nebo heslo.",
+      "generic": "Přihlášení se nezdařilo. Zkuste to prosím znovu.",
+      "signOutIncomplete": "Jste odhlášeni, ale místní kopii vaší pošty se nepodařilo odstranit — možná je otevřená další karta. Zavřete všechny karty a odhlaste se znovu.",
+      "invalidCredentialsBasic": "Nesprávné uživatelské jméno nebo heslo. Pokud je pro tento účet zapnuté dvoufázové ověření, funguje zde pouze heslo aplikace."
+    },
+    "reauth": {
+      "title": "Relace vypršela",
+      "body": "Vaše relace vypršela. Přihlaste se znovu a můžete pokračovat — rozpracovaná práce zůstane zachována.",
+      "submit": "Přihlásit se",
+      "cancel": "Odhlásit se"
+    }
+  },
+  "account": {
+    "menu": "Účet",
+    "signedInAs": "Přihlášeni jako {{name}}",
+    "signOut": "Odhlásit se",
+    "signOutRemove": "Odhlásit se a odstranit data",
+    "confirmRemove": {
+      "title": "Odstranit všechna místní data?",
+      "body": "Tím se na tomto zařízení smaže pošta a nastavení, které aplikace {{product}} uložila místně. Pošty na serveru se to nedotkne.",
+      "confirm": "Odstranit data a odhlásit se",
+      "cancel": "Zrušit"
+    },
+    "switchTo": "Přepnout na {{name}}",
+    "add": "Přidat další účet"
+  },
+  "status": {
+    "offline": "Offline",
+    "sync": {
+      "error": "Potíže se synchronizací — zkouší se znovu",
+      "syncing": "Synchronizace…",
+      "updated": "Aktualizováno {{when}}"
+    },
+    "outbox": {
+      "stuck_one": "Server je stále nedostupný ({{count}} zpráva)",
+      "stuck_few": "Server je stále nedostupný ({{count}} zprávy)",
+      "stuck_many": "Server je stále nedostupný ({{count}} zprávy)",
+      "stuck_other": "Server je stále nedostupný ({{count}} zpráv)"
+    },
+    "storage": {
+      "full": "Úložiště je plné — část pošty se neukládá do mezipaměti."
+    }
+  },
+  "settings": {
+    "title": "Nastavení",
+    "appearance": {
+      "title": "Vzhled",
+      "readingPane": {
+        "label": "Podokno čtení",
+        "right": "Vedle seznamu",
+        "bottom": "Pod seznamem",
+        "off": "Zprávy v plné šířce",
+        "hint": "Kde se otevřená zpráva zobrazí."
+      },
+      "density": {
+        "label": "Hustota seznamu",
+        "comfortable": "Pohodlná",
+        "compact": "Kompaktní"
+      },
+      "accent": {
+        "label": "Barva zvýraznění",
+        "blue": "Modrá",
+        "teal": "Tyrkysová",
+        "green": "Zelená",
+        "amber": "Jantarová",
+        "rose": "Růžová",
+        "purple": "Fialová"
+      }
+    },
+    "offline": {
+      "category": {
+        "messages": "Index zpráv (odhad)",
+        "bodies": "Texty zpráv",
+        "attachments": "Přílohy",
+        "other": "Ostatní (aplikace a offline základ)"
+      },
+      "description": "{{product}} uchovává nedávnou poštu na tomto zařízení, aby se otevírala okamžitě a fungovala i offline.",
+      "freeUp": "Uvolnit místo hned",
+      "freedToast": "Uvolněno {{size}}",
+      "meter": {
+        "label": "Využité úložiště"
+      },
+      "nothingToFree": "Není co uvolnit",
+      "persist": {
+        "label": "Ponechat data na tomto zařízení",
+        "hint": "Požádat prohlížeč, aby uloženou poštu nemazal, když dochází místo.",
+        "granted": "Uděleno — váš prohlížeč uloženou poštu ponechá, i když bude docházet místo.",
+        "denied": "Neuděleno — váš prohlížeč může uloženou poštu smazat, až bude docházet místo."
+      },
+      "pinned_one": "{{count}} složka je uchovávána offline",
+      "pinned_few": "{{count}} složky jsou uchovávány offline",
+      "pinned_many": "{{count}} složky je uchováváno offline",
+      "pinned_other": "{{count}} složek je uchováváno offline",
+      "quotaUnknown": "Váš prohlížeč neuvádí žádnou kvótu úložiště.",
+      "title": "Offline a úložiště",
+      "total": "Využito {{used}} z {{total}}",
+      "windowApplies": "Kratší období uvolní místo až při příštím úklidu, ne okamžitě — tlačítko „Uvolnit místo“ výše nečeká.",
+      "windowChoice_one": "{{count}} den",
+      "windowChoice_few": "{{count}} dny",
+      "windowChoice_many": "{{count}} dne",
+      "windowChoice_other": "{{count}} dní",
+      "windowLabel": "Uchovávat poštu na tomto zařízení po dobu",
+      "window_one": "Na tomto zařízení zůstává pošta za poslední {{count}} den. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
+      "window_few": "Na tomto zařízení zůstává pošta za poslední {{count}} dny. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
+      "window_many": "Na tomto zařízení zůstává pošta za posledního {{count}} dne. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
+      "window_other": "Na tomto zařízení zůstává pošta za posledních {{count}} dní. Starší pošta zůstává na serveru a načte se, až ji otevřete."
+    },
+    "general": {
+      "title": "Obecné"
+    },
+    "reading": {
+      "title": "Čtení",
+      "remote": {
+        "label": "Automaticky načítat vzdálené obrázky",
+        "hint": "Vzdálené obrázky prozradí odesílateli, že jste zprávu otevřeli, a odhalí vaši IP adresu. Bezpečnější je nechat je vypnuté."
+      },
+      "allowList_one": "{{count}} odesílatel má vzdálený obsah vždy povolen.",
+      "allowList_few": "{{count}} odesílatelé mají vzdálený obsah vždy povolen.",
+      "allowList_many": "{{count}} odesílatele má vzdálený obsah vždy povolen.",
+      "allowList_other": "{{count}} odesílatelů má vzdálený obsah vždy povolen.",
+      "clearAllowList": "Vyprázdnit seznam",
+      "cleared": "Seznam vyprázdněn",
+      "autoMarkRead": {
+        "label": "Označit zprávu při otevření jako přečtenou",
+        "hint": "Až po krátké prodlevě, aby pouhé projetí seznamem zprávu neoznačilo."
+      },
+      "prefetch": {
+        "label": "Načítat zprávy ještě před otevřením",
+        "hint": "Texty zpráv ze zobrazeného seznamu drží připravené na tomto zařízení, takže se zpráva otevře bez čekání na server. Mimo Wi-Fi spotřebovává mobilní data — prohlížeče obojí nerozliší, takže tento přepínač je jediné, čím to lze ovlivnit."
+      }
+    },
+    "swipe": {
+      "title": "Gesta přejetím",
+      "left": {
+        "label": "Přejetí doleva",
+        "hint": "Přetáhněte zprávu na dotykové obrazovce doleva. Archivace nic neudělá, pokud tento účet nemá složku Archiv."
+      },
+      "right": {
+        "label": "Přejetí doprava",
+        "hint": "Přetáhněte zprávu na dotykové obrazovce doprava."
+      },
+      "action": {
+        "archive": "Archivovat",
+        "trash": "Přesunout do koše",
+        "read": "Označit jako přečtené či nepřečtené",
+        "none": "Nic"
+      }
+    },
+    "compose": {
+      "title": "Psaní zpráv",
+      "undoSend": {
+        "label": "Vrátit odeslání zpět",
+        "hint": "Jak dlouho odeslaná zpráva čeká, než skutečně odejde.",
+        "off": "Odeslat ihned",
+        "seconds_one": "{{count}} sekunda",
+        "seconds_few": "{{count}} sekundy",
+        "seconds_many": "{{count}} sekundy",
+        "seconds_other": "{{count}} sekund"
+      },
+      "signature": {
+        "label": "Umístění podpisu",
+        "hint": "Kam se podpis vloží, když odpovídáte nebo přeposíláte.",
+        "aboveQuote": "Nad citovaný text",
+        "belowQuote": "Pod citovaný text"
+      }
+    },
+    "identities": {
+      "title": "Identity",
+      "description": "Adresy, ze kterých můžete odesílat, včetně podpisu a adresy pro odpověď. Změny platí pro nové zprávy.",
+      "loading": "Načítání identit…",
+      "empty": "Tento účet nemá žádné odesílací identity.",
+      "protected": "Výchozí adresa — server její smazání nepovoluje.",
+      "created": "Identita vytvořena",
+      "saved": "Identita uložena",
+      "deleted": "Identita smazána",
+      "cancel": "Zrušit",
+      "create": {
+        "open": "Přidat identitu",
+        "submit": "Vytvořit identitu"
+      },
+      "edit": {
+        "open": "Upravit identitu {{name}}",
+        "submit": "Uložit identitu"
+      },
+      "delete": {
+        "open": "Smazat {{email}}",
+        "title": "Smazat identitu?",
+        "body": "{{email}} už nadále nebude k dispozici jako adresa odesílatele.",
+        "draftsWarning": "Koncepty, které už z této adresy vznikly, potom nepůjde odeslat.",
+        "cancel": "Ponechat",
+        "confirm": "Smazat"
+      },
+      "email": {
+        "label": "E-mailová adresa",
+        "immutable": "Adresu existující identity nelze změnit. Vytvořte místo toho novou identitu."
+      },
+      "name": {
+        "label": "Zobrazované jméno",
+        "placeholder": "Jméno, které uvidí příjemci"
+      },
+      "replyTo": {
+        "label": "Odpovědět komu",
+        "hint": "Odpovědi půjdou sem místo na adresu odesílatele. Více adres oddělte čárkami."
+      },
+      "bcc": {
+        "label": "Automatická skrytá kopie",
+        "hint": "Každá zpráva odeslaná z této identity se skrytě zkopíruje na tyto adresy."
+      },
+      "htmlSignature": {
+        "label": "Podpis",
+        "hint": "Vkládá se do nových zpráv nad citovaný text, pokud umístění nezměníte v sekci „Psaní zpráv“."
+      },
+      "textSignature": {
+        "label": "Podpis jako prostý text",
+        "hint": "Použije se, když se zpráva odesílá jako prostý text. Vede se odděleně, aby ručně napsaný podpis nebyl přepsán.",
+        "fromHtml": "Převzít z podpisu výše"
+      },
+      "error": {
+        "emailMissing": "Zadejte e-mailovou adresu.",
+        "emailInvalid": "Toto nevypadá jako e-mailová adresa.",
+        "replyToInvalid": "Jedna z adres pro odpověď je neplatná.",
+        "bccInvalid": "Jedna z adres skryté kopie je neplatná.",
+        "loadFailed": "Identity se nepodařilo načíst.",
+        "conflict": "Identity byly změněny jinde. Vaše změna nebyla uložena — výše je aktuální stav.",
+        "forbiddenFrom": "Server vám nedovoluje odesílat z této adresy.",
+        "forbidden": "Server smazání této identity nepovoluje.",
+        "emailNotConfigured": "Tato adresa není pro váš účet zřízena. Server povoluje odesílání jen z adres, které jsou pro účet nastaveny — požádejte správce, aby ji přidal jako alias.",
+        "invalidProperties": "Server jednu z těchto hodnot odmítl.",
+        "rejected": "Server tuto změnu odmítl.",
+        "offline": "Jste offline. Identity lze měnit jen při připojení.",
+        "generic": "Změnu se nepodařilo uložit."
+      }
+    },
+    "vacation": {
+      "title": "Odpověď v nepřítomnosti",
+      "description": "Automaticky jednou odpovědět všem, kdo vám napíší.",
+      "enable": {
+        "label": "Odesílat automatické odpovědi"
+      },
+      "from": "Začátek",
+      "to": "Konec",
+      "timezoneHint": "Časy platí ve vašem místním časovém pásmu ({{zone}}). Prázdné pole znamená bez omezení.",
+      "subject": {
+        "label": "Předmět",
+        "placeholder": "Mimo kancelář"
+      },
+      "body": {
+        "label": "Text odpovědi"
+      },
+      "preview": {
+        "show": "Zobrazit náhled",
+        "hide": "Skrýt náhled",
+        "title": "Náhled odpovědi v nepřítomnosti"
+      },
+      "save": "Uložit",
+      "saved": "Odpověď v nepřítomnosti uložena",
+      "status": {
+        "off": "Automatické odpovědi se neodesílají.",
+        "active": "Automatické odpovědi se právě odesílají.",
+        "scheduled": "Začíná {{date}}.",
+        "expired": "Datum konce už uplynulo — žádné odpovědi se neodesílají."
+      },
+      "error": {
+        "endBeforeStart": "Konec musí být až po začátku.",
+        "loadFailed": "Odpověď v nepřítomnosti se nepodařilo načíst.",
+        "conflict": "Odpověď v nepřítomnosti byla změněna jinde. Vaše změny nebyly uloženy — výše je aktuální nastavení.",
+        "rejected": "Server toto nastavení odmítl.",
+        "offline": "Jste offline. Odpověď v nepřítomnosti lze měnit jen při připojení.",
+        "generic": "Odpověď v nepřítomnosti se nepodařilo uložit."
+      }
+    },
+    "filters": {
+      "title": "Filtry",
+      "intro": "Pravidla, která server uplatňuje na příchozí poštu ještě předtím, než k vám dorazí. Fungují i tehdy, když je tato aplikace zavřená.",
+      "empty": "Zatím žádná filtrovací pravidla.",
+      "addRule": "Přidat pravidlo",
+      "saved": "Filtry uloženy",
+      "showSource": "Zobrazit skript",
+      "hideSource": "Skrýt skript",
+      "sourceLabel": "Skript Sieve",
+      "unsupportedExtensions": "Tento server neuvedl podporu pro: {{list}}. Pravidla, která to vyžadují, nemusí fungovat.",
+      "rule": {
+        "enabled": "Aktivní",
+        "edit": "Upravit",
+        "delete": "Smazat",
+        "reorder": "Přesunout pravidlo {{name}}",
+        "reorderHint": "Mezerníkem pravidlo zvednete, šipkami nahoru a dolů je přesunete. Mezerník je položí, Esc je vrátí zpět.",
+        "movedTo": "{{name}}, pravidlo {{position}} z {{count}}",
+        "dropped": "{{name}} položeno",
+        "dropCanceled": "{{name}} vráceno zpět"
+      },
+      "foreign": {
+        "explain": "Pro tuto schránku už existuje filtrovací skript, který nevznikl zde. Zobrazuje se beze změn a zůstává nedotčen.",
+        "adopt": "Spravovat filtry i zde",
+        "adoptHint": "Vaše stávající pravidla zůstanou zachována a poběží dál. Nová pravidla se doplní za ně."
+      },
+      "form": {
+        "createTitle": "Nové pravidlo",
+        "editTitle": "Upravit pravidlo",
+        "name": "Název",
+        "conditions": "Podmínky",
+        "actions": "Akce",
+        "matchMode": "Použít, když",
+        "matchAll": "platí všechny podmínky",
+        "matchAny": "platí některá podmínka",
+        "field": "Část",
+        "match": "Porovnání",
+        "value": "Hodnota",
+        "sizeKb": "Velikost v KB",
+        "action": "Akce",
+        "mailbox": "Složka",
+        "flag": "Označit jako",
+        "address": "Adresa",
+        "addCondition": "Přidat podmínku",
+        "addAction": "Přidat akci",
+        "remove": "Odebrat",
+        "stop": "Další pravidla už nepoužívat",
+        "cancel": "Zrušit",
+        "submit": "Uložit pravidlo",
+        "spamScore": "Hodnocení (0–10)",
+        "datePart": "Část",
+        "weekday": "Den",
+        "hour": "Hodina (0–23)",
+        "reason": "Důvod"
+      },
+      "field": {
+        "from": "Odesílatel",
+        "to": "Komu",
+        "cc": "Kopie",
+        "subject": "Předmět",
+        "body": "Text zprávy",
+        "size": "Velikost",
+        "hasAttachment": "Má přílohu",
+        "envelopeFrom": "Odesílatel obálky",
+        "envelopeTo": "Příjemce obálky",
+        "spam": "Hodnocení spamu",
+        "currentDate": "Čas doručení",
+        "duplicate": "Duplicitní zpráva"
+      },
+      "match": {
+        "contains": "obsahuje",
+        "is": "je přesně",
+        "startsWith": "začíná na",
+        "endsWith": "končí na",
+        "matches": "odpovídá vzoru",
+        "over": "je větší než",
+        "under": "je menší než",
+        "atLeast": "nejméně",
+        "atMost": "nejvýše"
+      },
+      "action": {
+        "fileInto": "Přesunout do složky",
+        "addFlag": "Označit",
+        "redirect": "Přeposlat na",
+        "discard": "Zahodit",
+        "reject": "Odmítnout s odůvodněním"
+      },
+      "flag": {
+        "seen": "přečteno",
+        "flagged": "s příznakem"
+      },
+      "error": {
+        "loadFailed": "Filtry se nepodařilo načíst.",
+        "invalidSieve": "Server skript odmítl jako neplatný. Vaše pravidla nebyla uložena.",
+        "tooLarge": "Skript je pro tento server příliš velký.",
+        "offline": "Jste offline. Filtry lze měnit jen při připojení.",
+        "rejected": "Server uložení filtrů odmítl.",
+        "generic": "Filtry se nepodařilo uložit.",
+        "invalidSieveReason": "Server skript odmítl jako neplatný: {{reason}}. Vaše pravidla nebyla uložena."
+      },
+      "active": "Filtrovat příchozí poštu",
+      "activeHint": "Pravidla níže se uplatní na každou zprávu, kterou server přijme.",
+      "inactiveHint": "Vaše pravidla zůstanou zachována, ale dokud to znovu nezapnete, nebude se nic filtrovat.",
+      "deleteScript": "Smazat filtrovací skript",
+      "delete": {
+        "title": "Smazat filtrovací skript?",
+        "body": "Všechna pravidla budou ze serveru odstraněna a příchozí pošta se přestane filtrovat. Tuto akci nelze vrátit zpět.",
+        "foreignWarning": "V tomto skriptu jsou i pravidla, která nevznikla zde. Smažou se také.",
+        "cancel": "Zrušit",
+        "confirm": "Smazat",
+        "done": "Filtrovací skript smazán"
+      },
+      "date": {
+        "weekday": "Den v týdnu",
+        "hour": "Hodina dne"
+      },
+      "weekday": {
+        "sunday": "Neděle",
+        "monday": "Pondělí",
+        "tuesday": "Úterý",
+        "wednesday": "Středa",
+        "thursday": "Čtvrtek",
+        "friday": "Pátek",
+        "saturday": "Sobota"
+      }
+    },
+    "server": {
+      "title": "Server",
+      "description": "Co tento server JMAP nabízí. Užitečné při hlášení problému.",
+      "connection": {
+        "url": "Adresa",
+        "username": "Přihlášeni jako",
+        "account": "Účet",
+        "readOnly": "jen pro čtení"
+      },
+      "core": {
+        "title": "Omezení"
+      },
+      "mail": {
+        "title": "Omezení pro poštu"
+      },
+      "capabilities": {
+        "title": "Volitelné funkce"
+      },
+      "available": "Podporováno",
+      "absent": "Nepodporováno",
+      "unlimited": "Bez omezení",
+      "yes": "Ano",
+      "no": "Ne",
+      "none": "Žádné",
+      "coreMissing": "Tento server neuvádí žádný standardní objekt capability. To je neobvyklé — některé funkce nemusí fungovat.",
+      "mailMissing": "Tento účet neuvádí žádnou poštovní funkci, omezení pro poštu proto nelze zobrazit.",
+      "extra": {
+        "title": "Další funkce, které tento server uvádí"
+      },
+      "limit": {
+        "maxSizeUpload": "Největší nahrávaný soubor",
+        "maxSizeRequest": "Největší požadavek",
+        "maxConcurrentRequests": "Souběžné požadavky",
+        "maxConcurrentUpload": "Souběžná nahrávání",
+        "maxCallsInRequest": "Volání metod na požadavek",
+        "maxObjectsInGet": "Objektů na jedno načtení",
+        "maxObjectsInSet": "Objektů na jednu změnu",
+        "collationAlgorithms": "Pravidla řazení",
+        "maxMailboxesPerEmail": "Složek na zprávu",
+        "maxMailboxDepth": "Hloubka vnoření složek",
+        "maxSizeMailboxName": "Délka názvu složky",
+        "maxSizeAttachmentsPerEmail": "Příloh na zprávu",
+        "mayCreateTopLevelMailbox": "Smí vytvářet složky nejvyšší úrovně",
+        "emailQuerySortOptions": "Pole, podle kterých lze řadit"
+      },
+      "cap": {
+        "core": "Jádro",
+        "mail": "Pošta",
+        "submission": "Odesílání",
+        "vacationResponse": "Odpověď v nepřítomnosti",
+        "quota": "Kvóta úložiště",
+        "blob": "Práce se soubory",
+        "sieve": "Filtrovací pravidla (Sieve)",
+        "contacts": "Kontakty",
+        "webSocket": "Push přes WebSocket",
+        "principals": "Sdílení",
+        "webPushVapid": "Podpis Web Push (RFC 9749)"
+      },
+      "generate": {
+        "title": "Konfigurace nasazení",
+        "intro": "Vytvoří soubor config.json pro toto nasazení podle serveru, ke kterému jste přihlášeni. Uložte jej vedle index.html.",
+        "action": "Vytvořit config.json",
+        "checking": "Kontrola…",
+        "save": "Uložit config.json",
+        "warnLabel": "Zkontrolujte prosím:",
+        "infoLabel": "Poznámka:",
+        "finding": {
+          "sameOrigin": "Poštovní server leží na stejném původu, takže sessionUrl zůstane v config.json prázdné — nasazení bude fungovat i po přesunu na jiný název hostitele.",
+          "crossOrigin": "Poštovní server leží na {{origin}}, tedy na jiném původu než tato aplikace. Každý požadavek závisí na tom, že tento server odesílá hlavičky CORS. Dnes to dělá; pokud se to změní, nasazení přestane fungovat.",
+          "basicOnly": "Zjišťování OAuth neodpovědělo, povoleno je proto jen přihlášení heslem. Heslo se posílá s každým požadavkem a nelze je odvolat jen pro jednoho klienta — pokud můžete, zapněte na serveru OAuth.",
+          "oauthUnknown": "Zjišťování OAuth odsud nešlo ověřit, způsoby přihlášení proto zůstávají beze změny. Před nasazením je prověřte.",
+          "insecureOrigin": "Tato aplikace se doručuje přes prosté HTTP. Prohlížeče pak neposkytnou crypto.subtle, takže OAuth nemůže fungovat a offline mezipaměť nelze zašifrovat. Doručujte ji přes HTTPS.",
+          "brandingUntouched": "Branding, funkce a offline limity byly převzaty beze změny — žádný server nám nemůže říct, jak je chcete mít. Upravte je ručně."
+        }
+      }
+    },
+    "about": {
+      "title": "O aplikaci",
+      "version": "Verze {{version}}"
+    },
+    "templates": {
+      "title": "Šablony",
+      "description": "Opakovaně použitelné texty zpráv. Vložením se šablona připojí ke konceptu, který právě píšete — nikdy nepřepíše to, co už je napsáno.",
+      "placeholders": "Zástupné symboly doplněné při vložení: {{list}}",
+      "empty": "Zatím žádné šablony.",
+      "add": "Nová šablona",
+      "edit": "Upravit",
+      "delete": "Smazat",
+      "dialogTitle": "Šablona",
+      "name": "Název",
+      "subject": "Předmět",
+      "body": "Zpráva",
+      "save": "Uložit šablonu",
+      "cancel": "Zrušit",
+      "defaultSenderName": "já"
+    },
+    "groups": {
+      "general": "Obecné",
+      "appearance": "Vzhled",
+      "mail": "Pošta",
+      "accounts": "Účty a pravidla",
+      "system": "Systém"
+    },
+    "security": {
+      "title": "Účet a zabezpečení",
+      "description": "Co si na tomto účtu můžete na svém serveru změnit sami.",
+      "loading": "Načítání nastavení účtu…",
+      "unavailable": "Váš server pro tento účet žádné z těchto nastavení nenabízí.",
+      "password": {
+        "label": "Heslo",
+        "hint": "Heslo, kterým se přihlašujete — zde i v každé poštovní aplikaci, která tento účet používá.",
+        "change": "Změnit heslo…",
+        "title": "Změna hesla",
+        "current": "Současné heslo",
+        "next": "Nové heslo",
+        "confirm": "Nové heslo znovu",
+        "submit": "Změnit heslo",
+        "cancel": "Zrušit",
+        "changed": "Heslo změněno",
+        "missing": "Vyplňte všechna tři pole.",
+        "mismatch": "Obě nová hesla se neshodují.",
+        "devices": "Potom se zde přihlásíte znovu a nové heslo zadáte i v poštovních aplikacích na svých ostatních zařízeních. Hesla aplikací platí dál."
+      },
+      "appPasswords": {
+        "label": "Hesla aplikací",
+        "hint": "Samostatné heslo pro každou poštovní aplikaci na vašich zařízeních. Odvoláním jednoho zůstane heslo účtu i všechny ostatní aplikace nedotčeny.",
+        "empty": "Zatím žádná hesla aplikací.",
+        "create": "Vytvořit heslo aplikace…",
+        "createTitle": "Vytvořit heslo aplikace",
+        "createIntro": "Váš server vytvoří heslo, které používá jen tato jediná aplikace.",
+        "name": "K čemu slouží?",
+        "namePlaceholder": "Mail na iPhonu",
+        "nameMissing": "Pojmenujte je, ať je později rozeznáte.",
+        "expiry": "Platí do",
+        "expiryNever": "Nikdy",
+        "expiryDays": "Za {{days}} dní",
+        "submit": "Vytvořit",
+        "cancel": "Zrušit",
+        "created": "Vytvořeno {{date}}",
+        "expires": "Platnost končí {{date}}",
+        "expired": "Platnost vypršela — toto heslo už nefunguje.",
+        "restricted": "Omezeno na určitá oprávnění nebo adresy. Nastaveno mimo aplikaci {{product}}.",
+        "revoke": "Odvolat {{name}}",
+        "revokeTitle": "Odvolat heslo aplikace?",
+        "revokeBody": "{{name}} okamžitě přestane fungovat. Každá aplikace, která je ještě používá, si znovu vyžádá heslo.",
+        "revokeConfirm": "Odvolat",
+        "revokeCancel": "Ponechat",
+        "revoked": "Heslo aplikace odvoláno",
+        "secretTitle": "Vaše heslo aplikace",
+        "secretIntro": "Zadejte je nyní do poštovní aplikace spolu se svou e-mailovou adresou.",
+        "secretLabel": "Heslo aplikace",
+        "secretWarning": "Zobrazuje se jen tentokrát. Pokud se ztratí, odvolejte je zde a vytvořte nové.",
+        "copy": "Kopírovat",
+        "copied": "Zkopírováno",
+        "done": "Hotovo"
+      },
+      "language": {
+        "label": "Jazyk zpráv ze serveru",
+        "hint": "Jazyk, ve kterém váš server píše vlastní pozvánky do kalendáře a připomenutí. Jazyk samotné aplikace {{product}} nastavíte v sekci Obecné.",
+        "saved": "Jazyk uložen"
+      },
+      "encryption": {
+        "label": "Šifrování uložených dat",
+        "off": "Vypnuto. Váš server ukládá vaše zprávy nešifrovaně.",
+        "on": "Zapnuto — {{cipher}}",
+        "key": "Klíč: {{name}}",
+        "explain": "Váš server šifruje příchozí zprávy vaším vlastním klíčem, teprve pak je uloží. {{product}} nepodporuje OpenPGP a nedokáže je zobrazit.",
+        "manage": "Změnit to lze jen ve správě účtu na vašem serveru. {{product}} tento přepínač nenabízí, protože po jeho zapnutí by zde byla vaše schránka nečitelná."
+      },
+      "spam": {
+        "label": "Trénovací vzorky spamu",
+        "hint": "Kopie zpráv, které jste zařadili a které si váš server ponechal pro trénink svého spamového filtru. Smazáním se odstraní kopie; umístění zprávy se tím nemění.",
+        "empty": "Váš server si žádné kopie vašich zpráv neponechal.",
+        "isSpam": "Ponecháno jako spam",
+        "isHam": "Ponecháno jako ne-spam",
+        "noSubject": "(bez předmětu)",
+        "delete": "Smazat kopii zprávy {{subject}}",
+        "deleted": "Kopie smazána"
+      },
+      "error": {
+        "loadFailed": "Toto nastavení se nepodařilo načíst.",
+        "rejected": "Váš server tuto změnu odmítl.",
+        "server": "Uvedl: {{detail}}",
+        "offline": "Jste offline. Toto nastavení lze měnit jen při připojení.",
+        "generic": "Změnu se nepodařilo uložit."
+      }
+    }
+  },
+  "contacts": {
+    "title": "Kontakty",
+    "noName": "Bez jména",
+    "books": {
+      "title": "Adresáře",
+      "all": "Všechny kontakty",
+      "default": "Výchozí",
+      "shared": "Sdílené",
+      "readOnly": "Jen pro čtení",
+      "show": "Zobrazit adresáře",
+      "hide": "Skrýt adresáře",
+      "loading": "Načítání adresářů",
+      "empty": "Žádné adresáře.",
+      "new": "Nový adresář",
+      "actions": "Akce pro {{name}}",
+      "nameLabel": "Název",
+      "create": {
+        "title": "Nový adresář",
+        "submit": "Vytvořit"
+      },
+      "rename": {
+        "action": "Přejmenovat",
+        "title": "Přejmenovat adresář",
+        "submit": "Přejmenovat"
+      },
+      "delete": {
+        "action": "Smazat",
+        "title": "Smazat adresář",
+        "body": "Smazat „{{name}}“?",
+        "contents": "Kontakty, které jsou pouze v tomto adresáři, se smažou spolu s ním.",
+        "confirm": "Smazat",
+        "cancel": "Zrušit"
+      },
+      "error": {
+        "nameRequired": "Zadejte název.",
+        "nameTooLong": "Tento název je příliš dlouhý.",
+        "nameTaken": "Adresář s tímto názvem už existuje."
+      },
+      "share": "Sdílet {{name}}"
+    },
+    "list": {
+      "title": "Kontakty",
+      "resize": "Změnit šířku seznamu kontaktů",
+      "empty": "Zatím žádné kontakty.",
+      "loading": "Načítání kontaktů",
+      "count_one": "{{count}} kontakt",
+      "count_few": "{{count}} kontakty",
+      "count_many": "{{count}} kontaktu",
+      "count_other": "{{count}} kontaktů"
+    },
+    "search": {
+      "label": "Hledat v kontaktech",
+      "placeholder": "Hledat v kontaktech",
+      "clear": "Vymazat hledání",
+      "empty": "Vašemu hledání neodpovídají žádné kontakty."
+    },
+    "detail": {
+      "notAvailable": "Tento kontakt není k dispozici.",
+      "title": "Kontakt",
+      "empty": "Vyberte kontakt, jehož údaje chcete zobrazit.",
+      "loading": "Načítání kontaktu",
+      "back": "Zpět na kontakty",
+      "edit": "Upravit",
+      "delete": "Smazat",
+      "sections": {
+        "email": "E-mail",
+        "phone": "Telefon",
+        "address": "Adresa",
+        "birthday": "Narozeniny",
+        "url": "Webová stránka",
+        "im": "Rychlé zprávy",
+        "note": "Poznámky"
+      },
+      "more": "Další akce"
+    },
+    "labels": {
+      "work": "Pracovní",
+      "private": "Domů",
+      "home": "Domů",
+      "mobile": "Mobil",
+      "fax": "Fax",
+      "pager": "Pager",
+      "voice": "Telefon",
+      "video": "Video",
+      "text": "SMS",
+      "main-number": "Hlavní",
+      "textphone": "Textový telefon",
+      "other": "Ostatní"
+    },
+    "new": "Nový kontakt",
+    "addFirst": "Přidat kontakt",
+    "form": {
+      "newTitle": "Nový kontakt",
+      "editTitle": "Upravit kontakt",
+      "save": "Uložit",
+      "cancel": "Zrušit",
+      "readOnly": "Tento adresář je jen pro čtení.",
+      "sections": {
+        "name": "Jméno a příjmení",
+        "email": "E-mail",
+        "phone": "Telefon",
+        "address": "Adresa",
+        "org": "Firma",
+        "birthday": "Narozeniny",
+        "url": "Webová stránka",
+        "im": "Rychlé zprávy",
+        "note": "Poznámky",
+        "photo": "Fotka",
+        "books": "Adresáře"
+      },
+      "namePrefix": "Titul před jménem",
+      "given": "Jméno",
+      "given2": "Prostřední jméno",
+      "surname": "Příjmení",
+      "nameSuffix": "Titul za jménem",
+      "company": "Firma",
+      "jobTitle": "Pracovní pozice",
+      "street": "Ulice",
+      "city": "Město",
+      "region": "Kraj / oblast",
+      "postcode": "PSČ",
+      "country": "Země",
+      "addEmail": "Přidat e-mail",
+      "addPhone": "Přidat telefon",
+      "addField": "Přidat pole",
+      "addAddress": "Přidat adresu",
+      "addCompany": "Přidat firmu",
+      "addBirthday": "Přidat narozeniny",
+      "addUrl": "Přidat webovou stránku",
+      "addIm": "Přidat rychlé zprávy",
+      "urlPlaceholder": "https://example.com",
+      "imService": "Služba",
+      "imPlaceholder": "Adresa nebo přezdívka",
+      "addNote": "Přidat poznámku",
+      "addPhoto": "Přidat fotku",
+      "fieldNames": {
+        "email": "E-mail",
+        "phone": "Telefon",
+        "address": "Adresa",
+        "url": "Webová stránka",
+        "im": "Rychlé zprávy",
+        "note": "Poznámka"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "Typ pole {{field}}",
+        "remove": "Odebrat pole {{field}}",
+        "inGroup": "{{field}} ({{group}})"
+      },
+      "invalidEmail": "Zadejte e-mailovou adresu ve tvaru jmeno@example.com.",
+      "choosePhoto": "Vybrat fotku",
+      "changePhoto": "Změnit fotku",
+      "removePhoto": "Odebrat fotku",
+      "photoPreparing": "Příprava fotky…",
+      "photoError": "Fotku se nepodařilo použít.",
+      "photoTooLarge": "Tato fotka je příliš velká. Vyberte menší.",
+      "photoAlt": "Náhled fotky kontaktu",
+      "booksAtLeastOne": "Kontakt musí zůstat alespoň v jednom adresáři."
+    },
+    "delete": {
+      "title": "Smazat kontakt",
+      "body": "Opravdu chcete smazat kontakt {{name}}?",
+      "confirm": "Smazat",
+      "cancel": "Zrušit"
+    },
+    "groups": {
+      "title": "Skupiny",
+      "new": "Nová skupina",
+      "loading": "Načítání skupin",
+      "empty": "Zatím žádné skupiny.",
+      "newTitle": "Nová skupina",
+      "editTitle": "Upravit skupinu",
+      "name": "Název skupiny",
+      "sections": {
+        "name": "Název"
+      },
+      "membersCount_one": "{{count}} člen",
+      "membersCount_few": "{{count}} členové",
+      "membersCount_many": "{{count}} člena",
+      "membersCount_other": "{{count}} členů",
+      "membersLabel": "Členové skupiny",
+      "noMembers": "Zatím žádní členové.",
+      "addMembers": "Přidat členy",
+      "searchMembers": "Najít kontakty k přidání",
+      "noCandidates": "Žádné kontakty k přidání.",
+      "removeMember": "Odebrat {{name}} ze skupiny",
+      "addNamed": "Přidat {{name}}",
+      "unknownMember": "Neznámý kontakt",
+      "edit": "Upravit skupinu",
+      "delete": "Smazat skupinu",
+      "backToContacts": "Všechny kontakty",
+      "deleteTitle": "Smazat skupinu",
+      "deleteBody": "Smazat skupinu {{name}}? Kontakty, které obsahuje, smazány nebudou."
+    },
+    "io": {
+      "open": "Import nebo export",
+      "title": "Import a export kontaktů",
+      "exportTitle": "Exportovat kontakt",
+      "exportContact": "Exportovat kontakt…",
+      "format": {
+        "label": "Formát",
+        "vcard": "vCard 4.0",
+        "jscontact": "JSContact (JSON)"
+      },
+      "book": {
+        "label": "Přidat do adresáře",
+        "none": "Není k dispozici adresář s právem zápisu."
+      },
+      "import": {
+        "cancel": "Zastavit",
+        "choose": "Vyberte soubor (.vcf nebo .json)",
+        "confirm_one": "Importovat {{count}} kontakt",
+        "confirm_few": "Importovat {{count}} kontakty",
+        "confirm_many": "Importovat {{count}} kontaktu",
+        "confirm_other": "Importovat {{count}} kontaktů",
+        "heading": "Import",
+        "parsing": "Čtení souboru…",
+        "progress": "{{done}} z {{total}}",
+        "progressLabel": "Průběh importu"
+      },
+      "export": {
+        "heading": "Export",
+        "button": "Stáhnout",
+        "empty": "Nejsou k dispozici žádné kontakty k exportu.",
+        "scope_one": "Bude exportován {{count}} kontakt.",
+        "scope_few": "Budou exportovány {{count}} kontakty.",
+        "scope_many": "Bude exportováno {{count}} kontaktu.",
+        "scope_other": "Bude exportováno {{count}} kontaktů."
+      },
+      "keepBoth": "Importovat duplicity i tak (ponechat obojí)",
+      "result": {
+        "willImport_one": "{{count}} kontakt k importu",
+        "willImport_few": "{{count}} kontakty k importu",
+        "willImport_many": "{{count}} kontaktu k importu",
+        "willImport_other": "{{count}} kontaktů k importu",
+        "duplicates_one": "Nalezen {{count}} duplikát",
+        "duplicates_few": "Nalezeny {{count}} duplikáty",
+        "duplicates_many": "Nalezeno {{count}} duplikátu",
+        "duplicates_other": "Nalezeno {{count}} duplikátů",
+        "skipped_one": "{{count}} řádek se nepodařilo přečíst",
+        "skipped_few": "{{count}} řádky se nepodařilo přečíst",
+        "skipped_many": "{{count}} řádku se nepodařilo přečíst",
+        "skipped_other": "{{count}} řádků se nepodařilo přečíst",
+        "imported_one": "Importován {{count}} kontakt.",
+        "imported_few": "Importovány {{count}} kontakty.",
+        "imported_many": "Importováno {{count}} kontaktu.",
+        "imported_other": "Importováno {{count}} kontaktů.",
+        "empty": "V souboru nebyly nalezeny žádné kontakty.",
+        "capped": "Importuje se jen prvních {{max}} kontaktů."
+      },
+      "error": {
+        "invalid": "Soubor se nepodařilo přečíst. Zkontrolujte, zda jde o platný soubor vCard nebo JSON.",
+        "failed": "Soubor se nepodařilo importovat.",
+        "export": "Export se nepodařilo připravit. Zkuste druhý formát."
+      }
+    }
+  },
+  "footer": {
+    "label": "Právní informace a podpora",
+    "imprint": "Tiráž",
+    "privacy": "Ochrana soukromí",
+    "support": "Podpora"
+  },
+  "theme": {
+    "label": "Motiv",
+    "auto": "Převzít nastavení systému",
+    "light": "Světlý motiv",
+    "dark": "Tmavý motiv"
+  },
+  "language": {
+    "label": "Jazyk"
+  },
+  "ui": {
+    "dialog": {
+      "close": "Zavřít",
+      "discardBody": "To, co jste sem zadali, bude ztraceno.",
+      "discardCancel": "Pokračovat v úpravách",
+      "discardConfirm": "Zahodit",
+      "discardTitle": "Zahodit vaše změny?"
+    },
+    "toast": {
+      "region": "Stavová hlášení",
+      "dismiss": "Zavřít"
+    },
+    "spinner": {
+      "label": "Načítání"
+    }
+  },
+  "mailbox": {
+    "role": {
+      "inbox": "Doručená pošta",
+      "drafts": "Koncepty",
+      "sent": "Odeslaná pošta",
+      "archive": "Archiv",
+      "junk": "Spam",
+      "trash": "Koš",
+      "important": "Důležité",
+      "snoozed": "Odložené",
+      "scheduled": "Naplánované",
+      "memos": "Poznámky"
+    },
+    "unread": "Nepřečtené: {{count}}",
+    "expand": "Rozbalit {{name}}",
+    "collapse": "Sbalit {{name}}",
+    "actions": {
+      "menu": "Akce složky: {{name}}",
+      "newSubfolder": "Nová podsložka…",
+      "newFolder": "Nová složka",
+      "rename": "Přejmenovat…",
+      "delete": "Smazat",
+      "keepOffline": "Uchovávat offline",
+      "keepOfflineOff": "Přestat uchovávat offline",
+      "move": "Přesunout do…",
+      "import": "Importovat soubory .eml…",
+      "info": "Informace o složce…",
+      "manage": "Spravovat složky"
+    },
+    "manage": {
+      "title": "Správa složek",
+      "hint": "Přetažením složky změníte její pořadí, vypnutím ji odstraníte z postranního panelu. Skryté složky v tomto seznamu zůstávají a skryjí je i vaše ostatní poštovní aplikace.",
+      "done": "Hotovo",
+      "alwaysShown": "Vždy zobrazeno",
+      "show": "Zobrazit {{name}} v postranním panelu",
+      "reorder": "Přesunout {{name}}",
+      "reorderHint": "Mezerníkem složku zvednete, šipkami nahoru a dolů ji přesunete. Mezerník ji položí, Esc ji vrátí zpět.",
+      "movedTo": "{{name}}, složka {{position}} z {{count}}",
+      "dropped": "{{name}} položeno",
+      "dropCanceled": "{{name}} vráceno zpět"
+    },
+    "info": {
+      "title": "Informace o složce: {{name}}",
+      "useAs": "Používat tuto složku jako…",
+      "useAsNone": "Běžná složka",
+      "useAsHint": "Vaše ostatní poštovní aplikace to čtou. Složka používaná jako Archiv je archivem i tam — a zde se posune nahoru ke standardním složkám.",
+      "submit": "Uložit"
+    },
+    "create": {
+      "title": "Nová složka",
+      "titleChild": "Nová podsložka ve složce {{parent}}",
+      "nameLabel": "Název složky",
+      "submit": "Vytvořit"
+    },
+    "rename": {
+      "title": "Přejmenovat složku",
+      "submit": "Přejmenovat"
+    },
+    "delete": {
+      "title": "Smazat složku?",
+      "message": "Smazat „{{name}}“? Tuto akci nelze vrátit zpět.",
+      "messageNonEmpty": "Složka „{{name}}“ obsahuje {{count}} zpráv. Smazat ji i s obsahem? Tuto akci nelze vrátit zpět.",
+      "confirm": "Smazat"
+    },
+    "error": {
+      "nameRequired": "Zadejte název složky.",
+      "nameTooLong": "Název je příliš dlouhý.",
+      "nameTaken": "Složka s tímto názvem zde už existuje."
+    },
+    "cancel": "Zrušit",
+    "keptOffline": "Uchovává se offline",
+    "move": {
+      "title": "Přesunout {{name}}",
+      "topLevel": "Nejvyšší úroveň",
+      "empty": "Neexistuje složka, do které by šlo tuto přesunout."
+    },
+    "import": {
+      "title": "Import do složky {{folder}}",
+      "pick": "Vybrat soubory .eml",
+      "hint": "Zprávy se uloží přesně tak, jak dorazily. Nejvýše {{size}} MB na soubor.",
+      "progress": "Zatím importováno: {{done}}…",
+      "imported": "Importováno zpráv: {{count}}.",
+      "skipped": "Nejde o zprávy, přeskočeno: {{files}}",
+      "close": "Hotovo",
+      "cancel": "Zrušit",
+      "error": {
+        "tooLarge": "je příliš velký",
+        "alreadyExists": "už v tomto účtu je",
+        "invalidEmail": "není platná zpráva",
+        "overQuota": "v tomto účtu už není místo",
+        "notFound": "nahrávání vypršelo dřív, než se dalo uložit",
+        "uploadFailed": "nahrávání se nezdařilo",
+        "rejected": "server ji odmítl"
+      }
+    }
+  },
+  "list": {
+    "noSender": "(Bez odesílatele)",
+    "noSubject": "(Bez předmětu)",
+    "unread": "Nepřečteno",
+    "flagged": "S příznakem",
+    "attachment": "Má přílohu",
+    "answered": "Zodpovězeno",
+    "select": "Vybrat zprávu",
+    "selectAll": "Vybrat vše",
+    "selected": "Vybráno: {{count}}",
+    "clearSelection": "Zrušit výběr",
+    "actions": {
+      "archive": "Archivovat",
+      "delete": "Smazat",
+      "flag": "Přidat příznak",
+      "junk": "Označit jako spam",
+      "menu": "Akce se zprávou",
+      "more": "Další akce pro výběr",
+      "move": "Přesunout do…",
+      "notJunk": "Není spam",
+      "open": "Otevřít",
+      "openFull": "Otevřít na celou obrazovku",
+      "read": "Označit jako přečtené",
+      "trash": "Přesunout do koše",
+      "unflag": "Odebrat příznak",
+      "unread": "Označit jako nepřečtené"
+    },
+    "sort": {
+      "label": "Řadit",
+      "date": "Datum přijetí",
+      "sentAt": "Datum odeslání",
+      "from": "Odesílatel",
+      "to": "Příjemce",
+      "subject": "Předmět",
+      "size": "Velikost",
+      "unreadFirst": "Nepřečtené nahoře"
+    },
+    "density": {
+      "label": "Hustota",
+      "comfortable": "Pohodlná",
+      "compact": "Kompaktní"
+    },
+    "view": {
+      "threaded": "Konverzace",
+      "flat": "Jednotlivé zprávy",
+      "label": "Zobrazení"
+    },
+    "viewOptionsUnavailable": "Řazení a zobrazení konverzací platí jen pro složky.",
+    "confirmDeleteBody_one": "Tato zpráva bude trvale smazána. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteBody_few": "Tyto {{count}} zprávy budou trvale smazány. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteBody_many": "Těchto {{count}} zprávy bude trvale smazáno. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteBody_other": "Těchto {{count}} zpráv bude trvale smazáno. Tuto akci nelze vrátit zpět.",
+    "loadMore": "Načíst další",
+    "loading": "Načítání zpráv",
+    "stale": "Tento seznam není aktuální a obnoví se při příští synchronizaci.",
+    "empty": "V této složce nejsou žádné zprávy.",
+    "noMailbox": "Vyberte složku",
+    "undo": "Zpět",
+    "moved": {
+      "archive": "Přesunuto do Archivu",
+      "folder": "Přesunuto do složky {{folder}}",
+      "junk": "Přesunuto do Spamu",
+      "notJunk": "Přesunuto do Doručené pošty",
+      "removedLabel": "Odebráno ze štítku {{label}}",
+      "trash": "Přesunuto do Koše"
+    },
+    "viewOptions": {
+      "show": "Zobrazit možnosti zobrazení",
+      "hide": "Skrýt možnosti zobrazení",
+      "label": "Zobrazení"
+    }
+  },
+  "reading": {
+    "from": "Od",
+    "to": "Komu",
+    "cc": "Kopie",
+    "replyTo": "Odpovědět komu",
+    "bcc": "Skrytá kopie",
+    "sender": "Odesílatel",
+    "senderOnBehalfOf": "{{sender}} jménem {{from}}",
+    "date": "Datum",
+    "sentAt": "Odesláno",
+    "messageId": "Message-ID",
+    "details": "Podrobnosti",
+    "noRecipients": "(Žádní příjemci)",
+    "actions": "Akce se zprávou",
+    "markUnread": "Označit jako nepřečtené",
+    "senderCard": {
+      "trigger": "Zobrazit vizitku kontaktu {{name}}",
+      "add": "Přidat do kontaktů",
+      "edit": "Upravit kontakt",
+      "lastConversation": "Poslední konverzace",
+      "added": "Přidáno do kontaktů"
+    },
+    "collapse": "Sbalit zprávu",
+    "reply": "Odpovědět",
+    "replyAll": "Odpovědět všem",
+    "forward": "Přeposlat",
+    "quotedLabel": "Citovaný text",
+    "frameTitle": "Zpráva: {{subject}}",
+    "threadCount": "Zpráv v této konverzaci: {{count}}",
+    "notAvailable": "Tato zpráva není k dispozici.",
+    "confirmDeleteBody": "Tato zpráva bude trvale smazána. Tuto akci nelze vrátit zpět.",
+    "moveTitle": "Přesunout do složky",
+    "moveEmpty": "Žádné další složky.",
+    "remote": {
+      "title": "Vzdálený obsah zablokován",
+      "privacyNote": "Obrázky a další vzdálený obsah mohou zaznamenat, kdy zprávu otevřete.",
+      "load": "Načíst obrázky",
+      "alwaysAllow": "Vždy povolit odesílatele {{sender}}"
+    },
+    "attachments": {
+      "title": "Přílohy",
+      "saveAll": "Uložit vše",
+      "unnamed": "(Bez názvu)",
+      "preview": "Náhled",
+      "hidePreview": "Skrýt náhled",
+      "download": "Stáhnout {{name}}",
+      "previewNamed": "Náhled: {{name}}",
+      "hidePreviewNamed": "Skrýt náhled: {{name}}",
+      "unpack": "Zobrazit, co je uvnitř souboru {{name}}",
+      "unpackShort": "Zobrazit obsah",
+      "unpackedHeading": "Obsah souboru {{name}}",
+      "unpackEmpty": "Z tohoto souboru se nepodařilo nic přečíst.",
+      "unpackNote": "Outlook je zabalil do jediného souboru. Zobrazují se tak, jak je váš protějšek odeslal; nic z toho nebylo prověřeno."
+    },
+    "editDraft": "Upravit koncept",
+    "draftLead": "Toto je koncept, který jste ještě neodeslali.",
+    "more": "Další akce",
+    "authResults": {
+      "label": "Ověření",
+      "reportedBy": "Hlásí {{host}}:",
+      "unverified": "Tento údaj pochází ze samotné zprávy a nelze jej ověřit. Nesuďte podle něj samotného, zda je zpráva pravá."
+    },
+    "nameLooksLikeAddress": "Zobrazené jméno není skutečná adresa odesílatele",
+    "linkWarning": {
+      "title": "Tento odkaz nemusí být pravý",
+      "lead": "Text tohoto odkazu uvádí jeden web, odkaz ale otevře jiný. Přesně tak fungují phishingové zprávy.",
+      "claimed": "Odkaz uvádí",
+      "target": "Ve skutečnosti otevře",
+      "note": "Otevřete jej jen tehdy, jste-li si jisti, že je pravý. Pokud máte pochybnosti, zavřete toto upozornění a adresu si do prohlížeče napište sami.",
+      "open": "Přesto otevřít"
+    },
+    "source": {
+      "title": "Zdrojový text zprávy",
+      "view": "Zobrazit zdrojový text",
+      "save": "Uložit jako .eml",
+      "copy": "Kopírovat",
+      "copyHead": "Zkopírovat prvních {{size}}",
+      "copied": "Zkopírováno",
+      "truncated": "Zobrazuje se jen začátek této zprávy (celkem {{size}}). Uložte ji jako .eml, chcete-li vidět vše.",
+      "error": {
+        "offline": "Zdrojový text se nepodařilo načíst, protože jste offline.",
+        "notFound": "Tato zpráva už na serveru není.",
+        "failed": "Zdrojový text se nepodařilo načíst."
+      }
+    },
+    "nested": {
+      "open": "Otevřít zprávu",
+      "close": "Skrýt zprávu",
+      "frameTitle": "Přiložená zpráva: {{subject}}",
+      "error": {
+        "notParsable": "Tuto přiloženou zprávu se nepodařilo otevřít.",
+        "offline": "Chcete-li tuto zprávu otevřít, připojte se.",
+        "failed": "Tuto přiloženou zprávu se nepodařilo otevřít."
+      },
+      "subjectLabel": "Předmět",
+      "truncated": "Zobrazuje se jen začátek této zprávy. Chcete-li ji vidět celou, stáhněte si přílohu.",
+      "openNamed": "Otevřít zprávu: {{name}}",
+      "closeNamed": "Skrýt zprávu: {{name}}"
+    },
+    "print": "Tisk",
+    "unsubscribe": {
+      "title": "Poštovní konference",
+      "note": "Tato zpráva nabízí způsob, jak její odběr ukončit.",
+      "sentNote": "Žádost o odhlášení odeslána. Kdy se projeví, rozhoduje konference.",
+      "failedNote": "Žádost se nepodařilo odeslat. Použijte raději vlastní stránku konference.",
+      "oneClick": "Odhlásit odběr",
+      "open": "Stránka pro odhlášení",
+      "email": "Odhlásit odběr e-mailem"
+    },
+    "forwardAsAttachment": "Přeposlat jako přílohu",
+    "snooze": {
+      "laterToday": "Odložit na později dnes",
+      "tomorrow": "Odložit na zítřek",
+      "thisWeekend": "Odložit na víkend",
+      "nextWeek": "Odložit na příští týden"
+    },
+    "protection": {
+      "title": "Ochrana zprávy",
+      "encrypted": "Tato zpráva je zašifrovaná",
+      "encryptedNote": "Zde ji zatím nelze otevřít. Použijte poštovní aplikaci s podporou S/MIME nebo OpenPGP, nebo se zeptejte správce, zda je pro tuto schránku zapnuté šifrování uložených dat.",
+      "signed": "Tato zpráva je podepsaná",
+      "signedNote": "Nese digitální podpis. Podpisy se zde zatím neověřují — znamená to tedy jen, že podpis existuje, ne že je platný."
+    },
+    "receipt": {
+      "title": "Potvrzení o přečtení",
+      "asked": "Odesílatel chce vědět, kdy si zprávu přečtete",
+      "note": "Nic zatím odesláno nebylo. Potvrzením dáte adrese {{address}} vědět, že jste zprávu otevřeli.",
+      "noteElsewhere": "Nic zatím odesláno nebylo. Potvrzením dáte adrese {{address}} — což není adresa, ze které zpráva přišla — vědět, že jste ji otevřeli.",
+      "confirm": "Potvrdit přečtení",
+      "sending": "Odesílání…",
+      "decline": "Ne",
+      "failed": "Odeslání se nezdařilo. Nikdo nebyl informován.",
+      "sent": "Potvrdili jste přečtení",
+      "sentNote": "Adresa {{address}} byla informována.",
+      "body": "Vaše zpráva byla zobrazena. Není to záruka, že byla přečtena nebo pochopena.\n",
+      "subject": "Přečteno: {{subject}}"
+    },
+    "fullScreen": "Otevřít na celou obrazovku",
+    "exitFullScreen": "Ukončit celou obrazovku"
+  },
+  "compose": {
+    "toolbar": "Formátování",
+    "editorLabel": "Text zprávy",
+    "bold": "Tučné",
+    "italic": "Kurzíva",
+    "underline": "Podtržené",
+    "bulletList": "Odrážkový seznam",
+    "numberedList": "Číslovaný seznam",
+    "quote": "Citace",
+    "insertLink": "Vložit odkaz",
+    "removeLink": "Odebrat odkaz",
+    "linkTitle": "Vložit odkaz",
+    "linkUrlLabel": "URL odkazu",
+    "linkUrlPlaceholder": "https://example.com",
+    "linkInsert": "Vložit",
+    "linkCancel": "Zrušit",
+    "plainTextMode": "Prostý text",
+    "richTextMode": "Formátovaný text",
+    "textSize": "Velikost písma",
+    "textSizeNormal": "Normální",
+    "textSizeSmall": "Malé",
+    "textSizeLarge": "Velké",
+    "new": "Nová zpráva",
+    "noSubject": "(Bez předmětu)",
+    "untitledWindow": "Koncept",
+    "fromLabel": "Od",
+    "subjectLabel": "Předmět",
+    "minimize": "Minimalizovat",
+    "expand": "Celá obrazovka",
+    "restore": "Ukončit celou obrazovku",
+    "close": "Zavřít",
+    "discardTitle": "Zahodit tento koncept?",
+    "discardBody": "Tento koncept bude trvale smazán.",
+    "discardConfirm": "Zahodit",
+    "discardCancel": "Pokračovat v úpravách",
+    "toLabel": "Komu",
+    "ccLabel": "Kopie",
+    "replyAttribution": "Dne {{date}} {{name}} napsal(a):",
+    "forwardSeparator": "---------- Přeposlaná zpráva ----------",
+    "forwardLabelFrom": "Od",
+    "forwardLabelTo": "Komu",
+    "forwardLabelSubject": "Předmět",
+    "forwardLabelDate": "Datum",
+    "bccLabel": "Skrytá kopie",
+    "showCcField": "Kopie",
+    "showBccField": "Skrytá kopie",
+    "recipientRemove": "Odebrat {{address}}",
+    "recipientInvalid": "Neplatná e-mailová adresa",
+    "recipientDidYouMean": "Nemysleli jste {{suggestion}}?",
+    "recipientDidYouMeanApply": "Použít {{suggestion}}",
+    "recipientMoveTo": "Přesunout do pole „{{field}}“",
+    "recipientMoveMenu": "Možnosti příjemce",
+    "recipientGroupMembers_one": "Skupina · {{count}} kontakt",
+    "recipientGroupMembers_few": "Skupina · {{count}} kontakty",
+    "recipientGroupMembers_many": "Skupina · {{count}} kontaktu",
+    "recipientGroupMembers_other": "Skupina · {{count}} kontaktů",
+    "discard": "Zahodit koncept",
+    "attach": "Přiložit soubor",
+    "attachmentsLabel": "Přílohy",
+    "attachRemove": "Odebrat {{name}}",
+    "attachRetry": "Zkusit {{name}} znovu",
+    "attachCancel": "Zrušit nahrávání",
+    "attachUploading": "Nahrávání {{name}}…",
+    "attachError": "Nahrávání se nezdařilo",
+    "attachTooLarge": "{{name}} je příliš velký (max. {{max}})",
+    "attachTotalTooLarge": "Přílohy překračují limit {{max}}",
+    "attachQuota": "Byl dosažen limit nahrávání — zkuste to prosím později",
+    "attachNetworkError": "Nahrávání se nezdařilo — zkontrolujte připojení",
+    "dropHint": "Přetáhněte sem soubory k přiložení",
+    "send": "Odeslat",
+    "sendShortcut": "Odeslat (⌘↵)",
+    "sending": "Odesílání…",
+    "sendUndo": "Zpět",
+    "sendUndoToast": "Zpráva se odesílá…",
+    "sendCanceled": "Odesílání zrušeno",
+    "sendNoIdentity": "Před odesláním zvolte adresu odesílatele",
+    "sendNoRecipients": "Přidejte alespoň jednoho příjemce",
+    "sendNoSentMailbox": "Chybí složka Odeslaná pošta — zatím nelze odesílat",
+    "sendUnavailable": "Zatím není připraveno k odeslání — zkuste to prosím za okamžik",
+    "sendWaitUploads": "Počkejte, až se nahrávání dokončí",
+    "sendTooLarge": "Přílohy jsou příliš velké na odeslání",
+    "sendFixRecipients": "Opravte zvýrazněnou adresu příjemce",
+    "closeWaitUploads": "Nahrávání stále probíhá — okno bylo minimalizováno",
+    "sendErrorRecipient": "Někteří příjemci byli odmítnuti: {{detail}}",
+    "sendErrorQuota": "Neodesláno — schránka překročila kvótu",
+    "sendErrorSize": "Zpráva je příliš velká na odeslání",
+    "sendErrorGeneric": "Zprávu se nepodařilo odeslat — je uložena v Konceptech",
+    "attachMentionTitle": "Odeslat bez přílohy?",
+    "attachMentionBody": "Zmiňujete přílohu, ale žádná není přiložena.",
+    "attachMentionSend": "Přesto odeslat",
+    "attachMentionCancel": "Zpět",
+    "attachMentionKeywords": ["příloh", "příloze", "přikládám", "přiložen", "viz soubor"],
+    "sendErrorInterrupted": "Přerušeno dřív, než šlo potvrdit — před opětovným odesláním zkontrolujte Odeslanou poštu",
+    "schedule": {
+      "open": "Odeslat později",
+      "title": "Odeslat později",
+      "custom": "Nebo zvolte čas",
+      "confirm": "Naplánovat",
+      "cancel": "Zrušit",
+      "queued": "Naplánováno na {{when}}",
+      "preset": {
+        "inOneHour": "Za hodinu",
+        "thisEvening": "Dnes večer",
+        "tomorrowMorning": "Zítra ráno",
+        "nextWeek": "Příští týden"
+      },
+      "error": {
+        "past": "Zvolte čas v budoucnosti.",
+        "tooFar": "To je dál v budoucnosti, než tento server dovoluje.",
+        "unsupported": "Tento server neumí zprávy podržet pro pozdější doručení."
+      }
+    },
+    "templates": {
+      "insert": "Vložit šablonu"
+    },
+    "replyToLabel": "Odpovědět komu",
+    "showReplyToField": "Odpovědět komu",
+    "attachFromDevice": "Z tohoto zařízení…",
+    "options": {
+      "open": "Možnosti odeslání",
+      "title": "Možnosti odeslání",
+      "done": "Hotovo",
+      "priority": {
+        "label": "Priorita",
+        "high": "Vysoká",
+        "normal": "Normální",
+        "low": "Nízká"
+      },
+      "receipt": {
+        "label": "Vyžádat potvrzení o doručení",
+        "hint": "Poštovní systém odpoví zprávou, zda byla tato zpráva doručena."
+      },
+      "tls": {
+        "label": "Vyžadovat šifrované spojení",
+        "hint": "Zpráva se vám vrátí, místo aby byla předána nešifrovaně."
+      }
+    },
+    "attachFromFiles": {
+      "open": "Ze Souborů…",
+      "title": "Přiložit ze Souborů",
+      "path": "Cesta ke složce",
+      "root": "Soubory",
+      "empty": "Tato složka je prázdná.",
+      "errorTitle": "Soubory se nepodařilo načíst",
+      "errorBody": "Zkontrolujte připojení a zkuste to znovu.",
+      "cancel": "Zrušit",
+      "confirmEmpty": "Přiložit",
+      "confirm_one": "Přiložit {{count}} soubor",
+      "confirm_few": "Přiložit {{count}} soubory",
+      "confirm_many": "Přiložit {{count}} souboru",
+      "confirm_other": "Přiložit {{count}} souborů"
+    }
+  },
+  "search": {
+    "placeholder": "Hledat v poště",
+    "label": "Hledat",
+    "clear": "Vymazat hledání",
+    "scope": {
+      "label": "Hledat v",
+      "folder": "Této složce",
+      "all": "Všech složkách",
+      "everywhere": "Všech složkách vč. Koše a Spamu"
+    },
+    "chip": {
+      "remove": "Odebrat filtr {{filter}}",
+      "not": "Ne {{filter}}",
+      "from": "Od: {{value}}",
+      "to": "Komu: {{value}}",
+      "cc": "Kopie: {{value}}",
+      "bcc": "Skrytá kopie: {{value}}",
+      "subject": "Předmět: {{value}}",
+      "body": "Text: {{value}}",
+      "hasAttachment": "S přílohou",
+      "unread": "Nepřečtené",
+      "read": "Přečtené",
+      "flagged": "S příznakem",
+      "thread": {
+        "unread": "Nepřečtené konverzace",
+        "read": "Přečtené konverzace",
+        "flagged": "Konverzace s příznakem"
+      },
+      "in": "Ve složce: {{value}}",
+      "before": "Před {{value}}",
+      "after": "Po {{value}}",
+      "larger": "Větší než {{value}}",
+      "smaller": "Menší než {{value}}",
+      "text": "Obsahuje: {{value}}"
+    },
+    "hint": "Zkuste from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
+    "hintAdvanced": "Pro pokročilé: -slovo je vyloučí, a OR b najde kterékoli z obojího, thread:unread najde konverzace, které nikdo neotevřel.",
+    "findLarge": "Najít velké zprávy",
+    "results": {
+      "empty": "Vašemu hledání neodpovídají žádné zprávy. Zkuste to ve všech složkách nebo s méně slovy.",
+      "count_one": "{{count}} výsledek",
+      "count_few": "{{count}} výsledky",
+      "count_many": "{{count}} výsledku",
+      "count_other": "{{count}} výsledků"
+    },
+    "chipsLabel": "Aktivní filtry",
+    "chipsCount_one": "{{count}} aktivní filtr",
+    "chipsCount_few": "{{count}} aktivní filtry",
+    "chipsCount_many": "{{count}} aktivního filtru",
+    "chipsCount_other": "{{count}} aktivních filtrů",
+    "saved": {
+      "title": "Uložená hledání",
+      "save": "Uložit toto hledání",
+      "saved": "Hledání uloženo",
+      "forget": "Odebrat {{name}}"
+    }
+  },
+  "labels": {
+    "title": "Štítky",
+    "empty": "Zatím žádné štítky.",
+    "noMessages": "S tímto štítkem nejsou žádné zprávy.",
+    "new": "Nový štítek",
+    "addFirst": "Přidat štítek",
+    "newEllipsis": "Nový štítek…",
+    "assign": "Štítek",
+    "menuTitle": "Přiřadit štítky",
+    "removeFromLabel": "Odebrat z tohoto štítku",
+    "discoveredHint": "Nalezeno automaticky ve vašich synchronizovaných zprávách.",
+    "unread": "Nepřečtené: {{count}}",
+    "rowLabels": "Štítky",
+    "moreLabels_one": "ještě {{count}} štítek",
+    "moreLabels_few": "ještě {{count}} štítky",
+    "moreLabels_many": "ještě {{count}} štítku",
+    "moreLabels_other": "ještě {{count}} štítků",
+    "actions": {
+      "menu": "Akce štítku: {{name}}",
+      "rename": "Přejmenovat",
+      "recolor": "Změnit barvu",
+      "delete": "Smazat",
+      "addToLabels": "Přidat mezi štítky"
+    },
+    "create": {
+      "title": "Nový štítek",
+      "nameLabel": "Název štítku",
+      "colorLabel": "Barva",
+      "submit": "Vytvořit"
+    },
+    "rename": {
+      "title": "Přejmenovat štítek",
+      "submit": "Přejmenovat"
+    },
+    "recolor": {
+      "title": "Změnit barvu"
+    },
+    "save": "Uložit",
+    "delete": {
+      "title": "Smazat štítek?",
+      "message": "Odebrat štítek „{{name}}“? Zprávám zůstane příslušné klíčové slovo.",
+      "alsoStrip": "Odebrat jej také z {{count}} známých zpráv",
+      "confirm": "Smazat"
+    },
+    "color": {
+      "red": "Červená",
+      "orange": "Oranžová",
+      "yellow": "Žlutá",
+      "green": "Zelená",
+      "blue": "Modrá",
+      "purple": "Fialová",
+      "gray": "Šedá"
+    },
+    "error": {
+      "empty": "Zadejte název štítku.",
+      "tooLong": "Název je příliš dlouhý.",
+      "taken": "Štítek s tímto názvem už existuje."
+    },
+    "loading": "Načítání štítků"
+  },
+  "cleanup": {
+    "cancel": "Zrušit",
+    "menu": {
+      "emptyTrash": "Vysypat koš",
+      "emptyJunk": "Vyprázdnit Spam",
+      "deleteOlder": "Smazat starší než…"
+    },
+    "empty": {
+      "title": "Vyprázdnit „{{name}}“?",
+      "message_one": "Trvale smazat {{count}} zprávu ve složce „{{name}}“? Tuto akci nelze vrátit zpět.",
+      "message_few": "Trvale smazat {{count}} zprávy ve složce „{{name}}“? Tuto akci nelze vrátit zpět.",
+      "message_many": "Trvale smazat {{count}} zprávy ve složce „{{name}}“? Tuto akci nelze vrátit zpět.",
+      "message_other": "Trvale smazat {{count}} zpráv ve složce „{{name}}“? Tuto akci nelze vrátit zpět.",
+      "retention": "{{product}} je smaže na serveru. Váš poskytovatel si může mimo dosah aplikace {{product}} ponechat vlastní zálohy.",
+      "confirm": "Vyprázdnit složku"
+    },
+    "older": {
+      "title": "Smazat starší zprávy",
+      "daysLabel": "Smazat zprávy starší než (dnů)",
+      "messageTrash_one": "Přesunout zprávy ve složce „{{name}}“ starší než {{count}} den do koše?",
+      "messageTrash_few": "Přesunout zprávy ve složce „{{name}}“ starší než {{count}} dny do koše?",
+      "messageTrash_many": "Přesunout zprávy ve složce „{{name}}“ starší než {{count}} dne do koše?",
+      "messageTrash_other": "Přesunout zprávy ve složce „{{name}}“ starší než {{count}} dní do koše?",
+      "messageDestroy_one": "Trvale smazat zprávy ve složce „{{name}}“ starší než {{count}} den? Tuto akci nelze vrátit zpět.",
+      "messageDestroy_few": "Trvale smazat zprávy ve složce „{{name}}“ starší než {{count}} dny? Tuto akci nelze vrátit zpět.",
+      "messageDestroy_many": "Trvale smazat zprávy ve složce „{{name}}“ starší než {{count}} dne? Tuto akci nelze vrátit zpět.",
+      "messageDestroy_other": "Trvale smazat zprávy ve složce „{{name}}“ starší než {{count}} dní? Tuto akci nelze vrátit zpět.",
+      "noteTrash": "Přesunuté zprávy zůstanou v koši, dokud jej nevysypete.",
+      "retention": "{{product}} je smaže na serveru. Váš poskytovatel si může mimo dosah aplikace {{product}} ponechat vlastní zálohy.",
+      "confirmTrash": "Přesunout do koše",
+      "confirmDestroy": "Trvale smazat",
+      "invalid": "Zadejte počet dnů (1–3650)."
+    },
+    "failed": {
+      "title": "Složku „{{name}}“ se nepodařilo uklidit",
+      "body": "Akce neproběhla. Zkontrolujte připojení a zkuste to znovu."
+    }
+  },
+  "outbox": {
+    "problems": {
+      "open_one": "{{count}} akce se nezdařila",
+      "open_few": "{{count}} akce se nezdařily",
+      "open_many": "{{count}} akce se nezdařilo",
+      "open_other": "{{count}} akcí se nezdařilo",
+      "title": "Některé akce se nezdařily",
+      "empty": "Vše je aktuální.",
+      "discardAll": "Zahodit vše"
+    },
+    "action": {
+      "retry": "Zkusit znovu",
+      "discard": "Zahodit",
+      "keepHere": "Ponechat ve složce {{folder}}",
+      "dismiss": "OK"
+    },
+    "conflict": {
+      "moveFolderGone": "Přesun se nezdařil — tato složka byla smazána.",
+      "messageGone": "Tato zpráva už na serveru neexistuje.",
+      "folderGone": "Tato složka už neexistuje.",
+      "folderNotEmpty": "Složka není prázdná.",
+      "contactGone": "Tento kontakt už na serveru neexistuje.",
+      "forbidden": "K tomu nemáte oprávnění.",
+      "quota": "Vaše schránka překročila kvótu.",
+      "tooLarge": "To je pro server příliš velké.",
+      "invalid": "Server tuto změnu odmítl.",
+      "stateConflict": "Někdo jiný to změnil ve stejnou chvíli.",
+      "serverRejected": "Server tuto změnu odmítl."
+    },
+    "send": {
+      "willSendWhenOnline": "Odešle se, až budete zase online",
+      "queuedOffline": "Jste offline — zpráva se odešle po opětovném připojení",
+      "retrying": "Nový pokus…",
+      "cancel": "Zrušit odeslání",
+      "label": "Čekající zprávy"
+    },
+    "scheduled": {
+      "title": "Naplánované",
+      "description": "Zprávy, které server podržel pro pozdější doručení. Odejdou, ať už je tato aplikace otevřená, nebo ne.",
+      "loading": "Načítání…",
+      "empty": "Nic naplánovaného.",
+      "loadFailed": "Naplánované zprávy se nepodařilo načíst.",
+      "willSend": "Odešle se {{when}}",
+      "cancel": "Zrušit odeslání",
+      "cancelled": "Odesílání zrušeno",
+      "tooLate": "Už odesláno — zpráva mezitím opustila frontu."
+    }
+  },
+  "pwa": {
+    "update": {
+      "title": "Je připravena aktualizace",
+      "body": "Načtěte stránku znovu, chcete-li používat novou verzi. Otevřené koncepty se předtím uloží.",
+      "action": "Načíst znovu"
+    },
+    "install": {
+      "menu": "Instalovat aplikaci",
+      "title": "Instalovat {{product}}",
+      "body": "Po instalaci získáte vlastní ikonu aplikace, rychlejší start a přístup k poště bez okna prohlížeče.",
+      "action": "Instalovat",
+      "cancel": "Teď ne",
+      "gotIt": "Rozumím",
+      "ios": {
+        "title": "Přidat na plochu",
+        "steps": {
+          "share": "V Safari klepněte na tlačítko Sdílet.",
+          "add": "Zvolte „Přidat na plochu“.",
+          "open": "Otevřete {{product}} novou ikonou na ploše."
+        },
+        "pushNote": "Na iPhonu a iPadu fungují oznámení o poště jen tehdy, když aplikace běží z plochy."
+      }
+    },
+    "error": {
+      "chunk": {
+        "title": "Něco se pokazilo",
+        "body": "Část aplikace se nepodařilo načíst. Obvykle pomůže načíst stránku znovu.",
+        "action": "Načíst znovu"
+      }
+    }
+  },
+  "notify": {
+    "title": "Oznámení",
+    "description": "{{product}} vás upozorní na novou poštu, kdykoli běží — i na kartě nebo v okně na pozadí.",
+    "enable": {
+      "label": "Upozorňovat na novou poštu"
+    },
+    "permission": {
+      "denied": "Váš prohlížeč pro tuto stránku oznámení blokuje. Povolte je v nastavení webů svého prohlížeče a poté {{product}} načtěte znovu.",
+      "dismissed": "Oznámení nebyla povolena. Zapněte přepínač znovu a budete dotázáni ještě jednou.",
+      "unsupported": "Tento prohlížeč oznámení nepodporuje.",
+      "iosInstall": "Na iPhonu a iPadu fungují oznámení jen tehdy, když {{product}} běží z plochy. Nejprve jej tam přidejte."
+    },
+    "folders": {
+      "label": "Upozorňovat na tyto složky",
+      "hint": "Nová pošta v ostatních složkách se dál synchronizuje — jen o ní nepřijde oznámení."
+    },
+    "quiet": {
+      "label": "Tiché hodiny",
+      "hint": "Mezi těmito časy žádná oznámení. Rozmezí přes půlnoc je povoleno.",
+      "from": "Od",
+      "to": "Do"
+    },
+    "preview": {
+      "label": "Zobrazovat odesílatele a předmět",
+      "hint": "Když je vypnuto, oznámení pouze hlásí, že přišla nová pošta — hodí se u sdílené obrazovky."
+    },
+    "sound": {
+      "label": "Přehrát zvuk",
+      "hint": "Zda se zvuk skutečně přehraje, rozhoduje váš operační systém."
+    },
+    "background": {
+      "unavailable": "Oznámení při zcela zavřené aplikaci {{product}} nejsou s tímto serverem možná. Vyžadují, aby server zveřejnil podpisový klíč Web Push (RFC 9749); tento to nedělá. Vše výše funguje, dokud je {{product}} otevřený.",
+      "available": "Tento server vás dokáže upozornit, i když je {{product}} zavřený.",
+      "contentless": "Tato oznámení hlásí pouze to, že přišla pošta — nikdy odesílatele ani předmět.",
+      "withContent": "Tato oznámení uvádějí odesílatele i předmět, přesně jako ta, která vidíte, když je {{product}} otevřený.",
+      "previewOff": "Volba „{{setting}}“ je vypnutá, takže {{product}} tento server o jejich vložení do oznámení vůbec nežádá — nejen že je skrývá. Když je zavřený, oznámení hlásí, že přišla pošta, a nic víc.",
+      "folders": "Výběr složek výše neplatí, když je {{product}} zavřený: oznámení přijde pro každou složku.",
+      "renewal": "Otevřete {{product}} alespoň jednou týdně, aby chodila dál: tento server prodlužuje odběr na pozadí vždy o sedm dní a prodloužit jej může jen {{product}} sám."
+    },
+    "message": {
+      "noSubject": "(bez předmětu)",
+      "unknownSender": "Neznámý odesílatel"
+    },
+    "body": {
+      "generic": "Nová zpráva",
+      "count_one": "{{count}} nová zpráva",
+      "count_few": "{{count}} nové zprávy",
+      "count_many": "{{count}} nové zprávy",
+      "count_other": "{{count}} nových zpráv"
+    }
+  },
+  "quota": {
+    "label": "Úložiště schránky",
+    "used": "{{used}} z {{total}}",
+    "nearlyFull": "{{used}} z {{total}} — téměř plné",
+    "full": "Schránka je plná",
+    "warnToast": "Vaše schránka je téměř plná. Nová pošta může být brzy odmítána.",
+    "fullToast": "Vaše schránka je plná. Nová pošta je odmítána, dokud neuvolníte místo."
+  },
+  "shortcuts": {
+    "title": "Klávesové zkratky",
+    "or": "nebo",
+    "targetNote": "Zkratky se vztahují na vybrané zprávy — pokud není nic vybráno, na otevřenou zprávu, jinak na zaměřený řádek.",
+    "editorNote": "Je-li kurzor v textu zprávy, platí vlastní zkratky editoru (tučné, kurzíva, vložení odkazu).",
+    "unavailable": {
+      "archive": "Tento účet nemá složku Archiv.",
+      "junk": "Tento účet nemá složku Spam.",
+      "trash": "Tento účet nemá Koš.",
+      "hint": "Stiskněte V a vyberte složku.",
+      "undo": "Není co vrátit zpět."
+    },
+    "keys": {
+      "space": "Mezerník",
+      "enter": "Enter",
+      "esc": "Esc",
+      "home": "Home",
+      "end": "End"
+    },
+    "groups": {
+      "list": "Seznam zpráv",
+      "navigation": "Navigace",
+      "triage": "Akce",
+      "compose": "Psaní zpráv",
+      "application": "Aplikace"
+    },
+    "scopes": {
+      "global": "Kdekoli",
+      "list": "Seznam zpráv",
+      "reading": "Podokno čtení"
+    },
+    "actions": {
+      "nav": {
+        "next": "Další zpráva",
+        "prev": "Předchozí zpráva",
+        "open": "Otevřít zprávu",
+        "back": "Zpět na seznam",
+        "full": "Otevřít zprávu na celou obrazovku"
+      },
+      "list": {
+        "move": "Posunout zaměření",
+        "extend": "Rozšířit výběr",
+        "ends": "První nebo poslední zpráva",
+        "select": "Vybrat nebo odznačit zprávu",
+        "open": "Otevřít zaměřenou zprávu",
+        "selectAll": "Vybrat vše v seznamu",
+        "clear": "Zrušit výběr"
+      },
+      "triage": {
+        "archive": "Archivovat",
+        "trash": "Přesunout do koše",
+        "destroy": "Trvale smazat",
+        "junk": "Označit jako spam",
+        "unread": "Označit jako přečtené či nepřečtené",
+        "flag": "Přidat nebo odebrat příznak",
+        "label": "Přiřadit štítky",
+        "move": "Přesunout do složky",
+        "undo": "Vrátit poslední akci zpět"
+      },
+      "compose": {
+        "new": "Nová zpráva",
+        "reply": "Odpovědět",
+        "replyAll": "Odpovědět všem",
+        "forward": "Přeposlat"
+      },
+      "app": {
+        "folders": "Zobrazit nebo skrýt složky",
+        "help": "Klávesové zkratky",
+        "palette": "Příkazová paleta",
+        "search": "Hledat"
+      },
+      "reading": {
+        "print": "Vytisknout zprávu"
+      }
+    },
+    "modKey": "Ctrl"
+  },
+  "palette": {
+    "title": "Příkazová paleta",
+    "open": "Příkazová paleta ({{keys}})",
+    "placeholder": "Hledat akce, složky a štítky…",
+    "recent": "Naposledy použité",
+    "empty": "Žádné shody.",
+    "goToFolder": "Přejít do složky: {{folder}}",
+    "goToLabel": "Přejít na štítek: {{label}}",
+    "goToSettings": "Přejít do Nastavení",
+    "goToContacts": "Přejít do Kontaktů"
+  },
+  "folders": {
+    "drag": {
+      "over": "Položit na {{folder}}"
+    }
+  },
+  "rights": {
+    "unavailable": {
+      "accountReadOnly": "Tento účet je jen pro čtení.",
+      "seen": "Nemáte oprávnění označovat tyto zprávy jako přečtené či nepřečtené.",
+      "keywords": "Nemáte oprávnění přidávat těmto zprávám příznaky ani štítky.",
+      "remove": "Nemáte oprávnění přesouvat zprávy z této složky.",
+      "add": "Nemáte oprávnění ukládat zprávy do této složky.",
+      "destroy": "Nemáte oprávnění tyto zprávy mazat.",
+      "unknown": "Vaše oprávnění se ještě zjišťují — dosud nejsou načteny všechny zprávy."
+    }
+  },
+  "sharing": {
+    "currentHeading": "Kdo má přístup",
+    "addHeading": "Dát někomu přístup",
+    "none": "Jen vy.",
+    "search": "Hledat osoby",
+    "searchPlaceholder": "Jméno nebo adresa",
+    "noMatches": "Tomu neodpovídá nikdo.",
+    "searchFailed": "Hledání osob se nezdařilo.",
+    "roleLabel": "Smí",
+    "roleFor": "Co smí {{name}}",
+    "grant": "Přidat",
+    "grantTo": "Dát {{name}} přístup",
+    "revoke": "Odebrat",
+    "revokeFrom": "Odebrat přístup uživateli {{name}}",
+    "done": "Hotovo",
+    "custom": "Vlastní oprávnění",
+    "failed": "Tato změna nebyla uložena. Nic se nezměnilo.",
+    "role": {
+      "viewer": "Prohlížet",
+      "editor": "Upravovat",
+      "manager": "Spravovat",
+      "freeBusy": "Jen dostupnost"
+    },
+    "explain": {
+      "file": {
+        "viewer": "Může jej otevřít a stáhnout. Změnit jej nemůže.",
+        "editor": "Může jej otevřít, změnit, přejmenovat i smazat. Sdílet jej s dalšími nemůže.",
+        "manager": "Může vše, co vy, včetně sdílení s dalšími lidmi — a vy se to nedozvíte."
+      },
+      "mailbox": {
+        "viewer": "Může číst poštu v této složce. Otevřením zprávy se vám neoznačí jako přečtená — což zároveň znamená, že počet nepřečtených u té osoby nikdy neklesne.",
+        "editor": "Může poštu číst, přesouvat ji do této složky i z ní, označovat ji jako přečtenou a přidávat jí příznaky. Složku přejmenovat ani smazat nemůže.",
+        "manager": "Může s touto složkou vše, co vy — číst a zakládat poštu, složku přejmenovat, smazat a bez vašeho vědomí ji sdílet s dalšími lidmi."
+      },
+      "calendar": {
+        "freeBusy": "Vidí, KDY jste zaneprázdněni, nikdy však čím — žádné názvy, místa ani účastníky. To se dává někomu, kdo má plánovat kolem vás.",
+        "viewer": "Může číst každou událost v tomto kalendáři včetně názvu, času a podrobností. Změnit nemůže nic.",
+        "editor": "Může číst, vytvářet a měnit události, odpovídat na pozvánky a nastavovat si vlastní upozornění. Kalendář smazat ani sdílet nemůže.",
+        "manager": "Může s tímto kalendářem vše, co vy — včetně jeho smazání a sdílení s dalšími lidmi bez vašeho vědomí."
+      },
+      "addressBook": {
+        "viewer": "Může číst kontakty v tomto seznamu. Měnit je nemůže.",
+        "editor": "Může kontakty v tomto seznamu číst, přidávat, měnit i odebírat. Seznam smazat ani sdílet nemůže.",
+        "manager": "Může s tímto seznamem vše, co vy — včetně jeho smazání a sdílení s dalšími lidmi bez vašeho vědomí."
+      }
+    },
+    "mailbox": {
+      "action": "Sdílet…",
+      "title": "Sdílet složku „{{name}}“",
+      "loadFailed": "Aktuální seznam přístupů se nepodařilo načíst, takže zde nelze nic bezpečně změnit.",
+      "noSubmit": "Odesílat poštu z vašeho účtu nemůže nikdo, ať zde udělíte cokoli."
+    },
+    "incoming": {
+      "region": "Nová sdílení",
+      "mailbox": "{{who}} s vámi sdílí složku „{{name}}“.",
+      "mailboxUnnamed": "{{who}} s vámi sdílí poštovní složku.",
+      "revoked": "{{who}} vám odebral(a) přístup k „{{name}}“.",
+      "revokedUnnamed": "{{who}} vám odebral(a) přístup k poštovní složce.",
+      "someone": "Někdo",
+      "open": "Otevřít",
+      "dismiss": "Skrýt",
+      "dismissOne": "Skrýt toto upozornění",
+      "calendar": "{{who}} s vámi sdílí kalendář „{{name}}“.",
+      "calendarUnnamed": "{{who}} s vámi sdílí kalendář.",
+      "revokedCalendarUnnamed": "{{who}} vám odebral(a) přístup ke kalendáři.",
+      "addressBook": "{{who}} s vámi sdílí seznam kontaktů „{{name}}“.",
+      "addressBookUnnamed": "{{who}} s vámi sdílí seznam kontaktů.",
+      "revokedAddressBookUnnamed": "{{who}} vám odebral(a) přístup k seznamu kontaktů.",
+      "object": "{{who}} s vámi sdílí „{{name}}“.",
+      "objectUnnamed": "{{who}} s vámi něco sdílí.",
+      "revokedObjectUnnamed": "{{who}} vám k něčemu odebral(a) přístup."
+    },
+    "calendar": {
+      "title": "Sdílet kalendář „{{name}}“"
+    },
+    "addressBook": {
+      "title": "Sdílet seznam „{{name}}“",
+      "loadFailed": "Aktuální seznam přístupů se nepodařilo načíst, takže zde nelze nic bezpečně změnit."
+    }
+  },
+  "calendar": {
+    "offline": "Jste offline. Události lze vytvářet jen při připojení.",
+    "offlineOpen": "Jste offline. Události lze otevírat a měnit jen při připojení.",
+    "offlineStale": "Offline — právě se neaktualizuje. Naposledy aktualizováno {{when}}.",
+    "offlineNotUpdating": "Offline — právě se neaktualizuje.",
+    "offlineNever": {
+      "title": "Tento měsíc zatím nebyl synchronizován",
+      "body": "Připojte se jednou a příště tu váš kalendář bude i offline."
+    },
+    "title": "Kalendář",
+    "today": "Dnes",
+    "previousMonth": "Předchozí měsíc",
+    "newEvent": "Nová událost",
+    "nextMonth": "Další měsíc",
+    "previousWeek": "Předchozí týden",
+    "nextWeek": "Další týden",
+    "weekRange": "{{from}} – {{to}}",
+    "viewLabel": "Zobrazení kalendáře",
+    "view": {
+      "month": "Měsíc",
+      "agenda": "Agenda",
+      "week": "Týden"
+    },
+    "untitled": "(bez názvu)",
+    "allDay": "Celý den",
+    "more": "+{{count}} další",
+    "noEvents": "Nic se nechystá.",
+    "noEventsOnDay": "Na tento den nic není.",
+    "retry": "Zkusit znovu",
+    "undo": "Zpět",
+    "deleted": "Událost smazána.",
+    "saveFailed": "Událost se nepodařilo uložit.",
+    "deleteFailed": "Událost se nepodařilo smazat.",
+    "restoreFailed": "Událost se nepodařilo obnovit.",
+    "loadFailed": "Kalendář se nepodařilo načíst.",
+    "refreshFailed": "Kalendář se nepodařilo aktualizovat — to, co vidíte, může být zastaralé.",
+    "signedOut": "Chcete-li vidět svůj kalendář, přihlaste se.",
+    "event": {
+      "createTitle": "Nová událost",
+      "editTitle": "Upravit událost",
+      "title": "Název",
+      "start": "Začátek",
+      "day": "Den",
+      "allDay": "Celodenní",
+      "duration": "Délka v minutách",
+      "durationInvalid": "Zadejte délku mezi 1 a {{max}} minutami.",
+      "calendar": "Kalendář",
+      "description": "Poznámky",
+      "location": "Místo",
+      "participants": "Účastníci",
+      "save": "Uložit",
+      "cancel": "Zrušit",
+      "delete": "Smazat",
+      "unresolvedReadOnly": "Server toto vrátil jako výskyt, který nelze přiřadit k žádné uložené události. Zde si jej proto lze prohlédnout, ale nikoli změnit — to jen v kalendářové aplikaci, která se dostane k samotné události.",
+      "alert": {
+        "label": "Upozornění",
+        "second": "Druhé upozornění",
+        "none": "Žádné",
+        "atStart": "V čase události",
+        "minutes_one": "{{count}} minutu předem",
+        "minutes_few": "{{count}} minuty předem",
+        "minutes_many": "{{count}} minuty předem",
+        "minutes_other": "{{count}} minut předem",
+        "hours_one": "{{count}} hodinu předem",
+        "hours_few": "{{count}} hodiny předem",
+        "hours_many": "{{count}} hodiny předem",
+        "hours_other": "{{count}} hodin předem",
+        "days_one": "{{count}} den předem",
+        "days_few": "{{count}} dny předem",
+        "days_many": "{{count}} dne předem",
+        "days_other": "{{count}} dní předem",
+        "weeks_one": "{{count}} týden předem",
+        "weeks_few": "{{count}} týdny předem",
+        "weeks_many": "{{count}} týdne předem",
+        "weeks_other": "{{count}} týdnů předem",
+        "dayOf": "V den události (9:00)",
+        "dayBefore": "1 den předem (9:00)",
+        "twoDaysBefore": "2 dny předem (9:00)",
+        "weekBefore": "1 týden předem (9:00)",
+        "other": "{{duration}} před začátkem",
+        "carried_one": "{{count}} další upozornění zůstává beze změny.",
+        "carried_few": "{{count}} další upozornění zůstávají beze změny.",
+        "carried_many": "{{count}} dalšího upozornění zůstává beze změny.",
+        "carried_other": "{{count}} dalších upozornění zůstává beze změny."
+      },
+      "back": "Zpět",
+      "repeat": {
+        "label": "Opakování",
+        "none": "Nikdy",
+        "daily": "Každý den",
+        "weekly": "Každý týden",
+        "biweekly": "Každé 2 týdny",
+        "monthly": "Každý měsíc",
+        "yearly": "Každý rok",
+        "custom": "Vlastní pravidlo",
+        "endLabel": "Konec opakování",
+        "end": {
+          "never": "Nikdy",
+          "until": "K datu",
+          "count": "Po počtu opakování"
+        },
+        "untilDate": "Poslední den",
+        "countLabel": "Počet událostí"
+      },
+      "scope": {
+        "saveTitle": "Použít změnu na…",
+        "deleteTitle": "Smazat…",
+        "occurrence": "Pouze tuto událost",
+        "all": "Všechny události",
+        "note": "Jednotlivě změněné události v této řadě si svůj čas ponechají."
+      },
+      "participant": {
+        "none": "Žádní",
+        "count_one": "{{count}} osoba",
+        "count_few": "{{count}} osoby",
+        "count_many": "{{count}} osoby",
+        "count_other": "{{count}} osob",
+        "add": "E-mailová adresa",
+        "addAction": "Přidat",
+        "empty": "Zatím nikdo nepozván.",
+        "organizer": "Pořadatel",
+        "remove": "Odebrat {{name}}",
+        "invalid": "Toto nevypadá jako e-mailová adresa.",
+        "duplicate": "Tato osoba už na seznamu je.",
+        "full": "Server přijme nejvýše {{max}} účastníků.",
+        "status": {
+          "needs-action": "Bez odpovědi",
+          "accepted": "Přijato",
+          "declined": "Odmítnuto",
+          "tentative": "Možná"
+        }
+      },
+      "rsvp": {
+        "label": "Vaše odpověď",
+        "accepted": "Přijmout",
+        "tentative": "Možná",
+        "declined": "Odmítnout"
+      }
+    },
+    "calendars": {
+      "title": "Kalendáře",
+      "open": "Kalendáře…",
+      "create": "Nový kalendář",
+      "createTitle": "Nový kalendář",
+      "editTitle": "Upravit kalendář",
+      "edit": "Upravit",
+      "delete": "Smazat",
+      "menu": "Možnosti pro {{name}}",
+      "name": "Název",
+      "color": "Barva",
+      "colorChosen": "Zvoleno: {{chosen}}",
+      "empty": "Tento účet nemá žádné kalendáře.",
+      "counting": "Počítání událostí…",
+      "deleteTitle": "Smazat „{{name}}“?",
+      "deleteBody_one": "Tento kalendář a {{count}} událost v něm budou smazány. Není cesty zpět.",
+      "deleteBody_few": "Tento kalendář a {{count}} události v něm budou smazány. Není cesty zpět.",
+      "deleteBody_many": "Tento kalendář a {{count}} události v něm budou smazány. Není cesty zpět.",
+      "deleteBody_other": "Tento kalendář a {{count}} událostí v něm bude smazáno. Není cesty zpět.",
+      "deleted": "„{{name}}“ smazán.",
+      "deleteFailed": "Kalendář se nepodařilo smazat.",
+      "saveFailed": "Kalendář se nepodařilo uložit.",
+      "toggleFailed": "Kalendář se nepodařilo zobrazit ani skrýt.",
+      "share": "Sdílet {{name}}",
+      "sharedTitle": "Sdílené"
+    },
+    "colors": {
+      "red": "Červená",
+      "orange": "Oranžová",
+      "ochre": "Okrová",
+      "green": "Zelená",
+      "teal": "Tyrkysová",
+      "blue": "Modrá",
+      "purple": "Fialová",
+      "brown": "Hnědá",
+      "custom": "Současná barva"
+    },
+    "import": {
+      "open": "Importovat události…",
+      "title": "Import událostí",
+      "file": "Soubor kalendáře (.ics)",
+      "empty": "V tomto souboru není žádná událost.",
+      "unreadable": "Soubor se nepodařilo přečíst.",
+      "failed": "Import se nezdařil.",
+      "repeats": "opakuje se",
+      "action_one": "Importovat {{count}} událost",
+      "action_few": "Importovat {{count}} události",
+      "action_many": "Importovat {{count}} události",
+      "action_other": "Importovat {{count}} událostí",
+      "done_one": "Importována {{count}} událost.",
+      "done_few": "Importovány {{count}} události.",
+      "done_many": "Importováno {{count}} události.",
+      "done_other": "Importováno {{count}} událostí.",
+      "duplicates_one": "{{count}} událost už v kalendáři byla.",
+      "duplicates_few": "{{count}} události už v kalendáři byly.",
+      "duplicates_many": "{{count}} události už v kalendáři bylo.",
+      "duplicates_other": "{{count}} událostí už v kalendáři bylo."
+    },
+    "rsvpFailed": "Vaši odpověď se nepodařilo odeslat.",
+    "occurrenceDeleted": "Tato událost byla z řady odebrána.",
+    "availability": {
+      "label": "Zobrazit dostupnost",
+      "nobody": "Nikdo",
+      "noPeople": "Není koho se zeptat.",
+      "unavailable": "Pro tuto osobu se nevrátila žádná dostupnost.",
+      "period": "{{name}} má {{day}} od {{from}} do {{to}} obsazeno."
+    }
+  },
+  "files": {
+    "listOptions": "Možnosti seznamu",
+    "deleteAction": "Smazat",
+    "confirmDeleteBody_one": "Tato položka bude trvale smazána. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteBody_few": "Tyto {{count}} položky budou trvale smazány. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteBody_many": "Těchto {{count}} položky bude trvale smazáno. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteBody_other": "Těchto {{count}} položek bude trvale smazáno. Tuto akci nelze vrátit zpět.",
+    "confirmDeleteFolder": "Vše, co je ve vybraných složkách, zmizí s nimi.",
+    "truncated": "Tento účet obsahuje víc, než lze vypsat najednou, takže část souborů se nezobrazuje. Ten, který postrádáte, najdete hledáním.",
+    "search": {
+      "label": "Hledat v souborech",
+      "placeholder": "Hledat ve všech souborech",
+      "none": "Dotazu „{{query}}“ neodpovídá nic.",
+      "in": "ve složce {{name}}",
+      "inRoot": "v Souborech"
+    },
+    "sort": {
+      "byName": "Řadit podle názvu",
+      "bySize": "Řadit podle velikosti",
+      "byKind": "Řadit podle druhu"
+    },
+    "selection": {
+      "start": "Vybrat",
+      "stop": "Hotovo",
+      "clear": "Zrušit výběr",
+      "all": "Vybrat vše zde",
+      "count_one": "{{count}} vybraná položka",
+      "count_few": "{{count}} vybrané položky",
+      "count_many": "{{count}} vybrané položky",
+      "count_other": "{{count}} vybraných položek"
+    },
+    "move": {
+      "open": "Přesunout {{name}}",
+      "action": "Přesunout",
+      "title": "Přesunout „{{name}}“",
+      "titleMany": "Přesunout {{count}} položek",
+      "here": "Přesunout do {{name}}",
+      "breadcrumb": "Cílová složka",
+      "noFolders": "Zde nejsou žádné složky — „Přesunout“ je stejně vloží do této.",
+      "done": "Přesunuto do {{name}}.",
+      "undo": "Zpět"
+    },
+    "offline": "Jste offline. Soubory lze měnit jen při připojení.",
+    "offlineStale": "Offline — právě se neaktualizuje. Naposledy aktualizováno {{when}}.",
+    "offlineNotUpdating": "Offline — právě se neaktualizuje.",
+    "offlineNever": {
+      "title": "Vaše soubory zatím nebyly synchronizovány",
+      "body": "Připojte se jednou a příště tu tento seznam bude i offline. K otevření souboru je připojení potřeba vždy."
+    },
+    "title": "Soubory",
+    "root": "Soubory",
+    "breadcrumb": "Cesta ke složce",
+    "empty": "Tato složka je prázdná.",
+    "retry": "Zkusit znovu",
+    "loadFailed": "Soubory se nepodařilo načíst.",
+    "refreshFailed": "Vaše soubory se nepodařilo aktualizovat — to, co vidíte, může být zastaralé.",
+    "savedButNotShown": "Uloženo, ale seznam se nepodařilo znovu načíst — zkuste to znovu, aby se zobrazil.",
+    "signedOut": "Chcete-li vidět své soubory, přihlaste se.",
+    "upload": "Nahrát",
+    "newFolder": "Nová složka",
+    "cancel": "Zrušit",
+    "download": "Stáhnout {{name}}",
+    "delete": "Smazat {{name}}",
+    "rename": {
+      "open": "Přejmenovat {{name}}",
+      "title": "Přejmenovat „{{name}}“",
+      "label": "Nový název",
+      "confirm": "Přejmenovat"
+    },
+    "error": {
+      "nameTaken": "Něco s tímto názvem tu už je.",
+      "tooLarge": "Tento soubor je pro tento server příliš velký.",
+      "overQuota": "V tomto účtu už není místo.",
+      "forbidden": "K tomu zde nemáte oprávnění.",
+      "rejected": "Server to odmítl."
+    },
+    "name": {
+      "empty": "Zadejte název.",
+      "tooLong": "Tento název je příliš dlouhý.",
+      "forbiddenCharacter": "Název obsahuje znak, který server nepovoluje.",
+      "reservedName": "Tento název je vyhrazený a nelze jej použít."
+    },
+    "preview": "Zobrazit náhled {{name}}",
+    "hidePreview": "Skrýt náhled {{name}}",
+    "more": "Další akce pro {{name}}",
+    "share": {
+      "open": "Sdílet {{name}}",
+      "title": "Sdílet „{{name}}“"
+    },
+    "shared": {
+      "title": "Sdíleno se mnou",
+      "open": "Otevřít soubory, které s vámi sdílí {{name}}"
+    }
+  }
+}

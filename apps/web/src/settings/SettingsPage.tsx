@@ -16,7 +16,7 @@ import {
 } from '../app/shell/layout'
 import { getTheme, setTheme } from '../app/theme'
 import { supportsScheduledSend } from '../compose/scheduled-send'
-import { changeLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
+import { changeLanguage, languageName, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
 import { ScheduledSends } from '../outbox'
 import { setPref, useLocalPref, useReplica, useReplicaOptional } from '../sync'
 import { Select } from '../ui'
@@ -177,6 +177,24 @@ function DensityField({ id }: { readonly id: string }) {
  * broken control (FR-SRV-02: an absent capability is hidden, never broken). Vacation additionally
  * requires the server to advertise it.
  */
+/**
+ * The language picker's options: every shipped language under its own name, sorted by that name.
+ *
+ * Module level, not a `useMemo`: an endonym does not depend on the UI language, on props or on
+ * state, so the list is the same object for the life of the tab.
+ *
+ * Sorted by the LABEL rather than by the tag. `SUPPORTED_LANGUAGES` is alphabetical by tag because
+ * that is the order a maintainer edits it in, and it is not the order a reader scans: `cs` sorts
+ * first but "Čeština" does not, and `zh` sorts last while "中文" belongs wherever the reader's
+ * collation puts it. `Intl.Collator` with no locale uses the runtime's, which is the closest thing
+ * to "the order this reader expects" available without knowing who they are.
+ */
+const languageOptions: readonly { readonly value: SupportedLanguage; readonly label: string }[] = [
+  ...SUPPORTED_LANGUAGES,
+]
+  .map((value: SupportedLanguage) => ({ value, label: languageName(value) }))
+  .sort((a, b) => new Intl.Collator().compare(a.label, b.label))
+
 export default function SettingsPage() {
   const { t, i18n } = useTranslation()
   const [theme, setThemeState] = useState<ThemeSetting>(() => getTheme())
@@ -282,10 +300,7 @@ export default function SettingsPage() {
               id={ids.language}
               label={t('language.label')}
               value={activeLanguage}
-              options={SUPPORTED_LANGUAGES.map((value: SupportedLanguage) => ({
-                value,
-                label: t(`language.${value}`),
-              }))}
+              options={languageOptions}
               onChange={(value) => {
                 void changeLanguage(value as SupportedLanguage)
               }}

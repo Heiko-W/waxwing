@@ -88,7 +88,7 @@ export function ComposerWindow({
   recipientSuggestions,
   uploader,
 }: ComposerWindowProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { toast } = useToast()
   const setMode = useComposerStore((state) => state.setMode)
   const updateBody = useComposerStore((state) => state.updateBody)
@@ -269,12 +269,14 @@ export function ComposerWindow({
     if (current === undefined) return
     // FR-CMP-10: warn if the text mentions an attachment but none is attached.
     const keywords = t('compose.attachMentionKeywords', { returnObjects: true }) as string[]
-    if (current.attachments.length === 0 && mentionsAttachment(current.body, keywords)) {
+    // The language decides the case fold: Turkish `İ` lowercases to `i` + a combining dot without it.
+    const language = i18n.resolvedLanguage ?? i18n.language
+    if (current.attachments.length === 0 && mentionsAttachment(current.body, keywords, language)) {
       setConfirmMention(true)
       return
     }
     void doSend()
-  }, [canSend, t, draft.id, doSend])
+  }, [canSend, t, i18n, draft.id, doSend])
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {

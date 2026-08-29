@@ -911,13 +911,7 @@
     "dark": "Dunkle Darstellung"
   },
   "language": {
-    "label": "Sprache",
-    "en": "Englisch",
-    "de": "Deutsch",
-    "short": {
-      "en": "EN",
-      "de": "DE"
-    }
+    "label": "Sprache"
   },
   "ui": {
     "dialog": {

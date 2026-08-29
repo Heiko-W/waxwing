@@ -624,9 +624,13 @@ Settings that traditionally require webmail-server plugins come free with Stalwa
 
 ### 7.4 FR-I18N — Internationalization
 
-- **FR-I18N-01 (Must)** — Full i18n from day one; V1 ships **English + German**.
-  Localized dates/numbers via `Intl`; translation files community-editable (standard
-  format, e.g. via Weblate later).
+- **FR-I18N-01 (Must)** — Full i18n from day one; V1 shipped **English + German**, and
+  v0.21.0 added twelve more: `cs`, `es`, `fr`, `it`, `ja`, `nl`, `pl`, `pt`, `ru`, `tr`,
+  `uk`, `zh`. The twelve are machine-generated and unreviewed, which
+  [ADR-036](adr/036-machine-translation-with-a-mechanical-gate.md) argues for and
+  [`translating.md`](translating.md) states plainly to the reader. Localized dates/numbers
+  via `Intl`; translation files community-editable (standard format, Weblate-ready —
+  `.weblate` is in the repository root).
 - **FR-I18N-02 (Should)** — RTL-ready layout (logical CSS properties throughout).
 
 ---
