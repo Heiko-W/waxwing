@@ -366,18 +366,17 @@ describe('a card whose own strings are object keys', () => {
   const card = (body: string): string =>
     `BEGIN:VCARD\r\nVERSION:4.0\r\nUID:u1\r\nFN:Victim\r\n${body}\r\nEND:VCARD\r\n`
 
-  it.each(['__proto__', 'constructor', 'prototype'])(
-    'does not lose an address to PROP-ID=%s',
-    (propId) => {
-      // `out['__proto__'] = {…}` replaces the prototype rather than adding an own property, so the
-      // group ended up with no own keys at all and the whole `emails` field vanished — while the
-      // import reported success and `skipped` stayed empty.
-      const result = importOne(card(`EMAIL;PROP-ID=${propId}:victim@example.com`))
-      expect(Object.values(result.emails ?? {}).map((e) => e.address)).toEqual([
-        'victim@example.com',
-      ])
-    },
-  )
+  it.each([
+    '__proto__',
+    'constructor',
+    'prototype',
+  ])('does not lose an address to PROP-ID=%s', (propId) => {
+    // `out['__proto__'] = {…}` replaces the prototype rather than adding an own property, so the
+    // group ended up with no own keys at all and the whole `emails` field vanished — while the
+    // import reported success and `skipped` stayed empty.
+    const result = importOne(card(`EMAIL;PROP-ID=${propId}:victim@example.com`))
+    expect(Object.values(result.emails ?? {}).map((e) => e.address)).toEqual(['victim@example.com'])
+  })
 
   it('does not turn a hostile TEL;TYPE into a boolean-set key', () => {
     // `PHONE_FEATURES['constructor']` is the `Object` function, not `undefined` — truthy, and then

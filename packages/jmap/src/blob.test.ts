@@ -178,3 +178,105 @@ describe('blob transfer — error responses', () => {
     )
   })
 })
+
+/**
+ * Every byte of a download is buffered before the caller sees any of it, and nothing checked a
+ * length: not `content-length`, not the size the envelope already stated, not a cap. One click on
+ * an attachment served by a hostile server was enough to OOM the tab.
+ */
+describe('downloadBlob — the size ceiling (W-11)', () => {
+  const session = makeSession()
+
+  function client(fetch: FetchLike): JmapClient {
+    return new JmapClient({ session, auth: bearer('tok'), fetch })
+  }
+
+  /** A body that never ends — the shape the ceiling exists for. */
+  function endlessStream(): { response: Response; cancelled: () => boolean } {
+    let cancelled = false
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(64 * 1024))
+      },
+      cancel() {
+        cancelled = true
+      },
+    })
+    return {
+      response: new Response(body, { status: 200 }),
+      cancelled: () => cancelled,
+    }
+  }
+
+  it('stops an endless body instead of buffering it to death', async () => {
+    const endless = endlessStream()
+    const jmap = client(async () => endless.response)
+
+    await expect(
+      jmap.download('a', 'b1', 'application/octet-stream', 'x.bin', { maxBytes: 256 * 1024 }),
+    ).rejects.toBeInstanceOf(JmapError)
+    // Cancelled, not merely abandoned: a reader left open keeps the socket draining, which is most
+    // of the cost of the thing being refused.
+    expect(endless.cancelled()).toBe(true)
+  })
+
+  it('refuses on the declared length, before reading the body', async () => {
+    let pulls = 0
+    const fetch: FetchLike = async () => {
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1
+          controller.enqueue(new Uint8Array(8))
+        },
+      })
+      return new Response(body, { status: 200, headers: { 'content-length': '999999999' } })
+    }
+
+    await expect(
+      client(fetch).download('a', 'b1', 'application/octet-stream', 'x.bin', { maxBytes: 1024 }),
+    ).rejects.toThrowError(/limit/)
+    // The stream itself pre-pulls one chunk; what matters is that the READER never ran. Without
+    // the declared-length check this would be 128 pulls (1024 / 8) before the loop gave up.
+    expect(pulls).toBeLessThanOrEqual(1)
+  })
+
+  it('lets an ordinary blob through untouched — the counter-test', async () => {
+    const payload = new Uint8Array([1, 2, 3, 4, 5])
+    const jmap = client(async () => new Response(payload, { status: 200 }))
+
+    const bytes = await jmap.download('a', 'b1', 'text/plain', 'x.txt')
+    expect(Array.from(bytes)).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('honours maxBytes: 0 as "no ceiling", for a caller that means it', async () => {
+    const payload = new Uint8Array(4096)
+    const jmap = client(async () => new Response(payload, { status: 200 }))
+
+    const bytes = await jmap.download('a', 'b1', 'text/plain', 'x.bin', { maxBytes: 0 })
+    expect(bytes.byteLength).toBe(4096)
+  })
+
+  it('still reports progress per chunk while counting — the two are the same loop', async () => {
+    const seen: BlobProgress[] = []
+    const fetch: FetchLike = async () => {
+      let sent = 0
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent === 3) {
+            controller.close()
+            return
+          }
+          sent += 1
+          controller.enqueue(new Uint8Array(10))
+        },
+      })
+      return new Response(body, { status: 200, headers: { 'content-length': '30' } })
+    }
+
+    const bytes = await client(fetch).download('a', 'b1', 'text/plain', 'x.bin', {
+      onProgress: (progress) => seen.push(progress),
+    })
+    expect(bytes.byteLength).toBe(30)
+    expect(seen.map((p) => p.loaded)).toEqual([10, 20, 30])
+  })
+})

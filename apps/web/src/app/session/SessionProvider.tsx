@@ -62,6 +62,14 @@ const STASH_ROUTE_KEY = 'waxwing.onboard.route'
  * travels separately, inside the PKCE transaction, because only the controller can act on it.
  */
 const STASH_PUBLIC_KEY = 'waxwing.onboard.publicComputer'
+
+/** How long a sign-out waits for the engines to stop before wiping anyway — see `endSession`. */
+const SIGN_OUT_STOP_BUDGET_MS = 5000
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 /** Durable last-connected target so a reload/restore reconnects to a manual server too. */
 const DURABLE_TARGET_KEY = 'waxwing.connect.target'
 
@@ -655,7 +663,18 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // (M4.4 Etappe 4): since the fleet, each shared account's engine holds a handle of its own, and
         // `SyncEngineHost`'s effect cleanup cannot run before this function awaits the wipe in the same
         // tick — so stopping only the primary left the wipe hanging on still-writing shared engines.
-        await stopAllEngines()
+        //
+        // Bounded, and the bound is the point. `stop()` awaits the in-flight sync and outbox passes,
+        // and those await JMAP requests; a socket the server accepted but never answers on used to
+        // hold this line for as long as the browser's own patience — minutes — with the login form
+        // already on screen and the replica, the OS notification banners and the credentials all
+        // still on the machine. `postApi` now carries a 30 s deadline of its own, which fixes the
+        // hang but not the wait, and on a shared terminal the wait IS the exposure.
+        //
+        // Racing it means the wipe below may run while an engine is still finishing a write. That
+        // is the right trade: a `deleteDatabase` that blocks reports `incomplete` and tells the
+        // user, whereas a sign-out that has not started tells them nothing at all.
+        await Promise.race([stopAllEngines(), delay(SIGN_OUT_STOP_BUDGET_MS)])
         // Whether any part of "remove my data" failed. A sign-out always proceeds — the in-memory
         // session must go regardless — but the user is told when the local copy outlived it, rather
         // than being shown a login form that implies everything was cleaned up (FR-AUTH-05).

@@ -40,11 +40,43 @@ export function resolveFetch(fetchImpl?: FetchLike): FetchLike {
  * TRANSIENT and therefore RETRIES, hammering a server that will never answer differently. A
  * {@link JmapError} says what is actually wrong, once.
  */
+/**
+ * How long one JMAP request may take before it is abandoned.
+ *
+ * There was no timeout at all, and `fetch` has none of its own: a socket the server accepts and
+ * then never answers on — a captive portal is the everyday case — leaves the promise pending until
+ * the browser or the OS gives up, which is minutes, not seconds. Everything downstream inherits
+ * that wait, and one place makes it serious: `endSession` awaits `stopAllEngines()` FIRST, so a
+ * hung request means the login screen is on the display while the mail replica, the OS
+ * notification banners and the credentials are all still on the machine, with no "sign-out
+ * incomplete" warning because nothing has failed yet.
+ *
+ * Thirty seconds is well past any real JMAP round trip — the sync engine's own slowest pass is a
+ * fraction of it — and well short of the browser's own patience.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * The caller's signal and the default deadline, whichever fires first.
+ *
+ * `AbortSignal.any` is the only correct combination here: a bare `AbortSignal.timeout` would ignore
+ * a caller cancelling early (engine teardown), and a bare caller signal restores the hang.
+ */
+function withDeadline(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+  if (timeoutMs <= 0) return signal
+  if (typeof AbortSignal.timeout !== 'function') return signal
+  const deadline = AbortSignal.timeout(timeoutMs)
+  if (!signal) return deadline
+  if (typeof AbortSignal.any !== 'function') return signal
+  return AbortSignal.any([signal, deadline])
+}
+
 export async function postApi(
   apiUrl: string,
   request: JmapRequest,
   transport: Transport,
   signal?: AbortSignal,
+  timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<JmapResponse> {
   const headers = await applyAuth(
     { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -55,7 +87,8 @@ export async function postApi(
     headers,
     body: JSON.stringify(request),
   }
-  if (signal) init.signal = signal
+  const effectiveSignal = withDeadline(signal, timeoutMs)
+  if (effectiveSignal) init.signal = effectiveSignal
   const response = await transport.fetch(apiUrl, init)
   if (!response.ok) throw await errorFromResponse(response)
   const body: unknown = await response.json().catch(() => undefined)
@@ -84,9 +117,13 @@ export async function getWithAuth(
   url: string,
   transport: Transport,
   signal?: AbortSignal,
+  timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const headers = await applyAuth({ Accept: 'application/json' }, transport.auth)
   const init: Parameters<FetchLike>[1] = { method: 'GET', headers }
-  if (signal) init.signal = signal
+  // Session discovery gets the same deadline as everything else — it is the FIRST request a cold
+  // start makes, and a hang there is a spinner with no way out. See DEFAULT_REQUEST_TIMEOUT_MS.
+  const effectiveSignal = withDeadline(signal, timeoutMs)
+  if (effectiveSignal) init.signal = effectiveSignal
   return transport.fetch(url, init)
 }

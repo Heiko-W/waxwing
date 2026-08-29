@@ -1494,6 +1494,22 @@ export class SyncEngine {
       // offline first pass still leaves the catch-up exemption intact (see below).
       await this.raiseNewMailNotifications(created)
       if (deltaError !== undefined) {
+        // A FULL DISK is not a sync problem, and this return used to treat it as one.
+        //
+        // The quota recovery is wired into the body fetch and the blob cache; the envelope,
+        // contact, calendar and file writes have none, so a `QuotaExceededError` there became an
+        // ordinary `deltaError` — and this return is placed BEFORE `runMaintenance()`, the one
+        // thing that would have made room. There is no separate maintenance timer
+        // (`MAINTENANCE_INTERVAL_MS` only throttles the call at the end of a SUCCESSFUL pass), so
+        // every following pass failed on the same write and backed off further. The user was shown
+        // "Sync problem — retrying" for a condition whose only remedy is "Free up space", and
+        // nothing recovered without them opening a message or the settings page by hand.
+        if (isQuotaExceeded(deltaError)) {
+          reportStorageFull(this.clock.now())
+          // Forced, because the throttle would otherwise skip it, and awaited so the retry
+          // scheduled below runs against a replica that has already been evicted down.
+          await this.runMaintenance({ force: true }).catch(() => undefined)
+        }
         // Offline is not a failure to back off from — the online transition schedules its own pass,
         // and counting it would push the first retry after reconnect out to the far end of the curve.
         if (this.deps.isOnline()) this.scheduleSyncRetry(deltaError)

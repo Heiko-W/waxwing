@@ -12,6 +12,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
 import { getQueryCache, putEmailBody, putEmails } from '../repo'
+import { getStorageFullAt, resetStorageFull } from '../storage'
 import { email, freshDb, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
@@ -2609,6 +2610,45 @@ describe('sync retry after a failed pass (B47)', () => {
     heal()
     if (retry) time.fire(retry)
     await waitFor(() => engine.getStatus().phase === 'idle')
+    await engine.stop()
+  })
+
+  /**
+   * A full disk is not a sync problem, and the failure path used to treat it as one: the quota
+   * recovery is wired into the body fetch and the blob cache only, so a `QuotaExceededError` on the
+   * ENVELOPE write became an ordinary delta error — and the early return sits before
+   * `runMaintenance()`, the one thing that would have made room. With no separate maintenance
+   * timer, every following pass failed on the same write and backed off further, under a "Sync
+   * problem — retrying" message for a condition whose only remedy is freeing space.
+   */
+  it('treats a full disk as a full disk: reports it and forces maintenance', async () => {
+    resetStorageFull()
+    const time = recordingClock()
+    const { port } = flakyPort(() => new DOMException('quota', 'QuotaExceededError'))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    const maintenance = vi.spyOn(engine, 'runMaintenance')
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    // The user hears "storage is full", not "sync problem".
+    expect(getStorageFullAt()).not.toBe(0)
+    // And eviction actually runs, forced past the interval throttle that would otherwise skip it.
+    expect(maintenance).toHaveBeenCalledWith({ force: true })
+    await engine.stop()
+    resetStorageFull()
+  })
+
+  it('leaves an ordinary failure alone — the counter-test', async () => {
+    resetStorageFull()
+    const time = recordingClock()
+    const { port } = flakyPort(() => new Error('boom'))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    expect(getStorageFullAt()).toBe(0)
     await engine.stop()
   })
 

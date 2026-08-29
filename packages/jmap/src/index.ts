@@ -21,7 +21,13 @@ export type {
   UploadOptions,
   UploadResult,
 } from './blob'
-export { DEFAULT_BLOB_TYPE, downloadBlob, expandUriTemplate, uploadBlob } from './blob'
+export {
+  DEFAULT_BLOB_TYPE,
+  DEFAULT_MAX_DOWNLOAD_BYTES,
+  downloadBlob,
+  expandUriTemplate,
+  uploadBlob,
+} from './blob'
 export type { CapabilityUrn } from './capabilities'
 // Capability URNs + method → capability mapping.
 export { Capabilities, capabilityForMethod, usingForMethods } from './capabilities'
