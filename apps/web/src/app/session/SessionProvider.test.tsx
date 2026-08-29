@@ -391,6 +391,63 @@ describe('SessionProvider — public-computer mode', () => {
     expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
   })
 
+  /**
+   * The one click that used to undo the whole mode. Re-auth is a full-page redirect, so it wipes
+   * `ephemeralRef` exactly as the first sign-in does — and the stash had already been spent by the
+   * callback that got us here. Without carrying it across, "sign in again" at a shared terminal
+   * persisted an AuthRecord and a 30-day refresh token and moved the replica back to its permanent
+   * name.
+   */
+  it('carries public-computer mode through an OAuth RE-auth redirect', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    const fake = renderSession({ isRedirectCallback: true })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(currentReplicaName().startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+    // Spent by the callback — the re-auth below has to put it back itself.
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+
+    await user.click(screen.getByText('expire'))
+    await user.click(screen.getByText('reauth-oauth'))
+
+    await waitFor(() =>
+      expect(fake.spies.startLogin).toHaveBeenLastCalledWith({
+        method: 'oauth',
+        publicComputer: true,
+      }),
+    )
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBe('true')
+  })
+
+  it('leaves a DURABLE session durable through an OAuth re-auth — the counter-test', async () => {
+    const user = userEvent.setup()
+    const fake = renderSession({ isRedirectCallback: true })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    await user.click(screen.getByText('expire'))
+    await user.click(screen.getByText('reauth-oauth'))
+
+    await waitFor(() =>
+      expect(fake.spies.startLogin).toHaveBeenLastCalledWith({
+        method: 'oauth',
+        publicComputer: false,
+      }),
+    )
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+  })
+
+  /**
+   * A failed exchange must not silently downgrade the session. The stash used to be dropped before
+   * `completeRedirect`, so a retry after a stale PKCE transaction ran as an ordinary sign-in.
+   */
+  it('keeps the stash when the redirect exchange fails', async () => {
+    sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    renderSession({ isRedirectCallback: true, completeRedirectError: new Error('stale pkce') })
+
+    await waitFor(() => expect(screen.getByTestId('step')).not.toHaveTextContent('none'))
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBe('true')
+  })
+
   it('an ordinary callback stays on the durable replica — the counter-test', async () => {
     renderSession({ isRedirectCallback: true })
 

@@ -397,8 +397,13 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         if (readStored<boolean>(session(), STASH_PUBLIC_KEY) === true) {
           markEphemeral()
         }
-        removeStored(session(), STASH_PUBLIC_KEY)
         await controller.completeRedirect()
+        // Only NOW is the stash spent. Dropping it before `completeRedirect` meant a failed
+        // exchange — a stale PKCE transaction, the server down — took the public-computer choice
+        // with it: the retry ran as an ordinary sign-in and persisted a refresh token on a machine
+        // where the user had ticked the box. A surviving stash is the fail-closed direction; the
+        // durable paths (`chooseOAuth` without the tick, sign-out) clear it explicitly.
+        removeStored(session(), STASH_PUBLIC_KEY)
         // Restore the pre-redirect route BEFORE the router mounts (dispatch 'connected'),
         // since the OAuth redirect_uri strips back to the app root.
         const route = readStored<string>(session(), STASH_ROUTE_KEY)
@@ -576,8 +581,15 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       try {
         writeStored(session(), STASH_TARGET_KEY, target)
         writeStored(session(), STASH_ROUTE_KEY, window.location.pathname)
+        // Re-auth is a FULL-PAGE redirect, so it destroys every ref in this component exactly like
+        // the first sign-in does — including `ephemeralRef`. Without carrying the choice across in
+        // the stash, a single click on "sign in again" at a library terminal turned a public-computer
+        // session into a durable one: a new PkceTransaction without `ephemeral`, an AuthRecord and a
+        // 30-day refresh token back on disk, and the replica back under its permanent name, where no
+        // sweep reaches it (FR-AUTH-09).
+        if (ephemeralRef.current) writeStored(session(), STASH_PUBLIC_KEY, true)
         const controller = controllerRef.current ?? ensureController(target.issuer)
-        await controller.startLogin({ method: 'oauth' })
+        await controller.startLogin({ method: 'oauth', publicComputer: ephemeralRef.current })
       } catch (error) {
         dispatch({ type: 'reauthError', error: errToOnboard(error) })
       }
