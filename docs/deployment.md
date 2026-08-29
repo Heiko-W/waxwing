@@ -212,11 +212,45 @@ server {
 
     # The service worker must not be cached, or a released update can take a week to reach
     # anyone. The hashed assets can be cached forever, because their names change.
-    location = /sw.js       { add_header Cache-Control "no-cache"; }
-    location = /config.json { add_header Cache-Control "no-cache"; }
-    location /assets/       { add_header Cache-Control "public, max-age=31536000, immutable"; }
+    #
+    # Set through a `map` rather than `add_header` in each location, and that is not style —
+    # see the inheritance note below. Put the map at http{} level, outside this server block:
+    #
+    #   map $uri $waxwing_cache_control {
+    #       default                    "";
+    #       ~^/sw\.js$                  "no-cache";
+    #       ~^/config\.json$            "no-cache";
+    #       ~^/assets/                 "public, max-age=31536000, immutable";
+    #   }
+    #
+    # An empty value emits no header at all, so ordinary documents are unaffected.
+    add_header Cache-Control $waxwing_cache_control always;
 }
 ```
+
+**Why the cache headers go through a `map` and not into three `location` blocks.** nginx
+inherits `add_header` from an outer level only while the current level declares **no**
+`add_header` of its own — one directive anywhere in a `location` block drops *every* inherited
+header, and `always` does not change that (it governs error responses, not inheritance). The
+earlier form of this recipe had a `Cache-Control` in each of the three blocks, so the security
+headers added in [§7](#7-content-security-policy) — `X-Content-Type-Options`, `Referrer-Policy`
+and the pinned CSP — silently did not apply to `/sw.js`, `/config.json` or `/assets/*`. Losing
+`nosniff` on `/assets/` and `/config.json` is the part that matters. `curl -I` on an asset URL
+is how you check it, and it is worth doing once after any change to this file.
+
+Measured against nginx 1.29 (alpine), serving this exact configuration:
+
+| path             | old recipe            | with the `map`              |
+| ---------------- | --------------------- | --------------------------- |
+| `/`              | `nosniff` ✓           | `nosniff` ✓                 |
+| `/assets/app.js` | `nosniff` **missing** | `nosniff` ✓ + `immutable` ✓ |
+| `/sw.js`         | `nosniff` **missing** | `nosniff` ✓ + `no-cache` ✓  |
+| `/config.json`   | `nosniff` **missing** | `nosniff` ✓ + `no-cache` ✓  |
+
+One caveat worth knowing: `map` reads `$uri`, which `try_files` rewrites — so a request for a
+file that does NOT exist falls through to `/index.html` and is treated as a document. That is the
+right answer (a missing asset must not be cached as immutable), but it is why a typo in a path
+shows up as a missing cache header rather than as an error.
 
 **Why `proxy_buffering off` is in that block and not offered as a tuning tip.** The live channel
 is `/jmap/eventsource/`, a response that never ends. With nginx's default buffering the browser
@@ -354,6 +388,10 @@ add_header Content-Security-Policy "connect-src 'self' https://mail.example.com 
 add_header X-Content-Type-Options "nosniff" always;
 add_header Referrer-Policy "no-referrer" always;
 ```
+
+These sit at `server` level and reach every path only because §2 keeps its `location` blocks free
+of `add_header` — see the inheritance note there. If you add one to a `location` block later,
+these three stop applying to that path, with no warning and no error.
 
 **Caddy** — inside the `handle` block that serves the app:
 

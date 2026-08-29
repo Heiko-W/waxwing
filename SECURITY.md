@@ -150,8 +150,14 @@ signed in.
 
 - **"Stay signed in" is opt-in and off by default**, so the ordinary case leaves no token
   behind.
-- **A bounded offline window** (`offline.cacheDays`, 30 days by default): a shared machine
-  holds a month of mail, not a decade.
+- **A bounded offline cache** (`offline.cacheDays`, together with `offline.maxStorageMB`): old
+  mail is evicted rather than kept for ever, so a shared machine holds a bounded window and not
+  a decade. Two things to be exact about, because both changed after this section was first
+  written. The number is a DEFAULT the reader can raise or lower for their own device
+  (`app/offline-prefs.ts`), and since ADR-030 it bounds EVICTION only — it no longer decides what
+  a folder shows. The shipped default is stated once, in
+  [`docs/configuration.md`](docs/configuration.md), rather than repeated here where it drifted:
+  this document said 30 days for months while 90 was being installed.
 - **Two sign-outs, and the difference is the point.** Plain *Sign out* ends the session and
   stops the sync engines but **leaves the local replica in place**, so signing back in does
   not re-download a month of mail. ***Sign out & remove data*** (FR-AUTH-05) additionally

@@ -43,9 +43,16 @@
         config.json and cannot be pinned in a static <meta> at build time, so the
         wildcards are unavoidable here. Trade-off: an injected script could reach any
         https/wss host. Narrow it at deploy time by sending an HTTP Content-Security-
-        Policy response header (which overrides <meta>) with connect-src pinned to the
-        specific JMAP origin — mandatory for same-origin (Stalwart) and reverse-proxy
-        deployments.
+        Policy response header that names ONLY connect-src, pinned to the specific JMAP
+        origin.
+        A header does NOT override this <meta> policy — CSP Level 3 enforces every
+        delivered policy independently, so the effective policy is the INTERSECTION and a
+        header can only tighten. Restating default-src 'self' in it is therefore the
+        classic way to break the app: it kills the data:/blob: images and the blob: PDF
+        preview, and it looks like a caching bug. Where the app is served by Stalwart
+        itself there is no response-header hook at all, so this is not something every
+        deployment can do. See docs/deployment.md#content-security-policy and SECURITY.md
+        §2 before writing one.
       - style-src 'unsafe-inline': required because branding writes the accent token via
         element.style (theme.ts) and React/CSS-Modules use inline styles. It is a
         lower-severity vector than script injection and is intentionally NOT granted to
