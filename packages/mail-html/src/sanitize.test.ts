@@ -393,6 +393,23 @@ describe('sanitize — the inline-style ALLOWLIST inside anchors (ADR-016, wave 
     expect(html).toMatch(/opacity:\s*0/i)
   })
 
+  /**
+   * The comment spelling of the splitter divergence documented above the anchor filter. The browser
+   * strips comments before strings or parens exist, so a `"` inside one opens a string here that
+   * never closes: without the fail-closed rule the whole attribute fuses into the allowlisted
+   * `color` and `unicode-bidi:bidi-override` rides along, which is what `link-host` classifies on.
+   */
+  it.each([
+    ['a quote in a comment', 'color:red/*"*/;direction:rtl;unicode-bidi:bidi-override'],
+    ['a paren in a comment', 'color:red/*(*/;display:none'],
+  ])('drops a declaration whose text carries a CSS comment — %s', (_label, css) => {
+    const html = styledSpan(css)
+    expect(html).not.toMatch(/bidi-override/i)
+    expect(html).not.toMatch(/display:\s*none/i)
+    // The text still survives; only the styling is refused.
+    expect(html).toContain('junk')
+  })
+
   it('keeps hiding on the anchor itself — a link nobody can see cannot deceive anybody', () => {
     const { html } = sanitize('<a href="https://x.test/" style="display:none">gone</a>')
     expect(html).toMatch(/display:\s*none/i)

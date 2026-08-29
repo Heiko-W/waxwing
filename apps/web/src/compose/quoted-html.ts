@@ -208,6 +208,27 @@ const DROP_TAGS = [
 const UNWRAP_TAGS = ['button', 'fieldset', 'form', 'label', 'legend']
 
 /**
+ * `/*` — the two characters that end this splitter's agreement with the browser.
+ *
+ * The splitter tracks strings and parens; the browser's tokenizer strips comments BEFORE either
+ * exists (Syntax §4.3.2), so every quote and paren inside a comment is text to it and state to us.
+ * One `"` in a comment opens a string here that never closes, no `;` is a boundary after it, and
+ * the whole attribute fuses into ONE declaration named by whatever stands before the first colon —
+ * an allowlisted `color`, carrying a full-screen `position:fixed` overlay along verbatim, into the
+ * app DOM this module exists to protect.
+ *
+ * Teaching the splitter about comments is the wrong repair: `/*` is NOT a comment inside an
+ * unquoted `url()`, where the browser reads it as URL text, so a comment-aware splitter would fuse
+ * `background:url(/*);position:fixed` — which the splitter below correctly separates today. The
+ * fail-closed rule has no such corner: any divergence a comment can cause fuses the pieces it
+ * touches into one piece, and that piece necessarily contains the `/*` that caused it. Dropping it
+ * costs a comment inside an inline `style`, which is obfuscation far more often than authorship.
+ *
+ * `mail-html` carries the identical constant and rule for the same reason.
+ */
+const COMMENT_OPEN = '/*'
+
+/**
  * Split a `style` value into declarations on top-level `;`, honouring strings, `url(…)` nesting and
  * backslash escapes.
  *
@@ -278,10 +299,14 @@ function cssUnescape(value: string): string {
  *
  * The output is a `;`-joined subsequence of the input's own pieces — never rewritten, never
  * reordered — so two survivors cannot fuse into a property that was not already spelt out.
+ *
+ * A piece carrying {@link COMMENT_OPEN} is dropped outright — see the constant for why that is the
+ * whole of the comment handling and why it belongs here rather than in the splitter.
  */
 function filterQuotedStyle(css: string): string {
   const kept: string[] = []
   for (const declaration of splitDeclarations(css)) {
+    if (declaration.includes(COMMENT_OPEN)) continue
     const colon = declaration.indexOf(':')
     if (colon < 0) continue
     const property = declaration.slice(0, colon).trim().toLowerCase()

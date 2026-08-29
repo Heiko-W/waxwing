@@ -588,6 +588,25 @@ function isUnreadableSize(value: string): boolean {
 }
 
 /**
+ * `/*` — the two characters that end this splitter's agreement with the browser.
+ *
+ * The splitter tracks strings and parens; the browser's tokenizer strips comments BEFORE either
+ * exists (Syntax §4.3.2), so every quote and paren inside a comment is text to it and state to us.
+ * One `"` in a comment opens a string here that never closes, no `;` is a boundary after it, and
+ * the whole attribute fuses into ONE declaration named by whatever stands before the first colon —
+ * an allowlisted `color`, carrying a full-screen `position:fixed` overlay along verbatim. That is
+ * the divergence class documented above, in its third spelling.
+ *
+ * Teaching the splitter about comments is the wrong repair: `/*` is NOT a comment inside an
+ * unquoted `url()`, where the browser reads it as URL text, so a comment-aware splitter would fuse
+ * `background:url(/*);position:fixed` — which the splitter below correctly separates today. The
+ * fail-closed rule has no such corner: any divergence a comment can cause fuses the pieces it
+ * touches into one piece, and that piece necessarily contains the `/*` that caused it. Dropping it
+ * costs a comment inside an inline `style`, which is obfuscation far more often than authorship.
+ */
+const COMMENT_OPEN = '/*'
+
+/**
  * Split an inline `style` into its declarations at the `;`s that SEPARATE declarations, skipping the
  * ones that live inside a quoted string or inside a `url()`/function's parentheses.
  *
@@ -713,6 +732,7 @@ function splitDeclarations(css: string): string[] {
 function filterAnchorStyle(css: string): string {
   const kept: string[] = []
   for (const declaration of splitDeclarations(css)) {
+    if (declaration.includes(COMMENT_OPEN)) continue
     const colon = declaration.indexOf(':')
     if (colon < 0) continue
     const property = cssUnescape(declaration.slice(0, colon)).trim().toLowerCase()
