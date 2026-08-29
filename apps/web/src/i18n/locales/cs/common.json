@@ -1264,7 +1264,11 @@
       "subject": "Přečteno: {{subject}}"
     },
     "fullScreen": "Otevřít na celou obrazovku",
-    "exitFullScreen": "Ukončit celou obrazovku"
+    "exitFullScreen": "Ukončit celou obrazovku",
+    "truncated": {
+      "title": "Zobrazuje se jen začátek této zprávy",
+      "body": "Byla příliš velká, než aby se uložila celá. Uložte ji jako .eml a přečtěte si ji celou."
+    }
   },
   "compose": {
     "toolbar": "Formátování",

@@ -1249,7 +1249,11 @@
       "subject": "Letto: {{subject}}"
     },
     "fullScreen": "Apri a schermo intero",
-    "exitFullScreen": "Esci dallo schermo intero"
+    "exitFullScreen": "Esci dallo schermo intero",
+    "truncated": {
+      "title": "Viene mostrato solo l’inizio di questo messaggio",
+      "body": "Era troppo grande per essere archiviato per intero. Salvalo come .eml per leggerlo tutto."
+    }
   },
   "compose": {
     "toolbar": "Formattazione",

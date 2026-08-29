@@ -1264,7 +1264,11 @@
       "subject": "Przeczytano: {{subject}}"
     },
     "fullScreen": "Otwórz na pełnym ekranie",
-    "exitFullScreen": "Zamknij pełny ekran"
+    "exitFullScreen": "Zamknij pełny ekran",
+    "truncated": {
+      "title": "Wyświetlany jest tylko początek tej wiadomości",
+      "body": "Była zbyt duża, aby zapisać ją w całości. Zapisz ją jako .eml, aby przeczytać wszystko."
+    }
   },
   "compose": {
     "toolbar": "Formatowanie",

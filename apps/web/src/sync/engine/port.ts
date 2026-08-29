@@ -47,6 +47,20 @@ import {
 type WireSetErrors = Record<string, { type: string; description?: string | null }> | null
 
 /**
+ * The most body text one sync fetch will pull down per value (W-33).
+ *
+ * There was no cap at all, and JMAP has no response-size limit of its own — the chunker bounds the
+ * number of ids, not the bytes behind them. One very large message was therefore fetched whole,
+ * parsed, written to IndexedDB and run through the sanitiser, on the main thread. No amplification
+ * (both call sites fetch one id at a time), but no ceiling either.
+ *
+ * 2 MB is far past any message a person wrote — the `.eml` source view and the nested-message view
+ * both cap at 1 MB and say so — and the server sets `isTruncated` on anything it cuts, which the
+ * reader surfaces rather than hiding. The whole message stays reachable through "Save as .eml".
+ */
+const MAX_SYNC_BODY_BYTES = 2_000_000
+
+/**
  * The wire shape of a body `/get` record: an {@link EmailBodyInput} whose Authentication-Results
  * arrive under the literal, colon-laden JMAP property name rather than a clean field.
  */
@@ -196,6 +210,7 @@ export function createJmapPort(client: JmapClient, accountId: Id): JmapPort {
         bodyProperties: [...BODY_PART_PROPERTIES],
         fetchTextBodyValues: true,
         fetchHTMLBodyValues: true,
+        maxBodyValueBytes: MAX_SYNC_BODY_BYTES,
       })
       const response = (await builder.send()).get(handle)
       return {

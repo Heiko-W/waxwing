@@ -1234,7 +1234,11 @@
       "subject": "Gelesen: {{subject}}"
     },
     "fullScreen": "Im Vollbild öffnen",
-    "exitFullScreen": "Vollbild verlassen"
+    "exitFullScreen": "Vollbild verlassen",
+    "truncated": {
+      "title": "Es wird nur der Anfang dieser Nachricht angezeigt",
+      "body": "Sie war zu groß, um vollständig gespeichert zu werden. Speichern Sie sie als .eml, um alles zu lesen."
+    }
   },
   "compose": {
     "toolbar": "Formatierung",

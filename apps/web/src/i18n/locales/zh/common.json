@@ -1219,7 +1219,11 @@
       "subject": "已阅读：{{subject}}"
     },
     "fullScreen": "全屏打开",
-    "exitFullScreen": "退出全屏"
+    "exitFullScreen": "退出全屏",
+    "truncated": {
+      "title": "仅显示此邮件的开头部分",
+      "body": "邮件过大，无法完整存储。另存为 .eml 即可阅读全文。"
+    }
   },
   "compose": {
     "toolbar": "格式设置",

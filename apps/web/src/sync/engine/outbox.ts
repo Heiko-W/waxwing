@@ -2199,9 +2199,24 @@ function rejections(intent: OutboxIntent, result: PortSetResult): Map<string, Po
     case 'deleteAddressBook':
       collect(result.notDestroyed, [intent.id])
       break
-    case 'saveDraft':
+    case 'saveDraft': {
       collect(result.notCreated, [intent.creationId])
+      // A draft save is create-new + destroy-old in ONE `Email/set`, and the destroy half was never
+      // read (W-32): a server that refused it left the previous server copy sitting in Drafts, a
+      // fresh one beside it, and the row reported as fully successful. Per autosave interval, one
+      // more.
+      //
+      // `notFound` is EXCLUDED, and that exclusion is the reason this needs its own case rather
+      // than a `collect(result.notDestroyed, …)` line. `saveDraft` is not in `isDestroy`, so a
+      // `notFound` would be classified as a `messageGone` CONFLICT and dead-letter an autosave that
+      // in fact succeeded — and "the previous draft is already gone" is the everyday case (deleted
+      // from another device, or from the web UI), not a failure at all.
+      if (intent.priorServerId !== null) {
+        const error = result.notDestroyed[intent.priorServerId]
+        if (error && error.type !== 'notFound') found.set(intent.priorServerId, error)
+      }
       break
+    }
     case 'discardDraft':
       collect(result.notDestroyed, [intent.serverEmailId])
       break

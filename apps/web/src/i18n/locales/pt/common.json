@@ -1249,7 +1249,11 @@
       "subject": "Lida: {{subject}}"
     },
     "fullScreen": "Abrir em ecrã inteiro",
-    "exitFullScreen": "Sair do ecrã inteiro"
+    "exitFullScreen": "Sair do ecrã inteiro",
+    "truncated": {
+      "title": "Só é apresentado o início desta mensagem",
+      "body": "Era demasiado grande para ser guardada por completo. Guarde-a como .eml para ler tudo."
+    }
   },
   "compose": {
     "toolbar": "Formatação",

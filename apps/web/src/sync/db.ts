@@ -974,6 +974,19 @@ export function currentReplicaName(): string {
   return replicaName ?? REPLICA_DB_NAME
 }
 
+/**
+ * `true` while this tab's replica is a throwaway one (FR-AUTH-09).
+ *
+ * Here rather than in `ephemeral.ts`, which owns the naming, because that module imports nothing
+ * and this is where the name lives. Read by the parts of the app that should be quieter in
+ * public-computer mode — `mail/search/use-search.ts` replaces history entries instead of pushing
+ * them, so a typed search string does not outlive the session in the browser's back list, which is
+ * one of the few places this mode cannot clean up afterwards (SECURITY.md §3.1).
+ */
+export function isEphemeralReplica(): boolean {
+  return currentReplicaName().startsWith('waxwing-replica-eph-')
+}
+
 export function getReplica(): ReplicaDb {
   if (!sharedDb) sharedDb = new ReplicaDb(replicaName)
   return sharedDb

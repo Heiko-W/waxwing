@@ -1219,7 +1219,11 @@
       "subject": "開封済み：{{subject}}"
     },
     "fullScreen": "全画面で開く",
-    "exitFullScreen": "全画面を終了"
+    "exitFullScreen": "全画面を終了",
+    "truncated": {
+      "title": "このメッセージの冒頭のみを表示しています",
+      "body": "大きすぎるため全体を保存できませんでした。すべて読むには .eml として保存してください。"
+    }
   },
   "compose": {
     "toolbar": "書式",

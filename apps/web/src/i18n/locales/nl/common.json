@@ -1234,7 +1234,11 @@
       "subject": "Gelezen: {{subject}}"
     },
     "fullScreen": "Schermvullend openen",
-    "exitFullScreen": "Schermvullende weergave sluiten"
+    "exitFullScreen": "Schermvullende weergave sluiten",
+    "truncated": {
+      "title": "Alleen het begin van dit bericht wordt getoond",
+      "body": "Het was te groot om volledig op te slaan. Sla het op als .eml om alles te lezen."
+    }
   },
   "compose": {
     "toolbar": "Opmaak",

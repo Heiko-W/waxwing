@@ -1249,7 +1249,11 @@
       "subject": "Leído: {{subject}}"
     },
     "fullScreen": "Abrir a pantalla completa",
-    "exitFullScreen": "Salir de la pantalla completa"
+    "exitFullScreen": "Salir de la pantalla completa",
+    "truncated": {
+      "title": "Solo se muestra el principio de este mensaje",
+      "body": "Era demasiado grande para guardarlo completo. Guárdelo como .eml para leerlo entero."
+    }
   },
   "compose": {
     "toolbar": "Formato",

@@ -1234,7 +1234,11 @@
       "subject": "Read: {{subject}}"
     },
     "fullScreen": "Open full screen",
-    "exitFullScreen": "Exit full screen"
+    "exitFullScreen": "Exit full screen",
+    "truncated": {
+      "title": "Only the beginning of this message is shown",
+      "body": "It was too large to store in full. Save it as .eml to read all of it."
+    }
   },
   "compose": {
     "toolbar": "Formatting",

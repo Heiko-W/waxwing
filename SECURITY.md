@@ -201,6 +201,14 @@ full-page redirect, so the choice rides across in tab-scoped storage rather than
 disk. There is no browser primitive for "delete this database when the tab dies", and IndexedDB
 offers no in-memory mode. The sign-in screen says as much where you tick the box.
 
+**A second gap, and it is not one this app can close: the BROWSER'S OWN HISTORY.** Every route
+Waxwing navigates to is a URL, and a URL is a history entry — `…/mail/inbox?q=from:lawyer%20notice`
+names a search, a folder path names a folder, and the document title goes with it. No web
+application can delete a browser's history, so this survives all three removal paths above, which
+only reach storage this origin owns. The next person at the machine needs nothing but Ctrl+H. If
+that matters for your situation, use a private/incognito window — which discards history, storage
+and cache together when the window closes — or clear the browsing history on the way out.
+
 **Limits, and they matter more than the defences.**
 
 - **IndexedDB is not encrypted.** It cannot be: there is nowhere to put a key that an attacker

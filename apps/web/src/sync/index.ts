@@ -47,6 +47,7 @@ export {
   type FileTreeState,
   getReplica,
   type IdentityRow,
+  isEphemeralReplica,
   type LocalPrefRow,
   type MailboxRow,
   type OutboxConflict,

@@ -1249,7 +1249,11 @@
       "subject": "Lu : {{subject}}"
     },
     "fullScreen": "Ouvrir en plein écran",
-    "exitFullScreen": "Quitter le plein écran"
+    "exitFullScreen": "Quitter le plein écran",
+    "truncated": {
+      "title": "Seul le début de ce message est affiché",
+      "body": "Il était trop volumineux pour être stocké en entier. Enregistrez-le au format .eml pour tout lire."
+    }
   },
   "compose": {
     "toolbar": "Mise en forme",

@@ -1234,7 +1234,11 @@
       "subject": "Okundu: {{subject}}"
     },
     "fullScreen": "Tam ekranda aç",
-    "exitFullScreen": "Tam ekrandan çık"
+    "exitFullScreen": "Tam ekrandan çık",
+    "truncated": {
+      "title": "Bu iletinin yalnızca başlangıcı gösteriliyor",
+      "body": "Tamamı saklanamayacak kadar büyüktü. Tamamını okumak için .eml olarak kaydedin."
+    }
   },
   "compose": {
     "toolbar": "Biçimlendirme",
