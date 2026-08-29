@@ -40,6 +40,38 @@ describe('sanitizeStyle — inline CSS firewall (security regression)', () => {
     expect(collector.hasRemote).toBe(true)
   })
 
+  /**
+   * The FUNCTION NAME escaped, not the scheme. CSS resolves escapes inside an ident before matching
+   * it (§4.3.4), so all three spellings below are `url()` to a browser — Chromium computes
+   * `backgroundImage = url("…")` for each. The rewrite scans raw text and sees none of them, and the
+   * residual check used to unescape FIRST, which turned each into a well-formed `url(…)` that the
+   * check then stripped itself: the tracker URL came out verbatim, with `hasRemoteContent: false`
+   * and an empty manifest telling the reader there was nothing remote to release.
+   */
+  it.each([
+    ['u\\72 l(', 'background:u\\72 l(https://tracker.example/p.gif)'],
+    ['\\75 rl(', 'background:\\75 rl(https://tracker.example/p.gif)'],
+    ['UR\\4C(', 'background:UR\\4C(https://tracker.example/p.gif)'],
+  ])('sees through an escaped url() function name — %s', (_label, css) => {
+    const { value, drop, collector } = run(css)
+    expect(drop).toBe(true)
+    expect(value).not.toContain('tracker.example')
+    expect(collector.hasRemote).toBe(true)
+    // The manifest owes an entry for anything the reader might want to release later.
+    expect(collector.blocked.length).toBeGreaterThan(0)
+  })
+
+  it('fails closed on an escaped url() whatever the scheme, data: included', () => {
+    // `resolveUrl` has a policy for `data:`; a url() the rewrite never saw never reaches it.
+    expect(run('background:u\\72 l(data:image/png;base64,AAAA)').drop).toBe(true)
+  })
+
+  it('leaves an ordinary style alone — the counter-test', () => {
+    const { drop, value } = run("color:#333;background:url('cid:logo')")
+    expect(drop).toBe(false)
+    expect(value).toContain('color:#333')
+  })
+
   it('drops styles using image-set()/cross-fade() (bare-string remote images)', () => {
     expect(run("background-image:image-set('https://evil.example/x' 1x)").drop).toBe(true)
     expect(

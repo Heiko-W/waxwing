@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildFrameDocument, linkTextOf, type MailLinkInfo, mountMailFrame } from './frame'
+import { renderPlainText } from './text'
 
 /**
  * Mount a frame and hand back its INNER document with `bodyHtml` in it, so a click can be dispatched
@@ -313,6 +314,40 @@ describe('mountMailFrame — link interception (FR-RD-08)', () => {
     expect(dispatch(released.doc)).toBe(false)
     expect(dispatch(kept.doc)).toBe(true)
     expect(dispatch(byDefault.doc)).toBe(true)
+  })
+
+  /**
+   * The plain-text path, end to end. `renderPlainText` used to write `target="_blank"` on every
+   * link it made, and the click listener reads that attribute as the app's own release decision —
+   * so for a text/plain body the gate was still asked, its "keep and warn" answer was still
+   * returned, and the browser navigated regardless. Mounting the real renderer output is the point
+   * of the test: a hand-written fixture cannot catch a producer drifting from this invariant.
+   */
+  it('keeps a plain-text body’s links interceptable even when the gate wants to warn', () => {
+    const onLink = vi.fn()
+    // U+202E in the path: the gate sees a link whose text it cannot vouch for and keeps it.
+    const body = renderPlainText('See https://evil.tld/\u202Enigol/tset.knab now')
+    const { doc } = mountWithBody(body, onLink, () => true)
+    const link = doc.querySelector('a')
+    const view = doc.defaultView
+    if (link === null || view === null) throw new Error('no link')
+    expect(link.getAttribute('target')).toBeNull()
+
+    const event = new view.MouseEvent('click', { bubbles: true, cancelable: true })
+    link.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(onLink).toHaveBeenCalled()
+  })
+
+  it('strips a target the document arrived with, rather than trusting it', () => {
+    // The attribute means "prepareLinks released this". Anything else carrying it — another
+    // producer, a sanitizer that kept it — must not inherit that meaning.
+    const { doc } = mountWithBody(
+      '<a href="https://example.test/x" target="_blank">go</a>',
+      vi.fn(),
+      () => true,
+    )
+    expect(doc.querySelector('a')?.getAttribute('target')).toBeNull()
   })
 
   it('a released link never reaches onLink, in any engine', () => {

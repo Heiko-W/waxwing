@@ -247,11 +247,22 @@ export function sanitizeStyle(
     // stripped from the safe replacement so it cannot break out of the CSS string.
     return replacement === null ? "url('')" : `url('${replacement.replace(/['"\\()]/g, '')}')`
   })
-  // Fail closed: strip every WELL-FORMED `url(...)` (already handled above — safe replacement, empty,
-  // or an intentionally-kept allowRemote URL), then if a remote scheme still remains it lived in a
-  // MALFORMED/unbalanced `url(` the parser could not match — drop the whole style rather than leak it.
-  const residual = cssUnescape(rewritten).replace(/url\([^)]*\)/gi, '')
-  if (REMOTE_SCHEME.test(residual)) {
+  // Fail closed, and the ORDER here is the whole of it: strip every well-formed `url(...)` from the
+  // RAW text first (those are handled above — safe replacement, empty, or an intentionally-kept
+  // allowRemote URL), and unescape only what is left.
+  //
+  // Unescaping first, as this did, let an escaped function name through both stages at once. CSS
+  // resolves escapes inside an ident before matching it (§4.3.4), so `u\72 l(…)`, `\75 rl(…)` and
+  // `UR\4C(…)` are all `url()` to the browser — but the rewrite above scans the raw text and never
+  // sees one, and unescaping BEFORE the strip turned it into a well-formed `url(…)` that the strip
+  // then removed itself. The remote URL came out of `sanitize()` verbatim, with `blockedRemote: []`
+  // and `hasRemoteContent: false` beside it: the reader was told the message loads nothing remote
+  // and got no control to say otherwise.
+  const residual = cssUnescape(rewritten.replace(/url\([^)]*\)/gi, ''))
+  // A `url(` that only EXISTS after unescaping was hidden from the rewrite by definition, whatever
+  // scheme it names — `data:` included, which `resolveUrl` has its own policy about. Fail closed on
+  // the shape rather than enumerating the schemes it might carry.
+  if (REMOTE_SCHEME.test(residual) || /url\(/i.test(residual)) {
     collector.hasRemote = true
     // Record it, exactly as the STYLE_DANGER path above does. Both paths drop a whole style that the
     // reader will notice is missing, so both owe the manifest an entry; this one silently did not,

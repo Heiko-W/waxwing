@@ -81,7 +81,18 @@ function renderLevel(lines: readonly ParsedLine[], baseDepth: number, label: str
   return html
 }
 
-/** Escape `content` and wrap bare `http(s)` URLs in safe anchors (`rel=noopener noreferrer nofollow`). */
+/**
+ * Escape `content` and wrap bare `http(s)` URLs in anchors.
+ *
+ * No `target`, deliberately. `frame.ts` treats `target="_blank"` as a RECORD of a decision it made
+ * itself — the click listener steps aside for such an anchor, because `prepareLinks` writes the
+ * attribute only on links the app released. This renderer knows nothing about that decision, and
+ * writing the attribute here made every plain-text link look released: `gateLink` was still asked,
+ * its answer was still "keep and warn", and the browser navigated anyway, with the link-warning
+ * dialog unreachable for text/plain bodies entirely (ADR-029's invariant, in reverse).
+ *
+ * `rel` stays: it costs nothing on an intercepted link and is correct on a released one.
+ */
 function linkify(content: string): string {
   let html = ''
   let lastIndex = 0
@@ -91,7 +102,7 @@ function linkify(content: string): string {
     const url = rawUrl.replace(TRAILING_PUNCTUATION, '')
     html += escapeHtml(content.slice(lastIndex, matchStart))
     const safeUrl = escapeHtml(url)
-    html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">${safeUrl}</a>`
+    html += `<a href="${safeUrl}" rel="noopener noreferrer nofollow">${safeUrl}</a>`
     lastIndex = matchStart + url.length
   }
   html += escapeHtml(content.slice(lastIndex))

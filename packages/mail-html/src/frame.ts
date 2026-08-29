@@ -461,6 +461,12 @@ export function mountMailFrame(
   const prepareLinks = (doc: Document): void => {
     const base = iframe.ownerDocument?.baseURI
     for (const link of doc.querySelectorAll('a[href], area[href]')) {
+      // Whatever the document arrived with, the decision below is the only thing that may leave a
+      // `target` on it. The click listener reads that attribute as "the app released this link",
+      // so an anchor that carries one from anywhere else — a plain-text render, an HTML mail in a
+      // runtime whose sanitizer kept it — silently opts itself out of the warning dialog. Clearing
+      // first makes the invariant structural instead of a promise about every upstream producer.
+      link.removeAttribute('target')
       const absolute = webUrl(link.getAttribute('href') ?? '', base)
       if (absolute === null) continue
       const parts = linkTextOf(link)
