@@ -181,6 +181,14 @@ export class AuthController {
     }
     const session = this.buildBasicSession(credentials)
     this.session = session
+    // The store holds the secret of the ACTIVE method and no other. Signing in with a password
+    // after an OAuth session — the reachable order is an OAuth callback that succeeds and a
+    // `connectSession` that then fails, which drops the user back on the login form with the
+    // tokens already written — used to leave a refresh token behind: up to 30 days valid, not
+    // revocable server-side (ADR-006), and still on the disk of someone who deliberately left
+    // "stay signed in" unticked.
+    await this.tokens.clear()
+    this.resolvedOAuth = null
     // Persist only on opt-in ("stay signed in"), and only via the wrapped store — never
     // plaintext (FR-AUTH-04). Without opt-in, nothing survives a reload.
     if (request.staySignedIn) {
@@ -227,6 +235,11 @@ export class AuthController {
       }
       this.resolvedOAuth = config
       await this.tokens.apply(result)
+      // The mirror of the same invariant (see `startBasicLogin`): a password left over from an
+      // earlier Basic sign-in with "stay signed in" is inert for `restore()`, which keys off the
+      // AuthRecord overwritten below — but it is still decryptable on this device and still valid
+      // at the server, which is the half that matters.
+      await this.store.delete(SecretName.BasicCredentials)
       // The AuthRecord is what `restore()` keys off on a cold start. Writing one for a
       // public-computer session would sign the NEXT person at this machine in as this user, which
       // is the failure the mode exists to prevent (FR-AUTH-09).

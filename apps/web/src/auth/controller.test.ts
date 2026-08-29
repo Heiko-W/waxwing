@@ -366,6 +366,63 @@ describe('AuthController — Basic auth (FR-AUTH-04)', () => {
   })
 })
 
+/**
+ * One store, one method's secret. Both directions are reachable without any XSS: an OAuth callback
+ * that succeeds and a `connectSession` that then fails (403 on `/.well-known/jmap`, a session whose
+ * origin does not match) puts the user back on the login form with tokens already written, and the
+ * account switcher offers the other method at any time.
+ */
+describe('AuthController — switching sign-in method clears the other secret', () => {
+  it('a Basic sign-in drops a refresh token left by OAuth', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.RefreshToken, 'rt-from-oauth')
+
+    const controller = new AuthController({ store })
+    await controller.startLogin({
+      method: 'basic',
+      username: 'a@waxwing.test',
+      password: 'pw',
+      staySignedIn: false,
+    })
+
+    // 30 days valid and, per ADR-006, not revocable server-side — on the disk of someone who
+    // deliberately left "stay signed in" unticked.
+    expect(await store.get(SecretName.RefreshToken)).toBeNull()
+  })
+
+  it('an OAuth callback drops a password left by Basic', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    await store.put(
+      SecretName.BasicCredentials,
+      JSON.stringify({ username: 'a@waxwing.test', password: 'pw' }),
+    )
+
+    let currentHref = 'http://localhost:5173/'
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=auth-code-xyz&state=${state}`
+    await controller.completeRedirect()
+
+    // Inert for `restore()` — which keys off the AuthRecord — but still decryptable here and still
+    // valid at the server.
+    expect(await store.get(SecretName.BasicCredentials)).toBeNull()
+  })
+})
+
 describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
   it('wipeData clears credentials, caches, IndexedDB and service-worker registrations', async () => {
     const { store, dbName } = freshStore()
