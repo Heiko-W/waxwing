@@ -29,6 +29,7 @@ import {
   getReplica,
   newEphemeralDbName,
   releaseEphemeralClaim,
+  resetDispatchFailure,
   resetReplica,
   resetStorageFull,
   setReplicaName,
@@ -685,6 +686,9 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // The "storage is full" signal is a module singleton (M3.4): without this, a stale event from
         // the PREVIOUS session re-fires its toast on the next sign-in, whose notifier starts fresh.
         resetStorageFull()
+        // Same reason as the line above (M3.4): a module singleton whose stale event would
+        // re-toast at the next sign-in.
+        resetDispatchFailure()
         // The keyboard layer's state is module-scoped too (M3.8), and sign-out is an in-SPA
         // transition — the module graph survives it. Left alone, the NEXT account inherits this
         // account's list window: its selected email ids, its roving row, its open message's action

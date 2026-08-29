@@ -12,6 +12,7 @@ import { useSessionOptional } from '../app/session/context'
 import {
   type DraftRow,
   deleteDraft,
+  dispatchOrReport,
   getActiveReplica,
   getDraft,
   mailboxByRole,
@@ -33,7 +34,20 @@ import { holdUntilParameters } from './scheduled-send'
 import { mailFromParameters, rcptToParameters, readSubmissionExtensions } from './send-options'
 
 /** Why a send could not start (surfaced by the composer as a toast). */
-export type SendFailure = 'noRecipients' | 'noIdentity' | 'noSentMailbox' | 'engineUnavailable'
+export type SendFailure =
+  | 'noRecipients'
+  | 'noIdentity'
+  | 'noSentMailbox'
+  | 'engineUnavailable'
+  /**
+   * The durable enqueue itself failed — realistically a `QuotaExceededError` on the `put` that
+   * carries the whole mail body.
+   *
+   * Its own reason rather than a shrug, because it is the only failure here that happens AFTER the
+   * draft row was written `sending`: the recovery has to undo that, and the message the user needs
+   * is about storage, not about recipients or a mailbox.
+   */
+  | 'queueFailed'
 export type SendResult = { ok: true; undoMs: number } | { ok: false; reason: SendFailure }
 
 /**
@@ -147,15 +161,19 @@ async function flushDraft(db: ReplicaDb, accountId: Id, localId: string): Promis
   if (draftsBox === undefined) return
   const from = await resolveFrom(db, accountId, content.fromIdentityId)
   const email = toEmailCreate({ draft: content, draftsMailboxId: draftsBox.id, from })
-  void getEngineFor(accountId)?.dispatch(
-    {
-      kind: 'saveDraft',
-      localId,
-      creationId: `draft-${localId}`,
-      priorServerId: row.serverEmailId,
-      email,
-    },
-    { id: outboxId(localId) },
+  // Autosave is best-effort by design — but "the local row is written and the server copy is not"
+  // is worth one toast, and it used to be an unhandled rejection in the console.
+  dispatchOrReport(
+    getEngineFor(accountId)?.dispatch(
+      {
+        kind: 'saveDraft',
+        localId,
+        creationId: `draft-${localId}`,
+        priorServerId: row.serverEmailId,
+        email,
+      },
+      { id: outboxId(localId) },
+    ),
   )
 }
 
@@ -221,9 +239,11 @@ export function useDraftSync(): DraftSync {
         const row = await getDraft(db, accountId, localId)
         await deleteDraft(db, accountId, localId)
         if (row?.serverEmailId != null) {
-          void getEngineFor(accountId)?.dispatch(
-            { kind: 'discardDraft', localId, serverEmailId: row.serverEmailId },
-            { id: outboxId(localId) },
+          dispatchOrReport(
+            getEngineFor(accountId)?.dispatch(
+              { kind: 'discardDraft', localId, serverEmailId: row.serverEmailId },
+              { id: outboxId(localId) },
+            ),
           )
         }
         revokeDraftInlineImages(localId)
@@ -295,40 +315,65 @@ export function useDraftSync(): DraftSync {
         // DISTINCT outbox id (`send:<id>`), so an autosave's reconcile can no longer delete it; the
         // send captures the latest content, making a pending save redundant.
         await db.outbox.delete([accountId, outboxId(localId)])
-        void engine.dispatch(
-          {
-            kind: 'sendEmail',
-            localId,
-            emailCreationId: `send-${localId}`,
-            submissionCreationId: `sub-${localId}`,
-            priorServerId: existing?.serverEmailId ?? null,
-            email,
-            identityId: identity.id,
-            envelope: {
-              mailFrom: {
-                email: identity.email,
-                // ONE parameter map, built from two independent wishes: the scheduling request
-                // (FUTURERELEASE) and the send options (DSN / REQUIRETLS / MT-PRIORITY). They are
-                // merged rather than chosen between — scheduling a receipted message is an ordinary
-                // thing to want, and an envelope carries all of its parameters or none of them.
-                // Omitted entirely when both are empty, so an ordinary send is unchanged.
-                ...(mergedParameters === null ? {} : { parameters: mergedParameters }),
+        // AWAITED, and the catch is the point of the await.
+        //
+        // This was fire-and-forget under a comment explaining that a silent send loss is exactly
+        // what must not happen here — and `dispatch` awaits `stateGuard`, `enqueueAction` and
+        // `refreshQueueCounts`, all IndexedDB writes that can throw. When one did, the draft row
+        // was already durably `sending` (which `use-draft-restore` skips), this returned
+        // `{ok: true}`, and `ComposerWindow` closed the window: no outbox row, no queued-sends
+        // chip, no dead letter, nothing to reopen. The user saw "Sending…" and the mail did not
+        // exist anywhere.
+        try {
+          await engine.dispatch(
+            {
+              kind: 'sendEmail',
+              localId,
+              emailCreationId: `send-${localId}`,
+              submissionCreationId: `sub-${localId}`,
+              priorServerId: existing?.serverEmailId ?? null,
+              email,
+              identityId: identity.id,
+              envelope: {
+                mailFrom: {
+                  email: identity.email,
+                  // ONE parameter map, built from two independent wishes: the scheduling request
+                  // (FUTURERELEASE) and the send options (DSN / REQUIRETLS / MT-PRIORITY). They are
+                  // merged rather than chosen between — scheduling a receipted message is an ordinary
+                  // thing to want, and an envelope carries all of its parameters or none of them.
+                  // Omitted entirely when both are empty, so an ordinary send is unchanged.
+                  ...(mergedParameters === null ? {} : { parameters: mergedParameters }),
+                },
+                rcptTo: dedupRecipients(
+                  [...content.to, ...content.cc, ...content.bcc, ...identityBcc],
+                  (email) => rcptToParameters(email, sendOptions, extensions),
+                ),
               },
-              rcptTo: dedupRecipients(
-                [...content.to, ...content.cc, ...content.bcc, ...identityBcc],
-                (email) => rcptToParameters(email, sendOptions, extensions),
-              ),
+              onSuccessUpdateEmail: {
+                [`mailboxIds/${draftsBox.id}`]: null,
+                [`mailboxIds/${sentBox.id}`]: true,
+                'keywords/$draft': null,
+                'keywords/$seen': true,
+              },
+              source,
             },
-            onSuccessUpdateEmail: {
-              [`mailboxIds/${draftsBox.id}`]: null,
-              [`mailboxIds/${sentBox.id}`]: true,
-              'keywords/$draft': null,
-              'keywords/$seen': true,
-            },
-            source,
-          },
-          { id: sendOutboxId(localId), notBefore: opts.undoMs > 0 ? now + opts.undoMs : null },
-        )
+            { id: sendOutboxId(localId), notBefore: opts.undoMs > 0 ? now + opts.undoMs : null },
+          )
+        } catch (error) {
+          // Back to a row the composer can restore and the user can retry, with the failure on it.
+          await putDraft(db, {
+            accountId,
+            localId,
+            serverEmailId: existing?.serverEmailId ?? null,
+            status: 'error',
+            errorKind: 'send',
+            content,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: Date.now(),
+            lastError: error instanceof Error ? error.message : String(error),
+          })
+          return { ok: false, reason: 'queueFailed' }
+        }
         return { ok: true, undoMs: opts.undoMs }
       },
       undoSend: async (localId) => {

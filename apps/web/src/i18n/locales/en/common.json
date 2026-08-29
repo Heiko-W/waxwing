@@ -124,7 +124,8 @@
     },
     "storage": {
       "full": "Storage is full — some mail is not cached."
-    }
+    },
+    "dispatchFailed": "Could not save that action — it has not been carried out."
   },
   "settings": {
     "title": "Settings",
@@ -1312,6 +1313,7 @@
     "sendNoRecipients": "Add at least one recipient",
     "sendNoSentMailbox": "No Sent folder — cannot send yet",
     "sendUnavailable": "Not ready to send yet — please try again in a moment",
+    "sendQueueFailed": "Could not queue the message — this device may be out of storage. Your draft is safe",
     "sendWaitUploads": "Wait for uploads to finish",
     "sendTooLarge": "Attachments are too large to send",
     "sendFixRecipients": "Fix the highlighted recipient address",

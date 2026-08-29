@@ -125,7 +125,8 @@
     },
     "storage": {
       "full": "El almacenamiento está lleno — algunos mensajes no se guardan en caché."
-    }
+    },
+    "dispatchFailed": "No se pudo guardar la acción — no se ha llevado a cabo."
   },
   "settings": {
     "title": "Ajustes",
@@ -1328,6 +1329,7 @@
     "sendNoRecipients": "Añada al menos un destinatario",
     "sendNoSentMailbox": "No hay carpeta Enviados — todavía no se puede enviar",
     "sendUnavailable": "Aún no se puede enviar — inténtelo dentro de un momento",
+    "sendQueueFailed": "No se pudo poner el mensaje en cola — puede que no quede espacio en el dispositivo. Su borrador se conserva",
     "sendWaitUploads": "Espere a que terminen las subidas",
     "sendTooLarge": "Los adjuntos son demasiado grandes para enviarlos",
     "sendFixRecipients": "Corrija la dirección de destinatario resaltada",

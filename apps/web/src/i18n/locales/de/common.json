@@ -124,7 +124,8 @@
     },
     "storage": {
       "full": "Der Speicher ist voll — einige E-Mails werden nicht zwischengespeichert."
-    }
+    },
+    "dispatchFailed": "Die Aktion konnte nicht gespeichert werden — sie wurde nicht ausgeführt."
   },
   "settings": {
     "title": "Einstellungen",
@@ -1312,6 +1313,7 @@
     "sendNoRecipients": "Mindestens einen Empfänger hinzufügen",
     "sendNoSentMailbox": "Kein „Gesendet“-Ordner — Senden noch nicht möglich",
     "sendUnavailable": "Noch nicht sendebereit — bitte gleich erneut versuchen",
+    "sendQueueFailed": "Nachricht konnte nicht eingereiht werden — vermutlich ist der Speicher voll. Der Entwurf bleibt erhalten",
     "sendWaitUploads": "Warten, bis die Uploads abgeschlossen sind",
     "sendTooLarge": "Anhänge sind zu groß zum Senden",
     "sendFixRecipients": "Ungültige Empfängeradresse korrigieren",

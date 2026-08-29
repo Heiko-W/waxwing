@@ -123,7 +123,8 @@
     },
     "storage": {
       "full": "存储空间已满——部分邮件未缓存。"
-    }
+    },
+    "dispatchFailed": "无法保存该操作——操作未执行。"
   },
   "settings": {
     "title": "设置",
@@ -1296,6 +1297,7 @@
     "sendNoRecipients": "请至少添加一位收件人",
     "sendNoSentMailbox": "没有“已发送”文件夹——暂时无法发送",
     "sendUnavailable": "尚未准备好发送——请稍候重试",
+    "sendQueueFailed": "无法将邮件加入队列——设备存储空间可能已满。草稿已保留",
     "sendWaitUploads": "请等待上传完成",
     "sendTooLarge": "附件太大，无法发送",
     "sendFixRecipients": "请修正高亮标出的收件人地址",

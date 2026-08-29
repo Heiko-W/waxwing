@@ -75,6 +75,14 @@ export {
   wipeReplica,
 } from './db'
 export {
+  dispatchOrReport,
+  getDispatchFailureAt,
+  getDispatchFailureMessage,
+  reportDispatchFailure,
+  resetDispatchFailure,
+  subscribeDispatchFailure,
+} from './dispatch-failure'
+export {
   EPHEMERAL_DB_PREFIX,
   EPHEMERAL_INDEX_KEY,
   newEphemeralDbName,

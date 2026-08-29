@@ -126,7 +126,8 @@
     },
     "storage": {
       "full": "Pamięć jest pełna — część poczty nie jest zapisywana lokalnie."
-    }
+    },
+    "dispatchFailed": "Nie udało się zapisać tej czynności — nie została wykonana."
   },
   "settings": {
     "title": "Ustawienia",
@@ -1344,6 +1345,7 @@
     "sendNoRecipients": "Dodaj co najmniej jednego odbiorcę",
     "sendNoSentMailbox": "Brak folderu Wysłane — nie można jeszcze wysyłać",
     "sendUnavailable": "Jeszcze nie można wysłać — spróbuj za chwilę",
+    "sendQueueFailed": "Nie udało się dodać wiadomości do kolejki — być może brakuje miejsca. Wersja robocza jest zachowana",
     "sendWaitUploads": "Poczekaj na zakończenie przesyłania",
     "sendTooLarge": "Załączniki są zbyt duże, aby je wysłać",
     "sendFixRecipients": "Popraw wyróżniony adres odbiorcy",

@@ -126,7 +126,8 @@
     },
     "storage": {
       "full": "Úložiště je plné — část pošty se neukládá do mezipaměti."
-    }
+    },
+    "dispatchFailed": "Akci se nepodařilo uložit — nebyla provedena."
   },
   "settings": {
     "title": "Nastavení",
@@ -1344,6 +1345,7 @@
     "sendNoRecipients": "Přidejte alespoň jednoho příjemce",
     "sendNoSentMailbox": "Chybí složka Odeslaná pošta — zatím nelze odesílat",
     "sendUnavailable": "Zatím není připraveno k odeslání — zkuste to prosím za okamžik",
+    "sendQueueFailed": "Zprávu se nepodařilo zařadit do fronty — pravděpodobně došlo místo. Koncept zůstal zachován",
     "sendWaitUploads": "Počkejte, až se nahrávání dokončí",
     "sendTooLarge": "Přílohy jsou příliš velké na odeslání",
     "sendFixRecipients": "Opravte zvýrazněnou adresu příjemce",

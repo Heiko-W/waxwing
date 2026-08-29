@@ -125,7 +125,8 @@
     },
     "storage": {
       "full": "Spazio esaurito — parte della posta non viene salvata in locale."
-    }
+    },
+    "dispatchFailed": "Impossibile salvare l’azione — non è stata eseguita."
   },
   "settings": {
     "title": "Impostazioni",
@@ -1328,6 +1329,7 @@
     "sendNoRecipients": "Aggiungi almeno un destinatario",
     "sendNoSentMailbox": "Nessuna cartella Posta inviata — invio non ancora possibile",
     "sendUnavailable": "Non ancora pronto per l’invio — riprova tra un momento",
+    "sendQueueFailed": "Impossibile accodare il messaggio — lo spazio di archiviazione potrebbe essere esaurito. La bozza è al sicuro",
     "sendWaitUploads": "Attendi che i caricamenti finiscano",
     "sendTooLarge": "Gli allegati sono troppo grandi per essere inviati",
     "sendFixRecipients": "Correggi l’indirizzo del destinatario evidenziato",

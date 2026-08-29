@@ -125,7 +125,8 @@
     },
     "storage": {
       "full": "O armazenamento está cheio — parte do e-mail não fica em cache."
-    }
+    },
+    "dispatchFailed": "Não foi possível guardar a ação — não foi executada."
   },
   "settings": {
     "title": "Definições",
@@ -1328,6 +1329,7 @@
     "sendNoRecipients": "Adicione pelo menos um destinatário",
     "sendNoSentMailbox": "Não há pasta Enviados — ainda não é possível enviar",
     "sendUnavailable": "Ainda não está pronto para enviar — tente novamente daqui a instantes",
+    "sendQueueFailed": "Não foi possível colocar a mensagem na fila — o armazenamento pode estar cheio. O rascunho está guardado",
     "sendWaitUploads": "Aguarde que os carregamentos terminem",
     "sendTooLarge": "Os anexos são demasiado grandes para enviar",
     "sendFixRecipients": "Corrija o endereço de destinatário assinalado",

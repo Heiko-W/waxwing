@@ -151,6 +151,32 @@ describe('useDraftSync.send (M2.8)', () => {
     expect(dispatch).not.toHaveBeenCalled()
   })
 
+  /**
+   * The failure that used to be invisible. `dispatch` was fire-and-forget, so a rejecting
+   * `enqueueAction` — a `QuotaExceededError` on the put that carries the whole body is the
+   * realistic one — left the draft row durably `sending` (which `use-draft-restore` skips), this
+   * returned `{ok: true}`, and `ComposerWindow` closed the window. No outbox row, no queued-sends
+   * chip, no dead letter, nothing to reopen: the user saw "Sending…" and the mail existed nowhere.
+   */
+  it('reports a failed enqueue instead of claiming the message was sent', async () => {
+    dispatch.mockRejectedValueOnce(new DOMException('quota', 'QuotaExceededError'))
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+    })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    const res = await result.current.send(id, { undoMs: 10000 })
+
+    expect(res).toEqual({ ok: false, reason: 'queueFailed' })
+    // And the row is one the composer can restore and the user can retry, not a stranded `sending`.
+    const row = await db.drafts.get(['a', id])
+    expect(row?.status).toBe('error')
+    expect(row?.errorKind).toBe('send')
+    expect(row?.lastError).toContain('quota')
+  })
+
   it("applies the identity's replyTo + auto-bcc to the email and the SMTP envelope", async () => {
     await putIdentities(db, 'a', [
       {

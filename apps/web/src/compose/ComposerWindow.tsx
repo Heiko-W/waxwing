@@ -226,8 +226,16 @@ export function ComposerWindow({
               ? 'compose.sendNoSentMailbox'
               : result.reason === 'engineUnavailable'
                 ? 'compose.sendUnavailable'
-                : 'compose.sendNoRecipients'
-        toast({ tone: 'danger', title: t(key) })
+                : result.reason === 'queueFailed'
+                  ? 'compose.sendQueueFailed'
+                  : 'compose.sendNoRecipients'
+        // Sticky for the one failure the user cannot fix by clicking again: a full disk needs a
+        // decision from them, and a toast that has faded by the time they look up is no message.
+        toast({
+          tone: 'danger',
+          title: t(key),
+          ...(result.reason === 'queueFailed' ? { duration: 0 } : {}),
+        })
         return
       }
       useComposerStore.getState().closeDraft(draft.id) // do NOT flush (that would race the send)

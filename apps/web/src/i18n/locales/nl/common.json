@@ -124,7 +124,8 @@
     },
     "storage": {
       "full": "De opslag is vol — een deel van je e-mail wordt niet lokaal bewaard."
-    }
+    },
+    "dispatchFailed": "Kon die actie niet opslaan — ze is niet uitgevoerd."
   },
   "settings": {
     "title": "Instellingen",
@@ -1312,6 +1313,7 @@
     "sendNoRecipients": "Voeg minstens één ontvanger toe",
     "sendNoSentMailbox": "Geen map Verzonden — verzenden kan nog niet",
     "sendUnavailable": "Nog niet klaar om te verzenden — probeer het zo dadelijk opnieuw",
+    "sendQueueFailed": "Kon het bericht niet in de wachtrij zetten — mogelijk is de opslag vol. Uw concept blijft bewaard",
     "sendWaitUploads": "Wacht tot de uploads klaar zijn",
     "sendTooLarge": "De bijlagen zijn te groot om te verzenden",
     "sendFixRecipients": "Corrigeer het gemarkeerde ontvangeradres",

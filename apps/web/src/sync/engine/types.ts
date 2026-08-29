@@ -552,6 +552,26 @@ export class CannotCalculateChangesError extends Error {
   }
 }
 
+/**
+ * The delta drain gave up: too many pages, or a page that moved the state nowhere.
+ *
+ * A subclass rather than a sibling, deliberately. Every caller of `drainChanges` already knows what
+ * to do when a delta cannot be trusted — re-query the whole collection — and it does it in an
+ * `instanceof CannotCalculateChangesError` branch. The recovery for "the server will not stop
+ * sending pages" is the identical one, so it belongs in the identical branch; the distinct name is
+ * for the reader looking at a log, not for a second code path.
+ *
+ * The condition it reports is one no correct server produces: `hasMoreChanges: true` for ever, or
+ * for ever with an unchanged `newState`. Left unguarded that is a self-DoS — the sync cycle never
+ * returns, nothing reaches the UI, and the accumulators grow until the tab dies.
+ */
+export class ChangesDrainStalledError extends CannotCalculateChangesError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ChangesDrainStalledError'
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Engine status (the M1.4 StatusRegion seam) + injected dependencies for the facade.
 // ---------------------------------------------------------------------------------------------

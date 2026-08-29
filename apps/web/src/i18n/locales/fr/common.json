@@ -125,7 +125,8 @@
     },
     "storage": {
       "full": "L’espace de stockage est plein — certains e-mails ne sont pas mis en cache."
-    }
+    },
+    "dispatchFailed": "Impossible d’enregistrer cette action — elle n’a pas été effectuée."
   },
   "settings": {
     "title": "Paramètres",
@@ -1328,6 +1329,7 @@
     "sendNoRecipients": "Ajoutez au moins un destinataire",
     "sendNoSentMailbox": "Aucun dossier Envoyés — envoi impossible pour l’instant",
     "sendUnavailable": "Pas encore prêt à envoyer — réessayez dans un instant",
+    "sendQueueFailed": "Impossible de mettre le message en file d’attente — l’espace de stockage est peut-être plein. Votre brouillon est conservé",
     "sendWaitUploads": "Attendez la fin des envois",
     "sendTooLarge": "Les pièces jointes sont trop volumineuses pour être envoyées",
     "sendFixRecipients": "Corrigez l’adresse de destinataire signalée",

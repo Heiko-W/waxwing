@@ -124,7 +124,8 @@
     },
     "storage": {
       "full": "Depolama alanı dolu — bazı e-postalar önbelleğe alınmıyor."
-    }
+    },
+    "dispatchFailed": "Bu işlem kaydedilemedi — gerçekleştirilmedi."
   },
   "settings": {
     "title": "Ayarlar",
@@ -1312,6 +1313,7 @@
     "sendNoRecipients": "En az bir alıcı ekleyin",
     "sendNoSentMailbox": "Gönderilenler klasörü yok — henüz gönderilemiyor",
     "sendUnavailable": "Henüz gönderime hazır değil — birazdan yeniden deneyin",
+    "sendQueueFailed": "İleti kuyruğa alınamadı — depolama alanı dolmuş olabilir. Taslağınız korundu",
     "sendWaitUploads": "Yüklemelerin bitmesini bekleyin",
     "sendTooLarge": "Ekler göndermek için çok büyük",
     "sendFixRecipients": "Vurgulanan alıcı adresini düzeltin",

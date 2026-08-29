@@ -35,6 +35,7 @@ import {
 } from './delta'
 import {
   CannotCalculateChangesError,
+  ChangesDrainStalledError,
   type ChangesResult,
   type EngineClock,
   type GetResult,
@@ -172,6 +173,58 @@ describe('syncMailboxes', () => {
     expect(await db.mailboxes.get([ACC, 'fresh'])).toBeDefined()
     expect(await db.mailboxes.get([ACC, 'gone'])).toBeUndefined()
     expect(await getSyncState(db, ACC, 'Mailbox')).toBe('m2')
+  })
+
+  /**
+   * `hasMoreChanges` used to be the only thing that ended the drain, which put the loop under the
+   * server's control: answer "more to come, same state" and the client re-sends the same request
+   * for ever — the sync cycle never returns, nothing reaches the UI, and the accumulators grow
+   * until the tab dies. No correct server produces either shape.
+   */
+  it('gives up on a server that reports more changes without moving the state', async () => {
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+    let calls = 0
+    const port = fakePort({
+      mailboxChanges: async (): Promise<ChangesResult> => {
+        calls += 1
+        return { newState: 'm0', hasMoreChanges: true, created: ['a'], updated: [], destroyed: [] }
+      },
+    })
+
+    await expect(syncMailboxes(port, db, ACC, clock)).rejects.toBeInstanceOf(
+      ChangesDrainStalledError,
+    )
+    // Once, not forever — and specifically not MAX_CHANGES_PAGES times, because the state check
+    // fires on the first page that stands still.
+    expect(calls).toBe(1)
+  })
+
+  it('gives up on a server that never stops paging, even with a moving state', async () => {
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+    let calls = 0
+    const port = fakePort({
+      mailboxChanges: async (): Promise<ChangesResult> => {
+        calls += 1
+        return {
+          newState: `m${String(calls)}`,
+          hasMoreChanges: true,
+          created: [`id-${String(calls)}`],
+          updated: [],
+          destroyed: [],
+        }
+      },
+    })
+
+    await expect(syncMailboxes(port, db, ACC, clock)).rejects.toBeInstanceOf(
+      ChangesDrainStalledError,
+    )
+    expect(calls).toBe(500)
+  })
+
+  it('is recoverable exactly like a cannotCalculateChanges — the subclass is the point', () => {
+    // Every caller re-queries the whole collection in an `instanceof CannotCalculateChangesError`
+    // branch. A sibling class would have needed all eight of them changed to stay correct.
+    expect(new ChangesDrainStalledError('x')).toBeInstanceOf(CannotCalculateChangesError)
   })
 
   it('patches only updatedProperties without replacing the row', async () => {
