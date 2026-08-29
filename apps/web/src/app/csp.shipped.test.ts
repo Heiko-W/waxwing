@@ -114,7 +114,9 @@ describe('the CSP comment an operator actually reads', () => {
     // within the same clause. The file's own sentence — "A header does NOT override this <meta>
     // policy" — is the shape that must stay allowed.
     const claims = [...indexHtml.matchAll(/([^.\n]{0,60})overrides?\s+(?:this\s+)?<meta>/gi)]
-    const unnegated = claims.filter(([, lead]) => !/\b(not|never|cannot|does not)\b/i.test(lead))
+    const unnegated = claims.filter(
+      ([, lead]) => !/\b(not|never|cannot|does not)\b/i.test(lead ?? ''),
+    )
     expect(unnegated.map(([match]) => match)).toEqual([])
   })
 

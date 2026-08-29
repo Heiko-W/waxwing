@@ -187,7 +187,16 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
     const port = fakePort({
       setEmails: async (): Promise<PortSetResult> => {
         await enqueueAction(db, ACC, intent, { id: 'draft:d1', now: 2 })
-        return { updated: ['e1'], notUpdated: {}, created: {}, notCreated: {}, newState: 's1' }
+        return {
+          oldState: null,
+          newState: 's1',
+          created: {},
+          updated: ['e1'],
+          destroyed: [],
+          notCreated: {},
+          notUpdated: {},
+          notDestroyed: {},
+        }
       },
     })
 
@@ -212,11 +221,14 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
     )
     const port = fakePort({
       setEmails: async (): Promise<PortSetResult> => ({
-        updated: ['e1'],
-        notUpdated: {},
-        created: {},
-        notCreated: {},
+        oldState: null,
         newState: 's1',
+        created: {},
+        updated: ['e1'],
+        destroyed: [],
+        notCreated: {},
+        notUpdated: {},
+        notDestroyed: {},
       }),
     })
 
@@ -245,7 +257,16 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
       setEmails: async (): Promise<PortSetResult> => {
         sent += 1
         controller.abort() // the teardown lands while the first row is out
-        return { updated: ['e1'], notUpdated: {}, created: {}, notCreated: {}, newState: 's1' }
+        return {
+          oldState: null,
+          newState: 's1',
+          created: {},
+          updated: ['e1'],
+          destroyed: [],
+          notCreated: {},
+          notUpdated: {},
+          notDestroyed: {},
+        }
       },
     })
 

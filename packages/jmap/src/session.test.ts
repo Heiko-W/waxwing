@@ -15,6 +15,7 @@ import {
 } from './session'
 import { at, makeSession } from './test-support'
 import type { FetchLike } from './transport'
+import type { Session } from './types/core'
 
 describe('toWellKnownUrl', () => {
   it('appends the well-known path to an origin/base', () => {

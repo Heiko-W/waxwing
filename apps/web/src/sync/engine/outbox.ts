@@ -1954,15 +1954,18 @@ export async function enqueueAction(
   // also takes a write lock on the contact, calendar and file tables that this path never writes,
   // which serialises a sync pass behind every click. `outbox.contacts.test.ts` and the chaos suite
   // both notice.
+  // Array form: Dexie's variadic overload stops at five tables, and this scope needs seven.
   return db.transaction(
     'rw',
-    db.emails,
-    db.emailBodies,
-    db.queryCache,
-    db.mailboxes,
-    db.contactCards,
-    db.addressBooks,
-    db.outbox,
+    [
+      db.emails,
+      db.emailBodies,
+      db.queryCache,
+      db.mailboxes,
+      db.contactCards,
+      db.addressBooks,
+      db.outbox,
+    ],
     async () => {
       const undo = await applyOptimistic(db, accountId, intent)
       // What was here before this row, if anything. Drafts reuse one id so a later save coalesces

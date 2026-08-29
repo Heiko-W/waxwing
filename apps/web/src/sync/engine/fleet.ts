@@ -98,7 +98,19 @@ const NOOP_STATUS = (_status: EngineStatus): void => {}
  * connection against the per-USER blob/request quota instead of N. With zero shared accounts the mux
  * is never built and the primary opens its own channel exactly as before.
  */
-export function startEngineFleet(accounts: readonly FleetAccount[], deps: FleetDeps): () => void {
+/**
+ * Start one engine per account and hand back an AWAITABLE teardown (W-15).
+ *
+ * The returned function used to be `() => void`: it started every `stop()` and returned, while
+ * `stop()`'s abort releases the Web Lock at once. A fleet built in the same tick — a `connected`
+ * change is exactly that — could therefore win the lock and run `recoverStranded` over rows the
+ * previous engines had not finished with, dead-lettering an in-flight send as `sendInterrupted`
+ * while its submission was on its way to succeeding.
+ */
+export function startEngineFleet(
+  accounts: readonly FleetAccount[],
+  deps: FleetDeps,
+): () => Promise<void> {
   const hasShared = accounts.some((account) => !account.isPrimary)
   // Built ONLY when it will be shared: the single-account primary keeps its own direct SSE channel.
   const mux = hasShared ? deps.createPushMux() : undefined

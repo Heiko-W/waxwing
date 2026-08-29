@@ -22,6 +22,17 @@ den Einträgen eingearbeitet.
 | low | 22 |
 | **Summe** | **40** |
 
+> **Stand 29.08.2026, abends: alle 40 Befunde sind abgearbeitet** — Branch
+> `fix/code-review-2026-08`, ein Commit je Befundgruppe, jeder Fix mit Regressionstest und
+> Mutationsprobe (Fix entfernt ⇒ Test rot). Zwei Abweichungen von den Empfehlungen sind unten am
+> jeweiligen Befund vermerkt: W-17 wird nur zur Hälfte behoben (der Credential-Pfad; die
+> Store-Isolation braucht Kontoarbeit, siehe ADR-037), und W-18 prunt Kalender-Occurrences, aber
+> keine Kontaktkarten (die sind das Objekt, nicht sein Cache).
+>
+> Nebenbefund aus der Abarbeitung, nicht aus dem Review: der `FakeServer` der Chaos-Suite wendete
+> `Email/set`-Patches teilweise an, bevor er sie ablehnte (RFC 8620 §5.3 verlangt Atomizität je
+> Objekt) — er verdeckte damit, welcher von Rollback und Delta-Pass zuletzt schrieb.
+
 Ausgangsbasis waren 49 bestätigte Einzelbefunde; 9 davon sind Mehrfachfunde derselben Ursache aus
 verschiedenen Dimensionen und hier zu jeweils einem Eintrag zusammengefasst (alle Fundstellen sind
 genannt).
@@ -48,7 +59,7 @@ Code-Kommentare und ADRs, die bekannte Grenzen benennen statt zu beschönigen.
 
 ### W-01 — [HIGH] `splitDeclarations` kennt keine CSS-Kommentare — Allowlist-Bypass in beiden Sanitizer-Kopien
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** xss / Sanitizing
 - `apps/web/src/compose/quoted-html.ts:240`
@@ -93,7 +104,7 @@ entsprechend korrigieren.
 
 ### W-02 — [HIGH] Re-Auth per OAuth verliert den Public-Computer-Modus und persistiert Refresh-Token und AuthRecord
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** auth
 - `apps/web/src/app/session/SessionProvider.tsx:580` (`resolveReauthOAuth`)
@@ -130,7 +141,7 @@ Dauer der Session gesetzt lassen.
 
 ### W-03 — [MEDIUM] Plain-Text-Nachrichten umgehen das Link-Interstitial vollständig
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Sanitizing
 - `packages/mail-html/src/text.ts:94` (`target="_blank"` fest gesetzt)
@@ -163,7 +174,7 @@ für einen `mismatch` `defaultPrevented === true` erwartet.
 
 ### W-04 — [MEDIUM] CSS-escaptes `url(` umgeht die Remote-Content-Firewall und die UI meldet "kein Remote-Inhalt"
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** privacy / Sanitizing
 - `packages/mail-html/src/sanitize.ts:249` (Rewriting sucht literal `url(`)
@@ -193,7 +204,7 @@ unescapete Form ein `url(` enthält, das im Rohtext nicht steht. Testvektoren `u
 
 ### W-05 — [MEDIUM] Kontoregistry und Präferenzen in localStorage überleben Sign-out und Public-Computer-Modus
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** privacy / Persistenz — zusammengefasst aus 5 Einzelbefunden (Dimensionen auth, sw-pwa, persistenz, qualitaet)
 - `apps/web/src/auth/wipe.ts:46` (`wipeLocalData` fasst kein Web-Storage an)
@@ -236,7 +247,7 @@ erweitern; SECURITY.md §3.1 die Registry benennen, falls sie bewusst bleiben so
 
 ### W-06 — [MEDIUM] Methodenwechsel lässt das Geheimnis der jeweils anderen Anmeldeart im Store liegen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** auth
 - `apps/web/src/auth/controller.ts:192-195` (`startBasicLogin` löscht `RefreshToken` nicht)
@@ -266,7 +277,7 @@ aktiven Methode.
 
 ### W-07 — [MEDIUM] vCard-Import: dateikontrollierte Strings treffen ungeschützt die Prototypkette
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit — zusammengefasst aus 2 Einzelbefunden
 - `packages/jscontact/src/from-vcard.ts:186-207` (`idAllocator` gibt die PROP-ID ungeprüft als Objektschlüssel zurück)
@@ -300,7 +311,7 @@ sie als `Map<string,string>` führen.
 
 ### W-08 — [MEDIUM] Rohe NUL-Bytes in versionierten Quelldateien machen Diffs und Suche unbrauchbar
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** supply-chain / Prozess
 - `apps/web/src/mail/AttachmentList.tsx:75` (`const SAVE_ALL_BUSY = '<NUL>save-all'`)
@@ -331,7 +342,7 @@ versionierte Nicht-Binärdateien auf 0x00 prüft — mit Ausnahmen für Binären
 
 ### W-09 — [MEDIUM] `Foo/changes`-Drain ist eine vom Server steuerbare Endlosschleife
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** dos / Sync
 - `apps/web/src/sync/engine/delta.ts:110-142` (`drainChanges`)
@@ -357,7 +368,7 @@ Full-Resync anstoßen. Zusätzlich `stopController.signal` bis in `drainChanges`
 
 ### W-10 — [MEDIUM] Fire-and-forget-Dispatches ohne `catch` — Sendeverlust ohne jede Spur
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Sync — zusammengefasst aus 2 Einzelbefunden
 - `apps/web/src/compose/use-draft-sync.ts:298` (Sendepfad, `void engine.dispatch(...)`, danach `return { ok: true }`)
@@ -391,7 +402,7 @@ drafts-Zeile auf `pending`/`error` zurücksetzen und `{ ok: false, reason }` lie
 
 ### W-11 — [MEDIUM] Blob-Download liest den Server-Stream ohne jede Größengrenze in den Speicher
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** dos / Transport
 - `packages/jmap/src/blob.ts:145-172` (`readBody`, beide Zweige)
@@ -419,7 +430,7 @@ und ebenfalls streamen statt `arrayBuffer()` zu nutzen.
 
 ### W-12 — [MEDIUM] `QuotaExceededError` im Delta-Schreibpfad blockiert die Synchronisierung ohne Eviction und ohne Meldung
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Persistenz
 - `apps/web/src/sync/engine/engine.ts:1495-1508` (Early-Return VOR `runMaintenance()`)
@@ -448,7 +459,7 @@ erzwungenen Wartungspass anstoßen, bevor zurückgekehrt wird.
 
 ### W-13 — [MEDIUM] Autosave-/Discard-Intent wird still verworfen, wenn er eine `inflight`-Outbox-Zeile überschreibt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** race / Sync
 - `apps/web/src/sync/engine/outbox.ts:2766` (`db.outbox.delete` ohne Re-Read)
@@ -482,7 +493,7 @@ einreihen.
 
 ### W-14 — [MEDIUM] `discardFailed` wendet ein geschuldetes Undo ohne transaktionalen Claim an
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** race / Sync
 - `apps/web/src/sync/engine/engine.ts:606-623` (`discardFailed`: read, act, delete)
@@ -512,7 +523,7 @@ danach außerhalb laufen lassen und bei Fehlschlag das `undo` transaktional zur�
 
 ### W-15 — [MEDIUM] Fleet-Teardown wartet nicht auf `stop()`, und `replayOutbox` ignoriert das Abort-Signal
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** race / Sync
 - `apps/web/src/sync/engine/fleet.ts:136-146` (`void engine.stop()`)
@@ -541,7 +552,7 @@ der Host über eine `teardownRef`-Kette serialisiert, wie `SessionProvider` es b
 
 ### W-16 — [MEDIUM] Kein Timeout auf JMAP-Requests: Sign-out kann minutenlang hängen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** auth / Transport
 - `packages/jmap/src/transport.ts:43-59` (`postApi` setzt `signal` nur, wenn der Aufrufer eines übergibt)
@@ -571,7 +582,7 @@ versehen.
 
 ### W-17 — [MEDIUM] Multi-Account ohne Store-Isolation: alle Konten teilen sich eine `waxwing-auth`-Datenbank
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** auth — zusammengefasst aus 2 Einzelbefunden (Dimensionen auth, persistenz)
 - `apps/web/src/app/services.tsx:38-39` (einziger Produktions-Konstruktor, ohne `accountId`)
@@ -608,7 +619,7 @@ nicht ausliefern.
 
 ### W-18 — [MEDIUM] Kontakte, Kalender, Dateien und Adress-Statistiken werden nie gezählt, geprunet oder evictet
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** datenlebenszyklus / Persistenz
 - `apps/web/src/sync/cache-usage.ts:49-68` (`collectCacheUsage` zählt nur Bodies, Blobs, Envelopes)
@@ -642,7 +653,7 @@ mitprunen und die Kategorien in `collectCacheUsage` als eigene Zeilen ausweisen.
 
 ### W-19 — [LOW] SECURITY.md nennt 30 Tage Offline-Fenster, ausgeliefert werden 90
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Dokumentation
 - `SECURITY.md:153`
@@ -667,7 +678,7 @@ erneut driftet.
 
 ### W-20 — [LOW] Ausgeliefertes `index.html` behauptet, ein CSP-Response-Header überschreibe die `<meta>`-Policy
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** sauberkeit / Dokumentation
 - `apps/web/index.html:46` (identisch in `apps/web/dist/index.html`)
@@ -696,7 +707,7 @@ wäre der Gate gegen künftige Drift.
 
 ### W-21 — [LOW] nginx-Rezept: `add_header` in den `location`-Blöcken verwirft die Security-Header des `server`-Blocks
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** deployment / Dokumentation
 - `docs/deployment.md:213-215` (location-Blöcke mit `add_header Cache-Control`)
@@ -724,7 +735,7 @@ ist. Den Vererbungsfallstrick im Text benennen.
 
 ### W-22 — [LOW] Übergroßer Inline-Style wird verworfen, ohne im Remote-Manifest zu landen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** sauberkeit / Sanitizing
 - `packages/mail-html/src/sanitize.ts:236` (Längen-Cutoff)
@@ -745,7 +756,7 @@ referenziert. Kein Datenabfluss, aber eine stille Falschaussage der UI.
 
 ### W-23 — [LOW] Ein blockierter SecretStore-Wipe bricht den Rest von "Abmelden & Daten entfernen" ab
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / auth
 - `apps/web/src/auth/controller.ts:357-360`
@@ -776,7 +787,7 @@ Zusätzlich in `endSession` unterscheiden, WAS unvollständig blieb.
 
 ### W-24 — [LOW] `boot()` wird ohne Rejection-Handler gestartet — ein Fehler ergibt eine weiße Seite
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit
 - `apps/web/src/main.tsx:73` (`void boot()`)
@@ -802,7 +813,7 @@ beschreibt und behebt — die allgemeine Form ist offen.
 
 ### W-25 — [LOW] Capability-Sonden werfen `TypeError`, wenn die Session `capabilities`/`accounts` nicht enthält
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Transport
 - `packages/jmap/src/session.ts:175`, `:196`, `:261` (Zugriff ohne `?.`)
@@ -829,7 +840,7 @@ statt eines späteren `TypeError`.
 
 ### W-26 — [LOW] `JmapMethodError` wird aus einem ungeprüften Serverwert konstruiert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Transport
 - `packages/jmap/src/errors.ts:175-177` (`isMethodError` prüft nur `invocation[0] === 'error'`)
@@ -857,7 +868,7 @@ mit erfassen. Testfall neben den bestehenden Malformed-Envelope-Fällen in `clie
 
 ### W-27 — [LOW] Mailbox-Patch kopiert servergenannte Properties über die Prototypkette
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Sync
 - `apps/web/src/sync/engine/delta.ts:229-238` (`if (prop in source)`)
@@ -884,7 +895,7 @@ der patchbaren `MailboxRow`-Felder (die es im Repo noch nicht gibt, sie muss ang
 
 ### W-28 — [LOW] `maxSizeUpload` und `maxConcurrentUpload` werden ungeprüft aus der Session übernommen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Transport
 - `packages/jmap/src/session.ts:180-189` (`isCoreCapability` prüft beide Felder nicht)
@@ -909,7 +920,7 @@ ein absurd großer Wert hebt den Pool auf.
 
 ### W-29 — [LOW] vCard-Lexer wirft `RangeError` bei wiederholtem Parameter mit vielen Werten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** dos / Transport
 - `packages/jscontact/src/vcard/lex.ts:234-236` (`bucket.push(...values)`)
@@ -935,7 +946,7 @@ Defekt ist der gebrochene Vertrag plus die nichtssagende Meldung.
 
 ### W-30 — [LOW] Fail-open im Deep-Pin-Check: eine nicht auflösbare Action wird still als geprüft gezählt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** supply-chain
 - `scripts/check-action-tree.mjs:112-114` (`fetchDefinition` gibt `null` zurück)
@@ -966,7 +977,7 @@ Den `parsed === null`-Zweig gleich mitnehmen.
 
 ### W-31 — [LOW] `enqueueAction` ist nicht atomar: optimistische Mutation und Outbox-Zeile liegen in zwei Transaktionen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Sync
 - `apps/web/src/sync/engine/outbox.ts:1941-1960`
@@ -993,7 +1004,7 @@ Tabellen, wie `retryFailed` es vormacht).
 
 ### W-32 — [LOW] `saveDraft`: die `destroy`-Hälfte des `Email/set` wird nie auf Ablehnung geprüft
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** korrektheit / Sync
 - `apps/web/src/sync/engine/outbox.ts:2066-2073` (create + destroy in einem Call)
@@ -1020,7 +1031,7 @@ Destroy-Hälfte mit `isDestroy`-Semantik klassifizieren.
 
 ### W-33 — [LOW] Body-Sync fordert Nachrichtentexte ohne `maxBodyValueBytes` an
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** dos / Transport
 - `apps/web/src/sync/engine/port.ts:190-199` (`getEmailBodies`)
@@ -1042,7 +1053,7 @@ still beschnittene Offline-Mail, was dem Zweck der Replica widerspricht.
 
 ### W-34 — [LOW] Unbegrenzte Rekursion über servergelieferte `subParts`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** dos / Transport
 - `apps/web/src/mail/message-body.ts:59-79` (`collectCidParts`)
@@ -1065,7 +1076,7 @@ Tiefe, was den Fall selten macht.
 
 ### W-35 — [LOW] SW-Deployment-Cache ignoriert den Query-String
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** cache-poisoning / PWA
 - `apps/web/src/pwa/sw-routes.ts:100` (`isDeploymentConfig` vergleicht nur `url.pathname`)
@@ -1096,7 +1107,7 @@ Strategien einen `cacheKeyWillBeUsed`-Plugin geben, der `url.search` verwirft.
 
 ### W-36 — [LOW] Abgebrochener OAuth-Redirect lässt die PKCE-Transaktion in der dauerhaften Auth-Datenbank zurück
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** crypto / auth
 - `apps/web/src/auth/controller.ts:165-170` (Schreiben in den regulären SecretStore)
@@ -1122,7 +1133,7 @@ und im ephemeren Modus zusätzlich spätestens beim Sign-out
 
 ### W-37 — [LOW] Zweite, eigenständige `escapeHtml`-Implementierung neben der geteilten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** sauberkeit
 - `apps/web/src/compose/html-to-text.ts:41-47`
@@ -1148,7 +1159,7 @@ Seiteneffektfreiheit.
 
 ### W-38 — [LOW] Navigation im Public-Computer-Modus hinterlässt Suchbegriffe und Ordnernamen im Browserverlauf
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** privacy
 - `apps/web/src/mail/search/use-search.ts:151-165` (`goto` ohne `replace`), `:171-176`
@@ -1173,7 +1184,7 @@ ohnehin explizit stehen; sekundär im ephemeren Modus grundsätzlich mit `{ repl
 
 ### W-39 — [LOW] Bekannte Bypass-Klassen fehlen in den Sanitizer-Testvektoren
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** test-coverage
 - `packages/mail-html/src/sanitize.test.ts:430-431`, `:690` (Kommentar-Vektoren nur ohne `"`/`(`)
@@ -1200,7 +1211,7 @@ Gate BEHALTENER Link kein `target` behält und `preventDefault()` bekommt.
 
 ### W-40 — [LOW] Public-Computer-Testabdeckung prüft nur IndexedDB, nie Re-Auth und nie das Web-Storage
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Fundstelle(n):** test-coverage — zusammengefasst aus 2 Einzelbefunden (Dimensionen auth, persistenz)
 - `e2e/tests/public-computer.spec.ts:23-26` (einzige Messgröße `indexedDB.databases()`)

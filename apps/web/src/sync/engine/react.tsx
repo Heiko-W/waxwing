@@ -160,12 +160,6 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
 
     let stopFleet: (() => Promise<void>) | null = null
     let cancelled = false
-    const started = (async () => {
-      // Only ever a pending teardown from THIS host; the first run resolves immediately.
-      await teardownRef.current
-      if (cancelled) return
-      stopFleet = startFleet()
-    })()
 
     const startFleet = (): (() => Promise<void>) =>
       startEngineFleet(accounts, {
@@ -187,6 +181,13 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
           })
         },
       })
+
+    const started = (async () => {
+      // Only ever a pending teardown from THIS host; the first run resolves immediately.
+      await teardownRef.current
+      if (cancelled) return
+      stopFleet = startFleet()
+    })()
 
     return () => {
       cancelled = true

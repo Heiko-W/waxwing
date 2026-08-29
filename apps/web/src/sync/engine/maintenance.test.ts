@@ -9,6 +9,7 @@ import type { EmailBodyPart } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectCacheUsage } from '../cache-usage'
 import {
+  type CalendarQueryCacheRow,
   type DraftRow,
   ENVELOPE_BYTES_ESTIMATE,
   type OutboxRow,
@@ -567,16 +568,15 @@ describe('runMaintenance — the contact and calendar windows', () => {
     }
   }
 
-  function calendarWindow(key: string, ids: string[], lastUsedAt: number) {
+  function calendarWindow(key: string, ids: string[], lastUsedAt: number): CalendarQueryCacheRow {
     return {
       accountId: ACC,
       key,
       ids,
-      queryState: 'q',
-      total: ids.length,
-      from: '2026-08-01T00:00:00Z',
-      to: '2026-08-31T23:59:59Z',
+      objectIds: ids,
+      filter: null,
       stale: false,
+      syncedAt: lastUsedAt,
       lastUsedAt,
     }
   }
