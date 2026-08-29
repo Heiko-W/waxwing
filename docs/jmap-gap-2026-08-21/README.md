@@ -19,7 +19,7 @@ ist mit Aufruf und Antwort belegt.
 |---|---|
 | **Fixture** | Stalwart **v0.16.14-alpine** auf `:18080` — was Entwicklung und CI heute testen |
 | **Probe** | Stalwart **v0.16.18-alpine** auf `:18081`, für diese Erhebung gestartet |
-| **Produktiv** | `mail.hcw-orange.media` läuft **v0.16.17** (per SSH abgefragt) |
+| **Produktiv** | Die Produktivinstanz läuft **v0.16.17** (per SSH abgefragt) |
 
 Der Unterschied ist nicht akademisch: die Fixture ist **älter als der Produktivserver**,
 und in v0.16.16–18 hat Stalwart genau an den hier untersuchten Flächen etwas geändert
@@ -746,7 +746,7 @@ Halbsatz irreführend.
 | | |
 |---|---|
 | Fixture (`docker-compose.yml:50`) | **v0.16.14-alpine** |
-| Produktiv `mail.hcw-orange.media` | **v0.16.17** |
+| Produktivinstanz | **v0.16.17** |
 | Aktuell verfügbar | **v0.16.18** (17.08.2026) |
 
 Das ist nicht bloß Pflegerückstand. Zwischen v0.16.14 und v0.16.18 hat Stalwart genau an

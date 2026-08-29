@@ -9,7 +9,7 @@
 
 ## Context
 
-Two defects were reported on 2026-08-22 from `mail.hcw-orange.media`, both Safari-only, both
+Two defects were reported on 2026-08-22 from the live deployment, both Safari-only, both
 invisible to the entire test suite. They share one cause behind them: **every automated test in this
 repository runs on Chromium**, and Chromium and WebKit disagree in exactly the two places these
 defects lived.
