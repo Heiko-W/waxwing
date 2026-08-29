@@ -108,8 +108,8 @@
       "confirm": "Supprimer les données et se déconnecter",
       "cancel": "Annuler"
     },
-    "switchTo": "Basculer vers {{name}}",
-    "add": "Ajouter un autre compte"
+    "switchTo": "Se connecter en tant que {{name}}",
+    "add": "Se connecter à un autre compte"
   },
   "status": {
     "offline": "Hors ligne",

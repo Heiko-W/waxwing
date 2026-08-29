@@ -108,8 +108,8 @@
       "confirm": "Usuń dane i wyloguj",
       "cancel": "Anuluj"
     },
-    "switchTo": "Przełącz na {{name}}",
-    "add": "Dodaj kolejne konto"
+    "switchTo": "Zaloguj się jako {{name}}",
+    "add": "Zaloguj się na inne konto"
   },
   "status": {
     "offline": "Offline",

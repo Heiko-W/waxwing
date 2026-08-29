@@ -108,8 +108,8 @@
       "confirm": "Verileri kaldır ve oturumu kapat",
       "cancel": "İptal"
     },
-    "switchTo": "{{name}} hesabına geç",
-    "add": "Başka bir hesap ekle"
+    "switchTo": "{{name}} olarak oturum aç",
+    "add": "Başka bir hesapta oturum aç"
   },
   "status": {
     "offline": "Çevrimdışı",

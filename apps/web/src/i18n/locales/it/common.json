@@ -108,8 +108,8 @@
       "confirm": "Rimuovi i dati ed esci",
       "cancel": "Annulla"
     },
-    "switchTo": "Passa a {{name}}",
-    "add": "Aggiungi un altro account"
+    "switchTo": "Accedi come {{name}}",
+    "add": "Accedi a un altro account"
   },
   "status": {
     "offline": "Offline",

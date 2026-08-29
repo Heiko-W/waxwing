@@ -108,8 +108,8 @@
       "confirm": "Gegevens wissen en uitloggen",
       "cancel": "Annuleren"
     },
-    "switchTo": "Overschakelen naar {{name}}",
-    "add": "Nog een account toevoegen"
+    "switchTo": "Aanmelden als {{name}}",
+    "add": "Aanmelden bij een ander account"
   },
   "status": {
     "offline": "Offline",

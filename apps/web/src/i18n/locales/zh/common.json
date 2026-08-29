@@ -108,8 +108,8 @@
       "confirm": "移除数据并退出登录",
       "cancel": "取消"
     },
-    "switchTo": "切换到{{name}}",
-    "add": "添加其他账户"
+    "switchTo": "以 {{name}} 身份登录",
+    "add": "登录其他账户"
   },
   "status": {
     "offline": "离线",

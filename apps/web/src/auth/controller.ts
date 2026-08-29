@@ -296,6 +296,25 @@ export class AuthController {
     const config = this.requireResolvedOAuth()
     const refreshToken = await this.tokens.getRefreshToken()
     if (!refreshToken) throw new AuthExpiredError('No refresh token available')
+    // WHOSE token is that? (W-17)
+    //
+    // Every controller in this browser profile shares one `waxwing-auth` database — ADR-004
+    // designed for per-account scopes, but no production path passes one. So: tab 1 is signed in
+    // to server X and holds `resolvedOAuth` for X in memory; someone signs in to server Y in tab
+    // 2, which overwrites the shared refresh token; tab 1's access token expires an hour later and
+    // this method reads Y's token out of storage and POSTs it to X's token endpoint. A refresh
+    // token handed to the wrong server is a credential disclosure, and no XSS is needed for it.
+    //
+    // The AuthRecord is written by whoever signed in last and names their issuer, so it answers
+    // the question without needing the store isolation. Absent means an ephemeral session, whose
+    // refresh token is in memory and therefore already ours (FR-AUTH-09).
+    const record = await this.readAuthRecord()
+    if (record !== null && (record.method !== 'oauth' || record.oauth?.issuer !== config.issuer)) {
+      this.tokens.clearAccessToken()
+      throw new AuthExpiredError(
+        'The stored credential belongs to a different sign-in — refusing to send it',
+      )
+    }
     const as = await this.ensureDiscovery(config)
     let result: TokenResult
     try {
@@ -327,10 +346,21 @@ export class AuthController {
    * OAuth the access token is fetched lazily on first {@link getAccessToken}; for Basic the
    * persisted (opt-in) credentials are re-loaded. Returns `null` when nothing is persisted.
    */
-  async restore(): Promise<AuthSession | null> {
+  /** The persisted {@link AuthRecord}, or `null` when there is none or it is unreadable. */
+  private async readAuthRecord(): Promise<AuthRecord | null> {
     const raw = await this.store.get(SecretName.AuthRecord)
     if (!raw) return null
-    const record = JSON.parse(raw) as AuthRecord
+    try {
+      return JSON.parse(raw) as AuthRecord
+    } catch {
+      // A corrupted record is not a reason to fail a refresh differently from a missing one.
+      return null
+    }
+  }
+
+  async restore(): Promise<AuthSession | null> {
+    const record = await this.readAuthRecord()
+    if (record === null) return null
     if (record.method === 'basic') {
       const credsRaw = await this.store.get(SecretName.BasicCredentials)
       if (!credsRaw) return null

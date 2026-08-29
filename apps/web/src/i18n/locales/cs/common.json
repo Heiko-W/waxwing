@@ -108,8 +108,8 @@
       "confirm": "Odstranit data a odhlásit se",
       "cancel": "Zrušit"
     },
-    "switchTo": "Přepnout na {{name}}",
-    "add": "Přidat další účet"
+    "switchTo": "Přihlásit se jako {{name}}",
+    "add": "Přihlásit se k jinému účtu"
   },
   "status": {
     "offline": "Offline",

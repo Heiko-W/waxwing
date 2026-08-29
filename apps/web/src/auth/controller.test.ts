@@ -423,6 +423,83 @@ describe('AuthController — switching sign-in method clears the other secret', 
   })
 })
 
+/**
+ * Every controller in this browser profile shares one `waxwing-auth` database — ADR-004 designed
+ * per-account scopes, and no production path passes one (W-17). The refresh path therefore has to
+ * check whose token it is holding, or the shared store turns into a credential disclosure with no
+ * XSS involved: tab 1 signed in to server X, someone signs in to server Y in tab 2 and overwrites
+ * the token, and an hour later tab 1's refresh POSTs Y's token to X's endpoint.
+ */
+describe('AuthController — a refresh token belongs to one issuer', () => {
+  it('refuses to send a token whose AuthRecord names a different issuer', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    let currentHref = 'http://localhost:5173/'
+    let clock = 1_000_000_000
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=auth-code-xyz&state=${state}`
+    await controller.completeRedirect()
+
+    // Another tab signs in elsewhere: same database, different server.
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({
+        method: 'oauth',
+        username: null,
+        oauth: { issuer: 'http://other.example', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      }),
+    )
+    await store.put(SecretName.RefreshToken, 'refresh-token-belonging-to-the-other-server')
+
+    clock += 4_000_000 // past the access token's hour, so a refresh is actually attempted
+    const provider = controller.getAuthProvider()
+    await expect(provider.authorization()).rejects.toThrowError(/different sign-in/)
+  })
+
+  it('refreshes normally while the record still names this issuer — the counter-test', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    let currentHref = 'http://localhost:5173/'
+    let clock = 1_000_000_000
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=auth-code-xyz&state=${state}`
+    await controller.completeRedirect()
+
+    clock += 4_000_000 // past the access token's hour
+    expect(await controller.getAuthProvider().authorization()).toMatch(/^Bearer /)
+  })
+})
+
 describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
   it('wipeData clears credentials, caches, IndexedDB and service-worker registrations', async () => {
     const { store, dbName } = freshStore()

@@ -108,8 +108,8 @@
       "confirm": "Eliminar los datos y cerrar sesión",
       "cancel": "Cancelar"
     },
-    "switchTo": "Cambiar a {{name}}",
-    "add": "Añadir otra cuenta"
+    "switchTo": "Iniciar sesión como {{name}}",
+    "add": "Iniciar sesión en otra cuenta"
   },
   "status": {
     "offline": "Sin conexión",
