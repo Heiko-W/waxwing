@@ -358,6 +358,46 @@ describe('a hostile card cannot forge a second one', () => {
  * Both halves of the converter face data nobody here wrote — a file the user picked, a card a
  * different server minted. These are the shapes that made it lose or destroy something.
  */
+/**
+ * The input is a FILE — a mail attachment, a shared address book, another server's export — so
+ * every string in it is attacker-chosen, including the ones that become object keys.
+ */
+describe('a card whose own strings are object keys', () => {
+  const card = (body: string): string =>
+    `BEGIN:VCARD\r\nVERSION:4.0\r\nUID:u1\r\nFN:Victim\r\n${body}\r\nEND:VCARD\r\n`
+
+  it.each(['__proto__', 'constructor', 'prototype'])(
+    'does not lose an address to PROP-ID=%s',
+    (propId) => {
+      // `out['__proto__'] = {…}` replaces the prototype rather than adding an own property, so the
+      // group ended up with no own keys at all and the whole `emails` field vanished — while the
+      // import reported success and `skipped` stayed empty.
+      const result = importOne(card(`EMAIL;PROP-ID=${propId}:victim@example.com`))
+      expect(Object.values(result.emails ?? {}).map((e) => e.address)).toEqual([
+        'victim@example.com',
+      ])
+    },
+  )
+
+  it('does not turn a hostile TEL;TYPE into a boolean-set key', () => {
+    // `PHONE_FEATURES['constructor']` is the `Object` function, not `undefined` — truthy, and then
+    // stringified into a key spelt `function Object() { [native code] }`, which goes to the server
+    // in a `ContactCard/set` and into the contact view as a label.
+    const phones = Object.values(
+      importOne(card('TEL;TYPE=constructor,__proto__,home:+49 5246 963 0')).phones ?? {},
+    )
+    expect(phones).toHaveLength(1)
+    const phone = phones[0]
+    expect(Object.keys(phone?.features ?? {})).toEqual([])
+    expect(Object.keys(phone?.contexts ?? {})).toEqual(['private'])
+  })
+
+  it('still honours an ordinary PROP-ID — the counter-test', () => {
+    const result = importOne(card('EMAIL;PROP-ID=e7:victim@example.com'))
+    expect(Object.keys(result.emails ?? {})).toEqual(['e7'])
+  })
+})
+
 describe('foreign data that used to break the converter', () => {
   it('gives every entry its own key when PROP-IDs and generated ids collide', () => {
     // The reported case: an explicit `PROP-ID=e2` on the FIRST line, and the second line's generated
