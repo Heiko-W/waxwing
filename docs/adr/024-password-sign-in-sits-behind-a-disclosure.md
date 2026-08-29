@@ -2,8 +2,8 @@
 
 - **Status:** accepted
 - **Date:** 2026-08-19
-- **Deciders:** Heiko (owner), after the first real deployment (`mail.hcw-orange.media/webmail`)
-  refused his correct password. The layout choice is his; the constraint below is the server's.
+- **Deciders:** Heiko (owner), after the first real deployment refused his correct password.
+  The layout choice is his; the constraint below is the server's.
 
 ## Context
 
