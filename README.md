@@ -104,13 +104,48 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.20.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.21.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 191 unit tests, 20
+Every planned work package is done and the release gate is signed off: 5 221 unit tests, 20
 integration tests against a live Stalwart, and 246 end-to-end tests across the **seven** Playwright
 suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
+
+**v0.21.0 is twelve more languages** — `cs es fr it ja nl pl pt ru tr uk zh`, fourteen in all.
+
+A Stalwart operator asked for Russian, and asked in the same sentence whether they should fork the
+project to get it ([#50](https://github.com/Heiko-W/waxwing/issues/50)). `docs/translating.md` had
+ruled machine translation out on grounds that are correct — a reader who confuses *Discard* with
+*Archive* loses a message — and drawn the wrong conclusion from them. The pipeline that sentence
+pointed at had produced no language in the whole time it existed, so the choice was never between a
+machine translation and a reviewed one. It was between a machine translation and English.
+[ADR-036](docs/adr/036-machine-translation-with-a-mechanical-gate.md) is the argument;
+[translating.md](docs/translating.md), [Contributing](#the-translations-need-you) and the answer on
+#50 all name which twelve bundles nobody has read.
+
+What the gate takes off the table is every failure a reviewer cannot see anyway: key parity, the
+plural forms each language actually selects (Russian, Ukrainian, Polish and Czech have four where
+English has two, and a missing `_few` falls back to English *mid-sentence* for the counts 2–4), an
+invented `{{placeholder}}`, a dropped `{{product}}`, a hardcoded brand name, a file that is more
+than half English verbatim. What is left is wording — and wording is a one-line pull request.
+
+**Two real defects surfaced only because the bundle stopped being two Latin languages**, both
+reported independently by two of the translators:
+
+- **The attachment-mention heuristic was off, not weak.** It matched on `\b`, which is defined
+  against ASCII `\w`, so a keyword beginning with `в`, `附` or `添` cannot sit on such a boundary at
+  *any* position — including the start of the message. "You mentioned an attachment but attached
+  none" was silently dead in Russian, Ukrainian, Japanese and Chinese, for 19 of 19 keywords. Han
+  and kana get no boundary at all now, because a script without word gaps has nothing for one to be.
+- **`toLowerCase()` folds Turkish `İ` to `i` plus a combining dot**, so a mail opening "İlişikte…"
+  matched nothing. The fold takes a language now.
+
+Both mutation-proven: three of the new tests go red against the old implementation.
+
+The cost is stated rather than hidden: the service-worker precache grows from 478 KB to 769 KB
+gzipped, of which 334 KB is the fourteen locale chunks. No budget is broken — initial JS is
+283.94 KB gz of 300, and locale bundles have always been lazy.
 
 **v0.20.0 is the §13 finding list, worked to the end** — ten `Bxx` findings fixed, three closed as
 accepted trade-offs, one left open on the owner's decision.
