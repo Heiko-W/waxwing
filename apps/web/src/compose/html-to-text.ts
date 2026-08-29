@@ -10,6 +10,12 @@
  * capped at one empty line.
  */
 
+// `escapeHtml` from the shared module rather than a fourth private copy of the same five
+// replacements (W-37): `mail-html` owns the canonical one, `mail/search/snippet.ts` already imports
+// it, and a second implementation of an escaping rule is a divergence waiting for one of them to be
+// fixed alone.
+import { escapeHtml } from '@waxwing/mail-html'
+
 /** Single-line blocks (a `<div>` is one visual line, as contenteditable editors emit). */
 const LINE_TAGS = new Set(['DIV', 'TR'])
 
@@ -35,16 +41,6 @@ const PARA_TAGS = new Set([
 interface WalkContext {
   /** Ordered/unordered list counters, innermost last (drives markers + indentation). */
   readonly listStack: Array<{ readonly ordered: boolean; index: number }>
-}
-
-/** Escape the five HTML-significant characters for safe insertion as text. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 
 /**

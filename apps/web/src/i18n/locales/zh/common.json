@@ -108,8 +108,8 @@
       "confirm": "移除数据并退出登录",
       "cancel": "取消"
     },
-    "switchTo": "切换到{{name}}",
-    "add": "添加其他账户"
+    "switchTo": "以 {{name}} 身份登录",
+    "add": "登录其他账户"
   },
   "status": {
     "offline": "离线",
@@ -123,7 +123,8 @@
     },
     "storage": {
       "full": "存储空间已满——部分邮件未缓存。"
-    }
+    },
+    "dispatchFailed": "无法保存该操作——操作未执行。"
   },
   "settings": {
     "title": "设置",
@@ -156,6 +157,7 @@
         "messages": "邮件索引（估算）",
         "bodies": "邮件正文",
         "attachments": "附件",
+        "personalData": "联系人、日历和文件",
         "other": "其他（应用与离线框架）"
       },
       "description": "{{product}}会把近期邮件保留在此设备上，让邮件即刻打开，并可离线使用。",
@@ -1218,7 +1220,11 @@
       "subject": "已阅读：{{subject}}"
     },
     "fullScreen": "全屏打开",
-    "exitFullScreen": "退出全屏"
+    "exitFullScreen": "退出全屏",
+    "truncated": {
+      "title": "仅显示此邮件的开头部分",
+      "body": "邮件过大，无法完整存储。另存为 .eml 即可阅读全文。"
+    }
   },
   "compose": {
     "toolbar": "格式设置",
@@ -1296,6 +1302,7 @@
     "sendNoRecipients": "请至少添加一位收件人",
     "sendNoSentMailbox": "没有“已发送”文件夹——暂时无法发送",
     "sendUnavailable": "尚未准备好发送——请稍候重试",
+    "sendQueueFailed": "无法将邮件加入队列——设备存储空间可能已满。草稿已保留",
     "sendWaitUploads": "请等待上传完成",
     "sendTooLarge": "附件太大，无法发送",
     "sendFixRecipients": "请修正高亮标出的收件人地址",

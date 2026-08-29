@@ -47,6 +47,7 @@ export {
   type FileTreeState,
   getReplica,
   type IdentityRow,
+  isEphemeralReplica,
   type LocalPrefRow,
   type MailboxRow,
   type OutboxConflict,
@@ -74,6 +75,14 @@ export {
   toThreadRow,
   wipeReplica,
 } from './db'
+export {
+  dispatchOrReport,
+  getDispatchFailureAt,
+  getDispatchFailureMessage,
+  reportDispatchFailure,
+  resetDispatchFailure,
+  subscribeDispatchFailure,
+} from './dispatch-failure'
 export {
   EPHEMERAL_DB_PREFIX,
   EPHEMERAL_INDEX_KEY,

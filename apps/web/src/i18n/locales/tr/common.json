@@ -108,8 +108,8 @@
       "confirm": "Verileri kaldır ve oturumu kapat",
       "cancel": "İptal"
     },
-    "switchTo": "{{name}} hesabına geç",
-    "add": "Başka bir hesap ekle"
+    "switchTo": "{{name}} olarak oturum aç",
+    "add": "Başka bir hesapta oturum aç"
   },
   "status": {
     "offline": "Çevrimdışı",
@@ -124,7 +124,8 @@
     },
     "storage": {
       "full": "Depolama alanı dolu — bazı e-postalar önbelleğe alınmıyor."
-    }
+    },
+    "dispatchFailed": "Bu işlem kaydedilemedi — gerçekleştirilmedi."
   },
   "settings": {
     "title": "Ayarlar",
@@ -157,6 +158,7 @@
         "messages": "İleti dizini (tahmini)",
         "bodies": "İleti metinleri",
         "attachments": "Ekler",
+        "personalData": "Kişiler, takvim ve dosyalar",
         "other": "Diğer (uygulama ve çevrimdışı bileşenler)"
       },
       "description": "{{product}} yakın tarihli e-postaları bu cihazda tutar; böylece anında açılırlar ve çevrimdışıyken de çalışırlar.",
@@ -1233,7 +1235,11 @@
       "subject": "Okundu: {{subject}}"
     },
     "fullScreen": "Tam ekranda aç",
-    "exitFullScreen": "Tam ekrandan çık"
+    "exitFullScreen": "Tam ekrandan çık",
+    "truncated": {
+      "title": "Bu iletinin yalnızca başlangıcı gösteriliyor",
+      "body": "Tamamı saklanamayacak kadar büyüktü. Tamamını okumak için .eml olarak kaydedin."
+    }
   },
   "compose": {
     "toolbar": "Biçimlendirme",
@@ -1312,6 +1318,7 @@
     "sendNoRecipients": "En az bir alıcı ekleyin",
     "sendNoSentMailbox": "Gönderilenler klasörü yok — henüz gönderilemiyor",
     "sendUnavailable": "Henüz gönderime hazır değil — birazdan yeniden deneyin",
+    "sendQueueFailed": "İleti kuyruğa alınamadı — depolama alanı dolmuş olabilir. Taslağınız korundu",
     "sendWaitUploads": "Yüklemelerin bitmesini bekleyin",
     "sendTooLarge": "Ekler göndermek için çok büyük",
     "sendFixRecipients": "Vurgulanan alıcı adresini düzeltin",

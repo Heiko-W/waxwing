@@ -11,8 +11,9 @@ import {
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
-import { getQueryCache, putEmailBody, putEmails } from '../repo'
-import { email, freshDb, withBatchedQuery } from '../test-utils'
+import { getQueryCache, putEmailBody, putEmails, putMailboxes } from '../repo'
+import { getStorageFullAt, resetStorageFull } from '../storage'
+import { email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
   isDocumentForeground,
@@ -1864,6 +1865,71 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     await engine.stop()
   })
 
+  /**
+   * The owed rollback is CLAIMED, so it can only be applied once (W-14).
+   *
+   * `applyUndo` rebuilds relative deltas from the persisted undo — `adjustMailboxCounts` COUNTS,
+   * it does not set — and the leader's `drainOwedUndos` walks exactly these rows at the start of
+   * every replay pass. Read-act-delete left that whole window, including the network round trip in
+   * the `refetchEmails` branch, open for a "Discard" click to apply the same rollback again. The
+   * folder badge then stayed wrong: `Mailbox/changes` reports a folder only when something really
+   * changes in it.
+   */
+  it('applies an owed rollback once, however many discards race for it', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 1, unreadEmails: 1 })])
+    await putEmails(db, ACC, [email('e1', { keywords: {}, mailboxIds: { inbox: true } })])
+    const engine = await leaderWith(rejectingPort('forbidden'))
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // The state a failed rollback leaves behind, and the only state `drainOwedUndos` acts on: a
+    // dead letter that still OWES its undo.
+    await db.outbox.update([ACC, 'i1'], {
+      undo: { kind: 'keywords', keyword: '$seen', had: [], prunedKeys: [] },
+    })
+    await db.mailboxes.update([ACC, 'inbox'], { unreadEmails: 0 })
+
+    // Two discards racing — across tabs there is nothing serialising them at all.
+    await Promise.all([engine.discardFailed('i1'), engine.discardFailed('i1')])
+
+    // Back to one unread, not two. The rollback is relative, so applying it twice is the drift.
+    expect((await db.mailboxes.get([ACC, 'inbox']))?.unreadEmails).toBe(1)
+    expect(await db.outbox.get([ACC, 'i1'])).toBeUndefined()
+    await engine.stop()
+  })
+
+  it('hands the claim back when the rollback fails, so the row stays listed', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    // A `refetchEmails` undo needs the network, and this port refuses it — the exact shape of an
+    // undo that stays OWED.
+    const base = rejectingPort('forbidden')
+    const port: JmapPort = {
+      ...base,
+      getEmailEnvelopes: async () => {
+        throw new Error('offline')
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // The undo kind is what `applyUndo` switches on, and this one goes to the network — the shape
+    // of a rollback that can genuinely stay owed.
+    await db.outbox.update([ACC, 'i1'], { undo: { kind: 'refetchEmails', prunedKeys: [] } })
+
+    expect(await engine.discardFailed('i1')).toBe(false)
+    // Still listed AND still owed: a stale optimistic change must stay visible as a problem rather
+    // than becoming permanent, invisible corruption.
+    const row = await db.outbox.get([ACC, 'i1'])
+    expect(row).toBeDefined()
+    expect(row?.undo).not.toBeNull()
+    await engine.stop()
+  })
+
   it('a transient delta failure does not starve the outbox (the replay still runs)', async () => {
     await putEmails(db, ACC, [email('e1', { keywords: {} })])
     const base = fakePort({ emails: [], setEmails: emptySet })
@@ -2609,6 +2675,45 @@ describe('sync retry after a failed pass (B47)', () => {
     heal()
     if (retry) time.fire(retry)
     await waitFor(() => engine.getStatus().phase === 'idle')
+    await engine.stop()
+  })
+
+  /**
+   * A full disk is not a sync problem, and the failure path used to treat it as one: the quota
+   * recovery is wired into the body fetch and the blob cache only, so a `QuotaExceededError` on the
+   * ENVELOPE write became an ordinary delta error — and the early return sits before
+   * `runMaintenance()`, the one thing that would have made room. With no separate maintenance
+   * timer, every following pass failed on the same write and backed off further, under a "Sync
+   * problem — retrying" message for a condition whose only remedy is freeing space.
+   */
+  it('treats a full disk as a full disk: reports it and forces maintenance', async () => {
+    resetStorageFull()
+    const time = recordingClock()
+    const { port } = flakyPort(() => new DOMException('quota', 'QuotaExceededError'))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    const maintenance = vi.spyOn(engine, 'runMaintenance')
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    // The user hears "storage is full", not "sync problem".
+    expect(getStorageFullAt()).not.toBe(0)
+    // And eviction actually runs, forced past the interval throttle that would otherwise skip it.
+    expect(maintenance).toHaveBeenCalledWith({ force: true })
+    await engine.stop()
+    resetStorageFull()
+  })
+
+  it('leaves an ordinary failure alone — the counter-test', async () => {
+    resetStorageFull()
+    const time = recordingClock()
+    const { port } = flakyPort(() => new Error('boom'))
+    const push = new FakePush()
+    const engine = new SyncEngine({ ...makeDeps(db, port, push), clock: time.clock })
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'error')
+
+    expect(getStorageFullAt()).toBe(0)
     await engine.stop()
   })
 

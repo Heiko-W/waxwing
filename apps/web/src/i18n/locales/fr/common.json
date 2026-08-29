@@ -108,8 +108,8 @@
       "confirm": "Supprimer les données et se déconnecter",
       "cancel": "Annuler"
     },
-    "switchTo": "Basculer vers {{name}}",
-    "add": "Ajouter un autre compte"
+    "switchTo": "Se connecter en tant que {{name}}",
+    "add": "Se connecter à un autre compte"
   },
   "status": {
     "offline": "Hors ligne",
@@ -125,7 +125,8 @@
     },
     "storage": {
       "full": "L’espace de stockage est plein — certains e-mails ne sont pas mis en cache."
-    }
+    },
+    "dispatchFailed": "Impossible d’enregistrer cette action — elle n’a pas été effectuée."
   },
   "settings": {
     "title": "Paramètres",
@@ -158,6 +159,7 @@
         "messages": "Index des messages (estimation)",
         "bodies": "Corps des messages",
         "attachments": "Pièces jointes",
+        "personalData": "Contacts, agenda et fichiers",
         "other": "Autres (application et ressources hors ligne)"
       },
       "description": "{{product}} conserve vos e-mails récents sur cet appareil pour qu’ils s’ouvrent instantanément et restent accessibles hors ligne.",
@@ -1248,7 +1250,11 @@
       "subject": "Lu : {{subject}}"
     },
     "fullScreen": "Ouvrir en plein écran",
-    "exitFullScreen": "Quitter le plein écran"
+    "exitFullScreen": "Quitter le plein écran",
+    "truncated": {
+      "title": "Seul le début de ce message est affiché",
+      "body": "Il était trop volumineux pour être stocké en entier. Enregistrez-le au format .eml pour tout lire."
+    }
   },
   "compose": {
     "toolbar": "Mise en forme",
@@ -1328,6 +1334,7 @@
     "sendNoRecipients": "Ajoutez au moins un destinataire",
     "sendNoSentMailbox": "Aucun dossier Envoyés — envoi impossible pour l’instant",
     "sendUnavailable": "Pas encore prêt à envoyer — réessayez dans un instant",
+    "sendQueueFailed": "Impossible de mettre le message en file d’attente — l’espace de stockage est peut-être plein. Votre brouillon est conservé",
     "sendWaitUploads": "Attendez la fin des envois",
     "sendTooLarge": "Les pièces jointes sont trop volumineuses pour être envoyées",
     "sendFixRecipients": "Corrigez l’adresse de destinataire signalée",

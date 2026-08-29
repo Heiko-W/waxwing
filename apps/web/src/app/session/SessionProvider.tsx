@@ -16,9 +16,9 @@ import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
 import { httpStatusOf, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
-import { AuthConfigError, AuthExpiredError } from '../../auth'
+import { AuthConfigError, AuthExpiredError, wipeWebStorage } from '../../auth'
 import { deriveScope } from '../../auth/account-registry'
-import { registerAccount } from '../../auth/use-account-registry'
+import { registerAccount, reloadAccountRegistry } from '../../auth/use-account-registry'
 import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
@@ -29,6 +29,7 @@ import {
   getReplica,
   newEphemeralDbName,
   releaseEphemeralClaim,
+  resetDispatchFailure,
   resetReplica,
   resetStorageFull,
   setReplicaName,
@@ -61,6 +62,14 @@ const STASH_ROUTE_KEY = 'waxwing.onboard.route'
  * travels separately, inside the PKCE transaction, because only the controller can act on it.
  */
 const STASH_PUBLIC_KEY = 'waxwing.onboard.publicComputer'
+
+/** How long a sign-out waits for the engines to stop before wiping anyway — see `endSession`. */
+const SIGN_OUT_STOP_BUDGET_MS = 5000
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 /** Durable last-connected target so a reload/restore reconnects to a manual server too. */
 const DURABLE_TARGET_KEY = 'waxwing.connect.target'
 
@@ -397,8 +406,13 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         if (readStored<boolean>(session(), STASH_PUBLIC_KEY) === true) {
           markEphemeral()
         }
-        removeStored(session(), STASH_PUBLIC_KEY)
         await controller.completeRedirect()
+        // Only NOW is the stash spent. Dropping it before `completeRedirect` meant a failed
+        // exchange — a stale PKCE transaction, the server down — took the public-computer choice
+        // with it: the retry ran as an ordinary sign-in and persisted a refresh token on a machine
+        // where the user had ticked the box. A surviving stash is the fail-closed direction; the
+        // durable paths (`chooseOAuth` without the tick, sign-out) clear it explicitly.
+        removeStored(session(), STASH_PUBLIC_KEY)
         // Restore the pre-redirect route BEFORE the router mounts (dispatch 'connected'),
         // since the OAuth redirect_uri strips back to the app root.
         const route = readStored<string>(session(), STASH_ROUTE_KEY)
@@ -576,8 +590,15 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       try {
         writeStored(session(), STASH_TARGET_KEY, target)
         writeStored(session(), STASH_ROUTE_KEY, window.location.pathname)
+        // Re-auth is a FULL-PAGE redirect, so it destroys every ref in this component exactly like
+        // the first sign-in does — including `ephemeralRef`. Without carrying the choice across in
+        // the stash, a single click on "sign in again" at a library terminal turned a public-computer
+        // session into a durable one: a new PkceTransaction without `ephemeral`, an AuthRecord and a
+        // 30-day refresh token back on disk, and the replica back under its permanent name, where no
+        // sweep reaches it (FR-AUTH-09).
+        if (ephemeralRef.current) writeStored(session(), STASH_PUBLIC_KEY, true)
         const controller = controllerRef.current ?? ensureController(target.issuer)
-        await controller.startLogin({ method: 'oauth' })
+        await controller.startLogin({ method: 'oauth', publicComputer: ephemeralRef.current })
       } catch (error) {
         dispatch({ type: 'reauthError', error: errToOnboard(error) })
       }
@@ -642,7 +663,18 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // (M4.4 Etappe 4): since the fleet, each shared account's engine holds a handle of its own, and
         // `SyncEngineHost`'s effect cleanup cannot run before this function awaits the wipe in the same
         // tick — so stopping only the primary left the wipe hanging on still-writing shared engines.
-        await stopAllEngines()
+        //
+        // Bounded, and the bound is the point. `stop()` awaits the in-flight sync and outbox passes,
+        // and those await JMAP requests; a socket the server accepted but never answers on used to
+        // hold this line for as long as the browser's own patience — minutes — with the login form
+        // already on screen and the replica, the OS notification banners and the credentials all
+        // still on the machine. `postApi` now carries a 30 s deadline of its own, which fixes the
+        // hang but not the wait, and on a shared terminal the wait IS the exposure.
+        //
+        // Racing it means the wipe below may run while an engine is still finishing a write. That
+        // is the right trade: a `deleteDatabase` that blocks reports `incomplete` and tells the
+        // user, whereas a sign-out that has not started tells them nothing at all.
+        await Promise.race([stopAllEngines(), delay(SIGN_OUT_STOP_BUDGET_MS)])
         // Whether any part of "remove my data" failed. A sign-out always proceeds — the in-memory
         // session must go regardless — but the user is told when the local copy outlived it, rather
         // than being shown a login form that implies everything was cleaned up (FR-AUTH-05).
@@ -653,6 +685,16 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         if (wipeData || ephemeralRef.current) {
           await wipeReplica(getReplica()).catch(() => {
             incomplete = true
+          })
+          // The web storages go with it, and for the ephemeral half that is the whole promise of
+          // the mode: leaving must not depend on picking the right menu item. `wipeLocalData` only
+          // runs on the explicit "remove data" path, so a plain sign-out from a public-computer
+          // session used to leave `waxwing.connect.target` — which server this person reads mail
+          // on — sitting in `localStorage` for the next one. (`waxwing.ephemeralDbs` survives; see
+          // `wipe.ts` for why.)
+          wipeWebStorage({
+            localStorage: typeof localStorage !== 'undefined' ? localStorage : undefined,
+            sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
           })
         }
         // A notification is local data this app put on the OPERATING SYSTEM's screen, and the OS keeps
@@ -673,6 +715,9 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         // The "storage is full" signal is a module singleton (M3.4): without this, a stale event from
         // the PREVIOUS session re-fires its toast on the next sign-in, whose notifier starts fresh.
         resetStorageFull()
+        // Same reason as the line above (M3.4): a module singleton whose stale event would
+        // re-toast at the next sign-in.
+        resetDispatchFailure()
         // The keyboard layer's state is module-scoped too (M3.8), and sign-out is an in-SPA
         // transition — the module graph survives it. Left alone, the NEXT account inherits this
         // account's list window: its selected email ids, its roving row, its open message's action
@@ -697,6 +742,10 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         controllerIssuerRef.current = null
         // Back to the durable default, and give up the ephemeral claim, so the next sign-in in this
         // page load starts from a clean slate in BOTH directions (FR-AUTH-09).
+        // The registry lives in `localStorage` and the wipe above cleared it there — but this
+        // store is module-scoped and still holds the old rows in memory, so the next `emit` (a
+        // sign-in, a switch) would write them straight back out. Re-read instead of assuming.
+        reloadAccountRegistry()
         ephemeralRef.current = false
         releaseEphemeralClaim()
         resetReplica()
@@ -753,6 +802,11 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const connectedForRegistry = state.status === 'ready' ? state.connected : null
   useEffect(() => {
     if (connectedForRegistry === null) return
+    // Not in public-computer mode (FR-AUTH-09). The registry holds no secret, but it does hold an
+    // IDENTITY — mailbox address and server origin — and it is in `localStorage`, which outlives
+    // every replica this mode throws away. Writing it here put "switch to alice@example.com" in
+    // the next person's account menu on a machine where the box promising the opposite was ticked.
+    if (ephemeralRef.current) return
     let origin: string | null = null
     try {
       origin = new URL(connectedForRegistry.jmapSession.apiUrl, window.location.href).origin

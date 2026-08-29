@@ -6,6 +6,21 @@ import type { StartLoginResult } from './types'
 import type { WipeEnvironment } from './wipe'
 
 const created: string[] = []
+/** A `Storage` over a plain object — this project runs the auth tests in Node, without jsdom. */
+function fakeStorage(initial: Record<string, string> = {}): Storage {
+  const map = new Map(Object.entries(initial))
+  return {
+    get length() {
+      return map.size
+    },
+    clear: () => map.clear(),
+    getItem: (key: string) => map.get(key) ?? null,
+    key: (index: number) => [...map.keys()][index] ?? null,
+    removeItem: (key: string) => void map.delete(key),
+    setItem: (key: string, value: string) => void map.set(key, value),
+  }
+}
+
 function freshStore(): { store: SecretStore; dbName: string } {
   const dbName = `waxwing-auth-${crypto.randomUUID()}`
   created.push(dbName)
@@ -351,6 +366,187 @@ describe('AuthController — Basic auth (FR-AUTH-04)', () => {
   })
 })
 
+/**
+ * One store, one method's secret. Both directions are reachable without any XSS: an OAuth callback
+ * that succeeds and a `connectSession` that then fails (403 on `/.well-known/jmap`, a session whose
+ * origin does not match) puts the user back on the login form with tokens already written, and the
+ * account switcher offers the other method at any time.
+ */
+describe('AuthController — switching sign-in method clears the other secret', () => {
+  it('a Basic sign-in drops a refresh token left by OAuth', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.RefreshToken, 'rt-from-oauth')
+
+    const controller = new AuthController({ store })
+    await controller.startLogin({
+      method: 'basic',
+      username: 'a@waxwing.test',
+      password: 'pw',
+      staySignedIn: false,
+    })
+
+    // 30 days valid and, per ADR-006, not revocable server-side — on the disk of someone who
+    // deliberately left "stay signed in" unticked.
+    expect(await store.get(SecretName.RefreshToken)).toBeNull()
+  })
+
+  it('an OAuth callback drops a password left by Basic', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    await store.put(
+      SecretName.BasicCredentials,
+      JSON.stringify({ username: 'a@waxwing.test', password: 'pw' }),
+    )
+
+    let currentHref = 'http://localhost:5173/'
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=auth-code-xyz&state=${state}`
+    await controller.completeRedirect()
+
+    // Inert for `restore()` — which keys off the AuthRecord — but still decryptable here and still
+    // valid at the server.
+    expect(await store.get(SecretName.BasicCredentials)).toBeNull()
+  })
+})
+
+/**
+ * Every controller in this browser profile shares one `waxwing-auth` database — ADR-004 designed
+ * per-account scopes, and no production path passes one (W-17). The refresh path therefore has to
+ * check whose token it is holding, or the shared store turns into a credential disclosure with no
+ * XSS involved: tab 1 signed in to server X, someone signs in to server Y in tab 2 and overwrites
+ * the token, and an hour later tab 1's refresh POSTs Y's token to X's endpoint.
+ */
+/**
+ * An authorization nobody finished (W-36). The age check only runs when a callback arrives to
+ * consume the transaction — and in public-computer mode no callback ever comes, so `code_verifier`,
+ * `state` and the resolved OAuth config stayed in the durable store together with the database and
+ * wrapping key they created. The verifier is worthless without its code; what remains is the
+ * metadata about who tried to sign in where, which is what that mode exists to avoid leaving.
+ */
+describe('AuthController — an abandoned PKCE transaction is swept', () => {
+  const transaction = (createdAt: number | undefined) =>
+    JSON.stringify({
+      state: 's',
+      codeVerifier: 'v',
+      config: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      ...(createdAt === undefined ? {} : { createdAt }),
+    })
+
+  it('drops one older than the maximum age on the next cold start', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.PkceTransaction, transaction(1_000_000))
+    const controller = new AuthController({ store, now: () => 1_000_000 + 31 * 60_000 })
+
+    await controller.restore()
+
+    expect(await store.get(SecretName.PkceTransaction)).toBeNull()
+  })
+
+  it('drops an unparseable one too — no callback will consume it either', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.PkceTransaction, '{not json')
+    const controller = new AuthController({ store })
+
+    await controller.restore()
+
+    expect(await store.get(SecretName.PkceTransaction)).toBeNull()
+  })
+
+  it('keeps a FRESH one — a redirect may still be in flight', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.PkceTransaction, transaction(1_000_000))
+    const controller = new AuthController({ store, now: () => 1_000_000 + 60_000 })
+
+    await controller.restore()
+
+    expect(await store.get(SecretName.PkceTransaction)).not.toBeNull()
+  })
+})
+
+describe('AuthController — a refresh token belongs to one issuer', () => {
+  it('refuses to send a token whose AuthRecord names a different issuer', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    let currentHref = 'http://localhost:5173/'
+    let clock = 1_000_000_000
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=auth-code-xyz&state=${state}`
+    await controller.completeRedirect()
+
+    // Another tab signs in elsewhere: same database, different server.
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({
+        method: 'oauth',
+        username: null,
+        oauth: { issuer: 'http://other.example', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      }),
+    )
+    await store.put(SecretName.RefreshToken, 'refresh-token-belonging-to-the-other-server')
+
+    clock += 4_000_000 // past the access token's hour, so a refresh is actually attempted
+    const provider = controller.getAuthProvider()
+    await expect(provider.authorization()).rejects.toThrowError(/different sign-in/)
+  })
+
+  it('refreshes normally while the record still names this issuer — the counter-test', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    let currentHref = 'http://localhost:5173/'
+    let clock = 1_000_000_000
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        currentHref = url
+      },
+      getHref: () => currentHref,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        currentHref = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(currentHref).searchParams.get('state')
+    currentHref = `http://localhost:5173/?code=auth-code-xyz&state=${state}`
+    await controller.completeRedirect()
+
+    clock += 4_000_000 // past the access token's hour
+    expect(await controller.getAuthProvider().authorization()).toMatch(/^Bearer /)
+  })
+})
+
 describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
   it('wipeData clears credentials, caches, IndexedDB and service-worker registrations', async () => {
     const { store, dbName } = freshStore()
@@ -391,6 +587,13 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
           },
         ],
       } as unknown as ServiceWorkerContainer,
+      // The account registry lives here, and so does everything the dialog calls "settings".
+      localStorage: fakeStorage({
+        'waxwing.accounts': '{"accounts":[{"scope":"s","username":"alice@example.com"}]}',
+        'waxwing.theme': 'dark',
+        'waxwing.ephemeralDbs': '["waxwing-replica-eph-1"]',
+      }),
+      sessionStorage: fakeStorage({ 'waxwing.onboard.target': '{}' }),
     }
 
     const controller = new AuthController({ store, wipe })
@@ -410,6 +613,46 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
     expect(deletedDbs).toEqual(['app-replica'])
     expect(unregistered).toBe(2)
     expect(dbName).toBeTruthy()
+    // The registry is an identity — mailbox address and server origin of whoever signed in here —
+    // and no production path removed a row before this. "Remove data" that leaves it hands the
+    // next person at the machine a "switch to alice@example.com" entry in the account menu.
+    expect(wipe.localStorage?.getItem('waxwing.accounts')).toBeNull()
+    expect(wipe.localStorage?.getItem('waxwing.theme')).toBeNull()
+    expect(wipe.sessionStorage?.getItem('waxwing.onboard.target')).toBeNull()
+    // The one exception, and it is not user data: without `databases()` (Firefox) this index is
+    // the only way to find the throwaway replicas still awaiting a sweep.
+    expect(wipe.localStorage?.getItem('waxwing.ephemeralDbs')).toBe('["waxwing-replica-eph-1"]')
+  })
+
+  /**
+   * A blocked credential wipe must not take the rest of "remove my data" with it (W-23).
+   *
+   * `deleteDatabase('waxwing-auth')` is blocked by a frozen or bfcached second tab, and the throw
+   * used to skip `wipeLocalData` entirely — so Cache Storage, every other IndexedDB database and
+   * the service-worker registrations survived, for a reason that has nothing to do with any of
+   * them. The error still has to reach the caller: it is what tells the user their credentials are
+   * still on this machine.
+   */
+  it('still wipes app data when the credential store is blocked, and reports the failure', async () => {
+    const { store } = freshStore()
+    vi.spyOn(store, 'wipe').mockRejectedValue(new Error('blocked by another connection'))
+    let cachesCleared = false
+    const wipe: WipeEnvironment = {
+      caches: {
+        keys: async () => ['app-shell-v1'],
+        delete: async () => {
+          cachesCleared = true
+          return true
+        },
+      } as unknown as CacheStorage,
+      localStorage: fakeStorage({ 'waxwing.accounts': '{}' }),
+    }
+
+    const controller = new AuthController({ store, wipe })
+    await expect(controller.logout({ wipeData: true })).rejects.toThrowError(/blocked/)
+
+    expect(cachesCleared).toBe(true)
+    expect(wipe.localStorage?.getItem('waxwing.accounts')).toBeNull()
   })
 
   it('plain sign-out drops credentials but does not touch app data', async () => {

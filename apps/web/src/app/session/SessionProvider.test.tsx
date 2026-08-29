@@ -391,6 +391,149 @@ describe('SessionProvider — public-computer mode', () => {
     expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
   })
 
+  /**
+   * The one click that used to undo the whole mode. Re-auth is a full-page redirect, so it wipes
+   * `ephemeralRef` exactly as the first sign-in does — and the stash had already been spent by the
+   * callback that got us here. Without carrying it across, "sign in again" at a shared terminal
+   * persisted an AuthRecord and a 30-day refresh token and moved the replica back to its permanent
+   * name.
+   */
+  it('carries public-computer mode through an OAuth RE-auth redirect', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    const fake = renderSession({ isRedirectCallback: true })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(currentReplicaName().startsWith(EPHEMERAL_DB_PREFIX)).toBe(true)
+    // Spent by the callback — the re-auth below has to put it back itself.
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+
+    await user.click(screen.getByText('expire'))
+    await user.click(screen.getByText('reauth-oauth'))
+
+    await waitFor(() =>
+      expect(fake.spies.startLogin).toHaveBeenLastCalledWith({
+        method: 'oauth',
+        publicComputer: true,
+      }),
+    )
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBe('true')
+  })
+
+  it('leaves a DURABLE session durable through an OAuth re-auth — the counter-test', async () => {
+    const user = userEvent.setup()
+    const fake = renderSession({ isRedirectCallback: true })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    await user.click(screen.getByText('expire'))
+    await user.click(screen.getByText('reauth-oauth'))
+
+    await waitFor(() =>
+      expect(fake.spies.startLogin).toHaveBeenLastCalledWith({
+        method: 'oauth',
+        publicComputer: false,
+      }),
+    )
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+  })
+
+  /**
+   * A failed exchange must not silently downgrade the session. The stash used to be dropped before
+   * `completeRedirect`, so a retry after a stale PKCE transaction ran as an ordinary sign-in.
+   */
+  it('keeps the stash when the redirect exchange fails', async () => {
+    sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    renderSession({ isRedirectCallback: true, completeRedirectError: new Error('stale pkce') })
+
+    await waitFor(() => expect(screen.getByTestId('step')).not.toHaveTextContent('none'))
+    expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBe('true')
+  })
+
+  /**
+   * The registry holds no secret but it does hold an identity, it lives in `localStorage`, and no
+   * production path ever removed a row — so a row written by a public-computer session was
+   * permanent, and the account menu offered it to the next person at the machine.
+   */
+  it('writes no account-registry row for an ephemeral session', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(localStorage.getItem('waxwing.accounts')).toBeNull()
+  })
+
+  it('writes one for an ordinary session — the counter-test', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(localStorage.getItem('waxwing.accounts')).toContain('alice')
+  })
+
+  /**
+   * Re-reading the registry after the wipe must not write it back (found by the end-to-end
+   * web-storage assertion, not by the unit test that stopped at `wipeLocalData`).
+   *
+   * `endSession` re-reads it so the module-scoped store cannot resurrect the old rows from memory
+   * — and the re-read went through `emit`, which PERSISTS. That re-created `waxwing.accounts`
+   * moments after "remove data" deleted it: an empty value, but a key, and "this origin holds a
+   * Waxwing account list" is exactly the statement the wipe removes.
+   */
+  it('leaves no account-registry key behind after signing out and removing data', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(localStorage.getItem('waxwing.accounts')).not.toBeNull()
+
+    localStorage.clear() // what `wipeLocalData` does to this origin
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    expect(localStorage.getItem('waxwing.accounts')).toBeNull()
+  })
+
+  /**
+   * A PLAIN sign-out, which is the whole point: the mode's promise is that leaving does not depend
+   * on the user finding the second menu item. `wipeLocalData` only runs on the explicit "remove
+   * data" path, so `waxwing.connect.target` — which server this person reads mail on — used to
+   * stay behind for the next person at the terminal.
+   */
+  it('clears the web storages on a plain sign-out from an ephemeral session', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    localStorage.setItem('waxwing.connect.target', '{"origin":"https://mail.example"}')
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    expect(localStorage.getItem('waxwing.connect.target')).toBeNull()
+  })
+
+  it("leaves a DURABLE session's preferences alone on a plain sign-out — the counter-test", async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    localStorage.setItem('waxwing.theme', 'dark')
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    // Plain sign-out is a session boundary, not a data one — see SECURITY.md §3.
+    expect(localStorage.getItem('waxwing.theme')).toBe('dark')
+  })
+
   it('an ordinary callback stays on the durable replica — the counter-test', async () => {
     renderSession({ isRedirectCallback: true })
 

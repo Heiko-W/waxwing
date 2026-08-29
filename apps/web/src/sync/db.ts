@@ -324,20 +324,30 @@ export function estimateBlobBytes(row: Pick<BlobMetaRow, 'data' | 'size'>): numb
   return BLOB_META_OVERHEAD_BYTES
 }
 
+/**
+ * Bounds on the `bodyStructure` walk below — see `mail/message-body.ts`, which carries the same two
+ * for the same reason: the structure's shape comes from the message, and unbounded recursion over
+ * it is a `RangeError` in the middle of a sync write.
+ */
+const MAX_PART_DEPTH = 64
+const MAX_PART_NODES = 10_000
+
 /** Every blobId a body references (attachments + inline `cid:` parts), deduped — see `ablob`. */
 export function collectBodyBlobIds(
   row: Pick<EmailBodyRow, 'bodyStructure' | 'textBody' | 'htmlBody' | 'attachments'>,
 ): Id[] {
   const out = new Set<Id>()
-  const visit = (part: EmailBodyPart | undefined): void => {
-    if (!part) return
+  let visited = 0
+  const visit = (part: EmailBodyPart | undefined, depth: number): void => {
+    if (!part || depth > MAX_PART_DEPTH || visited >= MAX_PART_NODES) return
+    visited += 1
     if (part.blobId !== null && part.blobId !== undefined) out.add(part.blobId)
-    for (const sub of part.subParts ?? []) visit(sub)
+    for (const sub of part.subParts ?? []) visit(sub, depth + 1)
   }
-  visit(row.bodyStructure)
-  for (const part of row.textBody ?? []) visit(part)
-  for (const part of row.htmlBody ?? []) visit(part)
-  for (const part of row.attachments ?? []) visit(part)
+  visit(row.bodyStructure, 0)
+  for (const part of row.textBody ?? []) visit(part, 0)
+  for (const part of row.htmlBody ?? []) visit(part, 0)
+  for (const part of row.attachments ?? []) visit(part, 0)
   return [...out]
 }
 
@@ -517,6 +527,24 @@ export interface OutboxRow {
   conflict?: OutboxConflict | null
   /** Bounded `stateMismatch` auto-refresh count (M3.3); persisted so the bound survives a reload. */
   refreshes?: number
+  /**
+   * Optimistic-concurrency stamp, bumped on every enqueue that REPLACES a row under an id already
+   * in the queue (W-13).
+   *
+   * Only drafts reuse an id — `draft:<localId>` — and they do it on purpose, so a later autosave
+   * coalesces with an earlier one instead of queuing a second write of the same document. That
+   * assumption holds while the earlier row is `pending` and breaks the moment it is `inflight`:
+   * replay claims the row it read, finishes the round trip, and then deletes BY ID — removing the
+   * newer row the user's next keystroke had just put there. The save reports `synced` while the
+   * server copy stays one revision behind, and the discard case is worse: the discard row is
+   * deleted while the save it was meant to cancel is busy creating a fresh server copy, so the
+   * thrown-away draft reappears in Drafts.
+   *
+   * Replay compares this before it deletes: a row whose `seq` moved on is a DIFFERENT intent and
+   * is left alone to be replayed on its own. Optional for rows written before this existed;
+   * `undefined` and `0` mean the same thing.
+   */
+  seq?: number
 }
 
 /** Local-only per-account preference (collapsed tree state, per-folder prefs, allowlists — FR-MBX-04). */
@@ -944,6 +972,19 @@ export function setReplicaName(name: string | undefined): void {
 /** The database name currently in force — the ephemeral sweep needs to know what to keep. */
 export function currentReplicaName(): string {
   return replicaName ?? REPLICA_DB_NAME
+}
+
+/**
+ * `true` while this tab's replica is a throwaway one (FR-AUTH-09).
+ *
+ * Here rather than in `ephemeral.ts`, which owns the naming, because that module imports nothing
+ * and this is where the name lives. Read by the parts of the app that should be quieter in
+ * public-computer mode — `mail/search/use-search.ts` replaces history entries instead of pushing
+ * them, so a typed search string does not outlive the session in the browser's back list, which is
+ * one of the few places this mode cannot clean up afterwards (SECURITY.md §3.1).
+ */
+export function isEphemeralReplica(): boolean {
+  return currentReplicaName().startsWith('waxwing-replica-eph-')
 }
 
 export function getReplica(): ReplicaDb {

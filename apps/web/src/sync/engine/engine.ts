@@ -603,8 +603,26 @@ export class SyncEngine {
    * permanent, invisible corruption.
    */
   async discardFailed(id: Id): Promise<boolean> {
-    const row = await this.db.outbox.get([this.accountId, id])
-    if (row === undefined || row.status !== 'error') return false
+    // CLAIM the owed undo before applying it, the way `cancelSend` and `retryFailed` claim theirs.
+    //
+    // `applyUndo` is not idempotent — `adjustMailboxCounts` works in relative deltas rebuilt from
+    // the persisted undo — and the leader's `drainOwedUndos` walks exactly these rows (status
+    // `error`, `undo != null`) at the start of every replay pass, with a network round trip inside
+    // the `refetchEmails` branch. Read-act-delete left that whole round trip as a window in which
+    // both this click and the drain applied the same rollback: the folder's total/unread badges
+    // were counted back twice and stayed wrong, because `Mailbox/changes` only reports a folder
+    // again once something really changes in it. Across tabs there was nothing serialising the two
+    // at all.
+    //
+    // Nulling `undo` inside the transaction is the claim: whoever wins sees `undo: null` and has
+    // nothing left to apply.
+    const row = await this.db.transaction('rw', this.db.outbox, async () => {
+      const current = await this.db.outbox.get([this.accountId, id])
+      if (current === undefined || current.status !== 'error') return undefined
+      if (current.undo != null) await this.db.outbox.update([this.accountId, id], { undo: null })
+      return current
+    })
+    if (row === undefined) return false
     const undo = row.undo ?? null
     if (undo !== null) {
       try {
@@ -617,7 +635,10 @@ export class SyncEngine {
           row.conflict?.ids ?? null,
         )
       } catch {
-        return false // still owed — keep the row listed
+        // Still owed: hand the claim back, so the row stays listed as a problem rather than
+        // becoming a stale optimistic change nobody can see any more.
+        await this.db.outbox.update([this.accountId, id], { undo })
+        return false
       }
     }
     await this.db.outbox.delete([this.accountId, id])
@@ -1382,6 +1403,9 @@ export class SyncEngine {
         now: this.clock.now(),
         random: this.random,
         online: true,
+        // Stop claiming rows the moment this engine is torn down: the abort releases the Web Lock
+        // at once, and the next leader runs `recoverStranded` over whatever is still `inflight`.
+        signal: this.stopController.signal,
         refreshState: async (type) => {
           if (type === 'Mailbox') {
             const writes = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
@@ -1494,6 +1518,22 @@ export class SyncEngine {
       // offline first pass still leaves the catch-up exemption intact (see below).
       await this.raiseNewMailNotifications(created)
       if (deltaError !== undefined) {
+        // A FULL DISK is not a sync problem, and this return used to treat it as one.
+        //
+        // The quota recovery is wired into the body fetch and the blob cache; the envelope,
+        // contact, calendar and file writes have none, so a `QuotaExceededError` there became an
+        // ordinary `deltaError` — and this return is placed BEFORE `runMaintenance()`, the one
+        // thing that would have made room. There is no separate maintenance timer
+        // (`MAINTENANCE_INTERVAL_MS` only throttles the call at the end of a SUCCESSFUL pass), so
+        // every following pass failed on the same write and backed off further. The user was shown
+        // "Sync problem — retrying" for a condition whose only remedy is "Free up space", and
+        // nothing recovered without them opening a message or the settings page by hand.
+        if (isQuotaExceeded(deltaError)) {
+          reportStorageFull(this.clock.now())
+          // Forced, because the throttle would otherwise skip it, and awaited so the retry
+          // scheduled below runs against a replica that has already been evicted down.
+          await this.runMaintenance({ force: true }).catch(() => undefined)
+        }
         // Offline is not a failure to back off from — the online transition schedules its own pass,
         // and counting it would push the first retry after reconnect out to the far end of the curve.
         if (this.deps.isOnline()) this.scheduleSyncRetry(deltaError)

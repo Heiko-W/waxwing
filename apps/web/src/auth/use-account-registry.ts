@@ -28,6 +28,12 @@ function emit(next: AccountRegistry): void {
   for (const listener of listeners) listener()
 }
 
+/** Adopt `next` without persisting it — for a store that is already authoritative on disk. */
+function adopt(next: AccountRegistry): void {
+  current = next
+  for (const listener of listeners) listener()
+}
+
 export function getAccountRegistry(): AccountRegistry {
   return current
 }
@@ -46,9 +52,18 @@ export function switchAccount(scope: string): void {
   emit(setActiveAccount(current, scope))
 }
 
-/** Re-reads from storage — for a tab that was not the one that signed in. */
+/**
+ * Re-reads from storage — for a tab that was not the one that signed in, and after a wipe.
+ *
+ * Adopts rather than emits, and the difference is load-bearing: `emit` persists, so re-reading an
+ * EMPTY store used to write the empty registry straight back out. That re-created
+ * `waxwing.accounts` moments after "Sign out and remove data" had deleted it — an empty value, but
+ * a key, and "this origin still holds a Waxwing account list" is exactly the statement the wipe is
+ * supposed to remove. Caught by the end-to-end assertion over the whole web storage, not by the
+ * unit test, which never went through this store.
+ */
 export function reloadAccountRegistry(): void {
-  emit(loadRegistry())
+  adopt(loadRegistry())
 }
 
 export function useAccountRegistry(): AccountRegistry {

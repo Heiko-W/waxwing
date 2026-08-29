@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { basic, bearer } from './auth'
 import { JmapSessionOriginError } from './errors'
 import {
+  getContactsCapability,
   getCoreCapability,
   getMailCapability,
   getSession,
@@ -14,6 +15,7 @@ import {
 } from './session'
 import { at, makeSession } from './test-support'
 import type { FetchLike } from './transport'
+import type { Session } from './types/core'
 
 describe('toWellKnownUrl', () => {
   it('appends the well-known path to an origin/base', () => {
@@ -337,4 +339,43 @@ it('makeSession exposes the primary mail account', () => {
   const session = makeSession()
   expect(at(Object.keys(session.accounts), 0)).toBe('a')
   expect(session.primaryAccounts['urn:ietf:params:jmap:mail']).toBe('a')
+})
+
+/**
+ * A non-conformant or hostile server is not a reason for an untyped `TypeError` (W-25).
+ *
+ * `getSession` used to cast the parsed body straight to `Session`, and the capability probes read
+ * `session.capabilities[…]` without a `?.` — while `JmapClient.call` runs `getCoreCapability`
+ * through `resolveLimits()` on EVERY request. A session without `capabilities` therefore turned
+ * every call into a `TypeError` from a function documented to answer `null`.
+ */
+describe('a session the server did not build properly', () => {
+  it('rejects a body that is not a session at all', async () => {
+    for (const body of [null, [], { hello: 'world' }, { apiUrl: 42 }]) {
+      const fetchImpl: FetchLike = async () =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      await expect(
+        getSession('https://mail.waxwing.test/', bearer('tok'), { fetch: fetchImpl }),
+      ).rejects.toThrowError(/Malformed JMAP session/)
+    }
+  })
+
+  it('answers "not advertised" for a session without capabilities, rather than throwing', () => {
+    const session = { accounts: {} } as unknown as Session
+    expect(getCoreCapability(session)).toBeNull()
+    expect(getMailCapability(session, 'a')).toBeNull()
+    expect(getContactsCapability(session, 'a')).toBeNull()
+  })
+
+  it('answers "not advertised" for an account without accountCapabilities', () => {
+    const session = {
+      capabilities: {},
+      accounts: { a: { name: 'a' } },
+    } as unknown as Session
+    expect(getMailCapability(session, 'a')).toBeNull()
+    expect(getContactsCapability(session, 'a')).toBeNull()
+  })
 })

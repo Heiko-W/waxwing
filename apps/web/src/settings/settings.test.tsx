@@ -436,6 +436,10 @@ describe('Settings — Offline & storage (M3.4)', () => {
     expect(within(list).getByText('Message index (estimated)')).toBeInTheDocument()
     expect(within(list).getByText('Message bodies')).toBeInTheDocument()
     expect(within(list).getByText('Attachments')).toBeInTheDocument()
+    // W-18: contacts, calendar, files and address statistics used to be in no category at all —
+    // their bytes landed in "Other", beside the app shell, which made the breakdown say "Other"
+    // about a reader's address book.
+    expect(within(list).getByText('Contacts, calendar and files')).toBeInTheDocument()
     expect(within(list).getByText('Other (app & offline shell)')).toBeInTheDocument()
 
     // The NUMBERS, not just the labels — "the usage UI matches reality" is the Done-when of this WP,
@@ -450,6 +454,7 @@ describe('Settings — Offline & storage (M3.4)', () => {
       formatBytes(envelopeBytes),
       formatBytes(bodyBytes),
       formatBytes(4096),
+      formatBytes(0), // this fixture seeds no contacts, events or files
       formatBytes(40 * 1024 * 1024 - accounted), // the origin's usage minus everything we can attribute
     ])
   })

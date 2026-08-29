@@ -94,6 +94,8 @@ export interface FakeServicesOptions {
   readonly connectError?: Error
   /** When set, `startLogin()` rejects with it — the OAuth-discovery failure path. */
   readonly startLoginError?: Error
+  /** When set, `completeRedirect()` rejects with it — a stale or replayed PKCE transaction. */
+  readonly completeRedirectError?: Error
   /** The session `connect()` resolves to. Default: {@link fakeJmapSession} (single account). */
   readonly session?: JmapClient['session']
   /**
@@ -128,7 +130,10 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
 
   const navigate = vi.fn()
   const logout = vi.fn(async () => {})
-  const completeRedirect = vi.fn(async () => fakeAuthSession('oauth'))
+  const completeRedirect = vi.fn(async () => {
+    if (options.completeRedirectError) throw options.completeRedirectError
+    return fakeAuthSession('oauth')
+  })
   const restore = vi.fn(async () => options.restore ?? null)
   const startLogin = vi.fn(async (request: { method: 'oauth' | 'basic' }) => {
     if (options.startLoginError) throw options.startLoginError

@@ -46,6 +46,7 @@ const args = new Set(process.argv.slice(2))
 const FAST = args.has('--fast')
 const ONLY_ACTIONS = args.has('--check-actions')
 const ONLY_NODE = args.has('--check-node')
+const ONLY_NUL = args.has('--check-nul')
 const NO_E2E = args.has('--no-e2e')
 
 const results = []
@@ -181,6 +182,86 @@ if (ONLY_ACTIONS) {
 }
 
 /**
+ * A raw 0x00 byte in a tracked TEXT file takes that file out of code review.
+ *
+ * Git classifies a blob containing NUL as binary, and the classification is not cosmetic:
+ * `git diff` and the GitHub diff view render "Binary files differ" instead of the change,
+ * `git log --numstat` reports `-\t-`, `git grep` answers "Binary file … matches" with no line, and
+ * `* text=auto eol=lf` from `.gitattributes` does not apply. This repository shipped five such
+ * files, two of them production TSX — `AttachmentList.tsx`, which renders sender-controlled
+ * filenames and builds the attachment ZIP, was among them. Every change to it arrived in a pull
+ * request as an unreadable binary diff, and the codebase search that should have caught that
+ * skipped the file twice during the review this check comes from.
+ *
+ * The fix in the source is one character (`'\0'` instead of the byte); this is the part that keeps
+ * it fixed. Extension-based, because the alternative — asking git for its own classification — is
+ * exactly the answer we do not want: git already thinks these files are binary, which is the bug.
+ */
+const BINARY_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'ico',
+  'icns',
+  'woff',
+  'woff2',
+  'ttf',
+  'otf',
+  'eot',
+  'pdf',
+  'zip',
+  'gz',
+  'tgz',
+  'br',
+  'wasm',
+  'mp4',
+  'webm',
+  'ogg',
+  'mp3',
+  'wav',
+])
+
+function checkNoNulBytes() {
+  const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'buffer' })
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean)
+  const offenders = []
+  for (const file of tracked) {
+    const extension = file.slice(file.lastIndexOf('.') + 1).toLowerCase()
+    if (BINARY_EXTENSIONS.has(extension)) continue
+    let contents
+    try {
+      contents = readFileSync(file)
+    } catch {
+      continue // a submodule, a symlink to nowhere, a file removed but still in the index
+    }
+    if (contents.includes(0)) offenders.push(file)
+  }
+  if (offenders.length > 0) {
+    console.error(
+      '\n[ci] raw NUL byte in a tracked text file:\n\n' +
+        offenders.map((file) => `  ${file}`).join('\n') +
+        '\n\n  Git treats these as BINARY: no diff in review, no `git grep` hit, no eol\n' +
+        '  normalisation. Write the escape sequence instead of the byte.\n\n' +
+        "  Fix:  '\\0save-all'  rather than a literal 0x00 in the string\n",
+    )
+    process.exit(1)
+  }
+  console.log(`  no NUL bytes in ${String(tracked.length)} tracked text files`)
+}
+
+// `pnpm check:nul` — on its own, so `pnpm verify` and therefore the hosted pull-request job
+// enforce it, for the same reason `--check-actions` exists as its own entry point.
+if (ONLY_NUL) {
+  checkNoNulBytes()
+  process.exit(0)
+}
+
+/**
  * `.nvmrc` is the only Node version this repository's tests are known good on, and `engines` is
  * advisory — so nothing stopped a newcomer following README's old "≥ 22" onto node 26.
  *
@@ -232,6 +313,7 @@ function preflight() {
   console.log(`  pnpm ${pnpmVersion}`)
 
   checkWorkflowActionPins()
+  checkNoNulBytes()
 
   // Docker is only needed by the stages that use it; report it here so a missing daemon is called
   // out at second 0 rather than after the multi-minute verify stage.

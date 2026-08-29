@@ -233,7 +233,15 @@ export function sanitizeStyle(
   options: SanitizeOptions,
   collector: Collector,
 ): { value: string; drop: boolean } {
-  if (css.length > MAX_STYLE_LENGTH) return { value: '', drop: true }
+  if (css.length > MAX_STYLE_LENGTH) {
+    // The manifest owes an entry here too. This is the THIRD fail-closed exit in this function and
+    // the only one that used to leave silently, so a message whose entire remote content sat in one
+    // oversized `style` lost its styling AND reported `hasRemoteContent: false` — no banner, no way
+    // for the reader to learn anything was refused, let alone to release it.
+    collector.hasRemote = true
+    collector.blocked.push({ url: css.trim().slice(0, 128), kind: 'style' })
+    return { value: '', drop: true }
+  }
   if (STYLE_DANGER.test(cssUnescape(css))) {
     collector.hasRemote = true
     collector.blocked.push({ url: css.trim().slice(0, 128), kind: 'style' })
@@ -247,11 +255,22 @@ export function sanitizeStyle(
     // stripped from the safe replacement so it cannot break out of the CSS string.
     return replacement === null ? "url('')" : `url('${replacement.replace(/['"\\()]/g, '')}')`
   })
-  // Fail closed: strip every WELL-FORMED `url(...)` (already handled above — safe replacement, empty,
-  // or an intentionally-kept allowRemote URL), then if a remote scheme still remains it lived in a
-  // MALFORMED/unbalanced `url(` the parser could not match — drop the whole style rather than leak it.
-  const residual = cssUnescape(rewritten).replace(/url\([^)]*\)/gi, '')
-  if (REMOTE_SCHEME.test(residual)) {
+  // Fail closed, and the ORDER here is the whole of it: strip every well-formed `url(...)` from the
+  // RAW text first (those are handled above — safe replacement, empty, or an intentionally-kept
+  // allowRemote URL), and unescape only what is left.
+  //
+  // Unescaping first, as this did, let an escaped function name through both stages at once. CSS
+  // resolves escapes inside an ident before matching it (§4.3.4), so `u\72 l(…)`, `\75 rl(…)` and
+  // `UR\4C(…)` are all `url()` to the browser — but the rewrite above scans the raw text and never
+  // sees one, and unescaping BEFORE the strip turned it into a well-formed `url(…)` that the strip
+  // then removed itself. The remote URL came out of `sanitize()` verbatim, with `blockedRemote: []`
+  // and `hasRemoteContent: false` beside it: the reader was told the message loads nothing remote
+  // and got no control to say otherwise.
+  const residual = cssUnescape(rewritten.replace(/url\([^)]*\)/gi, ''))
+  // A `url(` that only EXISTS after unescaping was hidden from the rewrite by definition, whatever
+  // scheme it names — `data:` included, which `resolveUrl` has its own policy about. Fail closed on
+  // the shape rather than enumerating the schemes it might carry.
+  if (REMOTE_SCHEME.test(residual) || /url\(/i.test(residual)) {
     collector.hasRemote = true
     // Record it, exactly as the STYLE_DANGER path above does. Both paths drop a whole style that the
     // reader will notice is missing, so both owe the manifest an entry; this one silently did not,
@@ -588,6 +607,25 @@ function isUnreadableSize(value: string): boolean {
 }
 
 /**
+ * `/*` — the two characters that end this splitter's agreement with the browser.
+ *
+ * The splitter tracks strings and parens; the browser's tokenizer strips comments BEFORE either
+ * exists (Syntax §4.3.2), so every quote and paren inside a comment is text to it and state to us.
+ * One `"` in a comment opens a string here that never closes, no `;` is a boundary after it, and
+ * the whole attribute fuses into ONE declaration named by whatever stands before the first colon —
+ * an allowlisted `color`, carrying a full-screen `position:fixed` overlay along verbatim. That is
+ * the divergence class documented above, in its third spelling.
+ *
+ * Teaching the splitter about comments is the wrong repair: `/*` is NOT a comment inside an
+ * unquoted `url()`, where the browser reads it as URL text, so a comment-aware splitter would fuse
+ * `background:url(/*);position:fixed` — which the splitter below correctly separates today. The
+ * fail-closed rule has no such corner: any divergence a comment can cause fuses the pieces it
+ * touches into one piece, and that piece necessarily contains the `/*` that caused it. Dropping it
+ * costs a comment inside an inline `style`, which is obfuscation far more often than authorship.
+ */
+const COMMENT_OPEN = '/*'
+
+/**
  * Split an inline `style` into its declarations at the `;`s that SEPARATE declarations, skipping the
  * ones that live inside a quoted string or inside a `url()`/function's parentheses.
  *
@@ -713,6 +751,7 @@ function splitDeclarations(css: string): string[] {
 function filterAnchorStyle(css: string): string {
   const kept: string[] = []
   for (const declaration of splitDeclarations(css)) {
+    if (declaration.includes(COMMENT_OPEN)) continue
     const colon = declaration.indexOf(':')
     if (colon < 0) continue
     const property = cssUnescape(declaration.slice(0, colon)).trim().toLowerCase()

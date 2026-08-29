@@ -8,11 +8,17 @@
  * otherwise.
  */
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { RouterProvider } from '../../app/route'
-import { putMailboxes, type ReplicaDb, ReplicaProvider } from '../../sync'
+import {
+  putMailboxes,
+  type ReplicaDb,
+  ReplicaProvider,
+  resetReplicaForTests,
+  setReplicaName,
+} from '../../sync'
 import { freshDb, mailbox } from '../../sync/test-utils'
 import { excludedSearchMailboxes, useSearch } from './use-search'
 
@@ -109,6 +115,42 @@ describe('useSearch — mailbox scope', () => {
   it('an unknown ?scope= means the folder, the narrow reading', async () => {
     const { result } = await searchAt('/mail/inbox?q=offer&scope=nonsense')
     expect(result.current.scope).toBe('folder')
+  })
+})
+
+/**
+ * The browser's own history is the one store public-computer mode cannot clean up — no web
+ * application can delete it, so a search URL outlives every removal path in SECURITY.md §3.1 and
+ * the next person at the machine needs nothing but Ctrl+H (W-38).
+ */
+describe('useSearch — history in public-computer mode', () => {
+  afterEach(() => {
+    resetReplicaForTests()
+  })
+
+  it('replaces the history entry instead of pushing one', async () => {
+    setReplicaName('waxwing-replica-eph-test')
+    const view = await searchAt('/mail/inbox')
+    const before = window.history.length
+
+    act(() => {
+      view.result.current.setQuery('from:lawyer notice')
+    })
+
+    await waitFor(() => expect(window.location.search).toContain('q='))
+    expect(window.history.length).toBe(before)
+  })
+
+  it('pushes one for an ordinary session — the counter-test', async () => {
+    const view = await searchAt('/mail/inbox')
+    const before = window.history.length
+
+    act(() => {
+      view.result.current.setQuery('quarterly report')
+    })
+
+    await waitFor(() => expect(window.location.search).toContain('q='))
+    expect(window.history.length).toBe(before + 1)
   })
 })
 

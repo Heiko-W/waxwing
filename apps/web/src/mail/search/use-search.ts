@@ -20,7 +20,7 @@ import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useRoute } from '../../app/route'
 import type { MailboxRow } from '../../sync'
-import { type QuerySpec, useMailboxesFor } from '../../sync'
+import { isEphemeralReplica, type QuerySpec, useMailboxesFor } from '../../sync'
 import { folderDisplayName } from '../folder-tree'
 import { type ChipTranslate, type SearchChip, searchChips } from './search-chips'
 import {
@@ -159,7 +159,14 @@ export function useSearch(currentMailboxId: Id | undefined, accountId: Id): Sear
       }
       const qs = params.toString()
       const target = qs ? `${route.path}?${qs}` : route.path
-      navigate(target, opts?.replace ? { replace: true } : undefined)
+      // ALWAYS replace in public-computer mode (W-38). A search string is a URL, a URL is a
+      // history entry, and the browser's history is the one store this mode cannot clean up: no
+      // web application can delete it, so `…?q=from:lawyer%20notice` outlives every removal path
+      // in SECURITY.md §3.1 and the next person needs nothing but Ctrl+H. Replacing does not close
+      // the gap — folder and message routes push too — but it keeps the text the user TYPED out of
+      // the back list, which is the part that reads like a confession.
+      const replace = opts?.replace === true || isEphemeralReplica()
+      navigate(target, replace ? { replace: true } : undefined)
     },
     [navigate, route.path],
   )

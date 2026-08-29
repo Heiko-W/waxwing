@@ -108,8 +108,8 @@
       "confirm": "Odstranit data a odhlásit se",
       "cancel": "Zrušit"
     },
-    "switchTo": "Přepnout na {{name}}",
-    "add": "Přidat další účet"
+    "switchTo": "Přihlásit se jako {{name}}",
+    "add": "Přihlásit se k jinému účtu"
   },
   "status": {
     "offline": "Offline",
@@ -126,7 +126,8 @@
     },
     "storage": {
       "full": "Úložiště je plné — část pošty se neukládá do mezipaměti."
-    }
+    },
+    "dispatchFailed": "Akci se nepodařilo uložit — nebyla provedena."
   },
   "settings": {
     "title": "Nastavení",
@@ -159,6 +160,7 @@
         "messages": "Index zpráv (odhad)",
         "bodies": "Texty zpráv",
         "attachments": "Přílohy",
+        "personalData": "Kontakty, kalendář a soubory",
         "other": "Ostatní (aplikace a offline základ)"
       },
       "description": "{{product}} uchovává nedávnou poštu na tomto zařízení, aby se otevírala okamžitě a fungovala i offline.",
@@ -1263,7 +1265,11 @@
       "subject": "Přečteno: {{subject}}"
     },
     "fullScreen": "Otevřít na celou obrazovku",
-    "exitFullScreen": "Ukončit celou obrazovku"
+    "exitFullScreen": "Ukončit celou obrazovku",
+    "truncated": {
+      "title": "Zobrazuje se jen začátek této zprávy",
+      "body": "Byla příliš velká, než aby se uložila celá. Uložte ji jako .eml a přečtěte si ji celou."
+    }
   },
   "compose": {
     "toolbar": "Formátování",
@@ -1344,6 +1350,7 @@
     "sendNoRecipients": "Přidejte alespoň jednoho příjemce",
     "sendNoSentMailbox": "Chybí složka Odeslaná pošta — zatím nelze odesílat",
     "sendUnavailable": "Zatím není připraveno k odeslání — zkuste to prosím za okamžik",
+    "sendQueueFailed": "Zprávu se nepodařilo zařadit do fronty — pravděpodobně došlo místo. Koncept zůstal zachován",
     "sendWaitUploads": "Počkejte, až se nahrávání dokončí",
     "sendTooLarge": "Přílohy jsou příliš velké na odeslání",
     "sendFixRecipients": "Opravte zvýrazněnou adresu příjemce",

@@ -60,7 +60,12 @@ import {
   setFileTreeState,
   setSyncState,
 } from '../repo'
-import { CannotCalculateChangesError, type EngineClock, type JmapPort } from './types'
+import {
+  CannotCalculateChangesError,
+  ChangesDrainStalledError,
+  type EngineClock,
+  type JmapPort,
+} from './types'
 
 /** The `{filter, sort, collapseThreads}` a watched query is defined by. */
 export interface QuerySpecInput {
@@ -92,6 +97,17 @@ interface ChangesAccumulator {
 }
 
 /**
+ * The most pages one `Foo/changes` drain may spend before it is treated as a delta that cannot be
+ * calculated.
+ *
+ * Generous on purpose: a real backlog after a long offline stretch is bounded by the server's own
+ * `maxObjectsInGet`-sized pages, and the recovery from hitting this limit — re-query the whole
+ * collection — is correct but expensive. `walkFileTree`'s {@link FILE_MAX_PAGES} is far smaller
+ * because a truncated tree is displayed as truncated; here there is no partial answer to show.
+ */
+const MAX_CHANGES_PAGES = 500
+
+/**
  * Drain a `Foo/changes` feed to its end, folding across `hasMoreChanges` pages. An id created then
  * destroyed (or vice-versa) across pages ends in its last-seen bucket; `changed` excludes anything
  * ultimately destroyed.
@@ -106,6 +122,7 @@ async function drainChanges(
     updatedProperties?: string[] | null
   }>,
   sinceState: string,
+  label = 'changes',
 ): Promise<ChangesAccumulator> {
   const changed = new Set<Id>()
   const created = new Set<Id>()
@@ -114,7 +131,7 @@ async function drainChanges(
   let propsWholeUpdate = false
   let state = sinceState
 
-  for (;;) {
+  for (let page_ = 0; ; page_ += 1) {
     const page = await fetchPage(state)
     for (const id of page.created) {
       destroyed.delete(id)
@@ -137,8 +154,24 @@ async function drainChanges(
     } else {
       for (const prop of page.updatedProperties) props.add(prop)
     }
+    // Both guards before the state advances, so the message can name the state we are stuck on.
+    //
+    // `hasMoreChanges` is the ONLY thing that ended this loop, which made the loop the server's to
+    // control: answer `{hasMoreChanges: true, newState: <unchanged>}` and the client re-sends the
+    // same request for ever, growing the accumulators with it. Neither shape is producible by a
+    // correct server — a page that reports more to come must have moved the state.
+    if (page.hasMoreChanges && page.newState === state) {
+      throw new ChangesDrainStalledError(
+        `${label}: server reports more changes but the state did not move (${state})`,
+      )
+    }
     state = page.newState
     if (!page.hasMoreChanges) break
+    if (page_ + 1 >= MAX_CHANGES_PAGES) {
+      throw new ChangesDrainStalledError(
+        `${label}: still more changes after ${String(MAX_CHANGES_PAGES)} pages`,
+      )
+    }
   }
 
   return {
@@ -200,7 +233,7 @@ export async function syncMailboxes(
     return { total: ids, unread: ids }
   }
 
-  const acc = await drainChanges((s) => port.mailboxChanges(s), sinceState)
+  const acc = await drainChanges((s) => port.mailboxChanges(s), sinceState, 'Mailbox/changes')
   let writes = NO_COUNT_WRITES
   if (acc.changed.length > 0) {
     const { list } = await port.getMailboxes(acc.changed)
@@ -221,6 +254,33 @@ export async function syncMailboxes(
   return writes
 }
 
+/**
+ * The `Mailbox` properties a `Mailbox/changes` delta may patch onto a stored row.
+ *
+ * `updatedProperties` is a list of NAMES chosen by the server, and it used to be applied with
+ * `prop in source` — which walks the prototype chain, so `'constructor'`, `'toString'` and
+ * `'__proto__'` are all true for any object. `patch.constructor = Object` puts a FUNCTION in the
+ * patch, functions are not structured-cloneable, and the whole mailbox delta then died with a
+ * `DataCloneError` — the server choosing which keys land in an IndexedDB row.
+ *
+ * An allowlist rather than only `Object.hasOwn`, because the question the code is really asking is
+ * "is this a column of mine", and the answer should not depend on what a `Mailbox` object happens
+ * to carry. `id` is absent on purpose: it is the key, not a patchable column.
+ */
+const PATCHABLE_MAILBOX_PROPS: ReadonlySet<string> = new Set([
+  'name',
+  'parentId',
+  'role',
+  'sortOrder',
+  'totalEmails',
+  'unreadEmails',
+  'totalThreads',
+  'unreadThreads',
+  'myRights',
+  'isSubscribed',
+  'shareWith',
+])
+
 /** Patch only the changed props onto existing mailbox rows; full-insert any not present locally. */
 async function patchMailboxes(
   db: ReplicaDb,
@@ -232,7 +292,8 @@ async function patchMailboxes(
     const patch: Partial<MailboxRow> = {}
     const source = mailbox as unknown as Record<string, unknown>
     for (const prop of changedProps) {
-      if (prop in source) (patch as Record<string, unknown>)[prop] = source[prop]
+      if (!PATCHABLE_MAILBOX_PROPS.has(prop)) continue
+      if (Object.hasOwn(source, prop)) (patch as Record<string, unknown>)[prop] = source[prop]
     }
     const updated = await db.mailboxes.update([accountId, mailbox.id], patch)
     if (updated === 0) await putMailboxes(db, accountId, [mailbox])
@@ -253,7 +314,7 @@ export async function syncThreads(
   const sinceState = await getSyncState(db, accountId, 'Thread')
   if (sinceState === null) return
 
-  const acc = await drainChanges((s) => port.threadChanges(s), sinceState)
+  const acc = await drainChanges((s) => port.threadChanges(s), sinceState, 'Thread/changes')
   if (acc.changed.length > 0) {
     const { list } = await port.getThreads(acc.changed)
     await putThreads(db, accountId, list)
@@ -285,7 +346,7 @@ export async function syncEmails(
   const sinceState = await getSyncState(db, accountId, 'Email')
   if (sinceState === null) return []
 
-  const acc = await drainChanges((s) => port.emailChanges(s), sinceState)
+  const acc = await drainChanges((s) => port.emailChanges(s), sinceState, 'Email/changes')
   let created: EmailEnvelopeInput[] = []
   if (acc.changed.length > 0) {
     const { list } = await port.getEmailEnvelopes(acc.changed)
@@ -500,7 +561,11 @@ export async function syncAddressBooks(
     return
   }
 
-  const acc = await drainChanges((s) => port.addressBookChanges(s), sinceState)
+  const acc = await drainChanges(
+    (s) => port.addressBookChanges(s),
+    sinceState,
+    'AddressBook/changes',
+  )
   if (acc.changed.length > 0) {
     const { list } = await port.getAddressBooks(acc.changed)
     await putAddressBooks(db, accountId, list)
@@ -523,7 +588,11 @@ export async function syncContactCards(
   const sinceState = await getSyncState(db, accountId, 'ContactCard')
   if (sinceState === null) return
 
-  const acc = await drainChanges((s) => port.contactCardChanges(s), sinceState)
+  const acc = await drainChanges(
+    (s) => port.contactCardChanges(s),
+    sinceState,
+    'ContactCard/changes',
+  )
   if (acc.changed.length > 0) {
     const { list } = await port.getContactCards(acc.changed)
     await putContactCards(db, accountId, list)
@@ -689,7 +758,7 @@ export async function syncCalendars(
 
   let acc: ChangesAccumulator
   try {
-    acc = await drainChanges((state) => port.calendarChanges(state), sinceState)
+    acc = await drainChanges((state) => port.calendarChanges(state), sinceState, 'Calendar/changes')
   } catch (error) {
     if (error instanceof CannotCalculateChangesError) {
       await reloadCalendars(port, db, accountId, clock)
@@ -749,7 +818,11 @@ export async function syncCalendarEvents(
 
   let acc: ChangesAccumulator
   try {
-    acc = await drainChanges((state) => port.calendarEventChanges(state), sinceState)
+    acc = await drainChanges(
+      (state) => port.calendarEventChanges(state),
+      sinceState,
+      'CalendarEvent/changes',
+    )
   } catch (error) {
     if (!(error instanceof CannotCalculateChangesError)) throw error
     // The measured trap, and the requirement: a server that cannot diff has NOT failed. Everything
@@ -912,7 +985,7 @@ export async function syncFileNodes(
 
   let acc: ChangesAccumulator
   try {
-    acc = await drainChanges((state) => port.fileNodeChanges(state), sinceState)
+    acc = await drainChanges((state) => port.fileNodeChanges(state), sinceState, 'FileNode/changes')
   } catch (error) {
     if (error instanceof CannotCalculateChangesError) {
       await walkFileTree(port, db, accountId, clock)

@@ -171,9 +171,33 @@ export function isMethodErrorType(error: { type: string }, type: string): boolea
   return error.type === type
 }
 
-/** `true` if an invocation is a method-level error response (`["error", …]`). */
+/**
+ * `true` if an invocation is a method-level error response (`["error", {type: …}, …]`).
+ *
+ * The ARGUMENTS are checked too, not just the name. `transport.ts` validates the envelope and says
+ * in as many words that the individual invocations stay unvalidated — so `["error", null, "c0"]`
+ * used to reach `new JmapMethodError(null)`, whose constructor reads `error.description ?? error.type`
+ * on the first line and threw a bare `TypeError` from inside the code whose whole job is to turn a
+ * server's answer into a typed error. Same shape as {@link isProblemDetails} below.
+ */
 export function isMethodError(invocation: Invocation): invocation is Invocation<MethodErrorObject> {
-  return invocation[0] === 'error'
+  if (invocation[0] !== 'error') return false
+  const args: unknown = invocation[1]
+  return (
+    typeof args === 'object' &&
+    args !== null &&
+    typeof (args as { type?: unknown }).type === 'string'
+  )
+}
+
+/**
+ * `true` for an `["error", …]` invocation whose arguments are NOT a usable error object.
+ *
+ * Split out from {@link isMethodError} so a caller can tell "not an error" from "an error this
+ * client cannot read", which are different answers and used to be the same one.
+ */
+export function isMalformedMethodError(invocation: Invocation): boolean {
+  return invocation[0] === 'error' && !isMethodError(invocation)
 }
 
 /** Narrows an unknown value to an RFC 7807 problem document (has a string `type`). */

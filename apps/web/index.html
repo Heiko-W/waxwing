@@ -43,9 +43,16 @@
         config.json and cannot be pinned in a static <meta> at build time, so the
         wildcards are unavoidable here. Trade-off: an injected script could reach any
         https/wss host. Narrow it at deploy time by sending an HTTP Content-Security-
-        Policy response header (which overrides <meta>) with connect-src pinned to the
-        specific JMAP origin — mandatory for same-origin (Stalwart) and reverse-proxy
-        deployments.
+        Policy response header that names ONLY connect-src, pinned to the specific JMAP
+        origin.
+        A header does NOT override this <meta> policy — CSP Level 3 enforces every
+        delivered policy independently, so the effective policy is the INTERSECTION and a
+        header can only tighten. Restating default-src 'self' in it is therefore the
+        classic way to break the app: it kills the data:/blob: images and the blob: PDF
+        preview, and it looks like a caching bug. Where the app is served by Stalwart
+        itself there is no response-header hook at all, so this is not something every
+        deployment can do. See docs/deployment.md#content-security-policy and SECURITY.md
+        §2 before writing one.
       - style-src 'unsafe-inline': required because branding writes the accent token via
         element.style (theme.ts) and React/CSS-Modules use inline styles. It is a
         lower-severity vector than script injection and is intentionally NOT granted to
@@ -90,7 +97,23 @@
     <title>Waxwing</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      The static half of the start-up failure screen (see `renderBootFailure` in main.tsx). React
+      replaces this on its first render, and `main.tsx` replaces it with a more specific message if
+      the boot sequence throws — this text only survives when the module graph itself never loads
+      (a failed chunk after a deploy, a broken asset path), which is exactly the case where no
+      script can put anything on the screen. Untranslated on purpose: the i18n bundle is one of the
+      things that may not have arrived.
+    -->
+    <div id="root">
+      <div style="font: 16px/1.5 system-ui, sans-serif; max-width: 34rem; margin: 12vh auto; padding: 0 1.5rem">
+        <h1 style="font-size: 1.25rem; margin: 0 0 0.5rem">Loading…</h1>
+        <p style="margin: 0">
+          If this message stays on screen, the app could not be loaded. Reload the page; if that does
+          not help, contact whoever runs this server.
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

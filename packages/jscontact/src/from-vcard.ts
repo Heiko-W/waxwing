@@ -135,6 +135,12 @@ function typeValues(line: ContentLine): string[] {
 function contextsOf(line: ContentLine): BooleanSet | undefined {
   const set: Record<string, true> = {}
   for (const type of typeValues(line)) {
+    // `Object.hasOwn`, not `!== undefined`: a TYPE of `constructor` finds `Object` on the
+    // prototype chain of this plain literal, and a TYPE of `__proto__` finds `Object.prototype`.
+    // Both are truthy, both get stringified into a boolean-set KEY, and the result — a key spelt
+    // `function Object() { [native code] }` — goes to the server in a `ContactCard/set` as data
+    // RFC 9553 has no room for, and into the contact view as a label.
+    if (!Object.hasOwn(CONTEXTS, type)) continue
     const context = CONTEXTS[type]
     if (context !== undefined) set[context] = true
   }
@@ -152,9 +158,22 @@ function prefOf(line: ContentLine): number | undefined {
 }
 
 /** The `PROP-ID` a line carries, or `undefined` when it has none. */
+/**
+ * Keys that are not keys. Every id this file hands out becomes a property name on an object
+ * literal, and these three are not stored there: `out['__proto__'] = {…}` REPLACES the object's
+ * prototype instead of adding an own property, so the group ends up with zero own keys and the
+ * whole collection is dropped — silently, because `skipped` never hears about it.
+ *
+ * The input is a file: a mail attachment, a shared address book, another server's export. A card
+ * carrying `EMAIL;PROP-ID=__proto__` imported as "1 contact imported" with no email addresses at
+ * all, which is precisely the silence this module's header promises never to produce.
+ */
+const UNUSABLE_AS_KEY = new Set(['__proto__', 'constructor', 'prototype'])
+
 function propIdOf(line: ContentLine): string | undefined {
   const propId = line.params.get('PROP-ID')?.[0]
-  return propId !== undefined && propId !== '' ? propId : undefined
+  if (propId === undefined || propId === '' || UNUSABLE_AS_KEY.has(propId)) return undefined
+  return propId
 }
 
 /**
@@ -342,6 +361,8 @@ function buildPhones(lines: readonly ContentLine[]): Record<Id, Phone> | undefin
     if (number === '') continue
     const features: Record<string, true> = {}
     for (const type of typeValues(line)) {
+      // Own property only — see the note in `contextsOf`.
+      if (!Object.hasOwn(PHONE_FEATURES, type)) continue
       const feature = PHONE_FEATURES[type]
       if (feature !== undefined) features[feature] = true
     }

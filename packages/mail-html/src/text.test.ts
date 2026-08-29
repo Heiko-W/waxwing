@@ -14,9 +14,19 @@ describe('renderPlainText', () => {
     const html = renderPlainText('See https://example.com/path?a=1, thanks.')
     expect(html).toContain('href="https://example.com/path?a=1"')
     expect(html).toContain('rel="noopener noreferrer nofollow"')
-    expect(html).toContain('target="_blank"')
     // The trailing comma is not part of the link.
     expect(html).toContain('</a>,')
+  })
+
+  /**
+   * `frame.ts` reads `target="_blank"` as a record of ITS OWN release decision and lets the click
+   * through untouched. Writing it here made every plain-text link look released, so the link
+   * warning — the one `use-link-opener` deliberately offers no way to switch off — could not fire
+   * for a text/plain body at all.
+   */
+  it("writes no target — releasing a link is the frame's decision, not this renderer's", () => {
+    const html = renderPlainText('See https://example.com/ and https://evil.test/')
+    expect(html).not.toContain('target=')
   })
 
   it('does not linkify javascript: or data: URLs (only http/https)', () => {

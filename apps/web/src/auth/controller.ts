@@ -181,6 +181,14 @@ export class AuthController {
     }
     const session = this.buildBasicSession(credentials)
     this.session = session
+    // The store holds the secret of the ACTIVE method and no other. Signing in with a password
+    // after an OAuth session — the reachable order is an OAuth callback that succeeds and a
+    // `connectSession` that then fails, which drops the user back on the login form with the
+    // tokens already written — used to leave a refresh token behind: up to 30 days valid, not
+    // revocable server-side (ADR-006), and still on the disk of someone who deliberately left
+    // "stay signed in" unticked.
+    await this.tokens.clear()
+    this.resolvedOAuth = null
     // Persist only on opt-in ("stay signed in"), and only via the wrapped store — never
     // plaintext (FR-AUTH-04). Without opt-in, nothing survives a reload.
     if (request.staySignedIn) {
@@ -227,6 +235,11 @@ export class AuthController {
       }
       this.resolvedOAuth = config
       await this.tokens.apply(result)
+      // The mirror of the same invariant (see `startBasicLogin`): a password left over from an
+      // earlier Basic sign-in with "stay signed in" is inert for `restore()`, which keys off the
+      // AuthRecord overwritten below — but it is still decryptable on this device and still valid
+      // at the server, which is the half that matters.
+      await this.store.delete(SecretName.BasicCredentials)
       // The AuthRecord is what `restore()` keys off on a cold start. Writing one for a
       // public-computer session would sign the NEXT person at this machine in as this user, which
       // is the failure the mode exists to prevent (FR-AUTH-09).
@@ -283,6 +296,25 @@ export class AuthController {
     const config = this.requireResolvedOAuth()
     const refreshToken = await this.tokens.getRefreshToken()
     if (!refreshToken) throw new AuthExpiredError('No refresh token available')
+    // WHOSE token is that? (W-17)
+    //
+    // Every controller in this browser profile shares one `waxwing-auth` database — ADR-004
+    // designed for per-account scopes, but no production path passes one. So: tab 1 is signed in
+    // to server X and holds `resolvedOAuth` for X in memory; someone signs in to server Y in tab
+    // 2, which overwrites the shared refresh token; tab 1's access token expires an hour later and
+    // this method reads Y's token out of storage and POSTs it to X's token endpoint. A refresh
+    // token handed to the wrong server is a credential disclosure, and no XSS is needed for it.
+    //
+    // The AuthRecord is written by whoever signed in last and names their issuer, so it answers
+    // the question without needing the store isolation. Absent means an ephemeral session, whose
+    // refresh token is in memory and therefore already ours (FR-AUTH-09).
+    const record = await this.readAuthRecord()
+    if (record !== null && (record.method !== 'oauth' || record.oauth?.issuer !== config.issuer)) {
+      this.tokens.clearAccessToken()
+      throw new AuthExpiredError(
+        'The stored credential belongs to a different sign-in — refusing to send it',
+      )
+    }
     const as = await this.ensureDiscovery(config)
     let result: TokenResult
     try {
@@ -314,10 +346,44 @@ export class AuthController {
    * OAuth the access token is fetched lazily on first {@link getAccessToken}; for Basic the
    * persisted (opt-in) credentials are re-loaded. Returns `null` when nothing is persisted.
    */
-  async restore(): Promise<AuthSession | null> {
+  /** Drop a {@link PkceTransaction} older than {@link PKCE_MAX_AGE_MS}; unreadable ones too. */
+  private async sweepStalePkce(): Promise<void> {
+    const raw = await this.store.get(SecretName.PkceTransaction).catch(() => null)
+    if (!raw) return
+    let stale = true
+    try {
+      const transaction = JSON.parse(raw) as PkceTransaction
+      stale =
+        transaction.createdAt === undefined || this.now() - transaction.createdAt > PKCE_MAX_AGE_MS
+    } catch {
+      // Unparseable: no callback will ever consume it either.
+    }
+    if (stale) await this.store.delete(SecretName.PkceTransaction).catch(() => undefined)
+  }
+
+  /** The persisted {@link AuthRecord}, or `null` when there is none or it is unreadable. */
+  private async readAuthRecord(): Promise<AuthRecord | null> {
     const raw = await this.store.get(SecretName.AuthRecord)
     if (!raw) return null
-    const record = JSON.parse(raw) as AuthRecord
+    try {
+      return JSON.parse(raw) as AuthRecord
+    } catch {
+      // A corrupted record is not a reason to fail a refresh differently from a missing one.
+      return null
+    }
+  }
+
+  async restore(): Promise<AuthSession | null> {
+    // Sweep an abandoned authorization on the way past (W-36). A user who walks away at the IdP —
+    // or a browser that dies there — leaves `code_verifier`, `state` and the resolved OAuth config
+    // in the DURABLE store, and nothing ever collected them: the age check only runs when a
+    // callback arrives to consume the transaction, and in public-computer mode no callback comes.
+    // The verifier is worthless without its code; what stays behind is the metadata — who tried to
+    // sign in, and where — which is exactly what that mode promises not to leave. `restore()` is
+    // the right place: it runs once per cold start, before anything else touches this store.
+    await this.sweepStalePkce()
+    const record = await this.readAuthRecord()
+    if (record === null) return null
     if (record.method === 'basic') {
       const credsRaw = await this.store.get(SecretName.BasicCredentials)
       if (!credsRaw) return null
@@ -354,10 +420,21 @@ export class AuthController {
     this.as = null
     this.tokens.clearAccessToken()
     // Destroy the encrypted store (refresh token, basic creds, PKCE, record + wrapping key).
-    await this.store.wipe()
+    //
+    // Its failure must not take the rest of the wipe with it, and it used to: a frozen or bfcached
+    // second tab blocks `deleteDatabase('waxwing-auth')` (`SecretStoreBlockedError`), and the throw
+    // then skipped `wipeLocalData` entirely — so Cache Storage, every other IndexedDB database and
+    // the service-worker registrations survived a "remove my data" for a reason that has nothing
+    // to do with any of them. The error is still raised, last, so the caller can still tell the
+    // user their credentials are on disk.
+    const wipeError = await this.store.wipe().then(
+      () => null,
+      (error: unknown) => error,
+    )
     if (options.wipeData) {
       await wipeLocalData(this.resolveWipeEnv())
     }
+    if (wipeError !== null) throw wipeError
   }
 
   private buildOAuthSession(username: string | null, expiresAt: number | null): AuthSession {
@@ -435,6 +512,8 @@ export class AuthController {
         typeof navigator !== 'undefined' && 'serviceWorker' in navigator
           ? navigator.serviceWorker
           : undefined,
+      localStorage: typeof localStorage !== 'undefined' ? localStorage : undefined,
+      sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
     }
   }
 }

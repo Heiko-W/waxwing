@@ -17,6 +17,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
+import { dispatchOrReport } from '../sync'
 import { getEngineFor, type OutboxIntent } from '../sync/engine'
 import { useReplicaOptional } from '../sync/react'
 
@@ -38,7 +39,8 @@ function newId(): string {
 }
 
 function dispatch(accountId: Id | null, intent: OutboxIntent): void {
-  void getEngineFor(accountId)?.dispatch(intent, { id: newId() })
+  // See `use-message-actions`: fire-and-forget, but a failure to enqueue is now surfaced.
+  dispatchOrReport(getEngineFor(accountId)?.dispatch(intent, { id: newId() }))
 }
 
 export function useFolderActions(): FolderActions {

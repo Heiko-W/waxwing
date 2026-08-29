@@ -304,3 +304,51 @@ describe('JmapClient — malformed / oversized responses (F22)', () => {
     expect(result.responses).toHaveLength(count)
   })
 })
+
+/**
+ * An `["error", …]` invocation whose arguments are not an error object (W-26).
+ *
+ * `transport.ts` validates the ENVELOPE and says so; the individual invocations stayed unchecked,
+ * so `["error", null, "c0"]` reached `new JmapMethodError(null)` — whose constructor reads
+ * `error.description ?? error.type` on its first line. The result was a bare `TypeError` out of
+ * the code whose entire job is turning a server's answer into a typed error.
+ */
+describe('JmapClient — an error invocation this client cannot read', () => {
+  it.each([
+    ['null arguments', null],
+    ['a string', 'boom'],
+    ['an object without type', { description: 'no type here' }],
+  ])('throws a JmapError rather than a TypeError — %s', async (_label, args) => {
+    const fetch: FetchLike = async () =>
+      new Response(
+        JSON.stringify({ methodResponses: [['error', args, 'c0']], sessionState: 's' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    const client = new JmapClient({ session: makeSession(), auth: bearer('tok'), fetch })
+
+    const builder = client.request()
+    const call = builder.call('Email/query', { accountId: 'a' })
+    const responses = await builder.send()
+
+    expect(() => responses.get(call)).toThrowError(JmapError)
+    expect(() => responses.get(call)).toThrowError(/Malformed method error/)
+  })
+
+  it('still reports a well-formed method error as one — the counter-test', async () => {
+    const fetch: FetchLike = async () =>
+      new Response(
+        JSON.stringify({
+          methodResponses: [['error', { type: 'unknownMethod' }, 'c0']],
+          sessionState: 's',
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    const client = new JmapClient({ session: makeSession(), auth: bearer('tok'), fetch })
+
+    const builder = client.request()
+    const call = builder.call('Email/query', { accountId: 'a' })
+    const responses = await builder.send()
+
+    expect(() => responses.get(call)).toThrowError(/unknownMethod/)
+  })
+})

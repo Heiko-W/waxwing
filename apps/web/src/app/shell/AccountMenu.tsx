@@ -50,8 +50,14 @@ export function AccountMenu({ productName, username }: AccountMenuProps) {
       onSelect: () => {
         switchAccount(account.scope)
         // The session provider holds ONE session, so switching means ending this one and signing
-        // in as the other. `signOut` deliberately does not wipe: the other account's credentials
-        // live in its own store (ADR-004), and this account's survive for switching back.
+        // in as the other — WITH A FRESH SIGN-IN, which is what the label now says.
+        //
+        // This comment used to claim the opposite ("the other account's credentials live in its
+        // own store (ADR-004), and this account's survive for switching back"), and it was wrong
+        // on both halves. ADR-004 designed per-account stores; no production path passes a scope,
+        // so every controller shares one `waxwing-auth` database, and `logout()` wipes it. There
+        // is nothing to switch back TO. Wiring the scope through is the real fix (W-17) and is
+        // account work, not a comment fix; until it lands, the menu must not promise otherwise.
         signOut()
       },
     })),

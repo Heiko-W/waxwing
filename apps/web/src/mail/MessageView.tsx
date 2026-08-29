@@ -213,6 +213,8 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
     [connected, accountId],
   )
   const { body, htmlParts, textBody, loading, failed: bodyFailed } = useMessageBody(email.id)
+  // The server's own answer about a value it cut down to `maxBodyValueBytes`, not a guess.
+  const bodyTruncated = Object.values(body?.bodyValues ?? {}).some((value) => value.isTruncated)
   const { resolveCid, ready } = useInlineImages(accountId, body)
 
   const archiveBox = useMailboxByRole('archive')
@@ -1171,6 +1173,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
           onLoad={() => setLoadedOnce(true)}
           onAlwaysAllow={onAlwaysAllow}
         />
+      )}
+
+      {bodyTruncated && (
+        // The sync fetch caps each body value (`MAX_SYNC_BODY_BYTES`), and a capped body must say
+        // so rather than end mid-sentence — the same honesty the .eml source view and the nested
+        // message view already apply (W-33).
+        <section className={styles.remoteBanner} aria-label={t('reading.truncated.title')}>
+          <div className={styles.remoteText}>
+            <p className={styles.remoteTitle}>{t('reading.truncated.title')}</p>
+            <p>{t('reading.truncated.body')}</p>
+          </div>
+        </section>
       )}
 
       {readReceipt !== null && (

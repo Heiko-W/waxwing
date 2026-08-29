@@ -124,6 +124,29 @@ describe('collectCidParts', () => {
     ])
   })
 
+  /**
+   * `bodyStructure` is the server's parse of a MIME tree the SENDER wrote, and the walk was plain
+   * recursion with no bound. `JSON.parse` in V8 is iterative and hands 50 000 levels back intact,
+   * so nothing upstream trips first: the recursion blows the stack with an untyped `RangeError`
+   * that takes the message view — or, in `collectBodyBlobIds`, the sync write — with it (W-34).
+   */
+  it('survives a pathologically nested bodyStructure instead of blowing the stack', () => {
+    let deepest = part({ partId: 'deep', cid: 'deep@x', blobId: 'b-deep', type: 'image/png' })
+    for (let i = 0; i < 50_000; i += 1) deepest = part({ subParts: [deepest] })
+    const b = body({
+      bodyStructure: part({
+        subParts: [part({ cid: 'top@x', blobId: 'b1', type: 'image/png' }), deepest],
+      }),
+    })
+
+    const parts = collectCidParts(b)
+
+    // Returns rather than throws, and the parts within reach are still found. What lies past the
+    // depth bound is dropped on purpose: half a list of inline images renders a message, an
+    // exception renders nothing.
+    expect(parts.map((p) => p.cid)).toEqual(['top@x'])
+  })
+
   it('skips a cid part with no blobId', () => {
     const b = body({ htmlBody: [part({ cid: 'x@y', blobId: null, type: 'image/png' })] })
     expect(collectCidParts(b)).toEqual([])

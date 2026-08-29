@@ -7,7 +7,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { createPushChannel } from '@waxwing/jmap'
-import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useConfig } from '../../app/config-context'
 import { effectiveCacheDays } from '../../app/offline-prefs'
 import { secondaryMailAccounts } from '../../app/session/accounts'
@@ -106,6 +106,20 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
     [hosterCacheDays, maxStorageMB],
   )
 
+  /**
+   * The previous fleet's teardown, awaited by the next one's setup (W-15).
+   *
+   * A React cleanup cannot be async, so without this the effect returned while `stop()` was still
+   * running — and `stop()`'s abort releases the Web Lock immediately. The fleet built in the same
+   * tick (a `connected` change: re-auth, a shared-account edit, StrictMode's double-invoke in dev)
+   * therefore won the lock and ran `recoverStranded` over rows the previous engine had not
+   * finished, dead-lettering an in-flight send as `sendInterrupted` and marking its draft failed —
+   * for a message that was, moments later, sent successfully.
+   *
+   * Same chaining `SessionProvider.teardownRef` uses for the same reason.
+   */
+  const teardownRef = useRef<Promise<void> | null>(null)
+
   useEffect(() => {
     if (!connected || !canRunEngine()) return
     const auth = getAuthProvider()
@@ -144,24 +158,41 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
         ...(spec.publishStatus === undefined ? {} : { publishStatus: spec.publishStatus }),
       })
 
-    return startEngineFleet(accounts, {
-      createEngine,
-      createPushMux: () => createPushMux((session, options) => createPushChannel(session, options)),
-      setActive: setActiveEngine,
-      publish: setEngineFor,
-      register: (account) => {
-        const now = Date.now()
-        void upsertAccount(getReplica(), {
-          id: account.id,
-          username: account.name,
-          name: account.name,
-          issuer: null,
-          isPrimary: account.isPrimary,
-          addedAt: now,
-          lastSeenAt: now,
-        })
-      },
-    })
+    let stopFleet: (() => Promise<void>) | null = null
+    let cancelled = false
+
+    const startFleet = (): (() => Promise<void>) =>
+      startEngineFleet(accounts, {
+        createEngine,
+        createPushMux: () =>
+          createPushMux((session, options) => createPushChannel(session, options)),
+        setActive: setActiveEngine,
+        publish: setEngineFor,
+        register: (account) => {
+          const now = Date.now()
+          void upsertAccount(getReplica(), {
+            id: account.id,
+            username: account.name,
+            name: account.name,
+            issuer: null,
+            isPrimary: account.isPrimary,
+            addedAt: now,
+            lastSeenAt: now,
+          })
+        },
+      })
+
+    const started = (async () => {
+      // Only ever a pending teardown from THIS host; the first run resolves immediately.
+      await teardownRef.current
+      if (cancelled) return
+      stopFleet = startFleet()
+    })()
+
+    return () => {
+      cancelled = true
+      teardownRef.current = started.then(() => stopFleet?.() ?? undefined)
+    }
   }, [connected, getAuthProvider, reportAuthExpired, offlineConfig, productName])
 
   if (!connected) return children

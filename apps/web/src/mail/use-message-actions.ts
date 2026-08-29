@@ -19,6 +19,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { useMemo } from 'react'
+import { dispatchOrReport } from '../sync'
 import { getEngineFor, type OutboxIntent, useAccountEngine } from '../sync/engine'
 import { useReplicaOptional } from '../sync/react'
 import { announceMarkedUnread } from './unread-signal'
@@ -54,7 +55,10 @@ function dispatch(accountId: Id | null, intent: OutboxIntent): void {
   if (intent.kind === 'setKeywords' && intent.keyword === '$seen' && intent.value === false) {
     announceMarkedUnread(intent.emailIds)
   }
-  void getEngineFor(accountId)?.dispatch(intent, { id: crypto.randomUUID() })
+  // Fire-and-forget by design, reported on failure: the optimistic store update has already
+  // happened, and a rejection here (a full disk on the `enqueueAction` put) used to leave the
+  // row changed on screen with no outbox entry behind it and a silent revert at the next reload.
+  dispatchOrReport(getEngineFor(accountId)?.dispatch(intent, { id: crypto.randomUUID() }))
 }
 
 export function useMessageActions(): MessageActions {

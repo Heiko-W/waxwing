@@ -148,6 +148,139 @@ describe('outbox — optimistic apply + enqueue', () => {
 })
 
 /**
+ * The races around a row's IDENTITY, rather than its contents.
+ *
+ * Drafts are the only intents that reuse an outbox id (`draft:<localId>`), and they do it so a
+ * later autosave coalesces with an earlier one. That is right while the earlier row is `pending`
+ * and wrong the moment it is `inflight`: replay claimed one row, finished the round trip, and then
+ * deleted BY ID — taking the newer row with it.
+ */
+describe('outbox — a row replaced while it was in flight (W-13)', () => {
+  it('stamps every enqueue with a rising seq', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    const intent: OutboxIntent = {
+      kind: 'setKeywords',
+      emailIds: ['e1'],
+      keyword: '$seen',
+      value: true,
+    }
+
+    await enqueueAction(db, ACC, intent, { id: 'i1', now: 1 })
+    expect((await row('i1'))?.seq).toBe(1)
+
+    await enqueueAction(db, ACC, intent, { id: 'i1', now: 2 })
+    expect((await row('i1'))?.seq).toBe(2)
+  })
+
+  it('does not delete the replacement when the claimed row completes', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    const intent: OutboxIntent = {
+      kind: 'setKeywords',
+      emailIds: ['e1'],
+      keyword: '$seen',
+      value: true,
+    }
+    await enqueueAction(db, ACC, intent, { id: 'draft:d1', now: 1 })
+
+    // The re-enqueue lands WHILE the request is out — the everyday case is a second autosave flush
+    // on a slow connection, and the window is one network round trip wide.
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => {
+        await enqueueAction(db, ACC, intent, { id: 'draft:d1', now: 2 })
+        return {
+          oldState: null,
+          newState: 's1',
+          created: {},
+          updated: ['e1'],
+          destroyed: [],
+          notCreated: {},
+          notUpdated: {},
+          notDestroyed: {},
+        }
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    // The row that was queued last is still queued: it is a different intent, and replay has never
+    // seen it. Deleting it left the local draft `synced` with the server copy a revision behind —
+    // and, in the discard case, put a thrown-away draft back in the Drafts folder.
+    const survivor = await row('draft:d1')
+    expect(survivor, 'the re-enqueued row was deleted with the one that completed').toBeDefined()
+    expect(survivor?.seq).toBe(2)
+    expect(survivor?.status).toBe('pending')
+  })
+
+  it('still deletes an untouched row — the counter-test', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1', now: 1 },
+    )
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => ({
+        oldState: null,
+        newState: 's1',
+        created: {},
+        updated: ['e1'],
+        destroyed: [],
+        notCreated: {},
+        notUpdated: {},
+        notDestroyed: {},
+      }),
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    expect(await row('i1')).toBeUndefined()
+  })
+
+  it("stops claiming rows once the engine's stop signal fires (W-15)", async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} }), email('e2', { keywords: {} })])
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1', now: 1 },
+    )
+    await enqueueAction(
+      db,
+      ACC,
+      { kind: 'setKeywords', emailIds: ['e2'], keyword: '$seen', value: true },
+      { id: 'i2', now: 2 },
+    )
+    const controller = new AbortController()
+    let sent = 0
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => {
+        sent += 1
+        controller.abort() // the teardown lands while the first row is out
+        return {
+          oldState: null,
+          newState: 's1',
+          created: {},
+          updated: ['e1'],
+          destroyed: [],
+          notCreated: {},
+          notUpdated: {},
+          notDestroyed: {},
+        }
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER, signal: controller.signal })
+
+    // The row already dispatched is seen through to its reconcile; the next one is not claimed at
+    // all. Claiming it would leave it `inflight` for the NEXT leader — which won the lock the
+    // moment the abort released it — to dead-letter as `sendInterrupted`.
+    expect(sent).toBe(1)
+    expect((await row('i2'))?.status).toBe('pending')
+  })
+})
+
+/**
  * M3.8 defect: the list renders `queryCache[key].ids` VERBATIM (the server-ordered window), so an
  * optimistic apply that only patched `emails.mailboxIds` left the archived message rendering in the
  * folder it had just left — and `dispatch` triggers a REPLAY-ONLY pass, so nothing local ever fixed

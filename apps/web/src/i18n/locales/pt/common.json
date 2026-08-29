@@ -108,8 +108,8 @@
       "confirm": "Remover os dados e terminar sessão",
       "cancel": "Cancelar"
     },
-    "switchTo": "Mudar para {{name}}",
-    "add": "Adicionar outra conta"
+    "switchTo": "Iniciar sessão como {{name}}",
+    "add": "Iniciar sessão noutra conta"
   },
   "status": {
     "offline": "Offline",
@@ -125,7 +125,8 @@
     },
     "storage": {
       "full": "O armazenamento está cheio — parte do e-mail não fica em cache."
-    }
+    },
+    "dispatchFailed": "Não foi possível guardar a ação — não foi executada."
   },
   "settings": {
     "title": "Definições",
@@ -158,6 +159,7 @@
         "messages": "Índice de mensagens (estimativa)",
         "bodies": "Corpo das mensagens",
         "attachments": "Anexos",
+        "personalData": "Contactos, calendário e ficheiros",
         "other": "Outros (aplicação e módulo offline)"
       },
       "description": "O {{product}} mantém o e-mail recente neste dispositivo, para que abra de imediato e funcione offline.",
@@ -1248,7 +1250,11 @@
       "subject": "Lida: {{subject}}"
     },
     "fullScreen": "Abrir em ecrã inteiro",
-    "exitFullScreen": "Sair do ecrã inteiro"
+    "exitFullScreen": "Sair do ecrã inteiro",
+    "truncated": {
+      "title": "Só é apresentado o início desta mensagem",
+      "body": "Era demasiado grande para ser guardada por completo. Guarde-a como .eml para ler tudo."
+    }
   },
   "compose": {
     "toolbar": "Formatação",
@@ -1328,6 +1334,7 @@
     "sendNoRecipients": "Adicione pelo menos um destinatário",
     "sendNoSentMailbox": "Não há pasta Enviados — ainda não é possível enviar",
     "sendUnavailable": "Ainda não está pronto para enviar — tente novamente daqui a instantes",
+    "sendQueueFailed": "Não foi possível colocar a mensagem na fila — o armazenamento pode estar cheio. O rascunho está guardado",
     "sendWaitUploads": "Aguarde que os carregamentos terminem",
     "sendTooLarge": "Os anexos são demasiado grandes para enviar",
     "sendFixRecipients": "Corrija o endereço de destinatário assinalado",

@@ -91,3 +91,48 @@ describe('the shipped app CSP', () => {
     expect(dev.get('frame-src')).toBe(prod.get('frame-src'))
   })
 })
+
+/**
+ * The PROSE in `index.html`, not its directives (W-20).
+ *
+ * The comment block sits in the artefact an operator is deploying, 300 lines from the separate
+ * `deployment.md` they may never open — so a wrong sentence there is followed. It carried two: that
+ * a response header "overrides" this `<meta>` policy (CSP3 enforces every policy independently; the
+ * effective one is the intersection), and that pinning `connect-src` from a header is "mandatory for
+ * same-origin (Stalwart)" deployments, which have no response-header hook at all. Following it
+ * produced a full replacement policy with `default-src 'self'` — killing the data:/blob: images and
+ * the blob: PDF preview, and looking like a caching bug.
+ *
+ * A text gate rather than a review habit: SECURITY.md §2 has said the correct thing for months
+ * while the shipped file said the opposite.
+ */
+describe('the CSP comment an operator actually reads', () => {
+  const securityMd = readFileSync(join(APP_ROOT, '../../SECURITY.md'), 'utf8')
+
+  it('does not claim a response header overrides the meta policy', () => {
+    // The claim, not the correction of it: an "overrides" that is not preceded by a negation
+    // within the same clause. The file's own sentence — "A header does NOT override this <meta>
+    // policy" — is the shape that must stay allowed.
+    const claims = [...indexHtml.matchAll(/([^.\n]{0,60})overrides?\s+(?:this\s+)?<meta>/gi)]
+    const unnegated = claims.filter(
+      ([, lead]) => !/\b(not|never|cannot|does not)\b/i.test(lead ?? ''),
+    )
+    expect(unnegated.map(([match]) => match)).toEqual([])
+  })
+
+  it('says what SECURITY.md says: a header can only tighten', () => {
+    // Both documents make the claim; neither may quietly lose it.
+    expect(securityMd).toMatch(/cannot loosen this policy, only tighten it/i)
+    expect(indexHtml).toMatch(/only tighten/i)
+    expect(indexHtml).toMatch(/intersection/i)
+  })
+
+  it('warns about the default-src trap and points at the deployment guide', () => {
+    expect(indexHtml).toMatch(/default-src 'self'/)
+    expect(indexHtml).toMatch(/docs\/deployment\.md#content-security-policy/)
+  })
+
+  it('does not call a response header mandatory for the Stalwart path', () => {
+    expect(indexHtml).not.toMatch(/mandatory for same-origin/i)
+  })
+})

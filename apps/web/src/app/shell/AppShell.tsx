@@ -26,6 +26,7 @@ import { PrimaryNav } from './PrimaryNav'
 import { ReauthDialog } from './ReauthDialog'
 import styles from './shell.module.css'
 import { useSectionAvailability } from './use-available-sections'
+import { useDispatchFailureNotifier } from './use-dispatch-notifier'
 import { useDocumentTitle } from './use-document-title'
 import { useMailtoHandler } from './use-mailto-handler'
 import { useStorageFullNotifier } from './use-storage-notifier'
@@ -60,6 +61,7 @@ export function AppShell({ config }: AppShellProps) {
   useConflictNotifier()
   // Surface a cache write the browser refused for lack of space (mail is no longer kept offline).
   useStorageFullNotifier()
+  useDispatchFailureNotifier()
   // Surface a server-side mailbox quota crossing 90 % / running out (M3.7, FR-QTA-01).
   useQuotaNotifier()
   // The service worker focused this tab after a notification click — go where it says (M3.6).

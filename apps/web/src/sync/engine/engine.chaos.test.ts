@@ -240,25 +240,37 @@ class FakeServer {
         notUpdated[id] = { type: 'notFound' }
         continue
       }
+      // ATOMIC per object, as RFC 8620 §5.3 requires: a `SetError` means the object was NOT
+      // changed. This used to mutate `record` in place while walking the patch and only decide
+      // afterwards, so a rejected move (`mailboxIds/inbox: null` applied, `mailboxIds/archive:
+      // true` refused) left the server row with NEITHER folder — and the next delta pass then
+      // wrote that `{}` over the client's completed rollback. Which of the two landed last was
+      // pure scheduling luck, and it changed the moment `enqueueAction` became one transaction.
+      const draft = {
+        keywords: { ...record.keywords },
+        mailboxIds: { ...record.mailboxIds },
+      }
       let rejected = false
       for (const [path, value] of Object.entries(patch)) {
         const [group, key] = path.split('/')
         if (key === undefined) continue
         if (group === 'keywords') {
-          if (value === null) delete record.keywords[key]
-          else record.keywords[key] = true
+          if (value === null) delete draft.keywords[key]
+          else draft.keywords[key] = true
         } else if (group === 'mailboxIds') {
           if (value === null) {
-            delete record.mailboxIds[key]
+            delete draft.mailboxIds[key]
           } else if (!this.mailboxes.has(key)) {
             rejected = true // the target folder was deleted out from under the queued move
           } else {
-            record.mailboxIds[key] = true
+            draft.mailboxIds[key] = true
           }
         }
       }
       if (rejected) notUpdated[id] = { type: 'invalidProperties', description: 'mailboxIds' }
       else {
+        record.keywords = draft.keywords
+        record.mailboxIds = draft.mailboxIds
         updated.push(id)
         this.applied.push(`update:${id}`)
       }

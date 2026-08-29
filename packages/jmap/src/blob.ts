@@ -62,7 +62,34 @@ export interface DownloadOptions {
   signal?: AbortSignal
   /** Progress callback, fired per streamed chunk (true incremental progress). */
   onProgress?: (progress: BlobProgress) => void
+  /**
+   * Refuse a body larger than this, in bytes. Defaults to {@link DEFAULT_MAX_DOWNLOAD_BYTES};
+   * pass `0` to disable the ceiling entirely.
+   *
+   * A caller that already knows the size — `EmailBodyPart.size` is in the envelope the app
+   * downloaded the blob from — should pass it plus a small tolerance, which turns the ceiling
+   * from a backstop into an assertion about THIS blob.
+   */
+  maxBytes?: number
 }
+
+/**
+ * The ceiling on one download, and the reason there has to be one.
+ *
+ * Every byte of a blob download is buffered in the heap before the caller sees any of it — the
+ * streaming branch accumulates chunks, the other calls `arrayBuffer()`. Nothing checked a length:
+ * not `content-length`, not the size the envelope already stated, not a cap. A server answering an
+ * ordinary attachment click with an endless byte stream needed one click to OOM the tab, and no
+ * hostility is required for the milder version — a very large legitimate file from the Files area
+ * did the same thing more slowly.
+ *
+ * `MAX_CACHED_BLOB_BYTES` in the app is not this: it decides what goes in IndexedDB, after the
+ * whole thing has already been read into memory.
+ *
+ * 256 MB is far above any attachment a JMAP server will accept (`maxSizeUpload` is typically two
+ * orders of magnitude smaller) and far below what kills a tab.
+ */
+export const DEFAULT_MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024
 
 /**
  * Expands an RFC 6570 Level 1 URI template — replacing each `{var}` with the
@@ -139,20 +166,41 @@ export async function downloadBlob(
   if (options.signal) init.signal = options.signal
   const response = await transport.fetch(url, init)
   if (!response.ok) throw await errorFromResponse(response)
-  return readBody(response, options.onProgress)
+  return readBody(response, options.onProgress, options.maxBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES)
+}
+
+/** The error a download that exceeded its ceiling reports — see {@link DEFAULT_MAX_DOWNLOAD_BYTES}. */
+function tooLarge(limit: number, seen: number): JmapError {
+  return new JmapError(
+    `Blob download exceeds the ${String(limit)}-byte limit (stopped at ${String(seen)})`,
+  )
 }
 
 /** Reads a Response body to a single `Uint8Array`, streaming with progress when a callback is given. */
 async function readBody(
   response: Response,
-  onProgress?: (progress: BlobProgress) => void,
+  onProgress: ((progress: BlobProgress) => void) | undefined,
+  maxBytes: number,
 ): Promise<Uint8Array> {
   const header = response.headers.get('content-length')
   const total = header !== null && header !== '' ? Number(header) : undefined
   const body = response.body
+  const limited = maxBytes > 0
 
-  if (!onProgress || !body) {
+  // The cheap refusal first: a server that declares an oversized body is turned away before a
+  // single byte is read. It is only a hint — `content-length` may be absent or a lie — which is
+  // why the loop below still counts.
+  if (limited && total !== undefined && Number.isFinite(total) && total > maxBytes) {
+    throw tooLarge(maxBytes, total)
+  }
+
+  // Stream whenever the runtime gives us a body, not only when someone asked for progress. The
+  // `arrayBuffer()` branch cannot enforce a ceiling at all: by the time it resolves, the whole
+  // thing — endless or not — is already in the heap. In practice this WAS the branch every app
+  // download took, because no caller passes `onProgress` to a download.
+  if (!body) {
     const bytes = new Uint8Array(await response.arrayBuffer())
+    if (limited && bytes.byteLength > maxBytes) throw tooLarge(maxBytes, bytes.byteLength)
     onProgress?.({ loaded: bytes.byteLength, total: total ?? bytes.byteLength })
     return bytes
   }
@@ -165,7 +213,13 @@ async function readBody(
     if (done) break
     chunks.push(value)
     loaded += value.byteLength
-    onProgress({ loaded, total })
+    if (limited && loaded > maxBytes) {
+      // Cancel rather than merely stop: an abandoned reader leaves the socket draining, which is
+      // most of the cost of the attack this refuses.
+      await reader.cancel().catch(() => undefined)
+      throw tooLarge(maxBytes, loaded)
+    }
+    onProgress?.({ loaded, total })
   }
   return concatChunks(chunks, loaded)
 }

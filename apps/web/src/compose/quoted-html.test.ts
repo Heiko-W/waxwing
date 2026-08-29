@@ -101,6 +101,33 @@ describe('sanitizeQuotedHtml — the overlay family', () => {
     expect(out.join('')).not.toContain('top:0')
   })
 
+  /**
+   * The same divergence one layer deeper. A CSS comment is stripped by the browser's tokenizer
+   * before strings or parens exist, so a `"` or `(` inside one is state to the splitter and text to
+   * the browser; without the fail-closed rule the whole attribute fuses into the allowlisted
+   * `color` and the overlay rides along verbatim into the app DOM.
+   */
+  it.each([
+    ['a quote in a comment', 'color:red/*"*/;position:fixed;top:0;left:0;width:100%;height:100%'],
+    ['a paren in a comment', 'color:red/*(*/;position:fixed;top:0'],
+    ['a lone \\ in a comment', 'color:red/*\\*/;position:fixed;top:0'],
+    ['a comment before the property', '/*x*/color:red;position:fixed;top:0'],
+  ])('drops a declaration whose text carries a CSS comment — %s', (_label, css) => {
+    const out = styles(`<div style='${css}'>x</div>`).join('')
+    expect(out).not.toContain('position')
+    expect(out).not.toContain('fixed')
+  })
+
+  /**
+   * The corner a comment-AWARE splitter would have opened: inside an unquoted `url()` the browser
+   * reads `/*` as URL text, not as a comment, so the `)` still closes the token and the `;` after
+   * it still separates. The fail-closed rule leaves that split intact.
+   */
+  it('still separates after an unquoted url() that contains a comment opener', () => {
+    const out = styles('<div style="background:url(/*);position:fixed;top:0">x</div>').join('')
+    expect(out).not.toContain('position')
+  })
+
   it('keeps a top-level url() decision alone — that is mail-html’s call, not this pass’s', () => {
     expect(styles('<div style="background-image:url(\'blob:x\')">x</div>')).toEqual([
       "background-image:url('blob:x')",

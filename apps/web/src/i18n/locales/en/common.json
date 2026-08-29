@@ -108,8 +108,8 @@
       "confirm": "Remove data and sign out",
       "cancel": "Cancel"
     },
-    "switchTo": "Switch to {{name}}",
-    "add": "Add another account"
+    "switchTo": "Sign in as {{name}}",
+    "add": "Sign in to another account"
   },
   "status": {
     "offline": "Offline",
@@ -124,7 +124,8 @@
     },
     "storage": {
       "full": "Storage is full — some mail is not cached."
-    }
+    },
+    "dispatchFailed": "Could not save that action — it has not been carried out."
   },
   "settings": {
     "title": "Settings",
@@ -157,6 +158,7 @@
         "messages": "Message index (estimated)",
         "bodies": "Message bodies",
         "attachments": "Attachments",
+        "personalData": "Contacts, calendar and files",
         "other": "Other (app & offline shell)"
       },
       "description": "{{product}} keeps recent mail on this device so it opens instantly and works offline.",
@@ -1233,7 +1235,11 @@
       "subject": "Read: {{subject}}"
     },
     "fullScreen": "Open full screen",
-    "exitFullScreen": "Exit full screen"
+    "exitFullScreen": "Exit full screen",
+    "truncated": {
+      "title": "Only the beginning of this message is shown",
+      "body": "It was too large to store in full. Save it as .eml to read all of it."
+    }
   },
   "compose": {
     "toolbar": "Formatting",
@@ -1312,6 +1318,7 @@
     "sendNoRecipients": "Add at least one recipient",
     "sendNoSentMailbox": "No Sent folder — cannot send yet",
     "sendUnavailable": "Not ready to send yet — please try again in a moment",
+    "sendQueueFailed": "Could not queue the message — this device may be out of storage. Your draft is safe",
     "sendWaitUploads": "Wait for uploads to finish",
     "sendTooLarge": "Attachments are too large to send",
     "sendFixRecipients": "Fix the highlighted recipient address",

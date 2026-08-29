@@ -21,13 +21,19 @@ export type {
   UploadOptions,
   UploadResult,
 } from './blob'
-export { DEFAULT_BLOB_TYPE, downloadBlob, expandUriTemplate, uploadBlob } from './blob'
+export {
+  DEFAULT_BLOB_TYPE,
+  DEFAULT_MAX_DOWNLOAD_BYTES,
+  downloadBlob,
+  expandUriTemplate,
+  uploadBlob,
+} from './blob'
 export type { CapabilityUrn } from './capabilities'
 // Capability URNs + method → capability mapping.
 export { Capabilities, capabilityForMethod, usingForMethods } from './capabilities'
 // Auto-chunking (exposed for testing and advanced callers).
 export type { ChunkLimits, ChunkPlan } from './chunking'
-export { planRequest, reassembleResponses, sanitizeLimits } from './chunking'
+export { planRequest, reassembleResponses, sanitizeLimits, usable } from './chunking'
 // Client + connection.
 export type { CallOptions, ConnectOptions, JmapClientOptions } from './client'
 export { connect, FALLBACK_LIMITS, JmapClient } from './client'

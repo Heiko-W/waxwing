@@ -150,13 +150,27 @@ signed in.
 
 - **"Stay signed in" is opt-in and off by default**, so the ordinary case leaves no token
   behind.
-- **A bounded offline window** (`offline.cacheDays`, 30 days by default): a shared machine
-  holds a month of mail, not a decade.
+- **A bounded offline cache** (`offline.cacheDays`, together with `offline.maxStorageMB`): old
+  mail is evicted rather than kept for ever, so a shared machine holds a bounded window and not
+  a decade. Two things to be exact about, because both changed after this section was first
+  written. The number is a DEFAULT the reader can raise or lower for their own device
+  (`app/offline-prefs.ts`), and since ADR-030 it bounds EVICTION only — it no longer decides what
+  a folder shows. The shipped default is stated once, in
+  [`docs/configuration.md`](docs/configuration.md), rather than repeated here where it drifted:
+  this document said 30 days for months while 90 was being installed.
+
+  **What it does and does not reach.** The horizon prunes mail — envelopes, bodies, attachments.
+  Contacts and the file tree are the address book and the drive as the server holds them, not a
+  cache of them, so they stay until you sign out and remove data: they are bounded by the account,
+  not by a number of days. Calendar windows and the occurrences they expand ARE cached and are
+  reaped like any other window.
 - **Two sign-outs, and the difference is the point.** Plain *Sign out* ends the session and
   stops the sync engines but **leaves the local replica in place**, so signing back in does
   not re-download a month of mail. ***Sign out & remove data*** (FR-AUTH-05) additionally
-  wipes every IndexedDB database, Cache Storage, and the service-worker registrations for the
-  origin — and, less obviously, closes the notification banners this app put on the operating
+  wipes every IndexedDB database, Cache Storage, the service-worker registrations for the
+  origin, and both web storages — including the account registry, which is the list of mailbox
+  addresses that have signed in on this browser — and, less obviously, closes the notification
+  banners this app put on the operating
   system's screen and cancels the Web Push subscription on the server. Both of those outlive
   a sign-out otherwise: banners reading a sender's name and subject sit in the notification
   centre across a browser restart, and a live subscription keeps waking the machine to
@@ -170,8 +184,10 @@ not, *Sign out & remove data* is the way out.
 Ticking **"Public or shared computer"** on the sign-in screen (FR-AUTH-09) puts the local
 replica in a one-off database named `waxwing-replica-eph-<random>`, and removes it three ways:
 
-1. **Sign-out** — either menu item wipes it. There is no "keep my cache" variant in this mode,
-   because the whole point is not depending on the user picking the right item on the way out.
+1. **Sign-out** — either menu item wipes it, and both also clear this origin's web storages, so
+   the server you read mail on does not stay behind either. There is no "keep my cache" variant in
+   this mode, because the whole point is not depending on the user picking the right item on the
+   way out.
 2. **`pagehide`** — a best-effort delete when the tab closes. Browsers give a page very little
    time here and `deleteDatabase` is not guaranteed to finish, which is why it is not alone.
 3. **The next start** — Waxwing deletes every leftover ephemeral database before opening a
@@ -179,11 +195,27 @@ replica in a one-off database named `waxwing-replica-eph-<random>`, and removes 
    Waxwing next on that machine clears the previous person's mail before they could look at it.
 
 It also turns "Stay signed in" off and holds it off: the two make contradictory promises, and
-leaving both on would put a refresh token on the machine you just said was not yours.
+leaving both on would put a refresh token on the machine you just said was not yours. The same
+reasoning keeps the session out of the **account registry** — the `localStorage` list of mailboxes
+that have signed in on this browser, which the account menu reads. That list holds no secret, but
+it does hold an address and a server, it outlives every replica this mode throws away, and offering
+"switch to alice@example.com" to the next person at the terminal is exactly the disclosure the box
+promises against.
+
+Re-authenticating mid-session (an expired or revoked refresh token) keeps the mode: it is a
+full-page redirect, so the choice rides across in tab-scoped storage rather than in memory.
 
 **The gap, stated rather than implied:** between a crash and that next start, the mail is on
 disk. There is no browser primitive for "delete this database when the tab dies", and IndexedDB
 offers no in-memory mode. The sign-in screen says as much where you tick the box.
+
+**A second gap, and it is not one this app can close: the BROWSER'S OWN HISTORY.** Every route
+Waxwing navigates to is a URL, and a URL is a history entry — `…/mail/inbox?q=from:lawyer%20notice`
+names a search, a folder path names a folder, and the document title goes with it. No web
+application can delete a browser's history, so this survives all three removal paths above, which
+only reach storage this origin owns. The next person at the machine needs nothing but Ctrl+H. If
+that matters for your situation, use a private/incognito window — which discards history, storage
+and cache together when the window closes — or clear the browsing history on the way out.
 
 **Limits, and they matter more than the defences.**
 
