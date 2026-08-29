@@ -1939,30 +1939,57 @@ export async function enqueueAction(
   intent: OutboxIntent,
   options: EnqueueOptions,
 ): Promise<{ id: Id; undo: OutboxUndo }> {
-  const undo = await applyOptimistic(db, accountId, intent)
-  // What was here before this row, if anything. Drafts reuse one id so a later save coalesces with
-  // an earlier one; the stamp is what lets replay tell "the row I claimed" from "the row that
-  // replaced it while I was away" (see `OutboxRow.seq`).
-  const previous = await db.outbox.get([accountId, options.id])
-  const row: OutboxRow = {
-    accountId,
-    id: options.id,
-    type: intent.kind,
-    payload: intent,
-    ifInState: options.ifInState ?? null,
-    status: 'pending',
-    attempts: 0,
-    createdAt: options.now,
-    lastError: null,
-    notBefore: options.notBefore ?? null,
-    nextAttemptAt: null,
-    undo,
-    conflict: null,
-    refreshes: 0,
-    seq: (previous?.seq ?? 0) + 1,
-  }
-  await enqueue(db, row)
-  return { id: options.id, undo }
+  // ONE transaction over both halves (W-31).
+  //
+  // The optimistic mutation and the outbox row that carries its UNDO are the same fact, and they
+  // were two separate commits: a tab that died between them left the replica changed with no row,
+  // no undo and no dead letter behind it — nothing to replay, nothing to roll back, and nothing
+  // that would ever say so. The window is sub-millisecond, which is why this is a low finding and
+  // not a high one; it is also why the fix is cheap. This module already argues the identical point
+  // for the envelope patch and the window edit inside `applyOptimistic`, and `retryFailed` holds
+  // its own claim and undo together for the same reason.
+  //
+  // The tables `applyOptimistic` can touch, plus the outbox — NOT `db.tables`. Dexie needs the
+  // outer scope to be a superset of every nested one, and `db.tables` satisfies that trivially; it
+  // also takes a write lock on the contact, calendar and file tables that this path never writes,
+  // which serialises a sync pass behind every click. `outbox.contacts.test.ts` and the chaos suite
+  // both notice.
+  return db.transaction(
+    'rw',
+    db.emails,
+    db.emailBodies,
+    db.queryCache,
+    db.mailboxes,
+    db.contactCards,
+    db.addressBooks,
+    db.outbox,
+    async () => {
+      const undo = await applyOptimistic(db, accountId, intent)
+      // What was here before this row, if anything. Drafts reuse one id so a later save coalesces
+      // with an earlier one; the stamp is what lets replay tell "the row I claimed" from "the row
+      // that replaced it while I was away" (see `OutboxRow.seq`).
+      const previous = await db.outbox.get([accountId, options.id])
+      const row: OutboxRow = {
+        accountId,
+        id: options.id,
+        type: intent.kind,
+        payload: intent,
+        ifInState: options.ifInState ?? null,
+        status: 'pending',
+        attempts: 0,
+        createdAt: options.now,
+        lastError: null,
+        notBefore: options.notBefore ?? null,
+        nextAttemptAt: null,
+        undo,
+        conflict: null,
+        refreshes: 0,
+        seq: (previous?.seq ?? 0) + 1,
+      }
+      await enqueue(db, row)
+      return { id: options.id, undo }
+    },
+  )
 }
 
 // ---------------------------------------------------------------------------------------------

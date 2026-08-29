@@ -391,6 +391,21 @@ describe('a card whose own strings are object keys', () => {
     expect(Object.keys(phone?.contexts ?? {})).toEqual(['private'])
   })
 
+  /**
+   * `bucket.push(...values)` spreads a FILE-controlled list into an argument list, which blows the
+   * call stack at around 125k entries — out of a lexer whose contract, and `fromVCard`'s, is
+   * "never throws". The whole import then failed with a generic "failed" rather than importing the
+   * good cards and reporting the bad line (W-29).
+   */
+  it('survives a repeated parameter with a pathological number of values', () => {
+    const many = Array.from({ length: 200_000 }, (_, i) => `t${String(i)}`).join(',')
+    const vcard = card(`TEL;TYPE=work;TYPE=${many}:+49 5246 963 0`)
+
+    // The point is that this RETURNS rather than throwing; what it returns is secondary.
+    const result = fromVCard(vcard)
+    expect(result.cards).toHaveLength(1)
+  })
+
   it('still honours an ordinary PROP-ID — the counter-test', () => {
     const result = importOne(card('EMAIL;PROP-ID=e7:victim@example.com'))
     expect(Object.keys(result.emails ?? {})).toEqual(['e7'])

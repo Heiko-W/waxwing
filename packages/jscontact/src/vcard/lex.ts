@@ -233,7 +233,13 @@ export function parseContentLines(text: string): ParseResult {
       const values = eq === -1 ? [part.trim()] : paramValues(part.slice(eq + 1))
       const bucket = params.get(key)
       if (bucket === undefined) params.set(key, values)
-      else bucket.push(...values)
+      // Element by element, NOT `push(...values)`. The spread passes every element as a separate
+      // argument, and `values` comes straight out of the file: `TYPE=<300k comma-separated values>`
+      // blew the call stack with a `RangeError` at around 125k, out of a function whose contract —
+      // and `fromVCard`'s — is "never throws". The whole import then failed with a generic
+      // "failed" instead of importing the good cards and reporting the bad line. `packages/jmap`
+      // avoids the same anti-pattern by name in `appendAll()`.
+      else for (const value of values) bucket.push(value)
     }
 
     lines.push({ group, name, params, value: split.value })

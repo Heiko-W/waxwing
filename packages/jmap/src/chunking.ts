@@ -76,9 +76,20 @@ export function sanitizeLimits(
   }
 }
 
-/** `value` if it is a limit that can actually be honoured (integer > 0), else `fallback`. */
-function usable(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isInteger(value) && value > 0 ? value : fallback
+/**
+ * `value` if it is a limit that can actually be honoured (integer > 0), else `fallback`.
+ *
+ * Exported because the two limits this module does NOT chunk on — `maxSizeUpload` and
+ * `maxConcurrentUpload` — were read straight out of the session with `??`, which only replaces
+ * `null`/`undefined`. A server advertising `maxSizeUpload: 0` therefore made every attachment
+ * "too large", under a toast reading `formatBytes(0)`; a string value made the size comparison a
+ * no-op. Same failure class as the four limits below, and now the same guard (W-28).
+ *
+ * `unknown` rather than `number | undefined`: the value comes from a server's JSON, and the type
+ * that says so is the one that makes the runtime check honest.
+ */
+export function usable(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback
 }
 
 interface LogicalCall {

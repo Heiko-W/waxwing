@@ -128,10 +128,23 @@ async function walk(reference, trail) {
   if (visited.has(reference)) return
   visited.add(reference)
 
+  // Both of these used to `return` silently while `resolved` had already been counted, so the
+  // closing line reported "N action references resolved … all pinned" for an action whose
+  // definition was never read. That is the one check that notices a composite action reaching a
+  // movable tag from inside a job holding `contents: write` — a fail-open there is the opposite of
+  // its purpose, and this file's own header says an unreachable API is a FAILURE, not a skip.
   const parsed = parse(reference)
-  if (parsed === null) return
+  if (parsed === null) {
+    problems.push(chain(trail, `${reference} — not a reference this checker can parse`))
+    return
+  }
   const definition = await fetchDefinition(parsed)
-  if (definition === null) return
+  if (definition === null) {
+    problems.push(
+      chain(trail, `${reference} — neither action.yml nor action.yaml could be read (404)`),
+    )
+    return
+  }
   // Only a composite action can carry a `uses:` of its own. `node20`/`docker` actions cannot.
   if (!/^\s*using:\s*['"]?composite/m.test(definition)) return
 

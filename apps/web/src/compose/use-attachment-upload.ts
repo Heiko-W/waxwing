@@ -16,6 +16,7 @@ import {
   getCoreCapability,
   getMailCapability,
   type JmapClient,
+  usable,
 } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -138,9 +139,13 @@ export function useAttachmentUpload(
   const limits = useMemo<ValidationLimits>(() => {
     if (options?.limits) return options.limits
     const jmapSession = session?.jmapSession
-    const maxSizeUpload =
-      (jmapSession ? getCoreCapability(jmapSession)?.maxSizeUpload : undefined) ??
-      FALLBACK_MAX_UPLOAD
+    // `usable`, not `??`: the value is a server's JSON, and `??` only replaces null/undefined —
+    // `maxSizeUpload: 0` made every attachment "too large" under a `formatBytes(0)` toast, and a
+    // string made the comparison in `validateFile` a no-op (W-28).
+    const maxSizeUpload = usable(
+      jmapSession ? getCoreCapability(jmapSession)?.maxSizeUpload : undefined,
+      FALLBACK_MAX_UPLOAD,
+    )
     const mailCap =
       jmapSession && session ? getMailCapability(jmapSession, session.accountId) : null
     return {
@@ -152,7 +157,7 @@ export function useAttachmentUpload(
   useEffect(() => {
     const jmapSession = session?.jmapSession
     setUploadConcurrency(
-      (jmapSession ? getCoreCapability(jmapSession)?.maxConcurrentUpload : undefined) ?? 4,
+      usable(jmapSession ? getCoreCapability(jmapSession)?.maxConcurrentUpload : undefined, 4),
     )
   }, [session])
 
