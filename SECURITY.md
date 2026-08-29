@@ -155,8 +155,10 @@ signed in.
 - **Two sign-outs, and the difference is the point.** Plain *Sign out* ends the session and
   stops the sync engines but **leaves the local replica in place**, so signing back in does
   not re-download a month of mail. ***Sign out & remove data*** (FR-AUTH-05) additionally
-  wipes every IndexedDB database, Cache Storage, and the service-worker registrations for the
-  origin — and, less obviously, closes the notification banners this app put on the operating
+  wipes every IndexedDB database, Cache Storage, the service-worker registrations for the
+  origin, and both web storages — including the account registry, which is the list of mailbox
+  addresses that have signed in on this browser — and, less obviously, closes the notification
+  banners this app put on the operating
   system's screen and cancels the Web Push subscription on the server. Both of those outlive
   a sign-out otherwise: banners reading a sender's name and subject sit in the notification
   centre across a browser restart, and a live subscription keeps waking the machine to
@@ -179,7 +181,15 @@ replica in a one-off database named `waxwing-replica-eph-<random>`, and removes 
    Waxwing next on that machine clears the previous person's mail before they could look at it.
 
 It also turns "Stay signed in" off and holds it off: the two make contradictory promises, and
-leaving both on would put a refresh token on the machine you just said was not yours.
+leaving both on would put a refresh token on the machine you just said was not yours. The same
+reasoning keeps the session out of the **account registry** — the `localStorage` list of mailboxes
+that have signed in on this browser, which the account menu reads. That list holds no secret, but
+it does hold an address and a server, it outlives every replica this mode throws away, and offering
+"switch to alice@example.com" to the next person at the terminal is exactly the disclosure the box
+promises against.
+
+Re-authenticating mid-session (an expired or revoked refresh token) keeps the mode: it is a
+full-page redirect, so the choice rides across in tab-scoped storage rather than in memory.
 
 **The gap, stated rather than implied:** between a crash and that next start, the mail is on
 disk. There is no browser primitive for "delete this database when the tab dies", and IndexedDB

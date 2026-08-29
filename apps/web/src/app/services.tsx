@@ -55,16 +55,13 @@ export const defaultServices: ShellServices = {
       caches: typeof caches !== 'undefined' ? caches : undefined,
       indexedDB: typeof indexedDB !== 'undefined' ? indexedDB : undefined,
       serviceWorker: navigator.serviceWorker,
+      // The web storages too, by name-blind `clear()`: the durable connect target, the
+      // public-computer stash and every preference live there, and "reset this app" that leaves
+      // the key which is wedging the boot would be the same dead end one round later. `wipe.ts`
+      // owns that clear now, so this path and sign-out cannot drift apart.
+      localStorage: typeof localStorage !== 'undefined' ? localStorage : undefined,
+      sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
     })
-    // The web storages too, and by name-blind `clear()`: the durable connect target, the
-    // public-computer stash and every preference live there, and "reset this app" that leaves the
-    // key which is wedging the boot would be the same dead end one round later.
-    try {
-      localStorage.clear()
-      sessionStorage.clear()
-    } catch {
-      // Private mode / storage disabled: nothing was stored, nothing to clear.
-    }
     // A full navigation, not a router hop: the point is to start the app from nothing, and a
     // reload is the only thing that reliably drops the module-scoped state as well.
     window.location.reload()

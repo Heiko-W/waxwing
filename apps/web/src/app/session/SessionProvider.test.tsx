@@ -448,6 +448,33 @@ describe('SessionProvider — public-computer mode', () => {
     expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBe('true')
   })
 
+  /**
+   * The registry holds no secret but it does hold an identity, it lives in `localStorage`, and no
+   * production path ever removed a row — so a row written by a public-computer session was
+   * permanent, and the account menu offered it to the next person at the machine.
+   */
+  it('writes no account-registry row for an ephemeral session', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(localStorage.getItem('waxwing.accounts')).toBeNull()
+  })
+
+  it('writes one for an ordinary session — the counter-test', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(localStorage.getItem('waxwing.accounts')).toContain('alice')
+  })
+
   it('an ordinary callback stays on the durable replica — the counter-test', async () => {
     renderSession({ isRedirectCallback: true })
 

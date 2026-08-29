@@ -435,6 +435,8 @@ export class AuthController {
         typeof navigator !== 'undefined' && 'serviceWorker' in navigator
           ? navigator.serviceWorker
           : undefined,
+      localStorage: typeof localStorage !== 'undefined' ? localStorage : undefined,
+      sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
     }
   }
 }

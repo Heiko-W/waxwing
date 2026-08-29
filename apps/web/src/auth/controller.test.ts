@@ -6,6 +6,21 @@ import type { StartLoginResult } from './types'
 import type { WipeEnvironment } from './wipe'
 
 const created: string[] = []
+/** A `Storage` over a plain object — this project runs the auth tests in Node, without jsdom. */
+function fakeStorage(initial: Record<string, string> = {}): Storage {
+  const map = new Map(Object.entries(initial))
+  return {
+    get length() {
+      return map.size
+    },
+    clear: () => map.clear(),
+    getItem: (key: string) => map.get(key) ?? null,
+    key: (index: number) => [...map.keys()][index] ?? null,
+    removeItem: (key: string) => void map.delete(key),
+    setItem: (key: string, value: string) => void map.set(key, value),
+  }
+}
+
 function freshStore(): { store: SecretStore; dbName: string } {
   const dbName = `waxwing-auth-${crypto.randomUUID()}`
   created.push(dbName)
@@ -391,6 +406,13 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
           },
         ],
       } as unknown as ServiceWorkerContainer,
+      // The account registry lives here, and so does everything the dialog calls "settings".
+      localStorage: fakeStorage({
+        'waxwing.accounts': '{"accounts":[{"scope":"s","username":"alice@example.com"}]}',
+        'waxwing.theme': 'dark',
+        'waxwing.ephemeralDbs': '["waxwing-replica-eph-1"]',
+      }),
+      sessionStorage: fakeStorage({ 'waxwing.onboard.target': '{}' }),
     }
 
     const controller = new AuthController({ store, wipe })
@@ -410,6 +432,15 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
     expect(deletedDbs).toEqual(['app-replica'])
     expect(unregistered).toBe(2)
     expect(dbName).toBeTruthy()
+    // The registry is an identity — mailbox address and server origin of whoever signed in here —
+    // and no production path removed a row before this. "Remove data" that leaves it hands the
+    // next person at the machine a "switch to alice@example.com" entry in the account menu.
+    expect(wipe.localStorage?.getItem('waxwing.accounts')).toBeNull()
+    expect(wipe.localStorage?.getItem('waxwing.theme')).toBeNull()
+    expect(wipe.sessionStorage?.getItem('waxwing.onboard.target')).toBeNull()
+    // The one exception, and it is not user data: without `databases()` (Firefox) this index is
+    // the only way to find the throwaway replicas still awaiting a sweep.
+    expect(wipe.localStorage?.getItem('waxwing.ephemeralDbs')).toBe('["waxwing-replica-eph-1"]')
   })
 
   it('plain sign-out drops credentials but does not touch app data', async () => {

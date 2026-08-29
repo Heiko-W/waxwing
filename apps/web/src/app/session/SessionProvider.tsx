@@ -18,7 +18,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } f
 import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError } from '../../auth'
 import { deriveScope } from '../../auth/account-registry'
-import { registerAccount } from '../../auth/use-account-registry'
+import { registerAccount, reloadAccountRegistry } from '../../auth/use-account-registry'
 import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
@@ -709,6 +709,10 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         controllerIssuerRef.current = null
         // Back to the durable default, and give up the ephemeral claim, so the next sign-in in this
         // page load starts from a clean slate in BOTH directions (FR-AUTH-09).
+        // The registry lives in `localStorage` and the wipe above cleared it there — but this
+        // store is module-scoped and still holds the old rows in memory, so the next `emit` (a
+        // sign-in, a switch) would write them straight back out. Re-read instead of assuming.
+        reloadAccountRegistry()
         ephemeralRef.current = false
         releaseEphemeralClaim()
         resetReplica()
@@ -765,6 +769,11 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   const connectedForRegistry = state.status === 'ready' ? state.connected : null
   useEffect(() => {
     if (connectedForRegistry === null) return
+    // Not in public-computer mode (FR-AUTH-09). The registry holds no secret, but it does hold an
+    // IDENTITY — mailbox address and server origin — and it is in `localStorage`, which outlives
+    // every replica this mode throws away. Writing it here put "switch to alice@example.com" in
+    // the next person's account menu on a machine where the box promising the opposite was ticked.
+    if (ephemeralRef.current) return
     let origin: string | null = null
     try {
       origin = new URL(connectedForRegistry.jmapSession.apiUrl, window.location.href).origin
