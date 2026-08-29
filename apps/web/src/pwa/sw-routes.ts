@@ -99,6 +99,17 @@ export function appRoot(workerHref: string): string {
  */
 export function isDeploymentConfig(url: URL, sameOrigin: boolean, root: string): boolean {
   if (!sameOrigin) return false
+  // A query string disqualifies it. The Cache API keys on the FULL url, so `/config.json?1` … `?8`
+  // are eight distinct entries that all match this predicate — and the strategy holds
+  // `maxEntries: 8`, so those eight evict the real `config.json`, `theme.css` and `manifest.json`
+  // by LRU. Reachable from a message: path-absolute `<img src="/config.json?N">` survives
+  // sanitising untouched, and once the reader releases remote content the frame CSP allows
+  // same-origin images, inside a srcdoc document that shares this app's origin and service worker.
+  // The next offline start then boots on DEFAULT_CONFIG — no hoster branding, and
+  // `allowCustomServer` back to `true`, which puts a server field in front of a user who never had
+  // one. Anchoring on an empty search is the smallest change and matches this module's
+  // "anchor, don't deny-list" argument (W-35).
+  if (url.search !== '') return false
   return DEPLOYMENT_FILES.some((file) => url.pathname === root + file)
 }
 

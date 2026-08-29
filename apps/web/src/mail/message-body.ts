@@ -55,12 +55,32 @@ export interface CidPart {
   readonly name: string | null
 }
 
+/**
+ * How deep a `bodyStructure` walk goes, and how many parts it visits, before it stops.
+ *
+ * Both walks below recurse over a structure whose SHAPE is chosen elsewhere: `bodyStructure` is the
+ * server's parse of the MIME tree, and the MIME tree came from whoever sent the message. `JSON.parse`
+ * in V8 is iterative and hands back 50 000 levels intact, so nothing upstream trips first — the
+ * recursion is where the stack goes, as an untyped `RangeError` that takes the sync step or the
+ * message view with it.
+ *
+ * Both bounds are far above any real message: the deepest legitimate nesting is a handful of levels
+ * (`multipart/mixed` → `multipart/alternative` → `multipart/related`), and a mail with more than ten
+ * thousand parts is not one anybody is reading. Parts beyond the limit are ignored rather than
+ * failing the walk, because half a list of inline images still renders a message and an exception
+ * renders nothing.
+ */
+const MAX_PART_DEPTH = 64
+const MAX_PART_NODES = 10_000
+
 /** Every inline part with a `cid` AND a `blobId`, walking the structure/htmlBody/attachments. */
 export function collectCidParts(body: RenderableBody): CidPart[] {
   const out: CidPart[] = []
   const seen = new Set<string>()
-  const visit = (part: EmailBodyPart | undefined): void => {
-    if (!part) return
+  let visited = 0
+  const visit = (part: EmailBodyPart | undefined, depth: number): void => {
+    if (!part || depth > MAX_PART_DEPTH || visited >= MAX_PART_NODES) return
+    visited += 1
     if (part.cid !== null && part.blobId !== null && !seen.has(part.cid)) {
       seen.add(part.cid)
       out.push({
@@ -70,11 +90,11 @@ export function collectCidParts(body: RenderableBody): CidPart[] {
         name: part.name,
       })
     }
-    for (const sub of part.subParts ?? []) visit(sub)
+    for (const sub of part.subParts ?? []) visit(sub, depth + 1)
   }
-  visit(body.bodyStructure)
-  for (const part of body.htmlBody) visit(part)
-  for (const part of body.attachments) visit(part)
+  visit(body.bodyStructure, 0)
+  for (const part of body.htmlBody) visit(part, 0)
+  for (const part of body.attachments) visit(part, 0)
   return out
 }
 

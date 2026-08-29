@@ -46,6 +46,26 @@ describe('sw-routes — the JMAP invariant', () => {
     }
   })
 
+  /**
+   * The Cache API keys on the FULL url, so `?1` … `?8` are eight entries — and the strategy holds
+   * `maxEntries: 8`, which is exactly enough to evict `config.json`, `theme.css` and
+   * `manifest.json` by LRU. A message can reach it: path-absolute `<img src="/config.json?N">`
+   * passes the sanitiser untouched, and after the reader releases remote content the frame CSP
+   * allows same-origin images from a srcdoc document that shares this app's service worker. The
+   * next offline start then boots on DEFAULT_CONFIG (W-35).
+   */
+  it('does not cache a deployment file that carries a query string', () => {
+    for (const root of ROOTS) {
+      for (const file of ['config.json', 'theme.css', 'manifest.json']) {
+        expect(isDeploymentConfig(at(`${root}${file}`), true, root), `${root}${file}`).toBe(true)
+        expect(isDeploymentConfig(at(`${root}${file}?1`), true, root), `${root}${file}?1`).toBe(
+          false,
+        )
+        expect(isDeploymentConfig(at(`${root}${file}?v=cachebust`), true, root)).toBe(false)
+      }
+    }
+  })
+
   it('does not cache an ATTACHMENT that merely happens to be named like a deployment file', () => {
     // The filename in a download URL is chosen by whoever SENT the mail. A basename match would hand
     // an authenticated attachment straight into Cache Storage — plaintext, outside the SecretStore,

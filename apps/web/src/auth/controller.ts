@@ -346,6 +346,21 @@ export class AuthController {
    * OAuth the access token is fetched lazily on first {@link getAccessToken}; for Basic the
    * persisted (opt-in) credentials are re-loaded. Returns `null` when nothing is persisted.
    */
+  /** Drop a {@link PkceTransaction} older than {@link PKCE_MAX_AGE_MS}; unreadable ones too. */
+  private async sweepStalePkce(): Promise<void> {
+    const raw = await this.store.get(SecretName.PkceTransaction).catch(() => null)
+    if (!raw) return
+    let stale = true
+    try {
+      const transaction = JSON.parse(raw) as PkceTransaction
+      stale =
+        transaction.createdAt === undefined || this.now() - transaction.createdAt > PKCE_MAX_AGE_MS
+    } catch {
+      // Unparseable: no callback will ever consume it either.
+    }
+    if (stale) await this.store.delete(SecretName.PkceTransaction).catch(() => undefined)
+  }
+
   /** The persisted {@link AuthRecord}, or `null` when there is none or it is unreadable. */
   private async readAuthRecord(): Promise<AuthRecord | null> {
     const raw = await this.store.get(SecretName.AuthRecord)
@@ -359,6 +374,14 @@ export class AuthController {
   }
 
   async restore(): Promise<AuthSession | null> {
+    // Sweep an abandoned authorization on the way past (W-36). A user who walks away at the IdP —
+    // or a browser that dies there — leaves `code_verifier`, `state` and the resolved OAuth config
+    // in the DURABLE store, and nothing ever collected them: the age check only runs when a
+    // callback arrives to consume the transaction, and in public-computer mode no callback comes.
+    // The verifier is worthless without its code; what stays behind is the metadata — who tried to
+    // sign in, and where — which is exactly what that mode promises not to leave. `restore()` is
+    // the right place: it runs once per cold start, before anything else touches this store.
+    await this.sweepStalePkce()
     const record = await this.readAuthRecord()
     if (record === null) return null
     if (record.method === 'basic') {

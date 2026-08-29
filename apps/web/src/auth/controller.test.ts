@@ -430,6 +430,53 @@ describe('AuthController — switching sign-in method clears the other secret', 
  * XSS involved: tab 1 signed in to server X, someone signs in to server Y in tab 2 and overwrites
  * the token, and an hour later tab 1's refresh POSTs Y's token to X's endpoint.
  */
+/**
+ * An authorization nobody finished (W-36). The age check only runs when a callback arrives to
+ * consume the transaction — and in public-computer mode no callback ever comes, so `code_verifier`,
+ * `state` and the resolved OAuth config stayed in the durable store together with the database and
+ * wrapping key they created. The verifier is worthless without its code; what remains is the
+ * metadata about who tried to sign in where, which is what that mode exists to avoid leaving.
+ */
+describe('AuthController — an abandoned PKCE transaction is swept', () => {
+  const transaction = (createdAt: number | undefined) =>
+    JSON.stringify({
+      state: 's',
+      codeVerifier: 'v',
+      config: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      ...(createdAt === undefined ? {} : { createdAt }),
+    })
+
+  it('drops one older than the maximum age on the next cold start', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.PkceTransaction, transaction(1_000_000))
+    const controller = new AuthController({ store, now: () => 1_000_000 + 31 * 60_000 })
+
+    await controller.restore()
+
+    expect(await store.get(SecretName.PkceTransaction)).toBeNull()
+  })
+
+  it('drops an unparseable one too — no callback will consume it either', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.PkceTransaction, '{not json')
+    const controller = new AuthController({ store })
+
+    await controller.restore()
+
+    expect(await store.get(SecretName.PkceTransaction)).toBeNull()
+  })
+
+  it('keeps a FRESH one — a redirect may still be in flight', async () => {
+    const { store } = freshStore()
+    await store.put(SecretName.PkceTransaction, transaction(1_000_000))
+    const controller = new AuthController({ store, now: () => 1_000_000 + 60_000 })
+
+    await controller.restore()
+
+    expect(await store.get(SecretName.PkceTransaction)).not.toBeNull()
+  })
+})
+
 describe('AuthController — a refresh token belongs to one issuer', () => {
   it('refuses to send a token whose AuthRecord names a different issuer', async () => {
     const idp = fakeIdp()

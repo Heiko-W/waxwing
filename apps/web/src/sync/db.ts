@@ -324,20 +324,30 @@ export function estimateBlobBytes(row: Pick<BlobMetaRow, 'data' | 'size'>): numb
   return BLOB_META_OVERHEAD_BYTES
 }
 
+/**
+ * Bounds on the `bodyStructure` walk below — see `mail/message-body.ts`, which carries the same two
+ * for the same reason: the structure's shape comes from the message, and unbounded recursion over
+ * it is a `RangeError` in the middle of a sync write.
+ */
+const MAX_PART_DEPTH = 64
+const MAX_PART_NODES = 10_000
+
 /** Every blobId a body references (attachments + inline `cid:` parts), deduped — see `ablob`. */
 export function collectBodyBlobIds(
   row: Pick<EmailBodyRow, 'bodyStructure' | 'textBody' | 'htmlBody' | 'attachments'>,
 ): Id[] {
   const out = new Set<Id>()
-  const visit = (part: EmailBodyPart | undefined): void => {
-    if (!part) return
+  let visited = 0
+  const visit = (part: EmailBodyPart | undefined, depth: number): void => {
+    if (!part || depth > MAX_PART_DEPTH || visited >= MAX_PART_NODES) return
+    visited += 1
     if (part.blobId !== null && part.blobId !== undefined) out.add(part.blobId)
-    for (const sub of part.subParts ?? []) visit(sub)
+    for (const sub of part.subParts ?? []) visit(sub, depth + 1)
   }
-  visit(row.bodyStructure)
-  for (const part of row.textBody ?? []) visit(part)
-  for (const part of row.htmlBody ?? []) visit(part)
-  for (const part of row.attachments ?? []) visit(part)
+  visit(row.bodyStructure, 0)
+  for (const part of row.textBody ?? []) visit(part, 0)
+  for (const part of row.htmlBody ?? []) visit(part, 0)
+  for (const part of row.attachments ?? []) visit(part, 0)
   return [...out]
 }
 
