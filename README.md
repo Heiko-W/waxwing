@@ -104,15 +104,39 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
 
 ## Status
 
-**v0.21.0 — feature-complete, and deliberately not 1.0 yet.**
+**v0.22.0 — feature-complete, and deliberately not 1.0 yet.**
 
-Every planned work package is done and the release gate is signed off: 5 221 unit tests, 20
-integration tests against a live Stalwart, and 246 end-to-end tests across the **seven** Playwright
+Every planned work package is done and the release gate is signed off: 5 304 unit tests, 20
+integration tests against a live Stalwart, and 249 end-to-end tests across the **seven** Playwright
 suites the gate runs. The seventh is WebKit, which used to run beside the gate rather than in it —
 see below. Performance and accessibility are measured rather than asserted — the numbers are in the
 [implementation plan](docs/implementation-plan.md).
 
-**v0.21.0 is twelve more languages** — `cs es fr it ja nl pl pt ru tr uk zh`, fourteen in all.
+**v0.22.0 is a security and implementation review, worked to the end.** Forty findings from a
+review in seven dimensions — each one adversarially re-checked before it was believed, and each fix
+pinned by a regression test that goes red when the fix is removed. The full list, with what was
+found and what was decided, is in
+[`docs/reviews/2026-08-29-security-code-review.md`](docs/reviews/2026-08-29-security-code-review.md).
+
+The two that mattered most were both about a promise the code did not keep:
+
+- **A CSS comment walked through the inline-style allowlist.** The browser's tokenizer strips
+  comments before strings or parens exist, so a `"` inside one opened a string state the splitter
+  had and the browser did not — after which no `;` was a declaration boundary and the whole
+  attribute fused into one allowlisted `color`, carrying a full-screen `position:fixed` overlay
+  with it. In the composer's quote path that lands in the app's own DOM.
+- **Re-authenticating destroyed public-computer mode.** The choice rode in memory, re-auth is a
+  full-page redirect, and one click on "sign in again" at a shared terminal wrote a 30-day refresh
+  token back to disk under a checkbox promising the opposite.
+
+Two findings are deliberately only half-fixed, and say so where it matters:
+[ADR-037](docs/adr/037-the-account-switcher-ships-without-store-isolation.md) records that the
+account switcher ships without the per-account store ADR-004 designed — the credential path is
+closed, the menu now says "Sign in as …" rather than pretending the switch is free — and the
+cache reaper prunes calendar occurrences but not contact cards, because a card is the address book
+rather than a cached view of it.
+
+**v0.21.0 was twelve more languages** — `cs es fr it ja nl pl pt ru tr uk zh`, fourteen in all.
 
 A Stalwart operator asked for Russian, and asked in the same sentence whether they should fork the
 project to get it ([#50](https://github.com/Heiko-W/waxwing/issues/50)). `docs/translating.md` had
