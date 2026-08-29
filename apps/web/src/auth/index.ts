@@ -43,4 +43,4 @@ export type {
   StartLoginResult,
 } from './types'
 export type { WipeEnvironment } from './wipe'
-export { wipeLocalData } from './wipe'
+export { wipeLocalData, wipeWebStorage } from './wipe'

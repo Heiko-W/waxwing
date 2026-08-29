@@ -475,6 +475,65 @@ describe('SessionProvider — public-computer mode', () => {
     expect(localStorage.getItem('waxwing.accounts')).toContain('alice')
   })
 
+  /**
+   * Re-reading the registry after the wipe must not write it back (found by the end-to-end
+   * web-storage assertion, not by the unit test that stopped at `wipeLocalData`).
+   *
+   * `endSession` re-reads it so the module-scoped store cannot resurrect the old rows from memory
+   * — and the re-read went through `emit`, which PERSISTS. That re-created `waxwing.accounts`
+   * moments after "remove data" deleted it: an empty value, but a key, and "this origin holds a
+   * Waxwing account list" is exactly the statement the wipe removes.
+   */
+  it('leaves no account-registry key behind after signing out and removing data', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(localStorage.getItem('waxwing.accounts')).not.toBeNull()
+
+    localStorage.clear() // what `wipeLocalData` does to this origin
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    expect(localStorage.getItem('waxwing.accounts')).toBeNull()
+  })
+
+  /**
+   * A PLAIN sign-out, which is the whole point: the mode's promise is that leaving does not depend
+   * on the user finding the second menu item. `wipeLocalData` only runs on the explicit "remove
+   * data" path, so `waxwing.connect.target` — which server this person reads mail on — used to
+   * stay behind for the next person at the terminal.
+   */
+  it('clears the web storages on a plain sign-out from an ephemeral session', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    localStorage.setItem('waxwing.connect.target', '{"origin":"https://mail.example"}')
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    expect(localStorage.getItem('waxwing.connect.target')).toBeNull()
+  })
+
+  it("leaves a DURABLE session's preferences alone on a plain sign-out — the counter-test", async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    localStorage.setItem('waxwing.theme', 'dark')
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    // Plain sign-out is a session boundary, not a data one — see SECURITY.md §3.
+    expect(localStorage.getItem('waxwing.theme')).toBe('dark')
+  })
+
   it('an ordinary callback stays on the durable replica — the counter-test', async () => {
     renderSession({ isRedirectCallback: true })
 

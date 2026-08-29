@@ -184,8 +184,10 @@ not, *Sign out & remove data* is the way out.
 Ticking **"Public or shared computer"** on the sign-in screen (FR-AUTH-09) puts the local
 replica in a one-off database named `waxwing-replica-eph-<random>`, and removes it three ways:
 
-1. **Sign-out** — either menu item wipes it. There is no "keep my cache" variant in this mode,
-   because the whole point is not depending on the user picking the right item on the way out.
+1. **Sign-out** — either menu item wipes it, and both also clear this origin's web storages, so
+   the server you read mail on does not stay behind either. There is no "keep my cache" variant in
+   this mode, because the whole point is not depending on the user picking the right item on the
+   way out.
 2. **`pagehide`** — a best-effort delete when the tab closes. Browsers give a page very little
    time here and `deleteDatabase` is not guaranteed to finish, which is why it is not alone.
 3. **The next start** — Waxwing deletes every leftover ephemeral database before opening a

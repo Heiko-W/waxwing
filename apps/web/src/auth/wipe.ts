@@ -48,7 +48,7 @@ async function clearServiceWorkers(container: ServiceWorkerContainer | undefined
 }
 
 /**
- * The web storages, by name-blind `clear()` — the same call the U2 reset path makes.
+ * Clear both web storages, by name-blind `clear()` — the same call the U2 reset path makes.
  *
  * This step was missing, and what it left behind was not settings but IDENTITY: the account
  * registry (`waxwing.accounts`) holds the mailbox address and server origin of everyone who has
@@ -65,6 +65,13 @@ async function clearServiceWorkers(container: ServiceWorkerContainer | undefined
  * loop above cannot enumerate them and this index is the only remaining way to find them — losing
  * it would strand exactly the databases a public-computer session created.
  */
+export function wipeWebStorage(
+  env: Pick<WipeEnvironment, 'localStorage' | 'sessionStorage'>,
+): void {
+  clearWebStorage(env.localStorage, [EPHEMERAL_INDEX_KEY])
+  clearWebStorage(env.sessionStorage, [])
+}
+
 function clearWebStorage(storage: Storage | undefined, keep: readonly string[]): void {
   if (!storage) return
   try {
@@ -84,6 +91,5 @@ export async function wipeLocalData(env: WipeEnvironment): Promise<void> {
   ])
   // After the databases, not alongside them: the sweep index above is only worth keeping once the
   // enumerating wipe has had its turn.
-  clearWebStorage(env.localStorage, [EPHEMERAL_INDEX_KEY])
-  clearWebStorage(env.sessionStorage, [])
+  wipeWebStorage(env)
 }

@@ -16,7 +16,7 @@ import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
 import { httpStatusOf, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
-import { AuthConfigError, AuthExpiredError } from '../../auth'
+import { AuthConfigError, AuthExpiredError, wipeWebStorage } from '../../auth'
 import { deriveScope } from '../../auth/account-registry'
 import { registerAccount, reloadAccountRegistry } from '../../auth/use-account-registry'
 import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
@@ -685,6 +685,16 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         if (wipeData || ephemeralRef.current) {
           await wipeReplica(getReplica()).catch(() => {
             incomplete = true
+          })
+          // The web storages go with it, and for the ephemeral half that is the whole promise of
+          // the mode: leaving must not depend on picking the right menu item. `wipeLocalData` only
+          // runs on the explicit "remove data" path, so a plain sign-out from a public-computer
+          // session used to leave `waxwing.connect.target` — which server this person reads mail
+          // on — sitting in `localStorage` for the next one. (`waxwing.ephemeralDbs` survives; see
+          // `wipe.ts` for why.)
+          wipeWebStorage({
+            localStorage: typeof localStorage !== 'undefined' ? localStorage : undefined,
+            sessionStorage: typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
           })
         }
         // A notification is local data this app put on the OPERATING SYSTEM's screen, and the OS keeps
