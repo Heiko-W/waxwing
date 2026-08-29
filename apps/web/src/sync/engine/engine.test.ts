@@ -11,9 +11,9 @@ import {
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
-import { getQueryCache, putEmailBody, putEmails } from '../repo'
+import { getQueryCache, putEmailBody, putEmails, putMailboxes } from '../repo'
 import { getStorageFullAt, resetStorageFull } from '../storage'
-import { email, freshDb, withBatchedQuery } from '../test-utils'
+import { email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
   isDocumentForeground,
@@ -1862,6 +1862,71 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     await engine.discardAllFailed()
     expect(engine.getStatus().failedActions).toBe(0)
     expect(await db.outbox.count()).toBe(0)
+    await engine.stop()
+  })
+
+  /**
+   * The owed rollback is CLAIMED, so it can only be applied once (W-14).
+   *
+   * `applyUndo` rebuilds relative deltas from the persisted undo — `adjustMailboxCounts` COUNTS,
+   * it does not set — and the leader's `drainOwedUndos` walks exactly these rows at the start of
+   * every replay pass. Read-act-delete left that whole window, including the network round trip in
+   * the `refetchEmails` branch, open for a "Discard" click to apply the same rollback again. The
+   * folder badge then stayed wrong: `Mailbox/changes` reports a folder only when something really
+   * changes in it.
+   */
+  it('applies an owed rollback once, however many discards race for it', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 1, unreadEmails: 1 })])
+    await putEmails(db, ACC, [email('e1', { keywords: {}, mailboxIds: { inbox: true } })])
+    const engine = await leaderWith(rejectingPort('forbidden'))
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // The state a failed rollback leaves behind, and the only state `drainOwedUndos` acts on: a
+    // dead letter that still OWES its undo.
+    await db.outbox.update([ACC, 'i1'], {
+      undo: { kind: 'keywords', keyword: '$seen', had: [], prunedKeys: [] },
+    })
+    await db.mailboxes.update([ACC, 'inbox'], { unreadEmails: 0 })
+
+    // Two discards racing — across tabs there is nothing serialising them at all.
+    await Promise.all([engine.discardFailed('i1'), engine.discardFailed('i1')])
+
+    // Back to one unread, not two. The rollback is relative, so applying it twice is the drift.
+    expect((await db.mailboxes.get([ACC, 'inbox']))?.unreadEmails).toBe(1)
+    expect(await db.outbox.get([ACC, 'i1'])).toBeUndefined()
+    await engine.stop()
+  })
+
+  it('hands the claim back when the rollback fails, so the row stays listed', async () => {
+    await putEmails(db, ACC, [email('e1', { keywords: {} })])
+    // A `refetchEmails` undo needs the network, and this port refuses it — the exact shape of an
+    // undo that stays OWED.
+    const base = rejectingPort('forbidden')
+    const port: JmapPort = {
+      ...base,
+      getEmailEnvelopes: async () => {
+        throw new Error('offline')
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // The undo kind is what `applyUndo` switches on, and this one goes to the network — the shape
+    // of a rollback that can genuinely stay owed.
+    await db.outbox.update([ACC, 'i1'], { undo: { kind: 'refetchEmails', prunedKeys: [] } })
+
+    expect(await engine.discardFailed('i1')).toBe(false)
+    // Still listed AND still owed: a stale optimistic change must stay visible as a problem rather
+    // than becoming permanent, invisible corruption.
+    const row = await db.outbox.get([ACC, 'i1'])
+    expect(row).toBeDefined()
+    expect(row?.undo).not.toBeNull()
     await engine.stop()
   })
 

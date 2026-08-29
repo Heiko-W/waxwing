@@ -138,11 +138,20 @@ export function startEngineFleet(accounts: readonly FleetAccount[], deps: FleetD
     // longer be reachable, or a click landing in this window enqueues onto a dying engine.
     deps.setActive(null)
     for (const account of accounts) deps.publish(account.id, null)
-    for (const engine of engines) void engine.stop()
+    // AWAITABLE (W-15). This returned before `stop()` had finished, and `stop()` is what waits for
+    // the in-flight replay to leave its rows in a settled state. The abort inside it releases the
+    // Web Lock immediately, so the fleet started right afterwards — a `connected` change is exactly
+    // that sequence — could win the lock and run `recoverStranded` over rows the previous engine
+    // was still working through, dead-lettering a send that then completed successfully.
+    //
+    // The host chains this promise; `mux.closeAll()` still runs synchronously, because a leftover
+    // SSE connection must not outlive the fleet even if a `stop()` hangs.
+    const stopped = Promise.allSettled(engines.map((engine) => engine.stop()))
     // Belt-and-braces: each leader engine's stop() already released its mux ref (closing the real
     // channel at ref 0). This force-closes anything a never-elected follower or a mid-election
     // teardown left behind, so no SSE connection can outlive the fleet.
     mux?.closeAll()
+    return stopped.then(() => undefined)
   }
 }
 

@@ -1940,6 +1940,10 @@ export async function enqueueAction(
   options: EnqueueOptions,
 ): Promise<{ id: Id; undo: OutboxUndo }> {
   const undo = await applyOptimistic(db, accountId, intent)
+  // What was here before this row, if anything. Drafts reuse one id so a later save coalesces with
+  // an earlier one; the stamp is what lets replay tell "the row I claimed" from "the row that
+  // replaced it while I was away" (see `OutboxRow.seq`).
+  const previous = await db.outbox.get([accountId, options.id])
   const row: OutboxRow = {
     accountId,
     id: options.id,
@@ -1955,6 +1959,7 @@ export async function enqueueAction(
     undo,
     conflict: null,
     refreshes: 0,
+    seq: (previous?.seq ?? 0) + 1,
   }
   await enqueue(db, row)
   return { id: options.id, undo }
@@ -1963,6 +1968,25 @@ export async function enqueueAction(
 // ---------------------------------------------------------------------------------------------
 // Replay.
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * Remove the row replay just finished — but ONLY if it is still the row replay claimed.
+ *
+ * The delete used to be unconditional and by id, which is correct for every intent except the one
+ * that reuses ids: a draft save queued while an earlier save for the same draft was `inflight`
+ * replaced the row, and this then deleted the REPLACEMENT. See `OutboxRow.seq` for what that cost.
+ *
+ * Transactional because the comparison and the delete have to be one step; the claim in
+ * `replayOutbox` protects against `cancelSend`, not against a re-enqueue.
+ */
+async function deleteIfUnchanged(db: ReplicaDb, accountId: Id, row: OutboxRow): Promise<void> {
+  await db.transaction('rw', db.outbox, async () => {
+    const current = await db.outbox.get([accountId, row.id])
+    if (current === undefined) return
+    if ((current.seq ?? 0) !== (row.seq ?? 0)) return // superseded — that row is its own intent now
+    await db.outbox.delete([accountId, row.id])
+  })
+}
 
 function keywordUpdate(
   intent: Extract<OutboxIntent, { kind: 'setKeywords' }>,
@@ -2481,6 +2505,21 @@ export interface ReplayOptions {
   /** `false` skips the pass entirely (the engine's `isOnline()` guard). Defaults to `true`. */
   readonly online?: boolean
   readonly backoff?: OutboxBackoff
+  /**
+   * The engine's stop signal, checked before every claim (W-15).
+   *
+   * Aborting releases the Web Lock IMMEDIATELY, and the fleet's teardown never awaited `stop()` —
+   * so a replay that kept claiming rows after the abort ran beside a NEW leader that had just won
+   * the freed lock and was running `recoverStranded` over those very rows. On a `connected` change
+   * (re-auth, a shared-account edit, StrictMode in dev) with a send in flight, the new leader
+   * dead-lettered it as `sendInterrupted` and marked the draft failed, while the old engine's
+   * submission completed successfully: "sending failed, check your Sent folder" for a message that
+   * was sent.
+   *
+   * Checked between rows rather than mid-request: a row already claimed and dispatched must be
+   * seen through to its reconcile, or it becomes the stranded row this is trying to avoid.
+   */
+  readonly signal?: AbortSignal
 }
 
 export interface ReplaySummary {
@@ -2507,7 +2546,19 @@ function readyAt(row: OutboxRow): number {
  */
 async function drainOwedUndos(port: JmapPort, db: ReplicaDb, accountId: Id): Promise<void> {
   for (const row of await failedOutbox(db, accountId)) {
-    const undo = row.undo ?? null
+    // CLAIM first, apply second. `applyUndo` is not idempotent — `adjustMailboxCounts` rebuilds
+    // relative deltas from the persisted undo — and the `refetchEmails` branch inside it makes a
+    // network round trip, so "read, apply, then null the undo" left a window wide enough for a
+    // "Discard" click (from this tab or any other) to apply the same rollback a second time and
+    // leave the folder badges permanently wrong. Taking `undo` inside the transaction means only
+    // one of the two ever has anything to apply.
+    const undo = await db.transaction('rw', db.outbox, async () => {
+      const current = await db.outbox.get([accountId, row.id])
+      const owed = current?.undo ?? null
+      if (owed === null) return null
+      await db.outbox.update([accountId, row.id], { undo: null })
+      return owed
+    })
     if (undo === null) continue
     try {
       await applyUndo(
@@ -2518,9 +2569,10 @@ async function drainOwedUndos(port: JmapPort, db: ReplicaDb, accountId: Id): Pro
         undo,
         row.conflict?.ids ?? null,
       )
-      await db.outbox.update([accountId, row.id], { undo: null })
     } catch {
-      // Network — the rollback stays OWED and is retried on the next pass. Never dropped.
+      // Network — hand the claim back so the rollback stays OWED and is retried on the next pass.
+      // Never dropped: a stale optimistic change must stay either undone or visibly listed.
+      await db.outbox.update([accountId, row.id], { undo })
     }
   }
 }
@@ -2648,6 +2700,8 @@ export async function replayOutbox(
   }
 
   for (const row of rows) {
+    // Between rows, before the claim: see `ReplayOptions.signal`.
+    if (options.signal?.aborted === true) break
     const intent = row.payload as OutboxIntent
     // Atomically claim the row before executing: re-read + flip pending→inflight in ONE rw txn so a
     // concurrent cancelSend (undo) that deletes the row wins the race, instead of the send firing on
@@ -2763,7 +2817,7 @@ export async function replayOutbox(
       await reconcileAddressBookCreate(db, accountId, intent, result)
       await reconcileDraftSave(db, accountId, intent, result)
       await reconcileSend(db, accountId, intent, result)
-      await db.outbox.delete([accountId, row.id])
+      await deleteIfUnchanged(db, accountId, row)
       replayed += 1
       continue
     }
@@ -2784,7 +2838,7 @@ export async function replayOutbox(
 
     if (conflictIds.length === 0 && retryIds.length === 0) {
       // Every failure was `satisfied` — the intent's goal already holds server-side. A SUCCESS.
-      await db.outbox.delete([accountId, row.id])
+      await deleteIfUnchanged(db, accountId, row)
       replayed += 1
       continue
     }

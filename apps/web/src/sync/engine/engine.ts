@@ -603,8 +603,26 @@ export class SyncEngine {
    * permanent, invisible corruption.
    */
   async discardFailed(id: Id): Promise<boolean> {
-    const row = await this.db.outbox.get([this.accountId, id])
-    if (row === undefined || row.status !== 'error') return false
+    // CLAIM the owed undo before applying it, the way `cancelSend` and `retryFailed` claim theirs.
+    //
+    // `applyUndo` is not idempotent — `adjustMailboxCounts` works in relative deltas rebuilt from
+    // the persisted undo — and the leader's `drainOwedUndos` walks exactly these rows (status
+    // `error`, `undo != null`) at the start of every replay pass, with a network round trip inside
+    // the `refetchEmails` branch. Read-act-delete left that whole round trip as a window in which
+    // both this click and the drain applied the same rollback: the folder's total/unread badges
+    // were counted back twice and stayed wrong, because `Mailbox/changes` only reports a folder
+    // again once something really changes in it. Across tabs there was nothing serialising the two
+    // at all.
+    //
+    // Nulling `undo` inside the transaction is the claim: whoever wins sees `undo: null` and has
+    // nothing left to apply.
+    const row = await this.db.transaction('rw', this.db.outbox, async () => {
+      const current = await this.db.outbox.get([this.accountId, id])
+      if (current === undefined || current.status !== 'error') return undefined
+      if (current.undo != null) await this.db.outbox.update([this.accountId, id], { undo: null })
+      return current
+    })
+    if (row === undefined) return false
     const undo = row.undo ?? null
     if (undo !== null) {
       try {
@@ -617,7 +635,10 @@ export class SyncEngine {
           row.conflict?.ids ?? null,
         )
       } catch {
-        return false // still owed — keep the row listed
+        // Still owed: hand the claim back, so the row stays listed as a problem rather than
+        // becoming a stale optimistic change nobody can see any more.
+        await this.db.outbox.update([this.accountId, id], { undo })
+        return false
       }
     }
     await this.db.outbox.delete([this.accountId, id])
@@ -1382,6 +1403,9 @@ export class SyncEngine {
         now: this.clock.now(),
         random: this.random,
         online: true,
+        // Stop claiming rows the moment this engine is torn down: the abort releases the Web Lock
+        // at once, and the next leader runs `recoverStranded` over whatever is still `inflight`.
+        signal: this.stopController.signal,
         refreshState: async (type) => {
           if (type === 'Mailbox') {
             const writes = await syncMailboxes(this.port, this.db, this.accountId, this.clock)

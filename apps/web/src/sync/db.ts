@@ -517,6 +517,24 @@ export interface OutboxRow {
   conflict?: OutboxConflict | null
   /** Bounded `stateMismatch` auto-refresh count (M3.3); persisted so the bound survives a reload. */
   refreshes?: number
+  /**
+   * Optimistic-concurrency stamp, bumped on every enqueue that REPLACES a row under an id already
+   * in the queue (W-13).
+   *
+   * Only drafts reuse an id — `draft:<localId>` — and they do it on purpose, so a later autosave
+   * coalesces with an earlier one instead of queuing a second write of the same document. That
+   * assumption holds while the earlier row is `pending` and breaks the moment it is `inflight`:
+   * replay claims the row it read, finishes the round trip, and then deletes BY ID — removing the
+   * newer row the user's next keystroke had just put there. The save reports `synced` while the
+   * server copy stays one revision behind, and the discard case is worse: the discard row is
+   * deleted while the save it was meant to cancel is busy creating a fresh server copy, so the
+   * thrown-away draft reappears in Drafts.
+   *
+   * Replay compares this before it deletes: a row whose `seq` moved on is a DIFFERENT intent and
+   * is left alone to be replayed on its own. Optional for rows written before this existed;
+   * `undefined` and `0` mean the same thing.
+   */
+  seq?: number
 }
 
 /** Local-only per-account preference (collapsed tree state, per-folder prefs, allowlists — FR-MBX-04). */
