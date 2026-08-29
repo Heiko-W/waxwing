@@ -25,6 +25,43 @@ const databases = (page: Page): Promise<string[]> =>
     (await indexedDB.databases()).map((info) => info.name ?? '').filter(Boolean),
   )
 
+const webStorageKeys = (page: Page): Promise<{ local: string[]; session: string[] }> =>
+  page.evaluate(() => ({
+    local: Object.keys(localStorage),
+    session: Object.keys(sessionStorage),
+  }))
+
+/**
+ * What may still be on this origin once a session has ended: preferences, and nothing that names a
+ * person or a server.
+ *
+ * `waxwing.accounts` is the key this list exists for. It holds the mailbox address and the server
+ * origin of everyone who has signed in on this browser, the account menu reads it back as "switch
+ * to alice@example.com", and no production path removed a row from it — so a public-computer
+ * session left the next person an address, and "Sign out & remove data" did too. The tests below
+ * are the only executable form of "keeps no sign-in on this device" that covers the WHOLE origin
+ * store rather than IndexedDB alone.
+ *
+ * `waxwing.ephemeralDbs` is allowed on purpose: it names throwaway databases awaiting a sweep, and
+ * Firefox has no `indexedDB.databases()` to find them any other way.
+ */
+const ALLOWED_AFTER_SIGN_OUT = new Set([
+  'waxwing.theme',
+  'waxwing.accent',
+  'waxwing.readingPane',
+  'waxwing.folderRail',
+  'waxwing.cacheDays',
+  'waxwing.ephemeralDbs',
+  'waxwing.pwa.chunkReload',
+  'i18nextLng',
+])
+
+async function expectNoIdentityLeft(page: Page): Promise<void> {
+  const keys = await webStorageKeys(page)
+  expect(keys.local.filter((key) => !ALLOWED_AFTER_SIGN_OUT.has(key))).toEqual([])
+  expect(keys.session.filter((key) => !ALLOWED_AFTER_SIGN_OUT.has(key))).toEqual([])
+}
+
 test.beforeEach(async () => {
   await seedReadMail()
 })
@@ -71,6 +108,42 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
 
     await expect(async () => {
       expect((await databases(page)).some((n) => n.startsWith(EPHEMERAL_PREFIX))).toBe(false)
+    }).toPass({ timeout: 20_000 })
+    // The other two storages, which the mode used to leave untouched — see ALLOWED_AFTER_SIGN_OUT.
+    await expectNoIdentityLeft(page)
+  })
+
+  /**
+   * The FR-AUTH-05 half of the same promise. The confirmation dialog says this deletes "mail and
+   * settings on this device" — and it did delete the mail, while the list of mailboxes that have
+   * signed in here stayed in `localStorage` for the next person to find in the account menu.
+   */
+  test('"Sign out and remove data" leaves no identity in the web storages either', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await revealPasswordForm(page)
+    await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
+    await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
+    await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
+    await page.getByRole('treeitem', { name: /Inbox/ }).click()
+    await expect(page.getByText(READ_SUBJECTS.plain)).toBeVisible({ timeout: 60_000 })
+
+    // A DURABLE session, so the registry row this asserts about is genuinely written first.
+    await expect(async () => {
+      const keys = await webStorageKeys(page)
+      expect(keys.local).toContain('waxwing.accounts')
+    }).toPass({ timeout: 20_000 })
+
+    await page.getByRole('button', { name: 'Account' }).click()
+    await page.getByRole('menuitem', { name: 'Sign out and remove data' }).click()
+    await page.getByRole('button', { name: 'Remove data and sign out' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    await expect(async () => {
+      await expectNoIdentityLeft(page)
     }).toPass({ timeout: 20_000 })
   })
 
