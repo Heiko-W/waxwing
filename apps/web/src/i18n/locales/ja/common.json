@@ -1,0 +1,2088 @@
+{
+  "shell": {
+    "nav": "メインナビゲーション",
+    "skip": "本文へスキップ",
+    "brand": "{{product}} のホーム",
+    "menu": {
+      "mail": "メール",
+      "contacts": "連絡先",
+      "settings": "設定",
+      "calendar": "カレンダー",
+      "files": "ファイル"
+    },
+    "folders": {
+      "show": "フォルダーを表示",
+      "hide": "フォルダーを隠す",
+      "title": "フォルダー",
+      "empty": "ここにフォルダーが表示されます。",
+      "loading": "フォルダーを読み込んでいます"
+    },
+    "accounts": {
+      "shared": "共有",
+      "readOnly": "読み取り専用"
+    },
+    "list": {
+      "title": "メッセージ",
+      "resize": "メッセージリストの幅を変更",
+      "searchTitle": "検索結果"
+    },
+    "reading": {
+      "title": "閲覧ペイン",
+      "empty": "メッセージを選択すると、ここに表示されます。",
+      "back": "メッセージ一覧に戻る"
+    },
+    "notFound": {
+      "title": "ページが見つかりません",
+      "body": "このページは存在しません。",
+      "home": "メールへ移動"
+    }
+  },
+  "onboarding": {
+    "welcome": "{{product}} へようこそ",
+    "connect": {
+      "title": "メールボックスに接続",
+      "label": "メールアドレスまたはサーバー",
+      "placeholder": "you@example.com",
+      "hint": "メールアドレスを入力してください。{{product}} がそのドメインを手がかりに探します。メールサーバーが別のアドレスにある場合は、そちらを入力してください。",
+      "submit": "続ける"
+    },
+    "error": {
+      "discovery": "{{domain}} のメールサーバーは見つかりませんでした。",
+      "network": "サーバーに接続できませんでした。接続を確認して、もう一度お試しください。",
+      "noAccount": "このサーバーには、あなたのメールアカウントがありません。",
+      "generic": "問題が発生しました。もう一度お試しください。",
+      "networkHost": "{{host}} に接続できませんでした。メールサーバーが別のアドレスにある場合は、上の欄にそのアドレスを入力してください。",
+      "oauthUnavailable": "このサーバーは安全なログイン方法を提供していません。下のメールアドレスとパスワードでログインしてください。",
+      "oauthUnavailableNoFallback": "このサーバーは安全なログイン方法を提供しておらず、この環境では他の方法も許可されていません。運営者にお問い合わせください。",
+      "sessionOrigin": "このサーバーは {{field}} として {{url}} を公開していますが、これは {{origin}} 上にないため、認証情報はそこへ送信されませんでした。サーバーの運営者が、公開しているアドレスを修正する必要があります。"
+    },
+    "reset": {
+      "action": "このデバイスのアプリをリセット",
+      "title": "このデバイスのアプリをリセットしますか？",
+      "body": "{{product}} がこのブラウザーに保存したものをすべて削除します。メールのオフラインコピー、設定、保存されたログイン情報が対象です。サーバー上のデータには手を触れず、メールボックスからは何も削除されません。",
+      "confirm": "削除して再読み込み",
+      "cancel": "キャンセル"
+    }
+  },
+  "auth": {
+    "signInTitle": "{{host}} のウェブメール",
+    "oauth": {
+      "button": "ログイン",
+      "unavailable": "サーバー経由のログインには HTTPS 接続が必要です。下のユーザー名とパスワードをご利用ください。",
+      "explain": "ログインは {{host}} 自身の画面で行います。パスワードと、アカウントで設定されている場合は二要素認証コードを入力します。"
+    },
+    "basic": {
+      "username": "ユーザー名",
+      "password": "パスワード",
+      "staySignedIn": "ログインしたままにする",
+      "staySignedInHint": "これを選ばない場合、ログインはこのページを開いている間だけ有効です。再読み込みやタブを閉じると、再びログアウトされます。",
+      "appPasswordHint": "アカウントで二要素認証が有効な場合、通常のパスワードはここでは拒否されます。アプリパスワードをご利用ください。",
+      "submit": "パスワードでログイン",
+      "publicComputer": "公共または共用のコンピューター",
+      "publicComputerHint": "ログイン方法にかかわらず、メールもログイン情報もこのデバイスに残しません。どちらもログアウト時とタブを閉じたときに削除され、ブラウザーが先にクラッシュした場合は、次にこの端末で {{product}} を開いたときに削除されます。",
+      "disclose": "代わりにパスワードでログイン",
+      "appPasswordHintOAuth": "アカウントで二要素認証が有効な場合、通常のパスワードはここでは拒否されます。アプリパスワードを使うか、上のサーバー経由でログインしてください。"
+    },
+    "back": "別のサーバーを使う",
+    "error": {
+      "invalidCredentials": "ユーザー名またはパスワードが違います。",
+      "generic": "ログインに失敗しました。もう一度お試しください。",
+      "signOutIncomplete": "ログアウトしましたが、メールのローカルコピーを削除できませんでした。別のタブがまだ開いている可能性があります。すべてのタブを閉じて、もう一度ログアウトしてください。",
+      "invalidCredentialsBasic": "ユーザー名またはパスワードが違います。このアカウントで二要素認証が有効な場合、ここではアプリパスワードしか使えません。"
+    },
+    "reauth": {
+      "title": "セッションの期限切れ",
+      "body": "セッションの有効期限が切れました。続けるには、もう一度ログインしてください。作業中の状態は保持されます。",
+      "submit": "ログイン",
+      "cancel": "ログアウト"
+    }
+  },
+  "account": {
+    "menu": "アカウント",
+    "signedInAs": "{{name}} としてログイン中",
+    "signOut": "ログアウト",
+    "signOutRemove": "ログアウトしてデータを削除",
+    "confirmRemove": {
+      "title": "ローカルデータをすべて削除しますか？",
+      "body": "{{product}} がこのデバイスに保存したメールと設定を削除します。サーバー上のメールには影響しません。",
+      "confirm": "データを削除してログアウト",
+      "cancel": "キャンセル"
+    },
+    "switchTo": "{{name}} に切り替え",
+    "add": "別のアカウントを追加"
+  },
+  "status": {
+    "offline": "オフライン",
+    "sync": {
+      "error": "同期に問題があります。再試行中です",
+      "syncing": "同期中…",
+      "updated": "{{when}} に更新"
+    },
+    "outbox": {
+      "stuck_other": "サーバーに接続できません。再試行中です（{{count}}）"
+    },
+    "storage": {
+      "full": "ストレージがいっぱいです。一部のメールはキャッシュされません。"
+    }
+  },
+  "settings": {
+    "title": "設定",
+    "appearance": {
+      "title": "表示",
+      "readingPane": {
+        "label": "閲覧ペイン",
+        "right": "リストの横",
+        "bottom": "リストの下",
+        "off": "メッセージを全幅で表示",
+        "hint": "開いたメッセージを表示する位置です。"
+      },
+      "density": {
+        "label": "リストの行間",
+        "comfortable": "ゆったり",
+        "compact": "コンパクト"
+      },
+      "accent": {
+        "label": "アクセントカラー",
+        "blue": "ブルー",
+        "teal": "ティール",
+        "green": "グリーン",
+        "amber": "アンバー",
+        "rose": "ローズ",
+        "purple": "パープル"
+      }
+    },
+    "offline": {
+      "category": {
+        "messages": "メッセージの索引（推定）",
+        "bodies": "メッセージ本文",
+        "attachments": "添付ファイル",
+        "other": "その他（アプリとオフライン用の土台）"
+      },
+      "description": "{{product}} は最近のメールをこのデバイスに保存します。そのため、すぐに開けてオフラインでも使えます。",
+      "freeUp": "今すぐ空き容量を増やす",
+      "freedToast": "{{size}} を解放しました",
+      "meter": {
+        "label": "使用中のストレージ"
+      },
+      "nothingToFree": "解放できるものはありません",
+      "persist": {
+        "label": "このデバイスにデータを保持する",
+        "hint": "ストレージが不足したときも、キャッシュしたメールを削除しないようブラウザーに要求します。",
+        "granted": "許可されました。ストレージが不足しても、ブラウザーはキャッシュしたメールを保持します。",
+        "denied": "許可されていません。ストレージが不足すると、ブラウザーがキャッシュしたメールを削除することがあります。"
+      },
+      "pinned_other": "{{count}} 個のフォルダーをオフラインで保持中",
+      "quotaUnknown": "お使いのブラウザーは、ストレージの割り当て容量を報告しません。",
+      "title": "オフラインとストレージ",
+      "total": "{{total}} 中 {{used}} を使用中",
+      "windowApplies": "保持期間を短くしても、空き容量が増えるのは次のクリーンアップ時で、すぐには増えません。上の「空き容量を増やす」は待ちません。",
+      "windowChoice_other": "{{count}} 日",
+      "windowLabel": "このデバイスにメールを保持する期間",
+      "window_other": "直近 {{count}} 日のメールをこのデバイスに保持します。それより古いメールはサーバー上に残り、開いたときに読み込まれます。"
+    },
+    "general": {
+      "title": "全般"
+    },
+    "reading": {
+      "title": "閲覧",
+      "remote": {
+        "label": "リモート画像を自動的に読み込む",
+        "hint": "リモート画像は、メッセージを開いたことを送信者に伝え、IP アドレスを知らせます。オフのままにするのが安全です。"
+      },
+      "allowList_other": "{{count}} 人の送信者について、リモートコンテンツを常に読み込みます。",
+      "clearAllowList": "リストを消去",
+      "cleared": "リストを消去しました",
+      "autoMarkRead": {
+        "label": "開いたメッセージを既読にする",
+        "hint": "少し間を置いてから既読にするので、スクロールで通り過ぎただけでは既読になりません。"
+      },
+      "prefetch": {
+        "label": "開く前にメッセージを読み込む",
+        "hint": "表示中のリストの本文をこのデバイスに用意しておき、サーバーを待たずにメッセージが開くようにします。Wi-Fi 以外ではモバイルデータ通信を使います。ブラウザーは両者を区別できないため、このスイッチだけが調整の手段です。"
+      }
+    },
+    "swipe": {
+      "title": "スワイプ操作",
+      "left": {
+        "label": "左にスワイプ",
+        "hint": "タッチスクリーンでメッセージを左にドラッグします。このアカウントにアーカイブフォルダーがない場合、アーカイブは何もしません。"
+      },
+      "right": {
+        "label": "右にスワイプ",
+        "hint": "タッチスクリーンでメッセージを右にドラッグします。"
+      },
+      "action": {
+        "archive": "アーカイブ",
+        "trash": "ゴミ箱へ移動",
+        "read": "既読・未読を切り替え",
+        "none": "何もしない"
+      }
+    },
+    "compose": {
+      "title": "作成",
+      "undoSend": {
+        "label": "送信の取り消し",
+        "hint": "送信したメッセージが実際に送り出されるまでの待ち時間です。",
+        "off": "すぐに送信",
+        "seconds_other": "{{count}} 秒"
+      },
+      "signature": {
+        "label": "署名の位置",
+        "hint": "返信や転送のときに署名を挿入する位置です。",
+        "aboveQuote": "引用文の上",
+        "belowQuote": "引用文の下"
+      }
+    },
+    "identities": {
+      "title": "差出人情報",
+      "description": "送信に使えるアドレスと、それぞれの署名・返信先です。変更は新しいメッセージから適用されます。",
+      "loading": "差出人情報を読み込んでいます…",
+      "empty": "このアカウントには送信用の差出人情報がありません。",
+      "protected": "既定のアドレスです。サーバーが削除を許可していません。",
+      "created": "差出人情報を作成しました",
+      "saved": "差出人情報を保存しました",
+      "deleted": "差出人情報を削除しました",
+      "cancel": "キャンセル",
+      "create": {
+        "open": "差出人情報を追加",
+        "submit": "差出人情報を作成"
+      },
+      "edit": {
+        "open": "{{name}} を編集",
+        "submit": "差出人情報を保存"
+      },
+      "delete": {
+        "open": "{{email}} を削除",
+        "title": "差出人情報を削除しますか？",
+        "body": "{{email}} は今後、差出人アドレスとして使えなくなります。",
+        "draftsWarning": "このアドレスで作成済みの下書きは、その後は送信できません。",
+        "cancel": "残す",
+        "confirm": "削除"
+      },
+      "email": {
+        "label": "メールアドレス",
+        "immutable": "既存の差出人情報のアドレスは変更できません。代わりに新しい差出人情報を作成してください。"
+      },
+      "name": {
+        "label": "表示名",
+        "placeholder": "受信者に表示される名前"
+      },
+      "replyTo": {
+        "label": "返信先",
+        "hint": "返信は差出人アドレスではなく、こちらに届きます。複数のアドレスはカンマで区切ります。"
+      },
+      "bcc": {
+        "label": "自動 Bcc",
+        "hint": "この差出人情報から送信したメッセージは、すべてこれらのアドレスにも密かに送られます。"
+      },
+      "htmlSignature": {
+        "label": "署名",
+        "hint": "「作成」で位置を変更しない限り、新しいメッセージでは引用文の上に挿入されます。"
+      },
+      "textSignature": {
+        "label": "テキスト形式の署名",
+        "hint": "メッセージをテキスト形式で送信するときに使われます。別々に保存されるため、手書きした署名が上書きされることはありません。",
+        "fromHtml": "上の署名から取り込む"
+      },
+      "error": {
+        "emailMissing": "メールアドレスを入力してください。",
+        "emailInvalid": "メールアドレスの形式ではないようです。",
+        "replyToInvalid": "返信先アドレスが正しくありません。",
+        "bccInvalid": "Bcc のアドレスが正しくありません。",
+        "loadFailed": "差出人情報を読み込めませんでした。",
+        "conflict": "差出人情報が別の場所で変更されました。この変更は保存されていません。上には現在の状態が表示されています。",
+        "forbiddenFrom": "サーバーは、このアドレスからの送信を許可していません。",
+        "forbidden": "サーバーは、この差出人情報の削除を許可していません。",
+        "emailNotConfigured": "このアドレスは、あなたのアカウント用に設定されていません。サーバーは、そのアカウント用に設定されたアドレスからの送信しか許可しません。管理者にエイリアスとして追加してもらってください。",
+        "invalidProperties": "サーバーが、これらの値のいずれかを拒否しました。",
+        "rejected": "サーバーが、この変更を拒否しました。",
+        "offline": "オフラインです。差出人情報は接続中のみ変更できます。",
+        "generic": "変更を保存できませんでした。"
+      }
+    },
+    "vacation": {
+      "title": "不在時の自動返信",
+      "description": "メールをくれたすべての人に、一度だけ自動で返信します。",
+      "enable": {
+        "label": "自動返信を送信する"
+      },
+      "from": "開始",
+      "to": "終了",
+      "timezoneHint": "時刻はお使いのタイムゾーン（{{zone}}）で解釈されます。空欄にすると制限なしになります。",
+      "subject": {
+        "label": "件名",
+        "placeholder": "不在にしております"
+      },
+      "body": {
+        "label": "返信本文"
+      },
+      "preview": {
+        "show": "プレビューを表示",
+        "hide": "プレビューを隠す",
+        "title": "不在時の自動返信のプレビュー"
+      },
+      "save": "保存",
+      "saved": "不在時の自動返信を保存しました",
+      "status": {
+        "off": "自動返信は送信していません。",
+        "active": "現在、自動返信を送信しています。",
+        "scheduled": "{{date}} に開始します。",
+        "expired": "終了日を過ぎているため、返信は送信されていません。"
+      },
+      "error": {
+        "endBeforeStart": "終了は開始より後にしてください。",
+        "loadFailed": "不在時の自動返信を読み込めませんでした。",
+        "conflict": "不在時の自動返信が別の場所で変更されました。この変更は保存されていません。上には現在の設定が表示されています。",
+        "rejected": "サーバーが、この設定を拒否しました。",
+        "offline": "オフラインです。不在時の自動返信は接続中のみ変更できます。",
+        "generic": "不在時の自動返信を保存できませんでした。"
+      }
+    },
+    "filters": {
+      "title": "フィルター",
+      "intro": "受信メールがあなたに届く前に、サーバーが実行するルールです。このアプリを閉じていても動作し続けます。",
+      "empty": "フィルタールールはまだありません。",
+      "addRule": "ルールを追加",
+      "saved": "フィルターを保存しました",
+      "showSource": "スクリプトを表示",
+      "hideSource": "スクリプトを隠す",
+      "sourceLabel": "Sieve スクリプト",
+      "unsupportedExtensions": "このサーバーは次への対応を通知していません：{{list}}。これらを使うルールは動作しないことがあります。",
+      "rule": {
+        "enabled": "有効",
+        "edit": "編集",
+        "delete": "削除",
+        "reorder": "{{name}} を並べ替え",
+        "reorderHint": "Space でルールをつかみ、上下の矢印キーで移動します。Space で置き、Esc で元に戻します。",
+        "movedTo": "{{name}}、{{count}} 件中 {{position}} 番目のルール",
+        "dropped": "{{name}} を置きました",
+        "dropCanceled": "{{name}} を元に戻しました"
+      },
+      "foreign": {
+        "explain": "このメールボックスには、ここで作成されたものではないフィルタースクリプトがすでにあります。そのまま表示され、変更は加えません。",
+        "adopt": "それと並行してフィルターを管理する",
+        "adoptHint": "既存のルールはそのまま残り、動作を続けます。新しいルールはその後ろに追加されます。"
+      },
+      "form": {
+        "createTitle": "新しいルール",
+        "editTitle": "ルールを編集",
+        "name": "名前",
+        "conditions": "条件",
+        "actions": "動作",
+        "matchMode": "適用するとき",
+        "matchAll": "すべての条件に一致",
+        "matchAny": "いずれかの条件に一致",
+        "field": "対象",
+        "match": "比較",
+        "value": "値",
+        "sizeKb": "サイズ（KB）",
+        "action": "動作",
+        "mailbox": "フォルダー",
+        "flag": "付けるマーク",
+        "address": "アドレス",
+        "addCondition": "条件を追加",
+        "addAction": "動作を追加",
+        "remove": "削除",
+        "stop": "これ以降のルールを実行しない",
+        "cancel": "キャンセル",
+        "submit": "ルールを保存",
+        "spamScore": "スコア（0〜10）",
+        "datePart": "部分",
+        "weekday": "曜日",
+        "hour": "時（0〜23）",
+        "reason": "理由"
+      },
+      "field": {
+        "from": "差出人",
+        "to": "宛先",
+        "cc": "Cc",
+        "subject": "件名",
+        "body": "本文",
+        "size": "サイズ",
+        "hasAttachment": "添付ファイルあり",
+        "envelopeFrom": "エンベロープの差出人",
+        "envelopeTo": "エンベロープの宛先",
+        "spam": "迷惑メールのスコア",
+        "currentDate": "配信日時",
+        "duplicate": "重複メッセージ"
+      },
+      "match": {
+        "contains": "次を含む",
+        "is": "次と完全に一致",
+        "startsWith": "次で始まる",
+        "endsWith": "次で終わる",
+        "matches": "パターンに一致",
+        "over": "次より大きい",
+        "under": "次より小さい",
+        "atLeast": "以上",
+        "atMost": "以下"
+      },
+      "action": {
+        "fileInto": "フォルダーへ移動",
+        "addFlag": "マークを付ける",
+        "redirect": "次へ転送",
+        "discard": "破棄",
+        "reject": "理由を付けて拒否"
+      },
+      "flag": {
+        "seen": "既読",
+        "flagged": "フラグあり"
+      },
+      "error": {
+        "loadFailed": "フィルターを読み込めませんでした。",
+        "invalidSieve": "サーバーがスクリプトを無効として拒否しました。ルールは保存されていません。",
+        "tooLarge": "このサーバーには、スクリプトが大きすぎます。",
+        "offline": "オフラインです。フィルターは接続中のみ変更できます。",
+        "rejected": "サーバーがフィルターの保存を拒否しました。",
+        "generic": "フィルターを保存できませんでした。",
+        "invalidSieveReason": "サーバーがスクリプトを無効として拒否しました：{{reason}}。ルールは保存されていません。"
+      },
+      "active": "受信メールをフィルターする",
+      "activeHint": "以下のルールは、サーバーが受け取るすべてのメッセージに対して実行されます。",
+      "inactiveHint": "ルールは保持されますが、これを再びオンにするまで何もフィルターされません。",
+      "deleteScript": "フィルタースクリプトを削除",
+      "delete": {
+        "title": "フィルタースクリプトを削除しますか？",
+        "body": "すべてのルールがサーバーから削除され、受信メールはフィルターされなくなります。元に戻せません。",
+        "foreignWarning": "このスクリプトには、ここで作成されたものではないルールも含まれています。それらも一緒に削除されます。",
+        "cancel": "キャンセル",
+        "confirm": "削除",
+        "done": "フィルタースクリプトを削除しました"
+      },
+      "date": {
+        "weekday": "曜日",
+        "hour": "時刻"
+      },
+      "weekday": {
+        "sunday": "日曜日",
+        "monday": "月曜日",
+        "tuesday": "火曜日",
+        "wednesday": "水曜日",
+        "thursday": "木曜日",
+        "friday": "金曜日",
+        "saturday": "土曜日"
+      }
+    },
+    "server": {
+      "title": "サーバー",
+      "description": "この JMAP サーバーが提供する機能です。問題を報告するときに役立ちます。",
+      "connection": {
+        "url": "アドレス",
+        "username": "ログイン中のユーザー",
+        "account": "アカウント",
+        "readOnly": "読み取り専用"
+      },
+      "core": {
+        "title": "制限値"
+      },
+      "mail": {
+        "title": "メールの制限値"
+      },
+      "capabilities": {
+        "title": "オプション機能"
+      },
+      "available": "対応",
+      "absent": "非対応",
+      "unlimited": "制限なし",
+      "yes": "はい",
+      "no": "いいえ",
+      "none": "なし",
+      "coreMissing": "このサーバーは標準の capability オブジェクトを通知していません。通常ではない状態で、一部の機能が動作しないことがあります。",
+      "mailMissing": "このアカウントはメール機能を通知していないため、メールの制限値を表示できません。",
+      "extra": {
+        "title": "このサーバーが通知しているその他の機能"
+      },
+      "limit": {
+        "maxSizeUpload": "アップロードの最大サイズ",
+        "maxSizeRequest": "リクエストの最大サイズ",
+        "maxConcurrentRequests": "同時リクエスト数",
+        "maxConcurrentUpload": "同時アップロード数",
+        "maxCallsInRequest": "リクエストあたりのメソッド呼び出し数",
+        "maxObjectsInGet": "取得あたりのオブジェクト数",
+        "maxObjectsInSet": "変更あたりのオブジェクト数",
+        "collationAlgorithms": "照合順序",
+        "maxMailboxesPerEmail": "メッセージあたりのフォルダー数",
+        "maxMailboxDepth": "フォルダーの階層の深さ",
+        "maxSizeMailboxName": "フォルダー名の長さ",
+        "maxSizeAttachmentsPerEmail": "メッセージあたりの添付ファイル",
+        "mayCreateTopLevelMailbox": "最上位フォルダーの作成可否",
+        "emailQuerySortOptions": "並べ替えできる項目"
+      },
+      "cap": {
+        "core": "コア",
+        "mail": "メール",
+        "submission": "送信",
+        "vacationResponse": "不在時の自動返信",
+        "quota": "容量制限",
+        "blob": "ファイルデータの扱い",
+        "sieve": "フィルタールール（Sieve）",
+        "contacts": "連絡先",
+        "webSocket": "WebSocket プッシュ",
+        "principals": "共有",
+        "webPushVapid": "Web Push の署名（RFC 9749）"
+      },
+      "generate": {
+        "title": "デプロイ設定",
+        "intro": "ログイン中のサーバーの情報をもとに、このデプロイ用の config.json を生成します。index.html と同じ場所に保存してください。",
+        "action": "config.json を生成",
+        "checking": "確認中…",
+        "save": "config.json を保存",
+        "warnLabel": "要確認：",
+        "infoLabel": "補足：",
+        "finding": {
+          "sameOrigin": "メールサーバーはこのアプリと同じオリジンにあるため、config.json の sessionUrl は空のままになります。別のホスト名へ移しても、このデプロイは動作し続けます。",
+          "crossOrigin": "メールサーバーは {{origin}} にあり、このアプリとは別のオリジンです。すべてのリクエストは、そのサーバーが CORS ヘッダーを送ることに依存します。現在は送っていますが、それが変われば、このデプロイは動かなくなります。",
+          "basicOnly": "OAuth ディスカバリーが応答しなかったため、パスワードによるログインだけが有効になっています。パスワードはリクエストのたびに送られ、特定のクライアントだけを無効にすることもできません。可能であれば、サーバーで OAuth を有効にしてください。",
+          "oauthUnknown": "OAuth ディスカバリーをここからは確認できなかったため、ログイン方法はそのままにしています。デプロイ前に確認してください。",
+          "insecureOrigin": "このアプリは平文の HTTP で配信されています。その場合、ブラウザーは crypto.subtle を提供しないため、OAuth は動作せず、オフラインキャッシュも暗号化できません。HTTPS で配信してください。",
+          "brandingUntouched": "ブランディング、機能、オフラインの上限はそのまま引き継がれました。どうあるべきかはサーバーには分かりません。手作業で編集してください。"
+        }
+      }
+    },
+    "about": {
+      "title": "このアプリについて",
+      "version": "バージョン {{version}}"
+    },
+    "templates": {
+      "title": "テンプレート",
+      "description": "使い回せるメッセージ本文です。挿入すると、作成中の下書きに追加されます。すでに書かれている内容が置き換えられることはありません。",
+      "placeholders": "挿入時に差し込まれるプレースホルダー：{{list}}",
+      "empty": "テンプレートはまだありません。",
+      "add": "新しいテンプレート",
+      "edit": "編集",
+      "delete": "削除",
+      "dialogTitle": "テンプレート",
+      "name": "名前",
+      "subject": "件名",
+      "body": "メッセージ",
+      "save": "テンプレートを保存",
+      "cancel": "キャンセル",
+      "defaultSenderName": "自分"
+    },
+    "groups": {
+      "general": "全般",
+      "appearance": "表示",
+      "mail": "メール",
+      "accounts": "アカウントとルール",
+      "system": "システム"
+    },
+    "security": {
+      "title": "アカウントとセキュリティ",
+      "description": "このアカウントについて、サーバーがあなた自身に変更を許している項目です。",
+      "loading": "アカウント設定を読み込んでいます…",
+      "unavailable": "サーバーは、このアカウントについてこれらの設定を提供していません。",
+      "password": {
+        "label": "パスワード",
+        "hint": "ログインに使うパスワードです。ここでも、このアカウントを使うすべてのメールアプリでも同じものを使います。",
+        "change": "パスワードを変更…",
+        "title": "パスワードの変更",
+        "current": "現在のパスワード",
+        "next": "新しいパスワード",
+        "confirm": "新しいパスワード（確認）",
+        "submit": "パスワードを変更",
+        "cancel": "キャンセル",
+        "changed": "パスワードを変更しました",
+        "missing": "3 つの欄をすべて入力してください。",
+        "mismatch": "2 つの新しいパスワードが一致しません。",
+        "devices": "変更後は、ここで改めてログインし、他のデバイスのメールアプリにも新しいパスワードを入力してください。アプリパスワードはそのまま使えます。"
+      },
+      "appPasswords": {
+        "label": "アプリパスワード",
+        "hint": "デバイス上のメールアプリごとに用意する専用のパスワードです。1 つを無効にしても、アカウントのパスワードや他のアプリには影響しません。",
+        "empty": "アプリパスワードはまだありません。",
+        "create": "アプリパスワードを作成…",
+        "createTitle": "アプリパスワードの作成",
+        "createIntro": "サーバーが、このアプリだけで使うパスワードを生成します。",
+        "name": "何に使いますか？",
+        "namePlaceholder": "iPhone のメール",
+        "nameMissing": "後で見分けられるように、名前を付けてください。",
+        "expiry": "有効期限",
+        "expiryNever": "なし",
+        "expiryDays": "{{days}} 日後",
+        "submit": "作成",
+        "cancel": "キャンセル",
+        "created": "{{date}} に作成",
+        "expires": "{{date}} に期限切れ",
+        "expired": "期限切れです。このパスワードはもう使えません。",
+        "restricted": "特定の権限やアドレスに制限されています。{{product}} の外で設定されました。",
+        "revoke": "{{name}} を無効にする",
+        "revokeTitle": "アプリパスワードを無効にしますか？",
+        "revokeBody": "{{name}} はただちに使えなくなります。まだ使っているアプリは、再びパスワードを求めます。",
+        "revokeConfirm": "無効にする",
+        "revokeCancel": "残す",
+        "revoked": "アプリパスワードを無効にしました",
+        "secretTitle": "アプリパスワード",
+        "secretIntro": "メールアドレスと合わせて、今すぐメールアプリに入力してください。",
+        "secretLabel": "アプリパスワード",
+        "secretWarning": "表示されるのはこの一度きりです。紛失した場合は、ここで無効にして新しく作成してください。",
+        "copy": "コピー",
+        "copied": "コピーしました",
+        "done": "完了"
+      },
+      "language": {
+        "label": "サーバーからのメッセージの言語",
+        "hint": "サーバー自身がカレンダーの招待やリマインダーを書くときの言語です。{{product}} 自体の言語は「全般」で設定します。",
+        "saved": "言語を保存しました"
+      },
+      "encryption": {
+        "label": "保存時の暗号化",
+        "off": "オフです。サーバーはメッセージを暗号化せずに保存します。",
+        "on": "オン（{{cipher}}）",
+        "key": "鍵：{{name}}",
+        "explain": "サーバーは受信メッセージをあなた自身の鍵で暗号化してから保存します。{{product}} は OpenPGP に対応していないため、それらを表示できません。",
+        "manage": "これを変更できるのは、サーバー自身のアカウント管理画面だけです。オンにするとここではメールボックスが読めなくなるため、{{product}} はこのスイッチを提供していません。"
+      },
+      "spam": {
+        "label": "迷惑メール学習用のサンプル",
+        "hint": "あなたが分類したメッセージについて、迷惑メールフィルターの学習用にサーバーが保持しているコピーです。削除するとコピーは消えますが、メッセージの保管場所は変わりません。",
+        "empty": "サーバーはメッセージのコピーを保持していません。",
+        "isSpam": "迷惑メールとして保持",
+        "isHam": "迷惑メールではないものとして保持",
+        "noSubject": "（件名なし）",
+        "delete": "{{subject}} のコピーを削除",
+        "deleted": "コピーを削除しました"
+      },
+      "error": {
+        "loadFailed": "これらの設定を読み込めませんでした。",
+        "rejected": "サーバーが、この変更を拒否しました。",
+        "server": "サーバーの応答：{{detail}}",
+        "offline": "オフラインです。これらの設定は接続中のみ変更できます。",
+        "generic": "変更を保存できませんでした。"
+      }
+    }
+  },
+  "contacts": {
+    "title": "連絡先",
+    "noName": "名前なし",
+    "books": {
+      "title": "アドレス帳",
+      "all": "すべての連絡先",
+      "default": "既定",
+      "shared": "共有",
+      "readOnly": "読み取り専用",
+      "show": "アドレス帳を表示",
+      "hide": "アドレス帳を隠す",
+      "loading": "アドレス帳を読み込んでいます",
+      "empty": "アドレス帳がありません。",
+      "new": "新しいアドレス帳",
+      "actions": "{{name}} の操作",
+      "nameLabel": "名前",
+      "create": {
+        "title": "新しいアドレス帳",
+        "submit": "作成"
+      },
+      "rename": {
+        "action": "名前を変更",
+        "title": "アドレス帳の名前を変更",
+        "submit": "名前を変更"
+      },
+      "delete": {
+        "action": "削除",
+        "title": "アドレス帳を削除",
+        "body": "「{{name}}」を削除しますか？",
+        "contents": "このアドレス帳にしかない連絡先も、一緒に削除されます。",
+        "confirm": "削除",
+        "cancel": "キャンセル"
+      },
+      "error": {
+        "nameRequired": "名前を入力してください。",
+        "nameTooLong": "この名前は長すぎます。",
+        "nameTaken": "その名前のアドレス帳はすでにあります。"
+      },
+      "share": "{{name}} を共有"
+    },
+    "list": {
+      "title": "連絡先",
+      "resize": "連絡先リストの幅を変更",
+      "empty": "連絡先はまだありません。",
+      "loading": "連絡先を読み込んでいます",
+      "count_other": "{{count}} 件の連絡先"
+    },
+    "search": {
+      "label": "連絡先を検索",
+      "placeholder": "連絡先を検索",
+      "clear": "検索を消去",
+      "empty": "検索に一致する連絡先はありません。"
+    },
+    "detail": {
+      "notAvailable": "この連絡先は利用できません。",
+      "title": "連絡先",
+      "empty": "連絡先を選択すると、詳細が表示されます。",
+      "loading": "連絡先を読み込んでいます",
+      "back": "連絡先一覧に戻る",
+      "edit": "編集",
+      "delete": "削除",
+      "sections": {
+        "email": "メール",
+        "phone": "電話",
+        "address": "住所",
+        "birthday": "誕生日",
+        "url": "ウェブサイト",
+        "im": "インスタントメッセージ",
+        "note": "メモ"
+      },
+      "more": "その他の操作"
+    },
+    "labels": {
+      "work": "勤務先",
+      "private": "自宅",
+      "home": "自宅",
+      "mobile": "携帯",
+      "fax": "FAX",
+      "pager": "ポケットベル",
+      "voice": "音声通話",
+      "video": "ビデオ",
+      "text": "SMS",
+      "main-number": "代表番号",
+      "textphone": "文字電話",
+      "other": "その他"
+    },
+    "new": "新しい連絡先",
+    "addFirst": "連絡先を追加",
+    "form": {
+      "newTitle": "新しい連絡先",
+      "editTitle": "連絡先を編集",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "readOnly": "このアドレス帳は読み取り専用です。",
+      "sections": {
+        "name": "名前",
+        "email": "メール",
+        "phone": "電話",
+        "address": "住所",
+        "org": "会社",
+        "birthday": "誕生日",
+        "url": "ウェブサイト",
+        "im": "インスタントメッセージ",
+        "note": "メモ",
+        "photo": "写真",
+        "books": "アドレス帳"
+      },
+      "namePrefix": "敬称",
+      "given": "名",
+      "given2": "ミドルネーム",
+      "surname": "姓",
+      "nameSuffix": "称号",
+      "company": "会社",
+      "jobTitle": "役職",
+      "street": "番地",
+      "city": "市区町村",
+      "region": "都道府県・州",
+      "postcode": "郵便番号",
+      "country": "国",
+      "addEmail": "メールを追加",
+      "addPhone": "電話を追加",
+      "addField": "項目を追加",
+      "addAddress": "住所を追加",
+      "addCompany": "会社を追加",
+      "addBirthday": "誕生日を追加",
+      "addUrl": "ウェブサイトを追加",
+      "addIm": "インスタントメッセージを追加",
+      "urlPlaceholder": "https://example.com",
+      "imService": "サービス",
+      "imPlaceholder": "アドレスまたはハンドル名",
+      "addNote": "メモを追加",
+      "addPhoto": "写真を追加",
+      "fieldNames": {
+        "email": "メール",
+        "phone": "電話",
+        "address": "住所",
+        "url": "ウェブサイト",
+        "im": "インスタントメッセージ",
+        "note": "メモ"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "{{field}} の種類",
+        "remove": "{{field}} を削除",
+        "inGroup": "{{field}}（{{group}}）"
+      },
+      "invalidEmail": "name@example.com のような形式でメールアドレスを入力してください。",
+      "choosePhoto": "写真を選択",
+      "changePhoto": "写真を変更",
+      "removePhoto": "写真を削除",
+      "photoPreparing": "写真を準備しています…",
+      "photoError": "この写真は使用できませんでした。",
+      "photoTooLarge": "この写真は大きすぎます。もっと小さいものを選んでください。",
+      "photoAlt": "連絡先写真のプレビュー",
+      "booksAtLeastOne": "連絡先は、少なくとも 1 つのアドレス帳に残しておく必要があります。"
+    },
+    "delete": {
+      "title": "連絡先を削除",
+      "body": "{{name}} を削除してもよろしいですか？",
+      "confirm": "削除",
+      "cancel": "キャンセル"
+    },
+    "groups": {
+      "title": "グループ",
+      "new": "新しいグループ",
+      "loading": "グループを読み込んでいます",
+      "empty": "グループはまだありません。",
+      "newTitle": "新しいグループ",
+      "editTitle": "グループを編集",
+      "name": "グループ名",
+      "sections": {
+        "name": "名前"
+      },
+      "membersCount_other": "{{count}} 人のメンバー",
+      "membersLabel": "グループのメンバー",
+      "noMembers": "メンバーはまだいません。",
+      "addMembers": "メンバーを追加",
+      "searchMembers": "追加する連絡先を検索",
+      "noCandidates": "追加できる連絡先がありません。",
+      "removeMember": "{{name}} をグループから削除",
+      "addNamed": "{{name}} を追加",
+      "unknownMember": "不明な連絡先",
+      "edit": "グループを編集",
+      "delete": "グループを削除",
+      "backToContacts": "すべての連絡先",
+      "deleteTitle": "グループを削除",
+      "deleteBody": "グループ「{{name}}」を削除しますか？含まれている連絡先は削除されません。"
+    },
+    "io": {
+      "open": "インポートとエクスポート",
+      "title": "連絡先のインポートとエクスポート",
+      "exportTitle": "連絡先をエクスポート",
+      "exportContact": "連絡先をエクスポート…",
+      "format": {
+        "label": "形式",
+        "vcard": "vCard 4.0",
+        "jscontact": "JSContact（JSON）"
+      },
+      "book": {
+        "label": "追加先のアドレス帳",
+        "none": "書き込めるアドレス帳がありません。"
+      },
+      "import": {
+        "cancel": "中止",
+        "choose": "ファイルを選択（.vcf または .json）",
+        "confirm_other": "{{count}} 件の連絡先をインポート",
+        "heading": "インポート",
+        "parsing": "ファイルを読み込んでいます…",
+        "progress": "{{total}} 件中 {{done}} 件",
+        "progressLabel": "インポートの進捗"
+      },
+      "export": {
+        "heading": "エクスポート",
+        "button": "ダウンロード",
+        "empty": "エクスポートできる連絡先がありません。",
+        "scope_other": "{{count}} 件の連絡先がエクスポートされます。"
+      },
+      "keepBoth": "重複もそのままインポートする（両方を残す）",
+      "result": {
+        "willImport_other": "インポートする連絡先 {{count}} 件",
+        "duplicates_other": "重複が {{count}} 件見つかりました",
+        "skipped_other": "{{count}} 行を読み取れませんでした",
+        "imported_other": "{{count}} 件の連絡先をインポートしました。",
+        "empty": "ファイルに連絡先が見つかりませんでした。",
+        "capped": "最初の {{max}} 件の連絡先だけがインポートされます。"
+      },
+      "error": {
+        "invalid": "ファイルを読み取れませんでした。有効な vCard または JSON ファイルかどうか確認してください。",
+        "failed": "ファイルをインポートできませんでした。",
+        "export": "エクスポートを準備できませんでした。もう一方の形式をお試しください。"
+      }
+    }
+  },
+  "footer": {
+    "label": "法的情報とサポート",
+    "imprint": "発行者情報",
+    "privacy": "プライバシー",
+    "support": "サポート"
+  },
+  "theme": {
+    "label": "テーマ",
+    "auto": "システムの設定に合わせる",
+    "light": "ライトテーマ",
+    "dark": "ダークテーマ"
+  },
+  "language": {
+    "label": "言語"
+  },
+  "ui": {
+    "dialog": {
+      "close": "閉じる",
+      "discardBody": "ここに入力した内容は失われます。",
+      "discardCancel": "編集を続ける",
+      "discardConfirm": "破棄",
+      "discardTitle": "変更を破棄しますか？"
+    },
+    "toast": {
+      "region": "ステータスメッセージ",
+      "dismiss": "閉じる"
+    },
+    "spinner": {
+      "label": "読み込み中"
+    }
+  },
+  "mailbox": {
+    "role": {
+      "inbox": "受信トレイ",
+      "drafts": "下書き",
+      "sent": "送信済み",
+      "archive": "アーカイブ",
+      "junk": "迷惑メール",
+      "trash": "ゴミ箱",
+      "important": "重要",
+      "snoozed": "スヌーズ中",
+      "scheduled": "送信予約",
+      "memos": "メモ"
+    },
+    "unread": "未読 {{count}} 件",
+    "expand": "{{name}} を展開",
+    "collapse": "{{name}} を折りたたむ",
+    "actions": {
+      "menu": "フォルダーの操作：{{name}}",
+      "newSubfolder": "新しいサブフォルダー…",
+      "newFolder": "新しいフォルダー",
+      "rename": "名前を変更…",
+      "delete": "削除",
+      "keepOffline": "オフラインで保持",
+      "keepOfflineOff": "オフライン保持をやめる",
+      "move": "移動先…",
+      "import": ".eml ファイルをインポート…",
+      "info": "フォルダー情報…",
+      "manage": "フォルダーを管理"
+    },
+    "manage": {
+      "title": "フォルダーの管理",
+      "hint": "フォルダーをドラッグすると並び順を変えられます。オフにすると、サイドバーから外れます。非表示のフォルダーもこのリストには残り、他のメールアプリでも同じように非表示になります。",
+      "done": "完了",
+      "alwaysShown": "常に表示",
+      "show": "{{name}} をサイドバーに表示",
+      "reorder": "{{name}} を並べ替え",
+      "reorderHint": "Space でフォルダーをつかみ、上下の矢印キーで移動します。Space で置き、Esc で元に戻します。",
+      "movedTo": "{{name}}、{{count}} 件中 {{position}} 番目のフォルダー",
+      "dropped": "{{name}} を置きました",
+      "dropCanceled": "{{name}} を元に戻しました"
+    },
+    "info": {
+      "title": "フォルダー情報：{{name}}",
+      "useAs": "このフォルダーの用途…",
+      "useAsNone": "通常のフォルダー",
+      "useAsHint": "他のメールアプリもこの設定を読み取ります。アーカイブとして使うフォルダーは、それらのアプリでもアーカイブの保存先になり、ここでは標準フォルダーの位置に上がります。",
+      "submit": "保存"
+    },
+    "create": {
+      "title": "新しいフォルダー",
+      "titleChild": "{{parent}} 内に新しいサブフォルダー",
+      "nameLabel": "フォルダー名",
+      "submit": "作成"
+    },
+    "rename": {
+      "title": "フォルダーの名前を変更",
+      "submit": "名前を変更"
+    },
+    "delete": {
+      "title": "フォルダーを削除しますか？",
+      "message": "「{{name}}」を削除しますか？元に戻せません。",
+      "messageNonEmpty": "「{{name}}」には {{count}} 件のメッセージがあります。フォルダーごと削除しますか？元に戻せません。",
+      "confirm": "削除"
+    },
+    "error": {
+      "nameRequired": "フォルダー名を入力してください。",
+      "nameTooLong": "この名前は長すぎます。",
+      "nameTaken": "同じ名前のフォルダーが、ここにすでにあります。"
+    },
+    "cancel": "キャンセル",
+    "keptOffline": "オフラインで保持中",
+    "move": {
+      "title": "「{{name}}」を移動",
+      "topLevel": "最上位",
+      "empty": "このフォルダーの移動先になるフォルダーがありません。"
+    },
+    "import": {
+      "title": "{{folder}} へインポート",
+      "pick": ".eml ファイルを選択",
+      "hint": "メッセージは届いたままの形で保存されます。1 ファイルにつき最大 {{size}} MB です。",
+      "progress": "これまでに {{done}} 件をインポート…",
+      "imported": "{{count}} 件のメッセージをインポートしました。",
+      "skipped": "メッセージではないためスキップしました：{{files}}",
+      "close": "完了",
+      "cancel": "キャンセル",
+      "error": {
+        "tooLarge": "サイズが大きすぎます",
+        "alreadyExists": "このアカウントにすでにあります",
+        "invalidEmail": "有効なメッセージではありません",
+        "overQuota": "このアカウントに空き容量がありません",
+        "notFound": "保存される前にアップロードの期限が切れました",
+        "uploadFailed": "アップロードに失敗しました",
+        "rejected": "サーバーが受け付けませんでした"
+      }
+    }
+  },
+  "list": {
+    "noSender": "（差出人なし）",
+    "noSubject": "（件名なし）",
+    "unread": "未読",
+    "flagged": "フラグあり",
+    "attachment": "添付ファイルあり",
+    "answered": "返信済み",
+    "select": "メッセージを選択",
+    "selectAll": "すべて選択",
+    "selected": "{{count}} 件を選択中",
+    "clearSelection": "選択を解除",
+    "actions": {
+      "archive": "アーカイブ",
+      "delete": "削除",
+      "flag": "フラグを付ける",
+      "junk": "迷惑メールにする",
+      "menu": "メッセージの操作",
+      "more": "選択中の項目のその他の操作",
+      "move": "移動先…",
+      "notJunk": "迷惑メールを解除",
+      "open": "開く",
+      "openFull": "全画面で開く",
+      "read": "既読にする",
+      "trash": "ゴミ箱へ移動",
+      "unflag": "フラグを外す",
+      "unread": "未読にする"
+    },
+    "sort": {
+      "label": "並べ替え",
+      "date": "受信日時",
+      "sentAt": "送信日時",
+      "from": "差出人",
+      "to": "宛先",
+      "subject": "件名",
+      "size": "サイズ",
+      "unreadFirst": "未読を先頭に"
+    },
+    "density": {
+      "label": "行間",
+      "comfortable": "ゆったり",
+      "compact": "コンパクト"
+    },
+    "view": {
+      "threaded": "スレッド",
+      "flat": "個別のメッセージ",
+      "label": "表示"
+    },
+    "viewOptionsUnavailable": "並べ替えとスレッド表示は、フォルダーにのみ適用されます。",
+    "confirmDeleteBody_other": "この {{count}} 件のメッセージは完全に削除されます。元に戻せません。",
+    "loadMore": "さらに読み込む",
+    "loading": "メッセージを読み込んでいます",
+    "stale": "このリストは最新ではありません。次の同期時に更新されます。",
+    "empty": "このフォルダーにメッセージはありません。",
+    "noMailbox": "フォルダーを選択してください",
+    "undo": "元に戻す",
+    "moved": {
+      "archive": "アーカイブへ移動しました",
+      "folder": "「{{folder}}」へ移動しました",
+      "junk": "迷惑メールへ移動しました",
+      "notJunk": "受信トレイへ移動しました",
+      "removedLabel": "「{{label}}」から外しました",
+      "trash": "ゴミ箱へ移動しました"
+    },
+    "viewOptions": {
+      "show": "表示オプションを表示",
+      "hide": "表示オプションを隠す",
+      "label": "表示"
+    }
+  },
+  "reading": {
+    "from": "差出人",
+    "to": "宛先",
+    "cc": "Cc",
+    "replyTo": "返信先",
+    "bcc": "Bcc",
+    "sender": "送信者",
+    "senderOnBehalfOf": "{{from}} の代理として {{sender}}",
+    "date": "日時",
+    "sentAt": "送信日時",
+    "messageId": "Message-ID",
+    "details": "詳細",
+    "noRecipients": "（宛先なし）",
+    "actions": "メッセージの操作",
+    "markUnread": "未読にする",
+    "senderCard": {
+      "trigger": "{{name}} の連絡先カードを表示",
+      "add": "連絡先に追加",
+      "edit": "連絡先を編集",
+      "lastConversation": "最後のやり取り",
+      "added": "連絡先に追加しました"
+    },
+    "collapse": "メッセージを折りたたむ",
+    "reply": "返信",
+    "replyAll": "全員に返信",
+    "forward": "転送",
+    "quotedLabel": "引用文",
+    "frameTitle": "メッセージ：{{subject}}",
+    "threadCount": "このスレッドのメッセージ {{count}} 件",
+    "notAvailable": "このメッセージは利用できません。",
+    "confirmDeleteBody": "このメッセージは完全に削除されます。元に戻せません。",
+    "moveTitle": "フォルダーへ移動",
+    "moveEmpty": "他にフォルダーがありません。",
+    "remote": {
+      "title": "リモートコンテンツをブロックしました",
+      "privacyNote": "画像などのリモートコンテンツは、あなたがメッセージを開いた時刻を追跡できます。",
+      "load": "画像を読み込む",
+      "alwaysAllow": "{{sender}} を常に許可"
+    },
+    "attachments": {
+      "title": "添付ファイル",
+      "saveAll": "すべて保存",
+      "unnamed": "（名前なし）",
+      "preview": "プレビュー",
+      "hidePreview": "プレビューを隠す",
+      "download": "{{name}} をダウンロード",
+      "previewNamed": "プレビュー：{{name}}",
+      "hidePreviewNamed": "プレビューを隠す：{{name}}",
+      "unpack": "{{name}} の中身を表示",
+      "unpackShort": "中身を表示",
+      "unpackedHeading": "{{name}} の中身",
+      "unpackEmpty": "このファイルからは何も読み取れませんでした。",
+      "unpackNote": "Outlook がこれらを 1 つのファイルにまとめています。相手が送ったままの形で表示しており、中身の検査は行っていません。"
+    },
+    "editDraft": "下書きを編集",
+    "draftLead": "これは、まだ送信していない下書きです。",
+    "more": "その他の操作",
+    "authResults": {
+      "label": "認証",
+      "reportedBy": "{{host}} による報告：",
+      "unverified": "この報告はメッセージ自体に含まれるもので、検証できません。メッセージが本物かどうかを、これだけで判断しないでください。"
+    },
+    "nameLooksLikeAddress": "表示されている名前は、差出人の実際のアドレスではありません",
+    "linkWarning": {
+      "title": "このリンクは本物ではない可能性があります",
+      "lead": "このリンクの文字列はあるウェブサイトを示していますが、実際に開くのは別のサイトです。フィッシングメールはこの手口を使います。",
+      "claimed": "リンクの表示",
+      "target": "実際に開くのは",
+      "note": "本物だと確信できるときだけ開いてください。少しでも疑わしい場合は、これを閉じて、アドレスをご自身でブラウザーに入力してください。",
+      "open": "それでも開く"
+    },
+    "source": {
+      "title": "メッセージのソース",
+      "view": "ソースを表示",
+      "save": ".eml として保存",
+      "copy": "コピー",
+      "copyHead": "先頭の {{size}} をコピー",
+      "copied": "コピーしました",
+      "truncated": "このメッセージの冒頭のみを表示しています（全体で {{size}}）。すべて見るには .eml として保存してください。",
+      "error": {
+        "offline": "オフラインのため、メッセージのソースを読み込めませんでした。",
+        "notFound": "このメッセージは、もうサーバー上にありません。",
+        "failed": "メッセージのソースを読み込めませんでした。"
+      }
+    },
+    "nested": {
+      "open": "メッセージを開く",
+      "close": "メッセージを隠す",
+      "frameTitle": "添付されたメッセージ：{{subject}}",
+      "error": {
+        "notParsable": "この添付メッセージは開けませんでした。",
+        "offline": "このメッセージを開くには接続してください。",
+        "failed": "この添付メッセージは開けませんでした。"
+      },
+      "subjectLabel": "件名",
+      "truncated": "このメッセージの冒頭のみを表示しています。すべて見るには添付ファイルをダウンロードしてください。",
+      "openNamed": "メッセージを開く：{{name}}",
+      "closeNamed": "メッセージを隠す：{{name}}"
+    },
+    "print": "印刷",
+    "unsubscribe": {
+      "title": "メーリングリスト",
+      "note": "このメッセージには、受信を停止する方法が用意されています。",
+      "sentNote": "配信停止の依頼を送信しました。いつ反映されるかはリスト側が決めます。",
+      "failedNote": "依頼を送信できませんでした。リスト自身のページをご利用ください。",
+      "oneClick": "配信停止",
+      "open": "配信停止ページ",
+      "email": "メールで配信停止"
+    },
+    "forwardAsAttachment": "添付ファイルとして転送",
+    "snooze": {
+      "laterToday": "今日の後ほどまでスヌーズ",
+      "tomorrow": "明日までスヌーズ",
+      "thisWeekend": "週末までスヌーズ",
+      "nextWeek": "来週までスヌーズ"
+    },
+    "protection": {
+      "title": "メッセージの保護",
+      "encrypted": "このメッセージは暗号化されています",
+      "encryptedNote": "ここではまだ開けません。S/MIME または OpenPGP に対応したメールソフトをお使いになるか、このメールボックスで保存時の暗号化が有効になっていないか管理者にお問い合わせください。",
+      "signed": "このメッセージは署名されています",
+      "signedNote": "電子署名が付いています。ここではまだ署名を検証していないため、署名があることを示すだけで、それが有効であることを示すものではありません。"
+    },
+    "receipt": {
+      "title": "開封確認",
+      "asked": "差出人が、あなたがこれを読んだことを知らせるよう求めています",
+      "note": "まだ何も送信していません。確認すると、このメッセージを開いたことが {{address}} に伝わります。",
+      "noteElsewhere": "まだ何も送信していません。確認すると、このメッセージを開いたことが、差出人のアドレスではない {{address}} に伝わります。",
+      "confirm": "読んだことを知らせる",
+      "sending": "送信中…",
+      "decline": "いいえ",
+      "failed": "送信できませんでした。誰にも通知されていません。",
+      "sent": "読んだことを知らせました",
+      "sentNote": "{{address}} に通知しました。",
+      "body": "あなたのメッセージは表示されました。読まれたこと、あるいは理解されたことを保証するものではありません。\n",
+      "subject": "開封済み：{{subject}}"
+    },
+    "fullScreen": "全画面で開く",
+    "exitFullScreen": "全画面を終了"
+  },
+  "compose": {
+    "toolbar": "書式",
+    "editorLabel": "メッセージ本文",
+    "bold": "太字",
+    "italic": "斜体",
+    "underline": "下線",
+    "bulletList": "箇条書き",
+    "numberedList": "番号付きリスト",
+    "quote": "引用",
+    "insertLink": "リンクを挿入",
+    "removeLink": "リンクを削除",
+    "linkTitle": "リンクを挿入",
+    "linkUrlLabel": "リンクの URL",
+    "linkUrlPlaceholder": "https://example.com",
+    "linkInsert": "挿入",
+    "linkCancel": "キャンセル",
+    "plainTextMode": "テキスト形式",
+    "richTextMode": "リッチテキスト形式",
+    "textSize": "文字サイズ",
+    "textSizeNormal": "標準",
+    "textSizeSmall": "小",
+    "textSizeLarge": "大",
+    "new": "新規メッセージ",
+    "noSubject": "（件名なし）",
+    "untitledWindow": "下書き",
+    "fromLabel": "差出人",
+    "subjectLabel": "件名",
+    "minimize": "最小化",
+    "expand": "全画面",
+    "restore": "全画面を終了",
+    "close": "閉じる",
+    "discardTitle": "この下書きを破棄しますか？",
+    "discardBody": "この下書きは完全に削除されます。",
+    "discardConfirm": "破棄",
+    "discardCancel": "編集を続ける",
+    "toLabel": "宛先",
+    "ccLabel": "Cc",
+    "replyAttribution": "{{date}} に {{name}} さんは書きました：",
+    "forwardSeparator": "---------- 転送されたメッセージ ----------",
+    "forwardLabelFrom": "差出人",
+    "forwardLabelTo": "宛先",
+    "forwardLabelSubject": "件名",
+    "forwardLabelDate": "日時",
+    "bccLabel": "Bcc",
+    "showCcField": "Cc",
+    "showBccField": "Bcc",
+    "recipientRemove": "{{address}} を削除",
+    "recipientInvalid": "無効なメールアドレス",
+    "recipientDidYouMean": "もしかして {{suggestion}} ですか？",
+    "recipientDidYouMeanApply": "{{suggestion}} を使う",
+    "recipientMoveTo": "「{{field}}」へ移動",
+    "recipientMoveMenu": "宛先のオプション",
+    "recipientGroupMembers_other": "グループ・連絡先 {{count}} 件",
+    "discard": "下書きを破棄",
+    "attach": "ファイルを添付",
+    "attachmentsLabel": "添付ファイル",
+    "attachRemove": "{{name}} を削除",
+    "attachRetry": "{{name}} を再試行",
+    "attachCancel": "アップロードを中止",
+    "attachUploading": "{{name}} をアップロード中…",
+    "attachError": "アップロードに失敗しました",
+    "attachTooLarge": "{{name}} は大きすぎます（上限 {{max}}）",
+    "attachTotalTooLarge": "添付ファイルが上限の {{max}} を超えています",
+    "attachQuota": "アップロードの上限に達しました。しばらくしてからお試しください",
+    "attachNetworkError": "アップロードに失敗しました。接続を確認してください",
+    "dropHint": "ファイルをドロップして添付",
+    "send": "送信",
+    "sendShortcut": "送信（⌘↵）",
+    "sending": "送信中…",
+    "sendUndo": "元に戻す",
+    "sendUndoToast": "メッセージを送信しています…",
+    "sendCanceled": "送信を取り消しました",
+    "sendNoIdentity": "送信する前に差出人アドレスを選んでください",
+    "sendNoRecipients": "宛先を少なくとも 1 件追加してください",
+    "sendNoSentMailbox": "送信済みフォルダーがないため、まだ送信できません",
+    "sendUnavailable": "まだ送信の準備ができていません。少し待ってからお試しください",
+    "sendWaitUploads": "アップロードが終わるまでお待ちください",
+    "sendTooLarge": "添付ファイルが大きすぎて送信できません",
+    "sendFixRecipients": "強調表示された宛先アドレスを修正してください",
+    "closeWaitUploads": "アップロードが進行中のため、ウィンドウを最小化しました",
+    "sendErrorRecipient": "一部の宛先が拒否されました：{{detail}}",
+    "sendErrorQuota": "送信できませんでした。メールボックスの容量を超えています",
+    "sendErrorSize": "メッセージが大きすぎて送信できません",
+    "sendErrorGeneric": "送信できませんでした。下書きに保存してあります",
+    "attachMentionTitle": "添付なしで送信しますか？",
+    "attachMentionBody": "本文で添付ファイルに触れていますが、何も添付されていません。",
+    "attachMentionSend": "それでも送信",
+    "attachMentionCancel": "戻る",
+    "attachMentionKeywords": ["添付", "別添", "同封", "ファイルを送", "資料を送"],
+    "sendErrorInterrupted": "確認が取れる前に中断されました。再送する前に「送信済み」を確認してください",
+    "schedule": {
+      "open": "後で送信",
+      "title": "後で送信",
+      "custom": "または時刻を指定",
+      "confirm": "予約",
+      "cancel": "キャンセル",
+      "queued": "{{when}} に送信予約しました",
+      "preset": {
+        "inOneHour": "1 時間後",
+        "thisEvening": "今日の夕方",
+        "tomorrowMorning": "明日の朝",
+        "nextWeek": "来週"
+      },
+      "error": {
+        "past": "未来の時刻を選んでください。",
+        "tooFar": "このサーバーが許す範囲より先の時刻です。",
+        "unsupported": "このサーバーは、メッセージを保留して後から配信することができません。"
+      }
+    },
+    "templates": {
+      "insert": "テンプレートを挿入"
+    },
+    "replyToLabel": "返信先",
+    "showReplyToField": "返信先",
+    "attachFromDevice": "このデバイスから…",
+    "options": {
+      "open": "送信オプション",
+      "title": "送信オプション",
+      "done": "完了",
+      "priority": {
+        "label": "重要度",
+        "high": "高",
+        "normal": "標準",
+        "low": "低"
+      },
+      "receipt": {
+        "label": "配信確認を要求する",
+        "hint": "メールシステムが、配信されたかどうかをメッセージで知らせます。"
+      },
+      "tls": {
+        "label": "暗号化された接続を必須にする",
+        "hint": "暗号化されないまま渡される代わりに、メッセージが差し戻されます。"
+      }
+    },
+    "attachFromFiles": {
+      "open": "ファイルから…",
+      "title": "ファイルから添付",
+      "path": "フォルダーのパス",
+      "root": "ファイル",
+      "empty": "このフォルダーは空です。",
+      "errorTitle": "ファイルを読み込めませんでした",
+      "errorBody": "接続を確認して、もう一度お試しください。",
+      "cancel": "キャンセル",
+      "confirmEmpty": "添付",
+      "confirm_other": "{{count}} 件のファイルを添付"
+    }
+  },
+  "search": {
+    "placeholder": "メールを検索",
+    "label": "検索",
+    "clear": "検索を消去",
+    "scope": {
+      "label": "検索範囲",
+      "folder": "このフォルダー",
+      "all": "すべてのフォルダー",
+      "everywhere": "すべてのフォルダー（ゴミ箱・迷惑メールを含む）"
+    },
+    "chip": {
+      "remove": "フィルター「{{filter}}」を削除",
+      "not": "{{filter}} 以外",
+      "from": "差出人：{{value}}",
+      "to": "宛先：{{value}}",
+      "cc": "Cc：{{value}}",
+      "bcc": "Bcc：{{value}}",
+      "subject": "件名：{{value}}",
+      "body": "本文：{{value}}",
+      "hasAttachment": "添付ファイルあり",
+      "unread": "未読",
+      "read": "既読",
+      "flagged": "フラグあり",
+      "thread": {
+        "unread": "未読のスレッド",
+        "read": "既読のスレッド",
+        "flagged": "フラグ付きのスレッド"
+      },
+      "in": "場所：{{value}}",
+      "before": "{{value}} より前",
+      "after": "{{value}} より後",
+      "larger": "{{value}} より大きい",
+      "smaller": "{{value}} より小さい",
+      "text": "次を含む：{{value}}"
+    },
+    "hint": "from:、to:、subject:、has:attachment、is:unread、larger:5M、in:、before:、after: が使えます",
+    "hintAdvanced": "上級者向け：-語 は除外、a OR b はどちらかに一致、thread:unread は誰も開いていないスレッドを探します。",
+    "findLarge": "サイズの大きいメッセージを探す",
+    "results": {
+      "empty": "検索に一致するメッセージはありません。すべてのフォルダーを試すか、キーワードを減らしてください。",
+      "count_other": "{{count}} 件の結果"
+    },
+    "chipsLabel": "有効なフィルター",
+    "chipsCount_other": "フィルター {{count}} 件が有効",
+    "saved": {
+      "title": "保存した検索",
+      "save": "この検索を保存",
+      "saved": "検索を保存しました",
+      "forget": "{{name}} を削除"
+    }
+  },
+  "labels": {
+    "title": "ラベル",
+    "empty": "ラベルはまだありません。",
+    "noMessages": "このラベルの付いたメッセージはありません。",
+    "new": "新しいラベル",
+    "addFirst": "ラベルを作成",
+    "newEllipsis": "新しいラベル…",
+    "assign": "ラベル",
+    "menuTitle": "ラベルを適用",
+    "removeFromLabel": "このラベルから外す",
+    "discoveredHint": "同期済みのメッセージから自動的に見つかりました。",
+    "unread": "未読 {{count}} 件",
+    "rowLabels": "ラベル",
+    "moreLabels_other": "他に {{count}} 件のラベル",
+    "actions": {
+      "menu": "ラベルの操作：{{name}}",
+      "rename": "名前を変更",
+      "recolor": "色を変更",
+      "delete": "削除",
+      "addToLabels": "ラベルに追加"
+    },
+    "create": {
+      "title": "新しいラベル",
+      "nameLabel": "ラベル名",
+      "colorLabel": "色",
+      "submit": "作成"
+    },
+    "rename": {
+      "title": "ラベルの名前を変更",
+      "submit": "名前を変更"
+    },
+    "recolor": {
+      "title": "色を変更"
+    },
+    "save": "保存",
+    "delete": {
+      "title": "ラベルを削除しますか？",
+      "message": "ラベル「{{name}}」を削除しますか？メッセージ側のキーワードはそのまま残ります。",
+      "alsoStrip": "既知の {{count}} 件のメッセージからも削除する",
+      "confirm": "削除"
+    },
+    "color": {
+      "red": "赤",
+      "orange": "オレンジ",
+      "yellow": "黄",
+      "green": "緑",
+      "blue": "青",
+      "purple": "紫",
+      "gray": "グレー"
+    },
+    "error": {
+      "empty": "ラベル名を入力してください。",
+      "tooLong": "この名前は長すぎます。",
+      "taken": "同じ名前のラベルがすでにあります。"
+    },
+    "loading": "ラベルを読み込んでいます"
+  },
+  "cleanup": {
+    "cancel": "キャンセル",
+    "menu": {
+      "emptyTrash": "ゴミ箱を空にする",
+      "emptyJunk": "迷惑メールを空にする",
+      "deleteOlder": "指定より古いメールを削除…"
+    },
+    "empty": {
+      "title": "「{{name}}」を空にしますか？",
+      "message_other": "「{{name}}」内の {{count}} 件のメッセージを完全に削除しますか？元に戻せません。",
+      "retention": "{{product}} はこれらをサーバー上で削除します。プロバイダーが {{product}} の管理外で独自のバックアップを保持している場合があります。",
+      "confirm": "フォルダーを空にする"
+    },
+    "older": {
+      "title": "古いメッセージを削除",
+      "daysLabel": "削除の対象にする古さ（日数）",
+      "messageTrash_other": "「{{name}}」内の {{count}} 日より古いメッセージをゴミ箱へ移動しますか？",
+      "messageDestroy_other": "「{{name}}」内の {{count}} 日より古いメッセージを完全に削除しますか？元に戻せません。",
+      "noteTrash": "移動したメッセージは、ゴミ箱を空にするまでそこに残ります。",
+      "retention": "{{product}} はこれらをサーバー上で削除します。プロバイダーが {{product}} の管理外で独自のバックアップを保持している場合があります。",
+      "confirmTrash": "ゴミ箱へ移動",
+      "confirmDestroy": "完全に削除",
+      "invalid": "日数を入力してください（1〜3650）。"
+    },
+    "failed": {
+      "title": "「{{name}}」を整理できませんでした",
+      "body": "処理が完了しませんでした。接続を確認して、もう一度お試しください。"
+    }
+  },
+  "outbox": {
+    "problems": {
+      "open_other": "{{count}} 件の操作が完了しませんでした",
+      "title": "一部の操作が完了しませんでした",
+      "empty": "すべて最新です。",
+      "discardAll": "すべて破棄"
+    },
+    "action": {
+      "retry": "再試行",
+      "discard": "破棄",
+      "keepHere": "{{folder}} に残す",
+      "dismiss": "OK"
+    },
+    "conflict": {
+      "moveFolderGone": "移動できませんでした。そのフォルダーは削除されています。",
+      "messageGone": "そのメッセージは、もうサーバー上にありません。",
+      "folderGone": "そのフォルダーは、もう存在しません。",
+      "folderNotEmpty": "そのフォルダーは空ではありません。",
+      "contactGone": "その連絡先は、もうサーバー上にありません。",
+      "forbidden": "その操作を行う権限がありません。",
+      "quota": "メールボックスの容量を超えています。",
+      "tooLarge": "サーバーには大きすぎます。",
+      "invalid": "サーバーがその変更を拒否しました。",
+      "stateConflict": "同時に別の人がそれを変更しました。",
+      "serverRejected": "サーバーがその変更を拒否しました。"
+    },
+    "send": {
+      "willSendWhenOnline": "オンラインに戻ったら送信します",
+      "queuedOffline": "オフラインです。再接続したときに送信します",
+      "retrying": "再試行中…",
+      "cancel": "送信を取り消す",
+      "label": "送信待ちのメッセージ"
+    },
+    "scheduled": {
+      "title": "送信予約",
+      "description": "サーバーが後の配信のために保留しているメッセージです。このアプリが開いているかどうかにかかわらず送信されます。",
+      "loading": "読み込み中…",
+      "empty": "予約はありません。",
+      "loadFailed": "予約したメッセージを読み込めませんでした。",
+      "willSend": "{{when}} に送信",
+      "cancel": "送信を取り消す",
+      "cancelled": "送信を取り消しました",
+      "tooLate": "すでに送信されました。キューを離れた後でした。"
+    }
+  },
+  "pwa": {
+    "update": {
+      "title": "更新の準備ができました",
+      "body": "再読み込みすると新しいバージョンになります。開いている下書きは先に保存されます。",
+      "action": "再読み込み"
+    },
+    "install": {
+      "menu": "アプリをインストール",
+      "title": "{{product}} をインストール",
+      "body": "インストールすると、アプリのアイコンが追加され、起動が速くなり、ブラウザーのウィンドウなしでメールを使えます。",
+      "action": "インストール",
+      "cancel": "今はしない",
+      "gotIt": "了解",
+      "ios": {
+        "title": "ホーム画面に追加",
+        "steps": {
+          "share": "Safari で「共有」ボタンをタップします。",
+          "add": "「ホーム画面に追加」を選びます。",
+          "open": "ホーム画面の新しいアイコンから {{product}} を開きます。"
+        },
+        "pushNote": "iPhone と iPad では、ホーム画面から起動したときにのみメールの通知が届きます。"
+      }
+    },
+    "error": {
+      "chunk": {
+        "title": "問題が発生しました",
+        "body": "アプリの一部を読み込めませんでした。再読み込みすると、たいていは解決します。",
+        "action": "再読み込み"
+      }
+    }
+  },
+  "notify": {
+    "title": "通知",
+    "description": "{{product}} は起動している間、新着メールをお知らせします。バックグラウンドのタブやウィンドウでも同じです。",
+    "enable": {
+      "label": "新着メールを通知する"
+    },
+    "permission": {
+      "denied": "ブラウザーがこのサイトの通知をブロックしています。ブラウザーのサイト設定で許可してから、{{product}} を再読み込みしてください。",
+      "dismissed": "通知は許可されませんでした。もう一度たずねるには、スイッチを入れ直してください。",
+      "unsupported": "このブラウザーは通知に対応していません。",
+      "iosInstall": "iPhone と iPad では、{{product}} をホーム画面から起動したときにのみ通知が届きます。まずホーム画面に追加してください。"
+    },
+    "folders": {
+      "label": "通知するフォルダー",
+      "hint": "他のフォルダーの新着メールも同期はされます。通知が出ないだけです。"
+    },
+    "quiet": {
+      "label": "通知しない時間帯",
+      "hint": "この時間帯は通知しません。深夜をまたぐ指定もできます。",
+      "from": "開始",
+      "to": "終了"
+    },
+    "preview": {
+      "label": "差出人と件名を表示",
+      "hint": "オフにすると、新着メールがあることだけを通知します。画面を共有しているときに便利です。"
+    },
+    "sound": {
+      "label": "音を鳴らす",
+      "hint": "実際に音が鳴るかどうかは、お使いの OS が決めます。"
+    },
+    "background": {
+      "unavailable": "{{product}} を完全に閉じている間の通知は、このサーバーでは利用できません。サーバーが Web Push の署名鍵（RFC 9749）を公開している必要がありますが、このサーバーは公開していません。上記の設定は、{{product}} を開いている限り機能します。",
+      "available": "このサーバーは、{{product}} を閉じている間も通知できます。",
+      "contentless": "その通知は、メールが届いたことだけを知らせます。差出人や件名は含みません。",
+      "withContent": "その通知には、{{product}} を開いているときに表示されるものと同じく、差出人と件名が含まれます。",
+      "previewOff": "設定「{{setting}}」がオフのため、{{product}} は差出人と件名を隠すのではなく、そもそもこのサーバーに送るよう求めません。閉じている間の通知は、メールが届いたことだけを知らせます。",
+      "folders": "上のフォルダー選択は、{{product}} を閉じている間は適用されません。どのフォルダーについても通知が届きます。",
+      "renewal": "通知を受け取り続けるには、少なくとも週に一度は {{product}} を開いてください。このサーバーはバックグラウンドの購読を 7 日ずつ更新し、更新できるのは {{product}} 自身だけです。"
+    },
+    "message": {
+      "noSubject": "（件名なし）",
+      "unknownSender": "差出人不明"
+    },
+    "body": {
+      "generic": "新着メッセージ",
+      "count_other": "新着メッセージ {{count}} 件"
+    }
+  },
+  "quota": {
+    "label": "メールボックスの容量",
+    "used": "{{total}} 中 {{used}}",
+    "nearlyFull": "{{total}} 中 {{used}}。まもなく上限です",
+    "full": "メールボックスが上限に達しました",
+    "warnToast": "メールボックスがまもなく上限に達します。新着メールが近く拒否される可能性があります。",
+    "fullToast": "メールボックスが上限に達しました。空き容量を作るまで、新着メールは拒否されます。"
+  },
+  "shortcuts": {
+    "title": "キーボードショートカット",
+    "or": "または",
+    "targetNote": "ショートカットは選択中のメッセージに作用します。何も選択していない場合は開いているメッセージ、それもなければフォーカスされている行が対象です。",
+    "editorNote": "カーソルがメッセージ本文にある間は、エディターが独自のショートカット（太字、斜体、リンクの挿入）を使います。",
+    "unavailable": {
+      "archive": "このアカウントにはアーカイブフォルダーがありません。",
+      "junk": "このアカウントには迷惑メールフォルダーがありません。",
+      "trash": "このアカウントにはゴミ箱がありません。",
+      "hint": "代わりに V を押してフォルダーを選んでください。",
+      "undo": "元に戻せる操作はありません。"
+    },
+    "keys": {
+      "space": "Space",
+      "enter": "Enter",
+      "esc": "Esc",
+      "home": "Home",
+      "end": "End"
+    },
+    "groups": {
+      "list": "メッセージリスト",
+      "navigation": "ナビゲーション",
+      "triage": "整理",
+      "compose": "作成",
+      "application": "アプリケーション"
+    },
+    "scopes": {
+      "global": "どこでも",
+      "list": "メッセージリスト",
+      "reading": "閲覧ペイン"
+    },
+    "actions": {
+      "nav": {
+        "next": "次のメッセージ",
+        "prev": "前のメッセージ",
+        "open": "メッセージを開く",
+        "back": "リストに戻る",
+        "full": "メッセージを全画面で開く"
+      },
+      "list": {
+        "move": "フォーカスを移動",
+        "extend": "選択範囲を広げる",
+        "ends": "最初または最後のメッセージ",
+        "select": "メッセージの選択を切り替え",
+        "open": "フォーカス中のメッセージを開く",
+        "selectAll": "リスト内をすべて選択",
+        "clear": "選択を解除"
+      },
+      "triage": {
+        "archive": "アーカイブ",
+        "trash": "ゴミ箱へ移動",
+        "destroy": "完全に削除",
+        "junk": "迷惑メールにする",
+        "unread": "既読・未読を切り替え",
+        "flag": "フラグを付ける・外す",
+        "label": "ラベルを適用",
+        "move": "フォルダーへ移動",
+        "undo": "直前の操作を元に戻す"
+      },
+      "compose": {
+        "new": "新規メッセージ",
+        "reply": "返信",
+        "replyAll": "全員に返信",
+        "forward": "転送"
+      },
+      "app": {
+        "folders": "フォルダーの表示を切り替え",
+        "help": "キーボードショートカット",
+        "palette": "コマンドパレット",
+        "search": "検索"
+      },
+      "reading": {
+        "print": "メッセージを印刷"
+      }
+    },
+    "modKey": "Ctrl"
+  },
+  "palette": {
+    "title": "コマンドパレット",
+    "open": "コマンドパレット（{{keys}}）",
+    "placeholder": "操作、フォルダー、ラベルを検索…",
+    "recent": "最近使った項目",
+    "empty": "一致するものがありません。",
+    "goToFolder": "フォルダーへ移動：{{folder}}",
+    "goToLabel": "ラベルへ移動：{{label}}",
+    "goToSettings": "設定へ移動",
+    "goToContacts": "連絡先へ移動"
+  },
+  "folders": {
+    "drag": {
+      "over": "{{folder}} にドロップ"
+    }
+  },
+  "rights": {
+    "unavailable": {
+      "accountReadOnly": "このアカウントは読み取り専用です。",
+      "seen": "これらのメッセージを既読・未読にする権限がありません。",
+      "keywords": "これらのメッセージにフラグやラベルを付ける権限がありません。",
+      "remove": "このフォルダーからメッセージを移動する権限がありません。",
+      "add": "そのフォルダーにメッセージを入れる権限がありません。",
+      "destroy": "これらのメッセージを削除する権限がありません。",
+      "unknown": "ここで何ができるかを確認しています。まだすべてのメッセージが読み込まれていません。"
+    }
+  },
+  "sharing": {
+    "currentHeading": "アクセスできる人",
+    "addHeading": "他の人にアクセスを許可",
+    "none": "あなただけです。",
+    "search": "人を検索",
+    "searchPlaceholder": "名前またはアドレス",
+    "noMatches": "一致する人はいません。",
+    "searchFailed": "人の検索に失敗しました。",
+    "roleLabel": "許可する操作",
+    "roleFor": "{{name}} に許可する操作",
+    "grant": "追加",
+    "grantTo": "{{name}} にアクセスを許可",
+    "revoke": "削除",
+    "revokeFrom": "{{name}} のアクセスを削除",
+    "done": "完了",
+    "custom": "カスタムの権限",
+    "failed": "その変更は保存されませんでした。何も変わっていません。",
+    "role": {
+      "viewer": "閲覧",
+      "editor": "編集",
+      "manager": "管理",
+      "freeBusy": "空き状況のみ"
+    },
+    "explain": {
+      "file": {
+        "viewer": "開いてダウンロードできます。変更はできません。",
+        "editor": "開く、変更する、名前を変える、削除するができます。他の人と共有することはできません。",
+        "manager": "他の人への共有を含め、あなたと同じことがすべてできます。共有されても、あなたには知らされません。"
+      },
+      "mailbox": {
+        "viewer": "このフォルダーのメールを読めます。相手がメッセージを開いても、あなたにとっては未読のままです。そのため、相手側の未読件数も減りません。",
+        "editor": "メールを読み、このフォルダーに出し入れし、既読にしたりフラグを付けたりできます。フォルダーの名前を変えたり削除したりはできません。",
+        "manager": "このフォルダーについて、あなたと同じことがすべてできます。メールの閲覧と振り分け、名前の変更、削除、そしてあなたに知らせずに他の人へ共有することも含みます。"
+      },
+      "calendar": {
+        "freeBusy": "あなたが「いつ」埋まっているかだけが分かり、何をしているかは分かりません。タイトルも場所も参加者も見えません。あなたの予定に合わせて調整する人に渡す権限です。",
+        "viewer": "このカレンダーのすべての予定を、タイトル・時刻・詳細まで読めます。変更はできません。",
+        "editor": "予定の閲覧・作成・変更、招待への返答、自分用の通知の設定ができます。カレンダーの削除や共有はできません。",
+        "manager": "このカレンダーについて、あなたと同じことがすべてできます。削除や、あなたに知らせずに他の人へ共有することも含みます。"
+      },
+      "addressBook": {
+        "viewer": "このリストの連絡先を読めます。変更はできません。",
+        "editor": "このリストの連絡先を読む、追加する、変更する、削除することができます。リストの削除や共有はできません。",
+        "manager": "このリストについて、あなたと同じことがすべてできます。削除や、あなたに知らせずに他の人へ共有することも含みます。"
+      }
+    },
+    "mailbox": {
+      "action": "共有…",
+      "title": "フォルダー「{{name}}」を共有",
+      "loadFailed": "現在のアクセス権を読み込めなかったため、ここでは何も安全に変更できません。",
+      "noSubmit": "ここで何を許可しても、あなたのアカウントからメールを送信できる人はいません。"
+    },
+    "incoming": {
+      "region": "新しい共有",
+      "mailbox": "{{who}} がフォルダー「{{name}}」をあなたと共有しました。",
+      "mailboxUnnamed": "{{who}} がメールフォルダーをあなたと共有しました。",
+      "revoked": "{{who}} が「{{name}}」へのあなたのアクセスを取り消しました。",
+      "revokedUnnamed": "{{who}} がメールフォルダーへのあなたのアクセスを取り消しました。",
+      "someone": "誰か",
+      "open": "開く",
+      "dismiss": "隠す",
+      "dismissOne": "この通知を隠す",
+      "calendar": "{{who}} がカレンダー「{{name}}」をあなたと共有しました。",
+      "calendarUnnamed": "{{who}} がカレンダーをあなたと共有しました。",
+      "revokedCalendarUnnamed": "{{who}} がカレンダーへのあなたのアクセスを取り消しました。",
+      "addressBook": "{{who}} が連絡先リスト「{{name}}」をあなたと共有しました。",
+      "addressBookUnnamed": "{{who}} が連絡先リストをあなたと共有しました。",
+      "revokedAddressBookUnnamed": "{{who}} が連絡先リストへのあなたのアクセスを取り消しました。",
+      "object": "{{who}} が「{{name}}」をあなたと共有しました。",
+      "objectUnnamed": "{{who}} が何かをあなたと共有しました。",
+      "revokedObjectUnnamed": "{{who}} が何かへのあなたのアクセスを取り消しました。"
+    },
+    "calendar": {
+      "title": "カレンダー「{{name}}」を共有"
+    },
+    "addressBook": {
+      "title": "リスト「{{name}}」を共有",
+      "loadFailed": "現在のアクセス権を読み込めなかったため、ここでは何も安全に変更できません。"
+    }
+  },
+  "calendar": {
+    "offline": "オフラインです。予定は接続中のみ作成できます。",
+    "offlineOpen": "オフラインです。予定は接続中のみ開いたり変更したりできます。",
+    "offlineStale": "オフラインのため更新していません。最終更新：{{when}}。",
+    "offlineNotUpdating": "オフラインのため更新していません。",
+    "offlineNever": {
+      "title": "この月はまだ同期されていません",
+      "body": "一度接続すれば、次にオフラインになったときもカレンダーが表示されます。"
+    },
+    "title": "カレンダー",
+    "today": "今日",
+    "previousMonth": "前の月",
+    "newEvent": "新しい予定",
+    "nextMonth": "次の月",
+    "previousWeek": "前の週",
+    "nextWeek": "次の週",
+    "weekRange": "{{from}}〜{{to}}",
+    "viewLabel": "カレンダーの表示",
+    "view": {
+      "month": "月",
+      "agenda": "予定リスト",
+      "week": "週"
+    },
+    "untitled": "（タイトルなし）",
+    "allDay": "終日",
+    "more": "他 {{count}} 件",
+    "noEvents": "予定はありません。",
+    "noEventsOnDay": "この日に予定はありません。",
+    "retry": "再試行",
+    "undo": "元に戻す",
+    "deleted": "予定を削除しました。",
+    "saveFailed": "予定を保存できませんでした。",
+    "deleteFailed": "予定を削除できませんでした。",
+    "restoreFailed": "予定を復元できませんでした。",
+    "loadFailed": "カレンダーを読み込めませんでした。",
+    "refreshFailed": "カレンダーを更新できませんでした。表示されている内容は古い可能性があります。",
+    "signedOut": "カレンダーを見るにはログインしてください。",
+    "event": {
+      "createTitle": "新しい予定",
+      "editTitle": "予定を編集",
+      "title": "タイトル",
+      "start": "開始",
+      "day": "日付",
+      "allDay": "終日",
+      "duration": "所要時間（分）",
+      "durationInvalid": "1 分から {{max}} 分の間で入力してください。",
+      "calendar": "カレンダー",
+      "description": "メモ",
+      "location": "場所",
+      "participants": "参加者",
+      "save": "保存",
+      "cancel": "キャンセル",
+      "delete": "削除",
+      "unresolvedReadOnly": "サーバーはこれを、保存された予定にたどり着けない繰り返しの一回分として返しました。そのためここでは表示だけで、変更はできません。予定そのものに届くカレンダーアプリでのみ変更できます。",
+      "alert": {
+        "label": "通知",
+        "second": "2 つ目の通知",
+        "none": "なし",
+        "atStart": "予定の開始時刻",
+        "minutes_other": "{{count}} 分前",
+        "hours_other": "{{count}} 時間前",
+        "days_other": "{{count}} 日前",
+        "weeks_other": "{{count}} 週間前",
+        "dayOf": "予定の当日（9:00）",
+        "dayBefore": "1 日前（9:00）",
+        "twoDaysBefore": "2 日前（9:00）",
+        "weekBefore": "1 週間前（9:00）",
+        "other": "開始の {{duration}} 前",
+        "carried_other": "他に {{count}} 件の通知が、そのまま保持されます。"
+      },
+      "back": "戻る",
+      "repeat": {
+        "label": "繰り返し",
+        "none": "なし",
+        "daily": "毎日",
+        "weekly": "毎週",
+        "biweekly": "2 週間ごと",
+        "monthly": "毎月",
+        "yearly": "毎年",
+        "custom": "カスタムのルール",
+        "endLabel": "繰り返しの終了",
+        "end": {
+          "never": "なし",
+          "until": "指定の日付",
+          "count": "回数を指定"
+        },
+        "untilDate": "最終日",
+        "countLabel": "予定の回数"
+      },
+      "scope": {
+        "saveTitle": "変更の適用範囲…",
+        "deleteTitle": "削除の範囲…",
+        "occurrence": "この予定のみ",
+        "all": "すべての予定",
+        "note": "この繰り返しのうち個別に変更した予定は、その時刻のまま残ります。"
+      },
+      "participant": {
+        "none": "なし",
+        "count_other": "{{count}} 人",
+        "add": "メールアドレス",
+        "addAction": "追加",
+        "empty": "まだ誰も招待していません。",
+        "organizer": "主催者",
+        "remove": "{{name}} を削除",
+        "invalid": "メールアドレスの形式ではないようです。",
+        "duplicate": "その人はすでにリストにあります。",
+        "full": "このサーバーが受け付ける参加者は最大 {{max}} 人です。",
+        "status": {
+          "needs-action": "未回答",
+          "accepted": "出席",
+          "declined": "欠席",
+          "tentative": "未定"
+        }
+      },
+      "rsvp": {
+        "label": "あなたの返答",
+        "accepted": "出席する",
+        "tentative": "未定",
+        "declined": "欠席する"
+      }
+    },
+    "calendars": {
+      "title": "カレンダー",
+      "open": "カレンダー…",
+      "create": "新しいカレンダー",
+      "createTitle": "新しいカレンダー",
+      "editTitle": "カレンダーを編集",
+      "edit": "編集",
+      "delete": "削除",
+      "menu": "{{name}} のオプション",
+      "name": "名前",
+      "color": "色",
+      "colorChosen": "選択中：{{chosen}}",
+      "empty": "このアカウントにはカレンダーがありません。",
+      "counting": "予定を数えています…",
+      "deleteTitle": "「{{name}}」を削除しますか？",
+      "deleteBody_other": "このカレンダーと、その中の {{count}} 件の予定が削除されます。元に戻す方法はありません。",
+      "deleted": "「{{name}}」を削除しました。",
+      "deleteFailed": "カレンダーを削除できませんでした。",
+      "saveFailed": "カレンダーを保存できませんでした。",
+      "toggleFailed": "カレンダーの表示を切り替えられませんでした。",
+      "share": "{{name}} を共有",
+      "sharedTitle": "共有中"
+    },
+    "colors": {
+      "red": "赤",
+      "orange": "オレンジ",
+      "ochre": "黄土色",
+      "green": "緑",
+      "teal": "ティール",
+      "blue": "青",
+      "purple": "紫",
+      "brown": "茶",
+      "custom": "現在の色"
+    },
+    "import": {
+      "open": "予定をインポート…",
+      "title": "予定のインポート",
+      "file": "カレンダーファイル（.ics）",
+      "empty": "このファイルに予定はありません。",
+      "unreadable": "ファイルを読み取れませんでした。",
+      "failed": "インポートに失敗しました。",
+      "repeats": "繰り返しあり",
+      "action_other": "{{count}} 件の予定をインポート",
+      "done_other": "{{count}} 件の予定をインポートしました。",
+      "duplicates_other": "{{count}} 件の予定は、すでにカレンダーにありました。"
+    },
+    "rsvpFailed": "返答を送信できませんでした。",
+    "occurrenceDeleted": "その予定は繰り返しから外されました。",
+    "availability": {
+      "label": "空き状況を表示",
+      "nobody": "なし",
+      "noPeople": "たずねられる相手がいません。",
+      "unavailable": "その人の空き状況は返ってきませんでした。",
+      "period": "{{name}} は {{day}} の {{from}} から {{to}} まで予定が入っています。"
+    }
+  },
+  "files": {
+    "listOptions": "リストのオプション",
+    "deleteAction": "削除",
+    "confirmDeleteBody_other": "この {{count}} 件の項目は完全に削除されます。元に戻せません。",
+    "confirmDeleteFolder": "選択したフォルダーの中身も、すべて一緒に削除されます。",
+    "truncated": "このアカウントには一度に一覧できる数を超える項目があるため、一部のファイルは表示されていません。見当たらないものは検索してください。",
+    "search": {
+      "label": "ファイルを検索",
+      "placeholder": "すべてのファイルを検索",
+      "none": "「{{query}}」に一致するものはありません。",
+      "in": "{{name}} 内",
+      "inRoot": "「ファイル」内"
+    },
+    "sort": {
+      "byName": "名前で並べ替え",
+      "bySize": "サイズで並べ替え",
+      "byKind": "種類で並べ替え"
+    },
+    "selection": {
+      "start": "選択",
+      "stop": "完了",
+      "clear": "選択を解除",
+      "all": "ここにあるものをすべて選択",
+      "count_other": "{{count}} 件を選択中"
+    },
+    "move": {
+      "open": "{{name}} を移動",
+      "action": "移動",
+      "title": "「{{name}}」を移動",
+      "titleMany": "{{count}} 件の項目を移動",
+      "here": "{{name}} へ移動",
+      "breadcrumb": "移動先フォルダー",
+      "noFolders": "ここにはフォルダーがありません。それでも「移動」を押すと、このフォルダーに入ります。",
+      "done": "{{name}} へ移動しました。",
+      "undo": "元に戻す"
+    },
+    "offline": "オフラインです。ファイルは接続中のみ変更できます。",
+    "offlineStale": "オフラインのため更新していません。最終更新：{{when}}。",
+    "offlineNotUpdating": "オフラインのため更新していません。",
+    "offlineNever": {
+      "title": "ファイルはまだ同期されていません",
+      "body": "一度接続すれば、次にオフラインになったときもこのリストが表示されます。ファイルを開くには、常に接続が必要です。"
+    },
+    "title": "ファイル",
+    "root": "ファイル",
+    "breadcrumb": "フォルダーのパス",
+    "empty": "このフォルダーは空です。",
+    "retry": "再試行",
+    "loadFailed": "ファイルを読み込めませんでした。",
+    "refreshFailed": "ファイルを更新できませんでした。表示されている内容は古い可能性があります。",
+    "savedButNotShown": "保存しましたが、リストを再読み込みできませんでした。もう一度試すと表示されます。",
+    "signedOut": "ファイルを見るにはログインしてください。",
+    "upload": "アップロード",
+    "newFolder": "新しいフォルダー",
+    "cancel": "キャンセル",
+    "download": "{{name}} をダウンロード",
+    "delete": "{{name}} を削除",
+    "rename": {
+      "open": "{{name}} の名前を変更",
+      "title": "「{{name}}」の名前を変更",
+      "label": "新しい名前",
+      "confirm": "名前を変更"
+    },
+    "error": {
+      "nameTaken": "同じ名前のものが、ここにすでにあります。",
+      "tooLarge": "このファイルは、このサーバーには大きすぎます。",
+      "overQuota": "このアカウントに空き容量がありません。",
+      "forbidden": "ここでその操作を行う権限がありません。",
+      "rejected": "サーバーがそれを拒否しました。"
+    },
+    "name": {
+      "empty": "名前を付けてください。",
+      "tooLong": "この名前は長すぎます。",
+      "forbiddenCharacter": "この名前には、サーバーが許可しない文字が含まれています。",
+      "reservedName": "この名前は予約されているため使用できません。"
+    },
+    "preview": "{{name}} をプレビュー",
+    "hidePreview": "{{name}} のプレビューを閉じる",
+    "more": "{{name}} のその他の操作",
+    "share": {
+      "open": "{{name}} を共有",
+      "title": "「{{name}}」を共有"
+    },
+    "shared": {
+      "title": "自分と共有中",
+      "open": "{{name}} が共有したファイルを開く"
+    }
+  }
+}

@@ -21,6 +21,13 @@ describe('resolveLanguage', () => {
     expect(resolveLanguage('de-CH')).toBe('de')
     expect(resolveLanguage('en-GB')).toBe('en')
     expect(resolveLanguage('en-US')).toBe('en')
+    // The twelve added in v0.21.0 arrive the same way, and two of them are the interesting cases:
+    // a Brazilian browser gets the `pt` bundle, and a Taiwanese one gets `zh` — which is written in
+    // Simplified Chinese. Readable, not correct; see the note on `resolveLanguage`.
+    expect(resolveLanguage('ru-RU')).toBe('ru')
+    expect(resolveLanguage('pt-BR')).toBe('pt')
+    expect(resolveLanguage('zh-TW')).toBe('zh')
+    expect(resolveLanguage('zh-Hans-CN')).toBe('zh')
   })
 
   it('still accepts a bare supported tag', () => {
@@ -33,8 +40,8 @@ describe('resolveLanguage', () => {
   })
 
   it('falls back to English for an unsupported language, region tag or not', () => {
-    expect(resolveLanguage('fr')).toBe('en')
-    expect(resolveLanguage('fr-FR')).toBe('en')
+    expect(resolveLanguage('sv')).toBe('en')
+    expect(resolveLanguage('sv-SE')).toBe('en')
     expect(resolveLanguage('')).toBe('en')
     expect(resolveLanguage(undefined)).toBe('en')
   })

@@ -74,9 +74,11 @@ The [Definition of Done](docs/implementation-plan.md) applies to every change:
 - TypeScript strict, including `exactOptionalPropertyTypes`. No `any`, no non-null assertions
   to get past a type error — if the type is wrong, fix the type.
 - Biome clean. An `ignore` comment needs a stated reason on the line above it.
-- **No hardcoded user-visible strings.** Everything goes through i18next, in **both** `en` and
-  `de`. `locales.test.ts` will catch a missing key, an invented placeholder or an incomplete
-  plural set.
+- **No hardcoded user-visible strings.** Everything goes through i18next. A new key goes into
+  `en` (the source) **and every other bundle** — fourteen of them; `pnpm test` fails on a missing
+  one, and `node scripts/check-locales.mjs` says which in about a second. It also catches an
+  invented placeholder, a dropped `{{product}}` and a plural set that is missing the forms its
+  language selects. See [translating.md](docs/translating.md).
 - Keyboard and a11y basics. New interactive surfaces get an axe assertion; see
   [`accessibility.md`](docs/accessibility.md) for what is checked where.
 - The bundle budget (≤ 300 KB gz initial JS) still met, with the ≥ 15 % headroom.

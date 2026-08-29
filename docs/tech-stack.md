@@ -303,6 +303,7 @@ why every defect in that class so far was found by a person reading a stylesheet
 3. **M2 "write":** composer (Squire), drafts, send, attachments, identities.
 4. **M3 "daily driver":** search, keywords, offline outbox, PWA install + Web Push,
    settings, vacation responder.
-5. **M4 "V1":** contacts (RFC 9610) + autocomplete, theming/white-label, i18n (en/de),
+5. **M4 "V1":** contacts (RFC 9610) + autocomplete, theming/white-label, i18n (en/de; twelve
+   further languages landed in v0.21.0 — ADR-036),
    a11y pass, docs — release. (Sieve rules UI follows in V1.x per the spec's decision
    log; `@waxwing/jmap` ships the Sieve types from day one.)

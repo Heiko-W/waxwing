@@ -98,6 +98,9 @@ trade-off of the cross-origin one — are in the **[deployment guide](docs/deplo
   sandboxed frame, zero telemetry
 - **Yours** — minimalist design, dark/light, white-label through `config.json` + `theme.css`
   with no rebuild
+- **In your language** — 14 of them: Čeština, Deutsch, English, Español, Français, Italiano,
+  Nederlands, Polski, Português, Türkçe, Русский, Українська, 中文, 日本語. Only the first two
+  have been read by a native speaker — [see below](#the-translations-need-you)
 
 ## Status
 
@@ -328,6 +331,7 @@ Known gaps, stated plainly:
 **Building on it**
 
 - [Contributing](CONTRIBUTING.md) — start here; the test discipline is the part worth reading
+- [Translating](docs/translating.md) — the key layout, the plural rules, and how to fix a string
 - [Functional specification](docs/functional-specification.md) — what it does, by requirement id
 - [Technology stack & architecture](docs/tech-stack.md) — how, and why those choices
 - [Implementation plan](docs/implementation-plan.md) — the work-package history and defect log
@@ -340,10 +344,24 @@ Contributions are welcome, and the project is unusually explicit about what it e
 test has to fail when your fix is removed.** That second one is the house rule; the guide
 illustrates it with three real cases where a green test was measuring nothing.
 
-The issue tracker is empty at the time of writing, so there is no curated starter list — pick
-something that bothers you. Bug reports are genuinely useful on their own, especially with a
-`.eml` attached for anything about how a message renders, which is the only way to reproduce
-those exactly.
+There is no curated starter list — pick something that bothers you. Bug reports are genuinely
+useful on their own, especially with a `.eml` attached for anything about how a message renders,
+which is the only way to reproduce those exactly.
+
+### The translations need you
+
+Waxwing speaks fourteen languages. **Two of them — English and German — were written by a person.
+The other twelve were machine-generated**, checked mechanically (every key present, the plural
+forms each language actually selects, no invented `{{placeholder}}`, no hardcoded brand name) and
+read by nobody who speaks them. [ADR-036](docs/adr/036-machine-translation-with-a-mechanical-gate.md)
+is the argument for shipping them anyway; the short version is that the alternative on offer was
+English for everyone.
+
+So if you read one of the twelve, the most valuable thing you can do here is tell us where it
+sounds wrong. Fixing a string is one line in one JSON file — `apps/web/src/i18n/locales/<lang>/common.json`
+— and `node scripts/check-locales.mjs <lang>` tells you in a second whether the file is still
+valid. [translating.md](docs/translating.md) has the rest. An issue that just says "this button
+says the wrong thing" is welcome too.
 
 ## Licence
 

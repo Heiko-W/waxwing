@@ -62,6 +62,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [033](033-the-pwa-launch-screen-cannot-follow-the-system-theme.md) | The PWA launch screen cannot follow the system theme, so it stays light and says so | accepted |
 | [034](034-upload-progress-is-not-available-behind-the-fetch-seam.md) | Upload progress is not available behind the `fetch` seam; the chip states the size instead | accepted |
 | [035](035-one-mailbox-subscription-for-the-whole-app.md) | One mailbox subscription for the whole app | accepted |
+| [036](036-machine-translation-with-a-mechanical-gate.md) | Twelve machine-translated languages, behind a gate that removes the failures a reviewer cannot see | accepted |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.

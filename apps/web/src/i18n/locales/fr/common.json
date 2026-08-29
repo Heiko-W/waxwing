@@ -1,0 +1,2169 @@
+{
+  "shell": {
+    "nav": "Navigation principale",
+    "skip": "Aller au contenu",
+    "brand": "Accueil {{product}}",
+    "menu": {
+      "mail": "Courrier",
+      "contacts": "Contacts",
+      "settings": "Paramètres",
+      "calendar": "Calendrier",
+      "files": "Fichiers"
+    },
+    "folders": {
+      "show": "Afficher les dossiers",
+      "hide": "Masquer les dossiers",
+      "title": "Dossiers",
+      "empty": "Vos dossiers apparaîtront ici.",
+      "loading": "Chargement des dossiers"
+    },
+    "accounts": {
+      "shared": "Partagé",
+      "readOnly": "Lecture seule"
+    },
+    "list": {
+      "title": "Messages",
+      "resize": "Redimensionner la liste des messages",
+      "searchTitle": "Résultats de la recherche"
+    },
+    "reading": {
+      "title": "Lecture",
+      "empty": "Sélectionnez un message pour le lire.",
+      "back": "Retour aux messages"
+    },
+    "notFound": {
+      "title": "Page introuvable",
+      "body": "Cette page n’existe pas.",
+      "home": "Aller au courrier"
+    }
+  },
+  "onboarding": {
+    "welcome": "Bienvenue dans {{product}}",
+    "connect": {
+      "title": "Connexion à votre messagerie",
+      "label": "Adresse e-mail ou serveur",
+      "placeholder": "vous@example.com",
+      "hint": "Saisissez votre adresse e-mail — {{product}} essaiera le domaine de cette adresse. Si votre serveur de messagerie se trouve à une autre adresse, indiquez celle-ci à la place.",
+      "submit": "Continuer"
+    },
+    "error": {
+      "discovery": "Aucun serveur de messagerie n’a été trouvé pour {{domain}}.",
+      "network": "Le serveur est injoignable. Vérifiez votre connexion et réessayez.",
+      "noAccount": "Ce serveur n’héberge aucun compte de messagerie à votre nom.",
+      "generic": "Une erreur est survenue. Veuillez réessayer.",
+      "networkHost": "{{host}} est injoignable. Si votre serveur de messagerie se trouve à une autre adresse, indiquez-la ci-dessus.",
+      "oauthUnavailable": "Ce serveur ne propose pas de connexion sécurisée. Utilisez votre adresse e-mail et votre mot de passe ci-dessous.",
+      "oauthUnavailableNoFallback": "Ce serveur ne propose pas de connexion sécurisée, et cette installation n’autorise aucune autre méthode. Adressez-vous à son exploitant.",
+      "sessionOrigin": "Ce serveur annonce {{field}} à l’adresse {{url}}, qui ne se trouve pas sur {{origin}} — vos identifiants n’y ont donc pas été envoyés. L’exploitant du serveur doit corriger l’adresse qu’il publie."
+    },
+    "reset": {
+      "action": "Réinitialiser l’application sur cet appareil",
+      "title": "Réinitialiser l’application sur cet appareil ?",
+      "body": "Cette action supprime tout ce que {{product}} a enregistré dans ce navigateur : la copie hors ligne de vos e-mails, vos paramètres et toute connexion enregistrée. Rien n’est modifié sur le serveur et rien n’est supprimé de votre messagerie.",
+      "confirm": "Supprimer et recharger",
+      "cancel": "Annuler"
+    }
+  },
+  "auth": {
+    "signInTitle": "Webmail pour {{host}}",
+    "oauth": {
+      "button": "Se connecter",
+      "unavailable": "La connexion via le serveur nécessite une connexion HTTPS. Utilisez votre nom d’utilisateur et votre mot de passe ci-dessous.",
+      "explain": "Vous vous connectez directement sur {{host}} — avec votre mot de passe et, si votre compte en utilise un, votre code d’authentification à deux facteurs."
+    },
+    "basic": {
+      "username": "Nom d’utilisateur",
+      "password": "Mot de passe",
+      "staySignedIn": "Rester connecté",
+      "staySignedInHint": "Sans cette option, la connexion ne vaut que pour cette page : la recharger ou fermer l’onglet vous déconnecte aussitôt.",
+      "appPasswordHint": "Si l’authentification à deux facteurs est activée pour votre compte, votre mot de passe habituel est refusé ici — utilisez un mot de passe d’application.",
+      "submit": "Se connecter avec un mot de passe",
+      "publicComputer": "Ordinateur public ou partagé",
+      "publicComputerHint": "Aucun message ni aucune connexion ne reste sur cet appareil, quelle que soit la méthode de connexion. Les deux sont supprimés à la déconnexion, à la fermeture de l’onglet et — si le navigateur plante avant — à la prochaine ouverture de {{product}} ici.",
+      "disclose": "Se connecter plutôt avec un mot de passe",
+      "appPasswordHintOAuth": "Si l’authentification à deux facteurs est activée pour votre compte, votre mot de passe habituel est refusé ici — utilisez un mot de passe d’application ou connectez-vous via le serveur ci-dessus."
+    },
+    "back": "Utiliser un autre serveur",
+    "error": {
+      "invalidCredentials": "Nom d’utilisateur ou mot de passe incorrect.",
+      "generic": "La connexion a échoué. Veuillez réessayer.",
+      "signOutIncomplete": "Vous êtes déconnecté, mais la copie locale de vos messages n’a pas pu être supprimée — un autre onglet est peut-être encore ouvert. Fermez tous les onglets et déconnectez-vous à nouveau.",
+      "invalidCredentialsBasic": "Nom d’utilisateur ou mot de passe incorrect. Si l’authentification à deux facteurs est activée pour ce compte, seul un mot de passe d’application fonctionne ici."
+    },
+    "reauth": {
+      "title": "Session expirée",
+      "body": "Votre session a expiré. Reconnectez-vous pour continuer — vous reprendrez où vous en étiez.",
+      "submit": "Se connecter",
+      "cancel": "Se déconnecter"
+    }
+  },
+  "account": {
+    "menu": "Compte",
+    "signedInAs": "Connecté en tant que {{name}}",
+    "signOut": "Se déconnecter",
+    "signOutRemove": "Se déconnecter et supprimer les données",
+    "confirmRemove": {
+      "title": "Supprimer toutes les données locales ?",
+      "body": "Cette action supprime les e-mails et les paramètres que {{product}} a enregistrés localement sur cet appareil. Vos messages sur le serveur ne sont pas affectés.",
+      "confirm": "Supprimer les données et se déconnecter",
+      "cancel": "Annuler"
+    },
+    "switchTo": "Basculer vers {{name}}",
+    "add": "Ajouter un autre compte"
+  },
+  "status": {
+    "offline": "Hors ligne",
+    "sync": {
+      "error": "Problème de synchronisation — nouvelle tentative",
+      "syncing": "Synchronisation…",
+      "updated": "Mis à jour {{when}}"
+    },
+    "outbox": {
+      "stuck_one": "Le serveur reste injoignable ({{count}} message)",
+      "stuck_many": "Le serveur reste injoignable ({{count}} messages)",
+      "stuck_other": "Le serveur reste injoignable ({{count}} messages)"
+    },
+    "storage": {
+      "full": "L’espace de stockage est plein — certains e-mails ne sont pas mis en cache."
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "appearance": {
+      "title": "Apparence",
+      "readingPane": {
+        "label": "Volet de lecture",
+        "right": "À côté de la liste",
+        "bottom": "Sous la liste",
+        "off": "Messages en pleine largeur",
+        "hint": "Emplacement d’un message ouvert."
+      },
+      "density": {
+        "label": "Densité de la liste",
+        "comfortable": "Confortable",
+        "compact": "Compacte"
+      },
+      "accent": {
+        "label": "Couleur d’accentuation",
+        "blue": "Bleu",
+        "teal": "Turquoise",
+        "green": "Vert",
+        "amber": "Ambre",
+        "rose": "Rose",
+        "purple": "Violet"
+      }
+    },
+    "offline": {
+      "category": {
+        "messages": "Index des messages (estimation)",
+        "bodies": "Corps des messages",
+        "attachments": "Pièces jointes",
+        "other": "Autres (application et ressources hors ligne)"
+      },
+      "description": "{{product}} conserve vos e-mails récents sur cet appareil pour qu’ils s’ouvrent instantanément et restent accessibles hors ligne.",
+      "freeUp": "Libérer de l’espace maintenant",
+      "freedToast": "{{size}} libéré",
+      "meter": {
+        "label": "Espace utilisé"
+      },
+      "nothingToFree": "Il n’y a rien à libérer.",
+      "persist": {
+        "label": "Conserver les données sur cet appareil",
+        "hint": "Demander à votre navigateur de ne pas supprimer les e-mails mis en cache lorsque l’espace vient à manquer.",
+        "granted": "Accordé — votre navigateur conservera les e-mails mis en cache même lorsque l’espace viendra à manquer.",
+        "denied": "Refusé — votre navigateur peut supprimer les e-mails mis en cache lorsque l’espace vient à manquer."
+      },
+      "pinned_one": "{{count}} dossier conservé hors ligne",
+      "pinned_many": "{{count}} dossiers conservés hors ligne",
+      "pinned_other": "{{count}} dossiers conservés hors ligne",
+      "quotaUnknown": "Votre navigateur n’indique aucun quota de stockage.",
+      "title": "Hors ligne et stockage",
+      "total": "{{used}} utilisés sur {{total}}",
+      "windowApplies": "Une durée plus courte libère de l’espace au prochain nettoyage, pas immédiatement — « Libérer de l’espace » ci-dessus n’attend pas.",
+      "windowChoice_one": "{{count}} jour",
+      "windowChoice_many": "{{count}} jours",
+      "windowChoice_other": "{{count}} jours",
+      "windowLabel": "Conserver les e-mails sur cet appareil pendant",
+      "window_one": "Les e-mails du dernier jour sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture.",
+      "window_many": "Les e-mails des {{count}} derniers jours sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture.",
+      "window_other": "Les e-mails des {{count}} derniers jours sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture."
+    },
+    "general": {
+      "title": "Général"
+    },
+    "reading": {
+      "title": "Lecture",
+      "remote": {
+        "label": "Charger automatiquement les images distantes",
+        "hint": "Les images distantes indiquent à l’expéditeur que vous avez ouvert le message et révèlent votre adresse IP. Les laisser désactivées est le choix sûr."
+      },
+      "allowList_one": "Le contenu distant est toujours chargé pour {{count}} expéditeur.",
+      "allowList_many": "Le contenu distant est toujours chargé pour {{count}} expéditeurs.",
+      "allowList_other": "Le contenu distant est toujours chargé pour {{count}} expéditeurs.",
+      "clearAllowList": "Vider la liste",
+      "cleared": "Liste vidée",
+      "autoMarkRead": {
+        "label": "Marquer les messages comme lus à l’ouverture",
+        "hint": "Après une courte pause : faire défiler la liste ne marque rien."
+      },
+      "prefetch": {
+        "label": "Charger les messages avant de les ouvrir",
+        "hint": "Garde le texte des messages de la liste affichée prêt sur cet appareil, pour qu’un message s’ouvre sans attendre le serveur. Consomme des données mobiles hors Wi-Fi — les navigateurs ne distinguent pas les deux, ce réglage est donc le seul levier dont nous disposions."
+      }
+    },
+    "swipe": {
+      "title": "Gestes de balayage",
+      "left": {
+        "label": "Balayer vers la gauche",
+        "hint": "Faites glisser un message vers la gauche sur un écran tactile. Archiver reste sans effet si ce compte n’a pas de dossier Archives."
+      },
+      "right": {
+        "label": "Balayer vers la droite",
+        "hint": "Faites glisser un message vers la droite sur un écran tactile."
+      },
+      "action": {
+        "archive": "Archiver",
+        "trash": "Mettre à la corbeille",
+        "read": "Marquer comme lu ou non lu",
+        "none": "Aucune action"
+      }
+    },
+    "compose": {
+      "title": "Rédaction",
+      "undoSend": {
+        "label": "Annuler l’envoi",
+        "hint": "Durée pendant laquelle un message envoyé attend avant de partir réellement.",
+        "off": "Envoyer immédiatement",
+        "seconds_one": "{{count}} seconde",
+        "seconds_many": "{{count}} secondes",
+        "seconds_other": "{{count}} secondes"
+      },
+      "signature": {
+        "label": "Position de la signature",
+        "hint": "Emplacement de votre signature lorsque vous répondez ou transférez un message.",
+        "aboveQuote": "Au-dessus du texte cité",
+        "belowQuote": "Sous le texte cité"
+      }
+    },
+    "identities": {
+      "title": "Identités",
+      "description": "Les adresses depuis lesquelles vous pouvez envoyer, avec la signature et l’adresse de réponse propres à chacune. Les modifications s’appliquent aux nouveaux messages.",
+      "loading": "Chargement des identités…",
+      "empty": "Ce compte n’a aucune identité d’expédition.",
+      "protected": "Adresse par défaut — le serveur n’autorise pas sa suppression.",
+      "created": "Identité créée",
+      "saved": "Identité enregistrée",
+      "deleted": "Identité supprimée",
+      "cancel": "Annuler",
+      "create": {
+        "open": "Ajouter une identité",
+        "submit": "Créer l’identité"
+      },
+      "edit": {
+        "open": "Modifier {{name}}",
+        "submit": "Enregistrer l’identité"
+      },
+      "delete": {
+        "open": "Supprimer {{email}}",
+        "title": "Supprimer l’identité ?",
+        "body": "{{email}} ne sera plus disponible comme adresse d’expéditeur.",
+        "draftsWarning": "Les brouillons déjà rédigés depuis cette adresse ne pourront plus être envoyés.",
+        "cancel": "Conserver",
+        "confirm": "Supprimer"
+      },
+      "email": {
+        "label": "Adresse e-mail",
+        "immutable": "L’adresse d’une identité existante ne peut pas être modifiée. Créez plutôt une nouvelle identité."
+      },
+      "name": {
+        "label": "Nom affiché",
+        "placeholder": "Le nom que voient les destinataires"
+      },
+      "replyTo": {
+        "label": "Adresse de réponse",
+        "hint": "Les réponses arrivent ici plutôt qu’à l’adresse d’expéditeur. Séparez plusieurs adresses par des virgules."
+      },
+      "bcc": {
+        "label": "Copie cachée automatique",
+        "hint": "Chaque message envoyé depuis cette identité est discrètement copié à ces adresses."
+      },
+      "htmlSignature": {
+        "label": "Signature",
+        "hint": "Insérée dans les nouveaux messages au-dessus du texte cité, sauf si vous modifiez la position sous « Rédaction »."
+      },
+      "textSignature": {
+        "label": "Signature en texte brut",
+        "hint": "Utilisée lorsqu’un message est envoyé en texte brut. Elle reste distincte, afin qu’une signature écrite à la main ne soit pas écrasée.",
+        "fromHtml": "Reprendre la signature ci-dessus"
+      },
+      "error": {
+        "emailMissing": "Saisissez une adresse e-mail.",
+        "emailInvalid": "Cela ne ressemble pas à une adresse e-mail.",
+        "replyToInvalid": "Une adresse de réponse n’est pas valide.",
+        "bccInvalid": "Une adresse en copie cachée n’est pas valide.",
+        "loadFailed": "Les identités n’ont pas pu être chargées.",
+        "conflict": "Les identités ont été modifiées ailleurs. Votre modification n’a pas été enregistrée — l’état actuel est affiché ci-dessus.",
+        "forbiddenFrom": "Le serveur ne vous autorise pas à envoyer depuis cette adresse.",
+        "forbidden": "Le serveur n’autorise pas la suppression de cette identité.",
+        "emailNotConfigured": "Cette adresse n’est pas configurée pour votre compte. Un serveur n’accepte que les adresses configurées pour celui-ci — demandez à votre administration de l’ajouter comme alias.",
+        "invalidProperties": "Le serveur a rejeté l’une de ces valeurs.",
+        "rejected": "Le serveur a rejeté cette modification.",
+        "offline": "Vous êtes hors ligne. Les identités ne peuvent être modifiées qu’avec une connexion.",
+        "generic": "La modification n’a pas pu être enregistrée."
+      }
+    },
+    "vacation": {
+      "title": "Réponse d’absence",
+      "description": "Répondre automatiquement une seule fois à toute personne qui vous écrit.",
+      "enable": {
+        "label": "Envoyer des réponses automatiques"
+      },
+      "from": "Début",
+      "to": "Fin",
+      "timezoneHint": "Les heures s’entendent dans votre fuseau horaire local ({{zone}}). Un champ vide signifie : aucune limite.",
+      "subject": {
+        "label": "Objet",
+        "placeholder": "Absent du bureau"
+      },
+      "body": {
+        "label": "Texte de la réponse"
+      },
+      "preview": {
+        "show": "Afficher l’aperçu",
+        "hide": "Masquer l’aperçu",
+        "title": "Aperçu de la réponse d’absence"
+      },
+      "save": "Enregistrer",
+      "saved": "Réponse d’absence enregistrée",
+      "status": {
+        "off": "Aucune réponse automatique n’est envoyée.",
+        "active": "Les réponses automatiques sont envoyées en ce moment.",
+        "scheduled": "Début le {{date}}.",
+        "expired": "La date de fin est passée — aucune réponse n’est envoyée."
+      },
+      "error": {
+        "endBeforeStart": "La fin doit être postérieure au début.",
+        "loadFailed": "La réponse d’absence n’a pas pu être chargée.",
+        "conflict": "La réponse d’absence a été modifiée ailleurs. Vos modifications n’ont pas été enregistrées — les paramètres actuels sont affichés ci-dessus.",
+        "rejected": "Le serveur a rejeté ces paramètres.",
+        "offline": "Vous êtes hors ligne. La réponse d’absence ne peut être modifiée qu’avec une connexion.",
+        "generic": "La réponse d’absence n’a pas pu être enregistrée."
+      }
+    },
+    "filters": {
+      "title": "Filtres",
+      "intro": "Règles que le serveur applique aux messages entrants, avant qu’ils ne vous parviennent. Elles restent actives quand cette application est fermée.",
+      "empty": "Aucune règle de filtrage pour l’instant.",
+      "addRule": "Ajouter une règle",
+      "saved": "Filtres enregistrés",
+      "showSource": "Afficher le script",
+      "hideSource": "Masquer le script",
+      "sourceLabel": "Script Sieve",
+      "unsupportedExtensions": "Ce serveur n’annonce pas la prise en charge de : {{list}}. Les règles qui en dépendent risquent de ne pas s’exécuter.",
+      "rule": {
+        "enabled": "Active",
+        "edit": "Modifier",
+        "delete": "Supprimer",
+        "reorder": "Déplacer {{name}}",
+        "reorderHint": "Espace saisit la règle, les flèches Haut et Bas la déplacent. Espace la dépose, Échap la remet en place.",
+        "movedTo": "{{name}}, règle {{position}} sur {{count}}",
+        "dropped": "{{name}} déposée",
+        "dropCanceled": "{{name}} remise en place"
+      },
+      "foreign": {
+        "explain": "Cette boîte aux lettres possède déjà un script de filtrage qui n’a pas été écrit ici. Il est affiché tel quel et reste intact.",
+        "adopt": "Gérer aussi des filtres ici",
+        "adoptHint": "Vos règles existantes sont conservées et continuent de s’exécuter. Les nouvelles règles sont ajoutées à leur suite."
+      },
+      "form": {
+        "createTitle": "Nouvelle règle",
+        "editTitle": "Modifier la règle",
+        "name": "Nom",
+        "conditions": "Conditions",
+        "actions": "Actions",
+        "matchMode": "Appliquer si",
+        "matchAll": "toutes les conditions sont remplies",
+        "matchAny": "une condition est remplie",
+        "field": "Élément",
+        "match": "Comparaison",
+        "value": "Valeur",
+        "sizeKb": "Taille en Ko",
+        "action": "Action",
+        "mailbox": "Dossier",
+        "flag": "Marquer comme",
+        "address": "Adresse",
+        "addCondition": "Ajouter une condition",
+        "addAction": "Ajouter une action",
+        "remove": "Retirer",
+        "stop": "Ne plus appliquer les règles suivantes",
+        "cancel": "Annuler",
+        "submit": "Enregistrer la règle",
+        "spamScore": "Score (0–10)",
+        "datePart": "Partie",
+        "weekday": "Jour",
+        "hour": "Heure (0–23)",
+        "reason": "Motif"
+      },
+      "field": {
+        "from": "Expéditeur",
+        "to": "À",
+        "cc": "Cc",
+        "subject": "Objet",
+        "body": "Texte du message",
+        "size": "Taille",
+        "hasAttachment": "Contient une pièce jointe",
+        "envelopeFrom": "Expéditeur d’enveloppe",
+        "envelopeTo": "Destinataire d’enveloppe",
+        "spam": "Score de spam",
+        "currentDate": "Heure de remise",
+        "duplicate": "Message en double"
+      },
+      "match": {
+        "contains": "contient",
+        "is": "est exactement",
+        "startsWith": "commence par",
+        "endsWith": "se termine par",
+        "matches": "correspond au motif",
+        "over": "supérieur à",
+        "under": "inférieur à",
+        "atLeast": "au moins",
+        "atMost": "au plus"
+      },
+      "action": {
+        "fileInto": "Déplacer vers un dossier",
+        "addFlag": "Marquer",
+        "redirect": "Transférer à",
+        "discard": "Supprimer sans réponse",
+        "reject": "Refuser avec un motif"
+      },
+      "flag": {
+        "seen": "lu",
+        "flagged": "suivi"
+      },
+      "error": {
+        "loadFailed": "Les filtres n’ont pas pu être chargés.",
+        "invalidSieve": "Le serveur a rejeté le script comme invalide. Vos règles n’ont pas été enregistrées.",
+        "tooLarge": "Le script est trop volumineux pour ce serveur.",
+        "offline": "Vous êtes hors ligne. Les filtres ne peuvent être modifiés qu’avec une connexion.",
+        "rejected": "Le serveur a refusé d’enregistrer les filtres.",
+        "generic": "Les filtres n’ont pas pu être enregistrés.",
+        "invalidSieveReason": "Le serveur a rejeté le script comme invalide : {{reason}}. Vos règles n’ont pas été enregistrées."
+      },
+      "active": "Filtrer les messages entrants",
+      "activeHint": "Les règles ci-dessous s’appliquent à chaque message que le serveur reçoit.",
+      "inactiveHint": "Vos règles sont conservées, mais rien n’est filtré tant que vous ne réactivez pas cette option.",
+      "deleteScript": "Supprimer le script de filtrage",
+      "delete": {
+        "title": "Supprimer le script de filtrage ?",
+        "body": "Toutes les règles sont retirées du serveur et les messages entrants ne sont plus filtrés. Cette action est irréversible.",
+        "foreignWarning": "Ce script contient aussi des règles qui n’ont pas été écrites ici. Elles sont supprimées elles aussi.",
+        "cancel": "Annuler",
+        "confirm": "Supprimer",
+        "done": "Script de filtrage supprimé"
+      },
+      "date": {
+        "weekday": "Jour de la semaine",
+        "hour": "Heure de la journée"
+      },
+      "weekday": {
+        "sunday": "Dimanche",
+        "monday": "Lundi",
+        "tuesday": "Mardi",
+        "wednesday": "Mercredi",
+        "thursday": "Jeudi",
+        "friday": "Vendredi",
+        "saturday": "Samedi"
+      }
+    },
+    "server": {
+      "title": "Serveur",
+      "description": "Ce que propose ce serveur JMAP. Utile pour signaler un problème.",
+      "connection": {
+        "url": "Adresse",
+        "username": "Connecté en tant que",
+        "account": "Compte",
+        "readOnly": "lecture seule"
+      },
+      "core": {
+        "title": "Limites"
+      },
+      "mail": {
+        "title": "Limites du courrier"
+      },
+      "capabilities": {
+        "title": "Fonctions facultatives"
+      },
+      "available": "Prise en charge",
+      "absent": "Non prise en charge",
+      "unlimited": "Sans limite",
+      "yes": "Oui",
+      "no": "Non",
+      "none": "Aucune",
+      "coreMissing": "Ce serveur n’annonce aucun objet de capacités standard. C’est inhabituel — certaines fonctions pourraient ne pas fonctionner.",
+      "mailMissing": "Ce compte n’annonce aucune capacité de messagerie ; aucune limite de courrier ne peut donc être affichée.",
+      "extra": {
+        "title": "Autres capacités annoncées par ce serveur"
+      },
+      "limit": {
+        "maxSizeUpload": "Envoi le plus volumineux",
+        "maxSizeRequest": "Requête la plus volumineuse",
+        "maxConcurrentRequests": "Requêtes simultanées",
+        "maxConcurrentUpload": "Envois simultanés",
+        "maxCallsInRequest": "Appels de méthode par requête",
+        "maxObjectsInGet": "Objets par récupération",
+        "maxObjectsInSet": "Objets par modification",
+        "collationAlgorithms": "Règles de tri",
+        "maxMailboxesPerEmail": "Dossiers par message",
+        "maxMailboxDepth": "Profondeur d’imbrication des dossiers",
+        "maxSizeMailboxName": "Longueur du nom de dossier",
+        "maxSizeAttachmentsPerEmail": "Pièces jointes par message",
+        "mayCreateTopLevelMailbox": "Peut créer des dossiers de premier niveau",
+        "emailQuerySortOptions": "Champs triables"
+      },
+      "cap": {
+        "core": "Noyau",
+        "mail": "Courrier",
+        "submission": "Envoi",
+        "vacationResponse": "Réponse d’absence",
+        "quota": "Quota",
+        "blob": "Gestion des blobs",
+        "sieve": "Règles de filtrage (Sieve)",
+        "contacts": "Contacts",
+        "webSocket": "Push WebSocket",
+        "principals": "Partage",
+        "webPushVapid": "Signature Web Push (RFC 9749)"
+      },
+      "generate": {
+        "title": "Configuration du déploiement",
+        "intro": "Génère le config.json de ce déploiement à partir du serveur auquel vous êtes connecté. Enregistrez-le à côté de index.html.",
+        "action": "Générer config.json",
+        "checking": "Vérification…",
+        "save": "Enregistrer config.json",
+        "warnLabel": "À vérifier :",
+        "infoLabel": "Remarque :",
+        "finding": {
+          "sameOrigin": "Le serveur de messagerie se trouve sur la même origine ; config.json laisse donc sessionUrl vide — le déploiement continuera de fonctionner s’il change de nom d’hôte.",
+          "crossOrigin": "Le serveur de messagerie se trouve sur {{origin}}, une origine différente de celle de cette application. Chaque requête dépend des en-têtes CORS envoyés par ce serveur. Il les envoie aujourd’hui ; si cela change, le déploiement cessera de fonctionner.",
+          "basicOnly": "La découverte OAuth n’a pas répondu ; seule la connexion par mot de passe est donc activée. Un mot de passe est transmis à chaque requête et ne peut pas être révoqué pour un seul client — activez OAuth sur le serveur si vous le pouvez.",
+          "oauthUnknown": "La découverte OAuth n’a pas pu être vérifiée depuis ici ; les méthodes de connexion restent donc inchangées. Vérifiez-les avant le déploiement.",
+          "insecureOrigin": "Cette application est servie en HTTP simple. Les navigateurs ne fournissent alors pas crypto.subtle : OAuth ne peut pas fonctionner et le cache hors ligne ne peut pas être chiffré. Servez-la en HTTPS.",
+          "brandingUntouched": "L’identité visuelle, les fonctions et les limites hors ligne ont été reprises telles quelles — aucun serveur ne peut nous dire ce que vous voulez en faire. Modifiez-les à la main."
+        }
+      }
+    },
+    "about": {
+      "title": "À propos",
+      "version": "Version {{version}}"
+    },
+    "templates": {
+      "title": "Modèles",
+      "description": "Textes de message réutilisables. En insérer un l’ajoute au brouillon en cours — ce qui est déjà écrit n’est jamais remplacé.",
+      "placeholders": "Variables remplacées à l’insertion : {{list}}",
+      "empty": "Aucun modèle pour l’instant.",
+      "add": "Nouveau modèle",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "dialogTitle": "Modèle",
+      "name": "Nom",
+      "subject": "Objet",
+      "body": "Message",
+      "save": "Enregistrer le modèle",
+      "cancel": "Annuler",
+      "defaultSenderName": "moi"
+    },
+    "groups": {
+      "general": "Général",
+      "appearance": "Apparence",
+      "mail": "Courrier",
+      "accounts": "Comptes et règles",
+      "system": "Système"
+    },
+    "security": {
+      "title": "Compte et sécurité",
+      "description": "Ce que votre serveur vous permet de modifier vous-même sur ce compte.",
+      "loading": "Chargement des paramètres du compte…",
+      "unavailable": "Votre serveur ne propose aucun de ces paramètres pour ce compte.",
+      "password": {
+        "label": "Mot de passe",
+        "hint": "Le mot de passe avec lequel vous vous connectez — ici comme dans toute application de messagerie qui utilise ce compte.",
+        "change": "Modifier le mot de passe…",
+        "title": "Modifier le mot de passe",
+        "current": "Mot de passe actuel",
+        "next": "Nouveau mot de passe",
+        "confirm": "Confirmer le nouveau mot de passe",
+        "submit": "Modifier le mot de passe",
+        "cancel": "Annuler",
+        "changed": "Mot de passe modifié",
+        "missing": "Remplissez les trois champs.",
+        "mismatch": "Les deux nouveaux mots de passe ne sont pas identiques.",
+        "devices": "Vous devrez ensuite vous reconnecter ici et saisir le nouveau mot de passe dans les applications de messagerie de vos autres appareils. Les mots de passe d’application restent valables."
+      },
+      "appPasswords": {
+        "label": "Mots de passe d’application",
+        "hint": "Un mot de passe distinct pour chaque application de messagerie de vos appareils. En révoquer un laisse intacts le mot de passe de votre compte et toutes les autres applications.",
+        "empty": "Aucun mot de passe d’application pour l’instant.",
+        "create": "Créer un mot de passe d’application…",
+        "createTitle": "Créer un mot de passe d’application",
+        "createIntro": "Votre serveur génère un mot de passe que seule cette application utilisera.",
+        "name": "À quoi sert-il ?",
+        "namePlaceholder": "Mail iPhone",
+        "nameMissing": "Donnez-lui un nom, pour le reconnaître plus tard.",
+        "expiry": "Expiration",
+        "expiryNever": "Jamais",
+        "expiryDays": "Dans {{days}} jours",
+        "submit": "Créer",
+        "cancel": "Annuler",
+        "created": "Créé le {{date}}",
+        "expires": "Expire le {{date}}",
+        "expired": "Expiré — ce mot de passe ne fonctionne plus.",
+        "restricted": "Limité à certains droits ou à certaines adresses. Défini en dehors de {{product}}.",
+        "revoke": "Révoquer {{name}}",
+        "revokeTitle": "Révoquer le mot de passe d’application ?",
+        "revokeBody": "{{name}} cesse de fonctionner immédiatement. Toute application qui l’utilise encore redemandera un mot de passe.",
+        "revokeConfirm": "Révoquer",
+        "revokeCancel": "Conserver",
+        "revoked": "Mot de passe d’application révoqué",
+        "secretTitle": "Votre mot de passe d’application",
+        "secretIntro": "Saisissez-le maintenant dans l’application de messagerie, avec votre adresse e-mail.",
+        "secretLabel": "Mot de passe d’application",
+        "secretWarning": "Il ne s’affiche que cette fois-ci. S’il est perdu, révoquez-le ici et créez-en un nouveau.",
+        "copy": "Copier",
+        "copied": "Copié",
+        "done": "Terminé"
+      },
+      "language": {
+        "label": "Langue des messages du serveur",
+        "hint": "La langue dans laquelle votre serveur rédige ses propres invitations et rappels de calendrier. La langue de {{product}} lui-même se règle sous Général.",
+        "saved": "Langue enregistrée"
+      },
+      "encryption": {
+        "label": "Chiffrement au repos",
+        "off": "Désactivé. Votre serveur stocke vos messages en clair.",
+        "on": "Activé — {{cipher}}",
+        "key": "Clé : {{name}}",
+        "explain": "Votre serveur chiffre les messages entrants avec votre propre clé avant de les stocker. {{product}} ne prend pas en charge OpenPGP et ne peut donc pas les afficher.",
+        "manage": "Seule la console de gestion de compte de votre serveur permet de changer cela. {{product}} ne propose pas ce réglage, car l’activer rendrait votre boîte aux lettres illisible ici."
+      },
+      "spam": {
+        "label": "Échantillons d’entraînement antispam",
+        "hint": "Copies que votre serveur a conservées des messages que vous avez classés, afin d’entraîner son filtre antispam. En supprimer une retire la copie ; l’emplacement du message, lui, ne change pas.",
+        "empty": "Votre serveur n’a conservé aucune copie de vos messages.",
+        "isSpam": "Conservé comme indésirable",
+        "isHam": "Conservé comme non indésirable",
+        "noSubject": "(sans objet)",
+        "delete": "Supprimer la copie de {{subject}}",
+        "deleted": "Copie supprimée"
+      },
+      "error": {
+        "loadFailed": "Ces paramètres n’ont pas pu être chargés.",
+        "rejected": "Votre serveur a refusé cette modification.",
+        "server": "Il indique : {{detail}}",
+        "offline": "Vous êtes hors ligne. Ces paramètres ne peuvent être modifiés qu’avec une connexion.",
+        "generic": "La modification n’a pas pu être enregistrée."
+      }
+    }
+  },
+  "contacts": {
+    "title": "Contacts",
+    "noName": "Sans nom",
+    "books": {
+      "title": "Carnets d’adresses",
+      "all": "Tous les contacts",
+      "default": "Par défaut",
+      "shared": "Partagé",
+      "readOnly": "Lecture seule",
+      "show": "Afficher les carnets d’adresses",
+      "hide": "Masquer les carnets d’adresses",
+      "loading": "Chargement des carnets d’adresses",
+      "empty": "Aucun carnet d’adresses.",
+      "new": "Nouveau carnet d’adresses",
+      "actions": "Actions pour {{name}}",
+      "nameLabel": "Nom",
+      "create": {
+        "title": "Nouveau carnet d’adresses",
+        "submit": "Créer"
+      },
+      "rename": {
+        "action": "Renommer",
+        "title": "Renommer le carnet d’adresses",
+        "submit": "Renommer"
+      },
+      "delete": {
+        "action": "Supprimer",
+        "title": "Supprimer le carnet d’adresses",
+        "body": "Supprimer « {{name}} » ?",
+        "contents": "Les contacts qui ne figurent que dans ce carnet d’adresses sont supprimés avec lui.",
+        "confirm": "Supprimer",
+        "cancel": "Annuler"
+      },
+      "error": {
+        "nameRequired": "Saisissez un nom.",
+        "nameTooLong": "Ce nom est trop long.",
+        "nameTaken": "Un carnet d’adresses portant ce nom existe déjà."
+      },
+      "share": "Partager {{name}}"
+    },
+    "list": {
+      "title": "Contacts",
+      "resize": "Redimensionner la liste des contacts",
+      "empty": "Aucun contact pour l’instant.",
+      "loading": "Chargement des contacts",
+      "count_one": "{{count}} contact",
+      "count_many": "{{count}} contacts",
+      "count_other": "{{count}} contacts"
+    },
+    "search": {
+      "label": "Rechercher des contacts",
+      "placeholder": "Rechercher des contacts",
+      "clear": "Effacer la recherche",
+      "empty": "Aucun contact ne correspond à votre recherche."
+    },
+    "detail": {
+      "notAvailable": "Ce contact n’est pas disponible.",
+      "title": "Contact",
+      "empty": "Sélectionnez un contact pour voir ses informations.",
+      "loading": "Chargement du contact",
+      "back": "Retour aux contacts",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "sections": {
+        "email": "E-mail",
+        "phone": "Téléphone",
+        "address": "Adresse",
+        "birthday": "Anniversaire",
+        "url": "Site web",
+        "im": "Messagerie instantanée",
+        "note": "Notes"
+      },
+      "more": "Autres actions"
+    },
+    "labels": {
+      "work": "Professionnel",
+      "private": "Personnel",
+      "home": "Personnel",
+      "mobile": "Mobile",
+      "fax": "Fax",
+      "pager": "Pager",
+      "voice": "Voix",
+      "video": "Vidéo",
+      "text": "SMS",
+      "main-number": "Principal",
+      "textphone": "Téléscripteur",
+      "other": "Autre"
+    },
+    "new": "Nouveau contact",
+    "addFirst": "Ajouter un contact",
+    "form": {
+      "newTitle": "Nouveau contact",
+      "editTitle": "Modifier le contact",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "readOnly": "Ce carnet d’adresses est en lecture seule.",
+      "sections": {
+        "name": "Nom",
+        "email": "E-mail",
+        "phone": "Téléphone",
+        "address": "Adresse",
+        "org": "Société",
+        "birthday": "Anniversaire",
+        "url": "Site web",
+        "im": "Messagerie instantanée",
+        "note": "Notes",
+        "photo": "Photo",
+        "books": "Carnets d’adresses"
+      },
+      "namePrefix": "Civilité",
+      "given": "Prénom",
+      "given2": "Deuxième prénom",
+      "surname": "Nom",
+      "nameSuffix": "Suffixe",
+      "company": "Société",
+      "jobTitle": "Fonction",
+      "street": "Rue",
+      "city": "Ville",
+      "region": "Région / Département",
+      "postcode": "Code postal",
+      "country": "Pays",
+      "addEmail": "Ajouter un e-mail",
+      "addPhone": "Ajouter un téléphone",
+      "addField": "Ajouter un champ",
+      "addAddress": "Ajouter une adresse",
+      "addCompany": "Ajouter une société",
+      "addBirthday": "Ajouter un anniversaire",
+      "addUrl": "Ajouter un site web",
+      "addIm": "Ajouter une messagerie instantanée",
+      "urlPlaceholder": "https://example.com",
+      "imService": "Service",
+      "imPlaceholder": "Adresse ou identifiant",
+      "addNote": "Ajouter une note",
+      "addPhoto": "Ajouter une photo",
+      "fieldNames": {
+        "email": "E-mail",
+        "phone": "Téléphone",
+        "address": "Adresse",
+        "url": "Site web",
+        "im": "Messagerie instantanée",
+        "note": "Note"
+      },
+      "a11y": {
+        "numbered": "{{field}} {{index}}",
+        "type": "Type de {{field}}",
+        "remove": "Retirer {{field}}",
+        "inGroup": "{{field}} ({{group}})"
+      },
+      "invalidEmail": "Saisissez une adresse e-mail du type nom@example.com.",
+      "choosePhoto": "Choisir une photo",
+      "changePhoto": "Changer de photo",
+      "removePhoto": "Retirer la photo",
+      "photoPreparing": "Préparation de la photo…",
+      "photoError": "La photo n’a pas pu être utilisée.",
+      "photoTooLarge": "Cette photo est trop volumineuse. Choisissez-en une plus petite.",
+      "photoAlt": "Aperçu de la photo du contact",
+      "booksAtLeastOne": "Un contact doit rester dans au moins un carnet d’adresses."
+    },
+    "delete": {
+      "title": "Supprimer le contact",
+      "body": "Voulez-vous vraiment supprimer {{name}} ?",
+      "confirm": "Supprimer",
+      "cancel": "Annuler"
+    },
+    "groups": {
+      "title": "Groupes",
+      "new": "Nouveau groupe",
+      "loading": "Chargement des groupes",
+      "empty": "Aucun groupe pour l’instant.",
+      "newTitle": "Nouveau groupe",
+      "editTitle": "Modifier le groupe",
+      "name": "Nom du groupe",
+      "sections": {
+        "name": "Nom"
+      },
+      "membersCount_one": "{{count}} membre",
+      "membersCount_many": "{{count}} membres",
+      "membersCount_other": "{{count}} membres",
+      "membersLabel": "Membres du groupe",
+      "noMembers": "Aucun membre pour l’instant.",
+      "addMembers": "Ajouter des membres",
+      "searchMembers": "Rechercher des contacts à ajouter",
+      "noCandidates": "Aucun contact à ajouter.",
+      "removeMember": "Retirer {{name}} du groupe",
+      "addNamed": "Ajouter {{name}}",
+      "unknownMember": "Contact inconnu",
+      "edit": "Modifier le groupe",
+      "delete": "Supprimer le groupe",
+      "backToContacts": "Tous les contacts",
+      "deleteTitle": "Supprimer le groupe",
+      "deleteBody": "Supprimer le groupe {{name}} ? Les contacts qu’il contient ne sont pas supprimés."
+    },
+    "io": {
+      "open": "Importer ou exporter",
+      "title": "Importer et exporter des contacts",
+      "exportTitle": "Exporter le contact",
+      "exportContact": "Exporter le contact…",
+      "format": {
+        "label": "Format",
+        "vcard": "vCard 4.0",
+        "jscontact": "JSContact (JSON)"
+      },
+      "book": {
+        "label": "Ajouter au carnet d’adresses",
+        "none": "Aucun carnet d’adresses accessible en écriture."
+      },
+      "import": {
+        "cancel": "Arrêter",
+        "choose": "Choisir un fichier (.vcf ou .json)",
+        "confirm_one": "Importer {{count}} contact",
+        "confirm_many": "Importer {{count}} contacts",
+        "confirm_other": "Importer {{count}} contacts",
+        "heading": "Importer",
+        "parsing": "Lecture du fichier…",
+        "progress": "{{done}} sur {{total}}",
+        "progressLabel": "Progression de l’import"
+      },
+      "export": {
+        "heading": "Exporter",
+        "button": "Télécharger",
+        "empty": "Il n’y a aucun contact à exporter.",
+        "scope_one": "{{count}} contact sera exporté.",
+        "scope_many": "{{count}} contacts seront exportés.",
+        "scope_other": "{{count}} contacts seront exportés."
+      },
+      "keepBoth": "Importer quand même les doublons (conserver les deux)",
+      "result": {
+        "willImport_one": "{{count}} contact à importer",
+        "willImport_many": "{{count}} contacts à importer",
+        "willImport_other": "{{count}} contacts à importer",
+        "duplicates_one": "{{count}} doublon trouvé",
+        "duplicates_many": "{{count}} doublons trouvés",
+        "duplicates_other": "{{count}} doublons trouvés",
+        "skipped_one": "{{count}} ligne n’a pas pu être lue",
+        "skipped_many": "{{count}} lignes n’ont pas pu être lues",
+        "skipped_other": "{{count}} lignes n’ont pas pu être lues",
+        "imported_one": "{{count}} contact importé.",
+        "imported_many": "{{count}} contacts importés.",
+        "imported_other": "{{count}} contacts importés.",
+        "empty": "Aucun contact n’a été trouvé dans le fichier.",
+        "capped": "Seuls les {{max}} premiers contacts seront importés."
+      },
+      "error": {
+        "invalid": "Le fichier n’a pas pu être lu. Vérifiez qu’il s’agit bien d’un fichier vCard ou JSON valide.",
+        "failed": "Le fichier n’a pas pu être importé.",
+        "export": "L’export n’a pas pu être préparé. Essayez l’autre format."
+      }
+    }
+  },
+  "footer": {
+    "label": "Informations légales et assistance",
+    "imprint": "Mentions légales",
+    "privacy": "Confidentialité",
+    "support": "Assistance"
+  },
+  "theme": {
+    "label": "Thème",
+    "auto": "Suivre le thème du système",
+    "light": "Thème clair",
+    "dark": "Thème sombre"
+  },
+  "language": {
+    "label": "Langue"
+  },
+  "ui": {
+    "dialog": {
+      "close": "Fermer",
+      "discardBody": "Ce que vous avez saisi ici sera perdu.",
+      "discardCancel": "Continuer la modification",
+      "discardConfirm": "Abandonner",
+      "discardTitle": "Abandonner vos modifications ?"
+    },
+    "toast": {
+      "region": "Messages d’état",
+      "dismiss": "Masquer"
+    },
+    "spinner": {
+      "label": "Chargement"
+    }
+  },
+  "mailbox": {
+    "role": {
+      "inbox": "Boîte de réception",
+      "drafts": "Brouillons",
+      "sent": "Envoyés",
+      "archive": "Archives",
+      "junk": "Indésirables",
+      "trash": "Corbeille",
+      "important": "Important",
+      "snoozed": "Différés",
+      "scheduled": "Programmés",
+      "memos": "Notes"
+    },
+    "unread": "Non lus : {{count}}",
+    "expand": "Développer {{name}}",
+    "collapse": "Réduire {{name}}",
+    "actions": {
+      "menu": "Actions du dossier : {{name}}",
+      "newSubfolder": "Nouveau sous-dossier…",
+      "newFolder": "Nouveau dossier",
+      "rename": "Renommer…",
+      "delete": "Supprimer",
+      "keepOffline": "Conserver hors ligne",
+      "keepOfflineOff": "Ne plus conserver hors ligne",
+      "move": "Déplacer vers…",
+      "import": "Importer des fichiers .eml…",
+      "info": "Informations sur le dossier…",
+      "manage": "Gérer les dossiers"
+    },
+    "manage": {
+      "title": "Gérer les dossiers",
+      "hint": "Faites glisser un dossier pour changer sa place, ou désactivez-le pour le retirer de la barre latérale. Les dossiers masqués restent dans cette liste, et vos autres applications de messagerie les masquent également.",
+      "done": "Terminé",
+      "alwaysShown": "Toujours visible",
+      "show": "Afficher {{name}} dans la barre latérale",
+      "reorder": "Déplacer {{name}}",
+      "reorderHint": "Espace saisit le dossier, les flèches Haut et Bas le déplacent. Espace le dépose, Échap le remet en place.",
+      "movedTo": "{{name}}, dossier {{position}} sur {{count}}",
+      "dropped": "{{name}} déposé",
+      "dropCanceled": "{{name}} remis en place"
+    },
+    "info": {
+      "title": "Informations sur le dossier : {{name}}",
+      "useAs": "Utiliser ce dossier comme…",
+      "useAsNone": "Dossier ordinaire",
+      "useAsHint": "Vos autres applications de messagerie en tiennent compte. Un dossier utilisé comme Archives leur sert d’archive elles aussi — et il rejoint ici les dossiers standard.",
+      "submit": "Enregistrer"
+    },
+    "create": {
+      "title": "Nouveau dossier",
+      "titleChild": "Nouveau sous-dossier dans {{parent}}",
+      "nameLabel": "Nom du dossier",
+      "submit": "Créer"
+    },
+    "rename": {
+      "title": "Renommer le dossier",
+      "submit": "Renommer"
+    },
+    "delete": {
+      "title": "Supprimer le dossier ?",
+      "message": "Supprimer « {{name}} » ? Cette action est irréversible.",
+      "messageNonEmpty": "« {{name}} » contient {{count}} messages. Supprimer le dossier et son contenu ? Cette action est irréversible.",
+      "confirm": "Supprimer"
+    },
+    "error": {
+      "nameRequired": "Saisissez un nom de dossier.",
+      "nameTooLong": "Ce nom est trop long.",
+      "nameTaken": "Un dossier portant ce nom existe déjà ici."
+    },
+    "cancel": "Annuler",
+    "keptOffline": "Conservé hors ligne",
+    "move": {
+      "title": "Déplacer « {{name}} »",
+      "topLevel": "Premier niveau",
+      "empty": "Il n’existe aucun dossier vers lequel déplacer celui-ci."
+    },
+    "import": {
+      "title": "Importer dans {{folder}}",
+      "pick": "Choisir des fichiers .eml",
+      "hint": "Les messages sont enregistrés exactement tels qu’ils sont arrivés. Jusqu’à {{size}} Mo par fichier.",
+      "progress": "{{done}} importés jusqu’ici…",
+      "imported": "{{count}} message(s) importé(s).",
+      "skipped": "Ne sont pas des messages, ignorés : {{files}}",
+      "close": "Terminé",
+      "cancel": "Annuler",
+      "error": {
+        "tooLarge": "trop volumineux",
+        "alreadyExists": "déjà présent dans ce compte",
+        "invalidEmail": "message non valide",
+        "overQuota": "plus d’espace disponible dans ce compte",
+        "notFound": "l’envoi a expiré avant d’avoir pu être classé",
+        "uploadFailed": "l’envoi a échoué",
+        "rejected": "le serveur l’a refusé"
+      }
+    }
+  },
+  "list": {
+    "noSender": "(Aucun expéditeur)",
+    "noSubject": "(Sans objet)",
+    "unread": "Non lu",
+    "flagged": "Suivi",
+    "attachment": "Contient une pièce jointe",
+    "answered": "Répondu",
+    "select": "Sélectionner le message",
+    "selectAll": "Tout sélectionner",
+    "selected": "Sélection : {{count}}",
+    "clearSelection": "Annuler la sélection",
+    "actions": {
+      "archive": "Archiver",
+      "delete": "Supprimer",
+      "flag": "Marquer comme suivi",
+      "junk": "Marquer comme indésirable",
+      "menu": "Actions du message",
+      "more": "Autres actions pour la sélection",
+      "move": "Déplacer vers…",
+      "notJunk": "Non indésirable",
+      "open": "Ouvrir",
+      "openFull": "Ouvrir en plein écran",
+      "read": "Marquer comme lu",
+      "trash": "Mettre à la corbeille",
+      "unflag": "Retirer le suivi",
+      "unread": "Marquer comme non lu"
+    },
+    "sort": {
+      "label": "Trier",
+      "date": "Date de réception",
+      "sentAt": "Date d’envoi",
+      "from": "Expéditeur",
+      "to": "Destinataire",
+      "subject": "Objet",
+      "size": "Taille",
+      "unreadFirst": "Non lus d’abord"
+    },
+    "density": {
+      "label": "Densité",
+      "comfortable": "Confortable",
+      "compact": "Compacte"
+    },
+    "view": {
+      "threaded": "Conversations",
+      "flat": "Messages individuels",
+      "label": "Affichage"
+    },
+    "viewOptionsUnavailable": "Le tri et l’affichage par conversation ne s’appliquent qu’aux dossiers.",
+    "confirmDeleteBody_one": "Ce message sera définitivement supprimé. Cette action est irréversible.",
+    "confirmDeleteBody_many": "Ces {{count}} messages seront définitivement supprimés. Cette action est irréversible.",
+    "confirmDeleteBody_other": "Ces {{count}} messages seront définitivement supprimés. Cette action est irréversible.",
+    "loadMore": "Charger plus",
+    "loading": "Chargement des messages",
+    "stale": "Cette liste n’est pas à jour ; elle sera actualisée à la prochaine synchronisation.",
+    "empty": "Aucun message dans ce dossier.",
+    "noMailbox": "Sélectionnez un dossier",
+    "undo": "Annuler",
+    "moved": {
+      "archive": "Déplacé vers Archives",
+      "folder": "Déplacé vers « {{folder}} »",
+      "junk": "Déplacé vers Indésirables",
+      "notJunk": "Déplacé vers la boîte de réception",
+      "removedLabel": "Retiré de « {{label}} »",
+      "trash": "Mis à la corbeille"
+    },
+    "viewOptions": {
+      "show": "Afficher les options d’affichage",
+      "hide": "Masquer les options d’affichage",
+      "label": "Affichage"
+    }
+  },
+  "reading": {
+    "from": "De",
+    "to": "À",
+    "cc": "Cc",
+    "replyTo": "Répondre à",
+    "bcc": "Cci",
+    "sender": "Expéditeur",
+    "senderOnBehalfOf": "{{sender}} pour le compte de {{from}}",
+    "date": "Date",
+    "sentAt": "Envoyé le",
+    "messageId": "Message-ID",
+    "details": "Détails",
+    "noRecipients": "(Aucun destinataire)",
+    "actions": "Actions du message",
+    "markUnread": "Marquer comme non lu",
+    "senderCard": {
+      "trigger": "Afficher la fiche de contact de {{name}}",
+      "add": "Ajouter aux contacts",
+      "edit": "Modifier le contact",
+      "lastConversation": "Dernière conversation",
+      "added": "Ajouté aux contacts"
+    },
+    "collapse": "Réduire le message",
+    "reply": "Répondre",
+    "replyAll": "Répondre à tous",
+    "forward": "Transférer",
+    "quotedLabel": "Texte cité",
+    "frameTitle": "Message : {{subject}}",
+    "threadCount": "{{count}} messages dans cette conversation",
+    "notAvailable": "Ce message n’est pas disponible.",
+    "confirmDeleteBody": "Ce message sera définitivement supprimé. Cette action est irréversible.",
+    "moveTitle": "Déplacer vers un dossier",
+    "moveEmpty": "Aucun autre dossier.",
+    "remote": {
+      "title": "Contenu distant bloqué",
+      "privacyNote": "Les images et autres contenus distants peuvent enregistrer le moment où vous ouvrez un message.",
+      "load": "Charger les images",
+      "alwaysAllow": "Toujours autoriser {{sender}}"
+    },
+    "attachments": {
+      "title": "Pièces jointes",
+      "saveAll": "Tout enregistrer",
+      "unnamed": "(Sans nom)",
+      "preview": "Aperçu",
+      "hidePreview": "Masquer l’aperçu",
+      "download": "Télécharger {{name}}",
+      "previewNamed": "Aperçu : {{name}}",
+      "hidePreviewNamed": "Masquer l’aperçu : {{name}}",
+      "unpack": "Afficher le contenu de {{name}}",
+      "unpackShort": "Afficher le contenu",
+      "unpackedHeading": "Contenu de {{name}}",
+      "unpackEmpty": "Rien n’a pu être extrait de ce fichier.",
+      "unpackNote": "Outlook a regroupé ces fichiers en un seul. Ils sont présentés tels que votre correspondant les a envoyés ; rien n’a été vérifié ici."
+    },
+    "editDraft": "Modifier le brouillon",
+    "draftLead": "Ceci est un brouillon que vous n’avez pas encore envoyé.",
+    "more": "Autres actions",
+    "authResults": {
+      "label": "Authentification",
+      "reportedBy": "Signalé par {{host}} :",
+      "unverified": "Cette information provient du message lui-même et ne peut pas être vérifiée. Ne jugez pas de l’authenticité d’un message sur cette seule base."
+    },
+    "nameLooksLikeAddress": "Le nom affiché n’est pas la véritable adresse de l’expéditeur",
+    "linkWarning": {
+      "title": "Ce lien n’est peut-être pas authentique",
+      "lead": "Le texte de ce lien nomme un site web, mais le lien en ouvre un autre. C’est exactement ainsi que fonctionne l’hameçonnage.",
+      "claimed": "Le lien annonce",
+      "target": "Il ouvre en réalité",
+      "note": "Ne l’ouvrez que si vous êtes certain de son authenticité. Dans le doute, fermez cet avertissement et saisissez vous-même l’adresse dans votre navigateur.",
+      "open": "Ouvrir quand même"
+    },
+    "source": {
+      "title": "Source du message",
+      "view": "Afficher la source",
+      "save": "Enregistrer en .eml",
+      "copy": "Copier",
+      "copyHead": "Copier les premiers {{size}}",
+      "copied": "Copié",
+      "truncated": "Seul le début de ce message est affiché ({{size}} au total). Enregistrez-le en .eml pour le voir en entier.",
+      "error": {
+        "offline": "La source du message n’a pas pu être chargée, car vous êtes hors ligne.",
+        "notFound": "Ce message n’est plus sur le serveur.",
+        "failed": "La source du message n’a pas pu être chargée."
+      }
+    },
+    "nested": {
+      "open": "Ouvrir le message",
+      "close": "Masquer le message",
+      "frameTitle": "Message joint : {{subject}}",
+      "error": {
+        "notParsable": "Ce message joint n’a pas pu être ouvert.",
+        "offline": "Connectez-vous pour ouvrir ce message.",
+        "failed": "Ce message joint n’a pas pu être ouvert."
+      },
+      "subjectLabel": "Objet",
+      "truncated": "Seul le début de ce message est affiché. Téléchargez la pièce jointe pour le voir en entier.",
+      "openNamed": "Ouvrir le message : {{name}}",
+      "closeNamed": "Masquer le message : {{name}}"
+    },
+    "print": "Imprimer",
+    "unsubscribe": {
+      "title": "Liste de diffusion",
+      "note": "Ce message propose un moyen de ne plus le recevoir.",
+      "sentNote": "Demande de désabonnement envoyée. C’est la liste qui décide quand elle prend effet.",
+      "failedNote": "La demande n’a pas pu être envoyée. Utilisez plutôt la page de la liste.",
+      "oneClick": "Se désabonner",
+      "open": "Page de désabonnement",
+      "email": "Se désabonner par e-mail"
+    },
+    "forwardAsAttachment": "Transférer en pièce jointe",
+    "snooze": {
+      "laterToday": "Différer à plus tard aujourd’hui",
+      "tomorrow": "Différer à demain",
+      "thisWeekend": "Différer au week-end",
+      "nextWeek": "Différer à la semaine prochaine"
+    },
+    "protection": {
+      "title": "Protection du message",
+      "encrypted": "Ce message est chiffré",
+      "encryptedNote": "Il ne peut pas encore être ouvert ici. Utilisez un client de messagerie prenant en charge S/MIME ou OpenPGP, ou demandez à votre administration si le chiffrement au repos est activé pour cette boîte aux lettres.",
+      "signed": "Ce message est signé",
+      "signedNote": "Il porte une signature numérique. Les signatures ne sont pas encore vérifiées ici : cela indique seulement qu’une signature est présente, pas qu’elle est valide."
+    },
+    "receipt": {
+      "title": "Accusé de lecture",
+      "asked": "L’expéditeur souhaite être informé lorsque vous lirez ce message",
+      "note": "Rien n’a été envoyé. En confirmant, vous indiquez à {{address}} que vous avez ouvert ce message.",
+      "noteElsewhere": "Rien n’a été envoyé. En confirmant, vous indiquez à {{address}} — qui n’est pas l’adresse d’où provient ce message — que vous l’avez ouvert.",
+      "confirm": "Confirmer la lecture",
+      "sending": "Envoi…",
+      "decline": "Non",
+      "failed": "L’envoi a échoué. Personne n’a été informé.",
+      "sent": "Vous avez confirmé la lecture",
+      "sentNote": "{{address}} a été informé.",
+      "body": "Votre message a été affiché. Cela ne garantit pas qu’il ait été lu ni compris.\n",
+      "subject": "Lu : {{subject}}"
+    },
+    "fullScreen": "Ouvrir en plein écran",
+    "exitFullScreen": "Quitter le plein écran"
+  },
+  "compose": {
+    "toolbar": "Mise en forme",
+    "editorLabel": "Corps du message",
+    "bold": "Gras",
+    "italic": "Italique",
+    "underline": "Souligné",
+    "bulletList": "Liste à puces",
+    "numberedList": "Liste numérotée",
+    "quote": "Citation",
+    "insertLink": "Insérer un lien",
+    "removeLink": "Supprimer le lien",
+    "linkTitle": "Insérer un lien",
+    "linkUrlLabel": "URL du lien",
+    "linkUrlPlaceholder": "https://example.com",
+    "linkInsert": "Insérer",
+    "linkCancel": "Annuler",
+    "plainTextMode": "Texte brut",
+    "richTextMode": "Texte enrichi",
+    "textSize": "Taille du texte",
+    "textSizeNormal": "Normale",
+    "textSizeSmall": "Petite",
+    "textSizeLarge": "Grande",
+    "new": "Nouveau message",
+    "noSubject": "(Sans objet)",
+    "untitledWindow": "Brouillon",
+    "fromLabel": "De",
+    "subjectLabel": "Objet",
+    "minimize": "Réduire",
+    "expand": "Plein écran",
+    "restore": "Quitter le plein écran",
+    "close": "Fermer",
+    "discardTitle": "Supprimer ce brouillon ?",
+    "discardBody": "Ce brouillon sera définitivement supprimé.",
+    "discardConfirm": "Supprimer",
+    "discardCancel": "Continuer la rédaction",
+    "toLabel": "À",
+    "ccLabel": "Cc",
+    "replyAttribution": "Le {{date}}, {{name}} a écrit :",
+    "forwardSeparator": "---------- Message transféré ----------",
+    "forwardLabelFrom": "De",
+    "forwardLabelTo": "À",
+    "forwardLabelSubject": "Objet",
+    "forwardLabelDate": "Date",
+    "bccLabel": "Cci",
+    "showCcField": "Cc",
+    "showBccField": "Cci",
+    "recipientRemove": "Retirer {{address}}",
+    "recipientInvalid": "Adresse e-mail non valide",
+    "recipientDidYouMean": "Vouliez-vous dire {{suggestion}} ?",
+    "recipientDidYouMeanApply": "Utiliser {{suggestion}}",
+    "recipientMoveTo": "Déplacer vers « {{field}} »",
+    "recipientMoveMenu": "Options du destinataire",
+    "recipientGroupMembers_one": "Groupe · {{count}} contact",
+    "recipientGroupMembers_many": "Groupe · {{count}} contacts",
+    "recipientGroupMembers_other": "Groupe · {{count}} contacts",
+    "discard": "Supprimer le brouillon",
+    "attach": "Joindre un fichier",
+    "attachmentsLabel": "Pièces jointes",
+    "attachRemove": "Retirer {{name}}",
+    "attachRetry": "Réessayer {{name}}",
+    "attachCancel": "Annuler l’envoi",
+    "attachUploading": "Envoi de {{name}}…",
+    "attachError": "Échec de l’envoi",
+    "attachTooLarge": "{{name}} est trop volumineux (max. {{max}})",
+    "attachTotalTooLarge": "Les pièces jointes dépassent la limite de {{max}}",
+    "attachQuota": "Limite d’envoi atteinte — veuillez réessayer plus tard",
+    "attachNetworkError": "Échec de l’envoi — vérifiez votre connexion",
+    "dropHint": "Déposez les fichiers à joindre",
+    "send": "Envoyer",
+    "sendShortcut": "Envoyer (⌘↵)",
+    "sending": "Envoi…",
+    "sendUndo": "Annuler",
+    "sendUndoToast": "Envoi du message…",
+    "sendCanceled": "Envoi annulé",
+    "sendNoIdentity": "Choisissez une adresse d’expéditeur avant d’envoyer",
+    "sendNoRecipients": "Ajoutez au moins un destinataire",
+    "sendNoSentMailbox": "Aucun dossier Envoyés — envoi impossible pour l’instant",
+    "sendUnavailable": "Pas encore prêt à envoyer — réessayez dans un instant",
+    "sendWaitUploads": "Attendez la fin des envois",
+    "sendTooLarge": "Les pièces jointes sont trop volumineuses pour être envoyées",
+    "sendFixRecipients": "Corrigez l’adresse de destinataire signalée",
+    "closeWaitUploads": "Envois encore en cours — fenêtre réduite",
+    "sendErrorRecipient": "Certains destinataires ont été refusés : {{detail}}",
+    "sendErrorQuota": "Non envoyé — le quota de la boîte aux lettres est dépassé",
+    "sendErrorSize": "Message trop volumineux pour être envoyé",
+    "sendErrorGeneric": "Envoi impossible — le message est enregistré dans les brouillons",
+    "attachMentionTitle": "Envoyer sans pièce jointe ?",
+    "attachMentionBody": "Vous mentionnez une pièce jointe, mais aucune n’est jointe.",
+    "attachMentionSend": "Envoyer quand même",
+    "attachMentionCancel": "Retour",
+    "attachMentionKeywords": [
+      "ci-joint",
+      "ci-inclus",
+      "pièce jointe",
+      "pièces jointes",
+      "en annexe",
+      "joint à ce message"
+    ],
+    "sendErrorInterrupted": "Interrompu avant confirmation — vérifiez le dossier Envoyés avant de renvoyer",
+    "schedule": {
+      "open": "Envoyer plus tard",
+      "title": "Envoyer plus tard",
+      "custom": "Ou choisir un moment",
+      "confirm": "Programmer",
+      "cancel": "Annuler",
+      "queued": "Programmé pour {{when}}",
+      "preset": {
+        "inOneHour": "Dans une heure",
+        "thisEvening": "Ce soir",
+        "tomorrowMorning": "Demain matin",
+        "nextWeek": "La semaine prochaine"
+      },
+      "error": {
+        "past": "Choisissez un moment dans le futur.",
+        "tooFar": "C’est plus loin dans le temps que ce que ce serveur autorise.",
+        "unsupported": "Ce serveur ne peut pas retenir les messages pour un envoi ultérieur."
+      }
+    },
+    "templates": {
+      "insert": "Insérer un modèle"
+    },
+    "replyToLabel": "Répondre à",
+    "showReplyToField": "Répondre à",
+    "attachFromDevice": "Depuis cet appareil…",
+    "options": {
+      "open": "Options d’envoi",
+      "title": "Options d’envoi",
+      "done": "Terminé",
+      "priority": {
+        "label": "Priorité",
+        "high": "Haute",
+        "normal": "Normale",
+        "low": "Basse"
+      },
+      "receipt": {
+        "label": "Demander un accusé de remise",
+        "hint": "Le système de messagerie vous répond par un message indiquant si celui-ci a bien été remis."
+      },
+      "tls": {
+        "label": "Exiger une connexion chiffrée",
+        "hint": "Le message vous est renvoyé plutôt que transmis en clair."
+      }
+    },
+    "attachFromFiles": {
+      "open": "Depuis Fichiers…",
+      "title": "Joindre depuis Fichiers",
+      "path": "Chemin du dossier",
+      "root": "Fichiers",
+      "empty": "Ce dossier est vide.",
+      "errorTitle": "Les fichiers n’ont pas pu être chargés",
+      "errorBody": "Vérifiez votre connexion et réessayez.",
+      "cancel": "Annuler",
+      "confirmEmpty": "Joindre",
+      "confirm_one": "Joindre {{count}} fichier",
+      "confirm_many": "Joindre {{count}} fichiers",
+      "confirm_other": "Joindre {{count}} fichiers"
+    }
+  },
+  "search": {
+    "placeholder": "Rechercher dans le courrier",
+    "label": "Rechercher",
+    "clear": "Effacer la recherche",
+    "scope": {
+      "label": "Rechercher dans",
+      "folder": "Ce dossier",
+      "all": "Tous les dossiers",
+      "everywhere": "Tous les dossiers, corbeille et indésirables compris"
+    },
+    "chip": {
+      "remove": "Retirer le filtre {{filter}}",
+      "not": "Sauf {{filter}}",
+      "from": "De : {{value}}",
+      "to": "À : {{value}}",
+      "cc": "Cc : {{value}}",
+      "bcc": "Cci : {{value}}",
+      "subject": "Objet : {{value}}",
+      "body": "Texte : {{value}}",
+      "hasAttachment": "Avec pièce jointe",
+      "unread": "Non lus",
+      "read": "Lus",
+      "flagged": "Suivis",
+      "thread": {
+        "unread": "Conversations non lues",
+        "read": "Conversations lues",
+        "flagged": "Conversations suivies"
+      },
+      "in": "Dans : {{value}}",
+      "before": "Avant {{value}}",
+      "after": "Après {{value}}",
+      "larger": "Plus grand que {{value}}",
+      "smaller": "Plus petit que {{value}}",
+      "text": "Contient : {{value}}"
+    },
+    "hint": "Essayez : from:, to:, subject:, has:attachment, is:unread, larger:5M, in:, before:, after:",
+    "hintAdvanced": "Pour aller plus loin : -mot l’exclut, a OR b trouve l’un ou l’autre, thread:unread trouve les conversations que personne n’a ouvertes.",
+    "findLarge": "Trouver les messages volumineux",
+    "results": {
+      "empty": "Aucun message ne correspond à votre recherche. Essayez tous les dossiers, ou moins de mots.",
+      "count_one": "{{count}} résultat",
+      "count_many": "{{count}} résultats",
+      "count_other": "{{count}} résultats"
+    },
+    "chipsLabel": "Filtres actifs",
+    "chipsCount_one": "{{count}} filtre actif",
+    "chipsCount_many": "{{count}} filtres actifs",
+    "chipsCount_other": "{{count}} filtres actifs",
+    "saved": {
+      "title": "Recherches enregistrées",
+      "save": "Enregistrer cette recherche",
+      "saved": "Recherche enregistrée",
+      "forget": "Retirer {{name}}"
+    }
+  },
+  "labels": {
+    "title": "Libellés",
+    "empty": "Aucun libellé pour l’instant.",
+    "noMessages": "Aucun message avec ce libellé.",
+    "new": "Nouveau libellé",
+    "addFirst": "Créer un libellé",
+    "newEllipsis": "Nouveau libellé…",
+    "assign": "Libellé",
+    "menuTitle": "Appliquer des libellés",
+    "removeFromLabel": "Retirer de ce libellé",
+    "discoveredHint": "Détecté automatiquement sur vos messages synchronisés.",
+    "unread": "Non lus : {{count}}",
+    "rowLabels": "Libellés",
+    "moreLabels_one": "{{count}} libellé de plus",
+    "moreLabels_many": "{{count}} libellés de plus",
+    "moreLabels_other": "{{count}} libellés de plus",
+    "actions": {
+      "menu": "Actions du libellé : {{name}}",
+      "rename": "Renommer",
+      "recolor": "Changer la couleur",
+      "delete": "Supprimer",
+      "addToLabels": "Ajouter aux libellés"
+    },
+    "create": {
+      "title": "Nouveau libellé",
+      "nameLabel": "Nom du libellé",
+      "colorLabel": "Couleur",
+      "submit": "Créer"
+    },
+    "rename": {
+      "title": "Renommer le libellé",
+      "submit": "Renommer"
+    },
+    "recolor": {
+      "title": "Changer la couleur"
+    },
+    "save": "Enregistrer",
+    "delete": {
+      "title": "Supprimer le libellé ?",
+      "message": "Retirer le libellé « {{name}} » ? Les messages conservent le mot-clé sous-jacent.",
+      "alsoStrip": "Le retirer aussi de {{count}} messages connus",
+      "confirm": "Supprimer"
+    },
+    "color": {
+      "red": "Rouge",
+      "orange": "Orange",
+      "yellow": "Jaune",
+      "green": "Vert",
+      "blue": "Bleu",
+      "purple": "Violet",
+      "gray": "Gris"
+    },
+    "error": {
+      "empty": "Saisissez un nom de libellé.",
+      "tooLong": "Ce nom est trop long.",
+      "taken": "Un libellé portant ce nom existe déjà."
+    },
+    "loading": "Chargement des libellés"
+  },
+  "cleanup": {
+    "cancel": "Annuler",
+    "menu": {
+      "emptyTrash": "Vider la corbeille",
+      "emptyJunk": "Vider les indésirables",
+      "deleteOlder": "Supprimer les messages plus anciens que…"
+    },
+    "empty": {
+      "title": "Vider « {{name}} » ?",
+      "message_one": "Supprimer définitivement {{count}} message dans « {{name}} » ? Cette action est irréversible.",
+      "message_many": "Supprimer définitivement {{count}} messages dans « {{name}} » ? Cette action est irréversible.",
+      "message_other": "Supprimer définitivement {{count}} messages dans « {{name}} » ? Cette action est irréversible.",
+      "retention": "{{product}} les supprime sur le serveur. Votre fournisseur peut conserver ses propres sauvegardes, hors du contrôle de {{product}}.",
+      "confirm": "Vider le dossier"
+    },
+    "older": {
+      "title": "Supprimer les messages anciens",
+      "daysLabel": "Supprimer les messages plus anciens que (jours)",
+      "messageTrash_one": "Mettre à la corbeille les messages de « {{name}} » datant de plus de {{count}} jour ?",
+      "messageTrash_many": "Mettre à la corbeille les messages de « {{name}} » datant de plus de {{count}} jours ?",
+      "messageTrash_other": "Mettre à la corbeille les messages de « {{name}} » datant de plus de {{count}} jours ?",
+      "messageDestroy_one": "Supprimer définitivement les messages de « {{name}} » datant de plus de {{count}} jour ? Cette action est irréversible.",
+      "messageDestroy_many": "Supprimer définitivement les messages de « {{name}} » datant de plus de {{count}} jours ? Cette action est irréversible.",
+      "messageDestroy_other": "Supprimer définitivement les messages de « {{name}} » datant de plus de {{count}} jours ? Cette action est irréversible.",
+      "noteTrash": "Les messages déplacés restent dans la corbeille jusqu’à ce que vous la vidiez.",
+      "retention": "{{product}} les supprime sur le serveur. Votre fournisseur peut conserver ses propres sauvegardes, hors du contrôle de {{product}}.",
+      "confirmTrash": "Mettre à la corbeille",
+      "confirmDestroy": "Supprimer définitivement",
+      "invalid": "Saisissez un nombre de jours (1–3650)."
+    },
+    "failed": {
+      "title": "Impossible de nettoyer « {{name}} »",
+      "body": "L’opération n’a pas abouti. Vérifiez votre connexion et réessayez."
+    }
+  },
+  "outbox": {
+    "problems": {
+      "open_one": "{{count}} action n’a pas abouti",
+      "open_many": "{{count}} actions n’ont pas abouti",
+      "open_other": "{{count}} actions n’ont pas abouti",
+      "title": "Certaines actions n’ont pas abouti",
+      "empty": "Tout est à jour.",
+      "discardAll": "Tout abandonner"
+    },
+    "action": {
+      "retry": "Réessayer",
+      "discard": "Abandonner",
+      "keepHere": "Conserver dans {{folder}}",
+      "dismiss": "OK"
+    },
+    "conflict": {
+      "moveFolderGone": "Déplacement impossible — ce dossier a été supprimé.",
+      "messageGone": "Ce message n’existe plus sur le serveur.",
+      "folderGone": "Ce dossier n’existe plus.",
+      "folderNotEmpty": "Le dossier n’est pas vide.",
+      "contactGone": "Ce contact n’existe plus sur le serveur.",
+      "forbidden": "Vous n’avez pas l’autorisation de faire cela.",
+      "quota": "Le quota de votre boîte aux lettres est dépassé.",
+      "tooLarge": "C’est trop volumineux pour le serveur.",
+      "invalid": "Le serveur a rejeté cette modification.",
+      "stateConflict": "Quelqu’un d’autre l’a modifié en même temps.",
+      "serverRejected": "Le serveur a refusé cette modification."
+    },
+    "send": {
+      "willSendWhenOnline": "Sera envoyé dès votre retour en ligne",
+      "queuedOffline": "Vous êtes hors ligne — le message partira à la reconnexion",
+      "retrying": "Nouvelle tentative…",
+      "cancel": "Annuler l’envoi",
+      "label": "Messages en attente"
+    },
+    "scheduled": {
+      "title": "Programmés",
+      "description": "Messages que le serveur retient pour un envoi ultérieur. Ils partent que cette application soit ouverte ou non.",
+      "loading": "Chargement…",
+      "empty": "Aucun envoi programmé.",
+      "loadFailed": "Les messages programmés n’ont pas pu être chargés.",
+      "willSend": "Part {{when}}",
+      "cancel": "Annuler l’envoi",
+      "cancelled": "Envoi annulé",
+      "tooLate": "Déjà envoyé — le message avait quitté la file d’attente."
+    }
+  },
+  "pwa": {
+    "update": {
+      "title": "Une mise à jour est prête",
+      "body": "Rechargez pour utiliser la nouvelle version. Les brouillons ouverts sont enregistrés au préalable.",
+      "action": "Recharger"
+    },
+    "install": {
+      "menu": "Installer l’application",
+      "title": "Installer {{product}}",
+      "body": "L’installation vous donne une icône d’application, un démarrage plus rapide et l’accès à votre courrier sans fenêtre de navigateur.",
+      "action": "Installer",
+      "cancel": "Plus tard",
+      "gotIt": "Compris",
+      "ios": {
+        "title": "Ajouter à l’écran d’accueil",
+        "steps": {
+          "share": "Dans Safari, touchez le bouton « Partager ».",
+          "add": "Choisissez « Sur l’écran d’accueil ».",
+          "open": "Ouvrez {{product}} depuis la nouvelle icône de votre écran d’accueil."
+        },
+        "pushNote": "Sur iPhone et iPad, les notifications de courrier ne fonctionnent que si l’application est lancée depuis l’écran d’accueil."
+      }
+    },
+    "error": {
+      "chunk": {
+        "title": "Une erreur est survenue",
+        "body": "Une partie de l’application n’a pas pu être chargée. Un rechargement suffit généralement.",
+        "action": "Recharger"
+      }
+    }
+  },
+  "notify": {
+    "title": "Notifications",
+    "description": "{{product}} vous prévient de l’arrivée de nouveaux messages tant qu’il est en cours d’exécution — y compris dans un onglet ou une fenêtre en arrière-plan.",
+    "enable": {
+      "label": "Me prévenir des nouveaux messages"
+    },
+    "permission": {
+      "denied": "Votre navigateur bloque les notifications pour ce site. Autorisez-les dans les paramètres de site de votre navigateur, puis rechargez {{product}}.",
+      "dismissed": "Les notifications n’ont pas été autorisées. Réactivez l’option pour que la question vous soit posée une nouvelle fois.",
+      "unsupported": "Ce navigateur ne prend pas en charge les notifications.",
+      "iosInstall": "Sur iPhone et iPad, les notifications ne fonctionnent que si {{product}} est lancé depuis l’écran d’accueil. Commencez par l’y ajouter."
+    },
+    "folders": {
+      "label": "Notifier pour ces dossiers",
+      "hint": "Les nouveaux messages des autres dossiers sont toujours synchronisés — ils restent simplement silencieux."
+    },
+    "quiet": {
+      "label": "Heures silencieuses",
+      "hint": "Aucune notification entre ces horaires. Une plage qui passe minuit est autorisée.",
+      "from": "De",
+      "to": "À"
+    },
+    "preview": {
+      "label": "Afficher l’expéditeur et l’objet",
+      "hint": "Désactivé, la notification indique seulement qu’un nouveau message est arrivé — utile sur un écran partagé."
+    },
+    "sound": {
+      "label": "Émettre un son",
+      "hint": "C’est votre système d’exploitation qui décide si un son est réellement émis."
+    },
+    "background": {
+      "unavailable": "Les notifications lorsque {{product}} est complètement fermé ne sont pas possibles avec ce serveur. Elles supposent que le serveur publie une clé de signature Web Push (RFC 9749) ; celui-ci ne le fait pas. Tout ce qui précède fonctionne dès que {{product}} est ouvert.",
+      "available": "Ce serveur peut aussi vous prévenir pendant que {{product}} est fermé.",
+      "contentless": "Ces notifications indiquent seulement qu’un message est arrivé — jamais l’expéditeur ni l’objet.",
+      "withContent": "Ces notifications nomment l’expéditeur et l’objet, exactement comme celles que vous voyez lorsque {{product}} est ouvert.",
+      "previewOff": "« {{setting}} » est désactivé. {{product}} ne demande donc pas du tout à ce serveur de les joindre — il ne se contente pas de les masquer. Lorsqu’il est fermé, une notification indique qu’un message est arrivé, rien de plus.",
+      "folders": "La sélection de dossiers ci-dessus ne s’applique pas lorsque {{product}} est fermé : une notification arrive pour chaque dossier.",
+      "renewal": "Ouvrez {{product}} au moins une fois par semaine pour continuer à les recevoir : ce serveur renouvelle l’abonnement en arrière-plan par tranches de sept jours, et seul {{product}} peut le renouveler."
+    },
+    "message": {
+      "noSubject": "(sans objet)",
+      "unknownSender": "Expéditeur inconnu"
+    },
+    "body": {
+      "generic": "Nouveau message",
+      "count_one": "{{count}} nouveau message",
+      "count_many": "{{count}} nouveaux messages",
+      "count_other": "{{count}} nouveaux messages"
+    }
+  },
+  "quota": {
+    "label": "Stockage de la boîte aux lettres",
+    "used": "{{used}} sur {{total}}",
+    "nearlyFull": "{{used}} sur {{total}} — presque plein",
+    "full": "Boîte aux lettres pleine",
+    "warnToast": "Votre boîte aux lettres est presque pleine. Les nouveaux messages pourraient bientôt être refusés.",
+    "fullToast": "Votre boîte aux lettres est pleine. Les nouveaux messages sont refusés tant que vous ne libérez pas d’espace."
+  },
+  "shortcuts": {
+    "title": "Raccourcis clavier",
+    "or": "ou",
+    "targetNote": "Les raccourcis agissent sur les messages sélectionnés — si rien n’est sélectionné, sur le message ouvert, sinon sur la ligne active.",
+    "editorNote": "Lorsque le curseur se trouve dans le corps d’un message, l’éditeur conserve ses propres raccourcis (gras, italique, insertion de lien).",
+    "unavailable": {
+      "archive": "Ce compte n’a pas de dossier Archives.",
+      "junk": "Ce compte n’a pas de dossier Indésirables.",
+      "trash": "Ce compte n’a pas de corbeille.",
+      "hint": "Appuyez sur V pour choisir un dossier à la place.",
+      "undo": "Rien à annuler."
+    },
+    "keys": {
+      "space": "Espace",
+      "enter": "Entrée",
+      "esc": "Échap",
+      "home": "Origine",
+      "end": "Fin"
+    },
+    "groups": {
+      "list": "Liste des messages",
+      "navigation": "Navigation",
+      "triage": "Traitement",
+      "compose": "Rédaction",
+      "application": "Application"
+    },
+    "scopes": {
+      "global": "Partout",
+      "list": "Liste des messages",
+      "reading": "Volet de lecture"
+    },
+    "actions": {
+      "nav": {
+        "next": "Message suivant",
+        "prev": "Message précédent",
+        "open": "Ouvrir le message",
+        "back": "Retour à la liste",
+        "full": "Ouvrir le message en plein écran"
+      },
+      "list": {
+        "move": "Déplacer le focus",
+        "extend": "Étendre la sélection",
+        "ends": "Premier ou dernier message",
+        "select": "Sélectionner ou désélectionner le message",
+        "open": "Ouvrir le message actif",
+        "selectAll": "Tout sélectionner dans la liste",
+        "clear": "Annuler la sélection"
+      },
+      "triage": {
+        "archive": "Archiver",
+        "trash": "Mettre à la corbeille",
+        "destroy": "Supprimer définitivement",
+        "junk": "Marquer comme indésirable",
+        "unread": "Marquer comme lu ou non lu",
+        "flag": "Activer ou retirer le suivi",
+        "label": "Appliquer des libellés",
+        "move": "Déplacer vers un dossier",
+        "undo": "Annuler la dernière action"
+      },
+      "compose": {
+        "new": "Nouveau message",
+        "reply": "Répondre",
+        "replyAll": "Répondre à tous",
+        "forward": "Transférer"
+      },
+      "app": {
+        "folders": "Afficher ou masquer les dossiers",
+        "help": "Raccourcis clavier",
+        "palette": "Palette de commandes",
+        "search": "Rechercher"
+      },
+      "reading": {
+        "print": "Imprimer le message"
+      }
+    },
+    "modKey": "Ctrl"
+  },
+  "palette": {
+    "title": "Palette de commandes",
+    "open": "Palette de commandes ({{keys}})",
+    "placeholder": "Rechercher des actions, des dossiers et des libellés…",
+    "recent": "Récents",
+    "empty": "Aucun résultat.",
+    "goToFolder": "Aller au dossier : {{folder}}",
+    "goToLabel": "Aller au libellé : {{label}}",
+    "goToSettings": "Aller aux paramètres",
+    "goToContacts": "Aller aux contacts"
+  },
+  "folders": {
+    "drag": {
+      "over": "Déposer sur {{folder}}"
+    }
+  },
+  "rights": {
+    "unavailable": {
+      "accountReadOnly": "Ce compte est en lecture seule.",
+      "seen": "Vous n’avez pas l’autorisation de marquer ces messages comme lus ou non lus.",
+      "keywords": "Vous n’avez pas l’autorisation de suivre ces messages ni de modifier leurs libellés.",
+      "remove": "Vous n’avez pas l’autorisation de sortir des messages de ce dossier.",
+      "add": "Vous n’avez pas l’autorisation de classer des messages dans ce dossier.",
+      "destroy": "Vous n’avez pas l’autorisation de supprimer ces messages.",
+      "unknown": "Vos droits sont encore en cours de vérification — tous les messages ne sont pas encore chargés."
+    }
+  },
+  "sharing": {
+    "currentHeading": "Qui a accès",
+    "addHeading": "Donner l’accès à quelqu’un",
+    "none": "Vous seul.",
+    "search": "Rechercher des personnes",
+    "searchPlaceholder": "Nom ou adresse",
+    "noMatches": "Personne ne correspond.",
+    "searchFailed": "La recherche de personnes a échoué.",
+    "roleLabel": "Peut",
+    "roleFor": "Ce que {{name}} peut faire",
+    "grant": "Ajouter",
+    "grantTo": "Donner l’accès à {{name}}",
+    "revoke": "Retirer",
+    "revokeFrom": "Retirer l’accès de {{name}}",
+    "done": "Terminé",
+    "custom": "Droits personnalisés",
+    "failed": "Cette modification n’a pas été enregistrée. Rien n’a changé.",
+    "role": {
+      "viewer": "Consulter",
+      "editor": "Modifier",
+      "manager": "Gérer",
+      "freeBusy": "Disponibilité uniquement"
+    },
+    "explain": {
+      "file": {
+        "viewer": "Peut l’ouvrir et le télécharger. Ne peut pas le modifier.",
+        "editor": "Peut l’ouvrir, le modifier, le renommer et le supprimer. Ne peut pas le partager avec d’autres.",
+        "manager": "Peut tout ce que vous pouvez faire, y compris le partager avec d’autres personnes — sans que vous en soyez informé."
+      },
+      "mailbox": {
+        "viewer": "Peut lire les messages de ce dossier. Ouvrir un message ne le marque pas comme lu pour vous — ce qui veut dire aussi que son propre compteur de messages non lus ne diminue jamais.",
+        "editor": "Peut lire les messages, les déplacer vers ce dossier et hors de celui-ci, les marquer comme lus et les marquer comme suivis. Ne peut ni renommer ni supprimer le dossier.",
+        "manager": "Peut tout ce que vous pouvez faire avec ce dossier — lire et classer les messages, le renommer, le supprimer et le partager avec d’autres personnes sans vous en avertir."
+      },
+      "calendar": {
+        "freeBusy": "Voit QUAND vous êtes occupé, jamais ce que vous faites — ni titres, ni lieux, ni participants. C’est ce que l’on accorde à quelqu’un qui doit organiser son planning autour du vôtre.",
+        "viewer": "Peut lire chaque événement de ce calendrier, avec son titre, son horaire et ses détails. Ne peut rien modifier.",
+        "editor": "Peut lire, créer et modifier des événements, répondre aux invitations et définir ses propres rappels. Ne peut ni supprimer le calendrier ni le partager.",
+        "manager": "Peut tout ce que vous pouvez faire avec ce calendrier — y compris le supprimer et le partager avec d’autres personnes, sans vous en avertir."
+      },
+      "addressBook": {
+        "viewer": "Peut lire les contacts de cette liste. Ne peut pas les modifier.",
+        "editor": "Peut lire, ajouter, modifier et retirer des contacts dans cette liste. Ne peut ni supprimer la liste ni la partager.",
+        "manager": "Peut tout ce que vous pouvez faire avec cette liste — y compris la supprimer et la partager avec d’autres personnes, sans vous en avertir."
+      }
+    },
+    "mailbox": {
+      "action": "Partager…",
+      "title": "Partager le dossier « {{name}} »",
+      "loadFailed": "La liste des accès actuels n’a pas pu être chargée ; rien ne peut donc être modifié ici en toute sécurité.",
+      "noSubmit": "Personne ne peut envoyer de courrier depuis votre compte, quels que soient les droits accordés ici."
+    },
+    "incoming": {
+      "region": "Nouveaux partages",
+      "mailbox": "{{who}} a partagé le dossier « {{name}} » avec vous.",
+      "mailboxUnnamed": "{{who}} a partagé un dossier de courrier avec vous.",
+      "revoked": "{{who}} vous a retiré l’accès à « {{name}} ».",
+      "revokedUnnamed": "{{who}} vous a retiré l’accès à un dossier de courrier.",
+      "someone": "Quelqu’un",
+      "open": "Ouvrir",
+      "dismiss": "Masquer",
+      "dismissOne": "Masquer cet avis",
+      "calendar": "{{who}} a partagé le calendrier « {{name}} » avec vous.",
+      "calendarUnnamed": "{{who}} a partagé un calendrier avec vous.",
+      "revokedCalendarUnnamed": "{{who}} vous a retiré l’accès à un calendrier.",
+      "addressBook": "{{who}} a partagé la liste de contacts « {{name}} » avec vous.",
+      "addressBookUnnamed": "{{who}} a partagé une liste de contacts avec vous.",
+      "revokedAddressBookUnnamed": "{{who}} vous a retiré l’accès à une liste de contacts.",
+      "object": "{{who}} a partagé « {{name}} » avec vous.",
+      "objectUnnamed": "{{who}} a partagé quelque chose avec vous.",
+      "revokedObjectUnnamed": "{{who}} vous a retiré l’accès à un élément."
+    },
+    "calendar": {
+      "title": "Partager le calendrier « {{name}} »"
+    },
+    "addressBook": {
+      "title": "Partager la liste « {{name}} »",
+      "loadFailed": "La liste des accès actuels n’a pas pu être chargée ; rien ne peut donc être modifié ici en toute sécurité."
+    }
+  },
+  "calendar": {
+    "offline": "Vous êtes hors ligne. Les événements ne peuvent être créés qu’avec une connexion.",
+    "offlineOpen": "Vous êtes hors ligne. Les événements ne peuvent être ouverts et modifiés qu’avec une connexion.",
+    "offlineStale": "Aucune mise à jour hors ligne. Dernière mise à jour {{when}}.",
+    "offlineNotUpdating": "Aucune mise à jour hors ligne.",
+    "offlineNever": {
+      "title": "Ce mois n’a pas encore été synchronisé",
+      "body": "Connectez-vous une fois et votre calendrier sera là la prochaine fois que vous serez hors ligne."
+    },
+    "title": "Calendrier",
+    "today": "Aujourd’hui",
+    "previousMonth": "Mois précédent",
+    "newEvent": "Nouvel événement",
+    "nextMonth": "Mois suivant",
+    "previousWeek": "Semaine précédente",
+    "nextWeek": "Semaine suivante",
+    "weekRange": "{{from}} – {{to}}",
+    "viewLabel": "Affichage du calendrier",
+    "view": {
+      "month": "Mois",
+      "agenda": "Agenda",
+      "week": "Semaine"
+    },
+    "untitled": "(sans titre)",
+    "allDay": "Journée entière",
+    "more": "+{{count}} autres",
+    "noEvents": "Rien à venir.",
+    "noEventsOnDay": "Rien ce jour-là.",
+    "retry": "Réessayer",
+    "undo": "Annuler",
+    "deleted": "Événement supprimé.",
+    "saveFailed": "L’événement n’a pas pu être enregistré.",
+    "deleteFailed": "L’événement n’a pas pu être supprimé.",
+    "restoreFailed": "L’événement n’a pas pu être restauré.",
+    "loadFailed": "Le calendrier n’a pas pu être chargé.",
+    "refreshFailed": "Le calendrier n’a pas pu être actualisé — ce que vous voyez est peut-être obsolète.",
+    "signedOut": "Connectez-vous pour voir votre calendrier.",
+    "event": {
+      "createTitle": "Nouvel événement",
+      "editTitle": "Modifier l’événement",
+      "title": "Titre",
+      "start": "Début",
+      "day": "Jour",
+      "allDay": "Journée entière",
+      "duration": "Durée en minutes",
+      "durationInvalid": "Indiquez une durée comprise entre 1 et {{max}} minutes.",
+      "calendar": "Calendrier",
+      "description": "Notes",
+      "location": "Lieu",
+      "participants": "Participants",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "delete": "Supprimer",
+      "unresolvedReadOnly": "Le serveur a renvoyé cet élément comme une occurrence qui ne peut être rattachée à aucun événement enregistré. Il peut donc être consulté ici, mais pas modifié — seulement dans une application de calendrier qui atteint l’événement lui-même.",
+      "alert": {
+        "label": "Rappel",
+        "second": "Deuxième rappel",
+        "none": "Aucun",
+        "atStart": "À l’heure de l’événement",
+        "minutes_one": "{{count}} minute avant",
+        "minutes_many": "{{count}} minutes avant",
+        "minutes_other": "{{count}} minutes avant",
+        "hours_one": "{{count}} heure avant",
+        "hours_many": "{{count}} heures avant",
+        "hours_other": "{{count}} heures avant",
+        "days_one": "{{count}} jour avant",
+        "days_many": "{{count}} jours avant",
+        "days_other": "{{count}} jours avant",
+        "weeks_one": "{{count}} semaine avant",
+        "weeks_many": "{{count}} semaines avant",
+        "weeks_other": "{{count}} semaines avant",
+        "dayOf": "Le jour de l’événement (9:00)",
+        "dayBefore": "1 jour avant (9:00)",
+        "twoDaysBefore": "2 jours avant (9:00)",
+        "weekBefore": "1 semaine avant (9:00)",
+        "other": "{{duration}} avant le début",
+        "carried_one": "{{count}} autre rappel est conservé tel quel.",
+        "carried_many": "{{count}} autres rappels sont conservés tels quels.",
+        "carried_other": "{{count}} autres rappels sont conservés tels quels."
+      },
+      "back": "Retour",
+      "repeat": {
+        "label": "Répéter",
+        "none": "Jamais",
+        "daily": "Tous les jours",
+        "weekly": "Toutes les semaines",
+        "biweekly": "Toutes les 2 semaines",
+        "monthly": "Tous les mois",
+        "yearly": "Tous les ans",
+        "custom": "Règle personnalisée",
+        "endLabel": "Fin de la répétition",
+        "end": {
+          "never": "Jamais",
+          "until": "À une date",
+          "count": "Après un nombre"
+        },
+        "untilDate": "Dernier jour",
+        "countLabel": "Nombre d’événements"
+      },
+      "scope": {
+        "saveTitle": "Appliquer la modification à…",
+        "deleteTitle": "Supprimer…",
+        "occurrence": "Cet événement uniquement",
+        "all": "Tous les événements",
+        "note": "Les événements modifiés individuellement dans cette série conservent leur horaire."
+      },
+      "participant": {
+        "none": "Aucun",
+        "count_one": "{{count}} personne",
+        "count_many": "{{count}} personnes",
+        "count_other": "{{count}} personnes",
+        "add": "Adresse e-mail",
+        "addAction": "Ajouter",
+        "empty": "Personne n’est encore invité.",
+        "organizer": "Organisateur",
+        "remove": "Retirer {{name}}",
+        "invalid": "Cela ne ressemble pas à une adresse e-mail.",
+        "duplicate": "Cette personne figure déjà sur la liste.",
+        "full": "Le serveur accepte au maximum {{max}} participants.",
+        "status": {
+          "needs-action": "Sans réponse",
+          "accepted": "Accepté",
+          "declined": "Refusé",
+          "tentative": "Peut-être"
+        }
+      },
+      "rsvp": {
+        "label": "Votre réponse",
+        "accepted": "Accepter",
+        "tentative": "Peut-être",
+        "declined": "Refuser"
+      }
+    },
+    "calendars": {
+      "title": "Calendriers",
+      "open": "Calendriers…",
+      "create": "Nouveau calendrier",
+      "createTitle": "Nouveau calendrier",
+      "editTitle": "Modifier le calendrier",
+      "edit": "Modifier",
+      "delete": "Supprimer",
+      "menu": "Options pour {{name}}",
+      "name": "Nom",
+      "color": "Couleur",
+      "colorChosen": "Choisie : {{chosen}}",
+      "empty": "Ce compte n’a aucun calendrier.",
+      "counting": "Décompte des événements…",
+      "deleteTitle": "Supprimer « {{name}} » ?",
+      "deleteBody_one": "Ce calendrier et ce qu’il contient seront supprimés. Il n’y a aucun moyen de revenir en arrière.",
+      "deleteBody_many": "Ce calendrier et les {{count}} événements qu’il contient seront supprimés. Il n’y a aucun moyen de revenir en arrière.",
+      "deleteBody_other": "Ce calendrier et les {{count}} événements qu’il contient seront supprimés. Il n’y a aucun moyen de revenir en arrière.",
+      "deleted": "« {{name}} » supprimé.",
+      "deleteFailed": "Le calendrier n’a pas pu être supprimé.",
+      "saveFailed": "Le calendrier n’a pas pu être enregistré.",
+      "toggleFailed": "Le calendrier n’a pas pu être affiché ou masqué.",
+      "share": "Partager {{name}}",
+      "sharedTitle": "Partagés"
+    },
+    "colors": {
+      "red": "Rouge",
+      "orange": "Orange",
+      "ochre": "Ocre",
+      "green": "Vert",
+      "teal": "Turquoise",
+      "blue": "Bleu",
+      "purple": "Violet",
+      "brown": "Marron",
+      "custom": "Couleur actuelle"
+    },
+    "import": {
+      "open": "Importer des événements…",
+      "title": "Importer des événements",
+      "file": "Fichier de calendrier (.ics)",
+      "empty": "Ce fichier ne contient aucun événement.",
+      "unreadable": "Le fichier n’a pas pu être lu.",
+      "failed": "L’import a échoué.",
+      "repeats": "se répète",
+      "action_one": "Importer {{count}} événement",
+      "action_many": "Importer {{count}} événements",
+      "action_other": "Importer {{count}} événements",
+      "done_one": "{{count}} événement importé.",
+      "done_many": "{{count}} événements importés.",
+      "done_other": "{{count}} événements importés.",
+      "duplicates_one": "{{count}} événement figurait déjà dans le calendrier.",
+      "duplicates_many": "{{count}} événements figuraient déjà dans le calendrier.",
+      "duplicates_other": "{{count}} événements figuraient déjà dans le calendrier."
+    },
+    "rsvpFailed": "Votre réponse n’a pas pu être envoyée.",
+    "occurrenceDeleted": "Cet événement a été retiré de la série.",
+    "availability": {
+      "label": "Afficher les disponibilités",
+      "nobody": "Personne",
+      "noPeople": "Il n’y a personne à interroger.",
+      "unavailable": "Aucune disponibilité n’a été renvoyée pour cette personne.",
+      "period": "{{name}} est occupé le {{day}} de {{from}} à {{to}}."
+    }
+  },
+  "files": {
+    "listOptions": "Options de la liste",
+    "deleteAction": "Supprimer",
+    "confirmDeleteBody_one": "Cet élément sera définitivement supprimé. Cette action est irréversible.",
+    "confirmDeleteBody_many": "Ces {{count}} éléments seront définitivement supprimés. Cette action est irréversible.",
+    "confirmDeleteBody_other": "Ces {{count}} éléments seront définitivement supprimés. Cette action est irréversible.",
+    "confirmDeleteFolder": "Tout ce que contiennent les dossiers sélectionnés est supprimé avec eux.",
+    "truncated": "Ce compte contient plus d’éléments qu’il n’est possible d’en lister d’un coup ; certains fichiers ne sont donc pas affichés. Utilisez la recherche pour retrouver celui qui vous manque.",
+    "search": {
+      "label": "Rechercher des fichiers",
+      "placeholder": "Rechercher dans tous les fichiers",
+      "none": "Rien ne correspond à « {{query}} ».",
+      "in": "dans {{name}}",
+      "inRoot": "dans Fichiers"
+    },
+    "sort": {
+      "byName": "Trier par nom",
+      "bySize": "Trier par taille",
+      "byKind": "Trier par type"
+    },
+    "selection": {
+      "start": "Sélectionner",
+      "stop": "Terminé",
+      "clear": "Annuler la sélection",
+      "all": "Tout sélectionner ici",
+      "count_one": "{{count}} sélectionné",
+      "count_many": "{{count}} sélectionnés",
+      "count_other": "{{count}} sélectionnés"
+    },
+    "move": {
+      "open": "Déplacer {{name}}",
+      "action": "Déplacer",
+      "title": "Déplacer « {{name}} »",
+      "titleMany": "Déplacer {{count}} éléments",
+      "here": "Déplacer vers {{name}}",
+      "breadcrumb": "Dossier de destination",
+      "noFolders": "Aucun dossier ici — « Déplacer » les place tout de même dans celui-ci.",
+      "done": "Déplacé vers {{name}}.",
+      "undo": "Annuler"
+    },
+    "offline": "Vous êtes hors ligne. Les fichiers ne peuvent être modifiés qu’avec une connexion.",
+    "offlineStale": "Aucune mise à jour hors ligne. Dernière mise à jour {{when}}.",
+    "offlineNotUpdating": "Aucune mise à jour hors ligne.",
+    "offlineNever": {
+      "title": "Vos fichiers n’ont pas encore été synchronisés",
+      "body": "Connectez-vous une fois et cette liste sera là la prochaine fois que vous serez hors ligne. Ouvrir un fichier nécessite toujours une connexion."
+    },
+    "title": "Fichiers",
+    "root": "Fichiers",
+    "breadcrumb": "Chemin du dossier",
+    "empty": "Ce dossier est vide.",
+    "retry": "Réessayer",
+    "loadFailed": "Les fichiers n’ont pas pu être chargés.",
+    "refreshFailed": "Vos fichiers n’ont pas pu être actualisés — ce que vous voyez est peut-être obsolète.",
+    "savedButNotShown": "L’enregistrement a réussi, mais la liste n’a pas pu être rechargée — réessayez pour la voir.",
+    "signedOut": "Connectez-vous pour voir vos fichiers.",
+    "upload": "Importer",
+    "newFolder": "Nouveau dossier",
+    "cancel": "Annuler",
+    "download": "Télécharger {{name}}",
+    "delete": "Supprimer {{name}}",
+    "rename": {
+      "open": "Renommer {{name}}",
+      "title": "Renommer « {{name}} »",
+      "label": "Nouveau nom",
+      "confirm": "Renommer"
+    },
+    "error": {
+      "nameTaken": "Un élément portant ce nom existe déjà ici.",
+      "tooLarge": "Ce fichier est trop volumineux pour ce serveur.",
+      "overQuota": "Plus d’espace disponible dans ce compte.",
+      "forbidden": "Vous n’avez pas l’autorisation de faire cela ici.",
+      "rejected": "Le serveur a refusé cette action."
+    },
+    "name": {
+      "empty": "Donnez-lui un nom.",
+      "tooLong": "Ce nom est trop long.",
+      "forbiddenCharacter": "Ce nom contient un caractère que le serveur n’autorise pas.",
+      "reservedName": "Ce nom est réservé et ne peut pas être utilisé."
+    },
+    "preview": "Aperçu de {{name}}",
+    "hidePreview": "Masquer l’aperçu de {{name}}",
+    "more": "Autres actions pour {{name}}",
+    "share": {
+      "open": "Partager {{name}}",
+      "title": "Partager « {{name}} »"
+    },
+    "shared": {
+      "title": "Partagés avec moi",
+      "open": "Ouvrir les fichiers que {{name}} a partagés avec vous"
+    }
+  }
+}

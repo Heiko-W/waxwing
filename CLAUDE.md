@@ -18,7 +18,8 @@ Waxwing is a serverless (static-only) webmail client for JMAP. App code AGPL-3.0
 - On conflict, spec and tech-stack win over the plan. Deviations from any document are
   recorded as ADRs in `docs/adr/` and the affected docs are updated — never silently.
 - Global Definition of Done (plan §2.4) applies to every change: TypeScript strict,
-  Biome clean, tests, no hardcoded user-visible strings (i18next, `en` + `de`),
+  Biome clean, tests, no hardcoded user-visible strings (i18next — a new key goes into ALL
+  14 locale bundles; `node scripts/check-locales.mjs` tells you which one is short),
   keyboard/a11y basics, `size-limit` budget (≤ 300 KB gz initial JS).
 - Conventional Commits (scopes: `web`, `jmap`, `mail-html`, `jscontact`, `sync`, `e2e`,
   `docs`, `ci`).

@@ -97,8 +97,8 @@ documented switch for a feature that does not exist.
 
 | | Bulwark | Waxwing |
 |---|---|---|
-| **Languages** | **25** locales | **2** — `en`, `de` (`apps/web/src/i18n/index.ts:15`), 882 keys each |
-| RTL | active for ar/he/fa with layout flip | prepared but empty: `RTL_LANGUAGES = []` |
+| **Languages** | **25** locales | **14** since v0.21.0 — `cs de en es fr it ja nl pl pt ru tr uk zh`, ~1 600 keys each; the twelve added are machine-generated and unreviewed (ADR-036) |
+| RTL | active for ar/he/fa with layout flip | prepared, still unused: `RTL_LANGUAGES` lists eight scripts and no bundle ships one |
 | Themes | bundled themes, **ZIP theme upload**, admin can force a theme, per-domain branding | 3-way theme switch, 6 accent palettes, `theme.css` override, `config.json` white-label |
 | Setup | **web setup wizard** since 1.6.4 — JMAP probe, OAuth discovery, branding uploads, admin password | hand-edited `config.json` |
 | Admin | Stalwart admin dashboard integration, audit log, policy pages | non-goal (spec §1.4) |

@@ -1,5 +1,5 @@
 /**
- * i18next scaffold (FR-I18N-01: full i18n from day one, English + German).
+ * i18next scaffold (FR-I18N-01: full i18n from day one).
  *
  * Only the ACTIVE language's JSON bundle is loaded, via dynamic import() — no
  * http-backend, no bundling of every locale up front. The detected language is
@@ -12,10 +12,39 @@ import i18next from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-export const SUPPORTED_LANGUAGES = ['en', 'de'] as const
+/**
+ * Every language with a bundle under `./locales/<tag>/common.json`, alphabetical by tag.
+ *
+ * Order is the picker's order only after {@link languageName} has been applied and the list
+ * re-sorted by what the reader actually sees — "Čeština" and "中文" do not sort like `cs` and `zh`.
+ * Keep this list and the directory in step; `guards.test.ts` globs the directory and fails on a
+ * bundle that no tag reaches, or a tag with no bundle.
+ */
+export const SUPPORTED_LANGUAGES = [
+  'cs',
+  'de',
+  'en',
+  'es',
+  'fr',
+  'it',
+  'ja',
+  'nl',
+  'pl',
+  'pt',
+  'ru',
+  'tr',
+  'uk',
+  'zh',
+] as const
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
 
-const DEFAULT_LANGUAGE: SupportedLanguage = 'en'
+/**
+ * The source language and the fallback, exported because two gates need to name it: `en` is the
+ * bundle every other one is translated FROM, so it is the tree the parity and placeholder checks
+ * compare against. Reading it off `SUPPORTED_LANGUAGES[0]` worked only while that array happened to
+ * start with `en`; it now starts with `cs`.
+ */
+export const DEFAULT_LANGUAGE: SupportedLanguage = 'en'
 const NAMESPACE = 'common'
 
 const DETECTION_ORDER = ['querystring', 'localStorage', 'navigator', 'htmlTag'] as const
@@ -35,6 +64,12 @@ function isSupported(value: string | undefined): value is SupportedLanguage {
  * Split on the subtag separator rather than matching a prefix: `den` (Slave) starts with `de` and
  * is not German. `-` and `_` both, because a value that came back out of localStorage need not be
  * normalised.
+ *
+ * Collapsing to the base subtag is right for `de-AT` and `pt-BR` and **lossy for `zh`**: a
+ * `zh-TW` or `zh-HK` browser resolves to the `zh` bundle, which is written in Simplified Chinese.
+ * That is a deliberate "something readable now" rather than a claim to be correct — a Traditional
+ * bundle is a `zh-Hant` directory and a tag in the list away, and the day it exists this function
+ * needs to prefer the full tag over the base before the split.
  */
 export function resolveLanguage(value: string | undefined): SupportedLanguage {
   if (value === undefined) return DEFAULT_LANGUAGE
@@ -70,6 +105,39 @@ function detectLanguage(): SupportedLanguage {
  * Yiddish, Dhivehi.
  */
 const RTL_LANGUAGES: readonly string[] = ['ar', 'he', 'fa', 'ur', 'ps', 'sd', 'yi', 'dv']
+
+/**
+ * A language tag as its own name — the ENDONYM: `de` → "Deutsch", `ru` → "Русский", `ja` → "日本語".
+ *
+ * The picker used to translate the names (`t('language.de')`), which reads fine until the list is
+ * longer than two: a reader who has landed in the wrong language is looking for their own, and a
+ * Japanese name for it spelled in Czech does not help them find it. Every browser's own picker
+ * shows endonyms for this reason. It also collapses what used to be a table of n² strings — 14
+ * languages naming 14 languages — into nothing at all.
+ *
+ * `Intl.DisplayNames` rather than a hand-written table, following `settings/stalwart-model.ts`'s
+ * `languageLabel`: the names are already in the platform, and a table of endonyms goes stale
+ * silently. It returns the tag itself when the platform has no answer, which is honest.
+ *
+ * The first letter is upper-cased for the LIST, not for the language: CLDR gives "русский" and
+ * "français" lowercase because that is how they are written mid-sentence, and a picker in which
+ * half the rows are capitalised and half are not looks broken. `toLocaleUpperCase(tag)` rather than
+ * `toUpperCase()` so Turkish `i` becomes `İ`.
+ */
+export function languageName(tag: string): string {
+  let name: string
+  try {
+    name = new Intl.DisplayNames([tag], { type: 'language' }).of(tag) ?? tag
+  } catch {
+    // `Intl.DisplayNames` throws RangeError on a malformed tag rather than returning anything.
+    return tag
+  }
+  // No data: `of()` hands the tag back. Return it as it was written rather than title-cased — a
+  // capitalised `Xx` looks like a name and is not one, and this is the branch a runtime built with
+  // small-icu takes for EVERY language.
+  if (name.toLowerCase() === tag.toLowerCase()) return tag
+  return name.charAt(0).toLocaleUpperCase(tag) + name.slice(1)
+}
 
 /** Apply a language to the document: what it IS, and which way it runs. */
 function applyLanguage(lng: string): void {

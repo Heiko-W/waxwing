@@ -1,6 +1,7 @@
 /**
- * Project-wide guardrails (M1.4 DoD): i18n en/de key parity, and no user-visible product name
- * hardcoded in the UI (FR-THEME-02 — the name always comes from config.branding.productName).
+ * Project-wide guardrails (M1.4 DoD): every `t()` key in the source actually exists, and no
+ * user-visible product name hardcoded in the UI (FR-THEME-02 — the name always comes from
+ * config.branding.productName).
  * Uses Vite's `import.meta.glob` so it runs in the jsdom "web" project without fs/path plumbing.
  */
 
@@ -32,14 +33,6 @@ function localeFor(lang: string): Record<string, unknown> {
   return entry[1]
 }
 
-describe('i18n key parity', () => {
-  it('en and de expose the identical key set', () => {
-    const en = keyPaths(localeFor('en')).sort()
-    const de = keyPaths(localeFor('de')).sort()
-    expect(de).toEqual(en)
-  })
-})
-
 describe('every translated key actually resolves (FR-I18N-01)', () => {
   /**
    * The Done-when for M4.6 is "zero untranslated strings", and key-set parity above cannot see the
@@ -50,9 +43,12 @@ describe('every translated key actually resolves (FR-I18N-01)', () => {
   const CALLS = /\bt\(\s*['"]([a-z][\w.]*)['"]/g
   const EXEMPT_SOURCE = /\/(demo|gallery)\/|\.test\./
 
-  it('resolves every literal t() key in both locales', () => {
+  it('resolves every literal t() key in the source locale', () => {
+    // `en` alone, and that is enough: `i18n/locales.test.ts` proves every other bundle has the same
+    // key set (plural variants collapsed) plus exactly the plural forms its language selects. So a
+    // key that exists here exists everywhere, and repeating the sweep per language would only cost
+    // fourteen times as long to say the same thing.
     const en = new Set(keyPaths(localeFor('en')))
-    const de = new Set(keyPaths(localeFor('de')))
     const missing: string[] = []
     for (const [path, source] of Object.entries(tsxSources)) {
       if (EXEMPT_SOURCE.test(path)) continue
@@ -61,9 +57,9 @@ describe('every translated key actually resolves (FR-I18N-01)', () => {
         const key = match[1] ?? ''
         // A pluralised call site names the base key; i18next appends the suffix, so accept either
         // the bare key or a complete `_one`/`_other` pair.
-        const resolves = (set: Set<string>) =>
-          set.has(key) || (set.has(`${key}_one`) && set.has(`${key}_other`))
-        if (!resolves(en) || !resolves(de)) missing.push(`${path}: ${key}`)
+        if (!en.has(key) && !(en.has(`${key}_one`) && en.has(`${key}_other`))) {
+          missing.push(`${path}: ${key}`)
+        }
       }
     }
     expect(missing, 'a t() key that would render as itself').toEqual([])
