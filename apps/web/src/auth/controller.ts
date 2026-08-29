@@ -397,10 +397,21 @@ export class AuthController {
     this.as = null
     this.tokens.clearAccessToken()
     // Destroy the encrypted store (refresh token, basic creds, PKCE, record + wrapping key).
-    await this.store.wipe()
+    //
+    // Its failure must not take the rest of the wipe with it, and it used to: a frozen or bfcached
+    // second tab blocks `deleteDatabase('waxwing-auth')` (`SecretStoreBlockedError`), and the throw
+    // then skipped `wipeLocalData` entirely — so Cache Storage, every other IndexedDB database and
+    // the service-worker registrations survived a "remove my data" for a reason that has nothing
+    // to do with any of them. The error is still raised, last, so the caller can still tell the
+    // user their credentials are on disk.
+    const wipeError = await this.store.wipe().then(
+      () => null,
+      (error: unknown) => error,
+    )
     if (options.wipeData) {
       await wipeLocalData(this.resolveWipeEnv())
     }
+    if (wipeError !== null) throw wipeError
   }
 
   private buildOAuthSession(username: string | null, expiresAt: number | null): AuthSession {

@@ -1,11 +1,5 @@
-import { isMethodError, JmapMethodError } from './errors'
-import type {
-  CreationId,
-  ExtendedJSONPointer,
-  Invocation,
-  MethodErrorObject,
-  ResultReference,
-} from './types/core'
+import { isMalformedMethodError, isMethodError, JmapError, JmapMethodError } from './errors'
+import type { CreationId, ExtendedJSONPointer, Invocation, ResultReference } from './types/core'
 
 /**
  * Handle to a queued method call, returned by {@link RequestBuilder.call}. Use
@@ -162,7 +156,12 @@ export class MethodResponses {
     const first = this.all(callId)[0]
     if (!first) throw new Error(`No response for method call "${callId}"`)
     if (isMethodError(first)) {
-      throw new JmapMethodError(first[1] as MethodErrorObject, callId, this.names.get(callId))
+      throw new JmapMethodError(first[1], callId, this.names.get(callId))
+    }
+    // An `["error", …]` whose arguments are unreadable is still an error, and saying so beats
+    // returning them to a caller that is about to treat them as its result type.
+    if (isMalformedMethodError(first)) {
+      throw new JmapError(`Malformed method error response for "${callId}" (RFC 8620 §3.6.2)`)
     }
     return first[1]
   }

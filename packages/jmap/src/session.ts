@@ -1,6 +1,6 @@
 import type { AuthProvider } from './auth'
 import { Capabilities } from './capabilities'
-import { errorFromResponse, JmapSessionOriginError } from './errors'
+import { errorFromResponse, JmapError, JmapSessionOriginError } from './errors'
 import type { FetchLike } from './transport'
 import { getWithAuth, resolveFetch } from './transport'
 import type { ContactsCapability } from './types/contacts'
@@ -48,9 +48,36 @@ export async function getSession(
   const url = toWellKnownUrl(input)
   const response = await getWithAuth(url, { auth, fetch: fetchImpl }, options.signal)
   if (!response.ok) throw await errorFromResponse(response)
-  const raw = (await response.json()) as Session
+  const raw: unknown = await response.json().catch(() => undefined)
+  // Narrowed, not cast. A 200 whose body is `null`, an array, or an object without the four URL
+  // templates used to sail straight through the `as` and surface much later as a `TypeError` from
+  // somewhere that had every reason to assume a Session — the same failure mode `postApi` was
+  // hardened against in F22, one layer up.
+  if (!isSessionShape(raw)) {
+    throw new JmapError(
+      'Malformed JMAP session: expected { apiUrl, downloadUrl, uploadUrl, eventSourceUrl, … } (RFC 8620 §2)',
+    )
+  }
   const base = response.url || url
   return normalizeSession(raw, base, connectionOrigin(url))
+}
+
+/**
+ * The minimum a Session must look like to be usable at all: the four URL templates, as strings.
+ *
+ * `capabilities` and `accounts` are REQUIRED by RFC 8620 §2 and are deliberately NOT required here
+ * — the capability probes read them defensively and answer "not advertised", which is a better
+ * outcome for a session that is otherwise workable than refusing to connect.
+ */
+function isSessionShape(value: unknown): value is Session {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.apiUrl === 'string' &&
+    typeof record.downloadUrl === 'string' &&
+    typeof record.uploadUrl === 'string' &&
+    typeof record.eventSourceUrl === 'string'
+  )
 }
 
 /**
@@ -172,7 +199,12 @@ export function resolveUrl(value: string, base: string): string {
  * advertise `urn:ietf:params:jmap:core` (a non-conformant server).
  */
 export function getCoreCapability(session: Session): CoreCapability | null {
-  const value = session.capabilities[Capabilities.core]
+  // `?.`, for the reason `hasCapability` gives below: both maps are REQUIRED by RFC 8620 §2 and
+  // are still not trusted to be there. This probe is the one that matters most — `JmapClient.call`
+  // runs it through `resolveLimits()` on EVERY request, so a session without `capabilities` turned
+  // every single call into an untyped `TypeError` instead of the "not advertised" answer this
+  // function is documented to give.
+  const value = session.capabilities?.[Capabilities.core]
   return isCoreCapability(value) ? value : null
 }
 
@@ -193,9 +225,9 @@ function isCoreCapability(value: unknown): value is CoreCapability {
  * `urn:ietf:params:jmap:mail`.
  */
 export function getMailCapability(session: Session, accountId: Id): MailCapability | null {
-  const account = session.accounts[accountId]
+  const account = session.accounts?.[accountId]
   if (account === undefined) return null
-  const value = account.accountCapabilities[Capabilities.mail]
+  const value = account.accountCapabilities?.[Capabilities.mail]
   return isMailCapability(value) ? value : null
 }
 
@@ -258,9 +290,9 @@ export function secondaryMailAccounts(session: Session, primaryId: Id): MailAcco
  * reads the ACCOUNT-level capability object (Stalwart leaves the session-level twin empty).
  */
 export function getContactsCapability(session: Session, accountId: Id): ContactsCapability | null {
-  const account = session.accounts[accountId]
+  const account = session.accounts?.[accountId]
   if (account === undefined) return null
-  const value = account.accountCapabilities[Capabilities.contacts]
+  const value = account.accountCapabilities?.[Capabilities.contacts]
   return isContactsCapability(value) ? value : null
 }
 

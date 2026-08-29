@@ -254,6 +254,33 @@ export async function syncMailboxes(
   return writes
 }
 
+/**
+ * The `Mailbox` properties a `Mailbox/changes` delta may patch onto a stored row.
+ *
+ * `updatedProperties` is a list of NAMES chosen by the server, and it used to be applied with
+ * `prop in source` — which walks the prototype chain, so `'constructor'`, `'toString'` and
+ * `'__proto__'` are all true for any object. `patch.constructor = Object` puts a FUNCTION in the
+ * patch, functions are not structured-cloneable, and the whole mailbox delta then died with a
+ * `DataCloneError` — the server choosing which keys land in an IndexedDB row.
+ *
+ * An allowlist rather than only `Object.hasOwn`, because the question the code is really asking is
+ * "is this a column of mine", and the answer should not depend on what a `Mailbox` object happens
+ * to carry. `id` is absent on purpose: it is the key, not a patchable column.
+ */
+const PATCHABLE_MAILBOX_PROPS: ReadonlySet<string> = new Set([
+  'name',
+  'parentId',
+  'role',
+  'sortOrder',
+  'totalEmails',
+  'unreadEmails',
+  'totalThreads',
+  'unreadThreads',
+  'myRights',
+  'isSubscribed',
+  'shareWith',
+])
+
 /** Patch only the changed props onto existing mailbox rows; full-insert any not present locally. */
 async function patchMailboxes(
   db: ReplicaDb,
@@ -265,7 +292,8 @@ async function patchMailboxes(
     const patch: Partial<MailboxRow> = {}
     const source = mailbox as unknown as Record<string, unknown>
     for (const prop of changedProps) {
-      if (prop in source) (patch as Record<string, unknown>)[prop] = source[prop]
+      if (!PATCHABLE_MAILBOX_PROPS.has(prop)) continue
+      if (Object.hasOwn(source, prop)) (patch as Record<string, unknown>)[prop] = source[prop]
     }
     const updated = await db.mailboxes.update([accountId, mailbox.id], patch)
     if (updated === 0) await putMailboxes(db, accountId, [mailbox])

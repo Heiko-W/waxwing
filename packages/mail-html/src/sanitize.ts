@@ -233,7 +233,15 @@ export function sanitizeStyle(
   options: SanitizeOptions,
   collector: Collector,
 ): { value: string; drop: boolean } {
-  if (css.length > MAX_STYLE_LENGTH) return { value: '', drop: true }
+  if (css.length > MAX_STYLE_LENGTH) {
+    // The manifest owes an entry here too. This is the THIRD fail-closed exit in this function and
+    // the only one that used to leave silently, so a message whose entire remote content sat in one
+    // oversized `style` lost its styling AND reported `hasRemoteContent: false` — no banner, no way
+    // for the reader to learn anything was refused, let alone to release it.
+    collector.hasRemote = true
+    collector.blocked.push({ url: css.trim().slice(0, 128), kind: 'style' })
+    return { value: '', drop: true }
+  }
   if (STYLE_DANGER.test(cssUnescape(css))) {
     collector.hasRemote = true
     collector.blocked.push({ url: css.trim().slice(0, 128), kind: 'style' })

@@ -181,6 +181,42 @@ describe('syncMailboxes', () => {
    * for ever — the sync cycle never returns, nothing reaches the UI, and the accumulators grow
    * until the tab dies. No correct server produces either shape.
    */
+  /**
+   * `updatedProperties` is a list of NAMES the server chooses, applied with `prop in source` —
+   * which walks the prototype chain, so `constructor` is true for every object and put the `Object`
+   * FUNCTION into the patch. Functions are not structured-cloneable, so the whole mailbox delta
+   * died with a `DataCloneError`: the server deciding what lands in an IndexedDB row.
+   */
+  it('patches only real Mailbox columns, whatever the server names', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { name: 'Inbox', totalEmails: 1 })])
+    await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
+
+    const port = fakePort({
+      mailboxChanges: async () => ({
+        newState: 'm1',
+        hasMoreChanges: false,
+        created: [],
+        updated: ['inbox'],
+        destroyed: [],
+        updatedProperties: ['constructor', '__proto__', 'toString', 'totalEmails'],
+      }),
+      getMailboxes: async () => ({
+        list: [mailbox('inbox', { name: 'Inbox', totalEmails: 7 })],
+        notFound: [],
+        state: 'm1',
+      }),
+    })
+
+    await syncMailboxes(port, db, ACC, clock)
+
+    const row = await db.mailboxes.get([ACC, 'inbox'])
+    expect(row?.totalEmails).toBe(7)
+    expect(Object.hasOwn(row ?? {}, 'toString')).toBe(false)
+    expect(typeof (row as unknown as Record<string, unknown>).constructor).not.toBe('undefined')
+    // The give-away: a function would have made this row unclonable in the first place.
+    expect(() => structuredClone(row)).not.toThrow()
+  })
+
   it('gives up on a server that reports more changes without moving the state', async () => {
     await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
     let calls = 0

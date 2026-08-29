@@ -72,6 +72,20 @@ describe('sanitizeStyle — inline CSS firewall (security regression)', () => {
     expect(value).toContain('color:#333')
   })
 
+  /**
+   * The length cutoff is the third fail-closed exit in `sanitizeStyle` and was the only silent one
+   * (W-22): a message whose entire remote content sits in one oversized `style` lost its styling
+   * AND reported `hasRemoteContent: false`, so the reader was told there was nothing to release.
+   */
+  it('records an oversized style in the manifest instead of dropping it silently', () => {
+    const huge = `background:url(https://tracker.example/p.gif);color:${'#abcdef;'.repeat(2000)}`
+    const { drop, collector } = run(huge)
+    expect(drop).toBe(true)
+    expect(collector.hasRemote).toBe(true)
+    expect(collector.blocked.length).toBeGreaterThan(0)
+    expect(collector.blocked[0]?.kind).toBe('style')
+  })
+
   it('drops styles using image-set()/cross-fade() (bare-string remote images)', () => {
     expect(run("background-image:image-set('https://evil.example/x' 1x)").drop).toBe(true)
     expect(

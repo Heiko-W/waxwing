@@ -577,6 +577,37 @@ describe('AuthController — logout & remove data (FR-AUTH-05)', () => {
     expect(wipe.localStorage?.getItem('waxwing.ephemeralDbs')).toBe('["waxwing-replica-eph-1"]')
   })
 
+  /**
+   * A blocked credential wipe must not take the rest of "remove my data" with it (W-23).
+   *
+   * `deleteDatabase('waxwing-auth')` is blocked by a frozen or bfcached second tab, and the throw
+   * used to skip `wipeLocalData` entirely — so Cache Storage, every other IndexedDB database and
+   * the service-worker registrations survived, for a reason that has nothing to do with any of
+   * them. The error still has to reach the caller: it is what tells the user their credentials are
+   * still on this machine.
+   */
+  it('still wipes app data when the credential store is blocked, and reports the failure', async () => {
+    const { store } = freshStore()
+    vi.spyOn(store, 'wipe').mockRejectedValue(new Error('blocked by another connection'))
+    let cachesCleared = false
+    const wipe: WipeEnvironment = {
+      caches: {
+        keys: async () => ['app-shell-v1'],
+        delete: async () => {
+          cachesCleared = true
+          return true
+        },
+      } as unknown as CacheStorage,
+      localStorage: fakeStorage({ 'waxwing.accounts': '{}' }),
+    }
+
+    const controller = new AuthController({ store, wipe })
+    await expect(controller.logout({ wipeData: true })).rejects.toThrowError(/blocked/)
+
+    expect(cachesCleared).toBe(true)
+    expect(wipe.localStorage?.getItem('waxwing.accounts')).toBeNull()
+  })
+
   it('plain sign-out drops credentials but does not touch app data', async () => {
     const { store } = freshStore()
     let cacheTouched = false

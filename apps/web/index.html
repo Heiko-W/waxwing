@@ -97,7 +97,23 @@
     <title>Waxwing</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      The static half of the start-up failure screen (see `renderBootFailure` in main.tsx). React
+      replaces this on its first render, and `main.tsx` replaces it with a more specific message if
+      the boot sequence throws — this text only survives when the module graph itself never loads
+      (a failed chunk after a deploy, a broken asset path), which is exactly the case where no
+      script can put anything on the screen. Untranslated on purpose: the i18n bundle is one of the
+      things that may not have arrived.
+    -->
+    <div id="root">
+      <div style="font: 16px/1.5 system-ui, sans-serif; max-width: 34rem; margin: 12vh auto; padding: 0 1.5rem">
+        <h1 style="font-size: 1.25rem; margin: 0 0 0.5rem">Loading…</h1>
+        <p style="margin: 0">
+          If this message stays on screen, the app could not be loaded. Reload the page; if that does
+          not help, contact whoever runs this server.
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
