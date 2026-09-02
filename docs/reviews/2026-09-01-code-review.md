@@ -293,7 +293,7 @@ wird; kein bestehender Test bearbeitet einen Termin fremder Zone. Gegenprüfung:
 
 ### R-05 — [HIGH] Regression aus W-18: Der Fenster-Reaper löscht das beobachtete Kalenderfenster samt Occurrences, und der Engine-Sweep holt es nie zurück
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender) — Fixstellen in Sync (`maintenance.ts`, `engine.ts`)
 
@@ -2693,7 +2693,7 @@ Gegenprüfung: bestätigt.
 
 ### R-72 — [LOW] Der W-18-Occurrence-Sweep kann eine gerade materialisierte Kalenderansicht leeren: Occurrences werden vor der Fensterzeile geschrieben (vgl. W-18)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2726,7 +2726,11 @@ treffen. Gegenprüfung: bestätigt (Code).
 
 ### R-73 — [LOW] Der W-18-Wartungspass lädt alle Kalender-Events vollständig (JS-Filter) — alle fünf Minuten (vgl. W-18)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Occurrence-Vollscan behoben (indiziertes `occ`-Feld, DB v9, `calendarOccurrenceIds` liest nur
+Primary Keys) und die zweite Vollabfrage der Kalenderfenster entfaellt. Die Fensterzeilen selbst
+werden weiter als ganze Zeilen gelesen statt als Key-Range: `planWindowReap` bleibt die einzige
+Stelle, die die TTL-Regel kennt, und 1c braucht die Id-Arrays der Ueberlebenden ohnehin.
 
 **Kategorie / Bereich:** performance / Sync
 

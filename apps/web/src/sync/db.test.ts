@@ -1,16 +1,18 @@
+import Dexie from 'dexie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   type AccountRecord,
   clearAccount,
   ReplicaDb,
   scopeKey,
+  toCalendarEventRow,
   toContactCardRow,
   toEmailRow,
   toMailboxRow,
   toThreadRow,
   wipeReplica,
 } from './db'
-import { contactCardsInBook, emailsInMailbox } from './repo'
+import { calendarOccurrenceIds, contactCardsInBook, emailsInMailbox } from './repo'
 import { addressBook, contactCard, email, freshDb, mailbox, thread } from './test-utils'
 
 let db: ReplicaDb
@@ -64,10 +66,56 @@ describe('ReplicaDb schema', () => {
     )
   })
 
-  it('is at schema version 8 (the files migration is appended, v1–v7 untouched)', () => {
-    // If this drops below 8, a later `.version()` was renumbered or the append-only chain was
+  it('is at schema version 9 (the occurrence index is appended, v1–v8 untouched)', () => {
+    // If this drops below 9, a later `.version()` was renumbered or the append-only chain was
     // rewritten — exactly what the migration policy forbids.
-    expect(db.verno).toBe(8)
+    expect(db.verno).toBe(9)
+  })
+
+  /**
+   * R-73: the occurrence sweep has an index to ask, so it never scans the table.
+   *
+   * `occurrence` is a boolean and a boolean is not a valid IndexedDB key, so the sweep used to read
+   * every calendar row of the account and deserialize its whole JSCalendar object — participants,
+   * description, alerts — to look at it. `occ` is that boolean as a `0|1` and this index is the
+   * whole point of the field; without it the derived value is dead weight and the scan is back.
+   */
+  it('indexes calendar rows by the occurrence flag', () => {
+    const indexes = db.calendarEvents.schema.indexes.map((index) => index.name)
+    expect(indexes).toContain('[accountId+occ]')
+    expect(toCalendarEventRow('a', { id: 'occ-1' } as never, true).occ).toBe(1)
+    expect(toCalendarEventRow('a', { id: 'master-1' } as never, false).occ).toBe(0)
+  })
+
+  /**
+   * …and the rows already in the replica get the field, or they would be invisible to it for ever.
+   *
+   * A record missing an index's key path is not merely unmatched — it is dropped from that index
+   * entirely, so without this upgrade every occurrence stored before v9 would go on accumulating
+   * with nothing able to reap it. Same trap, same answer as v5.
+   */
+  it('carries pre-v9 calendar rows into the occurrence index', async () => {
+    const name = 'test-replica-v9-upgrade'
+    const legacy = new Dexie(name)
+    legacy.version(8).stores({ calendarEvents: '[accountId+id], accountId, [accountId+base]' })
+    await legacy.open()
+    await legacy.table('calendarEvents').put({
+      accountId: 'a',
+      id: 'occ-1',
+      base: 'm1',
+      occurrence: true,
+      event: { id: 'occ-1', '@type': 'Event' },
+    })
+    legacy.close()
+
+    const upgraded = new ReplicaDb(name)
+    try {
+      await upgraded.open()
+      expect((await upgraded.calendarEvents.get(['a', 'occ-1']))?.occ).toBe(1)
+      expect(await calendarOccurrenceIds(upgraded, 'a')).toEqual(['occ-1'])
+    } finally {
+      await upgraded.delete()
+    }
   })
 
   it('round-trips a mailbox on its compound key', async () => {

@@ -114,6 +114,32 @@ interface PortScript {
   setEmails: (args: unknown) => PortSetResult
 }
 
+/** The calendar half of a fake port: one expanded occurrence over one stored master. */
+function calendarScript(): Pick<JmapPort, 'queryCalendarEvents' | 'getCalendarEvents'> {
+  return {
+    queryCalendarEvents: async (spec) => ({
+      ids: spec.expandRecurrences === true ? ['occ-1'] : ['e-master'],
+      queryState: 'q',
+      canCalculateChanges: false,
+      position: 0,
+    }),
+    getCalendarEvents: async (ids) => ({
+      list: ids.map(
+        (id) =>
+          ({
+            id,
+            calendarIds: { c1: true },
+            title: id,
+            start: '2026-08-20T09:00:00',
+            ...(id === 'occ-1' ? { baseEventId: 'e-master' } : {}),
+          }) as never,
+      ),
+      notFound: [],
+      state: 'cv1',
+    }),
+  }
+}
+
 function fakePort(script: PortScript): JmapPort & { setEmailsCalls: unknown[] } {
   const setEmailsCalls: unknown[] = []
   return withBatchedQuery({
@@ -375,29 +401,7 @@ describe('SyncEngine', () => {
 
   it('materializes a watched calendar window into the replica (K-8)', async () => {
     const base = fakePort({ emails: ['e1'], setEmails: emptySet })
-    const port: JmapPort = {
-      ...base,
-      queryCalendarEvents: async (spec) => ({
-        ids: spec.expandRecurrences === true ? ['occ-1'] : ['e-master'],
-        queryState: 'q',
-        canCalculateChanges: false,
-        position: 0,
-      }),
-      getCalendarEvents: async (ids) => ({
-        list: ids.map(
-          (id) =>
-            ({
-              id,
-              calendarIds: { c1: true },
-              title: id,
-              start: '2026-08-20T09:00:00',
-              ...(id === 'occ-1' ? { baseEventId: 'e-master' } : {}),
-            }) as never,
-        ),
-        notFound: [],
-        state: 'cv1',
-      }),
-    }
+    const port: JmapPort = { ...base, ...calendarScript() }
     const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
 
     engine.start()
@@ -410,6 +414,68 @@ describe('SyncEngine', () => {
     expect(row?.objectIds).toEqual(['e-master'])
     // The occurrence row keeps the link back to the writable master — what the screen resolves with.
     expect((await db.calendarEvents.get([ACC, 'occ-1']))?.base).toBe('e-master')
+
+    await engine.stop()
+  })
+
+  /**
+   * R-05: a watched calendar window whose row has gone must come back.
+   *
+   * The month is a live query over `calendarQueryCache[key]`, and a missing row renders as a
+   * spinner. `reconcileWatchedCalendars` used to `continue` past a key with no row — so once the
+   * W-18 reaper had taken the window (or a wipe, or a failed upgrade), NOTHING asked for it again:
+   * the backfill runs at `watch` time and the key does not change while the month is open. The
+   * grid span for as long as the reader left it there.
+   */
+  it('re-materializes a watched calendar window whose row has been reaped (R-05)', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = { ...base, ...calendarScript() }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader)
+    const key = engine.watchCalendarQuery({ filter: { inCalendar: 'c1' } })
+    await waitFor(async () => (await db.calendarQueryCache.get([ACC, key])) !== undefined)
+
+    // Exactly what the reaper does: the window row and the occurrences only it named.
+    await db.calendarQueryCache.delete([ACC, key])
+    await db.calendarEvents.delete([ACC, 'occ-1'])
+    expect(await db.calendarQueryCache.get([ACC, key])).toBeUndefined()
+
+    push.fireStateChange()
+    await waitFor(async () => (await db.calendarQueryCache.get([ACC, key])) !== undefined)
+    expect((await db.calendarQueryCache.get([ACC, key]))?.ids).toEqual(['occ-1'])
+    expect(await db.calendarEvents.get([ACC, 'occ-1'])).toBeDefined()
+
+    await engine.stop()
+  })
+
+  /**
+   * R-05: opening a month is a USE of it, and `lastUsedAt` is the only thing that says so.
+   *
+   * Two writers ever touched a calendar window's `lastUsedAt` — a full re-query and the empty
+   * offline placeholder — so a month that was already materialized and that no delta made stale
+   * aged as if nobody had looked at it, and the two-day reap took it out from under the grid.
+   */
+  it('stamps lastUsedAt when a watch adopts an already materialized window (R-05)', async () => {
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = { ...base, ...calendarScript() }
+    const engine = new SyncEngine(makeDeps(db, port, new FakePush()))
+
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader)
+    const key = engine.watchCalendarQuery({ filter: { inCalendar: 'c1' } })
+    await waitFor(async () => (await db.calendarQueryCache.get([ACC, key])) !== undefined)
+
+    engine.unwatchCalendarQuery(key)
+    await db.calendarQueryCache.update([ACC, key], { lastUsedAt: 1 })
+
+    engine.watchCalendarQuery({ filter: { inCalendar: 'c1' } })
+    await waitFor(async () => {
+      const row = await db.calendarQueryCache.get([ACC, key])
+      return row !== undefined && row.lastUsedAt > 1
+    })
 
     await engine.stop()
   })

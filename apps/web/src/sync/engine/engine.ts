@@ -59,6 +59,7 @@ import {
   putEmails,
   putQueryCache,
   setSyncState,
+  touchCalendarQueryCache,
 } from '../repo'
 import { browserEstimate, type EstimateFn, isQuotaExceeded, reportStorageFull } from '../storage'
 import {
@@ -303,8 +304,16 @@ export class SyncEngine {
   /** Contact query keys with a backfill in flight — same unwatch→rewatch dedup as {@link inFlightBackfills}. */
   private readonly inFlightContactBackfills = new Set<string>()
 
-  /** Canonical keys of the CALENDAR windows kept fresh (K-8); filters live in the cache row. */
-  private readonly watchedCalendars = new Set<string>()
+  /**
+   * The CALENDAR windows kept fresh (K-8), canonical key → the spec that defines them.
+   *
+   * A map rather than a set of keys, and that is what makes the watch self-healing: the filter used
+   * to be read back out of the cache row, so a key whose row had gone (reaped, or wiped) could
+   * never be materialized again — the sweep skipped it, the backfill only runs at `watch` time, and
+   * the grid span for ever (R-05). Holding the spec here means a missing row is a reason to
+   * re-materialize rather than a reason to give up.
+   */
+  private readonly watchedCalendars = new Map<string, CalendarQuerySpecInput>()
   /** Calendar keys with a materialization in flight — same dedup as {@link inFlightBackfills}. */
   private readonly inFlightCalendarBackfills = new Set<string>()
 
@@ -841,7 +850,7 @@ export class SyncEngine {
   watchCalendarQuery(spec: CalendarQuerySpecInput): string {
     const key = canonicalCalendarQueryKey({ filter: spec.filter ?? null, expandRecurrences: true })
     if (this.watchedCalendars.has(key)) return key
-    this.watchedCalendars.add(key)
+    this.watchedCalendars.set(key, spec)
     void this.backfillCalendarQueryIfAbsent(key, spec)
     return key
   }
@@ -875,6 +884,11 @@ export class SyncEngine {
     if (this.inFlightCalendarBackfills.has(key)) return
     const existing = await getCalendarQueryCache(this.db, this.accountId, key)
     if (existing !== undefined && !existing.stale) {
+      // Adopted from a prior session or another tab: nothing to fetch, but it IS being looked at,
+      // and `lastUsedAt` is the only thing standing between it and the two-day reap. Nothing else
+      // on the calendar read path wrote it, so a month opened on a Monday and left alone was reaped
+      // on the Wednesday while it was still on screen (R-05).
+      await touchCalendarQueryCache(this.db, this.accountId, key, this.clock.now())
       if (this.isLeader) void this.sync()
       return
     }
@@ -1043,6 +1057,8 @@ export class SyncEngine {
       estimate: this.estimate,
       now,
       watchedKeys: this.watched,
+      watchedContactKeys: this.watchedContacts,
+      watchedCalendarKeys: new Set(this.watchedCalendars.keys()),
       lastBodyFetchId: this.lastBodyFetchId,
       signal: this.stopController.signal,
       ...(options.needBytes === undefined ? {} : { needBytes: options.needBytes }),
@@ -1829,16 +1845,22 @@ export class SyncEngine {
    * re-throw as on the mail side.
    */
   private async reconcileWatchedCalendars(forceFull: boolean): Promise<void> {
-    for (const key of this.watchedCalendars) {
+    for (const [key, watchedSpec] of this.watchedCalendars) {
       const row = await getCalendarQueryCache(this.db, this.accountId, key)
-      if (!row) continue
+      // A MISSING row is materialized, not skipped — the self-healing the mail side gets from
+      // `backfillQueryIfAbsent`. `continue` here is what turned a reaped or wiped window into a
+      // permanent spinner: the backfill only runs when the watch is registered, the key does not
+      // change while the month is open, and so nothing ever asked for the row again (R-05).
+      // `reconcileCalendarQuery` re-queries an absent row whatever `forceFull` says, so the spec is
+      // all this needs to supply.
+      const spec: CalendarQuerySpecInput = row ? { filter: row.filter } : watchedSpec
       try {
         await reconcileCalendarQuery(
           this.port,
           this.db,
           this.accountId,
           key,
-          { filter: row.filter },
+          spec,
           this.clock,
           forceFull,
         )

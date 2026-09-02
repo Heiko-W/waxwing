@@ -43,7 +43,7 @@ import {
   blobOwners,
   bodyCacheEntries,
   type CacheItem,
-  calendarOccurrences,
+  calendarOccurrenceIds,
   calendarQueryCacheForAccount,
   contactQueryCacheForAccount,
   deleteBlobs,
@@ -73,9 +73,6 @@ import type { OutboxIntent } from './outbox'
 
 const DAY_MS = 86_400_000
 
-/** Contact and calendar windows have no watch registry — see the note at their reap. */
-const EMPTY_WATCHED: ReadonlySet<string> = new Set()
-
 /** Primary keys deleted per `rw` transaction — a quota abort mid-pass then loses at most one chunk. */
 export const EVICT_CHUNK = 200
 
@@ -90,6 +87,20 @@ export interface MaintenanceDeps {
   readonly now: number
   /** The query keys some tab is actively rendering — never reaped, however old. */
   readonly watchedKeys: ReadonlySet<string>
+  /**
+   * The CONTACT query keys some tab is actively rendering, and the CALENDAR ones — same rule, same
+   * reason, and their absence was a bug rather than a simplification (R-05).
+   *
+   * W-18 passed an empty set for both on the argument that these two tables stamp `lastUsedAt` on
+   * every read of the view that draws them, so a window in use could not age past the TTL. That
+   * holds for contacts and does NOT hold for calendars: nothing on the calendar read path stamped
+   * anything, so a month older than the TTL was reaped while the reader was looking at it — window
+   * and occurrences both — and the sweep that should have re-materialized it skipped the key
+   * because its row was gone. Required rather than optional: a caller that forgets one gets a
+   * compile error instead of a grid that empties itself two days later.
+   */
+  readonly watchedContactKeys: ReadonlySet<string>
+  readonly watchedCalendarKeys: ReadonlySet<string>
   /**
    * The message whose body was fetched most recently — i.e. the one the reader is almost certainly
    * looking at. Never evicted out from under them. (It is also the MRU entry, so the LRU order would
@@ -274,19 +285,37 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
   // `cacheDays` horizon SECURITY.md names as the exposure bound, and none of it could be released
   // through "Free up space".
   //
-  // No `watchedKeys` for these two: that set exists because a mail window can be on screen with a
-  // `lastUsedAt` older than the TTL while the list is idle. Contact and calendar windows stamp
-  // `lastUsedAt` on every read of the view that draws them, so a window in use is by construction
-  // younger than the two-day TTL.
+  // The watched sets are passed for these two exactly as they are for mail. W-18 passed an empty
+  // set on the argument that both tables stamp `lastUsedAt` on every read of the view that draws
+  // them; for the calendar that was simply not true, and the consequence was a watched month
+  // reaped out from under an open grid (R-05). The engine also stamps a watched calendar window
+  // now (`touchCalendarQueryCache`), so the two defences are independent: this one covers the tab
+  // that is rendering, that one covers the month it looked at ten minutes ago.
+  //
+  // The occurrence ids and the calendar windows are read as ONE SNAPSHOT, and that is load-bearing.
+  // A materialization commits its occurrences and its window row in a single transaction
+  // (`putCalendarWindow`); read the two halves in two transactions and one can land between them,
+  // so the sweep sees fresh occurrences that no window claims YET and deletes the month the reader
+  // is opening — no error, empty grid, up to five minutes (R-72). One read transaction means the
+  // pass sees the whole materialization or none of it, whichever way round the two reads go.
+  const { occurrenceIds, calendarWindows } = await db.transaction(
+    'r',
+    db.calendarEvents,
+    db.calendarQueryCache,
+    async () => ({
+      occurrenceIds: await calendarOccurrenceIds(db, accountId),
+      calendarWindows: await calendarQueryCacheForAccount(db, accountId),
+    }),
+  )
+
   const contactWindows = await contactQueryCacheForAccount(db, accountId)
   const reapedContactWindows = await deleteInChunks(
-    planWindowReap(contactWindows, EMPTY_WATCHED, now),
+    planWindowReap(contactWindows, deps.watchedContactKeys, now),
     (chunk) => deleteContactQueryCacheRows(db, accountId, chunk),
   )
-  const calendarWindows = await calendarQueryCacheForAccount(db, accountId)
-  const reapedCalendarWindows = await deleteInChunks(
-    planWindowReap(calendarWindows, EMPTY_WATCHED, now),
-    (chunk) => deleteCalendarQueryCacheRows(db, accountId, chunk),
+  const calendarReapKeys = planWindowReap(calendarWindows, deps.watchedCalendarKeys, now)
+  const reapedCalendarWindows = await deleteInChunks(calendarReapKeys, (chunk) =>
+    deleteCalendarQueryCacheRows(db, accountId, chunk),
   )
 
   // ---- 1c. …and the occurrences no surviving calendar window still names. ----
@@ -296,12 +325,16 @@ export async function runMaintenance(deps: MaintenanceDeps): Promise<Maintenance
   // masters (`occurrence: false`) are the writable objects and stay — deleting one would be data
   // loss, not eviction. Contact cards are left alone for the same reason: a card is the address
   // book replica, not a by-product of a window.
-  const survivingWindows = await calendarQueryCacheForAccount(db, accountId)
+  //
+  // The survivors are the rows read above minus the keys just reaped, rather than a second full
+  // read of the table: the same answer, one scan instead of two (R-73).
+  const reaped = new Set(calendarReapKeys)
   const referenced = new Set<Id>()
-  for (const window of survivingWindows) for (const id of window.ids) referenced.add(id)
-  const orphanOccurrences = (await calendarOccurrences(db, accountId))
-    .filter((row) => !referenced.has(row.id))
-    .map((row) => row.id)
+  for (const window of calendarWindows) {
+    if (reaped.has(window.key)) continue
+    for (const id of window.ids) referenced.add(id)
+  }
+  const orphanOccurrences = occurrenceIds.filter((id) => !referenced.has(id))
   const reapedOccurrences = await deleteInChunks(orphanOccurrences, (chunk) =>
     deleteCalendarEvents(db, accountId, chunk),
   )
