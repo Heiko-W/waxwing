@@ -8,7 +8,7 @@
  * `blobId`) is persistable; an item that never finished (or errored) can never be persisted.
  */
 
-import { JmapProblemError, ProblemTypes } from '@waxwing/jmap'
+import { JmapHttpError, JmapProblemError, ProblemTypes } from '@waxwing/jmap'
 
 /** How a pasted/dropped file is treated: `inline` (image in the body) or `attach` (attachment chip). */
 export type AddFilesMode = 'inline' | 'attach'
@@ -138,6 +138,22 @@ export function classifyUploadError(err: unknown): UploadError {
         : { code: 'quota' }
     }
     if (err.type === ProblemTypes.limit || err.status === 413) return { code: 'tooLarge' }
+    return { code: 'server' }
+  }
+  // The SAME two statuses without a problem body. RFC 8620 §6.1 only says the upload resource
+  // SHOULD carry problem details, so a server that answers a too-large file with a bare 413 — or
+  // rate-limits with a bare 429 — is conforming, and the transport surfaces those as
+  // `JmapHttpError` (which is why `retryAfterMs` is carried on both classes; see its doc comment).
+  // Read as `server`, a bare 413 gave the reader "Server error" plus a Retry button that re-sent
+  // the same oversized file and failed identically, every time, with no way to learn the real
+  // reason. The status IS the signal here; there is nothing else to read.
+  if (err instanceof JmapHttpError) {
+    if (err.status === 413) return { code: 'tooLarge' }
+    if (err.status === 429) {
+      return err.retryAfterMs !== undefined
+        ? { code: 'quota', retryAfterMs: err.retryAfterMs }
+        : { code: 'quota' }
+    }
     return { code: 'server' }
   }
   if (isAbortError(err)) return { code: 'aborted' }

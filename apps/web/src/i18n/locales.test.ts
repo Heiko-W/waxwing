@@ -123,17 +123,21 @@ describe('no punctuation is assembled outside the translation', () => {
   })
 
   /*
-   * The JSX form specifically — `{t('x')}: {value}` and `{t('x')} ({n.length})`.
-   *
-   * NOT every `${t('x')}: ` in a template literal: two of those remain (`MailScreen`'s back-button
-   * label, and `MessageView`'s forwarded-message header block, where the colon is part of a
-   * quasi-RFC header format rather than prose). They are recorded rather than swept in, because a
-   * pattern this test does not distinguish would have to be muted by an allowlist, and an allowlist
-   * is how a rule stops meaning anything.
+   * The JSX form specifically — `{t('x')}: {value}` and `{t('x')} ({n.length})` — plus the one
+   * template-literal shape that is decidable without an allowlist: an `aria-label` assembled from
+   * one. `MailScreen`'s back button was built that way (`` `${t('shell.reading.back')}: ${title}` ``)
+   * and it is the same defect with the same consequence — French sets a narrow no-break space
+   * before a colon, Japanese and Chinese use a full-width `：`, and neither is expressible outside
+   * the string. An accessible name is prose read aloud, so there is no case where assembling one in
+   * the source is right; every other `${t('x')}: ` left in the tree is `MessageView`'s
+   * forwarded-message header block, where the colon belongs to a quasi-RFC header format rather
+   * than to a sentence. That distinction is what this rule encodes instead of an allowlist, because
+   * an allowlist is how a rule stops meaning anything.
    */
   it.each([
     ["a colon after a t() call — `')}: {`", /'\)\}:\s\{/],
     ['a bracketed count — `} ({…length})`', /\}\s\(\{[^}]*\.length\}\)/],
+    ['an aria-label built in a template literal', /aria-label=\{`/],
   ])('has no %s', (_name, pattern) => {
     const offenders = Object.entries(sources)
       .filter(([, text]) => pattern.test(text))

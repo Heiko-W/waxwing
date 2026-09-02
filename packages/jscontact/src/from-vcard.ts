@@ -325,9 +325,20 @@ export function parseVCardDate(raw: string): PartialDate | Timestamp | undefined
  * The value type is reported as `unknown` unless the vCard said otherwise. That is honest: guessing
  * `text` for a property we do not know is how a `date` or a `uri` gets re-emitted with text escaping
  * applied to it, corrupting the very value this mechanism exists to preserve.
+ *
+ * **A null prototype, for the reason {@link UNUSABLE_AS_KEY} gives above.** The lexer hands
+ * parameter names over UPPER-cased, and this is the one place that lower-cases them again — so
+ * `X-FOO;__PROTO__=a,b:v`, a shape a file we did not write may legitimately have, produced the key
+ * `__proto__` on a plain object literal. With several values the assignment REPLACED the params
+ * object's prototype with the array (leaving zero own keys, and an object whose prototype is an
+ * Array); with exactly one it was a string and the setter ignored it outright. Either way the
+ * parameter had no own property, so it vanished from the JSON and from the vCard written back —
+ * silently, in the one part of a Card whose whole purpose is losing nothing. `unmappedParams`
+ * refuses the same three keys instead, because it keeps the upper-cased spelling and a `PROP-ID`
+ * is an id we hand out rather than data we carry; here the parameter IS the datum, so it is kept.
  */
 function toJCardProp(line: ContentLine): JCardProp {
-  const params: Record<string, unknown> = {}
+  const params: Record<string, unknown> = Object.create(null) as Record<string, unknown>
   for (const [key, values] of line.params) {
     if (key === 'VALUE') continue
     params[key.toLowerCase()] = values.length === 1 ? values[0] : [...values]

@@ -29,7 +29,7 @@
     "reading": {
       "title": "Okuma bölmesi",
       "empty": "Okumak için bir ileti seçin.",
-      "back": "İletilere dön"
+      "back": "İletilere dön: {{target}}"
     },
     "notFound": {
       "title": "Sayfa bulunamadı",

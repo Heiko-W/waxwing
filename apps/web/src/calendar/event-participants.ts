@@ -138,7 +138,13 @@ export function participantsFromEvent(event: CalendarEvent): ParticipantRow[] {
     // A participant with no readable address cannot be merged with anything and cannot be answered
     // for; it is still shown, under its own key, so the reader sees that somebody is there.
     const identity = address === '' ? `key:${key}` : address
-    const rest: Record<string, unknown> = {}
+    // A NULL prototype, because `member` is a key the SERVER chose. `rest['__proto__'] = value`
+    // on an object literal replaces the prototype instead of storing an own property, so an
+    // unmodelled member spelt `__proto__` — from a prepared `.ics`, or from another client on the
+    // same account — was dropped here and then dropped again from the write-back that is supposed
+    // to carry it byte for byte. Same class as R-60 on the contacts side, same answer: a key that
+    // is not a property name on an ordinary object is kept as the datum it is.
+    const rest: Record<string, unknown> = Object.create(null) as Record<string, unknown>
     for (const [member, memberValue] of Object.entries(participant)) {
       if (!MODELLED_KEYS.has(member)) rest[member] = memberValue
     }
@@ -207,7 +213,12 @@ function compareRows(a: ParticipantRow, b: ParticipantRow): number {
  * notification with extra steps.
  */
 export function participantsToPatch(rows: readonly ParticipantRow[]): Record<string, Participant> {
-  const map: Record<string, Participant> = {}
+  // Null prototype for the same reason `participantsFromEvent` builds `rest` with one: `row.key`
+  // came off the server's map, and `map['__proto__'] = participant` on an object literal sets the
+  // prototype rather than adding an entry. `freeKey` asks `Object.hasOwn`, so it saw the key as
+  // free, and the participant left the editor without a trace — the same "one person simply not
+  // invited" as R-18, from the other direction.
+  const map: Record<string, Participant> = Object.create(null) as Record<string, Participant>
   for (const row of rows) {
     const participant: Participant & Record<string, unknown> = {
       ...row.rest,

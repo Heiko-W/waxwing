@@ -120,6 +120,26 @@ function session(): Storage | undefined {
   return typeof sessionStorage !== 'undefined' ? sessionStorage : undefined
 }
 
+/**
+ * Drop the whole OAuth handshake stash — all three keys, one rule.
+ *
+ * A redirect that never happened leaves a stash nothing will ever consume, and the three keys used
+ * to be cleaned up three different ways: the failed-start path removed the public-computer flag
+ * only, the re-auth path removed nothing at all. Harmless in effect — a later boot that is not a
+ * callback drops the target and the route as stale, and the flag is only ever read inside the
+ * callback branch — but "harmless because something else happens to catch it" is not a rule, and
+ * the next key added here would have inherited whichever of the three shapes was copied.
+ *
+ * Only the FAILED-start paths use this. The successful callback spends the stash deliberately in
+ * halves (see the comment there): dropping the public-computer flag before `completeRedirect`
+ * turned a retried exchange into a durable sign-in on a machine where the user had ticked the box.
+ */
+function clearHandshakeStash(): void {
+  removeStored(session(), STASH_TARGET_KEY)
+  removeStored(session(), STASH_ROUTE_KEY)
+  removeStored(session(), STASH_PUBLIC_KEY)
+}
+
 function local(): Storage | undefined {
   return typeof localStorage !== 'undefined' ? localStorage : undefined
 }
@@ -622,7 +642,8 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           else removeStored(session(), STASH_PUBLIC_KEY)
           await ensureController(target.issuer).startLogin({ method: 'oauth', publicComputer })
         } catch (error) {
-          removeStored(session(), STASH_PUBLIC_KEY)
+          // No redirect happened, so nothing will ever consume what was just written.
+          clearHandshakeStash()
           dispatch({ type: 'loginError', error: oauthErrToOnboard(error, config.server.auth) })
         }
       })()
@@ -700,6 +721,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         const controller = controllerRef.current ?? ensureController(target.issuer)
         await controller.startLogin({ method: 'oauth', publicComputer: ephemeralRef.current })
       } catch (error) {
+        clearHandshakeStash()
         dispatch({ type: 'reauthError', error: errToOnboard(error) })
       }
     })()

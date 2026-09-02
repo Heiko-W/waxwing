@@ -1,4 +1,4 @@
-import { JmapProblemError, ProblemTypes } from '@waxwing/jmap'
+import { JmapHttpError, JmapProblemError, ProblemTypes } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
 import {
   classifyUploadError,
@@ -86,6 +86,25 @@ describe('classifyUploadError', () => {
         code: 'server',
       })
     }
+  })
+
+  /*
+   * The same two statuses with NO problem body. RFC 8620 §6.1 only says the upload resource SHOULD
+   * carry one, so a bare 413 is a conforming way to refuse an oversized file — and it arrives as a
+   * `JmapHttpError`, which fell through to `server`: "Server error" plus a Retry button that
+   * re-sent the same too-large file and failed the same way, for ever.
+   */
+  it('maps a bare 413 to tooLarge and a bare 429 to quota', () => {
+    expect(classifyUploadError(new JmapHttpError(413, 'Payload Too Large'))).toEqual({
+      code: 'tooLarge',
+    })
+    expect(classifyUploadError(new JmapHttpError(429, '', undefined, 30_000))).toEqual({
+      code: 'quota',
+      retryAfterMs: 30_000,
+    })
+    expect(classifyUploadError(new JmapHttpError(429, ''))).toEqual({ code: 'quota' })
+    // Everything else off the transport stays `server`, so Retry stays offered.
+    expect(classifyUploadError(new JmapHttpError(500, 'boom'))).toEqual({ code: 'server' })
   })
 
   it('maps an aborted transfer, a network TypeError, and anything else', () => {

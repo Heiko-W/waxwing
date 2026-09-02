@@ -45,6 +45,30 @@ Zwei Kandidaten wurden bereits in der Gegenprüfung verworfen (PIM-22 als Duplik
 unbegründet) und stehen nur im Anhang. Genau eine Regression aus den Fix-Commits ist belegt (R-05, W-18);
 die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Muster.
 
+> **Stand 02.09.2026: 109 der 112 Befunde sind abgearbeitet** — elf Themen-Branches mit je einem
+> Pull Request (#56 bis #66), ein Commit je Befundgruppe, jeder Fix mit Regressionstest und
+> Mutationsprobe (Fix entfernt ⇒ Test rot). Die Testsuite ist dabei von 5304 auf 5702 Tests
+> gewachsen, das Bundle von 288,4 auf 291,7 KB gz (Grenze 300).
+>
+> **Drei Befunde bleiben bewusst offen**, jeder mit Begründung am Eintrag:
+> - **R-27** — JMAP bietet keinen Idempotenzschlüssel für Creates, und der im Bericht
+>   vorgeschlagene Ausweg bricht das Offline-Autosave. Nur die falsche Zusage im Modulkopf ist
+>   korrigiert; die Entscheidung liegt als [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) vor.
+> - **R-78** — die Behebung ändert, was über eine Sitzung hinweg persistiert wird. Das ist eine
+>   Produktentscheidung; als Backlog-Eintrag im Implementierungsplan aufgenommen.
+> - **R-104** — der vorgeschlagene Fix macht den Test nicht grün. Gegen die laufende Fixture
+>   gemessen: ein geteiltes Adressbuch landet im Account der Eigentümerin, und die
+>   Kontakte-Oberfläche fragt nur ein Konto ab. Korrigiert ist nur die falsche Skip-Begründung.
+>
+> Fünf Empfehlungen des Berichts wurden bei der Umsetzung widerlegt und anders gelöst; die
+> Begründung steht jeweils am Befund und im Commit. Am deutlichsten bei **R-37**, wo der
+> vorgeschlagene Weg den Defekt in beiden Browser-Engines verschlimmert hätte, und bei **R-61**,
+> wo die geforderte Messung die Virtualisierung überflüssig machte (920 ms → 0,9 ms allein durch
+> den Render-Fix).
+>
+> Was bei der Abarbeitung neu aufgefallen ist, steht unten als **N-01 bis N-10**; acht weitere
+> Nebenbefunde sind im selben Durchgang behoben worden.
+
 ## Zusammenfassung
 
 Die schwersten Befunde liegen in drei Ecken. Erstens im Composer: Der Plain-Text-Modus ist reiner
@@ -4558,6 +4582,309 @@ Satz mit Grund, damit das nächste Review nicht dieselbe Spur noch einmal läuft
 - **`check:nul` extension-basiert**: unbekannte Dateinamen werden gelesen statt übersprungen (fail-safe).
 - **`e2e/tsconfig.json` `include: ["**/*.ts"]`**: `node_modules` per TS-Default ausgeschlossen; `audit/` und `shots/` werden mit typgeprüft.
 - **SECURITY.md „621 packages“**: Lockfile hat 622 `resolution:`-Einträge — im Rahmen.
+
+## Nebenbefunde aus der Abarbeitung
+
+Während der Abarbeitung der 112 Befunde in zehn Blöcken sind Dinge aufgefallen, die außerhalb des
+jeweiligen Auftrags lagen und dort nur notiert wurden. Ein Teil davon ist auf `fix/nebenbefunde`
+behoben (jscontact-`__PROTO__`, die Kalender-Teilnehmerabbildung, die zwei unbehandelten
+Rejections, das nackte HTTP 413, die Speicheranzeige, die Interpunktion im Zurück-Label, das
+Aufräumen des OAuth-Stashs und der doppelt angewandte Rollback im Dead-Letter-Pfad). Was hier steht,
+ist der Rest: Befunde, die eine Design-Entscheidung brauchen oder zu groß für einen Sammelbranch
+sind. Nummerierung `N-…`, damit sie mit den `R-…` aus diesem Review nicht kollidiert.
+
+Die Fundstellen sind gegen den Stand nach allen zehn Blöcken (`802e092`) geprüft.
+
+### N-01 — [MEDIUM] Ein abgelehntes Löschen des Vorgänger-Entwurfs beim Senden ist unsichtbar
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** correctness (stiller Datenverlust) / Compose
+
+**Fundstelle(n):**
+- `apps/web/src/sync/engine/port.ts:358-390` (`submitEmail`)
+
+**Problem:** `submitEmail` schickt EINE Anfrage mit zwei Aufrufen: `Email/set` (create des zu
+sendenden Briefs, optional `destroy` des vorher autogespeicherten Server-Entwurfs, optional
+`update` der Quellnachricht) und `EmailSubmission/set`. Zurückgegeben wird das Ergebnis des
+Submission-Aufrufs, an das nur `emailCreated` angehängt wird. Alles andere aus dem `Email/set` —
+insbesondere `notDestroyed` für `destroyServerDraftId` und `notUpdated` für `sourceUpdate` — fällt
+weg, bevor der Outbox-Pfad es sehen kann. Dieselbe Lücke, die W-32 für `saveDraft` geschlossen hat,
+eine Methode weiter.
+
+**Auswirkung:** Der Brief geht raus, der alte Entwurf bleibt im Entwürfe-Ordner stehen, und niemand
+erfährt davon. Auf einem Server, der den `destroy` regelmäßig ablehnt (fehlende Rechte auf einem
+delegierten Konto, ein Entwurf, den ein anderer Client inzwischen verschoben hat), sammelt sich pro
+gesendeter Mail eine Leiche an. Zusammen mit R-27 (offen) ist das der zweite Weg, auf dem der
+Entwürfe-Ordner voll bleibt.
+
+**Lösungsansatz:** `PortSetResult` um ein `emailNotDestroyed` neben `emailCreated` erweitern und im
+Outbox-Pfad eigens behandeln — und zwar NICHT als Rejection: der Brief ist raus, ein Dead Letter
+wäre die falsche Aussage und würde zum Wiederholen einer nicht idempotenten Submission einladen.
+Vermutlich ein nachgereihter `discardDraft` auf den übrig gebliebenen Server-Entwurf. Das ist die
+Design-Entscheidung, die diesen Befund groß macht: „der Sendevorgang hat einen Rest zu erledigen"
+ist ein Zustand, den die Outbox heute nicht kennt.
+
+**Aufwand:** M
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „composer-entwuerfe" (R-12/R-27-Umfeld).
+Fundstelle im aktuellen Stand nachgeprüft: `port.ts:388-389` gibt weiterhin nur `emailCreated` mit.
+
+### N-02 — [LOW] Ein gerade geöffneter Server-Entwurf bekommt den Status `pending`, wodurch der R-12-Schutz beim ersten Schließen nicht greift
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** correctness / Compose
+
+**Fundstelle(n):**
+- `apps/web/src/compose/use-draft-opener.ts:90-113` (`adoptServerDraft`, `status: 'pending'`)
+
+**Problem:** `adoptServerDraft` schreibt die lokale Zeile, die einen geöffneten Server-Entwurf mit
+seiner `serverEmailId` verbindet, mit `status: 'pending'`. Der Entwurf liegt zu diesem Zeitpunkt
+aber unverändert auf dem Server; `pending` heißt „es steht noch ein Schreibvorgang aus", was nicht
+stimmt. Der in R-12 ergänzte Unverändert-Guard verlangt `synced`, greift also beim ERSTEN Schließen
+eines gerade geöffneten, unveränderten Server-Entwurfs nicht.
+
+**Auswirkung:** Ein Öffnen-und-wieder-Schließen ohne jede Änderung kostet weiterhin einen
+`create` + `destroy`-Roundtrip gegen den Server. Kein Datenverlust, aber genau der Verkehr, den
+R-12 loswerden wollte, im häufigsten Fall.
+
+**Lösungsansatz:** `status: 'synced'`. Das ist allerdings eine Aussage über die Semantik von
+`DraftRow.status` — heute unterscheidet niemand sauber zwischen „lokal geschrieben, Server weiß
+nichts" und „lokal geschrieben, entspricht dem Server" —, und sie berührt `flushDraft`,
+`stampDraftError` und `retryFailed`. Deshalb keine Ein-Wort-Änderung, sondern eine Entscheidung mit
+eigenem Testbedarf.
+
+**Aufwand:** S–M
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „composer-entwuerfe". Fundstelle im aktuellen
+Stand nachgeprüft.
+
+### N-03 — [LOW] Die Umwandlung nach Klartext normalisiert Leerraum und verliert im Klartextmodus Einrückungen
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** correctness (Datenverlust beim Wechsel) / Compose
+
+**Fundstelle(n):**
+- `apps/web/src/compose/html-to-text.ts:88-90` (`serializeNode`, `text.replace(/\s+/g, ' ')` außerhalb von `<pre>`)
+
+**Problem:** Jeder Textknoten außerhalb eines `<pre>` wird auf einfache Leerzeichen normalisiert.
+Für die MAIL-Alternative ist das richtig — HTML rendert Leerraum ebenso —, aber dieselbe Funktion
+seedet im Klartextmodus die Textarea aus dem Body. Ein Minimieren und Wiederherstellen, ein Wechsel
+des Modus oder ein Neuladen verliert damit Einrückungen und Mehrfach-Leerzeichen: genau das, was
+jemand, der bewusst Klartext schreibt (Code, ausgerichtete Listen, zitierte Blöcke), erwartet zu
+behalten.
+
+**Auswirkung:** Bestand schon vor R-02; durch den seither persistenten Modus wird es häufiger
+sichtbar. Der Verlust ist still und nicht rückgängig zu machen.
+
+**Lösungsansatz:** Nicht dieselbe Funktion für beide Zwecke. Der Sendepfad braucht die
+Normalisierung, der Modus-Wechsel braucht sie nicht — ein `htmlToPlainText(html, { preserve: true })`
+oder ein eigener Serialisierer für den Editor-Seed. Verwandt mit R-58, das die `<pre>`- und
+`<td>`-Hälfte bereits gelöst hat: der `preformatted`-Kontext existiert also schon und wäre der
+Ansatzpunkt.
+
+**Aufwand:** M
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „composer-entwuerfe". Der ANDERE Teil derselben
+Meldung (`normalize` kennt `<pre>` nicht, gemeldet aus „compose-restliche") ist mit R-58 erledigt —
+`serializeNode` führt inzwischen einen `preformatted`-Kontext; nur die Normalisierung außerhalb von
+`<pre>` steht noch.
+
+### N-04 — [LOW] Der Kontaktimport reiht je Karte eine eigene Transaktion ein
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** performance / PIM (Kontakte)
+
+**Fundstelle(n):**
+- `apps/web/src/contacts/ContactImportExportDialog.tsx:193-200` (`for (const card of cards) await createCard(...)`)
+
+**Problem:** Die Importschleife ruft `createCard` pro Karte. Jeder Aufruf ist eine eigene
+Dexie-Transaktion samt optimistischem Schreiben und einer Outbox-Zeile, und jede davon lässt jede
+offene Live-Query auf `contactCards` neu laufen. Bei 500 importierten Karten sind das bis zu 500
+Reruns der Kontaktliste während des Imports.
+
+**Auswirkung:** Ein großer Import ruckelt sichtbar und hält den Hauptthread länger als nötig.
+Korrekt ist er: die Abbruchprüfung sitzt bewusst VOR dem Schreiben, damit „Abbrechen" nie eine halb
+geschriebene Karte hinterlässt, und der gemeldete Zähler stimmt mit dem Adressbuch überein.
+
+**Lösungsansatz:** Ein Batch-Intent (n Karten je `ContactCard/set`) oder mindestens ein
+gemeinsames `db.transaction` je Block von k Karten. Beides berührt die Abbruch-Semantik oben und
+die Outbox-Granularität (eine abgelehnte Karte darf nicht 50 andere mit ins Dead Letter ziehen) —
+deshalb eine Entscheidung und kein Refactoring. Siehe auch R-21.
+
+**Aufwand:** M
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „kontakte-dateien". Fundstelle im aktuellen
+Stand nachgeprüft.
+
+### N-05 — [LOW] Das Laden der Kalenderliste hängt nicht am Online-Zustand
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** correctness (Offline-Verhalten) / PIM (Kalender)
+
+**Fundstelle(n):**
+- `apps/web/src/calendar/CalendarPage.tsx:408-421` (`loadCalendars` hängt nur an `client`)
+
+**Problem:** Der Effekt, der die Kalenderliste holt, hat `loadCalendars` als einzige Abhängigkeit,
+und die hängt nur an `client`. Eine Wiederverbindung löst also kein erneutes Laden aus.
+
+**Auswirkung:** Gering, weil der „Erneut versuchen"-Balken (`retry`, `CalendarPage.tsx:448-451`) die
+Liste UND den Monat nachholt — die Oberfläche hat also einen Weg heraus, nur keinen automatischen.
+Wer offline auf den Kalender geht und wieder online kommt, sieht bis zum Klick eine leere Leiste.
+
+**Lösungsansatz:** Ein `useEffect` auf `online`. Der Grund, warum das nicht nebenbei geht: bei einer
+flackernden Verbindung feuert das mehrfach, also braucht es dieselbe Entprellung, die der
+Monatsladepfad hat — ein eigener Fix mit eigenem Testbedarf. Im Bericht unter R-59 als Fundstelle
+genannt, vom dortigen Lösungsansatz nicht abgedeckt.
+
+**Aufwand:** S
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „kalender-zeitzonen". Fundstelle im aktuellen
+Stand nachgeprüft.
+
+### N-06 — [LOW] Die Kennzeichnung schreibgeschützter Adressbücher ist im Browser nicht auslösbar
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** correctness (Feature ohne erreichbaren Zustand) / PIM (Kontakte)
+
+**Fundstelle(n):**
+- `apps/web/src/contacts/AddressBookList.tsx:271-320` (`readOnly = book.myRights.mayWrite === false`)
+- `apps/web/src/contacts/ContactForm.tsx`, `GroupForm.tsx` (sperren auf demselben Recht)
+
+**Problem:** Die Leiste rendert einen „Nur lesen"-Marker und unterdrückt Umbenennen, und die
+Formulare sperren, wenn `myRights.mayWrite === false` ist. Ein Buch mit diesem Recht kann heute
+aber nicht in der Leiste landen: eigene Bücher sind immer schreibbar, geteilte liegen in einem
+anderen Konto, und die Kontakte-Oberfläche fragt nur das eigene ab (siehe R-104, offen). FR-CON-01
+ist damit implementiert und im Browser nicht auslösbar.
+
+**Auswirkung:** Keine im Betrieb — der Code ist korrekt, nur unerreichbar. Die Gefahr ist die
+umgekehrte: nicht auslösbarer Code wird nicht mitgepflegt, und wenn mehrkontige Kontakte kommen,
+ist unklar, ob er noch stimmt.
+
+**Lösungsansatz:** Entweder mehrkontige Kontakte nachziehen (das ist R-104 und deutlich mehr als ein
+Sammelbranch) oder die Anzeige ausdrücklich als Vorleistung dokumentieren und mit einem Test gegen
+ein synthetisch `mayWrite: false` gesetztes Buch festnageln, damit sie nicht unbemerkt verrottet.
+Die Entscheidung, welches von beidem, gehört zu R-104.
+
+**Aufwand:** S (Dokumentation + Test) bzw. L (mit R-104)
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „infra-doku-ci". Fundstelle im aktuellen Stand
+nachgeprüft.
+
+### N-07 — [LOW] Die IME-Regel steht an zwei Orten
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** maintainability / UI
+
+**Fundstelle(n):**
+- `apps/web/src/ui/internal/composition.ts` (neu aus R-40)
+- `apps/web/src/shortcuts/keys.ts` (bestehend, korrekt)
+
+**Problem:** „Ein Tastendruck während einer IME-Komposition ist keine Tastenkombination" ist jetzt
+zweimal formuliert. Beide Fassungen stimmen und beide sind getestet, aber eine Korrektur an der
+einen erreicht die andere nicht — und die Regel ist genau die Art Detail (Chromium meldet
+`key: 'Process'`, WebKit nicht), bei der eine zweite Fassung still veraltet.
+
+**Auswirkung:** Heute keine. Das Risiko ist eine künftige Divergenz zwischen Editor und
+Tastaturkürzeln.
+
+**Lösungsansatz:** Zusammenlegen heißt entweder `shortcuts` auf `ui` zeigen zu lassen (eine neue
+Abhängigkeitsrichtung zwischen zwei Bereichen, die heute unabhängig sind) oder die Regel in eine
+dritte, neutrale Datei zu heben. Beides ist eine Architekturentscheidung und gehört mit einem ADR
+entschieden, nicht nebenbei.
+
+**Aufwand:** S (Code) + ADR
+
+**Verifikation:** Quelltext; gemeldet aus dem Block „ui-shortcuts". Beide Dateien im aktuellen Stand
+vorhanden.
+
+### N-08 — [LOW] Vier weitere Objektliterale mit fremdbestimmten Schlüsseln im Kalender
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** robustness (Security-Härtung) / PIM (Kalender)
+
+**Fundstelle(n):**
+- `apps/web/src/calendar/event-alerts.ts:142` (`opaque[key] = alert`, Key aus der `alerts`-Map des Servers)
+- `apps/web/src/calendar/ics-import.ts:103` (`payload[key] = value`, Key aus der importierten `.ics`)
+- `apps/web/src/calendar/event-recurrence.ts:278` (`entry[member] = value`, Key aus dem Draft-Patch)
+- `apps/web/src/calendar/calendar-client.ts:1026` (`create[key] = value`, Key aus dem Server-Snapshot beim Wiederherstellen)
+
+**Problem:** Dieselbe Klasse wie R-60 und wie die auf `fix/nebenbefunde` behobene
+Teilnehmerabbildung: `out['__proto__'] = value` auf einem Objektliteral setzt den Prototyp, statt
+eine eigene Property anzulegen. Alle vier Schleifen filtern Schlüssel, die sie NICHT wollen, und
+schreiben alles andere durch — die drei unbrauchbaren Schlüssel sind in keiner der Listen.
+
+**Auswirkung:** Ein Alarm, ein nicht modelliertes Member oder eine nicht modellierte Property unter
+dem Schlüssel `__proto__` verschwindet still. Nur mit präparierter Eingabe (eine `.ics`-Datei, ein
+feindlicher Client auf demselben Konto) erreichbar; der verlorene Eintrag ist damit der des
+Angreifers selbst, und `Object.prototype` wird nicht verändert — dieselbe Abstufung, mit der R-60
+von medium auf low herabgesetzt wurde.
+
+**Lösungsansatz:** `Object.create(null)` an allen vier Stellen, wie in `event-participants.ts`. Die
+Zurückhaltung hier ist bewusst: die vier sind in keinem der zehn Blockberichte gemeldet, sondern
+beim Beheben der gemeldeten Stelle nebenan aufgefallen, und je Stelle gehört ein eigener
+Regressionstest dazu.
+
+**Aufwand:** S
+
+**Verifikation:** Quelltext, in diesem Durchgang gefunden (nicht aus einem Blockbericht).
+
+### N-09 — [LOW] `unavailableReason` an einem Text-Knopf verschmutzte den zugänglichen Namen
+
+**Status:** [x] erledigt (nebenbei, außerhalb dieses Abschnitts)
+Der `VisuallyHidden`-Span steht inzwischen als Geschwisterknoten AUSSERHALB des `<button>`
+(`apps/web/src/ui/Button.tsx:89-90`, mit Kommentar). Aufgenommen, weil er in einem Blockbericht als
+offener Nebenbefund steht und die Fundstelle inzwischen eine andere Antwort gibt.
+
+**Kategorie / Bereich:** a11y / UI
+
+**Fundstelle(n):**
+- `apps/web/src/ui/Button.tsx:64-92`
+
+**Problem (historisch):** Der Grund wurde als `VisuallyHidden`-Span INNERHALB des `<button>`
+gerendert und zusätzlich per `aria-describedby` referenziert. Bei einem `IconButton` fiel das nicht
+auf (ein explizites `aria-label` gewinnt); bei einem Textknopf wurde der Satz Teil des Namens
+(„Move You are offline. …") und danach ein zweites Mal als Beschreibung vorgelesen. Im
+Produktionscode gab es nur `IconButton`-Aufrufer, der Fehler war also latent.
+
+**Aufwand:** —
+
+**Verifikation:** Gemeldet aus dem Block „kontakte-dateien"; Fundstelle im aktuellen Stand
+nachgeprüft und behoben vorgefunden.
+
+### N-10 — [INFO] Zwei Beobachtungen ohne Fehlverhalten
+
+**Status:** [ ] offen
+
+**Kategorie / Bereich:** maintainability / UI, Outbox
+
+**Fundstelle(n):**
+- `apps/web/src/ui/internal/useDismiss.ts:88-102` gegen `apps/web/src/ui/Menu.tsx:312` (`extraRefs: [triggerRef]`)
+- `apps/web/src/outbox/ScheduledSends.test.tsx` (nur der Cancel-Pfad)
+
+**Problem:** (a) `useDismiss` meldet seinen Outside-Pointer-Listener bei jedem Render ab und wieder
+an, weil `extraRefs` an den Aufrufstellen ein Inline-Array ist. Nach dem R-39-Fix ist das reines
+Ab- und Anmelden, kein Leck und kein Verhaltensfehler. (b) `ScheduledSends` hat seit R-55 einen
+Komponententest, der alle drei Antworten des Cancel-Pfades abdeckt; der LADEPFAD (`load`, `failed`,
+leere Liste) ist weiterhin ungetestet.
+
+**Auswirkung:** Keine gemessene. Beides steht hier, damit es nicht ein drittes Mal als „neu"
+gemeldet wird.
+
+**Lösungsansatz:** (a) `extraRefs` an den Aufrufstellen memoisieren — eine Änderung an mehreren
+Stellen für einen Effekt, den niemand gemessen hat; erst nach einer Messung. (b) Drei Testfälle,
+wenn jemand ohnehin in der Datei ist.
+
+**Aufwand:** S
+
+**Verifikation:** Quelltext; gemeldet aus den Blöcken „ui-shortcuts" und „compose-restliche".
 
 ## Anhang: Zuordnung der Bereichs-IDs
 

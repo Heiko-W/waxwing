@@ -29,7 +29,7 @@
     "reading": {
       "title": "阅读区",
       "empty": "选择一封邮件即可阅读。",
-      "back": "返回邮件列表"
+      "back": "返回邮件列表：{{target}}"
     },
     "notFound": {
       "title": "页面未找到",

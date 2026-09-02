@@ -82,6 +82,38 @@ describe('useSnooze', () => {
     await waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1))
     expect(getDispatchFailureAt()).toBe(0)
   })
+
+  /*
+   * The OTHER write in this hook, and the one R-10 did not reach because it is not a `dispatch`:
+   * the wake-time preference. `void updateSnoozeMap(…)` dropped its rejection on the floor, and
+   * this half fails alone — the keyword went to the outbox, so the message is already hidden, and
+   * a wake time that never landed means the waker (which only wakes ids it finds in the MAP) never
+   * brings it back. `backfill.ts` filters `$snoozed` out of every folder window, so the mail was
+   * reachable through search and nowhere else, for good, with nothing said.
+   */
+  it('reports a wake time that could not be written', async () => {
+    dispatch.mockResolvedValue(undefined)
+    vi.spyOn(db.localPrefs, 'put').mockRejectedValue(new Error('QuotaExceededError'))
+    const { result } = renderHook(() => useSnooze(), { wrapper })
+
+    act(() => {
+      result.current.snooze(['e1'], new Date(Date.now() + 3_600_000))
+    })
+
+    await waitFor(() => expect(getDispatchFailureAt()).toBeGreaterThan(0))
+  })
+
+  it('reports one that could not be removed either', async () => {
+    dispatch.mockResolvedValue(undefined)
+    vi.spyOn(db.localPrefs, 'put').mockRejectedValue(new Error('QuotaExceededError'))
+    const { result } = renderHook(() => useSnooze(), { wrapper })
+
+    act(() => {
+      result.current.wake(['e1'])
+    })
+
+    await waitFor(() => expect(getDispatchFailureAt()).toBeGreaterThan(0))
+  })
 })
 
 describe('the snooze wake times', () => {

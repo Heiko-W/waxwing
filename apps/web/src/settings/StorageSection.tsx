@@ -102,7 +102,13 @@ export function StorageSection(props: StorageSectionProps) {
         toast({ title: t('settings.offline.freeUpFailed'), tone: 'danger' })
         return
       }
-      const freed = outcome.status === 'ran' ? outcome.result.evicted.freedBytes : 0
+      // `result.freedBytes`, NOT `result.evicted.freedBytes`. The latter is the eviction stage's
+      // PLAN: it counts rows the pass may never have got round to deleting (a delete chunk can fail
+      // without aborting the pass) and no pruned envelopes at all. `maintenance.ts` says so at the
+      // line that computes the top-level figure — reporting the plan told the reader "nothing to
+      // free up" right after a pass that dropped five thousand aged-out envelopes. Same wrong
+      // number as R-87, from the second of its two sources.
+      const freed = outcome.status === 'ran' ? outcome.result.freedBytes : 0
       toast({
         title:
           freed === 0

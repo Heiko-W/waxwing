@@ -2308,6 +2308,58 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
   })
 
   /**
+   * The THIRD writer of the same rollback, and the one that never took the claim.
+   *
+   * `deadLetter` persists the row `status: 'error'` with its `undo` STILL SET — deliberately, so a
+   * crash mid-rollback leaves something the drain can finish — and only then calls `applyUndo`,
+   * whose `refetchEmails` arm makes a network round trip. For the whole of that round trip the row
+   * matched exactly what `discardFailed` looks for on every tab (`error` + `undo != null`), so a
+   * click applied the same non-idempotent rollback a second time: the folder's total/unread badges
+   * were counted back twice and stayed wrong, because `Mailbox/changes` only reports a folder again
+   * once something really changes in it. Same double-count W-14 introduced the drain claim for,
+   * through the writer that was left out.
+   */
+  it('refuses a discard while the DEAD-LETTER write is applying the rollback', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 1, unreadEmails: 1 })])
+    await putEmails(db, ACC, [email('e1', { keywords: {}, mailboxIds: { inbox: true } })])
+    let releaseRefetch: (() => void) | undefined
+    let refetches = 0
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setEmails() {
+        return { ...emptySet(), notDestroyed: { e1: { type: 'forbidden' } } }
+      },
+      getEmailEnvelopes: async (ids) => {
+        refetches += 1
+        // Park INSIDE `applyUndo`'s round trip — the window the discard used to walk into.
+        await new Promise<void>((resolve) => {
+          releaseRefetch = resolve
+        })
+        return base.getEmailEnvelopes(ids)
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch({ kind: 'destroyEmails', emailIds: ['e1'] }, { id: 'i1' })
+    await waitFor(() => refetches === 1)
+
+    // The click, landing exactly inside the round trip.
+    expect(await engine.discardFailed('i1')).toBe(false)
+    expect(
+      await db.outbox.get([ACC, 'i1']),
+      'discarded out from under the dead letter',
+    ).toBeDefined()
+
+    releaseRefetch?.()
+    await waitFor(async () => ((await db.outbox.get([ACC, 'i1']))?.undo ?? null) === null)
+    // Applied exactly once, and the claim handed back so the row is actionable again.
+    expect(refetches).toBe(1)
+    expect((await db.outbox.get([ACC, 'i1']))?.undoClaimedAt ?? null).toBeNull()
+    expect(await engine.discardFailed('i1')).toBe(true)
+    await engine.stop()
+  })
+
+  /**
    * The OTHER half of the W-14 race (R-70/R-76): what happens when the DRAIN's rollback fails while
    * a discard is watching.
    *

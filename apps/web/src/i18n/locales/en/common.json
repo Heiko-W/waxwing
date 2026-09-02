@@ -29,7 +29,7 @@
     "reading": {
       "title": "Reading",
       "empty": "Select a message to read it.",
-      "back": "Back to messages"
+      "back": "Back to messages: {{target}}"
     },
     "notFound": {
       "title": "Page not found",
