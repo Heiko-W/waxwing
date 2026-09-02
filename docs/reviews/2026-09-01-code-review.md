@@ -2331,7 +2331,7 @@ Replica so auflösen wie der Composer (`getActiveReplica()`).
 
 ### R-53 — [LOW] `oversized` zählt fehlgeschlagene Uploads mit — ein Fehl-Chip sperrt Senden (und weiteres Anhängen) mit dem Label „zu groß“, entgegen dem Kommentar in `ComposerWindow`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -2360,7 +2360,9 @@ abgewiesen, obwohl nur 20 MB gesendet würden.
 
 ### R-54 — [LOW] `classifyUploadError` macht aus einem HTTP-400-Problem-Dokument jeden Typs ein `tooLarge` — falscher Toast, Retry ausgeblendet
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt als `type === limit || status === 413`; jede andere 400 ist jetzt `server` (mit Retry).
+Der Test, der `{type:"other", status:400} → tooLarge` gepinnt hat, ist entsprechend ersetzt.
 
 **Kategorie / Bereich:** robustness / Compose
 
@@ -2448,7 +2450,10 @@ Effekt auf `suggestions`), statt es aus einer einzelnen Query zu setzen.
 
 ### R-57 — [LOW] `maxSizeAttachmentsPerEmail` wird ungeprüft übernommen — `0` sperrt jeden Anhang und jeden Versand mit Anhang (vgl. W-28)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt als `usableOrNull` neben `usable` (`packages/jmap/src/chunking.ts`), angewendet in
+`use-attachment-upload.ts`. Bewusst NICHT in `isMailCapability`: dort wuerde ein einzelnes
+unbrauchbares Feld die ganze Capability verwerfen und `emailQuerySortOptions` mitnehmen.
 
 **Kategorie / Bereich:** robustness / Compose + Lib (jmap)
 

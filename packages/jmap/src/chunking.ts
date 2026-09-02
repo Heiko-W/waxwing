@@ -92,6 +92,20 @@ export function usable(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback
 }
 
+/**
+ * {@link usable} for a limit whose absence means "no limit" rather than a fallback number.
+ *
+ * `maxSizeAttachmentsPerEmail` (RFC 8621 §1.4) is the one such limit: the app represents an account
+ * that did not advertise it as `null` = unlimited, so there is no sensible number to fall back to.
+ * It was read with `??`, which only replaces `null`/`undefined` — a server sending `0` therefore
+ * made every attachment "too large" and greyed out Send for any draft carrying one, `-1` did the
+ * same, and `NaN` silently switched the check off (every comparison against it is false). Same
+ * class as W-28, same guard, different fallback.
+ */
+export function usableOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+}
+
 interface LogicalCall {
   /** Original `methodCallId`; also the physical id when the call is not split. */
   id: string

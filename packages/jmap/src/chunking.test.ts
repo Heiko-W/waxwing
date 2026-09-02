@@ -6,6 +6,7 @@ import {
   planRequest,
   reassembleResponses,
   sanitizeLimits,
+  usableOrNull,
 } from './index'
 import { at } from './test-support'
 import type { Invocation } from './types/core'
@@ -438,6 +439,33 @@ describe('reassembleResponses — errors', () => {
     ]
     const merged = reassembleResponses(plan, physical)
     expect(at(merged, 0)).toEqual(['error', { type: 'serverFail', description: 'boom' }, 'c0'])
+  })
+})
+
+describe('usableOrNull', () => {
+  // The same guard as `usable`, for the one limit whose absence means "no limit" rather than a
+  // fallback number: `maxSizeAttachmentsPerEmail` (RFC 8621 §1.4). Read with `??` it let a server's
+  // `0` through, which refused every attachment as "too large" and greyed out Send for any draft
+  // carrying one; `NaN` switched the check off in silence (R-57, same class as W-28).
+  it('keeps a real limit', () => {
+    expect(usableOrNull(25_000_000)).toBe(25_000_000)
+    expect(usableOrNull(1)).toBe(1)
+  })
+
+  it('is null for anything that is not an integer > 0', () => {
+    for (const value of [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '25000000',
+      null,
+      undefined,
+      {},
+    ]) {
+      expect(usableOrNull(value), String(value)).toBeNull()
+    }
   })
 })
 
