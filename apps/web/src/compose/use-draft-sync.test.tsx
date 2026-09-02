@@ -401,3 +401,67 @@ describe('useDraftSync.send — send options (M-7, M-11)', () => {
     expect(sentIntent().envelope.rcptTo).toEqual([{ email: 'a@x.test' }])
   })
 })
+
+/**
+ * What happens to the coalesced `draft:<id>` autosave row when the user acts on the draft while it
+ * is queued or on the wire (R-25, R-29).
+ *
+ * `pending` and `inflight` need OPPOSITE treatment, and conflating them is how a discarded draft
+ * ends up on the server: a pending save is still stoppable, an in-flight one is not, and deleting
+ * the latter only removes the record that the request it is executing ever existed.
+ */
+describe('useDraftSync — the queued autosave row (R-25, R-29)', () => {
+  function queuedSave(localId: string, status: 'pending' | 'inflight') {
+    return db.outbox.put({
+      accountId: 'a',
+      id: `draft:${localId}`,
+      type: 'saveDraft',
+      payload: { kind: 'saveDraft', localId, creationId: `draft-${localId}`, priorServerId: null },
+      ifInState: null,
+      status,
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: null,
+    })
+  }
+
+  it('discard cancels a pending save of a draft that has no server copy yet', async () => {
+    const id = open({ subject: 'never mind' })
+    await queuedSave(id, 'pending')
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.discard(id)
+
+    // Offline / mid-backoff this row IS the draft: replaying it would create on the server exactly
+    // the message the user just threw away, with nothing queued to take it back.
+    expect(await db.outbox.get(['a', `draft:${id}`])).toBeUndefined()
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(useComposerStore.getState().drafts.has(id)).toBe(false)
+  })
+
+  it('discard leaves an in-flight save alone (its reconcile queues the destroy)', async () => {
+    const id = open({ subject: 'never mind' })
+    await queuedSave(id, 'inflight')
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.discard(id)
+
+    expect((await db.outbox.get(['a', `draft:${id}`]))?.status).toBe('inflight')
+  })
+
+  it('send leaves an in-flight save alone rather than losing track of the draft it creates', async () => {
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+    })
+    await queuedSave(id, 'inflight')
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    expect((await db.outbox.get(['a', `draft:${id}`]))?.status).toBe('inflight')
+    expect((dispatch.mock.calls[0]?.[1] as { id: string }).id).toBe(`send:${id}`)
+  })
+})

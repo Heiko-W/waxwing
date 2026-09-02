@@ -118,6 +118,27 @@ const outboxId = (localId: string): string => `draft:${localId}`
 /** Send uses a DISTINCT id so a concurrent autosave's reconcile can never delete the queued send. */
 const sendOutboxId = (localId: string): string => `send:${localId}`
 
+/**
+ * Drop this draft's queued autosave — but ONLY while it is still `pending`.
+ *
+ * Deleting it unconditionally deletes an `inflight` row too, and the request that row is executing
+ * comes back anyway: the server creates the draft, `reconcileDraftSave` records its id, and nothing
+ * is left in the queue that remembers to destroy it. Left in place, the same reconcile re-points it
+ * at the new server id (and, for a discard, queues its removal), which is why an `inflight` row is
+ * the one case where doing nothing is right.
+ *
+ * Re-read inside the transaction because the status can change between the read and the delete —
+ * the whole point is the moment when replay claims the row.
+ */
+async function dropPendingSave(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
+  const key: [Id, string] = [accountId, outboxId(localId)]
+  await db.transaction('rw', db.outbox, async () => {
+    const queued = await db.outbox.get(key)
+    if (queued?.status !== 'pending') return
+    await db.outbox.delete(key)
+  })
+}
+
 async function resolveFrom(
   db: ReplicaDb,
   accountId: Id,
@@ -245,6 +266,13 @@ export function useDraftSync(): DraftSync {
               { id: outboxId(localId) },
             ),
           )
+        } else {
+          // No server copy YET is not the same as no server copy EVER: a draft without an id
+          // typically has an autosave still waiting in the queue (offline, a backoff window after a
+          // transient failure, a follower tab whose leader has not run a pass). Discarding deleted
+          // the local row and dispatched nothing, so the next replay created on the server exactly
+          // the draft the user threw away — no race required. Cancel that save instead.
+          await dropPendingSave(db, accountId, localId)
         }
         revokeDraftInlineImages(localId)
         closeWindow(localId)
@@ -314,7 +342,13 @@ export function useDraftSync(): DraftSync {
         // Cancel any queued autosave for this draft BEFORE dispatching the send. The send uses a
         // DISTINCT outbox id (`send:<id>`), so an autosave's reconcile can no longer delete it; the
         // send captures the latest content, making a pending save redundant.
-        await db.outbox.delete([accountId, outboxId(localId)])
+        //
+        // Only a PENDING one, though: deleting an `inflight` autosave does not stop the request it
+        // is executing, and the draft it creates would then be a copy of the message in the Drafts
+        // folder that nothing ever removes — the send's `destroyServerDraftId` still names the id
+        // from BEFORE that save. Leaving the row alone lets `reconcileDraftSave` re-point this very
+        // send at the id the save produced.
+        await dropPendingSave(db, accountId, localId)
         // AWAITED, and the catch is the point of the await.
         //
         // This was fire-and-forget under a comment explaining that a silent send loss is exactly

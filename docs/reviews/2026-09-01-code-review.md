@@ -1016,7 +1016,11 @@ bestätigt.
 
 ### R-25 — [MEDIUM] W-13-Fix unvollständig: die Server-Id wird beim Einreihen eingefroren — ein Save, Discard oder Send, der während eines `inflight`-Autosaves eingereiht wird, hinterlässt einen verwaisten Server-Entwurf (vgl. W-13, W-32)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt bis auf die Ergänzung „`notDestroyed[priorServerId]` für `sendEmail` auswerten“: `submitEmail`
+liefert das `EmailSubmission/set`-Ergebnis zurück, dessen `notDestroyed` den Email-Id nie enthält — und eine
+Bewertung als Rejection würde einen **erfolgreich versendeten** Brief dead-lettern und den Entwurf wieder
+aufmachen. Bleibt als Nebenbefund offen (Port müsste `emailNotDestroyed` mitführen, wie schon `emailCreated`).
 
 **Kategorie / Bereich:** correctness / Sync + Compose
 
@@ -1222,7 +1226,7 @@ gleiches Ergebnis. Gegenprüfung: bestätigt, zweiter Pfad per Test belegt.
 
 ### R-29 — [MEDIUM] `discard()` lässt einen noch `pending` Autosave in der Outbox stehen, wenn der Draft noch keine Server-Id hat — der verworfene Entwurf wird später trotzdem auf dem Server angelegt (race-frei)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Sync + Compose
 

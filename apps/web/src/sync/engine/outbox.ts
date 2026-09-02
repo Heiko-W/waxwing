@@ -2411,21 +2411,108 @@ async function reconcileAddressBookCreate(
   await rewriteQueued(db, accountId, (queued) => rewriteAddressBookTarget(queued, tempId, serverId))
 }
 
-/** On a confirmed draft save, record the new server Email id on the local drafts row (M2.6). */
+/**
+ * A queued intent about the draft `localId` that still names the server copy this save has just
+ * replaced: re-point it at the id the server handed back. `null` when it names something else.
+ *
+ * The draft counterpart of {@link rewriteContactCardTarget}. `fromId` is the FINISHED intent's own
+ * `priorServerId` (possibly `null`, the "no server copy yet" case), and only a row that still
+ * carries exactly that value is rewritten — a row already pointing at a NEWER id belongs to a save
+ * that finished after this one and must not be dragged backwards.
+ */
+function rewriteDraftServerId(
+  intent: OutboxIntent,
+  localId: string,
+  fromId: Id | null,
+  toId: Id,
+): OutboxIntent | null {
+  switch (intent.kind) {
+    case 'saveDraft':
+    case 'sendEmail':
+      return intent.localId === localId && intent.priorServerId === fromId
+        ? { ...intent, priorServerId: toId }
+        : null
+    // `serverEmailId` is a plain `Id`, so a discard queued for a draft that had no server copy yet
+    // (`fromId === null`) can never match — that case is covered by the re-queued discard below.
+    case 'discardDraft':
+      return intent.localId === localId && intent.serverEmailId === fromId
+        ? { ...intent, serverEmailId: toId }
+        : null
+    default:
+      return null
+  }
+}
+
+/**
+ * On a confirmed draft save, record the new server Email id — on the local drafts row AND on every
+ * still-queued intent for the same draft (M2.6, W-13 follow-up).
+ *
+ * A draft save is create-new + destroy-old, and WHICH old copy it destroys is frozen into the intent
+ * at enqueue time (`use-draft-sync.ts` reads `drafts.serverEmailId`). While save A is `inflight` its
+ * new id does not exist yet, so anything queued behind it — the next autosave, a close, a discard, a
+ * send — was built against A's PREDECESSOR. Without the rewrite below each of them destroys an id
+ * that A already destroyed (`notFound`, treated as success since W-32) and leaves A's copy in the
+ * Drafts folder forever: one ghost draft per overlapping autosave, on every device, not self-healing.
+ * {@link deleteIfUnchanged} saves the queued ROW; this saves its CONTENT.
+ *
+ * Two further rules the plain `update` got wrong:
+ *  - `status` stays `sending` when a send has already claimed the row. Overwriting it with `synced`
+ *    made a queued send restorable as an ordinary draft.
+ *  - A MISSING row means the draft was discarded while this save was in flight (`update` was a silent
+ *    no-op, and the server copy stayed). The freshly created draft is then queued for destruction,
+ *    unless something still queued already destroys it.
+ */
 async function reconcileDraftSave(
   db: ReplicaDb,
   accountId: Id,
   intent: OutboxIntent,
   result: PortSetResult,
+  rowId: Id,
+  now: number,
 ): Promise<void> {
   if (intent.kind !== 'saveDraft') return
   const created = result.created[intent.creationId]
   if (!created) return
-  await db.drafts.update([accountId, intent.localId], {
-    serverEmailId: created.id,
-    status: 'synced',
-    lastError: null,
+  const localId = intent.localId
+  const stillOpen = await db.transaction('rw', db.drafts, async () => {
+    const row = await db.drafts.get([accountId, localId])
+    if (row === undefined) return false
+    await db.drafts.update([accountId, localId], {
+      serverEmailId: created.id,
+      // A send queued while this save was in flight has already written `sending`; that row is not
+      // an editable draft any more and `use-draft-restore` must keep skipping it.
+      ...(row.status === 'sending' ? {} : { status: 'synced' as const, lastError: null }),
+    })
+    return true
   })
+
+  // Re-point the queue, and note whether anything in it already answers for the new server copy.
+  let covered = false
+  const queued = await db.outbox.where('accountId').equals(accountId).toArray()
+  for (const queuedRow of queued) {
+    // An `inflight` row is executing against the ids it was built with — see {@link rewriteQueued}.
+    if (queuedRow.status === 'inflight') continue
+    const payload = queuedRow.payload as OutboxIntent
+    const rewritten = rewriteDraftServerId(payload, localId, intent.priorServerId, created.id)
+    if (rewritten !== null)
+      await db.outbox.update([accountId, queuedRow.id], { payload: rewritten })
+    const effective = rewritten ?? payload
+    if (effective.kind === 'discardDraft' && effective.localId === localId) covered = true
+  }
+
+  if (stillOpen || covered) return
+  // The draft is gone locally and nothing is going to remove its server copy: queue that destroy.
+  // Under the FINISHED row's own id, so it coalesces with whatever replaced it (a stale save of a
+  // discarded draft is not worth replaying) and `deleteIfUnchanged` leaves the new row alone.
+  await enqueueAction(
+    db,
+    accountId,
+    { kind: 'discardDraft', localId, serverEmailId: created.id },
+    {
+      id: rowId,
+      now,
+    },
+  )
 }
 
 /**
@@ -2860,7 +2947,7 @@ export async function replayOutbox(
       await reconcileCreate(db, accountId, intent, result)
       await reconcileContactCardCreate(db, accountId, intent, result)
       await reconcileAddressBookCreate(db, accountId, intent, result)
-      await reconcileDraftSave(db, accountId, intent, result)
+      await reconcileDraftSave(db, accountId, intent, result, row.id, now)
       await reconcileSend(db, accountId, intent, result)
       await deleteIfUnchanged(db, accountId, row)
       replayed += 1
