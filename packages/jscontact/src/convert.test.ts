@@ -413,6 +413,27 @@ describe('a card whose own strings are object keys', () => {
     const result = importOne(card('EMAIL;PROP-ID=e7:victim@example.com'))
     expect(Object.keys(result.emails ?? {})).toEqual(['e7'])
   })
+
+  /*
+   * `vCardProps` is the other place a file's own strings become object keys, and the only place a
+   * parameter NAME does: `toJCardProp` lower-cases the lexer's upper-cased key, so `__PROTO__`
+   * arrives as `__proto__`. On a plain object literal the multi-value form assigned an ARRAY to it
+   * — replacing the params object's prototype, leaving it with no own keys — and the single-value
+   * form assigned a string, which the setter ignores. Both lost the parameter without a word, in
+   * the one part of a Card whose entire purpose is to lose nothing.
+   */
+  it.each([
+    ['several values', 'X-FOO;__PROTO__=a,b:v', ['a', 'b']],
+    ['exactly one value', 'X-FOO;__PROTO__=a:v', 'a'],
+  ])('keeps a parameter named __PROTO__ with %s', (_name, line, expected) => {
+    const params = importOne(card(line)).vCardProps?.[0]?.[1]
+    expect(params === undefined ? {} : Object.getPrototypeOf(params)).toBeNull()
+    // Read as an OWN descriptor: `params.__proto__` would go through the accessor this test is
+    // about and answer for the prototype rather than for the parameter.
+    expect(Object.getOwnPropertyDescriptor(params ?? {}, '__proto__')?.value).toEqual(expected)
+    // And it survives the round trip back out, which is what `vCardProps` exists for.
+    expect(toVCard(importOne(card(line)))).toContain('__PROTO__=')
+  })
 })
 
 describe('foreign data that used to break the converter', () => {
