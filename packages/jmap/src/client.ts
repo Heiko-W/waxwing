@@ -81,9 +81,15 @@ export class JmapClient {
     this.currentSession = session
   }
 
-  /** Starts a fluent {@link RequestBuilder} bound to this client; call `.send()` to execute. */
+  /**
+   * Starts a fluent {@link RequestBuilder} bound to this client; call `.send()` to execute.
+   *
+   * The executor forwards `send`'s {@link CallOptions} to {@link JmapClient.call}, so the fluent
+   * path can carry a `signal`, a `createdIds` seed and a per-call `using` — everything the array
+   * path could always carry and the builder could not.
+   */
   request(): RequestBuilder {
-    return new RequestBuilder((builder) => this.call(builder.invocations))
+    return new RequestBuilder((builder, options) => this.call(builder.invocations, options))
   }
 
   /**

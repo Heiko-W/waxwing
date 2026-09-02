@@ -1,3 +1,4 @@
+import type { CallOptions } from './client'
 import { isMalformedMethodError, isMethodError, JmapError, JmapMethodError } from './errors'
 import type { CreationId, ExtendedJSONPointer, Invocation, ResultReference } from './types/core'
 
@@ -71,7 +72,12 @@ export class RequestBuilder {
   private readonly calls: Invocation[] = []
   private seq = 0
 
-  constructor(private readonly executor?: (builder: RequestBuilder) => Promise<MethodResponses>) {}
+  constructor(
+    private readonly executor?: (
+      builder: RequestBuilder,
+      options?: CallOptions,
+    ) => Promise<MethodResponses>,
+  ) {}
 
   /** Queues a method call and returns its {@link CallHandle}. */
   call<A>(name: string, args: A, methodCallId?: string): CallHandle {
@@ -108,11 +114,25 @@ export class RequestBuilder {
     return map
   }
 
-  /** Executes the request through the owning client. Throws if the builder was created standalone. */
-  send(): Promise<MethodResponses> {
+  /**
+   * Executes the request through the owning client. Throws if the builder was created standalone.
+   *
+   * `options` are the same {@link CallOptions} {@link JmapClient.call} takes — above all `signal`.
+   * Without them the fluent path could not be cancelled at all: a caller that owns an abort signal
+   * (the sync engine owns two) had to drop out of the builder DSL and hand `client.call([...])` a
+   * hand-built invocation array, which is why `push-subscribe.ts` does exactly that for its `using`
+   * extension. Not an App oversight — the API had no way to say it.
+   *
+   * ADDITIVE, deliberately: `options` is optional and the executor type gained an optional second
+   * parameter, so every existing `builder.send()` call site and every executor of the old shape
+   * still type-checks unchanged (a function of fewer parameters is assignable to one of more).
+   * These are published packages; a required parameter here would have been a breaking change for
+   * consumers over a convenience. Pinned by a test.
+   */
+  send(options?: CallOptions): Promise<MethodResponses> {
     if (!this.executor)
       throw new Error('This RequestBuilder is not bound to a client; use JmapClient.request()')
-    return this.executor(this)
+    return this.executor(this, options)
   }
 }
 

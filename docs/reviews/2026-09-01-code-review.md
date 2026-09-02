@@ -3636,7 +3636,9 @@ bestätigt, Fundstellen korrigiert.
 
 ### R-94 — [LOW] `RequestBuilder.send()` kann keine `CallOptions` (insbesondere `signal`) transportieren — der Sync-Port sendet 29× ohne Abbruchsignal (vgl. W-16)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Teilloesung, bewusst:** Die API-Luecke ist geschlossen — `send(options?: CallOptions)` plus ein Executor mit optionalem zweiten Parameter, additiv: jede bestehende `builder.send()`-Stelle und jeder Executor der alten Form typechecken unveraendert (durch einen Test gepinnt und am ganzen Repo verifiziert, inklusive der fuenf `new RequestBuilder(async (builder) => …)` in App-Tests). NICHT mitgemacht: das Durchreichen des Engine-Signals im Sync-Port. Der Port wird in `react.tsx` als Option von `createSyncEngine` gebaut, existiert also bevor die Engine und ihre Controller existieren — dafuer braeuchte es eine neue Naht durch `createJmapPort`/`SyncEngine`. Und ein Abbruch der Delta-Legs aendert den Fehlerpfad des Passes: ein `AbortError` faellt in `classifyThrown` auf `retry`, und `stop()` ruft `cancelSyncRetry()` VOR `await this.activeSync` — das beruehrt genau die W-15/R-28/W-16-Verzahnung. Der Befund bleibt insoweit offen; die Voraussetzung dafuer steht jetzt.
 
 **Kategorie / Bereich:** robustness / Lib (jmap) + Sync
 
