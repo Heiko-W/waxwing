@@ -2639,6 +2639,23 @@ explicit owner decision:
   `Email/query` in `limit` chunks (`collectMatchingIds` in the engine is the paginator that already
   exists). `rights.ts`'s account-floor clause is what keeps the rights verdict sound over ids whose
   rows are not hydrated, and it is already there.
+- **The offline cold start, the rest of FR-OFF-01 (filed 2026-09-02 with R-78).** An installed PWA
+  opened offline boots its shell out of the precache and then lands on the SIGN-IN FORM, reading
+  "Could not reach the server", with a fully populated replica behind it and no way to reach it.
+  `AuthController.restore()` works offline exactly as documented; `SessionProvider.boot()` step B
+  feeds the restored session straight into `connectSession()`, which fetches the JMAP session
+  document from the network — and `jmapSession` is held in memory only, persisted nowhere. Known
+  and deliberately pinned since M3.5: `e2e/tests/pwa.spec.ts` asserts `toBeHidden()` on the cached
+  mail as a TRIPWIRE, and its block comment names the defect correctly. What this entry adds is a
+  place for it outside a test comment — the plan entry of 2026-07-20 described the cause wrongly,
+  and a Must (FR-OFF-01) that lives only in an assertion nobody is tracking is a Must nobody owns.
+  The fix as the tripwire sketches it: write the session document into the encrypted replica on a
+  successful `connectSession` (no mail content, no token — and NOT into the service-worker cache,
+  whose invariant is zero bytes from JMAP), build a `JmapClient` from it in `boot()` when
+  `restore()` succeeds and the connect fails with a `TypeError`/offline, mark `connected` as
+  offline, and `refreshSession()` on reconnect. Then rewrite the tripwire into the offline
+  cold-start test M3.5 originally asked for. Medium, and a product decision rather than a fix: it
+  changes what is persisted about a session.
 - Offline search over cached subset (FR-SRCH-04).
 - ~~PWA badging (FR-NOTIF-04)~~ — **shipped in M5.3**; notification actions (FR-NOTIF-05)
   remain (ADR-017 explains why they are harder than they look).

@@ -3017,6 +3017,12 @@ ist `localStorage.getItem('waxwing.connect.target')` null.
 ### R-78 — [LOW] Offline-Kaltstart landet auf dem Login-Formular — bekannter, per E2E-Tripwire gepinnter Produktdefekt ohne Tracking-Eintrag
 
 **Status:** [ ] offen
+Bewusst NICHT umgesetzt: bekannter Produktdefekt, per E2E-Tripwire gepinnt
+(`e2e/tests/pwa.spec.ts`), dessen Behebung eine Produktentscheidung mittleren Umfangs ist —
+sie aendert, was ueber eine Sitzung persistiert wird. Als Backlog-Eintrag in
+`docs/implementation-plan.md` §11 aufgenommen (2026-09-02), damit das Must FR-OFF-01 nicht nur
+in einem Testkommentar lebt. Der Tripwire bleibt rot-schlagend, wenn jemand die Luecke
+schliesst.
 
 **Kategorie / Bereich:** robustness / App (Session)
 
