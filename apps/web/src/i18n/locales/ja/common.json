@@ -2075,6 +2075,10 @@
     "savedButNotShown": "保存しましたが、リストを再読み込みできませんでした。もう一度試すと表示されます。",
     "signedOut": "ファイルを見るにはログインしてください。",
     "upload": "アップロード",
+    "uploadProblem": {
+      "one": "「{{name}}」はアップロードされませんでした: {{reason}}",
+      "some_other": "{{total}} 件のうち {{count}} 件がアップロードされませんでした: {{names}}"
+    },
     "newFolder": "新しいフォルダー",
     "cancel": "キャンセル",
     "download": "{{name}} をダウンロード",

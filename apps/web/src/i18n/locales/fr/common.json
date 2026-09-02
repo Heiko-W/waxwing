@@ -2158,6 +2158,12 @@
     "savedButNotShown": "L’enregistrement a réussi, mais la liste n’a pas pu être rechargée — réessayez pour la voir.",
     "signedOut": "Connectez-vous pour voir vos fichiers.",
     "upload": "Importer",
+    "uploadProblem": {
+      "one": "« {{name}} » n’a pas été envoyé : {{reason}}",
+      "some_one": "1 fichier sur {{total}} n’a pas été envoyé : {{names}}",
+      "some_many": "{{count}} fichiers sur {{total}} n’ont pas été envoyés : {{names}}",
+      "some_other": "{{count}} fichiers sur {{total}} n’ont pas été envoyés : {{names}}"
+    },
     "newFolder": "Nouveau dossier",
     "cancel": "Annuler",
     "download": "Télécharger {{name}}",

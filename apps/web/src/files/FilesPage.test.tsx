@@ -25,7 +25,7 @@ import { freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import FilesPage from './FilesPage'
-import type { FileSearchHit, FilesClient } from './files-client'
+import { type FileSearchHit, FileSetError, type FilesClient } from './files-client'
 
 function node(over: Partial<FileNode> & { id: string; name: string }): FileNode {
   return {
@@ -1034,6 +1034,142 @@ describe('searching and sorting', () => {
  * The silence is the defect, not the limit: a folder that is short and LOOKS complete makes every
  * conclusion the reader draws from it wrong.
  */
+describe('the name dialogs (R-66)', () => {
+  it('creates the folder on Enter, without reaching for the button', async () => {
+    const created: [string, string | null][] = []
+    listed = []
+    mount({
+      ...client,
+      createFolder: async (name, parentId) => {
+        created.push([name, parentId])
+      },
+    })
+    await screen.findByText('This folder is empty.')
+
+    await userEvent.click(screen.getByRole('button', { name: /New folder/ }))
+    const dialog = await screen.findByRole('dialog')
+    // Type the name and press the one key everybody presses after typing one.
+    await userEvent.type(within(dialog).getByLabelText('New folder'), 'Invoices{Enter}')
+
+    await waitFor(() => expect(created).toEqual([['Invoices', null]]))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('renames on Enter, and opens with the current name selected', async () => {
+    const renamed: [string, string][] = []
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount({
+      ...client,
+      rename: async (id, name) => {
+        renamed.push([id, name])
+      },
+    })
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
+    const dialog = await screen.findByRole('dialog')
+    const field = within(dialog).getByLabelText<HTMLInputElement>('New name')
+
+    // The state comment has promised this since the dialog was written, and `.select()` appeared
+    // nowhere in the app: renaming is far more often an edit of what is there than a replacement.
+    expect(field.selectionStart).toBe(0)
+    expect(field.selectionEnd).toBe('notes.txt'.length)
+
+    await userEvent.keyboard('minutes.txt{Enter}')
+    await waitFor(() => expect(renamed).toEqual([['1', 'minutes.txt']]))
+  })
+
+  it('does not submit an empty name, or a rename that changes nothing', async () => {
+    const renamed: string[] = []
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount({
+      ...client,
+      rename: async (_id, name) => {
+        renamed.push(name)
+      },
+    })
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
+    const dialog = await screen.findByRole('dialog')
+    // Unchanged: `FileNode/set` would accept the no-op and charge a round trip and a reload for it.
+    await userEvent.type(within(dialog).getByLabelText('New name'), '{Enter}')
+    await userEvent.clear(within(dialog).getByLabelText('New name'))
+    await userEvent.type(within(dialog).getByLabelText('New name'), '{Enter}')
+
+    expect(renamed).toEqual([])
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+})
+
+describe('uploading several files at once (R-67)', () => {
+  function pick(files: File[]): Promise<void> {
+    return userEvent.upload(
+      screen.getByLabelText<HTMLInputElement>('Upload', { selector: 'input' }),
+      files,
+    )
+  }
+
+  it('tries every file, and names the ones the server refused', async () => {
+    const attempted: string[] = []
+    listed = []
+    mount({
+      ...client,
+      upload: async (file: File) => {
+        attempted.push(file.name)
+        if (file.name === 'b.txt') throw new FileSetError('nameTaken')
+        return null
+      },
+    })
+    await screen.findByText('This folder is empty.')
+
+    await pick([
+      new File(['1'], 'a.txt', { type: 'text/plain' }),
+      new File(['2'], 'b.txt', { type: 'text/plain' }),
+      new File(['3'], 'c.txt', { type: 'text/plain' }),
+    ])
+
+    // The loop used to throw out of `run` at b.txt, so c.txt was never attempted…
+    await waitFor(() => expect(attempted).toEqual(['a.txt', 'b.txt', 'c.txt']))
+    // …and the toast said "Something with that name is already here." about nothing in particular.
+    expect(
+      await screen.findByText(
+        '“b.txt” was not uploaded: Something with that name is already here.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('counts them when several fail, and says which', async () => {
+    listed = []
+    mount({
+      ...client,
+      upload: async (file: File) => {
+        if (file.name !== 'a.txt') throw new FileSetError('overQuota')
+        return null
+      },
+    })
+    await screen.findByText('This folder is empty.')
+
+    await pick([
+      new File(['1'], 'a.txt', { type: 'text/plain' }),
+      new File(['2'], 'b.txt', { type: 'text/plain' }),
+      new File(['3'], 'c.txt', { type: 'text/plain' }),
+    ])
+
+    expect(
+      await screen.findByText('2 of 3 files were not uploaded: b.txt, c.txt'),
+    ).toBeInTheDocument()
+  })
+
+  it('says nothing when the whole batch lands', async () => {
+    listed = []
+    mount()
+    await screen.findByText('This folder is empty.')
+    await pick([new File(['1'], 'a.txt', { type: 'text/plain' })])
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+  })
+})
+
 describe('a listing the server could not give in full', () => {
   it('says that something is missing', async () => {
     truncated = true

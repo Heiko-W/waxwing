@@ -2189,6 +2189,13 @@
     "savedButNotShown": "Сохранено, но список не удалось перезагрузить — нажмите «Повторить», чтобы увидеть результат.",
     "signedOut": "Войдите, чтобы увидеть свои файлы.",
     "upload": "Загрузить",
+    "uploadProblem": {
+      "one": "«{{name}}» не загружен: {{reason}}",
+      "some_one": "1 из {{total}} файлов не загружен: {{names}}",
+      "some_few": "{{count}} из {{total}} файлов не загружены: {{names}}",
+      "some_many": "{{count}} из {{total}} файлов не загружено: {{names}}",
+      "some_other": "{{count}} из {{total}} файлов не загружено: {{names}}"
+    },
     "newFolder": "Новая папка",
     "cancel": "Отмена",
     "download": "Скачать {{name}}",

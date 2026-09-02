@@ -2113,6 +2113,11 @@
     "savedButNotShown": "Gespeichert — die Liste ließ sich aber nicht neu laden. Mit „Erneut versuchen“ wird sie geholt.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
+    "uploadProblem": {
+      "one": "„{{name}}“ wurde nicht hochgeladen: {{reason}}",
+      "some_one": "1 von {{total}} Dateien wurde nicht hochgeladen: {{names}}",
+      "some_other": "{{count}} von {{total}} Dateien wurden nicht hochgeladen: {{names}}"
+    },
     "newFolder": "Neuer Ordner",
     "cancel": "Abbrechen",
     "download": "{{name}} herunterladen",

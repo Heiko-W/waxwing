@@ -2189,6 +2189,13 @@
     "savedButNotShown": "Uloženo, ale seznam se nepodařilo znovu načíst — zkuste to znovu, aby se zobrazil.",
     "signedOut": "Chcete-li vidět své soubory, přihlaste se.",
     "upload": "Nahrát",
+    "uploadProblem": {
+      "one": "„{{name}}“ se nepodařilo nahrát: {{reason}}",
+      "some_one": "1 z {{total}} souborů se nepodařilo nahrát: {{names}}",
+      "some_few": "{{count}} z {{total}} souborů se nepodařilo nahrát: {{names}}",
+      "some_many": "{{count}} z {{total}} souborů se nepodařilo nahrát: {{names}}",
+      "some_other": "{{count}} z {{total}} souborů se nepodařilo nahrát: {{names}}"
+    },
     "newFolder": "Nová složka",
     "cancel": "Zrušit",
     "download": "Stáhnout {{name}}",

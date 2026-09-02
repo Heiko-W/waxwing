@@ -2075,6 +2075,10 @@
     "savedButNotShown": "内容已保存，但列表未能重新加载——请重试以查看。",
     "signedOut": "请登录以查看您的文件。",
     "upload": "上传",
+    "uploadProblem": {
+      "one": "“{{name}}”未上传：{{reason}}",
+      "some_other": "{{total}} 个文件中有 {{count}} 个未上传：{{names}}"
+    },
     "newFolder": "新建文件夹",
     "cancel": "取消",
     "download": "下载{{name}}",

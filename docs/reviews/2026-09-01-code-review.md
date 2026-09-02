@@ -2551,7 +2551,18 @@ Gegenprüfung: abgeschwächt, medium → low.
 
 ### R-61 — [LOW] Die Dateiliste ist nicht virtualisiert und wird bei jedem Tastendruck im Suchfeld komplett neu gerendert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+**Bewusst NICHT virtualisiert** — der Lösungsansatz sagt „Virtualisierung erst, wenn eine Messung
+sie rechtfertigt", also wurde zuerst gemessen (jsdom, Node 24, deshalb Größenordnung und kein
+Budget). Vorher, pro Tastendruck im Suchfeld: 43 ms bei 100 Zeilen, 135 ms bei 300, 455 ms bei
+1 000, 920 ms bei 2 000. Pro Checkbox: 24 / 63 / 154 / 346 ms. Nachher, mit Zeile als `memo` und
+Suchfeld als Kindkomponente mit eigenem State: Tastendruck 0,9 / 0,5 / 0,4 / 0,4 ms, Checkbox
+3,9 / 7,6 / 21,6 / 42,1 ms. Bei realistischen Ordnergrößen (die Auflistung endet an `MAX_PAGES`)
+bleibt damit nichts Spürbares übrig; die einzige Zahl, die eine Virtualisierung noch senken würde,
+ist der Mount — und die ist in jsdom nicht aussagekräftig. Die Zeilenhöhe ist zudem nicht konstant
+(eine geöffnete Vorschau lässt die Zeile wachsen), was `useVirtualizer` hier teurer machen würde
+als in `MessageList`. Gepinnt mit einem Render-Zähler statt mit einer Zeitmessung
+(`FilesPage.rerender.test.tsx`).
 
 **Kategorie / Bereich:** performance / PIM (Dateien)
 
@@ -2685,7 +2696,12 @@ Leerzeichen gespeichert.
 
 ### R-66 — [LOW] Dialoge „Neuer Ordner“ und „Umbenennen“ reagieren nicht auf Enter, und der Name wird nicht — wie kommentiert — vorselektiert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Dialoge sind `<form onSubmit>` nach dem Muster `AddressBookList` (Footer-Knopf per
+`form={id}` mit dem Formular im Body verbunden). Die Vorselektion läuft über `initialFocusRef`
+plus `select()` in einem Effekt der SEITE statt über `onFocus`: `Dialog` setzt den Fokus aus einem
+eigenen Effekt, und der Effekt der Elternkomponente läuft danach — `onFocus` allein wurde davon
+wieder überschrieben (nachgemessen: `selectionStart` blieb am Ende).
 
 **Kategorie / Bereich:** a11y / PIM (Dateien)
 
@@ -2710,7 +2726,12 @@ e.currentTarget.select()}` oder `initialFocusRef` + `select()`.
 
 ### R-67 — [LOW] Sammel-Upload: bricht die Schleife bei Datei 3 von 11 ab, nennt der Toast keine Datei
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Variante 1 des Lösungsansatzes: jede Datei wird versucht, die Fehlschläge werden mit ihrer Ursache
+gesammelt, und nach der Schleife gibt es genau einen Reload. Eine abgelehnte Datei nennt Name und
+Grund, mehrere nennen Anzahl und Namen (neue Schlüssel `files.uploadProblem.one` /
+`files.uploadProblem.some` in allen 14 Bundles). Kein `Promise.allSettled`: die Uploads laufen
+bewusst nacheinander, weil ein Stapel Scans sonst gleichzeitig gegen dieselbe Quote läuft.
 
 **Kategorie / Bereich:** robustness / PIM (Dateien)
 
