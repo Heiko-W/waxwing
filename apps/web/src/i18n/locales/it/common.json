@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Nessun mittente)",
     "noSubject": "(Nessun oggetto)",
+    "noDate": "Senza data",
     "unread": "Non letto",
     "flagged": "Preferito",
     "attachment": "Con allegato",

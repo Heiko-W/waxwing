@@ -1016,6 +1016,7 @@
   "list": {
     "noSender": "（无发件人）",
     "noSubject": "（无主题）",
+    "noDate": "无日期",
     "unread": "未读",
     "flagged": "已标记",
     "attachment": "含附件",

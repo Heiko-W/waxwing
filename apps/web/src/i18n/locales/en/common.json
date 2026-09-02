@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(No sender)",
     "noSubject": "(No subject)",
+    "noDate": "No date",
     "unread": "Unread",
     "flagged": "Flagged",
     "attachment": "Has attachment",

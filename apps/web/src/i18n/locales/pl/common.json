@@ -1058,6 +1058,7 @@
   "list": {
     "noSender": "(Brak nadawcy)",
     "noSubject": "(Brak tematu)",
+    "noDate": "Bez daty",
     "unread": "Nieprzeczytana",
     "flagged": "Oznaczona gwiazdką",
     "attachment": "Ma załącznik",

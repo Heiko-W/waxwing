@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Sin remitente)",
     "noSubject": "(Sin asunto)",
+    "noDate": "Sin fecha",
     "unread": "No leído",
     "flagged": "Destacado",
     "attachment": "Tiene adjunto",

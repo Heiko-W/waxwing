@@ -209,3 +209,42 @@ describe('double-click opens the message on its own', () => {
     expect(onSelectToggle).toHaveBeenCalled()
   })
 })
+
+/**
+ * A `receivedAt` the server should never have sent (R-09).
+ *
+ * `Intl.DateTimeFormat.format` throws a `RangeError` on an `Invalid Date`, and this component
+ * formats one per rendered row — so one malformed envelope took the mail route into the error
+ * boundary and kept it there, because the row lives in the replica until it is evicted.
+ *
+ * These rows are built AROUND `toEmailRow` on purpose. The boundary now normalises the field, so
+ * going through it would only prove the boundary; what has to hold is the render path, for the rows
+ * that were written before the boundary existed.
+ */
+describe('MessageRow with a date the server got wrong', () => {
+  function rawRow(receivedAt: unknown): EmailRow {
+    return { ...row(), receivedAt: receivedAt as string }
+  }
+
+  it.each([
+    ['a missing field', undefined],
+    ['an empty string', ''],
+    ['prose', 'garbage'],
+    ['an out-of-range date', '2026-13-45T00:00:00Z'],
+    ['null', null],
+    ['a bare number', 1234],
+  ])('renders %s as a placeholder instead of throwing', (_name, value) => {
+    expect(() => grid(<MessageRow {...baseProps} email={rawRow(value)} />)).not.toThrow()
+    expect(screen.getByText('No date')).toBeInTheDocument()
+    // …and no `<time>` claiming a machine-readable stamp it does not have.
+    expect(document.querySelector('time')).toBeNull()
+  })
+
+  it('still renders a real date as a <time> the machine can read', () => {
+    grid(<MessageRow {...baseProps} email={rawRow('2026-03-03T10:00:00Z')} />)
+    const time = document.querySelector('time')
+    expect(time).not.toBeNull()
+    expect(time).toHaveAttribute('datetime', '2026-03-03T10:00:00Z')
+    expect(screen.queryByText('No date')).toBeNull()
+  })
+})

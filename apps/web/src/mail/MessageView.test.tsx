@@ -1297,3 +1297,34 @@ describe('MessageView', () => {
     })
   })
 })
+
+/**
+ * The reading pane half of R-09. `formatDate` reaches `Intl.DateTimeFormat.format`, which throws a
+ * `RangeError` on an `Invalid Date`; the header renders it unconditionally, so a message the reader
+ * merely CLICKED took the route into the error boundary.
+ *
+ * Built around `toEmailRow`, not through it: the boundary now normalises the field, and what has to
+ * hold here is the render path for rows that were written before it did.
+ */
+describe('MessageView with a date the server got wrong', () => {
+  it.each([
+    ['a missing field', undefined],
+    ['prose', 'garbage'],
+    ['null', null],
+  ])('renders %s as a placeholder instead of throwing', async (_name, value) => {
+    await putEmailBody(db, textBodyRow('e1', 'hello'))
+    const row = { ...seen({ subject: 'Hello' }), receivedAt: value as string }
+    expect(() => renderView(row)).not.toThrow()
+    expect(await screen.findByText('No date')).toBeInTheDocument()
+    // No `<time>` claiming a machine-readable stamp the message does not have.
+    expect(document.querySelector('time')).toBeNull()
+  })
+
+  it('still renders a real date as a <time> the machine can read', async () => {
+    await putEmailBody(db, textBodyRow('e1', 'hello'))
+    renderView({ ...seen({ subject: 'Hello' }), receivedAt: '2026-03-03T10:00:00Z' })
+    await screen.findByRole('article', { name: 'Hello' })
+    expect(document.querySelector('time')).toHaveAttribute('datetime', '2026-03-03T10:00:00Z')
+    expect(screen.queryByText('No date')).toBeNull()
+  })
+})

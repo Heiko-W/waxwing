@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(Geen afzender)",
     "noSubject": "(Geen onderwerp)",
+    "noDate": "Geen datum",
     "unread": "Ongelezen",
     "flagged": "Met ster",
     "attachment": "Heeft een bijlage",

@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Sem remetente)",
     "noSubject": "(Sem assunto)",
+    "noDate": "Sem data",
     "unread": "Não lida",
     "flagged": "Assinalada",
     "attachment": "Tem anexo",

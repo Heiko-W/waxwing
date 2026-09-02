@@ -1016,6 +1016,7 @@
   "list": {
     "noSender": "（差出人なし）",
     "noSubject": "（件名なし）",
+    "noDate": "日付なし",
     "unread": "未読",
     "flagged": "フラグあり",
     "attachment": "添付ファイルあり",

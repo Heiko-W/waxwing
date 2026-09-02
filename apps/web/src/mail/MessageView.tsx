@@ -66,6 +66,7 @@ import {
 import { AttachmentList } from './AttachmentList'
 import { topmostAuthResults } from './auth-results'
 import { detectProtection, type ProtectionPart } from './encrypted-message'
+import { parseReceivedAt } from './format-message-time'
 import { LabelMenu } from './labels/LabelMenu'
 import { MailBodyFrame } from './MailBodyFrame'
 import { MoveDialog } from './MoveDialog'
@@ -537,10 +538,18 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
   const showFromAddress = fromAddress !== null && fromAddress !== name
   /** `From: "security@bank.test" <attacker@evil.tld>` — the one shape a dimmed address can't answer. */
   const nameIsAddressLike = nameLooksLikeAddress(email.from)
-  const dateLabel = formatDate(new Date(email.receivedAt), {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
+  /*
+   * `null` when the server's `receivedAt` is not a usable timestamp (R-09). `formatDate` reaches
+   * `Intl.DateTimeFormat.format`, which THROWS on an `Invalid Date` — in the render path, so a
+   * single malformed envelope took the whole mail route into the error boundary and stayed there,
+   * because the row lives in the replica until it is evicted. `parseReceivedAt` also refuses the
+   * quieter class the throw hid: `null` and bare numbers, which produce a confident "Jan 1, 1970".
+   */
+  const receivedAt = parseReceivedAt(email.receivedAt)
+  const dateLabel =
+    receivedAt === null
+      ? t('list.noDate')
+      : formatDate(receivedAt, { dateStyle: 'medium', timeStyle: 'short' })
 
   // ---- header details (M3.9, FR-RD-06). Each row earns its place or is not rendered. ----
 
@@ -1063,9 +1072,13 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
                 </span>
               )}
             </span>
-            <time className={styles.date} dateTime={email.receivedAt}>
-              {dateLabel}
-            </time>
+            {receivedAt === null ? (
+              <span className={styles.date}>{dateLabel}</span>
+            ) : (
+              <time className={styles.date} dateTime={email.receivedAt}>
+                {dateLabel}
+              </time>
+            )}
             {onCollapse !== undefined && (
               <IconButton
                 label={t('reading.collapse')}

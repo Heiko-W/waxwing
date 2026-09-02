@@ -101,6 +101,34 @@ describe('toEmailRow', () => {
     expect(row.amb.sort()).toEqual(['acc\u0000arch', 'acc\u0000inbox'])
     expect(row.akw).toEqual(['acc\u0000$seen'])
   })
+
+  /*
+   * The date the type promises and the server may not deliver (R-09). RFC 8621 makes `receivedAt` a
+   * mandatory `UTCDate`; nothing between the wire and this function checks it, and the value goes on
+   * to an `Intl` formatter that THROWS on an `Invalid Date` — in the render path of a virtualized
+   * list, from a row that then sits in the replica until it is evicted.
+   *
+   * Both classes are refused, including the one that does not throw: `null` and a bare number are
+   * silently the epoch, which would have stored — and shown — a confident "Jan 1, 1970".
+   */
+  it.each([
+    ['a missing field', undefined],
+    ['an empty string', ''],
+    ['prose', 'garbage'],
+    ['an out-of-range date', '2026-13-45T00:00:00Z'],
+    ['null', null],
+    ['a bare number', 1234],
+  ])('stores %s as no date at all rather than as an index key nobody can read', (_name, value) => {
+    const row = toEmailRow('acc', { ...email('e1'), receivedAt: value as string })
+    expect(row.receivedAt).toBe('')
+  })
+
+  it('leaves a well-formed timestamp exactly as the server wrote it', () => {
+    // Byte-identical, not merely equivalent: the value is also the `<time datetime>` the reader's
+    // browser is handed, and re-serializing it would silently change the wire form.
+    const row = toEmailRow('acc', { ...email('e1'), receivedAt: '2026-03-03T10:00:00Z' })
+    expect(row.receivedAt).toBe('2026-03-03T10:00:00Z')
+  })
 })
 
 describe('account scoping', () => {

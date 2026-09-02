@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(Gönderen yok)",
     "noSubject": "(Konu yok)",
+    "noDate": "Tarih yok",
     "unread": "Okunmamış",
     "flagged": "Yıldızlı",
     "attachment": "Eki var",

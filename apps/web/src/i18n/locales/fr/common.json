@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Aucun expéditeur)",
     "noSubject": "(Sans objet)",
+    "noDate": "Sans date",
     "unread": "Non lu",
     "flagged": "Suivi",
     "attachment": "Contient une pièce jointe",

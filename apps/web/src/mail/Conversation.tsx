@@ -192,6 +192,9 @@ function CollapsedMessage({
   const { t } = useTranslation()
   const name = senderName(email.from, t('list.noSender'))
   const unread = email.keywords.$seen !== true
+  // `null` when the server's `receivedAt` is not a usable timestamp (R-09) — a `<time>` with a
+  // garbage `datetime` is not a time, so that case renders as a plain span.
+  const time = formatMessageTime(email.receivedAt)
   return (
     <button
       ref={ref}
@@ -203,9 +206,13 @@ function CollapsedMessage({
       <Avatar name={name} size="sm" />
       <span className={styles.collapsedFrom}>{name}</span>
       <span className={styles.collapsedPreview}>{email.preview}</span>
-      <time className={styles.collapsedTime} dateTime={email.receivedAt}>
-        {formatMessageTime(email.receivedAt)}
-      </time>
+      {time === null ? (
+        <span className={styles.collapsedTime}>{t('list.noDate')}</span>
+      ) : (
+        <time className={styles.collapsedTime} dateTime={email.receivedAt}>
+          {time}
+        </time>
+      )}
     </button>
   )
 }

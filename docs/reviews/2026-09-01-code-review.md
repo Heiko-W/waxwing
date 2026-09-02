@@ -495,7 +495,17 @@ mit Entfernung): alle grün. Gegenprüfung: bestätigt, Severity bleibt medium.
 
 ### R-09 — [MEDIUM] Ein ungültiges `receivedAt` vom Server wirft beim Rendern und reißt Liste und Lesebereich in die Error-Boundary — dauerhaft, weil die Zeile in der Replica liegt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide vorgeschlagenen Teile umgesetzt und beide Fehlerklassen behandelt — nachgeprüft: `undefined`,
+`''`, Nicht-ISO und außerhalb des Bereichs werfen; `null` und blanke Zahlen werden still zur Epoche.
+`parseReceivedAt` (in `mail/format-message-time.ts`) weist beide zurück und ist die eine Definition,
+die auch `toEmailRow` benutzt — statt der im Lösungsansatz vorgeschlagenen zweiten Prüfung inline in
+`db.ts`, die mit der Anzeige hätte auseinanderlaufen können. Abweichung beim Fallback an der Grenze:
+`''` statt `new Date(0).toISOString()` — Letzteres wäre genau das stille „1. Januar 1970", das der
+Befund benennt; `''` ist ein gültiger IndexedDB-Schlüssel, sortiert vor jedem echten Zeitstempel und
+lässt eine undatierte Nachricht ans Ende eines Fensters statt an den Anfang rutschen. Im Render-Pfad
+liefert `formatMessageTime` jetzt `null` statt zu werfen, und die drei Aufrufer zeichnen dann eine
+Textzeile mit `list.noDate` (14 Bundles) statt eines `<time>` mit unlesbarem `datetime`.
 
 **Kategorie / Bereich:** robustness / Mail
 

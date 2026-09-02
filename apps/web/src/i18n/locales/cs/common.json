@@ -1058,6 +1058,7 @@
   "list": {
     "noSender": "(Bez odesílatele)",
     "noSubject": "(Bez předmětu)",
+    "noDate": "Bez data",
     "unread": "Nepřečteno",
     "flagged": "S příznakem",
     "attachment": "Má přílohu",
