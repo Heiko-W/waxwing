@@ -1357,7 +1357,12 @@ Replay → `setEmails` mit `create: {'draft-d1'}`; drafts-Zeile fehlt, Outbox-Ze
 
 ### R-30 — [MEDIUM] Zwei Tabs, die gleichzeitig refreshen, löschen sich bei Refresh-Token-Rotation mit Invalidierung gegenseitig das gültige Token aus dem gemeinsamen Store
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt wie vorgeschlagen, mit einer Praezisierung: statt nach Lock-Erwerb erneut zu lesen und
+zu vergleichen, liegt der GESAMTE Store-Zugriff im kritischen Abschnitt — das Nachlesen entfaellt
+damit. Der Lock hat ein Wartebudget (15 s, `refresh-lock.ts`), weil `navigator.locks` keinen
+Timeout kennt und der Lock ueber Netz-I/O gehalten wird; laeuft es ab, faellt der Grant auf den
+ungesicherten Pfad zurueck, den das Compare-and-delete absichert.
 
 **Kategorie / Bereich:** correctness / App (Auth)
 

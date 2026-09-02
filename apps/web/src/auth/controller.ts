@@ -27,6 +27,7 @@ import {
   revokeToken,
   type TokenResult,
 } from './oauth'
+import { defaultLockManager, type LockManagerLike, withRefreshLock } from './refresh-lock'
 import { SecretName, SecretStore } from './secret-store'
 import { TokenStore } from './token-store'
 import type {
@@ -75,6 +76,12 @@ export interface AuthControllerOptions {
   replaceUrl?: (url: string) => void
   /** Surfaces wiped by "remove data" logout; defaults to browser globals. */
   wipe?: WipeEnvironment
+  /**
+   * Lock manager serializing the refresh grant across tabs; defaults to `navigator.locks`.
+   * Injected so the cross-tab rotation race can be driven deterministically in tests, and so an
+   * environment without the API degrades to the unlocked path rather than throwing.
+   */
+  locks?: LockManagerLike
 }
 
 export class AuthController {
@@ -87,6 +94,7 @@ export class AuthController {
   private readonly getBaseUri: () => string
   private readonly replaceUrl: (url: string) => void
   private readonly wipeEnvOverride: WipeEnvironment | undefined
+  private readonly locks: LockManagerLike | undefined
 
   private session: AuthSession | null = null
   private resolvedOAuth: ResolvedOAuthConfig | null = null
@@ -118,6 +126,7 @@ export class AuthController {
     this.replaceUrl =
       options.replaceUrl ?? ((url) => globalThis.history.replaceState(null, '', url))
     this.wipeEnvOverride = options.wipe
+    this.locks = options.locks ?? defaultLockManager()
   }
 
   /** The current session snapshot, or `null` when signed out. */
@@ -299,7 +308,25 @@ export class AuthController {
     return this.refreshInFlight
   }
 
-  private async doRefresh(): Promise<void> {
+  /**
+   * One grant, and only one across the whole browser profile at a time (R-30).
+   *
+   * The single-flight above is per `AuthController`, i.e. per tab, and every tab shares one
+   * `waxwing-auth` database (ADR-037). Two tabs restored together therefore read the same refresh
+   * token and start two grants; against an IdP that invalidates the old token on rotation the
+   * loser is answered `invalid_grant` and used to delete the token the winner had just written.
+   * Both tabs signed out, and so did the next cold start.
+   *
+   * The lock is what makes the second tab READ AFTER the first one wrote: every store access below
+   * happens inside the critical section, so there is nothing to re-read and compare. Where the
+   * lock is unavailable (see `refresh-lock.ts`) the compare-and-delete in `grantRefresh` is what is
+   * left, and it is enough to stop the mutual erasure — it just cannot prevent the double grant.
+   */
+  private doRefresh(): Promise<void> {
+    return withRefreshLock(this.locks, () => this.grantRefresh())
+  }
+
+  private async grantRefresh(): Promise<void> {
     const generation = this.generation
     const config = this.requireResolvedOAuth()
     const refreshToken = await this.tokens.getRefreshToken()
@@ -324,18 +351,7 @@ export class AuthController {
       )
     }
     const as = await this.ensureDiscovery(config)
-    let result: TokenResult
-    try {
-      result = await refreshTokens(as, config, refreshToken, this.oauthDeps())
-    } catch (error) {
-      this.tokens.clearAccessToken()
-      // On a TERMINAL grant rejection the refresh token is definitively dead, so also drop
-      // it from storage: otherwise restore() keys off its mere presence and resurrects a
-      // phantom session that re-fails on first use. Transient (network) errors keep the
-      // token so a brief offline blip is not a permanent logout.
-      if (isPermanentRefreshError(error)) await this.tokens.clear()
-      throw new AuthExpiredError('Token refresh failed', { cause: error })
-    }
+    const result = await this.grantWithRotationRetry(as, config, refreshToken)
     // Signed out while this grant was on the wire: the store has just been wiped, and persisting
     // the new token would rebuild it — database, wrapping key and a valid refresh token — behind a
     // login screen. Drop the result on the floor instead. The access token is in-memory only, so
@@ -346,6 +362,48 @@ export class AuthController {
     await this.tokens.apply(result)
     if (this.session?.method === 'oauth') {
       this.session = { ...this.session, expiresAt: result.expiresAt }
+    }
+  }
+
+  /**
+   * The grant itself, plus the two guards a shared store needs when the lock could not be had.
+   *
+   * COMPARE BEFORE DELETING. A terminal rejection means the token WE SENT is dead, which is not
+   * the same statement as "the token in the store is dead". Deleting unconditionally is how the
+   * losing tab of a rotation race used to erase the winner's freshly written token, taking down a
+   * session that was working.
+   *
+   * And when the stored token has moved on, that difference is itself the answer: someone else
+   * rotated it, the new value is valid, and one retry with it turns a re-auth dialog into a
+   * successful refresh. Exactly one — a second rejection is the server's real verdict.
+   */
+  private async grantWithRotationRetry(
+    as: AuthorizationServer,
+    config: ResolvedOAuthConfig,
+    refreshToken: string,
+  ): Promise<TokenResult> {
+    try {
+      return await refreshTokens(as, config, refreshToken, this.oauthDeps())
+    } catch (error) {
+      this.tokens.clearAccessToken()
+      // Transient (network, 5xx, unparseable) failures keep the token, so a brief offline blip is
+      // not a permanent logout — and there is nothing to retry with either.
+      if (!isPermanentRefreshError(error)) {
+        throw new AuthExpiredError('Token refresh failed', { cause: error })
+      }
+      const stored = await this.tokens.getRefreshToken().catch(() => null)
+      if (stored !== null && stored !== refreshToken) {
+        try {
+          return await refreshTokens(as, config, stored, this.oauthDeps())
+        } catch (retryError) {
+          if (isPermanentRefreshError(retryError)) await this.tokens.clear()
+          throw new AuthExpiredError('Token refresh failed', { cause: retryError })
+        }
+      }
+      // Still ours and definitively dead, so drop it from storage too: otherwise `restore()` keys
+      // off its mere presence and resurrects a phantom session that re-fails on first use.
+      await this.tokens.clear()
+      throw new AuthExpiredError('Token refresh failed', { cause: error })
     }
   }
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthController } from './controller'
 import { OAuthCallbackError } from './errors'
 import { DEFAULT_SCOPES } from './oauth'
+import type { LockManagerLike } from './refresh-lock'
 import { SecretName, SecretStore } from './secret-store'
 import type { StartLoginResult } from './types'
 import type { WipeEnvironment } from './wipe'
@@ -928,5 +929,189 @@ describe('AuthController — the callback carries the server’s verdict', () =>
 
     expect(error).toBeInstanceOf(OAuthCallbackError)
     expect((error as OAuthCallbackError).code).toBeUndefined()
+  })
+})
+
+/**
+ * Two tabs, one shared `waxwing-auth` database (ADR-037), and an authorization server that
+ * invalidates a refresh token the moment it rotates it — the OAuth 2.1 rule for public clients.
+ * (Stalwart is not such a server; the external IdPs ADR-006 recommends for revocation are.)
+ */
+describe('AuthController — two tabs refreshing at once (R-30)', () => {
+  /** A `LockManager` that actually serializes: each name has a queue of one. */
+  function fakeLocks(): LockManagerLike & { held: string[] } {
+    const queues = new Map<string, Promise<unknown>>()
+    const held: string[] = []
+    return {
+      held,
+      request(name, _options, callback) {
+        held.push(name)
+        const previous = queues.get(name) ?? Promise.resolve()
+        const run = previous.then(
+          () => callback(null),
+          () => callback(null),
+        )
+        queues.set(
+          name,
+          run.then(
+            () => undefined,
+            () => undefined,
+          ),
+        )
+        return run
+      },
+    }
+  }
+
+  function badGrant(): Response {
+    return new Response(JSON.stringify({ error: 'invalid_grant' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  /** An IdP whose refresh tokens are ONE-TIME-USE: presenting a superseded one is `invalid_grant`. */
+  function rotatingIdp() {
+    let current = 'refresh-1'
+    let issued = 1
+    const grants: string[] = []
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url
+      const params = new URLSearchParams(init?.body ? String(init.body) : '')
+      if (url.includes('/.well-known/')) return json(DISCOVERY)
+      if (!url.includes('/token')) return new Response('not found', { status: 404 })
+      if (params.get('grant_type') !== 'refresh_token') {
+        return json({
+          access_token: 'access-1',
+          token_type: 'bearer',
+          expires_in: 3600,
+          refresh_token: current,
+        })
+      }
+      const presented = params.get('refresh_token') ?? ''
+      grants.push(presented)
+      if (presented !== current) return badGrant()
+      issued += 1
+      current = `refresh-${issued}`
+      return json({
+        access_token: `access-${issued}`,
+        token_type: 'bearer',
+        expires_in: 3600,
+        refresh_token: current,
+      })
+    }
+    return { fetchImpl, grants }
+  }
+
+  const OAUTH = {
+    issuer: 'http://localhost:18080',
+    clientId: 'waxwing',
+    scopes: DEFAULT_SCOPES,
+  }
+
+  it('serializes the grant, so the second tab sends what the first one wrote', async () => {
+    const idp = rotatingIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store, dbName } = freshStore()
+    const locks = fakeLocks()
+
+    // Tab A signs in and writes refresh-1 into the shared store.
+    let href = 'http://localhost:5173/'
+    const tabA = new AuthController({
+      oauth: OAUTH,
+      store,
+      locks,
+      navigate: () => {},
+      getHref: () => href,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        href = url
+      },
+    })
+    const start = await tabA.startLogin({ method: 'oauth' })
+    const state = new URL(
+      (start as Extract<StartLoginResult, { kind: 'redirect' }>).url,
+    ).searchParams.get('state')
+    href = `http://localhost:5173/?code=c&state=${state}`
+    await tabA.completeRedirect()
+
+    // Tab B is the same profile: same database, its own controller, restored from the record.
+    const tabB = new AuthController({
+      oauth: OAUTH,
+      store: new SecretStore({ dbName }),
+      locks,
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+    expect(await tabB.restore()).not.toBeNull()
+
+    const outcomes = await Promise.allSettled([tabA.refresh(), tabB.refresh()])
+
+    expect(outcomes.map((o) => o.status)).toEqual(['fulfilled', 'fulfilled'])
+    // The whole point: the second grant presented the token the first one had just written, so
+    // neither was ever refused and neither deleted the other's.
+    expect(idp.grants).toEqual(['refresh-1', 'refresh-2'])
+    expect(await store.get(SecretName.RefreshToken)).toBe('refresh-3')
+    expect(locks.held).toEqual(['waxwing-auth-refresh', 'waxwing-auth-refresh'])
+
+    // And the cold start after all this still finds a session, which is what used to be lost.
+    const rebooted = new AuthController({
+      oauth: OAUTH,
+      store: new SecretStore({ dbName }),
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+    expect(await rebooted.restore()).not.toBeNull()
+  })
+
+  it('does not delete a token that is no longer the one it sent, and retries with the new one', async () => {
+    // The half that has to hold where Web Locks are unavailable (older Safari, and this project's
+    // Node-based auth tests). The store is rotated underneath the grant, exactly as another tab
+    // would: an unconditional `tokens.clear()` here is what erased a live credential.
+    const { store, dbName } = freshStore()
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof URL ? input.href : String(input)
+      if (url.includes('/.well-known/')) return json(DISCOVERY)
+      const params = new URLSearchParams(init?.body ? String(init.body) : '')
+      const presented = params.get('refresh_token')
+      if (presented === 'refresh-1') {
+        // The other tab won the race and has already written its rotated token.
+        await store.put(SecretName.RefreshToken, 'refresh-2')
+        return badGrant()
+      }
+      return json({
+        access_token: 'access-2',
+        token_type: 'bearer',
+        expires_in: 3600,
+        refresh_token: 'refresh-3',
+      })
+    })
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({
+        method: 'oauth',
+        username: null,
+        oauth: {
+          ...OAUTH,
+          redirectUri: 'http://localhost:5173/',
+          discovery: 'oauth2',
+          allowInsecureRequests: true,
+        },
+      }),
+    )
+    await store.put(SecretName.RefreshToken, 'refresh-1')
+    const controller = new AuthController({
+      oauth: OAUTH,
+      store,
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+    await controller.restore()
+
+    expect(await controller.getAccessToken()).toBe('access-2')
+    expect(await store.get(SecretName.RefreshToken)).toBe('refresh-3')
+    const rebooted = new AuthController({
+      oauth: OAUTH,
+      store: new SecretStore({ dbName }),
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+    expect(await rebooted.restore()).not.toBeNull()
   })
 })
