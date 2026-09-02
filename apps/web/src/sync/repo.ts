@@ -1128,12 +1128,66 @@ export async function putCalendarQueryCache(
   await db.calendarQueryCache.put(row)
 }
 
+/**
+ * Store one materialized calendar window — the stored objects, the expanded occurrences and the
+ * window row that claims them — in ONE `rw` transaction.
+ *
+ * **Atomic because the maintenance sweep is watching.** The sweep deletes every occurrence row no
+ * surviving window still names, so a materialization that writes its occurrences first and its
+ * window row three transactions later has an interval in which the fresh rows look like orphans;
+ * hit it and the reader gets an empty month with no error until the next forced sweep, up to five
+ * minutes later (R-72). One transaction closes the interval instead of narrowing it. The mail path
+ * meets the same hazard and answers it by writing the claim FIRST (`backfill.ts`); here the two
+ * halves can be written together, because by the time either is due every network round-trip is
+ * already done.
+ *
+ * Objects BEFORE occurrences within the transaction, which is the order
+ * {@link fullRequeryCalendar} always used: on a server that does not synthesise ids the two answers
+ * name the same records, and the occurrence set is the richer one — writing it last keeps the lean
+ * identity fetch from overwriting properties the grid needs.
+ */
+export async function putCalendarWindow(
+  db: ReplicaDb,
+  accountId: Id,
+  objects: readonly CalendarEvent[],
+  occurrences: readonly CalendarEvent[],
+  row: CalendarQueryCacheRow,
+): Promise<void> {
+  await db.transaction('rw', db.calendarEvents, db.calendarQueryCache, async () => {
+    await db.calendarEvents.bulkPut(
+      objects.map((event) => toCalendarEventRow(accountId, event, false)),
+    )
+    await db.calendarEvents.bulkPut(
+      occurrences.map((event) => toCalendarEventRow(accountId, event, true)),
+    )
+    await db.calendarQueryCache.put(row)
+  })
+}
+
 export function getCalendarQueryCache(
   db: ReplicaDb,
   accountId: Id,
   key: string,
 ): Promise<CalendarQueryCacheRow | undefined> {
   return db.calendarQueryCache.get([accountId, key])
+}
+
+/**
+ * Mark one calendar window as USED now, without re-materializing it.
+ *
+ * `lastUsedAt` is what keeps a window out of the reaper's reach, and until R-05 the only thing that
+ * ever wrote it for a calendar was a full re-query. A month the reader opens but that nothing makes
+ * stale therefore aged as if nobody had looked at it, and after two days the reap took the window
+ * and its occurrences out from under an open grid. This is the stamp a mail window gets from its
+ * backfill; the calendar needs the same one.
+ */
+export async function touchCalendarQueryCache(
+  db: ReplicaDb,
+  accountId: Id,
+  key: string,
+  now: number,
+): Promise<void> {
+  await db.calendarQueryCache.update([accountId, key], { lastUsedAt: now })
 }
 
 export function calendarQueryCacheForAccount(
@@ -1167,13 +1221,18 @@ export function deleteCalendarQueryCacheRows(
   return db.calendarQueryCache.bulkDelete(keys.map((key) => [accountId, key]))
 }
 
-/** Every expanded occurrence row for an account — the prune candidates (see `runMaintenance`). */
-export function calendarOccurrences(db: ReplicaDb, accountId: Id): Promise<CalendarEventRow[]> {
-  return db.calendarEvents
-    .where('accountId')
-    .equals(accountId)
-    .filter((row) => row.occurrence)
-    .toArray()
+/**
+ * The ids of every expanded occurrence row for an account — the sweep's candidates.
+ *
+ * Off the `[accountId+occ]` index and returning PRIMARY KEYS, not rows. The first version of this
+ * read was `where('accountId').filter(row => row.occurrence).toArray()`, which deserialized every
+ * calendar row in the account — full JSCalendar objects with participants, descriptions and
+ * alerts — on the main thread, every five minutes, only to look at one boolean (R-73). `occ` is the
+ * indexable mirror of that boolean and exists for this read.
+ */
+export async function calendarOccurrenceIds(db: ReplicaDb, accountId: Id): Promise<Id[]> {
+  const keys = await db.calendarEvents.where('[accountId+occ]').equals([accountId, 1]).primaryKeys()
+  return keys.map(([, id]) => id)
 }
 
 /**

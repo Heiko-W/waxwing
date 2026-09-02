@@ -1874,6 +1874,7 @@
       "allDay": "終日",
       "duration": "所要時間（分）",
       "durationInvalid": "1 分から {{max}} 分の間で入力してください。",
+      "zoneNote": "時刻は {{zone}} です",
       "calendar": "カレンダー",
       "description": "メモ",
       "location": "場所",
@@ -1985,6 +1986,7 @@
     },
     "import": {
       "open": "予定をインポート…",
+      "offline": "オフラインです。予定は接続中のみインポートできます。",
       "title": "予定のインポート",
       "file": "カレンダーファイル（.ics）",
       "empty": "このファイルに予定はありません。",

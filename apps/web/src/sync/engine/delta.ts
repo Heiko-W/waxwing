@@ -10,6 +10,7 @@
  */
 
 import type {
+  CalendarEvent,
   CalendarEventFilter,
   ContactCardComparator,
   ContactCardFilter,
@@ -45,9 +46,9 @@ import {
   getSyncState,
   markCalendarWindowsStale,
   putAddressBooks,
-  putCalendarEvents,
   putCalendarQueryCache,
   putCalendars,
+  putCalendarWindow,
   putContactCards,
   putContactQueryCache,
   putEmails,
@@ -911,21 +912,14 @@ export async function fullRequeryCalendar(
   const occurrences = await port.getCalendarEvents(query.ids, true)
 
   let objectIds: Id[] = []
+  let objects: CalendarEvent[] = []
   try {
     const objectQuery = await port.queryCalendarEvents({ filter })
     objectIds = objectQuery.ids
-    const objects = await port.getCalendarEvents(objectIds, false)
-    // Objects FIRST, occurrences second. On a server that does not synthesise ids the two answers
-    // name the same records, and the occurrence set is the richer one — writing it last is what
-    // keeps the lean identity fetch from overwriting properties the grid needs.
-    await putCalendarEvents(db, accountId, objects.list, false)
+    objects = (await port.getCalendarEvents(objectIds, false)).list
   } catch {
     objectIds = []
-  }
-  await putCalendarEvents(db, accountId, occurrences.list, true)
-
-  if ((await getSyncState(db, accountId, 'CalendarEvent')) === null) {
-    await setSyncState(db, accountId, 'CalendarEvent', occurrences.state, clock.now())
+    objects = []
   }
 
   const row: CalendarQueryCacheRow = {
@@ -938,7 +932,15 @@ export async function fullRequeryCalendar(
     syncedAt: clock.now(),
     lastUsedAt: clock.now(),
   }
-  await putCalendarQueryCache(db, row)
+  // EVERY network round-trip is done by now, and the three writes go out as ONE transaction: the
+  // maintenance sweep reaps occurrences that no window claims, so a gap between "the rows are
+  // stored" and "a window claims them" is a gap in which a pass can empty the month the reader is
+  // opening (R-72). See {@link putCalendarWindow}.
+  await putCalendarWindow(db, accountId, objects, occurrences.list, row)
+
+  if ((await getSyncState(db, accountId, 'CalendarEvent')) === null) {
+    await setSyncState(db, accountId, 'CalendarEvent', occurrences.state, clock.now())
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -15,9 +15,6 @@ export interface MonthDay {
   readonly isToday: boolean
 }
 
-/** Milliseconds in a day — safe here because every value is built with local-time constructors. */
-const DAY_MS = 86_400_000
-
 /** Midnight, local time, of the day `date` falls in. */
 export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -81,12 +78,19 @@ export function monthGrid(month: Date, locale: string, today: Date): MonthDay[] 
   return days
 }
 
-/** The `[from, to)` window a month view has to fetch — the whole grid, not just the month. */
+/**
+ * The `[from, to)` window a month view has to fetch — the whole grid, not just the month.
+ *
+ * The end is built with {@link addDays}, which is the rule this module states three times over and
+ * broke here: `+ DAY_MS` on a grid whose last cell falls on an autumn transition ends the window at
+ * 23:00 of that day, so events in its final hour were never fetched. `weekRange` in `week-grid.ts`
+ * always did it this way (R-62).
+ */
 export function monthRange(month: Date, locale: string): { from: Date; to: Date } {
   const days = monthGrid(month, locale, month)
   const first = days[0]?.date ?? month
   const last = days[days.length - 1]?.date ?? month
-  return { from: startOfDay(first), to: new Date(startOfDay(last).getTime() + DAY_MS) }
+  return { from: startOfDay(first), to: addDays(startOfDay(last), 1) }
 }
 
 /** `2026-08-20`, for a route param. Local, not UTC — the URL names a day, not an instant. */

@@ -1931,6 +1931,7 @@
       "allDay": "Journée entière",
       "duration": "Durée en minutes",
       "durationInvalid": "Indiquez une durée comprise entre 1 et {{max}} minutes.",
+      "zoneNote": "Heures en {{zone}}",
       "calendar": "Calendrier",
       "description": "Notes",
       "location": "Lieu",
@@ -2056,6 +2057,7 @@
     },
     "import": {
       "open": "Importer des événements…",
+      "offline": "Vous êtes hors ligne. Les événements ne peuvent être importés qu’avec une connexion.",
       "title": "Importer des événements",
       "file": "Fichier de calendrier (.ics)",
       "empty": "Ce fichier ne contient aucun événement.",

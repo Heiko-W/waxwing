@@ -757,6 +757,16 @@ export interface CalendarEventRow {
   base: Id
   /** `true` when this row came from the expanded query — i.e. it is a row the grid draws. */
   occurrence: boolean
+  /**
+   * {@link occurrence} as an INDEXABLE key — `1` for an expanded occurrence, `0` for a stored object.
+   *
+   * A boolean is not a valid IndexedDB key, so `occurrence` itself cannot carry an index (see the
+   * v7 note in the version chain). Without one, the five-minute maintenance sweep had to read EVERY
+   * calendar row of the account and deserialize its whole JSCalendar object — participants,
+   * description, alerts — just to ask which of them were occurrences (R-73). Derived in
+   * {@link toCalendarEventRow} and never written by hand.
+   */
+  occ: 0 | 1
   event: CalendarEvent
 }
 
@@ -935,7 +945,8 @@ export class ReplicaDb extends Dexie {
     // v7 (K-8) — additive: the calendar replica. Three brand-new stores, so no `.upgrade()`.
     // `calendarEvents` is indexed by `base` so a delta on STORED ids can find the occurrences it
     // invalidated; `occurrence` gets no index (a boolean is not a valid IndexedDB key and would
-    // silently drop every row — the same trap `addressBooks.isSubscribed` documents above).
+    // silently drop every row — the same trap `addressBooks.isSubscribed` documents above). v9 adds
+    // the `0|1` mirror that carries that index instead.
     this.version(7).stores({
       calendars: '[accountId+id], accountId',
       calendarEvents: '[accountId+id], accountId, [accountId+base]',
@@ -947,6 +958,28 @@ export class ReplicaDb extends Dexie {
     this.version(8).stores({
       fileNodes: '[accountId+id], accountId, [accountId+parent]',
     })
+    // v9 (R-73) — `calendarEvents` gains the derived, indexable `occ` mirror of `occurrence`. NOT
+    // exempt from a bump for the reason v5 spells out: the new field is INDEXED, and a record
+    // missing an index's key path is dropped from that index entirely — every legacy row would be
+    // invisible to the occurrence sweep, i.e. never reaped again. So the stored rows are
+    // transformed. Wrapped like v5's: one malformed legacy row must never abort the upgrade, which
+    // would leave `db.open()` rejecting for ever.
+    this.version(9)
+      .stores({
+        calendarEvents: '[accountId+id], accountId, [accountId+base], [accountId+occ]',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table<CalendarEventRow>('calendarEvents')
+          .toCollection()
+          .modify((row) => {
+            try {
+              row.occ = row.occurrence === true ? 1 : 0
+            } catch {
+              row.occ = 0
+            }
+          })
+      })
   }
 }
 
@@ -1065,7 +1098,7 @@ export function toCalendarEventRow(
 ): CalendarEventRow {
   const base =
     typeof event.baseEventId === 'string' && event.baseEventId !== '' ? event.baseEventId : event.id
-  return { accountId, id: event.id, base, occurrence, event }
+  return { accountId, id: event.id, base, occurrence, occ: occurrence ? 1 : 0, event }
 }
 
 /** Map a JMAP FileNode to its stored row (D-4), deriving the root-safe parent key. */

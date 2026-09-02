@@ -1135,6 +1135,7 @@ describe('syncCalendarEvents', () => {
         id: 'occ-1',
         base: 'e1',
         occurrence: true,
+        occ: 1,
         event: occurrence('occ-1', 'e1'),
       },
       {
@@ -1142,9 +1143,17 @@ describe('syncCalendarEvents', () => {
         id: 'occ-2',
         base: 'e1',
         occurrence: true,
+        occ: 1,
         event: occurrence('occ-2', 'e1'),
       },
-      { accountId: ACC, id: 'keep', base: 'e2', occurrence: true, event: occurrence('keep', 'e2') },
+      {
+        accountId: ACC,
+        id: 'keep',
+        base: 'e2',
+        occurrence: true,
+        occ: 1,
+        event: occurrence('keep', 'e2'),
+      },
     ])
     const port = fakePort({
       calendarEventChanges: async () => ({

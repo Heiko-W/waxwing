@@ -273,15 +273,69 @@ export function excludeOverride(
 export function overrideFromDraft(
   master: CalendarEvent,
   patch: Readonly<Record<string, unknown>>,
+  occurrenceStart: LocalDateTime,
 ): Record<string, unknown> {
   const entry: Record<string, unknown> = {}
   for (const [member, value] of Object.entries(patch)) {
-    if (member === 'calendarIds' || member === '@type') continue
+    if (member === 'calendarIds' || FORBIDDEN_IN_OVERRIDE.has(member)) continue
+    /*
+     * `start` is compared against the start of THIS occurrence, not the master's.
+     *
+     * The master's `start` is the first instance's (7 September); the draft carries the one being
+     * edited (14 September). Compared against each other they always differ, so every
+     * single-occurrence edit — a title, a note — wrote a `start` the reader never touched, and an
+     * override member is sticky: move the SERIES an hour later afterwards and that one occurrence
+     * stays behind at the old time, for ever, with nothing on screen to say why (R-06).
+     *
+     * The baseline is the override KEY, which is the start the rule generates for this occurrence.
+     * Not the start it currently HAS: an occurrence already moved by an earlier override must keep
+     * that move when the reader edits its title, and comparing against the moved value would emit
+     * `undefined` and snap it back to the rule.
+     */
+    const stored = member === 'start' ? occurrenceStart : master[member]
     // `undefined` removes the member from the override; see `mergeOverride`.
-    entry[member] = sameAsMaster(master[member], value, member) ? undefined : value
+    entry[member] = sameAsMaster(stored, value, member) ? undefined : value
   }
   return entry
 }
+
+/**
+ * The members a `recurrenceOverrides` patch may not carry.
+ *
+ * `draft-ietf-calext-jscalendarbis-18` §3.3.4 (the wire format this server speaks, ADR-025): "A
+ * pointer in the PatchObject MUST be ignored if it either exactly matches one of: @type, method,
+ * organizerCalendarAddress, participants/&#42;/"calendarAddress", privacy, prodId, recurrenceId,
+ * recurrenceIdTimeZone, sentBy, uid — or if the first reference token of the pointer matches one of:
+ * recurrenceOverrides, recurrenceRule, relatedTo". RFC 8984 §4.3.5 says the same with its own
+ * spellings (`recurrenceRules`, plus `excludedRecurrenceRules`, `replyTo`, `timeZones`), and both
+ * are listed so a server speaking either gets a patch it can use.
+ *
+ * `recurrenceRule` is the one this editor actually hit: every draft carries a repeat, the master
+ * was read without its rule, and `ruleToWrite` spells the rule with `until: null, count: null`
+ * where the stored one has neither — so the comparison never matched and a rule went into every
+ * override. Not a rejection, per the text above; just ballast, and ballast in a patch that is
+ * rewritten whole is a hazard rather than a curiosity. `calendarIds` is excluded separately: it is
+ * the JMAP envelope rather than JSCalendar, and an occurrence does not live in another calendar
+ * from its master.
+ */
+const FORBIDDEN_IN_OVERRIDE: ReadonlySet<string> = new Set([
+  '@type',
+  'excludedRecurrenceRules',
+  'method',
+  'organizerCalendarAddress',
+  'privacy',
+  'prodId',
+  'recurrenceId',
+  'recurrenceIdTimeZone',
+  'recurrenceOverrides',
+  'recurrenceRule',
+  'recurrenceRules',
+  'relatedTo',
+  'replyTo',
+  'sentBy',
+  'timeZones',
+  'uid',
+])
 
 /**
  * Structural equality, JSON-deep — the values here are JSCalendar scalars, maps and lists.
@@ -300,7 +354,50 @@ function sameAsMaster(stored: unknown, next: unknown, member?: string): boolean 
   if (member === 'duration' && typeof stored === 'string' && typeof next === 'string') {
     return durationToMs(stored) === durationToMs(next)
   }
-  return JSON.stringify(stored ?? null) === JSON.stringify(next ?? null)
+  if (member === 'alerts') return sameAlerts(stored, next)
+  return canonicalJson(stored ?? null) === canonicalJson(next ?? null)
+}
+
+/**
+ * Alerts compared by what they SAY, not by the keys they are filed under.
+ *
+ * The keys of an `alerts` map are the client's to choose, and `alertsToPatch` chooses fresh ones
+ * (`w1`, `w2`) rather than reusing the server's (`a1`, `k3`). Compared as maps, an event whose
+ * alarms were not touched at all therefore looked changed, and every single-occurrence edit froze
+ * that occurrence's reminders against every later change to the series (R-06). Compared as a set of
+ * alert objects, "the same two reminders under different names" is the same answer.
+ */
+function sameAlerts(stored: unknown, next: unknown): boolean {
+  const a = alertValues(stored)
+  const b = alertValues(next)
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+function alertValues(value: unknown): string[] {
+  if (value === null || value === undefined || typeof value !== 'object') return []
+  return Object.values(value as Record<string, unknown>)
+    .map(canonicalJson)
+    .sort()
+}
+
+/**
+ * JSON with object keys in a fixed order — so equality is about the VALUE, not about how the two
+ * sides happened to build it.
+ *
+ * `JSON.stringify` preserves insertion order, so `{action, trigger}` and `{trigger, action}`
+ * compared unequal and a member the reader never touched went into the override (R-06). Local
+ * rather than imported from `contact-card-mapping.ts`, which has a `deepEqual` of its own: the
+ * calendar has no other reason to depend on the contacts module, and one small function is a
+ * cheaper price than that edge in the bundle graph.
+ */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record)
+    .filter((key) => record[key] !== undefined)
+    .sort()
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`
 }
 
 /** The scopes a change to a repeating event may have. */

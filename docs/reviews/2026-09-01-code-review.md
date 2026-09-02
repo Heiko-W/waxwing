@@ -250,7 +250,10 @@ Berichte: bestätigt, Severity high.
 
 ### R-04 — [HIGH] Jede Bearbeitung eines zeitgebundenen Termins überschreibt dessen Zeitzone mit der des Lesers und verschiebt ihn dadurch um Stunden
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt ueber den Dialog-State (Variante 1 des Loesungsansatzes) mit Zonenhinweis am Startfeld.
+Nicht ueber `draftToEvent`: `EventDraft.timeZone` ist ein Pflichtfeld, „nicht gesetzt“ waere dort
+nicht ausdrueckbar, ohne den Typ fuer alle Aufrufer zu lockern.
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -293,7 +296,7 @@ wird; kein bestehender Test bearbeitet einen Termin fremder Zone. Gegenprüfung:
 
 ### R-05 — [HIGH] Regression aus W-18: Der Fenster-Reaper löscht das beobachtete Kalenderfenster samt Occurrences, und der Engine-Sweep holt es nie zurück
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender) — Fixstellen in Sync (`maintenance.ts`, `engine.ts`)
 
@@ -351,7 +354,11 @@ bestätigt (Szenario präzisiert), Regression durch Diff gegen `1eb3789` belegt.
 
 ### R-06 — [HIGH] Die Bearbeitung einer einzelnen Occurrence schreibt `start`, `alerts` und `recurrenceRule` in den Override, obwohl die Leserin nur den Titel geändert hat
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Sperrliste aus jscalendarbis-18 §3.3.4 (am Draft nachgeschlagen) statt aus dem Bericht zitiert;
+`organizerCalendarAddress` gehoert ebenfalls dazu und wurde ergaenzt. Reihenfolge-unabhaengiger
+Vergleich lokal in `event-recurrence.ts` statt `deepEqual` aus `contact-card-mapping.ts` — der
+Kalender bekommt sonst eine Kante auf das Kontaktmodul im Bundle-Graphen.
 
 **Kategorie / Bereich:** correctness, tests / PIM (Kalender)
 
@@ -746,7 +753,7 @@ true`, `close` persistiert nichts. Gegenprüfung: bestätigt, Auswirkung präzis
 
 ### R-16 — [MEDIUM] Ganztägige Termine bekommen am Tag der Sommerzeit-Umstellung einen zusätzlichen Tag
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -777,7 +784,7 @@ Tage, `overlapsDay(Folgetag)` → `true`. Gegenprüfung: bestätigt.
 
 ### R-17 — [MEDIUM] Wochenansicht und Verfügbarkeitsbänder liegen am Umstellungstag eine Stunde falsch
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -807,7 +814,7 @@ Umstellungstagen. Gegenprüfung: bestätigt.
 
 ### R-18 — [MEDIUM] Zwei verschiedene Teilnehmeradressen kollabieren zu einem Map-Key — ein Eingeladener geht stillschweigend verloren
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -2323,7 +2330,7 @@ Gegenprüfung: bestätigt.
 
 ### R-59 — [LOW] Offline zeigt die Kalenderleiste „Dieses Konto hat keine Kalender“, während der Monat daneben aus der Replica gezeichnet wird
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -2415,7 +2422,7 @@ medium → low.
 
 ### R-62 — [LOW] `monthRange` addiert `DAY_MS` und `defaultUntil` nimmt das UTC-Datum — beides gegen die eigene Regel des Moduls
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -2693,7 +2700,7 @@ Gegenprüfung: bestätigt.
 
 ### R-72 — [LOW] Der W-18-Occurrence-Sweep kann eine gerade materialisierte Kalenderansicht leeren: Occurrences werden vor der Fensterzeile geschrieben (vgl. W-18)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2726,7 +2733,11 @@ treffen. Gegenprüfung: bestätigt (Code).
 
 ### R-73 — [LOW] Der W-18-Wartungspass lädt alle Kalender-Events vollständig (JS-Filter) — alle fünf Minuten (vgl. W-18)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Occurrence-Vollscan behoben (indiziertes `occ`-Feld, DB v9, `calendarOccurrenceIds` liest nur
+Primary Keys) und die zweite Vollabfrage der Kalenderfenster entfaellt. Die Fensterzeilen selbst
+werden weiter als ganze Zeilen gelesen statt als Key-Range: `planWindowReap` bleibt die einzige
+Stelle, die die TTL-Regel kennt, und 1c braucht die Id-Arrays der Ueberlebenden ohnehin.
 
 **Kategorie / Bereich:** performance / Sync
 

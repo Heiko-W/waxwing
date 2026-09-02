@@ -17,7 +17,7 @@ import {
   type ReplicaDb,
   scopeKey,
 } from '../db'
-import { putEmails, putMailboxes } from '../repo'
+import { calendarOccurrenceIds, putEmails, putMailboxes } from '../repo'
 import type { EstimateFn } from '../storage'
 import { email, freshDb, mailbox } from '../test-utils'
 import { LOW_WATERMARK } from './eviction'
@@ -63,6 +63,8 @@ function deps(over: Partial<MaintenanceDeps> = {}): MaintenanceDeps {
     estimate: noEstimate,
     now: NOW,
     watchedKeys: new Set(),
+    watchedContactKeys: new Set(),
+    watchedCalendarKeys: new Set(),
     lastBodyFetchId: null,
     ...over,
   }
@@ -587,6 +589,7 @@ describe('runMaintenance — the contact and calendar windows', () => {
       id,
       base,
       occurrence: true,
+      occ: 1,
       event: { id, '@type': 'Event', title: 'Standup' },
     } as unknown as Parameters<typeof db.calendarEvents.put>[0]
   }
@@ -621,6 +624,7 @@ describe('runMaintenance — the contact and calendar windows', () => {
       id: 'master-1',
       base: 'master-1',
       occurrence: false,
+      occ: 0,
       event: { id: 'master-1', '@type': 'Event', title: 'Standup' },
     } as unknown as Parameters<typeof db.calendarEvents.put>[0])
 
@@ -634,6 +638,67 @@ describe('runMaintenance — the contact and calendar windows', () => {
     expect(await db.calendarEvents.get([ACC, 'occ-3'])).toBeDefined()
     // Never touched: the master is the object, not a cached view of it.
     expect(await db.calendarEvents.get([ACC, 'master-1'])).toBeDefined()
+  })
+
+  /**
+   * R-05: a window a tab is RENDERING is never reaped, however old it is.
+   *
+   * W-18 passed an empty watched set for both tables, on the argument that they stamp `lastUsedAt`
+   * on every read of the view that draws them. That holds for contacts; on the calendar side
+   * nothing stamped anything, so a month open on screen and older than the two-day TTL was reaped
+   * — window and occurrences — and the grid it was drawing turned into a permanent spinner.
+   */
+  it('never reaps a calendar window a tab is watching, however old it is', async () => {
+    await db.calendarQueryCache.bulkPut([
+      calendarWindow('cal:august', ['occ-1'], STALE),
+      calendarWindow('cal:september', ['occ-3'], STALE),
+    ])
+    await db.calendarEvents.bulkPut([occurrence('occ-1', 'master-1'), occurrence('occ-3', 'm2')])
+
+    const result = await runMaintenance(deps({ watchedCalendarKeys: new Set(['cal:august']) }))
+
+    expect(result.reapedCalendarWindows).toBe(1)
+    expect(await db.calendarQueryCache.get([ACC, 'cal:august'])).toBeDefined()
+    // …and the occurrences it names go on being named, so the sweep leaves them alone too.
+    expect(await db.calendarEvents.get([ACC, 'occ-1'])).toBeDefined()
+    expect(await db.calendarQueryCache.get([ACC, 'cal:september'])).toBeUndefined()
+    expect(await db.calendarEvents.get([ACC, 'occ-3'])).toBeUndefined()
+  })
+
+  it('never reaps a contact window a tab is watching, however old it is', async () => {
+    await db.contactQueryCache.bulkPut([
+      contactWindow('contacts:open', STALE),
+      contactWindow('contacts:closed', STALE),
+    ])
+
+    const result = await runMaintenance(deps({ watchedContactKeys: new Set(['contacts:open']) }))
+
+    expect(result.reapedContactWindows).toBe(1)
+    expect(await db.contactQueryCache.get([ACC, 'contacts:open'])).toBeDefined()
+    expect(await db.contactQueryCache.get([ACC, 'contacts:closed'])).toBeUndefined()
+  })
+
+  /**
+   * R-73: the sweep asks the `[accountId+occ]` index which rows are occurrences.
+   *
+   * It used to read EVERY calendar row of the account and deserialize its JSCalendar object to look
+   * at one boolean — every five minutes, on the main thread, growing with the calendar. A stored
+   * master must stay invisible to that read whatever else is true of it.
+   */
+  it('reads the occurrence candidates off the index, not by scanning every row', async () => {
+    await db.calendarEvents.bulkPut([
+      occurrence('occ-1', 'master-1'),
+      {
+        accountId: ACC,
+        id: 'master-1',
+        base: 'master-1',
+        occurrence: false,
+        occ: 0,
+        event: { id: 'master-1', '@type': 'Event', title: 'Standup' },
+      } as unknown as Parameters<typeof db.calendarEvents.put>[0],
+    ])
+
+    expect(await calendarOccurrenceIds(db, ACC)).toEqual(['occ-1'])
   })
 
   it('counts contacts, calendar and files as their own category, not as "Other"', async () => {

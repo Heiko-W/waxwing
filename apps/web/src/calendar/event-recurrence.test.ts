@@ -27,6 +27,8 @@
 
 import type { CalendarEvent } from '@waxwing/jmap'
 import { describe, expect, it } from 'vitest'
+import { draftToEvent, type EventDraft } from './calendar-client'
+import { alertsFromEvent } from './event-alerts'
 import {
   endFromRule,
   excludeOverride,
@@ -232,14 +234,18 @@ describe('overrideFromDraft', () => {
      * could see.
      */
     const stored = master()
-    const entry = overrideFromDraft(stored, {
-      '@type': 'Event',
-      calendarIds: { c1: true },
-      title: 'Serie',
-      start: '2026-09-14T14:00:00',
-      duration: 'PT1H',
-      timeZone: 'Europe/Berlin',
-    })
+    const entry = overrideFromDraft(
+      stored,
+      {
+        '@type': 'Event',
+        calendarIds: { c1: true },
+        title: 'Serie',
+        start: '2026-09-14T14:00:00',
+        duration: 'PT1H',
+        timeZone: 'Europe/Berlin',
+      },
+      '2026-09-14T09:00:00',
+    )
 
     expect(entry.start).toBe('2026-09-14T14:00:00')
     // Equal to the master ⇒ `undefined` ⇒ removed from the override by `mergeOverride`.
@@ -256,10 +262,11 @@ describe('overrideFromDraft', () => {
      * length later and this one occurrence keeps the old one. The symptom appears weeks after the
      * edit, as a single meeting of the wrong length, with nothing on screen to explain it.
      */
-    const entry = overrideFromDraft(master(), {
-      start: '2026-09-14T09:00:00',
-      duration: 'PT60M',
-    })
+    const entry = overrideFromDraft(
+      master(),
+      { start: '2026-09-14T09:00:00', duration: 'PT60M' },
+      '2026-09-14T09:00:00',
+    )
 
     expect(entry.duration).toBeUndefined()
   })
@@ -267,8 +274,153 @@ describe('overrideFromDraft', () => {
   it('never puts the JMAP envelope into a JSCalendar override', () => {
     // `calendarIds` is `draft-ietf-jmap-calendars`, not JSCalendar, and an occurrence does not live
     // in a different calendar from its master.
-    const entry = overrideFromDraft(master(), { calendarIds: { other: true }, title: 'Neu' })
+    const entry = overrideFromDraft(
+      master(),
+      { calendarIds: { other: true }, title: 'Neu' },
+      '2026-09-14T09:00:00',
+    )
     expect(entry).not.toHaveProperty('calendarIds')
     expect(entry.title).toBe('Neu')
+  })
+})
+
+/**
+ * R-06 — the override the DIALOG actually produces, for the edit readers actually make.
+ *
+ * The tests above hand-build a patch; this one builds the draft `EventDialog` builds and runs it
+ * through the same `draftToEvent` the client uses, because that is where the defect lived. Renaming
+ * one occurrence of a weekly meeting wrote `start`, `alerts` and `recurrenceRule` into the override
+ * as well — three members the reader never touched, each of which freezes that occurrence against
+ * every later change to the series. Nothing is visible on the day; it shows up weeks later as one
+ * meeting at the old time, with the old reminder, that "move the series" did not move.
+ */
+describe('the override a title change produces (R-06)', () => {
+  /** A weekly series with an alarm under the SERVER's key, as one that has been synced has. */
+  const series = master({
+    recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly', interval: 1 },
+    alerts: {
+      a1: {
+        '@type': 'Alert',
+        action: 'display',
+        trigger: { '@type': 'OffsetTrigger', relativeTo: 'start', offset: '-PT10M' },
+      },
+    },
+  } as unknown as Partial<CalendarEvent>)
+
+  /** The occurrence being edited: the SECOND one, a week after the master's own start. */
+  const OCCURRENCE_START = '2026-09-14T09:00:00'
+
+  /** Exactly what `EventDialog.buildDraft` produces after a title edit and nothing else. */
+  const dialogDraft = (title: string): EventDraft => ({
+    calendarId: 'c1',
+    title,
+    description: '',
+    start: OCCURRENCE_START,
+    durationMinutes: 60,
+    allDay: false,
+    timeZone: 'Europe/Berlin',
+    alerts: alertsFromEvent(series),
+    repeat: {
+      preset: presetFromRule(series.recurrenceRule),
+      end: endFromRule(series.recurrenceRule),
+    },
+  })
+
+  const named = (entry: Record<string, unknown>): string[] =>
+    Object.entries(entry)
+      .filter(([, value]) => value !== undefined)
+      .map(([member]) => member)
+      .sort()
+
+  it('names the title and nothing else', () => {
+    const entry = overrideFromDraft(
+      series,
+      draftToEvent(dialogDraft('Umbenannt'), series),
+      OCCURRENCE_START,
+    )
+    expect(named(entry)).toEqual(['title'])
+    expect(entry.title).toBe('Umbenannt')
+  })
+
+  it('names nothing at all when nothing was changed', () => {
+    const entry = overrideFromDraft(
+      series,
+      draftToEvent(dialogDraft('Serie'), series),
+      OCCURRENCE_START,
+    )
+    expect(named(entry)).toEqual([])
+  })
+
+  it('still records a start the reader DID move', () => {
+    const moved = { ...dialogDraft('Serie'), start: '2026-09-14T16:00:00' }
+    const entry = overrideFromDraft(series, draftToEvent(moved, series), OCCURRENCE_START)
+    expect(named(entry)).toEqual(['start'])
+    expect(entry.start).toBe('2026-09-14T16:00:00')
+  })
+
+  it('keeps a start an EARLIER override moved, when the title is edited now', () => {
+    /*
+     * The baseline is the start the RULE generates, not the one the occurrence currently has: an
+     * occurrence already moved to 16:00 must keep that move while its title is edited. Comparing
+     * against the moved value would emit `undefined`, `mergeOverride` would drop the member, and
+     * the meeting would snap back to 09:00 on a save about its name.
+     */
+    const withOverride = master({
+      recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'weekly', interval: 1 },
+      recurrenceOverrides: { [OCCURRENCE_START]: { start: '2026-09-14T16:00:00' } },
+    } as unknown as Partial<CalendarEvent>)
+    const draftAt16: EventDraft = {
+      ...dialogDraft('Umbenannt'),
+      start: '2026-09-14T16:00:00',
+      alerts: alertsFromEvent(withOverride),
+    }
+
+    const entry = overrideFromDraft(
+      withOverride,
+      draftToEvent(draftAt16, withOverride),
+      OCCURRENCE_START,
+    )
+    expect(named(entry).sort()).toEqual(['start', 'title'])
+    expect(entry.start).toBe('2026-09-14T16:00:00')
+  })
+
+  it('refuses the members jscalendarbis §3.3.4 says an override may not carry', () => {
+    const entry = overrideFromDraft(
+      series,
+      {
+        title: 'Neu',
+        recurrenceRule: { '@type': 'RecurrenceRule', frequency: 'daily' },
+        recurrenceRules: [],
+        recurrenceOverrides: {},
+        organizerCalendarAddress: 'mailto:me@example.test',
+        method: 'request',
+        uid: 'uid-1',
+        recurrenceId: OCCURRENCE_START,
+        relatedTo: {},
+        privacy: 'private',
+      },
+      OCCURRENCE_START,
+    )
+    expect(named(entry)).toEqual(['title'])
+  })
+
+  it('compares alerts by what they say, not by the keys they are filed under', () => {
+    // `alertsToPatch` mints its own keys (`w1`), the server's are `a1`/`k3`. Compared as maps, an
+    // untouched reminder list read as changed and went into every override.
+    const entry = overrideFromDraft(
+      series,
+      draftToEvent(dialogDraft('Serie'), series),
+      OCCURRENCE_START,
+    )
+    expect(entry.alerts).toBeUndefined()
+  })
+
+  it('still records a reminder the reader DID change', () => {
+    const changed: EventDraft = {
+      ...dialogDraft('Serie'),
+      alerts: { offsets: ['-PT30M'], opaque: {} },
+    }
+    const entry = overrideFromDraft(series, draftToEvent(changed, series), OCCURRENCE_START)
+    expect(named(entry)).toEqual(['alerts'])
   })
 })

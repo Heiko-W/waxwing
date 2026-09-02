@@ -337,6 +337,18 @@ export default function CalendarPage(props: CalendarPageProps) {
     [effectiveCalendars],
   )
 
+  /**
+   * What every SURFACE on this screen draws — the rail, the sheet, the import gate, the editor's
+   * calendar picker and the RSVP right.
+   *
+   * The replica fallback used to hang on the event query alone: those five read the network list,
+   * which stays empty when `listCalendars()` fails, so offline the reader saw a month full of
+   * events beside a rail saying "This account has no calendars" — and no legend for which colour
+   * was which (R-59). Writing stays blocked by `online` and `unavailableReason`, so drawing the
+   * replica's copy here adds no action that could fail.
+   */
+  const shownCalendars = effectiveCalendars ?? []
+
   /** The month, from the replica (K-8). The engine keeps it fresh; this never fetches. */
   const { events, syncedAt, neverSynced, refresh } = useCalendarEvents(fromMs, toMs, visibleIds)
 
@@ -829,7 +841,7 @@ export default function CalendarPage(props: CalendarPageProps) {
               },
               // Importing a file is rare and deliberate; it belongs in a menu on every viewport,
               // not beside the one control this screen uses constantly.
-              ...(online && calendars.length > 0
+              ...(online && shownCalendars.length > 0
                 ? [
                     {
                       id: 'import',
@@ -864,13 +876,20 @@ export default function CalendarPage(props: CalendarPageProps) {
               ))}
             </div>
             {/* From 40em up there is no overflow menu to hide it in, so import is its own control —
-                an icon button, beside `+` and quieter than it. */}
+                an icon button, beside `+` and quieter than it.
+
+                Its own offline sentence, not the `+` button's. `calendar.offline` says "Events can
+                only be CREATED while connected", which is the wrong explanation for a control that
+                imports a file — and while the list came from the network, the reason was hidden
+                behind `disabled` (`Button` suppresses `unavailableReason` when a control is hard
+                disabled), so nobody saw it. Now that the replica answers the list, this control is
+                reachable offline and says what is actually true of it. */}
             <IconButton
               label={t('calendar.import.open')}
               variant="ghost"
               size="sm"
-              disabled={calendars.length === 0}
-              unavailableReason={online ? undefined : t('calendar.offline')}
+              disabled={shownCalendars.length === 0}
+              unavailableReason={online ? undefined : t('calendar.import.offline')}
               onClick={() => setImporting(true)}
             >
               <Import aria-hidden="true" />
@@ -909,7 +928,7 @@ export default function CalendarPage(props: CalendarPageProps) {
         {tier !== 'phone' && (
           <aside className={styles.rail} aria-label={t('calendar.calendars.title')}>
             <CalendarList
-              calendars={calendars}
+              calendars={shownCalendars}
               canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
               disabled={saving || !online}
               onToggle={(calendar, visible) => void toggleCalendar(calendar, visible)}
@@ -1046,7 +1065,7 @@ export default function CalendarPage(props: CalendarPageProps) {
         >
           <div className={styles.calendarSheet}>
             <CalendarList
-              calendars={calendars}
+              calendars={shownCalendars}
               heading={false}
               canCreate={mayCreateCalendar(connected?.jmapSession ?? null, accountId) && online}
               disabled={saving || !online}
@@ -1123,7 +1142,7 @@ export default function CalendarPage(props: CalendarPageProps) {
         <Suspense fallback={null}>
           <IcsImportDialog
             client={client}
-            calendars={calendars}
+            calendars={shownCalendars}
             onClose={() => setImporting(false)}
             onImported={() => {
               setImporting(false)
@@ -1151,14 +1170,14 @@ export default function CalendarPage(props: CalendarPageProps) {
             <EventDialog
               event={editing.placed?.event ?? null}
               defaultDate={editing.day}
-              calendars={calendars}
+              calendars={shownCalendars}
               busy={saving}
               isSeries={editing.placed !== null && needsScope(editing.placed)}
               ownAddresses={myAddresses}
               // `mayRSVP` is read from the calendar the event is IN, not from the account: a shared
               // calendar can grant reading and refuse answering, and a bar that always fails is
               // worse than no bar.
-              mayRsvp={rsvpAllowed(calendars, editing.placed)}
+              mayRsvp={rsvpAllowed(shownCalendars, editing.placed)}
               maxParticipants={maxParticipants}
               onCancel={() => setEditing(null)}
               onSubmit={(draft, scope, invite) => {

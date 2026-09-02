@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { ReplicaDb } from './db'
 import {
   addressBooksForAccount,
+  calendarOccurrenceIds,
   contactCardsByIds,
   countEmailsWithKeyword,
   deleteAddressBooks,
@@ -12,6 +13,7 @@ import {
   emailsWithKeyword,
   enqueue,
   failedOutbox,
+  getCalendarQueryCache,
   getContactQueryCache,
   getEmailBody,
   getPref,
@@ -22,6 +24,7 @@ import {
   mailboxesForAccount,
   pendingOutbox,
   putAddressBooks,
+  putCalendarWindow,
   putContactCards,
   putContactQueryCache,
   putEmailBody,
@@ -32,6 +35,7 @@ import {
   queuedSends,
   setPref,
   setSyncState,
+  touchCalendarQueryCache,
 } from './repo'
 import { addressBook, contactCard, email, freshDb, mailbox, thread } from './test-utils'
 
@@ -371,5 +375,68 @@ describe('contacts repo (M4.2)', () => {
     expect(row?.ids).toEqual(['c1', 'c2'])
     expect(row?.filter).toEqual({ inAddressBook: 'book1' })
     expect(await getContactQueryCache(db, ACC, 'missing')).toBeUndefined()
+  })
+})
+
+describe('calendar repo (K-8)', () => {
+  const WINDOW = {
+    accountId: ACC,
+    key: 'cal:august',
+    ids: ['occ-1'],
+    objectIds: ['master-1'],
+    filter: null,
+    stale: false,
+    syncedAt: 1,
+    lastUsedAt: 1,
+  }
+  const event = (id: string, baseEventId?: string) =>
+    ({
+      id,
+      '@type': 'Event',
+      title: id,
+      start: '2026-08-20T09:00:00',
+      ...(baseEventId === undefined ? {} : { baseEventId }),
+    }) as never
+
+  /**
+   * R-72: no reader may ever see the occurrences without the window row that claims them.
+   *
+   * The maintenance sweep deletes every occurrence no surviving window names. When the two halves
+   * went out as separate transactions there was an interval — three transactions and a `getSyncState`
+   * wide — in which a pass saw fresh rows as orphans and emptied the month that was loading. The
+   * probe below is the interval, made visible: a read transaction over BOTH stores is opened in the
+   * same tick as the write, so IndexedDB has to schedule it either wholly before or wholly after —
+   * and with two write transactions it lands in the middle.
+   */
+  it('writes the occurrences and the window row that claims them in one transaction', async () => {
+    let sawEventsWithoutTheirWindow = false
+    const reader = db.transaction('r', db.calendarEvents, db.calendarQueryCache, async () => {
+      const events = await db.calendarEvents.count()
+      const window = await db.calendarQueryCache.get([ACC, WINDOW.key])
+      if (events > 0 && window === undefined) sawEventsWithoutTheirWindow = true
+    })
+
+    await Promise.all([
+      putCalendarWindow(db, ACC, [event('master-1')], [event('occ-1', 'master-1')], WINDOW),
+      reader,
+    ])
+
+    expect(sawEventsWithoutTheirWindow).toBe(false)
+    expect(await db.calendarEvents.get([ACC, 'occ-1'])).toBeDefined()
+    expect(await db.calendarEvents.get([ACC, 'master-1'])).toBeDefined()
+    expect((await getCalendarQueryCache(db, ACC, WINDOW.key))?.ids).toEqual(['occ-1'])
+  })
+
+  it('lists only the expanded occurrences, off the index (R-73)', async () => {
+    await putCalendarWindow(db, ACC, [event('master-1')], [event('occ-1', 'master-1')], WINDOW)
+    expect(await calendarOccurrenceIds(db, ACC)).toEqual(['occ-1'])
+  })
+
+  it('stamps lastUsedAt without touching anything else', async () => {
+    await putCalendarWindow(db, ACC, [], [event('occ-1')], WINDOW)
+    await touchCalendarQueryCache(db, ACC, WINDOW.key, 4242)
+    const row = await getCalendarQueryCache(db, ACC, WINDOW.key)
+    expect(row?.lastUsedAt).toBe(4242)
+    expect(row?.ids).toEqual(['occ-1'])
   })
 })

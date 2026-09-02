@@ -9,7 +9,7 @@
  * Everything is minutes-from-midnight in LOCAL time, because that is what a column represents.
  */
 
-import { isSameDay, startOfDay } from './month-grid'
+import { addDays, isSameDay, startOfDay } from './month-grid'
 
 /** An event placed on a day column. */
 export interface DaySlot<T> {
@@ -28,17 +28,34 @@ const MINUTES_PER_DAY = 1440
 /** The shortest an event may render as, so a five-minute meeting stays clickable. */
 const MIN_SLOT_MINUTES = 15
 
-/** Minutes from local midnight of `day`, clamped into `[0, 1440]`. */
-function minuteOfDay(instant: number, day: Date): number {
-  const midnight = startOfDay(day).getTime()
-  const minutes = Math.round((instant - midnight) / 60_000)
-  return Math.min(MINUTES_PER_DAY, Math.max(0, minutes))
+/**
+ * Minutes from local midnight of `day`, clamped into `[0, 1440]`.
+ *
+ * Read off the local CLOCK, not measured as a distance from midnight. On the day a zone springs
+ * forward there are 23 hours between local 00:00 and local 24:00 and only 9 between 00:00 and
+ * 10:00, so `(instant − midnight) / 60_000` drew a 10:00 meeting on the 09:00 line — and 11:00 on
+ * the day it falls back — while the chip beside it said 10:00 and the screen-reader label
+ * (`WeekView.minuteInstant`, which never did the subtraction) said 10:00 too (R-17).
+ */
+export function minuteOfDay(instant: number, day: Date): number {
+  const dayStart = startOfDay(day)
+  if (instant <= dayStart.getTime()) return 0
+  if (instant >= addDays(dayStart, 1).getTime()) return MINUTES_PER_DAY
+  const local = new Date(instant)
+  const msIntoDay =
+    local.getHours() * 3_600_000 +
+    local.getMinutes() * 60_000 +
+    local.getSeconds() * 1000 +
+    local.getMilliseconds()
+  return Math.min(MINUTES_PER_DAY, Math.max(0, Math.round(msIntoDay / 60_000)))
 }
 
 /** Whether an event touches `day` at all. */
 export function overlapsDay(startsAt: number, endsAt: number, day: Date): boolean {
   const from = startOfDay(day).getTime()
-  const to = from + MINUTES_PER_DAY * 60_000
+  // `addDays`, not `+ 24 h`: a DST day is 23 or 25 hours long, and the shorter one let an event
+  // that starts at 23:30 fall outside its own column (R-17).
+  const to = addDays(new Date(from), 1).getTime()
   // Half-open: an event ending exactly at midnight belongs to the day before, not to both.
   return startsAt < to && endsAt > from
 }

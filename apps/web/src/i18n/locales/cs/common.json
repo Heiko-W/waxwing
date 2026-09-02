@@ -1949,6 +1949,7 @@
       "allDay": "Celodenní",
       "duration": "Délka v minutách",
       "durationInvalid": "Zadejte délku mezi 1 a {{max}} minutami.",
+      "zoneNote": "Časy v pásmu {{zone}}",
       "calendar": "Kalendář",
       "description": "Poznámky",
       "location": "Místo",
@@ -2081,6 +2082,7 @@
     },
     "import": {
       "open": "Importovat události…",
+      "offline": "Jste offline. Události lze importovat jen při připojení.",
       "title": "Import událostí",
       "file": "Soubor kalendáře (.ics)",
       "empty": "V tomto souboru není žádná událost.",

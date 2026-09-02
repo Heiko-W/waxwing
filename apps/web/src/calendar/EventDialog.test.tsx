@@ -1,8 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventDialog, { parseDurationMinutes } from './EventDialog'
+import { newParticipantRow } from './event-participants'
 
 /**
  * The event editor's own behaviour — the parts that never reach the network.
@@ -313,5 +314,129 @@ describe('reminders beyond the rows on offer', () => {
     await user.selectOptions(screen.getByLabelText('Alert'), '-PT30M')
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSubmit.mock.calls[0]?.[0].alerts.offsets).toEqual(['-PT30M', '-PT10M', '-PT15M'])
+  })
+})
+
+/**
+ * R-04 — the zone an event is stored in survives an edit that had nothing to do with it.
+ *
+ * The dialog shows the WALL CLOCK of the stored zone (10:00 for an event in New York) while the
+ * grid beside it correctly draws 16:00 Berlin. Writing the reader's zone back with that unchanged
+ * `start` is what made "add a reminder" move the meeting six hours — silently, and for everyone
+ * invited to it.
+ */
+describe('the stored time zone (R-04)', () => {
+  const IN_NEW_YORK = {
+    ...EXISTING,
+    timeZone: 'America/New_York',
+  } as unknown as CalendarEvent
+
+  // The reader's zone is PINNED, and not to the one the event is stored in: run this block in New
+  // York and "the event's zone differs from mine" stops being true, so the assertions would pass
+  // for the wrong reason on one developer's machine and fail on another's. V8 re-reads `TZ` on
+  // every `Date`/`Intl` call, so setting it here is enough.
+  const ambient = process.env.TZ
+  beforeEach(() => {
+    process.env.TZ = 'Europe/Berlin'
+  })
+  afterAll(() => {
+    if (ambient === undefined) delete process.env.TZ
+    else process.env.TZ = ambient
+  })
+
+  it('keeps the event zone when an unrelated field is edited', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: IN_NEW_YORK })
+
+    await user.type(screen.getByLabelText('Title'), ' notes')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const draft = onSubmit.mock.calls[0]?.[0]
+    expect(draft.start).toBe('2026-08-20T10:00:00')
+    expect(draft.timeZone).toBe('America/New_York')
+  })
+
+  it('says which zone the field is showing, when it is not the reader’s', () => {
+    renderDialog({ event: IN_NEW_YORK })
+    expect(screen.getByText('Times are in America/New_York')).toBeInTheDocument()
+  })
+
+  it('says nothing when the zone is the reader’s own', () => {
+    const local = Intl.DateTimeFormat().resolvedOptions().timeZone
+    renderDialog({ event: { ...EXISTING, timeZone: local } as unknown as CalendarEvent })
+    expect(screen.queryByText(/Times are in/)).not.toBeInTheDocument()
+  })
+
+  it('gives a NEW event the reader’s zone', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog()
+
+    await user.type(screen.getByLabelText('Title'), 'Standup')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit.mock.calls[0]?.[0].timeZone).toBe(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    )
+  })
+
+  it('leaves a floating event floating', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: EXISTING })
+
+    await user.type(screen.getByLabelText('Title'), ' notes')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit.mock.calls[0]?.[0].timeZone).toBeNull()
+  })
+})
+
+/**
+ * R-18 — two rows on screen must never become one participant on the wire.
+ *
+ * The map key used to be the address with every non-alphanumeric character deleted, so
+ * `john.doe@` and `johndoe@` shared one, and `participantsToPatch` — which writes `map[key]` —
+ * kept only the second. The keys are injective now; the dialog also refuses an address whose key
+ * is already taken, because the keys of an event read from the server are the server's to choose.
+ */
+describe('the participant list (R-18)', () => {
+  it('adds two addresses that used to collapse into one key', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: EXISTING })
+
+    await user.click(screen.getByRole('button', { name: /Participants/ }))
+    for (const address of ['john.doe@waxwing.test', 'johndoe@waxwing.test']) {
+      await user.type(screen.getByLabelText('Email address'), address)
+      await user.click(screen.getByRole('button', { name: 'Add' }))
+    }
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const draft = onSubmit.mock.calls[0]?.[0]
+    expect(draft.participants.map((row: { address: string }) => row.address)).toEqual([
+      'john.doe@waxwing.test',
+      'johndoe@waxwing.test',
+    ])
+    const keys = draft.participants.map((row: { key: string }) => row.key)
+    expect(new Set(keys).size).toBe(2)
+  })
+
+  it('refuses an address whose key an existing participant already holds', async () => {
+    const user = userEvent.setup()
+    // A participant the SERVER filed under exactly the key a new address would produce.
+    const taken = newParticipantRow('new@waxwing.test').key
+    renderDialog({
+      event: {
+        ...EXISTING,
+        participants: {
+          [taken]: { '@type': 'Participant', calendarAddress: 'mailto:other@waxwing.test' },
+        },
+      } as unknown as CalendarEvent,
+    })
+
+    await user.click(screen.getByRole('button', { name: /Participants/ }))
+    await user.type(screen.getByLabelText('Email address'), 'new@waxwing.test')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    expect(screen.getByText('That person is already on the list.')).toBeInTheDocument()
   })
 })

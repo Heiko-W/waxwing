@@ -1906,6 +1906,7 @@
       "allDay": "Hele dag",
       "duration": "Duur in minuten",
       "durationInvalid": "Vul een duur in tussen 1 en {{max}} minuten.",
+      "zoneNote": "Tijden in {{zone}}",
       "calendar": "Agenda",
       "description": "Notities",
       "location": "Locatie",
@@ -2024,6 +2025,7 @@
     },
     "import": {
       "open": "Afspraken importeren…",
+      "offline": "Je bent offline. Afspraken kunnen alleen worden geïmporteerd als je verbonden bent.",
       "title": "Afspraken importeren",
       "file": "Agendabestand (.ics)",
       "empty": "Dit bestand bevat geen enkele afspraak.",

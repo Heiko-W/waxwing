@@ -1899,6 +1899,7 @@
       "allDay": "All day",
       "duration": "Length in minutes",
       "durationInvalid": "Enter a length between 1 and {{max}} minutes.",
+      "zoneNote": "Times are in {{zone}}",
       "calendar": "Calendar",
       "description": "Notes",
       "location": "Location",
@@ -2017,6 +2018,7 @@
     },
     "import": {
       "open": "Import events…",
+      "offline": "You are offline. Events can only be imported while connected.",
       "title": "Import events",
       "file": "Calendar file (.ics)",
       "empty": "This file holds no event.",

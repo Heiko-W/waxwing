@@ -1931,6 +1931,7 @@
       "allDay": "Tutto il giorno",
       "duration": "Durata in minuti",
       "durationInvalid": "Inserisci una durata compresa tra 1 e {{max}} minuti.",
+      "zoneNote": "Orari nel fuso {{zone}}",
       "calendar": "Calendario",
       "description": "Note",
       "location": "Luogo",
@@ -2056,6 +2057,7 @@
     },
     "import": {
       "open": "Importa eventi…",
+      "offline": "Sei offline. Gli eventi si possono importare solo mentre sei connesso.",
       "title": "Importa eventi",
       "file": "File di calendario (.ics)",
       "empty": "Questo file non contiene alcun evento.",

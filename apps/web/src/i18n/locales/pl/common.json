@@ -1949,6 +1949,7 @@
       "allDay": "Cały dzień",
       "duration": "Czas trwania w minutach",
       "durationInvalid": "Podaj czas trwania od 1 do {{max}} minut.",
+      "zoneNote": "Godziny w strefie {{zone}}",
       "calendar": "Kalendarz",
       "description": "Notatki",
       "location": "Miejsce",
@@ -2081,6 +2082,7 @@
     },
     "import": {
       "open": "Importuj wydarzenia…",
+      "offline": "Jesteś offline. Wydarzenia można importować tylko przy aktywnym połączeniu.",
       "title": "Import wydarzeń",
       "file": "Plik kalendarza (.ics)",
       "empty": "W tym pliku nie ma żadnego wydarzenia.",

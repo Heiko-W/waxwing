@@ -1874,6 +1874,7 @@
       "allDay": "全天",
       "duration": "时长（分钟）",
       "durationInvalid": "请输入 1 到 {{max}} 分钟之间的时长。",
+      "zoneNote": "时间为 {{zone}} 时区",
       "calendar": "日历",
       "description": "备注",
       "location": "地点",
@@ -1985,6 +1986,7 @@
     },
     "import": {
       "open": "导入日程…",
+      "offline": "您当前处于离线状态。日程只能在联网时导入。",
       "title": "导入日程",
       "file": "日历文件（.ics）",
       "empty": "此文件中没有日程。",

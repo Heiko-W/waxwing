@@ -62,7 +62,8 @@ import {
   type RepeatEnd,
   type RepeatPreset,
 } from './event-recurrence'
-import { durationToMs } from './jscalendar-time'
+import { durationToMs, zoneDiffersFromLocal } from './jscalendar-time'
+import { toIsoDate } from './month-grid'
 
 export interface EventDialogProps {
   /** The event being edited, or `null` to create one. */
@@ -117,6 +118,20 @@ function startToInputValue(start: string): string {
 }
 
 /**
+ * The reader's own IANA zone — what a NEW event is stored in.
+ *
+ * `null` where the browser will not say (a locked-down `Intl`), which JSCalendar reads as floating:
+ * a time with no zone at all is a better answer than a guessed one.
+ */
+function readerTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * The length in minutes, or `null` when the field does not hold one.
  *
  * Kept as TEXT in state and parsed here, rather than held as a number. `Number('')` is 0, so a
@@ -148,6 +163,24 @@ export default function EventDialog(props: EventDialogProps) {
   const [duration, setDuration] = useState(() => {
     const ms = durationToMs(existing?.duration)
     return String(ms > 0 ? Math.round(ms / 60_000) : 60)
+  })
+  /**
+   * The zone the event is STORED in — kept across an edit, never re-stamped with the reader's.
+   *
+   * The field beside it shows the WALL-CLOCK time of that zone (10:00), which is the right thing to
+   * show and the reason this state has to exist: writing the reader's zone back with an unchanged
+   * `start` turns 10:00 New York into 10:00 Berlin and moves the meeting six hours, silently, on
+   * the save that was only meant to fix a title or add a reminder (R-04). A zone PICKER is a
+   * separate feature; this only refuses to change what it was not asked to change.
+   *
+   * A new event, and an existing whole-day one being given a time, adopt the reader's zone — those
+   * are the two cases where there is no stored answer to keep. A timed event stored with no zone is
+   * floating and stays floating: its wall clock is already the reader's, and naming a zone would
+   * pin it for everyone else.
+   */
+  const [timeZone] = useState<string | null>(() => {
+    if (existing === null || existing.showWithoutTime === true) return readerTimeZone()
+    return existing.timeZone ?? null
   })
   /** Set when the reader pressed Save on a length the app will not send. */
   const [durationRejected, setDurationRejected] = useState(false)
@@ -200,9 +233,7 @@ export default function EventDialog(props: EventDialogProps) {
       start: `${start}:00`,
       durationMinutes: minutes,
       allDay,
-      // The reader's own zone for a timed event. A picker for other zones is a separate feature;
-      // guessing one here would be worse than using the obvious answer.
-      timeZone: allDay ? null : Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timeZone: allDay ? null : timeZone,
       // Always stated, because this dialog always knows: it read the alerts on the way in and has
       // shown the reader every one it models.
       alerts,
@@ -368,6 +399,12 @@ export default function EventDialog(props: EventDialogProps) {
                 setStart(allDay ? `${event.target.value}T00:00` : event.target.value)
               }
             />
+            {/* Shown only when the stored zone is NOT the reader's, exactly as the agenda does it:
+                the field says 10:00 and the grid draws 16:00, and without this line the difference
+                looks like a bug rather than the fact it is. */}
+            {!allDay && timeZone !== null && zoneDiffersFromLocal(timeZone) && (
+              <p className={styles.fieldNote}>{t('calendar.event.zoneNote', { zone: timeZone })}</p>
+            )}
           </div>
 
           <label className={styles.checkboxRow}>
@@ -627,11 +664,17 @@ function RepeatPage({
   )
 }
 
-/** A year out, as a local date-time — the value "ends on a date" starts from. */
-function defaultUntil(): string {
+/**
+ * A year out, as a local date-time — the value "ends on a date" starts from.
+ *
+ * `toIsoDate`, not `toISOString().slice(0, 10)`: the second one names the UTC day, so after 22:00
+ * in Berlin (19:00 in New York) the default end date offered was the day BEFORE the one the reader
+ * would have written down (R-62). The whole of `recurrenceRule.until` is a LOCAL date-time.
+ */
+export function defaultUntil(): string {
   const date = new Date()
   date.setFullYear(date.getFullYear() + 1)
-  return `${date.toISOString().slice(0, 10)}T23:59:59`
+  return `${toIsoDate(date)}T23:59:59`
 }
 
 /**
@@ -666,7 +709,11 @@ function ParticipantsPage({
       setRejected('invalid')
       return
     }
-    if (rows.some((row) => row.address === address)) {
+    const candidate = newParticipantRow(address)
+    // Both, and the second one is not redundant: the addresses come from the reader, the KEYS may
+    // come from the server, and a row whose key is already taken would be dropped by
+    // `participantsToPatch` — two rows on screen, one invitation on the wire (R-18).
+    if (rows.some((row) => row.address === address || row.key === candidate.key)) {
       setRejected('duplicate')
       return
     }
@@ -676,7 +723,7 @@ function ParticipantsPage({
     }
     setRejected(null)
     setEntry('')
-    onChange([...rows, newParticipantRow(address)])
+    onChange([...rows, candidate])
   }
 
   return (
