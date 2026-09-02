@@ -2772,6 +2772,12 @@ async function drainOwedUndos(
       const current = await db.outbox.get([accountId, row.id])
       const owed = current?.undo ?? null
       if (owed === null) return null
+      // Somebody is applying this rollback RIGHT NOW — the `deadLetter` that just wrote the row, or
+      // a `discardFailed` on another tab. `undo` alone cannot say so, because a dead letter is
+      // written with its undo still set on purpose (⇒ owed) and stays that way for the whole of
+      // `applyUndo`. Refusing here is the same answer `discardFailed` and `retryFailed` give, and
+      // it costs nothing: the claim comes back within a round trip and the next pass takes it.
+      if (undoClaimHeld(current as OutboxRow, now)) return null
       await db.outbox.update([accountId, row.id], { undo: null, undoClaimedAt: now })
       return owed
     })
@@ -2922,28 +2928,40 @@ export async function replayOutbox(
     ids: string[],
   ): Promise<void> => {
     const conflict: OutboxConflict = { code, errorType, detail, ids, at: now }
+    const undo = row.undo ?? null
     // Persist the dead letter with its undo STILL SET (⇒ owed) before attempting the rollback, so a
     // crash or a failing re-fetch mid-undo leaves a row that `drainOwedUndos` will finish later.
     //
     // …but only onto the row we CLAIMED. Was it replaced while the request was on the wire, the
     // replacement is a newer intent that has not been rejected by anything, and marking it `error`
     // would show the user a failure for a save that was never attempted. See `updateIfUnchanged`.
+    //
+    // `undoClaimedAt` goes on in the SAME write, and that is what keeps the rollback from being
+    // applied twice. The instant this row reads `status: 'error'` with `undo != null` it matches
+    // exactly what `discardFailed` (any tab) and `drainOwedUndos` look for — and `applyUndo` below
+    // is not idempotent and can make a network round trip inside `refetchEmails`. Without the claim
+    // that whole round trip was a window in which a "Discard" click applied the same rollback a
+    // second time, counting the folder's total/unread badges back twice and leaving them wrong
+    // until the server happened to report that mailbox again. The claim is exactly the machinery
+    // W-14 and R-70 built for the other two writers; this one simply never took it.
     const mine = await updateIfUnchanged(db, accountId, row, {
       status: 'error',
       lastError: errorType ?? code,
       conflict,
+      ...(undo === null ? {} : { undoClaimedAt: now }),
     })
     if (!mine) return
     failed += 1
     await stampDraftError(db, accountId, intent, errorType ?? code)
     await stampSendError(db, accountId, intent, errorType ?? code)
-    const undo = row.undo ?? null
     if (undo === null) return
     try {
       await applyUndo(db, port, accountId, intent, undo, ids)
-      await updateIfUnchanged(db, accountId, row, { undo: null })
+      await updateIfUnchanged(db, accountId, row, { undo: null, undoClaimedAt: null })
     } catch {
-      // Owed — drained on a later pass.
+      // Owed — drained on a later pass. Hand the claim back so the drain can take it; leaving it
+      // held would only stall the retry by a stale-claim timeout.
+      await updateIfUnchanged(db, accountId, row, { undoClaimedAt: null })
     }
   }
 
