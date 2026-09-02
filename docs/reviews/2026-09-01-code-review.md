@@ -4051,7 +4051,13 @@ bestätigt, Reproduktion korrigiert.
 
 ### R-106 — [LOW] DOMPurify liegt zweimal im Bundle: einmal in `@waxwing/mail-html` (per `noExternal` eingebacken) im eager Chunk, einmal im lazy Composer-Chunk
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`noExternal` in `packages/mail-html/tsup.config.ts` entfernt; der Sanitizer liegt jetzt einmal im
+Graphen. Gemessen: der lazy Composer-Chunk fällt von 28,4 KB auf 18,4 KB gzip (−10,0 KB), das
+INITIAL-Budget bleibt bei 291,5 KB — die verbleibende Kopie ist die eager Kopie aus `mail-html`,
+genau wie der Lösungsansatz es vorhersagt. Der Befund gibt also keinen Platz im 300-KB-Budget
+zurück. Gepinnt von `packages/mail-html/src/dompurify-external.source.test.ts`, das das gebaute
+`dist` liest (nicht die tsup-Konfiguration) und zusätzlich die beiden DOMPurify-Ranges gleich hält.
 
 **Kategorie / Bereich:** performance / Infra (Build)
 

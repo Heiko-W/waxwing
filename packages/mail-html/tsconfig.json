@@ -1,7 +1,12 @@
 {
+  // `types: ["node"]` is test-only, the same arrangement (and the same reason) as
+  // packages/jscontact: `dompurify-external.source.test.ts` reads the built `dist/index.js` off
+  // disk to prove the sanitizer is imported rather than inlined. The shipped code imports no Node
+  // built-in — it runs in the browser, and `pnpm size` would notice if that changed.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": { "@waxwing/mail-html": ["./src/index.ts"] }
