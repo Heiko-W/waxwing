@@ -1023,6 +1023,7 @@
     "select": "选择邮件",
     "selectAll": "全选",
     "selected": "已选择{{count}}封",
+    "selectedOfTotal": "已选择 {{total}} 封中的 {{count}} 封",
     "clearSelection": "取消选择",
     "actions": {
       "archive": "归档",

@@ -1065,6 +1065,7 @@
     "select": "Выбрать письмо",
     "selectAll": "Выбрать все",
     "selected": "Выбрано: {{count}}",
+    "selectedOfTotal": "Выбрано: {{count}} из {{total}}",
     "clearSelection": "Снять выделение",
     "actions": {
       "archive": "Архивировать",

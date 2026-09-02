@@ -2725,3 +2725,124 @@ describe('paging the tail', () => {
     await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(2))
   })
 })
+
+/**
+ * What "select all" is allowed to CLAIM (R-08).
+ *
+ * `selectAll` ticks the loaded `queryCache` window, which starts at the engine's 50 ids and grows
+ * only as `loadMore` pages. Comparing the tick count against `ids.length` alone drew a fully checked
+ * header box over a folder of 300, beside an `aria-rowcount` of 300 and a bar reading "50 selected".
+ * Nothing was ever mis-targeted — the store prunes ids it loses and invents none, and the bulk
+ * actions receive exactly the ticked set — but the following Archive moved 50 and left 250, after a
+ * control that had said "everything".
+ *
+ * These pin STAGE ONE only: the UI stops promising a scope it does not have. Actually selecting the
+ * folder (FR-LST-04's "select-all-in-folder", a "Select all {{total}}" that pages the rest of the
+ * ids out of `Email/query`) is in the post-V1 backlog and is NOT what these assert.
+ */
+describe('select-all over a window that is not the whole folder', () => {
+  async function seedPartialWindow(loaded: number, total: number) {
+    const ids = Array.from({ length: loaded }, (_, i) => `p${String(i + 1).padStart(2, '0')}`)
+    await putEmails(
+      db,
+      'a',
+      ids.map((id) => email(id, { subject: `Msg ${id}`, keywords: {} })),
+    )
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: inboxKey(),
+      ids,
+      queryState: 'q',
+      total,
+      upToId: ids.at(-1) as string,
+      filter: null,
+      sort: null,
+      collapseThreads: true,
+      lastUsedAt: 1,
+    })
+    return ids
+  }
+
+  it('leaves the header box mixed rather than checked', async () => {
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+
+    const header = await screen.findByRole('checkbox', { name: 'Clear selection' })
+    expect(header).not.toBeChecked()
+    expect((header as HTMLInputElement).indeterminate).toBe(true)
+    // The number it stands beside, which is what made the checked box a contradiction.
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-rowcount', '300')
+  })
+
+  it('says both numbers instead of just the one it selected', async () => {
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    expect(await screen.findByText('20 of 300 selected')).toBeInTheDocument()
+  })
+
+  it('the mixed box still clears, and does not merely re-select what is already ticked', async () => {
+    // An `indeterminate` box reports `checked: true` on click, so a handler driven by the event
+    // would have re-run select-all and left no way to clear from this control at all.
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'Clear selection' }))
+    await waitFor(() => expect(screen.queryByText('20 of 300 selected')).toBeNull())
+    expect(screen.queryByRole('checkbox', { name: 'Clear selection' })).toBeNull()
+  })
+
+  it('a hand-picked partial selection is left alone — the reader chose that scope', async () => {
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    expect(screen.queryByText(/of 300 selected/)).toBeNull()
+  })
+
+  it('a window that IS the whole folder still checks the box and counts plainly', async () => {
+    // The counter-control: without it, a fix that simply never checks the box would pass the rest.
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 20)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+
+    const header = await screen.findByRole('checkbox', { name: 'Clear selection' })
+    expect(header).toBeChecked()
+    expect((header as HTMLInputElement).indeterminate).toBe(false)
+    expect(screen.getByText('20 selected')).toBeInTheDocument()
+  })
+
+  it('the bulk action still receives exactly what is ticked', async () => {
+    // Stage one is a claim, not a behaviour change: the archive over an honestly-labelled selection
+    // must still dispatch the 20 ids and no more.
+    const user = userEvent.setup()
+    const ids = await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    await user.click(await screen.findByRole('button', { name: 'Archive' }))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', emailIds: ids })
+  })
+})

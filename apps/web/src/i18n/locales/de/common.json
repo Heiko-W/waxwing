@@ -1037,6 +1037,7 @@
     "select": "Nachricht auswählen",
     "selectAll": "Alle auswählen",
     "selected": "{{count}} ausgewählt",
+    "selectedOfTotal": "{{count}} von {{total}} ausgewählt",
     "clearSelection": "Auswahl aufheben",
     "actions": {
       "archive": "Archivieren",

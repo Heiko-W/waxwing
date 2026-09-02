@@ -1065,6 +1065,7 @@
     "select": "Zaznacz wiadomość",
     "selectAll": "Zaznacz wszystkie",
     "selected": "Zaznaczono: {{count}}",
+    "selectedOfTotal": "Zaznaczono: {{count}} z {{total}}",
     "clearSelection": "Wyczyść zaznaczenie",
     "actions": {
       "archive": "Archiwizuj",

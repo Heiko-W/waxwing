@@ -1051,6 +1051,7 @@
     "select": "Seleziona il messaggio",
     "selectAll": "Seleziona tutto",
     "selected": "{{count}} selezionati",
+    "selectedOfTotal": "{{count}} di {{total}} selezionati",
     "clearSelection": "Annulla la selezione",
     "actions": {
       "archive": "Archivia",

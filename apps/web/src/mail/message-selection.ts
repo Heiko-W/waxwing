@@ -1,8 +1,17 @@
 /**
  * Message-list selection model (M1.6, FR-LST-04) — a pure reducer over a Set of selected ids plus a
  * range anchor, so click / ctrl-click / shift-click / select-all behave predictably and it is
- * testable without a DOM. Select-all operates on the FULL ordered id-set of the query (not just the
- * loaded/visible rows), so a folder can be selected in one action even when virtualized.
+ * testable without a DOM.
+ *
+ * `selectAll` ticks the `ordered` id list it is HANDED, whatever that is; it neither knows nor can
+ * discover how much of the query that list covers. Its one caller passes the loaded `queryCache`
+ * window — 50 rows to begin with, growing only as `loadMore` pages — so in a folder larger than the
+ * window this selects the window and not the folder. That is correct as far as it goes (nothing is
+ * ever mis-targeted: the ids in the set are real ids of real rows), but it is NOT the
+ * "select-all-in-folder" FR-LST-04 asks for, and this header claimed for a long time that it was.
+ * `MessageList` now says so on screen instead of drawing a fully-checked header box over a folder it
+ * has only partly selected; the remaining half — an explicit "Select all {{total}}" that pages the
+ * rest of the ids out of `Email/query` — is in the post-V1 backlog.
  */
 
 export interface SelectionState {

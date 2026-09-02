@@ -1023,6 +1023,7 @@
     "select": "メッセージを選択",
     "selectAll": "すべて選択",
     "selected": "{{count}} 件を選択中",
+    "selectedOfTotal": "{{total}} 件中 {{count}} 件を選択中",
     "clearSelection": "選択を解除",
     "actions": {
       "archive": "アーカイブ",

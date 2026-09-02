@@ -1037,6 +1037,7 @@
     "select": "Select message",
     "selectAll": "Select all",
     "selected": "{{count}} selected",
+    "selectedOfTotal": "{{count}} of {{total}} selected",
     "clearSelection": "Clear selection",
     "actions": {
       "archive": "Archive",

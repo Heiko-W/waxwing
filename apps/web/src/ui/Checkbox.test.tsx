@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import { Checkbox } from './Checkbox'
@@ -20,6 +21,31 @@ describe('Checkbox', () => {
     expect(checkbox.indeterminate).toBe(true)
     rerender(<Checkbox label="Select all" indeterminate={false} />)
     expect(checkbox.indeterminate).toBe(false)
+  })
+
+  it('stays indeterminate across a click that keeps the flag set', async () => {
+    // `indeterminate` has no HTML attribute, so React never restores it — and a native click clears
+    // it. A caller that stays mixed ACROSS the click (the message list's select-all over a folder
+    // whose loaded window is not the whole folder, R-08) got a blank box while the prop still said
+    // mixed, because the effect was keyed on a value that had not changed.
+    function StaysMixed() {
+      const [clicks, setClicks] = useState(0)
+      return (
+        <Checkbox
+          label={`Select all (${String(clicks)})`}
+          indeterminate
+          checked={false}
+          onChange={() => setClicks((n) => n + 1)}
+        />
+      )
+    }
+    const user = userEvent.setup()
+    render(<StaysMixed />)
+    const checkbox = screen.getByLabelText('Select all (0)') as HTMLInputElement
+    expect(checkbox.indeterminate).toBe(true)
+    await user.click(checkbox)
+    await screen.findByLabelText('Select all (1)')
+    expect(checkbox.indeterminate).toBe(true)
   })
 
   it('forwards both object and callback refs', () => {

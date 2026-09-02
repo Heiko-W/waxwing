@@ -1037,6 +1037,7 @@
     "select": "İletiyi seç",
     "selectAll": "Tümünü seç",
     "selected": "{{count}} ileti seçildi",
+    "selectedOfTotal": "{{total}} iletiden {{count}} tanesi seçildi",
     "clearSelection": "Seçimi kaldır",
     "actions": {
       "archive": "Arşivle",

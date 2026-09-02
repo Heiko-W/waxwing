@@ -1065,6 +1065,7 @@
     "select": "Vybrat zprávu",
     "selectAll": "Vybrat vše",
     "selected": "Vybráno: {{count}}",
+    "selectedOfTotal": "Vybráno: {{count}} z {{total}}",
     "clearSelection": "Zrušit výběr",
     "actions": {
       "archive": "Archivovat",

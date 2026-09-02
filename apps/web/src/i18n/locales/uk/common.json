@@ -1065,6 +1065,7 @@
     "select": "Вибрати лист",
     "selectAll": "Вибрати всі",
     "selected": "Вибрано: {{count}}",
+    "selectedOfTotal": "Вибрано: {{count}} з {{total}}",
     "clearSelection": "Зняти вибір",
     "actions": {
       "archive": "Архівувати",

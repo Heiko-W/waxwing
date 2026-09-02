@@ -441,7 +441,20 @@ Papierkorb kein „Delete“. Gegenprüfung: bestätigt.
 
 ### R-08 — [MEDIUM] „Alle auswählen“ wählt nur das geladene 50er-Fenster, zeigt die Kopf-Checkbox aber als vollständig gesetzt — Bulk-Aktionen erfassen den Rest des Ordners nicht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt — Stufe 1
+Stufe 1 (ehrliche Oberfläche) ist umgesetzt: `allSelected` verlangt zusätzlich, dass das Fenster die
+ganze Trefferliste ist, sonst zeigt die Kopf-Checkbox `indeterminate` und der Zähler den neuen Key
+`list.selectedOfTotal` („20 von 300 ausgewählt", 14 Bundles). Kommentar in `message-selection.ts`,
+Plan-Zeilen 165/973 und der Perf-Test sind korrigiert; der Perf-Test prüft jetzt beide Zahlen statt
+`/\d+ selected/`. Zwei Ergänzungen über den Lösungsansatz hinaus: der Klick auf die Kopf-Checkbox
+wird aus dem Zustand statt aus `event.target.checked` entschieden (eine `indeterminate`-Box meldet
+beim Klick `checked: true` und hätte nur erneut alles ausgewählt, statt zu leeren), und `Checkbox`
+spiegelt `indeterminate` jetzt nach jedem Commit statt nur bei Änderung des Props — ein nativer Klick
+löscht die Eigenschaft, und bis hierher blieb kein Aufrufer über einen Klick hinweg gemischt.
+
+**Stufe 2 bleibt offen:** „Alle {{total}} auswählen" über alle Treffer (FR-LST-04 Must). Als
+Backlog-Eintrag in `docs/implementation-plan.md` §11 aufgenommen, mit dem Paginierer
+(`collectMatchingIds`) und der Account-Floor-Klausel als benanntem Ausgangspunkt.
 
 **Kategorie / Bereich:** correctness / Mail
 

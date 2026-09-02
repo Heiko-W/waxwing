@@ -788,8 +788,29 @@ export function MessageList({
   }
 
   const selectedIds = [...selection.selected]
-  const allSelected = ids.length > 0 && selection.selected.size === ids.length
+  /*
+   * "Everything" means the whole QUERY, and the loaded window is not always the whole query.
+   *
+   * `selectAll` ticks `ids`, which is the `queryCache` window — 50 rows to start with, growing only
+   * as `loadMore` pages. Comparing the tick count against `ids.length` alone therefore drew a fully
+   * checked header box over a folder of 300, next to an `aria-rowcount` of 300 and a bar reading
+   * "50 selected". Nothing was ever mis-TARGETED (the store prunes and never invents ids, and the
+   * bulk actions receive exactly the ticked set), but the control promised a scope it did not have:
+   * the following Archive moved 50 messages and left 250 behind.
+   *
+   * So the box is only "all" when the window IS the query, and otherwise mixed — and where the
+   * ticked set covers the whole window without covering the folder, the count says BOTH numbers.
+   * That last condition is deliberately narrow: a hand-picked three-of-three still reads "3
+   * selected", because there the reader chose the scope and no promise was made.
+   *
+   * FR-LST-04's actual "select-all-in-folder" — an explicit "Select all {{total}}" that pages the
+   * remaining ids out of `Email/query` — is NOT this, and is not here. See the post-V1 backlog.
+   */
+  const windowIsWholeQuery = total === undefined || ids.length >= total
+  const windowAllTicked = ids.length > 0 && selection.selected.size === ids.length
+  const allSelected = windowAllTicked && windowIsWholeQuery
   const someSelected = selection.selected.size > 0 && !allSelected
+  const selectedOutOf = windowAllTicked && !windowIsWholeQuery ? total : undefined
   const activeId = ids[focusIndex]
   const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
   /**
@@ -881,6 +902,7 @@ export function MessageList({
               fromMailbox={sourceMailboxId ?? undefined}
               allSelected={allSelected}
               someSelected={someSelected}
+              outOf={selectedOutOf}
               onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
               onClear={() => dispatchSelection({ type: 'clear' })}
               onRequestDelete={() => requestDestroy(selectedIds)}
@@ -1352,6 +1374,12 @@ interface BulkBarProps {
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
+  /**
+   * The query's total when the ticked set is the WHOLE loaded window and that window is smaller than
+   * the query — the one case where a bare "50 selected" reads as "all of them" (R-08). `undefined`
+   * everywhere else, including a hand-picked partial selection, where the reader set the scope.
+   */
+  readonly outOf: number | undefined
   readonly onSelectAll: () => void
   readonly onClear: () => void
   readonly onRequestDelete: () => void
@@ -1391,12 +1419,15 @@ function BulkBar({
   fromMailbox,
   allSelected,
   someSelected,
+  outOf,
   onSelectAll,
   onClear,
   onRequestDelete,
   onRequestMove,
 }: BulkBarProps) {
   const { t } = useTranslation()
+  /** Every loaded row is ticked — whether or not the loaded window is the whole query. */
+  const windowAllTicked = allSelected || outOf !== undefined
   // The SAME seam the `e`/`#`/`!` chords use (M3.8) — so a click and a keystroke are one action, and
   // both get the undo toast.
   const triage = useTriage()
@@ -1726,12 +1757,20 @@ function BulkBar({
           information there is. `list.clearSelection` was already translated in both languages and
           had no caller. */}
       <Checkbox
-        aria-label={allSelected ? t('list.clearSelection') : t('list.selectAll')}
+        aria-label={windowAllTicked ? t('list.clearSelection') : t('list.selectAll')}
         checked={allSelected}
         indeterminate={someSelected}
-        onChange={(event) => (event.target.checked ? onSelectAll() : onClear())}
+        // Driven by the STATE, not by the box's next `checked` (R-08). Once the box can be
+        // `indeterminate` while every loaded row is ticked — a select-all over a folder whose window
+        // is not the whole folder — a click reports `checked: true` and would have re-selected what
+        // was already selected, leaving no way to clear from here at all.
+        onChange={() => (windowAllTicked ? onClear() : onSelectAll())}
       />
-      <span className={styles.bulkCount}>{t('list.selected', { count })}</span>
+      <span className={styles.bulkCount}>
+        {outOf === undefined
+          ? t('list.selected', { count })
+          : t('list.selectedOfTotal', { count, total: outOf })}
+      </span>
       {activeLabel !== undefined && (
         <Button
           size="sm"

@@ -1037,6 +1037,7 @@
     "select": "Bericht selecteren",
     "selectAll": "Alles selecteren",
     "selected": "{{count}} geselecteerd",
+    "selectedOfTotal": "{{count}} van {{total}} geselecteerd",
     "clearSelection": "Selectie opheffen",
     "actions": {
       "archive": "Archiveren",
