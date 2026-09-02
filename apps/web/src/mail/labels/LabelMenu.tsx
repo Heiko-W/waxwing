@@ -62,7 +62,17 @@ export function LabelMenu({ ids, anchorRef, onClose }: LabelMenuProps) {
   // what the `setKeyword` behind it would actually do.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the stable idsKey, not the array ref; `engine` is a real dep.
   useEffect(() => {
-    void engine?.fetchEnvelopes(ids)
+    // Offline this rejects, and the app installs no `unhandledrejection` handler. Swallowed rather
+    // than reported: hydration is an optimisation, the membership below refines itself as rows
+    // land, and `useEnsureEnvelopes` catches the identical call the same way.
+    //
+    // Wrapped rather than `.catch()`-ed, for the reason `usePrefetchBodies` states next door: a bare
+    // `.catch()` handles a REJECTED promise only, so a call that throws synchronously — an engine
+    // handed over mid-teardown, a partial fake — would escape it and be exactly the unhandled
+    // rejection this line exists to prevent.
+    void Promise.resolve()
+      .then(() => engine?.fetchEnvelopes(ids))
+      .catch(() => undefined)
   }, [idsKey, engine])
   const known = (
     useReplicaQuery(({ db, accountId }) => emailsByIds(db, accountId, ids), [idsKey]) ?? []

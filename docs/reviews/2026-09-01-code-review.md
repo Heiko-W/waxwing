@@ -547,7 +547,15 @@ Korrektur zum `null`-Fall.
 
 ### R-10 — [MEDIUM] Zwei weitere Dispatch-Stellen ohne Fehlerbehandlung — Rest des W-10-Fixes in `use-snooze.ts` und `labels/use-labels.ts` (vgl. W-10)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle drei Stellen wie vorgeschlagen: `use-snooze.ts` über `dispatchOrReport`, `stripKeyword` mit
+`try/catch` je Chunk und weiterlaufender Schleife plus `catch` am Aufruf (der Read, der die Schleife
+füttert, liegt außerhalb des Chunk-`catch`), `LabelMenu` schluckt still. Abweichung bei `LabelMenu`:
+statt `.catch(() => undefined)` das Wrap-Muster aus `usePrefetchBodies`
+(`Promise.resolve().then(…).catch(…)`) — ein blankes `.catch()` fängt nur ein REJECTED Promise, und
+ein synchroner Wurf (Engine mitten im Handover, unvollständiges Fake) wäre genau die unbehandelte
+Rejection, die die Zeile verhindern soll. Die bestehenden `LabelMenu`-Tests haben das sofort gezeigt:
+ihr Engine-Stub gibt `undefined` zurück.
 
 **Kategorie / Bereich:** correctness / Mail
 

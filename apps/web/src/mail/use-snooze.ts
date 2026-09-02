@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect } from 'react'
 import { setPref, useLocalPrefOptional, useReplicaOptional } from '../sync'
+import { dispatchOrReport } from '../sync/dispatch-failure'
 import { getEngineFor } from '../sync/engine'
 import {
   coerceSnoozeMap,
@@ -44,9 +45,17 @@ export function useSnooze(): SnoozeActions {
       if (replica === null) return
       const engine = getEngineFor(replica.accountId)
       if (engine === null) return
-      engine.dispatch(
-        { kind: 'setKeywords', emailIds: [...ids], keyword: SNOOZE_KEYWORD, value },
-        { id: crypto.randomUUID() },
+      // W-10's seam, which this call site was missed by: `dispatch` awaits `stateGuard`,
+      // `enqueueAction` and `refreshQueueCounts`, all IndexedDB writes that can throw, and
+      // `enqueueAction` applies the optimistic mutation FIRST (W-31). Unreported, a full disk made
+      // the message vanish from the list with the wake time written to the preference and no outbox
+      // row to carry either half to the server — and the automatic waker did the same thing in
+      // reverse once a minute, silently.
+      dispatchOrReport(
+        engine.dispatch(
+          { kind: 'setKeywords', emailIds: [...ids], keyword: SNOOZE_KEYWORD, value },
+          { id: crypto.randomUUID() },
+        ),
       )
     },
     [replica],

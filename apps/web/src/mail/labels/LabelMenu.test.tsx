@@ -67,6 +67,24 @@ describe('LabelMenu', () => {
     )
   })
 
+  it('survives an offline hydration without leaking an unhandled rejection (R-10)', async () => {
+    // `fetchEnvelopes` reaches the network and rejects offline, and the app installs no
+    // `unhandledrejection` handler — so the bare `void engine?.fetchEnvelopes(ids)` this effect used
+    // to be went to the console and nowhere else. `useEnsureEnvelopes` catches the identical call.
+    // The assertion is the vitest run itself: an unhandled rejection fails the file.
+    fetchEnvelopes.mockRejectedValue(new TypeError('Failed to fetch'))
+    render(<Harness ids={['e1', 'e2']} />)
+
+    expect(await screen.findByRole('menuitemcheckbox', { name: /Work/ })).toBeInTheDocument()
+    await waitFor(() => expect(fetchEnvelopes).toHaveBeenCalled())
+    // Membership still resolves from what the replica already holds — hydration is an optimisation.
+    expect(screen.getByRole('menuitemcheckbox', { name: /Work/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+
   it('toggles a fully-applied label off and a partial/unset label on', async () => {
     const user = userEvent.setup()
     render(<Harness ids={['e1', 'e2']} />)
