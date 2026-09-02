@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   communicationTypeKey,
   contactDisplayName,
@@ -98,6 +98,32 @@ describe('formatBirthday', () => {
   })
   it('renders a year-withheld partial date as MM-DD', () => {
     expect(formatBirthday({ kind: 'birth', date: { month: 4, day: 4 } })).toBe('04-04')
+  })
+
+  /*
+   * The reader's zone is PINNED west of UTC: run this in Berlin and a `Timestamp` birthday reads
+   * the same either way, so the assertion would pass for the wrong reason. V8 re-reads `TZ` on
+   * every `Date`/`Intl` call, so setting it here is enough.
+   */
+  describe('a Timestamp birthday west of UTC (R-63)', () => {
+    const ambient = process.env.TZ
+    beforeEach(() => {
+      process.env.TZ = 'America/New_York'
+    })
+    afterAll(() => {
+      if (ambient === undefined) delete process.env.TZ
+      else process.env.TZ = ambient
+    })
+
+    it('shows the same day the editor shows — the UTC one', () => {
+      const anniversary = {
+        kind: 'birth',
+        date: { '@type': 'Timestamp', utc: '1980-03-15T04:00:00Z' },
+      } as unknown as Parameters<typeof formatBirthday>[0]
+      // `extractBirthdayString` (contact-card-mapping) reads this as 1980-03-15 with `getUTC*`;
+      // rendering it in the reader's zone said "March 14, 1980" over a form showing the 15th.
+      expect(formatBirthday(anniversary, 'en-US')).toBe('March 15, 1980')
+    })
   })
 })
 

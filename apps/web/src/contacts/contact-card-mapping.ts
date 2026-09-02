@@ -457,7 +457,26 @@ function formToName(fields: NameFields, original: Name | undefined): Name | unde
     if (!EDITABLE_NAME_KINDS.has(component.kind)) components.push(component)
   }
   if (components.length === 0) return undefined
-  return { '@type': 'Name', components }
+  /*
+   * Built ON the original, like every other collection in this module — this was the last one that
+   * was not, and the file header above promises it is.
+   *
+   * `sortAs` (vCard `SORT-AS`) and `isOrdered` (surname-first cultures) are the visible casualties:
+   * a card imported from Apple Contacts or Thunderbird lost both the first time somebody corrected
+   * a typo in the given name, and the other clients then sorted or ordered that name differently
+   * with nothing in the UI having said so. So are the RFC 9553 name properties this type does not
+   * model at all (`phoneticScript`, `phoneticSystem`, `defaultSeparator`).
+   */
+  const base: Record<string, unknown> = original ? { ...original } : { '@type': 'Name' }
+  base.components = components
+  /*
+   * `full` is the ONE deliberate deletion, for the reason the address's `full` is deleted below:
+   * it is the whole name pre-formatted, `contactDisplayName` prefers it over the components, and
+   * carrying a stale one through a name edit would leave the list showing the name that was just
+   * corrected. Dropped here rather than by omission, so it reads as a decision.
+   */
+  delete base.full
+  return base as unknown as Name
 }
 
 // ── Communication type (contexts / features) ────────────────────────────────────────────────
@@ -494,10 +513,30 @@ function applyType(
   else base.contexts = { [formType]: true }
 }
 
+// ── Collection targets ──────────────────────────────────────────────────────────────────────
+
+/**
+ * An empty JSContact collection that can hold ANY key — including the three that are not property
+ * names on an ordinary object.
+ *
+ * The loops below file each entry under the map key it arrived with, and `out['__proto__'] = entry`
+ * on an object literal REPLACES that literal's prototype instead of adding an own property: the
+ * entry then has no key at all, `Object.keys(out)` does not count it, and the patch replaces the
+ * whole collection without it — silently. A null-prototype object has no `__proto__` setter to
+ * trigger, so the key is stored as the datum it is.
+ *
+ * The same rule `packages/jscontact` applies to a vCard `PROP-ID` (W-07), on the write side, for
+ * keys that reach the form by the routes that reader does not run through — a JSON import, or
+ * another client writing to the same account.
+ */
+function emptyCollection<T>(): Record<Id, T> {
+  return Object.create(null) as Record<Id, T>
+}
+
 // ── Emails / phones ─────────────────────────────────────────────────────────────────────────
 
 function formToEmails(entries: readonly EmailEntry[]): Record<Id, EmailAddress> | undefined {
-  const out: Record<Id, EmailAddress> = {}
+  const out = emptyCollection<EmailAddress>()
   for (const entry of entries) {
     const address = entry.address.trim()
     if (address === '') continue
@@ -514,7 +553,7 @@ function formToEmails(entries: readonly EmailEntry[]): Record<Id, EmailAddress> 
 }
 
 function formToPhones(entries: readonly PhoneEntry[]): Record<Id, Phone> | undefined {
-  const out: Record<Id, Phone> = {}
+  const out = emptyCollection<Phone>()
   for (const entry of entries) {
     const number = entry.number.trim()
     if (number === '') continue
@@ -583,7 +622,7 @@ function addressUnchanged(entry: AddressEntry, original: Address): boolean {
 }
 
 function formToAddresses(entries: readonly AddressEntry[]): Record<Id, Address> | undefined {
-  const out: Record<Id, Address> = {}
+  const out = emptyCollection<Address>()
   for (const entry of entries) {
     // Untouched → the original object, byte for byte. This is also what keeps a `full`-only address
     // (no structured components, so all five fields read empty) alive through an unrelated edit.
@@ -640,7 +679,7 @@ function formToAddresses(entries: readonly AddressEntry[]): Record<Id, Address> 
 // ── Notes ─────────────────────────────────────────────────────────────────────────────────────
 
 function formToNotes(entries: readonly NoteEntry[]): Record<Id, Note> | undefined {
-  const out: Record<Id, Note> = {}
+  const out = emptyCollection<Note>()
   for (const entry of entries) {
     const note = entry.text.trim()
     if (note === '') continue
@@ -658,7 +697,7 @@ function formToNotes(entries: readonly NoteEntry[]): Record<Id, Note> | undefine
 // ── Links (websites) / online services (instant messaging) ─────────────────────────────────
 
 function formToLinks(entries: readonly LinkEntry[]): Record<Id, Link> | undefined {
-  const out: Record<Id, Link> = {}
+  const out = emptyCollection<Link>()
   for (const entry of entries) {
     const uri = entry.uri.trim()
     if (uri === '') continue
@@ -687,7 +726,7 @@ const URI_LIKE = /^[a-z][a-z0-9+.-]*:/i
 function formToOnlineServices(
   entries: readonly OnlineServiceEntry[],
 ): Record<Id, OnlineService> | undefined {
-  const out: Record<Id, OnlineService> = {}
+  const out = emptyCollection<OnlineService>()
   for (const entry of entries) {
     const account = entry.account.trim()
     const service = entry.service.trim()
@@ -722,7 +761,10 @@ function formToOrganizations(
     edited = original
   } else if (form.organization.trim() !== '') {
     const base: Record<string, unknown> = original ? { ...original } : { '@type': 'Organization' }
-    base.name = form.organization
+    // Trimmed, like every other value this module stores: the emptiness test above was taken on the
+    // trimmed string, so writing the untrimmed one meant the check and the write disagreed and
+    // `" ACME "` reached the server — and the detail view — with its padding.
+    base.name = form.organization.trim()
     edited = base as Organization
   }
   const result: Record<Id, Organization> =
@@ -739,7 +781,8 @@ function formToTitles(form: ContactFormModel, newId: IdSource): Record<Id, Title
     edited = original
   } else if (form.title.trim() !== '') {
     const base: Record<string, unknown> = original ? { ...original } : { '@type': 'Title' }
-    base.name = form.title
+    // See `formToOrganizations`: the guard trimmed, the write did not.
+    base.name = form.title.trim()
     edited = base as unknown as Title
   }
   const result: Record<Id, Title> =
@@ -848,8 +891,8 @@ function omitKey<T>(
   record: Readonly<Record<Id, T>> | undefined,
   key: Id | undefined,
 ): Record<Id, T> {
-  if (record === undefined) return {}
-  const out: Record<Id, T> = {}
+  if (record === undefined) return emptyCollection<T>()
+  const out = emptyCollection<T>()
   for (const [entryKey, value] of Object.entries(record)) {
     if (entryKey !== key) out[entryKey] = value
   }

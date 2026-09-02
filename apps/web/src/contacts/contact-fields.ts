@@ -202,7 +202,23 @@ export function formatBirthday(anniversary: Anniversary, locale?: string): strin
     const parsed = new Date(date.utc)
     return Number.isNaN(parsed.getTime())
       ? undefined
-      : parsed.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
+      : parsed.toLocaleDateString(locale, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          /*
+           * Read in UTC, because that is the day the editor reads.
+           *
+           * A `Timestamp` birthday (vCard `BDAY` WITH a time, the only way one arises) was rendered
+           * here in the reader's zone and extracted for the form's date field with `getUTC*`
+           * (`contact-card-mapping.extractBirthdayString`). West of UTC the two disagreed by a day:
+           * the detail said "March 14, 1980" over a form showing `1980-03-15`, and confirming the
+           * form wrote a `PartialDate` of the 15th — the display jumping a day for having been
+           * looked at. A birthday is a calendar date; the instant it was stored as has a zone, and
+           * that zone is the one it was written in, not the one it is being read in.
+           */
+          timeZone: 'UTC',
+        })
   }
   const { year, month, day } = date
   if (year !== undefined && month !== undefined && day !== undefined) {

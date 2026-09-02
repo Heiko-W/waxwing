@@ -567,7 +567,6 @@ function RepeatPage({
 }) {
   const { t } = useTranslation()
   const untilId = useId()
-  const countId = useId()
   const offered: readonly RepeatPreset[] =
     preset === 'custom' ? [...REPEAT_PRESETS, 'custom'] : REPEAT_PRESETS
 
@@ -641,25 +640,59 @@ function RepeatPage({
             </div>
           )}
           {end.kind === 'count' && (
-            <div className={styles.field}>
-              <label className={styles.fieldLabel} htmlFor={countId}>
-                {t('calendar.event.repeat.countLabel')}
-              </label>
-              <TextInput
-                id={countId}
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={String(end.count)}
-                onChange={(event) => {
-                  const next = Number.parseInt(event.target.value, 10)
-                  onEnd({ kind: 'count', count: Number.isFinite(next) && next > 0 ? next : 1 })
-                }}
-              />
-            </div>
+            <RepeatCountField
+              count={end.count}
+              onCount={(count) => onEnd({ kind: 'count', count })}
+            />
           )}
         </fieldset>
       )}
+    </div>
+  )
+}
+
+/**
+ * "End after N times", with N held as TEXT.
+ *
+ * The `duration` field's rule (T14), applied to the last field in this dialog that did not follow
+ * it. `Number.parseInt('')` is `NaN`, and the old handler substituted `1` for it: clearing "10" in
+ * order to type "5" put a `1` into the controlled field first, so the reader was left with "15" or
+ * "51" and no idea where the 1 came from.
+ *
+ * An empty field is a state the FIELD can be in without the recurrence rule having to represent it,
+ * which is why the text lives here and only a value that parses is handed up. The rule keeps the
+ * last count that did — a rule with no count at all is a different choice ("Never"), already on
+ * offer above.
+ */
+function RepeatCountField({
+  count,
+  onCount,
+}: {
+  readonly count: number
+  onCount: (next: number) => void
+}) {
+  const { t } = useTranslation()
+  const countId = useId()
+  const [text, setText] = useState(() => String(count))
+
+  return (
+    <div className={styles.field}>
+      <label className={styles.fieldLabel} htmlFor={countId}>
+        {t('calendar.event.repeat.countLabel')}
+      </label>
+      <TextInput
+        id={countId}
+        type="number"
+        inputMode="numeric"
+        min={1}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value
+          setText(next)
+          const parsed = Number.parseInt(next, 10)
+          if (Number.isFinite(parsed) && parsed > 0) onCount(parsed)
+        }}
+      />
     </div>
   )
 }

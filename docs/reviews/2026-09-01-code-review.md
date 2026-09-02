@@ -896,7 +896,7 @@ newParticipantRow('johndoe@example.test')])` → ein Key `pjohndoeexampletest`. 
 
 ### R-19 — [MEDIUM] Eine Namensänderung im Kontaktformular verwirft `sortAs`, `isOrdered` und `full` des Namens
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kontakte)
 
@@ -2474,7 +2474,12 @@ Leiste rendert `"CalendarsThis account has no calendars."`. Gegenprüfung: best�
 
 ### R-60 — [LOW] Ein Map-Key `__proto__` in `emails`/`phones`/… lässt den Eintrag bei der nächsten Bearbeitung verschwinden — der JSON-Import lässt solche Keys durch (vgl. W-07)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Der Import filtert `__proto__`/`constructor`/`prototype` rekursiv aus dem GESAMTEN Kartenobjekt
+statt nur aus den bekannten Map-Properties — eine Allowlist der Map-Namen hätte jede JSContact-
+Vendor-Erweiterung ungeschützt gelassen. Die Schreibseite legt die Zielobjekte wie vorgeschlagen
+mit `Object.create(null)` an, sodass ein aus anderer Quelle stammender Schlüssel erhalten bleibt
+statt zu verschwinden.
 
 **Kategorie / Bereich:** robustness (Security-Härtung) / PIM (Kontakte)
 
@@ -2563,7 +2568,7 @@ bestätigt dieselben 21 Fälle. Gegenprüfung: bestätigt.
 
 ### R-63 — [LOW] Geburtstag als `Timestamp`: Formular zeigt den UTC-Tag, Detailansicht den lokalen — in Zonen westlich von UTC einen Tag auseinander
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** i18n / PIM (Kontakte)
 
@@ -2588,7 +2593,10 @@ March 14, 1980`. Gegenprüfung: bestätigt.
 
 ### R-64 — [LOW] Fotofeld: ein fehlgeschlagener zweiter Bildauswahlversuch widerruft die Vorschau-URL, die der Entwurf noch anzeigt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Von den beiden Vorschlägen der erste: die Vorschau-URL wird erst nach erfolgreichem
+`preparePhotoUri` getauscht. `previewUrl` bleibt im Entwurf, weil `photo.uri` erst nach dem
+Encode existiert und der Kreis sonst während der Vorbereitung leer bliebe.
 
 **Kategorie / Bereich:** react / PIM (Kontakte)
 
@@ -2611,7 +2619,10 @@ nicht im Entwurf halten und immer `photo.uri` rendern.
 
 ### R-65 — [LOW] Kleinere Formular-Inkonsistenzen: Wiederholungszähler springt beim Leeren auf 1, Firma/Titel werden ungetrimmt gespeichert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Der Zähler hält seinen Text in einer eigenen Feldkomponente (`RepeatCountField`) statt im State
+des Dialogs: `RepeatEnd` ist ein geteilter Typ (`event-recurrence.ts`, `calendar-client.ts`), und
+ein leeres Feld ist ein Zustand des Feldes, nicht der Wiederholungsregel.
 
 **Kategorie / Bereich:** correctness / PIM (Kalender, Kontakte)
 
