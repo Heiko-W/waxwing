@@ -334,7 +334,10 @@ describe('PushSubscriptionHost lifecycle', () => {
 
     // jsdom's EventTarget cannot model the pre-attach queue, so `startMessages` is pinned by its
     // call, not by behaviour — which is exactly what the host's own comment says a test must do.
-    expect(container.startMessagesCalls).toBe(1)
+    // TWO callers since R-42: this host's verification listener and the live-banner probe. Each
+    // calls it for itself rather than relying on the other being mounted; the container starts
+    // dispatching once either way.
+    expect(container.startMessagesCalls).toBe(2)
 
     await putPendingVerification({ pushSubscriptionId: 'sub-1', verificationCode: 'code-1' })
     await act(async () => {

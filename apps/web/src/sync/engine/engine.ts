@@ -29,6 +29,7 @@ import {
   type Session,
   SHARE_NOTIFICATION_TYPE,
 } from '@waxwing/jmap'
+import { setLiveBannerReady } from '../../notify/live-banner'
 import type { NotifyNewMail } from '../../notify/notifier'
 import {
   collectBodyBlobIds,
@@ -533,6 +534,9 @@ export class SyncEngine {
     // Reset the shared status store so a fresh login never inherits this session's phase.
     this.status = { ...INITIAL_ENGINE_STATUS, online: this.deps.isOnline() }
     this.publishStatus(this.status)
+    // Last, and unconditionally: a torn-down engine banners nothing, and a stale `true` here would
+    // silence the worker for a tab that has stopped listening (R-42).
+    this.publishLiveBannerReadiness()
   }
 
   /**
@@ -1361,6 +1365,9 @@ export class SyncEngine {
     this.notifyArmed = false
     this.mailDeltaRan = false
     this.notifySinceMs = this.clock.now()
+    // A fresh leadership session banners nothing until its catch-up pass is done, so the worker must
+    // not be told otherwise — see {@link publishLiveBannerReadiness}.
+    this.publishLiveBannerReadiness()
     // Started, NOT awaited. `onLeadership` must not yield before `sync()` has marked itself busy —
     // everything from the lock grant to that point runs in one task, and callers observe a freshly
     // elected leader as already syncing. The floor is only consulted by the notifier, which cannot run
@@ -1402,7 +1409,12 @@ export class SyncEngine {
       transports: BROWSER_PUSH_TRANSPORTS,
     })
     this.push = push
-    push.onStatus((pushStatus) => this.patch({ pushStatus, pushTransport: push.transport }))
+    push.onStatus((pushStatus) => {
+      this.patch({ pushStatus, pushTransport: push.transport })
+      // A live channel that is not connected banners nothing until the 60 s safety sweep, so the
+      // Web Push banner must not be suppressed on its behalf (R-42).
+      this.publishLiveBannerReadiness()
+    })
     push.subscribe(() => {
       void this.sync()
     })
@@ -1834,6 +1846,7 @@ export class SyncEngine {
     const wasArmed = this.notifyArmed
     // Arm on the catch-up having HAPPENED, not on the pass having succeeded — see {@link mailDeltaRan}.
     if (this.mailDeltaRan) this.notifyArmed = true
+    if (this.notifyArmed !== wasArmed) this.publishLiveBannerReadiness()
     if (!wasArmed) return
     if (created.length === 0) return
     if (!this.isLeader || this.drainController.signal.aborted) return
@@ -1880,6 +1893,35 @@ export class SyncEngine {
       }
       bus.postForegroundQuery()
     })
+  }
+
+  /**
+   * Publish whether THIS tab would raise the live mail banner for a delivery arriving now (R-42).
+   *
+   * The service worker reads it — through `notify/live-probe.ts` — before drawing a Web Push banner,
+   * because the two channels disagree about what "the user is not looking" means: the live channel
+   * banners when no tab is in the FOREGROUND, the worker when no tab is VISIBLE, and an open but
+   * covered tab used to get both.
+   *
+   * All four clauses are needed, and each of them is a banner that would otherwise be LOST rather
+   * than merely duplicated — silence here costs nothing, a wrong `true` costs the notification:
+   *  - **`notify` present.** Only the primary account's engine raises banners (M4.4); a shared
+   *    account's engine must neither answer for it nor clear its answer, so it returns early rather
+   *    than publishing `false`.
+   *  - **Leader.** A follower runs no sync pass and announces nothing.
+   *  - **Armed.** The first pass of a leadership session is the silent catch-up. A tab that has just
+   *    taken the lock is running and connected and will still say nothing about this delivery.
+   *  - **Push channel open.** Without a live channel the next pass is the 60 s safety sweep, and a
+   *    banner a minute late is worse than the worker's plain one now.
+   */
+  private publishLiveBannerReadiness(): void {
+    if (this.deps.notify === undefined) return
+    setLiveBannerReady(
+      this.isLeader &&
+        this.notifyArmed &&
+        !this.drainController.signal.aborted &&
+        this.status.pushStatus === 'open',
+    )
   }
 
   /** A background 401/403 means the session expired — route it to re-auth (FR-AUTH-06). */

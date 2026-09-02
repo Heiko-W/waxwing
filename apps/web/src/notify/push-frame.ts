@@ -292,6 +292,13 @@ export interface PushBannerInput {
  * Order is load-bearing: `visible` is checked BEFORE quiet hours, because during quiet hours with
  * the app open the live channel is the one that decided to stay silent, and this path must not
  * second-guess it either way.
+ *
+ * `visible` is not the whole of the double-notify guard, and never was: the live channel banners
+ * whenever no tab is in the FOREGROUND, so an open but COVERED tab raised one banner here and
+ * another there (R-42). That case cannot be decided from anything in this input — it depends on
+ * whether a tab is still running its live channel at all — so the worker asks the clients directly
+ * (`live-probe.ts`) after this function has said `show`. This one keeps answering the question it
+ * can answer from data.
  */
 export function shouldRaisePushBanner(input: PushBannerInput): PushBannerDecision {
   if (input.frame.kind !== 'delivery') return { show: false, because: 'notADelivery' }

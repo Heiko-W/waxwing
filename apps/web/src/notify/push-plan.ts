@@ -74,7 +74,9 @@ export interface PushPlanInput {
  * Order matters and is not arbitrary: identity questions (do we even have a record, is it about this
  * endpoint, this key, does the server still have it) are settled before the lifetime question,
  * because a `renew` against a subscription the server has dropped would be an update to nothing —
- * succeeding as a no-op with `notUpdated`, and leaving the app believing it is subscribed.
+ * succeeding as a no-op with `notUpdated`. That used to leave the app believing it is subscribed;
+ * since R-41 `applyPlan` reads `updated` and throws on a refusal, so the ordering here is now the
+ * cheap half of the guard rather than the only one.
  */
 export function planPushSubscription(input: PushPlanInput): PushPlan {
   const { stored } = input

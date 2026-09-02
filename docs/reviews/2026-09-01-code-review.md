@@ -1850,7 +1850,7 @@ harmlos (grün). Gegenprüfung: bestätigt, Severity medium bleibt.
 
 ### R-41 — [MEDIUM] `PushSubscription/set update` wird nie auf `notUpdated` geprüft — eine abgelehnte `emailPush`-Änderung gilt lokal als erledigt und wird nie wiederholt (neue Stelle des W-32-Musters)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness, security (Privatsphäre-Schalter) / UI (Notify)
 
@@ -1892,7 +1892,15 @@ rot); Kontrollfall akzeptiertes Update → korrekt (grün). Gegenprüfung: best�
 
 ### R-42 — [MEDIUM] Hintergrund-Tab + Web Push: Live-Kanal und Service Worker melden dieselbe Mail doppelt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Umgesetzt wie in der korrigierten Fassung beschrieben: der Worker fragt vor `showNotification`
+alle App-Clients per `postMessage` + `MessageChannel` und wartet 100 ms
+(`notify/live-probe.ts`, `notify/use-live-banner-probe.ts`, `notify/live-banner.ts`). Die
+billigere `registration.getNotifications()`-Milderung ist NICHT zusätzlich gebaut — sie deckt nur
+die Reihenfolge „Live zuerst", und genau die ist die unwahrscheinliche: der Push erreicht das
+Gerät, bevor der Leader seinen Sync-Pass beendet hat. ADR-017 hat ein Amendment bekommen, weil
+Entscheidung 3 einen Mechanismus benennt, der die dort formulierte Absicht nicht trägt._
 
 **Kategorie / Bereich:** correctness / UI (Notify)
 
