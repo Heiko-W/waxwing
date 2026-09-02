@@ -103,13 +103,25 @@ export class PollingChannel extends BasePushChannel {
         return
       }
       if (disposed) return
-      if (!opened) {
-        opened = true
-        handlers.reportOpen()
-      }
-      if (session.state !== this.lastState) {
-        this.lastState = session.state
-        this.emitStateChange(resync(session))
+      // INSIDE a try, and that is the fix rather than a tidy-up. `resync` reads `session.accounts`,
+      // which `isSessionShape` does not require (see `session.ts`), and this ran outside the catch
+      // above: a `TypeError` there was an unhandled rejection, `scheduleNext()` was never reached,
+      // and the channel sat there reporting `open` while never polling again — no `onError`, no
+      // reconnect, nothing for the app to notice. Any throw from here is a closed channel, which
+      // the reconnect loop knows how to answer.
+      try {
+        if (!opened) {
+          opened = true
+          handlers.reportOpen()
+        }
+        if (session.state !== this.lastState) {
+          this.lastState = session.state
+          this.emitStateChange(resync(session))
+        }
+      } catch (error) {
+        if (disposed || controller.signal.aborted) return
+        handlers.reportClosed(toError(error))
+        return
       }
       scheduleNext()
     }
@@ -123,7 +135,10 @@ export class PollingChannel extends BasePushChannel {
 /** A coarse "resync every account" StateChange: the poller cannot tell which types changed. */
 function resync(session: Session): StateChange {
   const changed: Record<string, Record<string, string>> = {}
-  for (const accountId of Object.keys(session.accounts)) changed[accountId] = {}
+  // `?? {}` — `accounts` is REQUIRED by RFC 8620 §2 and is deliberately not required by
+  // `isSessionShape`. A session without it means "no accounts to resync", which is the honest
+  // answer; it used to mean a `TypeError` that killed the poll loop silently.
+  for (const accountId of Object.keys(session.accounts ?? {})) changed[accountId] = {}
   return { '@type': 'StateChange', changed }
 }
 

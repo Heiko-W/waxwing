@@ -3,6 +3,7 @@ import { bearer } from './auth'
 import { JmapClient } from './client'
 import { JmapError } from './errors'
 import { Methods } from './methods'
+import { MethodResponses, RequestBuilder } from './request'
 import { at, autoRespond, jmapPostMock, makeSession } from './test-support'
 import type { FetchLike } from './transport'
 import type {
@@ -81,6 +82,95 @@ describe('JmapClient — envelope, auth and using', () => {
 
     expect(Methods.coreEcho.name).toBe('Core/echo')
     expect(at(calls, calls.length - 1).body.methodCalls[0]?.[0]).toBe(Methods.coreEcho.name)
+  })
+})
+
+/**
+ * R-94. `JmapClient.call` has always taken `signal`, `createdIds` and `using`; the fluent path could
+ * carry none of them, so a caller that owns an abort signal had to leave the DSL and hand
+ * `client.call([...])` a hand-built invocation array. `send(options?)` closes that, additively.
+ */
+describe('RequestBuilder.send — call options on the fluent path', () => {
+  function signalRecordingClient(): { client: JmapClient; seen: (AbortSignal | undefined)[] } {
+    const seen: (AbortSignal | undefined)[] = []
+    const fetch: FetchLike = async (_url, init) => {
+      seen.push(init?.signal ?? undefined)
+      const body = JSON.parse(String(init?.body ?? '{}')) as JmapRequest
+      return new Response(JSON.stringify(autoRespond(body)), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return { client: new JmapClient({ session: makeSession(), auth: bearer('t'), fetch }), seen }
+  }
+
+  it('passes the caller’s signal down to fetch', async () => {
+    const { client, seen } = signalRecordingClient()
+    const controller = new AbortController()
+    const builder = client.request()
+    builder.call('Core/echo', {})
+    await builder.send({ signal: controller.signal })
+
+    // The transport combines it with its own deadline (`AbortSignal.any`), so identity is not the
+    // test — reachability is: aborting the caller's controller must abort what fetch was given.
+    const passed = at(seen, 0)
+    expect(passed).toBeDefined()
+    expect(passed?.aborted).toBe(false)
+    controller.abort()
+    expect(passed?.aborted).toBe(true)
+  })
+
+  it('aborts an in-flight fluent request', async () => {
+    const controller = new AbortController()
+    const fetch: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        const fail = () => reject(new DOMException('The operation was aborted', 'AbortError'))
+        // `aborted` FIRST: `send` awaits `applyAuth` before it reaches fetch, so the signal can
+        // already be aborted by the time the mock sees it and no `abort` event would follow.
+        if (init?.signal?.aborted) fail()
+        else init?.signal?.addEventListener('abort', fail)
+      })
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    const builder = client.request()
+    builder.call('Core/echo', {})
+    const pending = builder.send({ signal: controller.signal })
+    const settled = expect(pending).rejects.toThrowError(/abort/i)
+    controller.abort()
+    await settled
+  })
+
+  it('carries createdIds and a per-call using through the builder', async () => {
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    const builder = client.request()
+    builder.call('Email/query', { accountId: 'a' })
+    await builder.send({ using: ['urn:ietf:params:jmap:emailpush'], createdIds: { k1: 'E-1' } })
+
+    const recorded = at(calls, 0)
+    expect(recorded.body.using).toContain('urn:ietf:params:jmap:emailpush')
+    expect(recorded.body.createdIds).toEqual({ k1: 'E-1' })
+  })
+
+  /**
+   * The compatibility half, and the reason it is a test rather than a comment: these are published
+   * packages, so `send` had to gain an OPTIONAL parameter and the executor an optional second one.
+   * Both directions of that must keep compiling — a no-argument `send()`, and an executor written
+   * against the old one-parameter shape.
+   */
+  it('still runs a no-argument send, and a legacy one-parameter executor', async () => {
+    const { client } = signalRecordingClient()
+    const plain = client.request()
+    plain.call('Core/echo', {})
+    await expect(plain.send()).resolves.toBeDefined()
+
+    const legacy: (builder: RequestBuilder) => Promise<MethodResponses> = async () =>
+      new MethodResponses([], 's0', undefined)
+    const standalone = new RequestBuilder(legacy)
+    standalone.call('Core/echo', {})
+    await expect(standalone.send()).resolves.toBeInstanceOf(MethodResponses)
+    await expect(standalone.send({ signal: new AbortController().signal })).resolves.toBeInstanceOf(
+      MethodResponses,
+    )
   })
 })
 
@@ -282,6 +372,54 @@ describe('JmapClient — malformed / oversized responses (F22)', () => {
       expect(error, body).toBeInstanceOf(JmapError)
       expect(error, body).not.toBeInstanceOf(TypeError)
     }
+  })
+
+  /**
+   * R-92. The envelope check stopped at `Array.isArray(methodResponses)`, so an element that is not
+   * a `[name, args, callId]` triple reached `reassembleResponses` and threw a raw `TypeError` from
+   * `response[2]` — not a `JmapError`, so `classifyThrown` files it under `retry` and the sync
+   * layer keeps asking a server that will never answer differently. That retry loop is the exact
+   * thing the envelope check exists to close, one level up.
+   */
+  it('rejects an invocation that is not a [name, args, callId] triple', async () => {
+    const malformed = [
+      '{"methodResponses":[null],"sessionState":"s0"}',
+      '{"methodResponses":["Core/echo"],"sessionState":"s0"}',
+      '{"methodResponses":[["Core/echo"]],"sessionState":"s0"}',
+      '{"methodResponses":[["Core/echo",{},42]],"sessionState":"s0"}',
+      '{"methodResponses":[[42,{},"c0"]],"sessionState":"s0"}',
+      '{"methodResponses":[["Core/echo",{},"c0"],null],"sessionState":"s0"}',
+    ]
+    for (const body of malformed) {
+      const fetch: FetchLike = async () =>
+        new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+      const builder = client.request()
+      builder.call('Core/echo', {}, 'c0')
+      const error = await builder.send().then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect(error, body).toBeInstanceOf(JmapError)
+      expect(error, body).not.toBeInstanceOf(TypeError)
+    }
+  })
+
+  it('still accepts an invocation whose arguments it knows nothing about', async () => {
+    // Only the TUPLE is checked. Slot 1 is the method's business, and a strict check there would
+    // reject a server returning something newer than this library knows.
+    const fetch: FetchLike = async () =>
+      new Response(
+        '{"methodResponses":[["Core/echo",{"whatIsThis":[1,2]},"c0"]],"sessionState":"s"}',
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      )
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    const builder = client.request()
+    builder.call('Core/echo', {}, 'c0')
+    await expect(builder.send()).resolves.toBeDefined()
   })
 
   it('accumulates a response array far larger than the spread-argument limit', async () => {

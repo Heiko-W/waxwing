@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { bearer } from './auth'
 import { JmapClient } from './client'
-import { makeSession } from './test-support'
+import { at, autoRespond, jmapPostMock, makeSession } from './test-support'
 import type { FetchLike } from './transport'
 import { DEFAULT_REQUEST_TIMEOUT_MS, postApi } from './transport'
 
@@ -13,47 +13,73 @@ import { DEFAULT_REQUEST_TIMEOUT_MS, postApi } from './transport'
  * and the credentials were all still on the machine.
  */
 describe('transport request deadline (W-16)', () => {
+  /**
+   * R-93. No fake timers, deliberately, and the version that had them was passing for the wrong
+   * reason: `AbortSignal.timeout` is scheduled by the platform, not by `setTimeout`, so
+   * `vi.advanceTimersByTimeAsync(60)` did nothing to it — what fired the deadline was the ~50 ms of
+   * REAL time that elapsed while the test awaited. A reader would have concluded that the deadline
+   * is under the test's control, and anyone raising it here to the 30 s default would have got a
+   * hanging test instead of the fast one they expected.
+   *
+   * So the deadline is a real 50 ms, and it is passed explicitly. The behaviour under test is the
+   * one the app depends on: a socket the server accepts and never answers on must not leave the
+   * promise pending.
+   */
   it('aborts a request that never answers', async () => {
-    vi.useFakeTimers()
-    try {
-      const fetch: FetchLike = (_url, init) =>
-        new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => {
-            reject(new DOMException('The operation was aborted', 'TimeoutError'))
-          })
+    let deadline: AbortSignal | undefined
+    const fetch: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        deadline = init?.signal
+        init?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted', 'TimeoutError'))
         })
-      const pending = postApi(
-        'https://mail.waxwing.test/jmap/api',
-        { using: [], methodCalls: [] },
-        { fetch, auth: bearer('tok') },
-        undefined,
-        50,
-      )
-      const settled = expect(pending).rejects.toThrowError(/abort/i)
-      await vi.advanceTimersByTimeAsync(60)
-      await settled
-    } finally {
-      vi.useRealTimers()
-    }
+      })
+    const pending = postApi(
+      'https://mail.waxwing.test/jmap/api',
+      { using: [], methodCalls: [] },
+      { fetch, auth: bearer('tok') },
+      undefined,
+      50,
+    )
+    await expect(pending).rejects.toThrowError(/abort/i)
+    // The abort came from the DEADLINE and not from a caller signal — there was none.
+    expect(deadline?.aborted).toBe(true)
   })
 
+  /**
+   * Through the SHARED mock, which now records `init.signal` (R-93). It did not, which is why this
+   * file grew a fetch mock of its own for every assertion about cancellation — and a mock that
+   * silently drops the one thing under test is how a transport could lose its signal without any
+   * of these tests noticing.
+   */
   it('passes a signal to fetch even when the caller gives none', async () => {
-    const seen: Array<AbortSignal | undefined> = []
-    const fetch = vi.fn<FetchLike>(async (_url, init) => {
-      seen.push(init?.signal ?? undefined)
-      return new Response(JSON.stringify({ methodResponses: [], sessionState: 's' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
     const client = new JmapClient({ session: makeSession(), auth: bearer('tok'), fetch })
 
     const builder = client.request()
     builder.call('Email/query', { accountId: 'a' })
     await builder.send()
 
-    expect(seen[0]).toBeInstanceOf(AbortSignal)
-    expect(seen[0]?.aborted).toBe(false)
+    const recorded = at(calls, 0)
+    expect(recorded.signal).toBeInstanceOf(AbortSignal)
+    expect(recorded.signal?.aborted).toBe(false)
+  })
+
+  it("records the caller's own signal through the shared mock too", async () => {
+    const { fetch, calls } = jmapPostMock((body) => autoRespond(body))
+    const client = new JmapClient({ session: makeSession(), auth: bearer('tok'), fetch })
+    const controller = new AbortController()
+
+    const builder = client.request()
+    builder.call('Email/query', { accountId: 'a' })
+    await builder.send({ signal: controller.signal })
+
+    // Combined with the deadline via `AbortSignal.any`, so identity is not the test — reachability
+    // is: aborting the caller's controller aborts what fetch was handed.
+    const recorded = at(calls, 0)
+    expect(recorded.signal?.aborted).toBe(false)
+    controller.abort()
+    expect(recorded.signal?.aborted).toBe(true)
   })
 
   it("still honours the caller's own signal — the deadline is an addition, not a replacement", async () => {

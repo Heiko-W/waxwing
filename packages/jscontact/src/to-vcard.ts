@@ -31,8 +31,9 @@ import type {
   Phone,
   Timestamp,
   Title,
+  VCardParams,
 } from './types'
-import { escapeText } from './vcard/value'
+import { escapeText, toVCardTimestamp } from './vcard/value'
 import { joinList, joinStructured, renderCard, type WritableLine } from './vcard/write'
 
 /** Inverse of `from-vcard.ts`'s `N_KINDS`, by position. */
@@ -83,6 +84,7 @@ function entryParams(options: {
   readonly types?: readonly string[]
   readonly pref?: number | undefined
   readonly label?: string | undefined
+  readonly vCardParams?: VCardParams | undefined
 }): Map<string, string[]> {
   const params = new Map<string, string[]>()
   params.set('PROP-ID', [options.id])
@@ -91,6 +93,14 @@ function entryParams(options: {
   }
   if (options.pref !== undefined) params.set('PREF', [String(options.pref)])
   if (options.label !== undefined) params.set('LABEL', [options.label])
+  // Parameters the import read but this package does not model, put back (RFC 9555 §2.15.2's
+  // `vCardParams`): `ALTID`, `LANGUAGE`, `PID`, a `VALUE=uri` on `TEL`. Never over a parameter the
+  // typed fields own — those are computed from the entry and are the authority for their own key.
+  for (const [key, value] of Object.entries(options.vCardParams ?? {})) {
+    const name = key.toUpperCase()
+    if (params.has(name)) continue
+    params.set(name, (Array.isArray(value) ? value : [value]).map(String))
+  }
   return params
 }
 
@@ -132,6 +142,7 @@ function emailLines(emails: Readonly<Record<Id, EmailAddress>> | undefined, out:
         types: setKeys(email.contexts).map((c) => CONTEXT_TO_TYPE[c] ?? c),
         pref: email.pref,
         label: email.label,
+        vCardParams: email.vCardParams,
       }),
       value: escapeText(email.address),
     })
@@ -146,7 +157,13 @@ function phoneLines(phones: Readonly<Record<Id, Phone>> | undefined, out: Writab
     ]
     out.push({
       name: 'TEL',
-      params: entryParams({ id, types, pref: phone.pref, label: phone.label }),
+      params: entryParams({
+        id,
+        types,
+        pref: phone.pref,
+        label: phone.label,
+        vCardParams: phone.vCardParams,
+      }),
       value: escapeText(phone.number),
     })
   }
@@ -166,6 +183,7 @@ function addressLines(addresses: Readonly<Record<Id, Address>> | undefined, out:
       types: setKeys(address.contexts).map((c) => CONTEXT_TO_TYPE[c] ?? c),
       pref: address.pref,
       label: address.full,
+      vCardParams: address.vCardParams,
     })
     if (address.countryCode !== undefined) params.set('CC', [address.countryCode])
     out.push({ name: 'ADR', params, value: joinStructured(slots) })
@@ -181,6 +199,7 @@ function organizationLines(
     const params = entryParams({
       id,
       types: setKeys(org.contexts).map((c) => CONTEXT_TO_TYPE[c] ?? c),
+      vCardParams: org.vCardParams,
     })
     if (org.sortAs !== undefined) params.set('SORT-AS', [org.sortAs])
     out.push({ name: 'ORG', params, value: joinStructured(components) })
@@ -191,15 +210,24 @@ function titleLines(titles: Readonly<Record<Id, Title>> | undefined, out: Writab
   for (const [id, title] of Object.entries(titles ?? {})) {
     out.push({
       name: title.kind === 'role' ? 'ROLE' : 'TITLE',
-      params: entryParams({ id }),
+      params: entryParams({ id, vCardParams: title.vCardParams }),
       value: escapeText(title.name),
     })
   }
 }
 
-/** `1953-04-15`, or `--0415` when the year is withheld (§4.3.4). */
+/**
+ * `19530415`, or `--0415` when the year is withheld (§4.3.4); a {@link Timestamp} becomes the
+ * §4.3.5 basic form.
+ *
+ * A `Timestamp.utc` used to be written straight out — RFC 3339 grammar into a vCard 4.0 slot, so
+ * `{ utc: '1982-04-15T00:00:00Z' }` produced `BDAY;PROP-ID=a1:1982-04-15T00:00:00Z`, which is not a
+ * valid `date-and-or-time`, and which this package's own importer then read as no birthday at all.
+ * `null` for a `utc` that is not an RFC 3339 timestamp: the property is skipped rather than written
+ * in a grammar no reader is required to accept.
+ */
 export function formatVCardDate(date: PartialDate | Timestamp): string | null {
-  if ('utc' in date && typeof date.utc === 'string') return date.utc
+  if ('utc' in date && typeof date.utc === 'string') return toVCardTimestamp(date.utc) ?? null
   const partial = date as PartialDate
   const pad = (value: number) => String(value).padStart(2, '0')
   if (partial.year !== undefined && partial.month !== undefined && partial.day !== undefined) {
@@ -225,7 +253,7 @@ function anniversaryLines(card: Card, out: WritableLine[]) {
     const name = names[anniversary.kind]
     const value = formatVCardDate(anniversary.date)
     if (name === undefined || value === null) continue
-    out.push({ name, params: entryParams({ id }), value })
+    out.push({ name, params: entryParams({ id, vCardParams: anniversary.vCardParams }), value })
   }
 }
 
@@ -237,6 +265,7 @@ function nicknameLines(nicknames: Readonly<Record<Id, Nickname>> | undefined, ou
         id,
         types: setKeys(nickname.contexts).map((c) => CONTEXT_TO_TYPE[c] ?? c),
         pref: nickname.pref,
+        vCardParams: nickname.vCardParams,
       }),
       value: escapeText(nickname.name),
     })
@@ -250,7 +279,12 @@ function linkLines(links: Readonly<Record<Id, Link>> | undefined, out: WritableL
     // an unescaped slot would otherwise let through as a forged second card.
     out.push({
       name: 'URL',
-      params: entryParams({ id, pref: link.pref, label: link.label }),
+      params: entryParams({
+        id,
+        pref: link.pref,
+        label: link.label,
+        vCardParams: link.vCardParams,
+      }),
       value: link.uri,
     })
   }
@@ -277,6 +311,7 @@ function onlineServiceLines(
       types: setKeys(service.contexts).map((c) => CONTEXT_TO_TYPE[c] ?? c),
       pref: service.pref,
       label: service.label,
+      vCardParams: service.vCardParams,
     })
     if (service.service !== undefined) params.set('SERVICE-TYPE', [service.service])
     out.push({ name: 'IMPP', params, value: uri })
@@ -285,14 +320,18 @@ function onlineServiceLines(
 
 function noteLines(notes: Readonly<Record<Id, Note>> | undefined, out: WritableLine[]) {
   for (const [id, note] of Object.entries(notes ?? {})) {
-    out.push({ name: 'NOTE', params: entryParams({ id }), value: escapeText(note.note) })
+    out.push({
+      name: 'NOTE',
+      params: entryParams({ id, vCardParams: note.vCardParams }),
+      value: escapeText(note.note),
+    })
   }
 }
 
 function mediaLines(media: Readonly<Record<Id, Media>> | undefined, out: WritableLine[]) {
   for (const [id, item] of Object.entries(media ?? {})) {
     if (item.kind !== 'photo' && item.kind !== 'logo') continue
-    const params = entryParams({ id, pref: item.pref })
+    const params = entryParams({ id, pref: item.pref, vCardParams: item.vCardParams })
     if (item.mediaType !== undefined) params.set('MEDIATYPE', [item.mediaType])
     // A URI value is NOT text-escaped in vCard 4.0 — escaping a `data:` URI would corrupt its
     // base64 payload wherever it contains a comma. `renderLine` still strips control characters
@@ -382,7 +421,11 @@ export function toVCard(card: Card): string {
     out.push({ name: 'MEMBER', value: escapeText(uid) })
   }
 
-  if (card.updated !== undefined) out.push({ name: 'REV', value: card.updated })
+  // `REV` is a vCard `timestamp` (§4.3.5), not RFC 3339. An `updated` that is neither is omitted
+  // rather than written in a grammar no vCard 4.0 reader has to accept — and when it came from a
+  // `REV` this package could not read, that line is still in `vCardProps` and goes out from there.
+  const rev = card.updated === undefined ? undefined : toVCardTimestamp(card.updated)
+  if (rev !== undefined) out.push({ name: 'REV', value: rev })
 
   preservedLines(card.vCardProps, out)
 

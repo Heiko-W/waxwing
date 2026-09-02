@@ -28,12 +28,12 @@ or stops being supported cannot leave this document behind.
 | `ADR` | `addresses` | Seven positional slots → `postOfficeBox`, `apartment`, `name`, `locality`, `region`, `postcode`, `country`. `LABEL` → `full`, `CC` → `countryCode`. An all-empty `ADR` is ignored rather than imported as a blank address. |
 | `ORG` | `organizations` | First component is `name`; the rest become `units`, keeping the hierarchy. `SORT-AS` → `sortAs`. |
 | `TITLE` / `ROLE` | `titles` | `kind: 'title'` / `kind: 'role'`. |
-| `BDAY` / `ANNIVERSARY` / `DEATHDATE` | `anniversaries` | `kind: 'birth'` / `'wedding'` / `'death'`. Reduced forms are kept: `--0415` is "15 April, year withheld". |
+| `BDAY` / `ANNIVERSARY` / `DEATHDATE` | `anniversaries` | `kind: 'birth'` / `'wedding'` / `'death'`. Reduced forms are kept: `--0415` is "15 April, year withheld". The `date-and-or-time` time forms are read too: with a zone (`20090808T1430-0500`) the value becomes a `Timestamp` normalised to UTC, without one only the date survives — and the untouched line rides along in `vCardProps` either way. |
 | `NICKNAME` | `nicknames` | A comma-separated list: one property can yield several nicknames. |
 | `URL` | `links` | A URI value, never text-escaped. |
 | `IMPP` | `onlineServices` | Instant-messaging / online accounts. A URI value, never text-escaped; the `SERVICE-TYPE` parameter becomes `service`. |
 | `NOTE` | `notes` | |
-| `PHOTO` / `LOGO` | `media` | `kind: 'photo'` / `'logo'`. The value is a URI and is **never text-escaped** — a `data:` URI contains both `;` and `,`. |
+| `PHOTO` / `LOGO` | `media` | `kind: 'photo'` / `'logo'`. The value is a URI and is **never text-escaped** — a `data:` URI contains both `;` and `,`. A vCard 3.0 inline payload (`ENCODING=b`/`BASE64`, or `VALUE=binary`) becomes a `data:` URI, its media type taken from `MEDIATYPE` or from the 3.0 `TYPE` shorthand. |
 | `CATEGORIES` | `keywords` | Comma-separated values become set keys. |
 | `KIND` | `kind` | |
 | `MEMBER` | `members` | Group cards (`KIND:group`). |
@@ -41,6 +41,7 @@ or stops being supported cannot leave this document behind.
 | `REV` | `updated` | |
 | `PREF` parameter | `pref` | vCard 3.0's valueless `TYPE=pref` is read as `pref: 1`. |
 | `PROP-ID` parameter | collection key | Written on export, so ids survive a round trip instead of being renumbered. |
+| every other parameter of a mapped property | entry `vCardParams` | `ALTID`, `LANGUAGE`, `PID`, a `VALUE=uri` on a phone number — kept on the entry and written back, so a CardDAV client that merges on `PID` still has an identity to merge on. |
 
 ## What is *not* mapped — and what happens to it
 
@@ -75,6 +76,18 @@ belong to. Guessing would attach a timezone to the wrong one, so they are preser
   written as an empty property.
 - **No vCard 3.0 output.** Input in 3.0 shape is read (that is what Apple, Google and Outlook emit);
   output is always 4.0.
+- **No vCard 2.1, and no `QUOTED-PRINTABLE`.** Classic Outlook for Windows exports 2.1 and encodes
+  non-ASCII as `ENCODING=QUOTED-PRINTABLE`, usually with `CHARSET=Windows-1252`. Neither the
+  encoding nor `CHARSET` is decoded. Such a line is **skipped and reported** in
+  `ImportResult.skipped` with `reason: 'unsupportedEncoding'` — it is not imported as the literal
+  `=C3=BC` text it would otherwise become. `ENCODING=b`/`BASE64` *is* supported: an inline photo
+  becomes a `data:` URI.
+- **`TYPE` is not carried in `vCardParams`.** The export rebuilds it from `contexts` and `features`,
+  so preserving the raw parameter as well would write it twice; a `TYPE` value outside the mapped
+  sets (`TYPE=x-custom` beside `TYPE=work`) is therefore not round-tripped.
+- **`FN`/`N` parameters are not carried either.** `vCardParams` lives on collection entries; `name`
+  is one object built from two properties, so there is no unambiguous place to put the parameters of
+  each. A second `FN`/`N` in an `ALTID` group is preserved whole, in `vCardProps`.
 
 ## Conformance notes
 
@@ -86,6 +99,11 @@ belong to. Guessing would attach a timezone to the wrong one, so they are preser
   literal backslash followed by a separator rather than swallowing the next component.
 - A line that cannot be parsed is skipped and **reported** in `ImportResult.skipped` — a 400-contact
   export with one broken line imports 399 contacts and says so.
+- "Not mapped" is decided per **line**, not per property name. A line lands in `vCardProps` whenever
+  no builder could actually use it: a birthday in a form the date parser cannot read, the second
+  rendering of a name in an `ALTID` group, an all-empty address, a repeated identity or revision
+  property. The typed field takes the first line it can read; the rest travel verbatim, with their
+  parameters and group prefixes.
 
 ## Publishing (not done yet — here is exactly what is left)
 

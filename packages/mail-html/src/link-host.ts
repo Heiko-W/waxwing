@@ -486,12 +486,44 @@ const BLANK_ADVANCE = /[\u2800]/u
 const BLANK_ADVANCE_ALL = /[\u2800]/gu
 
 /**
- * Surrounding punctuation on a word. Trimmed to letters/numbers at both ends so that `bank.test.`,
- * `bank.test!`, `(bank.test)` and `!bank.test` all read as the host the reader saw. Deliberately
- * `\p{L}\p{N}` and not `[a-z0-9]`: an ASCII-only trim would eat the leading Cyrillic а off
- * `аpple.com` and leave the claim `pple.com`, inventing a host nobody wrote.
+ * Surrounding punctuation on a word. Trimmed to letters/numbers at both ends by {@link trimToken} so
+ * that `bank.test.`, `bank.test!`, `(bank.test)` and `!bank.test` all read as the host the reader
+ * saw. Deliberately `\p{L}\p{N}` and not `[a-z0-9]`: an ASCII-only trim would eat the leading
+ * Cyrillic а off `аpple.com` and leave the claim `pple.com`, inventing a host nobody wrote.
  */
-const TOKEN_TRIM = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu
+const TOKEN_TRIM_LEADING = /^[^\p{L}\p{N}]+/u
+
+/** The complement of {@link TOKEN_TRIM_LEADING}'s class, tested one code point at a time. */
+const ALPHANUMERIC = /[\p{L}\p{N}]/u
+
+/**
+ * Trim the {@link TOKEN_TRIM_LEADING} class off both ends of a word, linearly.
+ *
+ * The leading half is anchored, so the engine tries it at ONE start position and cannot backtrack
+ * into quadratic work. The trailing half was the same class written as `[^\p{L}\p{N}]+$` inside an
+ * alternation: unanchored on the left, so it restarts at every offset of the word, and every failed
+ * `$` rolls the whole run back — O(n^2). An anchor text of 100 KB punctuation with one letter behind
+ * it cost 10.2 s per link on the main thread (measured; 0 ms after), and `classifyLink` runs on every
+ * link of every HTML mail at load time, not only on click.
+ *
+ * Walks CODE POINTS, not UTF-16 units, so the `u`-flag semantics of the old regex are preserved for
+ * astral punctuation (e.g. U+1F600) and an astral letter is not sliced in half.
+ */
+function trimToken(word: string): string {
+  const body = word.replace(TOKEN_TRIM_LEADING, '')
+  let end = body.length
+  while (end > 0) {
+    const low = body.charCodeAt(end - 1)
+    let size = 1
+    if (low >= 0xdc00 && low <= 0xdfff && end >= 2) {
+      const high = body.charCodeAt(end - 2)
+      if (high >= 0xd800 && high <= 0xdbff) size = 2
+    }
+    if (ALPHANUMERIC.test(body.slice(end - size, end))) break
+    end -= size
+  }
+  return body.slice(0, end)
+}
 
 /**
  * Last labels that are a file extension far more often than they are a TLD. `invoice.pdf` over
@@ -680,7 +712,7 @@ const PLAIN_WORD = /^[a-zA-Z0-9]+$/
 
 /** The host one word names, or `null` when it names none. */
 function claimFromWord(word: string): string | null {
-  const candidate = word.replace(TOKEN_TRIM, '')
+  const candidate = trimToken(word)
   if (candidate === '') return null
 
   // A word carrying its own http(s) scheme is a destination on its face — no shape heuristics, and

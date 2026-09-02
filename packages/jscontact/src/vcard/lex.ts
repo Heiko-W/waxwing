@@ -39,8 +39,32 @@ export interface SkippedLine {
   /** 1-based, counted in UNFOLDED logical lines — what a human sees in an editor is close enough. */
   readonly line: number
   readonly text: string
-  readonly reason: 'noColon' | 'emptyName'
+  /**
+   * `noColon` / `emptyName`: the line is not a content line at all.
+   *
+   * `unsupportedEncoding`: it is, but its value is in an encoding this package does not decode —
+   * see {@link UNSUPPORTED_ENCODINGS}. Reported rather than taken raw, which is the difference
+   * between an import that says what it could not read and one that hands the user a contact called
+   * `J=C3=BCrgen M=C3=BCller`.
+   */
+  readonly reason: 'noColon' | 'emptyName' | 'unsupportedEncoding'
 }
+
+/**
+ * Value encodings this lexer does not decode (RFC 2426 §5.8.4, vCard 2.1 §2.1.3).
+ *
+ * vCard 2.1 — which classic Outlook for Windows still exports — writes non-ASCII as
+ * `ENCODING=QUOTED-PRINTABLE`, usually with `CHARSET=Windows-1252`, and breaks long values with a
+ * trailing `=`. This package reads vCard 4.0 and the 3.0 shapes Apple, Google and Outlook emit
+ * (README, "Known limits"); 2.1 with quoted-printable is OUTSIDE that, and supporting it is not
+ * what this is about. What it is about is the silence: the raw value used to be taken as plain
+ * text, so the card imported "successfully" with `=C3=BC` in the middle of a name and a note that
+ * stopped at the first fold, and `skipped` mentioned only the orphaned continuation line.
+ *
+ * `BASE64`/`b` is deliberately NOT here: `PHOTO;ENCODING=b` is decoded into a `data:` URI by
+ * `from-vcard.ts`, and skipping it would lose a photo this package can read.
+ */
+const UNSUPPORTED_ENCODINGS = new Set(['QUOTED-PRINTABLE', 'Q'])
 
 export interface ParseResult {
   readonly lines: readonly ContentLine[]
@@ -240,6 +264,12 @@ export function parseContentLines(text: string): ParseResult {
       // "failed" instead of importing the good cards and reporting the bad line. `packages/jmap`
       // avoids the same anti-pattern by name in `appendAll()`.
       else for (const value of values) bucket.push(value)
+    }
+
+    const encoding = params.get('ENCODING')?.[0]?.trim().toUpperCase()
+    if (encoding !== undefined && UNSUPPORTED_ENCODINGS.has(encoding)) {
+      skipped.push({ line: index + 1, text: raw, reason: 'unsupportedEncoding' })
+      return
     }
 
     lines.push({ group, name, params, value: split.value })

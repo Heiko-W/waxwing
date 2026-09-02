@@ -1558,7 +1558,9 @@ verschärft.
 
 ### R-34 — [MEDIUM] `fromVCard` verwirft gemappte Properties stumm, wenn der Mapper sie nicht lesen kann — entgegen Kommentar und README
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Der Konsum-Filter ist wie vorgeschlagen umgesetzt (`Consumed: Set<ContentLine>`, jeder Builder markiert nur, was er wirklich gelesen hat); `MAPPED` entfaellt. `parseVCardDate` liest jetzt zusaetzlich die `date-time`-Formen: mit Zone als nach UTC normalisierter `Timestamp`, ohne Zone nur der Datumsanteil als `PartialDate` — die unveraenderte Zeile bleibt in beiden Faellen in `vCardProps`. Der Rueckgabetyp von `parseVCardDate` ist damit `PartialDate | Timestamp | undefined` (additiv erweitert, keine bestehende Form entfaellt). Nebenwirkung, bewusst: ein leeres `ADR;TYPE=home:;;;;;;` und ein `KIND` ausserhalb des registrierten Satzes landen jetzt in `vCardProps` statt zu verschwinden.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 
@@ -1603,7 +1605,9 @@ gleich `first`. Gegenprüfung: bestätigt.
 
 ### R-35 — [MEDIUM] `PHOTO;ENCODING=b` (vCard 3.0, Google-Export) wird als nackter Base64-String zur „URI“ — kaputtes Bild und relative Anfrage gegen den App-Origin
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** `buildMedia` erkennt `ENCODING=b`/`BASE64` und `VALUE=binary` und baut daraus eine `data:`-URI; der Medientyp kommt aus `MEDIATYPE`, sonst aus der 3.0-`TYPE`-Kurzform, unbekannt → `application/octet-stream`. NICHT mitgemacht: die im Loesungsansatz genannte Behandlung in `toJCardProp` fuer `SOUND`/`X-MS-CARDPICTURE`. Diese Properties sind nicht gemappt, sie fahren als `vCardProps` mit — dort ist die verbatim erhaltene Zeile genau richtig, weil sie so unveraendert wieder herausgeschrieben wird; eine Umschreibung waere Datenverlust im Roundtrip. `LOGO` ist ueber `buildMedia` mit abgedeckt.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 
@@ -1637,7 +1641,9 @@ mit `data:image/jpeg;base64,`.
 
 ### R-36 — [MEDIUM] Quadratisches Backtracking in `TRAILING_PUNCTUATION` (`text.ts`) und `TOKEN_TRIM` (`link-host.ts`): 100 KB feindlicher Text blockieren den Main-Thread 8–9 s
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Beide Trims sind linear (Set-Schleife bzw. verankerte Regex plus Rückwärtsschleife über Codepoints), gemessen 8151 ms → 0 ms (`renderPlainText`, 100 KB) und 10194 ms → 0 ms (`classifyLink`, 100 KB). Das optionale `useMemo` um `renderPlainText` in `MessageView` ist NICHT mitgegangen: es ist laut Abschnitt "Offene Beobachtungen" kein Befund, und mit dem linearen Trim liegt der Worst Case bei 10–14 ms für 1 MB.
 
 **Kategorie / Bereich:** performance / Lib (mail-html)
 
@@ -1681,7 +1687,9 @@ mitgehen.
 
 ### R-37 — [MEDIUM] Sprungmarken innerhalb der Mail (`<a href="#top">`) werden gegen den App-Origin aufgelöst, freigegeben und öffnen die App in einem neuen Tab
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Der Loesungsansatz (Fragment auf `#user-content-…` umschreiben, Klick nicht abfangen) haette den Befund verschlimmert. Im echten Browser gemessen (Chromium 1234, WebKit 2311): in einem `srcdoc`-Frame ist die Dokument-URL `about:srcdoc`, die BASIS-URL aber die des Einbetters — ein blankes `#top` ist deshalb keine Fragmentnavigation, sondern laedt in BEIDEN Engines die App in den Frame und ersetzt die Nachricht. Umgeschrieben wird jetzt auf `about:srcdoc#user-content-…`; damit unterscheidet sich die Ziel-URL nur im Fragment, beide Engines scrollen nativ, und "scroll to the fragment" wandert aus dem Frame in den Scrollcontainer der App (gemessen: Lesebereich 8681 → 236 px). Kein JS im `onClick` noetig — das haette auf WebKit ohnehin nicht funktioniert. Nicht behoben bleibt `href="#"` bzw. ein Fragment ohne Ziel: das scrollt nun nichts mehr, statt die App in einem zweiten Tab zu oeffnen.
 
 **Kategorie / Bereich:** correctness / Lib (mail-html)
 
@@ -3419,7 +3427,9 @@ abgeschwächt.
 
 ### R-88 — [LOW] Zeitstempel werden in beide Richtungen in der falschen Grammatik geschrieben: `Timestamp`-Daten und `REV`/`updated`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** `toVCardTimestamp`/`fromVCardTimestamp` liegen in `vcard/value.ts`; `fromVCardTimestamp` hat drei Antworten statt zwei — `null` fuer eine wohlgeformte Zeitangabe OHNE Zone (lokale Uhrzeit, kein Zeitpunkt; JSContact kann sie nicht halten), `undefined` fuer "keine Zeitangabe". Ein `REV`, das in keine der beiden Grammatiken passt, laesst `updated` ungesetzt und die Zeile unverbraucht — sie faehrt dank R-34 in `vCardProps` mit und wird beim Export wieder geschrieben. Beim Export wird ein nicht ausdrueckbares `updated` weggelassen statt roh geschrieben. NICHT gemacht: die im Loesungsansatz vorgeschlagene Klaerung gegen den Dev-Stalwart, ob `updated` bei `create` ueberhaupt gesendet werden soll — dafuer fehlt hier ein Server; der Wert ist jetzt in beiden Richtungen zumindest grammatikalisch korrekt.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 
@@ -3460,7 +3470,9 @@ Gegenprüfung: abgeschwächt, medium → low, RFC-Abschnitte korrigiert.
 
 ### R-89 — [LOW] vCard 2.1 mit `ENCODING=QUOTED-PRINTABLE` wird als Zeichensalat importiert, ohne Meldung
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Umgesetzt ist die Minimalvariante (melden statt dekodieren), wie im Befund als Umfangsgrenze vorgegeben: `ENCODING=QUOTED-PRINTABLE` wird im Lexer erkannt, die Zeile wird uebersprungen und mit dem neuen `SkippedLine.reason = 'unsupportedEncoding'` gemeldet; README "Known limits" ergaenzt. NICHT umgesetzt: die Erkennung von `VERSION:2.1` als solche — eine 2.1-Karte ohne QP importiert korrekt, sie pauschal zu melden waere ein falscher Alarm. `ENCODING=b`/`BASE64` faellt bewusst nicht darunter (siehe R-35).
 
 **Kategorie / Bereich:** robustness / Lib (jscontact)
 
@@ -3496,7 +3508,9 @@ Gegenprüfung: abgeschwächt, medium → low.
 
 ### R-90 — [LOW] Parameter gemappter Properties gehen beim Roundtrip verloren (`PID`, `ALTID`, `LANGUAGE`, `VALUE=uri` auf `TEL`)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Teilloesung, bewusst:** Nicht ausgewertete Parameter werden je EINTRAG in `vCardParams` mitgefuehrt (neuer optionaler Typ `VCardParams`, additiv an elf Entry-Typen) und in `entryParams` zurueckgeschrieben — `PID`, `ALTID`, `LANGUAGE`, `VALUE=uri` auf `TEL` ueberleben den Roundtrip. NICHT mitgefuehrt: (a) `TYPE`, weil der Export es aus `contexts`/`features` neu baut und der rohe Parameter es doppelt schreiben wuerde; (b) die Parameter von `FN`/`N`, weil `name` ein Objekt aus zwei Properties ist und es keinen eindeutigen Platz fuer beide Parametersaetze gibt. Beides steht jetzt in den "Known limits" der README.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 
@@ -3524,7 +3538,9 @@ Gegenprüfung: bestätigt, RFC-Stelle korrigiert.
 
 ### R-91 — [LOW] W-25 unvollständig: drei Sondierungen indizieren `session.capabilities`/`session.accounts` weiterhin ohne Schutz — beim Polling stirbt der Kanal still (vgl. W-25)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** `?.` an beiden Sondierungen wie vorgeschlagen; in `polling.ts` zusaetzlich `Object.keys(session.accounts ?? {})` UND der Rest von `tick()` nach dem Fetch in einen eigenen `try/catch` mit `reportClosed(toError(e))` — ein Wurf dort ist damit ein geschlossener Kanal, den die Reconnect-Schleife beantworten kann, statt einer unbehandelten Rejection, nach der `scheduleNext()` nie erreicht wird.
 
 **Kategorie / Bereich:** robustness / Lib (jmap)
 
@@ -3557,7 +3573,7 @@ genau ein Fetch, unhandled `TypeError`, nach allen Timern weiterhin ein Fetch. G
 
 ### R-92 — [LOW] `postApi` validiert die Hülle, nicht die Invocations: `methodResponses: [null]` wird zum `TypeError` (vgl. W-26)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Lib (jmap)
 
@@ -3587,7 +3603,9 @@ response for method call "c0"`. Gegenprüfung: bestätigt, Fundstellen korrigier
 
 ### R-93 — [LOW] Zwei Tests belegen nicht, was ihr Name verspricht (`blob.test.ts` „no streaming“, `timeout.test.ts` Fake-Timer) (vgl. W-11, W-16)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** (a) Der Blob-Test ist umbenannt und beweist jetzt, dass der Streaming-Zweig genommen wird (`arrayBuffer` durch einen Zaehler ersetzt, statt nur beobachtet) — dazu ein Test, dass die Obergrenze auch OHNE `onProgress` greift und den Reader abbricht, und einer, der den `arrayBuffer`-Fallback fuer eine Response ohne `body` abdeckt. (b) `vi.useFakeTimers()` entfernt statt `AbortSignal.timeout` zu stubben: die 50-ms-Frist wird explizit uebergeben, der Test ist damit ehrlich schnell statt scheinbar gesteuert. (c) `jmapPostMock` zeichnet `init.signal` auf; `timeout.test.ts` nutzt jetzt den geteilten Mock statt eigener.
 
 **Kategorie / Bereich:** tests / Lib (jmap)
 
@@ -3620,7 +3638,9 @@ bestätigt, Fundstellen korrigiert.
 
 ### R-94 — [LOW] `RequestBuilder.send()` kann keine `CallOptions` (insbesondere `signal`) transportieren — der Sync-Port sendet 29× ohne Abbruchsignal (vgl. W-16)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Teilloesung, bewusst:** Die API-Luecke ist geschlossen — `send(options?: CallOptions)` plus ein Executor mit optionalem zweiten Parameter, additiv: jede bestehende `builder.send()`-Stelle und jeder Executor der alten Form typechecken unveraendert (durch einen Test gepinnt und am ganzen Repo verifiziert, inklusive der fuenf `new RequestBuilder(async (builder) => …)` in App-Tests). NICHT mitgemacht: das Durchreichen des Engine-Signals im Sync-Port. Der Port wird in `react.tsx` als Option von `createSyncEngine` gebaut, existiert also bevor die Engine und ihre Controller existieren — dafuer braeuchte es eine neue Naht durch `createJmapPort`/`SyncEngine`. Und ein Abbruch der Delta-Legs aendert den Fehlerpfad des Passes: ein `AbortError` faellt in `classifyThrown` auf `retry`, und `stop()` ruft `cancelSyncRetry()` VOR `await this.activeSync` — das beruehrt genau die W-15/R-28/W-16-Verzahnung. Der Befund bleibt insoweit offen; die Voraussetzung dafuer steht jetzt.
 
 **Kategorie / Bereich:** robustness / Lib (jmap) + Sync
 
@@ -3655,7 +3675,7 @@ Delta-Legs; Replay-Anfragen dispatchter Zeilen weiterhin durchlaufen lassen (R-2
 
 ### R-95 — [LOW] `uploadBlob` castet die Serverantwort ungeprüft (`as UploadResult`) (vgl. W-26)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Lib (jmap)
 
@@ -3684,7 +3704,9 @@ upload response (RFC 8620 §6.1)')`.
 
 ### R-96 — [LOW] Remote-Medien werden als „blockiert und freigebbar“ gemeldet, die Frame-CSP lässt `<video>`/`<audio>`-`src` auch nach Freigabe nie zu
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Entscheidung:** Die Richtlinie wird NICHT gelockert; stattdessen hoert die Oberflaeche auf, eine wirkungslose Freigabe anzubieten. Grund: die App-CSP wird auf das `srcdoc`-Dokument mitvererbt (effektive Policy = Schnittmenge, implementation-plan B25), und sie hat unter `default-src 'self'` ebenfalls kein `media-src`. Gemessen am 02.09.2026 in Chromium 1234 und WebKit 2311: selbst mit `media-src http:` in der FRAME-Policy bleibt das Medium abgelehnt (Chromium nennt `default-src 'self'` des aeusseren Dokuments), ein Bild daneben laedt. Ein `media-src` waere also nur zusammen mit einer Lockerung von `apps/web/index.html` wirksam — neue Exfiltrationssenke fuer die ganze App, fuer ein Element, das kein Mailclient rendert. `sanitize` verwirft ein Medien-`src` jetzt unabhaengig von `allowRemote` und zaehlt es nicht als `hasRemoteContent`; `poster` und `srcset` werden dabei als `image` gefuehrt (sie laden unter `img-src` wirklich). `SECURITY.md` bleibt unveraendert: die Zusage wird strenger erfuellt, nicht gelockert. Entscheidung als Kommentar in `framePolicy` festgehalten (kein ADR: die Architekturentscheidung bleibt, die Umsetzung wird ihr angeglichen).
 
 **Kategorie / Bereich:** correctness / Lib (mail-html)
 
@@ -3716,7 +3738,9 @@ aber nie und nichts sagt warum. Seltene Eingabe.
 
 ### R-97 — [LOW] `postApi` hat seinen Docblock verloren — er hängt seit dem W-16-Commit vor `DEFAULT_REQUEST_TIMEOUT_MS` (vgl. W-16)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Der Block ist verschoben wie vorgeschlagen; zusaetzlich haelt `transport.source.test.ts` die Platzierung fest — ein reiner Kommentarfehler ist zur Laufzeit unsichtbar und wandert beim naechsten Einschub genauso wieder weg.
 
 **Kategorie / Bereich:** maintainability / Lib (jmap)
 

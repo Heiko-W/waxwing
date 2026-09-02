@@ -31,16 +31,6 @@ export function resolveFetch(fetchImpl?: FetchLike): FetchLike {
 }
 
 /**
- * POSTs a JMAP {@link JmapRequest} to `apiUrl` and parses the {@link JmapResponse}.
- * Maps HTTP failures to typed errors (RFC 8620 §3.6.1) via {@link errorFromResponse}.
- *
- * The parsed body is narrowed rather than cast: a 200 whose JSON is `null`, a bare array, or
- * `{ methodResponses: null }` used to sail through the `as` and only blow up in the caller, as a
- * `TypeError` from `push(...response.methodResponses)` — which the sync layer classifies as
- * TRANSIENT and therefore RETRIES, hammering a server that will never answer differently. A
- * {@link JmapError} says what is actually wrong, once.
- */
-/**
  * How long one JMAP request may take before it is abandoned.
  *
  * There was no timeout at all, and `fetch` has none of its own: a socket the server accepts and
@@ -71,6 +61,22 @@ function withDeadline(signal: AbortSignal | undefined, timeoutMs: number): Abort
   return AbortSignal.any([signal, deadline])
 }
 
+/**
+ * POSTs a JMAP {@link JmapRequest} to `apiUrl` and parses the {@link JmapResponse}.
+ * Maps HTTP failures to typed errors (RFC 8620 §3.6.1) via {@link errorFromResponse}.
+ *
+ * The parsed body is narrowed rather than cast: a 200 whose JSON is `null`, a bare array, or
+ * `{ methodResponses: null }` used to sail through the `as` and only blow up in the caller, as a
+ * `TypeError` from `push(...response.methodResponses)` — which the sync layer classifies as
+ * TRANSIENT and therefore RETRIES, hammering a server that will never answer differently. A
+ * {@link JmapError} says what is actually wrong, once.
+ *
+ * (This block sat in front of `DEFAULT_REQUEST_TIMEOUT_MS` from the W-16 commit until R-97, because
+ * the constant and `withDeadline` were inserted between it and the function. Two doc comments in a
+ * row attach only the NEAREST one to a symbol, so the reasoning for the narrowing — the class R-92
+ * and R-95 both point at — was invisible on hover at the function it is about, and the constant
+ * looked as though it were documented as an HTTP POST. Pinned by `transport.source.test.ts`.)
+ */
 export async function postApi(
   apiUrl: string,
   request: JmapRequest,
@@ -94,22 +100,35 @@ export async function postApi(
   const body: unknown = await response.json().catch(() => undefined)
   if (!isJmapResponse(body)) {
     throw new JmapError(
-      'Malformed JMAP response: expected { methodResponses: [...], sessionState: "…" } (RFC 8620 §3.4)',
+      'Malformed JMAP response: expected { methodResponses: [[name, args, callId], …], sessionState: "…" } (RFC 8620 §3.4)',
     )
   }
   return body
 }
 
 /**
- * Narrows a parsed 200 body to a {@link JmapResponse}. Only the two properties RFC 8620 §3.4
- * makes mandatory are checked — the individual invocations stay unvalidated, because a method
- * response's shape is the method's business and a strict envelope check must not reject a server
- * that returns something newer than this library knows.
+ * Narrows a parsed 200 body to a {@link JmapResponse}: the two properties RFC 8620 §3.4 makes
+ * mandatory, plus the SHAPE of each invocation — a 3-tuple whose first and third elements are
+ * strings.
+ *
+ * Only the shape. The `arguments` in slot 1 stay unvalidated, because a method response's contents
+ * are the method's business and a strict check there would reject a server returning something
+ * newer than this library knows. But the tuple itself is the envelope's own grammar, and leaving it
+ * out was the same defect one level down: `methodResponses: [null]` reached `reassembleResponses`
+ * and threw a raw `TypeError` from `response[2]`. That is not a `JmapError`, so `classifyThrown`
+ * (`conflict.ts`) files it under `retry`, and the sync layer retries a server that will never
+ * answer differently — the exact loop the envelope check was added to close.
  */
 function isJmapResponse(value: unknown): value is JmapResponse {
   if (typeof value !== 'object' || value === null) return false
   const body = value as { methodResponses?: unknown; sessionState?: unknown }
-  return Array.isArray(body.methodResponses) && typeof body.sessionState === 'string'
+  if (!Array.isArray(body.methodResponses) || typeof body.sessionState !== 'string') return false
+  return body.methodResponses.every(isInvocationShape)
+}
+
+/** One `[name, arguments, callId]` triple (RFC 8620 §3.2). Slot 1 is deliberately not inspected. */
+function isInvocationShape(value: unknown): boolean {
+  return Array.isArray(value) && typeof value[0] === 'string' && typeof value[2] === 'string'
 }
 
 /** GETs a URL with auth applied; returns the raw Response (used by session + blob fetch). */

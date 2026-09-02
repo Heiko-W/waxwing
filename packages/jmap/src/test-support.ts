@@ -61,6 +61,14 @@ export interface RecordedCall {
   url: string
   headers: Record<string, string>
   body: JmapRequest
+  /**
+   * The signal the transport handed `fetch` — the caller's, combined with the request deadline.
+   *
+   * Recorded because it used to be dropped, and `timeout.test.ts` had to build its own fetch mock
+   * to see it at all (R-93). Anything asserting on cancellation belongs here, next to the request
+   * it cancels.
+   */
+  signal: AbortSignal | undefined
 }
 
 /**
@@ -74,7 +82,12 @@ export function jmapPostMock(respond: (body: JmapRequest, callIndex: number) => 
   const calls: RecordedCall[] = []
   const fetch: FetchLike = async (url, init) => {
     const body = JSON.parse(String(init?.body ?? '{}')) as JmapRequest
-    calls.push({ url, headers: { ...(init?.headers ?? {}) }, body })
+    calls.push({
+      url,
+      headers: { ...(init?.headers ?? {}) },
+      body,
+      signal: init?.signal ?? undefined,
+    })
     const payload = respond(body, calls.length - 1)
     return new Response(JSON.stringify(payload), {
       status: 200,

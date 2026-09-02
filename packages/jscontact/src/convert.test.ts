@@ -119,6 +119,9 @@ describe('vCard → JSContact', () => {
     expect(Object.values(importOne(APPLE_EXPORT).anniversaries ?? {})[0]).toEqual({
       kind: 'birth',
       date: { year: 1982, month: 4, day: 15 },
+      // Apple writes `BDAY;value=date:` — a parameter nothing here interprets, so it is preserved
+      // rather than read and dropped (R-90), and it goes back out on export.
+      vCardParams: { VALUE: 'date' },
     })
     // The RFC example's `--0203`: "3 February, year withheld" — a case a Date cannot hold at all.
     expect(Object.values(importOne(RFC_6350_EXAMPLE).anniversaries ?? {})[0]).toEqual({
@@ -542,6 +545,292 @@ describe('round trips', () => {
   })
 })
 
+/**
+ * R-34. `vCardProps` was filtered by property NAME — "this file handles `BDAY`, so no `BDAY` line
+ * belongs in the preserved set" — while the builders filtered by whether they could actually READ
+ * the line. Every line in the gap between the two questions was dropped from the card and from its
+ * re-export, with `skipped` empty and the import reporting success.
+ */
+describe('nothing is dropped in silence', () => {
+  /**
+   * The counting test the fixed-point test cannot be. A symmetric loss — import drops it, export
+   * never writes it, re-import drops it again — is INVISIBLE to `fromVCard(toVCard(x)) === x`,
+   * which is exactly how this survived. Counting input lines against output lines per property name
+   * asks the other question: did anything leave?
+   */
+  it.each(ALL_CARDS)('re-exports every property line of the $name', ({ text }) => {
+    const structural = new Set(['BEGIN', 'END', 'VERSION'])
+    const count = (vcard: string): Map<string, number> => {
+      const out = new Map<string, number>()
+      for (const line of parseContentLines(vcard).lines) {
+        if (structural.has(line.name)) continue
+        out.set(line.name, (out.get(line.name) ?? 0) + 1)
+      }
+      return out
+    }
+    const before = count(text)
+    const after = count(toVCard(importOne(text)))
+    for (const [name, n] of before) {
+      expect(after.get(name) ?? 0, `${name} lines lost on the way out`).toBeGreaterThanOrEqual(n)
+    }
+  })
+
+  it('keeps a BDAY it cannot read instead of losing it', () => {
+    const card = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'BDAY;VALUE=text:circa 1800', 'END:VCARD'].join(
+        '\r\n',
+      ),
+    )
+    expect(card.anniversaries).toBeUndefined()
+    expect((card.vCardProps ?? []).map(([name]) => name)).toEqual(['bday'])
+    expect(toVCard(card)).toContain('BDAY;VALUE=text:circa 1800')
+  })
+
+  it('keeps the ALTID alternatives of FN and N, not just the first of each', () => {
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'UID:u',
+        'FN;ALTID=1;LANGUAGE=de:Anna Meier',
+        'FN;ALTID=1;LANGUAGE=en:Anna Meier',
+        'N;ALTID=1;LANGUAGE=de:Meier;Anna;;;',
+        'END:VCARD',
+      ].join('\r\n'),
+    )
+    expect(card.name?.full).toBe('Anna Meier')
+    expect((card.vCardProps ?? []).map(([name]) => name)).toEqual(['fn'])
+    expect(toVCard(card)).toContain('LANGUAGE=en')
+  })
+
+  it('keeps a second UID, KIND and REV rather than reading only the first', () => {
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'UID:first',
+        'UID:second',
+        'KIND:individual',
+        'KIND:x-robot',
+        'REV:20260701T091200Z',
+        'REV:20260801T091200Z',
+        'END:VCARD',
+      ].join('\r\n'),
+    )
+    expect(card.uid).toBe('first')
+    expect(card.kind).toBe('individual')
+    expect((card.vCardProps ?? []).map(([name, , , value]) => [name, value])).toEqual([
+      ['uid', 'second'],
+      ['kind', 'x-robot'],
+      ['rev', '20260801T091200Z'],
+    ])
+  })
+
+  it('keeps an all-empty ADR out of the addresses and in the file', () => {
+    // Outlook writes one for every field the user left blank. It is not an address, and it is not
+    // rubbish to be thrown away either — it is a line the file had.
+    const card = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'ADR;TYPE=home:;;;;;;', 'END:VCARD'].join('\r\n'),
+    )
+    expect(card.addresses).toBeUndefined()
+    expect(toVCard(card)).toContain('ADR')
+  })
+
+  it('reads the RFC 6350 example\u2019s own ANNIVERSARY instead of dropping it', () => {
+    // `20090808T1430-0500` is `date-and-or-time` (§6.2.6) and legal; `parseVCardDate` used to answer
+    // `undefined`, so the wedding date left the card AND the re-export.
+    const card = importOne(RFC_6350_EXAMPLE)
+    const wedding = Object.values(card.anniversaries ?? {}).find((a) => a.kind === 'wedding')
+    expect(wedding?.date).toEqual({ utc: '2009-08-08T19:30:00Z' })
+  })
+})
+
+/**
+ * R-35. vCard 3.0 (Google, older Apple exports) carries image bytes in the property value with
+ * `ENCODING=b` (RFC 2426 §2.4.1); 4.0 replaced that with a `data:` URI. Reading the 3.0 form as
+ * though it were 4.0 made `media.uri` the bare base64 string — a relative path, so every render of
+ * the contact fired a 404 at the app's own origin, and the same string went to the server.
+ */
+describe('inline binary photos (vCard 3.0)', () => {
+  it('turns a Google export\u2019s ENCODING=b photo into a data: URI', () => {
+    const media = Object.values(importOne(GOOGLE_EXPORT).media ?? {})[0]
+    expect(media?.kind).toBe('photo')
+    expect(media?.mediaType).toBe('image/jpeg')
+    expect(media?.uri.startsWith('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD')).toBe(true)
+    // The fold the exporter applied is not part of the payload.
+    expect(media?.uri).not.toMatch(/\s/)
+  })
+
+  it('reads ENCODING=BASE64 and VALUE=binary as the same thing', () => {
+    const card = (params: string) =>
+      importOne(
+        ['BEGIN:VCARD', 'VERSION:3.0', 'UID:u', `PHOTO;${params}:QUJD`, 'END:VCARD'].join('\r\n'),
+      )
+    expect(Object.values(card('ENCODING=BASE64;TYPE=PNG').media ?? {})[0]?.uri).toBe(
+      'data:image/png;base64,QUJD',
+    )
+    expect(Object.values(card('VALUE=binary;TYPE=GIF').media ?? {})[0]?.uri).toBe(
+      'data:image/gif;base64,QUJD',
+    )
+    // MEDIATYPE wins over the 3.0 TYPE shorthand when both are present.
+    expect(
+      Object.values(card('ENCODING=b;TYPE=PNG;MEDIATYPE=image/heic').media ?? {})[0]?.uri,
+    ).toBe('data:image/heic;base64,QUJD')
+    // An unrecognised format is not guessed at — and leaving the type off would mean `text/plain`.
+    expect(Object.values(card('ENCODING=b;TYPE=WORK').media ?? {})[0]?.uri).toBe(
+      'data:application/octet-stream;base64,QUJD',
+    )
+  })
+
+  it('leaves a 4.0 URI value alone', () => {
+    // No ENCODING, no VALUE=binary: the value already IS the URI, and prefixing it would be the
+    // mirror of the bug.
+    const media = Object.values(importOne(DATA_URI_CARD).media ?? {})[0]
+    expect(media?.uri).toBe('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB')
+    const remote = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'LOGO:https://a.test/l.png', 'END:VCARD'].join(
+        '\r\n',
+      ),
+    )
+    expect(Object.values(remote.media ?? {})[0]?.uri).toBe('https://a.test/l.png')
+  })
+})
+
+/**
+ * R-88. vCard's `timestamp` (§4.3.5, §6.7.4's own example `REV:19951031T222710Z`) is ISO 8601
+ * BASIC — no hyphens, no colons. JSContact's `updated` and `Timestamp.utc` are RFC 3339 (RFC 9553
+ * §1.4.5, §2.1.10). The package copied both values unchanged from one world into the other.
+ */
+describe('timestamps cross the two grammars', () => {
+  it('reads a vCard REV into an RFC 3339 updated', () => {
+    // Outlook: basic form. Apple: the extended form, which is what vCard 3.0 allowed.
+    expect(importOne(OUTLOOK_EXPORT).updated).toBe('2026-07-01T09:12:00Z')
+    expect(importOne(APPLE_EXPORT).updated).toBe('2026-07-01T09:12:00Z')
+  })
+
+  it('writes an RFC 3339 updated back as a vCard timestamp', () => {
+    const card: Card = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      updated: '2026-07-01T09:12:00Z',
+    }
+    expect(toVCard(card)).toContain('REV:20260701T091200Z')
+    expect(toVCard(card)).not.toContain('REV:2026-07-01')
+  })
+
+  it('writes a Timestamp anniversary in the vCard grammar, and reads it back', () => {
+    const card: Card = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      anniversaries: { a1: { kind: 'birth', date: { utc: '1982-04-15T00:00:00Z' } } },
+    }
+    const vcard = toVCard(card)
+    expect(vcard).toContain('BDAY;PROP-ID=a1:19820415T000000Z')
+    // The whole point: this package's OWN importer used to read the RFC 3339 form as no date at all.
+    expect(Object.values(importOne(vcard).anniversaries ?? {})[0]?.date).toEqual({
+      utc: '1982-04-15T00:00:00Z',
+    })
+  })
+
+  it('omits a REV it cannot express rather than writing rubbish', () => {
+    const card: Card = { '@type': 'Card', version: '1.0', uid: 'u', updated: 'gestern' }
+    expect(toVCard(card)).not.toContain('REV')
+  })
+
+  it('leaves an unreadable REV out of updated and in the file', () => {
+    // Nothing is invented and nothing is lost: `updated` stays unset, the line rides out unchanged.
+    const card = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'REV:gestern', 'END:VCARD'].join('\r\n'),
+    )
+    expect(card.updated).toBeUndefined()
+    expect(toVCard(card)).toContain('REV:gestern')
+  })
+})
+
+/**
+ * R-89. vCard 2.1 (classic Outlook for Windows) writes non-ASCII as `ENCODING=QUOTED-PRINTABLE`.
+ * That is outside this package's declared scope — 4.0, plus the 3.0 shapes Apple, Google and
+ * Outlook emit — and the finding is not that it is unsupported but that it was unsupported in
+ * SILENCE: the raw value was taken as plain text, so a card imported "successfully" with `=C3=BC`
+ * in the middle of a name.
+ */
+describe('quoted-printable is reported, not swallowed', () => {
+  const QP = [
+    'BEGIN:VCARD',
+    'VERSION:2.1',
+    'N;ENCODING=QUOTED-PRINTABLE;CHARSET=UTF-8:M=C3=BCller;J=C3=BCrgen',
+    'FN:Juergen Mueller',
+    'END:VCARD',
+  ].join('\r\n')
+
+  it('does not import a quoted-printable value as plain text', () => {
+    const result = fromVCard(QP, { newUid: () => 'gen' })
+    expect(result.cards[0]?.name?.full).toBe('Juergen Mueller')
+    expect(JSON.stringify(result.cards[0])).not.toContain('=C3=BC')
+  })
+
+  it('says which line it could not read', () => {
+    const result = fromVCard(QP, { newUid: () => 'gen' })
+    expect(result.skipped).toEqual([
+      { line: 3, text: expect.stringContaining('QUOTED-PRINTABLE'), reason: 'unsupportedEncoding' },
+    ])
+  })
+
+  it('still decodes ENCODING=b, which it does support', () => {
+    // The base64 photo path must not be caught by the same net — see UNSUPPORTED_ENCODINGS.
+    expect(fromVCard(GOOGLE_EXPORT, { newUid: () => 'gen' }).skipped).toEqual([])
+  })
+})
+
+/**
+ * R-90. Parameters of a MAPPED property that nothing interprets were parsed and thrown away. The
+ * property itself round-tripped, so nothing looked lost until a CardDAV client tried to merge two
+ * exports on `PID` and found no identity to merge on.
+ */
+describe('unmapped parameters of mapped properties survive', () => {
+  const CARD = [
+    'BEGIN:VCARD',
+    'VERSION:4.0',
+    'UID:u',
+    'FN:Anna Meier',
+    'EMAIL;PID=1.1;ALTID=2;LANGUAGE=de;TYPE=work:anna@example.test',
+    'TEL;VALUE=uri;TYPE=work,voice;PREF=1:tel:+1-418-656-9254',
+    'END:VCARD',
+  ].join('\r\n')
+
+  it('keeps PID, ALTID, LANGUAGE and a VALUE=uri on the entry', () => {
+    const card = importOne(CARD)
+    expect(Object.values(card.emails ?? {})[0]?.vCardParams).toEqual({
+      PID: '1.1',
+      ALTID: '2',
+      LANGUAGE: 'de',
+    })
+    expect(Object.values(card.phones ?? {})[0]?.vCardParams).toEqual({ VALUE: 'uri' })
+    // The parameters the typed fields own are NOT duplicated into the preserved set.
+    expect(Object.values(card.emails ?? {})[0]?.contexts).toEqual({ work: true })
+  })
+
+  it('writes them back, once each, without displacing the computed ones', () => {
+    const vcard = toVCard(importOne(CARD))
+    expect(vcard).toContain('PID=1.1')
+    expect(vcard).toContain('ALTID=2')
+    expect(vcard).toContain('LANGUAGE=de')
+    expect(vcard).toContain('VALUE=uri')
+    expect(vcard.match(/TYPE=/g)).toHaveLength(2)
+    expect(vcard).toContain('PREF=1')
+  })
+
+  it('does not write back the ENCODING of a photo it already decoded', () => {
+    // `media.uri` is a `data:` URI now; re-emitting `ENCODING=b` beside it would make the next
+    // import base64-decode the URI itself.
+    const vcard = toVCard(importOne(GOOGLE_EXPORT))
+    expect(vcard).not.toContain('ENCODING=')
+    expect(vcard).toContain('PHOTO;PROP-ID=m1;MEDIATYPE=image/jpeg:data:image/jpeg;base64,')
+  })
+})
+
 describe('dates', () => {
   it('parses every reduced form the spec allows', () => {
     expect(parseVCardDate('19820415')).toEqual({ year: 1982, month: 4, day: 15 })
@@ -552,9 +841,29 @@ describe('dates', () => {
     expect(parseVCardDate('1982')).toEqual({ year: 1982 })
   })
 
+  /**
+   * R-34. `BDAY`/`ANNIVERSARY`/`DEATHDATE` are `date-and-or-time` (§6.2.5, §6.2.6), so the time
+   * forms of §4.3.3 are legal — `20090808T1430-0500` is the RFC's own §7.1 example.
+   */
+  it('parses a zoned date-time into a UTC timestamp', () => {
+    expect(parseVCardDate('20090808T1430-0500')).toEqual({ utc: '2009-08-08T19:30:00Z' })
+    expect(parseVCardDate('19820415T120000Z')).toEqual({ utc: '1982-04-15T12:00:00Z' })
+    expect(parseVCardDate('1982-04-15T12:00:00Z')).toEqual({ utc: '1982-04-15T12:00:00Z' })
+    expect(parseVCardDate('19820415T1200+02:00')).toEqual({ utc: '1982-04-15T10:00:00Z' })
+    // An offset that crosses midnight, a month end and a year end at once — the day arithmetic is
+    // `Date.UTC`'s, not a subtraction that is right except on the days nobody tests.
+    expect(parseVCardDate('20090101T0030+0500')).toEqual({ utc: '2008-12-31T19:30:00Z' })
+  })
+
+  it('keeps only the date of an unzoned date-time, which denotes local wall-clock time', () => {
+    // JSContact has no home for a local time, and inventing a zone would move the instant. The
+    // untouched line rides along in `vCardProps` — see "nothing is dropped in silence".
+    expect(parseVCardDate('19820415T1430')).toEqual({ year: 1982, month: 4, day: 15 })
+  })
+
   /** An unreadable date is NOT invented — the raw property stays in `vCardProps` instead. */
   it('returns undefined rather than guessing', () => {
-    for (const bad of ['', 'gestern', '15.04.1982', '198']) {
+    for (const bad of ['', 'gestern', '15.04.1982', '198', '19820415T1430-9900', '19820415T']) {
       expect(parseVCardDate(bad)).toBeUndefined()
     }
   })

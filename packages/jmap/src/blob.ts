@@ -139,9 +139,32 @@ export async function uploadBlob(
   if (options.signal) init.signal = options.signal
   const response = await transport.fetch(url, init)
   if (!response.ok) throw await errorFromResponse(response)
-  const result = (await response.json()) as UploadResult
+  // Narrowed, not cast — the same class `getSession` and `postApi` were hardened against. The `as`
+  // let three shapes through: an HTML error page behind a 200 threw a raw `SyntaxError` out of
+  // `response.json()` (not a `JmapError`, so nothing upstream could tell it apart from a bug); `{}`
+  // produced `blobId: undefined`, which the attachment uploader carried into an `Email/set` and the
+  // server rejected much later with an `invalidProperties` that never mentions the upload; and
+  // `null` came back as `null` and became a `TypeError` in the caller.
+  const raw: unknown = await response.json().catch(() => undefined)
+  if (!isUploadResult(raw)) {
+    throw new JmapError(
+      'Malformed upload response: expected { accountId, blobId, type, size } (RFC 8620 §6.1)',
+    )
+  }
   options.onProgress?.({ loaded: total, total })
-  return result
+  return raw
+}
+
+/** The four properties RFC 8620 §6.1 makes mandatory in an upload response. */
+function isUploadResult(value: unknown): value is UploadResult {
+  if (typeof value !== 'object' || value === null) return false
+  const body = value as Record<string, unknown>
+  return (
+    typeof body.accountId === 'string' &&
+    typeof body.blobId === 'string' &&
+    typeof body.type === 'string' &&
+    typeof body.size === 'number'
+  )
 }
 
 /**

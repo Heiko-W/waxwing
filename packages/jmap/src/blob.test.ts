@@ -124,16 +124,82 @@ describe('JmapClient.download', () => {
     expect(last.total).toBe(payload.byteLength)
   })
 
-  it('buffers the body (no streaming) when no progress callback is given', async () => {
+  /**
+   * R-93. This test used to be called "buffers the body (no streaming) when no progress callback is
+   * given" and asserted only the CONTENT — so it passed either way. W-11 made `readBody` stream
+   * whenever the runtime gives it a body, precisely because the `arrayBuffer()` branch cannot
+   * enforce a ceiling; the old name therefore pinned the behaviour W-11 removed, by name, while
+   * proving nothing about it. A return to the unguarded `arrayBuffer()` path would not have been
+   * noticed here.
+   *
+   * `arrayBuffer` is replaced with a counter rather than merely observed: taking it is the defect,
+   * so the test has to be able to say that it was not taken.
+   */
+  it('streams the body even with no progress callback — never the unguarded arrayBuffer() path', async () => {
     const payload = new TextEncoder().encode('data')
-    const fetch: FetchLike = async () =>
-      new Response(payload, {
+    let arrayBufferCalls = 0
+    let reads = 0
+    const fetch: FetchLike = async () => {
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          reads += 1
+          controller.enqueue(payload)
+          controller.close()
+        },
+      })
+      const response = new Response(body, {
         status: 200,
         headers: { 'content-type': 'application/octet-stream' },
       })
+      Object.defineProperty(response, 'arrayBuffer', {
+        value: () => {
+          arrayBufferCalls += 1
+          return Promise.resolve(new ArrayBuffer(0))
+        },
+      })
+      return response
+    }
     const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
     const bytes = await client.download('a', 'b', 'application/octet-stream', 'f.bin')
     expect(bytes).toEqual(payload)
+    expect(reads).toBeGreaterThan(0)
+    expect(arrayBufferCalls).toBe(0)
+  })
+
+  it('enforces the ceiling with no progress callback, and cancels the reader', async () => {
+    // The other half of the same point: the ceiling is not a feature of the progress path. No
+    // `onProgress` anywhere in this call, and the endless body is still refused and cancelled.
+    let cancelled = false
+    const fetch: FetchLike = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            controller.enqueue(new Uint8Array(64 * 1024))
+          },
+          cancel() {
+            cancelled = true
+          },
+        }),
+        { status: 200 },
+      )
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    await expect(
+      client.download('a', 'b', 'application/octet-stream', 'f.bin', { maxBytes: 128 * 1024 }),
+    ).rejects.toBeInstanceOf(BlobTooLargeError)
+    expect(cancelled).toBe(true)
+  })
+
+  it('still buffers when the runtime gives no body at all', async () => {
+    // The `arrayBuffer()` branch is a fallback for a runtime without `Response.body`, not dead code
+    // — this is what keeps it covered now that nothing else reaches it.
+    const payload = new TextEncoder().encode('data')
+    const fetch: FetchLike = async () => {
+      const response = new Response(payload, { status: 200 })
+      Object.defineProperty(response, 'body', { value: null })
+      return response
+    }
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    expect(await client.download('a', 'b', 'application/octet-stream', 'f.bin')).toEqual(payload)
   })
 
   it('reports total: undefined while streaming a body with no content-length', async () => {
@@ -168,6 +234,37 @@ describe('blob transfer — error responses', () => {
       new Response('too large', { status: 413, headers: { 'content-type': 'text/plain' } })
     const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
     await expect(client.upload('a', new Uint8Array([1, 2, 3]))).rejects.toThrow(JmapError)
+  })
+
+  /**
+   * R-95. The 200 body was `as UploadResult`, which let three shapes through: an HTML error page
+   * behind a 200 threw a bare `SyntaxError` out of `response.json()`; `{}` produced
+   * `blobId: undefined`, which the attachment uploader carried into an `Email/set` that the server
+   * rejected much later with an `invalidProperties` never mentioning the upload; and `null` came
+   * back as `null` and became a `TypeError` in the caller. Same class as `getSession` and `postApi`
+   * — narrowed, not cast.
+   */
+  it('throws a JmapError when the upload response is not an upload descriptor', async () => {
+    const bodies = [
+      '<html>gateway</html>',
+      'null',
+      '{}',
+      '{"accountId":"a","blobId":"B","type":"text/plain"}', // size missing
+      '{"accountId":"a","blobId":42,"type":"text/plain","size":5}',
+      '[]',
+    ]
+    for (const body of bodies) {
+      const fetch: FetchLike = async () =>
+        new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+      const error = await client.upload('a', new Uint8Array([1])).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect(error, body).toBeInstanceOf(JmapError)
+      expect(error, body).not.toBeInstanceOf(TypeError)
+      expect(error, body).not.toBeInstanceOf(SyntaxError)
+    }
   })
 
   it('throws a JmapError when the download response is not ok', async () => {
