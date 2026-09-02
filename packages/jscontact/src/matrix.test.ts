@@ -63,9 +63,17 @@ function documentedAsPreserved(): string[] {
   return [...names]
 }
 
-/** A minimal vCard carrying exactly one property, with a value its type will accept. */
+/**
+ * A minimal vCard carrying exactly one property, with a value its type will accept.
+ *
+ * The scaffold `UID` is left out when `UID` is the property under test. A card carrying it twice is
+ * a card whose SECOND `UID` is preserved in `vCardProps` — correct behaviour (`convertCard` reads
+ * the first and only consumes that one), but it would make this test read as though `UID` were not
+ * mapped at all.
+ */
 function cardWith(property: string, value: string): string {
-  return ['BEGIN:VCARD', 'VERSION:4.0', 'UID:matrix-1', `${property}:${value}`, 'END:VCARD'].join(
+  const scaffold = property === 'UID' ? [] : ['UID:matrix-1']
+  return ['BEGIN:VCARD', 'VERSION:4.0', ...scaffold, `${property}:${value}`, 'END:VCARD'].join(
     '\r\n',
   )
 }
@@ -138,8 +146,8 @@ describe('the documented matrix', () => {
   })
 
   it('lists every property the converter actually maps', () => {
-    // The other direction: a mapping added to the code without a README row. `MAPPED` is the
-    // converter's own list, minus the three structural properties that are not data.
+    // The other direction: a mapping added to the code without a README row — the converter's own
+    // list, minus the three structural properties that are not data.
     const documented = new Set(documentedAsMapped())
     const structural = new Set(['BEGIN', 'END', 'VERSION'])
     const mapped = [

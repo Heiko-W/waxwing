@@ -542,6 +542,106 @@ describe('round trips', () => {
   })
 })
 
+/**
+ * R-34. `vCardProps` was filtered by property NAME — "this file handles `BDAY`, so no `BDAY` line
+ * belongs in the preserved set" — while the builders filtered by whether they could actually READ
+ * the line. Every line in the gap between the two questions was dropped from the card and from its
+ * re-export, with `skipped` empty and the import reporting success.
+ */
+describe('nothing is dropped in silence', () => {
+  /**
+   * The counting test the fixed-point test cannot be. A symmetric loss — import drops it, export
+   * never writes it, re-import drops it again — is INVISIBLE to `fromVCard(toVCard(x)) === x`,
+   * which is exactly how this survived. Counting input lines against output lines per property name
+   * asks the other question: did anything leave?
+   */
+  it.each(ALL_CARDS)('re-exports every property line of the $name', ({ text }) => {
+    const structural = new Set(['BEGIN', 'END', 'VERSION'])
+    const count = (vcard: string): Map<string, number> => {
+      const out = new Map<string, number>()
+      for (const line of parseContentLines(vcard).lines) {
+        if (structural.has(line.name)) continue
+        out.set(line.name, (out.get(line.name) ?? 0) + 1)
+      }
+      return out
+    }
+    const before = count(text)
+    const after = count(toVCard(importOne(text)))
+    for (const [name, n] of before) {
+      expect(after.get(name) ?? 0, `${name} lines lost on the way out`).toBeGreaterThanOrEqual(n)
+    }
+  })
+
+  it('keeps a BDAY it cannot read instead of losing it', () => {
+    const card = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'BDAY;VALUE=text:circa 1800', 'END:VCARD'].join(
+        '\r\n',
+      ),
+    )
+    expect(card.anniversaries).toBeUndefined()
+    expect((card.vCardProps ?? []).map(([name]) => name)).toEqual(['bday'])
+    expect(toVCard(card)).toContain('BDAY;VALUE=text:circa 1800')
+  })
+
+  it('keeps the ALTID alternatives of FN and N, not just the first of each', () => {
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'UID:u',
+        'FN;ALTID=1;LANGUAGE=de:Anna Meier',
+        'FN;ALTID=1;LANGUAGE=en:Anna Meier',
+        'N;ALTID=1;LANGUAGE=de:Meier;Anna;;;',
+        'END:VCARD',
+      ].join('\r\n'),
+    )
+    expect(card.name?.full).toBe('Anna Meier')
+    expect((card.vCardProps ?? []).map(([name]) => name)).toEqual(['fn'])
+    expect(toVCard(card)).toContain('LANGUAGE=en')
+  })
+
+  it('keeps a second UID, KIND and REV rather than reading only the first', () => {
+    const card = importOne(
+      [
+        'BEGIN:VCARD',
+        'VERSION:4.0',
+        'UID:first',
+        'UID:second',
+        'KIND:individual',
+        'KIND:x-robot',
+        'REV:20260701T091200Z',
+        'REV:20260801T091200Z',
+        'END:VCARD',
+      ].join('\r\n'),
+    )
+    expect(card.uid).toBe('first')
+    expect(card.kind).toBe('individual')
+    expect((card.vCardProps ?? []).map(([name, , , value]) => [name, value])).toEqual([
+      ['uid', 'second'],
+      ['kind', 'x-robot'],
+      ['rev', '20260801T091200Z'],
+    ])
+  })
+
+  it('keeps an all-empty ADR out of the addresses and in the file', () => {
+    // Outlook writes one for every field the user left blank. It is not an address, and it is not
+    // rubbish to be thrown away either — it is a line the file had.
+    const card = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'ADR;TYPE=home:;;;;;;', 'END:VCARD'].join('\r\n'),
+    )
+    expect(card.addresses).toBeUndefined()
+    expect(toVCard(card)).toContain('ADR')
+  })
+
+  it('reads the RFC 6350 example\u2019s own ANNIVERSARY instead of dropping it', () => {
+    // `20090808T1430-0500` is `date-and-or-time` (§6.2.6) and legal; `parseVCardDate` used to answer
+    // `undefined`, so the wedding date left the card AND the re-export.
+    const card = importOne(RFC_6350_EXAMPLE)
+    const wedding = Object.values(card.anniversaries ?? {}).find((a) => a.kind === 'wedding')
+    expect(wedding?.date).toEqual({ utc: '2009-08-08T19:30:00Z' })
+  })
+})
+
 describe('dates', () => {
   it('parses every reduced form the spec allows', () => {
     expect(parseVCardDate('19820415')).toEqual({ year: 1982, month: 4, day: 15 })
@@ -552,9 +652,29 @@ describe('dates', () => {
     expect(parseVCardDate('1982')).toEqual({ year: 1982 })
   })
 
+  /**
+   * R-34. `BDAY`/`ANNIVERSARY`/`DEATHDATE` are `date-and-or-time` (§6.2.5, §6.2.6), so the time
+   * forms of §4.3.3 are legal — `20090808T1430-0500` is the RFC's own §7.1 example.
+   */
+  it('parses a zoned date-time into a UTC timestamp', () => {
+    expect(parseVCardDate('20090808T1430-0500')).toEqual({ utc: '2009-08-08T19:30:00Z' })
+    expect(parseVCardDate('19820415T120000Z')).toEqual({ utc: '1982-04-15T12:00:00Z' })
+    expect(parseVCardDate('1982-04-15T12:00:00Z')).toEqual({ utc: '1982-04-15T12:00:00Z' })
+    expect(parseVCardDate('19820415T1200+02:00')).toEqual({ utc: '1982-04-15T10:00:00Z' })
+    // An offset that crosses midnight, a month end and a year end at once — the day arithmetic is
+    // `Date.UTC`'s, not a subtraction that is right except on the days nobody tests.
+    expect(parseVCardDate('20090101T0030+0500')).toEqual({ utc: '2008-12-31T19:30:00Z' })
+  })
+
+  it('keeps only the date of an unzoned date-time, which denotes local wall-clock time', () => {
+    // JSContact has no home for a local time, and inventing a zone would move the instant. The
+    // untouched line rides along in `vCardProps` — see "nothing is dropped in silence".
+    expect(parseVCardDate('19820415T1430')).toEqual({ year: 1982, month: 4, day: 15 })
+  })
+
   /** An unreadable date is NOT invented — the raw property stays in `vCardProps` instead. */
   it('returns undefined rather than guessing', () => {
-    for (const bad of ['', 'gestern', '15.04.1982', '198']) {
+    for (const bad of ['', 'gestern', '15.04.1982', '198', '19820415T1430-9900', '19820415T']) {
       expect(parseVCardDate(bad)).toBeUndefined()
     }
   })

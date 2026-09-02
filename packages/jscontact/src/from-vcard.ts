@@ -34,6 +34,7 @@ import type {
   Organization,
   PartialDate,
   Phone,
+  Timestamp,
   Title,
 } from './types'
 import type { ContentLine, SkippedLine } from './vcard/lex'
@@ -97,34 +98,30 @@ const PHONE_FEATURES: Readonly<Record<string, string>> = {
   main: 'main-number',
 }
 
-/** Properties handled by name below. Anything else is preserved into `vCardProps`. */
-const MAPPED = new Set([
-  'BEGIN',
-  'END',
-  'VERSION',
-  'FN',
-  'N',
-  'NICKNAME',
-  'EMAIL',
-  'TEL',
-  'ADR',
-  'ORG',
-  'TITLE',
-  'ROLE',
-  'BDAY',
-  'ANNIVERSARY',
-  'DEATHDATE',
-  'NOTE',
-  'PHOTO',
-  'LOGO',
-  'URL',
-  'IMPP',
-  'CATEGORIES',
-  'KIND',
-  'MEMBER',
-  'UID',
-  'REV',
-])
+/**
+ * Syntax rather than data: these carry no information a Card can hold, and they are the only lines
+ * that leave without a home. Everything else is preserved into `vCardProps` unless a builder says it
+ * CONSUMED it — see {@link Consumed}. (`BEGIN`/`END` are stripped by `splitCards` already; they are
+ * listed for the malformed input that reaches `convertCard` without them.)
+ */
+const STRUCTURAL = new Set(['BEGIN', 'END', 'VERSION'])
+
+/**
+ * The lines a builder actually turned into JSContact.
+ *
+ * `vCardProps` used to be "every line whose NAME this file does not handle", which is not the same
+ * question and answered it wrongly in three shapes at once: a `BDAY` in a form `parseVCardDate`
+ * could not read was skipped by the builder AND excluded from `vCardProps`, so the date vanished
+ * from the card and from its re-export; the second `FN`/`N` of an `ALTID`/`LANGUAGE` group went the
+ * same way, as did every `UID`/`KIND`/`REV` after the first, because those are read with
+ * `lines.find`. The import still said "1 contact imported" and `skipped` stayed empty — exactly the
+ * silence this module's header and the README ("**Nothing is silently dropped.**") rule out.
+ *
+ * Filtering by CONSUMPTION instead makes the guarantee structural: a builder that cannot use a line
+ * simply does not add it, and the line falls through to `vCardProps` with its parameters and group
+ * prefix intact. Nothing has to be remembered when a builder learns a new shape.
+ */
+type Consumed = Set<ContentLine>
 
 function typeValues(line: ContentLine): string[] {
   return (line.params.get('TYPE') ?? [])
@@ -240,13 +237,21 @@ function compact<T extends object>(value: Loose<T>): T {
 }
 
 /**
- * Parse a vCard date (§4.3.4) into a {@link PartialDate}.
+ * Parse a vCard date, date-time or timestamp (§4.3.4, §4.3.3, §4.3.5).
  *
  * The reduced forms are the point: `--0404` is "4 April, year unspecified", which people really do
  * enter for a birthday, and which a `Date` cannot hold. Returning `undefined` for an unparsable
  * value lets the caller keep the raw property in `vCardProps` rather than invent a date.
+ *
+ * `BDAY`/`ANNIVERSARY`/`DEATHDATE` are `date-and-or-time` (§6.2.5, §6.2.6), so the TIME forms are
+ * legal too — `20090808T1430-0500` is the RFC's own §7.1 example, and it used to return `undefined`
+ * here. With a zone the value denotes an instant and becomes a {@link Timestamp} normalised to UTC;
+ * without one it denotes a local wall-clock time that JSContact has no home for, so only the date
+ * part survives, as a {@link PartialDate}. Both are lossy in the same direction the RFCs are: the
+ * card holds what the model can express, and where that is less than the vCard said, the untouched
+ * line rides along in `vCardProps`.
  */
-export function parseVCardDate(raw: string): PartialDate | undefined {
+export function parseVCardDate(raw: string): PartialDate | Timestamp | undefined {
   const value = raw.trim()
   // YYYYMMDD or YYYY-MM-DD
   const full = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(value)
@@ -257,6 +262,22 @@ export function parseVCardDate(raw: string): PartialDate | undefined {
       day: Number(full[3]),
     }
   }
+  const dateTime = DATE_TIME.exec(value)
+  if (dateTime) {
+    const [, year, month, day, hour, minute, second, zone] = dateTime
+    if (zone === undefined || zone === '') {
+      return { year: Number(year), month: Number(month), day: Number(day) }
+    }
+    return utcTimestamp({
+      year: Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: Number(hour),
+      minute: Number(minute ?? '0'),
+      second: Number(second ?? '0'),
+      zone,
+    })
+  }
   // --MMDD / --MM-DD: no year.
   const noYear = /^--(\d{2})-?(\d{2})$/.exec(value)
   if (noYear) return { month: Number(noYear[1]), day: Number(noYear[2]) }
@@ -266,6 +287,59 @@ export function parseVCardDate(raw: string): PartialDate | undefined {
   const year = /^(\d{4})$/.exec(value)
   if (year) return { year: Number(year[1]) }
   return undefined
+}
+
+/**
+ * `date-complete "T" time` with an optional zone (§4.3.3), in the basic AND the extended form.
+ *
+ * Minutes and seconds are optional because `time` is (`20090808T14` is a legal date-time); the zone
+ * is `Z` or `±hh[:mm]`, and its ABSENCE is meaningful, not a parse failure — see
+ * {@link parseVCardDate}.
+ */
+const DATE_TIME =
+  /^(\d{4})-?(\d{2})-?(\d{2})T(\d{2})(?::?(\d{2}))?(?::?(\d{2}))?(Z|[+-]\d{2}(?::?\d{2})?)?$/
+
+/**
+ * A zoned vCard date-time as a JSContact {@link Timestamp}: RFC 3339 with `Z`, per RFC 9553 §2.8.1.
+ *
+ * `Date.UTC` does the arithmetic so an offset that crosses midnight, a month end or a year end
+ * lands on the right day — `20090101T0030+0500` is 2008-12-31 in UTC, and hand-rolled subtraction
+ * gets that wrong on exactly the days nobody tests.
+ */
+function utcTimestamp(parts: {
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+  zone: string
+}): Timestamp | undefined {
+  const offset = zoneOffsetMinutes(parts.zone)
+  if (offset === undefined) return undefined
+  const ms = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+  )
+  if (!Number.isFinite(ms)) return undefined
+  const instant = new Date(ms - offset * 60_000)
+  // `toISOString` emits milliseconds; a vCard timestamp has none, and RFC 9553 does not ask for any.
+  return { utc: `${instant.toISOString().slice(0, 19)}Z` }
+}
+
+/** Minutes east of UTC for `Z` / `±hh` / `±hhmm` / `±hh:mm`, or `undefined` for anything else. */
+function zoneOffsetMinutes(zone: string): number | undefined {
+  if (zone === 'Z' || zone === 'z') return 0
+  const match = /^([+-])(\d{2}):?(\d{2})?$/.exec(zone)
+  if (!match) return undefined
+  const hours = Number(match[2])
+  const minutes = Number(match[3] ?? '0')
+  if (hours > 23 || minutes > 59) return undefined
+  return (match[1] === '-' ? -1 : 1) * (hours * 60 + minutes)
 }
 
 /**
@@ -309,7 +383,15 @@ function splitCards(lines: readonly ContentLine[]): ContentLine[][] {
   return cards
 }
 
-function buildName(lines: readonly ContentLine[]): Name | undefined {
+/**
+ * The card's name, from the FIRST `FN` and the first `N`.
+ *
+ * `lines.find` is right and the rest is what makes it honest: RFC 6350 §5.4 lets a card carry
+ * several `FN`/`N` in an `ALTID` group (a Cyrillic and a Latin rendering of one name, say), and
+ * JSContact's `name` is one object. Only the lines actually READ are marked consumed, so the
+ * alternatives survive in `vCardProps` with their `ALTID`/`LANGUAGE` intact instead of vanishing.
+ */
+function buildName(lines: readonly ContentLine[], consumed: Consumed): Name | undefined {
   const fn = lines.find((line) => line.name === 'FN')
   const n = lines.find((line) => line.name === 'N')
 
@@ -329,19 +411,25 @@ function buildName(lines: readonly ContentLine[]): Name | undefined {
 
   const full = fn === undefined ? undefined : unescapeText(fn.value)
   if (components.length === 0 && full === undefined) return undefined
+  if (fn !== undefined) consumed.add(fn)
+  if (n !== undefined && components.length > 0) consumed.add(n)
   return compact<Name>({
     ...(components.length > 0 ? { components } : {}),
     ...(full !== undefined ? { full } : {}),
   })
 }
 
-function buildEmails(lines: readonly ContentLine[]): Record<Id, EmailAddress> | undefined {
+function buildEmails(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, EmailAddress> | undefined {
   const out: Record<Id, EmailAddress> = {}
   const emailLines = lines.filter((line) => line.name === 'EMAIL')
   const nextId = idAllocator(emailLines, 'e')
   for (const line of emailLines) {
     const address = unescapeText(line.value).trim()
     if (address === '') continue
+    consumed.add(line)
     out[nextId(line)] = compact<EmailAddress>({
       address,
       contexts: contextsOf(line),
@@ -352,13 +440,17 @@ function buildEmails(lines: readonly ContentLine[]): Record<Id, EmailAddress> | 
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildPhones(lines: readonly ContentLine[]): Record<Id, Phone> | undefined {
+function buildPhones(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Phone> | undefined {
   const out: Record<Id, Phone> = {}
   const telLines = lines.filter((line) => line.name === 'TEL')
   const nextId = idAllocator(telLines, 'tel')
   for (const line of telLines) {
     const number = unescapeText(line.value).trim()
     if (number === '') continue
+    consumed.add(line)
     const features: Record<string, true> = {}
     for (const type of typeValues(line)) {
       // Own property only — see the note in `contextsOf`.
@@ -377,7 +469,10 @@ function buildPhones(lines: readonly ContentLine[]): Record<Id, Phone> | undefin
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildAddresses(lines: readonly ContentLine[]): Record<Id, Address> | undefined {
+function buildAddresses(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Address> | undefined {
   const out: Record<Id, Address> = {}
   const adrLines = lines.filter((line) => line.name === 'ADR')
   const nextId = idAllocator(adrLines, 'adr')
@@ -389,7 +484,11 @@ function buildAddresses(lines: readonly ContentLine[]): Record<Id, Address> | un
       if (part !== undefined && part !== '') components.push({ kind, value: part })
     })
     const full = line.params.get('LABEL')?.[0]
+    // An all-empty `ADR` (Outlook writes one for every field the user left blank) is not an
+    // address. It is not consumed either, so it rides out again in `vCardProps` rather than
+    // becoming a blank entry in the contact view or disappearing from the file.
     if (components.length === 0 && full === undefined) continue
+    consumed.add(line)
     out[nextId(line)] = compact<Address>({
       ...(components.length > 0 ? { components } : {}),
       full,
@@ -401,7 +500,10 @@ function buildAddresses(lines: readonly ContentLine[]): Record<Id, Address> | un
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildOrganizations(lines: readonly ContentLine[]): Record<Id, Organization> | undefined {
+function buildOrganizations(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Organization> | undefined {
   const out: Record<Id, Organization> = {}
   const orgLines = lines.filter((line) => line.name === 'ORG')
   const nextId = idAllocator(orgLines, 'org')
@@ -412,6 +514,7 @@ function buildOrganizations(lines: readonly ContentLine[]): Record<Id, Organizat
     const [name, ...units] = structuredComponents(line.value)
     const named = units.filter((unit) => unit !== '').map((unit) => ({ name: unit }))
     if ((name === undefined || name === '') && named.length === 0) continue
+    consumed.add(line)
     out[nextId(line)] = compact<Organization>({
       ...(name !== undefined && name !== '' ? { name } : {}),
       ...(named.length > 0 ? { units: named } : {}),
@@ -422,13 +525,17 @@ function buildOrganizations(lines: readonly ContentLine[]): Record<Id, Organizat
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildTitles(lines: readonly ContentLine[]): Record<Id, Title> | undefined {
+function buildTitles(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Title> | undefined {
   const out: Record<Id, Title> = {}
   const titleLines = lines.filter((line) => line.name === 'TITLE' || line.name === 'ROLE')
   const nextId = idAllocator(titleLines, 't')
   for (const line of titleLines) {
     const name = unescapeText(line.value).trim()
     if (name === '') continue
+    consumed.add(line)
     out[nextId(line)] = compact<Title>({
       name,
       kind: line.name === 'ROLE' ? ('role' as const) : ('title' as const),
@@ -437,7 +544,10 @@ function buildTitles(lines: readonly ContentLine[]): Record<Id, Title> | undefin
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildAnniversaries(lines: readonly ContentLine[]): Record<Id, Anniversary> | undefined {
+function buildAnniversaries(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Anniversary> | undefined {
   const out: Record<Id, Anniversary> = {}
   const kinds: Readonly<Record<string, Anniversary['kind']>> = {
     BDAY: 'birth',
@@ -450,9 +560,12 @@ function buildAnniversaries(lines: readonly ContentLine[]): Record<Id, Anniversa
     const kind = kinds[line.name]
     if (kind === undefined) continue
     const date = parseVCardDate(unescapeText(line.value))
-    // An unparsable date is NOT invented: the raw property stays in `vCardProps` instead, so the
-    // information is kept even though this mapping could not read it.
+    // An unparsable date is NOT invented: the line is left unconsumed, so the raw property stays in
+    // `vCardProps` and the information is kept even though this mapping could not read it. That is
+    // what the comment always promised; the `MAPPED`-by-name filter it was written beside dropped
+    // the line instead, and `BDAY;VALUE=text:circa 1800` left neither an anniversary nor a trace.
     if (date === undefined) continue
+    consumed.add(line)
     out[nextId(line)] = { kind, date }
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -463,7 +576,10 @@ function buildAnniversaries(lines: readonly ContentLine[]): Record<Id, Anniversa
  * is why this is not a straight one-line map. Getting it wrong shows up as a single contact called
  * "Anni, Annchen".
  */
-function buildNicknames(lines: readonly ContentLine[]): Record<Id, Nickname> | undefined {
+function buildNicknames(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Nickname> | undefined {
   const out: Record<Id, Nickname> = {}
   const nickLines = lines.filter((line) => line.name === 'NICKNAME')
   const nextId = idAllocator(nickLines, 'nick')
@@ -471,6 +587,7 @@ function buildNicknames(lines: readonly ContentLine[]): Record<Id, Nickname> | u
     for (const value of listValues(line.value)) {
       const name = value.trim()
       if (name === '') continue
+      consumed.add(line)
       // One line can yield SEVERAL nicknames, so its `PROP-ID` can only name the first of them; the
       // allocator gives the rest generated keys rather than letting them overwrite it.
       out[nextId(line)] = compact<Nickname>({
@@ -483,7 +600,10 @@ function buildNicknames(lines: readonly ContentLine[]): Record<Id, Nickname> | u
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildLinks(lines: readonly ContentLine[]): Record<Id, Link> | undefined {
+function buildLinks(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Link> | undefined {
   const out: Record<Id, Link> = {}
   const urlLines = lines.filter((line) => line.name === 'URL')
   const nextId = idAllocator(urlLines, 'link')
@@ -491,6 +611,7 @@ function buildLinks(lines: readonly ContentLine[]): Record<Id, Link> | undefined
     // A URI value, not text — the same rule as PHOTO. Unescaping it would corrupt a query string.
     const uri = line.value.trim()
     if (uri === '') continue
+    consumed.add(line)
     out[nextId(line)] = compact<Link>({
       uri,
       pref: prefOf(line),
@@ -507,13 +628,17 @@ function buildLinks(lines: readonly ContentLine[]): Record<Id, Link> | undefined
  * reason `URL` and `PHOTO` are not: unescaping would corrupt a query string. `SERVICE-TYPE` — the
  * parameter Apple and Google both write — names the service when the scheme does not.
  */
-function buildOnlineServices(lines: readonly ContentLine[]): Record<Id, OnlineService> | undefined {
+function buildOnlineServices(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, OnlineService> | undefined {
   const out: Record<Id, OnlineService> = {}
   const imppLines = lines.filter((line) => line.name === 'IMPP')
   const nextId = idAllocator(imppLines, 'os')
   for (const line of imppLines) {
     const uri = line.value.trim()
     if (uri === '') continue
+    consumed.add(line)
     out[nextId(line)] = compact<OnlineService>({
       uri,
       service: line.params.get('SERVICE-TYPE')?.[0],
@@ -525,19 +650,26 @@ function buildOnlineServices(lines: readonly ContentLine[]): Record<Id, OnlineSe
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildNotes(lines: readonly ContentLine[]): Record<Id, Note> | undefined {
+function buildNotes(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Note> | undefined {
   const out: Record<Id, Note> = {}
   const noteLines = lines.filter((line) => line.name === 'NOTE')
   const nextId = idAllocator(noteLines, 'n')
   for (const line of noteLines) {
     const note = unescapeText(line.value)
     if (note === '') continue
+    consumed.add(line)
     out[nextId(line)] = { note }
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildMedia(lines: readonly ContentLine[]): Record<Id, Media> | undefined {
+function buildMedia(
+  lines: readonly ContentLine[],
+  consumed: Consumed,
+): Record<Id, Media> | undefined {
   const out: Record<Id, Media> = {}
   const mediaLines = lines.filter((line) => line.name === 'PHOTO' || line.name === 'LOGO')
   const nextId = idAllocator(mediaLines, 'm')
@@ -547,6 +679,7 @@ function buildMedia(lines: readonly ContentLine[]): Record<Id, Media> | undefine
     // so unescaping it would corrupt any base64 payload containing a comma or a backslash.
     const uri = line.value.trim()
     if (uri === '') continue
+    consumed.add(line)
     out[nextId(line)] = compact<Media>({
       kind,
       uri,
@@ -557,29 +690,36 @@ function buildMedia(lines: readonly ContentLine[]): Record<Id, Media> | undefine
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildKeywords(lines: readonly ContentLine[]): BooleanSet | undefined {
+function buildKeywords(lines: readonly ContentLine[], consumed: Consumed): BooleanSet | undefined {
   const out: Record<string, true> = {}
   for (const line of lines) {
     if (line.name !== 'CATEGORIES') continue
     for (const value of listValues(line.value)) {
       const keyword = value.trim()
-      if (keyword !== '') out[keyword] = true
+      if (keyword !== '') {
+        out[keyword] = true
+        consumed.add(line)
+      }
     }
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-function buildMembers(lines: readonly ContentLine[]): BooleanSet | undefined {
+function buildMembers(lines: readonly ContentLine[], consumed: Consumed): BooleanSet | undefined {
   const out: Record<string, true> = {}
   for (const line of lines) {
     if (line.name !== 'MEMBER') continue
     const uid = line.value.trim()
-    if (uid !== '') out[uid] = true
+    if (uid !== '') {
+      out[uid] = true
+      consumed.add(line)
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
 
 function convertCard(lines: readonly ContentLine[], newUid: () => string): Card {
+  const consumed: Consumed = new Set()
   const uidLine = lines.find((line) => line.name === 'UID')
   const kindLine = lines.find((line) => line.name === 'KIND')
   const revLine = lines.find((line) => line.name === 'REV')
@@ -589,33 +729,48 @@ function convertCard(lines: readonly ContentLine[], newUid: () => string): Card 
   const kind = (['individual', 'group', 'org', 'location', 'device', 'application'] as const).find(
     (candidate) => candidate === kindRaw,
   )
+  // A `KIND` outside the registered set is not a kind. Left unconsumed, so `KIND:x-robot` comes back
+  // out of `vCardProps` on export instead of being replaced by nothing.
+  if (kindLine !== undefined && kind !== undefined) consumed.add(kindLine)
 
-  // Everything we did not map, kept verbatim (RFC 9555 §2.15.2). This is the difference between an
-  // import that loses a hoster's custom fields and one that hands them back on export.
-  const vCardProps = lines.filter((line) => !MAPPED.has(line.name)).map(toJCardProp)
+  const uidValue = uidLine === undefined ? '' : unescapeText(uidLine.value).trim()
+  if (uidLine !== undefined && uidValue !== '') consumed.add(uidLine)
 
-  return compact<Card>({
+  const updated =
+    revLine === undefined ? undefined : unescapeText(revLine.value).trim() || undefined
+  if (revLine !== undefined && updated !== undefined) consumed.add(revLine)
+
+  const card = compact<Card>({
     '@type': 'Card' as const,
     version: '1.0' as const,
-    uid: uidLine === undefined ? newUid() : unescapeText(uidLine.value).trim() || newUid(),
+    uid: uidValue === '' ? newUid() : uidValue,
     kind,
-    updated: revLine === undefined ? undefined : unescapeText(revLine.value).trim(),
-    name: buildName(lines),
-    nicknames: buildNicknames(lines),
-    emails: buildEmails(lines),
-    phones: buildPhones(lines),
-    addresses: buildAddresses(lines),
-    organizations: buildOrganizations(lines),
-    titles: buildTitles(lines),
-    anniversaries: buildAnniversaries(lines),
-    notes: buildNotes(lines),
-    media: buildMedia(lines),
-    links: buildLinks(lines),
-    onlineServices: buildOnlineServices(lines),
-    keywords: buildKeywords(lines),
-    members: buildMembers(lines),
-    ...(vCardProps.length > 0 ? { vCardProps } : {}),
+    updated,
+    name: buildName(lines, consumed),
+    nicknames: buildNicknames(lines, consumed),
+    emails: buildEmails(lines, consumed),
+    phones: buildPhones(lines, consumed),
+    addresses: buildAddresses(lines, consumed),
+    organizations: buildOrganizations(lines, consumed),
+    titles: buildTitles(lines, consumed),
+    anniversaries: buildAnniversaries(lines, consumed),
+    notes: buildNotes(lines, consumed),
+    media: buildMedia(lines, consumed),
+    links: buildLinks(lines, consumed),
+    onlineServices: buildOnlineServices(lines, consumed),
+    keywords: buildKeywords(lines, consumed),
+    members: buildMembers(lines, consumed),
   })
+
+  // Everything no builder took, kept verbatim (RFC 9555 §2.15.2). This is the difference between an
+  // import that loses a hoster's custom fields and one that hands them back on export — and, since
+  // the test is CONSUMPTION rather than the property name, also between one that drops a date it
+  // could not read and one that carries it through untouched. See {@link Consumed}.
+  const vCardProps = lines
+    .filter((line) => !consumed.has(line) && !STRUCTURAL.has(line.name))
+    .map(toJCardProp)
+
+  return vCardProps.length > 0 ? { ...card, vCardProps } : card
 }
 
 /**

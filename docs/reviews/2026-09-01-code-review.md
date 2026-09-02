@@ -1558,7 +1558,9 @@ verschärft.
 
 ### R-34 — [MEDIUM] `fromVCard` verwirft gemappte Properties stumm, wenn der Mapper sie nicht lesen kann — entgegen Kommentar und README
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Der Konsum-Filter ist wie vorgeschlagen umgesetzt (`Consumed: Set<ContentLine>`, jeder Builder markiert nur, was er wirklich gelesen hat); `MAPPED` entfaellt. `parseVCardDate` liest jetzt zusaetzlich die `date-time`-Formen: mit Zone als nach UTC normalisierter `Timestamp`, ohne Zone nur der Datumsanteil als `PartialDate` — die unveraenderte Zeile bleibt in beiden Faellen in `vCardProps`. Der Rueckgabetyp von `parseVCardDate` ist damit `PartialDate | Timestamp | undefined` (additiv erweitert, keine bestehende Form entfaellt). Nebenwirkung, bewusst: ein leeres `ADR;TYPE=home:;;;;;;` und ein `KIND` ausserhalb des registrierten Satzes landen jetzt in `vCardProps` statt zu verschwinden.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 

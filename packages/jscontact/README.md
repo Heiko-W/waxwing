@@ -28,7 +28,7 @@ or stops being supported cannot leave this document behind.
 | `ADR` | `addresses` | Seven positional slots → `postOfficeBox`, `apartment`, `name`, `locality`, `region`, `postcode`, `country`. `LABEL` → `full`, `CC` → `countryCode`. An all-empty `ADR` is ignored rather than imported as a blank address. |
 | `ORG` | `organizations` | First component is `name`; the rest become `units`, keeping the hierarchy. `SORT-AS` → `sortAs`. |
 | `TITLE` / `ROLE` | `titles` | `kind: 'title'` / `kind: 'role'`. |
-| `BDAY` / `ANNIVERSARY` / `DEATHDATE` | `anniversaries` | `kind: 'birth'` / `'wedding'` / `'death'`. Reduced forms are kept: `--0415` is "15 April, year withheld". |
+| `BDAY` / `ANNIVERSARY` / `DEATHDATE` | `anniversaries` | `kind: 'birth'` / `'wedding'` / `'death'`. Reduced forms are kept: `--0415` is "15 April, year withheld". The `date-and-or-time` time forms are read too: with a zone (`20090808T1430-0500`) the value becomes a `Timestamp` normalised to UTC, without one only the date survives — and the untouched line rides along in `vCardProps` either way. |
 | `NICKNAME` | `nicknames` | A comma-separated list: one property can yield several nicknames. |
 | `URL` | `links` | A URI value, never text-escaped. |
 | `IMPP` | `onlineServices` | Instant-messaging / online accounts. A URI value, never text-escaped; the `SERVICE-TYPE` parameter becomes `service`. |
@@ -86,6 +86,11 @@ belong to. Guessing would attach a timezone to the wrong one, so they are preser
   literal backslash followed by a separator rather than swallowing the next component.
 - A line that cannot be parsed is skipped and **reported** in `ImportResult.skipped` — a 400-contact
   export with one broken line imports 399 contacts and says so.
+- "Not mapped" is decided per **line**, not per property name. A line lands in `vCardProps` whenever
+  no builder could actually use it: a birthday in a form the date parser cannot read, the second
+  rendering of a name in an `ALTID` group, an all-empty address, a repeated identity or revision
+  property. The typed field takes the first line it can read; the rest travel verbatim, with their
+  parameters and group prefixes.
 
 ## Publishing (not done yet — here is exactly what is left)
 
