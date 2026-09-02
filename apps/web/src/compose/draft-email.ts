@@ -12,6 +12,7 @@ import type { DraftWindow, OpenDraftInit } from './composer-store'
 import { htmlToPlainText } from './html-to-text'
 import { referencedCids, removeInlineImage } from './inline-images'
 import { DEFAULT_SEND_OPTIONS, priorityHeaders, type SendOptions } from './send-options'
+import { bodyWithoutSignature } from './signature'
 
 /** The persistable subset of a live draft (UI-only mode/dirty/focus excluded). */
 export function serializeDraft(draft: DraftWindow): SerializedDraft {
@@ -62,12 +63,61 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
   }
 }
 
-/** A draft worth neither persisting nor syncing: no recipients, blank subject, empty body. */
+/**
+ * A draft worth neither persisting nor syncing: no recipients, blank subject, no attachment, and
+ * nothing in the body that the WRITER put there.
+ *
+ * Two things this deliberately does NOT count as content:
+ *  - the seeded SIGNATURE. It is inserted into every new draft as soon as the identities load, so
+ *    with one configured, "New message" + close (or just waiting out the 3 s autosave) filed a
+ *    signature-only draft in the Drafts folder, visible on every other client, and Discard asked
+ *    for a confirmation about a window nobody had typed in.
+ *  - nothing else. `dirty === false` was the other candidate for the same job and is WRONG here:
+ *    it is also false for a draft REOPENED from the Drafts folder, and this predicate now decides
+ *    whether a stored draft gets deleted (see `flushDraft`) — so open-and-close would have
+ *    destroyed a real message.
+ *
+ * An ATTACHMENT is content, and its absence from the list was its own defect: a draft whose only
+ * content was a finished 20 MB upload read as empty, so closing the window saved nothing and
+ * Discard threw it away without asking.
+ */
 export function isEmptyDraft(draft: DraftWindow | SerializedDraft): boolean {
   const noRecipients = draft.to.length === 0 && draft.cc.length === 0 && draft.bcc.length === 0
   const blankSubject = draft.subject.trim() === ''
-  const blankBody = htmlToPlainText(draft.body).trim() === ''
-  return noRecipients && blankSubject && blankBody
+  const noAttachments = draft.attachments.length === 0
+  const blankBody = htmlToPlainText(bodyWithoutSignature(draft.body)).trim() === ''
+  return noRecipients && blankSubject && noAttachments && blankBody
+}
+
+/** Deep-ish equality for the small structured fields; the big strings are compared directly. */
+const sameShape = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
+/**
+ * Do two persisted drafts say the same thing? Used to skip a server save that would change nothing.
+ *
+ * A draft save is create-new + destroy-old, so an autosave with identical content is not a cheap
+ * no-op on the server: it mints a NEW Email id for the same text. Every store mutation used to arm
+ * the autosave — minimizing, restoring and going full-screen among them — and each one spent a
+ * round trip and a fresh server id on a message that had not changed.
+ */
+export function sameDraftContent(a: SerializedDraft, b: SerializedDraft): boolean {
+  return (
+    a.subject === b.subject &&
+    a.body === b.body &&
+    (a.plainText ?? false) === (b.plainText ?? false) &&
+    a.fromIdentityId === b.fromIdentityId &&
+    a.sourceEmailId === b.sourceEmailId &&
+    a.sourceFlag === b.sourceFlag &&
+    sameShape(a.to, b.to) &&
+    sameShape(a.cc, b.cc) &&
+    sameShape(a.bcc, b.bcc) &&
+    sameShape(a.replyTo, b.replyTo) &&
+    sameShape(a.inReplyTo, b.inReplyTo) &&
+    sameShape(a.references, b.references) &&
+    sameShape(a.attachments, b.attachments) &&
+    sameShape(draftSendOptions(a), draftSendOptions(b))
+  )
 }
 
 /**

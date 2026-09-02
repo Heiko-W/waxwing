@@ -95,6 +95,21 @@ export function applySignature(
 }
 
 /**
+ * The body with every signature container removed — what the WRITER put there.
+ *
+ * A configured signature is seeded into every new draft the moment the identities load, which made
+ * "is this draft worth keeping?" answer yes for a window nobody had typed in: opening and closing
+ * "New message" left a signature-only draft in the Drafts folder, and Discard asked for a
+ * confirmation. The marker container is exactly the seam that tells the two apart.
+ */
+export function bodyWithoutSignature(bodyHtml: string): string {
+  if (!bodyHtml.includes(SIGNATURE_ATTR)) return bodyHtml // the common case, no parse
+  const doc = new DOMParser().parseFromString(bodyHtml, 'text/html')
+  for (const node of doc.body.querySelectorAll(`[${SIGNATURE_ATTR}]`)) node.remove()
+  return doc.body.innerHTML
+}
+
+/**
  * SWAP the existing signature's contents for `newSignatureHtml` (empty → remove the container).
  * NO-OP when no signature marker is present — respects an explicit deletion by the user.
  */

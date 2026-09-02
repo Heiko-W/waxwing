@@ -592,7 +592,12 @@ enthält keinen Fehlerpfad. Gegenprüfung: bestätigt.
 
 ### R-12 — [MEDIUM] Die geseedete Signatur macht jeden geöffneten Entwurf „nicht leer“: Öffnen + Schließen (oder 3 s warten) legt einen Signatur-only-Entwurf im Server-Drafts-Ordner an; jede Fensteränderung ohne Inhaltsänderung löst zusätzlich einen `create+destroy`-Roundtrip aus
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle drei Teile umgesetzt (Signatur-Guard, Dispatch-Skip bei unverändertem Inhalt,
+Autosave armt nur auf Inhaltsfeldern). NICHT umgesetzt: die Discard-Rückfrage entfällt jetzt über
+`isEmptyDraft` (Body ohne Signaturcontainer), nicht über `dirty === false` — `dirty` ist auch bei einem
+aus dem Drafts-Ordner GEÖFFNETEN Entwurf `false`, und zusammen mit dem Löschpfad aus R-15 hätte
+„nicht dirty = leer" Öffnen+Schließen einen echten Entwurf vernichtet.
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -703,7 +708,10 @@ korrigiert.
 
 ### R-15 — [MEDIUM] `close()` eines zuvor gespeicherten, inzwischen geleerten Entwurfs behält den alten Inhalt; ein Entwurf nur mit Anhang wird beim Schließen nicht gespeichert und beim Verwerfen ohne Rückfrage gelöscht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Fälle umgesetzt: `isEmptyDraft` zählt Anhänge, und `flushDraft` löscht bei
+leerem Entwurf die vorhandene Zeile und dispatcht `discardDraft` (bzw. verwirft einen noch wartenden
+Save, wenn es noch keine Server-Id gibt).
 
 **Kategorie / Bereich:** correctness / Compose
 

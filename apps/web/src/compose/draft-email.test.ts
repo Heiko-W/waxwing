@@ -11,6 +11,7 @@ import {
 } from './draft-email'
 import { htmlToPlainText } from './html-to-text'
 import { DEFAULT_SEND_OPTIONS } from './send-options'
+import { applySignature, SIGNATURE_ATTR } from './signature'
 
 function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
   return {
@@ -110,6 +111,28 @@ describe('isEmptyDraft', () => {
     expect(isEmptyDraft(draftWindow({ bcc: [{ name: null, email: 'b@x.test' }] }))).toBe(false)
     expect(isEmptyDraft(draftWindow({ subject: 'Hi' }))).toBe(false)
     expect(isEmptyDraft(draftWindow({ body: '<p>text</p>' }))).toBe(false)
+  })
+
+  /**
+   * R-12: with a signature configured, every new draft has body text the moment the identities
+   * load — so "New message" + close filed a signature-only draft in Drafts, and Discard asked for
+   * a confirmation about a window nobody had typed in.
+   */
+  it('does not count the seeded signature as content', () => {
+    const seeded = applySignature('', '<div>-- <br>Heiko</div>')
+    expect(seeded).toContain(SIGNATURE_ATTR)
+    expect(isEmptyDraft(draftWindow({ body: seeded }))).toBe(true)
+    // …but text BESIDE the signature is content, and so is an edited signature body.
+    expect(isEmptyDraft(draftWindow({ body: `<p>hello</p>${seeded}` }))).toBe(false)
+  })
+
+  /** R-15(b): a finished 20 MB upload was "empty" — close saved nothing, Discard did not ask. */
+  it('counts an attachment as content', () => {
+    const withFile = draftWindow({
+      attachments: [{ blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 20, cid: null }],
+    })
+    expect(isEmptyDraft(withFile)).toBe(false)
+    expect(isEmptyDraft(serializeDraft(withFile))).toBe(false)
   })
 
   it('accepts a SerializedDraft too', () => {

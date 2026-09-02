@@ -2,8 +2,13 @@
  * The draft persistence seam (M2.6, FR-CMP-03). `flush` writes the live draft durably to the local
  * `drafts` store (the crash-safety guarantee — no server round-trip on the critical path) and then
  * dispatches a coalesced `saveDraft` outbox intent (create-new + destroy-old `Email/set` into the
- * Drafts mailbox). `close` flushes (unless empty) then closes the window; `discard` deletes the
- * local row + destroys the server draft. Reads the running engine lazily (safe before it starts).
+ * Drafts mailbox). `close` flushes then closes the window; `discard` deletes the local row +
+ * destroys the server draft. Reads the running engine lazily (safe before it starts).
+ *
+ * "Empty" is a THREE-way answer, not a two-way one. An empty draft with nothing saved is dropped;
+ * an empty draft that HAS been saved is discarded, locally and on the server, because emptying a
+ * draft is how a writer takes it back; and an unchanged draft that the server already has is left
+ * alone, because a save is create-new + destroy-old and would only mint a new id for the same text.
  */
 
 import type { EmailAddress, EmailSubmissionAddress, Id } from '@waxwing/jmap'
@@ -26,6 +31,7 @@ import {
   deserializeDraft,
   draftSendOptions,
   isEmptyDraft,
+  sameDraftContent,
   serializeDraft,
   toEmailCreate,
 } from './draft-email'
@@ -85,9 +91,14 @@ function revokeDraftInlineImages(localId: string): void {
 }
 
 export interface DraftSync {
-  /** Persist the draft locally (durable) + queue the server save. No-op for an empty draft. */
+  /**
+   * Persist the draft locally (durable) + queue the server save.
+   *
+   * An EMPTIED draft that was already saved is deleted instead (local row + server copy); one that
+   * was never saved is a no-op; one the server already has unchanged is a no-op too.
+   */
   flush(localId: string): Promise<void>
-  /** Save (unless empty) then close the window — the content is safe in Drafts. */
+  /** Save (or, if it has been emptied, delete) then close the window — the content is safe in Drafts. */
   close(localId: string): Promise<void>
   /** Delete the local draft + destroy the server draft, then close the window. */
   discard(localId: string): Promise<void>
@@ -161,9 +172,34 @@ async function resolveFrom(
  */
 async function flushDraft(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
   const draft = useComposerStore.getState().drafts.get(localId)
-  if (draft === undefined || isEmptyDraft(draft)) return
-  const content = serializeDraft(draft)
+  if (draft === undefined) return
   const existing = await getDraft(db, accountId, localId)
+  if (isEmptyDraft(draft)) {
+    // An empty draft used to mean "return, do nothing", which is right only while nothing has been
+    // saved yet. Once a row exists, doing nothing is the WRONG answer to "I typed something, thought
+    // better of it, deleted it and closed the window": the local row and the server copy both kept
+    // the old text, and the Drafts folder kept a message the writer had emptied on purpose. Emptying
+    // a saved draft IS a discard — just without the window closing (that is `close`'s job).
+    if (existing === undefined) return
+    await deleteDraft(db, accountId, localId)
+    if (existing.serverEmailId !== null) {
+      dispatchOrReport(
+        getEngineFor(accountId)?.dispatch(
+          { kind: 'discardDraft', localId, serverEmailId: existing.serverEmailId },
+          { id: outboxId(localId) },
+        ),
+      )
+    } else {
+      await dropPendingSave(db, accountId, localId)
+    }
+    return
+  }
+  const content = serializeDraft(draft)
+  // Nothing changed since the server acknowledged this draft ⇒ nothing to do. A save is create-new
+  // + destroy-old, so an autosave with identical content is not free: it mints a new server id for
+  // the same text. The autosave used to be armed by ANY store change — minimize, restore, full
+  // screen — and each of those spent a round trip on a message nobody had edited.
+  if (existing?.status === 'synced' && sameDraftContent(content, existing.content)) return
   const now = Date.now()
   const row: DraftRow = {
     accountId,

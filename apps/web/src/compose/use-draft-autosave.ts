@@ -9,11 +9,39 @@
  */
 
 import { useEffect } from 'react'
+import type { DraftWindow } from './composer-store'
 import { useComposerStore } from './composer-store'
 import { useDraftSync } from './use-draft-sync'
 
 /** Idle delay before an edited draft is persisted (owner-confirmed default). */
 const AUTOSAVE_DEBOUNCE_MS = 3000
+
+/**
+ * The fields that make a draft a different MESSAGE. Everything else on a {@link DraftWindow} is
+ * window state — `mode`, `dirty`, `createdAt` — and re-arming on those is what made minimizing,
+ * restoring or going full-screen cost a server round trip and a fresh server draft id each.
+ *
+ * Compared by REFERENCE, which is exact here: the store rebuilds the draft object per mutation and
+ * carries every untouched field over by spread, so an unchanged field keeps its identity.
+ */
+const CONTENT_KEYS = [
+  'to',
+  'cc',
+  'bcc',
+  'replyTo',
+  'subject',
+  'body',
+  'plainText',
+  'inReplyTo',
+  'references',
+  'fromIdentityId',
+  'attachments',
+  'sendOptions',
+] as const satisfies readonly (keyof DraftWindow)[]
+
+function contentChanged(before: DraftWindow, after: DraftWindow): boolean {
+  return CONTENT_KEYS.some((key) => before[key] !== after[key])
+}
 
 export function useDraftAutosave(): void {
   const draftSync = useDraftSync()
@@ -38,9 +66,11 @@ export function useDraftAutosave(): void {
     }
 
     const unsubscribe = useComposerStore.subscribe((state, prev) => {
-      // A fresh Map + DraftWindow object per mutation ⇒ ref-inequality pinpoints the changed draft.
+      // A fresh Map + DraftWindow object per mutation ⇒ ref-inequality pinpoints the changed draft;
+      // `contentChanged` then asks whether the change was to the MESSAGE or only to its window.
       for (const [localId, draft] of state.drafts) {
-        if (prev.drafts.get(localId) !== draft) arm(localId)
+        const before = prev.drafts.get(localId)
+        if (before === undefined || contentChanged(before, draft)) arm(localId)
       }
       for (const localId of prev.drafts.keys()) {
         if (!state.drafts.has(localId)) disarm(localId) // closed/discarded — cancel its autosave
