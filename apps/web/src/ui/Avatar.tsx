@@ -20,6 +20,24 @@ export interface AvatarProps {
 }
 
 /**
+ * The first `count` CODE POINTS of a string — never half of one.
+ *
+ * `charAt`/`slice` count UTF-16 units, and an emoji or any other astral character is two of them
+ * (R-99). "🏠 Zuhause" therefore yielded a lone high surrogate followed by a `Z`, which renders as
+ * the replacement glyph: "�Z". `Array.from` iterates code points, so the emoji comes out whole or
+ * not at all.
+ *
+ * Code points, not GRAPHEMES. `Intl.Segmenter` would additionally keep a combining accent with the
+ * letter it belongs to and a ZWJ emoji sequence in one piece — worth having, but a decomposed "é"
+ * losing its accent is a cosmetic imperfection, while the case above produced a character that does
+ * not exist. This fixes the second and leaves the first, rather than taking on a dependency whose
+ * baseline is newer than anything else this app relies on for a rarer defect.
+ */
+function firstCodePoints(text: string, count: number): string {
+  return Array.from(text).slice(0, count).join('')
+}
+
+/**
  * Derive up to two initials from a display name or email. Two words → first letter of each;
  * a single token → its first two characters; empty → "?".
  */
@@ -27,10 +45,10 @@ export function initialsFromName(name: string): string {
   // Strip address angle brackets so "Alice <alice@host>" yields AA, not A<.
   const parts = name.replace(/[<>]/g, ' ').trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return '?'
-  if (parts.length === 1) return (parts[0] ?? '').slice(0, 2).toUpperCase() || '?'
+  if (parts.length === 1) return firstCodePoints(parts[0] ?? '', 2).toUpperCase() || '?'
   const first = parts.at(0) ?? ''
   const last = parts.at(-1) ?? ''
-  return (first.charAt(0) + last.charAt(0)).toUpperCase()
+  return (firstCodePoints(first, 1) + firstCodePoints(last, 1)).toUpperCase()
 }
 
 /**

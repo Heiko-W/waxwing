@@ -798,6 +798,29 @@ describe('ShortcutProvider — reading scope', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('grid')))
   })
 
+  /**
+   * R-38. `nav.full` was registered as `Shift+o`, a production the chord grammar has no matcher for:
+   * it fell through to the named-key branch and was compared against `event.key`, so the only event
+   * that could ever fire it was a synthetic one with `key: 'Shift+o'` — which is exactly what the
+   * registry test used to build. Pressing the keys the cheat sheet showed did nothing at all.
+   *
+   * So this presses what a KEYBOARD sends: `key: 'O'` with `shiftKey`. The unshifted control matters
+   * as much — `o` alone is `nav.open`, and full-screen must not be one CapsLock away.
+   */
+  it('Shift+O opens the message full-screen; plain o does not', async () => {
+    window.history.pushState(null, '', '/mail/inbox/e1')
+    await mounted()
+    openReading()
+
+    press('O', { shiftKey: true })
+    await waitFor(() => expect(window.location.search).toBe('?full=1'))
+    expect(window.location.pathname).toBe('/mail/inbox/e1')
+
+    window.history.pushState(null, '', '/mail/inbox/e1')
+    press('o')
+    await waitFor(() => expect(window.location.search).toBe(''))
+  })
+
   it('v opens the move dialog, l the label picker', async () => {
     await mounted()
     const spies = openReading()

@@ -113,11 +113,19 @@ function fakeClient(options: {
         if (name === 'PushSubscription/get') {
           responses.push(['PushSubscription/get', { list, notFound: [] }, id])
         } else {
-          const result = options.onSet?.(args) ?? {
-            created: {
-              sub: { id: 'sub-1', deviceClientId: String(args.create ?? ''), expires: FAR },
-            },
-          }
+          // The default answer follows the REQUEST. It used to be a `created` bag whatever was
+          // asked, so an `update` was answered with a create — which is not a shape any server
+          // produces, and it is what let the unchecked update path in `applyPlan` look fine (R-41).
+          const update = args.update as Record<string, unknown> | undefined
+          const result =
+            options.onSet?.(args) ??
+            (update === undefined
+              ? {
+                  created: {
+                    sub: { id: 'sub-1', deviceClientId: String(args.create ?? ''), expires: FAR },
+                  },
+                }
+              : { updated: Object.fromEntries(Object.keys(update).map((id) => [id, null])) })
           // Mirror the server: what was created shows up in the next `get`.
           const created = (result.created ?? null) as Record<string, { id: string }> | null
           if (created !== null) {
@@ -676,6 +684,82 @@ describe('ensurePushSubscription — asking the server to put the message in the
     // whole file: the server keeps putting subjects in a push for a user who has just said no, the
     // local record says it was cleared, and no error is raised anywhere.
     expect(setUsing(client)).toEqual(['urn:ietf:params:jmap:emailpush'])
+  })
+
+  /**
+   * R-41 — the refused withdrawal. A JMAP `/set` can decline a single object while the call itself
+   * succeeds, and this branch carries a privacy switch: "show sender and subject". Unchecked, the
+   * local record was written as if the removal had happened, the next plan compared want against
+   * that record, found no difference and planned `keep` — so the server kept putting subjects into
+   * the push forever, and nothing anywhere said so.
+   */
+  it('does not record a withdrawal the server refused, and tries again next pass', async () => {
+    await writePushRegistration(
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: true,
+      },
+      idb,
+    )
+    const client = fakeClient({
+      list: [{ id: 'sub-1', deviceClientId: 'waxwing-device-1', expires: FAR }],
+      onSet: () => ({
+        updated: null,
+        notUpdated: { 'sub-1': { type: 'serverFail', description: 'try later' } },
+      }),
+    })
+
+    const result = await ensurePushSubscription(
+      deps(fakeRegistration(fakeSubscription()), client, {
+        emailPush: { accountIds: [] },
+        preview: false,
+      }),
+    )
+
+    expect(result.status).toBe('failed')
+    expect(result.status === 'failed' && result.reason).toContain('serverFail')
+    // The record still says what the SERVER holds — `true` — not what we wanted it to hold.
+    expect((await readPushRegistration(idb))?.emailPush).toBe(true)
+
+    // …so the next pass sends the removal again, rather than planning `keep` over a lie.
+    const before = setCalls(client).length
+    await ensurePushSubscription(
+      deps(fakeRegistration(fakeSubscription()), client, {
+        emailPush: { accountIds: [] },
+        preview: false,
+      }),
+    )
+    const [, args] = setCalls(client)[before] ?? []
+    const retried = (args?.update ?? {}) as Record<string, Record<string, unknown>>
+    expect(retried['sub-1']).toEqual({ emailPush: null })
+  })
+
+  /** The other direction: an activation the server refused must not leave the switch reading "on". */
+  it('does not record an activation the server refused', async () => {
+    await writePushRegistration(
+      {
+        subscriptionId: 'sub-1',
+        endpoint: ENDPOINT,
+        applicationServerKey: KEY,
+        expires: FAR,
+        emailPush: false,
+      },
+      idb,
+    )
+    const client = fakeClient({
+      list: [{ id: 'sub-1', deviceClientId: 'waxwing-device-1', expires: FAR }],
+      onSet: () => ({ updated: null, notUpdated: { 'sub-1': { type: 'forbidden' } } }),
+    })
+
+    const result = await ensurePushSubscription(
+      deps(fakeRegistration(fakeSubscription()), client, { emailPush: { accountIds: ['b'] } }),
+    )
+
+    expect(result.status).toBe('failed')
+    expect((await readPushRegistration(idb))?.emailPush).toBe(false)
   })
 
   /** Turning it on again on an existing subscription — an update, not a destroy-and-recreate. */

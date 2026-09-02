@@ -22,7 +22,12 @@ export interface ToastOptions {
   title: ReactNode
   description?: ReactNode
   tone?: ToastTone
-  /** Auto-dismiss after ms; `0` keeps it until dismissed. Default 5000. */
+  /**
+   * Auto-dismiss after ms; `0` keeps it until dismissed. Default 5000.
+   *
+   * **Ignored when {@link action} is set** — an action-bearing toast never expires. See
+   * {@link ToastItem}.
+   */
   duration?: number
   /** An inline action (e.g. Undo); running it also dismisses the toast (M2.8). */
   action?: { readonly label: ReactNode; readonly onAction: () => void }
@@ -142,7 +147,21 @@ function ToastItem({
 }) {
   const { t } = useTranslation()
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const duration = record.duration ?? DEFAULT_DURATION
+  /**
+   * ADR-021, in the primitive rather than in the callers (R-98): "a toast that carries an action is
+   * raised with `duration: 0` — it stays until it is used or dismissed".
+   *
+   * It was a convention seven call sites had to remember, and two of them did not: the Undo after
+   * "Add sender to contacts" and the outbox's conflict actions expired after five seconds. That is
+   * a WCAG 2.2.1 time limit on the only route to the action — the toast region is portalled to the
+   * END of the document, so reaching its button by keyboard means traversing the whole shell first,
+   * and the conflict toasts are raised once per row and never come back.
+   *
+   * The action WINS over an explicit `duration`, rather than merely filling in for a missing one:
+   * the rule is not a default, it is the rule, and a caller that passes both is stating a time
+   * limit the ADR does not allow. No caller does today.
+   */
+  const duration = record.action !== undefined ? 0 : (record.duration ?? DEFAULT_DURATION)
   const tone = record.tone ?? 'neutral'
 
   const clear = useCallback(() => {

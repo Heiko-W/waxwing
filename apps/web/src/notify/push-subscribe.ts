@@ -176,6 +176,26 @@ function firstCreated(response: PushSubscriptionSetResponse): PushSubscription |
   return null
 }
 
+/**
+ * Did the server actually apply the patch? `updated` maps the id to `null` (or to a server-set
+ * property bag), so membership is the question — not truthiness.
+ */
+function wasUpdated(response: PushSubscriptionSetResponse, id: Id): boolean {
+  const updated = response.updated
+  return updated !== null && updated !== undefined && Object.hasOwn(updated, id)
+}
+
+/** The `notUpdated` refusal as text — the {@link setErrorText} of the update path. */
+function updateErrorText(response: PushSubscriptionSetResponse): string {
+  const notUpdated = response.notUpdated
+  if (notUpdated !== null && notUpdated !== undefined) {
+    for (const error of Object.values(notUpdated)) {
+      return `${error.type}${error.description === null ? '' : `: ${String(error.description)}`}`
+    }
+  }
+  return 'the subscription was not updated'
+}
+
 function setErrorText(response: PushSubscriptionSetResponse): string {
   const notCreated = response.notCreated
   if (notCreated !== null && notCreated !== undefined) {
@@ -329,10 +349,29 @@ async function applyPlan(
       // asks `emailPushChanged` about.
       ...(emailPushChanged && mentionsProperty ? { emailPush } : {}),
     }
-    await deps.client.call(
+    const responses = await deps.client.call(
       [[Methods.pushSubscriptionSet.name, { update: { [plan.subscriptionId]: patch } }, 'p0']],
       callOptions,
     )
+    /*
+     * The answer is READ, because a JMAP `/set` refuses per OBJECT without the call throwing
+     * (RFC 8620 §5.3) — and this branch writes a PRIVACY switch (R-41).
+     *
+     * Left unchecked, a refused `reconfigure` was recorded as done: the caller writes
+     * `emailPush: wantEmailPush` into the registration, the next plan compares the wanted state
+     * against that record, sees no difference and plans `keep`. So a REMOVAL the server declined
+     * left the configuration standing — subject and preview keep travelling through the push
+     * service for a reader who has just switched that off (ADR-017 amendment, decision 5: the
+     * toggle governs the WIRE, not merely what the worker draws) — and an activation it declined
+     * left a switch reading "on" over banners that stay empty, with nothing anywhere to say why.
+     * `renew` heals itself on the next pass because the read-back `expires` stays near; this does
+     * not, and stays broken until the user happens to toggle the switch again.
+     *
+     * Throwing hands it to `ensurePushSubscription`'s catch: the pass reports `failed`, the
+     * registration is NOT written, and the next pass plans `reconfigure` again.
+     */
+    const response = responses.get<PushSubscriptionSetResponse>('p0')
+    if (!wasUpdated(response, plan.subscriptionId)) throw new Error(updateErrorText(response))
     return plan.subscriptionId
   }
 

@@ -1733,7 +1733,7 @@ auch `href="#"` wird freigegeben. Gegenprüfung: bestätigt.
 
 ### R-38 — [MEDIUM] Der Chord `Shift+o` (Vollbild öffnen) kann nie feuern, und der Registry-Test tarnt das
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness, tests / UI (Shortcuts)
 
@@ -1772,7 +1772,7 @@ Severity high → medium.
 
 ### R-39 — [MEDIUM] Der Escape-Stack sortiert sich bei nicht-memoisiertem `onClose` um — Escape schließt den Dialog unter einem offenen Menü
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** react, a11y / UI
 
@@ -1808,7 +1808,11 @@ und Menü weg (rot); Kontrollfälle ohne Bump und mit memoisiertem `onClose` →
 
 ### R-40 — [MEDIUM] Escape, Enter und Pfeiltasten während einer IME-Komposition werden als Befehle ausgeführt (Dialog, Palette)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Abweichung: die Regel liegt jetzt als `isComposingKey` in `ui/internal/composition.ts` statt als
+dritte und vierte Kopie derselben zwei Vergleiche; `Menu.onMenuKeyDown` ist wie vorgeschlagen
+mitgezogen._
 
 **Kategorie / Bereich:** i18n, a11y / UI
 
@@ -1846,7 +1850,7 @@ harmlos (grün). Gegenprüfung: bestätigt, Severity medium bleibt.
 
 ### R-41 — [MEDIUM] `PushSubscription/set update` wird nie auf `notUpdated` geprüft — eine abgelehnte `emailPush`-Änderung gilt lokal als erledigt und wird nie wiederholt (neue Stelle des W-32-Musters)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness, security (Privatsphäre-Schalter) / UI (Notify)
 
@@ -1888,7 +1892,15 @@ rot); Kontrollfall akzeptiertes Update → korrekt (grün). Gegenprüfung: best�
 
 ### R-42 — [MEDIUM] Hintergrund-Tab + Web Push: Live-Kanal und Service Worker melden dieselbe Mail doppelt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Umgesetzt wie in der korrigierten Fassung beschrieben: der Worker fragt vor `showNotification`
+alle App-Clients per `postMessage` + `MessageChannel` und wartet 100 ms
+(`notify/live-probe.ts`, `notify/use-live-banner-probe.ts`, `notify/live-banner.ts`). Die
+billigere `registration.getNotifications()`-Milderung ist NICHT zusätzlich gebaut — sie deckt nur
+die Reihenfolge „Live zuerst", und genau die ist die unwahrscheinliche: der Push erreicht das
+Gerät, bevor der Leader seinen Sync-Pass beendet hat. ADR-017 hat ein Amendment bekommen, weil
+Entscheidung 3 einen Mechanismus benennt, der die dort formulierte Absicht nicht trägt._
 
 **Kategorie / Bereich:** correctness / UI (Notify)
 
@@ -1932,7 +1944,7 @@ Gegenprüfung: bestätigt, Lösungsansatz korrigiert.
 
 ### R-43 — [MEDIUM] Auswahl aus einem Kontextmenü lässt den Fokus auf `<body>` fallen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** a11y / UI
 
@@ -3767,7 +3779,13 @@ verschieben.
 
 ### R-98 — [LOW] Zwei Toasts mit Aktion laufen nach 5 s ab — entgegen ADR-021, und die Primitive erzwingt die Regel nicht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Abweichung: die Aktion gewinnt gegen ein explizit gesetztes `duration`, statt nur ein fehlendes zu
+ersetzen (`record.action ? 0 : record.duration ?? DEFAULT`) — der Befund verlangt, dass die
+Primitive die ADR-Regel ERZWINGT, und mit `??` könnte ein Aufrufer sie weiterhin umgehen. Kein
+heutiger Aufrufer setzt beides. Die beiden gemeldeten Aufrufer sind unverändert; sie sind durch die
+Primitive korrekt._
 
 **Kategorie / Bereich:** a11y / UI
 
@@ -3796,7 +3814,11 @@ DEFAULT_DURATION)` — die ADR-Regel in der Primitive; ein Test in `Toast.test.t
 
 ### R-99 — [LOW] `initialsFromName` zerschneidet Astral-Zeichen (Emoji) in einsame Surrogate
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Abweichung: über Codepoints (`Array.from`), NICHT über `Intl.Segmenter`. Der Befund nennt den
+Segmenter als optional; er würde zusätzlich kombinierende Zeichen zusammenhalten — eine
+kosmetische Unschönheit, während der behobene Fall ein Ersatzzeichen erzeugt hat._
 
 **Kategorie / Bereich:** correctness / UI
 
@@ -3823,7 +3845,7 @@ High-Surrogates); vitest-Fall Einzeltoken rot. Gegenprüfung: bestätigt, präzi
 
 ### R-100 — [LOW] Permissions-API-`change`-Listener kann nach dem Effekt-Cleanup registriert werden (Leak)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** react / UI (Notify)
 
@@ -3849,7 +3871,11 @@ setzt `cancelled = true` (dasselbe Muster wie `use-push-subscription.tsx:89-91`)
 
 ### R-101 — [LOW] Kommentar in `pwa-options.ts` behauptet, der `push`-Listener fehle noch
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Zusätzlich: `pwa/sw-listeners.source.test.ts` prüft die Behauptung des Kommentars gegen
+`sw/sw.ts` (Quellenscan wie `list-keys.source.test.ts`), damit derselbe Kommentar nicht ein
+zweites Mal veralten kann._
 
 **Kategorie / Bereich:** maintainability / UI (PWA)
 

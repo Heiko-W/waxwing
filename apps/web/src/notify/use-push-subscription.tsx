@@ -32,6 +32,7 @@ import { reconcilePush } from './push-reconcile'
 import { clearPendingVerification } from './push-store'
 import { submitPushVerification } from './push-subscribe'
 import { getPushRegistration } from './registration'
+import { useLiveBannerProbe } from './use-live-banner-probe'
 import { useNotificationPermission } from './use-notification-permission'
 
 /** The SW-cached branding icon, the same asset the live channel uses (M3.5's `BRANDING_FILES`). */
@@ -52,6 +53,10 @@ export function PushSubscriptionHost({ children }: { children?: ReactNode }): Re
   const { t } = useTranslation()
   const permission = useNotificationPermission()
   const serverSupports = useBackgroundPushSupport()
+  // Answer the worker's "would you raise the live banner?" probe (R-42). Here rather than in a
+  // component of its own because this is the one place already mounted for exactly as long as a tab
+  // can banner at all: inside the connected shell, beside the sync engine.
+  useLiveBannerProbe()
   const stored = useLocalPref<unknown>(NOTIFY_PREF_KEY)
 
   // `useLocalPref` hands back `undefined` for a beat on every start, before the liveQuery resolves.

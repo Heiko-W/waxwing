@@ -23,6 +23,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * needs the explanation is the only one who can never reach it (FR-A11Y-01). Activation is
    * swallowed here, so a caller cannot forget to guard its handler.
    *
+   * The sentence is rendered as a SIBLING of the button, not inside it. Inside, it was part of the
+   * button's own content and therefore part of its accessible NAME: "Move" became "Move You are
+   * offline. Files can only be changed while connected.", which `aria-describedby` then read out a
+   * second time. An icon-only button hid the damage behind its `aria-label`; a text button did not,
+   * and two file actions were left un-gated offline rather than have their names wrecked.
+   * `VisuallyHidden` is absolutely positioned, so the extra node costs no layout.
+   *
    * For a control that is structurally absent — no such folder, a self-move — keep hiding it.
    * This is for a refusal the user should be TOLD about, chiefly a permission they lack.
    */
@@ -55,29 +62,32 @@ export function Button({
   // every existing call site byte-for-byte what it was.
   const unavailable = unavailableReason !== undefined && !disabled && !loading
   return (
-    <button
-      ref={ref}
-      type={type ?? 'button'}
-      className={cx(
-        styles.button,
-        styles[variant],
-        styles[size],
-        block && styles.block,
-        unavailable && styles.unavailable,
-        className,
-      )}
-      disabled={disabled || loading}
-      aria-busy={loading || undefined}
-      aria-disabled={unavailable || undefined}
-      aria-describedby={unavailable ? reasonId : undefined}
-      onClick={
-        unavailable ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault() : onClick
-      }
-      {...rest}
-    >
-      {loading ? <Spinner size="sm" label="" /> : null}
-      <span className={styles.label}>{children}</span>
+    <>
+      <button
+        ref={ref}
+        type={type ?? 'button'}
+        className={cx(
+          styles.button,
+          styles[variant],
+          styles[size],
+          block && styles.block,
+          unavailable && styles.unavailable,
+          className,
+        )}
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
+        aria-disabled={unavailable || undefined}
+        aria-describedby={unavailable ? reasonId : undefined}
+        onClick={
+          unavailable ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault() : onClick
+        }
+        {...rest}
+      >
+        {loading ? <Spinner size="sm" label="" /> : null}
+        <span className={styles.label}>{children}</span>
+      </button>
+      {/* OUTSIDE the button, so it describes the control without becoming part of its name. */}
       {unavailable && <VisuallyHidden id={reasonId}>{unavailableReason}</VisuallyHidden>}
-    </button>
+    </>
   )
 }

@@ -29,8 +29,12 @@ import { GROUP_ORDER, type ShortcutAction, type ShortcutContext } from './types'
  * Separate from {@link formatChord} because the inputs are different in kind: that one renders a
  * `keys.ts` CHORD, which the dispatcher also matches events against, while these are key CAPS for a
  * switch statement that does its own matching. Sharing one function would mean teaching the chord
- * grammar a `Shift+` prefix it has no matcher for, and a grammar with an unmatchable production is
- * how a chord table starts lying.
+ * grammar a `Shift+` prefix it has no matcher for — `Shift+↓` is a grid key, not a chord — and a
+ * grammar with an unmatchable production is how a chord table starts lying. It did lie, for exactly
+ * that reason: `nav.full` was written `Shift+o` in the registry, printed here as one chip, and could
+ * never fire (R-38). Shift on a CHORD is spelled by case (`O`), and `formatChord` now prints its own
+ * ⇧ chip for that — so the two functions agree on what a shifted key looks like without sharing a
+ * grammar.
  */
 function keyCaps(chord: string, apple: boolean, t: (key: string) => string): string[] {
   const caps: string[] = []

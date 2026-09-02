@@ -376,3 +376,82 @@ describe('Menu — the secondary click', () => {
     expect(screen.getByRole('menu')).toBeInTheDocument()
   })
 })
+
+/**
+ * R-43. `activate` restored focus to `triggerRef` — which is `null` for a menu that exists ONLY as a
+ * context menu, and those are not exotic: the folder tree, the label list, the message list and the
+ * file rows all attach one to a row with no visible ⋯. Choosing an item unmounted the focused
+ * `menuitem` and left `document.activeElement` on `<body>`, so the next Tab started at the top of
+ * the document and a screen reader lost the row it was on (WCAG 2.4.3).
+ *
+ * The ORDER matters as much as the restore: an item that opens a dialog hands `useFocusTrap` the
+ * element to come back to, read at mount from `document.activeElement`. Restoring after `onSelect`
+ * would therefore still leave the dialog pointing at `<body>`.
+ */
+describe('Menu — focus after choosing from a context menu', () => {
+  function ContextRow({ onSelect }: { onSelect: () => void }) {
+    const rowRef = useRef<HTMLDivElement>(null)
+    return (
+      <div ref={rowRef} tabIndex={-1} data-testid="row">
+        a row
+        <Menu
+          triggerLabel="Row actions"
+          trigger={null}
+          contextTarget={rowRef}
+          items={[{ id: 'rename', label: 'Rename', onSelect }]}
+        />
+      </div>
+    )
+  }
+
+  it('returns focus to the row on a pointer choice, not to <body>', async () => {
+    const user = userEvent.setup()
+    render(<ContextRow onSelect={() => {}} />)
+    fireEvent.contextMenu(screen.getByTestId('row'), { clientX: 10, clientY: 10 })
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByTestId('row')).toHaveFocus()
+  })
+
+  it('returns focus to the row on Enter', async () => {
+    const user = userEvent.setup()
+    render(<ContextRow onSelect={() => {}} />)
+    fireEvent.contextMenu(screen.getByTestId('row'), { clientX: 10, clientY: 10 })
+    await user.keyboard('{Enter}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByTestId('row')).toHaveFocus()
+  })
+
+  it('has already restored focus by the time the item runs', () => {
+    let activeWhenSelected: Element | null = null
+    render(<ContextRow onSelect={() => (activeWhenSelected = document.activeElement)} />)
+    fireEvent.contextMenu(screen.getByTestId('row'), { clientX: 10, clientY: 10 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    expect(activeWhenSelected).toBe(screen.getByTestId('row'))
+  })
+})
+
+/**
+ * R-40. Enter during an IME composition COMMITS the candidate; it is not "activate the highlighted
+ * item". Firefox delivers it as `key: 'Enter'` with `isComposing: true`, Chromium as `keyCode 229` —
+ * both shapes have to be refused, and the second is why a Chromium-only test suite never saw this.
+ */
+describe('Menu — an IME composition owns its keys', () => {
+  it('does not activate on Enter while a composition is in flight', async () => {
+    const user = userEvent.setup()
+    const onArchive = vi.fn()
+    render(<Menu triggerLabel="Actions" trigger="Actions" items={makeItems(onArchive)} />)
+    screen.getByRole('button', { name: 'Actions' }).focus()
+    await user.keyboard('{ArrowDown}')
+
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Enter', isComposing: true })
+    expect(onArchive).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Process', keyCode: 229 })
+    expect(onArchive).not.toHaveBeenCalled()
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    // The same key, once the composition is over, still works.
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Enter' })
+    expect(onArchive).toHaveBeenCalledOnce()
+  })
+})

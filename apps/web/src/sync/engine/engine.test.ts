@@ -10,6 +10,7 @@ import {
   type Unsubscribe,
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isLiveBannerReady, setLiveBannerReady } from '../../notify/live-banner'
 import type { DraftRow, ReplicaDb } from '../db'
 import {
   getQueryCache,
@@ -3016,6 +3017,118 @@ describe('SyncEngine — new-mail notifications (M3.6)', () => {
     it('is false for a hidden tab', () => {
       withDocument('hidden', true)
       expect(isDocumentForeground()).toBe(false)
+    })
+  })
+
+  /**
+   * R-42 — what the SERVICE WORKER is told before it draws a Web Push banner.
+   *
+   * The two channels disagreed about what "the user is not looking" means: this one banners when no
+   * tab is in the FOREGROUND, the worker when no tab is VISIBLE, and an open but covered tab is
+   * neither — so one delivery produced two banners under two tags, neither replacing the other. The
+   * worker now asks the open tabs, and this is the answer. Every `false` below is a case where the
+   * worker MUST still banner, because silence here costs nothing and a wrong `true` costs the
+   * notification altogether.
+   */
+  describe('the live-banner readiness the worker reads', () => {
+    /** A push channel that actually reports its status, which the base fake does not. */
+    class ReportingPush extends FakePush {
+      private statusCb: StatusListener | undefined
+      override onStatus(listener: StatusListener): Unsubscribe {
+        this.statusCb = listener
+        return () => {
+          this.statusCb = undefined
+        }
+      }
+      override open(): void {
+        super.open()
+        this.statusCb?.('open')
+      }
+      /** The transport drops — the live channel is no longer live. */
+      drop(): void {
+        this.status = 'reconnecting'
+        this.statusCb?.('reconnecting')
+      }
+    }
+
+    beforeEach(() => setLiveBannerReady(false))
+    afterEach(() => setLiveBannerReady(false))
+
+    it('stays false until the catch-up has actually happened', async () => {
+      // A leader whose first pass never reached the mail delta (offline, a 429) has caught up on
+      // nothing and will still be silent on its next pass. It is running and connected, so it WOULD
+      // answer the probe — and answering "live" here would silence the worker and leave the reader
+      // with no banner at all. `notifyArmed` is exactly that distinction.
+      let refusing = true
+      const base = notifyingPort()
+      const port: JmapPort = {
+        ...base,
+        async emailChanges(state) {
+          if (refusing) throw new Error('HTTP 429 Too Many Requests')
+          return base.emailChanges(state)
+        },
+      }
+      const push = new ReportingPush()
+      const { notify } = notifySpy()
+      const engine = new SyncEngine({
+        ...makeDeps(db, port, push),
+        notify,
+        isForeground: () => false,
+      })
+
+      engine.start()
+      await waitFor(() => engine.getStatus().phase === 'error')
+      expect(engine.getStatus().isLeader).toBe(true)
+      expect(isLiveBannerReady()).toBe(false)
+
+      // The pass that IS the catch-up. It stays silent too — and only after it does this tab start
+      // claiming deliveries.
+      refusing = false
+      await anotherPass(push)
+      expect(isLiveBannerReady()).toBe(true)
+
+      await engine.stop()
+    })
+
+    it('goes false when the live channel drops, and when the engine stops', async () => {
+      const push = new ReportingPush()
+      const { notify } = notifySpy()
+      const engine = new SyncEngine({
+        ...makeDeps(db, notifyingPort(), push),
+        notify,
+        isForeground: () => false,
+      })
+
+      engine.start()
+      await waitFor(() => engine.getStatus().phase === 'idle')
+      await anotherPass(push)
+      expect(isLiveBannerReady()).toBe(true)
+
+      // Without a live channel the next pass is the 60 s safety sweep; a banner a minute late is
+      // worse than the worker's plain one now.
+      push.drop()
+      expect(isLiveBannerReady()).toBe(false)
+
+      push.open()
+      await waitFor(() => isLiveBannerReady())
+      await engine.stop()
+      expect(isLiveBannerReady()).toBe(false)
+    })
+
+    it('says nothing at all from an engine that does not raise banners', async () => {
+      // A shared account's engine (M4.4) has no `notify`. It must neither answer for the primary nor
+      // clear the primary's answer.
+      setLiveBannerReady(true)
+      const push = new ReportingPush()
+      const engine = new SyncEngine({ ...makeDeps(db, notifyingPort(), push) })
+
+      engine.start()
+      await waitFor(() => engine.getStatus().phase === 'idle')
+      await anotherPass(push)
+      expect(isLiveBannerReady()).toBe(true)
+
+      await engine.stop()
+      expect(isLiveBannerReady()).toBe(true)
     })
   })
 })

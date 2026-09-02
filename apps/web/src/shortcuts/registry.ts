@@ -246,12 +246,17 @@ export const SHORTCUTS: readonly ShortcutAction[] = [
   },
   {
     /**
-     * The keyboard's half of the double-click. `Shift+O` beside `o` (open), because it is the same
-     * verb with more of it — and `o` alone is taken.
+     * The keyboard's half of the double-click. `O` (that is Shift+o) beside `o` (open), because it
+     * is the same verb with more of it — and `o` alone is taken.
+     *
+     * Spelled `'O'`, NOT `'Shift+o'`: the grammar in `keys.ts` writes Shift as CASE and knows only
+     * one prefix, `Mod+`. `'Shift+o'` fell through to the named-key branch and was compared against
+     * `event.key`, which no keyboard on earth sets to the string "Shift+o" — so the chord could
+     * never fire (R-38).
      */
     id: 'nav.full',
     titleKey: 'shortcuts.actions.nav.full',
-    keys: ['Shift+o'],
+    keys: ['O'],
     scopes: ['list', 'reading'],
     group: 'navigation',
     enabled: (context) =>

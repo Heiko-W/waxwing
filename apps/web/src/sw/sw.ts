@@ -56,6 +56,7 @@ import {
   notificationTargetHref,
   notificationTargetPath,
 } from '../notify/click-route'
+import { anyClientRaisesLiveBanner } from '../notify/live-probe'
 import {
   PUSH_VERIFICATION,
   type PushVerificationMessage,
@@ -208,7 +209,10 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
  * Whether a delivery becomes a banner is `shouldRaisePushBanner`, not an `if` chain down here: this
  * file cannot be tested, and "when do we stay silent" is four rules deep, including the one that
  * suppresses a banner while a window is visible because the live channel has already raised a better
- * one. Everything below is the doing.
+ * one. The fifth rule cannot be a pure function because it is a CONVERSATION — the worker asks the
+ * open tabs whether one of them is about to raise that better banner (`anyClientRaisesLiveBanner`,
+ * R-42) — so it lives here, with its reasoning and its own tests in `notify/live-probe.ts`.
+ * Everything below is the doing.
  */
 self.addEventListener('push', (event) => {
   event.waitUntil(handlePush(event.data === null ? null : event.data.text()))
@@ -260,14 +264,12 @@ async function handlePush(text: string | null): Promise<void> {
   // lookup is worth short-circuiting — this is a worker that just woke up for one decision.
   const state = frame.kind === 'delivery' ? await readPushState() : null
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+  const appWindows = windows.filter((client) => isAppClient(client.url, self.location.href))
 
   const decision = shouldRaisePushBanner({
     frame,
     hasState: state !== null,
-    hasVisibleClient: windows.some(
-      (client) =>
-        isAppClient(client.url, self.location.href) && client.visibilityState === 'visible',
-    ),
+    hasVisibleClient: appWindows.some((client) => client.visibilityState === 'visible'),
     quietHours: state?.quietHours ?? null,
     minutesOfDay: localMinutesOfDay(Date.now()),
   })
@@ -275,6 +277,19 @@ async function handlePush(text: string | null): Promise<void> {
   // `state === null` half is `noState` again, restated because TypeScript cannot narrow it from the
   // decision. push-frame.ts states the set and what is known about the `userVisibleOnly` cost.
   if (!decision.show || state === null) return
+
+  /*
+   * A VISIBLE window is not the only tab that banners (R-42).
+   *
+   * The live channel raises its own, richer banner whenever no tab is in the FOREGROUND, and an open
+   * tab that is merely covered is neither visible nor in the foreground — so both channels fired and
+   * the reader got the same message twice, under two different tags, neither replacing the other.
+   *
+   * The fix is a question, not a rule: ask, wait 100 ms, and stay silent only if a tab actually
+   * claims the delivery. `live-probe.ts` carries the reasoning, including why "any client exists"
+   * would have been a regression on frozen mobile tabs.
+   */
+  if (await anyClientRaisesLiveBanner(appWindows)) return
 
   // What the banner SAYS is a tested pure function too, for the same reason the decision to show one
   // is: with `draft-ietf-jmap-emailpush-03` the frame may carry the sender, subject and preview, and

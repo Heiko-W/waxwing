@@ -23,7 +23,11 @@ export type DialogSize = 'sm' | 'md' | 'lg'
 export interface DialogProps {
   open: boolean
   /**
-   * Called on Escape, the close button, or a backdrop press. Memoize it (useCallback).
+   * Called on Escape, the close button, or a backdrop press. An inline arrow is fine — this used to
+   * ask for a `useCallback`, and that instruction was the only thing standing between eighteen call
+   * sites and a real bug (R-39): an unmemoised `onClose` re-registered the dialog's Escape entry on
+   * every render and moved it above any menu open inside the dialog. `useDismiss` now binds the
+   * stack entry to the layer instead of to the closure.
    * Never called when {@link dismissible} is false — the dialog then has no dismiss gesture.
    */
   onClose: () => void

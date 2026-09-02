@@ -558,6 +558,38 @@ describe('offline', () => {
   })
 
   /**
+   * The selection bar's Move and Delete were the last pair the header's promise did not cover, and
+   * the blocker was `Button`, not this screen: it rendered `unavailableReason` INSIDE the control,
+   * where it became part of the accessible name — "Move You are offline. Files can only be changed
+   * while connected." — and was then read out again as the description. The primitive puts the
+   * sentence beside the button now, so these two can be refused like every other write here.
+   */
+  it("refuses the selection bar's Move and Delete WITH a reason", async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount()
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'List options' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Select' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Select everything here' }))
+
+    for (const label of ['Move', 'Delete']) {
+      const button = screen.getByRole('button', { name: label })
+      expect(button, label).toHaveAttribute('aria-disabled', 'true')
+      expect(button, label).toHaveAccessibleDescription(
+        'You are offline. Files can only be changed while connected.',
+      )
+      expect(button, label).not.toBeDisabled()
+    }
+
+    // Pressing Delete opens nothing — the write is swallowed by the primitive, not by a guard this
+    // screen has to remember.
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  /**
    * `fetch` throws `TypeError: Failed to fetch` when there is no line at all, and every non-
    * `FileSetError` used to become "The server declined that." — a cause the reader cannot act on,
    * about a conversation that never happened.

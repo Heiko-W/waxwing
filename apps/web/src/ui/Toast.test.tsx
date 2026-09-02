@@ -34,6 +34,27 @@ function Trigger() {
       >
         Undoable 2
       </Button>
+      {/* An action and NO duration at all — what SenderCard's Undo and the outbox's conflict
+          actions do. ADR-021 says the toast must nevertheless stay (R-98). */}
+      <Button
+        onClick={() =>
+          toast({ title: 'Bare undoable', action: { label: 'Undo it', onAction: onUndo } })
+        }
+      >
+        Undoable bare
+      </Button>
+      {/* An action AND a short duration — a caller stating a time limit ADR-021 does not allow. */}
+      <Button
+        onClick={() =>
+          toast({
+            title: 'Timed undoable',
+            duration: 40,
+            action: { label: 'Undo me', onAction: onUndo },
+          })
+        }
+      >
+        Undoable timed
+      </Button>
       <Button onClick={() => setRan(runNewestAction())}>Run newest</Button>
       <output>{ran === null ? 'idle' : String(ran)}</output>
     </>
@@ -131,6 +152,29 @@ describe('Toast', () => {
     await user.click(screen.getByRole('button', { name: 'Sticky' }))
     await wait(80)
     expect(screen.getByText('Persistent toast')).toBeInTheDocument()
+  })
+
+  /**
+   * ADR-021: "a toast that CARRIES AN ACTION is raised with `duration: 0` — it stays until it is
+   * used or dismissed". R-98: that was a convention seven call sites had to remember, and two of
+   * them did not, so the Undo after "Add sender to contacts" and the outbox's conflict actions
+   * vanished after five seconds. The toast region is portalled to the END of the document, so for a
+   * keyboard or screen-reader user that is a WCAG 2.2.1 time limit on the only route to the action.
+   * The rule belongs in the primitive, where no caller can forget it.
+   */
+  it('never expires a toast that carries an action, whatever the caller asked for', async () => {
+    const user = userEvent.setup()
+    withProvider()
+    await user.click(screen.getByRole('button', { name: 'Undoable bare' }))
+    await user.click(screen.getByRole('button', { name: 'Undoable timed' }))
+    // Well past both the 40 ms the second one asked for and any plausible default.
+    await wait(160)
+    expect(screen.getByText('Bare undoable')).toBeInTheDocument()
+    expect(screen.getByText('Timed undoable')).toBeInTheDocument()
+    // …and a toast with nothing to act on still keeps its own timer, so this is not "nothing
+    // expires any more".
+    await user.click(screen.getByRole('button', { name: 'Quick' }))
+    await waitForElementToBeRemoved(() => screen.queryByText('Ephemeral toast'))
   })
 
   it('refuses to run useToast outside a provider', () => {

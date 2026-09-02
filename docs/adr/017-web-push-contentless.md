@@ -285,3 +285,40 @@ for**, not merely hidden.
   contentless banner, which is what a client without the capability gets anyway.
 - **Bundle cost is in `sw.js`, which every visitor downloads.** The classifier grew one branch and a
   small banner-composition function; both are pure and shared with the page's own tests.
+
+## Amendment (2026-09-02) — "a client is visible" was never the whole of the double-notify guard
+
+Decision 3 states the intent — *"the two must not double-notify"* — and then names a mechanism that
+does not carry it: the worker suppresses its own banner **when a client is visible**. The live
+channel's rule is a different one. It banners whenever no tab is in the **foreground**
+(`isDocumentForeground` = `visible && hasFocus()`, plus the cross-tab probe), and an open tab that
+is merely covered by another window is neither visible nor in the foreground. Both channels fired,
+under two tags — `waxwing:<acc>:mail:<id>` and `waxwing:push:delivery` — so neither replaced the
+other, and one delivery produced two banners with two different click targets. Found as R-38…R-43's
+sibling **R-42**; it was a gap, not a decision.
+
+**The mechanism is now a question, not a rule.** Before drawing a banner the worker asks every app
+client, over `postMessage` with a `MessageChannel` reply port, whether it is about to raise the live
+banner for this delivery, and waits ~100 ms (`notify/live-probe.ts`). A tab answers `true` only when
+its own engine says so: leader, catch-up pass already spent (`notifyArmed`), push channel connected,
+and it is the engine that owns the banners (`SyncEngineDeps.notify` — a shared account's engine never
+answers). Silence is a "no".
+
+**Why not simply "stay silent whenever any client exists".** That was the first proposal and it is a
+regression. A frozen or throttled background tab on a phone is still returned by `clients.matchAll`
+while being unable to run a sync pass or raise anything at all, so treating its existence as a
+promise of a banner loses the notification outright — on precisely the platform where background
+delivery is the point. The precedent for asking instead is the engine's own cross-tab foreground
+probe (`FOREGROUND_ACK_MS`): a bounded query has no TTL to tune and nothing that can go stale.
+
+**Unifying the two tags was considered and is not available.** The push carries no message id (see
+decision 7 of the 2026-08-21 amendment), so the worker cannot compute the live channel's per-message
+tag, and giving both channels the coarse `waxwing:push:delivery` tag would make a rich banner
+replaceable by a contentless one.
+
+- Decision 3's *intent* is unchanged; only the mechanism named in it is replaced.
+- The `visible` short-circuit stays, ahead of the probe: it is free, it is right, and it keeps quiet
+  hours ordered behind it exactly as before.
+- The cost is ~100 ms on a push that arrives while tabs are open, and nothing at all when the app is
+  closed (no clients ⇒ the probe answers immediately).
+- Hand-verification per platform remains what this ADR already says it is — unautomatable.

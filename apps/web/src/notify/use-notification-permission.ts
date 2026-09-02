@@ -60,11 +60,20 @@ export function useNotificationPermission(
     // this is wrapped rather than merely `.catch`ed. It is an enhancement, and NOT the guarantee —
     // the guarantee is that `request()` publishes the result directly, which is what the shared
     // store is for.
+    //
+    // `cancelled` is what makes the cleanup complete (R-100). The query is asynchronous, so an
+    // unmount before it resolves — StrictMode's double-invoke in development, a quick move away
+    // from the notification section — used to leave the cleanup with nothing to remove and the
+    // `.then` free to attach a listener afterwards: one leaked listener per mount cycle, on a
+    // `PermissionStatus` nobody holds a reference to any more. Same guard `use-push-subscription`
+    // puts around its own reconcile.
+    let cancelled = false
     let status: PermissionStatus | undefined
     try {
       void navigator.permissions
         ?.query({ name: 'notifications' as PermissionName })
         .then((result) => {
+          if (cancelled) return
           status = result
           result.addEventListener('change', sync)
         })
@@ -74,6 +83,7 @@ export function useNotificationPermission(
     }
 
     return () => {
+      cancelled = true
       document.removeEventListener('visibilitychange', onVisible)
       status?.removeEventListener('change', sync)
     }

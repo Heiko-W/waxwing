@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { isComposingKey } from './internal/composition'
 import { cx } from './internal/cx'
 import { Portal } from './internal/Portal'
 import { useDismiss } from './internal/useDismiss'
@@ -242,16 +243,28 @@ export function Menu({
     [align, menuBlock],
   )
 
-  const close = useCallback(() => {
-    setOpen(false)
-    // Back where it came from: the trigger when there is one, otherwise the row that was
-    // right-clicked — closing a menu must never drop focus to <body>, which sends the next Tab to
-    // the top of the document (WCAG 2.4.3).
+  /**
+   * Back where it came from: the trigger when there is one, otherwise the row that was
+   * right-clicked — closing a menu must never drop focus to `<body>`, which sends the next Tab to
+   * the top of the document (WCAG 2.4.3).
+   *
+   * Shared by {@link close} and `activate`, and that sharing is the fix rather than tidiness
+   * (R-43): `activate` used to restore only `triggerRef`, which is `null` for a pure CONTEXT menu —
+   * the folder tree, the label list, the message list, the file rows. Picking "Rename…" there
+   * unmounted the focused `menuitem` and left `activeElement` on `<body>`, and any dialog the item
+   * opened then recorded `<body>` as the element to return to when it closes.
+   */
+  const restoreFocus = useCallback(() => {
     const restore =
       triggerRef.current ??
       (typeof contextTarget === 'function' ? contextTarget() : contextTarget?.current)
     restore?.focus()
   }, [contextTarget])
+
+  const close = useCallback(() => {
+    setOpen(false)
+    restoreFocus()
+  }, [restoreFocus])
 
   /*
    * The secondary-click seam.
@@ -303,7 +316,9 @@ export function Menu({
     const item = items[index]
     if (!item || item.disabled) return
     setOpen(false)
-    triggerRef.current?.focus()
+    // BEFORE `onSelect()`, not after: the item may open a dialog, and that dialog's focus trap
+    // records `document.activeElement` on mount as the element to hand focus back to.
+    restoreFocus()
     item.onSelect()
   }
 
@@ -355,6 +370,10 @@ export function Menu({
   }
 
   function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    // A composition keystroke is the input method's (R-40). Nothing here is destructive — the menu
+    // holds no text field — but Enter would still activate an item while the IME meant "commit",
+    // and the typeahead would collect the composition's intermediate characters.
+    if (isComposingKey(event.nativeEvent)) return
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault()
