@@ -864,6 +864,13 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const before = builder.invoke(Methods.calendarEventGet, {
         accountId,
         ids: [id],
+        /*
+         * Every property the draft can name has to be READ, or the comparison against the master
+         * is a comparison against `undefined` and the member goes into the override whether it
+         * differs or not. `participants` is here for that reason and no other. `recurrenceRule`
+         * deliberately is NOT: an override may not carry one (see `FORBIDDEN_IN_OVERRIDE`), so
+         * there is nothing to compare it against.
+         */
         properties: [
           'id',
           'recurrenceOverrides',
@@ -871,6 +878,7 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
           'description',
           'timeZone',
           'alerts',
+          'participants',
         ],
       })
       const responses = await builder.send()
@@ -887,7 +895,10 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
       const overrides = mergeOverride(
         master,
         key,
-        overrideFromDraft(master, draftToEvent(draft, master)),
+        // `key` is the start the rule generates for this occurrence — the baseline `start` is
+        // compared against, so an unmoved occurrence writes no `start` at all. See
+        // `overrideFromDraft`.
+        overrideFromDraft(master, draftToEvent(draft, master), key),
       )
       const write = await client.call([
         [

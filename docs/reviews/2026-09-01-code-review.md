@@ -354,7 +354,11 @@ bestätigt (Szenario präzisiert), Regression durch Diff gegen `1eb3789` belegt.
 
 ### R-06 — [HIGH] Die Bearbeitung einer einzelnen Occurrence schreibt `start`, `alerts` und `recurrenceRule` in den Override, obwohl die Leserin nur den Titel geändert hat
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Sperrliste aus jscalendarbis-18 §3.3.4 (am Draft nachgeschlagen) statt aus dem Bericht zitiert;
+`organizerCalendarAddress` gehoert ebenfalls dazu und wurde ergaenzt. Reihenfolge-unabhaengiger
+Vergleich lokal in `event-recurrence.ts` statt `deepEqual` aus `contact-card-mapping.ts` — der
+Kalender bekommt sonst eine Kante auf das Kontaktmodul im Bundle-Graphen.
 
 **Kategorie / Bereich:** correctness, tests / PIM (Kalender)
 
