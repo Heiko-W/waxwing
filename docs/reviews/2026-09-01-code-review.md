@@ -1168,7 +1168,7 @@ bestätigt, Überschneidung vermerkt.
 
 ### R-26 — [MEDIUM] `retryFailed` wirft für jeden Kontakt-/Adressbuch-Dead-Letter — `contactCards`/`addressBooks` fehlen im Transaktionsscope
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -1201,6 +1201,14 @@ the requested database object could not be found…`. Gegenprüfung: bestätigt.
 ### R-27 — [MEDIUM] Nicht-idempotente Creates werden nach verlorener Antwort oder Absturz erneut gesendet — Duplikate bei Drafts und Adressbüchern, falsche Fehlermeldungen bei Kontakten und Ordnern
 
 **Status:** [ ] offen
+NICHT behoben, bewusst. Umgesetzt ist nur die Sofortmaßnahme (S) aus dem Lösungsansatz: Modulkopf,
+`recoverStranded` und der transiente Retry-Zweig sagen jetzt, dass die Create-Familie NICHT idempotent
+ist, statt das Gegenteil zu behaupten. Das Laufzeitverhalten ist unverändert. Der eigentliche Fix — vor
+dem ERNEUTEN Versand serverseitig prüfen, ob das Objekt schon existiert — ist eine
+Architekturentscheidung (welche Sonden die Outbox stellen darf, `messageId` in `toEmailCreate`) und
+steht mit allen Optionen und Kosten in `docs/adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md`.
+Ein Teil-Fix, der Duplikate nur seltener macht (etwa Dead-Letter nach geworfenem Fehler), wäre ein
+Rückschritt: er bricht das Offline-Autosave, wie die Gegenprüfung festgestellt hat.
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -1255,7 +1263,17 @@ korrigiert, Aufwand M → L.
 
 ### R-28 — [MEDIUM] W-15 nur für denselben Tab geschlossen: ein anderer Tab gewinnt den Lock im Moment des `abort()`, und die alte Engine fährt `recoverStranded` nach dem Abort weiter (vgl. W-15)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Zweiphasiger Stop umgesetzt (`drainController` zuerst, `stopController` erst nach dem Abwarten der
+Paesse), plus die beiden Signalpruefungen in `runReplay` und ganz am Anfang von `replayOutbox`. Der
+`claimedAt`-Stempel aus der Alternative ist NICHT umgesetzt: er entschaerft den Tab-Crash-Fall, und dort
+ist das sofortige `sendInterrupted` das gewuenschte Verhalten (der Tab ist tot, die Antwort ist
+verloren) — ein 30-s-Aufschub waere nur langsamer. Vertraeglichkeit mit dem Sign-out-Budget geprueft:
+die WARTEZEIT von `stop()` bleibt unveraendert (das Drain-Signal kuerzt die Paesse genau wie vorher das
+Stop-Signal), nur der Moment der Lock-Freigabe wandert ans Ende. `SIGN_OUT_STOP_BUDGET_MS` (5 s)
+rennt weiterhin dagegen und wischt in jedem Fall. Preis im Ausnahmefall: haengt eine Anfrage bis ins
+W-16-Timeout, wartet ein zweiter Tab bis zu 30 s auf die Fuehrung (bisher: sofort, dafuer mit dem
+kaputten Send).
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2680,7 +2698,11 @@ Spaltenklick tatsächlich anbieten.
 
 ### R-69 — [LOW] W-13 unvollständig: die Fehlerpfade des Replay schreiben weiter per Id über eine inzwischen ersetzte Zeile (vgl. W-13)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Über den Lösungsansatz hinaus: auch der Claim (`pending → inflight`) vergleicht jetzt `seq`. Ohne das
+markiert der Claim die Ersatzzeile `inflight`, während der ALTE Payload läuft — danach verweigern alle
+`…IfUnchanged`-Schreibstellen korrekt jede Fortschreibung, und die Zeile bliebe bis `recoverStranded`
+hängen. Insgesamt sieben statt fünf Schreibstellen umgestellt (die Liste im Befund war nicht vollständig).
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2717,7 +2739,10 @@ nach `TypeError` `attempts: 1` und `nextAttemptAt` gesetzt. Gegenprüfung: best�
 
 ### R-70 — [LOW] `discardFailed` löscht eine Zeile, deren Undo der Drain gerade geclaimt hat — schlägt dessen Rollback fehl, geht er still verloren (vgl. W-14)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: `undoClaimedAt` ist ein ZEITSTEMPEL, kein Flag, und gilt nur `UNDO_CLAIM_STALE_MS` (60 s)
+lang. Ein reines Flag hätte eine neue Sackgasse geschaffen — stirbt der Tab mitten im Rollback, bliebe
+der Claim für immer stehen und „Verwerfen“/„Erneut versuchen“ wären auf dieser Zeile dauerhaft tot.
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2753,7 +2778,7 @@ nicht wiederhergestellt, `inbox.totalEmails === 0` statt 1. Gegenprüfung: best�
 
 ### R-71 — [LOW] `reconcileContactQuery` verwirft unplatzierbare Adds und persistiert ein leeres Fenster mit gültigem `queryState` — die B17-Korrektur der Mail-Seite fehlt bei Kontakten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Sync
 
@@ -2848,7 +2873,13 @@ synthetische Ids liefert.
 
 ### R-74 — [LOW] `cannotCalculateChanges`-Recovery nullt den `FileNode`-State, wonach der Baum nicht mehr per Delta gepflegt wird; Full-Pull von Mailboxen/Adressbüchern entfernt serverseitig gelöschte Zeilen nicht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Zwei Ergaenzungen zum Loesungsansatz. (1) `FileNode` wird aus `resetWatchedStates` ausgenommen statt
+nach dem Reset angestossen: `syncFileNodes` faengt `cannotCalculateChanges` bereits selbst ab und
+laeuft dann `walkFileTree` — der alte State ist also die einfachere und vollstaendigere Recovery.
+(2) Der neue Loeschdurchgang in `syncAddressBooks` schont Buecher, deren `createAddressBook` noch
+unversandt in der Outbox liegt; sonst haette der Full-Pull ein optimistisch angelegtes Buch entfernt.
+Fuer Mailboxen macht `reapplyPendingMailboxes` (B55) das nach jedem Aufruf ohnehin.
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2876,7 +2907,11 @@ oder nach Reset einmal `syncFileNodes` anstoßen, wenn zuvor ein State existiert
 
 ### R-75 — [LOW] `SyncEngineHost`: ein Fehler in `startFleet()` bleibt eine unhandled rejection und vergiftet die `teardownRef`-Kette
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: der Fehler geht auf die Konsole, NICHT an `reportDispatchFailure`. Dessen Toast sagt, eine
+AKTION habe nicht eingereiht werden koennen — ein falscher Satz fuer „die Sync-Engine ist nicht
+gestartet"; ein eigener sichtbarer Text waere ein neuer i18n-Key in 14 Bundles fuer einen Fall, den der
+Befund selbst als nicht beobachtet einstuft.
 
 **Kategorie / Bereich:** react / Sync
 
@@ -2902,7 +2937,13 @@ Locks/BroadcastChannel vorab), aber nicht ausgeschlossen (`getReplica()` in eine
 
 ### R-76 — [LOW] Die Regressionstests zu W-13 und W-14 pinnen nur die Erfolgspfade (vgl. W-13, W-14)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+A1/A2 (Reject- und Transient-Pfad) und D1 (Drain haelt den Claim, Rollback scheitert) sind in
+`outbox.test.ts` bzw. `engine.test.ts` uebernommen, dazu je ein Gegentest. V3 ist als Lock-Uebergabe-Test
+uebernommen — nicht als Nachbau des Fehlerbildes, denn mit dem R-28-Fix kann der zweite Tab in diesem
+Moment gar nicht mehr Leader werden; der Test pinnt genau das, plus ein `replayOutbox`-Test, dass ein
+abgebrochener Pass auch `recoverStranded` nicht mehr faehrt. V1 war mit R-29 schon gepinnt
+(`use-draft-sync.test.tsx`, „useDraftSync — the queued autosave row (R-25, R-29)").
 
 **Kategorie / Bereich:** tests / Sync
 

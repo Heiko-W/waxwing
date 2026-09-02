@@ -60,6 +60,7 @@ import {
   replaceIdentities,
   setFileTreeState,
   setSyncState,
+  unsentOutbox,
 } from '../repo'
 import {
   CannotCalculateChangesError,
@@ -229,6 +230,21 @@ export async function syncMailboxes(
   if (sinceState === null) {
     const { list, state } = await port.getMailboxes(null)
     await putMailboxes(db, accountId, list)
+    // …and DROP what the server no longer lists (R-74). The full pull used to be purely additive,
+    // which is only harmless when it runs on an empty replica. It also runs as the recovery from
+    // `cannotCalculateChanges` — a server restored from a backup or reset — and there the replica is
+    // full of rows from the OLD history: a folder the server no longer has stays in the tree forever,
+    // because no delta will ever report it destroyed. Clicking it ends in a `folderGone` dead letter.
+    // `reloadCalendars` has always done this; the mail and address-book paths had not.
+    //
+    // A folder that exists only because its `createMailbox` is still queued is removed here too and
+    // put straight back by `reapplyPendingMailboxes` (B55), which runs after every call of this
+    // function for exactly that reason.
+    const known = await db.mailboxes.where('accountId').equals(accountId).primaryKeys()
+    const fresh = new Set(list.map((mailbox) => mailbox.id))
+    for (const [, id] of known) {
+      if (!fresh.has(id)) await deleteMailbox(db, accountId, id)
+    }
     await setSyncState(db, accountId, 'Mailbox', state, clock.now())
     const ids = list.map((mailbox) => mailbox.id)
     return { total: ids, unread: ids }
@@ -558,6 +574,26 @@ export async function syncAddressBooks(
   if (sinceState === null) {
     const { list, state } = await port.getAddressBooks(null)
     await putAddressBooks(db, accountId, list)
+    // Same removal pass as in {@link syncMailboxes} (R-74): the full pull is also the
+    // `cannotCalculateChanges` recovery, and a book the server has dropped is otherwise never
+    // reported to anyone.
+    //
+    // …but NOT a book that only exists because its `createAddressBook` is still in the outbox: the
+    // server cannot list what it has not been told about yet. The mailbox side of this hazard has
+    // its own repair pass after every `syncMailboxes` (`reapplyPendingMailboxes`, B55); books have
+    // none, so the guard belongs here. `unsentOutbox` is the same "provably never dispatched" set
+    // that pass uses.
+    const unsent = await unsentOutbox(db, accountId)
+    const optimistic = new Set(
+      unsent
+        .filter((row) => row.type === 'createAddressBook')
+        .map((row) => (row.payload as { creationId?: Id }).creationId)
+        .filter((id): id is Id => id !== undefined),
+    )
+    const known = await db.addressBooks.where('accountId').equals(accountId).primaryKeys()
+    const fresh = new Set(list.map((book) => book.id))
+    const gone = known.map(([, id]) => id).filter((id) => !fresh.has(id) && !optimistic.has(id))
+    if (gone.length > 0) await deleteAddressBooks(db, accountId, gone)
     await setSyncState(db, accountId, 'AddressBook', state, clock.now())
     return
   }
@@ -646,9 +682,34 @@ export async function reconcileContactQuery(
 
   const removed = new Set(changes.removed)
   const ids = row.ids.filter((id) => !removed.has(id))
-  // `added` is index-ascending: splice each into place in order; drop any landing past the window.
-  for (const item of changes.added) {
-    if (item.index <= ids.length) ids.splice(item.index, 0, item.id)
+
+  /*
+   * The two B17 guards from the mail path, which this mirror was missing (R-71). Same server, same
+   * `queryChanges` implementation — the shape that motivated them there is to be expected here.
+   *
+   * An add whose index lands past the current window cannot be placed: the position is a fact about
+   * a result set larger than what we hold. Dropping it silently and carrying on is what this did,
+   * and the end of that road is a window written EMPTY together with the NEW `queryState` — after
+   * which nothing voids it, the next delta computes from that state and reports "nothing changed",
+   * and the contact list says "no contacts" over a `total` of three until the fifth sweep
+   * (`FULL_SWEEP_EVERY`) forces a full query. Up to five minutes, without an error anywhere.
+   *
+   * So an unplaceable add is treated as what it is — "this delta cannot be applied faithfully" — and
+   * the window is re-queried, exactly as `cannotCalculateChanges` already is. See the long note in
+   * {@link reconcileQuery} for the reasoning and the fixture it came from.
+   */
+  const unplaceable = changes.added.filter((item) => item.index > ids.length)
+  if (unplaceable.length > 0) {
+    await fullRequeryContacts(port, db, accountId, queryKey, spec, clock, windowLimit)
+    return
+  }
+  for (const item of changes.added) ids.splice(item.index, 0, item.id)
+
+  // The same backstop: an EMPTY window whose total says otherwise is the unrecoverable shape,
+  // whatever produced it. It can only fire on a delta that removed everything, so it costs nothing.
+  if (ids.length === 0 && (changes.total ?? row.total ?? 0) > 0) {
+    await fullRequeryContacts(port, db, accountId, queryKey, spec, clock, windowLimit)
+    return
   }
 
   await hydrateMissingContacts(

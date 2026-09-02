@@ -183,11 +183,27 @@ export function SyncEngineHost({ children }: { children: ReactNode }): ReactNode
       })
 
     const started = (async () => {
-      // Only ever a pending teardown from THIS host; the first run resolves immediately.
-      await teardownRef.current
+      // Only ever a pending teardown from THIS host; the first run resolves immediately. The
+      // `catch` is what keeps a failed PREVIOUS cycle from taking this one down with it.
+      await teardownRef.current?.catch(() => undefined)
       if (cancelled) return
       stopFleet = startFleet()
-    })()
+    })().catch((error: unknown) => {
+      // A throw here used to be an unhandled rejection that also POISONED the chain: `started`
+      // rejects, the cleanup below chains onto it, and the next effect run's `await
+      // teardownRef.current` rejects in turn — so `stopFleet` stayed null and no fleet ever started
+      // again until the component remounted, with nothing on screen to say so. Before W-15 the same
+      // throw at least failed the effect visibly, in the error boundary.
+      //
+      // A throw is unlikely (`canRunEngine()` checks locks and BroadcastChannel up front) but not
+      // impossible — `getReplica()` inside a teardown window, for one. Swallowing it here leaves
+      // `started` resolved, so the chain stays usable and a later `connected` change can try again.
+      //
+      // Deliberately NOT routed through `reportDispatchFailure`: that channel's toast says an
+      // ACTION could not be queued, which would be a wrong sentence for "the sync engine did not
+      // start". A console breadcrumb is what this level of hardening warrants.
+      console.error('[waxwing] the sync fleet failed to start', error)
+    })
 
     return () => {
       cancelled = true

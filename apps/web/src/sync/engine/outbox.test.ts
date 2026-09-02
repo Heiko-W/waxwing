@@ -211,6 +211,111 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
     expect(survivor?.status).toBe('pending')
   })
 
+  /**
+   * The OTHER half of the same race (R-69/R-76): the `seq` comparison guarded only the final
+   * `delete`, so every FAILURE path still wrote by id. A permanently rejected autosave A then
+   * dead-lettered the freshly typed B with A's conflict and painted the draft red for a save nobody
+   * had answered yet.
+   */
+  function saveDraftIntent(creationId: string, subject: string): OutboxIntent {
+    return {
+      kind: 'saveDraft',
+      localId: 'd1',
+      creationId,
+      priorServerId: null,
+      email: { mailboxIds: { drafts: true }, subject } as EmailCreate,
+    }
+  }
+
+  async function seedDraft(): Promise<void> {
+    await db.drafts.put({
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'pending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'A',
+        body: '<p>a</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: null,
+        fromIdentityHint: null,
+        attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+    })
+  }
+
+  it('does not dead-letter the replacement with the claimed row’s rejection', async () => {
+    await seedDraft()
+    await enqueueAction(db, ACC, saveDraftIntent('cA', 'A'), { id: 'draft:d1', now: 1 })
+
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => {
+        // The next keystroke's autosave lands while A is on the wire.
+        await enqueueAction(db, ACC, saveDraftIntent('cB', 'B'), { id: 'draft:d1', now: 2 })
+        return setResult({ notCreated: { cA: { type: 'tooLarge' } } })
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    const survivor = await row('draft:d1')
+    expect(survivor?.seq).toBe(2)
+    expect(survivor?.status, "B was marked failed by A's rejection").toBe('pending')
+    expect(survivor?.conflict).toBeNull()
+    expect(survivor?.lastError).toBeNull()
+    // …and the draft is not painted red for a save that has not been answered yet.
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('pending')
+    expect((await db.drafts.get([ACC, 'd1']))?.lastError).toBeNull()
+  })
+
+  it('does not charge the replacement with the claimed row’s backoff', async () => {
+    await seedDraft()
+    await enqueueAction(db, ACC, saveDraftIntent('cA', 'A'), { id: 'draft:d1', now: 1 })
+
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => {
+        await enqueueAction(db, ACC, saveDraftIntent('cB', 'B'), { id: 'draft:d1', now: 2 })
+        throw new TypeError('Failed to fetch') // transient: connection dropped mid-request
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    const survivor = await row('draft:d1')
+    expect(survivor?.seq).toBe(2)
+    expect(survivor?.status).toBe('pending')
+    // B has made no attempt of its own; inheriting A's would delay it by a whole backoff step.
+    expect(survivor?.attempts).toBe(0)
+    expect(survivor?.nextAttemptAt ?? null).toBeNull()
+  })
+
+  /**
+   * The counter-test for the two above: an UNREPLACED row must still take its rejection, or the
+   * guard would have turned every dead letter into silence.
+   */
+  it('still dead-letters an untouched row — the counter-test', async () => {
+    await seedDraft()
+    await enqueueAction(db, ACC, saveDraftIntent('cA', 'A'), { id: 'draft:d1', now: 1 })
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> =>
+        setResult({ notCreated: { cA: { type: 'tooLarge' } } }),
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    expect((await row('draft:d1'))?.status).toBe('error')
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('error')
+  })
+
   it('still deletes an untouched row — the counter-test', async () => {
     await putEmails(db, ACC, [email('e1', { keywords: {} })])
     await enqueueAction(
@@ -277,6 +382,72 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
     // moment the abort released it — to dead-letter as `sendInterrupted`.
     expect(sent).toBe(1)
     expect((await row('i2'))?.status).toBe('pending')
+  })
+
+  /**
+   * The half W-15 left open (R-28): the signal was only checked between ROWS, and the pass opens
+   * with `recoverStranded` — which dead-letters every `inflight` send as `sendInterrupted`.
+   * "Inflight" is precisely the state of a row some OTHER engine has on the wire, so a pass entered
+   * after the abort (the stopping leader resuming from a parked delta leg, or a new leader that took
+   * the freed lock a tick too early) killed a send that was seconds from succeeding.
+   */
+  it('runs nothing at all — not even recoverStranded — on an already-aborted pass (R-28)', async () => {
+    await db.drafts.put({
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'sending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'Hi',
+        body: '<p>x</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: null,
+        fromIdentityHint: null,
+        attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+    })
+    // The row another engine has on the wire right now.
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'send:d1',
+      type: 'sendEmail',
+      payload: {
+        kind: 'sendEmail',
+        localId: 'd1',
+        emailCreationId: 'send-d1',
+        submissionCreationId: 'sub-d1',
+      },
+      ifInState: null,
+      status: 'inflight',
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: null,
+      seq: 1,
+    })
+    const controller = new AbortController()
+    controller.abort()
+
+    const summary = await replayOutbox(fakePort({}), db, ACC, {
+      now: 10,
+      random: NO_JITTER,
+      signal: controller.signal,
+    })
+
+    expect((await row('send:d1'))?.status, 'the other engine’s send was dead-lettered').toBe(
+      'inflight',
+    )
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('sending')
+    expect(summary).toEqual({ replayed: 0, failed: 0, stuck: 0, conflicted: 0 })
   })
 })
 

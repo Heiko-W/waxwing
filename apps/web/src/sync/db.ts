@@ -527,6 +527,22 @@ export interface OutboxRow {
   nextAttemptAt?: number | null
   /** The persisted undo. Non-null ⇒ a rollback is still OWED; nulled the moment it is applied. */
   undo?: OutboxUndo | null
+  /**
+   * Epoch ms at which somebody TOOK the owed rollback and is currently applying it (W-14 claim);
+   * `null`/absent ⇒ nobody holds it.
+   *
+   * The claim used to be encoded as `undo: null` alone — the very same value as "the rollback has
+   * been applied". `discardFailed` reads that as "nothing owed" and deletes the row, so a click on
+   * "Discard" landing inside `drainOwedUndos`' network round trip deleted the row out from under it;
+   * when the rollback then failed, its `undo` was written back to a row that no longer existed and
+   * the rollback was lost without a trace (the folder counts stayed wrong until the server reported
+   * that folder again). Separating "claimed" from "applied" lets `discardFailed`/`retryFailed`
+   * refuse while the drain holds the claim, instead of racing it.
+   *
+   * A timestamp rather than a flag so a claim orphaned by a dead tab cannot wedge the row forever:
+   * past `UNDO_CLAIM_STALE_MS` (`outbox.ts`) it is treated as abandoned. Not indexed — no schema bump.
+   */
+  undoClaimedAt?: number | null
   /** Set together with `status: 'error'` (M3.3). */
   conflict?: OutboxConflict | null
   /** Bounded `stateMismatch` auto-refresh count (M3.3); persisted so the bound survives a reload. */

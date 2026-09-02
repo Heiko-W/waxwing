@@ -11,9 +11,18 @@ import {
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
-import { getQueryCache, putEmailBody, putEmails, putMailboxes } from '../repo'
+import {
+  getQueryCache,
+  getSyncState,
+  putAddressBooks,
+  putContactCards,
+  putEmailBody,
+  putEmails,
+  putMailboxes,
+  setSyncState,
+} from '../repo'
 import { getStorageFullAt, resetStorageFull } from '../storage'
-import { email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
+import { addressBook, contactCard, email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
   isDocumentForeground,
@@ -595,6 +604,54 @@ describe('SyncEngine', () => {
     // The replica is intact: the mailbox and its emails are still there after the resync.
     expect(await db.mailboxes.get([ACC, 'inbox'])).toBeDefined()
     expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
+    await engine.stop()
+  })
+
+  /**
+   * …and the file tree survives it (R-74).
+   *
+   * `FileNode` is the one watched type whose null state does NOT mean "pull it whole on the next
+   * leg": the initial walk is up to ten pages and belongs to the Files SCREEN, so the sync pass
+   * skips files entirely while the state is null. Nulling it in the recovery therefore FROZE the
+   * tree — no delta, no error — until the next time `FilesPage` mounted. Leaving the stale state
+   * alone is what makes it heal: the next `FileNode/changes` answers `cannotCalculateChanges` and
+   * `syncFileNodes` re-walks the tree on its own.
+   */
+  it('keeps the FileNode cursor through the recovery, so the tree stays deltaed (R-74)', async () => {
+    let failNextEmailChanges = false
+    let fileChangesCalls = 0
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(state) {
+        if (failNextEmailChanges) {
+          failNextEmailChanges = false
+          throw new CannotCalculateChangesError()
+        }
+        return base.emailChanges(state)
+      },
+      async fileNodeChanges(state: string) {
+        fileChangesCalls += 1
+        return { newState: state, hasMoreChanges: false, created: [], updated: [], destroyed: [] }
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle' && engine.getStatus().isLeader)
+    // A tree the reader has already opened once: that is what gives `FileNode` a cursor at all.
+    await setSyncState(db, ACC, 'FileNode', 'f1', 1)
+    const before = fileChangesCalls
+    const firstSync = getEngineStatus().lastSyncedAt
+
+    failNextEmailChanges = true
+    push.fireStateChange()
+    await waitFor(() => getEngineStatus().lastSyncedAt !== firstSync)
+
+    expect(await getSyncState(db, ACC, 'FileNode'), 'the file cursor was reset with the rest').toBe(
+      'f1',
+    )
+    expect(fileChangesCalls, 'the files leg was skipped after the recovery').toBeGreaterThan(before)
     await engine.stop()
   })
 
@@ -1571,6 +1628,110 @@ describe('SyncEngine — undo-send (M2.8)', () => {
   })
 })
 
+/**
+ * Handing the lock on (W-15, and the half of it R-28 found still open).
+ *
+ * Web Locks are per ORIGIN, not per tab. The W-15 fix serialised the fleet hand-over inside ONE tab
+ * and left the cross-tab case: `stop()` aborted the lock request FIRST, so a second tab waiting in
+ * the queue became leader at that instant — while the stopping engine was only beginning to await a
+ * pass whose JMAP request can run for another 30 s. The new leader's first `replayOutbox` then ran
+ * `recoverStranded` over the rows the old one still had on the wire.
+ */
+describe('SyncEngine — releasing the lock on stop (W-15, R-28)', () => {
+  /** Models `navigator.locks` exclusive FIFO queueing (mirrors leader.test.ts / fleet.test.ts). */
+  class QueueingLockManager implements LockManagerLike {
+    private readonly busy = new Set<string>()
+    private readonly queues = new Map<string, Array<() => void>>()
+
+    request(
+      name: string,
+      options: { signal?: AbortSignal },
+      cb: (lock: unknown) => Promise<unknown>,
+    ): Promise<unknown> {
+      return new Promise((resolve, reject) => {
+        let granted = false
+        const run = () => {
+          granted = true
+          this.busy.add(name)
+          Promise.resolve()
+            .then(() => cb(undefined))
+            .then(
+              (value) => {
+                this.busy.delete(name)
+                resolve(value)
+                this.pump(name)
+              },
+              (error) => {
+                this.busy.delete(name)
+                reject(error)
+                this.pump(name)
+              },
+            )
+        }
+        const queue = this.queues.get(name) ?? []
+        queue.push(run)
+        this.queues.set(name, queue)
+        const signal = options.signal
+        if (signal) {
+          const onAbort = () => {
+            if (granted) return
+            const q = this.queues.get(name)
+            const index = q?.indexOf(run) ?? -1
+            if (q && index >= 0) q.splice(index, 1)
+            reject(new DOMException('The operation was aborted.', 'AbortError'))
+          }
+          if (signal.aborted) onAbort()
+          else signal.addEventListener('abort', onAbort, { once: true })
+        }
+        this.pump(name)
+      })
+    }
+
+    private pump(name: string): void {
+      if (this.busy.has(name)) return
+      const next = (this.queues.get(name) ?? []).shift()
+      next?.()
+    }
+  }
+
+  it('does not hand leadership to the next tab while its own pass is still on the wire', async () => {
+    const locks = new QueueingLockManager()
+    type MailboxesResult = Awaited<ReturnType<JmapPort['getMailboxes']>>
+    let releaseMailboxes: ((result: MailboxesResult) => void) | undefined
+    let mailboxCalls = 0
+    const portA: JmapPort = {
+      ...fakePort({ emails: [], setEmails: emptySet }),
+      getMailboxes: async () => {
+        mailboxCalls += 1
+        if (mailboxCalls > 1) return { list: [], notFound: [], state: 'm1' }
+        // Park A inside its delta block, exactly where a slow request leaves it.
+        return new Promise<MailboxesResult>((resolve) => {
+          releaseMailboxes = resolve
+        })
+      },
+    }
+    const portB = fakePort({ emails: [], setEmails: emptySet })
+    const a = new SyncEngine({ ...makeDeps(db, portA, new FakePush()), locks })
+    const b = new SyncEngine({ ...makeDeps(db, portB, new FakePush()), locks })
+
+    a.start()
+    await waitFor(() => a.getStatus().isLeader && mailboxCalls === 1)
+    b.start() // queued behind A on the lock
+
+    const stopping = a.stop()
+    // The abort used to free the lock HERE, with A's request still outstanding. B would take over
+    // and its first pass would run `recoverStranded` over whatever A still had in flight.
+    for (let i = 0; i < 20; i += 1) await flush()
+    expect(b.getStatus().isLeader, 'B took the lock while A was still on the wire').toBe(false)
+
+    releaseMailboxes?.({ list: [], notFound: [], state: 'm1' })
+    await stopping
+    // Only once A has settled does the queue move on — the hand-over still happens, just in order.
+    await waitFor(() => b.getStatus().isLeader)
+    await b.stop()
+  })
+})
+
 describe('SyncEngine — cache maintenance (M3.4)', () => {
   /** A lock that is never granted — a FOLLOWER tab (it rejects on abort, exactly like Web Locks). */
   const contendedLock: LockManagerLike = {
@@ -1913,6 +2074,71 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     await engine.stop()
   })
 
+  /**
+   * The same subset rule, one intent family further (R-26). A contact or address-book intent's
+   * optimistic apply writes `contactCards`/`addressBooks`; `enqueueAction` gained both tables with
+   * the M4.2 intents and `retryFailed`'s hand-maintained copy of the list did not — so EVERY retried
+   * contact/address-book dead letter threw `NotFoundError` out of the transaction zone and "Try
+   * again" in the problems dialog did visibly nothing for the whole family.
+   */
+  it('retryFailed works for a contact edit, whose optimistic apply writes contactCards', async () => {
+    await putContactCards(db, ACC, [contactCard('c1', { name: { full: 'Ada' } })])
+    let reject = true
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setContactCards() {
+        if (reject) return { ...emptySet(), notUpdated: { c1: { type: 'forbidden' } } }
+        return { ...emptySet(), updated: ['c1'] }
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'updateContactCard', id: 'c1', patch: { 'name/full': 'Ada Lovelace' } },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    expect((await db.contactCards.get([ACC, 'c1']))?.name?.full).toBe('Ada') // rolled back
+
+    reject = false
+    expect(await engine.retryFailed('i1')).toBe(true)
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect((await db.contactCards.get([ACC, 'c1']))?.name?.full).toBe('Ada Lovelace')
+    expect(engine.getStatus().failedActions).toBe(0)
+    await engine.stop()
+  })
+
+  it('retryFailed works for an address-book edit, whose optimistic apply writes addressBooks', async () => {
+    await putAddressBooks(db, ACC, [addressBook('book1', { name: 'Work' })])
+    let reject = true
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      // The book has to be on the SERVER's list too: a full pull now drops what the server does not
+      // list (R-74), and this test seeds the row directly.
+      async getAddressBooks() {
+        return { list: [addressBook('book1', { name: 'Work' })], notFound: [], state: 'abk-1' }
+      },
+      async setAddressBooks() {
+        if (reject) return { ...emptySet(), notUpdated: { book1: { type: 'forbidden' } } }
+        return { ...emptySet(), updated: ['book1'] }
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'updateAddressBook', id: 'book1', props: { name: 'Team' } },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    expect((await db.addressBooks.get([ACC, 'book1']))?.name).toBe('Work') // rolled back
+
+    reject = false
+    expect(await engine.retryFailed('i1')).toBe(true)
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect((await db.addressBooks.get([ACC, 'book1']))?.name).toBe('Team')
+    await engine.stop()
+  })
+
   it('retryFailed BAILS while the rollback is still owed (else the change is applied twice)', async () => {
     await putEmails(db, ACC, [email('e1', { keywords: {} })])
     const engine = await leaderWith(rejectingPort('forbidden'))
@@ -2040,6 +2266,65 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     const row = await db.outbox.get([ACC, 'i1'])
     expect(row).toBeDefined()
     expect(row?.undo).not.toBeNull()
+    await engine.stop()
+  })
+
+  /**
+   * The OTHER half of the W-14 race (R-70/R-76): what happens when the DRAIN's rollback fails while
+   * a discard is watching.
+   *
+   * The claim was encoded as `undo: null` — the very same value as "the rollback has been applied".
+   * `discardFailed` read that as "nothing owed" and deleted the row mid-round-trip; the drain's
+   * `catch` then wrote the undo back to a row that was gone (a Dexie `update` on a missing key is a
+   * silent no-op), and the rollback was lost. The destroyed envelopes stayed destroyed and the
+   * folder counts stayed short until the server happened to report that folder again.
+   */
+  it('refuses a discard while the drain holds the rollback, and keeps it owed when the drain fails', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 1, unreadEmails: 1 })])
+    await putEmails(db, ACC, [email('e1', { keywords: {}, mailboxIds: { inbox: true } })])
+    await putEmails(db, ACC, [email('e2', { keywords: {}, mailboxIds: { inbox: true } })])
+    let releaseRefetch: (() => void) | undefined
+    let refetches = 0
+    const base = rejectingPort('forbidden')
+    const port: JmapPort = {
+      ...base,
+      getEmailEnvelopes: async () => {
+        refetches += 1
+        // Park the drain INSIDE `applyUndo`'s network round trip — the window the discard used to
+        // delete the row in — and fail once released.
+        await new Promise<void>((resolve) => {
+          releaseRefetch = resolve
+        })
+        throw new Error('offline')
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // A dead letter that still OWES a rollback needing the network — the only state the drain acts on.
+    await db.outbox.update([ACC, 'i1'], { undo: { kind: 'refetchEmails', prunedKeys: [] } })
+
+    // Wake a replay pass: `drainOwedUndos` runs first and claims that rollback.
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e2'], keyword: '$seen', value: true },
+      { id: 'i2' },
+    )
+    await waitFor(() => refetches === 1)
+
+    // The click, landing exactly inside the round trip.
+    expect(await engine.discardFailed('i1')).toBe(false)
+    expect(await db.outbox.get([ACC, 'i1']), 'discarded out from under the drain').toBeDefined()
+
+    releaseRefetch?.()
+    await waitFor(async () => (await db.outbox.get([ACC, 'i1']))?.undo != null)
+    // The rollback survived: still listed as a problem, still owed, and claimable again.
+    const kept = await db.outbox.get([ACC, 'i1'])
+    expect(kept?.status).toBe('error')
+    expect(kept?.undo).not.toBeNull()
+    expect(kept?.undoClaimedAt ?? null).toBeNull()
     await engine.stop()
   })
 
