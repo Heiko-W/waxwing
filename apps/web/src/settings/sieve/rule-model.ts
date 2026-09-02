@@ -360,13 +360,22 @@ function ruleToSieve(rule: SieveRule, required: Set<string>, features: SieveFeat
 }
 
 /**
- * Strips anything that would end a `#` comment early.
+ * Strips anything that would end a `#` comment early — or start one of OUR markers.
  *
- * The same class of bug as an unescaped `*​/` inside a block comment: a newline in a rule name
- * turns the rest of that name into Sieve source.
+ * The newline is the same class of bug as an unescaped `*​/` inside a block comment: it turns the
+ * rest of the rule name into Sieve source.
+ *
+ * `@waxwing:` is the second half, and it is not a Sieve problem at all — the comment stays
+ * perfectly valid Sieve either way. It is a problem for `script-io`, which finds the managed region
+ * by looking for its own marker text: a rule literally named `@waxwing:rules:end` produced the line
+ * `# @waxwing:rules:end`, which the parser read as the end of the region — the rules after it
+ * became foreign trailer text and were then emitted a second time. A name shaped like an opening
+ * marker (`@waxwing:rules:v2 {}`) produced a second begin marker and made the script permanently
+ * opaque. Defusing the COMMENT costs nothing: the name itself travels in the JSON metadata
+ * untouched, so the round trip still returns exactly what the user typed.
  */
 export function sanitizeComment(text: string): string {
-  return text.replace(/[\r\n]+/g, ' ')
+  return text.replace(/[\r\n]+/g, ' ').replace(/@waxwing:/g, '@waxwing_')
 }
 
 export interface GeneratedSieve {

@@ -175,6 +175,107 @@ describe('parseScript', () => {
   })
 })
 
+/**
+ * Rule names are pasted, not typed, at least some of the time — out of a mail, a spreadsheet, a
+ * previous client. Four shapes used to break the round trip, none of them by breaking the Sieve.
+ */
+describe('a rule name cannot break the script it names (R-82)', () => {
+  it('round-trips a name containing U+2028', () => {
+    // JS regexes treat LINE SEPARATOR as a line terminator; Sieve does not (its comments end at
+    // CRLF, RFC 5228 §2.3). `JSON.stringify` leaves it raw, so `MARKER_BEGIN` stopped in the
+    // middle of the JSON, the parse failed, and the script the user had just saved came back as
+    // "someone else's script" — read-only, with "adopt" the only way on, which appended a second
+    // marker and made the state permanent.
+    const named = rule({ name: 'a\u2028b' })
+    const parsed = parseScript(buildScript([named], EMPTY_SCRIPT))
+    expect(parsed.opaque).toBe(false)
+    expect(parsed.rules).toEqual([named])
+  })
+
+  it('round-trips a name containing U+2029', () => {
+    const named = rule({ name: 'a\u2029b' })
+    const parsed = parseScript(buildScript([named], EMPTY_SCRIPT))
+    expect(parsed.opaque).toBe(false)
+    expect(parsed.rules).toEqual([named])
+  })
+
+  it('keeps the metadata to one line by every reckoning, JavaScript regexes included', () => {
+    // The escaping half, pinned on its own: the relaxed marker regex would hide it. The file's
+    // stated invariant is "the metadata always occupies exactly one line", and a raw U+2028 breaks
+    // that for any reader that scans with `.` — which is what the next person will write.
+    const script = buildScript([rule({ name: 'a\u2028b' })], EMPTY_SCRIPT)
+    const markerLine = script.split('\n').find((line) => line.startsWith('# @waxwing:rules:v'))
+    expect(markerLine).toBeDefined()
+    expect(markerLine).not.toMatch(/[\u2028\u2029]/)
+    expect(markerLine).toContain('\\u2028')
+  })
+
+  it('still reads a script an earlier build wrote with a raw U+2028', () => {
+    // The regex half of the fix, and the only thing that gets those mailboxes back: the escaping
+    // half cannot reach a script that is already on the server.
+    const named = rule({ name: 'a\u2028b' })
+    const legacy = `# @waxwing:rules:v2 ${JSON.stringify({ version: 2, rules: [named] })}\n# @waxwing:rules:end\n`
+    expect(parseScript(legacy).rules).toEqual([named])
+  })
+
+  it('round-trips a name that IS the end marker, and keeps the region intact', () => {
+    // `# @waxwing:rules:end` as a rule comment ended the managed region early: everything after it
+    // became foreign trailer text, which the next save re-emitted BELOW the region — the rule ran
+    // twice and every `stop` after it moved.
+    const first = rule({ id: 'r1', name: '@waxwing:rules:end' })
+    const second = rule({ id: 'r2', name: 'Newsletters' })
+    const script = buildScript([first, second], EMPTY_SCRIPT)
+    const parsed = parseScript(script)
+
+    expect(parsed.opaque).toBe(false)
+    expect(parsed.rules).toEqual([first, second])
+    expect(parsed.trailer).toBe('')
+    // Exactly one closing marker line, and the second rule is inside the region rather than below it.
+    expect(script.split('\n').filter((line) => line === '# @waxwing:rules:end')).toHaveLength(1)
+  })
+
+  it('round-trips a name shaped like an opening marker', () => {
+    // A second begin marker is the parser's "this file was edited into a shape I cannot reason
+    // about" signal, and the editor itself was producing one.
+    const named = rule({ name: '@waxwing:rules:v2 {}' })
+    const parsed = parseScript(buildScript([named], EMPTY_SCRIPT))
+    expect(parsed.opaque).toBe(false)
+    expect(parsed.rules).toEqual([named])
+  })
+
+  it('round-trips a name whose flattened newline would rebuild the end marker', () => {
+    const named = rule({ name: 'x\n# @waxwing:rules:end' })
+    const parsed = parseScript(buildScript([named], EMPTY_SCRIPT))
+    expect(parsed.opaque).toBe(false)
+    expect(parsed.rules).toEqual([named])
+  })
+
+  it('is not fooled by the marker text inside a generated string literal', () => {
+    // Not a name at all: a condition VALUE. `quoteSieveString` cannot flatten it (the text is
+    // ordinary Sieve), so only a line-anchored search for the marker is enough.
+    const named = rule({
+      conditions: [
+        { kind: 'text', field: 'subject', match: 'contains', value: '# @waxwing:rules:end' },
+      ],
+    })
+    const parsed = parseScript(buildScript([named], EMPTY_SCRIPT))
+    expect(parsed.opaque).toBe(false)
+    expect(parsed.rules).toEqual([named])
+    expect(parsed.trailer).toBe('')
+  })
+
+  it('leaves the generated Sieve a valid script: the comment is one line and the block closes', () => {
+    const script = buildScript([rule({ name: 'a\u2028b @waxwing:rules:end' })], EMPTY_SCRIPT)
+    const lines = script.split('\n')
+    // The rule comment is a single `#` line; the `if` that follows opens and closes.
+    const comment = lines.find((line) => line.startsWith('# a\u2028b'))
+    expect(comment).toBeDefined()
+    expect(comment).not.toContain('@waxwing:rules:end')
+    expect(script).toContain('if header :contains')
+    expect(script.split('{').length).toBe(script.split('}').length)
+  })
+})
+
 describe('foreign content is preserved across a save', () => {
   const foreignBody =
     '# rule:[Nextcloud]\nif header :contains "List-Id" "announce" {\n  fileinto "Lists";\n}'

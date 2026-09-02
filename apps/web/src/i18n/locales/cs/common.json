@@ -54,7 +54,9 @@
       "networkHost": "Server {{host}} není dostupný. Pokud je váš poštovní server na jiné adrese, zadejte ji výše.",
       "oauthUnavailable": "Tento server nenabízí zabezpečené přihlášení. Přihlaste se níže e-mailovou adresou a heslem.",
       "oauthUnavailableNoFallback": "Tento server nenabízí zabezpečené přihlášení a tato instalace nepřipouští jiný způsob. Obraťte se na jejího provozovatele.",
-      "sessionOrigin": "Tento server uvádí {{field}} na adrese {{url}}, která neleží na {{origin}} — vaše přihlašovací údaje tam proto nebyly odeslány. Provozovatel serveru musí zveřejněnou adresu opravit."
+      "sessionOrigin": "Tento server uvádí {{field}} na adrese {{url}}, která neleží na {{origin}} — vaše přihlašovací údaje tam proto nebyly odeslány. Provozovatel serveru musí zveřejněnou adresu opravit.",
+      "oauthCallback": "Přihlášení se nepodařilo dokončit. Obvykle to znamená, že přihlašovací stránka zůstala příliš dlouho otevřená — začněte znovu.",
+      "oauthDenied": "Žádost o přihlášení byla zamítnuta, takže nejste přihlášeni. Začněte znovu a potvrďte ji, nebo použijte jiný účet."
     },
     "reset": {
       "action": "Obnovit aplikaci na tomto zařízení",
@@ -192,7 +194,8 @@
       "window_one": "Na tomto zařízení zůstává pošta za poslední {{count}} den. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
       "window_few": "Na tomto zařízení zůstává pošta za poslední {{count}} dny. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
       "window_many": "Na tomto zařízení zůstává pošta za posledního {{count}} dne. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
-      "window_other": "Na tomto zařízení zůstává pošta za posledních {{count}} dní. Starší pošta zůstává na serveru a načte se, až ji otevřete."
+      "window_other": "Na tomto zařízení zůstává pošta za posledních {{count}} dní. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
+      "freeUpFailed": "Místo se nepodařilo uvolnit"
     },
     "general": {
       "title": "Obecné"

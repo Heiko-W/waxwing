@@ -39,8 +39,14 @@ import { generateSieve, renderRequire } from './rule-model'
  *
  * The version is in the marker AND in the payload, and the two must agree — a script whose marker
  * says one thing and whose JSON says another was edited by something that understood neither.
+ *
+ * `[^\r\n]*` rather than `.*`, because JavaScript's `.` stops at U+2028 and U+2029 as well —
+ * they are line terminators to a regular expression but not to Sieve, whose comments end at CRLF
+ * (RFC 5228 §2.3). A rule name containing one therefore truncated the captured JSON mid-string,
+ * `JSON.parse` failed, and the whole script went opaque. `buildScript` no longer emits them raw,
+ * but this is what still reads a script an earlier build already wrote.
  */
-const MARKER_BEGIN = /^# @waxwing:rules:v(\d+) (.*)$/gm
+const MARKER_BEGIN = /^# @waxwing:rules:v(\d+) ([^\r\n]*)$/gm
 /** Closes the managed region. */
 const MARKER_END = '# @waxwing:rules:end'
 /**
@@ -192,6 +198,28 @@ function readStrings(fragment: string): string[] {
 }
 
 /**
+ * The closing marker as a LINE of its own, or -1.
+ *
+ * A plain `indexOf` matched the marker text anywhere, including inside a generated Sieve string
+ * literal — a rule that files mail whose subject contains `@waxwing:rules:end` ended the managed
+ * region in the middle of its own `if` block. Everything after it became foreign trailer text,
+ * which the next save re-emitted verbatim BELOW the region: the rule ran twice, and every `stop`
+ * after it moved.
+ *
+ * Anchored on a literal `\n` rather than a regex `^`, because `^` in multiline mode also matches
+ * after U+2028/U+2029 — which a rule name may contain and `quoteSieveString` does not flatten,
+ * since they are ordinary characters to Sieve.
+ */
+function findEndMarker(source: string, from: number): number {
+  let index = source.indexOf(MARKER_END, from)
+  while (index !== -1) {
+    if (index === 0 || source.charAt(index - 1) === '\n') return index
+    index = source.indexOf(MARKER_END, index + 1)
+  }
+  return -1
+}
+
+/**
  * Reads a stored script into rules plus untouched foreign text.
  *
  * Never throws: an unreadable script comes back {@link ManagedScript.opaque}.
@@ -217,7 +245,7 @@ export function parseScript(source: string): ManagedScript {
   const json = (marker[2] ?? '').trim()
 
   const lineEnd = begin + marker[0].length
-  const endMarker = source.indexOf(MARKER_END, lineEnd)
+  const endMarker = findEndMarker(source, lineEnd)
   if (endMarker === -1) return opaqueScript(source)
   const endLine = source.indexOf('\n', endMarker)
   const afterEnd = endLine === -1 ? source.length : endLine + 1
@@ -387,6 +415,24 @@ function readAction(value: unknown): SieveAction | null {
  * below ours would change what their mail does while claiming to have preserved them. Keeping the
  * position also makes a save idempotent: parse → build → parse lands on the same text.
  */
+/**
+ * Escapes U+2028 and U+2029 in the metadata JSON.
+ *
+ * `JSON.stringify` leaves them raw — they are ordinary characters to JSON, and to Sieve, whose
+ * comments end at CRLF (RFC 5228 §2.3). They are NOT ordinary to a JavaScript regular expression,
+ * where they terminate a line: `MARKER_BEGIN` stopped at the first one, the captured JSON was cut
+ * off mid-string, and the script the user had just saved came back opaque — "someone else's
+ * script", read-only, with "adopt" as the only way on, which appended a second marker and made the
+ * state permanent.
+ *
+ * `\u2028` is valid JSON escape syntax, so `JSON.parse` returns the original character and the
+ * rule name round-trips unchanged. (U+0085 NEL is not affected: JS regexes do not treat it as a
+ * line terminator.)
+ */
+function escapeLineSeparators(json: string): string {
+  return json.replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+}
+
 export function buildScript(
   rules: readonly SieveRule[],
   foreign: ManagedScript,
@@ -395,7 +441,7 @@ export function buildScript(
   const generated = generateSieve(rules, extensions)
   const requires = [...new Set([...generated.requires, ...foreign.foreignRequires])].sort()
 
-  const metadata = JSON.stringify({ version: SCHEMA_VERSION, rules })
+  const metadata = escapeLineSeparators(JSON.stringify({ version: SCHEMA_VERSION, rules }))
   const sections: string[] = []
 
   const requireLine = renderRequire(requires)
@@ -404,7 +450,9 @@ export function buildScript(
   if (foreign.preamble !== '') sections.push(`${FOREIGN_HEADER}\n${foreign.preamble}`)
 
   // `JSON.stringify` escapes CR and LF inside strings, so a rule name containing a newline cannot
-  // terminate the comment early — the metadata always occupies exactly one line.
+  // terminate the comment early — the metadata always occupies exactly one line. It does NOT
+  // escape U+2028/U+2029, which is correct JSON and was still a defect here: see
+  // `escapeLineSeparators`.
   sections.push(`${markerFor(SCHEMA_VERSION)}${metadata}`)
   if (generated.body !== '') sections.push(generated.body)
   sections.push(MARKER_END)

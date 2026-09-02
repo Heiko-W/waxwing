@@ -28,6 +28,7 @@ import {
 import { Button, TextInput } from '../ui'
 import { type IdentityDraft, type IdentityProblem, validateIdentity } from './identity-model'
 import styles from './settings.module.css'
+import { sameDraft, useUnsavedChanges } from './unsaved'
 
 /**
  * Spelled out rather than `t(\`settings.identities.error.\${problem}\`)`, because `guards.test.ts`
@@ -85,6 +86,12 @@ export function IdentityForm(props: IdentityFormProps) {
 
   const problem: IdentityProblem | null = validateIdentity(draft, { creating: props.creating })
   const message = problem !== null ? problemText(t, problem) : props.saveError
+
+  // So the settings page can ask before it swaps this panel out (see `unsaved.ts`). Compared
+  // against `initial` rather than watching for input events: a reader who typed a character and
+  // deleted it again has nothing to lose, and a prompt they can dismiss without reading is a prompt
+  // they will dismiss without reading on the day it matters.
+  useUnsavedChanges(!sameDraft(draft, props.initial))
 
   function submit(): void {
     // The editor debounces by 200 ms to keep typing off the parent's render path, so a user who

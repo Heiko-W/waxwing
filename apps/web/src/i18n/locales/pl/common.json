@@ -54,7 +54,9 @@
       "networkHost": "Nie można połączyć się z {{host}}. Jeśli Twój serwer poczty ma inny adres, wpisz go powyżej.",
       "oauthUnavailable": "Ten serwer nie oferuje bezpiecznego logowania. Zaloguj się poniżej za pomocą adresu e-mail i hasła.",
       "oauthUnavailableNoFallback": "Ten serwer nie oferuje bezpiecznego logowania, a ta instalacja nie dopuszcza innej metody. Skontaktuj się z jej administratorem.",
-      "sessionOrigin": "Ten serwer podaje {{field}} pod adresem {{url}}, który nie należy do {{origin}} — dlatego Twoje dane logowania nie zostały tam wysłane. Administrator serwera musi poprawić publikowany adres."
+      "sessionOrigin": "Ten serwer podaje {{field}} pod adresem {{url}}, który nie należy do {{origin}} — dlatego Twoje dane logowania nie zostały tam wysłane. Administrator serwera musi poprawić publikowany adres.",
+      "oauthCallback": "Nie udało się dokończyć logowania. Zwykle oznacza to, że strona logowania była otwarta zbyt długo — zacznij od nowa.",
+      "oauthDenied": "Prośba o zalogowanie została odrzucona, więc nie jesteś zalogowany. Zacznij od nowa i ją zatwierdź lub użyj innego konta."
     },
     "reset": {
       "action": "Zresetuj aplikację na tym urządzeniu",
@@ -192,7 +194,8 @@
       "window_one": "Poczta z ostatniego dnia jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
       "window_few": "Poczta z ostatnich {{count}} dni jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
       "window_many": "Poczta z ostatnich {{count}} dni jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
-      "window_other": "Poczta z ostatniego {{count}} dnia jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu."
+      "window_other": "Poczta z ostatniego {{count}} dnia jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
+      "freeUpFailed": "Nie udało się zwolnić miejsca"
     },
     "general": {
       "title": "Ogólne"

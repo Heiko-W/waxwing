@@ -265,6 +265,22 @@ export function isPermanentRefreshError(error: unknown): boolean {
 }
 
 /**
+ * The authorization server's own error code (RFC 6749 §4.1.2.1 / §5.2), or `undefined` when the
+ * failure was not the server saying no.
+ *
+ * Both shapes count and they arrive from different legs: `AuthorizationResponseError` is the
+ * `?error=` on the redirect — `access_denied` when the user pressed "Deny" — and
+ * `ResponseBodyError` is the token endpoint's JSON refusal of the code. Everything else (a
+ * `TypeError` from a dead endpoint, a state mismatch, a consumed transaction) has no code,
+ * because none of it is the server's verdict.
+ */
+export function authorizationErrorCode(error: unknown): string | undefined {
+  if (error instanceof oauth.AuthorizationResponseError) return error.error
+  if (error instanceof oauth.ResponseBodyError) return error.error
+  return undefined
+}
+
+/**
  * Revokes a token when the server advertises a revocation endpoint (RFC 7009). Stalwart
  * v0.16 does **not**, so this commonly returns `false` and logout relies on local wipe plus
  * natural expiry (FR-AUTH-05). Best-effort: never throws on a revocation failure.

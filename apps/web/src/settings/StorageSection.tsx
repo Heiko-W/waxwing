@@ -25,7 +25,7 @@ import {
 import { formatBytes } from '../i18n/formatters'
 import { usePinnedMailboxes } from '../mail/pinned/use-pinned-folders'
 import type { EstimateFn } from '../sync'
-import { getActiveEngine } from '../sync/engine'
+import { getActiveEngine, type MaintenanceOutcome } from '../sync/engine'
 import { Button, Select, Switch, useToast } from '../ui'
 import styles from './settings.module.css'
 import { useRequestPersistence, useStorageUsage } from './use-storage-usage'
@@ -36,20 +36,19 @@ export interface StorageSectionProps {
   readonly persisted?: () => Promise<boolean | null>
   readonly requestPersist?: () => Promise<boolean>
   /** Injected in tests; defaults to a forced maintenance pass on the running engine. */
-  readonly freeUpSpace?: () => Promise<number | null>
+  readonly freeUpSpace?: () => Promise<MaintenanceOutcome>
 }
 
 /** Free space now: a forced pass (allowed on any tab — the deletes are idempotent and transactional). */
-async function forcedMaintenance(): Promise<number | null> {
+async function forcedMaintenance(): Promise<MaintenanceOutcome> {
   // The PRIMARY engine, deliberately (M4.4 Etappe 4): this is a DEVICE-level screen. It is also not
   // yet honest with shared accounts — `runMaintenance` evicts only its own engine's account and the
   // usage figure sums only the primary, so a device holding mostly shared-account cache can be told
   // "freed 0 bytes". The fix is global on both halves (fan a forced pass over `getRunningEngines()`,
   // sum usage across accounts) and is a reporting change, not a dispatch one; filed under M4.4.
   const engine = getActiveEngine()
-  if (engine === null) return null
-  const result = await engine.runMaintenance({ force: true })
-  return result === null ? null : result.evicted.freedBytes
+  if (engine === null) return { status: 'skipped' }
+  return engine.forceMaintenance()
 }
 
 export function StorageSection(props: StorageSectionProps) {
@@ -94,10 +93,19 @@ export function StorageSection(props: StorageSectionProps) {
   async function freeUp(): Promise<void> {
     setBusy(true)
     try {
-      const freed = await (props.freeUpSpace ?? forcedMaintenance)()
+      const outcome = await (props.freeUpSpace ?? forcedMaintenance)()
+      // A FAILED pass is not an empty one. The button matters most on a full disk, and a full disk
+      // is exactly what makes the pass's gather stages abort — so the one press that had to be
+      // reported honestly was answered with "Nothing to free up", i.e. a reassurance that the
+      // storage screen contradicted two lines above.
+      if (outcome.status === 'failed') {
+        toast({ title: t('settings.offline.freeUpFailed'), tone: 'danger' })
+        return
+      }
+      const freed = outcome.status === 'ran' ? outcome.result.evicted.freedBytes : 0
       toast({
         title:
-          freed === null || freed === 0
+          freed === 0
             ? t('settings.offline.nothingToFree')
             : t('settings.offline.freedToast', { size: formatBytes(freed) }),
       })

@@ -4,14 +4,25 @@
  * unsent work survive (the common token-expiry case is handled silently by the controller and
  * never reaches here). OAuth re-auth is a full-page redirect (the route is stashed and
  * restored); Basic re-auth re-enters credentials inline and reconnects in place. Declining
- * ("cancel") signs out.
+ * ("Sign out") signs out — and ONLY that button does.
+ *
+ * The dialog is deliberately not dismissible. Escape and the ✕ are the two gestures every reader
+ * uses to mean "never mind", and here they were wired to `cancelReauth`, i.e. Sign out — for a
+ * public-computer session, Sign out plus a wipe of the local copy — under a body text that
+ * promises "your place is kept". A reflex press during a session that expired mid-read ended the
+ * session; screen-reader users, for whom Escape is the standard way out of a modal, met it first.
+ * There is no non-destructive dismissal to offer instead (the session IS gone), so the dialog
+ * offers none, and the way out is its two labelled buttons.
  */
 
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Dialog, TextInput } from '../../ui'
 import { useSession } from '../session/context'
 import styles from './shell.module.css'
+
+/** Never invoked — {@link Dialog} calls `onClose` only for a dismissal, and this one has none. */
+const noDismissal = (): void => {}
 
 export function ReauthDialog() {
   const { t } = useTranslation()
@@ -20,6 +31,13 @@ export function ReauthDialog() {
   const [password, setPassword] = useState('')
   const usernameId = useId()
   const passwordId = useId()
+  /**
+   * Focus starts on "Sign in", not on the first focusable in DOM order — which, with the ✕ gone,
+   * is "Sign out". A dialog that opens unannounced over what someone was reading must not put the
+   * destructive button under the next Enter. (The Basic variant needs no override: its first
+   * focusable is the username field, which is where a reader wants to be anyway.)
+   */
+  const submitRef = useRef<HTMLButtonElement>(null)
 
   if (!reauth) return null
 
@@ -31,17 +49,23 @@ export function ReauthDialog() {
   return (
     <Dialog
       open
-      onClose={cancelReauth}
+      onClose={noDismissal}
       title={t('auth.reauth.title')}
-      dismissOnBackdrop={false}
+      dismissible={false}
       {...(reauth.requiresRedirect
         ? {
+            initialFocusRef: submitRef,
             footer: (
               <>
                 <Button variant="secondary" onClick={cancelReauth}>
                   {t('auth.reauth.cancel')}
                 </Button>
-                <Button variant="primary" loading={reauth.busy} onClick={resolveReauthOAuth}>
+                <Button
+                  ref={submitRef}
+                  variant="primary"
+                  loading={reauth.busy}
+                  onClick={resolveReauthOAuth}
+                >
                   {t('auth.reauth.submit')}
                 </Button>
               </>

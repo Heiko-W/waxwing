@@ -10,9 +10,11 @@ import { Menu } from './Menu'
 function Harness({
   onClosed = vi.fn(),
   dismissOnBackdrop = true,
+  dismissible = true,
 }: {
   onClosed?: () => void
   dismissOnBackdrop?: boolean
+  dismissible?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => {
@@ -27,6 +29,7 @@ function Harness({
         onClose={close}
         title="Confirm deletion"
         dismissOnBackdrop={dismissOnBackdrop}
+        dismissible={dismissible}
       >
         <p>This cannot be undone.</p>
         <Button>Inside</Button>
@@ -120,6 +123,28 @@ describe('Dialog', () => {
     const backdrop = screen.getByRole('dialog').parentElement as HTMLElement
     fireEvent.mouseDown(backdrop)
     expect(screen.queryByRole('dialog')).not.toBeNull()
+  })
+
+  /**
+   * For a dialog whose every dismissal is destructive (the re-auth prompt: Escape and the ✕ were
+   * Sign out) there is nothing safe for the two universal gestures to do, so they do nothing —
+   * and the ✕, whose accessible name is "Close", is not offered at all.
+   */
+  it('offers no ✕ and swallows Escape when dismissible={false}', async () => {
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<Harness dismissible={false} onClosed={onClosed} />)
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull()
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onClosed).not.toHaveBeenCalled()
+
+    // A backdrop press is the third gesture and must not be a back door either.
+    fireEvent.mouseDown(screen.getByRole('dialog').parentElement as HTMLElement)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onClosed).not.toHaveBeenCalled()
   })
 
   it('Escape closes only the innermost overlay (Menu inside Dialog)', async () => {

@@ -54,7 +54,9 @@
       "networkHost": "Impossibile raggiungere {{host}}. Se il tuo server di posta si trova a un indirizzo diverso, inseriscilo qui sopra.",
       "oauthUnavailable": "Questo server non offre un accesso sicuro. Usa il tuo indirizzo email e la password qui sotto.",
       "oauthUnavailableNoFallback": "Questo server non offre un accesso sicuro e questa installazione non consente altri metodi. Rivolgiti a chi la gestisce.",
-      "sessionOrigin": "Questo server indica {{field}} all’indirizzo {{url}}, che non si trova su {{origin}}: le tue credenziali non sono state inviate lì. Chi gestisce questo server deve correggere l’indirizzo che pubblica."
+      "sessionOrigin": "Questo server indica {{field}} all’indirizzo {{url}}, che non si trova su {{origin}}: le tue credenziali non sono state inviate lì. Chi gestisce questo server deve correggere l’indirizzo che pubblica.",
+      "oauthCallback": "Non è stato possibile completare l’accesso. Di solito accade quando la pagina di accesso resta aperta troppo a lungo: ricomincia.",
+      "oauthDenied": "La richiesta di accesso è stata rifiutata, quindi non hai effettuato l’accesso. Ricomincia e approvala, oppure usa un altro account."
     },
     "reset": {
       "action": "Reimposta questa app su questo dispositivo",
@@ -188,7 +190,8 @@
       "windowLabel": "Conserva la posta su questo dispositivo per",
       "window_one": "La posta dell’ultimo giorno resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri.",
       "window_many": "La posta degli ultimi {{count}} di giorni resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri.",
-      "window_other": "La posta degli ultimi {{count}} giorni resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri."
+      "window_other": "La posta degli ultimi {{count}} giorni resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri.",
+      "freeUpFailed": "Non è stato possibile liberare spazio"
     },
     "general": {
       "title": "Generali"

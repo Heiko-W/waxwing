@@ -20,6 +20,7 @@ import {
   type ReplicaDb,
   ReplicaProvider,
 } from '../sync'
+import type { MaintenanceOutcome, MaintenanceResult } from '../sync/engine'
 import { putEmailBody } from '../sync/repo'
 import { email, freshDb } from '../sync/test-utils'
 import { expectNoA11yViolations } from '../test/axe'
@@ -84,6 +85,14 @@ async function openSection(user: ReturnType<typeof userEvent.setup>, name: strin
 
 const estimate: EstimateFn = async () => ({ usage: 40 * 1024 * 1024, quota: 200 * 1024 * 1024 })
 
+/** A completed forced pass that freed `bytes`, in the shape `StorageSection` consumes. */
+function freed(bytes: number): () => Promise<MaintenanceOutcome> {
+  return async () => ({
+    status: 'ran',
+    result: { evicted: { freedBytes: bytes } } as unknown as MaintenanceResult,
+  })
+}
+
 function renderStorage(props: StorageSectionProps = {}) {
   return render(
     <ConfigProvider config={DEFAULT_CONFIG}>
@@ -92,7 +101,7 @@ function renderStorage(props: StorageSectionProps = {}) {
           <StorageSection
             estimate={estimate}
             persisted={async () => false}
-            freeUpSpace={async () => 0}
+            freeUpSpace={freed(0)}
             {...props}
           />
         </ReplicaProvider>
@@ -500,16 +509,31 @@ describe('Settings — Offline & storage (M3.4)', () => {
 
   it('"Free up space" toasts the freed size', async () => {
     const user = userEvent.setup()
-    renderStorage({ freeUpSpace: async () => 3 * 1024 * 1024 })
+    renderStorage({ freeUpSpace: freed(3 * 1024 * 1024) })
 
     await user.click(await screen.findByRole('button', { name: 'Free up space now' }))
 
     expect(await screen.findByText('Freed 3 MB')).toBeInTheDocument()
   })
 
+  /**
+   * A failed pass is not an empty one (R-87). "Free up space now" matters most on a full disk, and
+   * a full disk is what makes the pass's gather stages abort — so the one press that had to be
+   * reported honestly was the one that got a reassurance instead.
+   */
+  it('"Free up space" says the run failed rather than that there was nothing to do', async () => {
+    const user = userEvent.setup()
+    renderStorage({ freeUpSpace: async () => ({ status: 'failed' }) })
+
+    await user.click(await screen.findByRole('button', { name: 'Free up space now' }))
+
+    expect(await screen.findByText('Could not free up space')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing to free up')).not.toBeInTheDocument()
+  })
+
   it('"Free up space" says so when there was nothing to free', async () => {
     const user = userEvent.setup()
-    renderStorage({ freeUpSpace: async () => 0 })
+    renderStorage({ freeUpSpace: freed(0) })
 
     await user.click(await screen.findByRole('button', { name: 'Free up space now' }))
 

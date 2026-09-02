@@ -274,6 +274,21 @@ const SYNC_RETRY_BACKOFF = { baseMs: 2_000, factor: 2, capMs: DEFAULT_SAFETY_INT
  */
 const FOREGROUND_ACK_MS = 100
 
+/**
+ * What a forced maintenance pass did, for the one caller that has to tell the three apart (R-87).
+ *
+ * `runMaintenance` answers `null` to all three — "not this tab / already aborted", "ran, freed
+ * nothing" and "threw" — which is fine for the callers that only want the bytes back, and was not
+ * fine for the settings screen, which rendered "Nothing to free up" over a pass that had died on
+ * the full disk the reader was trying to clear.
+ */
+export type MaintenanceOutcome =
+  | { readonly status: 'ran'; readonly result: MaintenanceResult }
+  /** No pass ran: no leader, or the engine had already been stopped. */
+  | { readonly status: 'skipped' }
+  /** A gather stage threw — most plausibly the quota abort this pass was meant to relieve. */
+  | { readonly status: 'failed' }
+
 export class SyncEngine {
   private readonly db: ReplicaDb
   private readonly port: JmapPort
@@ -1106,6 +1121,42 @@ export class SyncEngine {
   async runMaintenance(
     options: { force?: boolean; needBytes?: number } = {},
   ): Promise<MaintenanceResult | null> {
+    try {
+      return await this.maintenancePass(options)
+    } catch {
+      // The historical contract, kept byte for byte: every caller of this method treats `null` as
+      // "no bytes were freed" and carries on. `withQuotaRecovery` in particular must reach its
+      // retry rather than propagate a maintenance error in place of the quota error it was
+      // recovering from. Only {@link forceMaintenance} distinguishes the two.
+      return null
+    }
+  }
+
+  /**
+   * A forced pass for "Free up space now" (M3.4), whose FAILURE is visible (R-87).
+   *
+   * `runMaintenance` collapses "the pass did not run", "it ran and found nothing" and "it threw"
+   * into one `null`, and the settings screen turned all three into the toast "Nothing to free up".
+   * On the one device where the button matters — a full disk, where the gather stages are exactly
+   * what a quota abort kills — the app therefore answered a failure with a reassurance. The three
+   * outcomes are three different sentences, so they are three different values here.
+   */
+  async forceMaintenance(): Promise<MaintenanceOutcome> {
+    try {
+      const result = await this.maintenancePass({ force: true })
+      return result === null ? { status: 'skipped' } : { status: 'ran', result }
+    } catch {
+      return { status: 'failed' }
+    }
+  }
+
+  /**
+   * The pass itself. Rejects when a gather stage does (see `maintenance.ts`); the two public
+   * entry points above decide what that means for their caller.
+   */
+  private async maintenancePass(
+    options: { force?: boolean; needBytes?: number } = {},
+  ): Promise<MaintenanceResult | null> {
     if (this.drainController.signal.aborted) return null
     if (options.force !== true && this.maintaining !== undefined) return this.maintaining
     while (this.maintaining !== undefined) await this.maintaining
@@ -1136,8 +1187,11 @@ export class SyncEngine {
       ...(this.isLeader && this.deps.isOnline()
         ? { fetchBody: (id: Id) => this.prefetchBody(id) }
         : {}),
-    }).catch(() => null)
-    this.maintaining = pass
+    })
+    // What COALESCING callers join must not reject: `maintaining` is awaited by the queue loop
+    // above and returned verbatim to a periodic caller, neither of which has anywhere to put an
+    // error. The pass itself stays rejectable for the caller that asked for it.
+    this.maintaining = pass.catch(() => null)
     try {
       return await pass
     } finally {

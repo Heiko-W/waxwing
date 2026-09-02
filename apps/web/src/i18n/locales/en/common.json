@@ -54,7 +54,9 @@
       "networkHost": "Could not reach {{host}}. If your mail server is at a different address, enter it above.",
       "oauthUnavailable": "This server does not offer secure sign-in. Use your email address and password below.",
       "oauthUnavailableNoFallback": "This server does not offer secure sign-in, and this deployment allows no other method. Ask whoever runs it.",
-      "sessionOrigin": "This server advertises {{field}} at {{url}}, which is not on {{origin}} — so your credentials were not sent there. Whoever runs this server needs to correct the address it publishes."
+      "sessionOrigin": "This server advertises {{field}} at {{url}}, which is not on {{origin}} — so your credentials were not sent there. Whoever runs this server needs to correct the address it publishes.",
+      "oauthCallback": "Sign-in could not be completed. This usually means the sign-in page was left open too long — start again.",
+      "oauthDenied": "The sign-in request was declined, so you are not signed in. Start again and approve it, or use another account."
     },
     "reset": {
       "action": "Reset this app on this device",
@@ -184,7 +186,8 @@
       "windowChoice_other": "{{count}} days",
       "windowLabel": "Keep mail on this device for",
       "window_one": "Mail from the last {{count}} day is kept on this device. Older mail stays on the server and loads when you open it.",
-      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it."
+      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it.",
+      "freeUpFailed": "Could not free up space"
     },
     "general": {
       "title": "General"

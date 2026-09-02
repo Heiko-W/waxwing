@@ -25,6 +25,7 @@ import { expectNoA11yViolations } from '../test/axe'
 import { ToastProvider } from '../ui'
 import { IdentitiesSection } from './IdentitiesSection'
 import { type IdentityClient, IdentitySetError, type IdentitySnapshot } from './identity-client'
+import { UnsavedContext, type UnsavedGuard } from './unsaved'
 
 function identity(over: Partial<Identity> & Pick<Identity, 'id' | 'email'>): Identity {
   return {
@@ -541,5 +542,90 @@ describe('the replica the composer reads from', () => {
       expect(probe).toHaveTextContent('alice@x.test')
       expect(probe).not.toHaveTextContent('sales@x.test')
     })
+  })
+})
+
+/**
+ * The other half of the R-86 guard: this form has to SAY that it is holding unsaved input.
+ *
+ * The page-level behaviour (the discard prompt, the intercepted rail click) is pinned in
+ * `unsaved.test.tsx` against the vacation responder; this is the identity editor's own report,
+ * which the page has no way to work out for itself.
+ */
+describe('the identity editor reports unsaved input', () => {
+  /** Renders the section under a guard that records what the form claims. */
+  function renderWithGuard(client: IdentityClient): { dirty: () => boolean } {
+    let dirty = false
+    const guard: UnsavedGuard = {
+      claim(value) {
+        dirty = value
+        return () => {
+          dirty = false
+        }
+      },
+    }
+    render(
+      <ToastProvider>
+        <UnsavedContext.Provider value={guard}>
+          <IdentitiesSection client={client} editorFactory={fakeEditorFactory()} />
+        </UnsavedContext.Provider>
+      </ToastProvider>,
+    )
+    return { dirty: () => dirty }
+  }
+
+  it('claims nothing until something is actually changed', async () => {
+    const user = userEvent.setup()
+    const { client } = fakeClient()
+    const guard = renderWithGuard(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Alice Adams' }))
+    await editorReady()
+
+    // Open, untouched: there is nothing to warn about, and warning anyway is how a prompt becomes
+    // something readers click through without looking.
+    expect(guard.dirty()).toBe(false)
+  })
+
+  it('claims the draft once a field differs from the identity it is editing', async () => {
+    const user = userEvent.setup()
+    const { client } = fakeClient()
+    const guard = renderWithGuard(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Alice Adams' }))
+    await editorReady()
+    await user.type(screen.getByLabelText('Display name'), '!')
+
+    await waitFor(() => expect(guard.dirty()).toBe(true))
+  })
+
+  it('drops the claim again when the value is typed back — the counter-test', async () => {
+    const user = userEvent.setup()
+    const { client } = fakeClient()
+    const guard = renderWithGuard(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Alice Adams' }))
+    await editorReady()
+    await user.type(screen.getByLabelText('Display name'), '!')
+    await waitFor(() => expect(guard.dirty()).toBe(true))
+
+    await user.keyboard('{Backspace}')
+
+    await waitFor(() => expect(guard.dirty()).toBe(false))
+  })
+
+  it('drops the claim when the editor is closed', async () => {
+    const user = userEvent.setup()
+    const { client } = fakeClient()
+    const guard = renderWithGuard(client)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Alice Adams' }))
+    await editorReady()
+    await user.type(screen.getByLabelText('Display name'), '!')
+    await waitFor(() => expect(guard.dirty()).toBe(true))
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await waitFor(() => expect(guard.dirty()).toBe(false))
   })
 })

@@ -1357,7 +1357,12 @@ Replay → `setEmails` mit `create: {'draft-d1'}`; drafts-Zeile fehlt, Outbox-Ze
 
 ### R-30 — [MEDIUM] Zwei Tabs, die gleichzeitig refreshen, löschen sich bei Refresh-Token-Rotation mit Invalidierung gegenseitig das gültige Token aus dem gemeinsamen Store
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt wie vorgeschlagen, mit einer Praezisierung: statt nach Lock-Erwerb erneut zu lesen und
+zu vergleichen, liegt der GESAMTE Store-Zugriff im kritischen Abschnitt — das Nachlesen entfaellt
+damit. Der Lock hat ein Wartebudget (15 s, `refresh-lock.ts`), weil `navigator.locks` keinen
+Timeout kennt und der Lock ueber Netz-I/O gehalten wird; laeuft es ab, faellt der Grant auf den
+ungesicherten Pfad zurueck, den das Compare-and-delete absichert.
 
 **Kategorie / Bereich:** correctness / App (Auth)
 
@@ -1401,7 +1406,7 @@ bestätigt, Severity high → medium.
 
 ### R-31 — [MEDIUM] OAuth-Re-Auth stasht nur `pathname`; `?account=`, `?q=`, `?label=`, `?full=1` gehen verloren
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Session)
 
@@ -1433,7 +1438,11 @@ existieren und sind tragend). Gegenprüfung: bestätigt.
 
 ### R-32 — [MEDIUM] Ein fehlgeschlagener OAuth-Callback vergisst den manuell eingegebenen Server, sperrt das Serverfeld und meldet ein IdP-`access_denied` als „Something went wrong“ mit Reset-Angebot
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: statt `access_denied` im UI-Layer aus der Fehlerursache zu lesen, traegt
+`OAuthCallbackError` jetzt selbst ein `code`-Feld (gesetzt in `completeRedirect` aus
+`authorizationErrorCode`). `CREDENTIAL_ERROR_KEYS` heisst jetzt `NO_RESET_ERROR_KEYS`, weil die
+Menge nicht mehr nur Credential-Fehler enthaelt.
 
 **Kategorie / Bereich:** robustness / App (Session)
 
@@ -1472,7 +1481,12 @@ gelöscht. Gegenprüfung: bestätigt und verschärft.
 
 ### R-33 — [MEDIUM] Escape und der „Close“-Button im Re-Auth-Dialog melden ab (und wischen im Public-Computer-Modus das Replica)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt mit EINER neuen `Dialog`-Prop `dismissible` statt der vorgeschlagenen zwei
+(`closeOnEscape` und `hideClose`): beide Gesten sollen hier dasselbe tun, naemlich nichts, und
+eine Prop kann nicht halb gesetzt werden. Der Escape-Listener bleibt registriert, damit der
+Tastendruck hier verschluckt wird und nicht an ein Overlay dahinter durchfaellt. Zusaetzlich
+startet der Fokus auf „Sign in“ statt auf dem jetzt ersten fokussierbaren Element „Sign out“.
 
 **Kategorie / Bereich:** a11y / App (Session)
 
@@ -2967,7 +2981,7 @@ für R-29 und R-28) angepasst in die bestehenden Suiten übernehmen, sobald die 
 
 ### R-77 — [LOW] Public-Computer-Modus hinterlässt `waxwing.connect.target` in `localStorage`, wenn der Tab ohne Sign-out geschlossen wird (vgl. W-05)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** security / App (Session)
 
@@ -3003,6 +3017,12 @@ ist `localStorage.getItem('waxwing.connect.target')` null.
 ### R-78 — [LOW] Offline-Kaltstart landet auf dem Login-Formular — bekannter, per E2E-Tripwire gepinnter Produktdefekt ohne Tracking-Eintrag
 
 **Status:** [ ] offen
+Bewusst NICHT umgesetzt: bekannter Produktdefekt, per E2E-Tripwire gepinnt
+(`e2e/tests/pwa.spec.ts`), dessen Behebung eine Produktentscheidung mittleren Umfangs ist —
+sie aendert, was ueber eine Sitzung persistiert wird. Als Backlog-Eintrag in
+`docs/implementation-plan.md` §11 aufgenommen (2026-09-02), damit das Must FR-OFF-01 nicht nur
+in einem Testkommentar lebt. Der Tripwire bleibt rot-schlagend, wenn jemand die Luecke
+schliesst.
 
 **Kategorie / Bereich:** robustness / App (Session)
 
@@ -3036,7 +3056,9 @@ Must nicht nur in einem Testkommentar lebt.
 
 ### R-79 — [LOW] Ein terminal fehlschlagender Refresh nach `logout()` legt die gewischte `waxwing-auth`-Datenbank neu an (vgl. W-05, W-23)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Ergaenzung: der Generation-Check sitzt VOR dem Compare-and-delete-Lesen, nicht nur vor
+`tokens.clear()` — auch `store.get()` geht durch `openDb()` und legt die Datenbank wieder an.
 
 **Kategorie / Bereich:** correctness / App (Auth)
 
@@ -3064,7 +3086,7 @@ wieder (leer). Gegenprüfung: bestätigt.
 
 ### R-80 — [LOW] Basic-Anmeldung ohne „stay signed in“ scheitert, wenn IndexedDB nicht geöffnet werden kann, obwohl nichts persistiert werden soll (vgl. W-06)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / App (Auth)
 
@@ -3093,7 +3115,7 @@ Gegenprüfung: bestätigt.
 
 ### R-81 — [LOW] Deep Link geht bei der ersten OAuth-Anmeldung verloren (Route-Stash nur im Re-Auth-Pfad)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Session)
 
@@ -3119,7 +3141,13 @@ landen im Posteingang; der `mailto:`-Composer öffnet nicht. Basic-Anmeldung nic
 
 ### R-82 — [LOW] Sieve-Round-Trip bricht bei Regelnamen mit U+2028/U+2029 oder mit Marker-Text
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide vorgeschlagenen Varianten fuer (a) umgesetzt, nicht eine: das Metadaten-JSON escapet
+U+2028/U+2029 (neue Skripte), und das Marker-Regex nutzt `([^\r\n]*)` (Skripte, die auf dem
+Server schon liegen — die Escaping-Haelfte erreicht die nicht mehr). Fuer (b) zusaetzlich zur
+`sanitizeComment`-Neutralisierung: die Suche nach dem End-Marker ist auf Zeilenanfang verankert.
+Sonst faellt der Parser auch auf Marker-Text in einem generierten Sieve-String-Literal herein
+(Bedingungswert statt Regelname), den `sanitizeComment` nie sieht.
 
 **Kategorie / Bereich:** correctness / App (Settings, Sieve)
 
@@ -3156,7 +3184,7 @@ enthält Regelkörper und echten End-Marker; zwei weitere Varianten. Gegenprüfu
 
 ### R-83 — [LOW] Der W-17-Issuer-Check greift auch bei ephemeren Sessions, deren Token gar nicht aus dem Store stammt (vgl. W-17)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Auth)
 
@@ -3184,7 +3212,7 @@ stored credential belongs to a different sign-in`, null Refresh-Grants. Gegenpr�
 
 ### R-84 — [LOW] Nach fehlgeschlagenem Public-Computer-Callback bleibt `ephemeralRef`/Replica-Name gesetzt; eine anschließende Basic-Anmeldung mit „stay signed in“ wird halb-durable (vgl. W-02)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Session)
 
@@ -3216,7 +3244,9 @@ Gegenprüfung: bestätigt.
 
 ### R-85 — [LOW] `SecretStore` cached ein rejected `dbPromise`; `wipe()` wirft es weiter, bevor es zurückgesetzt wird
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Ergaenzung: `keyPromise` cacht die Ablehnung genauso (es haengt an `openDb`), also wird auch
+sie bei Fehlschlag zurueckgesetzt — sonst bliebe die Instanz trotz reparierter Datenbank kaputt.
 
 **Kategorie / Bereich:** robustness / App (Auth)
 
@@ -3243,7 +3273,14 @@ scheitert: zweiter `get` → `rejected: UnknownError` ohne neuen `open`, `wipe()
 
 ### R-86 — [LOW] Identitäts- und Vacation-Formular verlieren ungesicherte Eingaben beim Sektionswechsel ohne Rückfrage
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Teilloesung, bewusst: Der Dirty-Guard deckt den SEKTIONSWECHSEL ab (Rail-Eintrag und das
+„‹ Settings“-Back-Link auf dem Phone) — beide gehen ueber `Link`, dessen `onClick` die
+Navigation abfangen kann. Das Verlassen der Einstellungen ueber die Hauptnavigation, ein
+Shortcut oder den Zurueck-Knopf des Browsers verwirft weiterhin ohne Rueckfrage; das braeuchte
+eine Navigationssperre im Router, also eine Architekturentscheidung mit ADR. Die zweite
+vorgeschlagene Variante (beide Formulare in einen `Dialog` legen) wurde verworfen: beide sind
+bewusst inline, weil ein Signatur-Editor im Modal auf dem Phone die schlechtere Ansicht ist.
 
 **Kategorie / Bereich:** correctness (UX) / App (Settings)
 
@@ -3270,7 +3307,12 @@ einen `Dialog` mit `confirmDiscard` legen (Muster vorhanden).
 
 ### R-87 — [LOW] `StorageSection.freeUp` meldet einen fehlgeschlagenen Maintenance-Lauf als „Nothing to free up“
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: `runMaintenance` behaelt seinen `null`-Vertrag unveraendert — `withQuotaRecovery`
+muss seinen Retry erreichen und darf nicht den Wartungsfehler statt des Quota-Fehlers
+weiterreichen. Der Lauf sitzt jetzt in `maintenancePass()`, und `forceMaintenance()` gibt
+daneben ein `MaintenanceOutcome` (`ran` / `skipped` / `failed`) zurueck, das nur die
+Einstellungsseite benutzt.
 
 **Kategorie / Bereich:** robustness / App (Settings)
 

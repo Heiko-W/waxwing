@@ -67,6 +67,17 @@ export class TokenStore {
     this.ephemeral = true
   }
 
+  /**
+   * True when the refresh token lives in memory rather than in the shared store (FR-AUTH-09).
+   *
+   * Callers need this to know WHERE the token they just read came from. The controller's
+   * issuer check (W-17) exists to protect the SHARED copy — the one a second tab can overwrite —
+   * and has nothing to say about a token that never left this tab.
+   */
+  isEphemeral(): boolean {
+    return this.ephemeral
+  }
+
   /** The current in-memory access token, or `null` if none is cached. */
   getAccessToken(): string | null {
     return this.access?.token ?? null
