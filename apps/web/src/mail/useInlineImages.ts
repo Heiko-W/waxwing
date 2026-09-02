@@ -21,7 +21,30 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
   const fetchBlob = useBlobFetcher(accountId)
   const mapRef = useRef(new Map<string, string>())
   const [ready, setReady] = useState(false)
-  const parts = useMemo(() => (body ? collectCidParts(body) : []), [body])
+  const walked = useMemo(() => (body ? collectCidParts(body) : []), [body])
+
+  /*
+   * The pipeline below is keyed on WHAT the parts are, not on which object they arrived in (R-46).
+   *
+   * Opening a cached message runs `useEmailBody` (a liveQuery read) and `fetchBody` at the same
+   * time, and `fetchBody` writes an LRU stamp onto the very row the liveQuery is watching. The
+   * `readwrite` transaction can only commit after the `readonly` one, so the row is emitted twice:
+   * first as it was, then again — byte-identical — with a new object identity. Keyed on identity,
+   * the effect tore its own run down on that second emission, revoked every object URL it had
+   * already made and re-read every `cid:` blob out of IndexedDB. `engine.ts` no longer writes the
+   * pointless stamp, but a duplicate emission is a thing a liveQuery is allowed to produce, and this
+   * hook should not care.
+   *
+   * `parts` is therefore re-derived only when the fingerprint changes; between two emissions of the
+   * same body it is the SAME array, so the effect below does not re-run at all.
+   */
+  const partsKey =
+    body === undefined
+      ? ''
+      : `${body.id}\u0000${walked.map((part) => `${part.cid}:${part.blobId}:${part.type}`).join('|')}`
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by the CONTENT fingerprint on purpose — `walked` is a fresh array per body identity, which is exactly what must not drive this (R-46).
+  const parts = useMemo(() => walked, [partsKey])
+  const hasBody = body !== undefined
 
   useEffect(() => {
     // "No body yet" is not "no images to load", and conflating the two produced a real transient.
@@ -32,7 +55,7 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
     // exists to close: reply in it and the draft is seeded from an unsanitized body. Caught by CI as
     // a one-in-many flake in the gate's own test, which is the only way a single-commit state gets
     // noticed at all.
-    if (body === undefined) {
+    if (!hasBody) {
       mapRef.current = new Map()
       setReady(false)
       return
@@ -74,7 +97,7 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
       cancelled = true
       for (const url of urls) URL.revokeObjectURL(url)
     }
-  }, [body, parts, fetchBlob])
+  }, [hasBody, parts, fetchBlob])
 
   const resolveCid = useCallback((cid: string) => mapRef.current.get(cid) ?? null, [])
   return { resolveCid, ready }

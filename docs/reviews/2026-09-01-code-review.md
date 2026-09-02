@@ -1965,7 +1965,12 @@ zusätzlich das Fixture abgefragt (gleiche Endpunkte). Gegenprüfung: bestätigt
 
 ### R-46 — [LOW] Der LRU-Touch in `fetchBody` lässt die Inline-Bild-Pipeline beim Öffnen ein zweites Mal anlaufen (Doppel-Emission der liveQuery; Blob-URLs verworfen, Blobs erneut gelesen)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Teile des Lösungsansatzes umgesetzt: `useInlineImages` hängt an einem Inhalts-Fingerprint
+(`body.id` plus `cid:blobId:type` je Teil), und der LRU-Touch in `fetchBody` wird übersprungen, wenn
+der Stempel jünger als 60 s ist. Kleine Abweichung: statt `parts` über ein Ref zu lesen, wird `parts`
+selbst per `useMemo` am Fingerprint stabilisiert — der Effekt behält dadurch eine ehrliche
+Abhängigkeitsliste, und ein Ref, das im Render beschrieben wird, entfällt.
 
 **Kategorie / Bereich:** react / Mail
 

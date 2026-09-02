@@ -162,6 +162,17 @@ const BROWSER_PUSH_TRANSPORTS: readonly PushTransport[] = ['sse', 'polling']
 const FULL_SWEEP_EVERY = 5
 
 /**
+ * How stale a body's LRU stamp has to be before opening the message rewrites it (R-46).
+ *
+ * The stamp orders rows by recency of use for the cache reaper, which works in DAYS; re-stamping one
+ * that is a few seconds old orders nothing differently. What it DOES do is commit a `readwrite`
+ * transaction on a row the reading pane has a liveQuery on, so every open of a cached message
+ * emitted the same row twice and restarted the inline-image pipeline. A minute is far below any
+ * eviction decision and far above the double-open window.
+ */
+const LRU_TOUCH_INTERVAL_MS = 60_000
+
+/**
  * A flapping connection fires `online` in bursts; each one used to start a full sync pass. Collapse
  * a burst into ONE pass once the line has settled for this long (M3.3).
  */
@@ -960,10 +971,22 @@ export class SyncEngine {
     const now = this.clock.now()
     this.lastBodyFetchId = emailId
     const existing = await this.db.emailBodies.get([this.accountId, emailId])
-    // The LRU touch is UNCONDITIONAL — a row the reader just opened is hot whatever else happens
-    // next. Leaving it inside the early return below made a pre-M3.9 row age toward eviction while
-    // being re-fetched on every open, and offline it never ran at all (the fetch throws first).
-    if (existing !== undefined) {
+    /*
+     * The LRU touch sits OUTSIDE the early return below — a row the reader just opened is hot
+     * whatever else happens next. Leaving it inside made a pre-M3.9 row age toward eviction while
+     * being re-fetched on every open, and offline it never ran at all (the fetch throws first).
+     *
+     * What it is NOT any more is unconditional (R-46). The write commits a `readwrite` transaction
+     * on a row the reading pane is subscribed to through a liveQuery, so every open of a cached
+     * message emitted the row TWICE — once as read, once again, byte-identical, with a new identity.
+     * `useInlineImages` keyed its pipeline on that identity: the second emission cancelled the first
+     * run, revoked whatever object URLs it had already made, and read every `cid:` blob out of
+     * IndexedDB again. The other half of the fix is in that hook (it now keys on content), and this
+     * half removes the pointless write as well: an LRU stamp exists to order rows by recency of use,
+     * and re-stamping one that is already seconds old orders nothing differently. Cache eviction
+     * works in days.
+     */
+    if (existing !== undefined && now - existing.lastAccessedAt >= LRU_TOUCH_INTERVAL_MS) {
       await this.db.emailBodies.update([this.accountId, emailId], { lastAccessedAt: now })
     }
     // M3.9 INVARIANT: every write below sets `authResults` (`[]` when the message carries no such
