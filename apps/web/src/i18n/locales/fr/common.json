@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Aucun expéditeur)",
     "noSubject": "(Sans objet)",
+    "noDate": "Sans date",
     "unread": "Non lu",
     "flagged": "Suivi",
     "attachment": "Contient une pièce jointe",
@@ -1051,6 +1052,7 @@
     "select": "Sélectionner le message",
     "selectAll": "Tout sélectionner",
     "selected": "Sélection : {{count}}",
+    "selectedOfTotal": "Sélection : {{count}} sur {{total}}",
     "clearSelection": "Annuler la sélection",
     "actions": {
       "archive": "Archiver",
@@ -1115,6 +1117,7 @@
   "reading": {
     "from": "De",
     "to": "À",
+    "toLine": "À : {{recipients}}",
     "cc": "Cc",
     "replyTo": "Répondre à",
     "bcc": "Cci",
@@ -1153,6 +1156,9 @@
     },
     "attachments": {
       "title": "Pièces jointes",
+      "titleCount_one": "{{count}} pièce jointe",
+      "titleCount_many": "{{count}} pièces jointes",
+      "titleCount_other": "{{count}} pièces jointes",
       "saveAll": "Tout enregistrer",
       "unnamed": "(Sans nom)",
       "preview": "Aperçu",
@@ -1164,7 +1170,15 @@
       "unpackShort": "Afficher le contenu",
       "unpackedHeading": "Contenu de {{name}}",
       "unpackEmpty": "Rien n’a pu être extrait de ce fichier.",
-      "unpackNote": "Outlook a regroupé ces fichiers en un seul. Ils sont présentés tels que votre correspondant les a envoyés ; rien n’a été vérifié ici."
+      "unpackNote": "Outlook a regroupé ces fichiers en un seul. Ils sont présentés tels que votre correspondant les a envoyés ; rien n’a été vérifié ici.",
+      "error": {
+        "offline": "Impossible de télécharger {{name}} : vous êtes hors ligne.",
+        "notFound": "{{name}} n’est plus sur le serveur.",
+        "tooLarge": "{{name}} est plus volumineux qu’annoncé et n’a pas été téléchargé.",
+        "failed": "Impossible de télécharger {{name}}.",
+        "saveAllPartial": "L’archive a été enregistrée sans ceux-ci, qui n’ont pas pu être téléchargés : {{names}}.",
+        "saveAllFailed": "Rien n’a pu être téléchargé, aucune archive n’a donc été enregistrée."
+      }
     },
     "editDraft": "Modifier le brouillon",
     "draftLead": "Ceci est un brouillon que vous n’avez pas encore envoyé.",

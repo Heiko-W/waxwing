@@ -128,6 +128,8 @@ export function MessageRow({
   const flagged = email.keywords.$flagged === true
   const answered = email.keywords.$answered === true
   const name = senderName(email, t('list.noSender'))
+  /** `null` when the server's `receivedAt` is not a usable timestamp — see `format-message-time`. */
+  const time = formatMessageTime(email.receivedAt)
 
   // Label swatches for this row's custom keywords (color resolved from the registry, gray when the
   // keyword is discovered-but-unregistered), capped per density with an accessible "+N" overflow.
@@ -234,9 +236,16 @@ export function MessageRow({
                 <VisuallyHidden>{t('list.attachment')}</VisuallyHidden>
               </>
             )}
-            <time dateTime={email.receivedAt} className={styles.time}>
-              {formatMessageTime(email.receivedAt)}
-            </time>
+            {/* A `<time>` whose `datetime` is not a date is not a time (R-09): an unusable
+                `receivedAt` renders as a plain span with the placeholder, so no machine reads a
+                garbage stamp and no formatter is handed an `Invalid Date`. */}
+            {time === null ? (
+              <span className={styles.time}>{t('list.noDate')}</span>
+            ) : (
+              <time dateTime={email.receivedAt} className={styles.time}>
+                {time}
+              </time>
+            )}
           </span>
         </div>
         {highlight?.subject ? (

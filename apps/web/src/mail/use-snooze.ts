@@ -11,8 +11,9 @@
  * "in three hours" — and the UI says so rather than letting a user discover it.
  */
 
-import { useCallback, useEffect } from 'react'
-import { setPref, useLocalPrefOptional, useReplicaOptional } from '../sync'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { updateSnoozeMap, useLocalPrefOptional, useReplicaOptional } from '../sync'
+import { dispatchOrReport } from '../sync/dispatch-failure'
 import { getEngineFor } from '../sync/engine'
 import {
   coerceSnoozeMap,
@@ -37,42 +38,69 @@ export interface SnoozeActions {
 
 export function useSnooze(): SnoozeActions {
   const replica = useReplicaOptional()
-  const snoozed = coerceSnoozeMap(useLocalPrefOptional<unknown>(SNOOZE_PREF_KEY))
+  /*
+   * Memoized on the RAW preference value (R-49).
+   *
+   * `useLocalPrefOptional` hands back the same reference between liveQuery emissions, and
+   * `coerceSnoozeMap` turned that into a fresh object on every render. Everything downstream hung
+   * off it: `snooze`, `wake`, and — through `wake` — the waker's `setInterval`, which was therefore
+   * torn down and re-established on every render of the `AppShell`, in every open tab, with a
+   * `dueIds` scan each time. Nothing leaked (the cleanup was correct); it was simply work in the
+   * shell's render path that nothing asked for.
+   */
+  const raw = useLocalPrefOptional<unknown>(SNOOZE_PREF_KEY)
+  const snoozed = useMemo(() => coerceSnoozeMap(raw), [raw])
 
   const setKeyword = useCallback(
     (ids: readonly string[], value: boolean): void => {
       if (replica === null) return
       const engine = getEngineFor(replica.accountId)
       if (engine === null) return
-      engine.dispatch(
-        { kind: 'setKeywords', emailIds: [...ids], keyword: SNOOZE_KEYWORD, value },
-        { id: crypto.randomUUID() },
+      // W-10's seam, which this call site was missed by: `dispatch` awaits `stateGuard`,
+      // `enqueueAction` and `refreshQueueCounts`, all IndexedDB writes that can throw, and
+      // `enqueueAction` applies the optimistic mutation FIRST (W-31). Unreported, a full disk made
+      // the message vanish from the list with the wake time written to the preference and no outbox
+      // row to carry either half to the server — and the automatic waker did the same thing in
+      // reverse once a minute, silently.
+      dispatchOrReport(
+        engine.dispatch(
+          { kind: 'setKeywords', emailIds: [...ids], keyword: SNOOZE_KEYWORD, value },
+          { id: crypto.randomUUID() },
+        ),
       )
     },
     [replica],
   )
 
+  /*
+   * Both writes go through the `rw` read-modify-write in `repo.ts` rather than a blind `setPref` of
+   * the map as this render saw it (R-48).
+   *
+   * The keyword is per-message and travels the outbox, so it was never at risk; the wake times are
+   * one object under one key, and two writers on the same snapshot lost one of them. That is not an
+   * ordinary last-writer-wins: the waker only wakes ids it finds in the MAP, so the lost message
+   * keeps `$snoozed`, `backfill.ts` filters it out of every folder window, and it is reachable only
+   * through search — for good. Note the callbacks no longer close over `snoozed` at all, which is
+   * also what makes them stable enough for the waker below (R-49).
+   */
   const snooze = useCallback(
     (ids: readonly string[], wakeAt: Date): void => {
       if (replica === null || ids.length === 0) return
       setKeyword(ids, true)
-      void setPref(
-        replica.db,
-        replica.accountId,
-        SNOOZE_PREF_KEY,
-        withSnoozed(snoozed, ids, wakeAt.getTime()),
+      void updateSnoozeMap(replica.db, replica.accountId, (current) =>
+        withSnoozed(current, ids, wakeAt.getTime()),
       )
     },
-    [replica, snoozed, setKeyword],
+    [replica, setKeyword],
   )
 
   const wake = useCallback(
     (ids: readonly string[]): void => {
       if (replica === null || ids.length === 0) return
       setKeyword(ids, false)
-      void setPref(replica.db, replica.accountId, SNOOZE_PREF_KEY, withoutIds(snoozed, ids))
+      void updateSnoozeMap(replica.db, replica.accountId, (current) => withoutIds(current, ids))
     },
-    [replica, snoozed, setKeyword],
+    [replica, setKeyword],
   )
 
   return { snoozed, snooze, wake }
@@ -86,14 +114,31 @@ export function useSnooze(): SnoozeActions {
  */
 export function useSnoozeWaker(): void {
   const { snoozed, wake } = useSnooze()
-
+  // The interval must not be able to see a map from the render that installed it — sixty seconds is
+  // a long time to hold a snapshot — but it must not be re-installed for a new one either (R-49).
+  const snoozedRef = useRef(snoozed)
   useEffect(() => {
-    const check = (): void => {
-      const due = dueIds(snoozed, Date.now())
-      if (due.length > 0) wake(due)
-    }
-    check()
-    const timer = window.setInterval(check, WAKE_INTERVAL_MS)
-    return () => window.clearInterval(timer)
+    snoozedRef.current = snoozed
+  }, [snoozed])
+
+  const wakeDue = useCallback((): void => {
+    const due = dueIds(snoozedRef.current, Date.now())
+    if (due.length > 0) wake(due)
+  }, [wake])
+
+  // Two effects, because they answer two different questions. This one is "has anything come due in
+  // the data we just received" — it covers the ordinary case of the app being opened after a snooze
+  // elapsed, and it runs when the DATA changes rather than on every render, which is what the memo
+  // in `useSnooze` bought.
+  useEffect(() => {
+    const due = dueIds(snoozed, Date.now())
+    if (due.length > 0) wake(due)
   }, [snoozed, wake])
+
+  // …and this one is the clock for a session left open. Installed once per stable `wake`, which is
+  // once per account, instead of once per render of the shell.
+  useEffect(() => {
+    const timer = window.setInterval(wakeDue, WAKE_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [wakeDue])
 }

@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(Gönderen yok)",
     "noSubject": "(Konu yok)",
+    "noDate": "Tarih yok",
     "unread": "Okunmamış",
     "flagged": "Yıldızlı",
     "attachment": "Eki var",
@@ -1037,6 +1038,7 @@
     "select": "İletiyi seç",
     "selectAll": "Tümünü seç",
     "selected": "{{count}} ileti seçildi",
+    "selectedOfTotal": "{{total}} iletiden {{count}} tanesi seçildi",
     "clearSelection": "Seçimi kaldır",
     "actions": {
       "archive": "Arşivle",
@@ -1100,6 +1102,7 @@
   "reading": {
     "from": "Kimden",
     "to": "Kime",
+    "toLine": "Kime: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Yanıt adresi",
     "bcc": "Bcc",
@@ -1138,6 +1141,8 @@
     },
     "attachments": {
       "title": "Ekler",
+      "titleCount_one": "{{count}} ek",
+      "titleCount_other": "{{count}} ek",
       "saveAll": "Tümünü kaydet",
       "unnamed": "(Adsız)",
       "preview": "Önizleme",
@@ -1149,7 +1154,15 @@
       "unpackShort": "İçindekileri göster",
       "unpackedHeading": "{{name}} dosyasının içinde",
       "unpackEmpty": "Bu dosyadan hiçbir şey okunamadı.",
-      "unpackNote": "Outlook bu dosyaları tek bir dosyaya paketlemiş. Karşı tarafın gönderdiği hâliyle gösteriliyorlar; buradaki hiçbir şey denetlenmedi."
+      "unpackNote": "Outlook bu dosyaları tek bir dosyaya paketlemiş. Karşı tarafın gönderdiği hâliyle gösteriliyorlar; buradaki hiçbir şey denetlenmedi.",
+      "error": {
+        "offline": "{{name}} indirilemedi — çevrimdışısınız.",
+        "notFound": "{{name}} artık sunucuda değil.",
+        "tooLarge": "{{name}} bildirdiğinden büyük, bu yüzden indirilmedi.",
+        "failed": "{{name}} indirilemedi.",
+        "saveAllPartial": "Arşiv, indirilemeyen şunlar olmadan kaydedildi: {{names}}.",
+        "saveAllFailed": "Hiçbir şey indirilemedi, bu yüzden arşiv kaydedilmedi."
+      }
     },
     "editDraft": "Taslağı düzenle",
     "draftLead": "Bu, henüz göndermediğiniz bir taslak.",

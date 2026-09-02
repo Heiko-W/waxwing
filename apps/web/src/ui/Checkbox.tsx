@@ -18,9 +18,20 @@ export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement
 export function Checkbox({ label, indeterminate = false, className, ref, ...rest }: CheckboxProps) {
   const innerRef = useRef<HTMLInputElement | null>(null)
 
+  /*
+   * Re-asserted after EVERY commit, not only when the prop changes.
+   *
+   * `indeterminate` is a DOM property with no HTML attribute behind it, so React never writes it and
+   * never restores it — and a native click CLEARS it. While every caller went straight from mixed to
+   * all-checked that was invisible: the prop flipped to `false` on the same commit, so the effect
+   * ran anyway. A control that stays mixed ACROSS a click (the message list's select-all over a
+   * folder whose loaded window is not the whole folder — R-08) hit the gap: the prop was `true`
+   * before and after, the effect did not re-run, and the box the user had just clicked rendered
+   * blank. Reflecting one boolean onto one node costs nothing worth measuring.
+   */
   useEffect(() => {
     if (innerRef.current) innerRef.current.indeterminate = indeterminate
-  }, [indeterminate])
+  })
 
   function setRef(node: HTMLInputElement | null): void {
     innerRef.current = node

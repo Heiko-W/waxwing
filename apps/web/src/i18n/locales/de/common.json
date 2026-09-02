@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(Kein Absender)",
     "noSubject": "(Kein Betreff)",
+    "noDate": "Kein Datum",
     "unread": "Ungelesen",
     "flagged": "Markiert",
     "attachment": "Hat Anhang",
@@ -1037,6 +1038,7 @@
     "select": "Nachricht auswählen",
     "selectAll": "Alle auswählen",
     "selected": "{{count}} ausgewählt",
+    "selectedOfTotal": "{{count}} von {{total}} ausgewählt",
     "clearSelection": "Auswahl aufheben",
     "actions": {
       "archive": "Archivieren",
@@ -1100,6 +1102,7 @@
   "reading": {
     "from": "Von",
     "to": "An",
+    "toLine": "An: {{recipients}}",
     "cc": "Kopie",
     "replyTo": "Antwort an",
     "bcc": "Blindkopie",
@@ -1138,6 +1141,8 @@
     },
     "attachments": {
       "title": "Anhänge",
+      "titleCount_one": "{{count}} Anhang",
+      "titleCount_other": "{{count}} Anhänge",
       "saveAll": "Alle speichern",
       "unnamed": "(Ohne Namen)",
       "preview": "Vorschau",
@@ -1149,7 +1154,15 @@
       "unpackShort": "Inhalt anzeigen",
       "unpackedHeading": "In {{name}} enthalten",
       "unpackEmpty": "Aus dieser Datei ließ sich nichts lesen.",
-      "unpackNote": "Outlook hat diese Dateien in eine einzige gepackt. Sie werden so gezeigt, wie Ihr Gegenüber sie geschickt hat — geprüft wurde nichts."
+      "unpackNote": "Outlook hat diese Dateien in eine einzige gepackt. Sie werden so gezeigt, wie Ihr Gegenüber sie geschickt hat — geprüft wurde nichts.",
+      "error": {
+        "offline": "{{name}} konnte nicht geladen werden — Sie sind offline.",
+        "notFound": "{{name}} liegt nicht mehr auf dem Server.",
+        "tooLarge": "{{name}} ist größer als angegeben und wurde nicht geladen.",
+        "failed": "{{name}} konnte nicht geladen werden.",
+        "saveAllPartial": "Das Archiv wurde ohne diese gespeichert, sie ließen sich nicht laden: {{names}}.",
+        "saveAllFailed": "Es ließ sich nichts laden, daher wurde kein Archiv gespeichert."
+      }
     },
     "editDraft": "Entwurf bearbeiten",
     "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben.",

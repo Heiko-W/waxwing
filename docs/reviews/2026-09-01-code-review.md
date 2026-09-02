@@ -92,7 +92,9 @@ Testbeschreibungen, die bekannte Grenzen benennen — der E2E-Offline-Tripwire i
 
 ### R-01 — [HIGH] Infinite Scroll ist nach einem Ordnerwechsel tot, sobald der neue Ordner dieselbe Fensterlänge hat wie der zuletzt nachgeladene
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Stempel-Variante umgesetzt (`windowKey:ids.length`), zusammen mit R-51 in einem Commit: derselbe
+Guard, und ohne die Freigabe bei einem gescheiterten Nachladen wäre der Fix nur halb wirksam.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -403,7 +405,14 @@ Gegenprüfung: bestätigt, Spec-Abgleich ergänzt.
 
 ### R-07 — [MEDIUM] Das Kontextmenü bietet Archivieren und Papierkorb an, wo die Aktion nichts tut, und kein „Löschen“ im Papierkorb
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Wie vorgeschlagen umgesetzt (Archive- und Trash-Arm nach dem Muster des Junk-Arms, im Papierkorb
+stattdessen „Endgültig löschen" über `requestDestroy`). Abweichung: `archiveId`/`trashId` kommen aus
+der bereits vorhandenen `useMailboxes()`-Abfrage derselben Komponente statt aus zusätzlichen
+`useMailboxByRole`-Aufrufen — genau der Grund, aus dem B24 den Junk-Arm dort abgreift: zwei weitere
+liveQueries könnten auf einem anderen Tick auflösen als die, gegen die die Swipe-Ziele entschieden
+werden. Der Delete-Arm prüft `reason('destroy')`, nicht `removeReason`: Zerstören quantifiziert über
+alle Postfächer der Nachricht, nicht über den betrachteten Ordner.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -439,7 +448,20 @@ Papierkorb kein „Delete“. Gegenprüfung: bestätigt.
 
 ### R-08 — [MEDIUM] „Alle auswählen“ wählt nur das geladene 50er-Fenster, zeigt die Kopf-Checkbox aber als vollständig gesetzt — Bulk-Aktionen erfassen den Rest des Ordners nicht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt — Stufe 1
+Stufe 1 (ehrliche Oberfläche) ist umgesetzt: `allSelected` verlangt zusätzlich, dass das Fenster die
+ganze Trefferliste ist, sonst zeigt die Kopf-Checkbox `indeterminate` und der Zähler den neuen Key
+`list.selectedOfTotal` („20 von 300 ausgewählt", 14 Bundles). Kommentar in `message-selection.ts`,
+Plan-Zeilen 165/973 und der Perf-Test sind korrigiert; der Perf-Test prüft jetzt beide Zahlen statt
+`/\d+ selected/`. Zwei Ergänzungen über den Lösungsansatz hinaus: der Klick auf die Kopf-Checkbox
+wird aus dem Zustand statt aus `event.target.checked` entschieden (eine `indeterminate`-Box meldet
+beim Klick `checked: true` und hätte nur erneut alles ausgewählt, statt zu leeren), und `Checkbox`
+spiegelt `indeterminate` jetzt nach jedem Commit statt nur bei Änderung des Props — ein nativer Klick
+löscht die Eigenschaft, und bis hierher blieb kein Aufrufer über einen Klick hinweg gemischt.
+
+**Stufe 2 bleibt offen:** „Alle {{total}} auswählen" über alle Treffer (FR-LST-04 Must). Als
+Backlog-Eintrag in `docs/implementation-plan.md` §11 aufgenommen, mit dem Paginierer
+(`collectMatchingIds`) und der Account-Floor-Klausel als benanntem Ausgangspunkt.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -480,7 +502,17 @@ mit Entfernung): alle grün. Gegenprüfung: bestätigt, Severity bleibt medium.
 
 ### R-09 — [MEDIUM] Ein ungültiges `receivedAt` vom Server wirft beim Rendern und reißt Liste und Lesebereich in die Error-Boundary — dauerhaft, weil die Zeile in der Replica liegt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide vorgeschlagenen Teile umgesetzt und beide Fehlerklassen behandelt — nachgeprüft: `undefined`,
+`''`, Nicht-ISO und außerhalb des Bereichs werfen; `null` und blanke Zahlen werden still zur Epoche.
+`parseReceivedAt` (in `mail/format-message-time.ts`) weist beide zurück und ist die eine Definition,
+die auch `toEmailRow` benutzt — statt der im Lösungsansatz vorgeschlagenen zweiten Prüfung inline in
+`db.ts`, die mit der Anzeige hätte auseinanderlaufen können. Abweichung beim Fallback an der Grenze:
+`''` statt `new Date(0).toISOString()` — Letzteres wäre genau das stille „1. Januar 1970", das der
+Befund benennt; `''` ist ein gültiger IndexedDB-Schlüssel, sortiert vor jedem echten Zeitstempel und
+lässt eine undatierte Nachricht ans Ende eines Fensters statt an den Anfang rutschen. Im Render-Pfad
+liefert `formatMessageTime` jetzt `null` statt zu werfen, und die drei Aufrufer zeichnen dann eine
+Textzeile mit `list.noDate` (14 Bundles) statt eines `<time>` mit unlesbarem `datetime`.
 
 **Kategorie / Bereich:** robustness / Mail
 
@@ -522,7 +554,15 @@ Korrektur zum `null`-Fall.
 
 ### R-10 — [MEDIUM] Zwei weitere Dispatch-Stellen ohne Fehlerbehandlung — Rest des W-10-Fixes in `use-snooze.ts` und `labels/use-labels.ts` (vgl. W-10)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle drei Stellen wie vorgeschlagen: `use-snooze.ts` über `dispatchOrReport`, `stripKeyword` mit
+`try/catch` je Chunk und weiterlaufender Schleife plus `catch` am Aufruf (der Read, der die Schleife
+füttert, liegt außerhalb des Chunk-`catch`), `LabelMenu` schluckt still. Abweichung bei `LabelMenu`:
+statt `.catch(() => undefined)` das Wrap-Muster aus `usePrefetchBodies`
+(`Promise.resolve().then(…).catch(…)`) — ein blankes `.catch()` fängt nur ein REJECTED Promise, und
+ein synchroner Wurf (Engine mitten im Handover, unvollständiges Fake) wäre genau die unbehandelte
+Rejection, die die Zeile verhindern soll. Die bestehenden `LabelMenu`-Tests haben das sofort gezeigt:
+ihr Engine-Stub gibt `undefined` zurück.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -564,7 +604,18 @@ W-10 eingeordnet.
 
 ### R-11 — [MEDIUM] Anhänge: Download, Vorschau und „Alle speichern“ scheitern stumm (offline, 404, Größenlimit aus W-11) — keine Meldung, unbehandelte Rejection (vgl. W-11)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Teile umgesetzt. Fehlerbehandlung: `catch` je Aktion mit Toast (`tone: 'danger'`),
+`Promise.allSettled` in `saveAll` mit Nennung der fehlenden Dateien, und `null` vom Fetcher (kein
+Client) wird ebenfalls gemeldet statt still verschluckt. W-11-Rest: `BlobRef` trägt jetzt die
+deklarierte `size`, und `useBlobFetcher` leitet daraus eine `maxBytes`-Grenze ab (`downloadCeiling`,
+size × 2 + 1 MiB, nach oben durch `DEFAULT_MAX_DOWNLOAD_BYTES` gedeckelt). Abweichung vom
+Lösungsansatz: `tooLarge` wird nicht am Fehlertext erkannt, sondern über eine neue Klasse
+`BlobTooLargeError` in `@waxwing/jmap` — ein Textvergleich ist kein Vertrag, und die Klasse bleibt ein
+`JmapError`, sodass jedes vorhandene `catch` unverändert greift. Die Klassifikation liegt als
+`classifyBlobError` in `use-blob.ts` und baut auf `classifySourceError` auf, statt dessen Union zu
+erweitern — das hätte den Quelltext-Dialog gezwungen, einen Fall zu behandeln, den er nicht auslösen
+kann.
 
 **Kategorie / Bereich:** robustness / Mail
 
@@ -1921,7 +1972,12 @@ zusätzlich das Fixture abgefragt (gleiche Endpunkte). Gegenprüfung: bestätigt
 
 ### R-46 — [LOW] Der LRU-Touch in `fetchBody` lässt die Inline-Bild-Pipeline beim Öffnen ein zweites Mal anlaufen (Doppel-Emission der liveQuery; Blob-URLs verworfen, Blobs erneut gelesen)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Teile des Lösungsansatzes umgesetzt: `useInlineImages` hängt an einem Inhalts-Fingerprint
+(`body.id` plus `cid:blobId:type` je Teil), und der LRU-Touch in `fetchBody` wird übersprungen, wenn
+der Stempel jünger als 60 s ist. Kleine Abweichung: statt `parts` über ein Ref zu lesen, wird `parts`
+selbst per `useMemo` am Fingerprint stabilisiert — der Effekt behält dadurch eine ehrliche
+Abhängigkeitsliste, und ein Ref, das im Render beschrieben wird, entfällt.
 
 **Kategorie / Bereich:** react / Mail
 
@@ -1965,7 +2021,10 @@ Bilder und In-Memory-Fetcher → nur ein Lauf. Gegenprüfung: abgeschwächt, med
 
 ### R-47 — [LOW] Shift+↓/↑ ohne Anker lässt die Startzeile aus dem Bereich fallen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Wie vorgeschlagen im Key-Handler: bei `selection.anchor === null` zuerst `selectOne` auf die
+fokussierte Zeile, dann `range` auf das Ziel. Die Shift-Klick-Semantik im Reducer bleibt unangetastet
+(`message-selection.test.ts:34` bleibt grün).
 
 **Kategorie / Bereich:** a11y / Mail
 
@@ -1995,7 +2054,15 @@ unverändert.
 
 ### R-48 — [LOW] Die Snooze-Weckzeiten sind ein blinder Read-Modify-Write auf einem Render-Snapshot — der zweite Schreiber verliert die Weckzeit des ersten, die Mail bleibt dauerhaft ausgeblendet
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`updateSnoozeMap(db, accountId, fn)` als Dexie-`rw`-Read-Modify-Write in `repo.ts`, analog
+`updatePinnedMailboxes`; `snooze` und `wake` gehen darüber. NICHT umgesetzt und bewusst verworfen:
+der zusätzlich vorgeschlagene Waisen-Sweep (Ids mit `$snoozed` ohne Map-Eintrag beim Sweep wecken).
+Das Keyword ist Server-Zustand und synchronisiert über alle Geräte, die Weckzeit liegt in
+`localPrefs` und tut das nicht — auf jedem zweiten Gerät ist deshalb JEDE auf einem anderen Gerät
+gesnoozte Mail eine „Waise". Der Sweep hätte sie dort sofort geweckt und die Entfernung des Keywords
+an den Server geschickt, also den Snooze überall aufgehoben. Das wäre ein schlimmerer Fehler als der
+behobene.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -2028,7 +2095,12 @@ zusätzlich Ids mit `$snoozed` ohne Map-Eintrag (Waisen) beim Sweep wecken.
 
 ### R-49 — [LOW] `useSnoozeWaker` hängt an instabilen Abhängigkeiten: Interval wird bei jedem Shell-Render abgebaut und neu gesetzt, `check()` läuft pro Render
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`coerceSnoozeMap` hängt jetzt per `useMemo` am Roh-Pref-Wert, und der Waker ist in zwei Effekte
+geteilt: einer reagiert auf Datenänderungen (`[snoozed, wake]`), einer hält das Intervall
+(`[wakeDue]`, das über ein Ref liest). Zusammen mit R-48 in einem Commit — die entscheidende Hälfte
+der Stabilisierung ist, dass `snooze`/`wake` durch den Read-Modify-Write gar nicht mehr über
+`snoozed` schließen.
 
 **Kategorie / Bereich:** react / Mail
 
@@ -2056,7 +2128,12 @@ zwischen `setPref` und liveQuery-Emission ist möglich, aber harmlos.
 
 ### R-50 — [LOW] Zwei hardcodierte Interpunktions-Muster im JSX: `": "` nach „An“ und `" (n)"` in der Anhangs-Überschrift
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`reading.toLine` und `reading.attachments.titleCount` in allen 14 Bundles (Letzteres mit den
+Pluralformen, die jede Sprache tatsächlich auswählt). `reading.to` und `reading.attachments.title`
+bleiben als blanke Bezeichnungen erhalten — die Detailliste braucht ein `<dt>` ohne Interpunktion,
+und `aria-label` der Sektion benennt den Bereich, statt ihn zu zählen. Der Regressionstest ist ein
+Quelltext-Scan in `locales.test.ts` mit genau den beiden Grep-Mustern des Befunds.
 
 **Kategorie / Bereich:** i18n / Mail
 
@@ -2083,7 +2160,11 @@ zwei Treffer. Gegenprüfung: bestätigt.
 
 ### R-51 — [LOW] Ein fehlgeschlagenes Nachladen (offline) hinterlässt eine unbehandelte Rejection und sperrt den Guard bis zum Fensterwechsel
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Guard-Freigabe im `catch` umgesetzt (nur der eigene Stempel wird geräumt). NICHT umgesetzt: die
+optionale Zeile `list.loadMoreFailed` unter der Liste — das Nachladen ist ein Prefetch, der beim
+nächsten Scrollen an den Rand von selbst erneut anläuft, und eine dauerhafte Fehlerzeile für einen
+Vorgang, den niemand ausgelöst hat, wäre lauter als der Fehler.
 
 **Kategorie / Bereich:** robustness / Mail
 

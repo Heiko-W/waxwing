@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Nessun mittente)",
     "noSubject": "(Nessun oggetto)",
+    "noDate": "Senza data",
     "unread": "Non letto",
     "flagged": "Preferito",
     "attachment": "Con allegato",
@@ -1051,6 +1052,7 @@
     "select": "Seleziona il messaggio",
     "selectAll": "Seleziona tutto",
     "selected": "{{count}} selezionati",
+    "selectedOfTotal": "{{count}} di {{total}} selezionati",
     "clearSelection": "Annulla la selezione",
     "actions": {
       "archive": "Archivia",
@@ -1115,6 +1117,7 @@
   "reading": {
     "from": "Da",
     "to": "A",
+    "toLine": "A: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Rispondi a",
     "bcc": "Ccn",
@@ -1153,6 +1156,9 @@
     },
     "attachments": {
       "title": "Allegati",
+      "titleCount_one": "{{count}} allegato",
+      "titleCount_many": "{{count}} di allegati",
+      "titleCount_other": "{{count}} allegati",
       "saveAll": "Salva tutti",
       "unnamed": "(Senza nome)",
       "preview": "Anteprima",
@@ -1164,7 +1170,15 @@
       "unpackShort": "Mostra il contenuto",
       "unpackedHeading": "Contenuto di {{name}}",
       "unpackEmpty": "Non è stato possibile estrarre nulla da questo file.",
-      "unpackNote": "Outlook li ha impacchettati in un unico file. Sono mostrati come li ha inviati il tuo corrispondente; nulla di ciò che vedi qui è stato verificato."
+      "unpackNote": "Outlook li ha impacchettati in un unico file. Sono mostrati come li ha inviati il tuo corrispondente; nulla di ciò che vedi qui è stato verificato.",
+      "error": {
+        "offline": "Non è stato possibile scaricare {{name}}: sei offline.",
+        "notFound": "{{name}} non è più sul server.",
+        "tooLarge": "{{name}} è più grande di quanto dichiarato e non è stato scaricato.",
+        "failed": "Non è stato possibile scaricare {{name}}.",
+        "saveAllPartial": "L’archivio è stato salvato senza questi, che non è stato possibile scaricare: {{names}}.",
+        "saveAllFailed": "Non è stato possibile scaricare nulla, quindi non è stato salvato alcun archivio."
+      }
     },
     "editDraft": "Modifica la bozza",
     "draftLead": "Questa è una bozza che non hai ancora inviato.",

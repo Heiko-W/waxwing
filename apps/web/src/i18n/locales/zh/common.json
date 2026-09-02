@@ -1016,6 +1016,7 @@
   "list": {
     "noSender": "（无发件人）",
     "noSubject": "（无主题）",
+    "noDate": "无日期",
     "unread": "未读",
     "flagged": "已标记",
     "attachment": "含附件",
@@ -1023,6 +1024,7 @@
     "select": "选择邮件",
     "selectAll": "全选",
     "selected": "已选择{{count}}封",
+    "selectedOfTotal": "已选择 {{total}} 封中的 {{count}} 封",
     "clearSelection": "取消选择",
     "actions": {
       "archive": "归档",
@@ -1085,6 +1087,7 @@
   "reading": {
     "from": "发件人",
     "to": "收件人",
+    "toLine": "收件人：{{recipients}}",
     "cc": "抄送",
     "replyTo": "回复地址",
     "bcc": "密送",
@@ -1123,6 +1126,7 @@
     },
     "attachments": {
       "title": "附件",
+      "titleCount_other": "{{count}} 个附件",
       "saveAll": "全部保存",
       "unnamed": "（无名称）",
       "preview": "预览",
@@ -1134,7 +1138,15 @@
       "unpackShort": "显示内容",
       "unpackedHeading": "{{name}}中的内容",
       "unpackEmpty": "无法从此文件中读出任何内容。",
-      "unpackNote": "Outlook 把这些文件打包成了一个文件。它们按对方发送时的原样显示，未经任何检查。"
+      "unpackNote": "Outlook 把这些文件打包成了一个文件。它们按对方发送时的原样显示，未经任何检查。",
+      "error": {
+        "offline": "你目前离线，无法下载 {{name}}。",
+        "notFound": "{{name}} 已不在服务器上。",
+        "tooLarge": "{{name}} 比声明的更大，未予下载。",
+        "failed": "无法下载 {{name}}。",
+        "saveAllPartial": "压缩包已保存，但以下附件无法下载：{{names}}。",
+        "saveAllFailed": "没有任何附件能够下载，因此未保存压缩包。"
+      }
     },
     "editDraft": "编辑草稿",
     "draftLead": "这是一封您尚未发送的草稿。",

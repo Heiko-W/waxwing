@@ -1016,6 +1016,7 @@
   "list": {
     "noSender": "（差出人なし）",
     "noSubject": "（件名なし）",
+    "noDate": "日付なし",
     "unread": "未読",
     "flagged": "フラグあり",
     "attachment": "添付ファイルあり",
@@ -1023,6 +1024,7 @@
     "select": "メッセージを選択",
     "selectAll": "すべて選択",
     "selected": "{{count}} 件を選択中",
+    "selectedOfTotal": "{{total}} 件中 {{count}} 件を選択中",
     "clearSelection": "選択を解除",
     "actions": {
       "archive": "アーカイブ",
@@ -1085,6 +1087,7 @@
   "reading": {
     "from": "差出人",
     "to": "宛先",
+    "toLine": "宛先: {{recipients}}",
     "cc": "Cc",
     "replyTo": "返信先",
     "bcc": "Bcc",
@@ -1123,6 +1126,7 @@
     },
     "attachments": {
       "title": "添付ファイル",
+      "titleCount_other": "添付ファイル {{count}} 件",
       "saveAll": "すべて保存",
       "unnamed": "（名前なし）",
       "preview": "プレビュー",
@@ -1134,7 +1138,15 @@
       "unpackShort": "中身を表示",
       "unpackedHeading": "{{name}} の中身",
       "unpackEmpty": "このファイルからは何も読み取れませんでした。",
-      "unpackNote": "Outlook がこれらを 1 つのファイルにまとめています。相手が送ったままの形で表示しており、中身の検査は行っていません。"
+      "unpackNote": "Outlook がこれらを 1 つのファイルにまとめています。相手が送ったままの形で表示しており、中身の検査は行っていません。",
+      "error": {
+        "offline": "オフラインのため {{name}} をダウンロードできませんでした。",
+        "notFound": "{{name}} はサーバー上にもうありません。",
+        "tooLarge": "{{name}} は申告されたサイズより大きいため、ダウンロードしませんでした。",
+        "failed": "{{name}} をダウンロードできませんでした。",
+        "saveAllPartial": "ダウンロードできなかった次のファイルを除いて、アーカイブを保存しました: {{names}}。",
+        "saveAllFailed": "何もダウンロードできなかったため、アーカイブは保存されませんでした。"
+      }
     },
     "editDraft": "下書きを編集",
     "draftLead": "これは、まだ送信していない下書きです。",

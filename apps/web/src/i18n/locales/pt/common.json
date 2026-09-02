@@ -1044,6 +1044,7 @@
   "list": {
     "noSender": "(Sem remetente)",
     "noSubject": "(Sem assunto)",
+    "noDate": "Sem data",
     "unread": "Não lida",
     "flagged": "Assinalada",
     "attachment": "Tem anexo",
@@ -1051,6 +1052,7 @@
     "select": "Selecionar mensagem",
     "selectAll": "Selecionar tudo",
     "selected": "{{count}} selecionadas",
+    "selectedOfTotal": "{{count}} de {{total}} selecionadas",
     "clearSelection": "Limpar a seleção",
     "actions": {
       "archive": "Arquivar",
@@ -1115,6 +1117,7 @@
   "reading": {
     "from": "De",
     "to": "Para",
+    "toLine": "Para: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Responder a",
     "bcc": "Bcc",
@@ -1153,6 +1156,9 @@
     },
     "attachments": {
       "title": "Anexos",
+      "titleCount_one": "{{count}} anexo",
+      "titleCount_many": "{{count}} anexos",
+      "titleCount_other": "{{count}} anexos",
       "saveAll": "Guardar tudo",
       "unnamed": "(Sem nome)",
       "preview": "Pré-visualizar",
@@ -1164,7 +1170,15 @@
       "unpackShort": "Mostrar o conteúdo",
       "unpackedHeading": "Dentro de {{name}}",
       "unpackEmpty": "Não foi possível extrair nada deste ficheiro.",
-      "unpackNote": "O Outlook juntou isto tudo num só ficheiro. É mostrado tal como o seu correspondente o enviou; nada aqui foi verificado."
+      "unpackNote": "O Outlook juntou isto tudo num só ficheiro. É mostrado tal como o seu correspondente o enviou; nada aqui foi verificado.",
+      "error": {
+        "offline": "Não foi possível transferir {{name}} — está sem ligação.",
+        "notFound": "{{name}} já não está no servidor.",
+        "tooLarge": "{{name}} é maior do que declarava e não foi transferido.",
+        "failed": "Não foi possível transferir {{name}}.",
+        "saveAllPartial": "O arquivo foi guardado sem estes, que não foi possível transferir: {{names}}.",
+        "saveAllFailed": "Não foi possível transferir nada, por isso não foi guardado nenhum arquivo."
+      }
     },
     "editDraft": "Editar o rascunho",
     "draftLead": "Este é um rascunho que ainda não enviou.",

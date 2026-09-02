@@ -26,7 +26,7 @@ import { Download } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatBytes } from '../i18n/formatters'
-import { Button, IconButton, Spinner } from '../ui'
+import { Button, IconButton, Spinner, useToast } from '../ui'
 import { attachmentIcon } from './attachment-icon'
 import { isProtectionPart } from './encrypted-message'
 import { NestedMessageView } from './NestedMessageView'
@@ -35,7 +35,7 @@ import styles from './reading.module.css'
 import { displayFilename, safeDownloadName } from './safe-filename'
 import type { TnefAttachment } from './tnef'
 import { isTnefPart } from './tnef-detect'
-import { useBlobFetcher } from './use-blob'
+import { classifyBlobError, useBlobFetcher } from './use-blob'
 
 export interface AttachmentListProps {
   readonly accountId: Id
@@ -76,6 +76,7 @@ const SAVE_ALL_BUSY = '\0save-all'
 
 export function AttachmentList({ accountId, attachments, subject }: AttachmentListProps) {
   const { t } = useTranslation()
+  const { toast } = useToast()
   const fetchBlob = useBlobFetcher(accountId)
   // One object URL per blob, reused across preview toggles and downloads and revoked once on unmount
   // — so re-opening a preview neither re-downloads nor leaks a superseded blob: URL.
@@ -90,6 +91,48 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
 
   const items = attachments.filter(isAttachment)
 
+  /**
+   * The name this strip SHOWS for a part — stripped, never the sender's raw string, and never empty.
+   *
+   * Hoisted out of the row markup because the failure messages below name the file too, and a toast
+   * that calls it something the row does not is a toast about a different attachment.
+   */
+  const nameOf = useCallback(
+    (part: EmailBodyPart): string => {
+      const shown = part.name !== null ? displayFilename(part.name) : ''
+      return shown === '' ? t('reading.attachments.unnamed') : shown
+    },
+    [t],
+  )
+
+  /*
+   * Why every action here now has a `catch`, and why it TOASTS.
+   *
+   * These are downloads over the network, in an app whose whole point is working offline. Clicking
+   * Download on a blob that is not cached, with no connection, did exactly nothing: the spinner went
+   * out again (`finally`) and the rejection went to the console, which is not a place anybody looks.
+   * The neighbouring surfaces — `MessageSourceDialog`, `NestedMessageView` — have classified and
+   * shown their failures all along; this strip was the one that did not.
+   *
+   * `null` from the fetcher is the same event wearing different clothes: it means there is no
+   * client, i.e. nothing is connected, and it was likewise silent.
+   */
+  const reportFailure = useCallback(
+    (error: unknown, name: string): void => {
+      toast({
+        title: t(`reading.attachments.error.${classifyBlobError(error)}`, { name }),
+        tone: 'danger',
+      })
+    },
+    [toast, t],
+  )
+  const reportDisconnected = useCallback(
+    (name: string): void => {
+      toast({ title: t('reading.attachments.error.offline', { name }), tone: 'danger' })
+    },
+    [toast, t],
+  )
+
   useEffect(() => {
     const cache = urlCacheRef.current
     return () => {
@@ -103,7 +146,12 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
       const cached = urlCacheRef.current.get(part.blobId)
       if (cached !== undefined) return cached
       // M3.4: through the write-through cache — a re-open (or an offline open) hits the replica.
-      const blob = await fetchBlob({ blobId: part.blobId, type: part.type, name: part.name })
+      const blob = await fetchBlob({
+        blobId: part.blobId,
+        type: part.type,
+        name: part.name,
+        size: part.size,
+      })
       if (blob === null) return null
       const url = URL.createObjectURL(blob)
       urlCacheRef.current.set(part.blobId, url)
@@ -117,7 +165,10 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
       setBusy(part.blobId)
       try {
         const url = await fetchUrl(part)
-        if (url === null) return
+        if (url === null) {
+          reportDisconnected(nameOf(part))
+          return
+        }
         const anchor = document.createElement('a')
         anchor.href = url
         // Never `part.name` raw: it is the sender's string and this is a filesystem name. Chromium
@@ -125,11 +176,13 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
         // neither controls nor can assume of every engine.
         anchor.download = safeDownloadName(part.name, DOWNLOAD_FALLBACK)
         anchor.click()
+      } catch (error) {
+        reportFailure(error, nameOf(part))
       } finally {
         setBusy(null)
       }
     },
-    [fetchUrl],
+    [fetchUrl, nameOf, reportFailure, reportDisconnected],
   )
 
   /**
@@ -142,18 +195,41 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
   const saveAll = useCallback(async (): Promise<void> => {
     setBusy(SAVE_ALL_BUSY)
     try {
-      const fetched = await Promise.all(
+      // `allSettled`, not `all`: one unreachable blob used to reject the whole batch, so a message
+      // with nine cached attachments and one that is not produced no archive and no explanation.
+      // Now the nine are archived and the tenth is named.
+      const fetched = await Promise.allSettled(
         items.map(async (part) => {
-          const blob = await fetchBlob({ blobId: part.blobId, type: part.type, name: part.name })
-          return blob === null
-            ? null
-            : { name: safeDownloadName(part.name, DOWNLOAD_FALLBACK), blob }
+          const blob = await fetchBlob({
+            blobId: part.blobId,
+            type: part.type,
+            name: part.name,
+            size: part.size,
+          })
+          // `null` is "nothing is connected" — a failure like any other as far as this archive is
+          // concerned, so it is rejected rather than filtered away without a word.
+          if (blob === null) throw new TypeError('no client')
+          return { name: safeDownloadName(part.name, DOWNLOAD_FALLBACK), blob }
         }),
       )
-      const entries = fetched.filter((entry) => entry !== null)
+      const entries = fetched
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value)
+      const missing = items
+        .filter((_part, index) => fetched[index]?.status === 'rejected')
+        .map((part) => nameOf(part))
       // Every attachment failed to download — there is nothing to put in an archive, and an empty
       // zip would look like success.
-      if (entries.length === 0) return
+      if (entries.length === 0) {
+        toast({ title: t('reading.attachments.error.saveAllFailed'), tone: 'danger' })
+        return
+      }
+      if (missing.length > 0) {
+        toast({
+          title: t('reading.attachments.error.saveAllPartial', { names: missing.join(', ') }),
+          tone: 'danger',
+        })
+      }
 
       const { buildZip, zipFilename } = await import('./attachment-zip')
       const archive = await buildZip(entries)
@@ -165,26 +241,40 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
       // Not cached in `urlCacheRef`: this URL addresses a one-off archive, not a blob the pane will
       // show again. Revoked on a later tick so the click has taken it (same idiom as the .eml save).
       setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch {
+      // Not the per-blob failures — those are settled above. This is the archive itself: the lazy
+      // zip chunk failing to load, or `buildZip` refusing. Nothing was saved either way.
+      toast({ title: t('reading.attachments.error.saveAllFailed'), tone: 'danger' })
     } finally {
       setBusy(null)
     }
-  }, [items, fetchBlob, subject])
+  }, [items, fetchBlob, subject, nameOf, toast, t])
 
   const unpack = useCallback(
     async (part: EmailBodyPart & { blobId: Id }): Promise<void> => {
       setBusy(part.blobId)
       try {
-        const blob = await fetchBlob({ blobId: part.blobId, type: part.type, name: part.name })
-        if (blob === null) return
+        const blob = await fetchBlob({
+          blobId: part.blobId,
+          type: part.type,
+          name: part.name,
+          size: part.size,
+        })
+        if (blob === null) {
+          reportDisconnected(nameOf(part))
+          return
+        }
         // Lazily imported so the decoder stays out of the eager bundle — see `.size-limit.js`.
         const { extractTnefAttachments } = await import('./tnef')
         const bytes = new Uint8Array(await blob.arrayBuffer())
         setUnpacked((current) => ({ ...current, [part.blobId]: extractTnefAttachments(bytes) }))
+      } catch (error) {
+        reportFailure(error, nameOf(part))
       } finally {
         setBusy(null)
       }
     },
-    [fetchBlob],
+    [fetchBlob, nameOf, reportFailure, reportDisconnected],
   )
 
   const saveInner = useCallback((file: TnefAttachment): void => {
@@ -208,12 +298,15 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
       setBusy(part.blobId)
       try {
         const url = await fetchUrl(part)
-        if (url !== null) setPreview({ blobId: part.blobId, type: part.type, url })
+        if (url === null) reportDisconnected(nameOf(part))
+        else setPreview({ blobId: part.blobId, type: part.type, url })
+      } catch (error) {
+        reportFailure(error, nameOf(part))
       } finally {
         setBusy(null)
       }
     },
-    [fetchUrl, preview],
+    [fetchUrl, preview, nameOf, reportFailure, reportDisconnected],
   )
 
   if (items.length === 0) return null
@@ -221,8 +314,12 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
   return (
     <section className={styles.attachments} aria-label={t('reading.attachments.title')}>
       <div className={styles.attachmentsHead}>
+        {/* The count belongs INSIDE the string (R-50): " (n)" is a typographic convention, not a
+            universal one, and a number in a sentence is what `{{count}}` is for. `title` stays as
+            the bare label for the section's `aria-label`, which names the region rather than
+            counting it. */}
         <h3 className={styles.attachmentsTitle}>
-          {t('reading.attachments.title')} ({items.length})
+          {t('reading.attachments.titleCount', { count: items.length })}
         </h3>
         {items.length > 1 && (
           <Button
@@ -238,13 +335,11 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
       <ul className={styles.attachmentItems}>
         {items.map((part) => {
           const Icon = attachmentIcon(part.type)
-          // Stripped, not raw: `Invoice<U+202E>gpj.exe` rendered as `Invoiceexe.jpg` is this app
-          // telling the reader the file is an image. Used for the visible text AND for every
-          // `aria-label` built from it, so the two cannot say different things.
-          // A name made ENTIRELY of stripped characters leaves nothing, which would render a
-          // nameless row and a control with no accessible name at all — that is "unnamed" too.
-          const shown = part.name !== null ? displayFilename(part.name) : ''
-          const label = shown === '' ? t('reading.attachments.unnamed') : shown
+          // `nameOf`, which strips: `Invoice<U+202E>gpj.exe` rendered as `Invoiceexe.jpg` is this
+          // app telling the reader the file is an image. The same function feeds the visible text,
+          // every `aria-label` built from it AND the failure toasts, so none of them can name the
+          // file differently from the others.
+          const label = nameOf(part)
           const open = preview?.blobId === part.blobId
           return (
             <li key={part.blobId} className={styles.attachment}>

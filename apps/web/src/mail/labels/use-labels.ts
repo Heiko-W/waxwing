@@ -22,6 +22,7 @@ import {
   useReplica,
   useReplicaQuery,
 } from '../../sync'
+import { reportDispatchFailure } from '../../sync/dispatch-failure'
 import { getEngineFor } from '../../sync/engine'
 import {
   type DisplayLabel,
@@ -90,10 +91,19 @@ async function stripKeyword(db: ReplicaDb, accountId: Id, keyword: string): Prom
   const ids = await emailIdsWithKeyword(db, accountId, keyword)
   for (let start = 0; start < ids.length; start += STRIP_CHUNK) {
     const chunk = ids.slice(start, start + STRIP_CHUNK)
-    await engine.dispatch(
-      { kind: 'setKeywords', emailIds: chunk, keyword, value: false },
-      { id: crypto.randomUUID() },
-    )
+    // Per CHUNK, and the loop carries on (W-10, the half this file was missed by). `dispatch`
+    // awaits three IndexedDB writes; a throw on chunk two used to abandon chunks three onward with
+    // the registry entry already gone, so part of the mail kept a keyword nothing would ever
+    // mention again. Reporting each failure and continuing strips as much as the disk allows and
+    // says so once per failure, which beats both a silent partial strip and a silent abort.
+    try {
+      await engine.dispatch(
+        { kind: 'setKeywords', emailIds: chunk, keyword, value: false },
+        { id: crypto.randomUUID() },
+      )
+    } catch (error) {
+      reportDispatchFailure(error)
+    }
   }
 }
 
@@ -134,7 +144,10 @@ export function useLabelActions(): LabelActions {
         void updateLabels(db, accountId, (current) =>
           current.filter((entry) => entry.keyword !== keyword),
         )
-        if (options?.alsoStrip) void stripKeyword(db, accountId, keyword)
+        // The read that FEEDS the loop (`emailIdsWithKeyword`) can throw as well, and it is outside
+        // the per-chunk catch above — so the call itself still needs one.
+        if (options?.alsoStrip)
+          void stripKeyword(db, accountId, keyword).catch(reportDispatchFailure)
       },
     }),
     [db, accountId],

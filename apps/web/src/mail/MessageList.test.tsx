@@ -2472,6 +2472,92 @@ describe('the message row answers a secondary click', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'Mark as junk' })).toBeNull()
   })
 
+  /**
+   * The menu's own rule — "omit, never dim" — applied to the two entries that had never been gated
+   * (R-07). Both are moves `useTriage` refuses without a word: no dispatch, no toast, no undo. That
+   * is the same failure B24 closed for Junk, and the bulk bar and the reading pane already gate all
+   * of them.
+   */
+  describe('offers no move that cannot happen', () => {
+    async function seedFolderRow(mailboxId: string, id: string, subject: string) {
+      await putEmails(db, 'a', [
+        email(id, { subject, mailboxIds: { [mailboxId]: true }, keywords: {} }),
+      ])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: folderKey(mailboxId),
+        ids: [id],
+        queryState: 'q',
+        total: 1,
+        upToId: id,
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 1,
+      })
+    }
+
+    async function openMenuOn(subject: string) {
+      const row = await screen.findByRole('row', { name: new RegExp(subject) })
+      fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+      return await screen.findByRole('menu')
+    }
+
+    it('omits Archive inside Archive', async () => {
+      await seedFolderRow('archive', 'x1', 'Filed')
+      renderList('archive')
+      const menu = await openMenuOn('Filed')
+      expect(within(menu).queryByRole('menuitem', { name: 'Archive' })).toBeNull()
+      // The rest of the file group is still there — this gates one entry, not the arm.
+      expect(within(menu).getByRole('menuitem', { name: 'Move to…' })).toBeInTheDocument()
+    })
+
+    it('omits Archive on an account that has no Archive folder', async () => {
+      await deleteMailbox(db, 'a', 'archive')
+      await seedFolderRow('inbox', 'x1', 'Plain')
+      renderList('inbox')
+      const menu = await openMenuOn('Plain')
+      expect(within(menu).queryByRole('menuitem', { name: 'Archive' })).toBeNull()
+    })
+
+    it('swaps Move to Trash for a permanent Delete inside Trash', async () => {
+      await seedFolderRow('trash', 'x1', 'Binned')
+      renderList('trash')
+      const menu = await openMenuOn('Binned')
+      expect(within(menu).queryByRole('menuitem', { name: 'Move to Trash' })).toBeNull()
+      expect(within(menu).getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    })
+
+    it('the Delete entry raises the same confirmation the bulk bar does', async () => {
+      // Not a second, unconfirmed way to destroy mail: it goes through `requestDestroy`, which is
+      // the list store's own dialog request.
+      const user = userEvent.setup()
+      await seedFolderRow('trash', 'x1', 'Binned')
+      renderList('trash')
+      const menu = await openMenuOn('Binned')
+      await user.click(within(menu).getByRole('menuitem', { name: 'Delete' }))
+      expect(useListStore.getState().destroyTargets).toEqual(['x1'])
+    })
+
+    it('omits Move to Trash on an account that has no Trash folder', async () => {
+      await deleteMailbox(db, 'a', 'trash')
+      await seedFolderRow('inbox', 'x1', 'Plain')
+      renderList('inbox')
+      const menu = await openMenuOn('Plain')
+      expect(within(menu).queryByRole('menuitem', { name: 'Move to Trash' })).toBeNull()
+      expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).toBeNull()
+    })
+
+    it('still offers both outside either folder', async () => {
+      await seedFolderRow('inbox', 'x1', 'Plain')
+      renderList('inbox')
+      const menu = await openMenuOn('Plain')
+      expect(within(menu).getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+      expect(within(menu).getByRole('menuitem', { name: 'Move to Trash' })).toBeInTheDocument()
+      expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).toBeNull()
+    })
+  })
+
   it('leaves a click that is not on a row to the browser', async () => {
     // The empty space below the last row is the page, not a message.
     renderList()
@@ -2481,5 +2567,345 @@ describe('the message row answers a secondary click', () => {
     fireEvent(grid, event)
     expect(event.defaultPrevented).toBe(false)
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+})
+
+/**
+ * Infinite scroll across window changes (R-01, R-51).
+ *
+ * `MailScreen` does not key `<MessageList>` on the folder, so a folder change re-renders this
+ * component in place and every ref it holds survives. The tail guard used to be the loaded LENGTH
+ * alone, which made it a cross-folder lock: after any folder paged once the ref held that folder's
+ * length, and the next folder opened at the engine's own page size and matched it. Every fresh
+ * window starts at 50, so in practice every folder after the first one stopped dead after its head
+ * page while `aria-rowcount` announced the folder's real total.
+ *
+ * Seeded at 20-of-100 rather than 50-of-300 on purpose: the two numbers that have to be EQUAL for
+ * the lock are the two folders' loaded lengths, and 20 rows fit the stubbed viewport, so the
+ * virtualizer reaches the tail without a scroll. The COUNTER-CONTROL (21 vs 20) is what tells a
+ * genuine fix from a test that would pass on the old code too.
+ */
+describe('paging the tail', () => {
+  async function seedFolder(mailboxId: string, prefix: string, loaded: number, total: number) {
+    const ids = Array.from(
+      { length: loaded },
+      (_, i) => `${prefix}${String(i + 1).padStart(3, '0')}`,
+    )
+    await putEmails(
+      db,
+      'a',
+      ids.map((id) =>
+        email(id, { subject: `Msg ${id}`, mailboxIds: { [mailboxId]: true }, keywords: {} }),
+      ),
+    )
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: folderKey(mailboxId),
+      ids,
+      queryState: 'q',
+      total,
+      upToId: ids.at(-1) ?? '',
+      filter: null,
+      sort: null,
+      collapseThreads: true,
+      lastUsedAt: 1,
+    })
+  }
+
+  function tree(mailboxId: string) {
+    return (
+      <RouterProvider>
+        <ConfigProvider config={DEFAULT_CONFIG}>
+          <ToastProvider>
+            <ReplicaProvider accountId="a" db={db}>
+              <MessageList mailboxId={mailboxId} />
+            </ReplicaProvider>
+          </ToastProvider>
+        </ConfigProvider>
+      </RouterProvider>
+    )
+  }
+
+  /** Give the effects that follow a settled render a few macrotasks to fire (or not to). */
+  const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 50))))
+
+  /**
+   * Scroll the grid to the bottom. jsdom has no layout, so the virtualizer's offset is whatever
+   * `scrollTop` says when a `scroll` event arrives — which is enough to move the rendered slice and
+   * re-run the tail effect, the way a real scroll to the end does.
+   */
+  async function scrollToTail() {
+    const grid = screen.getByRole('grid')
+    Object.defineProperty(grid, 'scrollTop', { configurable: true, value: 10_000 })
+    await act(async () => {
+      fireEvent.scroll(grid)
+      await new Promise((r) => setTimeout(r, 50))
+    })
+  }
+
+  function engineWithLoadMore(loadMoreFor: () => Promise<void>) {
+    setActiveEngine({
+      watchWindow: vi.fn(() => 'k'),
+      watchQuery: vi.fn(() => 'k'),
+      unwatchQuery: vi.fn(),
+      fetchSnippets: vi.fn(async () => new Map<string, never>()),
+      loadMoreFor,
+      fetchEnvelopes: vi.fn(),
+      dispatch,
+    } as unknown as Parameters<typeof setActiveEngine>[0])
+  }
+
+  it('asks for the next page of a folder opened after another folder paged at the same length', async () => {
+    const loadMoreFor = vi.fn(async () => undefined)
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+    await seedFolder('archive', 'r', 20, 100)
+
+    const view = render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('inbox'), 50))
+    loadMoreFor.mockClear()
+
+    // The folder change MailScreen actually performs: same element, new prop, no remount.
+    view.rerender(tree('archive'))
+    await screen.findByRole('row', { name: /Msg r001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('archive'), 50))
+  })
+
+  it('COUNTER-CONTROL: a differing length always paged, even before the fix', async () => {
+    const loadMoreFor = vi.fn(async () => undefined)
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+    await seedFolder('archive', 'r', 21, 100)
+
+    const view = render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('inbox'), 50))
+    loadMoreFor.mockClear()
+    view.rerender(tree('archive'))
+    await screen.findByRole('row', { name: /Msg r001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('archive'), 50))
+  })
+
+  it('still asks only once while the window stands still', async () => {
+    // The guard's REASON: without it the effect re-fires on every scroll tick at the tail. The fix
+    // must not turn one request per window state into one per render.
+    const loadMoreFor = vi.fn(async () => undefined)
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+
+    const view = render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(1))
+    view.rerender(tree('inbox'))
+    view.rerender(tree('inbox'))
+    await settle()
+    expect(loadMoreFor).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks again after a page that failed — offline is not a permanent refusal (R-51)', async () => {
+    // The engine's `loadMoreFor` reaches the network and rejects offline. The guard held the stamp
+    // regardless, so the same window could never ask again: back online, scrolling to the tail did
+    // nothing until the folder was changed — where R-01 could refuse it a second time.
+    const loadMoreFor = vi.fn(async (): Promise<void> => {
+      throw new Error('offline')
+    })
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+
+    render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(1))
+    await settle()
+
+    // Back online, and the reader scrolls to the tail again. The window has NOT grown (the page
+    // never arrived), which is exactly the state a length-only stamp refuses for good.
+    loadMoreFor.mockImplementation(async () => undefined)
+    await scrollToTail()
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(2))
+  })
+})
+
+/**
+ * What "select all" is allowed to CLAIM (R-08).
+ *
+ * `selectAll` ticks the loaded `queryCache` window, which starts at the engine's 50 ids and grows
+ * only as `loadMore` pages. Comparing the tick count against `ids.length` alone drew a fully checked
+ * header box over a folder of 300, beside an `aria-rowcount` of 300 and a bar reading "50 selected".
+ * Nothing was ever mis-targeted — the store prunes ids it loses and invents none, and the bulk
+ * actions receive exactly the ticked set — but the following Archive moved 50 and left 250, after a
+ * control that had said "everything".
+ *
+ * These pin STAGE ONE only: the UI stops promising a scope it does not have. Actually selecting the
+ * folder (FR-LST-04's "select-all-in-folder", a "Select all {{total}}" that pages the rest of the
+ * ids out of `Email/query`) is in the post-V1 backlog and is NOT what these assert.
+ */
+describe('select-all over a window that is not the whole folder', () => {
+  async function seedPartialWindow(loaded: number, total: number) {
+    const ids = Array.from({ length: loaded }, (_, i) => `p${String(i + 1).padStart(2, '0')}`)
+    await putEmails(
+      db,
+      'a',
+      ids.map((id) => email(id, { subject: `Msg ${id}`, keywords: {} })),
+    )
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: inboxKey(),
+      ids,
+      queryState: 'q',
+      total,
+      upToId: ids.at(-1) as string,
+      filter: null,
+      sort: null,
+      collapseThreads: true,
+      lastUsedAt: 1,
+    })
+    return ids
+  }
+
+  it('leaves the header box mixed rather than checked', async () => {
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+
+    const header = await screen.findByRole('checkbox', { name: 'Clear selection' })
+    expect(header).not.toBeChecked()
+    expect((header as HTMLInputElement).indeterminate).toBe(true)
+    // The number it stands beside, which is what made the checked box a contradiction.
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-rowcount', '300')
+  })
+
+  it('says both numbers instead of just the one it selected', async () => {
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    expect(await screen.findByText('20 of 300 selected')).toBeInTheDocument()
+  })
+
+  it('the mixed box still clears, and does not merely re-select what is already ticked', async () => {
+    // An `indeterminate` box reports `checked: true` on click, so a handler driven by the event
+    // would have re-run select-all and left no way to clear from this control at all.
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'Clear selection' }))
+    await waitFor(() => expect(screen.queryByText('20 of 300 selected')).toBeNull())
+    expect(screen.queryByRole('checkbox', { name: 'Clear selection' })).toBeNull()
+  })
+
+  it('a hand-picked partial selection is left alone — the reader chose that scope', async () => {
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    expect(screen.queryByText(/of 300 selected/)).toBeNull()
+  })
+
+  it('a window that IS the whole folder still checks the box and counts plainly', async () => {
+    // The counter-control: without it, a fix that simply never checks the box would pass the rest.
+    const user = userEvent.setup()
+    await seedPartialWindow(20, 20)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+
+    const header = await screen.findByRole('checkbox', { name: 'Clear selection' })
+    expect(header).toBeChecked()
+    expect((header as HTMLInputElement).indeterminate).toBe(false)
+    expect(screen.getByText('20 selected')).toBeInTheDocument()
+  })
+
+  it('the bulk action still receives exactly what is ticked', async () => {
+    // Stage one is a claim, not a behaviour change: the archive over an honestly-labelled selection
+    // must still dispatch the 20 ids and no more.
+    const user = userEvent.setup()
+    const ids = await seedPartialWindow(20, 300)
+    renderList()
+    await screen.findByText('Msg p01')
+
+    await user.click(screen.getAllByRole('checkbox', { name: 'Select message' })[0] as HTMLElement)
+    await user.click(await screen.findByRole('checkbox', { name: 'Select all' }))
+    await user.click(await screen.findByRole('button', { name: 'Archive' }))
+    expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', emailIds: ids })
+  })
+})
+
+/**
+ * Shift+↓/↑ from a focus that has not selected anything yet (R-47).
+ *
+ * APG's grid pattern has Shift+↓ extend the selection "to include the next row" — the row the focus
+ * is standing on belongs to what is being extended. The reducer answers a range with no anchor by
+ * selecting the DESTINATION alone, which is right for a shift-CLICK (`message-selection.test.ts`
+ * pins it) and wrong from the keyboard: it dropped the row the reader started on, so three rows by
+ * Shift+↓↓ produced two. Fixed in the key handler, so shift-click semantics are untouched.
+ */
+describe('extending the selection from the keyboard', () => {
+  async function focusGrid() {
+    renderList()
+    await screen.findByText('First')
+    screen.getByRole('grid').focus()
+  }
+
+  it('keeps the starting row in the range', async () => {
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}')
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /First/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /Second/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('grows one row per keystroke from there', async () => {
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}')
+    expect(await screen.findByText('3 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Third/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('works upward too, from a focus moved down first', async () => {
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    await user.keyboard('{Shift>}{ArrowUp}{/Shift}')
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Third/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /Second/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /First/ })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('leaves an EXISTING anchor where it is, so a range can still shrink back to it', async () => {
+    // The anchor is planted only when there is none. Re-planting it on every keystroke would make
+    // the range unable to shrink, which is the behaviour `message-selection.ts` recomputes from
+    // `base` specifically to keep.
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}')
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    await user.keyboard('{Shift>}{ArrowUp}{/Shift}')
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /First/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /Second/ })).toHaveAttribute('aria-selected', 'false')
   })
 })

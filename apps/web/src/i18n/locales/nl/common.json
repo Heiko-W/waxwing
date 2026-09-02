@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(Geen afzender)",
     "noSubject": "(Geen onderwerp)",
+    "noDate": "Geen datum",
     "unread": "Ongelezen",
     "flagged": "Met ster",
     "attachment": "Heeft een bijlage",
@@ -1037,6 +1038,7 @@
     "select": "Bericht selecteren",
     "selectAll": "Alles selecteren",
     "selected": "{{count}} geselecteerd",
+    "selectedOfTotal": "{{count}} van {{total}} geselecteerd",
     "clearSelection": "Selectie opheffen",
     "actions": {
       "archive": "Archiveren",
@@ -1100,6 +1102,7 @@
   "reading": {
     "from": "Van",
     "to": "Aan",
+    "toLine": "Aan: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Antwoordadres",
     "bcc": "Bcc",
@@ -1138,6 +1141,8 @@
     },
     "attachments": {
       "title": "Bijlagen",
+      "titleCount_one": "{{count}} bijlage",
+      "titleCount_other": "{{count}} bijlagen",
       "saveAll": "Alles opslaan",
       "unnamed": "(Zonder naam)",
       "preview": "Voorbeeld",
@@ -1149,7 +1154,15 @@
       "unpackShort": "Inhoud tonen",
       "unpackedHeading": "In {{name}}",
       "unpackEmpty": "Uit dit bestand viel niets te lezen.",
-      "unpackNote": "Outlook heeft deze in één bestand verpakt. Ze worden getoond zoals je correspondent ze heeft verstuurd; er is hier niets gecontroleerd."
+      "unpackNote": "Outlook heeft deze in één bestand verpakt. Ze worden getoond zoals je correspondent ze heeft verstuurd; er is hier niets gecontroleerd.",
+      "error": {
+        "offline": "{{name}} kon niet worden gedownload — u bent offline.",
+        "notFound": "{{name}} staat niet meer op de server.",
+        "tooLarge": "{{name}} is groter dan opgegeven en is niet gedownload.",
+        "failed": "{{name}} kon niet worden gedownload.",
+        "saveAllPartial": "Het archief is opgeslagen zonder deze, die niet konden worden gedownload: {{names}}.",
+        "saveAllFailed": "Er kon niets worden gedownload, dus is er geen archief opgeslagen."
+      }
     },
     "editDraft": "Concept bewerken",
     "draftLead": "Dit is een concept dat je nog niet hebt verzonden.",

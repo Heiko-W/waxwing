@@ -1058,6 +1058,7 @@
   "list": {
     "noSender": "(Brak nadawcy)",
     "noSubject": "(Brak tematu)",
+    "noDate": "Bez daty",
     "unread": "Nieprzeczytana",
     "flagged": "Oznaczona gwiazdką",
     "attachment": "Ma załącznik",
@@ -1065,6 +1066,7 @@
     "select": "Zaznacz wiadomość",
     "selectAll": "Zaznacz wszystkie",
     "selected": "Zaznaczono: {{count}}",
+    "selectedOfTotal": "Zaznaczono: {{count}} z {{total}}",
     "clearSelection": "Wyczyść zaznaczenie",
     "actions": {
       "archive": "Archiwizuj",
@@ -1130,6 +1132,7 @@
   "reading": {
     "from": "Od",
     "to": "Do",
+    "toLine": "Do: {{recipients}}",
     "cc": "DW",
     "replyTo": "Adres zwrotny",
     "bcc": "UDW",
@@ -1168,6 +1171,10 @@
     },
     "attachments": {
       "title": "Załączniki",
+      "titleCount_one": "{{count}} załącznik",
+      "titleCount_few": "{{count}} załączniki",
+      "titleCount_many": "{{count}} załączników",
+      "titleCount_other": "{{count}} załącznika",
       "saveAll": "Zapisz wszystkie",
       "unnamed": "(Bez nazwy)",
       "preview": "Podgląd",
@@ -1179,7 +1186,15 @@
       "unpackShort": "Pokaż zawartość",
       "unpackedHeading": "Zawartość pliku {{name}}",
       "unpackEmpty": "Z tego pliku nie dało się nic odczytać.",
-      "unpackNote": "Outlook spakował te pliki w jeden. Są pokazane w takiej postaci, w jakiej przysłał je Twój rozmówca — nic nie zostało sprawdzone."
+      "unpackNote": "Outlook spakował te pliki w jeden. Są pokazane w takiej postaci, w jakiej przysłał je Twój rozmówca — nic nie zostało sprawdzone.",
+      "error": {
+        "offline": "Nie udało się pobrać pliku {{name}} — jesteś offline.",
+        "notFound": "Pliku {{name}} już nie ma na serwerze.",
+        "tooLarge": "Plik {{name}} jest większy, niż deklarował, i nie został pobrany.",
+        "failed": "Nie udało się pobrać pliku {{name}}.",
+        "saveAllPartial": "Archiwum zapisano bez tych plików, których nie udało się pobrać: {{names}}.",
+        "saveAllFailed": "Nie udało się pobrać niczego, więc archiwum nie zostało zapisane."
+      }
     },
     "editDraft": "Edytuj wersję roboczą",
     "draftLead": "To wersja robocza, której jeszcze nie wysłano.",

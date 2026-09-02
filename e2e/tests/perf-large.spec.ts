@@ -116,7 +116,7 @@ test.describe('M4.8 — a 100 000-message mailbox (NFR-PERF-02)', () => {
     expect(rows).toBeLessThan(100)
   })
 
-  test('select-all over 100 000 messages does not hydrate 100 000 rows', async ({ page }) => {
+  test('select-all in a 100 000-message folder does not hydrate 100 000 rows', async ({ page }) => {
     await login(page)
     await page.getByRole('treeitem', { name: new RegExp(LARGE_MAILBOX_NAME) }).click()
     await expect(messageList(page).getByRole('row').first()).toBeVisible({
@@ -129,14 +129,31 @@ test.describe('M4.8 — a 100 000-message mailbox (NFR-PERF-02)', () => {
     // The COUNT is the app acknowledging the selection — the same signal `keyboard.spec.ts` uses.
     // Not the bulk bar's Archive button: `getByRole('button', {name: /Archive/})` also matches the
     // Archive FOLDER's row menu, so it would pass whether or not anything was selected.
-    await expect(page.getByText(/\d+ selected/)).toBeVisible({ timeout: 30_000 })
+    const counter = page.getByText(/\d+ (?:of \d+ )?selected/)
+    await expect(counter).toBeVisible({ timeout: 30_000 })
     const elapsed = Date.now() - started
 
     const rows = await renderedRows(page)
-    console.log(`[perf-large] select-all: ${elapsed} ms, ${rows} rows in the DOM`)
+    const label = (await counter.textContent()) ?? ''
+    console.log(`[perf-large] select-all: ${elapsed} ms, ${rows} rows in the DOM, "${label}"`)
 
     expect(elapsed).toBeLessThan(OPEN_BUDGET_MS)
     expect(rows, 'select-all forced every row into the DOM').toBeLessThan(100)
+    /*
+     * And the NUMBER, which this test used to be blind to (R-08). `/\d+ selected/` matched
+     * whatever it said, so the test's own title — "select-all over 100 000 messages" — went
+     * unchecked while the app selected the loaded window and drew a fully-checked header box over
+     * it. What is measured here is the WINDOW, and the app now says so: the loaded count first, the
+     * folder's total second. Both halves are asserted, so neither the honest label nor the
+     * virtualization can regress unnoticed.
+     */
+    const parts = /^(\d[\d.,\u202f\u00a0\s]*) of (\d[\d.,\u202f\u00a0\s]*) selected$/.exec(label)
+    expect(parts, `the bulk bar must name both numbers, got "${label}"`).not.toBeNull()
+    const digits = (text: string) => Number(text.replace(/\D/g, ''))
+    const loaded = digits(parts?.[1] ?? '')
+    const matching = digits(parts?.[2] ?? '')
+    expect(matching).toBeGreaterThan(50_000)
+    expect(loaded, 'select-all must not have paged the whole folder in').toBeLessThan(1000)
   })
 
   /**

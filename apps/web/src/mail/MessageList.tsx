@@ -411,21 +411,45 @@ export function MessageList({
   // Highlighted (`<mark>`) subject/preview for the visible slice — search only (M3.1).
   const highlights = useSnippets(search?.spec.filter, visibleIds)
 
-  // Infinite scroll: page more when the tail comes into view and the window is not yet complete.
-  // Guarded so one page-request per window size cannot fire repeatedly while scrolling the tail.
+  /*
+   * Infinite scroll: page more when the tail comes into view and the window is not yet complete.
+   * Guarded so one page-request per window state cannot fire repeatedly while scrolling the tail.
+   *
+   * The guard is stamped `windowKey:ids.length`, and BOTH halves are load-bearing. It used to be the
+   * length alone, and this component is not keyed on the folder (`MailScreen`) — so after any folder
+   * paged once, the ref held `50`, and every next folder opened at exactly `ids.length === 50` and
+   * was refused at the guard for as long as it stayed at that length. Since every fresh window
+   * starts at the engine's 50, that was every folder with more than 50 messages: the list ended
+   * after 50 rows while `aria-rowcount` announced the folder's real total, and mail 51+ was
+   * reachable only through search. Resetting the ref in a separate effect on `windowKey` would work
+   * only as long as that effect kept running BEFORE this one; the stamp does not depend on effect
+   * order.
+   *
+   * The stamp is RELEASED again when the request REJECTS — offline is the ordinary case for this
+   * app, and a failed page otherwise left `ids.length` unchanged with the stamp still equal to it,
+   * so no later scroll to the tail could ask again until the folder was changed (and R-01 could then
+   * refuse the next folder too). Only OUR OWN stamp is cleared: if a page did arrive in the
+   * meantime, a later run of this effect has already written a newer one and must keep it. The
+   * rejection is swallowed rather than surfaced: this is a background prefetch, there is no
+   * `unhandledrejection` handler in the app, and the tail simply stays where it is until the reader
+   * scrolls to it again.
+   */
   const lastIndex = virtualItems.at(-1)?.index ?? 0
-  const requestedAtRef = useRef(-1)
+  const requestedAtRef = useRef('')
   useEffect(() => {
+    const stamp = `${windowKey}:${String(ids.length)}`
     if (
       ids.length > 0 &&
       lastIndex >= ids.length - OVERSCAN &&
       ids.length < (total ?? Number.POSITIVE_INFINITY) &&
-      requestedAtRef.current !== ids.length
+      requestedAtRef.current !== stamp
     ) {
-      requestedAtRef.current = ids.length
-      loadMore()
+      requestedAtRef.current = stamp
+      loadMore().catch(() => {
+        if (requestedAtRef.current === stamp) requestedAtRef.current = ''
+      })
     }
-  }, [lastIndex, ids.length, total, loadMore])
+  }, [lastIndex, ids.length, total, loadMore, windowKey])
 
   const draftOpener = useDraftOpener()
   const open = useCallback(
@@ -508,13 +532,31 @@ export function MessageList({
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     const id = ids[focusIndex]
+
+    /**
+     * Extend the selection to `destId`, planting the anchor on the FOCUSED row first when there is
+     * none (R-47).
+     *
+     * APG's grid pattern has Shift+↓ extend the selection "to include the next row" — the row the
+     * focus is standing on is part of what is being extended. The reducer answers a range with no
+     * anchor by selecting the DESTINATION alone (`single`), which is right for a shift-CLICK, where
+     * the clicked row is the whole intent and `message-selection.test.ts` pins it. From the
+     * keyboard it dropped the starting row: focus row 1, Shift+↓, and you had row 2 selected and
+     * "1 selected" on the bar. Three rows by Shift+↓↓ gave you two. So the anchor is set here, at
+     * the surface that knows where the focus is, rather than by changing what the reducer means.
+     */
+    const extendTo = (destId: string): void => {
+      if (selection.anchor === null && id !== undefined)
+        dispatchSelection({ type: 'selectOne', id })
+      dispatchSelection({ type: 'range', id: destId, ordered: ids })
+    }
+
     switch (event.key) {
       case 'ArrowDown': {
         event.preventDefault()
         const dest = Math.min(focusIndex + 1, ids.length - 1)
         const destId = ids[dest]
-        if (event.shiftKey && destId !== undefined)
-          dispatchSelection({ type: 'range', id: destId, ordered: ids })
+        if (event.shiftKey && destId !== undefined) extendTo(destId)
         moveTo(dest)
         break
       }
@@ -522,8 +564,7 @@ export function MessageList({
         event.preventDefault()
         const dest = Math.max(focusIndex - 1, 0)
         const destId = ids[dest]
-        if (event.shiftKey && destId !== undefined)
-          dispatchSelection({ type: 'range', id: destId, ordered: ids })
+        if (event.shiftKey && destId !== undefined) extendTo(destId)
         moveTo(dest)
         break
       }
@@ -652,12 +693,23 @@ export function MessageList({
     }
     if (rights.removeReason(sourceMailboxId ?? null) === null) {
       items.push(
-        {
-          id: 'archive',
-          group: 'file',
-          label: t('list.actions.archive'),
-          onSelect: () => triage.archive(target, sourceMailboxId ?? null),
-        },
+        // Archive is gated exactly as Junk is below, and for the same reason (B24): the entry used
+        // to hang on `removeReason` alone, so an account with no Archive role was offered
+        // "Archive", and so was a row already IN Archive. `useTriage` refuses both — `to ===
+        // undefined` and `to === from` — and it refuses them the way this menu must never let an
+        // entry refuse: no dispatch, no toast, no undo, nothing at all on screen. The bulk bar
+        // (`canMoveTo(archive?.id)`) and the reading pane (`archiveBox === undefined || inArchive`)
+        // have always applied this gate; the menu was the surface that did not.
+        ...(archiveId === undefined || archiveId === sourceMailboxId
+          ? []
+          : [
+              {
+                id: 'archive',
+                group: 'file',
+                label: t('list.actions.archive'),
+                onSelect: () => triage.archive(target, sourceMailboxId ?? null),
+              } satisfies MenuItemSpec,
+            ]),
         // Inside Junk the entry becomes its inverse (B24) — the same swap the bulk bar and the
         // reading pane make, so a row offers the same verb however it is reached. Note the entry
         // it REPLACES was inert there: "Junk" inside Junk is a move to the mailbox the message is
@@ -694,13 +746,41 @@ export function MessageList({
           label: t('list.actions.move'),
           onSelect: () => requestMove(target),
         },
-        {
-          id: 'trash',
-          group: 'destructive',
-          label: t('list.actions.trash'),
-          destructive: true,
-          onSelect: () => triage.trash(target, sourceMailboxId ?? null),
-        },
+        /*
+         * The destructive entry, and which destruction it is depends on where the row is standing —
+         * the same swap the bulk bar makes (`inTrash`), the reading pane makes, and the `#` chord's
+         * `ShortcutContext.inTrash` is documented for. In Trash, "Move to Trash" was a move to the
+         * mailbox the message is already in: inert, unannounced, and the ONE place where the verb
+         * everyone means by "delete" was missing from the menu although both neighbouring surfaces
+         * offer it. Destroy is confirmed by the same dialog the bulk bar raises (`requestDestroy`),
+         * so this is a shortcut to an existing path and not a new way to lose mail.
+         *
+         * `reason('destroy')` and not `removeReason` for that arm: destroy quantifies over EVERY
+         * mailbox the message is in, not over the folder being looked at.
+         */
+        ...(trashId === undefined
+          ? []
+          : trashId === sourceMailboxId
+            ? rights.reason('destroy') !== null
+              ? []
+              : [
+                  {
+                    id: 'delete',
+                    group: 'destructive',
+                    label: t('list.actions.delete'),
+                    destructive: true,
+                    onSelect: () => requestDestroy(target),
+                  } satisfies MenuItemSpec,
+                ]
+            : [
+                {
+                  id: 'trash',
+                  group: 'destructive',
+                  label: t('list.actions.trash'),
+                  destructive: true,
+                  onSelect: () => triage.trash(target, sourceMailboxId ?? null),
+                } satisfies MenuItemSpec,
+              ]),
       )
     }
     return items
@@ -709,10 +789,13 @@ export function MessageList({
     rowById,
     rowRights,
     sourceMailboxId,
+    archiveId,
+    trashId,
     junkId,
     inboxId,
     triage,
     requestMove,
+    requestDestroy,
     open,
     t,
   ])
@@ -722,8 +805,29 @@ export function MessageList({
   }
 
   const selectedIds = [...selection.selected]
-  const allSelected = ids.length > 0 && selection.selected.size === ids.length
+  /*
+   * "Everything" means the whole QUERY, and the loaded window is not always the whole query.
+   *
+   * `selectAll` ticks `ids`, which is the `queryCache` window — 50 rows to start with, growing only
+   * as `loadMore` pages. Comparing the tick count against `ids.length` alone therefore drew a fully
+   * checked header box over a folder of 300, next to an `aria-rowcount` of 300 and a bar reading
+   * "50 selected". Nothing was ever mis-TARGETED (the store prunes and never invents ids, and the
+   * bulk actions receive exactly the ticked set), but the control promised a scope it did not have:
+   * the following Archive moved 50 messages and left 250 behind.
+   *
+   * So the box is only "all" when the window IS the query, and otherwise mixed — and where the
+   * ticked set covers the whole window without covering the folder, the count says BOTH numbers.
+   * That last condition is deliberately narrow: a hand-picked three-of-three still reads "3
+   * selected", because there the reader chose the scope and no promise was made.
+   *
+   * FR-LST-04's actual "select-all-in-folder" — an explicit "Select all {{total}}" that pages the
+   * remaining ids out of `Email/query` — is NOT this, and is not here. See the post-V1 backlog.
+   */
+  const windowIsWholeQuery = total === undefined || ids.length >= total
+  const windowAllTicked = ids.length > 0 && selection.selected.size === ids.length
+  const allSelected = windowAllTicked && windowIsWholeQuery
   const someSelected = selection.selected.size > 0 && !allSelected
+  const selectedOutOf = windowAllTicked && !windowIsWholeQuery ? total : undefined
   const activeId = ids[focusIndex]
   const activeDescendant = activeId !== undefined ? rowDomId(activeId) : undefined
   /**
@@ -815,6 +919,7 @@ export function MessageList({
               fromMailbox={sourceMailboxId ?? undefined}
               allSelected={allSelected}
               someSelected={someSelected}
+              outOf={selectedOutOf}
               onSelectAll={() => dispatchSelection({ type: 'selectAll', ordered: ids })}
               onClear={() => dispatchSelection({ type: 'clear' })}
               onRequestDelete={() => requestDestroy(selectedIds)}
@@ -1286,6 +1391,12 @@ interface BulkBarProps {
   readonly fromMailbox: Id | undefined
   readonly allSelected: boolean
   readonly someSelected: boolean
+  /**
+   * The query's total when the ticked set is the WHOLE loaded window and that window is smaller than
+   * the query — the one case where a bare "50 selected" reads as "all of them" (R-08). `undefined`
+   * everywhere else, including a hand-picked partial selection, where the reader set the scope.
+   */
+  readonly outOf: number | undefined
   readonly onSelectAll: () => void
   readonly onClear: () => void
   readonly onRequestDelete: () => void
@@ -1325,12 +1436,15 @@ function BulkBar({
   fromMailbox,
   allSelected,
   someSelected,
+  outOf,
   onSelectAll,
   onClear,
   onRequestDelete,
   onRequestMove,
 }: BulkBarProps) {
   const { t } = useTranslation()
+  /** Every loaded row is ticked — whether or not the loaded window is the whole query. */
+  const windowAllTicked = allSelected || outOf !== undefined
   // The SAME seam the `e`/`#`/`!` chords use (M3.8) — so a click and a keystroke are one action, and
   // both get the undo toast.
   const triage = useTriage()
@@ -1660,12 +1774,20 @@ function BulkBar({
           information there is. `list.clearSelection` was already translated in both languages and
           had no caller. */}
       <Checkbox
-        aria-label={allSelected ? t('list.clearSelection') : t('list.selectAll')}
+        aria-label={windowAllTicked ? t('list.clearSelection') : t('list.selectAll')}
         checked={allSelected}
         indeterminate={someSelected}
-        onChange={(event) => (event.target.checked ? onSelectAll() : onClear())}
+        // Driven by the STATE, not by the box's next `checked` (R-08). Once the box can be
+        // `indeterminate` while every loaded row is ticked — a select-all over a folder whose window
+        // is not the whole folder — a click reports `checked: true` and would have re-selected what
+        // was already selected, leaving no way to clear from here at all.
+        onChange={() => (windowAllTicked ? onClear() : onSelectAll())}
       />
-      <span className={styles.bulkCount}>{t('list.selected', { count })}</span>
+      <span className={styles.bulkCount}>
+        {outOf === undefined
+          ? t('list.selected', { count })
+          : t('list.selectedOfTotal', { count, total: outOf })}
+      </span>
       {activeLabel !== undefined && (
         <Button
           size="sm"

@@ -1323,6 +1323,53 @@ describe('SyncEngine', () => {
     expect(calls).toBe(1)
   })
 
+  /*
+   * The LRU touch is a WRITE on a row the reading pane has a liveQuery on (R-46).
+   *
+   * Doing it on every open emitted the same body twice — once as read, then again, byte-identical,
+   * once the `readwrite` transaction committed — and `useInlineImages` restarted its whole pipeline
+   * on the second one: object URLs revoked, every `cid:` blob read out of IndexedDB again. The stamp
+   * exists to order rows by recency for a reaper that works in DAYS, so re-stamping one that is
+   * seconds old buys nothing and costs that.
+   */
+  describe('the LRU stamp on an already-cached body', () => {
+    const NOW = 5_000_000
+
+    async function fetchBodyAt(lastAccessedAt: number): Promise<number | undefined> {
+      const port = fakePort({ emails: [], setEmails: emptySet })
+      const engine = new SyncEngine({
+        ...makeDeps(db, port, new FakePush()),
+        clock: { now: () => NOW, setTimeout: () => 0, clearTimeout: () => {} },
+      })
+      await putEmailBody(db, {
+        accountId: ACC,
+        id: 'e1',
+        bodyValues: {},
+        bodyStructure: {} as never,
+        textBody: [],
+        htmlBody: [],
+        attachments: [],
+        hasAttachment: false,
+        // Present and `[]`, so `fetchBody` takes its early return and touches nothing else.
+        authResults: [],
+        fetchedAt: 1,
+        lastAccessedAt,
+      })
+      await engine.fetchBody('e1')
+      return (await db.emailBodies.get([ACC, 'e1']))?.lastAccessedAt
+    }
+
+    it('is left alone when it is already current', async () => {
+      expect(await fetchBodyAt(NOW - 1_000)).toBe(NOW - 1_000)
+    })
+
+    it('is rewritten once it has gone stale — the row must still not age toward eviction', async () => {
+      // The counter-control, and the defect the unconditional write was introduced to fix: a body
+      // the reader keeps opening must not be evicted for looking untouched.
+      expect(await fetchBodyAt(NOW - 3_600_000)).toBe(NOW)
+    })
+  })
+
   it('fetchEnvelopes hydrates only the thread members missing from the replica (M1.8)', async () => {
     const base = fakePort({ emails: [], setEmails: emptySet })
     const requested: string[][] = []

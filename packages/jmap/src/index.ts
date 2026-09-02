@@ -22,6 +22,7 @@ export type {
   UploadResult,
 } from './blob'
 export {
+  BlobTooLargeError,
   DEFAULT_BLOB_TYPE,
   DEFAULT_MAX_DOWNLOAD_BYTES,
   downloadBlob,

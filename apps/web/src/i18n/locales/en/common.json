@@ -1030,6 +1030,7 @@
   "list": {
     "noSender": "(No sender)",
     "noSubject": "(No subject)",
+    "noDate": "No date",
     "unread": "Unread",
     "flagged": "Flagged",
     "attachment": "Has attachment",
@@ -1037,6 +1038,7 @@
     "select": "Select message",
     "selectAll": "Select all",
     "selected": "{{count}} selected",
+    "selectedOfTotal": "{{count}} of {{total}} selected",
     "clearSelection": "Clear selection",
     "actions": {
       "archive": "Archive",
@@ -1100,6 +1102,7 @@
   "reading": {
     "from": "From",
     "to": "To",
+    "toLine": "To: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Reply-To",
     "bcc": "Bcc",
@@ -1138,6 +1141,8 @@
     },
     "attachments": {
       "title": "Attachments",
+      "titleCount_one": "{{count}} attachment",
+      "titleCount_other": "{{count}} attachments",
       "saveAll": "Save all",
       "unnamed": "(Unnamed)",
       "preview": "Preview",
@@ -1149,7 +1154,15 @@
       "unpackShort": "Show contents",
       "unpackedHeading": "Inside {{name}}",
       "unpackEmpty": "Nothing could be read out of this file.",
-      "unpackNote": "Outlook packed these into one file. They are shown as your correspondent sent them; nothing here has been checked."
+      "unpackNote": "Outlook packed these into one file. They are shown as your correspondent sent them; nothing here has been checked.",
+      "error": {
+        "offline": "{{name}} could not be downloaded — you are offline.",
+        "notFound": "{{name}} is no longer on the server.",
+        "tooLarge": "{{name}} is larger than it said it was and was not downloaded.",
+        "failed": "{{name}} could not be downloaded.",
+        "saveAllPartial": "The archive was saved without these, which could not be downloaded: {{names}}.",
+        "saveAllFailed": "Nothing could be downloaded, so no archive was saved."
+      }
     },
     "editDraft": "Edit draft",
     "draftLead": "This is a draft you haven’t sent yet.",

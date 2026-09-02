@@ -25,6 +25,15 @@ export interface BlobRef {
   readonly blobId: Id
   readonly type: string
   readonly name: string | null
+  /**
+   * The size the ENVELOPE declared for this part, when the caller knows it (`EmailBodyPart.size`).
+   *
+   * Carried so the download can be given a ceiling derived from it (W-11/R-11): a server answering
+   * an ordinary attachment click with an endless byte stream needs one click to OOM the tab, and the
+   * package's 256 MB backstop is a long way above anything a real attachment reaches. Optional
+   * because not every caller has a figure — a contact photo does not.
+   */
+  readonly size?: number
 }
 
 /** Downloads a blob's bytes (the authenticated JMAP `download` endpoint). */

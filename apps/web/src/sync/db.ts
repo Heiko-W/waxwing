@@ -72,6 +72,10 @@ import type {
   Thread,
 } from '@waxwing/jmap'
 import Dexie, { type Table } from 'dexie'
+// The one definition of "is this a usable server timestamp", shared with the render path so the
+// index and the label cannot disagree about a row. Same direction as `repo.ts`'s imports of the
+// label and pinned models: `mail/` owns the meaning, `sync/` stores it.
+import { parseReceivedAt } from '../mail/format-message-time'
 
 /** The shared replica database name; mirrors the `waxwing-auth` convention (ADR-004/ADR-008). */
 export const REPLICA_DB_NAME = 'waxwing-replica'
@@ -1034,6 +1038,28 @@ export function getReplica(): ReplicaDb {
 // JMAP → row mappers.
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A server `receivedAt` that this app can index and render, or `''` when it is not one (R-09).
+ *
+ * RFC 8621 makes the field a mandatory `UTCDate` and nothing on the way in verifies it: `port.ts`
+ * casts the response list, this function spreads it, and the row reaches a formatter that throws on
+ * an `Invalid Date`. Normalising here keeps the `[accountId+receivedAt]` index and the rendered
+ * label saying the same thing, and it keeps ONE definition of "unusable" — `parseReceivedAt` refuses
+ * the values that throw (`undefined`, `''`, non-ISO, out-of-range) AND the ones that quietly become
+ * the epoch (`null`, a bare number).
+ *
+ * The sentinel is the empty string rather than `new Date(0).toISOString()`, which would be the same
+ * silent "Jan 1, 1970" the check exists to stop, and rather than dropping the field, which the
+ * `UTCDate` type does not allow. It is a valid IndexedDB key that sorts before every real stamp, so
+ * an undated message lands at the end of a newest-first window instead of the top of it.
+ *
+ * NOT the whole of the fix: rows written before this existed are already in the replica, so the
+ * render path refuses the same two classes on its own — see `mail/format-message-time.ts`.
+ */
+function normalizeReceivedAt(value: unknown): string {
+  return parseReceivedAt(value) === null ? '' : (value as string)
+}
+
 /** Map a JMAP email envelope to its stored row, computing the account-scoped membership indexes. */
 export function toEmailRow(accountId: Id, email: EmailEnvelopeInput): EmailRow {
   const mailboxIds = email.mailboxIds ?? {}
@@ -1043,6 +1069,7 @@ export function toEmailRow(accountId: Id, email: EmailEnvelopeInput): EmailRow {
     accountId,
     mailboxIds,
     keywords,
+    receivedAt: normalizeReceivedAt(email.receivedAt),
     amb: Object.keys(mailboxIds).map((mailboxId) => scopeKey(accountId, mailboxId)),
     akw: Object.keys(keywords).map((keyword) => scopeKey(accountId, keyword)),
   }
