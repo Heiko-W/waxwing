@@ -16,7 +16,7 @@ import type { AuthProvider, JmapClient, MailAccount } from '@waxwing/jmap'
 import { httpStatusOf, JmapSessionOriginError, secondaryMailAccounts } from '@waxwing/jmap'
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import type { AuthController } from '../../auth'
-import { AuthConfigError, AuthExpiredError, wipeWebStorage } from '../../auth'
+import { AuthConfigError, AuthExpiredError, OAuthCallbackError, wipeWebStorage } from '../../auth'
 import { deriveScope } from '../../auth/account-registry'
 import { registerAccount, reloadAccountRegistry } from '../../auth/use-account-registry'
 import { ACTIVE_DRAFT_SYNC, flushOpenDrafts, resetComposer } from '../../compose'
@@ -191,6 +191,28 @@ function errToOnboard(error: unknown, host?: string, basic = false): OnboardErro
    * question this function actually has: what the server said, not which constructor the body
    * happened to select.
    */
+  /*
+   * A REFUSED SIGN-IN IS NOT A MALFUNCTION (R-32).
+   *
+   * Every way the OAuth callback can fail used to land on "Something went wrong. Please try
+   * again." — and, because `Onboarding` withholds its "reset this app" button by matching a small
+   * set of keys, that sentence came with an offer to delete the local mailbox. For an IdP that
+   * answered `?error=access_denied`, i.e. the reader pressing "Deny", the app thus responded to a
+   * deliberate choice with a suggestion to throw away their offline mail.
+   *
+   * Two keys, because the two cases have different next steps: `access_denied` is answered by
+   * approving the request (or picking another account), and everything else — a PKCE transaction
+   * that expired while the IdP login page sat open, a token endpoint that is down — by starting
+   * over. Neither is a reason to reset anything local, which is why both join the no-reset set.
+   */
+  if (error instanceof OAuthCallbackError) {
+    return {
+      key:
+        error.code === 'access_denied'
+          ? 'onboarding.error.oauthDenied'
+          : 'onboarding.error.oauthCallback',
+    }
+  }
   const status = httpStatusOf(error)
   if (status !== undefined) {
     if (status === 401 || status === 403) {
@@ -418,6 +440,17 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
   )
 
   const boot = useCallback(async () => {
+    /**
+     * The server this boot's CALLBACK leg belongs to, or `null` when this boot is not one.
+     *
+     * Hoisted out of the `try` for the catch below. A failed exchange used to drop the reader on
+     * the login form of the APP's own origin — `targetRef` is still null at boot, so the catch fell
+     * through to `fallbackTarget()` — with the server field frozen, because that fallback is a
+     * `fromProbe` target and `canEditServer` says no to those. On an `allowCustomServer`
+     * deployment the reader had typed `mail.example.org`, was declined at the IdP, and got a
+     * sign-in form for the wrong host that they could not correct without reloading the page.
+     */
+    let callbackTarget: ConnectTarget | null = null
     try {
       // The handshake stash is single-use for the OAuth REDIRECT leg only. Read it, but the
       // controller issuer is irrelevant to the callback check (completeRedirect discovers from
@@ -428,18 +461,22 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       // A. OAuth redirect callback — highest priority (single-use PKCE transaction).
       if (await controller.isRedirectCallback()) {
         dispatch({ type: 'connecting' })
-        removeStored(session(), STASH_TARGET_KEY)
+        callbackTarget = stashed ?? fallbackTarget()
         // BEFORE `connectSession` opens the replica (FR-AUTH-09). The redirect wiped every ref in
         // this component, so the choice is re-read from the tab-scoped stash rather than remembered.
         if (readStored<boolean>(session(), STASH_PUBLIC_KEY) === true) {
           markEphemeral()
         }
         await controller.completeRedirect()
-        // Only NOW is the stash spent. Dropping it before `completeRedirect` meant a failed
-        // exchange — a stale PKCE transaction, the server down — took the public-computer choice
-        // with it: the retry ran as an ordinary sign-in and persisted a refresh token on a machine
-        // where the user had ticked the box. A surviving stash is the fail-closed direction; the
-        // durable paths (`chooseOAuth` without the tick, sign-out) clear it explicitly.
+        // Only NOW is the stash spent — BOTH halves of it. Dropping the public-computer flag before
+        // `completeRedirect` meant a failed exchange — a stale PKCE transaction, the server down —
+        // took the choice with it: the retry ran as an ordinary sign-in and persisted a refresh
+        // token on a machine where the user had ticked the box. The TARGET was still being dropped
+        // early for the same kind of failure, and cost the same kind of thing: the manually entered
+        // server. A surviving stash is the fail-closed direction; the durable paths (`chooseOAuth`
+        // without the tick, sign-out) clear it explicitly, and a later boot that is no longer a
+        // callback drops both as stale.
+        removeStored(session(), STASH_TARGET_KEY)
         removeStored(session(), STASH_PUBLIC_KEY)
         // Restore the pre-redirect route BEFORE the router mounts (dispatch 'connected'),
         // since the OAuth redirect_uri strips back to the app root.
@@ -452,7 +489,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
           }
           removeStored(session(), STASH_ROUTE_KEY)
         }
-        const connected = await connectSession(controller, stashed ?? fallbackTarget(), 'oauth')
+        const connected = await connectSession(controller, callbackTarget, 'oauth')
         dispatch({ type: 'connected', connected })
         return
       }
@@ -504,7 +541,26 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
        * report that says "it says something went wrong" and one that can be acted on.
        */
       console.error('[waxwing] start-up failed', error)
-      goToLogin(targetRef.current ?? fallbackTarget(), errToOnboard(error))
+      /*
+       * A callback that never became a session must not leave the mode behind (FR-AUTH-09).
+       *
+       * `markEphemeral()` runs BEFORE the exchange, because it has to: `setReplicaName` throws once
+       * the replica is open. When the exchange then fails, the ref and the throwaway replica name
+       * stayed set for the rest of the page load — and the login form underneath starts with the
+       * box unticked. Someone who retried with a password and "stay signed in" got exactly the
+       * combination the two settings are meant to exclude: durable credentials on disk, a replica
+       * that `pagehide` deletes, and no registry row. Clearing it here means the mode follows the
+       * NEXT choice — the surviving stash on another OAuth attempt, the checkbox on a Basic one.
+       *
+       * Safe at this point precisely because the failure came before `connectSession`: nothing has
+       * opened the replica yet, so `resetReplica()` cannot strand a half-written database.
+       */
+      if (ephemeralRef.current) {
+        ephemeralRef.current = false
+        releaseEphemeralClaim()
+        resetReplica()
+      }
+      goToLogin(callbackTarget ?? targetRef.current ?? fallbackTarget(), errToOnboard(error))
     }
   }, [config, ensureController, connectSession, goToLogin, fallbackTarget, services, markEphemeral])
 

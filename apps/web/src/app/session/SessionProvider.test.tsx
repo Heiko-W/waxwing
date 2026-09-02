@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { JmapProblemError, JmapSessionOriginError } from '@waxwing/jmap'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AuthConfigError } from '../../auth'
+import { AuthConfigError, OAuthCallbackError } from '../../auth'
 import { getInlineObjectUrl, putInlineObjectUrl, useComposerStore } from '../../compose'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
@@ -15,6 +15,7 @@ import {
   resetReplicaForTests,
 } from '../../sync'
 import { DEFAULT_CONFIG, type WaxwingConfig } from '../config'
+import { NO_RESET_ERROR_KEYS } from '../onboarding/Onboarding'
 import { ServicesProvider } from '../services'
 import { useSession } from './context'
 import { SessionProvider } from './SessionProvider'
@@ -35,6 +36,8 @@ function Consumer() {
       <span data-testid="account">{s.connected?.username ?? ''}</span>
       <span data-testid="accounts">{s.connected?.accounts.map((a) => a.id).join(',') ?? ''}</span>
       <span data-testid="error">{s.onboarding?.error?.key ?? ''}</span>
+      <span data-testid="host">{s.onboarding?.target?.displayHost ?? ''}</span>
+      <span data-testid="can-edit-server">{String(s.onboarding?.canEditServer ?? false)}</span>
       <button type="button" onClick={() => s.submitBasic('alice', 'pw', true)}>
         basic
       </button>
@@ -820,5 +823,97 @@ describe('SessionProvider — the OAuth redirect keeps the whole route', () => {
     expect(window.location.search).toBe('?account=shared-1')
     // Single-use, like the other two halves of the handshake stash.
     expect(sessionStorage.getItem('waxwing.onboard.route')).toBeNull()
+  })
+})
+
+/**
+ * A callback that fails is still the reader's sign-in attempt, and until now the app answered it by
+ * forgetting which server they had asked for, freezing the field they would need to say it again,
+ * and offering to delete their mailbox.
+ */
+describe('SessionProvider — a failed OAuth callback', () => {
+  const MANUAL_TARGET = {
+    connectUrl: 'https://mail.example.org',
+    issuer: 'https://mail.example.org',
+    displayHost: 'mail.example.org',
+    fromProbe: false,
+  }
+
+  it('keeps the manually entered server, and keeps its field editable (R-32)', async () => {
+    // `targetRef` is still null during boot, so the catch fell through to `fallbackTarget()` — the
+    // app's own origin, as a `fromProbe` target, which `canEditServer` refuses to unlock. The
+    // reader had typed `mail.example.org`, was declined at the IdP, and got a sign-in form for
+    // `localhost` that they could not correct without reloading the page.
+    sessionStorage.setItem('waxwing.onboard.target', JSON.stringify(MANUAL_TARGET))
+    renderSession({
+      isRedirectCallback: true,
+      completeRedirectError: new OAuthCallbackError('OAuth callback failed'),
+    })
+
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('host')).toHaveTextContent('mail.example.org')
+    expect(screen.getByTestId('can-edit-server')).toHaveTextContent('true')
+    // Fail-closed like the public-computer half: the retry must still know the server.
+    expect(sessionStorage.getItem('waxwing.onboard.target')).toBe(JSON.stringify(MANUAL_TARGET))
+  })
+
+  it('names an IdP refusal as one, and offers no reset for it (R-32)', async () => {
+    // `access_denied` is the reader pressing "Deny". Answering a deliberate choice with "Something
+    // went wrong" plus a button that deletes the local mailbox is the wrong sentence twice over.
+    renderSession({
+      isRedirectCallback: true,
+      completeRedirectError: new OAuthCallbackError('OAuth callback failed', {
+        code: 'access_denied',
+      }),
+    })
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.oauthDenied'),
+    )
+  })
+
+  it('distinguishes a spent transaction from a refusal', async () => {
+    renderSession({
+      isRedirectCallback: true,
+      completeRedirectError: new OAuthCallbackError('No pending authorization request'),
+    })
+
+    await waitFor(() =>
+      expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.oauthCallback'),
+    )
+  })
+
+  it('withholds the reset button under both OAuth-callback errors', () => {
+    // The set is what `Onboarding` matches on; both new keys have to be in it or the screen offers
+    // to delete the mailbox under a failure that has nothing to do with local state.
+    expect(NO_RESET_ERROR_KEYS.has('onboarding.error.oauthDenied')).toBe(true)
+    expect(NO_RESET_ERROR_KEYS.has('onboarding.error.oauthCallback')).toBe(true)
+    // The counter-test: a genuinely unexplained failure still gets the way out (U2).
+    expect(NO_RESET_ERROR_KEYS.has('onboarding.error.generic')).toBe(false)
+  })
+
+  /**
+   * R-84. `markEphemeral()` has to run BEFORE the exchange (`setReplicaName` throws once the
+   * replica is open), so a failed exchange left the throwaway replica name and the ref in force —
+   * while the login form underneath starts with the box unticked. A password retry with "stay
+   * signed in" then produced exactly the combination the two settings exclude: durable credentials
+   * on disk, a replica `pagehide` deletes, and no registry row.
+   */
+  it('drops the public-computer state so the next choice decides (R-84)', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    renderSession({
+      isRedirectCallback: true,
+      completeRedirectError: new OAuthCallbackError('OAuth callback failed'),
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    expect(currentReplicaName()).toBe(REPLICA_DB_NAME)
+
+    // And the retry the form actually offers — "stay signed in", box unticked — stays durable.
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(currentReplicaName()).toBe(REPLICA_DB_NAME)
+    expect(localStorage.getItem('waxwing.accounts')).toContain('alice')
   })
 })

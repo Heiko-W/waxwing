@@ -54,7 +54,9 @@
       "networkHost": "{{host}} ist nicht erreichbar. Steht Ihr Mailserver unter einer anderen Adresse, geben Sie diese oben ein.",
       "oauthUnavailable": "Dieser Server bietet keine sichere Anmeldung an. Melden Sie sich unten mit E-Mail-Adresse und Passwort an.",
       "oauthUnavailableNoFallback": "Dieser Server bietet keine sichere Anmeldung an, und diese Installation lässt keine andere Methode zu. Wenden Sie sich an den Betreiber.",
-      "sessionOrigin": "Dieser Server nennt {{field}} mit der Adresse {{url}}; die liegt nicht auf {{origin}} — Ihre Zugangsdaten wurden deshalb nicht dorthin gesendet. Der Betreiber muss die veröffentlichte Adresse korrigieren."
+      "sessionOrigin": "Dieser Server nennt {{field}} mit der Adresse {{url}}; die liegt nicht auf {{origin}} — Ihre Zugangsdaten wurden deshalb nicht dorthin gesendet. Der Betreiber muss die veröffentlichte Adresse korrigieren.",
+      "oauthCallback": "Die Anmeldung konnte nicht abgeschlossen werden. Meist lag die Anmeldeseite zu lange offen — beginnen Sie neu.",
+      "oauthDenied": "Die Anmeldeanfrage wurde abgelehnt, Sie sind daher nicht angemeldet. Beginnen Sie neu und bestätigen Sie sie, oder nutzen Sie ein anderes Konto."
     },
     "reset": {
       "action": "App auf diesem Gerät zurücksetzen",

@@ -54,7 +54,9 @@
       "networkHost": "No se pudo contactar con {{host}}. Si su servidor de correo está en otra dirección, escríbala arriba.",
       "oauthUnavailable": "Este servidor no ofrece inicio de sesión seguro. Use su dirección de correo y su contraseña más abajo.",
       "oauthUnavailableNoFallback": "Este servidor no ofrece inicio de sesión seguro y esta instalación no admite ningún otro método. Consulte a quien la administra.",
-      "sessionOrigin": "Este servidor anuncia {{field}} en {{url}}, que no está en {{origin}}, por lo que sus credenciales no se enviaron allí. Quien administra el servidor debe corregir la dirección que publica."
+      "sessionOrigin": "Este servidor anuncia {{field}} en {{url}}, que no está en {{origin}}, por lo que sus credenciales no se enviaron allí. Quien administra el servidor debe corregir la dirección que publica.",
+      "oauthCallback": "No se pudo completar el inicio de sesión. Suele ocurrir cuando la página de inicio de sesión queda abierta demasiado tiempo; empiece de nuevo.",
+      "oauthDenied": "Se rechazó la solicitud de inicio de sesión, así que no ha iniciado sesión. Empiece de nuevo y apruébela, o use otra cuenta."
     },
     "reset": {
       "action": "Restablecer esta aplicación en este dispositivo",

@@ -1433,7 +1433,11 @@ existieren und sind tragend). Gegenprüfung: bestätigt.
 
 ### R-32 — [MEDIUM] Ein fehlgeschlagener OAuth-Callback vergisst den manuell eingegebenen Server, sperrt das Serverfeld und meldet ein IdP-`access_denied` als „Something went wrong“ mit Reset-Angebot
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: statt `access_denied` im UI-Layer aus der Fehlerursache zu lesen, traegt
+`OAuthCallbackError` jetzt selbst ein `code`-Feld (gesetzt in `completeRedirect` aus
+`authorizationErrorCode`). `CREDENTIAL_ERROR_KEYS` heisst jetzt `NO_RESET_ERROR_KEYS`, weil die
+Menge nicht mehr nur Credential-Fehler enthaelt.
 
 **Kategorie / Bereich:** robustness / App (Session)
 
@@ -3184,7 +3188,7 @@ stored credential belongs to a different sign-in`, null Refresh-Grants. Gegenpr�
 
 ### R-84 — [LOW] Nach fehlgeschlagenem Public-Computer-Callback bleibt `ephemeralRef`/Replica-Name gesetzt; eine anschließende Basic-Anmeldung mit „stay signed in“ wird halb-durable (vgl. W-02)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Session)
 

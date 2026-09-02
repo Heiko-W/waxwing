@@ -54,7 +54,9 @@
       "networkHost": "Server {{host}} není dostupný. Pokud je váš poštovní server na jiné adrese, zadejte ji výše.",
       "oauthUnavailable": "Tento server nenabízí zabezpečené přihlášení. Přihlaste se níže e-mailovou adresou a heslem.",
       "oauthUnavailableNoFallback": "Tento server nenabízí zabezpečené přihlášení a tato instalace nepřipouští jiný způsob. Obraťte se na jejího provozovatele.",
-      "sessionOrigin": "Tento server uvádí {{field}} na adrese {{url}}, která neleží na {{origin}} — vaše přihlašovací údaje tam proto nebyly odeslány. Provozovatel serveru musí zveřejněnou adresu opravit."
+      "sessionOrigin": "Tento server uvádí {{field}} na adrese {{url}}, která neleží na {{origin}} — vaše přihlašovací údaje tam proto nebyly odeslány. Provozovatel serveru musí zveřejněnou adresu opravit.",
+      "oauthCallback": "Přihlášení se nepodařilo dokončit. Obvykle to znamená, že přihlašovací stránka zůstala příliš dlouho otevřená — začněte znovu.",
+      "oauthDenied": "Žádost o přihlášení byla zamítnuta, takže nejste přihlášeni. Začněte znovu a potvrďte ji, nebo použijte jiný účet."
     },
     "reset": {
       "action": "Obnovit aplikaci na tomto zařízení",

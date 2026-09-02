@@ -13,6 +13,7 @@ import { basic, bearer } from '@waxwing/jmap'
 import type { AuthorizationServer } from 'oauth4webapi'
 import { AuthConfigError, AuthError, AuthExpiredError, OAuthCallbackError } from './errors'
 import {
+  authorizationErrorCode,
   beginAuthorization,
   completeAuthorization,
   DEFAULT_CLIENT_ID,
@@ -228,7 +229,14 @@ export class AuthController {
         result = await completeAuthorization(as, transaction, this.getHref(), this.oauthDeps())
       } catch (error) {
         if (error instanceof AuthError) throw error
-        throw new OAuthCallbackError('OAuth callback failed', { cause: error })
+        // Carry the server's verdict, if it gave one. `access_denied` is the user pressing "Deny"
+        // at the IdP, and the UI has to be able to say so rather than call the reader's own
+        // decision a malfunction.
+        const code = authorizationErrorCode(error)
+        throw new OAuthCallbackError('OAuth callback failed', {
+          cause: error,
+          ...(code !== undefined ? { code } : {}),
+        })
       } finally {
         // Single-use: drop the transaction whether or not the exchange succeeded.
         await this.store.delete(SecretName.PkceTransaction)

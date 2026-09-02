@@ -54,7 +54,9 @@
       "networkHost": "{{host}} est injoignable. Si votre serveur de messagerie se trouve à une autre adresse, indiquez-la ci-dessus.",
       "oauthUnavailable": "Ce serveur ne propose pas de connexion sécurisée. Utilisez votre adresse e-mail et votre mot de passe ci-dessous.",
       "oauthUnavailableNoFallback": "Ce serveur ne propose pas de connexion sécurisée, et cette installation n’autorise aucune autre méthode. Adressez-vous à son exploitant.",
-      "sessionOrigin": "Ce serveur annonce {{field}} à l’adresse {{url}}, qui ne se trouve pas sur {{origin}} — vos identifiants n’y ont donc pas été envoyés. L’exploitant du serveur doit corriger l’adresse qu’il publie."
+      "sessionOrigin": "Ce serveur annonce {{field}} à l’adresse {{url}}, qui ne se trouve pas sur {{origin}} — vos identifiants n’y ont donc pas été envoyés. L’exploitant du serveur doit corriger l’adresse qu’il publie.",
+      "oauthCallback": "La connexion n’a pas pu aboutir. Cela arrive surtout quand la page de connexion reste ouverte trop longtemps : recommencez.",
+      "oauthDenied": "La demande de connexion a été refusée, vous n’êtes donc pas connecté. Recommencez et acceptez-la, ou utilisez un autre compte."
     },
     "reset": {
       "action": "Réinitialiser l’application sur cet appareil",

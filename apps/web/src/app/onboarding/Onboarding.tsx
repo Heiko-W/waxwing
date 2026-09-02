@@ -22,12 +22,19 @@ import styles from './onboarding.module.css'
  *
  * A refused password is the one failure whose cause is known, is not local, and is one keystroke
  * from being fixed — putting "reset this app" under it invites someone who mistyped their password
- * to throw away their offline mail. Every other error, including the generic one, is a candidate
- * for "the local state is what is wrong", which is exactly the case with no other way out (U2).
+ * to throw away their offline mail. The two OAuth-callback keys are the same argument on the other
+ * sign-in path: an IdP that answered `access_denied` did what the reader told it to, and an
+ * exchange that failed because the sign-in page sat open too long is fixed by starting over. In
+ * none of the four is the LOCAL state what is wrong, which is the only thing a reset addresses.
+ *
+ * Every other error, including the generic one, is a candidate for "the local state is what is
+ * wrong", which is exactly the case with no other way out (U2).
  */
-const CREDENTIAL_ERROR_KEYS: ReadonlySet<string> = new Set([
+export const NO_RESET_ERROR_KEYS: ReadonlySet<string> = new Set([
   'auth.error.invalidCredentials',
   'auth.error.invalidCredentialsBasic',
+  'onboarding.error.oauthCallback',
+  'onboarding.error.oauthDenied',
 ])
 
 export function Onboarding() {
@@ -96,7 +103,7 @@ export function Onboarding() {
    * dialog is the exception to this project's "undo beats confirm": there is nothing to undo
    * afterwards, so the sentence has to arrive before the click.
    */
-  const canReset = onboarding.error !== null && !CREDENTIAL_ERROR_KEYS.has(onboarding.error.key)
+  const canReset = onboarding.error !== null && !NO_RESET_ERROR_KEYS.has(onboarding.error.key)
 
   return (
     <div className={styles.page}>

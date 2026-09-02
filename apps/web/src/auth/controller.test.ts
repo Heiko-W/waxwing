@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthController } from './controller'
+import { OAuthCallbackError } from './errors'
 import { DEFAULT_SCOPES } from './oauth'
 import { SecretName, SecretStore } from './secret-store'
 import type { StartLoginResult } from './types'
@@ -872,5 +873,60 @@ describe('AuthController — redirect-callback detection', () => {
     href.value = `http://localhost:5173/?code=c&state=${state}`
     clock += 31 * 60_000
     await expect(controller.completeRedirect()).rejects.toThrow(/expired/i)
+  })
+})
+
+describe('AuthController — the callback carries the server’s verdict', () => {
+  /** Start an authorization and hand back the `state` the IdP would echo. */
+  async function startedAuthorization() {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    const href = { value: 'http://localhost:5173/' }
+    let navigated: string | null = null
+    const controller = new AuthController({
+      oauth: { issuer: 'http://localhost:18080', clientId: 'waxwing', scopes: DEFAULT_SCOPES },
+      store,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => href.value,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        href.value = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth' })
+    const state = new URL(navigated as unknown as string).searchParams.get('state')
+    return { controller, href, state }
+  }
+
+  it('reports `access_denied` as a code the UI can act on', async () => {
+    // "Deny" at the IdP is a decision, not a malfunction. Without the code the app could only say
+    // "Something went wrong" — and offered to delete the local mailbox underneath it.
+    const { controller, href, state } = await startedAuthorization()
+    href.value = `http://localhost:5173/?error=access_denied&state=${state}`
+
+    const error = await controller.completeRedirect().then(
+      () => null,
+      (caught: unknown) => caught,
+    )
+
+    expect(error).toBeInstanceOf(OAuthCallbackError)
+    expect((error as OAuthCallbackError).code).toBe('access_denied')
+  })
+
+  it('leaves the code undefined when the failure was on our side — the counter-test', async () => {
+    // A state mismatch is not the server refusing anything; nobody said no.
+    const { controller, href } = await startedAuthorization()
+    href.value = 'http://localhost:5173/?code=c&state=not-the-one-we-sent'
+
+    const error = await controller.completeRedirect().then(
+      () => null,
+      (caught: unknown) => caught,
+    )
+
+    expect(error).toBeInstanceOf(OAuthCallbackError)
+    expect((error as OAuthCallbackError).code).toBeUndefined()
   })
 })

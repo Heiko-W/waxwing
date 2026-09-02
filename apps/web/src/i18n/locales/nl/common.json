@@ -54,7 +54,9 @@
       "networkHost": "{{host}} is niet bereikbaar. Staat je mailserver op een ander adres, vul dat dan hierboven in.",
       "oauthUnavailable": "Deze server biedt geen veilige aanmelding. Log hieronder in met je e-mailadres en wachtwoord.",
       "oauthUnavailableNoFallback": "Deze server biedt geen veilige aanmelding, en deze installatie staat geen andere manier toe. Neem contact op met de beheerder.",
-      "sessionOrigin": "Deze server noemt {{field}} op het adres {{url}}, en dat ligt niet op {{origin}} — je inloggegevens zijn daar dus niet naartoe gestuurd. De beheerder van deze server moet het gepubliceerde adres corrigeren."
+      "sessionOrigin": "Deze server noemt {{field}} op het adres {{url}}, en dat ligt niet op {{origin}} — je inloggegevens zijn daar dus niet naartoe gestuurd. De beheerder van deze server moet het gepubliceerde adres corrigeren.",
+      "oauthCallback": "Aanmelden kon niet worden voltooid. Meestal stond de aanmeldpagina te lang open — begin opnieuw.",
+      "oauthDenied": "Het aanmeldverzoek is geweigerd, dus je bent niet aangemeld. Begin opnieuw en keur het goed, of gebruik een ander account."
     },
     "reset": {
       "action": "Deze app op dit apparaat wissen",

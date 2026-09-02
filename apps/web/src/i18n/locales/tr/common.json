@@ -54,7 +54,9 @@
       "networkHost": "{{host}} adresine ulaşılamadı. Posta sunucunuz başka bir adresteyse yukarıya o adresi girin.",
       "oauthUnavailable": "Bu sunucu güvenli oturum açma sunmuyor. Aşağıdan e-posta adresiniz ve parolanızla oturum açın.",
       "oauthUnavailableNoFallback": "Bu sunucu güvenli oturum açma sunmuyor ve bu kurulum başka bir yönteme izin vermiyor. Sunucuyu işleten kişiye başvurun.",
-      "sessionOrigin": "Bu sunucu {{field}} alanını {{url}} adresiyle bildiriyor; bu adres {{origin}} üzerinde değil — kimlik bilgileriniz bu yüzden oraya gönderilmedi. Sunucuyu işleten kişinin yayımlanan adresi düzeltmesi gerekiyor."
+      "sessionOrigin": "Bu sunucu {{field}} alanını {{url}} adresiyle bildiriyor; bu adres {{origin}} üzerinde değil — kimlik bilgileriniz bu yüzden oraya gönderilmedi. Sunucuyu işleten kişinin yayımlanan adresi düzeltmesi gerekiyor.",
+      "oauthCallback": "Oturum açma tamamlanamadı. Bu genellikle oturum açma sayfasının çok uzun süre açık kalmasından olur; baştan başlayın.",
+      "oauthDenied": "Oturum açma isteği reddedildi, bu yüzden oturum açmadınız. Baştan başlayıp onaylayın veya başka bir hesap kullanın."
     },
     "reset": {
       "action": "Uygulamayı bu cihazda sıfırla",
