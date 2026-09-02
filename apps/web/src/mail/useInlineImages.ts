@@ -55,6 +55,7 @@ export function useInlineImages(accountId: string, body: EmailBodyRow | undefine
             blobId: part.blobId,
             type: part.type,
             name: part.name ?? 'image',
+            size: part.size,
           })
           if (cancelled) return
           if (blob === null) continue

@@ -1181,7 +1181,15 @@
       "unpackShort": "Zobrazit obsah",
       "unpackedHeading": "Obsah souboru {{name}}",
       "unpackEmpty": "Z tohoto souboru se nepodařilo nic přečíst.",
-      "unpackNote": "Outlook je zabalil do jediného souboru. Zobrazují se tak, jak je váš protějšek odeslal; nic z toho nebylo prověřeno."
+      "unpackNote": "Outlook je zabalil do jediného souboru. Zobrazují se tak, jak je váš protějšek odeslal; nic z toho nebylo prověřeno.",
+      "error": {
+        "offline": "Soubor {{name}} se nepodařilo stáhnout — jste offline.",
+        "notFound": "Soubor {{name}} už na serveru není.",
+        "tooLarge": "Soubor {{name}} je větší, než uváděl, a nebyl stažen.",
+        "failed": "Soubor {{name}} se nepodařilo stáhnout.",
+        "saveAllPartial": "Archiv byl uložen bez těchto souborů, které se nepodařilo stáhnout: {{names}}.",
+        "saveAllFailed": "Nepodařilo se stáhnout nic, archiv proto nebyl uložen."
+      }
     },
     "editDraft": "Upravit koncept",
     "draftLead": "Toto je koncept, který jste ještě neodeslali.",

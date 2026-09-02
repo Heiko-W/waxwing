@@ -119,8 +119,9 @@ describe('collectCidParts', () => {
       attachments: [part({ cid: 'photo@x', blobId: 'b3', type: 'image/jpeg', name: 'p.jpg' })],
     })
     expect(collectCidParts(b)).toEqual([
-      { cid: 'logo@x', blobId: 'b1', type: 'image/png', name: 'logo.png' },
-      { cid: 'photo@x', blobId: 'b3', type: 'image/jpeg', name: 'p.jpg' },
+      // `size` rides along so the download can be given a ceiling derived from it (R-11).
+      { cid: 'logo@x', blobId: 'b1', type: 'image/png', name: 'logo.png', size: 0 },
+      { cid: 'photo@x', blobId: 'b3', type: 'image/jpeg', name: 'p.jpg', size: 0 },
     ])
   })
 

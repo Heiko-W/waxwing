@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { bearer } from './auth'
-import { type BlobProgress, expandUriTemplate } from './blob'
+import { type BlobProgress, BlobTooLargeError, expandUriTemplate } from './blob'
 import { JmapClient } from './client'
 import { JmapError } from './errors'
 import { at, makeSession } from './test-support'
@@ -212,9 +212,12 @@ describe('downloadBlob — the size ceiling (W-11)', () => {
     const endless = endlessStream()
     const jmap = client(async () => endless.response)
 
+    // `BlobTooLargeError`, not merely a `JmapError`: an app has to tell this refusal apart from a
+    // network failure and a 404 to say anything useful about it, and a message match is not a
+    // contract. It is still a `JmapError`, so every existing `catch` is unaffected.
     await expect(
       jmap.download('a', 'b1', 'application/octet-stream', 'x.bin', { maxBytes: 256 * 1024 }),
-    ).rejects.toBeInstanceOf(JmapError)
+    ).rejects.toBeInstanceOf(BlobTooLargeError)
     // Cancelled, not merely abandoned: a reader left open keeps the socket draining, which is most
     // of the cost of the thing being refused.
     expect(endless.cancelled()).toBe(true)
@@ -234,7 +237,7 @@ describe('downloadBlob — the size ceiling (W-11)', () => {
 
     await expect(
       client(fetch).download('a', 'b1', 'application/octet-stream', 'x.bin', { maxBytes: 1024 }),
-    ).rejects.toThrowError(/limit/)
+    ).rejects.toBeInstanceOf(BlobTooLargeError)
     // The stream itself pre-pulls one chunk; what matters is that the READER never ran. Without
     // the declared-length check this would be 128 pulls (1024 / 8) before the loop gave up.
     expect(pulls).toBeLessThanOrEqual(1)

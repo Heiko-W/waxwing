@@ -53,6 +53,8 @@ export interface CidPart {
   readonly blobId: string
   readonly type: string
   readonly name: string | null
+  /** What the envelope says this part weighs — the download's ceiling is derived from it (R-11). */
+  readonly size: number
 }
 
 /**
@@ -88,6 +90,7 @@ export function collectCidParts(body: RenderableBody): CidPart[] {
         blobId: part.blobId,
         type: part.type,
         name: part.name,
+        size: part.size,
       })
     }
     for (const sub of part.subParts ?? []) visit(sub, depth + 1)

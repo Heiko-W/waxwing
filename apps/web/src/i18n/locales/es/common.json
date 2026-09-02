@@ -1166,7 +1166,15 @@
       "unpackShort": "Mostrar el contenido",
       "unpackedHeading": "Contenido de {{name}}",
       "unpackEmpty": "No se pudo extraer nada de este archivo.",
-      "unpackNote": "Outlook empaquetó todo esto en un solo archivo. Se muestra tal como lo envió su interlocutor; nada de esto se ha comprobado."
+      "unpackNote": "Outlook empaquetó todo esto en un solo archivo. Se muestra tal como lo envió su interlocutor; nada de esto se ha comprobado.",
+      "error": {
+        "offline": "No se pudo descargar {{name}}: no tiene conexión.",
+        "notFound": "{{name}} ya no está en el servidor.",
+        "tooLarge": "{{name}} es mayor de lo que declaraba y no se descargó.",
+        "failed": "No se pudo descargar {{name}}.",
+        "saveAllPartial": "El archivo se guardó sin estos, que no se pudieron descargar: {{names}}.",
+        "saveAllFailed": "No se pudo descargar nada, así que no se guardó ningún archivo."
+      }
     },
     "editDraft": "Editar el borrador",
     "draftLead": "Este es un borrador que todavía no ha enviado.",

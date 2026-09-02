@@ -1,13 +1,27 @@
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EmailBodyPart } from '@waxwing/jmap'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '../ui'
 import { AttachmentList } from './AttachmentList'
 
 // Blob download is irrelevant to most of this file — stub it so the list needs no ReplicaProvider.
 // The filename tests need it to SUCCEED, though (a null blob returns before the anchor is built),
 // so it hands back a one-byte blob rather than null.
-vi.mock('./use-blob', () => ({ useBlobFetcher: () => vi.fn(async () => new Blob(['x'])) }))
+vi.mock('./use-blob', () => ({
+  useBlobFetcher: () => vi.fn(async () => new Blob(['x'])),
+  classifyBlobError: () => 'failed',
+}))
+
+/**
+ * The strip reports a failed download as a toast (R-11), so a `ToastProvider` is part of its
+ * minimum provider stack now — the same way `useTriage`'s undo toast made it part of the message
+ * list's.
+ */
+function render(ui: ReactNode) {
+  return rtlRender(<ToastProvider>{ui}</ToastProvider>)
+}
 // The nested view is tested separately; stub it so this test needs no session/JMAP client.
 vi.mock('./NestedMessageView', () => ({
   NestedMessageView: (props: { blobId: string }) => (

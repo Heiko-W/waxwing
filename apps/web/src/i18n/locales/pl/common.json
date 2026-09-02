@@ -1181,7 +1181,15 @@
       "unpackShort": "Pokaż zawartość",
       "unpackedHeading": "Zawartość pliku {{name}}",
       "unpackEmpty": "Z tego pliku nie dało się nic odczytać.",
-      "unpackNote": "Outlook spakował te pliki w jeden. Są pokazane w takiej postaci, w jakiej przysłał je Twój rozmówca — nic nie zostało sprawdzone."
+      "unpackNote": "Outlook spakował te pliki w jeden. Są pokazane w takiej postaci, w jakiej przysłał je Twój rozmówca — nic nie zostało sprawdzone.",
+      "error": {
+        "offline": "Nie udało się pobrać pliku {{name}} — jesteś offline.",
+        "notFound": "Pliku {{name}} już nie ma na serwerze.",
+        "tooLarge": "Plik {{name}} jest większy, niż deklarował, i nie został pobrany.",
+        "failed": "Nie udało się pobrać pliku {{name}}.",
+        "saveAllPartial": "Archiwum zapisano bez tych plików, których nie udało się pobrać: {{names}}.",
+        "saveAllFailed": "Nie udało się pobrać niczego, więc archiwum nie zostało zapisane."
+      }
     },
     "editDraft": "Edytuj wersję roboczą",
     "draftLead": "To wersja robocza, której jeszcze nie wysłano.",

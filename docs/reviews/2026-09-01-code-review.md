@@ -597,7 +597,18 @@ W-10 eingeordnet.
 
 ### R-11 — [MEDIUM] Anhänge: Download, Vorschau und „Alle speichern“ scheitern stumm (offline, 404, Größenlimit aus W-11) — keine Meldung, unbehandelte Rejection (vgl. W-11)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Teile umgesetzt. Fehlerbehandlung: `catch` je Aktion mit Toast (`tone: 'danger'`),
+`Promise.allSettled` in `saveAll` mit Nennung der fehlenden Dateien, und `null` vom Fetcher (kein
+Client) wird ebenfalls gemeldet statt still verschluckt. W-11-Rest: `BlobRef` trägt jetzt die
+deklarierte `size`, und `useBlobFetcher` leitet daraus eine `maxBytes`-Grenze ab (`downloadCeiling`,
+size × 2 + 1 MiB, nach oben durch `DEFAULT_MAX_DOWNLOAD_BYTES` gedeckelt). Abweichung vom
+Lösungsansatz: `tooLarge` wird nicht am Fehlertext erkannt, sondern über eine neue Klasse
+`BlobTooLargeError` in `@waxwing/jmap` — ein Textvergleich ist kein Vertrag, und die Klasse bleibt ein
+`JmapError`, sodass jedes vorhandene `catch` unverändert greift. Die Klassifikation liegt als
+`classifyBlobError` in `use-blob.ts` und baut auf `classifySourceError` auf, statt dessen Union zu
+erweitern — das hätte den Quelltext-Dialog gezwungen, einen Fall zu behandeln, den er nicht auslösen
+kann.
 
 **Kategorie / Bereich:** robustness / Mail
 

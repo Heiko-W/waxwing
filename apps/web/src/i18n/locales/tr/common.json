@@ -1151,7 +1151,15 @@
       "unpackShort": "İçindekileri göster",
       "unpackedHeading": "{{name}} dosyasının içinde",
       "unpackEmpty": "Bu dosyadan hiçbir şey okunamadı.",
-      "unpackNote": "Outlook bu dosyaları tek bir dosyaya paketlemiş. Karşı tarafın gönderdiği hâliyle gösteriliyorlar; buradaki hiçbir şey denetlenmedi."
+      "unpackNote": "Outlook bu dosyaları tek bir dosyaya paketlemiş. Karşı tarafın gönderdiği hâliyle gösteriliyorlar; buradaki hiçbir şey denetlenmedi.",
+      "error": {
+        "offline": "{{name}} indirilemedi — çevrimdışısınız.",
+        "notFound": "{{name}} artık sunucuda değil.",
+        "tooLarge": "{{name}} bildirdiğinden büyük, bu yüzden indirilmedi.",
+        "failed": "{{name}} indirilemedi.",
+        "saveAllPartial": "Arşiv, indirilemeyen şunlar olmadan kaydedildi: {{names}}.",
+        "saveAllFailed": "Hiçbir şey indirilemedi, bu yüzden arşiv kaydedilmedi."
+      }
     },
     "editDraft": "Taslağı düzenle",
     "draftLead": "Bu, henüz göndermediğiniz bir taslak.",

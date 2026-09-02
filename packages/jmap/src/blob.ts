@@ -169,11 +169,29 @@ export async function downloadBlob(
   return readBody(response, options.onProgress, options.maxBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES)
 }
 
-/** The error a download that exceeded its ceiling reports — see {@link DEFAULT_MAX_DOWNLOAD_BYTES}. */
+/**
+ * The error a download that exceeded its ceiling reports — see {@link DEFAULT_MAX_DOWNLOAD_BYTES}.
+ *
+ * A CLASS rather than a bare {@link JmapError} with a recognisable message, because the app has to
+ * tell this refusal apart from a network failure and a 404 in order to say something useful about
+ * it, and matching on message text is not a contract. It stays a `JmapError`, so every existing
+ * `catch` keeps working.
+ */
+export class BlobTooLargeError extends JmapError {
+  override name = 'BlobTooLargeError'
+  constructor(
+    /** The ceiling that was in force, in bytes. */
+    readonly limit: number,
+    /** Bytes seen when the read was abandoned — the declared `content-length` when it was refused
+        before a single byte was read. */
+    readonly seen: number,
+  ) {
+    super(`Blob download exceeds the ${String(limit)}-byte limit (stopped at ${String(seen)})`)
+  }
+}
+
 function tooLarge(limit: number, seen: number): JmapError {
-  return new JmapError(
-    `Blob download exceeds the ${String(limit)}-byte limit (stopped at ${String(seen)})`,
-  )
+  return new BlobTooLargeError(limit, seen)
 }
 
 /** Reads a Response body to a single `Uint8Array`, streaming with progress when a callback is given. */
