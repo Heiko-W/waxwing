@@ -2082,6 +2082,7 @@
     },
     "import": {
       "open": "Importuj wydarzenia…",
+      "offline": "Jesteś offline. Wydarzenia można importować tylko przy aktywnym połączeniu.",
       "title": "Import wydarzeń",
       "file": "Plik kalendarza (.ics)",
       "empty": "W tym pliku nie ma żadnego wydarzenia.",

@@ -2018,6 +2018,7 @@
     },
     "import": {
       "open": "Import events…",
+      "offline": "You are offline. Events can only be imported while connected.",
       "title": "Import events",
       "file": "Calendar file (.ics)",
       "empty": "This file holds no event.",

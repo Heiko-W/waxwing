@@ -2018,6 +2018,7 @@
     },
     "import": {
       "open": "Etkinlikleri içe aktar…",
+      "offline": "Çevrimdışısınız. Etkinlikler yalnızca bağlantı varken içe aktarılabilir.",
       "title": "Etkinlikleri içe aktar",
       "file": "Takvim dosyası (.ics)",
       "empty": "Bu dosyada hiç etkinlik yok.",

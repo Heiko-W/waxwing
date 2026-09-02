@@ -2025,6 +2025,7 @@
     },
     "import": {
       "open": "Afspraken importeren…",
+      "offline": "Je bent offline. Afspraken kunnen alleen worden geïmporteerd als je verbonden bent.",
       "title": "Afspraken importeren",
       "file": "Agendabestand (.ics)",
       "empty": "Dit bestand bevat geen enkele afspraak.",

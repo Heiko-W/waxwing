@@ -2082,6 +2082,7 @@
     },
     "import": {
       "open": "Importovat události…",
+      "offline": "Jste offline. Události lze importovat jen při připojení.",
       "title": "Import událostí",
       "file": "Soubor kalendáře (.ics)",
       "empty": "V tomto souboru není žádná událost.",

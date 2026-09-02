@@ -894,6 +894,30 @@ describe('offline (T3)', () => {
     expect(screen.queryByText('This account has no calendars.')).not.toBeInTheDocument()
   })
 
+  /**
+   * Each refused control explains ITSELF — two controls, two sentences, never one sentence twice.
+   *
+   * Import used to borrow the `+` button's "Events can only be created while connected", which is
+   * the wrong explanation for a control that imports a file. Nobody saw it while the calendar list
+   * came from the network — with no list the button was hard `disabled`, and `Button` suppresses
+   * `unavailableReason` on a disabled control — so the wrong sentence only surfaced once the
+   * replica started answering the list (R-59). Two identical descriptions side by side in one
+   * toolbar is the symptom; the wrong sentence is the defect.
+   */
+  it('gives the import control its own offline reason, not the new-event one', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderWithReplicaOnly([occurrence()])
+
+    await screen.findByRole('checkbox', { name: 'Work' })
+    expect(
+      screen.getByText('You are offline. Events can only be imported while connected.'),
+    ).toBeInTheDocument()
+    // Exactly one control may claim the new-event sentence.
+    expect(
+      screen.getAllByText('You are offline. Events can only be created while connected.'),
+    ).toHaveLength(1)
+  })
+
   it('says a month it has never synced is not synced, rather than reporting a failure', async () => {
     // The other offline first-visit: nothing was ever stored for this window. That is "not synced
     // yet" with a sentence about what to do, not "could not be loaded" with a Try again that cannot.

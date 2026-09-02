@@ -876,13 +876,20 @@ export default function CalendarPage(props: CalendarPageProps) {
               ))}
             </div>
             {/* From 40em up there is no overflow menu to hide it in, so import is its own control —
-                an icon button, beside `+` and quieter than it. */}
+                an icon button, beside `+` and quieter than it.
+
+                Its own offline sentence, not the `+` button's. `calendar.offline` says "Events can
+                only be CREATED while connected", which is the wrong explanation for a control that
+                imports a file — and while the list came from the network, the reason was hidden
+                behind `disabled` (`Button` suppresses `unavailableReason` when a control is hard
+                disabled), so nobody saw it. Now that the replica answers the list, this control is
+                reachable offline and says what is actually true of it. */}
             <IconButton
               label={t('calendar.import.open')}
               variant="ghost"
               size="sm"
               disabled={shownCalendars.length === 0}
-              unavailableReason={online ? undefined : t('calendar.offline')}
+              unavailableReason={online ? undefined : t('calendar.import.offline')}
               onClick={() => setImporting(true)}
             >
               <Import aria-hidden="true" />

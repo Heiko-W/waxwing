@@ -2056,6 +2056,7 @@
     },
     "import": {
       "open": "Importar eventos…",
+      "offline": "Está sin conexión. Los eventos solo se pueden importar con conexión.",
       "title": "Importar eventos",
       "file": "Archivo de calendario (.ics)",
       "empty": "Este archivo no contiene ningún evento.",

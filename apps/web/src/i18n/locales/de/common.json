@@ -2018,6 +2018,7 @@
     },
     "import": {
       "open": "Termine importieren…",
+      "offline": "Sie sind offline. Termine lassen sich nur mit Verbindung importieren.",
       "title": "Termine importieren",
       "file": "Kalenderdatei (.ics)",
       "empty": "In dieser Datei steht kein Termin.",
