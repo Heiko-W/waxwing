@@ -20,6 +20,7 @@ import type {
 import Dexie from 'dexie'
 import { LABELS_PREF_KEY, type LabelPref } from '../mail/labels/label-model'
 import { PINNED_PREF_KEY, type PinnedPref } from '../mail/pinned/pinned-model'
+import { coerceSnoozeMap, SNOOZE_PREF_KEY, type SnoozeMap } from '../mail/snooze'
 // `notify-model` is pure and has only type-only imports of its own, so this pulls no runtime
 // dependency into the sync layer (the `label-model` / `pinned-model` precedent).
 import {
@@ -890,6 +891,35 @@ export async function updatePinnedMailboxes(
     const row = await db.localPrefs.get([accountId, PINNED_PREF_KEY])
     const current = (row?.value as PinnedPref | undefined) ?? []
     await db.localPrefs.put({ accountId, key: PINNED_PREF_KEY, value: fn(current) })
+  })
+}
+
+/**
+ * Read-modify-write the snooze wake times (M5.8) — same cross-tab-safe shape as {@link updateLabels}.
+ *
+ * The `$snoozed` KEYWORD goes through the outbox, which is per-message and therefore already safe.
+ * The wake times are one object under one preference key, and they were written with a blind
+ * `setPref` over the map as it stood in the render that happened to be on screen: two writers on the
+ * same snapshot, and the second one silently dropped the first's entry. The consequence is worse
+ * than the usual last-writer-wins, because the waker only wakes ids it can find in the MAP — the
+ * keyword stays on the message, and `backfill.ts` filters `notKeyword: $snoozed` out of every folder
+ * window, so the mail is gone from the interface entirely and reachable only through search.
+ *
+ * The window is small (the liveQuery latency of `useLocalPrefOptional`) and it is not only a
+ * cross-tab one: a second snooze before the first emission, or a waker tick landing during a snooze,
+ * is the same read-modify-write on the same stale map in a single tab.
+ */
+export async function updateSnoozeMap(
+  db: ReplicaDb,
+  accountId: Id,
+  fn: (current: SnoozeMap) => SnoozeMap,
+): Promise<void> {
+  await db.transaction('rw', db.localPrefs, async () => {
+    const row = await db.localPrefs.get([accountId, SNOOZE_PREF_KEY])
+    // Through `coerceSnoozeMap`, so a preference written by another build (or corrupted) becomes an
+    // empty map here rather than something `withSnoozed` would spread nonsense out of.
+    const next = fn(coerceSnoozeMap(row?.value))
+    await db.localPrefs.put({ accountId, key: SNOOZE_PREF_KEY, value: next })
   })
 }
 

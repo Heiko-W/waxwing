@@ -2047,7 +2047,15 @@ unverändert.
 
 ### R-48 — [LOW] Die Snooze-Weckzeiten sind ein blinder Read-Modify-Write auf einem Render-Snapshot — der zweite Schreiber verliert die Weckzeit des ersten, die Mail bleibt dauerhaft ausgeblendet
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`updateSnoozeMap(db, accountId, fn)` als Dexie-`rw`-Read-Modify-Write in `repo.ts`, analog
+`updatePinnedMailboxes`; `snooze` und `wake` gehen darüber. NICHT umgesetzt und bewusst verworfen:
+der zusätzlich vorgeschlagene Waisen-Sweep (Ids mit `$snoozed` ohne Map-Eintrag beim Sweep wecken).
+Das Keyword ist Server-Zustand und synchronisiert über alle Geräte, die Weckzeit liegt in
+`localPrefs` und tut das nicht — auf jedem zweiten Gerät ist deshalb JEDE auf einem anderen Gerät
+gesnoozte Mail eine „Waise". Der Sweep hätte sie dort sofort geweckt und die Entfernung des Keywords
+an den Server geschickt, also den Snooze überall aufgehoben. Das wäre ein schlimmerer Fehler als der
+behobene.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -2080,7 +2088,12 @@ zusätzlich Ids mit `$snoozed` ohne Map-Eintrag (Waisen) beim Sweep wecken.
 
 ### R-49 — [LOW] `useSnoozeWaker` hängt an instabilen Abhängigkeiten: Interval wird bei jedem Shell-Render abgebaut und neu gesetzt, `check()` läuft pro Render
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`coerceSnoozeMap` hängt jetzt per `useMemo` am Roh-Pref-Wert, und der Waker ist in zwei Effekte
+geteilt: einer reagiert auf Datenänderungen (`[snoozed, wake]`), einer hält das Intervall
+(`[wakeDue]`, das über ein Ref liest). Zusammen mit R-48 in einem Commit — die entscheidende Hälfte
+der Stabilisierung ist, dass `snooze`/`wake` durch den Read-Modify-Write gar nicht mehr über
+`snoozed` schließen.
 
 **Kategorie / Bereich:** react / Mail
 
