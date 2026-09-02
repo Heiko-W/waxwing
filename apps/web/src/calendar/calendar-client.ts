@@ -1,8 +1,15 @@
 /**
  * The JMAP seam for calendars (M5.6, FR-CAL-01).
  *
- * Online-only, like the other read-mostly surfaces: calendar data is not in the replica, so there
- * is nothing to reconcile and nothing to replay. A month the user is looking at is one round trip.
+ * The WRITE seam, and the read seam for anything the replica does not hold. Since K-8 the screen
+ * reads its months from the replica (`use-calendar-events.ts`) and never from here; what is left on
+ * this side is the calendar list, the writes (create/update/destroy, RSVP), the availability probe
+ * and the `expandRecurrences` query the sync engine runs to fill that replica. Those need a line,
+ * which is why the screen still gates them on `useOnline`.
+ *
+ * This file said "calendar data is not in the replica" until 2026-09-01, three weeks after K-8 put
+ * it there. That sentence is how R-24 came about one screen over — somebody read the equivalent
+ * line in `files-client.ts` and built a dialog on it.
  *
  * **Occurrences come from the server.** `expandRecurrences` returns one id per occurrence inside
  * the window, so a weekly meeting arrives as the individual instances it has in that month. The

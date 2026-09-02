@@ -2757,7 +2757,16 @@ genau ein Reload; oder `Promise.allSettled` mit „8 von 11 hochgeladen“.
 
 ### R-68 — [LOW] Irreführende Kopfkommentare beschreiben den Zustand vor K-8/D-4 und ein Verhalten, das es nicht gibt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle genannten Stellen auf den Replica-Stand gebracht: `calendar-client.ts` und `files-client.ts`
+beschreiben sich jetzt als Schreib-Seam (plus Lesepfad für das, was die Replica nicht hält —
+Downloads, geteilte Konten), `CalendarPage.tsx` unterscheidet Lesen von Schreiben,
+`FileMoveDialog.tsx` wurde bereits mit R-24 mitgezogen. Die WeekView-Passage ist nicht gestrichen,
+sondern korrigiert: `pointer-events: none` hat weiterhin einen Grund, nur nicht den behaupteten;
+ergänzt ist der Satz, welche Elemente in dieser Ansicht überhaupt klickbar sind. Der Kommentar in
+`FilesPage.tsx:225-226` stimmt seit R-66 und blieb daher stehen; `maintenance.ts:278-280` war mit
+R-05 bereits richtiggestellt. Zusätzlich `app/use-online.ts:5` — derselbe falsche Satz („no
+replica") an einer im Bericht nicht genannten Stelle.
 
 **Kategorie / Bereich:** maintainability / PIM
 
