@@ -186,7 +186,8 @@
       "windowChoice_other": "{{count}} Tage",
       "windowLabel": "E-Mails auf diesem Gerät behalten für",
       "window_one": "E-Mails vom letzten Tag bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
-      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen."
+      "window_other": "E-Mails der letzten {{count}} Tage bleiben auf diesem Gerät. Ältere Nachrichten liegen auf dem Server und werden beim Öffnen geladen.",
+      "freeUpFailed": "Speicher konnte nicht freigegeben werden"
     },
     "general": {
       "title": "Allgemein"

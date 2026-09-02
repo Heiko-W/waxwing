@@ -186,7 +186,8 @@
       "windowChoice_other": "{{count}} dagen",
       "windowLabel": "E-mail op dit apparaat bewaren gedurende",
       "window_one": "E-mail van de afgelopen {{count}} dag wordt op dit apparaat bewaard. Oudere e-mail blijft op de server staan en wordt geladen zodra je die opent.",
-      "window_other": "E-mail van de afgelopen {{count}} dagen wordt op dit apparaat bewaard. Oudere e-mail blijft op de server staan en wordt geladen zodra je die opent."
+      "window_other": "E-mail van de afgelopen {{count}} dagen wordt op dit apparaat bewaard. Oudere e-mail blijft op de server staan en wordt geladen zodra je die opent.",
+      "freeUpFailed": "Kon geen ruimte vrijmaken"
     },
     "general": {
       "title": "Algemeen"

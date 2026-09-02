@@ -190,7 +190,8 @@
       "windowLabel": "Conserver les e-mails sur cet appareil pendant",
       "window_one": "Les e-mails du dernier jour sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture.",
       "window_many": "Les e-mails des {{count}} derniers jours sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture.",
-      "window_other": "Les e-mails des {{count}} derniers jours sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture."
+      "window_other": "Les e-mails des {{count}} derniers jours sont conservés sur cet appareil. Les plus anciens restent sur le serveur et se chargent à l’ouverture.",
+      "freeUpFailed": "Impossible de libérer de l’espace"
     },
     "general": {
       "title": "Général"

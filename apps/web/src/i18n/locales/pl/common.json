@@ -194,7 +194,8 @@
       "window_one": "Poczta z ostatniego dnia jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
       "window_few": "Poczta z ostatnich {{count}} dni jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
       "window_many": "Poczta z ostatnich {{count}} dni jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
-      "window_other": "Poczta z ostatniego {{count}} dnia jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu."
+      "window_other": "Poczta z ostatniego {{count}} dnia jest przechowywana na tym urządzeniu. Starsze wiadomości pozostają na serwerze i wczytują się przy otwarciu.",
+      "freeUpFailed": "Nie udało się zwolnić miejsca"
     },
     "general": {
       "title": "Ogólne"

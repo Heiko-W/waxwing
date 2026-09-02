@@ -186,7 +186,8 @@
       "windowChoice_other": "{{count}} days",
       "windowLabel": "Keep mail on this device for",
       "window_one": "Mail from the last {{count}} day is kept on this device. Older mail stays on the server and loads when you open it.",
-      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it."
+      "window_other": "Mail from the last {{count}} days is kept on this device. Older mail stays on the server and loads when you open it.",
+      "freeUpFailed": "Could not free up space"
     },
     "general": {
       "title": "General"

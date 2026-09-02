@@ -194,7 +194,8 @@
       "window_one": "Na tomto zařízení zůstává pošta za poslední {{count}} den. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
       "window_few": "Na tomto zařízení zůstává pošta za poslední {{count}} dny. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
       "window_many": "Na tomto zařízení zůstává pošta za posledního {{count}} dne. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
-      "window_other": "Na tomto zařízení zůstává pošta za posledních {{count}} dní. Starší pošta zůstává na serveru a načte se, až ji otevřete."
+      "window_other": "Na tomto zařízení zůstává pošta za posledních {{count}} dní. Starší pošta zůstává na serveru a načte se, až ji otevřete.",
+      "freeUpFailed": "Místo se nepodařilo uvolnit"
     },
     "general": {
       "title": "Obecné"

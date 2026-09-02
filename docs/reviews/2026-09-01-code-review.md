@@ -3294,7 +3294,12 @@ einen `Dialog` mit `confirmDiscard` legen (Muster vorhanden).
 
 ### R-87 — [LOW] `StorageSection.freeUp` meldet einen fehlgeschlagenen Maintenance-Lauf als „Nothing to free up“
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: `runMaintenance` behaelt seinen `null`-Vertrag unveraendert — `withQuotaRecovery`
+muss seinen Retry erreichen und darf nicht den Wartungsfehler statt des Quota-Fehlers
+weiterreichen. Der Lauf sitzt jetzt in `maintenancePass()`, und `forceMaintenance()` gibt
+daneben ein `MaintenanceOutcome` (`ran` / `skipped` / `failed`) zurueck, das nur die
+Einstellungsseite benutzt.
 
 **Kategorie / Bereich:** robustness / App (Settings)
 

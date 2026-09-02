@@ -186,7 +186,8 @@
       "windowChoice_other": "{{count}} gün",
       "windowLabel": "E-postaları bu cihazda tutma süresi",
       "window_one": "Son bir güne ait e-postalar bu cihazda tutulur. Daha eskileri sunucuda kalır ve açtığınızda yüklenir.",
-      "window_other": "Son {{count}} güne ait e-postalar bu cihazda tutulur. Daha eskileri sunucuda kalır ve açtığınızda yüklenir."
+      "window_other": "Son {{count}} güne ait e-postalar bu cihazda tutulur. Daha eskileri sunucuda kalır ve açtığınızda yüklenir.",
+      "freeUpFailed": "Yer açılamadı"
     },
     "general": {
       "title": "Genel"

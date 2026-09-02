@@ -190,7 +190,8 @@
       "windowLabel": "Conservar el correo en este dispositivo durante",
       "window_one": "El correo del último día se conserva en este dispositivo. El correo más antiguo permanece en el servidor y se carga al abrirlo.",
       "window_many": "El correo de los últimos {{count}} de días se conserva en este dispositivo. El correo más antiguo permanece en el servidor y se carga al abrirlo.",
-      "window_other": "El correo de los últimos {{count}} días se conserva en este dispositivo. El correo más antiguo permanece en el servidor y se carga al abrirlo."
+      "window_other": "El correo de los últimos {{count}} días se conserva en este dispositivo. El correo más antiguo permanece en el servidor y se carga al abrirlo.",
+      "freeUpFailed": "No se pudo liberar espacio"
     },
     "general": {
       "title": "General"

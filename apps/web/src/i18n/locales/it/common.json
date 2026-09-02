@@ -190,7 +190,8 @@
       "windowLabel": "Conserva la posta su questo dispositivo per",
       "window_one": "La posta dell’ultimo giorno resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri.",
       "window_many": "La posta degli ultimi {{count}} di giorni resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri.",
-      "window_other": "La posta degli ultimi {{count}} giorni resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri."
+      "window_other": "La posta degli ultimi {{count}} giorni resta su questo dispositivo. Quella più vecchia rimane sul server e viene caricata quando la apri.",
+      "freeUpFailed": "Non è stato possibile liberare spazio"
     },
     "general": {
       "title": "Generali"

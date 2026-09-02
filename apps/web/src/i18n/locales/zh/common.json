@@ -182,7 +182,8 @@
       "windowApplies": "缩短保留期会在下次清理时释放空间，而非立即生效——上方的“立即释放空间”则不必等待。",
       "windowChoice_other": "{{count}}天",
       "windowLabel": "邮件在此设备上的保留期",
-      "window_other": "最近{{count}}天的邮件会保留在此设备上。更早的邮件留在服务器上，打开时再加载。"
+      "window_other": "最近{{count}}天的邮件会保留在此设备上。更早的邮件留在服务器上，打开时再加载。",
+      "freeUpFailed": "无法释放空间"
     },
     "general": {
       "title": "常规"

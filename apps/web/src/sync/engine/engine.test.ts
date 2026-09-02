@@ -1837,6 +1837,43 @@ describe('SyncEngine — cache maintenance (M3.4)', () => {
     engine.stop()
   })
 
+  /**
+   * A failed pass and an empty one are different facts (R-87).
+   *
+   * `runMaintenance` answers `null` to both, which is right for its callers — `withQuotaRecovery`
+   * has to reach its retry rather than propagate a maintenance error in place of the quota error
+   * it was recovering from. It was not right for the settings screen, which turned that `null`
+   * into "Nothing to free up" on the one device where the button matters: a full disk, whose quota
+   * aborts are exactly what kills a pass's gather stages.
+   */
+  it('tells a failed forced pass apart from an empty one', async () => {
+    const time = virtualClock()
+    const push = new FakePush()
+    const engine = new SyncEngine(
+      maintenanceDeps(time, push, {
+        estimate: async () => {
+          throw new Error('storage manager is unavailable')
+        },
+      }),
+    )
+
+    expect(await engine.forceMaintenance()).toEqual({ status: 'failed' })
+    // The old contract, unchanged, for every caller that only wants the bytes back.
+    expect(await engine.runMaintenance({ force: true })).toBeNull()
+    engine.stop()
+  })
+
+  it('reports a pass that ran and found nothing as having run — the counter-test', async () => {
+    const time = virtualClock()
+    const push = new FakePush()
+    const engine = new SyncEngine(maintenanceDeps(time, push))
+
+    const outcome = await engine.forceMaintenance()
+
+    expect(outcome.status).toBe('ran')
+    engine.stop()
+  })
+
   it('runs ONCE after the first leader sync, then honours the interval gate', async () => {
     const time = virtualClock()
     const push = new FakePush()

@@ -190,7 +190,8 @@
       "windowLabel": "Manter o e-mail neste dispositivo durante",
       "window_one": "O e-mail do último {{count}} dia fica neste dispositivo. O e-mail mais antigo permanece no servidor e é carregado quando o abrir.",
       "window_many": "O e-mail dos últimos {{count}} dias fica neste dispositivo. O e-mail mais antigo permanece no servidor e é carregado quando o abrir.",
-      "window_other": "O e-mail dos últimos {{count}} dias fica neste dispositivo. O e-mail mais antigo permanece no servidor e é carregado quando o abrir."
+      "window_other": "O e-mail dos últimos {{count}} dias fica neste dispositivo. O e-mail mais antigo permanece no servidor e é carregado quando o abrir.",
+      "freeUpFailed": "Não foi possível libertar espaço"
     },
     "general": {
       "title": "Geral"
