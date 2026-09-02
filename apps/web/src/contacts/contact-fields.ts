@@ -145,6 +145,32 @@ export function contactSortKey(card: CardLike): string {
   return contactDisplayName(card).toLowerCase()
 }
 
+/**
+ * The ONE collator the contact lists order with — the same shape `files/file-sort.ts` already uses.
+ *
+ * `String.localeCompare` builds a collator per CALL. At 5 000 cards that is ~120 000 of them per
+ * sort, on the main thread, and it is most of why a sort cost 266 ms (measured, Node 24, synthetic
+ * cards): the same comparison through a reused collator is 16.8 ms. `base` sensitivity because two
+ * names differing only in case or accent are neighbours to a reader; `numeric` so "Anna 2" comes
+ * before "Anna 10", which is the same promise the file list makes.
+ */
+const displayNameCollator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
+
+/**
+ * `cards` in display order, with each card's name computed EXACTLY ONCE.
+ *
+ * A comparator that calls {@link contactSortKey} computes it twice per comparison, and
+ * {@link contactDisplayName} is not a field read — it walks `components`, filters, joins, and falls
+ * back through nicknames, organizations and emails. Decorating first (a Schwartzian transform)
+ * turns n·log n name computations into n.
+ */
+export function sortByDisplayName<T extends CardLike>(cards: readonly T[]): T[] {
+  return cards
+    .map((card) => ({ card, key: contactSortKey(card) }))
+    .sort((a, b) => displayNameCollator.compare(a.key, b.key))
+    .map((entry) => entry.card)
+}
+
 // ── Groups ──────────────────────────────────────────────────────────────────────────────────────
 //
 // These three live HERE, in the module with type-only imports, rather than beside the rest of the
@@ -202,7 +228,23 @@ export function formatBirthday(anniversary: Anniversary, locale?: string): strin
     const parsed = new Date(date.utc)
     return Number.isNaN(parsed.getTime())
       ? undefined
-      : parsed.toLocaleDateString(locale, { year: 'numeric', month: 'long', day: 'numeric' })
+      : parsed.toLocaleDateString(locale, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          /*
+           * Read in UTC, because that is the day the editor reads.
+           *
+           * A `Timestamp` birthday (vCard `BDAY` WITH a time, the only way one arises) was rendered
+           * here in the reader's zone and extracted for the form's date field with `getUTC*`
+           * (`contact-card-mapping.extractBirthdayString`). West of UTC the two disagreed by a day:
+           * the detail said "March 14, 1980" over a form showing `1980-03-15`, and confirming the
+           * form wrote a `PartialDate` of the 15th — the display jumping a day for having been
+           * looked at. A birthday is a calendar date; the instant it was stored as has a zone, and
+           * that zone is the one it was written in, not the one it is being read in.
+           */
+          timeZone: 'UTC',
+        })
   }
   const { year, month, day } = date
   if (year !== undefined && month !== undefined && day !== undefined) {

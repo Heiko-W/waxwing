@@ -143,6 +143,33 @@ function generateUid(newUid: (() => string) | undefined): string {
  */
 const REJECT_ON_IMPORT = new Set(['id', 'addressBookIds', 'accountId', 'abk', '__proto__'])
 
+/**
+ * Keys that are not keys — the same three `packages/jscontact` refuses as a vCard `PROP-ID` (W-07),
+ * applied to the JSON path that reader never runs through.
+ *
+ * {@link REJECT_ON_IMPORT} guards the card's TOP level only, and the damage is one level down: a
+ * file with `"emails": { "__proto__": {…} }` imports and displays perfectly — `JSON.parse` stores
+ * the key as an own property — and then vanishes the first time the card is edited, because the
+ * form mapping writes each entry back with `out[key] = …` and that assignment on `__proto__`
+ * replaces a prototype instead of storing an entry.
+ *
+ * Dropped here rather than renamed: an id is a correlation handle between an import and a later
+ * export, and a made-up substitute would claim a correspondence that does not exist.
+ */
+const UNUSABLE_AS_KEY = new Set(['__proto__', 'constructor', 'prototype'])
+
+/** `value` with every {@link UNUSABLE_AS_KEY} map entry removed, at any depth. */
+function withoutUnusableKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutUnusableKeys)
+  if (typeof value !== 'object' || value === null) return value
+  const out: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (UNUSABLE_AS_KEY.has(key)) continue
+    out[key] = withoutUnusableKeys(entry)
+  }
+  return out
+}
+
 function coerceJsonCard(value: unknown, newUid: (() => string) | undefined): Card | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
   const record = value as Record<string, unknown>
@@ -159,7 +186,7 @@ function coerceJsonCard(value: unknown, newUid: (() => string) | undefined): Car
   // a second card on export (the jscontact writer strips line-breaking characters from every
   // rendered line), and HTML/URI values are sanitised where they are rendered, not here.
   const out: Record<string, unknown> = {}
-  for (const [key, entry] of Object.entries(record)) {
+  for (const [key, entry] of Object.entries(withoutUnusableKeys(record) as object)) {
     if (REJECT_ON_IMPORT.has(key)) continue
     out[key] = entry
   }

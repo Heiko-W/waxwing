@@ -1018,17 +1018,41 @@ function PhotoField({ photo, scale, newId, onChange }: PhotoFieldProps) {
   const [busy, setBusy] = useState(false)
   /** `null` = no complaint; otherwise the i18n key of the one the user needs to read. */
   const [error, setError] = useState<string | null>(null)
+  /** The URL the DRAFT is showing, or `null`. Revoked only once something replaces it. */
   const previewRef = useRef<string | null>(null)
+  /**
+   * Every object URL this field still owns — the one on screen, plus any candidate still being
+   * prepared. Held so unmounting mid-pick revokes both; a candidate is not in `previewRef` yet.
+   */
+  const liveUrlsRef = useRef(new Set<string>())
 
-  const setPreview = useCallback((url: string | null): void => {
-    if (previewRef.current !== null) URL.revokeObjectURL(previewRef.current)
-    previewRef.current = url
+  const mint = useCallback((file: File): string => {
+    const url = URL.createObjectURL(file)
+    liveUrlsRef.current.add(url)
+    return url
   }, [])
+
+  const revoke = useCallback((url: string): void => {
+    if (!liveUrlsRef.current.delete(url)) return
+    URL.revokeObjectURL(url)
+  }, [])
+
+  /** Show `url` (or nothing), retiring whatever the draft was showing before it. */
+  const setPreview = useCallback(
+    (url: string | null): void => {
+      const previous = previewRef.current
+      previewRef.current = url
+      if (previous !== null && previous !== url) revoke(previous)
+    },
+    [revoke],
+  )
 
   // Revoke a still-live preview object URL when the form closes, so a picked-then-cancelled photo leaks nothing.
   useEffect(() => {
+    const live = liveUrlsRef.current
     return () => {
-      if (previewRef.current !== null) URL.revokeObjectURL(previewRef.current)
+      for (const url of live) URL.revokeObjectURL(url)
+      live.clear()
     }
   }, [])
 
@@ -1036,22 +1060,33 @@ function PhotoField({ photo, scale, newId, onChange }: PhotoFieldProps) {
     async (file: File): Promise<void> => {
       setBusy(true)
       setError(null)
-      // Shown while the scale+encode runs; the stored value is the `data:` URI, not this.
-      const previewUrl = URL.createObjectURL(file)
-      setPreview(previewUrl)
+      // The stored value is the `data:` URI, not this — this is only what the well shows until it
+      // exists.
+      const candidate = mint(file)
       try {
         const prepared = await preparePhotoUri(file, scale)
+        /*
+         * THE SWAP HAPPENS HERE, AFTER the encode, not before it.
+         *
+         * It used to happen on the way in, which revoked the URL the draft was still rendering: a
+         * successful photo A followed by a too-large photo B left `photo.previewUrl` pointing at a
+         * revoked blob, so the circle showed a broken image over a draft that would have saved A
+         * perfectly well. The reader is not left staring at nothing in the meantime either —
+         * `busy` puts "Preparing…" under the well, and A stays visible until B is real.
+         */
+        setPreview(candidate)
         onChange({
           key: photo?.key ?? newId(),
           uri: prepared.uri,
           mediaType: prepared.mediaType,
-          previewUrl,
+          previewUrl: candidate,
           // Keep the entry's other JSContact properties (`pref`, a label, …) across a replacement —
           // `formToMedia` builds on `original` and drops the `blobId` the new `uri` supersedes.
           ...(photo?.original !== undefined ? { original: photo.original } : {}),
         })
       } catch (thrown) {
-        setPreview(null)
+        // Only the candidate. Whatever the draft is showing was never replaced and stays valid.
+        revoke(candidate)
         // "Too large" is the one failure the user can act on, so it says so instead of hiding
         // inside a generic "could not be read".
         setError(
@@ -1063,7 +1098,7 @@ function PhotoField({ photo, scale, newId, onChange }: PhotoFieldProps) {
         setBusy(false)
       }
     },
-    [scale, onChange, photo?.key, photo?.original, newId, setPreview],
+    [scale, onChange, photo?.key, photo?.original, newId, setPreview, mint, revoke],
   )
 
   const remove = useCallback((): void => {

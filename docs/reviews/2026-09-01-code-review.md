@@ -896,7 +896,7 @@ newParticipantRow('johndoe@example.test')])` → ein Key `pjohndoeexampletest`. 
 
 ### R-19 — [MEDIUM] Eine Namensänderung im Kontaktformular verwirft `sortAs`, `isOrdered` und `full` des Namens
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kontakte)
 
@@ -926,7 +926,12 @@ components; delete base.full`.
 
 ### R-20 — [MEDIUM] Die Kontaktliste sortiert bei jedem Replica-Write und beim Tippen mit `localeCompare` und rechnet den Anzeigenamen pro Vergleich neu — 5 000 Kontakte kosten ~220 ms pro Sortierung
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt wie vorgeschlagen: modulweiter `Intl.Collator` und ein Sortierschlüssel je Karte
+(`sortByDisplayName` in `contact-fields.ts`), die sortierte Basisliste memoisiert am Fenster statt
+am Suchtext. Messung (Node 24, 5 000 synthetische Karten, `TZ=America/New_York`): vorher
+189,6–266,0 ms, nachher 10,7–16,8 ms. Bewusste Verhaltensänderung: der Collator sortiert `numeric`,
+also „Scan 2" vor „Scan 10" — dieselbe Zusage, die die Dateiliste bereits macht.
 
 **Kategorie / Bereich:** performance / PIM (Kontakte)
 
@@ -958,7 +963,21 @@ Skriptwert, keine Schätzung.
 
 ### R-21 — [MEDIUM] Die Volltabellen-Live-Query über `contactCards` (inklusive eingebetteter Fotos) läuft bei jedem Write komplett neu — im Kontakte-Screen, in der Absenderkarte und je offenem Composer-Fenster
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+**Teilweise umgesetzt.** Behoben ist die Vervielfachung: `contactCards` hat jetzt EINE geteilte
+Subscription je Konto (`sync/contact-card-store.ts`, Muster `mailbox-store.ts` aus B10/ADR-035),
+die Kontakte-Screen, Absenderkarte und jedes Composer-Fenster gemeinsam lesen — statt einer Query
+je Verbraucher. Ein Schreibvorgang kostet damit einen Vollscan statt bis zu fünf (Regressionstest
+zählt: drei Verbraucher, ein `where`-Aufruf, plus genau einer je Write).
+NICHT umgesetzt: die Schema-Migration, die `media` aus der Karte auslagert, und der
+`*emails`-Index für die Absenderkarte. Begründung: beide brauchen einen Version-Bump dieser
+Datenbank, deren `.upgrade()`-Kette einbahnig ist — ein abgebrochener Upgrade lässt `db.open()`
+dauerhaft ablehnen, die App startet dann nicht mehr (Modulkopf `sync/db.ts`). Der gemessene
+Einzelscan bleibt damit teuer: 3 000 Karten, 1 000 mit 85-KB-Foto → 153 ms pro Lesevorgang
+(fake-indexeddb, Node 24) — vorher dasselbe mal Anzahl der offenen Verbraucher.
+Ebenfalls nicht umgesetzt: die Bündelung der Import-Enqueues (`ContactImportExportDialog`), weil
+die Schleife Fortschrittsanzeige und Abbrechen je Karte trägt und ein `bulkAdd` beides aufgäbe.
+Beides bleibt als Rest offen — siehe Rückbericht.
 
 **Kategorie / Bereich:** performance / PIM (Kontakte) + Compose
 
@@ -1005,7 +1024,10 @@ bestätigt (Code), nicht gemessen.
 
 ### R-22 — [MEDIUM] Der Object-URL-Cache der Dateiansicht ist nur nach Knoten-Id geschlüsselt — im geteilten Konto zeigt die Vorschau die Bytes der eigenen Datei
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beides umgesetzt: Cache-Key `${accountId}:${blobId}` und Widerruf plus Leeren des Caches in
+`goToAccount`. Der Key deckt zusätzlich den Fall „gleiche Knoten-Id, neue Bytes" ab, der vom
+Leeren allein nicht erfasst wird; beide Hälften haben je einen eigenen Test.
 
 **Kategorie / Bereich:** correctness / PIM (Dateien)
 
@@ -1034,7 +1056,12 @@ URLs widerrufen und leeren.
 
 ### R-23 — [MEDIUM] Die Server-Auflistung eines geteilten Kontos hat keinen Stempel — eine langsame Antwort landet in einem Ordner, den die Leserin schon verlassen hat
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Von den beiden Vorschlägen der zweite: das Ergebnis wird mit `${accountId}\0${here}\0${query}`
+gestempelt und beim Eintreffen gegen den aktuellen Stempel geprüft. Ein `live`-Flag im Effekt
+hätte nur den Effekt-Pfad geschützt — `run()` lädt über `loadRef` ebenfalls nach, und zwar genau
+dann, wenn die Leserin nach einem Schreibvorgang weiternavigiert. Das Konto steckt mit im
+Stempel: `null` ist die Wurzel JEDES Kontos.
 
 **Kategorie / Bereich:** react (Race) / PIM (Dateien)
 
@@ -1061,7 +1088,19 @@ Reports shown? false`. Gegenprüfung: bestätigt.
 
 ### R-24 — [MEDIUM] Umbenennen, Verschieben und Löschen sind offline nicht gesperrt, der „Verschieben nach…“-Dialog liest trotz Replica über das Netz, und der Fehler heißt danach „vom Server abgelehnt“
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt: Zeilenaktionen mit `unavailableReason` (Vorschau, Teilen, Umbenennen, Verschieben,
+Herunterladen, Löschen — alle brauchen eine Verbindung), `TypeError`/`AbortError` in `run` als
+neuer Schlüssel `files.error.offline` statt „vom Server abgelehnt", und `FileMoveDialog` liest
+für das eigene Konto über `useFileNodes(here, replicated)` aus der Replica statt je Ebene über
+das Netz. `useFileNodes` hat dafür einen `enabled`-Parameter bekommen (Muster `useAllFileNodes`),
+damit der Dialog im geteilten Konto den eigenen Baum gar nicht erst liest.
+NICHT umgesetzt: dieselbe Sperre für „Verschieben"/„Löschen" in der Auswahlleiste. `Button`
+rendert `unavailableReason` als visuell verborgenen Span INNERHALB des Knopfes; bei einem
+Textknopf landet der Satz damit im Accessible Name („Move You are offline. …") und wird zusätzlich
+als Beschreibung vorgelesen. Das sauber zu lösen heißt, das UI-Primitiv zu ändern — siehe
+Nebenbefund. Die Auswahlleiste ist dadurch nicht mehr irreführend: `run` nennt jetzt die
+richtige Ursache.
 
 **Kategorie / Bereich:** robustness / PIM (Dateien)
 
@@ -2474,7 +2513,12 @@ Leiste rendert `"CalendarsThis account has no calendars."`. Gegenprüfung: best�
 
 ### R-60 — [LOW] Ein Map-Key `__proto__` in `emails`/`phones`/… lässt den Eintrag bei der nächsten Bearbeitung verschwinden — der JSON-Import lässt solche Keys durch (vgl. W-07)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Der Import filtert `__proto__`/`constructor`/`prototype` rekursiv aus dem GESAMTEN Kartenobjekt
+statt nur aus den bekannten Map-Properties — eine Allowlist der Map-Namen hätte jede JSContact-
+Vendor-Erweiterung ungeschützt gelassen. Die Schreibseite legt die Zielobjekte wie vorgeschlagen
+mit `Object.create(null)` an, sodass ein aus anderer Quelle stammender Schlüssel erhalten bleibt
+statt zu verschwinden.
 
 **Kategorie / Bereich:** robustness (Security-Härtung) / PIM (Kontakte)
 
@@ -2507,7 +2551,18 @@ Gegenprüfung: abgeschwächt, medium → low.
 
 ### R-61 — [LOW] Die Dateiliste ist nicht virtualisiert und wird bei jedem Tastendruck im Suchfeld komplett neu gerendert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+**Bewusst NICHT virtualisiert** — der Lösungsansatz sagt „Virtualisierung erst, wenn eine Messung
+sie rechtfertigt", also wurde zuerst gemessen (jsdom, Node 24, deshalb Größenordnung und kein
+Budget). Vorher, pro Tastendruck im Suchfeld: 43 ms bei 100 Zeilen, 135 ms bei 300, 455 ms bei
+1 000, 920 ms bei 2 000. Pro Checkbox: 24 / 63 / 154 / 346 ms. Nachher, mit Zeile als `memo` und
+Suchfeld als Kindkomponente mit eigenem State: Tastendruck 0,9 / 0,5 / 0,4 / 0,4 ms, Checkbox
+3,9 / 7,6 / 21,6 / 42,1 ms. Bei realistischen Ordnergrößen (die Auflistung endet an `MAX_PAGES`)
+bleibt damit nichts Spürbares übrig; die einzige Zahl, die eine Virtualisierung noch senken würde,
+ist der Mount — und die ist in jsdom nicht aussagekräftig. Die Zeilenhöhe ist zudem nicht konstant
+(eine geöffnete Vorschau lässt die Zeile wachsen), was `useVirtualizer` hier teurer machen würde
+als in `MessageList`. Gepinnt mit einem Render-Zähler statt mit einer Zeitmessung
+(`FilesPage.rerender.test.tsx`).
 
 **Kategorie / Bereich:** performance / PIM (Dateien)
 
@@ -2563,7 +2618,7 @@ bestätigt dieselben 21 Fälle. Gegenprüfung: bestätigt.
 
 ### R-63 — [LOW] Geburtstag als `Timestamp`: Formular zeigt den UTC-Tag, Detailansicht den lokalen — in Zonen westlich von UTC einen Tag auseinander
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** i18n / PIM (Kontakte)
 
@@ -2588,7 +2643,10 @@ March 14, 1980`. Gegenprüfung: bestätigt.
 
 ### R-64 — [LOW] Fotofeld: ein fehlgeschlagener zweiter Bildauswahlversuch widerruft die Vorschau-URL, die der Entwurf noch anzeigt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Von den beiden Vorschlägen der erste: die Vorschau-URL wird erst nach erfolgreichem
+`preparePhotoUri` getauscht. `previewUrl` bleibt im Entwurf, weil `photo.uri` erst nach dem
+Encode existiert und der Kreis sonst während der Vorbereitung leer bliebe.
 
 **Kategorie / Bereich:** react / PIM (Kontakte)
 
@@ -2611,7 +2669,10 @@ nicht im Entwurf halten und immer `photo.uri` rendern.
 
 ### R-65 — [LOW] Kleinere Formular-Inkonsistenzen: Wiederholungszähler springt beim Leeren auf 1, Firma/Titel werden ungetrimmt gespeichert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Der Zähler hält seinen Text in einer eigenen Feldkomponente (`RepeatCountField`) statt im State
+des Dialogs: `RepeatEnd` ist ein geteilter Typ (`event-recurrence.ts`, `calendar-client.ts`), und
+ein leeres Feld ist ein Zustand des Feldes, nicht der Wiederholungsregel.
 
 **Kategorie / Bereich:** correctness / PIM (Kalender, Kontakte)
 
@@ -2635,7 +2696,12 @@ Leerzeichen gespeichert.
 
 ### R-66 — [LOW] Dialoge „Neuer Ordner“ und „Umbenennen“ reagieren nicht auf Enter, und der Name wird nicht — wie kommentiert — vorselektiert
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Dialoge sind `<form onSubmit>` nach dem Muster `AddressBookList` (Footer-Knopf per
+`form={id}` mit dem Formular im Body verbunden). Die Vorselektion läuft über `initialFocusRef`
+plus `select()` in einem Effekt der SEITE statt über `onFocus`: `Dialog` setzt den Fokus aus einem
+eigenen Effekt, und der Effekt der Elternkomponente läuft danach — `onFocus` allein wurde davon
+wieder überschrieben (nachgemessen: `selectionStart` blieb am Ende).
 
 **Kategorie / Bereich:** a11y / PIM (Dateien)
 
@@ -2660,7 +2726,12 @@ e.currentTarget.select()}` oder `initialFocusRef` + `select()`.
 
 ### R-67 — [LOW] Sammel-Upload: bricht die Schleife bei Datei 3 von 11 ab, nennt der Toast keine Datei
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Variante 1 des Lösungsansatzes: jede Datei wird versucht, die Fehlschläge werden mit ihrer Ursache
+gesammelt, und nach der Schleife gibt es genau einen Reload. Eine abgelehnte Datei nennt Name und
+Grund, mehrere nennen Anzahl und Namen (neue Schlüssel `files.uploadProblem.one` /
+`files.uploadProblem.some` in allen 14 Bundles). Kein `Promise.allSettled`: die Uploads laufen
+bewusst nacheinander, weil ein Stapel Scans sonst gleichzeitig gegen dieselbe Quote läuft.
 
 **Kategorie / Bereich:** robustness / PIM (Dateien)
 
@@ -2686,7 +2757,16 @@ genau ein Reload; oder `Promise.allSettled` mit „8 von 11 hochgeladen“.
 
 ### R-68 — [LOW] Irreführende Kopfkommentare beschreiben den Zustand vor K-8/D-4 und ein Verhalten, das es nicht gibt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle genannten Stellen auf den Replica-Stand gebracht: `calendar-client.ts` und `files-client.ts`
+beschreiben sich jetzt als Schreib-Seam (plus Lesepfad für das, was die Replica nicht hält —
+Downloads, geteilte Konten), `CalendarPage.tsx` unterscheidet Lesen von Schreiben,
+`FileMoveDialog.tsx` wurde bereits mit R-24 mitgezogen. Die WeekView-Passage ist nicht gestrichen,
+sondern korrigiert: `pointer-events: none` hat weiterhin einen Grund, nur nicht den behaupteten;
+ergänzt ist der Satz, welche Elemente in dieser Ansicht überhaupt klickbar sind. Der Kommentar in
+`FilesPage.tsx:225-226` stimmt seit R-66 und blieb daher stehen; `maintenance.ts:278-280` war mit
+R-05 bereits richtiggestellt. Zusätzlich `app/use-online.ts:5` — derselbe falsche Satz („no
+replica") an einer im Bericht nicht genannten Stelle.
 
 **Kategorie / Bereich:** maintainability / PIM
 

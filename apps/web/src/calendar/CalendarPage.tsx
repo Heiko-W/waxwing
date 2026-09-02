@@ -156,10 +156,12 @@ export default function CalendarPage(props: CalendarPageProps) {
   const tier = useLayoutTier()
   const { toast } = useToast()
   /*
-   * This screen has no replica: every control on it is an online-only control. Without this check
-   * the new-event button stayed enabled offline, the write failed, and the reader was told the
-   * calendar could not be LOADED. Settings has gated its writes this way since M3.5; Calendar and
-   * Files were the two screens that never did.
+   * The screen READS from the replica since K-8 (`use-calendar-events.ts`), so a month already
+   * synced is drawn offline. Every control that WRITES — a new event, an RSVP, a calendar's colour
+   * — still needs a line, and this is what greys those out with a reason. Without it the new-event
+   * button stayed enabled offline, the write failed, and the reader was told the calendar could not
+   * be LOADED. Settings has gated its writes this way since M3.5; Calendar and Files were the two
+   * screens that never did.
    */
   const online = useOnline()
   const [calendars, setCalendars] = useState<Calendar[]>([])

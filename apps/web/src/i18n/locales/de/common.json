@@ -2113,6 +2113,11 @@
     "savedButNotShown": "Gespeichert — die Liste ließ sich aber nicht neu laden. Mit „Erneut versuchen“ wird sie geholt.",
     "signedOut": "Melden Sie sich an, um Ihre Dateien zu sehen.",
     "upload": "Hochladen",
+    "uploadProblem": {
+      "one": "„{{name}}“ wurde nicht hochgeladen: {{reason}}",
+      "some_one": "1 von {{total}} Dateien wurde nicht hochgeladen: {{names}}",
+      "some_other": "{{count}} von {{total}} Dateien wurden nicht hochgeladen: {{names}}"
+    },
     "newFolder": "Neuer Ordner",
     "cancel": "Abbrechen",
     "download": "{{name}} herunterladen",
@@ -2128,6 +2133,7 @@
       "tooLarge": "Diese Datei ist für diesen Server zu groß.",
       "overQuota": "Kein Speicherplatz mehr in diesem Konto.",
       "forbidden": "Dafür fehlt Ihnen hier die Berechtigung.",
+      "offline": "Keine Verbindung zum Server. Versuchen Sie es erneut, sobald Sie wieder online sind.",
       "rejected": "Der Server hat das abgelehnt."
     },
     "name": {

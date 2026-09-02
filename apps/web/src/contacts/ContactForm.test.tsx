@@ -411,6 +411,47 @@ describe('ContactForm photo (JMAP gap analysis, B-1)', () => {
   })
 
   /**
+   * A failed SECOND pick used to take the FIRST one's picture down with it (R-64).
+   *
+   * The preview URL was swapped on the way IN — before the encode — so the draft, which still
+   * pointed at photo A, was pointing at a revoked blob for as long as the encode ran; and the
+   * `catch` then revoked the replacement too. The circle showed a broken image over a draft that
+   * would have saved A perfectly well.
+   */
+  it('keeps the first photo on screen when a second pick is refused', async () => {
+    const user = userEvent.setup()
+    let minted = 0
+    URL.createObjectURL = vi.fn(() => `blob:preview-${++minted}`)
+    const { onSubmit } = renderForm({ scalePhoto: passthroughScaler })
+
+    await user.click(screen.getByRole('button', { name: 'Add photo' }))
+    await user.upload(
+      screen.getByLabelText('Choose photo'),
+      new File(['bytes'], 'a.png', { type: 'image/png' }),
+    )
+    expect(await screen.findByRole('img')).toHaveAttribute('src', 'blob:preview-1')
+
+    // The well's label changes once it holds one; the input is the same control.
+    await user.upload(
+      screen.getByLabelText('Change photo'),
+      new File(['x'.repeat(PHOTO_MAX_BYTES + 1)], 'b.png', { type: 'image/png' }),
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'That photo is too large. Choose a smaller one.',
+    )
+
+    // The picture the draft holds is still on screen, and still valid.
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:preview-1')
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:preview-1')
+    // The candidate that never made it is not leaked either.
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview-2')
+
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    const submit = onSubmit.mock.calls[0]?.[0] as Extract<ContactFormSubmit, { kind: 'create' }>
+    expect(Object.values(submit.card.media ?? {})[0]?.uri ?? '').toMatch(/^data:image\/png;base64,/)
+  })
+
+  /**
    * The half of B-1 that no component test could see: the picker was `disabled` unless a caller
    * passed an uploader, and no caller did. The form no longer takes one — so this pins that the
    * control the user is shown is a control the user can operate, with nothing to wire.

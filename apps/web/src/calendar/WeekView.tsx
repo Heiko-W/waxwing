@@ -18,9 +18,13 @@
  * hatched band behind the grid wherever the chosen person is busy. It is behind everything, it is a
  * PATTERN rather than a tint (a wash of colour would either hide the reader's own events or be
  * indistinguishable from a calendar's own hue — and colour alone may not carry meaning at all, WCAG
- * 1.4.1), and it takes no clicks: `pointer-events: none`, so the column underneath still creates
- * events where it did. Apple draws free/busy exactly this way and for the same reason — the answer
- * to "when can we meet" is only useful next to the reader's OWN commitments, never instead of them.
+ * 1.4.1), and it takes no clicks: `pointer-events: none`, so it never swallows one meant for what is
+ * underneath. Apple draws free/busy exactly this way and for the same reason — the answer to "when
+ * can we meet" is only useful next to the reader's OWN commitments, never instead of them.
+ *
+ * The clickable things in this view are the day heading (which picks the day) and each event; the
+ * empty grid is not one of them. This block claimed until 2026-09-01 that the column "still creates
+ * events", which it has never done — a new event is started from the screen's own button.
  */
 
 import { useTranslation } from 'react-i18next'

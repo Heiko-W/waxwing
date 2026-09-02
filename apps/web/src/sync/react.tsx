@@ -11,6 +11,7 @@
 import type { Id } from '@waxwing/jmap'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
+import { useSharedContactCards } from './contact-card-store'
 import {
   type AddressBookRow,
   type CalendarEventRow,
@@ -217,6 +218,25 @@ export function useAddressBooks(): AddressBookRow[] | undefined {
 }
 
 /**
+ * Every contact card of the account (individuals AND groups) — the source three unrelated surfaces
+ * share: the contacts screen, the mail reading pane's sender card, and each composer's recipient
+ * suggestions.
+ *
+ * Reads THE shared subscription (R-21, `contact-card-store.ts`), not a `liveQuery` of its own. A
+ * contact card carries its photo inline, so a whole-table read is expensive, and there used to be
+ * one per consumer — up to five at a time, every one of them re-running on every `contactCards`
+ * write.
+ *
+ * Provider-OPTIONAL, and that is what lets the composer use it: `RecipientFields` is unit-tested
+ * without a `ReplicaProvider` and kept a hand-rolled copy of this query for exactly that reason.
+ * `undefined` means "not known yet" here as everywhere — including "there is no replica".
+ */
+export function useContactCards(): ContactCardRow[] | undefined {
+  const context = useReplicaOptional()
+  return useSharedContactCards(context?.db ?? null, context?.accountId ?? null)
+}
+
+/**
  * A virtualizable window over a watched contact query (M4.2; key from `canonicalContactQueryKey`):
  * the cards for the query's cached id window, in server order (`undefined` = not yet synced). Combines
  * the window-row lookup and the card hydration in one live query — the contacts analogue of
@@ -330,15 +350,21 @@ export function useCalendarWindow(key: string): CalendarWindow | null | undefine
  *
  * Provider-optional for the same reason {@link useCalendars} is — `SyncEngineHost` renders its
  * children without a provider until the session restores, and the Files screen is one of them.
+ *
+ * `enabled` is a parameter rather than a conditional hook call, the arrangement
+ * {@link useAllFileNodes} already uses, and here it is not only about cost: the replica holds the
+ * READER'S tree, so a surface standing inside somebody else's shared account must not read it at
+ * all. Disabled, it answers `undefined` without touching the database — the same "not known" a
+ * query in flight gives, which is the honest answer for a level this device does not hold.
  */
-export function useFileNodes(parentId: Id | null): FileNodeRow[] | undefined {
+export function useFileNodes(parentId: Id | null, enabled = true): FileNodeRow[] | undefined {
   const context = useReplicaOptional()
   return useLiveQuery<FileNodeRow[] | undefined>(
     async () =>
-      context === null
+      context === null || !enabled
         ? undefined
         : await fileNodesForParent(context.db, context.accountId, parentId),
-    [context?.db, context?.accountId, parentId],
+    [context?.db, context?.accountId, parentId, enabled],
   )
 }
 

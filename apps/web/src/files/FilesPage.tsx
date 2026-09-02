@@ -62,7 +62,16 @@ import {
   Upload,
   UsersRound,
 } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { delegatedAccountsFor } from '../app/session/accounts'
 import { useSessionOptional } from '../app/session/context'
@@ -108,7 +117,7 @@ import {
 import { ShareDialog } from './ShareDialog'
 import { mayShare } from './sharing'
 import { useFileSearch } from './use-file-tree'
-import { ROW_PART, useRowGeometry, visibleRowActions } from './use-row-actions'
+import { ROW_PART, type RowGeometry, useRowGeometry, visibleRowActions } from './use-row-actions'
 
 export interface FilesPageProps {
   /** Injected in tests; defaults to a client built from the live session. */
@@ -163,11 +172,355 @@ interface RowAction {
   readonly label: string
   readonly icon: LucideIcon
   readonly disabled: boolean
+  /**
+   * Why the action cannot be used right now, for an action that is REFUSED rather than absent.
+   *
+   * The page header promises everything that needs a line is "greyed out with a reason"; the three
+   * writing actions in the row were the ones that were not (R-24). `IconButton` renders it as an
+   * `aria-disabled` control with the reason as its description, so the control stays reachable by
+   * keyboard and the reason is readable — which a `disabled` attribute alone is not.
+   */
+  readonly unavailableReason: string | undefined
   readonly destructive: boolean
   /** Whether the surface this toggles is open; `undefined` for everything that is not a toggle. */
   readonly expanded: boolean | undefined
   readonly onSelect: () => void
 }
+
+/**
+ * ONE line of the listing, memoised (R-61).
+ *
+ * The list used to be built inline, so every keystroke in the search box, every checkbox and every
+ * preview toggle re-rendered every row — and a row is not cheap: up to six `RowAction`s, a context
+ * `Menu`, an overflow `Menu`, six `IconButton`s and a `Checkbox`. Measured in jsdom (not a browser,
+ * so read the numbers as an order of magnitude, not a budget): one keystroke cost 43 ms over 100
+ * rows, 135 ms over 300 and 455 ms over 1 000.
+ *
+ * NOT virtualised, deliberately. `MessageList` and `ContactList` are, because a mailbox and an
+ * address book have no ceiling; a folder does — the listing stops at `MAX_PAGES` and says so — and
+ * the review that raised this asked for a measurement before the machinery. With the search field
+ * holding its own text ({@link FileSearchField}) the per-keystroke render is gone entirely, and
+ * with this `memo` a checkbox re-renders one row instead of all of them. Virtualising on top of
+ * that would buy the mount, at the price of the row heights this list does not have (a row grows
+ * when its preview opens) — so it waits for a measurement in a real browser that asks for it.
+ *
+ * Every callback below is stable in the parent (`useCallback`, functional `setState`), which is
+ * what makes the `memo` do anything at all.
+ */
+interface FileRowProps {
+  readonly node: FileNode
+  /** In search results only: the folder the hit was found in. */
+  readonly parent: FileNode | null
+  readonly geometry: RowGeometry
+  readonly busy: boolean
+  readonly online: boolean
+  readonly searching: boolean
+  readonly selecting: boolean
+  readonly selected: boolean
+  /** This row's open preview, or `null` — not the screen's, so a toggle elsewhere is not our news. */
+  readonly preview: { readonly type: string; readonly url: string } | null
+  readonly onToggleSelect: (id: Id) => void
+  readonly onOpenFolder: (node: FileNode, searching: boolean) => void
+  readonly onTogglePreview: (node: FileNode, open: boolean) => void
+  readonly onDownload: (node: FileNode) => void
+  readonly onShare: (node: FileNode) => void
+  readonly onRename: (node: FileNode) => void
+  readonly onMove: (node: FileNode) => void
+  readonly onDelete: (node: FileNode) => void
+}
+
+const FileRow = memo(function FileRow({
+  node,
+  parent,
+  geometry,
+  busy,
+  online,
+  searching,
+  selecting,
+  selected,
+  preview,
+  onToggleSelect,
+  onOpenFolder,
+  onTogglePreview,
+  onDownload,
+  onShare,
+  onRename,
+  onMove,
+  onDelete,
+}: FileRowProps) {
+  const { t } = useTranslation()
+  /** This row's own `<li>`, so its secondary click finds itself (no shared map to keep in step). */
+  const rowRef = useRef<HTMLLIElement>(null)
+  const isDirectory = node.nodeType === 'directory'
+  /** Everything that cannot happen without a line carries the reason rather than vanishing (R-24). */
+  const offline = online ? undefined : t('files.offline')
+  /*
+   * Every action this node grants, in the order the row has always shown them: view, share,
+   * rename, move, download, delete. Built as data so the split below can hand the tail to the `⋯`
+   * menu — see the `RowAction` note and `use-row-actions.ts`.
+   */
+  const actions: RowAction[] = []
+  if (!isDirectory && node.myRights.mayRead && isPreviewable(node.type)) {
+    const open = preview !== null
+    actions.push({
+      id: 'preview',
+      label: open
+        ? t('files.hidePreview', { name: node.name })
+        : t('files.preview', { name: node.name }),
+      icon: Eye,
+      disabled: false,
+      // Opening the bytes needs a line — the page header says so, and this is where it has to be
+      // said. Closing an open one does not, so it stays available.
+      unavailableReason: open ? undefined : offline,
+      destructive: false,
+      expanded: open,
+      onSelect: () => onTogglePreview(node, open),
+    })
+  }
+  if (mayShare(node.myRights)) {
+    actions.push({
+      id: 'share',
+      label: t('files.share.open', { name: node.name }),
+      icon: UsersRound,
+      disabled: false,
+      unavailableReason: offline,
+      destructive: false,
+      expanded: undefined,
+      onSelect: () => onShare(node),
+    })
+  }
+  // Gated on the server's own `mayRename`, like delete is on `mayDelete`: the flag is on the record
+  // precisely so a client does not have to offer the failure. This was the one action of the seven
+  // this screen claims that had no control at all — `filesClient.rename()` existed and shipped with
+  // no caller outside its test.
+  if (node.myRights.mayRename) {
+    actions.push({
+      id: 'rename',
+      label: t('files.rename.open', { name: node.name }),
+      icon: Pencil,
+      disabled: busy,
+      unavailableReason: offline,
+      destructive: false,
+      expanded: undefined,
+      onSelect: () => onRename(node),
+    })
+  }
+  /*
+   * MOVE IS OFFERED UNCONDITIONALLY, and that is a departure from the two above it.
+   *
+   * `myRights` is measured to be wrong for exactly this case: under a shared FOLDER the download
+   * access is inherited correctly while every flag on the CHILD node comes back `false` (D-7).
+   * Gating move on `mayRename` would therefore hide it precisely where a grantee has been given
+   * the run of a folder — a capability the server would honour, withheld by the client on the
+   * strength of a field the server fills in wrongly.
+   *
+   * The other direction is survivable: a refused move is one `FileNode/set`, and `run` turns
+   * `forbidden` into a sentence. An action that fails loudly beats one that is missing silently.
+   */
+  actions.push({
+    id: 'move',
+    label: t('files.move.open', { name: node.name }),
+    icon: FolderInput,
+    disabled: busy,
+    unavailableReason: offline,
+    destructive: false,
+    expanded: undefined,
+    onSelect: () => onMove(node),
+  })
+  if (!isDirectory && node.myRights.mayRead) {
+    actions.push({
+      id: 'download',
+      label: t('files.download', { name: node.name }),
+      icon: Download,
+      disabled: false,
+      unavailableReason: offline,
+      destructive: false,
+      expanded: undefined,
+      onSelect: () => onDownload(node),
+    })
+  }
+  if (node.myRights.mayDelete) {
+    actions.push({
+      id: 'delete',
+      label: t('files.delete', { name: node.name }),
+      icon: Trash2,
+      disabled: busy,
+      unavailableReason: offline,
+      destructive: true,
+      expanded: undefined,
+      onSelect: () => onDelete(node),
+    })
+  }
+  const visible = visibleRowActions(geometry, actions.length)
+  const asMenuItems = (list: typeof actions): MenuItemSpec[] =>
+    list.map((action) => ({
+      id: action.id,
+      label: action.label,
+      icon: action.icon,
+      // A menu item has nowhere to put `unavailableReason`, so there it is a plain `disabled` —
+      // the same choice the bar menu makes for the same reason.
+      disabled: action.disabled || action.unavailableReason !== undefined,
+      // Spread rather than `destructive={false}`: `MenuItemSpec` states it as optional and the
+      // repo compiles with `exactOptionalPropertyTypes`.
+      ...(action.destructive ? { destructive: true } : {}),
+      onSelect: action.onSelect,
+    }))
+  // The overflow menu carries what did not fit; the CONTEXT menu carries everything, which is the
+  // difference between a spill-over and a menu of the row's commands.
+  const hidden: MenuItemSpec[] = asMenuItems(actions.slice(visible))
+  const rowMenuItems: MenuItemSpec[] = asMenuItems(actions)
+
+  const label = (
+    <span className={styles.nameInner}>
+      {isDirectory ? (
+        <Folder aria-hidden="true" className={styles.icon} />
+      ) : (
+        <FileIcon aria-hidden="true" className={styles.icon} />
+      )}
+      <span className={styles.nameText}>{node.name}</span>
+    </span>
+  )
+
+  return (
+    <li ref={rowRef} className={styles.row} {...{ [ROW_PART.row]: '' }}>
+      {/* A secondary click anywhere in the row opens the row's commands — the same rule the folder
+          tree, the label list and the message list follow. HIG `context-menus` asks for
+          consistency by name: a feature offered on some rows and not others is one nobody learns.
+          No trigger of its own; the visible affordances are the row's buttons and the ⋯ beside
+          them. */}
+      <Menu
+        trigger={null}
+        triggerLabel={t('files.more', { name: node.name })}
+        contextTarget={() => rowRef.current}
+        items={rowMenuItems}
+      />
+      {selecting ? (
+        // The checkbox IS the row: its own `<label>` carries the icon and the name, so the whole
+        // line is the target rather than a 1.15rem square beside one. Wrapped rather than
+        // class-named, because `Checkbox` hands `className` to its INPUT.
+        <span className={styles.selectName} {...{ [ROW_PART.name]: '' }}>
+          <Checkbox checked={selected} onChange={() => onToggleSelect(node.id)} label={label} />
+        </span>
+      ) : isDirectory ? (
+        <button
+          type="button"
+          className={styles.name}
+          {...{ [ROW_PART.name]: '' }}
+          onClick={() => onOpenFolder(node, searching)}
+        >
+          {label}
+        </button>
+      ) : (
+        <span className={styles.name} {...{ [ROW_PART.name]: '' }}>
+          {label}
+        </span>
+      )}
+      {/* Where a hit was found — and the way there. Only in search results: inside a folder every
+          row shares the same answer, and repeating it is noise. */}
+      {searching && (
+        <span className={styles.location}>
+          {parent === null ? (
+            <Button variant="ghost" size="sm" onClick={() => onOpenFolder(node, true)}>
+              {t('files.search.inRoot')}
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => onOpenFolder(parent, true)}>
+              {t('files.search.in', { name: parent.name })}
+            </Button>
+          )}
+        </span>
+      )}
+      <span className={styles.size} {...{ [ROW_PART.size]: '' }}>
+        {isDirectory ? '' : formatBytes(node.size)}
+      </span>
+      {!selecting && (
+        <span className={styles.rowActions} {...{ [ROW_PART.actions]: '' }}>
+          {actions.slice(0, visible).map((action) => (
+            <IconButton
+              key={action.id}
+              label={action.label}
+              variant="ghost"
+              size="sm"
+              disabled={action.disabled}
+              unavailableReason={action.unavailableReason}
+              aria-expanded={action.expanded}
+              onClick={action.onSelect}
+            >
+              <action.icon />
+            </IconButton>
+          ))}
+          {hidden.length > 0 && (
+            <Menu
+              triggerLabel={t('files.more', { name: node.name })}
+              trigger={<Ellipsis aria-hidden="true" />}
+              align="end"
+              triggerVariant="toolbar"
+              items={hidden}
+            />
+          )}
+        </span>
+      )}
+      {preview !== null && (
+        <div className={styles.preview}>
+          {previewSurface(preview.type) === 'image' ? (
+            // A blob: URL for the file just downloaded — no second network fetch, and no
+            // `<img src={downloadUrl}>`, which would send the bytes without our credentials.
+            <img src={preview.url} alt={node.name} className={styles.previewImage} />
+          ) : (
+            // `sandbox=""` denies everything, same-origin included: a blob: URL carries this app's
+            // origin, and taking it away is the whole reason the frame is safe.
+            <iframe
+              src={preview.url}
+              title={node.name}
+              sandbox=""
+              className={styles.previewFrame}
+            />
+          )}
+        </div>
+      )}
+    </li>
+  )
+})
+
+/**
+ * The search box, holding its own text (R-61).
+ *
+ * The field used to be state of the whole screen, so every keystroke re-rendered the page and its
+ * entire listing — while the rows themselves do not change until the 250 ms debounce fires. Only
+ * the debounced value goes up now; the letters stay here.
+ *
+ * The screen resets it by changing `key` (walking into a folder, or into another account leaves
+ * the search behind), which is React's own way of saying "start over" and needs no second channel
+ * back down.
+ */
+const FileSearchField = memo(function FileSearchField({
+  onQuery,
+}: {
+  readonly onQuery: (query: string) => void
+}) {
+  const { t } = useTranslation()
+  const [term, setTerm] = useState('')
+
+  // The field leads the request by a beat. Trimmed here so " " is a blank search, not a search for
+  // a space — which the server would answer with the whole account.
+  useEffect(() => {
+    const timer = setTimeout(() => onQuery(term.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [term, onQuery])
+
+  return (
+    <div className={styles.search}>
+      <Search aria-hidden="true" className={styles.searchIcon} />
+      <TextInput
+        type="search"
+        value={term}
+        aria-label={t('files.search.label')}
+        placeholder={t('files.search.placeholder')}
+        onChange={(event) => setTerm(event.target.value)}
+      />
+    </div>
+  )
+})
 
 export default function FilesPage(props: FilesPageProps) {
   const { t } = useTranslation()
@@ -227,9 +580,15 @@ export default function FilesPage(props: FilesPageProps) {
    */
   const [renaming, setRenaming] = useState<FileNode | null>(null)
   const [renameTo, setRenameTo] = useState('')
-  /** What the field holds, and what has actually been asked for — see {@link SEARCH_DEBOUNCE_MS}. */
-  const [term, setTerm] = useState('')
+  /**
+   * What has actually been asked for. The LETTERS live in {@link FileSearchField} (R-61); only the
+   * debounced text arrives here, so typing does not re-render the listing.
+   *
+   * `searchEpoch` is how the screen clears the field: it is the field's `key`, so bumping it mounts
+   * a fresh one — React's own "start over", rather than a second channel back down into a child.
+   */
   const [query, setQuery] = useState('')
+  const [searchEpoch, setSearchEpoch] = useState(0)
   const [sort, setSort] = useState<FileSort>(DEFAULT_FILE_SORT)
   /** Selecting is a mode. Nothing is pickable until the reader says so. */
   const [selecting, setSelecting] = useState(false)
@@ -238,11 +597,18 @@ export default function FilesPage(props: FilesPageProps) {
   const [moving, setMoving] = useState<readonly FileNode[] | null>(null)
   /** The nodes a delete is being confirmed for, or null (B-7). */
   const [deleting, setDeleting] = useState<readonly FileNode[] | null>(null)
-  // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
-  // preview neither downloads the file again nor leaks the superseded URL.
+  /**
+   * One object URL per set of BYTES, reused across toggles and revoked once on unmount — re-opening
+   * a preview neither downloads the file again nor leaks the superseded URL.
+   *
+   * Keyed by account AND `blobId`, not by node id (R-22). Stalwart hands out short, per-account
+   * node ids, so `n1` exists in almost every account: after previewing your own `photo.png` and
+   * walking into "Shared with me → carol", the cache answered for carol's `n1` with YOUR bytes —
+   * shown in the preview and saved under HER filename by Download. The blob id is what actually
+   * names the bytes, so it also fixes the second half: a file replaced under the same node id gets
+   * a new `blobId` and no longer serves the old content for the rest of the session.
+   */
   const urlCacheRef = useRef(new Map<string, string>())
-  /** Row elements, so each row's secondary click can find its own <li>. */
-  const rowRefs = useRef(new Map<string, HTMLLIElement>())
 
   const injected = props.client
   const injectedFor = props.clientFor
@@ -286,13 +652,9 @@ export default function FilesPage(props: FilesPageProps) {
 
   const here = path[path.length - 1]?.id ?? null
   const searching = query !== ''
-
-  // The field leads the request by a beat. Trimmed here so " " is a blank search, not a search for
-  // a space — which the server would answer with the whole account.
-  useEffect(() => {
-    const timer = setTimeout(() => setQuery(term.trim()), SEARCH_DEBOUNCE_MS)
-    return () => clearTimeout(timer)
-  }, [term])
+  /** The two name dialogs are forms, so Enter submits them; footer button ↔ body form by id. */
+  const newFolderFormId = useId()
+  const renameFormId = useId()
 
   /**
    * Whose files are on screen, and whether the replica holds them.
@@ -320,6 +682,27 @@ export default function FilesPage(props: FilesPageProps) {
   const neverSynced = replicated && treeState !== undefined && treeState.syncedAt === 0
 
   /**
+   * WHICH listing is being asked for, as one value — the stamp a late answer is checked against
+   * (R-23).
+   *
+   * Every response of the remote path used to be written into the state unchecked. Walking into a
+   * slow shared folder and then clicking the breadcrumb back to the root let the folder's answer
+   * land AFTER the root's: heading and list disagreed, and a bulk action — Delete among them —
+   * then pointed at nodes outside the folder on screen. The replicated path is immune because it
+   * reads keyed, which is why this guard is only needed on the other one.
+   *
+   * The account is part of the stamp, not just the folder: `null` is the root of every account,
+   * and the reader can leave a share while its root listing is in flight.
+   */
+  const request = `${accountId ?? ''}\u0000${here ?? ''}\u0000${query}`
+  const requestRef = useRef(request)
+  // `useLayoutEffect` for the reason `loadRef` below gives: a passive effect is its own task, and
+  // the answer must not be checked against a stamp a commit out of date.
+  useLayoutEffect(() => {
+    requestRef.current = request
+  }, [request])
+
+  /**
    * Reloads what is on screen. Returns whether it arrived.
    *
    * For the reader's own account that means asking the ENGINE to re-read the tree — a
@@ -341,10 +724,13 @@ export default function FilesPage(props: FilesPageProps) {
     const wire = { sort: serverSort(sort, capability) }
     try {
       if (query !== '') {
-        setRemoteHits(await client.search(query, wire))
+        const found = await client.search(query, wire)
+        if (requestRef.current !== request) return true
+        setRemoteHits(found)
         setRemoteTruncated(false)
       } else {
         const listing = await client.list(here, wire)
+        if (requestRef.current !== request) return true
         setRemoteNodes(listing.nodes)
         setRemoteTruncated(listing.truncated)
         setRemoteHits(null)
@@ -352,10 +738,11 @@ export default function FilesPage(props: FilesPageProps) {
       setFailed(false)
       return true
     } catch {
+      if (requestRef.current !== request) return true
       setFailed(true)
       return false
     }
-  }, [replicated, engine, client, here, query, sort, capability])
+  }, [replicated, engine, client, here, query, sort, capability, request])
 
   useEffect(() => {
     void load()
@@ -416,6 +803,148 @@ export default function FilesPage(props: FilesPageProps) {
   // Above the early return for the same reason, and keyed to `rows`: a new listing brings new
   // names and new sizes, and the size column is part of what the row's actions have to fit around.
   const geometry = useRowGeometry(listRef, rows)
+
+  /*
+   * ── The row's callbacks ────────────────────────────────────────────────────────────────────
+   *
+   * Above the early return because they are hooks, and STABLE because {@link FileRow} is memoised
+   * (R-61): a memo handed freshly-built closures is a memo that never hits. Functional `setState`
+   * is what keeps `path` and `selected` out of the dependency lists; `client` being `null` is
+   * answered here rather than at each call site.
+   */
+  const objectUrl = useCallback(
+    async (node: FileNode): Promise<string | null> => {
+      if (client === null) return null
+      // No `blobId`, no identity for the bytes — download and do not remember it. (A node without
+      // one has nothing to show anyway; this is the honest branch rather than a guessed key.)
+      const key = node.blobId === null ? null : `${accountId ?? ''}:${node.blobId}`
+      const cached = key === null ? undefined : urlCacheRef.current.get(key)
+      if (cached !== undefined) return cached
+      const blob = await client.download(node)
+      if (blob === null) return null
+      const url = URL.createObjectURL(blob)
+      if (key !== null) urlCacheRef.current.set(key, url)
+      return url
+    },
+    [client, accountId],
+  )
+
+  const download = useCallback(
+    async (node: FileNode): Promise<void> => {
+      const url = await objectUrl(node)
+      if (url === null) return
+      const anchor = document.createElement('a')
+      anchor.href = url
+      // Never `node.name` raw. This app validates a name before it creates one, but the name on a
+      // node came from whatever wrote it — another client, or a server that does not agree with
+      // `fileNodeNameProblem` — and this value becomes a path on the reader's disk.
+      anchor.download = safeDownloadName(node.name, DOWNLOAD_FALLBACK)
+      anchor.click()
+    },
+    [objectUrl],
+  )
+
+  /** `open` comes from the row rather than from `preview` here, so this does not change per toggle. */
+  const togglePreview = useCallback(
+    async (node: FileNode, open: boolean): Promise<void> => {
+      if (open) {
+        setPreview(null)
+        return
+      }
+      const url = await objectUrl(node)
+      if (url !== null) setPreview({ id: node.id, type: node.type ?? '', url })
+    },
+    [objectUrl],
+  )
+
+  const clearSearch = useCallback((): void => {
+    setQuery('')
+    setSearchEpoch((epoch) => epoch + 1)
+  }, [])
+
+  /**
+   * Walk the tree to `folder` and show it, leaving the search behind.
+   *
+   * A hit's row states where it was found, and that statement is the control that goes there — the
+   * Finder's "Show in enclosing folder", which is the only way a flat result list can hand the
+   * reader back their bearings. It costs one `FileNode/get` per level because the breadcrumb has to
+   * be TRUE: dropping the reader into `Files / Invoices` when the folder is three deep would be a
+   * cheaper lie, not a cheaper answer.
+   */
+  const openFolder = useCallback(
+    async (folder: FileNode): Promise<void> => {
+      if (client === null) return
+      clearSearch()
+      let chain: readonly FileNode[] = []
+      try {
+        chain = await client.ancestors(folder)
+      } catch {
+        // A failed walk is not a failed navigation: the folder is still the folder. The breadcrumb
+        // is then shorter than the truth, which the next reload corrects.
+      }
+      setPath([
+        { id: null, name: '' },
+        ...chain.map((node) => ({ id: node.id, name: node.name })),
+        { id: folder.id, name: folder.name },
+      ])
+    },
+    [client, clearSearch],
+  )
+
+  /**
+   * Walking into a folder — from the listing, or from a search hit.
+   *
+   * From a search result the way in has to be WALKED, so the breadcrumb tells the truth about
+   * where the folder actually sits; from the listing the folder is one step down from where the
+   * reader already is.
+   */
+  const openFolderRow = useCallback(
+    (node: FileNode, fromSearch: boolean): void => {
+      if (fromSearch) void openFolder(node)
+      else setPath((current) => [...current, { id: node.id, name: node.name }])
+    },
+    [openFolder],
+  )
+
+  const toggle = useCallback(
+    (id: Id): void =>
+      setSelected((current) => {
+        const next = new Set(current)
+        if (!next.delete(id)) next.add(id)
+        return next
+      }),
+    [],
+  )
+  /**
+   * The rename field, opened with the CURRENT name selected (R-66).
+   *
+   * The state comment on {@link renaming} has claimed this since the dialog was written and
+   * nothing did it — `grep -rn '\.select()' apps/web/src` found nothing anywhere in the app.
+   * Renaming is far more often an edit of what is there than a replacement of it, so the old name
+   * has to be both readable and replaceable by typing.
+   *
+   * In an effect rather than on `onFocus`, and it has to be: `Dialog`'s focus trap places focus
+   * from an effect of its own, and a parent's effect runs after its child's — so this is the last
+   * word on where the caret ends up.
+   */
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (renaming === null) return
+    const field = renameInputRef.current
+    field?.focus()
+    field?.select()
+  }, [renaming])
+
+  const closeFolderDialog = useCallback((): void => {
+    setFolderDialogOpen(false)
+    setNewFolder('')
+  }, [])
+  const startRename = useCallback((node: FileNode): void => {
+    setRenaming(node)
+    setRenameTo(node.name)
+  }, [])
+  const moveOne = useCallback((node: FileNode): void => setMoving([node]), [])
+  const deleteOne = useCallback((node: FileNode): void => setDeleting([node]), [])
 
   /**
    * What stands where the list would — exactly ONE of these, always.
@@ -485,9 +1014,67 @@ export default function FilesPage(props: FilesPageProps) {
       if (!(await loadRef.current())) toast({ tone: 'warning', title: t('files.savedButNotShown') })
     } catch (thrown) {
       const key =
-        thrown instanceof FileSetError ? `files.error.${thrown.failure}` : 'files.error.rejected'
+        thrown instanceof FileSetError ? `files.error.${thrown.failure}` : failureKey(thrown)
       // Spelled out below rather than interpolated, so the i18n guard can see the keys.
       toast({ tone: 'danger', title: errorText(t, key) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * Upload a batch, and say which files did not make it (R-67).
+   *
+   * Not `run()` around the whole loop, which is what it was: the first refusal — a name already
+   * taken, the quota reached — threw out of the `for`, so files 4 to 11 were never attempted, and
+   * the toast named neither the file that was refused nor the ones that were skipped. Eleven scans
+   * went in, some number of them arrived, and the reader was left to work out which.
+   *
+   * Every file is now tried, the failures are collected WITH their reasons, and one sentence names
+   * them. The reload happens once at the end rather than per file.
+   */
+  const uploadAll = async (chosen: readonly File[]): Promise<void> => {
+    setBusy(true)
+    const failures: { readonly name: string; readonly key: string }[] = []
+    try {
+      for (const file of chosen) {
+        try {
+          await client.upload(file, here)
+        } catch (thrown) {
+          failures.push({
+            name: file.name,
+            key:
+              thrown instanceof FileSetError ? `files.error.${thrown.failure}` : failureKey(thrown),
+          })
+        }
+      }
+      const first = failures[0]
+      if (failures.length === 1 && first !== undefined) {
+        // One failure gets the whole reason: with a single file there is room to say why.
+        toast({
+          tone: 'danger',
+          title: t('files.uploadProblem.one', {
+            name: first.name,
+            reason: errorText(t, first.key),
+          }),
+        })
+      } else if (failures.length > 1) {
+        // Several: the names, because "which ones" is the question a batch raises. The reasons
+        // would be a paragraph in a toast, and the row that is missing is where they belong.
+        toast({
+          tone: 'danger',
+          title: t('files.uploadProblem.some', {
+            count: failures.length,
+            total: chosen.length,
+            names: failures.map((failure) => failure.name).join(', '),
+          }),
+        })
+      }
+      // ONE reload for the batch, and only if anything landed — the same "a write that succeeded is
+      // never silent" rule `run` follows.
+      if (chosen.length > failures.length && !(await loadRef.current())) {
+        toast({ tone: 'warning', title: t('files.savedButNotShown') })
+      }
     } finally {
       setBusy(false)
     }
@@ -501,63 +1088,6 @@ export default function FilesPage(props: FilesPageProps) {
     return false
   }
 
-  const objectUrl = async (node: FileNode): Promise<string | null> => {
-    const cached = urlCacheRef.current.get(node.id)
-    if (cached !== undefined) return cached
-    const blob = await client.download(node)
-    if (blob === null) return null
-    const url = URL.createObjectURL(blob)
-    urlCacheRef.current.set(node.id, url)
-    return url
-  }
-
-  const download = async (node: FileNode): Promise<void> => {
-    const url = await objectUrl(node)
-    if (url === null) return
-    const anchor = document.createElement('a')
-    anchor.href = url
-    // Never `node.name` raw. This app validates a name before it creates one, but the name on a
-    // node came from whatever wrote it — another client, or a server that does not agree with
-    // `fileNodeNameProblem` — and this value becomes a path on the reader's disk.
-    anchor.download = safeDownloadName(node.name, DOWNLOAD_FALLBACK)
-    anchor.click()
-  }
-
-  const togglePreview = async (node: FileNode): Promise<void> => {
-    if (preview?.id === node.id) {
-      setPreview(null)
-      return
-    }
-    const url = await objectUrl(node)
-    if (url !== null) setPreview({ id: node.id, type: node.type ?? '', url })
-  }
-
-  /**
-   * Walk the tree to `folder` and show it, leaving the search behind.
-   *
-   * A hit's row states where it was found, and that statement is the control that goes there — the
-   * Finder's "Show in enclosing folder", which is the only way a flat result list can hand the
-   * reader back their bearings. It costs one `FileNode/get` per level because the breadcrumb has to
-   * be TRUE: dropping the reader into `Files / Invoices` when the folder is three deep would be a
-   * cheaper lie, not a cheaper answer.
-   */
-  const openFolder = async (folder: FileNode): Promise<void> => {
-    setTerm('')
-    setQuery('')
-    let chain: readonly FileNode[] = []
-    try {
-      chain = await client.ancestors(folder)
-    } catch {
-      // A failed walk is not a failed navigation: the folder is still the folder. The breadcrumb
-      // is then shorter than the truth, which the next reload corrects.
-    }
-    setPath([
-      { id: null, name: '' },
-      ...chain.map((node) => ({ id: node.id, name: node.name })),
-      { id: folder.id, name: folder.name },
-    ])
-  }
-
   /**
    * Move to another account's root — a shared one with an id, the user's own with `null` (S-4).
    *
@@ -569,24 +1099,22 @@ export default function FilesPage(props: FilesPageProps) {
   const goToAccount = (id: Id | null): void => {
     setVisitingId(id)
     setPath([{ id: null, name: '' }])
-    setTerm('')
-    setQuery('')
+    clearSearch()
     setSelecting(false)
     setSelected(new Set())
     setPreview(null)
+    // The downloaded bytes go with everything else. The cache is account-scoped now (R-22), so this
+    // is no longer what keeps the two accounts apart — it is housekeeping: nothing on screen refers
+    // to these URLs any more, and holding a departed account's file contents in memory for the rest
+    // of the session is not something this screen should do.
+    for (const url of urlCacheRef.current.values()) URL.revokeObjectURL(url)
+    urlCacheRef.current.clear()
     // The SERVER-backed listing only (a share). The replicated one is a live query keyed on the
     // level, so it re-answers for the new account by itself and has nothing to clear.
     setRemoteNodes(null)
     setRemoteHits(null)
     setRemoteTruncated(false)
   }
-
-  const toggle = (id: Id): void =>
-    setSelected((current) => {
-      const next = new Set(current)
-      if (!next.delete(id)) next.add(id)
-      return next
-    })
 
   /**
    * Move, then offer to put it back.
@@ -768,25 +1296,14 @@ export default function FilesPage(props: FilesPageProps) {
             // Every name checked BEFORE the first byte goes up: a batch that fails halfway leaves
             // the reader working out which of eleven files landed, and the check is free.
             if (!chosen.every((file) => checkName(file.name))) return
-            void run(async () => {
-              for (const file of chosen) await client.upload(file, here)
-            })
+            void uploadAll(chosen)
           }}
         />
       </ScreenBar>
 
       {/* A field, not a screen. Above the list because that is where the list's own controls
           belong, and always visible because a search you have to reveal is one nobody finds. */}
-      <div className={styles.search}>
-        <Search aria-hidden="true" className={styles.searchIcon} />
-        <TextInput
-          type="search"
-          value={term}
-          aria-label={t('files.search.label')}
-          placeholder={t('files.search.placeholder')}
-          onChange={(event) => setTerm(event.target.value)}
-        />
-      </div>
+      <FileSearchField key={searchEpoch} onQuery={setQuery} />
 
       {/* A plain container, like mail's bulk bar: every control in it is named, and a `group` role
           over five labelled buttons adds an announcement without adding information. */}
@@ -806,6 +1323,16 @@ export default function FilesPage(props: FilesPageProps) {
           <span className={styles.selectionCount}>
             {t('files.selection.count', { count: selectedNodes.length })}
           </span>
+          {/*
+            NOT given `unavailableReason` offline, unlike the row's own actions (R-24), and the
+            reason is `Button` rather than this screen: it renders the explanation as a
+            visually-hidden span INSIDE the control, which an icon-only button hides behind its
+            `aria-label` but a text button does not — the name would become "Move You are offline.
+            Files can only be changed while connected." and be announced again as the description.
+            Until that primitive puts the reason outside the button, the honest arrangement here is
+            the one below plus `run`'s corrected message: the action is offered, and a write that
+            cannot reach the server now says so instead of blaming it.
+          */}
           <Button
             variant="secondary"
             size="sm"
@@ -839,43 +1366,52 @@ export default function FilesPage(props: FilesPageProps) {
         <Dialog
           open
           title={t('files.newFolder')}
-          onClose={() => {
-            setFolderDialogOpen(false)
-            setNewFolder('')
-          }}
+          onClose={closeFolderDialog}
           footer={
             <>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setFolderDialogOpen(false)
-                  setNewFolder('')
-                }}
-              >
+              <Button variant="ghost" onClick={closeFolderDialog}>
                 {t('files.cancel')}
               </Button>
+              {/* `type="submit" form=…` rather than `onClick`: the button is in the dialog's footer
+                  and the field is in its body, so the form is joined by id — the arrangement
+                  `AddressBookList` uses. That is also what makes Enter work (R-66). */}
               <Button
                 variant="primary"
+                type="submit"
+                form={newFolderFormId}
                 disabled={busy || newFolder.trim() === ''}
-                onClick={() => {
-                  const name = newFolder.trim()
-                  if (!checkName(name)) return
-                  setNewFolder('')
-                  setFolderDialogOpen(false)
-                  void run(() => client.createFolder(name, here))
-                }}
               >
                 {t('files.newFolder')}
               </Button>
             </>
           }
         >
-          <TextInput
-            autoFocus
-            value={newFolder}
-            aria-label={t('files.newFolder')}
-            onChange={(event) => setNewFolder(event.target.value)}
-          />
+          {/*
+            A FORM, so Enter submits it (R-66).
+            The field asked for a name and then ignored the one key everybody presses after typing
+            one: `Dialog` and `TextInput` have no Enter handling of their own, and this screen had
+            neither a `<form>` nor an `onKeyDown`. Every other name-taking dialog in the app —
+            `CalendarDialog`, `AddressBookList` — is a form already.
+          */}
+          <form
+            id={newFolderFormId}
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              const name = newFolder.trim()
+              if (busy || name === '' || !checkName(name)) return
+              setNewFolder('')
+              setFolderDialogOpen(false)
+              void run(() => client.createFolder(name, here))
+            }}
+          >
+            <TextInput
+              autoFocus
+              value={newFolder}
+              aria-label={t('files.newFolder')}
+              onChange={(event) => setNewFolder(event.target.value)}
+            />
+          </form>
         </Dialog>
       )}
 
@@ -884,6 +1420,7 @@ export default function FilesPage(props: FilesPageProps) {
           open
           title={t('files.rename.title', { name: renaming.name })}
           onClose={() => setRenaming(null)}
+          initialFocusRef={renameInputRef}
           footer={
             <>
               <Button variant="ghost" onClick={() => setRenaming(null)}>
@@ -891,32 +1428,42 @@ export default function FilesPage(props: FilesPageProps) {
               </Button>
               <Button
                 variant="primary"
+                type="submit"
+                form={renameFormId}
                 // Unchanged is not a rename: `FileNode/set` would accept the no-op and the reader
                 // would get a round trip and a reload for nothing.
                 disabled={busy || renameTo.trim() === '' || renameTo.trim() === renaming.name}
-                onClick={() => {
-                  const name = renameTo.trim()
-                  const { id } = renaming
-                  // The same client-side name check the upload and the new folder go through, and
-                  // for the same reason: the server refuses `:` and `AUX` for Windows-compatibility
-                  // reasons that have nothing to do with what the user meant. Left OPEN on a bad
-                  // name — the dialog is where the name is, so it is where the objection belongs.
-                  if (!checkName(name)) return
-                  setRenaming(null)
-                  void run(() => client.rename(id, name))
-                }}
               >
                 {t('files.rename.confirm')}
               </Button>
             </>
           }
         >
-          <TextInput
-            autoFocus
-            value={renameTo}
-            aria-label={t('files.rename.label')}
-            onChange={(event) => setRenameTo(event.target.value)}
-          />
+          {/* A form, so Enter renames — see the new-folder dialog above (R-66). */}
+          <form
+            id={renameFormId}
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              const name = renameTo.trim()
+              const { id } = renaming
+              if (busy || name === '' || name === renaming.name) return
+              // The same client-side name check the upload and the new folder go through, and for
+              // the same reason: the server refuses `:` and `AUX` for Windows-compatibility reasons
+              // that have nothing to do with what the user meant. Left OPEN on a bad name — the
+              // dialog is where the name is, so it is where the objection belongs.
+              if (!checkName(name)) return
+              setRenaming(null)
+              void run(() => client.rename(id, name))
+            }}
+          >
+            <TextInput
+              ref={renameInputRef}
+              value={renameTo}
+              aria-label={t('files.rename.label')}
+              onChange={(event) => setRenameTo(event.target.value)}
+            />
+          </form>
         </Dialog>
       )}
 
@@ -926,6 +1473,7 @@ export default function FilesPage(props: FilesPageProps) {
           // Only where every node agrees on where it is now. A selection made in search results can
           // span three folders, and there is then no single "already here" to refuse.
           {...commonParent(moving)}
+          replicated={replicated}
           client={client}
           onClose={() => setMoving(null)}
           onMove={(parentId, label) => doMove(moving, parentId, label)}
@@ -1072,246 +1620,28 @@ export default function FilesPage(props: FilesPageProps) {
         />
       ) : (
         <ul className={styles.list} ref={listRef}>
-          {(rows ?? []).map(({ node, parent }) => {
-            const isDirectory = node.nodeType === 'directory'
-            /*
-             * Every action this node grants, in the order the row has always shown them: view,
-             * share, rename, move, download, delete. Built as data so the split below can hand the
-             * tail to the `⋯` menu — see the `RowAction` note and `use-row-actions.ts`.
-             */
-            const actions: RowAction[] = []
-            if (!isDirectory && node.myRights.mayRead && isPreviewable(node.type)) {
-              const open = preview?.id === node.id
-              actions.push({
-                id: 'preview',
-                label: open
-                  ? t('files.hidePreview', { name: node.name })
-                  : t('files.preview', { name: node.name }),
-                icon: Eye,
-                disabled: false,
-                destructive: false,
-                expanded: open,
-                onSelect: () => void togglePreview(node),
-              })
-            }
-            if (mayShare(node.myRights)) {
-              actions.push({
-                id: 'share',
-                label: t('files.share.open', { name: node.name }),
-                icon: UsersRound,
-                disabled: false,
-                destructive: false,
-                expanded: undefined,
-                onSelect: () => setSharing(node),
-              })
-            }
-            // Gated on the server's own `mayRename`, like delete is on `mayDelete`: the flag is on
-            // the record precisely so a client does not have to offer the failure. This was the one
-            // action of the seven this screen claims that had no control at all —
-            // `filesClient.rename()` existed and shipped with no caller outside its test.
-            if (node.myRights.mayRename) {
-              actions.push({
-                id: 'rename',
-                label: t('files.rename.open', { name: node.name }),
-                icon: Pencil,
-                disabled: busy,
-                destructive: false,
-                expanded: undefined,
-                onSelect: () => {
-                  setRenaming(node)
-                  setRenameTo(node.name)
-                },
-              })
-            }
-            /*
-             * MOVE IS OFFERED UNCONDITIONALLY, and that is a departure from the two above it.
-             *
-             * `myRights` is measured to be wrong for exactly this case: under a shared FOLDER the
-             * download access is inherited correctly while every flag on the CHILD node comes back
-             * `false` (D-7). Gating move on `mayRename` would therefore hide it precisely where a
-             * grantee has been given the run of a folder — a capability the server would honour,
-             * withheld by the client on the strength of a field the server fills in wrongly.
-             *
-             * The other direction is survivable: a refused move is one `FileNode/set`, and `run`
-             * turns `forbidden` into a sentence. An action that fails loudly beats one that is
-             * missing silently.
-             */
-            actions.push({
-              id: 'move',
-              label: t('files.move.open', { name: node.name }),
-              icon: FolderInput,
-              disabled: busy,
-              destructive: false,
-              expanded: undefined,
-              onSelect: () => setMoving([node]),
-            })
-            if (!isDirectory && node.myRights.mayRead) {
-              actions.push({
-                id: 'download',
-                label: t('files.download', { name: node.name }),
-                icon: Download,
-                disabled: false,
-                destructive: false,
-                expanded: undefined,
-                onSelect: () => void download(node),
-              })
-            }
-            if (node.myRights.mayDelete) {
-              actions.push({
-                id: 'delete',
-                label: t('files.delete', { name: node.name }),
-                icon: Trash2,
-                disabled: busy,
-                destructive: true,
-                expanded: undefined,
-                onSelect: () => setDeleting([node]),
-              })
-            }
-            const visible = visibleRowActions(geometry, actions.length)
-            const asMenuItems = (list: typeof actions): MenuItemSpec[] =>
-              list.map((action) => ({
-                id: action.id,
-                label: action.label,
-                icon: action.icon,
-                disabled: action.disabled,
-                // Spread rather than `destructive={false}`: `MenuItemSpec` states it as optional and
-                // the repo compiles with `exactOptionalPropertyTypes`.
-                ...(action.destructive ? { destructive: true } : {}),
-                onSelect: action.onSelect,
-              }))
-            // The overflow menu carries what did not fit; the CONTEXT menu carries everything, which
-            // is the difference between a spill-over and a menu of the row's commands.
-            const hidden: MenuItemSpec[] = asMenuItems(actions.slice(visible))
-            const rowMenuItems: MenuItemSpec[] = asMenuItems(actions)
-
-            const label = (
-              <span className={styles.nameInner}>
-                {isDirectory ? (
-                  <Folder aria-hidden="true" className={styles.icon} />
-                ) : (
-                  <FileIcon aria-hidden="true" className={styles.icon} />
-                )}
-                <span className={styles.nameText}>{node.name}</span>
-              </span>
-            )
-
-            return (
-              <li
-                key={node.id}
-                ref={(element) => {
-                  if (element) rowRefs.current.set(node.id, element)
-                  else rowRefs.current.delete(node.id)
-                }}
-                className={styles.row}
-                {...{ [ROW_PART.row]: '' }}
-              >
-                {/* A secondary click anywhere in the row opens the row's commands — the same rule
-                    the folder tree, the label list and the message list follow. HIG `context-menus`
-                    asks for consistency by name: a feature offered on some rows and not others is
-                    one nobody learns. No trigger of its own; the visible affordances are the row's
-                    buttons and the ⋯ beside them. */}
-                <Menu
-                  trigger={null}
-                  triggerLabel={t('files.more', { name: node.name })}
-                  contextTarget={() => rowRefs.current.get(node.id) ?? null}
-                  items={rowMenuItems}
-                />
-                {selecting ? (
-                  // The checkbox IS the row: its own `<label>` carries the icon and the name, so
-                  // the whole line is the target rather than a 1.15rem square beside one. Wrapped
-                  // rather than class-named, because `Checkbox` hands `className` to its INPUT.
-                  <span className={styles.selectName} {...{ [ROW_PART.name]: '' }}>
-                    <Checkbox
-                      checked={selected.has(node.id)}
-                      onChange={() => toggle(node.id)}
-                      label={label}
-                    />
-                  </span>
-                ) : isDirectory ? (
-                  <button
-                    type="button"
-                    className={styles.name}
-                    {...{ [ROW_PART.name]: '' }}
-                    onClick={() => {
-                      // From a search result the way in has to be walked, so the breadcrumb tells
-                      // the truth about where the folder actually sits.
-                      if (searching) void openFolder(node)
-                      else setPath([...path, { id: node.id, name: node.name }])
-                    }}
-                  >
-                    {label}
-                  </button>
-                ) : (
-                  <span className={styles.name} {...{ [ROW_PART.name]: '' }}>
-                    {label}
-                  </span>
-                )}
-                {/* Where a hit was found — and the way there. Only in search results: inside a
-                    folder every row shares the same answer, and repeating it is noise. */}
-                {searching && (
-                  <span className={styles.location}>
-                    {parent === null ? (
-                      <Button variant="ghost" size="sm" onClick={() => void openFolder(node)}>
-                        {t('files.search.inRoot')}
-                      </Button>
-                    ) : (
-                      <Button variant="ghost" size="sm" onClick={() => void openFolder(parent)}>
-                        {t('files.search.in', { name: parent.name })}
-                      </Button>
-                    )}
-                  </span>
-                )}
-                <span className={styles.size} {...{ [ROW_PART.size]: '' }}>
-                  {isDirectory ? '' : formatBytes(node.size)}
-                </span>
-                {!selecting && (
-                  <span className={styles.rowActions} {...{ [ROW_PART.actions]: '' }}>
-                    {actions.slice(0, visible).map((action) => (
-                      <IconButton
-                        key={action.id}
-                        label={action.label}
-                        variant="ghost"
-                        size="sm"
-                        disabled={action.disabled}
-                        aria-expanded={action.expanded}
-                        onClick={action.onSelect}
-                      >
-                        <action.icon />
-                      </IconButton>
-                    ))}
-                    {hidden.length > 0 && (
-                      <Menu
-                        triggerLabel={t('files.more', { name: node.name })}
-                        trigger={<Ellipsis aria-hidden="true" />}
-                        align="end"
-                        triggerVariant="toolbar"
-                        items={hidden}
-                      />
-                    )}
-                  </span>
-                )}
-                {preview?.id === node.id && (
-                  <div className={styles.preview}>
-                    {previewSurface(preview.type) === 'image' ? (
-                      // A blob: URL for the file just downloaded — no second network fetch, and no
-                      // `<img src={downloadUrl}>`, which would send the bytes without our
-                      // credentials.
-                      <img src={preview.url} alt={node.name} className={styles.previewImage} />
-                    ) : (
-                      // `sandbox=""` denies everything, same-origin included: a blob: URL carries
-                      // this app's origin, and taking it away is the whole reason the frame is safe.
-                      <iframe
-                        src={preview.url}
-                        title={node.name}
-                        sandbox=""
-                        className={styles.previewFrame}
-                      />
-                    )}
-                  </div>
-                )}
-              </li>
-            )
-          })}
+          {(rows ?? []).map(({ node, parent }) => (
+            <FileRow
+              key={node.id}
+              node={node}
+              parent={parent}
+              geometry={geometry}
+              busy={busy}
+              online={online}
+              searching={searching}
+              selecting={selecting}
+              selected={selected.has(node.id)}
+              preview={preview?.id === node.id ? preview : null}
+              onToggleSelect={toggle}
+              onOpenFolder={openFolderRow}
+              onTogglePreview={togglePreview}
+              onDownload={download}
+              onShare={setSharing}
+              onRename={startRename}
+              onMove={moveOne}
+              onDelete={deleteOne}
+            />
+          ))}
         </ul>
       )}
 
@@ -1356,9 +1686,25 @@ function errorText(t: (key: string) => string, key: string): string {
       return t('files.error.overQuota')
     case 'files.error.forbidden':
       return t('files.error.forbidden')
+    case 'files.error.offline':
+      return t('files.error.offline')
     default:
       return t('files.error.rejected')
   }
+}
+
+/**
+ * What a throw that is NOT a `FileSetError` was: a lost line, or a server that said no (R-24).
+ *
+ * Everything used to be "The server declined that." — including `TypeError: Failed to fetch`,
+ * which is what `fetch` throws when there is no connection at all. The server had not declined
+ * anything; it had not been asked. A reader told the wrong cause looks for the wrong remedy, and
+ * the right one here (reconnect, then try again) is one they can actually act on.
+ */
+function failureKey(thrown: unknown): string {
+  if (thrown instanceof TypeError) return 'files.error.offline'
+  if (thrown instanceof DOMException && thrown.name === 'AbortError') return 'files.error.offline'
+  return 'files.error.rejected'
 }
 
 function nameProblemText(t: (key: string) => string, problem: string): string {

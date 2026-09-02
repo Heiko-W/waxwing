@@ -2158,6 +2158,12 @@
     "savedButNotShown": "Il salvataggio è riuscito, ma non è stato possibile ricaricare l’elenco — riprova per vederlo.",
     "signedOut": "Accedi per vedere i tuoi file.",
     "upload": "Carica",
+    "uploadProblem": {
+      "one": "«{{name}}» non è stato caricato: {{reason}}",
+      "some_one": "1 file su {{total}} non è stato caricato: {{names}}",
+      "some_many": "{{count}} file su {{total}} non sono stati caricati: {{names}}",
+      "some_other": "{{count}} file su {{total}} non sono stati caricati: {{names}}"
+    },
     "newFolder": "Nuova cartella",
     "cancel": "Annulla",
     "download": "Scarica {{name}}",
@@ -2173,6 +2179,7 @@
       "tooLarge": "Questo file è troppo grande per questo server.",
       "overQuota": "Spazio esaurito in questo account.",
       "forbidden": "Non hai i permessi per farlo qui.",
+      "offline": "Non è stato possibile raggiungere il server. Riprova quando sarai di nuovo online.",
       "rejected": "Il server l’ha rifiutato."
     },
     "name": {

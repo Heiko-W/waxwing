@@ -2113,6 +2113,11 @@
     "savedButNotShown": "That was saved, but the list could not be reloaded — try again to see it.",
     "signedOut": "Sign in to see your files.",
     "upload": "Upload",
+    "uploadProblem": {
+      "one": "“{{name}}” was not uploaded: {{reason}}",
+      "some_one": "1 of {{total}} files was not uploaded: {{names}}",
+      "some_other": "{{count}} of {{total}} files were not uploaded: {{names}}"
+    },
     "newFolder": "New folder",
     "cancel": "Cancel",
     "download": "Download {{name}}",
@@ -2128,6 +2133,7 @@
       "tooLarge": "That file is too large for this server.",
       "overQuota": "No space left in this account.",
       "forbidden": "You do not have permission to do that here.",
+      "offline": "That could not reach the server. Try again once you are back online.",
       "rejected": "The server declined that."
     },
     "name": {

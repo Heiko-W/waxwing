@@ -20,7 +20,7 @@ import type { ContactCardFilterCondition, Id } from '@waxwing/jmap'
 import { useEffect, useMemo, useState } from 'react'
 import { type ContactCardRow, canonicalContactQueryKey, useContactWindow } from '../sync'
 import { useAccountEngine } from '../sync/engine'
-import { contactMatches, contactSortKey } from './contact-fields'
+import { contactMatches, sortByDisplayName } from './contact-fields'
 
 /** Mirrors the mail search debounce ({@link ../mail/search/SearchBox}) so the two feel identical. */
 const SEARCH_DEBOUNCE_MS = 200
@@ -68,13 +68,19 @@ function withoutGroups(list: (ContactCardRow | undefined)[]): (ContactCardRow | 
   return list.filter((card) => card === undefined || card.kind !== 'group')
 }
 
-/** Alphabetical by display name (Apple Contacts order), regardless of the server's window collation. */
+/**
+ * Alphabetical by display name (Apple Contacts order), regardless of the server's window collation.
+ *
+ * The skeleton rows a window can contain (`undefined`, not yet in the replica) go last: they have
+ * no name to sort by, and a placeholder that jumps around as it resolves is worse than one that
+ * waits at the end.
+ */
 function sortForDisplay(cards: (ContactCardRow | undefined)[]): (ContactCardRow | undefined)[] {
-  return [...cards].sort((a, b) => {
-    if (a === undefined) return 1
-    if (b === undefined) return -1
-    return contactSortKey(a).localeCompare(contactSortKey(b), undefined, { sensitivity: 'base' })
-  })
+  const defined = definedCards(cards)
+  const placeholders = cards.length - defined.length
+  const sorted: (ContactCardRow | undefined)[] = sortByDisplayName(defined)
+  for (let i = 0; i < placeholders; i += 1) sorted.push(undefined)
+  return sorted
 }
 
 export function useContactSearch(bookId: Id | undefined): ContactSearchState {
@@ -113,24 +119,38 @@ export function useContactSearch(bookId: Id | undefined): ContactSearchState {
   // An empty key resolves to an empty window (cache miss → `[]`), so this is inert until a search runs.
   const serverCards = useContactWindow(searchKey)
 
+  /**
+   * The whole book, ordered — memoised on the WINDOW alone, not on the search text.
+   *
+   * Typing used to re-sort, and so did clearing the field: the memo below hung on `trimmed`, so
+   * every keystroke and every emptying of the box paid for a full ordering of the base window on
+   * the main thread. It now happens once per window change (a `contactCards` write), and the
+   * keystroke path is a filter over an already-ordered list.
+   */
+  const sortedBase = useMemo(
+    () => (baseCards === undefined ? undefined : sortForDisplay(withoutGroups(baseCards))),
+    [baseCards],
+  )
+
   const cards = useMemo(() => {
-    if (baseCards === undefined) return undefined
-    if (trimmed === '') return sortForDisplay(withoutGroups(baseCards))
+    if (sortedBase === undefined) return undefined
+    if (trimmed === '') return sortedBase
 
     const needle = trimmed.toLowerCase()
     // Instant local pass, filtered by the CURRENT text (not the debounced one) for zero-latency,
-    // offline-complete feedback. Groups never appear in the individual list.
-    const local = definedCards(baseCards).filter(
-      (card) => card.kind !== 'group' && contactMatches(card, needle),
-    )
+    // offline-complete feedback. Groups are already out of `sortedBase`, and a filter over a sorted
+    // list is still sorted — so the common case does no ordering work at all.
+    const local = definedCards(sortedBase).filter((card) => contactMatches(card, needle))
     const seen = new Set(local.map((card) => card.id))
     // Server-only matches (a partially-replicated book). Re-filtered by the CURRENT needle so a stale
     // echo for the previous query cannot leak a card that no longer matches.
     const serverOnly = definedCards(serverCards).filter(
       (card) => card.kind !== 'group' && !seen.has(card.id) && contactMatches(card, needle),
     )
-    return sortForDisplay([...local, ...serverOnly])
-  }, [baseCards, serverCards, trimmed])
+    // Only a book the replica does not fully hold reaches an ordering here, and then over the
+    // MATCHED set, not the whole book.
+    return serverOnly.length === 0 ? local : sortByDisplayName([...local, ...serverOnly])
+  }, [sortedBase, serverCards, trimmed])
 
   return { query, setQuery, cards, searching: trimmed !== '' }
 }

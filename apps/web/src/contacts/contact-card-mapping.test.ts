@@ -426,6 +426,110 @@ describe('contact-card-mapping trimming (N11)', () => {
     expect(Object.values(card.notes ?? {})[0]?.note).toBe('Note with an edge')
     expect(Object.values(card.emails ?? {})[0]?.address).toBe('spaced@example.test')
   })
+
+  it('stores the organization and the job title without their padding (R-65)', () => {
+    const newId = idSource()
+    const seed: ContactCard = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'urn:uuid:trim-org',
+      id: 'placeholder',
+      addressBookIds: { book1: true },
+      kind: 'individual',
+    }
+    const form: ContactFormModel = {
+      ...emptyFormModel(),
+      organization: '  ACME  ',
+      title: '  Principal Engineer  ',
+    }
+    const card = formToCard(form, seed, newId)
+    expect(Object.values(card.organizations ?? {})[0]?.name).toBe('ACME')
+    expect(Object.values(card.titles ?? {})[0]?.name).toBe('Principal Engineer')
+  })
+})
+
+describe('contact-card-mapping name identity (R-19)', () => {
+  /** A name carrying the two properties this editor has no control for. */
+  function sortedCard(): ContactCard {
+    return {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'urn:uuid:sortas',
+      id: 'server-sortas',
+      addressBookIds: { book1: true },
+      kind: 'individual',
+      name: {
+        '@type': 'Name',
+        full: 'Yamada Tarou',
+        sortAs: { surname: 'Yamada', given: 'Tarou' },
+        isOrdered: true,
+        components: [
+          { '@type': 'NameComponent', kind: 'surname', value: 'Yamada' },
+          { '@type': 'NameComponent', kind: 'given', value: 'Tarou' },
+        ],
+      },
+    } as unknown as ContactCard
+  }
+
+  it('keeps sortAs and isOrdered when a name component is corrected', () => {
+    const card = sortedCard()
+    const form = cardToForm(card)
+    const edited: ContactFormModel = { ...form, name: { ...form.name, given: 'Tarō' } }
+    const patch = diffCardPatch(card, formToCard(edited, card, idSource()))
+
+    expect(Object.keys(patch)).toEqual(['name'])
+    const name = patch.name as { sortAs?: unknown; isOrdered?: boolean; full?: string }
+    expect(name.sortAs).toEqual({ surname: 'Yamada', given: 'Tarou' })
+    expect(name.isOrdered).toBe(true)
+    // `full` is the one deliberate deletion: it would otherwise show the name just corrected.
+    expect(name.full).toBeUndefined()
+  })
+
+  it('keeps a name property this client does not model at all', () => {
+    const card = sortedCard()
+    const withPhonetics = {
+      ...card,
+      name: { ...card.name, phoneticSystem: 'jyut', phoneticScript: 'Latn' },
+    } as unknown as ContactCard
+    const form = cardToForm(withPhonetics)
+    const edited: ContactFormModel = { ...form, name: { ...form.name, surname: 'Yamamoto' } }
+    const next = formToCard(edited, withPhonetics, idSource())
+    expect((next.name as unknown as Record<string, unknown>).phoneticSystem).toBe('jyut')
+    expect((next.name as unknown as Record<string, unknown>).phoneticScript).toBe('Latn')
+  })
+})
+
+describe('contact-card-mapping unusable map keys (R-60)', () => {
+  it('writes an entry back under a `__proto__` key instead of losing it', () => {
+    const card: ContactCard = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'urn:uuid:proto',
+      id: 'server-proto',
+      addressBookIds: { book1: true },
+      kind: 'individual',
+      name: {
+        '@type': 'Name',
+        components: [{ '@type': 'NameComponent', kind: 'given', value: 'P' }],
+      },
+      emails: JSON.parse(
+        '{"__proto__":{"@type":"EmailAddress","address":"first@example.test"},' +
+          '"e2":{"@type":"EmailAddress","address":"second@example.test"}}',
+      ) as NonNullable<ContactCard['emails']>,
+    }
+    const form = cardToForm(card)
+    expect(form.emails).toHaveLength(2)
+
+    const edited: ContactFormModel = { ...form, name: { ...form.name, given: 'Q' } }
+    const next = formToCard(edited, card, idSource())
+    const emails = next.emails as unknown as Record<string, { address: string }>
+    // Own property, not a replaced prototype — the entry the reader can see is the entry that ships.
+    expect(Object.keys(emails).sort()).toEqual(['__proto__', 'e2'])
+    expect(Object.getOwnPropertyDescriptor(emails, '__proto__')?.value?.address).toBe(
+      'first@example.test',
+    )
+    expect(Object.getPrototypeOf({ ...emails })).toBe(Object.prototype)
+  })
 })
 
 describe('contact-card-mapping create', () => {

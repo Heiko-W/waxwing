@@ -2120,6 +2120,11 @@
     "savedButNotShown": "Dat is opgeslagen, maar de lijst kon niet opnieuw worden geladen — probeer het nog eens om het te zien.",
     "signedOut": "Log in om je bestanden te zien.",
     "upload": "Uploaden",
+    "uploadProblem": {
+      "one": "“{{name}}” is niet geüpload: {{reason}}",
+      "some_one": "1 van de {{total}} bestanden is niet geüpload: {{names}}",
+      "some_other": "{{count}} van de {{total}} bestanden zijn niet geüpload: {{names}}"
+    },
     "newFolder": "Nieuwe map",
     "cancel": "Annuleren",
     "download": "{{name}} downloaden",
@@ -2135,6 +2140,7 @@
       "tooLarge": "Dat bestand is te groot voor deze server.",
       "overQuota": "Geen ruimte meer in dit account.",
       "forbidden": "Je hebt geen rechten om dat hier te doen.",
+      "offline": "De server was niet bereikbaar. Probeer het opnieuw zodra je weer online bent.",
       "rejected": "De server heeft dat geweigerd."
     },
     "name": {

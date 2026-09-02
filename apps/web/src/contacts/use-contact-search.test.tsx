@@ -120,6 +120,42 @@ describe('useContactSearch', () => {
     )
   })
 
+  /**
+   * The ordering of the whole book is memoised on the WINDOW, not on the search text (R-20).
+   *
+   * It used to hang on `trimmed`, so every keystroke and every emptying of the box re-sorted the
+   * base window on the main thread — measured at 266 ms for 5 000 cards with the old
+   * per-comparison `localeCompare`. Identity (`toBe`, not `toEqual`) is the assertion that can
+   * tell "not re-sorted" from "sorted to the same answer".
+   */
+  it('does not re-order the book when the search box is typed into and cleared', async () => {
+    let cards: ReturnType<typeof useContactSearch>['cards']
+    function Spy() {
+      const state = useContactSearch('book1')
+      cards = state.cards
+      return (
+        <input
+          aria-label="q"
+          value={state.query}
+          onChange={(event) => state.setQuery(event.target.value)}
+        />
+      )
+    }
+    const user = userEvent.setup()
+    render(
+      <ReplicaProvider accountId="a" db={db}>
+        <Spy />
+      </ReplicaProvider>,
+    )
+    await waitFor(() => expect(cards).toHaveLength(2))
+    const ordered = cards
+
+    await user.type(screen.getByLabelText('q'), 'ali')
+    await user.clear(screen.getByLabelText('q'))
+
+    expect(cards).toBe(ordered)
+  })
+
   it('keeps the typed text across a live-query echo between keystrokes (segment-race)', async () => {
     const user = userEvent.setup()
     renderHarness()

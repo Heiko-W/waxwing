@@ -2189,6 +2189,13 @@
     "savedButNotShown": "Zapisano, ale nie udało się przeładować listy — spróbuj ponownie, aby to zobaczyć.",
     "signedOut": "Zaloguj się, aby zobaczyć swoje pliki.",
     "upload": "Prześlij",
+    "uploadProblem": {
+      "one": "„{{name}}” nie został przesłany: {{reason}}",
+      "some_one": "1 z {{total}} plików nie został przesłany: {{names}}",
+      "some_few": "{{count}} z {{total}} plików nie zostały przesłane: {{names}}",
+      "some_many": "{{count}} z {{total}} plików nie zostało przesłanych: {{names}}",
+      "some_other": "{{count}} z {{total}} plików nie zostało przesłanych: {{names}}"
+    },
     "newFolder": "Nowy folder",
     "cancel": "Anuluj",
     "download": "Pobierz {{name}}",
@@ -2204,6 +2211,7 @@
       "tooLarge": "Ten plik jest zbyt duży dla tego serwera.",
       "overQuota": "Brak miejsca na tym koncie.",
       "forbidden": "Nie masz tu do tego uprawnień.",
+      "offline": "Nie udało się połączyć z serwerem. Spróbuj ponownie, gdy wrócisz online.",
       "rejected": "Serwer to odrzucił."
     },
     "name": {

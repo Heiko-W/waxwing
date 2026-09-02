@@ -248,6 +248,29 @@ describe('parseImport — an imported card cannot dictate where it lands', () =>
   })
 })
 
+describe('parseImport — a map key that is not a property name (R-60)', () => {
+  it('drops a nested `__proto__` entry instead of letting it into a collection', async () => {
+    // One level DOWN from the guard above, and the damage is the reverse: the card imports and
+    // displays perfectly (`JSON.parse` files the key as an own property), and the entry then
+    // vanishes on the next edit, because the form mapping writes it back with `out[key] = …`.
+    const hostile = JSON.stringify({
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u-proto',
+      emails: {
+        __proto__: { '@type': 'EmailAddress', address: 'ghost@example.test' },
+        constructor: { '@type': 'EmailAddress', address: 'ctor@example.test' },
+        e2: { '@type': 'EmailAddress', address: 'real@example.test' },
+      },
+    })
+
+    const { cards } = await parseImport(hostile, 'jscontact')
+    const emails = (cards[0] as unknown as { emails: Record<string, unknown> }).emails
+    expect(Object.keys(emails)).toEqual(['e2'])
+    expect(Object.getPrototypeOf(emails)).toBe(Object.prototype)
+  })
+})
+
 describe('serializeExport survives an incomplete card (N5)', () => {
   it('exports the whole selection around a card the server left without a uid', async () => {
     // The card that broke it came from the server, not from us: Stalwart returns a `ContactCard`

@@ -1,9 +1,16 @@
 /**
  * The JMAP seam for file storage (M5.7, FR-FILE-01).
  *
- * Online-only: files are not in the replica. A folder the user is looking at is one round trip,
- * and a download goes through the same authenticated blob endpoint attachments already use — a
- * file node's `blobId` is an ordinary blob.
+ * The WRITE seam, and the read seam for what the replica does not hold. Since D-4 the reader's own
+ * tree is replicated and the screen lists it from there (`use-file-tree.ts`); this side serves the
+ * writes (upload, folder, rename, move, destroy, sharing), the downloads, and the listing of a
+ * SHARED account — which has no engine and therefore no replica of its own.
+ *
+ * This file said "files are not in the replica" until 2026-09-01, and that sentence had consequences:
+ * `FileMoveDialog` was built on it and asked the server for every level it walked, at the root the
+ * whole unfiltered account query, per click and uselessly offline (R-24). A download is still a
+ * download — bytes are not replicated — and goes through the same authenticated blob endpoint
+ * attachments already use; a file node's `blobId` is an ordinary blob.
  *
  * **Uploads are two steps, and the second one matters.** The bytes go to the upload endpoint,
  * which returns a blob id; `FileNode/set` then creates the node referencing it, and the server

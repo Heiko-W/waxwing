@@ -2158,6 +2158,12 @@
     "savedButNotShown": "Isso foi guardado, mas não foi possível recarregar a lista — tente novamente para o ver.",
     "signedOut": "Inicie sessão para ver os seus ficheiros.",
     "upload": "Carregar",
+    "uploadProblem": {
+      "one": "«{{name}}» não foi carregado: {{reason}}",
+      "some_one": "1 de {{total}} ficheiros não foi carregado: {{names}}",
+      "some_many": "{{count}} de {{total}} ficheiros não foram carregados: {{names}}",
+      "some_other": "{{count}} de {{total}} ficheiros não foram carregados: {{names}}"
+    },
     "newFolder": "Nova pasta",
     "cancel": "Cancelar",
     "download": "Transferir {{name}}",
@@ -2173,6 +2179,7 @@
       "tooLarge": "Esse ficheiro é demasiado grande para este servidor.",
       "overQuota": "Não há espaço nesta conta.",
       "forbidden": "Não tem permissão para fazer isso aqui.",
+      "offline": "Não foi possível contactar o servidor. Tente novamente quando voltar a estar online.",
       "rejected": "O servidor recusou isso."
     },
     "name": {

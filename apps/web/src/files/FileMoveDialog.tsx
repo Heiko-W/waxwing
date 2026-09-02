@@ -7,10 +7,17 @@
  *
  * WHY A BROWSER AND NOT A FLAT LIST. Mail's {@link MoveDialog} lists every mailbox at once, and it
  * can: a mail account has a dozen folders and the replica already holds all of them. A file tree
- * has no replica, no bound on its depth, and is fetched a level at a time — so the flat list would
- * be a recursive crawl of the account to fill a dialog. Walking it is also what iOS Files and the
- * Finder's "Move to" sheet do, and for the same reason: the reader picks a destination by
- * recognising the way there.
+ * has no bound on its depth, so the flat list would be a recursive crawl of the account to fill a
+ * dialog. Walking it is also what iOS Files and the Finder's "Move to" sheet do, and for the same
+ * reason: the reader picks a destination by recognising the way there.
+ *
+ * WHERE THE LEVELS COME FROM. The reader's OWN tree is replicated (D-4) and is read from there,
+ * one indexed query per level — this file used to say a file tree has no replica, which stopped
+ * being true with D-4, and it went on asking the server for every step of the walk. At the root
+ * that meant the whole unfiltered account query (up to `MAX_PAGES` pages, `files-client.ts`) per
+ * click, and offline it meant a spinner, "could not be loaded", and a "Move here" that stayed
+ * live and then failed. A SHARED account has no engine and therefore no replica, so that one is
+ * still a round trip per level — the same split the screen behind this dialog makes.
  *
  * NO DRAG AND DROP, and that is the point. ADR-012 keeps HTML5 drag a desktop gesture, so on a
  * phone a drag-only move would be no move at all. This dialog is the whole mechanism on every
@@ -25,8 +32,9 @@
 
 import type { FileNode, Id } from '@waxwing/jmap'
 import { ChevronRight, Folder, FolderOpen } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useFileNodes } from '../sync'
 import { Button, Dialog, EmptyState, Spinner } from '../ui'
 import { DEFAULT_FILE_SORT, sortNodes } from './file-sort'
 import styles from './files.module.css'
@@ -42,6 +50,13 @@ export interface FileMoveDialogProps {
    * `null` is a real value here — the root — so the two cases cannot share one.
    */
   readonly currentParentId?: Id | null
+  /**
+   * Whether the account being browsed is the reader's own, and therefore in the replica.
+   *
+   * Passed in rather than derived: only the screen knows which account it is showing (S-4), and
+   * this dialog reads the replica for one answer and the network for the other.
+   */
+  readonly replicated: boolean
   readonly client: FilesClient
   readonly onClose: () => void
   /**
@@ -63,16 +78,19 @@ interface Step {
 export function FileMoveDialog({
   nodes,
   currentParentId,
+  replicated,
   client,
   onClose,
   onMove,
 }: FileMoveDialogProps) {
   const { t } = useTranslation()
   const [path, setPath] = useState<Step[]>([{ id: null, name: '' }])
-  const [folders, setFolders] = useState<FileNode[] | null>(null)
+  const [remoteFolders, setRemoteFolders] = useState<FileNode[] | null>(null)
   const [failed, setFailed] = useState(false)
 
   const here = path[path.length - 1]?.id ?? null
+  /** This level from the replica — the reader's own account only (see the header). */
+  const replicaRows = useFileNodes(here, replicated)
   /**
    * What is being moved, as a VALUE rather than as an object.
    *
@@ -83,19 +101,17 @@ export function FileMoveDialog({
   const movingIds = nodes.map((node) => node.id).join('\0')
 
   useEffect(() => {
+    if (replicated) return
     let live = true
     const moving = new Set(movingIds.split('\0'))
-    setFolders(null)
+    setRemoteFolders(null)
     setFailed(false)
     client
       .list(here)
       .then((listing) => {
         if (!live) return
-        setFolders(
-          sortNodes(
-            listing.nodes.filter((node) => node.nodeType === 'directory' && !moving.has(node.id)),
-            DEFAULT_FILE_SORT,
-          ),
+        setRemoteFolders(
+          listing.nodes.filter((node) => node.nodeType === 'directory' && !moving.has(node.id)),
         )
       })
       .catch(() => {
@@ -104,7 +120,23 @@ export function FileMoveDialog({
     return () => {
       live = false
     }
-  }, [client, here, movingIds])
+  }, [replicated, client, here, movingIds])
+
+  /**
+   * The destinations on offer: folders of this level, minus the nodes being moved.
+   *
+   * Dropping the moved nodes is the structural guard the header describes — a folder cannot be
+   * walked into if it is not listed, so its own descendants are unreachable as destinations.
+   */
+  const folders = useMemo<FileNode[] | null>(() => {
+    const level = replicated ? (replicaRows ?? null) : remoteFolders
+    if (level === null) return null
+    const moving = new Set(movingIds.split('\0'))
+    return sortNodes(
+      level.filter((node) => node.nodeType === 'directory' && !moving.has(node.id)),
+      DEFAULT_FILE_SORT,
+    )
+  }, [replicated, replicaRows, remoteFolders, movingIds])
 
   const close = useCallback(() => onClose(), [onClose])
 

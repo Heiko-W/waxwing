@@ -124,6 +124,49 @@ describe('the length field (T14)', () => {
   })
 })
 
+describe('the repetition count field (R-65)', () => {
+  /** Walk to the repeat page and switch the ending to "After a number". */
+  async function openCountField(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole('button', { name: /Repeat/ }))
+    await user.click(screen.getByRole('button', { name: 'Every week' }))
+    await user.click(screen.getByRole('button', { name: 'After a number' }))
+  }
+
+  const count = (): HTMLInputElement =>
+    screen.getByLabelText('Number of events') as HTMLInputElement
+
+  it('can be emptied and typed again', async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await openCountField(user)
+    expect(count().value).toBe('10')
+
+    await user.clear(count())
+    // The defect: `Number.parseInt('')` is `NaN`, and the handler substituted `1` — so clearing
+    // "10" in order to type "5" produced "15" (or "51") in a controlled field.
+    expect(count().value).toBe('')
+
+    await user.type(count(), '5')
+    expect(count().value).toBe('5')
+  })
+
+  it('saves the number that was typed', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog()
+    await user.type(screen.getByLabelText('Title'), 'Standup')
+    await openCountField(user)
+    await user.clear(count())
+    await user.type(count(), '5')
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onSubmit.mock.calls[0]?.[0]?.repeat).toEqual({
+      preset: 'weekly',
+      end: { kind: 'count', count: 5 },
+    })
+  })
+})
+
 describe('what the editor cannot edit (T11)', () => {
   it('shows a location the event carries', async () => {
     renderDialog({

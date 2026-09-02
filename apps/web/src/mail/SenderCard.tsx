@@ -14,7 +14,7 @@
  * The trigger itself is a real `button` carrying `aria-haspopup="dialog"`/`aria-expanded` — see
  * {@link MessageView}.
  *
- * Async-seam discipline (this project's top bug class): `useAccountContactCards` is a liveQuery that
+ * Async-seam discipline (this project's top bug class): `useContactCards` is a liveQuery that
  * is briefly `undefined`; the add-vs-edit action is WITHHELD until the cards resolve, so it can never
  * flicker from "Add" to "Edit" (or crash reading `undefined`) as they load. The "Last conversation"
  * link needs no card and is always present.
@@ -26,9 +26,8 @@ import { useTranslation } from 'react-i18next'
 import { contactsPath, mailPath, useNavigate } from '../app/route'
 import { contactDisplayName, contactPhoto } from '../contacts/contact-fields'
 import { useContactActions } from '../contacts/use-contact-actions'
-import { useAccountContactCards } from '../contacts/use-contact-groups'
 import { useContactPhoto } from '../contacts/use-contact-photo'
-import { useAddressBooks } from '../sync'
+import { useAddressBooks, useContactCards } from '../sync'
 import { Avatar, Button, Portal, useFocusTrap, useToast } from '../ui'
 import styles from './SenderCard.module.css'
 import {
@@ -53,7 +52,7 @@ export function SenderCard({ from, accountId, mailboxId, anchorRef, onClose }: S
   const navigate = useNavigate()
   const { toast } = useToast()
   const actions = useContactActions()
-  const cards = useAccountContactCards()
+  const cards = useContactCards()
   const books = useAddressBooks()
 
   const panelRef = useRef<HTMLDivElement>(null)

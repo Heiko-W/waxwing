@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import type { CardLike } from './contact-fields'
 import {
   communicationTypeKey,
   contactDisplayName,
@@ -7,6 +8,7 @@ import {
   formatAddressLines,
   formatBirthday,
   preferred,
+  sortByDisplayName,
   telHref,
 } from './contact-fields'
 
@@ -98,6 +100,72 @@ describe('formatBirthday', () => {
   })
   it('renders a year-withheld partial date as MM-DD', () => {
     expect(formatBirthday({ kind: 'birth', date: { month: 4, day: 4 } })).toBe('04-04')
+  })
+
+  /*
+   * The reader's zone is PINNED west of UTC: run this in Berlin and a `Timestamp` birthday reads
+   * the same either way, so the assertion would pass for the wrong reason. V8 re-reads `TZ` on
+   * every `Date`/`Intl` call, so setting it here is enough.
+   */
+  describe('a Timestamp birthday west of UTC (R-63)', () => {
+    const ambient = process.env.TZ
+    beforeEach(() => {
+      process.env.TZ = 'America/New_York'
+    })
+    afterAll(() => {
+      if (ambient === undefined) delete process.env.TZ
+      else process.env.TZ = ambient
+    })
+
+    it('shows the same day the editor shows — the UTC one', () => {
+      const anniversary = {
+        kind: 'birth',
+        date: { '@type': 'Timestamp', utc: '1980-03-15T04:00:00Z' },
+      } as unknown as Parameters<typeof formatBirthday>[0]
+      // `extractBirthdayString` (contact-card-mapping) reads this as 1980-03-15 with `getUTC*`;
+      // rendering it in the reader's zone said "March 14, 1980" over a form showing the 15th.
+      expect(formatBirthday(anniversary, 'en-US')).toBe('March 15, 1980')
+    })
+  })
+})
+
+describe('sortByDisplayName (R-20)', () => {
+  it('orders by display name, case- and accent-insensitively', () => {
+    const cards: CardLike[] = [
+      { name: { full: 'Zoe' } },
+      { name: { full: 'ätna' } },
+      { name: { full: 'Alice' } },
+    ]
+    expect(sortByDisplayName(cards).map((card) => card.name?.full)).toEqual([
+      'Alice',
+      'ätna',
+      'Zoe',
+    ])
+  })
+
+  it('orders numbered names the way a reader reads them', () => {
+    // `numeric`, the same promise `files/file-sort.ts` makes: "Scan 2" before "Scan 10".
+    const cards: CardLike[] = [{ name: { full: 'Scan 10' } }, { name: { full: 'Scan 2' } }]
+    expect(sortByDisplayName(cards).map((card) => card.name?.full)).toEqual(['Scan 2', 'Scan 10'])
+  })
+
+  it('computes each display name EXACTLY once, not once per comparison', () => {
+    /*
+     * The finding, as a countable property. A comparator calling `contactSortKey` computes the
+     * name twice per comparison — ~120 000 computations for 5 000 cards — and `contactDisplayName`
+     * walks components, filters, joins and falls back through nicknames, organizations and emails.
+     * Decorating first turns that into one per card. Measured on the real helpers (Node 24, 5 000
+     * synthetic cards): 266 ms with the old comparator, 16.8 ms with a reused collator and keys.
+     */
+    let reads = 0
+    const cards: CardLike[] = Array.from({ length: 64 }, (_, index) => ({
+      get name() {
+        reads += 1
+        return { full: `Person ${String(64 - index).padStart(2, '0')}` }
+      },
+    }))
+    sortByDisplayName(cards)
+    expect(reads).toBe(cards.length)
   })
 })
 
