@@ -170,6 +170,24 @@ function resetStyle(palette: FramePalette, constrainWidth: boolean): string {
   )
 }
 
+/**
+ * The frame's own CSP. `allowRemote` widens exactly one directive, `img-src`, and the omission of
+ * `media-src` is a DECISION rather than an oversight (R-96).
+ *
+ * `default-src 'none'` already covers it, and widening it here would change nothing anyway: a
+ * `srcdoc` document inherits the embedder's policy container, so the effective policy is the
+ * INTERSECTION of this one and the app's (implementation-plan B25), and the app's has no
+ * `media-src` under `default-src 'self'`. Measured 2026-09-02 in Chromium 1234 and WebKit 2311 —
+ * with `media-src http:` written into THIS policy the media is still refused, Chromium naming the
+ * outer `default-src 'self'` as the directive that refused it, while an image beside it loads.
+ *
+ * So the pair of policies decides that remote `<video>`/`<audio>` never plays, and `sanitize` is
+ * what makes that honest: it drops a media `src` whatever `allowRemote` says and does not count it
+ * as remote content, so the reader is never offered a release that cannot take effect. Reopening
+ * this means widening the APP's CSP too — a new exfiltration sink for every document in the app, in
+ * exchange for an element no mail client renders. `poster` is unaffected: it is an `img-src` fetch
+ * and loads with the rest once the reader releases remote content.
+ */
 function framePolicy(allowRemote: boolean): string {
   const img = allowRemote ? 'blob: data: https:' : 'blob: data:'
   return [

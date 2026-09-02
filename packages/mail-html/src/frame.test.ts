@@ -61,6 +61,19 @@ describe('buildFrameDocument', () => {
   })
 
   /**
+   * R-96. `allowRemote` widens `img-src` and nothing else, deliberately — see framePolicy. The
+   * companion half is in `sanitize.test.ts`: a media `src` is dropped whatever `allowRemote` says,
+   * so nothing offers the reader a release this policy would refuse.
+   */
+  it('never grants media-src, so remote video and audio stay refused after a release', () => {
+    for (const allowRemote of [false, true]) {
+      const doc = buildFrameDocument('<p>hi</p>', { allowRemote })
+      expect(doc).not.toContain('media-src')
+      expect(doc).toContain("default-src 'none'")
+    }
+  })
+
+  /**
    * Forcing black-on-white is the only safe default for arbitrary mail — a message that sets
    * `color:#eee` and no background is unreadable on anything else — but applying it to messages
    * that declare no colour at all put a sheet of `#ffffff` inside a `#2c2c2e` card in the dark

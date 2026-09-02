@@ -3688,7 +3688,9 @@ upload response (RFC 8620 §6.1)')`.
 
 ### R-96 — [LOW] Remote-Medien werden als „blockiert und freigebbar“ gemeldet, die Frame-CSP lässt `<video>`/`<audio>`-`src` auch nach Freigabe nie zu
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Entscheidung:** Die Richtlinie wird NICHT gelockert; stattdessen hoert die Oberflaeche auf, eine wirkungslose Freigabe anzubieten. Grund: die App-CSP wird auf das `srcdoc`-Dokument mitvererbt (effektive Policy = Schnittmenge, implementation-plan B25), und sie hat unter `default-src 'self'` ebenfalls kein `media-src`. Gemessen am 02.09.2026 in Chromium 1234 und WebKit 2311: selbst mit `media-src http:` in der FRAME-Policy bleibt das Medium abgelehnt (Chromium nennt `default-src 'self'` des aeusseren Dokuments), ein Bild daneben laedt. Ein `media-src` waere also nur zusammen mit einer Lockerung von `apps/web/index.html` wirksam — neue Exfiltrationssenke fuer die ganze App, fuer ein Element, das kein Mailclient rendert. `sanitize` verwirft ein Medien-`src` jetzt unabhaengig von `allowRemote` und zaehlt es nicht als `hasRemoteContent`; `poster` und `srcset` werden dabei als `image` gefuehrt (sie laden unter `img-src` wirklich). `SECURITY.md` bleibt unveraendert: die Zusage wird strenger erfuellt, nicht gelockert. Entscheidung als Kommentar in `framePolicy` festgehalten (kein ADR: die Architekturentscheidung bleibt, die Umsetzung wird ihr angeglichen).
 
 **Kategorie / Bereich:** correctness / Lib (mail-html)
 

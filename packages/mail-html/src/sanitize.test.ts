@@ -141,10 +141,12 @@ describe('sanitize — the URL forms the scheme test used to miss (S8)', () => {
   })
 
   it.each(allForms)('blocks %s in a video poster, and says so', (_label, value, parsed) => {
+    // `image`, not `media`: a poster is an `img-src` fetch (CSP3 §6.1) and really does load once the
+    // reader releases remote content — see kindForAttr and R-96.
     const result = sanitize(`<video poster="${value}"></video>`)
     expect(result.html).not.toContain('evil')
     expect(result.hasRemoteContent).toBe(true)
-    expect(result.blockedRemote).toEqual([{ url: parsed, kind: 'media' }])
+    expect(result.blockedRemote).toEqual([{ url: parsed, kind: 'image' }])
   })
 
   it.each(allForms)('blocks %s in a cell background, and says so', (_label, value, parsed) => {
@@ -230,6 +232,43 @@ describe('sanitize — remote-content policy', () => {
     expect(result.html).toContain('https://cdn.example/logo.png')
     expect(result.hasRemoteContent).toBe(true)
     expect(result.blockedRemote).toHaveLength(0)
+  })
+
+  /**
+   * R-96. Two CSPs stand between a media `src` and the network — the frame's own (`default-src
+   * 'none'`, no `media-src`) and the app's, which the `srcdoc` document inherits — and neither is
+   * widened by `allowRemote`. Keeping the URL rendered a `<video>` that never plays; counting it as
+   * remote content offered the reader a "load remote content" button that could not change that.
+   */
+  it('drops a media src even under allowRemote, and does not offer it as remote content', () => {
+    const markup =
+      '<video src="https://cdn.example/clip.mp4"></video>' +
+      '<audio src="https://cdn.example/tune.mp3"></audio>' +
+      '<video><source src="https://cdn.example/alt.webm"></video>'
+    for (const allowRemote of [false, true]) {
+      const result = sanitize(markup, { allowRemote })
+      expect(hasNoRemoteUrl(result.html)).toBe(true)
+      expect(result.hasRemoteContent).toBe(false)
+      expect(result.blockedRemote.map((b) => b.kind)).toEqual(['media', 'media', 'media'])
+    }
+  })
+
+  it('still releases a video poster, which is an img-src fetch and does load', () => {
+    // The other half of R-96: the fix must not turn a resource that DOES load into one reported as
+    // unreleasable. A poster next to an unreleasable `src` still raises the banner.
+    const markup = '<video poster="https://cdn.example/still.jpg" src="https://cdn.example/c.mp4">'
+    const blocked = sanitize(markup)
+    expect(blocked.hasRemoteContent).toBe(true)
+    expect(blocked.blockedRemote.map((b) => b.kind).sort()).toEqual(['image', 'media'])
+    const released = sanitize(markup, { allowRemote: true })
+    expect(released.html).toContain('https://cdn.example/still.jpg')
+    expect(released.html).not.toContain('c.mp4')
+  })
+
+  it('treats a picture source srcset as the image it is, not as media', () => {
+    const result = sanitize('<picture><source srcset="https://cdn.example/w.png 1x"></picture>')
+    expect(result.hasRemoteContent).toBe(true)
+    expect(result.blockedRemote).toEqual([{ url: 'https://cdn.example/w.png', kind: 'image' }])
   })
 
   it('resolves cid: via the resolver, drops it when unresolved', () => {

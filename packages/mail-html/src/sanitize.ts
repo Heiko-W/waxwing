@@ -137,10 +137,20 @@ function classifyUrl(raw: string): ClassifiedUrl {
   return { kind: 'other', url }
 }
 
+/**
+ * Which fetch directive a URL falls under, which is also which of them the reader can RELEASE.
+ *
+ * `poster` and `srcset` are images wherever they sit, `<video poster>` included: both are fetched
+ * under `img-src` (CSP3 §6.1, HTML §4.8.9), so releasing remote content really does load them. Only
+ * a media element's own `src` falls under `media-src` — the one directive nothing here can grant;
+ * see {@link resolveUrl} and `frame.ts`'s `framePolicy`. Getting `poster` wrong in the other
+ * direction would be the mirror of R-96: a resource that loads, reported as one that cannot.
+ */
 function kindForAttr(attrName: string, tagName: string): BlockedResource['kind'] {
   if (attrName === 'style') return 'style'
+  if (attrName === 'poster' || attrName === 'srcset') return 'image'
   if (tagName === 'video' || tagName === 'audio' || tagName === 'source') return 'media'
-  if (attrName === 'src' || attrName === 'srcset' || tagName === 'img') return 'image'
+  if (attrName === 'src' || tagName === 'img') return 'image'
   return 'other'
 }
 
@@ -172,11 +182,32 @@ function resolveUrl(
       return classifyUrl(resolved).kind === 'dataImage' ? resolved : null
     }
     case 'remote': {
+      const kind = kindForAttr(attrName, tagName)
+      // A media element's `src` is dropped WHATEVER `allowRemote` says, and it does not raise
+      // `hasRemote` (R-96). Two CSPs stand between it and the network and neither can be talked out
+      // of it: the frame's own policy has no `media-src` under `default-src 'none'`, and the APP's
+      // policy — which a `srcdoc` document inherits, the effective policy being the intersection
+      // (implementation-plan B25) — has none either under `default-src 'self'`. Measured 2026-09-02
+      // in Chromium 1234 and WebKit 2311: with `media-src http:` in the FRAME's policy the audio is
+      // still refused, Chromium naming `default-src 'self'` from the outer document, while an image
+      // beside it on the same page loads. So keeping the URL would render a `<video>` that never
+      // plays, and counting it as remote content would offer the reader a "load remote content"
+      // button that cannot change anything about it.
+      //
+      // Widening the app's own CSP was the alternative and was NOT taken: it would grant every
+      // document in the app a new exfiltration sink, need `index.html`, the dev policy, the dist
+      // contract and SECURITY.md pulled along, and buy `<video>` in mail — an element the review
+      // itself calls rare and that no mail client renders. The record still gets the entry, exactly
+      // as the always-dropping style path does: it really was blocked.
+      if (kind === 'media') {
+        collector.blocked.push({ url, kind })
+        return null
+      }
       collector.hasRemote = true
       // `raw`, not the junk-stripped form: what we keep here is what the mail wrote, and the browser
       // applies the same §4.1 stripping to it that this file just applied for classification.
       if (options.allowRemote) return raw
-      collector.blocked.push({ url, kind: kindForAttr(attrName, tagName) })
+      collector.blocked.push({ url, kind })
       return null
     }
     case 'dataImage':
