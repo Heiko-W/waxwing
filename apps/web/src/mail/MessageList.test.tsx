@@ -2846,3 +2846,66 @@ describe('select-all over a window that is not the whole folder', () => {
     expect(dispatch.mock.calls[0]?.[0]).toMatchObject({ kind: 'move', emailIds: ids })
   })
 })
+
+/**
+ * Shift+↓/↑ from a focus that has not selected anything yet (R-47).
+ *
+ * APG's grid pattern has Shift+↓ extend the selection "to include the next row" — the row the focus
+ * is standing on belongs to what is being extended. The reducer answers a range with no anchor by
+ * selecting the DESTINATION alone, which is right for a shift-CLICK (`message-selection.test.ts`
+ * pins it) and wrong from the keyboard: it dropped the row the reader started on, so three rows by
+ * Shift+↓↓ produced two. Fixed in the key handler, so shift-click semantics are untouched.
+ */
+describe('extending the selection from the keyboard', () => {
+  async function focusGrid() {
+    renderList()
+    await screen.findByText('First')
+    screen.getByRole('grid').focus()
+  }
+
+  it('keeps the starting row in the range', async () => {
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}')
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /First/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /Second/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('grows one row per keystroke from there', async () => {
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{Shift>}{ArrowDown}{ArrowDown}{/Shift}')
+    expect(await screen.findByText('3 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Third/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('works upward too, from a focus moved down first', async () => {
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    await user.keyboard('{Shift>}{ArrowUp}{/Shift}')
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Third/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /Second/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /First/ })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('leaves an EXISTING anchor where it is, so a range can still shrink back to it', async () => {
+    // The anchor is planted only when there is none. Re-planting it on every keystroke would make
+    // the range unable to shrink, which is the behaviour `message-selection.ts` recomputes from
+    // `base` specifically to keep.
+    const user = userEvent.setup()
+    await focusGrid()
+
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}')
+    expect(await screen.findByText('2 selected')).toBeInTheDocument()
+    await user.keyboard('{Shift>}{ArrowUp}{/Shift}')
+    expect(await screen.findByText('1 selected')).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /First/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('row', { name: /Second/ })).toHaveAttribute('aria-selected', 'false')
+  })
+})

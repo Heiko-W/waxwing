@@ -2014,7 +2014,10 @@ Bilder und In-Memory-Fetcher → nur ein Lauf. Gegenprüfung: abgeschwächt, med
 
 ### R-47 — [LOW] Shift+↓/↑ ohne Anker lässt die Startzeile aus dem Bereich fallen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Wie vorgeschlagen im Key-Handler: bei `selection.anchor === null` zuerst `selectOne` auf die
+fokussierte Zeile, dann `range` auf das Ziel. Die Shift-Klick-Semantik im Reducer bleibt unangetastet
+(`message-selection.test.ts:34` bleibt grün).
 
 **Kategorie / Bereich:** a11y / Mail
 

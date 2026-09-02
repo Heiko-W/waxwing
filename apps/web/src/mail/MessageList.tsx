@@ -532,13 +532,31 @@ export function MessageList({
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     const id = ids[focusIndex]
+
+    /**
+     * Extend the selection to `destId`, planting the anchor on the FOCUSED row first when there is
+     * none (R-47).
+     *
+     * APG's grid pattern has Shift+↓ extend the selection "to include the next row" — the row the
+     * focus is standing on is part of what is being extended. The reducer answers a range with no
+     * anchor by selecting the DESTINATION alone (`single`), which is right for a shift-CLICK, where
+     * the clicked row is the whole intent and `message-selection.test.ts` pins it. From the
+     * keyboard it dropped the starting row: focus row 1, Shift+↓, and you had row 2 selected and
+     * "1 selected" on the bar. Three rows by Shift+↓↓ gave you two. So the anchor is set here, at
+     * the surface that knows where the focus is, rather than by changing what the reducer means.
+     */
+    const extendTo = (destId: string): void => {
+      if (selection.anchor === null && id !== undefined)
+        dispatchSelection({ type: 'selectOne', id })
+      dispatchSelection({ type: 'range', id: destId, ordered: ids })
+    }
+
     switch (event.key) {
       case 'ArrowDown': {
         event.preventDefault()
         const dest = Math.min(focusIndex + 1, ids.length - 1)
         const destId = ids[dest]
-        if (event.shiftKey && destId !== undefined)
-          dispatchSelection({ type: 'range', id: destId, ordered: ids })
+        if (event.shiftKey && destId !== undefined) extendTo(destId)
         moveTo(dest)
         break
       }
@@ -546,8 +564,7 @@ export function MessageList({
         event.preventDefault()
         const dest = Math.max(focusIndex - 1, 0)
         const destId = ids[dest]
-        if (event.shiftKey && destId !== undefined)
-          dispatchSelection({ type: 'range', id: destId, ordered: ids })
+        if (event.shiftKey && destId !== undefined) extendTo(destId)
         moveTo(dest)
         break
       }
