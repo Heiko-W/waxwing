@@ -814,7 +814,7 @@ Umstellungstagen. Gegenprüfung: bestätigt.
 
 ### R-18 — [MEDIUM] Zwei verschiedene Teilnehmeradressen kollabieren zu einem Map-Key — ein Eingeladener geht stillschweigend verloren
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 

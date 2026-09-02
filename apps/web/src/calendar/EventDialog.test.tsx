@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { Calendar, CalendarEvent } from '@waxwing/jmap'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventDialog, { parseDurationMinutes } from './EventDialog'
+import { newParticipantRow } from './event-participants'
 
 /**
  * The event editor's own behaviour — the parts that never reach the network.
@@ -386,5 +387,56 @@ describe('the stored time zone (R-04)', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(onSubmit.mock.calls[0]?.[0].timeZone).toBeNull()
+  })
+})
+
+/**
+ * R-18 — two rows on screen must never become one participant on the wire.
+ *
+ * The map key used to be the address with every non-alphanumeric character deleted, so
+ * `john.doe@` and `johndoe@` shared one, and `participantsToPatch` — which writes `map[key]` —
+ * kept only the second. The keys are injective now; the dialog also refuses an address whose key
+ * is already taken, because the keys of an event read from the server are the server's to choose.
+ */
+describe('the participant list (R-18)', () => {
+  it('adds two addresses that used to collapse into one key', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ event: EXISTING })
+
+    await user.click(screen.getByRole('button', { name: /Participants/ }))
+    for (const address of ['john.doe@waxwing.test', 'johndoe@waxwing.test']) {
+      await user.type(screen.getByLabelText('Email address'), address)
+      await user.click(screen.getByRole('button', { name: 'Add' }))
+    }
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const draft = onSubmit.mock.calls[0]?.[0]
+    expect(draft.participants.map((row: { address: string }) => row.address)).toEqual([
+      'john.doe@waxwing.test',
+      'johndoe@waxwing.test',
+    ])
+    const keys = draft.participants.map((row: { key: string }) => row.key)
+    expect(new Set(keys).size).toBe(2)
+  })
+
+  it('refuses an address whose key an existing participant already holds', async () => {
+    const user = userEvent.setup()
+    // A participant the SERVER filed under exactly the key a new address would produce.
+    const taken = newParticipantRow('new@waxwing.test').key
+    renderDialog({
+      event: {
+        ...EXISTING,
+        participants: {
+          [taken]: { '@type': 'Participant', calendarAddress: 'mailto:other@waxwing.test' },
+        },
+      } as unknown as CalendarEvent,
+    })
+
+    await user.click(screen.getByRole('button', { name: /Participants/ }))
+    await user.type(screen.getByLabelText('Email address'), 'new@waxwing.test')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    expect(screen.getByText('That person is already on the list.')).toBeInTheDocument()
   })
 })

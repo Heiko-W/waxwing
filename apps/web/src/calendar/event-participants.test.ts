@@ -186,12 +186,32 @@ describe('participantsToPatch', () => {
   it('asks for a reply from everyone who is not the organiser', () => {
     // An invitation nobody is expected to answer is a notification with extra steps — and
     // `expectReply` is what makes the server ask.
-    const patch = participantsToPatch([
-      newParticipantRow('bob@waxwing.test'),
-      { ...newParticipantRow('chair@waxwing.test'), isOrganizer: true },
-    ])
-    expect(patch.pbobwaxwingtest?.expectReply).toBe(true)
-    expect(patch.pchairwaxwingtest?.expectReply).toBeUndefined()
+    const bob = newParticipantRow('bob@waxwing.test')
+    const chair = { ...newParticipantRow('chair@waxwing.test'), isOrganizer: true }
+    const patch = participantsToPatch([bob, chair])
+    expect(patch[bob.key]?.expectReply).toBe(true)
+    expect(patch[chair.key]?.expectReply).toBeUndefined()
+  })
+
+  /**
+   * R-18 — two addresses, two participants. The map write is where an invitee was lost.
+   *
+   * `map[row.key] = participant` overwrites, so any two rows sharing a key sent one person. The
+   * keys built here cannot collide any more, but a map read from the server can hold anything, and
+   * the right answer to a clash is two participants under two keys — never one.
+   */
+  it('keeps both people when two rows claim the same key', () => {
+    const first = newParticipantRow('john.doe@waxwing.test')
+    const clashing = { ...newParticipantRow('johndoe@waxwing.test'), key: first.key }
+
+    const patch = participantsToPatch([first, clashing])
+
+    expect(Object.keys(patch)).toHaveLength(2)
+    expect(
+      Object.values(patch)
+        .map((participant) => participant.calendarAddress)
+        .sort(),
+    ).toEqual(['mailto:john.doe@waxwing.test', 'mailto:johndoe@waxwing.test'])
   })
 })
 
@@ -207,6 +227,33 @@ describe('newParticipantRow', () => {
     // would address something else entirely and the server would answer about a path we did not
     // mean.
     expect(newParticipantRow('a.b+c/d@waxwing.test').key).not.toContain('/')
+  })
+
+  it('stays inside the character set RFC 8984 allows in an Id', () => {
+    for (const address of ['a.b+c/d@waxwing.test', 'björn@waxwing.test', "o'neill@waxwing.test"]) {
+      expect(newParticipantRow(address).key, address).toMatch(/^[A-Za-z0-9_-]+$/)
+    }
+  })
+
+  /**
+   * R-18 — addresses that differ by a dot, a plus, a hyphen or an accent are DIFFERENT people.
+   *
+   * The key used to be the address with everything outside `[a-z0-9]` deleted, so all of these
+   * collapsed onto one key; the list showed two rows (with a duplicate React key) and the patch
+   * carried one participant. Two people invited, one invitation sent, nothing said.
+   */
+  it('gives colliding-looking addresses distinct keys', () => {
+    const pairs: [string, string][] = [
+      ['john.doe@waxwing.test', 'johndoe@waxwing.test'],
+      ['a-b@waxwing.test', 'ab@waxwing.test'],
+      ['me+cal@waxwing.test', 'mecal@waxwing.test'],
+      ['björn@waxwing.test', 'bjrn@waxwing.test'],
+    ]
+    for (const [left, right] of pairs) {
+      expect(newParticipantRow(left).key, `${left} vs ${right}`).not.toBe(
+        newParticipantRow(right).key,
+      )
+    }
   })
 })
 

@@ -709,7 +709,11 @@ function ParticipantsPage({
       setRejected('invalid')
       return
     }
-    if (rows.some((row) => row.address === address)) {
+    const candidate = newParticipantRow(address)
+    // Both, and the second one is not redundant: the addresses come from the reader, the KEYS may
+    // come from the server, and a row whose key is already taken would be dropped by
+    // `participantsToPatch` — two rows on screen, one invitation on the wire (R-18).
+    if (rows.some((row) => row.address === address || row.key === candidate.key)) {
       setRejected('duplicate')
       return
     }
@@ -719,7 +723,7 @@ function ParticipantsPage({
     }
     setRejected(null)
     setEntry('')
-    onChange([...rows, newParticipantRow(address)])
+    onChange([...rows, candidate])
   }
 
   return (

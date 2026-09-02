@@ -218,9 +218,44 @@ export function participantsToPatch(rows: readonly ParticipantRow[]): Record<str
     if (Object.keys(row.roles).length > 0) participant.roles = row.roles
     if (row.participationStatus !== null) participant.participationStatus = row.participationStatus
     if (!row.isOrganizer && participant.expectReply === undefined) participant.expectReply = true
-    map[row.key] = participant
+    // NEVER `map[row.key] = …` unguarded: a second row under a key already taken overwrites the
+    // first, and the person it belonged to is simply not invited (R-18). Keys built here cannot
+    // collide any more, but a map read from the server can hold anything — and the right answer to
+    // two rows claiming one key is two participants under two keys, not one participant.
+    map[freeKey(map, row.key)] = participant
   }
   return map
+}
+
+/** `key` if it is free, else the first `key-2`, `key-3`, … that is. Bounded by the row count. */
+function freeKey(map: Readonly<Record<string, unknown>>, key: string): string {
+  if (!Object.hasOwn(map, key)) return key
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${key}-${String(suffix)}`
+    if (!Object.hasOwn(map, candidate)) return candidate
+  }
+}
+
+/**
+ * A participant map key for one address: `p` + the address as unpadded base64url.
+ *
+ * **Injective, which the first version was not.** It used to STRIP everything that is not
+ * `[a-z0-9]`, so `john.doe@`, `johndoe@` and `john+doe@` all came out as `pjohndoeexampletest` —
+ * and since `participantsToPatch` writes `map[row.key]`, inviting two of them showed two rows and
+ * sent one participant. No error, no warning, one person simply not invited (R-18). The characters
+ * were being stripped because a key ends up in a JSON pointer
+ * (`participants/<key>/participationStatus`), where a `/` would silently address something else;
+ * base64url answers that without throwing information away — its alphabet is `A-Za-z0-9-_`, which
+ * is also exactly the character set RFC 8984 allows in an Id.
+ *
+ * The key stays a pure function of the address, which is what keeps "the same person added twice"
+ * one entry, on a reload as well as in the session.
+ */
+function participantKey(address: string): string {
+  const bytes = new TextEncoder().encode(address)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return `p${btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`
 }
 
 /**
@@ -228,14 +263,12 @@ export function participantsToPatch(rows: readonly ParticipantRow[]): Record<str
  *
  * The key is derived from the address rather than counted, so adding the same person twice produces
  * the same key and therefore one entry — the map does the de-duplication for us, and it does it the
- * same way on a reload. Non-alphanumeric characters are replaced because a JSCalendar map key ends
- * up in a JSON pointer (`participants/<key>/participationStatus`), where a `/` in the key would
- * silently address something else.
+ * same way on a reload. See {@link participantKey} for why it is an encoding and not a filter.
  */
 export function newParticipantRow(calendarAddress: string, name = ''): ParticipantRow {
   const address = normaliseAddress(calendarAddress)
   return {
-    key: `p${address.replace(/[^a-z0-9]/g, '')}`,
+    key: participantKey(address),
     calendarAddress: calendarAddress.startsWith('mailto:')
       ? calendarAddress
       : `mailto:${calendarAddress.trim()}`,
