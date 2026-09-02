@@ -46,6 +46,7 @@ import type {
   Mailbox,
   PatchObject,
 } from '@waxwing/jmap'
+import type { Table } from 'dexie'
 import {
   type ConflictCode,
   type ContactCardRow,
@@ -1932,6 +1933,40 @@ export interface EnqueueOptions {
   readonly notBefore?: number | null
 }
 
+/**
+ * The transaction scope every caller of {@link applyOptimistic} needs: the tables that function can
+ * touch, plus the outbox — NOT `db.tables`.
+ *
+ * Dexie needs the outer scope to be a superset of every nested one, and `db.tables` satisfies that
+ * trivially; it also takes a write lock on the calendar and file tables that this path never writes,
+ * which serialises a sync pass behind every click. `outbox.contacts.test.ts` and the chaos suite
+ * both notice.
+ *
+ * ONE definition, because the two call sites drifted: `enqueueAction` gained `contactCards`/
+ * `addressBooks` with the contact intents in M4.2 and `SyncEngine.retryFailed` did not, so retrying
+ * a rejected contact or address-book dead letter threw `NotFoundError` — Dexie rejects a table that
+ * is not in the enclosing scope — and the whole intent family had no working recovery path at all.
+ * A shared list makes the next intent family a one-line change instead of two that can disagree.
+ *
+ * Array form: Dexie's variadic overload stops at five tables, and this scope needs seven.
+ */
+export function optimisticTables(db: ReplicaDb): Table<unknown, unknown>[] {
+  return [
+    db.emails,
+    // `emailBodies` is in scope because a destroy's optimistic apply is `deleteEmails`, which
+    // cascades to the bodies (M3.4) — and Dexie requires a sub-transaction's tables to be a SUBSET
+    // of its parent's, so omitting it would make every retried destroy throw SubTransactionError.
+    db.emailBodies,
+    // Same rule for `queryCache`: a move/destroy's optimistic apply also prunes the message out of
+    // the cached list windows (M3.8), in its own sub-transaction.
+    db.queryCache,
+    db.mailboxes, // the folder counts (gap B7) travel with the envelope patch
+    db.contactCards,
+    db.addressBooks,
+    db.outbox,
+  ] as Table<unknown, unknown>[]
+}
+
 /** Apply optimistically + persist the intent together with its durable undo (M3.3). */
 export async function enqueueAction(
   db: ReplicaDb,
@@ -1948,51 +1983,32 @@ export async function enqueueAction(
   // not a high one; it is also why the fix is cheap. This module already argues the identical point
   // for the envelope patch and the window edit inside `applyOptimistic`, and `retryFailed` holds
   // its own claim and undo together for the same reason.
-  //
-  // The tables `applyOptimistic` can touch, plus the outbox — NOT `db.tables`. Dexie needs the
-  // outer scope to be a superset of every nested one, and `db.tables` satisfies that trivially; it
-  // also takes a write lock on the contact, calendar and file tables that this path never writes,
-  // which serialises a sync pass behind every click. `outbox.contacts.test.ts` and the chaos suite
-  // both notice.
-  // Array form: Dexie's variadic overload stops at five tables, and this scope needs seven.
-  return db.transaction(
-    'rw',
-    [
-      db.emails,
-      db.emailBodies,
-      db.queryCache,
-      db.mailboxes,
-      db.contactCards,
-      db.addressBooks,
-      db.outbox,
-    ],
-    async () => {
-      const undo = await applyOptimistic(db, accountId, intent)
-      // What was here before this row, if anything. Drafts reuse one id so a later save coalesces
-      // with an earlier one; the stamp is what lets replay tell "the row I claimed" from "the row
-      // that replaced it while I was away" (see `OutboxRow.seq`).
-      const previous = await db.outbox.get([accountId, options.id])
-      const row: OutboxRow = {
-        accountId,
-        id: options.id,
-        type: intent.kind,
-        payload: intent,
-        ifInState: options.ifInState ?? null,
-        status: 'pending',
-        attempts: 0,
-        createdAt: options.now,
-        lastError: null,
-        notBefore: options.notBefore ?? null,
-        nextAttemptAt: null,
-        undo,
-        conflict: null,
-        refreshes: 0,
-        seq: (previous?.seq ?? 0) + 1,
-      }
-      await enqueue(db, row)
-      return { id: options.id, undo }
-    },
-  )
+  return db.transaction('rw', optimisticTables(db), async () => {
+    const undo = await applyOptimistic(db, accountId, intent)
+    // What was here before this row, if anything. Drafts reuse one id so a later save coalesces
+    // with an earlier one; the stamp is what lets replay tell "the row I claimed" from "the row
+    // that replaced it while I was away" (see `OutboxRow.seq`).
+    const previous = await db.outbox.get([accountId, options.id])
+    const row: OutboxRow = {
+      accountId,
+      id: options.id,
+      type: intent.kind,
+      payload: intent,
+      ifInState: options.ifInState ?? null,
+      status: 'pending',
+      attempts: 0,
+      createdAt: options.now,
+      lastError: null,
+      notBefore: options.notBefore ?? null,
+      nextAttemptAt: null,
+      undo,
+      conflict: null,
+      refreshes: 0,
+      seq: (previous?.seq ?? 0) + 1,
+    }
+    await enqueue(db, row)
+    return { id: options.id, undo }
+  })
 }
 
 // ---------------------------------------------------------------------------------------------

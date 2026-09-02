@@ -97,6 +97,7 @@ import {
   type EnqueueOptions,
   enqueueAction,
   type OutboxIntent,
+  optimisticTables,
   reapplyPendingCounts,
   reapplyPendingMailboxes,
   replayOutbox,
@@ -571,16 +572,10 @@ export class SyncEngine {
   async retryFailed(id: Id): Promise<boolean> {
     const requeued = await this.db.transaction(
       'rw',
-      this.db.outbox,
-      this.db.emails,
-      // `emailBodies` is in scope because a destroy's optimistic apply is `deleteEmails`, which
-      // cascades to the bodies (M3.4) — and Dexie requires a sub-transaction's tables to be a SUBSET
-      // of its parent's, so omitting it would make every retried destroy throw SubTransactionError.
-      this.db.emailBodies,
-      // Same rule for `queryCache`: a move/destroy's optimistic apply also prunes the message out of
-      // the cached list windows (M3.8), in its own sub-transaction.
-      this.db.queryCache,
-      this.db.mailboxes,
+      // The SHARED scope, not a hand-maintained copy: this list used to omit `contactCards` and
+      // `addressBooks`, so every retried contact/address-book dead letter threw `NotFoundError` out
+      // of `applyOptimistic` and "Try again" did visibly nothing for that whole intent family.
+      optimisticTables(this.db),
       async (): Promise<OutboxIntent | null> => {
         const current = await this.db.outbox.get([this.accountId, id])
         if (current === undefined || current.status !== 'error') return null

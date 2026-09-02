@@ -1168,7 +1168,7 @@ bestätigt, Überschneidung vermerkt.
 
 ### R-26 — [MEDIUM] `retryFailed` wirft für jeden Kontakt-/Adressbuch-Dead-Letter — `contactCards`/`addressBooks` fehlen im Transaktionsscope
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Sync
 

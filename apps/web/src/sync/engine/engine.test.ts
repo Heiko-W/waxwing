@@ -11,9 +11,16 @@ import {
 } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
-import { getQueryCache, putEmailBody, putEmails, putMailboxes } from '../repo'
+import {
+  getQueryCache,
+  putAddressBooks,
+  putContactCards,
+  putEmailBody,
+  putEmails,
+  putMailboxes,
+} from '../repo'
 import { getStorageFullAt, resetStorageFull } from '../storage'
-import { email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
+import { addressBook, contactCard, email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
 import type { BroadcastChannelLike } from './bus'
 import {
   isDocumentForeground,
@@ -1910,6 +1917,66 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     await waitFor(async () => (await db.outbox.count()) === 0)
     expect(await db.emails.get([ACC, 'e1'])).toBeUndefined()
     expect(await db.emailBodies.get([ACC, 'e1'])).toBeUndefined() // and its body went with it
+    await engine.stop()
+  })
+
+  /**
+   * The same subset rule, one intent family further (R-26). A contact or address-book intent's
+   * optimistic apply writes `contactCards`/`addressBooks`; `enqueueAction` gained both tables with
+   * the M4.2 intents and `retryFailed`'s hand-maintained copy of the list did not — so EVERY retried
+   * contact/address-book dead letter threw `NotFoundError` out of the transaction zone and "Try
+   * again" in the problems dialog did visibly nothing for the whole family.
+   */
+  it('retryFailed works for a contact edit, whose optimistic apply writes contactCards', async () => {
+    await putContactCards(db, ACC, [contactCard('c1', { name: { full: 'Ada' } })])
+    let reject = true
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setContactCards() {
+        if (reject) return { ...emptySet(), notUpdated: { c1: { type: 'forbidden' } } }
+        return { ...emptySet(), updated: ['c1'] }
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'updateContactCard', id: 'c1', patch: { 'name/full': 'Ada Lovelace' } },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    expect((await db.contactCards.get([ACC, 'c1']))?.name?.full).toBe('Ada') // rolled back
+
+    reject = false
+    expect(await engine.retryFailed('i1')).toBe(true)
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect((await db.contactCards.get([ACC, 'c1']))?.name?.full).toBe('Ada Lovelace')
+    expect(engine.getStatus().failedActions).toBe(0)
+    await engine.stop()
+  })
+
+  it('retryFailed works for an address-book edit, whose optimistic apply writes addressBooks', async () => {
+    await putAddressBooks(db, ACC, [addressBook('book1', { name: 'Work' })])
+    let reject = true
+    const base = fakePort({ emails: [], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async setAddressBooks() {
+        if (reject) return { ...emptySet(), notUpdated: { book1: { type: 'forbidden' } } }
+        return { ...emptySet(), updated: ['book1'] }
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'updateAddressBook', id: 'book1', props: { name: 'Team' } },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    expect((await db.addressBooks.get([ACC, 'book1']))?.name).toBe('Work') // rolled back
+
+    reject = false
+    expect(await engine.retryFailed('i1')).toBe(true)
+    await waitFor(async () => (await db.outbox.count()) === 0)
+    expect((await db.addressBooks.get([ACC, 'book1']))?.name).toBe('Team')
     await engine.stop()
   })
 
