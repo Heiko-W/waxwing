@@ -2483,3 +2483,159 @@ describe('the message row answers a secondary click', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 })
+
+/**
+ * Infinite scroll across window changes (R-01, R-51).
+ *
+ * `MailScreen` does not key `<MessageList>` on the folder, so a folder change re-renders this
+ * component in place and every ref it holds survives. The tail guard used to be the loaded LENGTH
+ * alone, which made it a cross-folder lock: after any folder paged once the ref held that folder's
+ * length, and the next folder opened at the engine's own page size and matched it. Every fresh
+ * window starts at 50, so in practice every folder after the first one stopped dead after its head
+ * page while `aria-rowcount` announced the folder's real total.
+ *
+ * Seeded at 20-of-100 rather than 50-of-300 on purpose: the two numbers that have to be EQUAL for
+ * the lock are the two folders' loaded lengths, and 20 rows fit the stubbed viewport, so the
+ * virtualizer reaches the tail without a scroll. The COUNTER-CONTROL (21 vs 20) is what tells a
+ * genuine fix from a test that would pass on the old code too.
+ */
+describe('paging the tail', () => {
+  async function seedFolder(mailboxId: string, prefix: string, loaded: number, total: number) {
+    const ids = Array.from(
+      { length: loaded },
+      (_, i) => `${prefix}${String(i + 1).padStart(3, '0')}`,
+    )
+    await putEmails(
+      db,
+      'a',
+      ids.map((id) =>
+        email(id, { subject: `Msg ${id}`, mailboxIds: { [mailboxId]: true }, keywords: {} }),
+      ),
+    )
+    await putQueryCache(db, {
+      accountId: 'a',
+      key: folderKey(mailboxId),
+      ids,
+      queryState: 'q',
+      total,
+      upToId: ids.at(-1) ?? '',
+      filter: null,
+      sort: null,
+      collapseThreads: true,
+      lastUsedAt: 1,
+    })
+  }
+
+  function tree(mailboxId: string) {
+    return (
+      <RouterProvider>
+        <ConfigProvider config={DEFAULT_CONFIG}>
+          <ToastProvider>
+            <ReplicaProvider accountId="a" db={db}>
+              <MessageList mailboxId={mailboxId} />
+            </ReplicaProvider>
+          </ToastProvider>
+        </ConfigProvider>
+      </RouterProvider>
+    )
+  }
+
+  /** Give the effects that follow a settled render a few macrotasks to fire (or not to). */
+  const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 50))))
+
+  /**
+   * Scroll the grid to the bottom. jsdom has no layout, so the virtualizer's offset is whatever
+   * `scrollTop` says when a `scroll` event arrives — which is enough to move the rendered slice and
+   * re-run the tail effect, the way a real scroll to the end does.
+   */
+  async function scrollToTail() {
+    const grid = screen.getByRole('grid')
+    Object.defineProperty(grid, 'scrollTop', { configurable: true, value: 10_000 })
+    await act(async () => {
+      fireEvent.scroll(grid)
+      await new Promise((r) => setTimeout(r, 50))
+    })
+  }
+
+  function engineWithLoadMore(loadMoreFor: () => Promise<void>) {
+    setActiveEngine({
+      watchWindow: vi.fn(() => 'k'),
+      watchQuery: vi.fn(() => 'k'),
+      unwatchQuery: vi.fn(),
+      fetchSnippets: vi.fn(async () => new Map<string, never>()),
+      loadMoreFor,
+      fetchEnvelopes: vi.fn(),
+      dispatch,
+    } as unknown as Parameters<typeof setActiveEngine>[0])
+  }
+
+  it('asks for the next page of a folder opened after another folder paged at the same length', async () => {
+    const loadMoreFor = vi.fn(async () => undefined)
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+    await seedFolder('archive', 'r', 20, 100)
+
+    const view = render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('inbox'), 50))
+    loadMoreFor.mockClear()
+
+    // The folder change MailScreen actually performs: same element, new prop, no remount.
+    view.rerender(tree('archive'))
+    await screen.findByRole('row', { name: /Msg r001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('archive'), 50))
+  })
+
+  it('COUNTER-CONTROL: a differing length always paged, even before the fix', async () => {
+    const loadMoreFor = vi.fn(async () => undefined)
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+    await seedFolder('archive', 'r', 21, 100)
+
+    const view = render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('inbox'), 50))
+    loadMoreFor.mockClear()
+    view.rerender(tree('archive'))
+    await screen.findByRole('row', { name: /Msg r001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledWith(folderKey('archive'), 50))
+  })
+
+  it('still asks only once while the window stands still', async () => {
+    // The guard's REASON: without it the effect re-fires on every scroll tick at the tail. The fix
+    // must not turn one request per window state into one per render.
+    const loadMoreFor = vi.fn(async () => undefined)
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+
+    const view = render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(1))
+    view.rerender(tree('inbox'))
+    view.rerender(tree('inbox'))
+    await settle()
+    expect(loadMoreFor).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks again after a page that failed — offline is not a permanent refusal (R-51)', async () => {
+    // The engine's `loadMoreFor` reaches the network and rejects offline. The guard held the stamp
+    // regardless, so the same window could never ask again: back online, scrolling to the tail did
+    // nothing until the folder was changed — where R-01 could refuse it a second time.
+    const loadMoreFor = vi.fn(async (): Promise<void> => {
+      throw new Error('offline')
+    })
+    engineWithLoadMore(loadMoreFor)
+    await seedFolder('inbox', 'i', 20, 100)
+
+    render(tree('inbox'))
+    await screen.findByRole('row', { name: /Msg i001/ })
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(1))
+    await settle()
+
+    // Back online, and the reader scrolls to the tail again. The window has NOT grown (the page
+    // never arrived), which is exactly the state a length-only stamp refuses for good.
+    loadMoreFor.mockImplementation(async () => undefined)
+    await scrollToTail()
+    await waitFor(() => expect(loadMoreFor).toHaveBeenCalledTimes(2))
+  })
+})

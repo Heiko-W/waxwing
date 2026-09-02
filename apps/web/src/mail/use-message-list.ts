@@ -45,8 +45,16 @@ export interface MessageListState {
   readonly total: number | undefined
   /** True while a mailbox is selected but its window has not resolved yet. */
   readonly loading: boolean
-  /** Page the next window of older messages into the query (infinite scroll). */
-  readonly loadMore: () => void
+  /**
+   * Page the next window of older messages into the query (infinite scroll).
+   *
+   * RETURNS the pending page so the caller can tell "asked and it arrived" from "asked and it
+   * failed" — `Engine.loadMoreFor` reaches the network (`port.queryEmailsWithEnvelopes`) and rejects
+   * offline. The list's one-request-per-window guard has to release on that rejection, or scrolling
+   * to the tail again after the connection returns stays silently inert. Resolves immediately when
+   * there is no window or no engine, which is a no-op, not a failure.
+   */
+  readonly loadMore: () => Promise<void>
 }
 
 const PAGE_SIZE = 50
@@ -118,8 +126,9 @@ export function useMessageList(
   }, [engine, source, folderSpec])
 
   const window = useQueryWindow(key)
-  const loadMore = useCallback(() => {
-    if (key !== '') void engine?.loadMoreFor(key, PAGE_SIZE)
+  const loadMore = useCallback(async (): Promise<void> => {
+    if (key === '') return
+    await engine?.loadMoreFor(key, PAGE_SIZE)
   }, [key, engine])
 
   return {

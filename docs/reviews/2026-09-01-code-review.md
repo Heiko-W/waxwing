@@ -92,7 +92,9 @@ Testbeschreibungen, die bekannte Grenzen benennen — der E2E-Offline-Tripwire i
 
 ### R-01 — [HIGH] Infinite Scroll ist nach einem Ordnerwechsel tot, sobald der neue Ordner dieselbe Fensterlänge hat wie der zuletzt nachgeladene
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Stempel-Variante umgesetzt (`windowKey:ids.length`), zusammen mit R-51 in einem Commit: derselbe
+Guard, und ohne die Freigabe bei einem gescheiterten Nachladen wäre der Fix nur halb wirksam.
 
 **Kategorie / Bereich:** correctness / Mail
 
@@ -2076,7 +2078,11 @@ zwei Treffer. Gegenprüfung: bestätigt.
 
 ### R-51 — [LOW] Ein fehlgeschlagenes Nachladen (offline) hinterlässt eine unbehandelte Rejection und sperrt den Guard bis zum Fensterwechsel
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Guard-Freigabe im `catch` umgesetzt (nur der eigene Stempel wird geräumt). NICHT umgesetzt: die
+optionale Zeile `list.loadMoreFailed` unter der Liste — das Nachladen ist ein Prefetch, der beim
+nächsten Scrollen an den Rand von selbst erneut anläuft, und eine dauerhafte Fehlerzeile für einen
+Vorgang, den niemand ausgelöst hat, wäre lauter als der Fehler.
 
 **Kategorie / Bereich:** robustness / Mail
 

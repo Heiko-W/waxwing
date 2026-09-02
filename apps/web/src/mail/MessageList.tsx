@@ -411,21 +411,45 @@ export function MessageList({
   // Highlighted (`<mark>`) subject/preview for the visible slice — search only (M3.1).
   const highlights = useSnippets(search?.spec.filter, visibleIds)
 
-  // Infinite scroll: page more when the tail comes into view and the window is not yet complete.
-  // Guarded so one page-request per window size cannot fire repeatedly while scrolling the tail.
+  /*
+   * Infinite scroll: page more when the tail comes into view and the window is not yet complete.
+   * Guarded so one page-request per window state cannot fire repeatedly while scrolling the tail.
+   *
+   * The guard is stamped `windowKey:ids.length`, and BOTH halves are load-bearing. It used to be the
+   * length alone, and this component is not keyed on the folder (`MailScreen`) — so after any folder
+   * paged once, the ref held `50`, and every next folder opened at exactly `ids.length === 50` and
+   * was refused at the guard for as long as it stayed at that length. Since every fresh window
+   * starts at the engine's 50, that was every folder with more than 50 messages: the list ended
+   * after 50 rows while `aria-rowcount` announced the folder's real total, and mail 51+ was
+   * reachable only through search. Resetting the ref in a separate effect on `windowKey` would work
+   * only as long as that effect kept running BEFORE this one; the stamp does not depend on effect
+   * order.
+   *
+   * The stamp is RELEASED again when the request REJECTS — offline is the ordinary case for this
+   * app, and a failed page otherwise left `ids.length` unchanged with the stamp still equal to it,
+   * so no later scroll to the tail could ask again until the folder was changed (and R-01 could then
+   * refuse the next folder too). Only OUR OWN stamp is cleared: if a page did arrive in the
+   * meantime, a later run of this effect has already written a newer one and must keep it. The
+   * rejection is swallowed rather than surfaced: this is a background prefetch, there is no
+   * `unhandledrejection` handler in the app, and the tail simply stays where it is until the reader
+   * scrolls to it again.
+   */
   const lastIndex = virtualItems.at(-1)?.index ?? 0
-  const requestedAtRef = useRef(-1)
+  const requestedAtRef = useRef('')
   useEffect(() => {
+    const stamp = `${windowKey}:${String(ids.length)}`
     if (
       ids.length > 0 &&
       lastIndex >= ids.length - OVERSCAN &&
       ids.length < (total ?? Number.POSITIVE_INFINITY) &&
-      requestedAtRef.current !== ids.length
+      requestedAtRef.current !== stamp
     ) {
-      requestedAtRef.current = ids.length
-      loadMore()
+      requestedAtRef.current = stamp
+      loadMore().catch(() => {
+        if (requestedAtRef.current === stamp) requestedAtRef.current = ''
+      })
     }
-  }, [lastIndex, ids.length, total, loadMore])
+  }, [lastIndex, ids.length, total, loadMore, windowKey])
 
   const draftOpener = useDraftOpener()
   const open = useCallback(
