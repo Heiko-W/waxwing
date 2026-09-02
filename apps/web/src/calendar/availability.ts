@@ -22,7 +22,8 @@
  */
 
 import type { AvailabilityPeriod, BusyStatus } from '@waxwing/jmap'
-import { startOfDay } from './month-grid'
+import { addDays, startOfDay } from './month-grid'
+import { minuteOfDay } from './week-grid'
 
 /** One busy stretch, as absolute instants. */
 export interface BusyPeriod {
@@ -37,9 +38,6 @@ export interface BusyBand {
   readonly endMinute: number
   readonly status: BusyStatus
 }
-
-const MINUTES_PER_DAY = 1440
-const MS_PER_DAY = MINUTES_PER_DAY * 60_000
 
 /**
  * How much a status "wins" when two merge.
@@ -105,14 +103,19 @@ export function toBusyPeriods(list: readonly AvailabilityPeriod[]): readonly Bus
  * what makes an overnight trip look like two full columns rather than one impossible one.
  */
 export function busyBandsForDay(periods: readonly BusyPeriod[], day: Date): readonly BusyBand[] {
-  const from = startOfDay(day).getTime()
-  const to = from + MS_PER_DAY
+  const start = startOfDay(day)
+  const from = start.getTime()
+  // `addDays`, not `+ 24 h`, and the minutes come from {@link minuteOfDay} rather than from a
+  // difference: on a DST day the column is 23 or 25 hours long, so measuring minutes as a distance
+  // from midnight put every band after the transition an hour off — the same defect the week grid
+  // had beside it, drawn behind the events it was supposed to line up with (R-17).
+  const to = addDays(start, 1).getTime()
   const bands: BusyBand[] = []
   for (const period of periods) {
     // Half-open, like `overlapsDay`: a period ending exactly at midnight belongs to the day before.
     if (period.startsAt >= to || period.endsAt <= from) continue
-    const startMinute = Math.max(0, Math.round((period.startsAt - from) / 60_000))
-    const endMinute = Math.min(MINUTES_PER_DAY, Math.round((period.endsAt - from) / 60_000))
+    const startMinute = minuteOfDay(period.startsAt, day)
+    const endMinute = minuteOfDay(period.endsAt, day)
     if (endMinute <= startMinute) continue
     bands.push({ startMinute, endMinute, status: period.status })
   }

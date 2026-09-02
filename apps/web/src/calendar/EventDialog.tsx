@@ -63,6 +63,7 @@ import {
   type RepeatPreset,
 } from './event-recurrence'
 import { durationToMs } from './jscalendar-time'
+import { toIsoDate } from './month-grid'
 
 export interface EventDialogProps {
   /** The event being edited, or `null` to create one. */
@@ -627,11 +628,17 @@ function RepeatPage({
   )
 }
 
-/** A year out, as a local date-time — the value "ends on a date" starts from. */
-function defaultUntil(): string {
+/**
+ * A year out, as a local date-time — the value "ends on a date" starts from.
+ *
+ * `toIsoDate`, not `toISOString().slice(0, 10)`: the second one names the UTC day, so after 22:00
+ * in Berlin (19:00 in New York) the default end date offered was the day BEFORE the one the reader
+ * would have written down (R-62). The whole of `recurrenceRule.until` is a LOCAL date-time.
+ */
+export function defaultUntil(): string {
   const date = new Date()
   date.setFullYear(date.getFullYear() + 1)
-  return `${date.toISOString().slice(0, 10)}T23:59:59`
+  return `${toIsoDate(date)}T23:59:59`
 }
 
 /**

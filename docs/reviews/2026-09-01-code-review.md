@@ -746,7 +746,7 @@ true`, `close` persistiert nichts. Gegenprüfung: bestätigt, Auswirkung präzis
 
 ### R-16 — [MEDIUM] Ganztägige Termine bekommen am Tag der Sommerzeit-Umstellung einen zusätzlichen Tag
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -777,7 +777,7 @@ Tage, `overlapsDay(Folgetag)` → `true`. Gegenprüfung: bestätigt.
 
 ### R-17 — [MEDIUM] Wochenansicht und Verfügbarkeitsbänder liegen am Umstellungstag eine Stunde falsch
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
@@ -2415,7 +2415,7 @@ medium → low.
 
 ### R-62 — [LOW] `monthRange` addiert `DAY_MS` und `defaultUntil` nimmt das UTC-Datum — beides gegen die eigene Regel des Moduls
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 

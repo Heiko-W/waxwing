@@ -142,6 +142,21 @@ export function durationToMs(duration: string | null | undefined): number {
   return match[1] === '-' ? -total : total
 }
 
+/**
+ * How many whole DAYS a whole-day event's duration covers — at least one.
+ *
+ * A whole-day event has no time of day, so its length is a count of days and not a span of
+ * milliseconds. Adding {@link durationToMs} to its start put the end at 01:00 of the following day
+ * on the morning a zone springs forward, and every view that asks "which days does this touch"
+ * answered with one day too many (R-16). Rounded UP, so a malformed `P1DT12H` covers both days it
+ * reaches into rather than losing the second; `P0D` and an absent duration are one day, which is the
+ * same floor `daysBetween` applies.
+ */
+export function durationToWholeDays(duration: string | null | undefined): number {
+  const days = Math.ceil(durationToMs(duration) / 86_400_000)
+  return Math.max(1, days)
+}
+
 /** Whether the event's zone differs from the reader's, i.e. whether the zone is worth showing. */
 export function zoneDiffersFromLocal(timeZone: string | null | undefined): boolean {
   if (timeZone === null || timeZone === undefined || timeZone === '') return false

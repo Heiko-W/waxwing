@@ -121,7 +121,8 @@ import {
   type ImportOutcome,
   outcomeFrom,
 } from './ics-import'
-import { durationToMs, localToInstant } from './jscalendar-time'
+import { durationToMs, durationToWholeDays, localToInstant } from './jscalendar-time'
+import { addDays, startOfDay } from './month-grid'
 
 /**
  * How a displayed occurrence maps back to the stored object behind it.
@@ -537,11 +538,22 @@ export function placeEvent(
 ): PlacedEvent {
   const allDay = event.showWithoutTime === true
   const startsAt = localToInstant(event.start, allDay ? null : event.timeZone)
+  /*
+   * A whole-day event ends a COUNT OF DAYS later, built with the local-time constructor; a timed one
+   * ends a span of milliseconds later.
+   *
+   * `month-grid.ts` warns three times over that a day is not `DAY_MS`, and this line used to add
+   * exactly that: on the morning a zone springs forward, midnight + 24 h is 01:00 of the NEXT day,
+   * so a one-day event on 29 March appeared on the 30th as well — in the month grid, in the day
+   * sheet and in the week view's all-day band — and a three-day event over the transition was four
+   * days long. Autumn was right only by accident of direction (R-16).
+   */
   const endsAt =
     startsAt === null
       ? null
-      : startsAt +
-        (allDay && event.duration === undefined ? 86_400_000 : durationToMs(event.duration))
+      : allDay
+        ? addDays(startOfDay(new Date(startsAt)), durationToWholeDays(event.duration)).getTime()
+        : startsAt + durationToMs(event.duration)
   return { event, writeId: identity.writeId, series: identity.series, startsAt, endsAt, allDay }
 }
 
