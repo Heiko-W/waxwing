@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { EmailAddress } from '@waxwing/jmap'
 import { describe, expect, it, vi } from 'vitest'
@@ -57,6 +57,47 @@ describe('RecipientField', () => {
   it('flags an invalid address', () => {
     setup([{ name: null, email: 'not-an-email' }])
     expect(screen.getByText('Invalid email address')).toBeInTheDocument()
+  })
+
+  /*
+   * A Japanese/Chinese/Korean writer types kana or pinyin and presses Enter to CONVERT it. Both
+   * browser spellings are fired, because they are what the two engines actually send: Firefox
+   * delivers the committed key with `isComposing: true`, Chromium and Safari send `key: 'Process'`
+   * with the legacy `keyCode 229` (which is why a Chromium-based test never saw this). Each case
+   * ends with the same key WITHOUT a composition, so "ignore everything" cannot pass (R-14).
+   */
+  describe('while an input method is composing', () => {
+    it('leaves Enter to the IME instead of committing the unconverted text', () => {
+      const { onChange, input } = setup()
+      fireEvent.change(input, { target: { value: 'たなか' } })
+      fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+      fireEvent.keyDown(input, { key: 'Process', keyCode: 229 })
+      expect(onChange).not.toHaveBeenCalled()
+      expect(input).toHaveValue('たなか')
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+      expect(onChange).toHaveBeenCalledWith([{ name: null, email: 'たなか' }])
+    })
+
+    it('leaves the comma and semicolon separators to the IME', () => {
+      const { onChange, input } = setup()
+      fireEvent.change(input, { target: { value: 'a@x.com' } })
+      fireEvent.keyDown(input, { key: ',', isComposing: true })
+      fireEvent.keyDown(input, { key: ';', keyCode: 229 })
+      expect(onChange).not.toHaveBeenCalled()
+
+      fireEvent.keyDown(input, { key: ',' })
+      expect(onChange).toHaveBeenCalledWith([{ name: null, email: 'a@x.com' }])
+    })
+
+    it('leaves Backspace to the IME instead of eating the previous pill', () => {
+      const { onChange, input } = setup([{ name: null, email: 'a@x.com' }])
+      fireEvent.keyDown(input, { key: 'Backspace', isComposing: true })
+      expect(onChange).not.toHaveBeenCalled()
+
+      fireEvent.keyDown(input, { key: 'Backspace' })
+      expect(onChange).toHaveBeenCalledWith([])
+    })
   })
 
   it('picks a suggestion with ArrowDown + Enter', async () => {

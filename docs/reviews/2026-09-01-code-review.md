@@ -732,7 +732,11 @@ ergänzen.
 
 ### R-14 — [MEDIUM] Enter/Komma während einer IME-Komposition committet den halbfertigen Text als Adresse
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Guard inline in `onInputKeyDown` mit demselben Vergleichspaar wie `shortcuts/keys.ts:55`.
+Die gemeinsame Hilfsfunktion `isComposingKey`, die der R-40-Block anlegt, liegt auf einem anderen
+Branch und ist hier noch nicht importierbar; nach dem Merge beider Branches kann diese Stelle
+darauf umgestellt werden.
 
 **Kategorie / Bereich:** a11y, i18n / Compose
 
@@ -2412,7 +2416,10 @@ nicht.
 
 ### R-56 — [LOW] Eine verspätete, leere lokale Antwort schließt die Vorschlagsliste, obwohl Directory-Treffer vorliegen — und sie bleibt bis zum nächsten Tastendruck zu
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Zusaetzlich zum Loesungsansatz: der Outside-Press vermerkt das Schliessen jetzt ebenfalls in
+`dismissedFor`. Ohne das koennte eine noch laufende Query die Liste nach einem Klick daneben wieder
+oeffnen, weil `open` nun aus `suggestions` folgt.
 
 **Kategorie / Bereich:** react / Compose
 
