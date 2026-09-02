@@ -139,7 +139,11 @@ unverändert.
 
 ### R-02 — [HIGH] Im Plain-Text-Modus erreicht kein Tastendruck den Store: Senden, Autosave und Schließen verwenden den alten Rich-Text-Body
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Variante (b) umgesetzt: `plainText` liegt jetzt in `DraftWindow`/`SerializedDraft`, `RichTextEditor` ist
+darauf kontrolliert, und `toEmailCreate` sendet bei gesetztem Flag nur den `text/plain`-Teil. Zusätzlich
+ist `updateBody` bei identischem Body ein No-op — der Moduswechsel emittiert, und das hätte sonst jeden
+Wechsel als Tastendruck gezählt.
 
 **Kategorie / Bereich:** correctness / Compose
 

@@ -22,6 +22,7 @@ function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
     replyTo: [],
     subject: '',
     body: '',
+    plainText: false,
     inReplyTo: null,
     references: null,
     fromIdentityHint: undefined,
@@ -78,6 +79,13 @@ describe('serializeDraft / deserializeDraft', () => {
     expect(init.fromIdentityId).toBe('id-7')
     expect(init.fromIdentityHint).toBe('me@x.test')
     expect(init.attachments).toEqual(draft.attachments)
+  })
+
+  it('round-trips plain-text-only, and reads a row written before the flag existed as rich', () => {
+    const serialized = serializeDraft(draftWindow({ plainText: true }))
+    expect(deserializeDraft(draftRow(serialized)).plainText).toBe(true)
+    const { plainText: _dropped, ...legacy } = serialized
+    expect(deserializeDraft(draftRow(legacy)).plainText).toBe(false)
   })
 
   it('maps an unset From identity to null on serialize and back to undefined on deserialize', () => {
@@ -151,6 +159,35 @@ describe('toEmailCreate', () => {
     const email = toEmailCreate({ draft, draftsMailboxId: 'mb-drafts', from: null })
     expect(email.textBody).toEqual([{ partId: 'text', type: 'text/plain' }])
     expect(email.bodyValues?.text?.value).toBe(htmlToPlainText(cleanOutgoingHtml(draft.body)))
+  })
+
+  /**
+   * FR-CMP-01 promises "plain-text-only", and the toggle used to deliver a plain-text SURFACE over a
+   * message that still went out as multipart/alternative with the html part attached (R-02).
+   */
+  it('sends the text part ALONE for a plain-text-only draft', () => {
+    const plain = serializeDraft(draftWindow({ body: '<div>hi there</div>', plainText: true }))
+    const email = toEmailCreate({ draft: plain, draftsMailboxId: 'mb-drafts', from: null })
+    expect(email.textBody).toEqual([{ partId: 'text', type: 'text/plain' }])
+    expect(email.htmlBody).toBeUndefined()
+    expect(email.bodyValues?.html).toBeUndefined()
+    expect(email.bodyValues?.text?.value).toBe('hi there')
+  })
+
+  it('demotes an inline image to an ordinary attachment when there is no html to reference it', () => {
+    const plain = serializeDraft(
+      draftWindow({
+        body: '<p><img src="cid:inline-1"></p>',
+        plainText: true,
+        attachments: [
+          { blobId: 'b2', name: 'img.png', type: 'image/png', size: 20, cid: 'inline-1' },
+        ],
+      }),
+    )
+    const email = toEmailCreate({ draft: plain, draftsMailboxId: 'mb', from: null })
+    expect(email.attachments).toEqual([
+      { blobId: 'b2', type: 'image/png', name: 'img.png', size: 20, disposition: 'attachment' },
+    ])
   })
 })
 

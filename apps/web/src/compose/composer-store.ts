@@ -51,6 +51,18 @@ export interface DraftWindow {
   subject: string
   /** Message HTML — fed to RichTextEditor's `value`, updated from its `onChange`. */
   body: string
+  /**
+   * Plain-text-only for THIS message (FR-CMP-01), and the reason it lives HERE rather than in the
+   * editor: the choice outlives the editor. `RichTextEditor` unmounts on every minimize/restore,
+   * phone draft-switch and route change, and it is not the thing that sends the mail — `send`,
+   * `flush` and `close` all read this store. While the flag was editor-local, the mode silently
+   * reverted to rich on a remount and {@link toEmailCreate} had no way to honour it, so the toggle
+   * changed the typing surface and nothing else.
+   *
+   * {@link body} stays HTML either way (the plain surface writes `plainTextToHtml(text)` into it),
+   * so quoting, the attachment-mention check and reopening keep working on one representation.
+   */
+  plainText: boolean
   /** Threading headers seeded from a reply/reply-all source (M2.3); null for a new/forward draft. */
   inReplyTo: string[] | null
   references: string[] | null
@@ -78,6 +90,7 @@ export interface OpenDraftInit {
   readonly id?: string
   readonly subject?: string
   readonly body?: string
+  readonly plainText?: boolean
   readonly mode?: DraftMode
   readonly to?: EmailAddress[]
   readonly cc?: EmailAddress[]
@@ -109,6 +122,13 @@ export interface ComposerActions {
   setMode(id: string, mode: DraftMode): void
   updateBody(id: string, body: string): void
   updateSubject(id: string, subject: string): void
+  /**
+   * Switch this message between rich text and plain-text-only (FR-CMP-01).
+   *
+   * Does NOT mark the draft dirty: choosing a typing surface is not writing a message, and the
+   * close-guard/"is this worth saving" question is about content.
+   */
+  setPlainText(id: string, plainText: boolean): void
   /** Replace a whole address field (the pill field adds/removes by passing the new array). */
   setRecipients(id: string, field: AddressField, addrs: EmailAddress[]): void
   /** Replace this draft's send options (M-7/M-11); marks the draft dirty. */
@@ -168,6 +188,7 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
       replyTo: init?.replyTo ?? [],
       subject: init?.subject ?? '',
       body: init?.body ?? '',
+      plainText: init?.plainText ?? false,
       inReplyTo: init?.inReplyTo ?? null,
       references: init?.references ?? null,
       fromIdentityHint: init?.fromIdentityHint,
@@ -203,7 +224,11 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
 
   updateBody(id, body) {
     const current = get().drafts.get(id)
-    if (current === undefined) return
+    // An IDENTICAL body is not an edit. The editor emits on every mode switch (it has to — the
+    // surface that holds the text is about to be unmounted), and counting that as a keystroke made
+    // a window nobody typed in `dirty`, which is what the close-guard and "is this draft worth
+    // saving" both read.
+    if (current === undefined || current.body === body) return
     const next = new Map(get().drafts)
     next.set(id, { ...current, body, dirty: true })
     set({ drafts: next })
@@ -214,6 +239,14 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
     if (current === undefined) return
     const next = new Map(get().drafts)
     next.set(id, { ...current, subject, dirty: true })
+    set({ drafts: next })
+  },
+
+  setPlainText(id, plainText) {
+    const current = get().drafts.get(id)
+    if (current === undefined || current.plainText === plainText) return
+    const next = new Map(get().drafts)
+    next.set(id, { ...current, plainText })
     set({ drafts: next })
   },
 

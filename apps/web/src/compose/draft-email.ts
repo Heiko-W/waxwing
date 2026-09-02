@@ -22,6 +22,7 @@ export function serializeDraft(draft: DraftWindow): SerializedDraft {
     replyTo: draft.replyTo,
     subject: draft.subject,
     body: draft.body,
+    plainText: draft.plainText,
     inReplyTo: draft.inReplyTo,
     references: draft.references,
     fromIdentityId: draft.fromIdentityId ?? null,
@@ -49,6 +50,7 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
     replyTo: content.replyTo ?? [],
     subject: content.subject,
     body: content.body,
+    plainText: content.plainText ?? false,
     inReplyTo: content.inReplyTo,
     references: content.references,
     fromIdentityId: content.fromIdentityId ?? undefined,
@@ -75,6 +77,12 @@ export function isEmptyDraft(draft: DraftWindow | SerializedDraft): boolean {
  * `disposition:"attachment"` part; `cid !== null` → an `disposition:"inline"` part the html body
  * references via `cid:` — but ONLY if that cid is still referenced (an inline image whose `<img>`
  * was deleted is pruned).
+ *
+ * `draft.plainText` (FR-CMP-01) emits the `text/plain` part ALONE — that is what "plain-text-only"
+ * means, and shipping the html alongside it made the toggle a change of typing surface and nothing
+ * more. An inline image then travels as an ordinary attachment: without an html body there is
+ * nothing that could reference its `cid`, and an unreferenced `disposition:"inline"` part is a part
+ * most readers simply hide.
  */
 export function toEmailCreate(input: {
   draft: SerializedDraft
@@ -91,9 +99,10 @@ export function toEmailCreate(input: {
     if (!inlineCids.has(cid)) cleaned = removeInlineImage(cleaned, cid)
   }
   const referenced = referencedCids(cleaned)
+  const plainOnly = draft.plainText === true
   const parts: Partial<EmailBodyPart>[] = []
   for (const a of draft.attachments) {
-    if (a.cid === null) {
+    if (a.cid === null || plainOnly) {
       parts.push({
         blobId: a.blobId,
         type: a.type,
@@ -126,10 +135,12 @@ export function toEmailCreate(input: {
     // sent one. A draft saved as urgent still reads as urgent when it is reopened tomorrow.
     ...priorityHeaders(draftSendOptions(draft).priority),
     textBody: [{ partId: 'text', type: 'text/plain' }],
-    htmlBody: [{ partId: 'html', type: 'text/html' }],
+    ...(plainOnly ? {} : { htmlBody: [{ partId: 'html', type: 'text/html' }] }),
     bodyValues: {
       text: { value: htmlToPlainText(cleaned), isEncodingProblem: false, isTruncated: false },
-      html: { value: cleaned, isEncodingProblem: false, isTruncated: false },
+      ...(plainOnly
+        ? {}
+        : { html: { value: cleaned, isEncodingProblem: false, isTruncated: false } }),
     },
   }
   if (draft.replyTo !== undefined && draft.replyTo.length > 0) email.replyTo = draft.replyTo

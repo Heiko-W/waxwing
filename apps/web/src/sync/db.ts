@@ -595,6 +595,11 @@ export interface SerializedDraft {
   replyTo?: EmailAddress[]
   subject: string
   body: string
+  /**
+   * Plain-text-only for this message (FR-CMP-01). Optional for the same reason as {@link replyTo}:
+   * rows written before the flag existed read back as `false`, which is what they were.
+   */
+  plainText?: boolean
   inReplyTo: string[] | null
   references: string[] | null
   fromIdentityId: string | null
