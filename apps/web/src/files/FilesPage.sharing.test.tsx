@@ -17,7 +17,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { FileNode, FileNodeCapability, Id } from '@waxwing/jmap'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext } from '../app/session/context'
 import type { DelegatedAccount, SessionContextValue } from '../app/session/types'
 import { putFileNodes, type ReplicaDb, ReplicaProvider, setFileTreeState } from '../sync'
@@ -222,5 +222,170 @@ describe('the "Shared with me" section', () => {
     const { view } = render_([carol()], OWN)
     await screen.findByText('my-notes.txt')
     await expectNoA11yViolations(view.container)
+  })
+})
+
+// ── The two hazards that only exist BECAUSE two accounts share one screen ────────────────────
+
+/** Same node, different account: an image row, so the row offers Preview and Download. */
+function image(id: string, name: string): FileNode {
+  return { ...node(id, name), type: 'image/png' }
+}
+
+function folder(id: string, name: string, parentId: Id | null = null): FileNode {
+  return { ...node(id, name), nodeType: 'directory', type: null, blobId: null, parentId }
+}
+
+describe('the object-URL cache across accounts (R-22)', () => {
+  let seq = 0
+  beforeEach(() => {
+    seq = 0
+    URL.createObjectURL = vi.fn(() => `blob:test/${++seq}`)
+    URL.revokeObjectURL = vi.fn()
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /**
+   * Stalwart hands out short, PER-ACCOUNT node ids, so `n1` exists in almost every account — and
+   * the blob id behind it is just as short. The cache was keyed on the node id alone, so after
+   * previewing your own `n1` the same key answered for carol's, and her file was shown, and
+   * downloaded, as your bytes.
+   */
+  it('does not serve one account’s bytes for another account’s file of the same id', async () => {
+    const user = userEvent.setup()
+    const downloaded: string[] = []
+    const byAccount: Record<Id, readonly FileNode[]> = {
+      b: [image('n1', 'my-photo.png')],
+      d: [image('n1', 'carol-photo.png')],
+    }
+    const clientFor = (accountId: Id): FilesClient =>
+      ({
+        list: async () => ({ nodes: byAccount[accountId] ?? [], truncated: false }),
+        search: async () => [],
+        ancestors: async () => [],
+        upload: async () => null,
+        createFolder: async () => {},
+        rename: async () => {},
+        move: async () => {},
+        destroy: async () => {},
+        download: async (target: FileNode) => {
+          downloaded.push(`${accountId}:${target.name}`)
+          return new Blob([`${accountId}:${target.name}`])
+        },
+        searchPrincipals: async () => [],
+        setShareWith: async () => {},
+      }) satisfies FilesClient
+
+    db = freshDb()
+    void (async () => {
+      await putFileNodes(db, SELF, [...(byAccount[SELF] ?? [])])
+      await setFileTreeState(db, SELF, { syncedAt: 1, truncated: false })
+    })().catch(() => {})
+    setEngineFor(SELF, {
+      accountId: SELF,
+      refreshFileTree: async () => true,
+    } as unknown as SyncEngine)
+    render(
+      <SessionContext.Provider value={session([carol()])}>
+        <ToastProvider>
+          <ReplicaProvider accountId={SELF} db={db}>
+            <FilesPage clientFor={clientFor} />
+          </ReplicaProvider>
+        </ToastProvider>
+      </SessionContext.Provider>,
+    )
+
+    await screen.findByText('my-photo.png')
+    await user.click(screen.getByRole('button', { name: 'Preview my-photo.png' }))
+    const mine = await screen.findByRole('img', { name: 'my-photo.png' })
+    const mineSrc = mine.getAttribute('src')
+
+    await user.click(screen.getByRole('button', { name: /Open the files carol/ }))
+    await screen.findByText('carol-photo.png')
+    await user.click(screen.getByRole('button', { name: 'Preview carol-photo.png' }))
+    const hers = await screen.findByRole('img', { name: 'carol-photo.png' })
+
+    // Her file was fetched from HER account, and it is not the URL made for yours.
+    expect(downloaded).toEqual(['b:my-photo.png', 'd:carol-photo.png'])
+    expect(hers.getAttribute('src')).not.toBe(mineSrc)
+  })
+})
+
+describe('a late listing from a folder that has been left (R-23)', () => {
+  it('does not overwrite the listing of the folder on screen', async () => {
+    const user = userEvent.setup()
+    // A holder rather than a bare `let`: TypeScript narrows a variable only assigned
+    // inside a closure to `null` at every use site.
+    const release: { fn: (() => void) | null } = { fn: null }
+    const carolNodes: Record<string, FileNode[]> = {
+      root: [folder('r1', 'Reports')],
+      r1: [image('n7', 'inner.png')],
+    }
+    const clientFor = (accountId: Id): FilesClient =>
+      ({
+        list: async (parentId: Id | null) => {
+          if (accountId !== 'd') return { nodes: [], truncated: false }
+          if (parentId === 'r1') {
+            // The slow one. It answers only once the test says so — after the reader has walked
+            // back out, which is exactly the ordering the finding describes.
+            await new Promise<void>((resolve) => {
+              release.fn = resolve
+            })
+            return { nodes: carolNodes.r1 ?? [], truncated: false }
+          }
+          return { nodes: carolNodes.root ?? [], truncated: false }
+        },
+        search: async () => [],
+        ancestors: async () => [],
+        upload: async () => null,
+        createFolder: async () => {},
+        rename: async () => {},
+        move: async () => {},
+        destroy: async () => {},
+        download: async () => new Blob(),
+        searchPrincipals: async () => [],
+        setShareWith: async () => {},
+      }) satisfies FilesClient
+
+    db = freshDb()
+    void (async () => {
+      await putFileNodes(db, SELF, [node('own', 'my-notes.txt')])
+      await setFileTreeState(db, SELF, { syncedAt: 1, truncated: false })
+    })().catch(() => {})
+    setEngineFor(SELF, {
+      accountId: SELF,
+      refreshFileTree: async () => true,
+    } as unknown as SyncEngine)
+    render(
+      <SessionContext.Provider value={session([carol()])}>
+        <ToastProvider>
+          <ReplicaProvider accountId={SELF} db={db}>
+            <FilesPage clientFor={clientFor} />
+          </ReplicaProvider>
+        </ToastProvider>
+      </SessionContext.Provider>,
+    )
+
+    await screen.findByText('my-notes.txt')
+    await user.click(screen.getByRole('button', { name: /Open the files carol/ }))
+    await screen.findByText('Reports')
+
+    // Into the slow folder…
+    await user.click(screen.getByRole('button', { name: 'Reports' }))
+    await waitFor(() => expect(release.fn).not.toBeNull())
+    // …and straight back out, which answers first.
+    const crumbs = screen.getByRole('navigation', { name: 'Folder path' })
+    await user.click(within(crumbs).getByRole('button', { name: 'carol@waxwing.test' }))
+    await screen.findByText('Reports')
+
+    // Now the folder answers, into a screen that has moved on.
+    release.fn?.()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('carol@waxwing.test'),
+    )
+    await waitFor(() => expect(screen.getByText('Reports')).toBeInTheDocument())
+    expect(screen.queryByText('inner.png')).not.toBeInTheDocument()
   })
 })

@@ -163,6 +163,15 @@ interface RowAction {
   readonly label: string
   readonly icon: LucideIcon
   readonly disabled: boolean
+  /**
+   * Why the action cannot be used right now, for an action that is REFUSED rather than absent.
+   *
+   * The page header promises everything that needs a line is "greyed out with a reason"; the three
+   * writing actions in the row were the ones that were not (R-24). `IconButton` renders it as an
+   * `aria-disabled` control with the reason as its description, so the control stays reachable by
+   * keyboard and the reason is readable — which a `disabled` attribute alone is not.
+   */
+  readonly unavailableReason: string | undefined
   readonly destructive: boolean
   /** Whether the surface this toggles is open; `undefined` for everything that is not a toggle. */
   readonly expanded: boolean | undefined
@@ -238,8 +247,17 @@ export default function FilesPage(props: FilesPageProps) {
   const [moving, setMoving] = useState<readonly FileNode[] | null>(null)
   /** The nodes a delete is being confirmed for, or null (B-7). */
   const [deleting, setDeleting] = useState<readonly FileNode[] | null>(null)
-  // One object URL per node, reused across toggles and revoked once on unmount — re-opening a
-  // preview neither downloads the file again nor leaks the superseded URL.
+  /**
+   * One object URL per set of BYTES, reused across toggles and revoked once on unmount — re-opening
+   * a preview neither downloads the file again nor leaks the superseded URL.
+   *
+   * Keyed by account AND `blobId`, not by node id (R-22). Stalwart hands out short, per-account
+   * node ids, so `n1` exists in almost every account: after previewing your own `photo.png` and
+   * walking into "Shared with me → carol", the cache answered for carol's `n1` with YOUR bytes —
+   * shown in the preview and saved under HER filename by Download. The blob id is what actually
+   * names the bytes, so it also fixes the second half: a file replaced under the same node id gets
+   * a new `blobId` and no longer serves the old content for the rest of the session.
+   */
   const urlCacheRef = useRef(new Map<string, string>())
   /** Row elements, so each row's secondary click can find its own <li>. */
   const rowRefs = useRef(new Map<string, HTMLLIElement>())
@@ -320,6 +338,27 @@ export default function FilesPage(props: FilesPageProps) {
   const neverSynced = replicated && treeState !== undefined && treeState.syncedAt === 0
 
   /**
+   * WHICH listing is being asked for, as one value — the stamp a late answer is checked against
+   * (R-23).
+   *
+   * Every response of the remote path used to be written into the state unchecked. Walking into a
+   * slow shared folder and then clicking the breadcrumb back to the root let the folder's answer
+   * land AFTER the root's: heading and list disagreed, and a bulk action — Delete among them —
+   * then pointed at nodes outside the folder on screen. The replicated path is immune because it
+   * reads keyed, which is why this guard is only needed on the other one.
+   *
+   * The account is part of the stamp, not just the folder: `null` is the root of every account,
+   * and the reader can leave a share while its root listing is in flight.
+   */
+  const request = `${accountId ?? ''}\u0000${here ?? ''}\u0000${query}`
+  const requestRef = useRef(request)
+  // `useLayoutEffect` for the reason `loadRef` below gives: a passive effect is its own task, and
+  // the answer must not be checked against a stamp a commit out of date.
+  useLayoutEffect(() => {
+    requestRef.current = request
+  }, [request])
+
+  /**
    * Reloads what is on screen. Returns whether it arrived.
    *
    * For the reader's own account that means asking the ENGINE to re-read the tree — a
@@ -341,10 +380,13 @@ export default function FilesPage(props: FilesPageProps) {
     const wire = { sort: serverSort(sort, capability) }
     try {
       if (query !== '') {
-        setRemoteHits(await client.search(query, wire))
+        const found = await client.search(query, wire)
+        if (requestRef.current !== request) return true
+        setRemoteHits(found)
         setRemoteTruncated(false)
       } else {
         const listing = await client.list(here, wire)
+        if (requestRef.current !== request) return true
         setRemoteNodes(listing.nodes)
         setRemoteTruncated(listing.truncated)
         setRemoteHits(null)
@@ -352,10 +394,11 @@ export default function FilesPage(props: FilesPageProps) {
       setFailed(false)
       return true
     } catch {
+      if (requestRef.current !== request) return true
       setFailed(true)
       return false
     }
-  }, [replicated, engine, client, here, query, sort, capability])
+  }, [replicated, engine, client, here, query, sort, capability, request])
 
   useEffect(() => {
     void load()
@@ -485,7 +528,7 @@ export default function FilesPage(props: FilesPageProps) {
       if (!(await loadRef.current())) toast({ tone: 'warning', title: t('files.savedButNotShown') })
     } catch (thrown) {
       const key =
-        thrown instanceof FileSetError ? `files.error.${thrown.failure}` : 'files.error.rejected'
+        thrown instanceof FileSetError ? `files.error.${thrown.failure}` : failureKey(thrown)
       // Spelled out below rather than interpolated, so the i18n guard can see the keys.
       toast({ tone: 'danger', title: errorText(t, key) })
     } finally {
@@ -502,12 +545,15 @@ export default function FilesPage(props: FilesPageProps) {
   }
 
   const objectUrl = async (node: FileNode): Promise<string | null> => {
-    const cached = urlCacheRef.current.get(node.id)
+    // No `blobId`, no identity for the bytes — download and do not remember it. (A node without
+    // one has nothing to show anyway; this is the honest branch rather than a guessed key.)
+    const key = node.blobId === null ? null : `${accountId ?? ''}:${node.blobId}`
+    const cached = key === null ? undefined : urlCacheRef.current.get(key)
     if (cached !== undefined) return cached
     const blob = await client.download(node)
     if (blob === null) return null
     const url = URL.createObjectURL(blob)
-    urlCacheRef.current.set(node.id, url)
+    if (key !== null) urlCacheRef.current.set(key, url)
     return url
   }
 
@@ -574,6 +620,12 @@ export default function FilesPage(props: FilesPageProps) {
     setSelecting(false)
     setSelected(new Set())
     setPreview(null)
+    // The downloaded bytes go with everything else. The cache is account-scoped now (R-22), so this
+    // is no longer what keeps the two accounts apart — it is housekeeping: nothing on screen refers
+    // to these URLs any more, and holding a departed account's file contents in memory for the rest
+    // of the session is not something this screen should do.
+    for (const url of urlCacheRef.current.values()) URL.revokeObjectURL(url)
+    urlCacheRef.current.clear()
     // The SERVER-backed listing only (a share). The replicated one is a live query keyed on the
     // level, so it re-answers for the new account by itself and has nothing to clear.
     setRemoteNodes(null)
@@ -806,6 +858,16 @@ export default function FilesPage(props: FilesPageProps) {
           <span className={styles.selectionCount}>
             {t('files.selection.count', { count: selectedNodes.length })}
           </span>
+          {/*
+            NOT given `unavailableReason` offline, unlike the row's own actions (R-24), and the
+            reason is `Button` rather than this screen: it renders the explanation as a
+            visually-hidden span INSIDE the control, which an icon-only button hides behind its
+            `aria-label` but a text button does not — the name would become "Move You are offline.
+            Files can only be changed while connected." and be announced again as the description.
+            Until that primitive puts the reason outside the button, the honest arrangement here is
+            the one below plus `run`'s corrected message: the action is offered, and a write that
+            cannot reach the server now says so instead of blaming it.
+          */}
           <Button
             variant="secondary"
             size="sm"
@@ -926,6 +988,7 @@ export default function FilesPage(props: FilesPageProps) {
           // Only where every node agrees on where it is now. A selection made in search results can
           // span three folders, and there is then no single "already here" to refuse.
           {...commonParent(moving)}
+          replicated={replicated}
           client={client}
           onClose={() => setMoving(null)}
           onMove={(parentId, label) => doMove(moving, parentId, label)}
@@ -1089,6 +1152,9 @@ export default function FilesPage(props: FilesPageProps) {
                   : t('files.preview', { name: node.name }),
                 icon: Eye,
                 disabled: false,
+                // Opening the bytes needs a line — the page header says so, and this is where it
+                // has to be said.
+                unavailableReason: online ? undefined : t('files.offline'),
                 destructive: false,
                 expanded: open,
                 onSelect: () => void togglePreview(node),
@@ -1100,6 +1166,7 @@ export default function FilesPage(props: FilesPageProps) {
                 label: t('files.share.open', { name: node.name }),
                 icon: UsersRound,
                 disabled: false,
+                unavailableReason: online ? undefined : t('files.offline'),
                 destructive: false,
                 expanded: undefined,
                 onSelect: () => setSharing(node),
@@ -1115,6 +1182,7 @@ export default function FilesPage(props: FilesPageProps) {
                 label: t('files.rename.open', { name: node.name }),
                 icon: Pencil,
                 disabled: busy,
+                unavailableReason: online ? undefined : t('files.offline'),
                 destructive: false,
                 expanded: undefined,
                 onSelect: () => {
@@ -1141,6 +1209,7 @@ export default function FilesPage(props: FilesPageProps) {
               label: t('files.move.open', { name: node.name }),
               icon: FolderInput,
               disabled: busy,
+              unavailableReason: online ? undefined : t('files.offline'),
               destructive: false,
               expanded: undefined,
               onSelect: () => setMoving([node]),
@@ -1151,6 +1220,7 @@ export default function FilesPage(props: FilesPageProps) {
                 label: t('files.download', { name: node.name }),
                 icon: Download,
                 disabled: false,
+                unavailableReason: online ? undefined : t('files.offline'),
                 destructive: false,
                 expanded: undefined,
                 onSelect: () => void download(node),
@@ -1162,6 +1232,7 @@ export default function FilesPage(props: FilesPageProps) {
                 label: t('files.delete', { name: node.name }),
                 icon: Trash2,
                 disabled: busy,
+                unavailableReason: online ? undefined : t('files.offline'),
                 destructive: true,
                 expanded: undefined,
                 onSelect: () => setDeleting([node]),
@@ -1173,7 +1244,9 @@ export default function FilesPage(props: FilesPageProps) {
                 id: action.id,
                 label: action.label,
                 icon: action.icon,
-                disabled: action.disabled,
+                // A menu item has nowhere to put `unavailableReason`, so there it is a plain
+                // `disabled` — the same choice the bar menu above makes for the same reason.
+                disabled: action.disabled || action.unavailableReason !== undefined,
                 // Spread rather than `destructive={false}`: `MenuItemSpec` states it as optional and
                 // the repo compiles with `exactOptionalPropertyTypes`.
                 ...(action.destructive ? { destructive: true } : {}),
@@ -1273,6 +1346,7 @@ export default function FilesPage(props: FilesPageProps) {
                         variant="ghost"
                         size="sm"
                         disabled={action.disabled}
+                        unavailableReason={action.unavailableReason}
                         aria-expanded={action.expanded}
                         onClick={action.onSelect}
                       >
@@ -1356,9 +1430,25 @@ function errorText(t: (key: string) => string, key: string): string {
       return t('files.error.overQuota')
     case 'files.error.forbidden':
       return t('files.error.forbidden')
+    case 'files.error.offline':
+      return t('files.error.offline')
     default:
       return t('files.error.rejected')
   }
+}
+
+/**
+ * What a throw that is NOT a `FileSetError` was: a lost line, or a server that said no (R-24).
+ *
+ * Everything used to be "The server declined that." — including `TypeError: Failed to fetch`,
+ * which is what `fetch` throws when there is no connection at all. The server had not declined
+ * anything; it had not been asked. A reader told the wrong cause looks for the wrong remedy, and
+ * the right one here (reconnect, then try again) is one they can actually act on.
+ */
+function failureKey(thrown: unknown): string {
+  if (thrown instanceof TypeError) return 'files.error.offline'
+  if (thrown instanceof DOMException && thrown.name === 'AbortError') return 'files.error.offline'
+  return 'files.error.rejected'
 }
 
 function nameProblemText(t: (key: string) => string, problem: string): string {

@@ -350,15 +350,21 @@ export function useCalendarWindow(key: string): CalendarWindow | null | undefine
  *
  * Provider-optional for the same reason {@link useCalendars} is — `SyncEngineHost` renders its
  * children without a provider until the session restores, and the Files screen is one of them.
+ *
+ * `enabled` is a parameter rather than a conditional hook call, the arrangement
+ * {@link useAllFileNodes} already uses, and here it is not only about cost: the replica holds the
+ * READER'S tree, so a surface standing inside somebody else's shared account must not read it at
+ * all. Disabled, it answers `undefined` without touching the database — the same "not known" a
+ * query in flight gives, which is the honest answer for a level this device does not hold.
  */
-export function useFileNodes(parentId: Id | null): FileNodeRow[] | undefined {
+export function useFileNodes(parentId: Id | null, enabled = true): FileNodeRow[] | undefined {
   const context = useReplicaOptional()
   return useLiveQuery<FileNodeRow[] | undefined>(
     async () =>
-      context === null
+      context === null || !enabled
         ? undefined
         : await fileNodesForParent(context.db, context.accountId, parentId),
-    [context?.db, context?.accountId, parentId],
+    [context?.db, context?.accountId, parentId, enabled],
   )
 }
 

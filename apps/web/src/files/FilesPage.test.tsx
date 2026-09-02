@@ -7,7 +7,7 @@
  * someone later "simplifies" the render into a single `<iframe>` for everything.
  */
 
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { FileNode, FileNodeCapability } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -294,6 +294,39 @@ describe('the surface a preview is rendered in', () => {
   })
 })
 
+describe('the bytes a preview shows (R-22)', () => {
+  /**
+   * The cache is keyed on the BLOB, not on the node.
+   *
+   * A node id is stable across a replacement — same file, new contents, new `blobId` — and a cache
+   * keyed on the id went on handing out the URL made for the old bytes for the rest of the
+   * session. (The account-crossing half of the same defect is pinned in
+   * `FilesPage.sharing.test.tsx`, where two accounts genuinely share the id `n1`.)
+   */
+  it('re-fetches when the file behind the node has been replaced', async () => {
+    listed = [node({ id: '1', name: 'photo.png', type: 'image/png', blobId: 'blob-old' })]
+    mount()
+    await showing('photo.png')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview photo.png' }))
+    const first = (await screen.findByRole('img', { name: 'photo.png' })).getAttribute('src')
+    expect(download).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the preview of photo.png' }))
+
+    // The same node, new contents — which is a new blob id and nothing else.
+    listed = [node({ id: '1', name: 'photo.png', type: 'image/png', blobId: 'blob-new' })]
+    await act(async () => {
+      await putFileNodes(db, ACC, [...listed])
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview photo.png' }))
+    await waitFor(() => expect(download).toHaveBeenCalledTimes(2))
+    expect((await screen.findByRole('img', { name: 'photo.png' })).getAttribute('src')).not.toBe(
+      first,
+    )
+  })
+})
+
 describe('opening and closing', () => {
   it('toggles the same preview shut without downloading again', async () => {
     listed = [node({ id: '1', name: 'photo.png', type: 'image/png' })]
@@ -494,6 +527,64 @@ describe('offline', () => {
     expect(screen.getByRole('button', { name: /New folder/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Upload/ })).toBeInTheDocument()
   })
+
+  /**
+   * The three writing actions IN THE ROW were the ones the header's promise did not cover (R-24).
+   *
+   * Offline, "Delete" opened its confirmation, ran, and produced "The server declined that." — the
+   * wrong cause for a request that never reached a server. They are refused the same way the bar's
+   * controls are: `aria-disabled` with the reason, still focusable, so the reader who most needs
+   * the explanation is not the one who cannot reach it.
+   */
+  it('refuses Rename, Move and Delete WITH a reason rather than letting them fail', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount()
+    await showing('notes.txt')
+
+    for (const label of ['Rename notes.txt', 'Move notes.txt', 'Delete notes.txt']) {
+      const button = screen.getByRole('button', { name: label })
+      expect(button, label).toHaveAttribute('aria-disabled', 'true')
+      expect(button, label).toHaveAccessibleDescription(
+        'You are offline. Files can only be changed while connected.',
+      )
+      // Reachable: `disabled` would take it out of the tab order along with its explanation.
+      expect(button, label).not.toBeDisabled()
+    }
+
+    // And pressing one does nothing at all — no dialog, no write.
+    await userEvent.click(screen.getByRole('button', { name: 'Delete notes.txt' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  /**
+   * `fetch` throws `TypeError: Failed to fetch` when there is no line at all, and every non-
+   * `FileSetError` used to become "The server declined that." — a cause the reader cannot act on,
+   * about a conversation that never happened.
+   */
+  it('says a write could not reach the server, not that the server refused it', async () => {
+    listed = [node({ id: '1', name: 'notes.txt', type: 'text/plain' })]
+    mount({
+      ...client,
+      rename: async () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+    await showing('notes.txt')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rename notes.txt' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.clear(within(dialog).getByLabelText('New name'))
+    await userEvent.type(within(dialog).getByLabelText('New name'), 'renamed.txt')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Rename' }))
+
+    expect(
+      await screen.findByText(
+        'That could not reach the server. Try again once you are back online.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('The server declined that.')).not.toBeInTheDocument()
+  })
 })
 
 describe('accessibility', () => {
@@ -558,13 +649,55 @@ describe('moving a node', () => {
     await showing('notes.txt')
 
     await userEvent.click(screen.getByRole('button', { name: 'Move notes.txt' }))
-    // The picker walks the tree rather than listing it flat: a file tree has no replica and no
-    // bound on its depth, so "every folder at once" would be a crawl of the account.
+    // The picker walks the tree rather than listing it flat: a file tree has no bound on its
+    // depth, so "every folder at once" would be a crawl of the account. For the reader's OWN
+    // account each level comes out of the replica (R-24), which is why no `list` is stubbed here.
     const picker = await screen.findByRole('dialog', { name: /Move “notes.txt”/ })
     await userEvent.click(await within(picker).findByRole('button', { name: 'invoices' }))
     await userEvent.click(await within(picker).findByRole('button', { name: 'Move to invoices' }))
 
     await waitFor(() => expect(moved).toEqual([[['1'], 'd1']]))
+  })
+
+  /**
+   * The picker reads the REPLICA for the reader's own account (R-24).
+   *
+   * It used to ask `client.list(here)` for every level it walked, and at the root that is the
+   * unfiltered whole-account query (up to `MAX_PAGES` pages, `files-client.ts`) — per click.
+   * Offline it was worse than slow: a spinner, then "The files could not be loaded.", over a tree
+   * this device is holding, with "Move here" still live and about to fail.
+   */
+  it('walks the own account’s levels without asking the server for any of them', async () => {
+    const { spy } = withMove()
+    const asked: (string | null)[] = []
+    listed = [
+      node({ id: 'd1', name: 'invoices', nodeType: 'directory', type: null, blobId: null }),
+      node({
+        id: 'd2',
+        name: 'archive',
+        nodeType: 'directory',
+        type: null,
+        blobId: null,
+        parentId: 'd1',
+      }),
+      node({ id: '1', name: 'notes.txt', type: 'text/plain' }),
+    ]
+    mount({
+      ...spy,
+      list: async (parentId) => {
+        asked.push(parentId)
+        return { nodes: listed, truncated: false }
+      },
+    })
+    await showing('notes.txt')
+    asked.length = 0
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move notes.txt' }))
+    const picker = await screen.findByRole('dialog', { name: /Move “notes.txt”/ })
+    // One level down, then the destination — two walks, and still no round trip.
+    await userEvent.click(await within(picker).findByRole('button', { name: 'invoices' }))
+    expect(await within(picker).findByRole('button', { name: 'archive' })).toBeInTheDocument()
+    expect(asked).toEqual([])
   })
 
   it('refuses to move a node into the folder it is already in', async () => {

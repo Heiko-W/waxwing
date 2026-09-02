@@ -2204,6 +2204,7 @@
       "tooLarge": "Ten plik jest zbyt duży dla tego serwera.",
       "overQuota": "Brak miejsca na tym koncie.",
       "forbidden": "Nie masz tu do tego uprawnień.",
+      "offline": "Nie udało się połączyć z serwerem. Spróbuj ponownie, gdy wrócisz online.",
       "rejected": "Serwer to odrzucił."
     },
     "name": {

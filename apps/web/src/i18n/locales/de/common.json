@@ -2128,6 +2128,7 @@
       "tooLarge": "Diese Datei ist für diesen Server zu groß.",
       "overQuota": "Kein Speicherplatz mehr in diesem Konto.",
       "forbidden": "Dafür fehlt Ihnen hier die Berechtigung.",
+      "offline": "Keine Verbindung zum Server. Versuchen Sie es erneut, sobald Sie wieder online sind.",
       "rejected": "Der Server hat das abgelehnt."
     },
     "name": {

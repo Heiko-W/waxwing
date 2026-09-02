@@ -1024,7 +1024,10 @@ bestätigt (Code), nicht gemessen.
 
 ### R-22 — [MEDIUM] Der Object-URL-Cache der Dateiansicht ist nur nach Knoten-Id geschlüsselt — im geteilten Konto zeigt die Vorschau die Bytes der eigenen Datei
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beides umgesetzt: Cache-Key `${accountId}:${blobId}` und Widerruf plus Leeren des Caches in
+`goToAccount`. Der Key deckt zusätzlich den Fall „gleiche Knoten-Id, neue Bytes" ab, der vom
+Leeren allein nicht erfasst wird; beide Hälften haben je einen eigenen Test.
 
 **Kategorie / Bereich:** correctness / PIM (Dateien)
 
@@ -1053,7 +1056,12 @@ URLs widerrufen und leeren.
 
 ### R-23 — [MEDIUM] Die Server-Auflistung eines geteilten Kontos hat keinen Stempel — eine langsame Antwort landet in einem Ordner, den die Leserin schon verlassen hat
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Von den beiden Vorschlägen der zweite: das Ergebnis wird mit `${accountId}\0${here}\0${query}`
+gestempelt und beim Eintreffen gegen den aktuellen Stempel geprüft. Ein `live`-Flag im Effekt
+hätte nur den Effekt-Pfad geschützt — `run()` lädt über `loadRef` ebenfalls nach, und zwar genau
+dann, wenn die Leserin nach einem Schreibvorgang weiternavigiert. Das Konto steckt mit im
+Stempel: `null` ist die Wurzel JEDES Kontos.
 
 **Kategorie / Bereich:** react (Race) / PIM (Dateien)
 
@@ -1080,7 +1088,19 @@ Reports shown? false`. Gegenprüfung: bestätigt.
 
 ### R-24 — [MEDIUM] Umbenennen, Verschieben und Löschen sind offline nicht gesperrt, der „Verschieben nach…“-Dialog liest trotz Replica über das Netz, und der Fehler heißt danach „vom Server abgelehnt“
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt: Zeilenaktionen mit `unavailableReason` (Vorschau, Teilen, Umbenennen, Verschieben,
+Herunterladen, Löschen — alle brauchen eine Verbindung), `TypeError`/`AbortError` in `run` als
+neuer Schlüssel `files.error.offline` statt „vom Server abgelehnt", und `FileMoveDialog` liest
+für das eigene Konto über `useFileNodes(here, replicated)` aus der Replica statt je Ebene über
+das Netz. `useFileNodes` hat dafür einen `enabled`-Parameter bekommen (Muster `useAllFileNodes`),
+damit der Dialog im geteilten Konto den eigenen Baum gar nicht erst liest.
+NICHT umgesetzt: dieselbe Sperre für „Verschieben"/„Löschen" in der Auswahlleiste. `Button`
+rendert `unavailableReason` als visuell verborgenen Span INNERHALB des Knopfes; bei einem
+Textknopf landet der Satz damit im Accessible Name („Move You are offline. …") und wird zusätzlich
+als Beschreibung vorgelesen. Das sauber zu lösen heißt, das UI-Primitiv zu ändern — siehe
+Nebenbefund. Die Auswahlleiste ist dadurch nicht mehr irreführend: `run` nennt jetzt die
+richtige Ursache.
 
 **Kategorie / Bereich:** robustness / PIM (Dateien)
 

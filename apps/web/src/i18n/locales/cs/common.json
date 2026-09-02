@@ -2204,6 +2204,7 @@
       "tooLarge": "Tento soubor je pro tento server příliš velký.",
       "overQuota": "V tomto účtu už není místo.",
       "forbidden": "K tomu zde nemáte oprávnění.",
+      "offline": "Nepodařilo se navázat spojení. Zkuste to znovu, až budete online.",
       "rejected": "Server to odmítl."
     },
     "name": {

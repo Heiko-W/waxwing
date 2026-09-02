@@ -2173,6 +2173,7 @@
       "tooLarge": "Ce fichier est trop volumineux pour ce serveur.",
       "overQuota": "Plus d’espace disponible dans ce compte.",
       "forbidden": "Vous n’avez pas l’autorisation de faire cela ici.",
+      "offline": "Le serveur n’a pas pu être joint. Réessayez une fois de retour en ligne.",
       "rejected": "Le serveur a refusé cette action."
     },
     "name": {

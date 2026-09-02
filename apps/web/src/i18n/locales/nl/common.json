@@ -2135,6 +2135,7 @@
       "tooLarge": "Dat bestand is te groot voor deze server.",
       "overQuota": "Geen ruimte meer in dit account.",
       "forbidden": "Je hebt geen rechten om dat hier te doen.",
+      "offline": "De server was niet bereikbaar. Probeer het opnieuw zodra je weer online bent.",
       "rejected": "De server heeft dat geweigerd."
     },
     "name": {

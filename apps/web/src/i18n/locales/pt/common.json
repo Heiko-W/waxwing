@@ -2173,6 +2173,7 @@
       "tooLarge": "Esse ficheiro é demasiado grande para este servidor.",
       "overQuota": "Não há espaço nesta conta.",
       "forbidden": "Não tem permissão para fazer isso aqui.",
+      "offline": "Não foi possível contactar o servidor. Tente novamente quando voltar a estar online.",
       "rejected": "O servidor recusou isso."
     },
     "name": {

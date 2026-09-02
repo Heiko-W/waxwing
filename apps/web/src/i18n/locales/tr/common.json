@@ -2128,6 +2128,7 @@
       "tooLarge": "Bu dosya bu sunucu için fazla büyük.",
       "overQuota": "Bu hesapta yer kalmadı.",
       "forbidden": "Bunu burada yapma izniniz yok.",
+      "offline": "Sunucuya ulaşılamadı. Yeniden çevrimiçi olduğunuzda tekrar deneyin.",
       "rejected": "Sunucu bunu kabul etmedi."
     },
     "name": {
