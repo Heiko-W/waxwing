@@ -676,12 +676,23 @@ export function MessageList({
     }
     if (rights.removeReason(sourceMailboxId ?? null) === null) {
       items.push(
-        {
-          id: 'archive',
-          group: 'file',
-          label: t('list.actions.archive'),
-          onSelect: () => triage.archive(target, sourceMailboxId ?? null),
-        },
+        // Archive is gated exactly as Junk is below, and for the same reason (B24): the entry used
+        // to hang on `removeReason` alone, so an account with no Archive role was offered
+        // "Archive", and so was a row already IN Archive. `useTriage` refuses both — `to ===
+        // undefined` and `to === from` — and it refuses them the way this menu must never let an
+        // entry refuse: no dispatch, no toast, no undo, nothing at all on screen. The bulk bar
+        // (`canMoveTo(archive?.id)`) and the reading pane (`archiveBox === undefined || inArchive`)
+        // have always applied this gate; the menu was the surface that did not.
+        ...(archiveId === undefined || archiveId === sourceMailboxId
+          ? []
+          : [
+              {
+                id: 'archive',
+                group: 'file',
+                label: t('list.actions.archive'),
+                onSelect: () => triage.archive(target, sourceMailboxId ?? null),
+              } satisfies MenuItemSpec,
+            ]),
         // Inside Junk the entry becomes its inverse (B24) — the same swap the bulk bar and the
         // reading pane make, so a row offers the same verb however it is reached. Note the entry
         // it REPLACES was inert there: "Junk" inside Junk is a move to the mailbox the message is
@@ -718,13 +729,41 @@ export function MessageList({
           label: t('list.actions.move'),
           onSelect: () => requestMove(target),
         },
-        {
-          id: 'trash',
-          group: 'destructive',
-          label: t('list.actions.trash'),
-          destructive: true,
-          onSelect: () => triage.trash(target, sourceMailboxId ?? null),
-        },
+        /*
+         * The destructive entry, and which destruction it is depends on where the row is standing —
+         * the same swap the bulk bar makes (`inTrash`), the reading pane makes, and the `#` chord's
+         * `ShortcutContext.inTrash` is documented for. In Trash, "Move to Trash" was a move to the
+         * mailbox the message is already in: inert, unannounced, and the ONE place where the verb
+         * everyone means by "delete" was missing from the menu although both neighbouring surfaces
+         * offer it. Destroy is confirmed by the same dialog the bulk bar raises (`requestDestroy`),
+         * so this is a shortcut to an existing path and not a new way to lose mail.
+         *
+         * `reason('destroy')` and not `removeReason` for that arm: destroy quantifies over EVERY
+         * mailbox the message is in, not over the folder being looked at.
+         */
+        ...(trashId === undefined
+          ? []
+          : trashId === sourceMailboxId
+            ? rights.reason('destroy') !== null
+              ? []
+              : [
+                  {
+                    id: 'delete',
+                    group: 'destructive',
+                    label: t('list.actions.delete'),
+                    destructive: true,
+                    onSelect: () => requestDestroy(target),
+                  } satisfies MenuItemSpec,
+                ]
+            : [
+                {
+                  id: 'trash',
+                  group: 'destructive',
+                  label: t('list.actions.trash'),
+                  destructive: true,
+                  onSelect: () => triage.trash(target, sourceMailboxId ?? null),
+                } satisfies MenuItemSpec,
+              ]),
       )
     }
     return items
@@ -733,10 +772,13 @@ export function MessageList({
     rowById,
     rowRights,
     sourceMailboxId,
+    archiveId,
+    trashId,
     junkId,
     inboxId,
     triage,
     requestMove,
+    requestDestroy,
     open,
     t,
   ])

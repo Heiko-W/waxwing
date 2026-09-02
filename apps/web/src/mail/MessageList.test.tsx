@@ -2472,6 +2472,92 @@ describe('the message row answers a secondary click', () => {
     expect(within(menu).queryByRole('menuitem', { name: 'Mark as junk' })).toBeNull()
   })
 
+  /**
+   * The menu's own rule — "omit, never dim" — applied to the two entries that had never been gated
+   * (R-07). Both are moves `useTriage` refuses without a word: no dispatch, no toast, no undo. That
+   * is the same failure B24 closed for Junk, and the bulk bar and the reading pane already gate all
+   * of them.
+   */
+  describe('offers no move that cannot happen', () => {
+    async function seedFolderRow(mailboxId: string, id: string, subject: string) {
+      await putEmails(db, 'a', [
+        email(id, { subject, mailboxIds: { [mailboxId]: true }, keywords: {} }),
+      ])
+      await putQueryCache(db, {
+        accountId: 'a',
+        key: folderKey(mailboxId),
+        ids: [id],
+        queryState: 'q',
+        total: 1,
+        upToId: id,
+        filter: null,
+        sort: null,
+        collapseThreads: true,
+        lastUsedAt: 1,
+      })
+    }
+
+    async function openMenuOn(subject: string) {
+      const row = await screen.findByRole('row', { name: new RegExp(subject) })
+      fireEvent.contextMenu(row, { clientX: 40, clientY: 60 })
+      return await screen.findByRole('menu')
+    }
+
+    it('omits Archive inside Archive', async () => {
+      await seedFolderRow('archive', 'x1', 'Filed')
+      renderList('archive')
+      const menu = await openMenuOn('Filed')
+      expect(within(menu).queryByRole('menuitem', { name: 'Archive' })).toBeNull()
+      // The rest of the file group is still there — this gates one entry, not the arm.
+      expect(within(menu).getByRole('menuitem', { name: 'Move to…' })).toBeInTheDocument()
+    })
+
+    it('omits Archive on an account that has no Archive folder', async () => {
+      await deleteMailbox(db, 'a', 'archive')
+      await seedFolderRow('inbox', 'x1', 'Plain')
+      renderList('inbox')
+      const menu = await openMenuOn('Plain')
+      expect(within(menu).queryByRole('menuitem', { name: 'Archive' })).toBeNull()
+    })
+
+    it('swaps Move to Trash for a permanent Delete inside Trash', async () => {
+      await seedFolderRow('trash', 'x1', 'Binned')
+      renderList('trash')
+      const menu = await openMenuOn('Binned')
+      expect(within(menu).queryByRole('menuitem', { name: 'Move to Trash' })).toBeNull()
+      expect(within(menu).getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    })
+
+    it('the Delete entry raises the same confirmation the bulk bar does', async () => {
+      // Not a second, unconfirmed way to destroy mail: it goes through `requestDestroy`, which is
+      // the list store's own dialog request.
+      const user = userEvent.setup()
+      await seedFolderRow('trash', 'x1', 'Binned')
+      renderList('trash')
+      const menu = await openMenuOn('Binned')
+      await user.click(within(menu).getByRole('menuitem', { name: 'Delete' }))
+      expect(useListStore.getState().destroyTargets).toEqual(['x1'])
+    })
+
+    it('omits Move to Trash on an account that has no Trash folder', async () => {
+      await deleteMailbox(db, 'a', 'trash')
+      await seedFolderRow('inbox', 'x1', 'Plain')
+      renderList('inbox')
+      const menu = await openMenuOn('Plain')
+      expect(within(menu).queryByRole('menuitem', { name: 'Move to Trash' })).toBeNull()
+      expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).toBeNull()
+    })
+
+    it('still offers both outside either folder', async () => {
+      await seedFolderRow('inbox', 'x1', 'Plain')
+      renderList('inbox')
+      const menu = await openMenuOn('Plain')
+      expect(within(menu).getByRole('menuitem', { name: 'Archive' })).toBeInTheDocument()
+      expect(within(menu).getByRole('menuitem', { name: 'Move to Trash' })).toBeInTheDocument()
+      expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).toBeNull()
+    })
+  })
+
   it('leaves a click that is not on a row to the browser', async () => {
     // The empty space below the last row is the page, not a message.
     renderList()

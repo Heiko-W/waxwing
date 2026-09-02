@@ -398,7 +398,14 @@ Gegenprüfung: bestätigt, Spec-Abgleich ergänzt.
 
 ### R-07 — [MEDIUM] Das Kontextmenü bietet Archivieren und Papierkorb an, wo die Aktion nichts tut, und kein „Löschen“ im Papierkorb
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Wie vorgeschlagen umgesetzt (Archive- und Trash-Arm nach dem Muster des Junk-Arms, im Papierkorb
+stattdessen „Endgültig löschen" über `requestDestroy`). Abweichung: `archiveId`/`trashId` kommen aus
+der bereits vorhandenen `useMailboxes()`-Abfrage derselben Komponente statt aus zusätzlichen
+`useMailboxByRole`-Aufrufen — genau der Grund, aus dem B24 den Junk-Arm dort abgreift: zwei weitere
+liveQueries könnten auf einem anderen Tick auflösen als die, gegen die die Swipe-Ziele entschieden
+werden. Der Delete-Arm prüft `reason('destroy')`, nicht `removeReason`: Zerstören quantifiziert über
+alle Postfächer der Nachricht, nicht über den betrachteten Ordner.
 
 **Kategorie / Bereich:** correctness / Mail
 
