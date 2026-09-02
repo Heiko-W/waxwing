@@ -74,6 +74,24 @@ on:
   # uploads artefacts to the run, and does NOT create a release — see the `if:` on that step.
   workflow_dispatch:
 
+# ONE group for every tag, not one per tag, and nothing is ever cancelled. `action-gh-release`
+# creates a release per `github.ref_name`, so two tag pushes do not fight over the same release
+# page — but they do both write `releases/latest`, and `waxwing-stalwart.zip` is fetched from
+# `releases/latest/download/…` by every Stalwart that auto-updates. Two runs finishing out of order
+# therefore point every auto-updating deployment at the OLDER version. `release-${{ github.ref }}`
+# would only serialise re-runs of the same tag and would not cover that; `cancel-in-progress: true`
+# would abandon a half-published release, which is worse than waiting.
+# ONE group for every tag, not one per tag, and nothing is ever cancelled. `action-gh-release`
+# creates a release per `github.ref_name`, so two tag pushes do not fight over the same release
+# page — but they do both write `releases/latest`, and `waxwing-stalwart.zip` is fetched from
+# `releases/latest/download/…` by every Stalwart that auto-updates. Two runs finishing out of order
+# therefore point every auto-updating deployment at the OLDER version. `release-${{ github.ref }}`
+# would only serialise re-runs of the same tag and would not cover that; `cancel-in-progress: true`
+# would abandon a half-published release, which is worse than waiting.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   gate:
     name: gate (full pipeline)

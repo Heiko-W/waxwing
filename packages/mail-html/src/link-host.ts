@@ -1,10 +1,12 @@
 /**
  * Does a mail link go where its text says? (FR-RD-08, M3.9 step 3 — phishing friction.)
  *
- * Pure and DOM-free. The check CANNOT live inside the frame: `frame.ts` mounts the body under
- * `sandbox="allow-same-origin"` with no `allow-scripts` and an inner `script-src 'none'`, so nothing
- * executes in there, by design. This runs in the app instead, on the click the frame already
- * intercepts (tech-stack §4.5 step 3: "re-dispatched with `noopener` + visible target host").
+ * Pure and DOM-free. The check CANNOT live inside the frame: `frame.ts` mounts the body with no
+ * `allow-scripts` and an inner `script-src 'none'`, so nothing executes in there, by design. This
+ * runs in the app instead — since ADR-029 at LOAD time, classifying each link before the browser is
+ * handed it, because WebKit delivers a sandboxed frame's click events to nobody. (The sandbox also
+ * carries `allow-popups allow-popups-to-escape-sandbox` for that native navigation; neither token
+ * is reachable without script.)
  *
  * ## Everything here is a false-positive budget
  * A warning readers learn to click through is worse than no warning: it trains exactly the reflex

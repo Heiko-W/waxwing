@@ -43,6 +43,13 @@ export default defineConfig({
             // same mechanical reason as the two families above — these read the source with
             // `node:fs` off `import.meta.url`, and under jsdom that URL is not a file: URL.
             'apps/web/src/**/*.source.test.ts',
+            // Repository-level checks: the workspace manifests, the CI workflows, the Playwright
+            // gate configs and the operator documentation. They belong to no package — every one
+            // of them is about a file at the repo root or under .github/ — and they read it with
+            // `node:fs`, so they run here for the same mechanical reason as the three families
+            // above. The scripts they sit next to are `.mjs`; only the tests are TypeScript, and
+            // the root tsconfig includes exactly them.
+            'scripts/**/*.test.ts',
           ],
           setupFiles: ['fake-indexeddb/auto'],
           // No passWithNoTests: this project spans all packages/* and jmap always

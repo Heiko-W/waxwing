@@ -30,11 +30,28 @@ import { CREDENTIALS, login, messageList, SYNC_BUDGET_MS, SYNC_POLL } from './he
  *  - Group (FR-CON-04): the app builds a group over a seeded member; the group's `members` set carries
  *    the member's SERVER-assigned `uid` (the server mints its own and ignores the client's, so the
  *    seed reads the real uid back before we assert on it).
- *  - Read-only (FR-CON-01): an HONEST premise-skip. A read-only shared book cannot be provisioned on
- *    this fixture (no `currentUserPrincipalId`, alice sees only her own account → no cross-account
- *    sharing), so the test checks that premise against the live session and skips with the reason when
- *    it is absent, rather than faking a red/green result. The gating itself is covered by the
- *    ContactDetail / ContactForm / GroupForm component tests.
+ *  - Read-only (FR-CON-01): an HONEST premise-skip — with a premise that has been REWRITTEN, because
+ *    the old one stopped being true and the new one is what actually blocks the test (R-104).
+ *
+ *    It used to say a read-only shared book "cannot be provisioned on this fixture (no
+ *    `currentUserPrincipalId`, alice sees only her own account → no cross-account sharing)". S-2
+ *    made that false: `fixture.mjs`'s `shareAddressBook('carol', 'alice', 'viewer')` provisions one
+ *    in a single call. What it does NOT do is put it anywhere this suite can see. Measured against
+ *    the live fixture on 2026-09-02, after that call:
+ *
+ *      alice's own contacts account (`b`)  — one book, `myRights.mayWrite: true`
+ *      carol's account (`d`, now in alice's session) — the shared book, `mayWrite: false`
+ *
+ *    The read-only book lives in the OWNER's account, and Waxwing's contacts area is single-account:
+ *    `useAddressBooks()` reads `addressBooksForAccount(db, accountId)` for the CONNECTED account
+ *    only (apps/web/src/sync/react.tsx), so no book from another account ever reaches the rail.
+ *    Sharing on the fixture would therefore not turn this test green; it would leave it asserting
+ *    against a rail that cannot contain the book. Making it run needs multi-account contacts, which
+ *    is a product decision and not a test fix.
+ *
+ *    So it still skips on the measured premise rather than faking a red/green result. The gating
+ *    itself is covered by the ContactDetail / ContactForm / GroupForm component tests, and the rail
+ *    marker by `AddressBookList.test.tsx`.
  */
 
 /** ONE client + ONE resolved contacts accountId for the whole file (anti-429; see settings.spec.ts). */
@@ -359,9 +376,10 @@ test.describe('M4.2 contacts suite', () => {
   test('a read-only shared book gates writes (FR-CON-01)', async ({ page }) => {
     test.skip(
       roBook === null,
-      'no read-only shared book provisioned on the fixture — cross-account sharing/delegation is ' +
-        'M4.4 groundwork; the read-only gating is covered by the ContactDetail/ContactForm/GroupForm ' +
-        'component tests.',
+      "alice owns no read-only address book, and she cannot: a shared book lives in the OWNER's " +
+        "account (measured — carol's share lands in account `d`, not in alice's `b`), while the " +
+        "contacts rail reads the connected account only. See the premise note in this file's " +
+        'header; the gating is covered by the ContactDetail/ContactForm/GroupForm component tests.',
     )
     // Unreachable once skipped; narrows `roBook` for TypeScript and future-proofs the assertion so a
     // fixture that DOES provision a read-only book exercises the read path rather than an empty body.

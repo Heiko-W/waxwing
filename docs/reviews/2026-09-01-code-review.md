@@ -1978,7 +1978,14 @@ Gegenprüfung: bestätigt.
 
 ### R-44 — [MEDIUM] Die Account-&-Security-E2E-Suite wurde beim B25-Umbau überschrieben, nicht verschoben; `security.spec.ts` läuft im Gate doppelt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Die fünf Tests aus `81ff67f` sind als `e2e/tests/account-security.spec.ts` wiederhergestellt und
+laufen unverändert gegen den heutigen Code — gegen die echte Stalwart-Fixture ausgeführt,
+5 passed (18,9 s); es war keine Anpassung nötig. Die Write-Config zeigt jetzt auf diese Datei,
+`security.spec.ts` (B25) läuft nur noch in der Read-Config, Kommentar und ADR-027 Z. 123 sind
+mitgezogen. Wächter: `scripts/e2e-suites.test.ts` liest die `testMatch`-Listen aller sieben
+Gate-Configs und meldet jeden Spec, der in zweien steht — mit der einen erlaubten Ausnahme
+`read.spec.ts` in der WebKit-Config.
 
 **Kategorie / Bereich:** tests / Infra (E2E)
 
@@ -2023,7 +2030,14 @@ ADR gelesen; E2E nicht ausgeführt. Gegenprüfung: bestätigt.
 
 ### R-45 — [MEDIUM] Die Reverse-Proxy-Rezepte in `docs/deployment.md` §2 proxyen die OAuth-Pfade nicht — der primäre „Sign in“-Button ist auf diesem Deployment-Pfad tot
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Rezepte führen jetzt alle sechs Pfade aus `demoProxy`/`PROXY_PATHS` (nginx `location
+/jmap/`, `/auth/`, `/.well-known/`, `/login`, `/api/`, `/logo`; Caddy dieselben als `handle`),
+mit einem Absatz „Why six paths and not three", der den Discovery-Pfad und die Alternative
+`auth: ["basic"]` benennt, und einem Hinweis auf `location /.well-known/acme-challenge/` für
+Hosts, die daneben ACME ausliefern. „Verifying a deployment" bekommt eine `curl`-Zeile auf
+`/.well-known/oauth-authorization-server`. Wächter: `scripts/deployment-doc.test.ts` liest
+`PROXY_PATHS` aus `e2e/mount-server.mjs` und prüft jeden Pfad gegen beide Rezepte.
 
 **Kategorie / Bereich:** correctness (Betreiber-Doku) / Infra
 
@@ -3914,7 +3928,13 @@ Kommentar beurteilt, sucht die Push-Verarbeitung an der falschen Stelle.
 
 ### R-102 — [LOW] `SECURITY.md` behauptet `sandbox="allow-same-origin"` „and nothing else — no allow-popups“; der Code setzt `allow-popups allow-popups-to-escape-sandbox`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Der Absatz nennt jetzt den tatsächlichen Wert
+(`allow-same-origin allow-popups allow-popups-to-escape-sandbox`), stellt die unveränderte
+Garantie (kein `allow-scripts`, inneres `script-src 'none'`) voran und begründet die zwei
+Popup-Flags mit ADR-029 und dem WebKit-Grund. `link-host.ts:4-5` mitgezogen. Wächter:
+`packages/mail-html/src/security-doc.source.test.ts` liest den Sandbox-String aus `frame.ts`
+und sucht ihn wörtlich in `SECURITY.md`.
 
 **Kategorie / Bereich:** security (Doku-Zusage weicht vom Code ab) / Infra
 
@@ -3946,7 +3966,21 @@ Gegenprüfung: bestätigt.
 
 ### R-103 — [LOW] Versionsdrift ohne Wächter: `@waxwing/mail-html` steht seit sechs Releases auf 0.16.0, acht Doku-Strings nennen v0.15.0, und nichts prüft `apps/web/package.json` gegen den Tag
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Lockstep als Absicht bestätigt (alle sechs Manifeste `private: true`, keines veröffentlicht) und
+deshalb erzwungen statt umgangen: `@waxwing/mail-html` auf 0.22.0 gezogen, `version()` in
+`release.mjs` prüft jetzt alle Workspace-Manifeste gegen das Root und bricht mit Liste ab, bevor
+gebaut wird (nachgestellt: „✖ packages/mail-html/package.json is 0.16.0, root is 0.22.0", Exit 1
+nach einer Sekunde). Die acht Doku-Strings stehen auf v0.22.0, dazu zwei weitere, die der Befund
+nicht zählt: das Pinning-Beispiel in `deployment.md:121` (`v0.10.0`) und die Entpack-Zeile
+(`waxwing-web-v1.0.0.tar.gz`). CONTRIBUTING Schritt 2 nennt alle sechs Manifeste und die beiden
+Wächter.
+
+Abweichung beim Wächter-Entwurf: statt einer Allowlist für die zwei historischen
+v0.10.0-Erwähnungen prüft `scripts/release-artefacts.test.ts` nur die vier Schreibweisen, die die
+AKTUELLE Version benennen (`refs/tags/vX.Y.Z`, `waxwing-stalwart-vX.Y.Z.zip`,
+`waxwing-web-vX.Y.Z.tar.gz`, `Status: vX.Y.Z`). Changelog-Prosa und „It starts with v0.10.0"
+fallen damit durch die Form heraus statt durch eine Liste, die jemand pflegen müsste.
 
 **Kategorie / Bereich:** maintainability / Infra
 
@@ -3983,7 +4017,20 @@ bestätigt, präzisiert.
 
 ### R-104 — [LOW] `contacts.spec.ts`: der Read-only-Adressbuch-Test wird im Gate immer übersprungen (B22-Klasse)
 
-**Status:** [ ] offen
+**Status:** [ ] offen — NICHT behoben, Befund hält nicht in dieser Form.
+Der Lösungsansatz (`shareAddressBook('carol', 'alice', 'viewer')` im `beforeAll`) macht den Test
+nicht grün. Am 02.09.2026 gegen die laufende Fixture gemessen: nach dem Share liegt das
+schreibgeschützte Buch in CAROLS Account (`d`, `myRights.mayWrite: false`), alices eigener
+Kontakt-Account (`b`) hat weiterhin genau ein Buch mit `mayWrite: true`. Die Kontakte-Oberfläche
+ist einkontig — `useAddressBooks()` liest `addressBooksForAccount(db, accountId)` für den
+verbundenen Account (`apps/web/src/sync/react.tsx:217`) —, ein Buch aus einem anderen Account
+erreicht die Leiste also nie. Der Test würde nach dem Share nicht laufen, sondern gegen eine
+Leiste behaupten, die das Buch nicht enthalten kann. Ihn zum Laufen zu bringen setzt
+mehrkontige Kontakte voraus; das ist eine Produktentscheidung, kein Testfix.
+
+Geändert wurde nur die Begründung: die alte Prämisse („cross-account sharing ist nicht möglich")
+ist seit S-2 schlicht falsch und stand so im Datei-Header und in der Skip-Meldung. Beide nennen
+jetzt den gemessenen, tatsächlichen Grund. Die Abdeckungslücke aus dem Befund bleibt offen.
 
 **Kategorie / Bereich:** tests / Infra (E2E)
 
@@ -4015,7 +4062,28 @@ only`; `git log -S` für die Einführung von `shareAddressBook`. Gegenprüfung: 
 
 ### R-105 — [LOW] `release.mjs`: `--check` braucht ein System-`unzip` (entgegen der eigenen Begründung), und beide Archive sind nicht byte-stabil
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle drei Punkte behoben — und ein vierter, den der Befund nicht hatte.
+
+(1) `unzip` ist weg: `zipEntries()` liest das Central Directory des GESCHRIEBENEN Zips in Node
+(APPNOTE §4.3.12/16, mit Abbruch bei zip64). Bewusst nicht die vorgeschlagene Variante über das
+`entry`-Event von `archiver` — die Absicht der Prüfung ist „was der Deployer wirklich bekommt",
+und die bleibt so erhalten. Nichts im Skript startet jetzt noch etwas anderes als `pnpm`.
+
+(2) `date: new Date(0)` je Eintrag — und das allein reichte NICHT. Zwei volle Läufe ergaben
+weiterhin verschiedene Archive: `archiver` statet die Pfade auf einer vier Einträge breiten Queue
+und hängt in Abschluss-Reihenfolge an, die sortierte Liste bestimmt die Reihenfolge im Archiv also
+gar nicht (gemessen an Byte 27 des Zips: der Namenslänge des ersten Eintrags). Zusätzlich trägt
+der gzip-Header des Tars einen eigenen Zeitstempel. Mit `statConcurrency: 1` und
+`gzipOptions.mtime: 0` sind beide Formate jetzt stabil: zwei komplette `pnpm release`-Läufe
+ergeben identische SHA256SUMS, und ein Pack-Probelauf mit um 120 s verschobenen mtimes ergibt in
+beiden Formaten identische Bytes.
+
+(3) Der Kommentar zur Base-href-Prüfung sagt jetzt, dass er `dist/` liest, und warum.
+
+(4) Zusätzlich: `filesUnder()` sortierte mit `localeCompare`, also nach Locale und ICU-Build der
+Maschine — für eine Zusage „dieselben Bytes kommen überall heraus" das falsche Werkzeug. Jetzt
+Code-Unit-Vergleich.
 
 **Kategorie / Bereich:** maintainability / Infra
 
@@ -4051,7 +4119,13 @@ bestätigt, Reproduktion korrigiert.
 
 ### R-106 — [LOW] DOMPurify liegt zweimal im Bundle: einmal in `@waxwing/mail-html` (per `noExternal` eingebacken) im eager Chunk, einmal im lazy Composer-Chunk
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`noExternal` in `packages/mail-html/tsup.config.ts` entfernt; der Sanitizer liegt jetzt einmal im
+Graphen. Gemessen: der lazy Composer-Chunk fällt von 28,4 KB auf 18,4 KB gzip (−10,0 KB), das
+INITIAL-Budget bleibt bei 291,5 KB — die verbleibende Kopie ist die eager Kopie aus `mail-html`,
+genau wie der Lösungsansatz es vorhersagt. Der Befund gibt also keinen Platz im 300-KB-Budget
+zurück. Gepinnt von `packages/mail-html/src/dompurify-external.source.test.ts`, das das gebaute
+`dist` liest (nicht die tsup-Konfiguration) und zusätzlich die beiden DOMPurify-Ranges gleich hält.
 
 **Kategorie / Bereich:** performance / Infra (Build)
 
@@ -4085,7 +4159,12 @@ dompurify`. Gegenprüfung: bestätigt (belegt).
 
 ### R-107 — [LOW] `engines.node: ">=22"` lässt Node 22 und 26 installieren, die `check:node` dann verweigert — und das Manifest widerspricht der README
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Wie vorgeschlagen `">=24 <25"` in Root, `packages/jmap` und `packages/jscontact` (die
+übrigen drei Manifeste führen kein `engines`-Feld und erben die Install-Sperre des Roots).
+Zusammen mit R-112 stoppt `pnpm install` jetzt tatsächlich; die veralteten Sätze in `README.md`
+und `scripts/ci.mjs`, die `>=22` als geltend beschrieben, sind mitgezogen. Gepinnt von
+`scripts/toolchain.test.ts`.
 
 **Kategorie / Bereich:** maintainability / Infra
 
@@ -4116,7 +4195,12 @@ korrigiert.
 
 ### R-108 — [LOW] `ci.yml`: `cancel-in-progress: true` gilt auch für Pushes auf `main`; `release.yml` hat keine `concurrency`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beides wie vorgeschlagen: `cancel-in-progress` in `ci.yml` hängt jetzt an
+`github.event_name == 'pull_request'`, `release.yml` bekommt `concurrency: { group: release,
+cancel-in-progress: false }` — eine Gruppe für alle Tags, weil der `latest`-Fall genau zwischen
+zwei verschiedenen Tags auftritt. Gepinnt von `scripts/workflows.test.ts`, das die Regel für
+ALLE Workflows prüft (auch `pages.yml`), nicht nur für die beiden genannten.
 
 **Kategorie / Bereich:** maintainability (CI) / Infra
 
@@ -4146,7 +4230,11 @@ fast gleichzeitigen Releases zeigt.
 
 ### R-109 — [LOW] `register-sw.test.ts`: Fake-Timer ohne garantierten Cleanup
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`afterEach(() => vi.useRealTimers())` in der Datei, das `vi.useRealTimers()` als letzte Zeile des
+Fake-Timer-Tests entfällt dafür. Zusätzlich ein Test direkt danach, der `vi.isFakeTimers()` prüft:
+ohne ihn ist der Befund nicht mutationsprobierbar, weil der einzige nachfolgende Test in der Datei
+zufällig ohne echte Uhr auskommt und ein Leck heute folgenlos bliebe.
 
 **Kategorie / Bereich:** tests / Infra
 
@@ -4172,7 +4260,21 @@ gestrichen).
 
 ### R-110 — [LOW] Doku-Drift gegen den Code: `undoSendSeconds`-Obergrenze fehlt, `README`-Skripttabelle veraltet, drei irreführende Kommentare — einer davon deckt eine tote Option
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Vier von fünf Punkten wie vorgeschlagen: `configuration.md` nennt Range 0–30 s, Clamping und
+den Fallback bei Nicht-Zahlen (gepinnt in `config.shipped.test.ts` gegen `normalizeConfig` mit
+31, −1, `'x'`, `NaN` — und der Doku-Text selbst ist mitgeprüft); die README-Zeile nennt die
+tatsächliche Kette aus zehn Schritten (gepinnt von `scripts/readme-scripts.test.ts` gegen das
+`verify`-Skript); `ci.yml` nennt ~5700 statt ~3200 Tests (gemessen: 5694); der Header von
+`playwright.audit.config.ts` sagt nicht mehr „TEMPORARY … not committed".
+
+ABWEICHUNG beim fünften Punkt: `ignoreDeprecations` in `packages/jscontact/tsconfig.json` ist
+NICHT entfernt, weil die Option nicht tot ist. Der Befund hat mit `tsc -p` gemessen (dort exit 0,
+korrekt) — der d.ts-Lauf von `tsup` bringt aber ein eigenes `baseUrl` mit und bricht ohne die
+Option mit TS5101 ab. Nachgestellt: `pnpm build:libs` schlägt fehl, während `pnpm typecheck`
+grün bleibt. Falsch war nur die Begründung im Kommentar („die Basis-Config setzt `baseUrl`" —
+tut sie nicht); die steht jetzt richtig da, samt der Bedingung, unter der die Zeile entfallen
+kann.
 
 **Kategorie / Bereich:** maintainability (Doku) / Infra
 
@@ -4205,7 +4307,13 @@ Gegenprüfung: bestätigt, präzisiert.
 
 ### R-111 — [LOW] Die Cache-Rezepte schützen nur `sw.js` und `config.json` — `theme.css`, `manifest.json` und `branding/` sind ebenso „edit in place, no rebuild“
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+nginx-`map` um `~^/theme\.css$`, `~^/manifest\.json$` und `~^/branding/` erweitert; das
+Caddy-Rezept bekommt einen `header`-Block für dieselben fünf Dateien plus `immutable` für
+`/assets/*`. `configuration.md` nennt jetzt alle vier Dateien und den Grund (heuristisches
+Caching aus `Last-Modified`, RFC 9111 §4.2.2). Wächter: `scripts/deployment-doc.test.ts` liest
+`DEPLOYMENT_FILES` aus `sw-routes.ts` und prüft jede Datei gegen beide Rezepte, dazu eine
+`curl`-Schleife in „Verifying a deployment".
 
 **Kategorie / Bereich:** correctness (Betreiber-Doku) / Infra
 
@@ -4238,7 +4346,11 @@ nicht gegen einen echten Proxy gemessen. Gegenprüfung: bestätigt.
 
 ### R-112 — [LOW] `engine-strict=true` in `.npmrc` wird von pnpm 11 nicht gelesen — die Einstellung ist wirkungslos
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`engineStrict: true` steht in `pnpm-workspace.yaml` neben `allowBuilds`/`overrides`, `.npmrc`
+ist gelöscht (sie enthielt nichts anderes), der Kommentar in `scripts/ci.mjs` ist korrigiert.
+Mechanismus vorher lokal nachgemessen: `.npmrc` -> Warnung und Exit 0, `pnpm-workspace.yaml` ->
+`ERR_PNPM_UNSUPPORTED_ENGINE` und Exit 1.
 
 **Kategorie / Bereich:** maintainability / Infra
 

@@ -9,7 +9,10 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   treeshake: true,
-  // Bundle DOMPurify into the lib so the published package is self-contained (the size budget in
-  // .size-limit.js measures the emitted dist, which is expected to include the sanitizer).
-  noExternal: ['dompurify'],
+  // DOMPurify stays EXTERNAL. It used to be inlined here "so the published package is
+  // self-contained", but this package is `private: true` and is never published; the only consumer
+  // is apps/web, which depends on `dompurify` itself for the composer's editor instance. Inlining
+  // therefore shipped the sanitizer TWICE (once in the eager chunk via this dist, once in the lazy
+  // composer chunk) and created two places an advisory would have to be fixed. Left external, Vite
+  // resolves both importers to the one copy in the graph.
 })

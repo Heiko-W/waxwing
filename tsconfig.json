@@ -4,5 +4,9 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["vitest.config.ts"]
+  // `scripts/**/*.test.ts` — the repository-level checks (manifests, workflows, the gate configs,
+  // the operator documentation). The scripts themselves are `.mjs` and stay unchecked; their TESTS
+  // are TypeScript so they run in the root "unit" vitest project like every other check, and they
+  // have to sit in SOME program or `pnpm typecheck` would not see them at all.
+  "include": ["vitest.config.ts", "scripts/**/*.test.ts"]
 }

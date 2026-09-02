@@ -9,11 +9,13 @@
 // so many words, that "correctness relies on contributors running `pnpm verify`". Four things that
 // costs, and this closes:
 //
-//  1. **The Node version is not checked anywhere.** `.nvmrc` pins 24 and `engines` says `>=22`, so
-//     node 26 satisfies the manifest and breaks the suite: it defines a global `localStorage` that is
+//  1. **The Node version is not checked anywhere.** `.nvmrc` pinned 24 and `engines` said `>=22`, so
+//     node 26 satisfied the manifest and broke the suite: it defines a global `localStorage` that is
 //     `undefined` without `--localstorage-file`, which shadows jsdom's and fails 22 tests that have
 //     nothing wrong with them. Measured on this machine, 2026-08-16. A gate whose failures cannot be
-//     trusted is worse than no gate, so preflight refuses to run on the wrong major.
+//     trusted is worse than no gate, so preflight refuses to run on the wrong major. The manifests
+//     have since been narrowed to `">=24 <25"` and `pnpm install` enforces it (R-107/R-112); this
+//     stays, because a checkout is installed once and run many times.
 //  2. **B22: the `@waxwing/jmap` integration suites** `describe.skipIf` themselves away when the
 //     fixture is unreachable — so they had never failed, because they had never run. They are run
 //     against a live fixture AND asserted not to have been skipped, which is the only way that
@@ -262,13 +264,20 @@ if (ONLY_NUL) {
 }
 
 /**
- * `.nvmrc` is the only Node version this repository's tests are known good on, and `engines` is
- * advisory — so nothing stopped a newcomer following README's old "≥ 22" onto node 26.
+ * `.nvmrc` is the only Node version this repository's tests are known good on. This used to be
+ * the ONLY thing that said so: `engines.node` read `">=22"` and `engine-strict=true` sat in
+ * `.npmrc`, which pnpm 11 does not read — so an install on node 22 or 26 printed one warning and
+ * succeeded, and nothing stopped a newcomer following README's old "≥ 22" onto node 26. Both were
+ * fixed with R-107/R-112 (`">=24 <25"` in every manifest, `engineStrict: true` in
+ * pnpm-workspace.yaml), so a wrong major now fails at `pnpm install`. This check remains the
+ * second line of defence, and it is not redundant: a checkout installed on 24 can still be RUN on
+ * another major, and nothing re-installs in between.
  *
- * What that costs, measured on a fresh clone: `pnpm install --frozen-lockfile` exits 0 without a
- * warning, the dev server runs, and then `pnpm verify` fails 54 tests across eighteen thousand
- * lines of output that never once name the Node version. On node >= 25 a global `localStorage`
- * exists but is `undefined` without --localstorage-file, and it shadows jsdom's.
+ * What that cost, measured on a fresh clone at the time: `pnpm install --frozen-lockfile` exited 0,
+ * the dev server ran, and then `pnpm verify` failed 54 tests across eighteen thousand lines of
+ * output that never once named the Node version. On node >= 25 a global `localStorage` exists but
+ * is `undefined` without --localstorage-file, and it shadows jsdom's — which is still true, and
+ * still what this check is protecting anyone from.
  *
  * This used to live inside `preflight()`, i.e. only under `pnpm gate` — the command CONTRIBUTING
  * puts at step 2, after the one that breaks. `pnpm verify` calls it directly now

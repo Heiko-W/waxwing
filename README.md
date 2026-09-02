@@ -69,7 +69,7 @@ you can check what you are upgrading to:
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing                       # arrived intact
 gh attestation verify waxwing-stalwart.zip --repo Heiko-W/waxwing \
-  --source-ref refs/tags/v0.15.0                               # built here, from THAT TAG
+  --source-ref refs/tags/v0.22.0                               # built here, from THAT TAG
 ```
 
 `--ignore-missing` because `SHA256SUMS` lists all three artefacts and you downloaded one;
@@ -446,11 +446,12 @@ here, where a reader was going to look anyway.
 recommendation — and [pnpm](https://pnpm.io) ≥ 10 (`corepack enable` picks up the version pinned in
 `package.json`). `nvm use` is enough.
 
-This line used to say "≥ 22", which `engines` still allowed and which is how a newcomer ends up on
-Node 26: install succeeds, the dev server runs, and then `pnpm verify` fails **54 tests** with
-nothing in eighteen thousand lines of output mentioning the Node version. Node ≥ 25 defines a
-global `localStorage` that shadows jsdom's. `pnpm verify` now refuses to start on the wrong major
-and says so.
+This line used to say "≥ 22", and so did `engines` — which is how a newcomer ended up on Node 26:
+install succeeded, the dev server ran, and then `pnpm verify` failed **54 tests** with nothing in
+eighteen thousand lines of output mentioning the Node version. Node ≥ 25 defines a global
+`localStorage` that shadows jsdom's. Both ends are closed now: `engines.node` is `">=24 <25"` and
+`engineStrict: true` in `pnpm-workspace.yaml` makes `pnpm install` refuse the wrong major in a
+second, and `pnpm verify` refuses to start on it as well.
 
 ```sh
 pnpm install
@@ -467,7 +468,7 @@ Common scripts, run from the repo root:
 | `pnpm test` | Unit/component tests (Vitest) |
 | `pnpm build` | Build all packages |
 | `pnpm size` | Build `apps/web` and check it against the `size-limit` budget (≤ 300 KB gz initial JS) |
-| `pnpm verify` | **Run before committing** — the fast gate: `typecheck` → `lint` → `test` → `size` (no Docker/browser) |
+| `pnpm verify` | **Run before committing** — the fast gate, in this order: `check:node` → `build:libs` → `typecheck` → `lint` → `test` → `size` → `check:dist` → `check:site` → `check:actions` → `check:nul` (no Docker/browser) |
 | `pnpm verify:e2e` | The E2E gate (needs Docker): install chromium, bring the Stalwart fixture up + smoke, run Playwright, always tear down |
 | `pnpm verify:all` | `pnpm verify` then `pnpm verify:e2e` |
 | `pnpm gate` | **The local pipeline** — preflight (pins the Node major) → `verify` → the `@waxwing/jmap` integration suites against a live fixture → the E2E suites, with a per-stage summary |
@@ -487,10 +488,10 @@ so the local and hosted gates cannot drift apart.
 
 `pnpm gate` sequences those scripts and adds the three things a gate you run by hand cannot give you:
 
-- **A Node preflight.** `.nvmrc` pins 24 while `engines` says `>=22`, so a newer major satisfies the
-  manifest and still breaks the suite — on Node ≥ 25 a global `localStorage` shadows jsdom's and
-  ~22 tests fail for reasons unrelated to the code. The pipeline refuses to run rather than hand you
-  results you would have to distrust.
+- **A Node preflight.** The manifests and `pnpm install` reject the wrong major now, but a checkout
+  installed on 24 can still be RUN on another one, and nothing re-installs in between — on Node ≥ 25
+  a global `localStorage` shadows jsdom's and ~22 tests fail for reasons unrelated to the code. The
+  pipeline refuses to run rather than hand you results you would have to distrust.
 - **The `@waxwing/jmap` integration suites, actually run** (defect B22). They `describe.skipIf`
   themselves away when the fixture is unreachable, so a skip was indistinguishable from a pass; the
   stage brings a fixture up and then asserts nothing was skipped.

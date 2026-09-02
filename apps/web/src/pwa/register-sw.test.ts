@@ -68,6 +68,12 @@ beforeEach(() => {
 
 afterEach(() => {
   resetSwRegistrationState()
+  // Unconditional, and it matters that it is not inside the one test that fakes the clock: an
+  // assertion that fails before that test's last line would otherwise leave the clock faked for
+  // every test after it in this file, and the resulting cascade of timeouts hides the one real
+  // failure. `restoreMocks` in vitest.config.ts does not touch timers. Calling it when no timers
+  // were faked is a no-op.
+  vi.useRealTimers()
 })
 
 describe('registerServiceWorker', () => {
@@ -183,7 +189,21 @@ describe('startUpdateChecks', () => {
     vi.advanceTimersByTime(5000)
     document.dispatchEvent(new Event('visibilitychange'))
     expect(registration.update).toHaveBeenCalledTimes(3)
-    vi.useRealTimers()
+  })
+
+  /**
+   * The guard for the `afterEach` above, and the reason it is a test rather than a comment.
+   *
+   * The clock in the test before this one is faked, and it used to be UNfaked by the last line of
+   * that test's body — which never runs if an assertion above it fails. The next test then gets a
+   * frozen clock it never asked for, and its failure has nothing to do with its subject. Asserting
+   * the state here means the leak surfaces as "the clock was left faked" instead of as a cascade.
+   *
+   * It passes either way while everything above it passes; it fails only in the situation the
+   * cleanup exists for, which is exactly what it is supposed to do.
+   */
+  it('leaves the clock real for the tests that come after it', () => {
+    expect(vi.isFakeTimers()).toBe(false)
   })
 
   it('swallows the rejection an offline `update()` produces', async () => {

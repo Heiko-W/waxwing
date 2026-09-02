@@ -14,7 +14,10 @@ export default defineConfig({
     '**/settings.spec.ts',
     // Account & security (X-1..X-6): creates and revokes a credential on alice and moves her
     // account locale, so it belongs with the other stateful suites rather than the read harness.
-    '**/security.spec.ts',
+    // The file is `account-security.spec.ts`; it was `security.spec.ts` until the B25 experiment
+    // took that name over (R-44), which left this entry pointing at three read-harness browser
+    // tests that the read config already runs.
+    '**/account-security.spec.ts',
     '**/contacts.spec.ts',
     '**/calendar.spec.ts',
     // Stateful like the three above, and cleans up after itself for the same reason: there is no
