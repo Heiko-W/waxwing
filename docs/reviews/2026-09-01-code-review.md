@@ -4127,7 +4127,12 @@ korrigiert.
 
 ### R-108 — [LOW] `ci.yml`: `cancel-in-progress: true` gilt auch für Pushes auf `main`; `release.yml` hat keine `concurrency`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beides wie vorgeschlagen: `cancel-in-progress` in `ci.yml` hängt jetzt an
+`github.event_name == 'pull_request'`, `release.yml` bekommt `concurrency: { group: release,
+cancel-in-progress: false }` — eine Gruppe für alle Tags, weil der `latest`-Fall genau zwischen
+zwei verschiedenen Tags auftritt. Gepinnt von `scripts/workflows.test.ts`, das die Regel für
+ALLE Workflows prüft (auch `pages.yml`), nicht nur für die beiden genannten.
 
 **Kategorie / Bereich:** maintainability (CI) / Infra
 

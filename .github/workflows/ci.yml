@@ -37,9 +37,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# One run per ref, and only a PULL REQUEST run may be cancelled by its successor. On a pull request
+# that is exactly right: every push supersedes the last, and the verdict that matters is the one on
+# the head commit. On `main` it was wrong — two merges a minute apart cancelled the first run, and
+# the first commit was left with "cancelled" instead of a verdict, which is the state nobody
+# rechecks and `git bisect` cannot read.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Defence in depth, not a fix: this repository's org-level default is already
 # `default_workflow_permissions: read`, so CI never held a write token. Stated here anyway, because
