@@ -3267,7 +3267,14 @@ scheitert: zweiter `get` → `rejected: UnknownError` ohne neuen `open`, `wipe()
 
 ### R-86 — [LOW] Identitäts- und Vacation-Formular verlieren ungesicherte Eingaben beim Sektionswechsel ohne Rückfrage
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Teilloesung, bewusst: Der Dirty-Guard deckt den SEKTIONSWECHSEL ab (Rail-Eintrag und das
+„‹ Settings“-Back-Link auf dem Phone) — beide gehen ueber `Link`, dessen `onClick` die
+Navigation abfangen kann. Das Verlassen der Einstellungen ueber die Hauptnavigation, ein
+Shortcut oder den Zurueck-Knopf des Browsers verwirft weiterhin ohne Rueckfrage; das braeuchte
+eine Navigationssperre im Router, also eine Architekturentscheidung mit ADR. Die zweite
+vorgeschlagene Variante (beide Formulare in einen `Dialog` legen) wurde verworfen: beide sind
+bewusst inline, weil ein Signatur-Editor im Modal auf dem Phone die schlechtere Ansicht ist.
 
 **Kategorie / Bereich:** correctness (UX) / App (Settings)
 

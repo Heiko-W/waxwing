@@ -1,5 +1,15 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { type ReactNode, type Ref, useEffect, useId, useRef, useState } from 'react'
+import {
+  type MouseEvent,
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { type AccentId, availablePalettes, getAccent, isAccentId, setAccent } from '../app/accent'
 import { BrandLinks } from '../app/BrandLinks'
@@ -19,7 +29,7 @@ import { supportsScheduledSend } from '../compose/scheduled-send'
 import { changeLanguage, languageName, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n'
 import { ScheduledSends } from '../outbox'
 import { setPref, useLocalPref, useReplica, useReplicaOptional } from '../sync'
-import { Select } from '../ui'
+import { Button, Dialog, Select } from '../ui'
 import { ComposeSection } from './ComposeSection'
 import { IdentitiesSection, serverSupportsIdentities } from './IdentitiesSection'
 import { NotificationsSection } from './NotificationsSection'
@@ -31,6 +41,7 @@ import { SwipeSection } from './SwipeSection'
 import styles from './settings.module.css'
 import { FiltersSection, filtersAvailable } from './sieve/FiltersSection'
 import { TemplatesSection } from './TemplatesSection'
+import { UnsavedContext, type UnsavedGuard } from './unsaved'
 import { VacationSection } from './VacationSection'
 import { serverSupportsVacation } from './vacation-client'
 
@@ -494,6 +505,48 @@ export default function SettingsPage() {
    * frames pass before the session arrives. "Not a section at all" is a fact about this build and
    * cannot change under us.
    */
+  /*
+   * LEAVING A SECTION WITH SOMETHING TYPED IN IT (M5.1/M5.3).
+   *
+   * The identity editor and the vacation responder are rendered inline — a row of their section's
+   * card rather than a modal, deliberately: a signature editor inside a dialog on a phone is a
+   * worse screen. The cost was that they had no guard, while the DIALOG editors on this very page
+   * (a filter rule, a template) confirm before discarding. Clicking another rail entry, or the
+   * phone's "‹ Settings" back link, threw a half-typed multi-line signature away without a word.
+   *
+   * A ref rather than state: it is written by a child's effect and read in a click handler, and
+   * re-rendering the whole settings page on every transition between "clean" and "dirty" would be
+   * a re-render per keystroke on the first character typed.
+   */
+  const dirtyRef = useRef(false)
+  const [pendingPath, setPendingPath] = useState<string | null>(null)
+  const unsaved = useMemo<UnsavedGuard>(
+    () => ({
+      claim(dirty) {
+        dirtyRef.current = dirty
+        return () => {
+          dirtyRef.current = false
+        }
+      },
+    }),
+    [],
+  )
+  const guardLink = useCallback(
+    (to: string) =>
+      (event: MouseEvent<HTMLAnchorElement>): void => {
+        if (!dirtyRef.current) return
+        event.preventDefault()
+        setPendingPath(to)
+      },
+    [],
+  )
+  const discardAndGo = useCallback((): void => {
+    const target = pendingPath
+    setPendingPath(null)
+    dirtyRef.current = false
+    if (target !== null) navigate(target)
+  }, [pendingPath, navigate])
+
   const known = groups.some((group) => group.sections.some((s) => s.slug === route.rest))
   useEffect(() => {
     if (route.rest !== '' && !known) navigate(settingsPath(), { replace: true })
@@ -572,6 +625,7 @@ export default function SettingsPage() {
                         to={settingsPath(section.slug)}
                         className={styles.railItem}
                         aria-current={detail?.slug === section.slug ? 'page' : undefined}
+                        onClick={guardLink(settingsPath(section.slug))}
                       >
                         <span className={styles.railItemLabel}>{section.title}</span>
                         {/* Only where the rail IS the screen. Where the panel sits beside it, the
@@ -598,16 +652,41 @@ export default function SettingsPage() {
           {narrow && (
             // The phone's way back to the list. On the wide layout the rail is right there, so a
             // back link would point at something already on screen.
-            <Link to={settingsPath()} className={styles.detailBack}>
+            <Link
+              to={settingsPath()}
+              className={styles.detailBack}
+              onClick={guardLink(settingsPath())}
+            >
               <ChevronLeft aria-hidden="true" />
               {t('settings.title')}
             </Link>
           )}
           <Section ref={sectionRef} slug={detail.slug} title={detail.title} narrow={narrow}>
-            {detail.render()}
+            <UnsavedContext.Provider value={unsaved}>{detail.render()}</UnsavedContext.Provider>
           </Section>
         </div>
       )}
+
+      {/* The same three sentences the dialog editors use for the same decision — a reader who has
+          discarded a filter rule once should not have to read a new wording here. */}
+      <Dialog
+        open={pendingPath !== null}
+        onClose={() => setPendingPath(null)}
+        title={t('ui.dialog.discardTitle')}
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPendingPath(null)}>
+              {t('ui.dialog.discardCancel')}
+            </Button>
+            <Button variant="destructive" onClick={discardAndGo}>
+              {t('ui.dialog.discardConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p>{t('ui.dialog.discardBody')}</p>
+      </Dialog>
     </div>
   )
 }

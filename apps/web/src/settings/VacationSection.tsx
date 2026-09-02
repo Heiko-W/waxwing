@@ -34,6 +34,7 @@ import { useLinkOpener } from '../mail/use-link-opener'
 import { useEngineStatus } from '../sync/engine'
 import { Button, Switch, TextInput, useToast } from '../ui'
 import styles from './settings.module.css'
+import { sameDraft, useUnsavedChanges } from './unsaved'
 import { makeVacationClient, type VacationClient, VacationSetError } from './vacation-client'
 import {
   DEFAULT_VACATION_DRAFT,
@@ -111,6 +112,14 @@ export function VacationSection(props: VacationSectionProps) {
 
   const injected = props.client
   const [draft, setDraft] = useState<VacationDraft>(DEFAULT_VACATION_DRAFT)
+  /**
+   * The last draft that came from the SERVER — what `draft` is unsaved with respect to.
+   *
+   * Kept beside `draft` rather than derived from it, because both the initial load and a successful
+   * save replace the whole draft: after either, the form matches the server and there is nothing to
+   * warn about. See `unsaved.ts` for what reads this.
+   */
+  const [saved, setSaved] = useState<VacationDraft>(DEFAULT_VACATION_DRAFT)
   /** Mirrors `draft` so `save()` can read a just-flushed editor value without waiting for a render. */
   const draftRef = useRef<VacationDraft>(DEFAULT_VACATION_DRAFT)
   const editorRef = useRef<RichTextEditorHandle>(null)
@@ -153,6 +162,7 @@ export function VacationSection(props: VacationSectionProps) {
       const next = toDraft(snapshot.vacation)
       draftRef.current = next
       setDraft(next)
+      setSaved(next)
       setState(snapshot.state)
     },
     [client],
@@ -187,6 +197,10 @@ export function VacationSection(props: VacationSectionProps) {
   const invalid = validateVacation(draft)
   const offline = !status.online
 
+  // So the settings page can ask before it swaps this panel out (see `unsaved.ts`). A typed-out
+  // away message is exactly the kind of thing that was being dropped by a stray tap on the rail.
+  useUnsavedChanges(!sameDraft(draft, saved))
+
   // The draft is mirrored in a ref, and that is what `save()` reads. `RichTextEditor.flush()` emits
   // the pending keystrokes SYNCHRONOUSLY through `onChange` → `patch`, but `draft` is React state:
   // reading it in the same handler would still see the value from before the flush. The ref is
@@ -212,6 +226,7 @@ export function VacationSection(props: VacationSectionProps) {
       const next = toDraft(snapshot.vacation)
       draftRef.current = next
       setDraft(next)
+      setSaved(next)
       setState(snapshot.state)
       toast({ title: t('settings.vacation.saved') })
     } catch (thrown) {
