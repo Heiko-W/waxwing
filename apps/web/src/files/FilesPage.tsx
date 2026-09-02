@@ -1324,19 +1324,19 @@ export default function FilesPage(props: FilesPageProps) {
             {t('files.selection.count', { count: selectedNodes.length })}
           </span>
           {/*
-            NOT given `unavailableReason` offline, unlike the row's own actions (R-24), and the
-            reason is `Button` rather than this screen: it renders the explanation as a
-            visually-hidden span INSIDE the control, which an icon-only button hides behind its
-            `aria-label` but a text button does not — the name would become "Move You are offline.
-            Files can only be changed while connected." and be announced again as the description.
-            Until that primitive puts the reason outside the button, the honest arrangement here is
-            the one below plus `run`'s corrected message: the action is offered, and a write that
-            cannot reach the server now says so instead of blaming it.
+            Offline these two are REFUSED with a reason, exactly like the row's own actions (R-24).
+            They were the one pair left un-gated, and the reason was `Button`, not this screen: it
+            used to render the explanation INSIDE the control, where it became part of the
+            accessible name — "Move You are offline. Files can only be changed while connected." —
+            and was then read a second time as the description. An icon-only button hid that behind
+            its `aria-label`; a text button could not. The primitive now puts the sentence beside
+            the button instead, so the name is "Move" and the sentence is the description, once.
           */}
           <Button
             variant="secondary"
             size="sm"
             disabled={busy || selectedNodes.length === 0}
+            unavailableReason={online ? undefined : t('files.offline')}
             onClick={() => setMoving(selectedNodes)}
           >
             {t('files.move.action')}
@@ -1345,6 +1345,7 @@ export default function FilesPage(props: FilesPageProps) {
             variant="destructive"
             size="sm"
             disabled={busy || selectedNodes.length === 0}
+            unavailableReason={online ? undefined : t('files.offline')}
             onClick={() => setDeleting(selectedNodes)}
           >
             {t('files.deleteAction')}

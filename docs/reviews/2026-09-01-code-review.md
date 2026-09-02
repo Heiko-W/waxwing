@@ -1772,7 +1772,7 @@ Severity high → medium.
 
 ### R-39 — [MEDIUM] Der Escape-Stack sortiert sich bei nicht-memoisiertem `onClose` um — Escape schließt den Dialog unter einem offenen Menü
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** react, a11y / UI
 
@@ -1808,7 +1808,11 @@ und Menü weg (rot); Kontrollfälle ohne Bump und mit memoisiertem `onClose` →
 
 ### R-40 — [MEDIUM] Escape, Enter und Pfeiltasten während einer IME-Komposition werden als Befehle ausgeführt (Dialog, Palette)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Abweichung: die Regel liegt jetzt als `isComposingKey` in `ui/internal/composition.ts` statt als
+dritte und vierte Kopie derselben zwei Vergleiche; `Menu.onMenuKeyDown` ist wie vorgeschlagen
+mitgezogen._
 
 **Kategorie / Bereich:** i18n, a11y / UI
 
@@ -1932,7 +1936,7 @@ Gegenprüfung: bestätigt, Lösungsansatz korrigiert.
 
 ### R-43 — [MEDIUM] Auswahl aus einem Kontextmenü lässt den Fokus auf `<body>` fallen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** a11y / UI
 
@@ -3767,7 +3771,13 @@ verschieben.
 
 ### R-98 — [LOW] Zwei Toasts mit Aktion laufen nach 5 s ab — entgegen ADR-021, und die Primitive erzwingt die Regel nicht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Abweichung: die Aktion gewinnt gegen ein explizit gesetztes `duration`, statt nur ein fehlendes zu
+ersetzen (`record.action ? 0 : record.duration ?? DEFAULT`) — der Befund verlangt, dass die
+Primitive die ADR-Regel ERZWINGT, und mit `??` könnte ein Aufrufer sie weiterhin umgehen. Kein
+heutiger Aufrufer setzt beides. Die beiden gemeldeten Aufrufer sind unverändert; sie sind durch die
+Primitive korrekt._
 
 **Kategorie / Bereich:** a11y / UI
 

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '../app/config'
@@ -215,5 +215,33 @@ describe('CommandPalette', () => {
     await mountAndOpen()
     await waitFor(() => expect(options().length).toBeGreaterThan(0))
     await expectNoA11yViolations(document.body)
+  })
+
+  /**
+   * R-40. While a Japanese or Chinese IME is composing, Enter COMMITS the candidate and the arrows
+   * walk the candidate list — none of it is meant for the palette. Firefox delivers those presses
+   * as `key: 'Enter'` / `'ArrowDown'` with `isComposing: true`; Chromium sends `key: 'Process'` with
+   * `keyCode 229`, which is why a Chromium-only test run never saw the palette misbehave. The
+   * dispatcher and `matchesChord` have refused composition keystrokes since M3.8; this handler did
+   * not.
+   */
+  it('ignores Enter and the arrows while an IME is composing', async () => {
+    const user = userEvent.setup()
+    await mountAndOpen()
+    await waitFor(() => expect(options().length).toBeGreaterThan(1))
+    const input = screen.getByRole('combobox')
+    const before = input.getAttribute('aria-activedescendant')
+
+    fireEvent.keyDown(input, { key: 'ArrowDown', isComposing: true })
+    expect(input.getAttribute('aria-activedescendant')).toBe(before)
+    fireEvent.keyDown(input, { key: 'ArrowDown', keyCode: 229 })
+    expect(input.getAttribute('aria-activedescendant')).toBe(before)
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeInTheDocument()
+
+    // Once the composition has ended the very same keys work.
+    await user.keyboard('{ArrowDown}')
+    expect(input.getAttribute('aria-activedescendant')).not.toBe(before)
   })
 })

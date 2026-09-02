@@ -27,6 +27,9 @@ export { Checkbox, type CheckboxProps } from './Checkbox'
 export { Dialog, type DialogProps, type DialogSize } from './Dialog'
 export { EmptyState, type EmptyStateProps } from './EmptyState'
 export { IconButton, type IconButtonProps } from './IconButton'
+// "Is an input method holding this keystroke?" — used by every surface that reads `event.key`
+// itself, inside this directory and out (the ⌘K palette). See the note at its declaration.
+export { type CompositionKeyEvent, isComposingKey } from './internal/composition'
 // Overlay primitives — shared by Dialog and the composer windows (M2.2), which are legitimate
 // portal/focus-trapped surfaces of their own.
 export { Portal } from './internal/Portal'

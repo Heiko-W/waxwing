@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useCallback, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -290,5 +290,103 @@ describe('Dialog — confirming a discard', () => {
     await user.type(screen.getByLabelText('Filter'), 'arch')
     await user.keyboard('{Escape}')
     expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * R-39 — the Escape stack must be ordered by which overlay is INNERMOST, not by which callback was
+ * last re-created.
+ *
+ * `onClose` used to be a dependency of the effect that pushes the dialog onto the stack, and
+ * eighteen `<Dialog>` call sites pass an inline arrow. So any re-render of the page — a liveQuery
+ * tick, a sync-status change, a resize — ran the cleanup and the effect again and moved the DIALOG
+ * above the menu opened inside it. Passive effects run child-first, so the dialog ended up on top
+ * even when both re-registered in the same commit. One Escape then closed the whole sheet: on a
+ * phone, the calendar sheet with a calendar's ⋯ menu open.
+ *
+ * The harness reproduces exactly that: an unmemoised `onClose` plus a parent state bump with the
+ * menu open.
+ */
+function ChurningHarness({
+  onClosed,
+  bumpRef,
+}: {
+  onClosed: () => void
+  // The re-render has to come from OUTSIDE the overlays: a click on a button beside the dialog
+  // would be an outside-pointer press and close the menu for an entirely different reason.
+  bumpRef: { current: () => void }
+}) {
+  const [open, setOpen] = useState(true)
+  const [tick, setTick] = useState(0)
+  bumpRef.current = () => setTick((n) => n + 1)
+  return (
+    <Dialog
+      open={open}
+      // Deliberately NOT memoised — a fresh closure on every render, like the real call sites.
+      onClose={() => {
+        setOpen(false)
+        onClosed()
+      }}
+      title={`Parent ${tick}`}
+    >
+      <Menu
+        triggerLabel="Inner actions"
+        trigger="Inner"
+        items={[{ id: 'archive', label: 'Archive', onSelect: () => {} }]}
+      />
+    </Dialog>
+  )
+}
+
+describe('Dialog — the Escape stack survives a re-render', () => {
+  it('still closes only the menu after the parent re-renders with a new onClose', async () => {
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    const bumpRef = { current: () => {} }
+    render(<ChurningHarness onClosed={onClosed} bumpRef={bumpRef} />)
+    await user.click(screen.getByRole('button', { name: 'Inner actions' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    // The re-render that used to reorder the stack. The menu stays open across it.
+    act(() => bumpRef.current())
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onClosed).not.toHaveBeenCalled()
+
+    // …and the dialog is still reachable by the second press, so nothing was merely unsubscribed.
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(onClosed).toHaveBeenCalledOnce()
+  })
+})
+
+/**
+ * R-40 — Escape ENDS a composition; it is not "close this dialog".
+ *
+ * Firefox (≥ 65) delivers `key: 'Escape'` with `isComposing: true` while a Japanese or Chinese IME
+ * is composing; Chromium sends `key: 'Process'` with `keyCode 229`, which is the only reason the
+ * `event.key` comparison never misfired in a Chromium-based test run. Both shapes have to be
+ * refused, or a reader typing into a dialog loses what they wrote — and with `confirmDiscard` on,
+ * is asked whether to throw it away.
+ */
+describe('Dialog — an IME composition owns Escape', () => {
+  it('does not close while a composition is in flight, and closes once it ends', async () => {
+    const user = userEvent.setup()
+    const onClosed = vi.fn()
+    render(<Harness onClosed={onClosed} />)
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+
+    fireEvent.keyDown(document, { key: 'Escape', isComposing: true })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Process', keyCode: 229 })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(onClosed).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(onClosed).toHaveBeenCalledOnce()
   })
 })

@@ -22,7 +22,7 @@ import {
   useState,
 } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Dialog } from '../ui'
+import { Dialog, isComposingKey } from '../ui'
 import { fuzzyMatch } from './fuzzy'
 import { formatChord, isApplePlatform, matchesChord } from './keys'
 import { usePaletteRecents } from './recents'
@@ -204,6 +204,11 @@ export default function CommandPalette({ context, onClose }: CommandPaletteProps
       onClose()
       return
     }
+    // The IME owns its own keys (R-40). Firefox delivers `Enter`/`ArrowDown` with `isComposing`
+    // during a composition, and without this the palette runs the highlighted command and closes
+    // when the reader only meant to commit a candidate — or walks its option list while the IME is
+    // walking its own. `matchesChord` above already refuses; this is the rest of the handler.
+    if (isComposingKey(event.nativeEvent)) return
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault()
