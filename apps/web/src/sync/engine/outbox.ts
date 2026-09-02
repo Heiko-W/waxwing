@@ -2025,6 +2025,36 @@ export async function enqueueAction(
  * Transactional because the comparison and the delete have to be one step; the claim in
  * `replayOutbox` protects against `cancelSend`, not against a re-enqueue.
  */
+/**
+ * Patch the row replay claimed — but ONLY if it is still that row (the write half of the same rule
+ * {@link deleteIfUnchanged} enforces for the delete). Returns whether the patch landed.
+ *
+ * The `seq` comparison used to guard only the final `delete`, which left every OTHER write of the
+ * claimed row an unconditional `update` by id — and the id is exactly the thing drafts reuse. So the
+ * result of the OLD request landed on the NEW row: a permanently rejected autosave A dead-lettered
+ * the freshly typed B with A's conflict (and `stampDraftError` painted the draft failed), and a
+ * transient failure of A pushed B's `attempts`/`nextAttemptAt` forward for a request B never made.
+ *
+ * On a mismatch the caller skips the rest of its bookkeeping for that row. That is safe because the
+ * only ids that are ever reused are the draft family's (`draft:<localId>`), whose undo is
+ * `{ kind: 'none' }` — there is no rollback to strand. The replacement row is a complete intent with
+ * its own undo and replays on its own.
+ */
+async function updateIfUnchanged(
+  db: ReplicaDb,
+  accountId: Id,
+  row: OutboxRow,
+  patch: Partial<OutboxRow>,
+): Promise<boolean> {
+  return db.transaction('rw', db.outbox, async () => {
+    const current = await db.outbox.get([accountId, row.id])
+    if (current === undefined) return false
+    if ((current.seq ?? 0) !== (row.seq ?? 0)) return false // superseded — that row is its own intent now
+    await db.outbox.update([accountId, row.id], patch)
+    return true
+  })
+}
+
 async function deleteIfUnchanged(db: ReplicaDb, accountId: Id, row: OutboxRow): Promise<void> {
   await db.transaction('rw', db.outbox, async () => {
     const current = await db.outbox.get([accountId, row.id])
@@ -2681,6 +2711,20 @@ export interface ReplaySummary {
   readonly conflicted: number
 }
 
+/**
+ * How long a rollback claim ({@link OutboxRow.undoClaimedAt}) is believed before it is treated as
+ * abandoned. Comfortably above the transport's 30 s request timeout, so a claim held across a real
+ * round trip is never mistaken for a dead one — and short enough that a tab killed mid-rollback
+ * cannot wedge "Discard"/"Try again" on that dead letter for longer than a minute.
+ */
+export const UNDO_CLAIM_STALE_MS = 60_000
+
+/** Whether somebody is applying this row's rollback right now (a stale claim is nobody's). */
+export function undoClaimHeld(row: OutboxRow, now: number): boolean {
+  const claimedAt = row.undoClaimedAt ?? null
+  return claimedAt !== null && now - claimedAt < UNDO_CLAIM_STALE_MS
+}
+
 /** A row is replayable when BOTH its undo-send grace and its retry backoff have elapsed. */
 function readyAt(row: OutboxRow): number {
   return Math.max(row.notBefore ?? 0, row.nextAttemptAt ?? 0)
@@ -2692,7 +2736,12 @@ function readyAt(row: OutboxRow): number {
  * start of every pass, so a stale optimistic change can never survive silently: it is either undone
  * or still visibly listed as a problem.
  */
-async function drainOwedUndos(port: JmapPort, db: ReplicaDb, accountId: Id): Promise<void> {
+async function drainOwedUndos(
+  port: JmapPort,
+  db: ReplicaDb,
+  accountId: Id,
+  now: number,
+): Promise<void> {
   for (const row of await failedOutbox(db, accountId)) {
     // CLAIM first, apply second. `applyUndo` is not idempotent — `adjustMailboxCounts` rebuilds
     // relative deltas from the persisted undo — and the `refetchEmails` branch inside it makes a
@@ -2700,11 +2749,16 @@ async function drainOwedUndos(port: JmapPort, db: ReplicaDb, accountId: Id): Pro
     // "Discard" click (from this tab or any other) to apply the same rollback a second time and
     // leave the folder badges permanently wrong. Taking `undo` inside the transaction means only
     // one of the two ever has anything to apply.
+    //
+    // The claim is `undo: null` PLUS `undoClaimedAt` — see {@link OutboxRow.undoClaimedAt}. Nulling
+    // `undo` alone was indistinguishable from "already applied", which is exactly what
+    // `discardFailed` deletes the row on; the round trip below then had its row pulled out from
+    // under it and a failing rollback was lost silently.
     const undo = await db.transaction('rw', db.outbox, async () => {
       const current = await db.outbox.get([accountId, row.id])
       const owed = current?.undo ?? null
       if (owed === null) return null
-      await db.outbox.update([accountId, row.id], { undo: null })
+      await db.outbox.update([accountId, row.id], { undo: null, undoClaimedAt: now })
       return owed
     })
     if (undo === null) continue
@@ -2717,10 +2771,11 @@ async function drainOwedUndos(port: JmapPort, db: ReplicaDb, accountId: Id): Pro
         undo,
         row.conflict?.ids ?? null,
       )
+      await db.outbox.update([accountId, row.id], { undoClaimedAt: null })
     } catch {
       // Network — hand the claim back so the rollback stays OWED and is retried on the next pass.
       // Never dropped: a stale optimistic change must stay either undone or visibly listed.
-      await db.outbox.update([accountId, row.id], { undo })
+      await db.outbox.update([accountId, row.id], { undo, undoClaimedAt: null })
     }
   }
 }
@@ -2809,7 +2864,7 @@ export async function replayOutbox(
   // Stranded-recovery FIRST: a send interrupted mid-flight becomes a dead letter whose undo (the
   // source `$answered` flag) is then owed — the drain below settles it in this same pass.
   await recoverStranded(db, accountId, now)
-  await drainOwedUndos(port, db, accountId)
+  await drainOwedUndos(port, db, accountId, now)
 
   const rows = (await pendingOutbox(db, accountId)).filter(
     (row) => row.status === 'pending' && readyAt(row) <= now,
@@ -2826,22 +2881,27 @@ export async function replayOutbox(
     detail: string | null,
     ids: string[],
   ): Promise<void> => {
-    failed += 1
     const conflict: OutboxConflict = { code, errorType, detail, ids, at: now }
     // Persist the dead letter with its undo STILL SET (⇒ owed) before attempting the rollback, so a
     // crash or a failing re-fetch mid-undo leaves a row that `drainOwedUndos` will finish later.
-    await db.outbox.update([accountId, row.id], {
+    //
+    // …but only onto the row we CLAIMED. Was it replaced while the request was on the wire, the
+    // replacement is a newer intent that has not been rejected by anything, and marking it `error`
+    // would show the user a failure for a save that was never attempted. See `updateIfUnchanged`.
+    const mine = await updateIfUnchanged(db, accountId, row, {
       status: 'error',
       lastError: errorType ?? code,
       conflict,
     })
+    if (!mine) return
+    failed += 1
     await stampDraftError(db, accountId, intent, errorType ?? code)
     await stampSendError(db, accountId, intent, errorType ?? code)
     const undo = row.undo ?? null
     if (undo === null) return
     try {
       await applyUndo(db, port, accountId, intent, undo, ids)
-      await db.outbox.update([accountId, row.id], { undo: null })
+      await updateIfUnchanged(db, accountId, row, { undo: null })
     } catch {
       // Owed — drained on a later pass.
     }
@@ -2859,6 +2919,11 @@ export async function replayOutbox(
       const current = await db.outbox.get([accountId, row.id])
       if (current === undefined || current.status !== 'pending') return false
       if (readyAt(current) > now) return false
+      // …and only if it is still the row this pass READ. A re-enqueue between `pendingOutbox` and
+      // here would otherwise flip the REPLACEMENT to `inflight` while we execute the OLD payload —
+      // after which every `…IfUnchanged` write correctly refuses to touch it and it sits `inflight`
+      // until `recoverStranded`. The replacement is `pending` and ready; the next pass takes it.
+      if ((current.seq ?? 0) !== (row.seq ?? 0)) return false
       await db.outbox.update([accountId, row.id], { status: 'inflight' })
       return true
     })
@@ -2885,7 +2950,7 @@ export async function replayOutbox(
           break
         }
         refreshes += 1
-        await db.outbox.update([accountId, row.id], { refreshes })
+        await updateIfUnchanged(db, accountId, row, { refreshes })
         // Re-execute against the FRESH state; the server's answer to that re-run IS the re-check of
         // the precondition (its per-object SetError is authoritative — a locally-derived predicate
         // could disagree with it). Refresh the type that guards THIS intent — a guarded contact intent
@@ -2908,7 +2973,7 @@ export async function replayOutbox(
         // intent lands. The row is still ready immediately (`nextAttemptAt` untouched) and is not
         // rolled back; the only visible cost is that a session expiring
         // {@link STUCK_AFTER_ATTEMPTS} times over gets the row a "still trying" notice.
-        await db.outbox.update([accountId, row.id], {
+        await updateIfUnchanged(db, accountId, row, {
           status: 'pending',
           attempts: row.attempts + 1,
         })
@@ -2923,7 +2988,7 @@ export async function replayOutbox(
       // transient branch below would reset it to `pending` and silently re-send it. (Auth expiry is
       // handled above and IS safe to keep pending: a 401 is rejected before the mail is processed.)
       if (intent.kind === 'sendEmail') {
-        await db.outbox.update([accountId, row.id], { attempts })
+        await updateIfUnchanged(db, accountId, row, { attempts })
         await deadLetter(
           { ...row, attempts },
           intent,
@@ -2937,7 +3002,7 @@ export async function replayOutbox(
       const verdict = classifyThrown(thrown, attempts, random(), backoff)
       if (verdict.kind === 'retry') {
         // TRANSIENT — the ONE branch that must never roll back and never dead-letter (defect D3).
-        await db.outbox.update([accountId, row.id], {
+        await updateIfUnchanged(db, accountId, row, {
           status: 'pending',
           attempts,
           nextAttemptAt: now + verdict.delayMs,
@@ -2950,7 +3015,7 @@ export async function replayOutbox(
       // (`satisfied` is unreachable: a call that THREW cannot have already succeeded.)
       const code: ConflictCode = verdict.kind === 'conflict' ? verdict.code : 'stateConflict'
       const detail = verdict.kind === 'conflict' ? verdict.detail : errorMessage(thrown)
-      await db.outbox.update([accountId, row.id], { attempts, refreshes })
+      await updateIfUnchanged(db, accountId, row, { attempts, refreshes })
       await deadLetter({ ...row, refreshes }, intent, code, thrownErrorType(thrown), detail, [
         ...rejectionKeys(intent),
       ])
@@ -3002,7 +3067,7 @@ export async function replayOutbox(
       // it. That is exactly the silent divergence FR-OFF-03 forbids. It converges: once the transient
       // failures clear, a later pass sees only the permanent ones and dead-letters then.
       const attempts = row.attempts + 1
-      await db.outbox.update([accountId, row.id], {
+      await updateIfUnchanged(db, accountId, row, {
         status: 'pending',
         attempts,
         nextAttemptAt: now + backoffDelayMs(attempts, random(), backoff),
@@ -3014,7 +3079,7 @@ export async function replayOutbox(
     // A permanent rejection of SOME objects: undo ONLY those, keep the applied ones applied.
     const reason = worst ?? { code: 'serverRejected' as ConflictCode, errorType: '', detail: null }
     await reconcileSendFailure(db, accountId, intent, result)
-    await db.outbox.update([accountId, row.id], { attempts: row.attempts + 1 })
+    await updateIfUnchanged(db, accountId, row, { attempts: row.attempts + 1 })
     await deadLetter(row, intent, reason.code, reason.errorType || null, reason.detail, conflictIds)
   }
 

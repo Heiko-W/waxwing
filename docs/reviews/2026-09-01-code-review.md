@@ -2680,7 +2680,11 @@ Spaltenklick tatsächlich anbieten.
 
 ### R-69 — [LOW] W-13 unvollständig: die Fehlerpfade des Replay schreiben weiter per Id über eine inzwischen ersetzte Zeile (vgl. W-13)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Über den Lösungsansatz hinaus: auch der Claim (`pending → inflight`) vergleicht jetzt `seq`. Ohne das
+markiert der Claim die Ersatzzeile `inflight`, während der ALTE Payload läuft — danach verweigern alle
+`…IfUnchanged`-Schreibstellen korrekt jede Fortschreibung, und die Zeile bliebe bis `recoverStranded`
+hängen. Insgesamt sieben statt fünf Schreibstellen umgestellt (die Liste im Befund war nicht vollständig).
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2717,7 +2721,10 @@ nach `TypeError` `attempts: 1` und `nextAttemptAt` gesetzt. Gegenprüfung: best�
 
 ### R-70 — [LOW] `discardFailed` löscht eine Zeile, deren Undo der Drain gerade geclaimt hat — schlägt dessen Rollback fehl, geht er still verloren (vgl. W-14)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: `undoClaimedAt` ist ein ZEITSTEMPEL, kein Flag, und gilt nur `UNDO_CLAIM_STALE_MS` (60 s)
+lang. Ein reines Flag hätte eine neue Sackgasse geschaffen — stirbt der Tab mitten im Rollback, bliebe
+der Claim für immer stehen und „Verwerfen“/„Erneut versuchen“ wären auf dieser Zeile dauerhaft tot.
 
 **Kategorie / Bereich:** correctness / Sync
 

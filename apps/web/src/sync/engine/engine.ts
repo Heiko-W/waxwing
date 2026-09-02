@@ -102,6 +102,7 @@ import {
   reapplyPendingMailboxes,
   replayOutbox,
   stateGuardType,
+  undoClaimHeld,
 } from './outbox'
 import { setEngineStatus } from './status'
 import {
@@ -567,9 +568,13 @@ export class SyncEngine {
    * non-idempotent submission.
    *
    * The read, the optimistic re-apply and the row update are ONE `rw` transaction, so a concurrent
-   * retry from another tab cannot apply it twice.
+   * retry from another tab cannot apply it twice — and it also refuses while somebody is APPLYING
+   * that rollback right now (`undoClaimedAt`), because "no undo on the row" is true both after the
+   * rollback ran and while it is still on the wire, and re-applying the optimistic change on top of
+   * a rollback that then fails would double it.
    */
   async retryFailed(id: Id): Promise<boolean> {
+    const now = this.clock.now()
     const requeued = await this.db.transaction(
       'rw',
       // The SHARED scope, not a hand-maintained copy: this list used to omit `contactCards` and
@@ -580,6 +585,7 @@ export class SyncEngine {
         const current = await this.db.outbox.get([this.accountId, id])
         if (current === undefined || current.status !== 'error') return null
         if ((current.undo ?? null) !== null) return null
+        if (undoClaimHeld(current, now)) return null
         const intent = current.payload as OutboxIntent
         if (intent.kind === 'sendEmail') return null
         const undo = await applyOptimistic(this.db, this.accountId, intent)
@@ -631,10 +637,22 @@ export class SyncEngine {
     //
     // Nulling `undo` inside the transaction is the claim: whoever wins sees `undo: null` and has
     // nothing left to apply.
+    //
+    // `undoClaimedAt` is the OTHER half of that claim, and the reason it exists: `undo: null` alone
+    // meant both "claimed" and "applied", so a discard landing inside `drainOwedUndos`' round trip
+    // read "nothing owed" and DELETED the row — after which the drain's failing rollback was written
+    // back to a row that no longer existed, silently. The envelopes stayed locally deleted and the
+    // folder counts stayed short until the server happened to report that folder again. While
+    // somebody genuinely holds the claim there is nothing safe to do here, so refuse; the drain
+    // hands the claim back within a round trip and the next click succeeds.
+    const now = this.clock.now()
     const row = await this.db.transaction('rw', this.db.outbox, async () => {
       const current = await this.db.outbox.get([this.accountId, id])
       if (current === undefined || current.status !== 'error') return undefined
-      if (current.undo != null) await this.db.outbox.update([this.accountId, id], { undo: null })
+      if (undoClaimHeld(current, now)) return undefined
+      if (current.undo != null) {
+        await this.db.outbox.update([this.accountId, id], { undo: null, undoClaimedAt: now })
+      }
       return current
     })
     if (row === undefined) return false
@@ -652,7 +670,7 @@ export class SyncEngine {
       } catch {
         // Still owed: hand the claim back, so the row stays listed as a problem rather than
         // becoming a stale optimistic change nobody can see any more.
-        await this.db.outbox.update([this.accountId, id], { undo })
+        await this.db.outbox.update([this.accountId, id], { undo, undoClaimedAt: null })
         return false
       }
     }

@@ -211,6 +211,111 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
     expect(survivor?.status).toBe('pending')
   })
 
+  /**
+   * The OTHER half of the same race (R-69/R-76): the `seq` comparison guarded only the final
+   * `delete`, so every FAILURE path still wrote by id. A permanently rejected autosave A then
+   * dead-lettered the freshly typed B with A's conflict and painted the draft red for a save nobody
+   * had answered yet.
+   */
+  function saveDraftIntent(creationId: string, subject: string): OutboxIntent {
+    return {
+      kind: 'saveDraft',
+      localId: 'd1',
+      creationId,
+      priorServerId: null,
+      email: { mailboxIds: { drafts: true }, subject } as EmailCreate,
+    }
+  }
+
+  async function seedDraft(): Promise<void> {
+    await db.drafts.put({
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'pending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'A',
+        body: '<p>a</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: null,
+        fromIdentityHint: null,
+        attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+    })
+  }
+
+  it('does not dead-letter the replacement with the claimed row’s rejection', async () => {
+    await seedDraft()
+    await enqueueAction(db, ACC, saveDraftIntent('cA', 'A'), { id: 'draft:d1', now: 1 })
+
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => {
+        // The next keystroke's autosave lands while A is on the wire.
+        await enqueueAction(db, ACC, saveDraftIntent('cB', 'B'), { id: 'draft:d1', now: 2 })
+        return setResult({ notCreated: { cA: { type: 'tooLarge' } } })
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    const survivor = await row('draft:d1')
+    expect(survivor?.seq).toBe(2)
+    expect(survivor?.status, "B was marked failed by A's rejection").toBe('pending')
+    expect(survivor?.conflict).toBeNull()
+    expect(survivor?.lastError).toBeNull()
+    // …and the draft is not painted red for a save that has not been answered yet.
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('pending')
+    expect((await db.drafts.get([ACC, 'd1']))?.lastError).toBeNull()
+  })
+
+  it('does not charge the replacement with the claimed row’s backoff', async () => {
+    await seedDraft()
+    await enqueueAction(db, ACC, saveDraftIntent('cA', 'A'), { id: 'draft:d1', now: 1 })
+
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> => {
+        await enqueueAction(db, ACC, saveDraftIntent('cB', 'B'), { id: 'draft:d1', now: 2 })
+        throw new TypeError('Failed to fetch') // transient: connection dropped mid-request
+      },
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    const survivor = await row('draft:d1')
+    expect(survivor?.seq).toBe(2)
+    expect(survivor?.status).toBe('pending')
+    // B has made no attempt of its own; inheriting A's would delay it by a whole backoff step.
+    expect(survivor?.attempts).toBe(0)
+    expect(survivor?.nextAttemptAt ?? null).toBeNull()
+  })
+
+  /**
+   * The counter-test for the two above: an UNREPLACED row must still take its rejection, or the
+   * guard would have turned every dead letter into silence.
+   */
+  it('still dead-letters an untouched row — the counter-test', async () => {
+    await seedDraft()
+    await enqueueAction(db, ACC, saveDraftIntent('cA', 'A'), { id: 'draft:d1', now: 1 })
+    const port = fakePort({
+      setEmails: async (): Promise<PortSetResult> =>
+        setResult({ notCreated: { cA: { type: 'tooLarge' } } }),
+    })
+
+    await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+    expect((await row('draft:d1'))?.status).toBe('error')
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('error')
+  })
+
   it('still deletes an untouched row — the counter-test', async () => {
     await putEmails(db, ACC, [email('e1', { keywords: {} })])
     await enqueueAction(

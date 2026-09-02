@@ -2110,6 +2110,65 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     await engine.stop()
   })
 
+  /**
+   * The OTHER half of the W-14 race (R-70/R-76): what happens when the DRAIN's rollback fails while
+   * a discard is watching.
+   *
+   * The claim was encoded as `undo: null` — the very same value as "the rollback has been applied".
+   * `discardFailed` read that as "nothing owed" and deleted the row mid-round-trip; the drain's
+   * `catch` then wrote the undo back to a row that was gone (a Dexie `update` on a missing key is a
+   * silent no-op), and the rollback was lost. The destroyed envelopes stayed destroyed and the
+   * folder counts stayed short until the server happened to report that folder again.
+   */
+  it('refuses a discard while the drain holds the rollback, and keeps it owed when the drain fails', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { totalEmails: 1, unreadEmails: 1 })])
+    await putEmails(db, ACC, [email('e1', { keywords: {}, mailboxIds: { inbox: true } })])
+    await putEmails(db, ACC, [email('e2', { keywords: {}, mailboxIds: { inbox: true } })])
+    let releaseRefetch: (() => void) | undefined
+    let refetches = 0
+    const base = rejectingPort('forbidden')
+    const port: JmapPort = {
+      ...base,
+      getEmailEnvelopes: async () => {
+        refetches += 1
+        // Park the drain INSIDE `applyUndo`'s network round trip — the window the discard used to
+        // delete the row in — and fail once released.
+        await new Promise<void>((resolve) => {
+          releaseRefetch = resolve
+        })
+        throw new Error('offline')
+      },
+    }
+    const engine = await leaderWith(port)
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e1'], keyword: '$seen', value: true },
+      { id: 'i1' },
+    )
+    await waitFor(() => engine.getStatus().failedActions === 1)
+    // A dead letter that still OWES a rollback needing the network — the only state the drain acts on.
+    await db.outbox.update([ACC, 'i1'], { undo: { kind: 'refetchEmails', prunedKeys: [] } })
+
+    // Wake a replay pass: `drainOwedUndos` runs first and claims that rollback.
+    await engine.dispatch(
+      { kind: 'setKeywords', emailIds: ['e2'], keyword: '$seen', value: true },
+      { id: 'i2' },
+    )
+    await waitFor(() => refetches === 1)
+
+    // The click, landing exactly inside the round trip.
+    expect(await engine.discardFailed('i1')).toBe(false)
+    expect(await db.outbox.get([ACC, 'i1']), 'discarded out from under the drain').toBeDefined()
+
+    releaseRefetch?.()
+    await waitFor(async () => (await db.outbox.get([ACC, 'i1']))?.undo != null)
+    // The rollback survived: still listed as a problem, still owed, and claimable again.
+    const kept = await db.outbox.get([ACC, 'i1'])
+    expect(kept?.status).toBe('error')
+    expect(kept?.undo).not.toBeNull()
+    expect(kept?.undoClaimedAt ?? null).toBeNull()
+    await engine.stop()
+  })
+
   it('a transient delta failure does not starve the outbox (the replay still runs)', async () => {
     await putEmails(db, ACC, [email('e1', { keywords: {} })])
     const base = fakePort({ emails: [], setEmails: emptySet })
