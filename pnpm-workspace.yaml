@@ -19,6 +19,19 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
 
+# The Node version this repository's tests are known good on — `.nvmrc` and `engines.node` say 24,
+# and this is what makes `pnpm install` STOP on anything else instead of printing one `[WARN]` line
+# into the install noise and letting a newcomer discover the problem two minutes later, in the
+# middle of `pnpm verify`, from fifty red tests that never mention Node.
+#
+# HERE and not `.npmrc`, for the third time in this file: pnpm 11 reads its own settings from
+# pnpm-workspace.yaml and ignores `engine-strict=true` in `.npmrc` entirely — measured with
+# pnpm 11.1.1 against a manifest that could not possibly be satisfied. `.npmrc` gave a warning and
+# exit 0; this key gives ERR_PNPM_UNSUPPORTED_ENGINE and exit 1. `.npmrc` held nothing else and is
+# gone. `scripts/ci.mjs --check-node` stays as the second line of defence, because a checkout that
+# was installed on Node 24 and is later RUN on another major never passes through an install.
+engineStrict: true
+
 # Transitive security fixes (Dependabot alerts, 2026-08-18). Every one of these is a BUILD- or
 # TEST-time dependency — none reaches the browser bundle — but each target version sits INSIDE the
 # range its parent already declares, so these force a patch pnpm would otherwise leave alone rather

@@ -446,11 +446,12 @@ here, where a reader was going to look anyway.
 recommendation — and [pnpm](https://pnpm.io) ≥ 10 (`corepack enable` picks up the version pinned in
 `package.json`). `nvm use` is enough.
 
-This line used to say "≥ 22", which `engines` still allowed and which is how a newcomer ends up on
-Node 26: install succeeds, the dev server runs, and then `pnpm verify` fails **54 tests** with
-nothing in eighteen thousand lines of output mentioning the Node version. Node ≥ 25 defines a
-global `localStorage` that shadows jsdom's. `pnpm verify` now refuses to start on the wrong major
-and says so.
+This line used to say "≥ 22", and so did `engines` — which is how a newcomer ended up on Node 26:
+install succeeded, the dev server ran, and then `pnpm verify` failed **54 tests** with nothing in
+eighteen thousand lines of output mentioning the Node version. Node ≥ 25 defines a global
+`localStorage` that shadows jsdom's. Both ends are closed now: `engines.node` is `">=24 <25"` and
+`engineStrict: true` in `pnpm-workspace.yaml` makes `pnpm install` refuse the wrong major in a
+second, and `pnpm verify` refuses to start on it as well.
 
 ```sh
 pnpm install
@@ -487,10 +488,10 @@ so the local and hosted gates cannot drift apart.
 
 `pnpm gate` sequences those scripts and adds the three things a gate you run by hand cannot give you:
 
-- **A Node preflight.** `.nvmrc` pins 24 while `engines` says `>=22`, so a newer major satisfies the
-  manifest and still breaks the suite — on Node ≥ 25 a global `localStorage` shadows jsdom's and
-  ~22 tests fail for reasons unrelated to the code. The pipeline refuses to run rather than hand you
-  results you would have to distrust.
+- **A Node preflight.** The manifests and `pnpm install` reject the wrong major now, but a checkout
+  installed on 24 can still be RUN on another one, and nothing re-installs in between — on Node ≥ 25
+  a global `localStorage` shadows jsdom's and ~22 tests fail for reasons unrelated to the code. The
+  pipeline refuses to run rather than hand you results you would have to distrust.
 - **The `@waxwing/jmap` integration suites, actually run** (defect B22). They `describe.skipIf`
   themselves away when the fixture is unreachable, so a skip was indistinguishable from a pass; the
   stage brings a fixture up and then asserts nothing was skipped.

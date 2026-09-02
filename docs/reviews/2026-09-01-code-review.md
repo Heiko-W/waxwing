@@ -4091,7 +4091,12 @@ dompurify`. Gegenprüfung: bestätigt (belegt).
 
 ### R-107 — [LOW] `engines.node: ">=22"` lässt Node 22 und 26 installieren, die `check:node` dann verweigert — und das Manifest widerspricht der README
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Wie vorgeschlagen `">=24 <25"` in Root, `packages/jmap` und `packages/jscontact` (die
+übrigen drei Manifeste führen kein `engines`-Feld und erben die Install-Sperre des Roots).
+Zusammen mit R-112 stoppt `pnpm install` jetzt tatsächlich; die veralteten Sätze in `README.md`
+und `scripts/ci.mjs`, die `>=22` als geltend beschrieben, sind mitgezogen. Gepinnt von
+`scripts/toolchain.test.ts`.
 
 **Kategorie / Bereich:** maintainability / Infra
 
@@ -4244,7 +4249,11 @@ nicht gegen einen echten Proxy gemessen. Gegenprüfung: bestätigt.
 
 ### R-112 — [LOW] `engine-strict=true` in `.npmrc` wird von pnpm 11 nicht gelesen — die Einstellung ist wirkungslos
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`engineStrict: true` steht in `pnpm-workspace.yaml` neben `allowBuilds`/`overrides`, `.npmrc`
+ist gelöscht (sie enthielt nichts anderes), der Kommentar in `scripts/ci.mjs` ist korrigiert.
+Mechanismus vorher lokal nachgemessen: `.npmrc` -> Warnung und Exit 0, `pnpm-workspace.yaml` ->
+`ERR_PNPM_UNSUPPORTED_ENGINE` und Exit 1.
 
 **Kategorie / Bereich:** maintainability / Infra
 
