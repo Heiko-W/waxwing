@@ -1874,6 +1874,7 @@
       "allDay": "全天",
       "duration": "时长（分钟）",
       "durationInvalid": "请输入 1 到 {{max}} 分钟之间的时长。",
+      "zoneNote": "时间为 {{zone}} 时区",
       "calendar": "日历",
       "description": "备注",
       "location": "地点",

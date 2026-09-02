@@ -1949,6 +1949,7 @@
       "allDay": "Cały dzień",
       "duration": "Czas trwania w minutach",
       "durationInvalid": "Podaj czas trwania od 1 do {{max}} minut.",
+      "zoneNote": "Godziny w strefie {{zone}}",
       "calendar": "Kalendarz",
       "description": "Notatki",
       "location": "Miejsce",

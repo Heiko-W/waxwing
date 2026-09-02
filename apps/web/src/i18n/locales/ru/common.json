@@ -1949,6 +1949,7 @@
       "allDay": "Весь день",
       "duration": "Длительность в минутах",
       "durationInvalid": "Укажите длительность от 1 до {{max}} минут.",
+      "zoneNote": "Время в зоне {{zone}}",
       "calendar": "Календарь",
       "description": "Заметки",
       "location": "Место",

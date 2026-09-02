@@ -1899,6 +1899,7 @@
       "allDay": "Tüm gün",
       "duration": "Dakika cinsinden süre",
       "durationInvalid": "1 ile {{max}} dakika arasında bir süre girin.",
+      "zoneNote": "Saatler {{zone}} saat diliminde",
       "calendar": "Takvim",
       "description": "Notlar",
       "location": "Yer",

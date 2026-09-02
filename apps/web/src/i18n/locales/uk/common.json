@@ -1949,6 +1949,7 @@
       "allDay": "Увесь день",
       "duration": "Тривалість у хвилинах",
       "durationInvalid": "Введіть тривалість від 1 до {{max}} хвилин.",
+      "zoneNote": "Час у зоні {{zone}}",
       "calendar": "Календар",
       "description": "Нотатки",
       "location": "Місце",

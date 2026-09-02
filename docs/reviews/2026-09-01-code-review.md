@@ -250,7 +250,10 @@ Berichte: bestätigt, Severity high.
 
 ### R-04 — [HIGH] Jede Bearbeitung eines zeitgebundenen Termins überschreibt dessen Zeitzone mit der des Lesers und verschiebt ihn dadurch um Stunden
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt ueber den Dialog-State (Variante 1 des Loesungsansatzes) mit Zonenhinweis am Startfeld.
+Nicht ueber `draftToEvent`: `EventDraft.timeZone` ist ein Pflichtfeld, „nicht gesetzt“ waere dort
+nicht ausdrueckbar, ohne den Typ fuer alle Aufrufer zu lockern.
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 

@@ -1899,6 +1899,7 @@
       "allDay": "Ganztägig",
       "duration": "Dauer in Minuten",
       "durationInvalid": "Geben Sie eine Dauer zwischen 1 und {{max}} Minuten an.",
+      "zoneNote": "Zeiten in {{zone}}",
       "calendar": "Kalender",
       "description": "Notizen",
       "location": "Ort",

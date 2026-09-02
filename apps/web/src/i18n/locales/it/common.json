@@ -1931,6 +1931,7 @@
       "allDay": "Tutto il giorno",
       "duration": "Durata in minuti",
       "durationInvalid": "Inserisci una durata compresa tra 1 e {{max}} minuti.",
+      "zoneNote": "Orari nel fuso {{zone}}",
       "calendar": "Calendario",
       "description": "Note",
       "location": "Luogo",

@@ -1899,6 +1899,7 @@
       "allDay": "All day",
       "duration": "Length in minutes",
       "durationInvalid": "Enter a length between 1 and {{max}} minutes.",
+      "zoneNote": "Times are in {{zone}}",
       "calendar": "Calendar",
       "description": "Notes",
       "location": "Location",

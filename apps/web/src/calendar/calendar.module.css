@@ -456,6 +456,13 @@
   font-size: var(--waxwing-text-sm);
 }
 
+/* A quiet fact about the field above it — not an error, so it does not take the danger colour. */
+.fieldNote {
+  margin: 0;
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-sm);
+}
+
 .checkboxRow {
   display: flex;
   align-items: center;

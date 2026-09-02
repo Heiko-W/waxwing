@@ -1949,6 +1949,7 @@
       "allDay": "Celodenní",
       "duration": "Délka v minutách",
       "durationInvalid": "Zadejte délku mezi 1 a {{max}} minutami.",
+      "zoneNote": "Časy v pásmu {{zone}}",
       "calendar": "Kalendář",
       "description": "Poznámky",
       "location": "Místo",

@@ -1874,6 +1874,7 @@
       "allDay": "終日",
       "duration": "所要時間（分）",
       "durationInvalid": "1 分から {{max}} 分の間で入力してください。",
+      "zoneNote": "時刻は {{zone}} です",
       "calendar": "カレンダー",
       "description": "メモ",
       "location": "場所",

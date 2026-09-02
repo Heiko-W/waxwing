@@ -1931,6 +1931,7 @@
       "allDay": "Dia inteiro",
       "duration": "Duração em minutos",
       "durationInvalid": "Insira uma duração entre 1 e {{max}} minutos.",
+      "zoneNote": "Horas em {{zone}}",
       "calendar": "Calendário",
       "description": "Notas",
       "location": "Local",

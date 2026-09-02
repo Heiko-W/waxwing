@@ -1930,6 +1930,7 @@
       "allDay": "Todo el día",
       "duration": "Duración en minutos",
       "durationInvalid": "Introduzca una duración de entre 1 y {{max}} minutos.",
+      "zoneNote": "Horas en {{zone}}",
       "calendar": "Calendario",
       "description": "Notas",
       "location": "Lugar",
