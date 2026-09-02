@@ -170,6 +170,37 @@ describe('blob transfer — error responses', () => {
     await expect(client.upload('a', new Uint8Array([1, 2, 3]))).rejects.toThrow(JmapError)
   })
 
+  /**
+   * R-95. The 200 body was `as UploadResult`, which let three shapes through: an HTML error page
+   * behind a 200 threw a bare `SyntaxError` out of `response.json()`; `{}` produced
+   * `blobId: undefined`, which the attachment uploader carried into an `Email/set` that the server
+   * rejected much later with an `invalidProperties` never mentioning the upload; and `null` came
+   * back as `null` and became a `TypeError` in the caller. Same class as `getSession` and `postApi`
+   * — narrowed, not cast.
+   */
+  it('throws a JmapError when the upload response is not an upload descriptor', async () => {
+    const bodies = [
+      '<html>gateway</html>',
+      'null',
+      '{}',
+      '{"accountId":"a","blobId":"B","type":"text/plain"}', // size missing
+      '{"accountId":"a","blobId":42,"type":"text/plain","size":5}',
+      '[]',
+    ]
+    for (const body of bodies) {
+      const fetch: FetchLike = async () =>
+        new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+      const error = await client.upload('a', new Uint8Array([1])).then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect(error, body).toBeInstanceOf(JmapError)
+      expect(error, body).not.toBeInstanceOf(TypeError)
+      expect(error, body).not.toBeInstanceOf(SyntaxError)
+    }
+  })
+
   it('throws a JmapError when the download response is not ok', async () => {
     const fetch: FetchLike = async () => new Response('gone', { status: 404 })
     const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })

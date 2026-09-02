@@ -46,7 +46,11 @@ const JMAP_SUBPROTOCOL = 'jmap'
 export function getWebSocketCapability(
   session: Pick<Session, 'capabilities'>,
 ): WebSocketCapability | null {
-  const value = session.capabilities[WEBSOCKET_CAPABILITY]
+  // `?.` — see `getCoreCapability` in `session.ts`: `isSessionShape` deliberately does not require
+  // `capabilities`, so every probe must read it defensively or turn a workable session into a
+  // `TypeError`. Reached from `isEligible` in `channel.ts`, i.e. before any channel exists to
+  // report the failure on.
+  const value = session.capabilities?.[WEBSOCKET_CAPABILITY]
   if (typeof value !== 'object' || value === null) return null
   const cap = value as { url?: unknown; supportsPush?: unknown }
   if (typeof cap.url !== 'string') return null

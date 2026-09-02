@@ -3538,7 +3538,9 @@ Gegenprüfung: bestätigt, RFC-Stelle korrigiert.
 
 ### R-91 — [LOW] W-25 unvollständig: drei Sondierungen indizieren `session.capabilities`/`session.accounts` weiterhin ohne Schutz — beim Polling stirbt der Kanal still (vgl. W-25)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** `?.` an beiden Sondierungen wie vorgeschlagen; in `polling.ts` zusaetzlich `Object.keys(session.accounts ?? {})` UND der Rest von `tick()` nach dem Fetch in einen eigenen `try/catch` mit `reportClosed(toError(e))` — ein Wurf dort ist damit ein geschlossener Kanal, den die Reconnect-Schleife beantworten kann, statt einer unbehandelten Rejection, nach der `scheduleNext()` nie erreicht wird.
 
 **Kategorie / Bereich:** robustness / Lib (jmap)
 
@@ -3571,7 +3573,7 @@ genau ein Fetch, unhandled `TypeError`, nach allen Timern weiterhin ein Fetch. G
 
 ### R-92 — [LOW] `postApi` validiert die Hülle, nicht die Invocations: `methodResponses: [null]` wird zum `TypeError` (vgl. W-26)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Lib (jmap)
 
@@ -3669,7 +3671,7 @@ Delta-Legs; Replay-Anfragen dispatchter Zeilen weiterhin durchlaufen lassen (R-2
 
 ### R-95 — [LOW] `uploadBlob` castet die Serverantwort ungeprüft (`as UploadResult`) (vgl. W-26)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Lib (jmap)
 

@@ -368,6 +368,10 @@ describe('a session the server did not build properly', () => {
     expect(getCoreCapability(session)).toBeNull()
     expect(getMailCapability(session, 'a')).toBeNull()
     expect(getContactsCapability(session, 'a')).toBeNull()
+    // R-91: the W-25 pass fixed `session.ts` and left the push probes reading `capabilities[…]`
+    // raw. This one is on the notification path; `getWebSocketCapability` is covered in
+    // `push/websocket.test.ts`, and it is reached from `isEligible` before any channel exists.
+    expect(getWebPushVapidCapability(session)).toBeNull()
   })
 
   it('answers "not advertised" for an account without accountCapabilities', () => {

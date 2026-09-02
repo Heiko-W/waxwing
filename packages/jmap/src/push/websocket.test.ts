@@ -51,6 +51,15 @@ describe('getWebSocketCapability', () => {
   it('returns null when unadvertised', () => {
     expect(getWebSocketCapability({ capabilities: {} })).toBeNull()
   })
+
+  /**
+   * R-91. `isSessionShape` deliberately does not require `capabilities` (see `session.ts`), and the
+   * W-25 pass that made every probe read it with `?.` did not reach the push package. This one is
+   * called from `isEligible` in `channel.ts` — before any channel exists to report a failure on.
+   */
+  it('returns null for a session without capabilities at all, rather than throwing', () => {
+    expect(getWebSocketCapability({} as Parameters<typeof getWebSocketCapability>[0])).toBeNull()
+  })
 })
 
 describe('WebSocketChannel', () => {

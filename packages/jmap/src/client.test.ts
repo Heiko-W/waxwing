@@ -284,6 +284,54 @@ describe('JmapClient — malformed / oversized responses (F22)', () => {
     }
   })
 
+  /**
+   * R-92. The envelope check stopped at `Array.isArray(methodResponses)`, so an element that is not
+   * a `[name, args, callId]` triple reached `reassembleResponses` and threw a raw `TypeError` from
+   * `response[2]` — not a `JmapError`, so `classifyThrown` files it under `retry` and the sync
+   * layer keeps asking a server that will never answer differently. That retry loop is the exact
+   * thing the envelope check exists to close, one level up.
+   */
+  it('rejects an invocation that is not a [name, args, callId] triple', async () => {
+    const malformed = [
+      '{"methodResponses":[null],"sessionState":"s0"}',
+      '{"methodResponses":["Core/echo"],"sessionState":"s0"}',
+      '{"methodResponses":[["Core/echo"]],"sessionState":"s0"}',
+      '{"methodResponses":[["Core/echo",{},42]],"sessionState":"s0"}',
+      '{"methodResponses":[[42,{},"c0"]],"sessionState":"s0"}',
+      '{"methodResponses":[["Core/echo",{},"c0"],null],"sessionState":"s0"}',
+    ]
+    for (const body of malformed) {
+      const fetch: FetchLike = async () =>
+        new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+      const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+      const builder = client.request()
+      builder.call('Core/echo', {}, 'c0')
+      const error = await builder.send().then(
+        () => undefined,
+        (e: unknown) => e,
+      )
+      expect(error, body).toBeInstanceOf(JmapError)
+      expect(error, body).not.toBeInstanceOf(TypeError)
+    }
+  })
+
+  it('still accepts an invocation whose arguments it knows nothing about', async () => {
+    // Only the TUPLE is checked. Slot 1 is the method's business, and a strict check there would
+    // reject a server returning something newer than this library knows.
+    const fetch: FetchLike = async () =>
+      new Response(
+        '{"methodResponses":[["Core/echo",{"whatIsThis":[1,2]},"c0"]],"sessionState":"s"}',
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      )
+    const client = new JmapClient({ session: makeSession(), auth: bearer('t'), fetch })
+    const builder = client.request()
+    builder.call('Core/echo', {}, 'c0')
+    await expect(builder.send()).resolves.toBeDefined()
+  })
+
   it('accumulates a response array far larger than the spread-argument limit', async () => {
     // `push(...methodResponses)` passes one argument per element and blows the call stack somewhere
     // above ~125k. A server can put the whole account in one /get response, so this is reachable

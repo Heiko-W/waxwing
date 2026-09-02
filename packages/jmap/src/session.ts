@@ -314,7 +314,12 @@ function isContactsCapability(value: unknown): value is ContactsCapability {
  * so a stock server does advertise it; most other JMAP servers do not.
  */
 export function getWebPushVapidCapability(session: Session): WebPushVapidCapability | null {
-  const value = session.capabilities[Capabilities.webPushVapid]
+  // `?.`, for the reason `getCoreCapability` gives: `capabilities` is REQUIRED by RFC 8620 §2 and
+  // `isSessionShape` still does not insist on it, because a session without it is workable and a
+  // probe that answers "not advertised" is a better outcome than refusing to connect. This one was
+  // missed when that decision was taken, and it is read on the notification path — a session
+  // without `capabilities` threw a `TypeError` where the caller expected `null`.
+  const value = session.capabilities?.[Capabilities.webPushVapid]
   return isWebPushVapidCapability(value) ? value : null
 }
 
