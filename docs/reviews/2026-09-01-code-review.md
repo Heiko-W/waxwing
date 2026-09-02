@@ -926,7 +926,12 @@ components; delete base.full`.
 
 ### R-20 — [MEDIUM] Die Kontaktliste sortiert bei jedem Replica-Write und beim Tippen mit `localeCompare` und rechnet den Anzeigenamen pro Vergleich neu — 5 000 Kontakte kosten ~220 ms pro Sortierung
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt wie vorgeschlagen: modulweiter `Intl.Collator` und ein Sortierschlüssel je Karte
+(`sortByDisplayName` in `contact-fields.ts`), die sortierte Basisliste memoisiert am Fenster statt
+am Suchtext. Messung (Node 24, 5 000 synthetische Karten, `TZ=America/New_York`): vorher
+189,6–266,0 ms, nachher 10,7–16,8 ms. Bewusste Verhaltensänderung: der Collator sortiert `numeric`,
+also „Scan 2" vor „Scan 10" — dieselbe Zusage, die die Dateiliste bereits macht.
 
 **Kategorie / Bereich:** performance / PIM (Kontakte)
 
@@ -958,7 +963,21 @@ Skriptwert, keine Schätzung.
 
 ### R-21 — [MEDIUM] Die Volltabellen-Live-Query über `contactCards` (inklusive eingebetteter Fotos) läuft bei jedem Write komplett neu — im Kontakte-Screen, in der Absenderkarte und je offenem Composer-Fenster
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+**Teilweise umgesetzt.** Behoben ist die Vervielfachung: `contactCards` hat jetzt EINE geteilte
+Subscription je Konto (`sync/contact-card-store.ts`, Muster `mailbox-store.ts` aus B10/ADR-035),
+die Kontakte-Screen, Absenderkarte und jedes Composer-Fenster gemeinsam lesen — statt einer Query
+je Verbraucher. Ein Schreibvorgang kostet damit einen Vollscan statt bis zu fünf (Regressionstest
+zählt: drei Verbraucher, ein `where`-Aufruf, plus genau einer je Write).
+NICHT umgesetzt: die Schema-Migration, die `media` aus der Karte auslagert, und der
+`*emails`-Index für die Absenderkarte. Begründung: beide brauchen einen Version-Bump dieser
+Datenbank, deren `.upgrade()`-Kette einbahnig ist — ein abgebrochener Upgrade lässt `db.open()`
+dauerhaft ablehnen, die App startet dann nicht mehr (Modulkopf `sync/db.ts`). Der gemessene
+Einzelscan bleibt damit teuer: 3 000 Karten, 1 000 mit 85-KB-Foto → 153 ms pro Lesevorgang
+(fake-indexeddb, Node 24) — vorher dasselbe mal Anzahl der offenen Verbraucher.
+Ebenfalls nicht umgesetzt: die Bündelung der Import-Enqueues (`ContactImportExportDialog`), weil
+die Schleife Fortschrittsanzeige und Abbrechen je Karte trägt und ein `bulkAdd` beides aufgäbe.
+Beides bleibt als Rest offen — siehe Rückbericht.
 
 **Kategorie / Bereich:** performance / PIM (Kontakte) + Compose
 

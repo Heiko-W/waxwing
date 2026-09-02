@@ -108,6 +108,7 @@ export {
   useCalendarWindow,
   useContactCard,
   useContactCardResolved,
+  useContactCards,
   useContactWindow,
   useEmail,
   useEmailBody,

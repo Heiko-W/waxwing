@@ -1053,6 +1053,16 @@ export function contactCardsByIds(
   return db.contactCards.bulkGet(ids.map((id) => [accountId, id]))
 }
 
+/**
+ * Every contact card of an account (individuals AND groups) — what the shared subscription reads.
+ *
+ * One place, so the ONE query in `contact-card-store.ts` and any future caller ask the same
+ * question of the same index rather than spelling the `where('accountId')` chain out again.
+ */
+export function contactCardsForAccount(db: ReplicaDb, accountId: Id): Promise<ContactCardRow[]> {
+  return db.contactCards.where('accountId').equals(accountId).toArray()
+}
+
 /** All cards in an address book (offline filtering / counts) via the account-scoped membership index. */
 export function contactCardsInBook(
   db: ReplicaDb,

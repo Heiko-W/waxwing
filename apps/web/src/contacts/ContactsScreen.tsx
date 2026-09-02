@@ -22,7 +22,13 @@ import { contactsPath, useNavigate, useRoute } from '../app/route'
 import { computePaneLayout, useLayoutTier } from '../app/shell/layout'
 import { ScreenBar } from '../app/shell/ScreenBar'
 import shellStyles from '../app/shell/shell.module.css'
-import { type AddressBookRow, type ContactCardRow, useAddressBooks, useContactCard } from '../sync'
+import {
+  type AddressBookRow,
+  type ContactCardRow,
+  useAddressBooks,
+  useContactCard,
+  useContactCards,
+} from '../sync'
 import { Button, IconButton, SplitPane } from '../ui'
 import { AddressBookList } from './AddressBookList'
 import { ContactDetail } from './ContactDetail'
@@ -36,12 +42,7 @@ import { GroupForm, type GroupFormSubmit } from './GroupForm'
 import { GroupRail } from './GroupRail'
 import { GroupView } from './GroupView'
 import { useContactActions } from './use-contact-actions'
-import {
-  resolveMembers,
-  selectGroups,
-  selectMemberCandidates,
-  useAccountContactCards,
-} from './use-contact-groups'
+import { resolveMembers, selectGroups, selectMemberCandidates } from './use-contact-groups'
 
 // The import/export dialog (and, transitively, only via `contact-io`'s dynamic import, the jscontact
 // conversion runtime in a chunk of its OWN) is loaded on demand — nobody opens it on the way to
@@ -127,7 +128,7 @@ export function ContactsScreen() {
     setGroupEditor(null)
   }, [cardId])
 
-  const allCards = useAccountContactCards()
+  const allCards = useContactCards()
   const groups = useMemo(
     () => (allCards === undefined ? undefined : selectGroups(allCards, bookId)),
     [allCards, bookId],

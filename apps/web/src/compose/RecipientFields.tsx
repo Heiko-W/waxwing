@@ -5,12 +5,11 @@
  * available; a "did you mean …?" hint appears under To for a domain typo in the last address.
  */
 
-import { useLiveQuery } from 'dexie-react-hooks'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
 import { currentUserPrincipalId } from '../sharing/principals'
-import { type ContactCardRow, useReplicaOptional } from '../sync'
+import { useContactCards, useReplicaOptional } from '../sync'
 import { Button } from '../ui'
 import {
   type AddressField,
@@ -57,18 +56,19 @@ export function RecipientFields({
   const replica = useReplicaOptional()
   const connected = useSessionOptional()
 
-  // The account's contact cards, provider-SAFE (mirrors `useLocalPrefOptional`): the composer is
-  // unit-tested WITHOUT a `ReplicaProvider`, where the throwing `useAccountContactCards` (M4.2) would
-  // crash it. `undefined` while the first query resolves OR when there is no replica — the source then
-  // falls back to recents only, never a blank/broken field. Deps are the stable db+accountId, so a
-  // keystroke does not re-run this and a `contactCards` write is the ONLY thing that re-emits.
-  const cards = useLiveQuery<ContactCardRow[] | undefined>(
-    () =>
-      replica === null
-        ? Promise.resolve(undefined)
-        : replica.db.contactCards.where('accountId').equals(replica.accountId).toArray(),
-    [replica?.db, replica?.accountId],
-  )
+  /*
+   * The account's contact cards, from the app's ONE `contactCards` subscription (R-21).
+   *
+   * This used to be a `useLiveQuery` of its own — provider-safe by hand, because the composer is
+   * unit-tested WITHOUT a `ReplicaProvider` and the contacts hook of the day threw there. Up to
+   * three composer windows can be open, so a card write re-read the whole table (photos included)
+   * once per window, plus once more for an open contacts screen. `useContactCards` is
+   * provider-optional for the same reason the copy was, and shared.
+   *
+   * `undefined` while the first query resolves OR when there is no replica — the source then falls
+   * back to recents only, never a blank/broken field.
+   */
+  const cards = useContactCards()
 
   const source = useMemo<RecipientSuggestionSource>(() => {
     if (suggestionSource !== undefined) return suggestionSource

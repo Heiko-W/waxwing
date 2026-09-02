@@ -11,6 +11,7 @@
 import type { Id } from '@waxwing/jmap'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react'
+import { useSharedContactCards } from './contact-card-store'
 import {
   type AddressBookRow,
   type CalendarEventRow,
@@ -214,6 +215,25 @@ export function useThread(id: Id) {
 /** The contact-source tree: all address books for the account, ordered (M4.2). */
 export function useAddressBooks(): AddressBookRow[] | undefined {
   return useReplicaQuery(({ db, accountId }) => addressBooksForAccount(db, accountId))
+}
+
+/**
+ * Every contact card of the account (individuals AND groups) — the source three unrelated surfaces
+ * share: the contacts screen, the mail reading pane's sender card, and each composer's recipient
+ * suggestions.
+ *
+ * Reads THE shared subscription (R-21, `contact-card-store.ts`), not a `liveQuery` of its own. A
+ * contact card carries its photo inline, so a whole-table read is expensive, and there used to be
+ * one per consumer — up to five at a time, every one of them re-running on every `contactCards`
+ * write.
+ *
+ * Provider-OPTIONAL, and that is what lets the composer use it: `RecipientFields` is unit-tested
+ * without a `ReplicaProvider` and kept a hand-rolled copy of this query for exactly that reason.
+ * `undefined` means "not known yet" here as everywhere — including "there is no replica".
+ */
+export function useContactCards(): ContactCardRow[] | undefined {
+  const context = useReplicaOptional()
+  return useSharedContactCards(context?.db ?? null, context?.accountId ?? null)
 }
 
 /**
