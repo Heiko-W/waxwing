@@ -3603,7 +3603,9 @@ response for method call "c0"`. Gegenprüfung: bestätigt, Fundstellen korrigier
 
 ### R-93 — [LOW] Zwei Tests belegen nicht, was ihr Name verspricht (`blob.test.ts` „no streaming“, `timeout.test.ts` Fake-Timer) (vgl. W-11, W-16)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** (a) Der Blob-Test ist umbenannt und beweist jetzt, dass der Streaming-Zweig genommen wird (`arrayBuffer` durch einen Zaehler ersetzt, statt nur beobachtet) — dazu ein Test, dass die Obergrenze auch OHNE `onProgress` greift und den Reader abbricht, und einer, der den `arrayBuffer`-Fallback fuer eine Response ohne `body` abdeckt. (b) `vi.useFakeTimers()` entfernt statt `AbortSignal.timeout` zu stubben: die 50-ms-Frist wird explizit uebergeben, der Test ist damit ehrlich schnell statt scheinbar gesteuert. (c) `jmapPostMock` zeichnet `init.signal` auf; `timeout.test.ts` nutzt jetzt den geteilten Mock statt eigener.
 
 **Kategorie / Bereich:** tests / Lib (jmap)
 
@@ -3736,7 +3738,9 @@ aber nie und nichts sagt warum. Seltene Eingabe.
 
 ### R-97 — [LOW] `postApi` hat seinen Docblock verloren — er hängt seit dem W-16-Commit vor `DEFAULT_REQUEST_TIMEOUT_MS` (vgl. W-16)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Der Block ist verschoben wie vorgeschlagen; zusaetzlich haelt `transport.source.test.ts` die Platzierung fest — ein reiner Kommentarfehler ist zur Laufzeit unsichtbar und wandert beim naechsten Einschub genauso wieder weg.
 
 **Kategorie / Bereich:** maintainability / Lib (jmap)
 

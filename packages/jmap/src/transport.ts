@@ -31,16 +31,6 @@ export function resolveFetch(fetchImpl?: FetchLike): FetchLike {
 }
 
 /**
- * POSTs a JMAP {@link JmapRequest} to `apiUrl` and parses the {@link JmapResponse}.
- * Maps HTTP failures to typed errors (RFC 8620 §3.6.1) via {@link errorFromResponse}.
- *
- * The parsed body is narrowed rather than cast: a 200 whose JSON is `null`, a bare array, or
- * `{ methodResponses: null }` used to sail through the `as` and only blow up in the caller, as a
- * `TypeError` from `push(...response.methodResponses)` — which the sync layer classifies as
- * TRANSIENT and therefore RETRIES, hammering a server that will never answer differently. A
- * {@link JmapError} says what is actually wrong, once.
- */
-/**
  * How long one JMAP request may take before it is abandoned.
  *
  * There was no timeout at all, and `fetch` has none of its own: a socket the server accepts and
@@ -71,6 +61,22 @@ function withDeadline(signal: AbortSignal | undefined, timeoutMs: number): Abort
   return AbortSignal.any([signal, deadline])
 }
 
+/**
+ * POSTs a JMAP {@link JmapRequest} to `apiUrl` and parses the {@link JmapResponse}.
+ * Maps HTTP failures to typed errors (RFC 8620 §3.6.1) via {@link errorFromResponse}.
+ *
+ * The parsed body is narrowed rather than cast: a 200 whose JSON is `null`, a bare array, or
+ * `{ methodResponses: null }` used to sail through the `as` and only blow up in the caller, as a
+ * `TypeError` from `push(...response.methodResponses)` — which the sync layer classifies as
+ * TRANSIENT and therefore RETRIES, hammering a server that will never answer differently. A
+ * {@link JmapError} says what is actually wrong, once.
+ *
+ * (This block sat in front of `DEFAULT_REQUEST_TIMEOUT_MS` from the W-16 commit until R-97, because
+ * the constant and `withDeadline` were inserted between it and the function. Two doc comments in a
+ * row attach only the NEAREST one to a symbol, so the reasoning for the narrowing — the class R-92
+ * and R-95 both point at — was invisible on hover at the function it is about, and the constant
+ * looked as though it were documented as an HTTP POST. Pinned by `transport.source.test.ts`.)
+ */
 export async function postApi(
   apiUrl: string,
   request: JmapRequest,
