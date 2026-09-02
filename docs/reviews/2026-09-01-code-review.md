@@ -696,7 +696,7 @@ mit identischem Inhalt dispatcht erneut. Gegenprüfung: bestätigt.
 
 ### R-13 — [MEDIUM] `mailto:` dekodiert `+` als Leerzeichen — Subadressen (`bill+ietf@example.org`) werden zu ungültigen Empfängern
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -732,7 +732,11 @@ ergänzen.
 
 ### R-14 — [MEDIUM] Enter/Komma während einer IME-Komposition committet den halbfertigen Text als Adresse
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Guard inline in `onInputKeyDown` mit demselben Vergleichspaar wie `shortcuts/keys.ts:55`.
+Die gemeinsame Hilfsfunktion `isComposingKey`, die der R-40-Block anlegt, liegt auf einem anderen
+Branch und ist hier noch nicht importierbar; nach dem Merge beider Branches kann diese Stelle
+darauf umgestellt werden.
 
 **Kategorie / Bereich:** a11y, i18n / Compose
 
@@ -2327,7 +2331,7 @@ Replica so auflösen wie der Composer (`getActiveReplica()`).
 
 ### R-53 — [LOW] `oversized` zählt fehlgeschlagene Uploads mit — ein Fehl-Chip sperrt Senden (und weiteres Anhängen) mit dem Label „zu groß“, entgegen dem Kommentar in `ComposerWindow`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -2356,7 +2360,9 @@ abgewiesen, obwohl nur 20 MB gesendet würden.
 
 ### R-54 — [LOW] `classifyUploadError` macht aus einem HTTP-400-Problem-Dokument jeden Typs ein `tooLarge` — falscher Toast, Retry ausgeblendet
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt als `type === limit || status === 413`; jede andere 400 ist jetzt `server` (mit Retry).
+Der Test, der `{type:"other", status:400} → tooLarge` gepinnt hat, ist entsprechend ersetzt.
 
 **Kategorie / Bereich:** robustness / Compose
 
@@ -2387,7 +2393,7 @@ abgeschwächt, Severity bleibt low.
 
 ### R-55 — [LOW] `ScheduledSends.cancel` hat kein `catch`: bei Netzwerkfehler keine Rückmeldung, unbehandelte Rejection
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Compose (Outbox)
 
@@ -2412,7 +2418,10 @@ nicht.
 
 ### R-56 — [LOW] Eine verspätete, leere lokale Antwort schließt die Vorschlagsliste, obwohl Directory-Treffer vorliegen — und sie bleibt bis zum nächsten Tastendruck zu
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Zusaetzlich zum Loesungsansatz: der Outside-Press vermerkt das Schliessen jetzt ebenfalls in
+`dismissedFor`. Ohne das koennte eine noch laufende Query die Liste nach einem Klick daneben wieder
+oeffnen, weil `open` nun aus `suggestions` folgt.
 
 **Kategorie / Bereich:** react / Compose
 
@@ -2441,7 +2450,10 @@ Effekt auf `suggestions`), statt es aus einer einzelnen Query zu setzen.
 
 ### R-57 — [LOW] `maxSizeAttachmentsPerEmail` wird ungeprüft übernommen — `0` sperrt jeden Anhang und jeden Versand mit Anhang (vgl. W-28)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt als `usableOrNull` neben `usable` (`packages/jmap/src/chunking.ts`), angewendet in
+`use-attachment-upload.ts`. Bewusst NICHT in `isMailCapability`: dort wuerde ein einzelnes
+unbrauchbares Feld die ganze Capability verwerfen und `emailQuerySortOptions` mitnehmen.
 
 **Kategorie / Bereich:** robustness / Compose + Lib (jmap)
 
@@ -2473,7 +2485,9 @@ Entwurf mit Anhang ⇒ Send gesperrt mit `formatBytes(0)`-Toast.
 
 ### R-58 — [LOW] `htmlToPlainText` kollabiert Zeilenumbrüche in `<pre>` und fügt zwischen Tabellenzellen keinen Trenner ein
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Trenner fuer `TD`/`TH` ist ein Tabulator. `normalize` bleibt unveraendert, deshalb kappt es auch
+in einem `<pre>` weiterhin Leerzeilenlaeufe auf eine und schneidet Leerzeichen am Zeilenende ab.
 
 **Kategorie / Bereich:** correctness / Compose
 

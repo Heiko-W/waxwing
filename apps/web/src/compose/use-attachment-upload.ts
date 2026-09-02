@@ -17,6 +17,7 @@ import {
   getMailCapability,
   type JmapClient,
   usable,
+  usableOrNull,
 } from '@waxwing/jmap'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -166,7 +167,11 @@ export function useAttachmentUpload(
       jmapSession && session ? getMailCapability(jmapSession, session.accountId) : null
     return {
       maxSizeUpload,
-      maxSizeAttachmentsPerEmail: mailCap?.maxSizeAttachmentsPerEmail ?? null,
+      // `usableOrNull`, not `??`, for the same reason as the line above: a `0`, `-1` or `NaN` out
+      // of a server's JSON is not a limit anyone can honour. `0` refused every file with a
+      // `formatBytes(0)` toast and greyed out Send for any draft with an attachment; `NaN` turned
+      // the check off without saying so. Absent (or unusable) means unlimited here (R-57).
+      maxSizeAttachmentsPerEmail: usableOrNull(mailCap?.maxSizeAttachmentsPerEmail),
     }
   }, [options?.limits, session])
 

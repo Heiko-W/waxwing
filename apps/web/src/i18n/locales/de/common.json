@@ -1591,6 +1591,7 @@
       "loading": "Wird geladen…",
       "empty": "Nichts geplant.",
       "loadFailed": "Die geplanten Nachrichten konnten nicht geladen werden.",
+      "cancelFailed": "Der Versand konnte nicht abgebrochen werden. Die Nachricht geht möglicherweise trotzdem raus.",
       "willSend": "Sendet {{when}}",
       "cancel": "Senden abbrechen",
       "cancelled": "Senden abgebrochen",

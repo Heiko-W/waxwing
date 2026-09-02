@@ -1622,6 +1622,7 @@
       "loading": "Cargando…",
       "empty": "No hay nada programado.",
       "loadFailed": "No se pudieron cargar los mensajes programados.",
+      "cancelFailed": "No se pudo cancelar el envío. Puede que el mensaje se envíe igualmente.",
       "willSend": "Se envía {{when}}",
       "cancel": "Cancelar el envío",
       "cancelled": "Envío cancelado",

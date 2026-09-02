@@ -67,6 +67,13 @@ export function ScheduledSends(props: ScheduledSendsProps) {
       // asked for in the first place. Saying so plainly beats an error the user cannot act on.
       toast({ title: cancelled ? t('outbox.scheduled.cancelled') : t('outbox.scheduled.tooLate') })
       await load()
+    } catch {
+      // A refused cancel and an unreachable server are DIFFERENT answers, and only the first one
+      // was ever spoken. Without this the spinner just stopped: the row stayed, no toast, and the
+      // reader was left not knowing whether the message is still going out (R-55). `load()` is not
+      // retried here — the same transport just failed, and its own failure path already owns the
+      // "could not be loaded" line.
+      toast({ tone: 'danger', title: t('outbox.scheduled.cancelFailed') })
     } finally {
       setBusy(null)
     }

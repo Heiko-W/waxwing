@@ -15,7 +15,7 @@ const limits = (over: Partial<ValidationLimits> = {}): ValidationLimits => ({
   ...over,
 })
 
-const upload = (size: number): UploadItem => ({
+const upload = (size: number, status: UploadItem['status'] = 'uploading'): UploadItem => ({
   tempId: 't',
   name: 'a',
   type: 'image/png',
@@ -23,7 +23,7 @@ const upload = (size: number): UploadItem => ({
   inline: false,
   cid: null,
   previewUrl: null,
-  status: 'uploading',
+  status,
   progress: 0,
   error: null,
 })
@@ -50,6 +50,14 @@ describe('totalAttachmentBytes', () => {
   it('sums uploaded attachments and in-flight uploads', () => {
     expect(totalAttachmentBytes([{ size: 100 }, { size: 200 }], [upload(50), upload(25)])).toBe(375)
   })
+
+  it('leaves a failed upload out of the sum', () => {
+    // A chip that errored carries no blob and will never be part of the message. Counted, it took
+    // the draft over the cap: Send went grey under "Attachments too large" and every further file
+    // was refused as oversized, for bytes nobody was sending (R-53).
+    expect(totalAttachmentBytes([{ size: 20 }], [upload(10, 'error')])).toBe(20)
+    expect(totalAttachmentBytes([{ size: 20 }], [upload(10, 'error'), upload(5)])).toBe(25)
+  })
 })
 
 describe('classifyUploadError', () => {
@@ -58,13 +66,26 @@ describe('classifyUploadError', () => {
     expect(classifyUploadError(err)).toEqual({ code: 'quota', retryAfterMs: 60_000 })
   })
 
-  it('maps a limit / 400 problem to tooLarge', () => {
+  it('maps the limit problem type and a 413 to tooLarge', () => {
+    // The size signal is `urn:ietf:params:jmap:error:limit` (RFC 8620 §3.6.1) — or HTTP 413, the
+    // same statement one layer down. Not "any 400".
     expect(classifyUploadError(new JmapProblemError({ type: ProblemTypes.limit }, 400))).toEqual({
       code: 'tooLarge',
     })
-    expect(classifyUploadError(new JmapProblemError({ type: 'other', status: 400 }, 400))).toEqual({
+    expect(classifyUploadError(new JmapProblemError({ type: 'other', status: 413 }, 413))).toEqual({
       code: 'tooLarge',
     })
+  })
+
+  it('maps a 400 problem of any other type to server, so Retry stays offered', () => {
+    // `notRequest`, `notJSON` or anything server-specific used to say "this file is too large,
+    // max 25 MB" about a 100 KB file — and `AttachmentChips` hides Retry for `tooLarge`, so the
+    // only way on was to remove the chip and attach the file again (R-54).
+    for (const type of ['urn:ietf:params:jmap:error:notRequest', 'urn:example:broken']) {
+      expect(classifyUploadError(new JmapProblemError({ type, status: 400 }, 400))).toEqual({
+        code: 'server',
+      })
+    }
   })
 
   it('maps an aborted transfer, a network TypeError, and anything else', () => {

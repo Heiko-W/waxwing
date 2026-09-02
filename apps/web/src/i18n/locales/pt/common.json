@@ -1623,6 +1623,7 @@
       "loading": "A carregar…",
       "empty": "Não há nada agendado.",
       "loadFailed": "Não foi possível carregar as mensagens agendadas.",
+      "cancelFailed": "Não foi possível cancelar o envio. A mensagem pode ser enviada mesmo assim.",
       "willSend": "É enviada {{when}}",
       "cancel": "Cancelar o envio",
       "cancelled": "Envio cancelado",

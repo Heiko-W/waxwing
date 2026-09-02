@@ -1591,6 +1591,7 @@
       "loading": "Yükleniyor…",
       "empty": "Zamanlanmış bir şey yok.",
       "loadFailed": "Zamanlanmış iletiler yüklenemedi.",
+      "cancelFailed": "Gönderme iptal edilemedi. İleti yine de gönderilebilir.",
       "willSend": "Gönderilecek: {{when}}",
       "cancel": "Göndermeyi iptal et",
       "cancelled": "Gönderme iptal edildi",

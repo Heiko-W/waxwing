@@ -1641,6 +1641,7 @@
       "loading": "Wczytywanie…",
       "empty": "Nic nie jest zaplanowane.",
       "loadFailed": "Nie udało się wczytać zaplanowanych wiadomości.",
+      "cancelFailed": "Nie udało się anulować wysyłania. Wiadomość może mimo to zostać wysłana.",
       "willSend": "Wysyłka {{when}}",
       "cancel": "Anuluj wysyłanie",
       "cancelled": "Anulowano wysyłanie",

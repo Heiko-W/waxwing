@@ -1591,6 +1591,7 @@
       "loading": "Loading…",
       "empty": "Nothing scheduled.",
       "loadFailed": "The scheduled messages could not be loaded.",
+      "cancelFailed": "The send could not be canceled. The message may still go out.",
       "willSend": "Sends {{when}}",
       "cancel": "Cancel send",
       "cancelled": "Send canceled",

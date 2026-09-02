@@ -2,6 +2,9 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { JmapProblemError } from '@waxwing/jmap'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SessionContext } from '../app/session/context'
+import { fakeJmapClient, fakeJmapSession } from '../app/session/test-fakes'
+import type { SessionContextValue } from '../app/session/types'
 import { ToastProvider } from '../ui'
 import type { BlobUploader, ValidationLimits } from './attachment-upload'
 import { useComposerStore } from './composer-store'
@@ -19,6 +22,43 @@ function wrapper({ children }: { children: ReactNode }) {
 
 function mount(draftId: string, options: UseAttachmentUploadOptions) {
   return renderHook(() => useAttachmentUpload(draftId, options), { wrapper })
+}
+
+const MAIL_URN = 'urn:ietf:params:jmap:mail'
+
+/**
+ * The hook with a real session behind it — i.e. WITHOUT the `limits` override, so the caps come
+ * from the server's capability objects the way they do in the app.
+ */
+function mountWithSession(
+  draftId: string,
+  mailCapability: Record<string, unknown>,
+  options: UseAttachmentUploadOptions,
+) {
+  const jmapSession = fakeJmapSession('acc-1', 'alice@waxwing.test', {
+    accountCapabilities: { [MAIL_URN]: mailCapability },
+  })
+  const value = {
+    status: 'ready',
+    onboarding: null,
+    reauth: null,
+    connected: {
+      client: fakeJmapClient(jmapSession),
+      jmapSession,
+      accountId: 'acc-1',
+      accounts: [],
+      delegated: [],
+      username: 'alice@waxwing.test',
+      method: 'basic',
+    },
+  } as unknown as SessionContextValue
+  return renderHook(() => useAttachmentUpload(draftId, options), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <SessionContext.Provider value={value}>
+        <ToastProvider>{children}</ToastProvider>
+      </SessionContext.Provider>
+    ),
+  })
 }
 
 function pngFile(name = 'a.png', size = 10): File {
@@ -156,6 +196,74 @@ describe('useAttachmentUpload', () => {
     const id = useComposerStore.getState().openDraft()
     const { result } = mount(id, {})
     expect(result.current.canUpload).toBe(false)
+  })
+
+  /**
+   * R-53: a chip that FAILED carries no blob and will never be part of the message. It was still
+   * counted against the per-email cap, so one dead upload put the draft "over the limit": Send went
+   * grey under "Attachments too large" and every further file was refused as oversized — for bytes
+   * nobody was sending.
+   */
+  it('a failed upload neither blocks Send nor refuses the next file', async () => {
+    const id = useComposerStore.getState().openDraft()
+    const tight: ValidationLimits = { maxSizeUpload: 1000, maxSizeAttachmentsPerEmail: 25 }
+    const uploader = vi.fn(async (file: Blob) => {
+      if ((file as File).name === 'dead.png') throw new TypeError('fetch failed')
+      return { blobId: 'ok', type: 'image/png', size: (file as File).size }
+    }) as unknown as BlobUploader
+    const { result } = mount(id, { uploader, limits: tight })
+
+    result.current.addFiles([pngFile('dead.png', 20)], 'attach')
+    await waitFor(() =>
+      expect(useComposerStore.getState().uploads.get(id)?.[0]?.status).toBe('error'),
+    )
+    expect(result.current.oversized).toBe(false)
+
+    // 0 real bytes + 10 incoming is under the 25-byte cap; counting the dead 20 made it 30.
+    result.current.addFiles([pngFile('next.png', 10)], 'attach')
+    await waitFor(() =>
+      expect(useComposerStore.getState().drafts.get(id)?.attachments).toHaveLength(1),
+    )
+  })
+
+  /**
+   * R-57: `maxSizeAttachmentsPerEmail` is a server's JSON. Read with `??` — which only replaces
+   * `null`/`undefined` — a `0` became a real cap: every file was refused as `totalTooLarge` and
+   * `oversized` greyed out Send for any draft with an attachment. Same class as W-28.
+   */
+  it('ignores an unusable maxSizeAttachmentsPerEmail from the session', async () => {
+    for (const cap of [0, -1, Number.NaN]) {
+      useComposerStore.setState({ drafts: new Map(), focusedId: undefined, uploads: new Map() })
+      const id = useComposerStore.getState().openDraft()
+      const { result, unmount } = mountWithSession(
+        id,
+        { maxSizeAttachmentsPerEmail: cap, emailQuerySortOptions: [] },
+        { uploader: okUploader('fine') },
+      )
+      result.current.addFiles([pngFile('a.png', 10)], 'attach')
+      await waitFor(() =>
+        expect(useComposerStore.getState().drafts.get(id)?.attachments, String(cap)).toHaveLength(
+          1,
+        ),
+      )
+      expect(result.current.oversized, String(cap)).toBe(false)
+      unmount()
+    }
+  })
+
+  it('still honours a maxSizeAttachmentsPerEmail the server can mean', async () => {
+    // The guard is a guard, not a bypass: a real cap of 5 bytes still refuses a 10-byte file.
+    const id = useComposerStore.getState().openDraft()
+    const uploader = okUploader('nope')
+    const { result } = mountWithSession(
+      id,
+      { maxSizeAttachmentsPerEmail: 5, emailQuerySortOptions: [] },
+      { uploader },
+    )
+    result.current.addFiles([pngFile('a.png', 10)], 'attach')
+    await Promise.resolve()
+    expect(uploader).not.toHaveBeenCalled()
+    expect(useComposerStore.getState().drafts.get(id)?.attachments ?? []).toHaveLength(0)
   })
 
   /**

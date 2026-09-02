@@ -1641,6 +1641,7 @@
       "loading": "Načítání…",
       "empty": "Nic naplánovaného.",
       "loadFailed": "Naplánované zprávy se nepodařilo načíst.",
+      "cancelFailed": "Odeslání se nepodařilo zrušit. Zpráva možná stále odejde.",
       "willSend": "Odešle se {{when}}",
       "cancel": "Zrušit odeslání",
       "cancelled": "Odesílání zrušeno",

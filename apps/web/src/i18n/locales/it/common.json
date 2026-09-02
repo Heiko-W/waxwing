@@ -1623,6 +1623,7 @@
       "loading": "Caricamento…",
       "empty": "Nessun messaggio programmato.",
       "loadFailed": "Non è stato possibile caricare i messaggi programmati.",
+      "cancelFailed": "Non è stato possibile annullare l’invio. Il messaggio potrebbe partire comunque.",
       "willSend": "Parte {{when}}",
       "cancel": "Annulla l’invio",
       "cancelled": "Invio annullato",

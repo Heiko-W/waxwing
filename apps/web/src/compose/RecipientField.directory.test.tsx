@@ -118,6 +118,41 @@ describe('the directory alongside the local sources', () => {
     expect(input).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('a late, empty local answer does not close a list the directory has filled', async () => {
+    const user = userEvent.setup()
+    // The local source is a replica read, but not always a fast one: a cold IndexedDB page plus the
+    // contact filter can land after the directory's answer, which may come straight from its cache.
+    // When it did, its own `setOpen(false)` shut a list full of directory rows — and nothing
+    // recomputed `open`, so it stayed shut until the next keystroke (R-56).
+    const slowEmpty: RecipientSuggestionSource = {
+      query: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300))
+        return []
+      },
+    }
+    const input = setup(slowEmpty, directory([CAROL]))
+    await user.type(input, 'ca')
+
+    await waitFor(() => expect(screen.getByText('Carol Chen')).toBeInTheDocument())
+    expect(input).toHaveAttribute('aria-expanded', 'true')
+
+    // Now the local source answers, second and with nothing.
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(input).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Carol Chen')).toBeInTheDocument()
+  })
+
+  it('closes when the last suggestion goes away', async () => {
+    const user = userEvent.setup()
+    const input = setup(local, directory([]))
+    await user.type(input, 'bo')
+    await waitFor(() => expect(input).toHaveAttribute('aria-expanded', 'true'))
+    // Deriving `open` from the merged list has to work in both directions, or an emptied list would
+    // sit open over nothing.
+    await user.clear(input)
+    await waitFor(() => expect(input).toHaveAttribute('aria-expanded', 'false'))
+  })
+
   it('stays shut when the reader pressed Escape before the answer arrived', async () => {
     const user = userEvent.setup()
     const input = setup(local, directory([CAROL], { delay: 50 }))

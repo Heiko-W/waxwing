@@ -59,6 +59,40 @@ describe('htmlToPlainText', () => {
     expect(htmlToPlainText('<p>Tom &amp; Jerry &lt;3</p>')).toBe('Tom & Jerry <3')
   })
 
+  /*
+   * R-58: this generates the `text/plain` alternative of every message the app sends, forwards and
+   * quoted replies included. Collapsing whitespace under `<pre>` turned a forwarded code block into
+   * one line, and cells with no separator turned an invoice table into a run-on word.
+   */
+  it('keeps the line breaks and the indentation of a <pre> block', () => {
+    expect(htmlToPlainText('<pre>line1\nline2</pre>')).toBe('line1\nline2')
+    expect(htmlToPlainText('<pre><code>const a = 1\n  const b = 2</code></pre>')).toBe(
+      'const a = 1\n  const b = 2',
+    )
+  })
+
+  it('keeps a <pre> a paragraph among its neighbours', () => {
+    expect(htmlToPlainText('<p>Before</p><pre>a\n  b</pre><p>After</p>')).toBe(
+      'Before\n\na\n  b\n\nAfter',
+    )
+  })
+
+  it('collapses whitespace again after the <pre> ends', () => {
+    // The flag is scoped to the block: a paragraph following one must not inherit it.
+    expect(htmlToPlainText('<pre>a\nb</pre><p>c\n   d</p>')).toBe('a\nb\n\nc d')
+  })
+
+  it('separates table cells with a tab and rows with a line break', () => {
+    expect(htmlToPlainText('<table><tr><td>Betrag</td><td>100 €</td></tr></table>')).toBe(
+      'Betrag\t100 €',
+    )
+    expect(
+      htmlToPlainText(
+        '<table><thead><tr><th>Pos</th><th>Preis</th></tr></thead><tbody><tr><td>A</td><td>1</td></tr><tr><td>B</td><td>2</td></tr></tbody></table>',
+      ),
+    ).toBe('Pos\tPreis\nA\t1\nB\t2')
+  })
+
   it('caps blank runs and trims edges', () => {
     expect(htmlToPlainText('<p>a</p><p></p><p></p><p>b</p>')).toBe('a\n\nb')
   })

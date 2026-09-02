@@ -34,7 +34,13 @@ export type { CapabilityUrn } from './capabilities'
 export { Capabilities, capabilityForMethod, usingForMethods } from './capabilities'
 // Auto-chunking (exposed for testing and advanced callers).
 export type { ChunkLimits, ChunkPlan } from './chunking'
-export { planRequest, reassembleResponses, sanitizeLimits, usable } from './chunking'
+export {
+  planRequest,
+  reassembleResponses,
+  sanitizeLimits,
+  usable,
+  usableOrNull,
+} from './chunking'
 // Client + connection.
 export type { CallOptions, ConnectOptions, JmapClientOptions } from './client'
 export { connect, FALLBACK_LIMITS, JmapClient } from './client'

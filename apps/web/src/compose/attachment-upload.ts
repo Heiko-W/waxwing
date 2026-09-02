@@ -93,14 +93,23 @@ export function validateTotal(
   return cap !== null && existing + incoming > cap ? { code: 'totalTooLarge' } : null
 }
 
-/** Sum of uploaded attachments + in-flight uploads (for the total check + a footer readout). */
+/**
+ * Sum of uploaded attachments + IN-FLIGHT uploads (for the total check + a footer readout).
+ *
+ * An `error` item is deliberately not counted: it carries no blob, it will never be part of the
+ * message, and counting it charged the reader for bytes that are not being sent. With a 25 MB cap,
+ * 20 MB uploaded and a 10 MB upload that died on the network, the sum came to 30 — Send went grey
+ * under "Attachments too large" and every further file was refused as oversized, while the message
+ * that would actually go out was 20 MB. `ComposerWindow` says the same thing one line up about
+ * Send ("an errored chip must not wedge it") and only the byte sum disagreed (R-53).
+ */
 export function totalAttachmentBytes(
   attachments: readonly { size: number }[],
   uploads: readonly UploadItem[],
 ): number {
   let total = 0
   for (const a of attachments) total += a.size
-  for (const u of uploads) total += u.size
+  for (const u of uploads) if (u.status === 'uploading') total += u.size
   return total
 }
 
@@ -110,7 +119,17 @@ function isAbortError(err: unknown): boolean {
   )
 }
 
-/** Map a thrown error to a stable {@link UploadError} (SP.5: oversize=400/limit, quota=429). */
+/**
+ * Map a thrown error to a stable {@link UploadError} (SP.5: oversize=limit/413, quota=429).
+ *
+ * "Too large" is read from the SIGNAL, not from the status class. RFC 8620 §6.1 says only that an
+ * HTTP error on the upload resource SHOULD carry an RFC 7807 problem-details body; the one that
+ * means a size limit is `urn:ietf:params:jmap:error:limit` (§3.6.1), and HTTP 413 is the same
+ * statement at the transport level. Treating every 400 with a problem body as `tooLarge` — which
+ * is what this did — turned `notRequest`, `notJSON` and any server-specific 400 into "this file is
+ * too large, max 25 MB" for a 100 KB file, and `AttachmentChips` hides Retry for `tooLarge`, so
+ * the only way on was to remove the chip and attach it again (R-54).
+ */
 export function classifyUploadError(err: unknown): UploadError {
   if (err instanceof JmapProblemError) {
     if (err.status === 429) {
@@ -118,7 +137,7 @@ export function classifyUploadError(err: unknown): UploadError {
         ? { code: 'quota', retryAfterMs: err.retryAfterMs }
         : { code: 'quota' }
     }
-    if (err.type === ProblemTypes.limit || err.status === 400) return { code: 'tooLarge' }
+    if (err.type === ProblemTypes.limit || err.status === 413) return { code: 'tooLarge' }
     return { code: 'server' }
   }
   if (isAbortError(err)) return { code: 'aborted' }

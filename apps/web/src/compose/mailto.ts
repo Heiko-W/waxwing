@@ -32,13 +32,32 @@ const EMPTY: MailtoRequest = { to: [], cc: [], bcc: [], subject: '', body: '' }
  *
  * `decodeURIComponent` throws on a malformed escape (`%zz`), and a malformed link must not take the
  * app down — an undecodable field is dropped instead.
+ *
+ * A `+` is a `+`, NOT a space. `mailto:` is a URI, not an HTML form payload: RFC 6068 §5 says
+ * "Current implementations encode a space as '+', but this creates problems because such a '+'
+ * standing for a space cannot be distinguished from a real '+' in a 'mailto' URI. When producing
+ * 'mailto' URIs, all spaces SHOULD be encoded as %20, and '+' characters MAY be encoded as %2B.
+ * Please note that '+' characters are frequently used as part of an email address to indicate a
+ * subaddress, as for example in <bill+ietf@example.org>." Undoing the form encoding here turned
+ * every subaddress into an unsendable pill (R-13); a link that really means a space writes `%20`,
+ * and `%2B` still arrives as `+` because `decodeURIComponent` does that on its own.
  */
 function decodeField(value: string): string {
   try {
-    return decodeURIComponent(value.replace(/\+/g, ' '))
+    return decodeURIComponent(value)
   } catch {
     return ''
   }
+}
+
+/**
+ * Protects a literal `+` in the query from `URLSearchParams`, which decodes
+ * `application/x-www-form-urlencoded` and would hand back a space (R-13, RFC 6068 §5 — see
+ * {@link decodeField}). Percent-encoding it first is the whole trick: an already-encoded `%2B`
+ * contains no `+` and is left alone, so both spellings end up as the same single `+`.
+ */
+function escapePlus(query: string): string {
+  return query.replace(/\+/g, '%2B')
 }
 
 /**
@@ -63,7 +82,7 @@ export function parseMailto(uri: string): MailtoRequest {
   let subject = ''
   let body = ''
 
-  for (const [rawKey, rawValue] of new URLSearchParams(queryPart)) {
+  for (const [rawKey, rawValue] of new URLSearchParams(escapePlus(queryPart))) {
     // `URLSearchParams` has already percent-decoded; `decodeField` is only for the path part.
     const value = rawValue
     switch (rawKey.toLowerCase()) {

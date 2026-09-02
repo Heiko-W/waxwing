@@ -1566,6 +1566,7 @@
       "loading": "正在加载…",
       "empty": "没有定时发送的邮件。",
       "loadFailed": "无法加载定时发送的邮件。",
+      "cancelFailed": "无法取消发送，邮件仍可能被发出。",
       "willSend": "将于{{when}}发送",
       "cancel": "取消发送",
       "cancelled": "已取消发送",

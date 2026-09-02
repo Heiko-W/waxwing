@@ -12,7 +12,7 @@ import { Ellipsis, UsersRound, X } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useContactPhoto } from '../contacts/use-contact-photo'
-import { Avatar, Menu, VisuallyHidden } from '../ui'
+import { Avatar, isComposingKey, Menu, VisuallyHidden } from '../ui'
 import { formatAddress, isPlausibleEmail, parseAddressList } from './address-validation'
 import type { AddressField, RecipientField as RecipientFieldName } from './composer-store'
 import { DIRECTORY_DEBOUNCE_MS } from './directory-suggestion-source'
@@ -125,7 +125,9 @@ export function RecipientField({
       void source.query(needle, SUGGEST_LIMIT).then((results) => {
         if (cancelled) return
         setLocal(results)
-        setOpen(results.length > 0)
+        // Deliberately NOT `setOpen(results.length > 0)`: this is one of two sources, and a late
+        // empty answer from it used to close a list the directory had already filled (R-56).
+        // Whether the list is open follows from the MERGED `suggestions`, in the effect below.
         setActiveIndex(-1)
       })
     }, SUGGEST_DEBOUNCE_MS)
@@ -166,31 +168,43 @@ export function RecipientField({
   }, [text, directorySource])
 
   /*
-   * A listbox that GREW after the reader stopped typing has to be openable by that growth, or the
-   * directory's late answer would arrive into a closed list and stay invisible until the next
-   * keystroke — which is precisely the case S-5 exists for: nothing local matched, so the field
-   * closed, and the colleague the writer was looking for is in the answer that came second.
+   * Open iff there is something to show — derived from the MERGED list, never from one source.
    *
-   * `dismissedFor` is what keeps that from fighting the reader: Escape records the text it was
-   * pressed at, and the list stays shut until they type something else.
+   * The two queries above answer on their own schedules, and either order is normal. When the
+   * local one (120 ms + IndexedDB + contact filter) came back after the directory's (250 ms, or
+   * instant from its cache) with nothing, its `setOpen(false)` shut a list that was showing
+   * directory hits — and, because nothing else recomputed `open`, it stayed shut until the next
+   * keystroke. That is exactly the case S-5 exists for: nothing local matched, and the colleague
+   * the writer was looking for is in the answer that came second (R-56). The same derivation is
+   * what opens a list that GREW after the reader stopped typing.
+   *
+   * `dismissedFor` keeps this from fighting the reader: a dismissal records the text it happened
+   * at, and the list stays shut until they type something else.
    */
   useEffect(() => {
-    if (suggestions.length === 0) return
     const needle = text.trim()
+    if (suggestions.length === 0) {
+      setOpen(false)
+      return
+    }
     if (needle === '' || dismissedFor.current === needle) return
     setOpen(true)
-  }, [suggestions.length, text])
+  }, [suggestions, text])
 
   // Outside press closes the listbox.
   useEffect(() => {
     if (!open) return
     function onDown(event: MouseEvent): void {
-      if (rootRef.current !== null && !rootRef.current.contains(event.target as Node))
+      if (rootRef.current !== null && !rootRef.current.contains(event.target as Node)) {
         setOpen(false)
+        // Recorded like an Escape: the field has just lost the pointer (and usually focus), so a
+        // query still in flight must not reopen the list over the reader's head.
+        dismissedFor.current = text.trim()
+      }
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
+  }, [open, text])
 
   const clearInput = (): void => {
     setText('')
@@ -241,6 +255,18 @@ export function RecipientField({
   }
 
   function onInputKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    /*
+     * While an input method is composing, the keys belong to it (R-14). Enter commits the
+     * candidate, the arrows walk the candidate list — and this handler was taking all of them:
+     * a writer typing `たなか` and pressing Enter to convert got a red pill reading `たなか`
+     * instead of 田中, with the composition thrown away. Four of the fourteen locales (ja, zh,
+     * ko, and any IME user in the rest) could not reach a contact by name from the keyboard.
+     *
+     * {@link isComposingKey} states the rule once (R-40); it gets `event.nativeEvent` because
+     * `isComposing` is a native `KeyboardEvent` property, not one React's synthetic wrapper
+     * forwards.
+     */
+    if (isComposingKey(event.nativeEvent)) return
     switch (event.key) {
       case 'Enter':
         event.preventDefault()
