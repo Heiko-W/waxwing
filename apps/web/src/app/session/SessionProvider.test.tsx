@@ -762,3 +762,63 @@ describe('SessionProvider — the boot path cannot hang', () => {
     expect(screen.getByTestId('step')).toHaveTextContent('login')
   })
 })
+
+/**
+ * "Your place is kept" is what the re-auth dialog says, and the OAuth leg is the one that has to
+ * work for it: the redirect_uri is the app root by construction, so whatever the reader was
+ * looking at survives only if this component stashed it.
+ */
+describe('SessionProvider — the OAuth redirect keeps the whole route', () => {
+  afterEach(() => {
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('stashes the query alongside the path on a re-auth redirect (R-31)', async () => {
+    // The path alone is not the place. `?account=` is what says WHICH mailbox `e1` belongs to, so
+    // restoring `/mail/a/e1` without it lands on a different message of the reader's own account —
+    // or on an empty reading pane.
+    const user = userEvent.setup()
+    renderSession({ isRedirectCallback: true })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    window.history.replaceState(null, '', '/mail/a/e1?account=shared-1&q=rechnung&full=1')
+
+    await user.click(screen.getByText('expire'))
+    await user.click(screen.getByText('reauth-oauth'))
+
+    await waitFor(() =>
+      expect(sessionStorage.getItem('waxwing.onboard.route')).toBe(
+        JSON.stringify('/mail/a/e1?account=shared-1&q=rechnung&full=1'),
+      ),
+    )
+  })
+
+  it('stashes the deep link on the FIRST OAuth sign-in too (R-81)', async () => {
+    // Nobody signing in from a link has a session to re-auth: public computer, or anyone who
+    // signed out. The stash existed only on the re-auth leg, so the link was discarded and they
+    // landed in the Inbox.
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    window.history.replaceState(null, '', '/contacts/c42?q=weber')
+
+    await user.click(screen.getByText('oauth-plain'))
+
+    await waitFor(() =>
+      expect(sessionStorage.getItem('waxwing.onboard.route')).toBe(
+        JSON.stringify('/contacts/c42?q=weber'),
+      ),
+    )
+  })
+
+  it('restores path and query before the router mounts', async () => {
+    sessionStorage.setItem('waxwing.onboard.route', JSON.stringify('/mail/a/e1?account=shared-1'))
+
+    renderSession({ isRedirectCallback: true })
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(window.location.pathname).toBe('/mail/a/e1')
+    expect(window.location.search).toBe('?account=shared-1')
+    // Single-use, like the other two halves of the handshake stash.
+    expect(sessionStorage.getItem('waxwing.onboard.route')).toBeNull()
+  })
+})

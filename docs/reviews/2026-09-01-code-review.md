@@ -1401,7 +1401,7 @@ bestätigt, Severity high → medium.
 
 ### R-31 — [MEDIUM] OAuth-Re-Auth stasht nur `pathname`; `?account=`, `?q=`, `?label=`, `?full=1` gehen verloren
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Session)
 
@@ -3093,7 +3093,7 @@ Gegenprüfung: bestätigt.
 
 ### R-81 — [LOW] Deep Link geht bei der ersten OAuth-Anmeldung verloren (Route-Stash nur im Re-Auth-Pfad)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Session)
 

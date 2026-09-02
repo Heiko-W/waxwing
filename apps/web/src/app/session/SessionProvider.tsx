@@ -124,6 +124,23 @@ function local(): Storage | undefined {
   return typeof localStorage !== 'undefined' ? localStorage : undefined
 }
 
+/**
+ * The route to come back to after an OAuth redirect — path AND query.
+ *
+ * The query is not decoration here. `?account=` is what distinguishes a delegated mailbox's ids
+ * from the user's own (`route.ts`), and dropping it turns `/mail/a/e1?account=x` into a DIFFERENT
+ * message of the reader's own account with the same short id — or an empty reading pane. `?q=`,
+ * `?label=` and `?full=1` are the search view, the label view and the full-message view; without
+ * them each collapses to the plain folder listing. `history.replaceState` takes the whole string,
+ * so restoring it costs nothing beyond stashing it.
+ *
+ * The hash is deliberately not carried: this app puts no state there, and it never reaches the
+ * server anyway.
+ */
+function currentRoute(): string {
+  return window.location.pathname + window.location.search
+}
+
 /** Server field is editable only for a manually-entered, non-pinned deployment. */
 function canEditServer(config: WaxwingConfig, target: ConnectTarget): boolean {
   return !target.fromProbe && config.server.allowCustomServer && config.server.sessionUrl === null
@@ -526,6 +543,14 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         await teardownRef.current
         try {
           writeStored(session(), STASH_TARGET_KEY, target)
+          // The FIRST sign-in has a place to keep too (FR-AUTH-06 promises it only for re-auth, but
+          // the reader cannot tell the two apart). Someone with no persisted session — a public
+          // computer, or anyone who signed out — follows a link to `/contacts/…`, to a message in a
+          // shared mailbox, or to `./?mailto=…` from the OS mail handler, signs in, and used to land
+          // in the Inbox with the link silently discarded. The redirect_uri is the app root by
+          // construction (`computeRedirectUri` strips query and hash), so the route has to travel in
+          // the stash exactly as it does on the re-auth leg.
+          writeStored(session(), STASH_ROUTE_KEY, currentRoute())
           // Two halves, because they are consumed by different owners after the redirect: the
           // controller needs it to keep the refresh token out of storage (it rides in the PKCE
           // transaction), and THIS component needs it to name the replica when the callback lands.
@@ -600,7 +625,7 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       dispatch({ type: 'reauthBusy' })
       try {
         writeStored(session(), STASH_TARGET_KEY, target)
-        writeStored(session(), STASH_ROUTE_KEY, window.location.pathname)
+        writeStored(session(), STASH_ROUTE_KEY, currentRoute())
         // Re-auth is a FULL-PAGE redirect, so it destroys every ref in this component exactly like
         // the first sign-in does — including `ephemeralRef`. Without carrying the choice across in
         // the stash, a single click on "sign in again" at a library terminal turned a public-computer
