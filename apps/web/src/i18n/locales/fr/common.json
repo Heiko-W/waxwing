@@ -1168,6 +1168,7 @@
     },
     "editDraft": "Modifier le brouillon",
     "draftLead": "Ceci est un brouillon que vous n’avez pas encore envoyé.",
+    "draftSharedAccount": "Les brouillons d’une boîte partagée ne peuvent être modifiés que dans cette boîte.",
     "more": "Autres actions",
     "authResults": {
       "label": "Authentification",

@@ -1168,6 +1168,7 @@
     },
     "editDraft": "Modifica la bozza",
     "draftLead": "Questa è una bozza che non hai ancora inviato.",
+    "draftSharedAccount": "Le bozze di una casella condivisa possono essere modificate solo in quella casella.",
     "more": "Altre azioni",
     "authResults": {
       "label": "Autenticazione",

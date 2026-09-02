@@ -1153,6 +1153,7 @@
     },
     "editDraft": "Entwurf bearbeiten",
     "draftLead": "Dies ist ein Entwurf, den Sie noch nicht gesendet haben.",
+    "draftSharedAccount": "Entwürfe in einem freigegebenen Postfach können nur dort bearbeitet werden.",
     "more": "Weitere Aktionen",
     "authResults": {
       "label": "Authentifizierung",

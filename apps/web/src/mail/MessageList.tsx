@@ -435,8 +435,11 @@ export function MessageList({
       // no longer on screen (on a narrow viewport the list is not even rendered) instead of the one
       // the user is looking at.
       dispatchSelection({ type: 'clear' })
-      // A draft opens back into the composer instead of the reader (FR-CMP-03).
-      if (rowById.get(id)?.keywords.$draft === true) {
+      // A draft opens back into the composer instead of the reader (FR-CMP-03) — but only where the
+      // composer can actually write it back. In a DELEGATED account it cannot (ADR-020, no send-as),
+      // and opening it anyway filed a copy in the user's own Drafts folder on close while the
+      // original stayed put; such a draft falls through to the reading pane, which says so.
+      if (rowById.get(id)?.keywords.$draft === true && draftOpener.canEdit) {
         void draftOpener.open(id)
         return
       }

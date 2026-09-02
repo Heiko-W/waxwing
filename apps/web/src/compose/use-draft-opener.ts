@@ -7,6 +7,7 @@
 
 import type { Id } from '@waxwing/jmap'
 import { useCallback } from 'react'
+import { useSessionOptional } from '../app/session/context'
 import { pickHtmlBody } from '../mail/message-body'
 import { getDraftByServerId, putDraft, type ReplicaDb, useReplicaOptional } from '../sync'
 import { useAccountEngine } from '../sync/engine'
@@ -16,14 +17,32 @@ import { deserializeDraft, serializeDraft, toDraftInit } from './draft-email'
 export interface DraftOpener {
   /** Open the Drafts message `emailId` in the composer (local copy if we have one; else the server body). */
   open(emailId: Id): Promise<void>
+  /**
+   * May a draft of the ACTING account be opened for editing at all? False for a delegated account.
+   *
+   * This hook runs inside `ActiveAccountScope`; the composer mounts OUTSIDE it, on the primary
+   * account, because there is no send-as from a delegated account yet (ADR-020). Opening Carol's
+   * draft therefore adopted it under Carol's id and then flushed it under Alice's: a COPY appeared
+   * in Alice's Drafts folder on close, Carol's original stayed untouched, and Discard found no
+   * `serverEmailId` and destroyed nothing — the "folder full of copies" the `adoptServerDraft`
+   * comment describes, one account over. Until send-as exists, such a draft is readable, not
+   * editable; callers offer the reading pane instead.
+   */
+  readonly canEdit: boolean
 }
 
 export function useDraftOpener(): DraftOpener {
   const replica = useReplicaOptional()
   const engine = useAccountEngine()
+  // The account the COMPOSER writes to (`sync/engine/react.tsx` mounts the outer provider on it),
+  // which is not necessarily the one this hook is scoped to. No session (unit tests, pre-connect)
+  // reads as "not delegated", so the single-account path is exactly today's.
+  const composerAccountId = useSessionOptional()?.accountId ?? null
+  const canEdit =
+    replica !== null && (composerAccountId === null || replica.accountId === composerAccountId)
   const open = useCallback(
     async (emailId: Id): Promise<void> => {
-      if (replica === null) return
+      if (replica === null || !canEdit) return
       const { db, accountId } = replica
       const openDraft = useComposerStore.getState().openDraft
       // Full-fidelity local copy — reopen it (idempotent: focuses if already open).
@@ -42,9 +61,9 @@ export function useDraftOpener(): DraftOpener {
       const localId = openDraft(toDraftInit(email, bodyHtml))
       await adoptServerDraft(db, accountId, localId, emailId)
     },
-    [replica, engine],
+    [replica, engine, canEdit],
   )
-  return { open }
+  return { open, canEdit }
 }
 
 /**

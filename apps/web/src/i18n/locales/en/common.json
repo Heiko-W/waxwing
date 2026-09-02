@@ -1153,6 +1153,7 @@
     },
     "editDraft": "Edit draft",
     "draftLead": "This is a draft you haven’t sent yet.",
+    "draftSharedAccount": "Drafts in a shared mailbox can only be edited in that mailbox.",
     "more": "More actions",
     "authResults": {
       "label": "Authentication",

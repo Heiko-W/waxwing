@@ -1153,6 +1153,7 @@
     },
     "editDraft": "Taslağı düzenle",
     "draftLead": "Bu, henüz göndermediğiniz bir taslak.",
+    "draftSharedAccount": "Paylaşılan bir posta kutusundaki taslaklar yalnızca o posta kutusunda düzenlenebilir.",
     "more": "Diğer eylemler",
     "authResults": {
       "label": "Kimlik doğrulama",

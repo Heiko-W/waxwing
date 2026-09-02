@@ -2109,7 +2109,12 @@ erneut ans Ende setzen → zweiter Aufruf erwartet.
 
 ### R-52 — [LOW] `useDraftOpener` läuft im `ActiveAccountScope`, der Composer außerhalb: ein Entwurf aus einem geteilten Drafts-Ordner wird beim Schließen als Kopie im eigenen Konto angelegt, beim Verwerfen nicht gelöscht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Erste Variante des Lösungsansatzes umgesetzt (Entwürfe fremder Konten gar nicht als Entwurf öffnen).
+Die Prüfung sitzt in `useDraftOpener` selbst (`canEdit`, Vergleich mit `connected.accountId`) statt in
+`MessageList`, damit beide Aufrufer — Liste und Lesebereich — dieselbe Antwort bekommen; die zweite
+Variante (`getActiveReplica()` im Opener) wäre falsch gewesen: die Email-Id des geteilten Kontos steht
+nicht in der Replica des Primärkontos, das Öffnen wäre stillschweigend wirkungslos geworden.
 
 **Kategorie / Bereich:** correctness / Compose
 
