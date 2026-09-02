@@ -12,7 +12,7 @@ import { Ellipsis, UsersRound, X } from 'lucide-react'
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useContactPhoto } from '../contacts/use-contact-photo'
-import { Avatar, Menu, VisuallyHidden } from '../ui'
+import { Avatar, isComposingKey, Menu, VisuallyHidden } from '../ui'
 import { formatAddress, isPlausibleEmail, parseAddressList } from './address-validation'
 import type { AddressField, RecipientField as RecipientFieldName } from './composer-store'
 import { DIRECTORY_DEBOUNCE_MS } from './directory-suggestion-source'
@@ -262,12 +262,11 @@ export function RecipientField({
      * instead of 田中, with the composition thrown away. Four of the fourteen locales (ja, zh,
      * ko, and any IME user in the rest) could not reach a contact by name from the keyboard.
      *
-     * Both checks, and on `event.nativeEvent`: `isComposing` is a native `KeyboardEvent`
-     * property, not one React's synthetic wrapper forwards. Firefox reports the committed key
-     * with `isComposing: true`, Chromium and Safari report `key: 'Process'` with the legacy
-     * `keyCode 229`. Same rule as the global chord dispatcher (`shortcuts/keys.ts`, "IME first").
+     * {@link isComposingKey} states the rule once (R-40); it gets `event.nativeEvent` because
+     * `isComposing` is a native `KeyboardEvent` property, not one React's synthetic wrapper
+     * forwards.
      */
-    if (event.nativeEvent.isComposing === true || event.nativeEvent.keyCode === 229) return
+    if (isComposingKey(event.nativeEvent)) return
     switch (event.key) {
       case 'Enter':
         event.preventDefault()
