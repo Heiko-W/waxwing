@@ -155,3 +155,71 @@ describe('SecretStore — wipe across connections', () => {
     stubborn.close()
   })
 })
+
+/**
+ * One failed `open` used to be permanent (R-85).
+ *
+ * `openDb` and `wrappingKey` memoize their promises, which is right for the success and was an
+ * accident for the failure: a single erroring open — a delete from another tab landing at the
+ * wrong moment, a storage hiccup — made the instance unusable for the lifetime of the page, with
+ * no retry short of a reload. `wipe()` inherited it worst.
+ */
+describe('SecretStore — a transient open failure is not permanent', () => {
+  /** An `IDBFactory` whose `open` fails for the first `failures` calls, then behaves normally. */
+  function flakyFactory(failures: number): {
+    idb: IDBFactory
+    opens: () => number
+    deletes: () => number
+  } {
+    let opens = 0
+    let deletes = 0
+    const real = indexedDB
+    const idb = {
+      open(name: string, version?: number) {
+        opens += 1
+        if (opens > failures)
+          return version === undefined ? real.open(name) : real.open(name, version)
+        // A request object that errors on the next task, the way a real failing open does.
+        const request = {
+          error: new DOMException('boom', 'UnknownError'),
+          result: undefined,
+          onsuccess: null as null | (() => void),
+          onerror: null as null | (() => void),
+          onupgradeneeded: null as null | (() => void),
+        }
+        queueMicrotask(() => request.onerror?.())
+        return request as unknown as IDBOpenDBRequest
+      },
+      deleteDatabase(name: string) {
+        deletes += 1
+        return real.deleteDatabase(name)
+      },
+    } as unknown as IDBFactory
+    return { idb, opens: () => opens, deletes: () => deletes }
+  }
+
+  it('retries the open on the next call instead of replaying the cached rejection', async () => {
+    const dbName = `waxwing-auth-${crypto.randomUUID()}`
+    created.push(dbName)
+    const flaky = flakyFactory(1)
+    const store = new SecretStore({ dbName, indexedDB: flaky.idb })
+
+    await expect(store.get(SecretName.RefreshToken)).rejects.toThrow(/boom/)
+    // The second attempt has to reach the database, not the remembered failure.
+    await store.put(SecretName.RefreshToken, 'sw1.after-the-hiccup')
+    expect(await store.get(SecretName.RefreshToken)).toBe('sw1.after-the-hiccup')
+  })
+
+  it('still deletes the database when the connection never opened', async () => {
+    // `logout()` turns a rejected `wipe()` into "you are signed out, but your data is still on this
+    // machine" — the sentence that must not be shown about a store that holds nothing.
+    const dbName = `waxwing-auth-${crypto.randomUUID()}`
+    created.push(dbName)
+    const flaky = flakyFactory(Number.POSITIVE_INFINITY)
+    const store = new SecretStore({ dbName, indexedDB: flaky.idb })
+
+    await expect(store.get(SecretName.RefreshToken)).rejects.toThrow(/boom/)
+    await expect(store.wipe()).resolves.toBeUndefined()
+    expect(flaky.deletes()).toBe(1)
+  })
+})

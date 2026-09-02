@@ -1115,3 +1115,205 @@ describe('AuthController — two tabs refreshing at once (R-30)', () => {
     expect(await rebooted.restore()).not.toBeNull()
   })
 })
+
+describe('AuthController — the auth store is not always reachable, and not always ours', () => {
+  const OAUTH_CONFIG = {
+    issuer: 'http://localhost:18080',
+    clientId: 'waxwing',
+    scopes: DEFAULT_SCOPES,
+  }
+
+  /** An `IDBFactory` whose `open` always fails: an enterprise policy, a locked-down WebView. */
+  function blockedIndexedDb(): IDBFactory {
+    return {
+      open() {
+        const request = {
+          error: new DOMException('blocked', 'InvalidStateError'),
+          onerror: null as null | (() => void),
+          onsuccess: null as null | (() => void),
+          onupgradeneeded: null as null | (() => void),
+        }
+        queueMicrotask(() => request.onerror?.())
+        return request as unknown as IDBOpenDBRequest
+      },
+      deleteDatabase: (name: string) => indexedDB.deleteDatabase(name),
+    } as unknown as IDBFactory
+  }
+
+  it('signs in with Basic and no "stay signed in" even when IndexedDB cannot be opened (R-80)', async () => {
+    // Nothing is to be persisted, so nothing about the store may fail this sign-in. The three
+    // store calls here remove what an EARLIER session left — hygiene, not part of the login — and
+    // they used to reject it outright with "Something went wrong" plus an offer to reset the app.
+    const controller = new AuthController({
+      store: new SecretStore({ dbName: 'waxwing-auth-blocked', indexedDB: blockedIndexedDb() }),
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+
+    const result = await controller.startLogin({
+      method: 'basic',
+      username: 'alice',
+      password: 'pw',
+      staySignedIn: false,
+    })
+
+    expect(result.kind).toBe('session')
+    expect(controller.getSession()?.username).toBe('alice')
+  })
+
+  it('still fails when the reader asked to STAY signed in — the counter-test (R-80)', async () => {
+    // There the store is the only way to deliver what was asked for, so its failure is the
+    // sign-in's failure. And the session must not be left behind as if it had worked.
+    const controller = new AuthController({
+      store: new SecretStore({ dbName: 'waxwing-auth-blocked-2', indexedDB: blockedIndexedDb() }),
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+
+    await expect(
+      controller.startLogin({
+        method: 'basic',
+        username: 'alice',
+        password: 'pw',
+        staySignedIn: true,
+      }),
+    ).rejects.toThrow()
+    expect(controller.getSession()).toBeNull()
+  })
+
+  it('does not apply the issuer check to an ephemeral session (R-83)', async () => {
+    // The check protects the SHARED copy of the refresh token. A public-computer session's token
+    // never enters the store, so a record left by a failed restore — or by a second tab signed in
+    // durably elsewhere — describes a different credential entirely. Matching against it expired a
+    // working session after an hour without so much as attempting a grant.
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({
+        method: 'oauth',
+        username: null,
+        oauth: {
+          issuer: 'http://someone-else.invalid',
+          clientId: 'waxwing',
+          scopes: DEFAULT_SCOPES,
+          redirectUri: 'http://localhost:5173/',
+          discovery: 'oauth2',
+          allowInsecureRequests: true,
+        },
+      }),
+    )
+
+    let clock = 1_700_000_000
+    let href = 'http://localhost:5173/'
+    let navigated: string | null = null
+    const controller = new AuthController({
+      oauth: OAUTH_CONFIG,
+      store,
+      now: () => clock,
+      navigate: (url) => {
+        navigated = url
+      },
+      getHref: () => href,
+      getBaseUri: () => 'http://localhost:5173/',
+      replaceUrl: (url) => {
+        href = url
+      },
+    })
+    await controller.startLogin({ method: 'oauth', publicComputer: true })
+    const state = new URL(navigated as unknown as string).searchParams.get('state')
+    href = `http://localhost:5173/?code=c&state=${state}`
+    await controller.completeRedirect()
+
+    clock += 3_600_001
+    expect(await controller.getAccessToken()).toBe('access-refreshed-1')
+    // The foreign record is untouched, and the ephemeral token never reached the store.
+    expect(await store.get(SecretName.RefreshToken)).toBeNull()
+  })
+
+  it('keeps refusing a foreign record for a DURABLE session — the counter-test (W-17)', async () => {
+    const idp = fakeIdp()
+    vi.stubGlobal('fetch', idp.fetchImpl)
+    const { store } = freshStore()
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({
+        method: 'oauth',
+        username: null,
+        oauth: {
+          issuer: 'http://someone-else.invalid',
+          clientId: 'waxwing',
+          scopes: DEFAULT_SCOPES,
+          redirectUri: 'http://localhost:5173/',
+          discovery: 'oauth2',
+          allowInsecureRequests: true,
+        },
+      }),
+    )
+    await store.put(SecretName.RefreshToken, 'refresh-of-another-issuer')
+    const controller = new AuthController({
+      oauth: OAUTH_CONFIG,
+      store,
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+
+    await expect(controller.getAccessToken()).rejects.toThrow(/different sign-in/)
+    // Nothing was sent to the wrong token endpoint.
+    expect(idp.calls.filter((c) => c.body.includes('grant_type=refresh_token'))).toHaveLength(0)
+  })
+
+  it('does not re-create the wiped database from a refresh that lost the race (R-79)', async () => {
+    // `TokenStore.clear` reaches `SecretStore.delete`, which calls `openDb()` — which re-creates
+    // the database and its object stores. A grant still on the wire when "Sign out & remove data"
+    // finished therefore rebuilt `waxwing-auth` moments after the wipe deleted it: empty, but
+    // present, and "this origin holds a Waxwing auth database" is exactly the statement the wipe
+    // removes (W-23). The success path has had this guard since W-05; the failure path had not.
+    const { store, dbName } = freshStore()
+    let releaseGrant: (() => void) | undefined
+    const grantReached = new Promise<void>((resolve) => {
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+        const url = input instanceof URL ? input.href : String(input)
+        if (url.includes('/.well-known/')) return json(DISCOVERY)
+        const held = new Promise<void>((release) => {
+          releaseGrant = release
+        })
+        resolve()
+        await held
+        return new Response(JSON.stringify({ error: 'invalid_grant' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
+      })
+    })
+    await store.put(
+      SecretName.AuthRecord,
+      JSON.stringify({
+        method: 'oauth',
+        username: null,
+        oauth: {
+          ...OAUTH_CONFIG,
+          redirectUri: 'http://localhost:5173/',
+          discovery: 'oauth2',
+          allowInsecureRequests: true,
+        },
+      }),
+    )
+    await store.put(SecretName.RefreshToken, 'refresh-in-flight')
+    const controller = new AuthController({
+      oauth: OAUTH_CONFIG,
+      store,
+      getBaseUri: () => 'http://localhost:5173/',
+    })
+    await controller.restore()
+
+    const refreshing = controller.getAccessToken().catch(() => 'failed')
+    await grantReached
+    await controller.logout()
+    expect((await indexedDB.databases()).map((d) => d.name)).not.toContain(dbName)
+
+    releaseGrant?.()
+    expect(await refreshing).toBe('failed')
+
+    // THE assertion: the failed grant must not have brought the database back.
+    expect((await indexedDB.databases()).map((d) => d.name)).not.toContain(dbName)
+  })
+})

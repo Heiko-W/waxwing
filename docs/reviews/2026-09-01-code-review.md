@@ -2981,7 +2981,7 @@ für R-29 und R-28) angepasst in die bestehenden Suiten übernehmen, sobald die 
 
 ### R-77 — [LOW] Public-Computer-Modus hinterlässt `waxwing.connect.target` in `localStorage`, wenn der Tab ohne Sign-out geschlossen wird (vgl. W-05)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** security / App (Session)
 
@@ -3050,7 +3050,9 @@ Must nicht nur in einem Testkommentar lebt.
 
 ### R-79 — [LOW] Ein terminal fehlschlagender Refresh nach `logout()` legt die gewischte `waxwing-auth`-Datenbank neu an (vgl. W-05, W-23)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Ergaenzung: der Generation-Check sitzt VOR dem Compare-and-delete-Lesen, nicht nur vor
+`tokens.clear()` — auch `store.get()` geht durch `openDb()` und legt die Datenbank wieder an.
 
 **Kategorie / Bereich:** correctness / App (Auth)
 
@@ -3078,7 +3080,7 @@ wieder (leer). Gegenprüfung: bestätigt.
 
 ### R-80 — [LOW] Basic-Anmeldung ohne „stay signed in“ scheitert, wenn IndexedDB nicht geöffnet werden kann, obwohl nichts persistiert werden soll (vgl. W-06)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / App (Auth)
 
@@ -3170,7 +3172,7 @@ enthält Regelkörper und echten End-Marker; zwei weitere Varianten. Gegenprüfu
 
 ### R-83 — [LOW] Der W-17-Issuer-Check greift auch bei ephemeren Sessions, deren Token gar nicht aus dem Store stammt (vgl. W-17)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / App (Auth)
 
@@ -3230,7 +3232,9 @@ Gegenprüfung: bestätigt.
 
 ### R-85 — [LOW] `SecretStore` cached ein rejected `dbPromise`; `wipe()` wirft es weiter, bevor es zurückgesetzt wird
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Ergaenzung: `keyPromise` cacht die Ablehnung genauso (es haengt an `openDb`), also wird auch
+sie bei Fehlschlag zurueckgesetzt — sonst bliebe die Instanz trotz reparierter Datenbank kaputt.
 
 **Kategorie / Bereich:** robustness / App (Auth)
 

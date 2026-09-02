@@ -572,6 +572,35 @@ describe('SessionProvider — public-computer mode', () => {
     expect(localStorage.getItem('waxwing.connect.target')).toBeNull()
   })
 
+  /**
+   * FR-AUTH-09 names leaving without a menu click as the core scenario, and that is the one exit
+   * with no clean-up at all: `pagehide` deletes the replica and nothing else. The registry write
+   * was already stopped for ephemeral sessions (W-05); the connect target was not, so on an
+   * `allowCustomServer` deployment the guest's mail host stayed in `localStorage` for the next
+   * person — and a later durable boot started against it.
+   */
+  it('writes no connect target for an ephemeral session (R-77)', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic-public'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(localStorage.getItem('waxwing.connect.target')).toBeNull()
+  })
+
+  it('writes one for an ordinary session — the counter-test (R-77)', async () => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+
+    await user.click(screen.getByText('basic'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    expect(localStorage.getItem('waxwing.connect.target')).not.toBeNull()
+  })
+
   it("leaves a DURABLE session's preferences alone on a plain sign-out — the counter-test", async () => {
     const user = userEvent.setup()
     renderSession({ probePresent: true })

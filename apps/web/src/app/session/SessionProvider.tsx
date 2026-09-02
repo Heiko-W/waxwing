@@ -381,7 +381,15 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
       authProviderRef.current = provider
       controllerRef.current = controller
       targetRef.current = target
-      writeStored(local(), DURABLE_TARGET_KEY, target)
+      // NOT for a public-computer session (FR-AUTH-09). `localStorage` outlives the tab, and the
+      // mode's core scenario is the tab being closed without anyone finding the sign-out menu — the
+      // one exit that runs no clean-up at all. The registry write below was already stopped for
+      // exactly this reason; the target was not, so on an `allowCustomServer` deployment a guest's
+      // mail host stayed on a shared machine, and a later durable boot started against it
+      // (`fallbackTarget`). Nothing needs it back: an ephemeral session persists no AuthRecord, so
+      // `restore()` returns null and no reconnect ever consults this key; `endSession` reads
+      // `targetRef`.
+      if (!ephemeralRef.current) writeStored(local(), DURABLE_TARGET_KEY, target)
       // Lift EVERY account this session grants into the model (M4.4): the user's own account
       // first, then any delegated/shared one.
       const own = jmapSession.accounts[accountId]

@@ -94,9 +94,29 @@ export class SecretStore {
     this.dbName = options.dbName ?? scopedDbName(options.scope)
   }
 
+  /**
+   * Forget a memoized promise that rejected, so the next call retries.
+   *
+   * Memoizing the SUCCESS is the point of both caches; memoizing the failure was an accident with
+   * a large blast radius. One `indexedDB.open` that errors — a delete from another tab landing at
+   * the wrong moment, a storage hiccup, a quota event — turned this instance into a permanently
+   * broken one for the lifetime of the page, with no retry short of a reload. `wipe()` inherited
+   * it worst: it awaited the cached rejection and never reached `deleteDatabase`, so `logout()`
+   * told the user "your data is still on this machine" about a store that had never opened.
+   *
+   * The identity check matters: a later call may already have installed a fresh attempt, and this
+   * must not throw that one away.
+   */
+  private forgetOnFailure<T>(pending: Promise<T>, slot: 'dbPromise' | 'keyPromise'): Promise<T> {
+    pending.catch(() => {
+      if (this[slot] === (pending as unknown)) this[slot] = null
+    })
+    return pending
+  }
+
   private openDb(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise
-    this.dbPromise = new Promise((resolve, reject) => {
+    const pending = new Promise<IDBDatabase>((resolve, reject) => {
       const request = this.idb.open(this.dbName, DB_VERSION)
       request.onupgradeneeded = () => {
         const db = request.result
@@ -123,13 +143,14 @@ export class SecretStore {
       }
       request.onerror = () => reject(request.error)
     })
-    return this.dbPromise
+    this.dbPromise = pending
+    return this.forgetOnFailure(pending, 'dbPromise')
   }
 
   /** Get-or-create the non-extractable AES-GCM wrapping key, memoized for the instance. */
   private wrappingKey(): Promise<CryptoKey> {
     if (this.keyPromise) return this.keyPromise
-    this.keyPromise = (async () => {
+    const pending = (async () => {
       const db = await this.openDb()
       const existing = await requestToPromise(
         db.transaction(KEY_STORE, 'readonly').objectStore(KEY_STORE).get(WRAP_KEY_ID),
@@ -144,7 +165,10 @@ export class SecretStore {
       await this.txDone(tx)
       return key
     })()
-    return this.keyPromise
+    this.keyPromise = pending
+    // Same reason as `openDb`: this one hangs off it, so a cached open failure would otherwise
+    // survive here even after the database itself became reachable again.
+    return this.forgetOnFailure(pending, 'keyPromise')
   }
 
   private txDone(tx: IDBTransaction): Promise<void> {
@@ -204,9 +228,14 @@ export class SecretStore {
    * FAILED sign-out and the caller has to be able to say so.
    */
   async wipe(): Promise<void> {
-    if (this.dbPromise) {
-      const db = await this.dbPromise
-      db.close()
+    // Closing is a courtesy to the delete below, never a precondition for it. Awaiting the
+    // memoized promise unguarded meant an open that had failed propagated out of here before
+    // `deleteDatabase` was attempted at all — a sign-out reported as incomplete over a store that
+    // had never opened, and no way to retry without reloading the page.
+    try {
+      if (this.dbPromise) (await this.dbPromise).close()
+    } catch {
+      // No connection to close. Whatever is on disk is still the delete's business.
     }
     this.dbPromise = null
     this.keyPromise = null
