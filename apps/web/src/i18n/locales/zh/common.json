@@ -1087,6 +1087,7 @@
   "reading": {
     "from": "发件人",
     "to": "收件人",
+    "toLine": "收件人：{{recipients}}",
     "cc": "抄送",
     "replyTo": "回复地址",
     "bcc": "密送",
@@ -1125,6 +1126,7 @@
     },
     "attachments": {
       "title": "附件",
+      "titleCount_other": "{{count}} 个附件",
       "saveAll": "全部保存",
       "unnamed": "（无名称）",
       "preview": "预览",

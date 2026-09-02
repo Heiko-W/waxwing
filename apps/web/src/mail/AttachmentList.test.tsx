@@ -89,6 +89,30 @@ describe('AttachmentList — attached message/rfc822 (FR-RD-07)', () => {
  * reader. Both halves are pinned: what lands in `download`, and what the reader is shown — the
  * second is the one that is really ours, since Chromium and WebKit sanitize `download` themselves.
  */
+describe('AttachmentList — the heading count (R-50)', () => {
+  it('puts the number inside the translated string, with its plural form', () => {
+    // " (n)" is a typographic convention, not a universal one, and it used to sit in the JSX where
+    // no translation could reach it.
+    render(<AttachmentList accountId="a" attachments={[part({ name: 'one.pdf' })]} />)
+    expect(screen.getByRole('heading', { name: '1 attachment' })).toBeInTheDocument()
+  })
+
+  it('uses the plural form for more than one', () => {
+    render(
+      <AttachmentList
+        accountId="a"
+        attachments={[part({ blobId: 'b1', name: 'a.pdf' }), part({ blobId: 'b2', name: 'b.pdf' })]}
+      />,
+    )
+    expect(screen.getByRole('heading', { name: '2 attachments' })).toBeInTheDocument()
+  })
+
+  it('leaves the region label as the bare noun — it names the region, it does not count it', () => {
+    render(<AttachmentList accountId="a" attachments={[part({ name: 'one.pdf' })]} />)
+    expect(screen.getByRole('region', { name: 'Attachments' })).toBeInTheDocument()
+  })
+})
+
 describe('AttachmentList — a hostile filename', () => {
   /** `Invoice<U+202E>gpj.exe` renders as `Invoiceexe.jpg`: the visible extension is a lie. */
   const RLO = '\u202E'
@@ -156,8 +180,9 @@ describe('AttachmentList — a signed message (M5.19)', () => {
     )
     expect(screen.getByText('report.pdf')).toBeInTheDocument()
     expect(screen.queryByText('smime.p7s')).not.toBeInTheDocument()
-    // The count in the heading must agree — one attachment, not two.
-    expect(screen.getByRole('heading', { name: /\(1\)/ })).toBeInTheDocument()
+    // The count in the heading must agree — one attachment, not two. Named, not parenthesised: the
+    // bracket used to be hardcoded in the JSX and is part of the translated string now (R-50).
+    expect(screen.getByRole('heading', { name: '1 attachment' })).toBeInTheDocument()
   })
 
   it('does not list the PGP signature part', () => {

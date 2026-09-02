@@ -2121,7 +2121,12 @@ zwischen `setPref` und liveQuery-Emission ist möglich, aber harmlos.
 
 ### R-50 — [LOW] Zwei hardcodierte Interpunktions-Muster im JSX: `": "` nach „An“ und `" (n)"` in der Anhangs-Überschrift
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`reading.toLine` und `reading.attachments.titleCount` in allen 14 Bundles (Letzteres mit den
+Pluralformen, die jede Sprache tatsächlich auswählt). `reading.to` und `reading.attachments.title`
+bleiben als blanke Bezeichnungen erhalten — die Detailliste braucht ein `<dt>` ohne Interpunktion,
+und `aria-label` der Sektion benennt den Bereich, statt ihn zu zählen. Der Regressionstest ist ein
+Quelltext-Scan in `locales.test.ts` mit genau den beiden Grep-Mustern des Befunds.
 
 **Kategorie / Bereich:** i18n / Mail
 

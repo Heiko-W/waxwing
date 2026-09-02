@@ -1093,8 +1093,14 @@ export function MessageView({ email, mailboxId, autoMark = true, onCollapse }: M
             )}
           </div>
           <div className={styles.headerSub}>
+            {/* One string, colon included (R-50). French puts a non-breaking space before a
+                colon and this one was outside the translation; the search chips already have the
+                right shape (`search.chip.to`: "To: {{value}}"). `reading.to` stays as the bare
+                label for the details list below, where it is a `<dt>` and takes no punctuation. */}
             <span className={styles.recipients}>
-              {t('reading.to')}: {formatAddressList(email.to, t('reading.noRecipients'))}
+              {t('reading.toLine', {
+                recipients: formatAddressList(email.to, t('reading.noRecipients')),
+              })}
             </span>
             <Button
               size="sm"

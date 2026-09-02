@@ -1102,6 +1102,7 @@
   "reading": {
     "from": "Von",
     "to": "An",
+    "toLine": "An: {{recipients}}",
     "cc": "Kopie",
     "replyTo": "Antwort an",
     "bcc": "Blindkopie",
@@ -1140,6 +1141,8 @@
     },
     "attachments": {
       "title": "Anhänge",
+      "titleCount_one": "{{count}} Anhang",
+      "titleCount_other": "{{count}} Anhänge",
       "saveAll": "Alle speichern",
       "unnamed": "(Ohne Namen)",
       "preview": "Vorschau",

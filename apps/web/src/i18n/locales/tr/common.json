@@ -1102,6 +1102,7 @@
   "reading": {
     "from": "Kimden",
     "to": "Kime",
+    "toLine": "Kime: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Yanıt adresi",
     "bcc": "Bcc",
@@ -1140,6 +1141,8 @@
     },
     "attachments": {
       "title": "Ekler",
+      "titleCount_one": "{{count}} ek",
+      "titleCount_other": "{{count}} ek",
       "saveAll": "Tümünü kaydet",
       "unnamed": "(Adsız)",
       "preview": "Önizleme",

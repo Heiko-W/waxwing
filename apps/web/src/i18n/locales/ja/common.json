@@ -1087,6 +1087,7 @@
   "reading": {
     "from": "差出人",
     "to": "宛先",
+    "toLine": "宛先: {{recipients}}",
     "cc": "Cc",
     "replyTo": "返信先",
     "bcc": "Bcc",
@@ -1125,6 +1126,7 @@
     },
     "attachments": {
       "title": "添付ファイル",
+      "titleCount_other": "添付ファイル {{count}} 件",
       "saveAll": "すべて保存",
       "unnamed": "（名前なし）",
       "preview": "プレビュー",

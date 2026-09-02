@@ -1117,6 +1117,7 @@
   "reading": {
     "from": "De",
     "to": "Para",
+    "toLine": "Para: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Responder a",
     "bcc": "Bcc",
@@ -1155,6 +1156,9 @@
     },
     "attachments": {
       "title": "Anexos",
+      "titleCount_one": "{{count}} anexo",
+      "titleCount_many": "{{count}} anexos",
+      "titleCount_other": "{{count}} anexos",
       "saveAll": "Guardar tudo",
       "unnamed": "(Sem nome)",
       "preview": "Pré-visualizar",

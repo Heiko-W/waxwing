@@ -1132,6 +1132,7 @@
   "reading": {
     "from": "От кого",
     "to": "Кому",
+    "toLine": "Кому: {{recipients}}",
     "cc": "Копия",
     "replyTo": "Обратный адрес",
     "bcc": "Скрытая копия",
@@ -1170,6 +1171,10 @@
     },
     "attachments": {
       "title": "Вложения",
+      "titleCount_one": "{{count}} вложение",
+      "titleCount_few": "{{count}} вложения",
+      "titleCount_many": "{{count}} вложений",
+      "titleCount_other": "{{count}} вложения",
       "saveAll": "Сохранить все",
       "unnamed": "(Без имени)",
       "preview": "Предпросмотр",

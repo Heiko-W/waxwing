@@ -1132,6 +1132,7 @@
   "reading": {
     "from": "Від",
     "to": "Кому",
+    "toLine": "Кому: {{recipients}}",
     "cc": "Копія",
     "replyTo": "Зворотна адреса",
     "bcc": "Прихована копія",
@@ -1170,6 +1171,10 @@
     },
     "attachments": {
       "title": "Вкладення",
+      "titleCount_one": "{{count}} вкладення",
+      "titleCount_few": "{{count}} вкладення",
+      "titleCount_many": "{{count}} вкладень",
+      "titleCount_other": "{{count}} вкладення",
       "saveAll": "Зберегти всі",
       "unnamed": "(Без назви)",
       "preview": "Перегляд",

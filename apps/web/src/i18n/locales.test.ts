@@ -97,3 +97,54 @@ describe('the source bundle spells each word one way', () => {
     }
   })
 })
+
+/**
+ * Punctuation is part of the translation (R-50).
+ *
+ * A colon and a bracketed count look like layout and are not: French sets a narrow no-break space
+ * before a colon, and a number in a sentence is what `{{count}}` and the plural forms exist for.
+ * Two places in the JSX assembled them outside `t()` — `{t('reading.to')}: {…}` and
+ * `{t('reading.attachments.title')} ({items.length})` — while the search chips next door had the
+ * right shape all along (`search.chip.to`: "To: {{value}}").
+ *
+ * A SOURCE scan rather than a rendering test, because what has to be prevented is the shape coming
+ * back somewhere else. The two patterns are the ones the review's own grep used.
+ */
+describe('no punctuation is assembled outside the translation', () => {
+  const sources = import.meta.glob('../**/*.tsx', {
+    eager: true,
+    query: '?raw',
+    import: 'default',
+  }) as Record<string, string>
+
+  it('scans a plausible number of files', () => {
+    // Same guard as the key count above: a changed glob would make every assertion below vacuous.
+    expect(Object.keys(sources).length).toBeGreaterThan(50)
+  })
+
+  /*
+   * The JSX form specifically — `{t('x')}: {value}` and `{t('x')} ({n.length})`.
+   *
+   * NOT every `${t('x')}: ` in a template literal: two of those remain (`MailScreen`'s back-button
+   * label, and `MessageView`'s forwarded-message header block, where the colon is part of a
+   * quasi-RFC header format rather than prose). They are recorded rather than swept in, because a
+   * pattern this test does not distinguish would have to be muted by an allowlist, and an allowlist
+   * is how a rule stops meaning anything.
+   */
+  it.each([
+    ["a colon after a t() call — `')}: {`", /'\)\}:\s\{/],
+    ['a bracketed count — `} ({…length})`', /\}\s\(\{[^}]*\.length\}\)/],
+  ])('has no %s', (_name, pattern) => {
+    const offenders = Object.entries(sources)
+      .filter(([, text]) => pattern.test(text))
+      .map(([path]) => path)
+    expect(offenders).toEqual([])
+  })
+
+  it('carries the French spacing the colon rule exists for', () => {
+    // U+202F, the narrow no-break space French sets before a colon. Only reachable because the
+    // colon is inside the string.
+    const line = flatten(bundleFor('fr')).get('reading.toLine')
+    expect(typeof line === 'string' ? line : '').toMatch(/\u202f:|\u00a0:| :/)
+  })
+})

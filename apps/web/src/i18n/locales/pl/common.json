@@ -1132,6 +1132,7 @@
   "reading": {
     "from": "Od",
     "to": "Do",
+    "toLine": "Do: {{recipients}}",
     "cc": "DW",
     "replyTo": "Adres zwrotny",
     "bcc": "UDW",
@@ -1170,6 +1171,10 @@
     },
     "attachments": {
       "title": "Załączniki",
+      "titleCount_one": "{{count}} załącznik",
+      "titleCount_few": "{{count}} załączniki",
+      "titleCount_many": "{{count}} załączników",
+      "titleCount_other": "{{count}} załącznika",
       "saveAll": "Zapisz wszystkie",
       "unnamed": "(Bez nazwy)",
       "preview": "Podgląd",

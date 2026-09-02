@@ -1117,6 +1117,7 @@
   "reading": {
     "from": "De",
     "to": "À",
+    "toLine": "À : {{recipients}}",
     "cc": "Cc",
     "replyTo": "Répondre à",
     "bcc": "Cci",
@@ -1155,6 +1156,9 @@
     },
     "attachments": {
       "title": "Pièces jointes",
+      "titleCount_one": "{{count}} pièce jointe",
+      "titleCount_many": "{{count}} pièces jointes",
+      "titleCount_other": "{{count}} pièces jointes",
       "saveAll": "Tout enregistrer",
       "unnamed": "(Sans nom)",
       "preview": "Aperçu",

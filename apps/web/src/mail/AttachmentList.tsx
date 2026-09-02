@@ -314,8 +314,12 @@ export function AttachmentList({ accountId, attachments, subject }: AttachmentLi
   return (
     <section className={styles.attachments} aria-label={t('reading.attachments.title')}>
       <div className={styles.attachmentsHead}>
+        {/* The count belongs INSIDE the string (R-50): " (n)" is a typographic convention, not a
+            universal one, and a number in a sentence is what `{{count}}` is for. `title` stays as
+            the bare label for the section's `aria-label`, which names the region rather than
+            counting it. */}
         <h3 className={styles.attachmentsTitle}>
-          {t('reading.attachments.title')} ({items.length})
+          {t('reading.attachments.titleCount', { count: items.length })}
         </h3>
         {items.length > 1 && (
           <Button

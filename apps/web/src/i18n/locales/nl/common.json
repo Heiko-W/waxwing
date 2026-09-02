@@ -1102,6 +1102,7 @@
   "reading": {
     "from": "Van",
     "to": "Aan",
+    "toLine": "Aan: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Antwoordadres",
     "bcc": "Bcc",
@@ -1140,6 +1141,8 @@
     },
     "attachments": {
       "title": "Bijlagen",
+      "titleCount_one": "{{count}} bijlage",
+      "titleCount_other": "{{count}} bijlagen",
       "saveAll": "Alles opslaan",
       "unnamed": "(Zonder naam)",
       "preview": "Voorbeeld",

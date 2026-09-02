@@ -1117,6 +1117,7 @@
   "reading": {
     "from": "Da",
     "to": "A",
+    "toLine": "A: {{recipients}}",
     "cc": "Cc",
     "replyTo": "Rispondi a",
     "bcc": "Ccn",
@@ -1155,6 +1156,9 @@
     },
     "attachments": {
       "title": "Allegati",
+      "titleCount_one": "{{count}} allegato",
+      "titleCount_many": "{{count}} di allegati",
+      "titleCount_other": "{{count}} allegati",
       "saveAll": "Salva tutti",
       "unnamed": "(Senza nome)",
       "preview": "Anteprima",
