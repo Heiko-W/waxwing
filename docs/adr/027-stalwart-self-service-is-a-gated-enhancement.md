@@ -120,7 +120,8 @@ the account's spam training samples (list/delete). Behind these choices:
 - **The wire format is Stalwart's schema generator, not JMAP convention** — sets as maps, `@type`
   variants, singleton ids, POSIX enum names. It is as drift-prone as the calendar draft, and it is
   contained in the two modules above and pinned by `stalwart-client.test.ts` against shapes measured
-  from the fixture, plus one live E2E (`e2e/tests/security.spec.ts`).
+  from the fixture, plus one live E2E (`e2e/tests/account-security.spec.ts` — named
+  `security.spec.ts` until R-44).
 - **A server without the capability is not merely degraded; the section does not exist**, down to
   its row in the settings rail. `security.test.tsx` fails if that stops being true.
 - **An app-password secret is never persisted.** It lives in one component's state and is destroyed

@@ -1978,7 +1978,14 @@ Gegenprüfung: bestätigt.
 
 ### R-44 — [MEDIUM] Die Account-&-Security-E2E-Suite wurde beim B25-Umbau überschrieben, nicht verschoben; `security.spec.ts` läuft im Gate doppelt
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Die fünf Tests aus `81ff67f` sind als `e2e/tests/account-security.spec.ts` wiederhergestellt und
+laufen unverändert gegen den heutigen Code — gegen die echte Stalwart-Fixture ausgeführt,
+5 passed (18,9 s); es war keine Anpassung nötig. Die Write-Config zeigt jetzt auf diese Datei,
+`security.spec.ts` (B25) läuft nur noch in der Read-Config, Kommentar und ADR-027 Z. 123 sind
+mitgezogen. Wächter: `scripts/e2e-suites.test.ts` liest die `testMatch`-Listen aller sieben
+Gate-Configs und meldet jeden Spec, der in zweien steht — mit der einen erlaubten Ausnahme
+`read.spec.ts` in der WebKit-Config.
 
 **Kategorie / Bereich:** tests / Infra (E2E)
 
@@ -3983,7 +3990,20 @@ bestätigt, präzisiert.
 
 ### R-104 — [LOW] `contacts.spec.ts`: der Read-only-Adressbuch-Test wird im Gate immer übersprungen (B22-Klasse)
 
-**Status:** [ ] offen
+**Status:** [ ] offen — NICHT behoben, Befund hält nicht in dieser Form.
+Der Lösungsansatz (`shareAddressBook('carol', 'alice', 'viewer')` im `beforeAll`) macht den Test
+nicht grün. Am 02.09.2026 gegen die laufende Fixture gemessen: nach dem Share liegt das
+schreibgeschützte Buch in CAROLS Account (`d`, `myRights.mayWrite: false`), alices eigener
+Kontakt-Account (`b`) hat weiterhin genau ein Buch mit `mayWrite: true`. Die Kontakte-Oberfläche
+ist einkontig — `useAddressBooks()` liest `addressBooksForAccount(db, accountId)` für den
+verbundenen Account (`apps/web/src/sync/react.tsx:217`) —, ein Buch aus einem anderen Account
+erreicht die Leiste also nie. Der Test würde nach dem Share nicht laufen, sondern gegen eine
+Leiste behaupten, die das Buch nicht enthalten kann. Ihn zum Laufen zu bringen setzt
+mehrkontige Kontakte voraus; das ist eine Produktentscheidung, kein Testfix.
+
+Geändert wurde nur die Begründung: die alte Prämisse („cross-account sharing ist nicht möglich")
+ist seit S-2 schlicht falsch und stand so im Datei-Header und in der Skip-Meldung. Beide nennen
+jetzt den gemessenen, tatsächlichen Grund. Die Abdeckungslücke aus dem Befund bleibt offen.
 
 **Kategorie / Bereich:** tests / Infra (E2E)
 
@@ -4162,7 +4182,11 @@ fast gleichzeitigen Releases zeigt.
 
 ### R-109 — [LOW] `register-sw.test.ts`: Fake-Timer ohne garantierten Cleanup
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`afterEach(() => vi.useRealTimers())` in der Datei, das `vi.useRealTimers()` als letzte Zeile des
+Fake-Timer-Tests entfällt dafür. Zusätzlich ein Test direkt danach, der `vi.isFakeTimers()` prüft:
+ohne ihn ist der Befund nicht mutationsprobierbar, weil der einzige nachfolgende Test in der Datei
+zufällig ohne echte Uhr auskommt und ein Leck heute folgenlos bliebe.
 
 **Kategorie / Bereich:** tests / Infra
 
