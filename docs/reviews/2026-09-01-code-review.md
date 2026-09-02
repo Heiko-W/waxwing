@@ -1255,7 +1255,17 @@ korrigiert, Aufwand M → L.
 
 ### R-28 — [MEDIUM] W-15 nur für denselben Tab geschlossen: ein anderer Tab gewinnt den Lock im Moment des `abort()`, und die alte Engine fährt `recoverStranded` nach dem Abort weiter (vgl. W-15)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Zweiphasiger Stop umgesetzt (`drainController` zuerst, `stopController` erst nach dem Abwarten der
+Paesse), plus die beiden Signalpruefungen in `runReplay` und ganz am Anfang von `replayOutbox`. Der
+`claimedAt`-Stempel aus der Alternative ist NICHT umgesetzt: er entschaerft den Tab-Crash-Fall, und dort
+ist das sofortige `sendInterrupted` das gewuenschte Verhalten (der Tab ist tot, die Antwort ist
+verloren) — ein 30-s-Aufschub waere nur langsamer. Vertraeglichkeit mit dem Sign-out-Budget geprueft:
+die WARTEZEIT von `stop()` bleibt unveraendert (das Drain-Signal kuerzt die Paesse genau wie vorher das
+Stop-Signal), nur der Moment der Lock-Freigabe wandert ans Ende. `SIGN_OUT_STOP_BUDGET_MS` (5 s)
+rennt weiterhin dagegen und wischt in jedem Fall. Preis im Ausnahmefall: haengt eine Anfrage bis ins
+W-16-Timeout, wartet ein zweiter Tab bis zu 30 s auf die Fuehrung (bisher: sofort, dafuer mit dem
+kaputten Send).
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -2909,7 +2919,13 @@ Locks/BroadcastChannel vorab), aber nicht ausgeschlossen (`getReplica()` in eine
 
 ### R-76 — [LOW] Die Regressionstests zu W-13 und W-14 pinnen nur die Erfolgspfade (vgl. W-13, W-14)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+A1/A2 (Reject- und Transient-Pfad) und D1 (Drain haelt den Claim, Rollback scheitert) sind in
+`outbox.test.ts` bzw. `engine.test.ts` uebernommen, dazu je ein Gegentest. V3 ist als Lock-Uebergabe-Test
+uebernommen — nicht als Nachbau des Fehlerbildes, denn mit dem R-28-Fix kann der zweite Tab in diesem
+Moment gar nicht mehr Leader werden; der Test pinnt genau das, plus ein `replayOutbox`-Test, dass ein
+abgebrochener Pass auch `recoverStranded` nicht mehr faehrt. V1 war mit R-29 schon gepinnt
+(`use-draft-sync.test.tsx`, „useDraftSync — the queued autosave row (R-25, R-29)").
 
 **Kategorie / Bereich:** tests / Sync
 

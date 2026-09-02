@@ -1578,6 +1578,110 @@ describe('SyncEngine — undo-send (M2.8)', () => {
   })
 })
 
+/**
+ * Handing the lock on (W-15, and the half of it R-28 found still open).
+ *
+ * Web Locks are per ORIGIN, not per tab. The W-15 fix serialised the fleet hand-over inside ONE tab
+ * and left the cross-tab case: `stop()` aborted the lock request FIRST, so a second tab waiting in
+ * the queue became leader at that instant — while the stopping engine was only beginning to await a
+ * pass whose JMAP request can run for another 30 s. The new leader's first `replayOutbox` then ran
+ * `recoverStranded` over the rows the old one still had on the wire.
+ */
+describe('SyncEngine — releasing the lock on stop (W-15, R-28)', () => {
+  /** Models `navigator.locks` exclusive FIFO queueing (mirrors leader.test.ts / fleet.test.ts). */
+  class QueueingLockManager implements LockManagerLike {
+    private readonly busy = new Set<string>()
+    private readonly queues = new Map<string, Array<() => void>>()
+
+    request(
+      name: string,
+      options: { signal?: AbortSignal },
+      cb: (lock: unknown) => Promise<unknown>,
+    ): Promise<unknown> {
+      return new Promise((resolve, reject) => {
+        let granted = false
+        const run = () => {
+          granted = true
+          this.busy.add(name)
+          Promise.resolve()
+            .then(() => cb(undefined))
+            .then(
+              (value) => {
+                this.busy.delete(name)
+                resolve(value)
+                this.pump(name)
+              },
+              (error) => {
+                this.busy.delete(name)
+                reject(error)
+                this.pump(name)
+              },
+            )
+        }
+        const queue = this.queues.get(name) ?? []
+        queue.push(run)
+        this.queues.set(name, queue)
+        const signal = options.signal
+        if (signal) {
+          const onAbort = () => {
+            if (granted) return
+            const q = this.queues.get(name)
+            const index = q?.indexOf(run) ?? -1
+            if (q && index >= 0) q.splice(index, 1)
+            reject(new DOMException('The operation was aborted.', 'AbortError'))
+          }
+          if (signal.aborted) onAbort()
+          else signal.addEventListener('abort', onAbort, { once: true })
+        }
+        this.pump(name)
+      })
+    }
+
+    private pump(name: string): void {
+      if (this.busy.has(name)) return
+      const next = (this.queues.get(name) ?? []).shift()
+      next?.()
+    }
+  }
+
+  it('does not hand leadership to the next tab while its own pass is still on the wire', async () => {
+    const locks = new QueueingLockManager()
+    type MailboxesResult = Awaited<ReturnType<JmapPort['getMailboxes']>>
+    let releaseMailboxes: ((result: MailboxesResult) => void) | undefined
+    let mailboxCalls = 0
+    const portA: JmapPort = {
+      ...fakePort({ emails: [], setEmails: emptySet }),
+      getMailboxes: async () => {
+        mailboxCalls += 1
+        if (mailboxCalls > 1) return { list: [], notFound: [], state: 'm1' }
+        // Park A inside its delta block, exactly where a slow request leaves it.
+        return new Promise<MailboxesResult>((resolve) => {
+          releaseMailboxes = resolve
+        })
+      },
+    }
+    const portB = fakePort({ emails: [], setEmails: emptySet })
+    const a = new SyncEngine({ ...makeDeps(db, portA, new FakePush()), locks })
+    const b = new SyncEngine({ ...makeDeps(db, portB, new FakePush()), locks })
+
+    a.start()
+    await waitFor(() => a.getStatus().isLeader && mailboxCalls === 1)
+    b.start() // queued behind A on the lock
+
+    const stopping = a.stop()
+    // The abort used to free the lock HERE, with A's request still outstanding. B would take over
+    // and its first pass would run `recoverStranded` over whatever A still had in flight.
+    for (let i = 0; i < 20; i += 1) await flush()
+    expect(b.getStatus().isLeader, 'B took the lock while A was still on the wire').toBe(false)
+
+    releaseMailboxes?.({ list: [], notFound: [], state: 'm1' })
+    await stopping
+    // Only once A has settled does the queue move on — the hand-over still happens, just in order.
+    await waitFor(() => b.getStatus().isLeader)
+    await b.stop()
+  })
+})
+
 describe('SyncEngine — cache maintenance (M3.4)', () => {
   /** A lock that is never granted — a FOLLOWER tab (it rejects on abort, exactly like Web Locks). */
   const contendedLock: LockManagerLike = {

@@ -383,6 +383,72 @@ describe('outbox — a row replaced while it was in flight (W-13)', () => {
     expect(sent).toBe(1)
     expect((await row('i2'))?.status).toBe('pending')
   })
+
+  /**
+   * The half W-15 left open (R-28): the signal was only checked between ROWS, and the pass opens
+   * with `recoverStranded` — which dead-letters every `inflight` send as `sendInterrupted`.
+   * "Inflight" is precisely the state of a row some OTHER engine has on the wire, so a pass entered
+   * after the abort (the stopping leader resuming from a parked delta leg, or a new leader that took
+   * the freed lock a tick too early) killed a send that was seconds from succeeding.
+   */
+  it('runs nothing at all — not even recoverStranded — on an already-aborted pass (R-28)', async () => {
+    await db.drafts.put({
+      accountId: ACC,
+      localId: 'd1',
+      serverEmailId: null,
+      status: 'sending',
+      content: {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'Hi',
+        body: '<p>x</p>',
+        inReplyTo: null,
+        references: null,
+        fromIdentityId: null,
+        fromIdentityHint: null,
+        attachments: [],
+        sourceEmailId: null,
+        sourceFlag: null,
+      },
+      createdAt: 0,
+      updatedAt: 1,
+      lastError: null,
+    })
+    // The row another engine has on the wire right now.
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'send:d1',
+      type: 'sendEmail',
+      payload: {
+        kind: 'sendEmail',
+        localId: 'd1',
+        emailCreationId: 'send-d1',
+        submissionCreationId: 'sub-d1',
+      },
+      ifInState: null,
+      status: 'inflight',
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: null,
+      seq: 1,
+    })
+    const controller = new AbortController()
+    controller.abort()
+
+    const summary = await replayOutbox(fakePort({}), db, ACC, {
+      now: 10,
+      random: NO_JITTER,
+      signal: controller.signal,
+    })
+
+    expect((await row('send:d1'))?.status, 'the other engine’s send was dead-lettered').toBe(
+      'inflight',
+    )
+    expect((await db.drafts.get([ACC, 'd1']))?.status).toBe('sending')
+    expect(summary).toEqual({ replayed: 0, failed: 0, stuck: 0, conflicted: 0 })
+  })
 })
 
 /**

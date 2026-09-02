@@ -2857,6 +2857,21 @@ export async function replayOutbox(
     return { replayed, failed, stuck, conflicted }
   }
 
+  // Read through a function, not a narrowed expression: `AbortSignal.aborted` is a live getter that
+  // flips DURING this pass, and TypeScript would otherwise narrow the per-row check below to `false`
+  // on the strength of the early return here and call it unreachable.
+  const stopping = (): boolean => options.signal?.aborted === true
+
+  // Already stopping: do NOTHING, not even the recovery below. This is the check that has to come
+  // before `recoverStranded`, not just before the row claims (R-28).
+  //
+  // `recoverStranded` dead-letters every `inflight` send as `sendInterrupted`, and "inflight" is
+  // precisely the state of a row that ANOTHER engine has on the wire right now. A pass entered
+  // after the abort — the old leader's `runSyncPass` resuming from a parked delta leg, or a new
+  // leader that took the freed lock a tick too early — therefore killed a send that was seconds
+  // away from succeeding: "Sending failed" plus a reopened composer for a message that was sent.
+  if (stopping()) return { replayed: 0, failed: 0, stuck: 0, conflicted: 0 }
+
   // Offline: nothing to attempt. Rows keep their optimistic state, `attempts` stays put, and NOTHING
   // is rolled back or discarded — an outage of any length costs the queue nothing.
   if (options.online === false) return summarize(0, 0)
@@ -2909,7 +2924,7 @@ export async function replayOutbox(
 
   for (const row of rows) {
     // Between rows, before the claim: see `ReplayOptions.signal`.
-    if (options.signal?.aborted === true) break
+    if (stopping()) break
     const intent = row.payload as OutboxIntent
     // Atomically claim the row before executing: re-read + flip pending→inflight in ONE rw txn so a
     // concurrent cancelSend (undo) that deletes the row wins the race, instead of the send firing on

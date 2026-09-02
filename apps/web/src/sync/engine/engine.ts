@@ -288,7 +288,31 @@ export class SyncEngine {
   /** Where {@link setStatus} publishes; the global store by default (M4.4). */
   private readonly publishStatus: (status: EngineStatus) => void
 
+  /**
+   * Phase 2 of {@link stop}: releases the Web Lock, i.e. hands leadership to the next tab in the
+   * queue. Aborted only AFTER every in-flight pass of this engine has settled.
+   */
   private readonly stopController = new AbortController()
+  /**
+   * Phase 1 of {@link stop}: "claim nothing more". Aborted FIRST, while this engine still holds the
+   * lock (W-15 / R-28).
+   *
+   * The two used to be one signal, and that is what left the W-15 hole half open. Web Locks are per
+   * ORIGIN, not per tab: aborting the lock request frees the lock IMMEDIATELY, so a second tab
+   * waiting in the queue became leader at that instant — while this engine was only just beginning
+   * to await its in-flight pass, whose JMAP request can run for another 30 s (W-16). The new leader's
+   * first pass ran `recoverStranded` over the rows the old one still had on the wire: a send in
+   * flight became a `sendInterrupted` dead letter and its draft was marked failed, and then the
+   * submission came back successfully. "Sending failed" for a message that was sent, with the
+   * composer reopened and an invitation to send it a second time.
+   *
+   * Splitting the signal costs nothing in wall clock: `stop()` already waited for those passes, and
+   * this signal shortens them exactly as the old one did (`replayOutbox` stops claiming, the pass
+   * returns). Only the moment of the LOCK RELEASE moves — to after the wait, which is the whole
+   * point. The sign-out path's 5 s budget (`SIGN_OUT_STOP_BUDGET_MS`) is unaffected: it races
+   * `stop()` as before and wipes regardless.
+   */
+  private readonly drainController = new AbortController()
   private bus: EngineBus | undefined
   private push: PushChannel | undefined
   private leaderPromise: Promise<void> | undefined
@@ -453,10 +477,18 @@ export class SyncEngine {
     })
   }
 
-  /** Stop syncing, release the lock, close push/bus. Awaitable so sign-out can wipe afterwards. */
+  /**
+   * Stop syncing, release the lock, close push/bus. Awaitable so sign-out can wipe afterwards.
+   *
+   * TWO PHASES, and the order is the fix for R-28 — see {@link drainController}. Phase 1 tells this
+   * engine to claim nothing further and waits for what it already claimed; phase 2 releases the Web
+   * Lock. Doing both at once handed leadership to a waiting tab in the same tick in which this one
+   * still had rows on the wire, and its `recoverStranded` then dead-lettered them under it.
+   */
   async stop(): Promise<void> {
     if (!this.started) return
-    this.stopController.abort()
+    // ---- Phase 1: stop claiming. The lock stays HELD, so no other tab can start a pass yet. ----
+    this.drainController.abort()
     if (this.safetyTimer !== undefined) this.clock.clearTimeout(this.safetyTimer)
     if (this.queueWakeTimer !== undefined) this.clock.clearTimeout(this.queueWakeTimer)
     // A pending retry outlives `stop()` otherwise, and fires a sync against a torn-down engine.
@@ -480,6 +512,8 @@ export class SyncEngine {
     // Same for a maintenance pass: it deletes rows in chunked transactions, so a wipeReplica() racing
     // it would abort mid-pass with a DatabaseClosedError (M3.4).
     await this.maintaining?.catch(() => {})
+    // ---- Phase 2: nothing of ours is on the wire any more — hand the lock on. ----
+    this.stopController.abort()
     await this.leaderPromise?.catch(() => {})
     // Reset the shared status store so a fresh login never inherits this session's phase.
     this.status = { ...INITIAL_ENGINE_STATUS, online: this.deps.isOnline() }
@@ -701,7 +735,7 @@ export class SyncEngine {
       this.clock.clearTimeout(this.queueWakeTimer)
       this.queueWakeTimer = undefined
     }
-    if (this.stopController.signal.aborted) return
+    if (this.drainController.signal.aborted) return
     const now = this.clock.now()
     const deadlines = (await pendingOutbox(this.db, this.accountId))
       .filter((row) => row.status === 'pending')
@@ -789,7 +823,7 @@ export class SyncEngine {
       // mid-search leaves this one running against a replica that is being wiped: every further write
       // throws `DatabaseClosedError`, and the recovery write below would throw too — an unhandled
       // rejection, and a pointless one. Bail out instead.
-      if (this.stopController.signal.aborted) return
+      if (this.drainController.signal.aborted) return
       // A rejected search filter (e.g. a server without full-text support) must not raise an
       // unhandled rejection OR leave the list spinning forever: write an empty window so it shows
       // "no results", and — the key stays watched — the next reconcile self-heals a transient error.
@@ -846,7 +880,7 @@ export class SyncEngine {
       // A brand-new window has no cached row, so `forceFull` here is the initial full materialization.
       await reconcileContactQuery(this.port, this.db, this.accountId, key, spec, this.clock, true)
     } catch {
-      if (this.stopController.signal.aborted) return
+      if (this.drainController.signal.aborted) return
       // A rejected contact filter must not leave the list spinning forever: write an empty window so it
       // shows "no results", and — the key stays watched — the next reconcile self-heals a transient error.
       await putContactQueryCache(this.db, {
@@ -920,7 +954,7 @@ export class SyncEngine {
     try {
       await reconcileCalendarQuery(this.port, this.db, this.accountId, key, spec, this.clock, true)
     } catch {
-      if (this.stopController.signal.aborted) return
+      if (this.drainController.signal.aborted) return
       // Offline is the ORDINARY reason to land here, and it must change nothing: an existing window
       // stays exactly as it was so the month keeps rendering from the replica. Only a window that
       // has never been materialized gets the empty placeholder, so a first visit says "nothing yet"
@@ -1072,10 +1106,10 @@ export class SyncEngine {
   async runMaintenance(
     options: { force?: boolean; needBytes?: number } = {},
   ): Promise<MaintenanceResult | null> {
-    if (this.stopController.signal.aborted) return null
+    if (this.drainController.signal.aborted) return null
     if (options.force !== true && this.maintaining !== undefined) return this.maintaining
     while (this.maintaining !== undefined) await this.maintaining
-    if (this.stopController.signal.aborted) return null
+    if (this.drainController.signal.aborted) return null
     const now = this.clock.now()
     if (!options.force) {
       if (!this.isLeader) return null
@@ -1096,7 +1130,7 @@ export class SyncEngine {
       watchedContactKeys: this.watchedContacts,
       watchedCalendarKeys: new Set(this.watchedCalendars.keys()),
       lastBodyFetchId: this.lastBodyFetchId,
-      signal: this.stopController.signal,
+      signal: this.drainController.signal,
       ...(options.needBytes === undefined ? {} : { needBytes: options.needBytes }),
       // Prefetching a pinned folder is the one stage that talks to the server: leader + online only.
       ...(this.isLeader && this.deps.isOnline()
@@ -1267,7 +1301,7 @@ export class SyncEngine {
   private async onLeadership(isLeader: boolean): Promise<void> {
     this.isLeader = isLeader
     this.patch({ isLeader })
-    if (!isLeader || this.stopController.signal.aborted) return
+    if (!isLeader || this.drainController.signal.aborted) return
     // Re-arm M3.6's storm guard for THIS leadership session: the next successful pass is the catch-up
     // and stays silent, and nothing older than this instant may ever notify.
     this.notifyArmed = false
@@ -1346,7 +1380,7 @@ export class SyncEngine {
    */
   private scheduleSyncRetry(error: unknown): void {
     this.cancelSyncRetry()
-    if (this.stopController.signal.aborted || !this.isLeader) return
+    if (this.drainController.signal.aborted || !this.isLeader) return
     this.syncFailures += 1
     const hinted = SyncEngine.retryAfterOf(error)
     const delay = hinted ?? backoffDelayMs(this.syncFailures, Math.random(), SYNC_RETRY_BACKOFF)
@@ -1369,7 +1403,7 @@ export class SyncEngine {
   }
 
   private scheduleSafetySweep(): void {
-    if (this.stopController.signal.aborted) return
+    if (this.drainController.signal.aborted) return
     const interval = this.deps.safetyIntervalMs ?? DEFAULT_SAFETY_INTERVAL_MS
     this.safetyTimer = this.clock.setTimeout(() => {
       if (this.isLeader) void this.sync()
@@ -1386,7 +1420,7 @@ export class SyncEngine {
   /** Collapse an `online` burst (a flapping line) into ONE sync pass once it has settled. */
   private scheduleReconnect(): void {
     this.cancelReconnect()
-    if (this.stopController.signal.aborted) return
+    if (this.drainController.signal.aborted) return
     this.reconnectTimer = this.clock.setTimeout(() => {
       this.reconnectTimer = undefined
       if (this.isLeader) void this.sync()
@@ -1395,7 +1429,7 @@ export class SyncEngine {
 
   /** One coalesced sync pass (leader only): delta sync → reconcile watched queries → replay outbox. */
   private async sync(): Promise<void> {
-    if (!this.isLeader || this.stopController.signal.aborted) return
+    if (!this.isLeader || this.drainController.signal.aborted) return
     if (this.syncing) {
       this.syncQueued = true
       return
@@ -1409,7 +1443,7 @@ export class SyncEngine {
     await pass
     this.activeSync = undefined
     this.syncing = false
-    if (this.syncQueued && this.isLeader && !this.stopController.signal.aborted) {
+    if (this.syncQueued && this.isLeader && !this.drainController.signal.aborted) {
       this.syncQueued = false
       void this.sync()
     }
@@ -1426,7 +1460,7 @@ export class SyncEngine {
    * outbox id) already happens at enqueue time.
    */
   requestReplay(): void {
-    if (!this.isLeader || this.stopController.signal.aborted) return
+    if (!this.isLeader || this.drainController.signal.aborted) return
     void this.runReplayCoalesced()
   }
 
@@ -1440,13 +1474,17 @@ export class SyncEngine {
     this.replaying = pass
     await pass
     this.replaying = undefined
-    if (this.replayQueued && this.isLeader && !this.stopController.signal.aborted) {
+    if (this.replayQueued && this.isLeader && !this.drainController.signal.aborted) {
       this.replayQueued = false
       await this.runReplayCoalesced()
     }
   }
 
   private async runReplay(): Promise<void> {
+    // Stopping: run NOTHING. `runSyncPass` reaches this line after its delta block returns, which
+    // can be long after `stop()` was called — and `replayOutbox` opens with `recoverStranded`, so a
+    // pass entered here on the way out would walk rows that are no longer this engine's business.
+    if (this.drainController.signal.aborted) return
     // Offline: skip the pass entirely. (The transport-error path still covers a lying
     // `navigator.onLine` / a captive portal — it is a backoff, never a rollback.)
     const online = this.deps.isOnline()
@@ -1455,9 +1493,10 @@ export class SyncEngine {
         now: this.clock.now(),
         random: this.random,
         online: true,
-        // Stop claiming rows the moment this engine is torn down: the abort releases the Web Lock
-        // at once, and the next leader runs `recoverStranded` over whatever is still `inflight`.
-        signal: this.stopController.signal,
+        // Stop claiming rows the moment this engine is told to stop — checked before the first
+        // claim AND before `recoverStranded`, because the row a stopping engine still has on the
+        // wire is exactly the row `recoverStranded` must not touch.
+        signal: this.drainController.signal,
         refreshState: async (type) => {
           if (type === 'Mailbox') {
             const writes = await syncMailboxes(this.port, this.db, this.accountId, this.clock)
@@ -1730,7 +1769,7 @@ export class SyncEngine {
     if (this.mailDeltaRan) this.notifyArmed = true
     if (!wasArmed) return
     if (created.length === 0) return
-    if (!this.isLeader || this.stopController.signal.aborted) return
+    if (!this.isLeader || this.drainController.signal.aborted) return
     const notify = this.deps.notify
     if (notify === undefined) return
     if (await this.isAppInForeground()) return
@@ -1923,7 +1962,7 @@ export class SyncEngine {
   private patch(partial: Partial<EngineStatus>): void {
     // No status writes after teardown — a sync pass finishing during/after stop() must not clobber
     // the reset status (stop() owns the final write directly).
-    if (this.stopController.signal.aborted) return
+    if (this.drainController.signal.aborted) return
     this.setStatus({ ...this.status, ...partial }, this.isLeader)
   }
 
