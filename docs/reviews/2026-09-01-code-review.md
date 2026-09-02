@@ -2770,7 +2770,7 @@ nicht wiederhergestellt, `inbox.totalEmails === 0` statt 1. Gegenprüfung: best�
 
 ### R-71 — [LOW] `reconcileContactQuery` verwirft unplatzierbare Adds und persistiert ein leeres Fenster mit gültigem `queryState` — die B17-Korrektur der Mail-Seite fehlt bei Kontakten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Sync
 
@@ -2865,7 +2865,13 @@ synthetische Ids liefert.
 
 ### R-74 — [LOW] `cannotCalculateChanges`-Recovery nullt den `FileNode`-State, wonach der Baum nicht mehr per Delta gepflegt wird; Full-Pull von Mailboxen/Adressbüchern entfernt serverseitig gelöschte Zeilen nicht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Zwei Ergaenzungen zum Loesungsansatz. (1) `FileNode` wird aus `resetWatchedStates` ausgenommen statt
+nach dem Reset angestossen: `syncFileNodes` faengt `cannotCalculateChanges` bereits selbst ab und
+laeuft dann `walkFileTree` — der alte State ist also die einfachere und vollstaendigere Recovery.
+(2) Der neue Loeschdurchgang in `syncAddressBooks` schont Buecher, deren `createAddressBook` noch
+unversandt in der Outbox liegt; sonst haette der Full-Pull ein optimistisch angelegtes Buch entfernt.
+Fuer Mailboxen macht `reapplyPendingMailboxes` (B55) das nach jedem Aufruf ohnehin.
 
 **Kategorie / Bereich:** correctness / Sync
 

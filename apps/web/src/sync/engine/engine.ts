@@ -1569,6 +1569,19 @@ export class SyncEngine {
   private async resetWatchedStates(): Promise<void> {
     const now = this.clock.now()
     for (const type of WATCHED_TYPES) {
+      // …except `FileNode`, and the exception is load-bearing (R-74). For every other type a null
+      // state means "pull it whole on the next leg". For files it means the OPPOSITE: the tree is
+      // seeded by the Files screen, not by the sync pass, so the pass skips `FileNode` entirely
+      // while the state is null (see `runDeltaBlock`) — paying for the ten-page initial walk at
+      // every sign-in would be a tax on Mail for a reader who never opens Files. Nulling it here
+      // therefore FROZE the tree until the next time `FilesPage` mounted: no delta, no error, a
+      // directory listing quietly stuck at the moment the server was restored.
+      //
+      // Leaving the stale state in place is safe and needs no special case: the next
+      // `FileNode/changes` against it answers `cannotCalculateChanges`, which `syncFileNodes`
+      // already recovers from by re-walking the tree — and that walk drops what the server no
+      // longer has, which is exactly what this recovery is for.
+      if (type === 'FileNode') continue
       await setSyncState(this.db, this.accountId, type, null, now)
     }
   }

@@ -153,6 +153,31 @@ describe('syncMailboxes', () => {
     expect(await getSyncState(db, ACC, 'Mailbox')).toBe('m1')
   })
 
+  /**
+   * The full pull is not only the FIRST pull — it is also the `cannotCalculateChanges` recovery
+   * (a server restored from a backup, reset or replaced), and there the replica is full of rows
+   * from the old history. Purely additive, it left a folder the server no longer has in the tree
+   * forever: no delta will ever report it destroyed, and clicking it ends in a `folderGone` dead
+   * letter (R-74). `reloadCalendars` has always dropped what the answer omits.
+   */
+  it('drops a folder the server no longer lists on a full pull (R-74)', async () => {
+    await putMailboxes(db, ACC, [mailbox('inbox', { role: 'inbox' }), mailbox('stale')])
+    const port = fakePort({
+      getMailboxes: async () => ({
+        list: [mailbox('inbox', { role: 'inbox' })],
+        notFound: [],
+        state: 'm1',
+      }),
+    })
+
+    await syncMailboxes(port, db, ACC, clock)
+
+    expect(await db.mailboxes.get([ACC, 'inbox'])).toBeDefined()
+    expect(await db.mailboxes.get([ACC, 'stale']), 'the restored server’s list was merged in').toBe(
+      undefined,
+    )
+  })
+
   it('applies a created/destroyed delta across a hasMoreChanges page boundary', async () => {
     await putMailboxes(db, ACC, [mailbox('gone', { role: null })])
     await setSyncState(db, ACC, 'Mailbox', 'm0', 1)
@@ -615,6 +640,46 @@ describe('syncAddressBooks', () => {
     expect(await getSyncState(db, ACC, 'AddressBook')).toBe('ab1')
   })
 
+  it('drops a book the server no longer lists on a full pull (R-74)', async () => {
+    await putAddressBooks(db, ACC, [addressBook('book1'), addressBook('stale')])
+    const port = fakePort({
+      getAddressBooks: async () => ({ list: [addressBook('book1')], notFound: [], state: 'ab1' }),
+    })
+
+    await syncAddressBooks(port, db, ACC, clock)
+
+    expect(await db.addressBooks.get([ACC, 'book1'])).toBeDefined()
+    expect(await db.addressBooks.get([ACC, 'stale'])).toBeUndefined()
+  })
+
+  /**
+   * …but not a book that exists only because its create is still queued: the server cannot list what
+   * it has not been told about. (Mailboxes get this from `reapplyPendingMailboxes` after every pass;
+   * books have no such repair, so the guard sits in the removal itself.)
+   */
+  it('keeps a book whose createAddressBook is still unsent', async () => {
+    await putAddressBooks(db, ACC, [addressBook('book1'), addressBook('local-1')])
+    await db.outbox.put({
+      accountId: ACC,
+      id: 'i1',
+      type: 'createAddressBook',
+      payload: { kind: 'createAddressBook', creationId: 'local-1', props: { name: 'Neu' } },
+      ifInState: null,
+      status: 'pending',
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: null,
+    })
+    const port = fakePort({
+      getAddressBooks: async () => ({ list: [addressBook('book1')], notFound: [], state: 'ab1' }),
+    })
+
+    await syncAddressBooks(port, db, ACC, clock)
+
+    expect(await db.addressBooks.get([ACC, 'local-1'])).toBeDefined()
+  })
+
   it('applies a created/destroyed delta and advances the state', async () => {
     await putAddressBooks(db, ACC, [addressBook('gone')])
     await setSyncState(db, ACC, 'AddressBook', 'ab0', 1)
@@ -800,6 +865,116 @@ describe('reconcileContactQuery', () => {
 
     expect(deltaCalled).toBe(false)
     expect((await getContactQueryCache(db, ACC, KEY))?.ids).toEqual(['c7'])
+  })
+
+  /**
+   * The two B17 guards, which the contact mirror was missing (R-71). Same server, same
+   * `queryChanges` implementation: the shape that motivated them on the mail side is to be expected
+   * here, and dropping an unplaceable add wrote an EMPTY window together with a LIVE `queryState` —
+   * after which nothing voids it and the list says "no contacts" over a total of three until the
+   * fifth sweep forces a full query.
+   */
+  it('re-queries rather than dropping an add it cannot place (R-71)', async () => {
+    await seedWindow(['c1', 'c2', 'c3'], 'cq0')
+
+    let requeried = false
+    const port = fakePort({
+      queryContactCardChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'cq0',
+        newQueryState: 'cq1',
+        removed: ['c1', 'c2', 'c3'],
+        added: [
+          { id: 'c7', index: 7 },
+          { id: 'c8', index: 8 },
+        ],
+        total: 3,
+      }),
+      queryContactCards: async (): Promise<QueryResult> => {
+        requeried = true
+        return {
+          ids: ['c7', 'c8', 'c9'],
+          queryState: 'cq2',
+          canCalculateChanges: true,
+          position: 0,
+          total: 3,
+        }
+      },
+      getContactCards: async (ids) => ({
+        list: ids.map((id) => contactCard(id)),
+        notFound: [],
+        state: 'cc2',
+      }),
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock)
+
+    expect(requeried, 'the unplaceable adds were dropped instead of triggering a re-query').toBe(
+      true,
+    )
+    const row = await getContactQueryCache(db, ACC, KEY)
+    expect(row?.ids).toEqual(['c7', 'c8', 'c9'])
+    expect(row?.queryState).toBe('cq2')
+  })
+
+  it('re-queries a window a delta emptied while the total says otherwise (R-71 backstop)', async () => {
+    await seedWindow(['c1', 'c2'], 'cq0')
+
+    let requeried = false
+    const port = fakePort({
+      queryContactCardChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'cq0',
+        newQueryState: 'cq1',
+        removed: ['c1', 'c2'],
+        added: [],
+        total: 2,
+      }),
+      queryContactCards: async (): Promise<QueryResult> => {
+        requeried = true
+        return {
+          ids: ['c1', 'c2'],
+          queryState: 'cq2',
+          canCalculateChanges: true,
+          position: 0,
+          total: 2,
+        }
+      },
+      getContactCards: async (ids) => ({
+        list: ids.map((id) => contactCard(id)),
+        notFound: [],
+        state: 'cc2',
+      }),
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock)
+
+    expect(requeried).toBe(true)
+    expect((await getContactQueryCache(db, ACC, KEY))?.ids).toEqual(['c1', 'c2'])
+  })
+
+  it('still writes an honestly empty window — the counter-test', async () => {
+    await seedWindow(['c1'], 'cq0')
+
+    let requeried = false
+    const port = fakePort({
+      queryContactCardChanges: async (): Promise<QueryChangesResult> => ({
+        oldQueryState: 'cq0',
+        newQueryState: 'cq1',
+        removed: ['c1'],
+        added: [],
+        total: 0,
+      }),
+      queryContactCards: async (): Promise<QueryResult> => {
+        requeried = true
+        return { ids: [], queryState: 'cq2', canCalculateChanges: true, position: 0, total: 0 }
+      },
+    })
+
+    await reconcileContactQuery(port, db, ACC, KEY, spec, clock)
+
+    expect(requeried, 'an honest "the last contact was deleted" cost a round trip').toBe(false)
+    const row = await getContactQueryCache(db, ACC, KEY)
+    expect(row?.ids).toEqual([])
+    expect(row?.queryState).toBe('cq1')
   })
 
   it('seeds the ContactCard state on a full re-query when none exists', async () => {

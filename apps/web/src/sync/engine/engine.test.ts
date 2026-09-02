@@ -13,11 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, ReplicaDb } from '../db'
 import {
   getQueryCache,
+  getSyncState,
   putAddressBooks,
   putContactCards,
   putEmailBody,
   putEmails,
   putMailboxes,
+  setSyncState,
 } from '../repo'
 import { getStorageFullAt, resetStorageFull } from '../storage'
 import { addressBook, contactCard, email, freshDb, mailbox, withBatchedQuery } from '../test-utils'
@@ -602,6 +604,54 @@ describe('SyncEngine', () => {
     // The replica is intact: the mailbox and its emails are still there after the resync.
     expect(await db.mailboxes.get([ACC, 'inbox'])).toBeDefined()
     expect(await db.emails.get([ACC, 'e1'])).toBeDefined()
+    await engine.stop()
+  })
+
+  /**
+   * …and the file tree survives it (R-74).
+   *
+   * `FileNode` is the one watched type whose null state does NOT mean "pull it whole on the next
+   * leg": the initial walk is up to ten pages and belongs to the Files SCREEN, so the sync pass
+   * skips files entirely while the state is null. Nulling it in the recovery therefore FROZE the
+   * tree — no delta, no error — until the next time `FilesPage` mounted. Leaving the stale state
+   * alone is what makes it heal: the next `FileNode/changes` answers `cannotCalculateChanges` and
+   * `syncFileNodes` re-walks the tree on its own.
+   */
+  it('keeps the FileNode cursor through the recovery, so the tree stays deltaed (R-74)', async () => {
+    let failNextEmailChanges = false
+    let fileChangesCalls = 0
+    const base = fakePort({ emails: ['e1'], setEmails: emptySet })
+    const port: JmapPort = {
+      ...base,
+      async emailChanges(state) {
+        if (failNextEmailChanges) {
+          failNextEmailChanges = false
+          throw new CannotCalculateChangesError()
+        }
+        return base.emailChanges(state)
+      },
+      async fileNodeChanges(state: string) {
+        fileChangesCalls += 1
+        return { newState: state, hasMoreChanges: false, created: [], updated: [], destroyed: [] }
+      },
+    }
+    const push = new FakePush()
+    const engine = new SyncEngine(makeDeps(db, port, push))
+    engine.start()
+    await waitFor(() => engine.getStatus().phase === 'idle' && engine.getStatus().isLeader)
+    // A tree the reader has already opened once: that is what gives `FileNode` a cursor at all.
+    await setSyncState(db, ACC, 'FileNode', 'f1', 1)
+    const before = fileChangesCalls
+    const firstSync = getEngineStatus().lastSyncedAt
+
+    failNextEmailChanges = true
+    push.fireStateChange()
+    await waitFor(() => getEngineStatus().lastSyncedAt !== firstSync)
+
+    expect(await getSyncState(db, ACC, 'FileNode'), 'the file cursor was reset with the rest').toBe(
+      'f1',
+    )
+    expect(fileChangesCalls, 'the files leg was skipped after the recovery').toBeGreaterThan(before)
     await engine.stop()
   })
 
@@ -2064,6 +2114,11 @@ describe('SyncEngine — queue accounting + dead letters (M3.3)', () => {
     const base = fakePort({ emails: [], setEmails: emptySet })
     const port: JmapPort = {
       ...base,
+      // The book has to be on the SERVER's list too: a full pull now drops what the server does not
+      // list (R-74), and this test seeds the row directly.
+      async getAddressBooks() {
+        return { list: [addressBook('book1', { name: 'Work' })], notFound: [], state: 'abk-1' }
+      },
       async setAddressBooks() {
         if (reject) return { ...emptySet(), notUpdated: { book1: { type: 'forbidden' } } }
         return { ...emptySet(), updated: ['book1'] }
