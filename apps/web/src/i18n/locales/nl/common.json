@@ -1598,6 +1598,7 @@
       "loading": "Laden…",
       "empty": "Niets gepland.",
       "loadFailed": "De geplande berichten konden niet worden geladen.",
+      "cancelFailed": "Het verzenden kon niet worden geannuleerd. Het bericht gaat mogelijk alsnog weg.",
       "willSend": "Wordt {{when}} verzonden",
       "cancel": "Verzenden annuleren",
       "cancelled": "Verzenden geannuleerd",

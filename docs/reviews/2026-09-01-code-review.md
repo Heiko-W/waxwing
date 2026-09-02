@@ -2393,7 +2393,7 @@ abgeschwächt, Severity bleibt low.
 
 ### R-55 — [LOW] `ScheduledSends.cancel` hat kein `catch`: bei Netzwerkfehler keine Rückmeldung, unbehandelte Rejection
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** robustness / Compose (Outbox)
 
