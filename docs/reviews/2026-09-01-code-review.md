@@ -2030,7 +2030,14 @@ ADR gelesen; E2E nicht ausgeführt. Gegenprüfung: bestätigt.
 
 ### R-45 — [MEDIUM] Die Reverse-Proxy-Rezepte in `docs/deployment.md` §2 proxyen die OAuth-Pfade nicht — der primäre „Sign in“-Button ist auf diesem Deployment-Pfad tot
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Rezepte führen jetzt alle sechs Pfade aus `demoProxy`/`PROXY_PATHS` (nginx `location
+/jmap/`, `/auth/`, `/.well-known/`, `/login`, `/api/`, `/logo`; Caddy dieselben als `handle`),
+mit einem Absatz „Why six paths and not three", der den Discovery-Pfad und die Alternative
+`auth: ["basic"]` benennt, und einem Hinweis auf `location /.well-known/acme-challenge/` für
+Hosts, die daneben ACME ausliefern. „Verifying a deployment" bekommt eine `curl`-Zeile auf
+`/.well-known/oauth-authorization-server`. Wächter: `scripts/deployment-doc.test.ts` liest
+`PROXY_PATHS` aus `e2e/mount-server.mjs` und prüft jeden Pfad gegen beide Rezepte.
 
 **Kategorie / Bereich:** correctness (Betreiber-Doku) / Infra
 
@@ -3921,7 +3928,13 @@ Kommentar beurteilt, sucht die Push-Verarbeitung an der falschen Stelle.
 
 ### R-102 — [LOW] `SECURITY.md` behauptet `sandbox="allow-same-origin"` „and nothing else — no allow-popups“; der Code setzt `allow-popups allow-popups-to-escape-sandbox`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Der Absatz nennt jetzt den tatsächlichen Wert
+(`allow-same-origin allow-popups allow-popups-to-escape-sandbox`), stellt die unveränderte
+Garantie (kein `allow-scripts`, inneres `script-src 'none'`) voran und begründet die zwei
+Popup-Flags mit ADR-029 und dem WebKit-Grund. `link-host.ts:4-5` mitgezogen. Wächter:
+`packages/mail-html/src/security-doc.source.test.ts` liest den Sandbox-String aus `frame.ts`
+und sucht ihn wörtlich in `SECURITY.md`.
 
 **Kategorie / Bereich:** security (Doku-Zusage weicht vom Code ab) / Infra
 
@@ -4212,7 +4225,21 @@ gestrichen).
 
 ### R-110 — [LOW] Doku-Drift gegen den Code: `undoSendSeconds`-Obergrenze fehlt, `README`-Skripttabelle veraltet, drei irreführende Kommentare — einer davon deckt eine tote Option
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Vier von fünf Punkten wie vorgeschlagen: `configuration.md` nennt Range 0–30 s, Clamping und
+den Fallback bei Nicht-Zahlen (gepinnt in `config.shipped.test.ts` gegen `normalizeConfig` mit
+31, −1, `'x'`, `NaN` — und der Doku-Text selbst ist mitgeprüft); die README-Zeile nennt die
+tatsächliche Kette aus zehn Schritten (gepinnt von `scripts/readme-scripts.test.ts` gegen das
+`verify`-Skript); `ci.yml` nennt ~5700 statt ~3200 Tests (gemessen: 5694); der Header von
+`playwright.audit.config.ts` sagt nicht mehr „TEMPORARY … not committed".
+
+ABWEICHUNG beim fünften Punkt: `ignoreDeprecations` in `packages/jscontact/tsconfig.json` ist
+NICHT entfernt, weil die Option nicht tot ist. Der Befund hat mit `tsc -p` gemessen (dort exit 0,
+korrekt) — der d.ts-Lauf von `tsup` bringt aber ein eigenes `baseUrl` mit und bricht ohne die
+Option mit TS5101 ab. Nachgestellt: `pnpm build:libs` schlägt fehl, während `pnpm typecheck`
+grün bleibt. Falsch war nur die Begründung im Kommentar („die Basis-Config setzt `baseUrl`" —
+tut sie nicht); die steht jetzt richtig da, samt der Bedingung, unter der die Zeile entfallen
+kann.
 
 **Kategorie / Bereich:** maintainability (Doku) / Infra
 
@@ -4245,7 +4272,13 @@ Gegenprüfung: bestätigt, präzisiert.
 
 ### R-111 — [LOW] Die Cache-Rezepte schützen nur `sw.js` und `config.json` — `theme.css`, `manifest.json` und `branding/` sind ebenso „edit in place, no rebuild“
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+nginx-`map` um `~^/theme\.css$`, `~^/manifest\.json$` und `~^/branding/` erweitert; das
+Caddy-Rezept bekommt einen `header`-Block für dieselben fünf Dateien plus `immutable` für
+`/assets/*`. `configuration.md` nennt jetzt alle vier Dateien und den Grund (heuristisches
+Caching aus `Last-Modified`, RFC 9111 §4.2.2). Wächter: `scripts/deployment-doc.test.ts` liest
+`DEPLOYMENT_FILES` aus `sw-routes.ts` und prüft jede Datei gegen beide Rezepte, dazu eine
+`curl`-Schleife in „Verifying a deployment".
 
 **Kategorie / Bereich:** correctness (Betreiber-Doku) / Infra
 

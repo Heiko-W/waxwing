@@ -19,9 +19,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_CONFIG, type WaxwingConfig } from './config'
+import { DEFAULT_CONFIG, normalizeConfig, type WaxwingConfig } from './config'
 
 const APP_ROOT = fileURLToPath(new URL('../../', import.meta.url))
+const CONFIGURATION_DOC = readFileSync(join(APP_ROOT, '../../docs/configuration.md'), 'utf8')
 const shipped = JSON.parse(
   readFileSync(join(APP_ROOT, 'public/config.json'), 'utf8'),
 ) as WaxwingConfig
@@ -71,5 +72,45 @@ describe('the shipped config.json', () => {
     // it looks like a setting and is not one. A key missing from the shipped file is harmless (the
     // merge fills it in) but leaves the hoster with no hint the setting exists.
     expect([...shippedKeys.keys()].toSorted()).toEqual([...defaultKeys.keys()].toSorted())
+  })
+})
+
+/**
+ * `docs/configuration.md` against `normalizeConfig` (R-110).
+ *
+ * The reference spells out the clamping rules for `cacheDays` and `maxStorageMB` and said nothing
+ * at all about `undoSendSeconds` beyond "`0` sends immediately" — so an operator reading it had no
+ * reason not to write `60`, and no way to find out that they had silently got 30. The values below
+ * are the ones the prose now promises; the assertions are what makes the prose a claim.
+ */
+describe('the documented ranges', () => {
+  const undoSend = (seconds: unknown): number =>
+    normalizeConfig({
+      ...DEFAULT_CONFIG,
+      features: { ...DEFAULT_CONFIG.features, undoSendSeconds: seconds as number },
+    }).features.undoSendSeconds
+
+  it('clamps undoSendSeconds to the documented 0–30 s', () => {
+    expect(undoSend(31)).toBe(30)
+    expect(undoSend(600)).toBe(30)
+    expect(undoSend(-1)).toBe(0)
+    expect(undoSend(0)).toBe(0)
+    expect(undoSend(30)).toBe(30)
+  })
+
+  it('falls back to the default for a non-number, rather than clamping', () => {
+    expect(undoSend('x')).toBe(DEFAULT_CONFIG.features.undoSendSeconds)
+    expect(undoSend(Number.NaN)).toBe(DEFAULT_CONFIG.features.undoSendSeconds)
+  })
+
+  /** The prose has to carry the bound, or the two assertions above pin a secret. */
+  it('is stated in `docs/configuration.md`', () => {
+    const section = CONFIGURATION_DOC.slice(
+      CONFIGURATION_DOC.indexOf('### `undoSendSeconds`'),
+      CONFIGURATION_DOC.indexOf('## `offline`'),
+    )
+    expect(section).not.toBe('')
+    expect(section).toContain('0–30 s')
+    expect(section).toMatch(/falls back to the default/)
   })
 })

@@ -182,6 +182,12 @@ rather than directly, so the sender sees the proxy rather than the reader.
 How long Waxwing holds a message before actually sending it, during which "Undo" retracts it.
 `0` sends immediately.
 
+Range: **0–30 s**. A larger value is clamped to 30 and a negative one to 0; a non-number (or
+`NaN`) falls back to the default of 15 rather than clamping, the same rule `cacheDays` uses. The
+upper end is not arbitrary: the toast that offers "Undo" is what shows the grace running out, and
+the four choices a user gets in Settings stop at 30 s. So `undoSendSeconds: 60` does not delay
+anything by a minute — it silently behaves as 30.
+
 This is the **hoster default only**. Each user can change it in Settings (off / 5 / 15 / 30 s)
 and their choice wins — FR-CMP-08 is deliberate that this is a grace period the user controls,
 never a lock.
@@ -237,7 +243,13 @@ reading of the intent.
 ## Changing configuration after deployment
 
 `config.json` is fetched at startup, so a change reaches users on their next load — **provided
-it is not sitting in a cache**. Serve it with `Cache-Control: no-cache`; the nginx block in
-[`deployment.md`](deployment.md#nginx) does this.
+it is not sitting in a cache**. The same is true of every other file a hoster edits in place:
+`theme.css`, `manifest.json` and everything under `branding/`. Serve all of them with
+`Cache-Control: no-cache`; the nginx and Caddy blocks in
+[`deployment.md`](deployment.md#nginx) do this.
 
-The service worker deliberately does not precache `config.json`, for the same reason.
+Without that header a browser may reuse a stored copy heuristically from `Last-Modified`
+(RFC 9111 §4.2.2), and the service worker's network-first fetch goes through the same HTTP
+cache — so an edited theme or a replaced logo can stay stale for returning users for days.
+
+The service worker deliberately does not precache any of these files, for the same reason.

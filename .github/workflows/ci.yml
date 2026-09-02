@@ -54,9 +54,9 @@ permissions:
   contents: read
 
 jobs:
-  # The hermetic half: typecheck, Biome, ~3200 Vitest tests, the production build and the
-  # size-limit budget. No Docker, no browser — so it fails in ~2 minutes on anything broken,
-  # before the expensive job is worth starting.
+  # The hermetic half: typecheck, Biome, the whole Vitest suite (~5700 tests), the production
+  # build and the size-limit budget. No Docker, no browser — so it fails in ~2 minutes on
+  # anything broken, before the expensive job is worth starting.
   verify:
     name: verify (typecheck, lint, tests, size)
     runs-on: ubuntu-latest

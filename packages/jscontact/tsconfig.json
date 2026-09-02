@@ -12,8 +12,14 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
     "types": ["node"],
-    // The base config sets `baseUrl`, which TS 6 deprecates and the dts build treats as an error.
-    // Same line, same reason as packages/jmap; it goes when the base config drops `baseUrl`.
+    // Needed by the DTS half of `tsup`, and by nothing else. The note here used to say "the base
+    // config sets `baseUrl`" — tsconfig.base.json sets no such thing, and neither does this file,
+    // so `tsc -p .` passes without this line (measured: exit 0). `tsup`'s d.ts build does not:
+    // it supplies a `baseUrl` of its own and then fails with TS5101, "'baseUrl' is deprecated …
+    // specify 'ignoreDeprecations': '6.0'". Removing the option therefore breaks `pnpm build:libs`
+    // while `pnpm typecheck` stays green, which is the least helpful way to find out. It goes when
+    // tsup stops setting `baseUrl`. packages/jmap and packages/mail-html carry the same line, and
+    // those two additionally set `baseUrl` themselves.
     "ignoreDeprecations": "6.0"
   },
   "include": ["src"]

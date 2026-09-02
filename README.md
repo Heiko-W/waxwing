@@ -468,7 +468,7 @@ Common scripts, run from the repo root:
 | `pnpm test` | Unit/component tests (Vitest) |
 | `pnpm build` | Build all packages |
 | `pnpm size` | Build `apps/web` and check it against the `size-limit` budget (≤ 300 KB gz initial JS) |
-| `pnpm verify` | **Run before committing** — the fast gate: `typecheck` → `lint` → `test` → `size` (no Docker/browser) |
+| `pnpm verify` | **Run before committing** — the fast gate, in this order: `check:node` → `build:libs` → `typecheck` → `lint` → `test` → `size` → `check:dist` → `check:site` → `check:actions` → `check:nul` (no Docker/browser) |
 | `pnpm verify:e2e` | The E2E gate (needs Docker): install chromium, bring the Stalwart fixture up + smoke, run Playwright, always tear down |
 | `pnpm verify:all` | `pnpm verify` then `pnpm verify:e2e` |
 | `pnpm gate` | **The local pipeline** — preflight (pins the Node major) → `verify` → the `@waxwing/jmap` integration suites against a live fixture → the E2E suites, with a per-stage summary |

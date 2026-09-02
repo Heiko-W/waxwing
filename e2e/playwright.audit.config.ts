@@ -1,7 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * TEMPORARY capture config for the UI audit (not part of `pnpm verify`, not committed).
+ * Capture config for the UI audit. NOT part of `pnpm verify` and not run by any gate — it is
+ * invoked by hand (`playwright test -c playwright.audit.config.ts`) when someone is looking at the
+ * app rather than testing it. It IS committed, along with `e2e/audit/*`, so the next audit repeats
+ * the same viewports instead of inventing new ones; the header used to call it "TEMPORARY … not
+ * committed", which invited exactly the tidy-up that would lose them.
  *
  * Unlike playwright.shots.config.ts it brings NOTHING up: the Stalwart fixture and the dev server
  * on 4183 are already running, so there is no webServer and no globalSetup to re-seed underneath a

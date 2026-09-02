@@ -38,15 +38,30 @@ surrounding app.
 
 - **Sanitizing, then a script-free frame.** `packages/mail-html` strips script, event
   handlers, forms, objects, embeds and dangerous URL schemes. The result renders in an iframe
-  mounted `sandbox="allow-same-origin"` **and nothing else** — no `allow-scripts`, no
-  `allow-forms`, no `allow-popups`, no `allow-top-navigation`. **No script can execute inside
-  that frame**, so a sanitizer miss cannot run JavaScript at all; that is the guarantee, and
-  it is stronger than sanitizing alone.
+  mounted `sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"` — and
+  above all **without `allow-scripts`**, beside an inner `script-src 'none'`. **No script can
+  execute inside that frame**, so a sanitizer miss cannot run JavaScript at all; that is the
+  guarantee, and it is stronger than sanitizing alone. `allow-forms` and
+  `allow-top-navigation` are absent as well.
 
   `allow-same-origin` *without* `allow-scripts` is deliberate and is the safe half of the
-  pair: it lets the outer page read the frame's height and intercept link clicks with zero
-  code running inside. The dangerous combination is `allow-scripts` + `allow-same-origin`,
-  which Waxwing does not use anywhere.
+  pair: it lets the outer page read the frame's height and classify the message's links with
+  zero code running inside. The dangerous combination is `allow-scripts` +
+  `allow-same-origin`, which Waxwing does not use anywhere.
+
+  **The two popup tokens grant the message nothing** — and this paragraph used to claim the
+  sandbox carried `allow-same-origin` "and nothing else — no `allow-popups`", which stopped
+  being true with **ADR-029**. They exist so that an ordinary link a reader clicks opens
+  natively: `allow-popups` alone opens a tab that inherits the sandbox (and therefore the
+  missing `allow-scripts`, so the destination renders blank), and
+  `allow-popups-to-escape-sandbox` makes it an ordinary page. Nothing in the frame can *use*
+  them, because using them takes script, and no script runs. Waxwing went this way because
+  the alternative does not exist on Safari: WebKit delivers the outer page no click events
+  from a sandboxed frame, so a click-time veto cannot run there at all, and every link in
+  every message was simply dead. The phishing gate therefore decides at load time which links
+  the browser is trusted with (FR-RD-08), instead of vetoing a click it never sees.
+  `packages/mail-html/src/security-doc.source.test.ts` fails if the sandbox string in
+  `frame.ts` and this paragraph disagree again.
 
   Three walls, not two: the frame's own `<meta>` CSP sets `script-src 'none'`, and the app's
   CSP sits outside both.

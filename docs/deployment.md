@@ -197,13 +197,20 @@ mkdir -p /srv/waxwing && tar -xzf waxwing-web-v1.0.0.tar.gz -C /srv/waxwing
 server {
     server_name mail.example.com;
 
-    # JMAP first — these paths belong to Stalwart, not to the app.
+    # Stalwart first — these paths belong to the server, not to the app. ALL SIX of them:
+    # `/jmap/` and `/.well-known/` carry JMAP AND the OAuth discovery document, and `/auth/`,
+    # `/login`, `/api/` and `/logo` carry the rest of the OAuth flow — which is the DEFAULT
+    # sign-in button (`auth: ["oauth", "basic"]`). See "Why six paths and not three" below
+    # before shortening this list.
     # `proxy_buffering off` is REQUIRED, not tuning: /jmap/eventsource/ is the live channel,
     # and with nginx's default buffering the response never reaches the browser at all.
     location /jmap/  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host;
                        proxy_buffering off; proxy_read_timeout 1h; }
     location /auth/  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
-    location /.well-known/jmap { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+    location /.well-known/ { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+    location /login  { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+    location /api/   { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
+    location /logo   { proxy_pass http://127.0.0.1:8080; proxy_set_header Host $host; }
 
     # …then the app. `try_files` sends unknown paths to index.html so a deep-link
     # RELOAD (/mail/inbox/abc) is served by the app rather than 404ing.
@@ -220,10 +227,16 @@ server {
     #       default                    "";
     #       ~^/sw\.js$                  "no-cache";
     #       ~^/config\.json$            "no-cache";
+    #       ~^/theme\.css$              "no-cache";
+    #       ~^/manifest\.json$          "no-cache";
+    #       ~^/branding/                "no-cache";
     #       ~^/assets/                 "public, max-age=31536000, immutable";
     #   }
     #
     # An empty value emits no header at all, so ordinary documents are unaffected.
+    # The five `no-cache` entries are exactly the files you may edit in place without a rebuild
+    # (see "Why five files and not two" below); the hashed assets under /assets/ are the only
+    # ones safe to cache forever.
     add_header Cache-Control $waxwing_cache_control always;
 }
 ```
@@ -266,16 +279,60 @@ default.
 
 ```caddy
 mail.example.com {
+    # The same six Stalwart paths as the nginx block, for the same reason.
     handle /jmap/* { reverse_proxy 127.0.0.1:8080 }
     handle /auth/* { reverse_proxy 127.0.0.1:8080 }
-    handle /.well-known/jmap { reverse_proxy 127.0.0.1:8080 }
+    handle /.well-known/* { reverse_proxy 127.0.0.1:8080 }
+    handle /login* { reverse_proxy 127.0.0.1:8080 }
+    handle /api/* { reverse_proxy 127.0.0.1:8080 }
+    handle /logo* { reverse_proxy 127.0.0.1:8080 }
     handle {
         root * /srv/waxwing
+        # Editable without a rebuild — never let a browser hold an old copy.
+        @editable path /config.json /theme.css /manifest.json /sw.js /branding/*
+        header @editable Cache-Control "no-cache"
+        # Content-hashed: the name changes when the bytes do.
+        header /assets/* Cache-Control "public, max-age=31536000, immutable"
         try_files {path} /index.html
         file_server
     }
 }
 ```
+
+**Why six paths and not three.** Waxwing's default `config.json` puts OAuth first
+(`auth: ["oauth", "basic"]`), so the prominent "Sign in" button on the sign-in screen is the
+OAuth one. That flow starts with an RFC 8414 discovery request to
+`<origin>/.well-known/oauth-authorization-server`, and Stalwart answers it with
+`authorization_endpoint: /login`, `token_endpoint: /auth/token` and
+`registration_endpoint: /auth/register`. With only `/.well-known/jmap` proxied, the discovery
+request falls through `try_files` to `index.html`, the OAuth library gets HTML where it expects
+JSON, and the button fails with "the server offers no secure sign-in". Even past that, the
+redirect to `/login` would load the Waxwing SPA instead of Stalwart's login page, and that page's
+POST to `/api/auth` would land in the SPA fallback as well. `/logo` is what Stalwart's login page
+renders. An account with a second factor cannot sign in at all on that deployment, because
+Stalwart accepts a second factor only over OAuth.
+
+This is the same path set the project's own dev proxy and E2E mount server use
+(`apps/web/vite.config.ts`, `e2e/mount-server.mjs`), verified against Stalwart v0.16.11, and
+`scripts/deployment-doc.test.ts` fails if the two drift apart. If you do not want to proxy
+Stalwart's OAuth flow, that is a legitimate choice — then set `auth: ["basic"]` in `config.json`
+so the password form is the primary and only offer, rather than leaving users a button that
+cannot work.
+
+One nginx caveat on the wider `/.well-known/` prefix: if the same host answers ACME challenges
+from the docroot, keep a more specific `location /.well-known/acme-challenge/ { root …; }` —
+nginx picks the longest matching prefix, so that block still wins.
+
+**Why five files and not two.** `sw.js` and `config.json` were the only two the cache recipe
+protected, but they are not the only two a hoster edits in place. `theme.css`, `manifest.json`
+and everything under `branding/` are deployment files by design: the service worker never
+precaches them (`NEVER_PRECACHE` in `apps/web/src/pwa/sw-routes.ts`) precisely so a rebrand is
+not pinned to the release that built it, and `theming.md` tells the operator to "edit them in
+place and reload". Without a `Cache-Control` header, though, a browser is free to reuse a stored
+copy heuristically from `Last-Modified` (RFC 9111 §4.2.2) — and the worker's `NetworkFirst`
+`fetch()` goes through that same HTTP cache. An edited `theme.css` or a replaced logo can
+therefore stay stale for days for returning users, while the operator looks for the bug in the
+service worker.
 
 ### Serving from a subdirectory
 
@@ -450,11 +507,21 @@ Asset filenames are content-hashed, so an old page never loads a new chunk by ac
 # The session document must be reachable from the app's origin.
 curl -sI https://mail.example.com/.well-known/jmap
 
+# OAuth discovery must answer with JSON from STALWART, not with the app's index.html.
+# This is the request behind the primary "Sign in" button; a `content-type: text/html`
+# here means the reverse proxy is missing the OAuth paths and that button is dead.
+curl -s https://mail.example.com/.well-known/oauth-authorization-server | head -c 200
+
 # index.html must be served for a deep link, not a 404.
 curl -sI https://mail.example.com/webmail/inbox
 
 # The service worker must be served as JavaScript, not octet-stream.
 curl -sI https://mail.example.com/webmail/sw.js | grep -i content-type
+
+# The files a hoster edits in place must not be cacheable.
+for f in config.json theme.css manifest.json sw.js; do
+  curl -sI "https://mail.example.com/$f" | grep -i cache-control
+done
 ```
 
 Then sign in, open a message, and reload the page while it is open. That last step is the one
