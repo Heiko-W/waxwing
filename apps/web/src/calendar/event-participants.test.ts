@@ -213,6 +213,41 @@ describe('participantsToPatch', () => {
         .sort(),
     ).toEqual(['mailto:john.doe@waxwing.test', 'mailto:johndoe@waxwing.test'])
   })
+
+  /*
+   * The key is the SERVER's, so it can be `__proto__` — from a prepared `.ics` or another client on
+   * the same account. On an object literal that assignment sets the prototype instead of adding an
+   * entry, `Object.hasOwn` (which `freeKey` asks) never saw it, and the participant left the editor
+   * without a trace: the R-18 symptom again, out of the prototype class R-60 fixed for contacts.
+   */
+  it.each([
+    '__proto__',
+    'constructor',
+    'prototype',
+  ])('keeps a participant whose server key is %s', (key) => {
+    const row = { ...newParticipantRow('bob@waxwing.test'), key }
+    const patch = participantsToPatch([row])
+    expect(Object.keys(patch)).toEqual([key])
+    expect(patch[key]?.calendarAddress).toBe('mailto:bob@waxwing.test')
+  })
+
+  /* The other half: an unmodelled member under the same kind of key must survive the read too. */
+  it('carries an unmodelled participant member named __proto__ back out', () => {
+    const rows = participantsFromEvent(
+      event({
+        participants: {
+          p1: JSON.parse(
+            '{"@type":"Participant","calendarAddress":"mailto:bob@waxwing.test","__proto__":{"a":1}}',
+          ) as never,
+        },
+      }),
+    )
+    // OWN descriptors, not `x.__proto__`: the accessor this test is about would answer for the
+    // prototype instead of for the member.
+    const own = (o: object) => Object.getOwnPropertyDescriptor(o, '__proto__')?.value
+    expect(own(rows[0]?.rest ?? {})).toEqual({ a: 1 })
+    expect(own(participantsToPatch(rows).p1 ?? {})).toEqual({ a: 1 })
+  })
 })
 
 describe('newParticipantRow', () => {
