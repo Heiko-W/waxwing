@@ -2485,7 +2485,9 @@ Entwurf mit Anhang ⇒ Send gesperrt mit `formatBytes(0)`-Toast.
 
 ### R-58 — [LOW] `htmlToPlainText` kollabiert Zeilenumbrüche in `<pre>` und fügt zwischen Tabellenzellen keinen Trenner ein
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Trenner fuer `TD`/`TH` ist ein Tabulator. `normalize` bleibt unveraendert, deshalb kappt es auch
+in einem `<pre>` weiterhin Leerzeilenlaeufe auf eine und schneidet Leerzeichen am Zeilenende ab.
 
 **Kategorie / Bereich:** correctness / Compose
 
