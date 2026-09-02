@@ -45,6 +45,30 @@ Zwei Kandidaten wurden bereits in der Gegenprüfung verworfen (PIM-22 als Duplik
 unbegründet) und stehen nur im Anhang. Genau eine Regression aus den Fix-Commits ist belegt (R-05, W-18);
 die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Muster.
 
+> **Stand 02.09.2026: 109 der 112 Befunde sind abgearbeitet** — elf Themen-Branches mit je einem
+> Pull Request (#56 bis #66), ein Commit je Befundgruppe, jeder Fix mit Regressionstest und
+> Mutationsprobe (Fix entfernt ⇒ Test rot). Die Testsuite ist dabei von 5304 auf 5702 Tests
+> gewachsen, das Bundle von 288,4 auf 291,7 KB gz (Grenze 300).
+>
+> **Drei Befunde bleiben bewusst offen**, jeder mit Begründung am Eintrag:
+> - **R-27** — JMAP bietet keinen Idempotenzschlüssel für Creates, und der im Bericht
+>   vorgeschlagene Ausweg bricht das Offline-Autosave. Nur die falsche Zusage im Modulkopf ist
+>   korrigiert; die Entscheidung liegt als [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) vor.
+> - **R-78** — die Behebung ändert, was über eine Sitzung hinweg persistiert wird. Das ist eine
+>   Produktentscheidung; als Backlog-Eintrag im Implementierungsplan aufgenommen.
+> - **R-104** — der vorgeschlagene Fix macht den Test nicht grün. Gegen die laufende Fixture
+>   gemessen: ein geteiltes Adressbuch landet im Account der Eigentümerin, und die
+>   Kontakte-Oberfläche fragt nur ein Konto ab. Korrigiert ist nur die falsche Skip-Begründung.
+>
+> Fünf Empfehlungen des Berichts wurden bei der Umsetzung widerlegt und anders gelöst; die
+> Begründung steht jeweils am Befund und im Commit. Am deutlichsten bei **R-37**, wo der
+> vorgeschlagene Weg den Defekt in beiden Browser-Engines verschlimmert hätte, und bei **R-61**,
+> wo die geforderte Messung die Virtualisierung überflüssig machte (920 ms → 0,9 ms allein durch
+> den Render-Fix).
+>
+> Was bei der Abarbeitung neu aufgefallen ist, steht unten als **N-01 bis N-10**; acht weitere
+> Nebenbefunde sind im selben Durchgang behoben worden.
+
 ## Zusammenfassung
 
 Die schwersten Befunde liegen in drei Ecken. Erstens im Composer: Der Plain-Text-Modus ist reiner
