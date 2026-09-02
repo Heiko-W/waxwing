@@ -14,6 +14,30 @@ describe('initialsFromName', () => {
   ])('maps %o to %o', (input, expected) => {
     expect(initialsFromName(input)).toBe(expected)
   })
+
+  /**
+   * R-99 — `charAt`/`slice` count UTF-16 units, so an emoji (or any astral character) was cut in
+   * half and the avatar showed the replacement glyph: "🏠 Zuhause" came out as "\uD83CZ". The
+   * initials are `aria-hidden`, so nothing is announced wrongly — it is simply visibly broken.
+   */
+  it.each([
+    ['🏠 Zuhause', '🏠Z'],
+    ['😀 Bob', '😀B'],
+    // A single token takes TWO code points, and the emoji is one of them.
+    ['🏠Haus', '🏠H'],
+    ['🏠', '🏠'],
+    // Chinese and Japanese names are BMP, but they are the other case where "two characters" and
+    // "two units" have to agree.
+    ['王 小明', '王小'],
+  ])('keeps an astral character whole: %o → %o', (input, expected) => {
+    const initials = initialsFromName(input)
+    expect(initials).toBe(expected)
+    // The real assertion behind the expected values: not one lone surrogate survived — a high one
+    // without its low, or a low one without its high.
+    expect(initials).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+    )
+  })
 })
 
 describe('Avatar', () => {

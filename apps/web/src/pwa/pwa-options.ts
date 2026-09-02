@@ -5,11 +5,18 @@
  * whether a stale precache can outlive a deploy.
  *
  * Strategy: **injectManifest** with our own `src/sw/sw.ts`. `generateSW` would emit an untyped,
- * unbundled worker, and the worker has real listeners to carry — M3.6 added `notificationclick`
- * there, type-checked and bundled. (M3.5 expected M3.6 to add `push` and `pushsubscriptionchange`
- * too; no JMAP server could deliver a Web Push to a browser at the time, so they were deferred —
- * ADR-010. Stalwart v0.16.14 removed that blocker upstream on 2026-07-20, but Waxwing's client half
- * is an open owner decision, so the listeners are still absent.)
+ * unbundled worker, and the worker has real listeners to carry: `notificationclick` since M3.6,
+ * `push` since M4.0 (ADR-017), both type-checked and bundled.
+ *
+ * `pushsubscriptionchange` is still absent, and that is now a decision rather than a gap. The
+ * browser fires it when the push service rotates an endpoint; TELLING the server about the new one
+ * is a JMAP write, and the worker holds no token by construction (ADR-017, owner decision D6a). A
+ * handler could therefore only re-subscribe in the browser — which `push-subscribe.ts` does anyway
+ * on the next start, where it can also write the result back. ADR-017 names that steady state.
+ *
+ * (What stood here until R-101 described the state BEFORE ADR-017 and called the client half an
+ * open owner decision; it has not been one since 2026-07-23, and a reader who judged the worker by
+ * it went looking for the push handling in the wrong file.)
  *
  * With `injectManifest` the plugin's `workbox: {…}` block is IGNORED: `cleanupOutdatedCaches`,
  * `skipWaiting` and `clientsClaim` are OUR calls inside `sw.ts`. Do not add a `workbox:` key here.

@@ -3814,7 +3814,11 @@ DEFAULT_DURATION)` — die ADR-Regel in der Primitive; ein Test in `Toast.test.t
 
 ### R-99 — [LOW] `initialsFromName` zerschneidet Astral-Zeichen (Emoji) in einsame Surrogate
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Abweichung: über Codepoints (`Array.from`), NICHT über `Intl.Segmenter`. Der Befund nennt den
+Segmenter als optional; er würde zusätzlich kombinierende Zeichen zusammenhalten — eine
+kosmetische Unschönheit, während der behobene Fall ein Ersatzzeichen erzeugt hat._
 
 **Kategorie / Bereich:** correctness / UI
 
@@ -3841,7 +3845,7 @@ High-Surrogates); vitest-Fall Einzeltoken rot. Gegenprüfung: bestätigt, präzi
 
 ### R-100 — [LOW] Permissions-API-`change`-Listener kann nach dem Effekt-Cleanup registriert werden (Leak)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** react / UI (Notify)
 
@@ -3867,7 +3871,11 @@ setzt `cancelled = true` (dasselbe Muster wie `use-push-subscription.tsx:89-91`)
 
 ### R-101 — [LOW] Kommentar in `pwa-options.ts` behauptet, der `push`-Listener fehle noch
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+_Zusätzlich: `pwa/sw-listeners.source.test.ts` prüft die Behauptung des Kommentars gegen
+`sw/sw.ts` (Quellenscan wie `list-keys.source.test.ts`), damit derselbe Kommentar nicht ein
+zweites Mal veralten kann._
 
 **Kategorie / Bereich:** maintainability / UI (PWA)
 
