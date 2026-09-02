@@ -878,6 +878,22 @@ describe('offline (T3)', () => {
     expect(await screen.findByRole('button', { name: 'Standup' })).toBeInTheDocument()
   })
 
+  /**
+   * R-59 — the rail draws the replica's calendars too, not just the month.
+   *
+   * The fallback used to hang on the event query alone, so offline the reader got a month full of
+   * events beside a rail saying "This account has no calendars": no legend for which colour was
+   * whose, and an import control disabled for a reason that was not true. Writing stays blocked by
+   * `online`, so drawing the list here adds nothing that could fail.
+   */
+  it('draws the calendar list from the replica when the list request failed', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    renderWithReplicaOnly([occurrence()])
+
+    expect(await screen.findByRole('checkbox', { name: 'Work' })).toBeInTheDocument()
+    expect(screen.queryByText('This account has no calendars.')).not.toBeInTheDocument()
+  })
+
   it('says a month it has never synced is not synced, rather than reporting a failure', async () => {
     // The other offline first-visit: nothing was ever stored for this window. That is "not synced
     // yet" with a sentence about what to do, not "could not be loaded" with a Try again that cannot.

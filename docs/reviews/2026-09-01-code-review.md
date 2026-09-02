@@ -2330,7 +2330,7 @@ Gegenprüfung: bestätigt.
 
 ### R-59 — [LOW] Offline zeigt die Kalenderleiste „Dieses Konto hat keine Kalender“, während der Monat daneben aus der Replica gezeichnet wird
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / PIM (Kalender)
 
