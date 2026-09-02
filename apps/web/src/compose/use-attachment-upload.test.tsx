@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../ui'
 import type { BlobUploader, ValidationLimits } from './attachment-upload'
 import { useComposerStore } from './composer-store'
-import { type UseAttachmentUploadOptions, useAttachmentUpload } from './use-attachment-upload'
+import {
+  abortPendingUploads,
+  type UseAttachmentUploadOptions,
+  useAttachmentUpload,
+} from './use-attachment-upload'
 
 const limits: ValidationLimits = { maxSizeUpload: 1000, maxSizeAttachmentsPerEmail: 5000 }
 
@@ -152,5 +156,31 @@ describe('useAttachmentUpload', () => {
     const id = useComposerStore.getState().openDraft()
     const { result } = mount(id, {})
     expect(result.current.canUpload).toBe(false)
+  })
+
+  /**
+   * R-03: the `pending` map is module-scoped and holds the `File` the user picked. A sign-out does
+   * not unmount the module graph, so without an explicit abort the previous person's attachment
+   * kept uploading — with the NEXT person's credentials once the session was replaced.
+   */
+  it('abortPendingUploads aborts the transfer and forgets the File (sign-out)', async () => {
+    const id = useComposerStore.getState().openDraft()
+    let signal: AbortSignal | undefined
+    const uploader = vi.fn(
+      (_file: Blob, options: { signal?: AbortSignal }) =>
+        new Promise(() => {
+          signal = options.signal
+        }),
+    ) as unknown as BlobUploader
+    const { result } = mount(id, { uploader, limits })
+    result.current.addFiles([pngFile()], 'attach')
+    await waitFor(() => expect(signal).toBeDefined())
+
+    abortPendingUploads()
+
+    expect(signal?.aborted).toBe(true)
+    // And the handle is gone, so a retry cannot resurrect it under the next session.
+    result.current.retry(useComposerStore.getState().uploads.get(id)?.[0]?.tempId ?? 'none')
+    expect(uploader).toHaveBeenCalledTimes(1)
   })
 })

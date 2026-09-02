@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { JmapProblemError, JmapSessionOriginError } from '@waxwing/jmap'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthConfigError } from '../../auth'
+import { getInlineObjectUrl, putInlineObjectUrl, useComposerStore } from '../../compose'
 import { EMPTY_LIST_STATE, useListStore } from '../../mail/list-store'
 import { useReadingStore } from '../../mail/reading-store'
 import { usePaletteUi } from '../../shortcuts'
@@ -81,6 +82,7 @@ afterEach(() => {
   sessionStorage.clear()
   localStorage.clear()
   resetReplicaForTests()
+  useComposerStore.setState({ drafts: new Map(), focusedId: undefined, uploads: new Map() })
   useListStore.setState(EMPTY_LIST_STATE)
   useReadingStore.setState({ handlers: null })
   usePaletteUi.getState().closeOverlays()
@@ -323,6 +325,54 @@ describe('SessionProvider', () => {
     expect(useListStore.getState().sourceMailboxId).toBeNull()
     expect(useReadingStore.getState().handlers).toBeNull()
     expect(usePaletteUi.getState().paletteOpen).toBe(false)
+  })
+
+  /**
+   * The same defect, one module further (R-03): the composer's drafts, its in-flight uploads and the
+   * `blob:` previews of pasted images are module singletons too, and NOTHING on the sign-out path
+   * touched them. `AppShell` mounts the composer host as soon as there are drafts, so the next
+   * person to sign in on this tab saw the previous person's windows — and the first tab switch
+   * flushed them into THEIR Drafts folder on the server. "Sign out and remove data" was no help:
+   * that wipe is about IndexedDB and web storage, and none of this is stored.
+   *
+   * Checked in BOTH modes, because the public-computer promise (FR-AUTH-09) is the stronger one:
+   * there, leaving must not depend on the user picking the right menu item at all.
+   */
+  it.each([
+    ['durable', 'basic'],
+    ['public-computer', 'basic-public'],
+  ])('clears the composer on sign-out (%s)', async (_mode, button) => {
+    const user = userEvent.setup()
+    renderSession({ probePresent: true })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    await user.click(screen.getByText(button))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+
+    let id = ''
+    act(() => {
+      id = useComposerStore.getState().openDraft({ subject: 'private to alice' })
+      putInlineObjectUrl('cid-1@waxwing.local', 'blob:pasted-screenshot')
+      useComposerStore.getState().addUpload(id, {
+        tempId: 't1',
+        name: 'contract.pdf',
+        type: 'application/pdf',
+        size: 10,
+        inline: false,
+        cid: null,
+        previewUrl: null,
+        status: 'uploading',
+        progress: 0,
+        error: null,
+      })
+    })
+    expect(useComposerStore.getState().drafts.size).toBe(1)
+
+    await user.click(screen.getByText('signout'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('onboarding'))
+
+    await waitFor(() => expect(useComposerStore.getState().drafts.size).toBe(0))
+    expect(useComposerStore.getState().uploads.size).toBe(0)
+    expect(getInlineObjectUrl('cid-1@waxwing.local')).toBeNull()
   })
 })
 

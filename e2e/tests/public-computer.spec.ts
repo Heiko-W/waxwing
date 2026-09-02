@@ -62,6 +62,15 @@ async function expectNoIdentityLeft(page: Page): Promise<void> {
   expect(keys.session.filter((key) => !ALLOWED_AFTER_SIGN_OUT.has(key))).toEqual([])
 }
 
+/** Sign in with the public-computer box ticked, from the login screen. */
+async function signInPublic(page: Page): Promise<void> {
+  await revealPasswordForm(page)
+  await page.getByLabel('Username', { exact: true }).fill(CREDENTIALS.user)
+  await page.getByLabel('Password', { exact: true }).fill(CREDENTIALS.pass)
+  await page.getByLabel('Public or shared computer').check()
+  await page.getByRole('button', { name: 'Sign in with a password', exact: true }).click()
+}
+
 test.beforeEach(async () => {
   await seedReadMail()
 })
@@ -111,6 +120,38 @@ test.describe('FR-AUTH-09 public-computer mode', () => {
     }).toPass({ timeout: 20_000 })
     // The other two storages, which the mode used to leave untouched — see ALLOWED_AFTER_SIGN_OUT.
     await expectNoIdentityLeft(page)
+  })
+
+  /**
+   * The half of the promise that is not on a disk at all.
+   *
+   * The composer keeps its open drafts in a MODULE-scoped store, so that a window survives a route
+   * change and a host remount — and therefore also a sign-out, which is an in-SPA transition. The
+   * next person to sign in on this terminal got the previous one's half-written mail back on
+   * screen, and the first tab switch autosaved it into THEIR Drafts folder on the server. No wipe
+   * could help: the draft was never in IndexedDB or in a web storage, it was in memory.
+   */
+  test('an open draft does not survive the sign-out into the next session', async ({ page }) => {
+    const subject = 'confidential — public computer draft'
+    await page.goto('/')
+    await signInPublic(page)
+    await page.getByRole('button', { name: 'New message', exact: true }).click()
+    await expect(page.getByRole('textbox', { name: 'Message body' })).toBeVisible({
+      timeout: 15_000,
+    })
+    await page.getByLabel('Subject', { exact: true }).fill(subject)
+
+    await page.getByRole('button', { name: 'Account' }).click()
+    await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click()
+    await expect(page.getByRole('heading', { level: 1, name: /^Webmail for/ })).toBeVisible({
+      timeout: SYNC_BUDGET_MS,
+    })
+
+    // The next person at the terminal.
+    await signInPublic(page)
+    await expect(page.getByRole('treeitem', { name: /Inbox/ })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('textbox', { name: 'Message body' })).toHaveCount(0)
+    await expect(page.getByText(subject)).toHaveCount(0)
   })
 
   /**

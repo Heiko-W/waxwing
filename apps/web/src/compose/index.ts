@@ -40,6 +40,11 @@ export {
 export type { ActiveFormats, EditorEngine, EditorFactory } from './editor-engine'
 export { FromField } from './FromField'
 export { htmlToPlainText, plainTextToHtml } from './html-to-text'
+export {
+  getInlineObjectUrl,
+  putInlineObjectUrl,
+  revokeInlineObjectUrl,
+} from './inline-image-registry'
 export { NEW_MESSAGE_BTN_ID, NewMessageButton } from './NewMessageButton'
 export { sanitizeQuotedHtml } from './quoted-html'
 export { RecipientFields, type RecipientFieldsProps } from './RecipientFields'
@@ -73,6 +78,7 @@ export {
   stripSubjectPrefix,
   threadingHeaders,
 } from './reply'
+export { resetComposer } from './reset-composer'
 export {
   applySignature,
   pickDefaultIdentity,
@@ -85,5 +91,11 @@ export { COMMON_EMAIL_DOMAINS, suggestDomainCorrection } from './typo-heuristic'
 export { useDraftAutosave } from './use-draft-autosave'
 export { type DraftOpener, useDraftOpener } from './use-draft-opener'
 export { useDraftRestore } from './use-draft-restore'
-export { type DraftSync, flushActiveDraft, useDraftSync } from './use-draft-sync'
+export {
+  ACTIVE_DRAFT_SYNC,
+  type DraftSync,
+  flushActiveDraft,
+  flushOpenDrafts,
+  useDraftSync,
+} from './use-draft-sync'
 export { useSendErrorNotifier } from './use-send-error-notifier'

@@ -82,6 +82,22 @@ interface PendingUpload {
 }
 const pending = new Map<string, PendingUpload>()
 
+/**
+ * Abort every in-flight upload and forget the `File` objects behind them (sign-out).
+ *
+ * The map is module-scoped and holds the actual bytes the user picked. A sign-out is an in-SPA
+ * transition, so without this the previous person's attachment keeps uploading — under the NEXT
+ * person's credentials once the session is replaced — and the file stays in this tab's memory.
+ * Inline previews go with it; the registry's own reset handles the ones already completed.
+ */
+export function abortPendingUploads(): void {
+  for (const item of pending.values()) {
+    item.controller.abort()
+    if (item.cid !== null) revokeInlineObjectUrl(item.cid)
+  }
+  pending.clear()
+}
+
 function makeCid(): string {
   return `${crypto.randomUUID()}@waxwing.local`
 }

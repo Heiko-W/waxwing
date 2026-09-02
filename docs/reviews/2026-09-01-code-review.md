@@ -187,7 +187,12 @@ zweitem Pfad negativ.
 
 ### R-03 — [HIGH] Composer-Store, Upload-Registry und Inline-Bild-Registry überleben den Sign-out: Entwürfe des vorherigen Kontos erscheinen in der nächsten Sitzung und werden per Autosave in dessen Server-Drafts geschrieben
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt wie vorgeschlagen. Der Flush wird ABSICHTLICH vor `goToLogin` gestartet (danach ist der
+`ReplicaProvider` weg und `flushActiveDraft` ein No-op) und im Teardown mit 1-s-Deadline abgewartet,
+bevor `resetComposer()` den Store leert. Abdeckung ergänzt: Unit in `SessionProvider.test.tsx` für
+BEIDE Modi plus ein E2E in `public-computer.spec.ts` (Entwurf überlebt den Sign-out nicht in die
+nächste Sitzung).
 
 **Kategorie / Bereich:** security, correctness / Compose + App (Session)
 

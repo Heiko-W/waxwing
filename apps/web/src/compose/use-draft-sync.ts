@@ -216,6 +216,40 @@ export async function flushActiveDraft(localId: string): Promise<void> {
   await flushDraft(replica.db, replica.accountId, localId)
 }
 
+/**
+ * Persist every open draft, best-effort and time-boxed. Used by anything that is about to take the
+ * composer away: the M3.5 reload prompt and the sign-out teardown.
+ *
+ * **It can never fail the thing it precedes, and can never delay it indefinitely.** `flush` writes
+ * to IndexedDB, which rejects on a full disk (the state M3.4's storage notifier exists for), on a
+ * closed database, and in Safari's private mode — and a rejection here used to swallow the
+ * `activate()` that followed it: the user clicked "Reload", the toast dismissed itself, and nothing
+ * happened, ever again. Saving the draft is best-effort; stranding the user on a dead build — or
+ * holding a sign-out open on a shared machine — is not an acceptable price for it. So:
+ * `allSettled`, so one bad draft cannot take the others' flushes down with it, and a DEADLINE,
+ * because a write can also do neither — a database blocked behind another tab's `versionchange`
+ * simply never settles, and `allSettled` would wait for it forever.
+ *
+ * The caller must START this while the replica is still mounted: {@link flushActiveDraft} resolves
+ * it per call, and a sign-out unmounts the provider in the same tick it clears the screen.
+ */
+export async function flushOpenDrafts(
+  draftSync: Pick<DraftSync, 'flush'>,
+  deadlineMs: number,
+): Promise<void> {
+  const openIds = [...useComposerStore.getState().drafts.keys()]
+  const flushed = Promise.allSettled(openIds.map((localId) => draftSync.flush(localId)))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, deadlineMs)
+  })
+  await Promise.race([flushed, deadline])
+  clearTimeout(timer)
+}
+
+/** {@link flushOpenDrafts} against the real seam — for callers outside the `ReplicaProvider` tree. */
+export const ACTIVE_DRAFT_SYNC: Pick<DraftSync, 'flush'> = { flush: flushActiveDraft }
+
 export function useDraftSync(): DraftSync {
   const replica = useReplicaOptional()
   const connected = useSessionOptional()

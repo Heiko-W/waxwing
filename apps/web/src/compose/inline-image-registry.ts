@@ -31,3 +31,16 @@ export function revokeInlineObjectUrl(cid: string): void {
 export function revokeInlineObjectUrls(cids: Iterable<string>): void {
   for (const cid of cids) revokeInlineObjectUrl(cid)
 }
+
+/**
+ * Revoke + forget EVERYTHING (sign-out).
+ *
+ * The registry is module-scoped and a sign-out is an in-SPA transition, so without this the pasted
+ * screenshots of the person who just left stay resolvable — as live blob: URLs — for whoever signs
+ * in next on the same tab. That is data this app put in memory, and FR-AUTH-05/09 say leaving
+ * removes it.
+ */
+export function revokeAllInlineObjectUrls(): void {
+  for (const url of registry.values()) URL.revokeObjectURL(url)
+  registry.clear()
+}
