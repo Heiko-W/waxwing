@@ -41,6 +41,7 @@ or stops being supported cannot leave this document behind.
 | `REV` | `updated` | |
 | `PREF` parameter | `pref` | vCard 3.0's valueless `TYPE=pref` is read as `pref: 1`. |
 | `PROP-ID` parameter | collection key | Written on export, so ids survive a round trip instead of being renumbered. |
+| every other parameter of a mapped property | entry `vCardParams` | `ALTID`, `LANGUAGE`, `PID`, a `VALUE=uri` on a phone number — kept on the entry and written back, so a CardDAV client that merges on `PID` still has an identity to merge on. |
 
 ## What is *not* mapped — and what happens to it
 
@@ -75,6 +76,18 @@ belong to. Guessing would attach a timezone to the wrong one, so they are preser
   written as an empty property.
 - **No vCard 3.0 output.** Input in 3.0 shape is read (that is what Apple, Google and Outlook emit);
   output is always 4.0.
+- **No vCard 2.1, and no `QUOTED-PRINTABLE`.** Classic Outlook for Windows exports 2.1 and encodes
+  non-ASCII as `ENCODING=QUOTED-PRINTABLE`, usually with `CHARSET=Windows-1252`. Neither the
+  encoding nor `CHARSET` is decoded. Such a line is **skipped and reported** in
+  `ImportResult.skipped` with `reason: 'unsupportedEncoding'` — it is not imported as the literal
+  `=C3=BC` text it would otherwise become. `ENCODING=b`/`BASE64` *is* supported: an inline photo
+  becomes a `data:` URI.
+- **`TYPE` is not carried in `vCardParams`.** The export rebuilds it from `contexts` and `features`,
+  so preserving the raw parameter as well would write it twice; a `TYPE` value outside the mapped
+  sets (`TYPE=x-custom` beside `TYPE=work`) is therefore not round-tripped.
+- **`FN`/`N` parameters are not carried either.** `vCardParams` lives on collection entries; `name`
+  is one object built from two properties, so there is no unambiguous place to put the parameters of
+  each. A second `FN`/`N` in an `ALTID` group is preserved whole, in `vCardProps`.
 
 ## Conformance notes
 

@@ -22,6 +22,20 @@ export type BooleanSet = Readonly<Record<string, true>>
 /** RFC 9553 §1.4.5 — `1` is the most preferred; higher is less. */
 export type Pref = number
 
+/**
+ * Parameters of a property this package DID map, that it does not itself interpret (RFC 9555
+ * §2.15.2's companion to `vCardProps`).
+ *
+ * The typed fields cover `TYPE`, `PREF`, `LABEL` and `PROP-ID`; everything else on a mapped line —
+ * `ALTID` and `LANGUAGE` (RFC 6350 §5.4, §5.1), `PID` (§5.5), a `VALUE=uri` on `TEL` — used to be
+ * read and discarded. For a CardDAV client that merges on `PID`/`CLIENTPIDMAP` that is the entry's
+ * identity gone, and it goes without a trace: the property itself round-trips, so nothing looks
+ * lost until something downstream tries to match two exports.
+ *
+ * Keys are upper-cased, as the lexer produces them, and written back verbatim.
+ */
+export type VCardParams = Readonly<Record<string, string | readonly string[]>>
+
 // ── Name ────────────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -66,6 +80,7 @@ export interface Nickname {
   readonly name: string
   readonly contexts?: BooleanSet
   readonly pref?: Pref
+  readonly vCardParams?: VCardParams
 }
 
 // ── Communication ───────────────────────────────────────────────────────────────────────────────
@@ -77,6 +92,7 @@ export interface EmailAddress {
   readonly contexts?: BooleanSet
   readonly pref?: Pref
   readonly label?: string
+  readonly vCardParams?: VCardParams
 }
 
 /** §2.3.3 feature keys, as registered. `main-number` is hyphenated; the others are not. */
@@ -98,6 +114,7 @@ export interface Phone {
   readonly contexts?: BooleanSet
   readonly pref?: Pref
   readonly label?: string
+  readonly vCardParams?: VCardParams
 }
 
 // ── Addresses ───────────────────────────────────────────────────────────────────────────────────
@@ -130,6 +147,7 @@ export interface Address {
   readonly contexts?: BooleanSet
   readonly pref?: Pref
   readonly isOrdered?: boolean
+  readonly vCardParams?: VCardParams
 }
 
 // ── Organisation, titles ────────────────────────────────────────────────────────────────────────
@@ -145,6 +163,7 @@ export interface Organization {
   readonly units?: readonly OrgUnit[]
   readonly sortAs?: string
   readonly contexts?: BooleanSet
+  readonly vCardParams?: VCardParams
 }
 
 /** §2.2.5. vCard's `TITLE` → `kind: 'title'`; `ROLE` → `kind: 'role'`. */
@@ -153,6 +172,7 @@ export interface Title {
   readonly name: string
   readonly kind?: 'title' | 'role'
   readonly organizationId?: Id
+  readonly vCardParams?: VCardParams
 }
 
 // ── Dates, notes, media ─────────────────────────────────────────────────────────────────────────
@@ -178,11 +198,13 @@ export interface Anniversary {
   readonly '@type'?: 'Anniversary'
   readonly kind: 'birth' | 'death' | 'wedding'
   readonly date: PartialDate | Timestamp
+  readonly vCardParams?: VCardParams
 }
 
 export interface Note {
   readonly '@type'?: 'Note'
   readonly note: string
+  readonly vCardParams?: VCardParams
 }
 
 export interface Media {
@@ -191,6 +213,7 @@ export interface Media {
   readonly uri: string
   readonly mediaType?: string
   readonly pref?: Pref
+  readonly vCardParams?: VCardParams
 }
 
 export interface Link {
@@ -199,6 +222,7 @@ export interface Link {
   readonly kind?: string
   readonly pref?: Pref
   readonly label?: string
+  readonly vCardParams?: VCardParams
 }
 
 /**
@@ -220,6 +244,7 @@ export interface OnlineService {
   readonly contexts?: BooleanSet
   readonly pref?: Pref
   readonly label?: string
+  readonly vCardParams?: VCardParams
 }
 
 // ── The card ────────────────────────────────────────────────────────────────────────────────────

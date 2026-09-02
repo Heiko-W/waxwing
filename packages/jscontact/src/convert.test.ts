@@ -119,6 +119,9 @@ describe('vCard → JSContact', () => {
     expect(Object.values(importOne(APPLE_EXPORT).anniversaries ?? {})[0]).toEqual({
       kind: 'birth',
       date: { year: 1982, month: 4, day: 15 },
+      // Apple writes `BDAY;value=date:` — a parameter nothing here interprets, so it is preserved
+      // rather than read and dropped (R-90), and it goes back out on export.
+      vCardParams: { VALUE: 'date' },
     })
     // The RFC example's `--0203`: "3 February, year withheld" — a case a Date cannot hold at all.
     expect(Object.values(importOne(RFC_6350_EXAMPLE).anniversaries ?? {})[0]).toEqual({
@@ -690,6 +693,141 @@ describe('inline binary photos (vCard 3.0)', () => {
       ),
     )
     expect(Object.values(remote.media ?? {})[0]?.uri).toBe('https://a.test/l.png')
+  })
+})
+
+/**
+ * R-88. vCard's `timestamp` (§4.3.5, §6.7.4's own example `REV:19951031T222710Z`) is ISO 8601
+ * BASIC — no hyphens, no colons. JSContact's `updated` and `Timestamp.utc` are RFC 3339 (RFC 9553
+ * §1.4.5, §2.1.10). The package copied both values unchanged from one world into the other.
+ */
+describe('timestamps cross the two grammars', () => {
+  it('reads a vCard REV into an RFC 3339 updated', () => {
+    // Outlook: basic form. Apple: the extended form, which is what vCard 3.0 allowed.
+    expect(importOne(OUTLOOK_EXPORT).updated).toBe('2026-07-01T09:12:00Z')
+    expect(importOne(APPLE_EXPORT).updated).toBe('2026-07-01T09:12:00Z')
+  })
+
+  it('writes an RFC 3339 updated back as a vCard timestamp', () => {
+    const card: Card = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      updated: '2026-07-01T09:12:00Z',
+    }
+    expect(toVCard(card)).toContain('REV:20260701T091200Z')
+    expect(toVCard(card)).not.toContain('REV:2026-07-01')
+  })
+
+  it('writes a Timestamp anniversary in the vCard grammar, and reads it back', () => {
+    const card: Card = {
+      '@type': 'Card',
+      version: '1.0',
+      uid: 'u',
+      anniversaries: { a1: { kind: 'birth', date: { utc: '1982-04-15T00:00:00Z' } } },
+    }
+    const vcard = toVCard(card)
+    expect(vcard).toContain('BDAY;PROP-ID=a1:19820415T000000Z')
+    // The whole point: this package's OWN importer used to read the RFC 3339 form as no date at all.
+    expect(Object.values(importOne(vcard).anniversaries ?? {})[0]?.date).toEqual({
+      utc: '1982-04-15T00:00:00Z',
+    })
+  })
+
+  it('omits a REV it cannot express rather than writing rubbish', () => {
+    const card: Card = { '@type': 'Card', version: '1.0', uid: 'u', updated: 'gestern' }
+    expect(toVCard(card)).not.toContain('REV')
+  })
+
+  it('leaves an unreadable REV out of updated and in the file', () => {
+    // Nothing is invented and nothing is lost: `updated` stays unset, the line rides out unchanged.
+    const card = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'REV:gestern', 'END:VCARD'].join('\r\n'),
+    )
+    expect(card.updated).toBeUndefined()
+    expect(toVCard(card)).toContain('REV:gestern')
+  })
+})
+
+/**
+ * R-89. vCard 2.1 (classic Outlook for Windows) writes non-ASCII as `ENCODING=QUOTED-PRINTABLE`.
+ * That is outside this package's declared scope — 4.0, plus the 3.0 shapes Apple, Google and
+ * Outlook emit — and the finding is not that it is unsupported but that it was unsupported in
+ * SILENCE: the raw value was taken as plain text, so a card imported "successfully" with `=C3=BC`
+ * in the middle of a name.
+ */
+describe('quoted-printable is reported, not swallowed', () => {
+  const QP = [
+    'BEGIN:VCARD',
+    'VERSION:2.1',
+    'N;ENCODING=QUOTED-PRINTABLE;CHARSET=UTF-8:M=C3=BCller;J=C3=BCrgen',
+    'FN:Juergen Mueller',
+    'END:VCARD',
+  ].join('\r\n')
+
+  it('does not import a quoted-printable value as plain text', () => {
+    const result = fromVCard(QP, { newUid: () => 'gen' })
+    expect(result.cards[0]?.name?.full).toBe('Juergen Mueller')
+    expect(JSON.stringify(result.cards[0])).not.toContain('=C3=BC')
+  })
+
+  it('says which line it could not read', () => {
+    const result = fromVCard(QP, { newUid: () => 'gen' })
+    expect(result.skipped).toEqual([
+      { line: 3, text: expect.stringContaining('QUOTED-PRINTABLE'), reason: 'unsupportedEncoding' },
+    ])
+  })
+
+  it('still decodes ENCODING=b, which it does support', () => {
+    // The base64 photo path must not be caught by the same net — see UNSUPPORTED_ENCODINGS.
+    expect(fromVCard(GOOGLE_EXPORT, { newUid: () => 'gen' }).skipped).toEqual([])
+  })
+})
+
+/**
+ * R-90. Parameters of a MAPPED property that nothing interprets were parsed and thrown away. The
+ * property itself round-tripped, so nothing looked lost until a CardDAV client tried to merge two
+ * exports on `PID` and found no identity to merge on.
+ */
+describe('unmapped parameters of mapped properties survive', () => {
+  const CARD = [
+    'BEGIN:VCARD',
+    'VERSION:4.0',
+    'UID:u',
+    'FN:Anna Meier',
+    'EMAIL;PID=1.1;ALTID=2;LANGUAGE=de;TYPE=work:anna@example.test',
+    'TEL;VALUE=uri;TYPE=work,voice;PREF=1:tel:+1-418-656-9254',
+    'END:VCARD',
+  ].join('\r\n')
+
+  it('keeps PID, ALTID, LANGUAGE and a VALUE=uri on the entry', () => {
+    const card = importOne(CARD)
+    expect(Object.values(card.emails ?? {})[0]?.vCardParams).toEqual({
+      PID: '1.1',
+      ALTID: '2',
+      LANGUAGE: 'de',
+    })
+    expect(Object.values(card.phones ?? {})[0]?.vCardParams).toEqual({ VALUE: 'uri' })
+    // The parameters the typed fields own are NOT duplicated into the preserved set.
+    expect(Object.values(card.emails ?? {})[0]?.contexts).toEqual({ work: true })
+  })
+
+  it('writes them back, once each, without displacing the computed ones', () => {
+    const vcard = toVCard(importOne(CARD))
+    expect(vcard).toContain('PID=1.1')
+    expect(vcard).toContain('ALTID=2')
+    expect(vcard).toContain('LANGUAGE=de')
+    expect(vcard).toContain('VALUE=uri')
+    expect(vcard.match(/TYPE=/g)).toHaveLength(2)
+    expect(vcard).toContain('PREF=1')
+  })
+
+  it('does not write back the ENCODING of a photo it already decoded', () => {
+    // `media.uri` is a `data:` URI now; re-emitting `ENCODING=b` beside it would make the next
+    // import base64-decode the URI itself.
+    const vcard = toVCard(importOne(GOOGLE_EXPORT))
+    expect(vcard).not.toContain('ENCODING=')
+    expect(vcard).toContain('PHOTO;PROP-ID=m1;MEDIATYPE=image/jpeg:data:image/jpeg;base64,')
   })
 })
 

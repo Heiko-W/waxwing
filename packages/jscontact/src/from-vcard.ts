@@ -36,10 +36,11 @@ import type {
   Phone,
   Timestamp,
   Title,
+  VCardParams,
 } from './types'
 import type { ContentLine, SkippedLine } from './vcard/lex'
 import { parseContentLines } from './vcard/lex'
-import { listValues, structuredComponents, unescapeText } from './vcard/value'
+import { fromVCardTimestamp, listValues, structuredComponents, unescapeText } from './vcard/value'
 
 export interface ImportResult {
   readonly cards: readonly Card[]
@@ -122,6 +123,41 @@ const STRUCTURAL = new Set(['BEGIN', 'END', 'VERSION'])
  * prefix intact. Nothing has to be remembered when a builder learns a new shape.
  */
 type Consumed = Set<ContentLine>
+
+/**
+ * Parameters every builder reads for itself. Everything else on a MAPPED line is preserved into the
+ * entry's `vCardParams` — see {@link unmappedParams}.
+ *
+ * `TYPE` is in here even though the mapping of it is partial (a `TYPE=x-custom` beside `TYPE=work`
+ * is not represented): the export rebuilds `TYPE` from `contexts`/`features`, so preserving the raw
+ * one as well would write the parameter twice. Documented in the README's "Known limits" rather
+ * than half-solved here.
+ */
+const READ_PARAMS = new Set(['PROP-ID', 'TYPE', 'PREF', 'LABEL'])
+
+/**
+ * The parameters of a mapped line that nothing read, kept so the entry can be written back with
+ * them (RFC 9555 §2.15.2's `vCardParams`).
+ *
+ * `ALTID`, `LANGUAGE`, `PID`, a `VALUE=uri` on `TEL` — all of them used to be parsed and thrown
+ * away. The property itself round-tripped, so nothing looked lost until a CardDAV client tried to
+ * merge two exports on `PID` and found no identity to merge on.
+ */
+function unmappedParams(
+  line: ContentLine,
+  alsoRead: readonly string[] = [],
+): VCardParams | undefined {
+  const out: Record<string, string | readonly string[]> = {}
+  for (const [key, values] of line.params) {
+    if (READ_PARAMS.has(key) || alsoRead.includes(key)) continue
+    // Keys arrive upper-cased from the lexer, so none of them can be `__proto__` — asserted rather
+    // than assumed, because a future lower-casing here would turn a file into a prototype write.
+    if (UNUSABLE_AS_KEY.has(key)) continue
+    if (values.length === 0) continue
+    out[key] = values.length === 1 ? (values[0] as string) : [...values]
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
 
 function typeValues(line: ContentLine): string[] {
   return (line.params.get('TYPE') ?? [])
@@ -262,21 +298,15 @@ export function parseVCardDate(raw: string): PartialDate | Timestamp | undefined
       day: Number(full[3]),
     }
   }
-  const dateTime = DATE_TIME.exec(value)
-  if (dateTime) {
-    const [, year, month, day, hour, minute, second, zone] = dateTime
-    if (zone === undefined || zone === '') {
-      return { year: Number(year), month: Number(month), day: Number(day) }
+  const instant = fromVCardTimestamp(value)
+  if (instant !== undefined) {
+    // `null` is a date-time that names no zone: local wall-clock time, which JSContact has no home
+    // for. Only the date part survives, and the untouched line rides along in `vCardProps`.
+    if (instant !== null) return { utc: instant }
+    const datePart = /^(\d{4})-?(\d{2})-?(\d{2})T/.exec(value)
+    if (datePart) {
+      return { year: Number(datePart[1]), month: Number(datePart[2]), day: Number(datePart[3]) }
     }
-    return utcTimestamp({
-      year: Number(year),
-      month: Number(month),
-      day: Number(day),
-      hour: Number(hour),
-      minute: Number(minute ?? '0'),
-      second: Number(second ?? '0'),
-      zone,
-    })
   }
   // --MMDD / --MM-DD: no year.
   const noYear = /^--(\d{2})-?(\d{2})$/.exec(value)
@@ -287,59 +317,6 @@ export function parseVCardDate(raw: string): PartialDate | Timestamp | undefined
   const year = /^(\d{4})$/.exec(value)
   if (year) return { year: Number(year[1]) }
   return undefined
-}
-
-/**
- * `date-complete "T" time` with an optional zone (§4.3.3), in the basic AND the extended form.
- *
- * Minutes and seconds are optional because `time` is (`20090808T14` is a legal date-time); the zone
- * is `Z` or `±hh[:mm]`, and its ABSENCE is meaningful, not a parse failure — see
- * {@link parseVCardDate}.
- */
-const DATE_TIME =
-  /^(\d{4})-?(\d{2})-?(\d{2})T(\d{2})(?::?(\d{2}))?(?::?(\d{2}))?(Z|[+-]\d{2}(?::?\d{2})?)?$/
-
-/**
- * A zoned vCard date-time as a JSContact {@link Timestamp}: RFC 3339 with `Z`, per RFC 9553 §2.8.1.
- *
- * `Date.UTC` does the arithmetic so an offset that crosses midnight, a month end or a year end
- * lands on the right day — `20090101T0030+0500` is 2008-12-31 in UTC, and hand-rolled subtraction
- * gets that wrong on exactly the days nobody tests.
- */
-function utcTimestamp(parts: {
-  year: number
-  month: number
-  day: number
-  hour: number
-  minute: number
-  second: number
-  zone: string
-}): Timestamp | undefined {
-  const offset = zoneOffsetMinutes(parts.zone)
-  if (offset === undefined) return undefined
-  const ms = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  )
-  if (!Number.isFinite(ms)) return undefined
-  const instant = new Date(ms - offset * 60_000)
-  // `toISOString` emits milliseconds; a vCard timestamp has none, and RFC 9553 does not ask for any.
-  return { utc: `${instant.toISOString().slice(0, 19)}Z` }
-}
-
-/** Minutes east of UTC for `Z` / `±hh` / `±hhmm` / `±hh:mm`, or `undefined` for anything else. */
-function zoneOffsetMinutes(zone: string): number | undefined {
-  if (zone === 'Z' || zone === 'z') return 0
-  const match = /^([+-])(\d{2}):?(\d{2})?$/.exec(zone)
-  if (!match) return undefined
-  const hours = Number(match[2])
-  const minutes = Number(match[3] ?? '0')
-  if (hours > 23 || minutes > 59) return undefined
-  return (match[1] === '-' ? -1 : 1) * (hours * 60 + minutes)
 }
 
 /**
@@ -435,6 +412,7 @@ function buildEmails(
       contexts: contextsOf(line),
       pref: prefOf(line),
       label: line.params.get('LABEL')?.[0],
+      vCardParams: unmappedParams(line),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -464,6 +442,7 @@ function buildPhones(
       contexts: contextsOf(line),
       pref: prefOf(line),
       label: line.params.get('LABEL')?.[0],
+      vCardParams: unmappedParams(line),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -495,6 +474,7 @@ function buildAddresses(
       countryCode: line.params.get('CC')?.[0],
       contexts: contextsOf(line),
       pref: prefOf(line),
+      vCardParams: unmappedParams(line, ['CC']),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -520,6 +500,7 @@ function buildOrganizations(
       ...(named.length > 0 ? { units: named } : {}),
       sortAs: line.params.get('SORT-AS')?.[0],
       contexts: contextsOf(line),
+      vCardParams: unmappedParams(line, ['SORT-AS']),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -539,6 +520,7 @@ function buildTitles(
     out[nextId(line)] = compact<Title>({
       name,
       kind: line.name === 'ROLE' ? ('role' as const) : ('title' as const),
+      vCardParams: unmappedParams(line),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -566,7 +548,7 @@ function buildAnniversaries(
     // the line instead, and `BDAY;VALUE=text:circa 1800` left neither an anniversary nor a trace.
     if (date === undefined) continue
     consumed.add(line)
-    out[nextId(line)] = { kind, date }
+    out[nextId(line)] = compact<Anniversary>({ kind, date, vCardParams: unmappedParams(line) })
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -594,6 +576,7 @@ function buildNicknames(
         name,
         contexts: contextsOf(line),
         pref: prefOf(line),
+        vCardParams: unmappedParams(line),
       })
     }
   }
@@ -616,6 +599,7 @@ function buildLinks(
       uri,
       pref: prefOf(line),
       label: line.params.get('LABEL')?.[0],
+      vCardParams: unmappedParams(line),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -645,6 +629,7 @@ function buildOnlineServices(
       contexts: contextsOf(line),
       pref: prefOf(line),
       label: line.params.get('LABEL')?.[0],
+      vCardParams: unmappedParams(line, ['SERVICE-TYPE']),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -661,7 +646,7 @@ function buildNotes(
     const note = unescapeText(line.value)
     if (note === '') continue
     consumed.add(line)
-    out[nextId(line)] = { note }
+    out[nextId(line)] = compact<Note>({ note, vCardParams: unmappedParams(line) })
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -740,6 +725,12 @@ function buildMedia(
       uri,
       mediaType,
       pref: prefOf(line),
+      // `ENCODING`/`VALUE` are NOT preserved for an inline payload: the value is a `data:` URI now,
+      // and writing `ENCODING=b` beside it would make the next import decode it a second time.
+      vCardParams: unmappedParams(
+        line,
+        inline ? ['MEDIATYPE', 'ENCODING', 'VALUE'] : ['MEDIATYPE'],
+      ),
     })
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -791,8 +782,12 @@ function convertCard(lines: readonly ContentLine[], newUid: () => string): Card 
   const uidValue = uidLine === undefined ? '' : unescapeText(uidLine.value).trim()
   if (uidLine !== undefined && uidValue !== '') consumed.add(uidLine)
 
-  const updated =
-    revLine === undefined ? undefined : unescapeText(revLine.value).trim() || undefined
+  // `REV` is a vCard `timestamp` (§4.3.5), `updated` an RFC 3339 `UTCDateTime` (RFC 9553 §2.1.10) —
+  // two grammars, and copying the value across sent Outlook's `20260701T091200Z` to the server as
+  // an invalid `UTCDateTime`. A `REV` in neither grammar leaves `updated` unset and the line
+  // unconsumed, so it comes back out of `vCardProps` on export rather than as rubbish.
+  const rev = revLine === undefined ? undefined : fromVCardTimestamp(unescapeText(revLine.value))
+  const updated = typeof rev === 'string' ? rev : undefined
   if (revLine !== undefined && updated !== undefined) consumed.add(revLine)
 
   const card = compact<Card>({

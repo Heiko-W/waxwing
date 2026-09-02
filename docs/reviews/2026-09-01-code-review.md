@@ -3427,7 +3427,9 @@ abgeschwächt.
 
 ### R-88 — [LOW] Zeitstempel werden in beide Richtungen in der falschen Grammatik geschrieben: `Timestamp`-Daten und `REV`/`updated`
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** `toVCardTimestamp`/`fromVCardTimestamp` liegen in `vcard/value.ts`; `fromVCardTimestamp` hat drei Antworten statt zwei — `null` fuer eine wohlgeformte Zeitangabe OHNE Zone (lokale Uhrzeit, kein Zeitpunkt; JSContact kann sie nicht halten), `undefined` fuer "keine Zeitangabe". Ein `REV`, das in keine der beiden Grammatiken passt, laesst `updated` ungesetzt und die Zeile unverbraucht — sie faehrt dank R-34 in `vCardProps` mit und wird beim Export wieder geschrieben. Beim Export wird ein nicht ausdrueckbares `updated` weggelassen statt roh geschrieben. NICHT gemacht: die im Loesungsansatz vorgeschlagene Klaerung gegen den Dev-Stalwart, ob `updated` bei `create` ueberhaupt gesendet werden soll — dafuer fehlt hier ein Server; der Wert ist jetzt in beiden Richtungen zumindest grammatikalisch korrekt.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 
@@ -3468,7 +3470,9 @@ Gegenprüfung: abgeschwächt, medium → low, RFC-Abschnitte korrigiert.
 
 ### R-89 — [LOW] vCard 2.1 mit `ENCODING=QUOTED-PRINTABLE` wird als Zeichensalat importiert, ohne Meldung
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Umgesetzt ist die Minimalvariante (melden statt dekodieren), wie im Befund als Umfangsgrenze vorgegeben: `ENCODING=QUOTED-PRINTABLE` wird im Lexer erkannt, die Zeile wird uebersprungen und mit dem neuen `SkippedLine.reason = 'unsupportedEncoding'` gemeldet; README "Known limits" ergaenzt. NICHT umgesetzt: die Erkennung von `VERSION:2.1` als solche — eine 2.1-Karte ohne QP importiert korrekt, sie pauschal zu melden waere ein falscher Alarm. `ENCODING=b`/`BASE64` faellt bewusst nicht darunter (siehe R-35).
 
 **Kategorie / Bereich:** robustness / Lib (jscontact)
 
@@ -3504,7 +3508,9 @@ Gegenprüfung: abgeschwächt, medium → low.
 
 ### R-90 — [LOW] Parameter gemappter Properties gehen beim Roundtrip verloren (`PID`, `ALTID`, `LANGUAGE`, `VALUE=uri` auf `TEL`)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Teilloesung, bewusst:** Nicht ausgewertete Parameter werden je EINTRAG in `vCardParams` mitgefuehrt (neuer optionaler Typ `VCardParams`, additiv an elf Entry-Typen) und in `entryParams` zurueckgeschrieben — `PID`, `ALTID`, `LANGUAGE`, `VALUE=uri` auf `TEL` ueberleben den Roundtrip. NICHT mitgefuehrt: (a) `TYPE`, weil der Export es aus `contexts`/`features` neu baut und der rohe Parameter es doppelt schreiben wuerde; (b) die Parameter von `FN`/`N`, weil `name` ein Objekt aus zwei Properties ist und es keinen eindeutigen Platz fuer beide Parametersaetze gibt. Beides steht jetzt in den "Known limits" der README.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 

@@ -42,6 +42,7 @@ export type {
   Pref,
   Timestamp,
   Title,
+  VCardParams,
 } from './types'
 export type { ContentLine, ParseResult, SkippedLine } from './vcard/lex'
 export { parseContentLines } from './vcard/lex'
