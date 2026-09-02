@@ -431,6 +431,40 @@ describe('SessionProvider — public-computer mode', () => {
     expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
   })
 
+  /*
+   * A start that THREW leaves a stash nothing will ever consume: no redirect happened. The three
+   * keys were cleaned up three different ways — the failed first sign-in removed the
+   * public-computer flag only, the failed re-auth removed nothing — which is harmless in effect (a
+   * boot that is not a callback drops target and route as stale) and is exactly the shape a fourth
+   * key would have inherited from whichever line was copied.
+   */
+  it.each([
+    ['a first sign-in', 'oauth-public', false],
+    ['a re-auth', 'reauth-oauth', true],
+  ])('leaves no handshake stash behind when %s cannot start', async (_name, button, viaReauth) => {
+    const user = userEvent.setup()
+    if (viaReauth) sessionStorage.setItem('waxwing.onboard.publicComputer', 'true')
+    const fake = renderSession({
+      startLoginError: new AuthConfigError('no discovery document'),
+      isRedirectCallback: viaReauth,
+    })
+    if (viaReauth) {
+      await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+      await user.click(screen.getByText('expire'))
+    } else {
+      await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    }
+
+    await user.click(screen.getByText(button))
+
+    await waitFor(() => expect(fake.spies.startLogin).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(sessionStorage.getItem('waxwing.onboard.target')).toBeNull()
+      expect(sessionStorage.getItem('waxwing.onboard.route')).toBeNull()
+      expect(sessionStorage.getItem('waxwing.onboard.publicComputer')).toBeNull()
+    })
+  })
+
   it('names the replica BEFORE connecting when the callback comes back', async () => {
     // Ordering is the whole fix here. `setReplicaName` throws once the replica is open, and the
     // first `getReplica()` happens as the session goes ready — so if this ran after connect, the
