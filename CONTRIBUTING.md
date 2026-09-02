@@ -150,10 +150,19 @@ because someone has already fetched it.
    escape defeating the integration guard's regex, and a missing `build:libs` in the release build
    — would have surfaced here. The workflow has been dispatchable since its first commit and this
    was never used.
-2. **Bump `package.json`,** then the eight version strings the release does not touch:
-   `README.md` (×2), `docs/site/index.html` (×3), `docs/deployment.md` (×2), `SECURITY.md` (×1).
-   Two further mentions — `docs/deployment.md` and `SECURITY.md` on "It starts with v0.10.0" —
-   are historical and stay. There is no check for this; a mechanical one would fire on those two.
+2. **Bump all six `package.json` files,** then the version strings in the documentation. The
+   manifests are the root, `apps/web`, `e2e` and the three under `packages/`; they move in lockstep
+   because every one of them is `private: true` and none is published, and `apps/web`'s is the one
+   the client displays (`__WAXWING_VERSION__`). This step used to say "bump `package.json`" and
+   `@waxwing/mail-html` then sat six releases behind.
+
+   Neither half is on trust any more. `pnpm release` refuses to build if a manifest is out of step
+   and names the ones that are, and `scripts/release-artefacts.test.ts` — so, `pnpm verify` —
+   checks the manifests AND the documentation strings against the root version. It looks only at
+   the shapes that name the CURRENT release (`refs/tags/vX.Y.Z`, `waxwing-stalwart-vX.Y.Z.zip`,
+   `waxwing-web-vX.Y.Z.tar.gz`, the site's `Status: vX.Y.Z`), so the historical mentions —
+   the README changelog, "It starts with v0.10.0" in `docs/deployment.md` and `SECURITY.md` — are
+   left alone by construction rather than by an allowlist somebody has to maintain.
 3. **Add a changelog section** to `docs/implementation-plan.md`.
 4. **`pnpm gate`** locally. The workflow re-runs it, but ten minutes here beats ten there.
 5. **Tag annotated and push:** `git tag -a vX.Y.Z -m "…" && git push origin vX.Y.Z`. Annotated,

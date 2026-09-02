@@ -41,6 +41,12 @@
 // CI image, Windows). `archiver` writes both formats from Node, so the same bytes come out
 // everywhere. It is a devDependency and reaches no shipped bundle.
 //
+// That argument was true of the WRITING and false of the CHECKING for six releases: `--check`
+// listed the zip with a system `unzip`, so `pnpm release` — the command `deployment.md` tells a
+// deployer to run — died with `ENOENT` on exactly the machines this paragraph is about. It reads
+// the zip's central directory in Node now (`zipEntries`), and nothing here shells out to anything
+// but pnpm.
+//
 // Usage:
 //   node scripts/release.mjs            build into dist-release/
 //   node scripts/release.mjs --check    …and verify the artefacts (extension, layout, size cap)
@@ -72,6 +78,9 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const DIST = join(ROOT, 'apps/web/dist')
 const OUT = join(ROOT, 'dist-release')
 
+/** The timestamp every archive entry carries — see {@link pack}. */
+const EPOCH = new Date(0)
+
 /** Stalwart refuses an Application bundle larger than this (SP.5, measured against v0.16.x). */
 const STALWART_MAX_BYTES = 100 * 1024 * 1024
 
@@ -82,20 +91,58 @@ function run(command, args, options = {}) {
   execFileSync(command, args, { cwd: ROOT, stdio: 'inherit', ...options })
 }
 
-/** The version every artefact is named after — `package.json`, the one file a tag should match. */
+/** Every workspace manifest, in the order a bump should visit them. */
+const MANIFESTS = [
+  'package.json',
+  'apps/web/package.json',
+  'e2e/package.json',
+  'packages/jmap/package.json',
+  'packages/jscontact/package.json',
+  'packages/mail-html/package.json',
+]
+
+/**
+ * The version every artefact is named after — `package.json`, the one file a tag should match.
+ *
+ * It also checks that the WHOLE workspace agrees, because the bump is manual and had already lost
+ * one: `@waxwing/mail-html` sat on 0.16.0 through six releases. Lockstep is the intent (every
+ * package is `private: true` and none is published), and one of these manifests is not decoration —
+ * `apps/web/package.json` is where `__WAXWING_VERSION__` comes from, so a release that forgets it
+ * ships `waxwing-web-v0.23.0.tar.gz` whose About screen says 0.22.0, and the first question of
+ * every support exchange gets a wrong answer.
+ */
 function version() {
-  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))
+  const read = (file) => JSON.parse(readFileSync(join(ROOT, file), 'utf8'))
+  const pkg = read('package.json')
   if (typeof pkg.version !== 'string' || pkg.version === '') {
     throw new Error('package.json has no version to name the artefacts after')
+  }
+  const behind = MANIFESTS.slice(1)
+    .map((file) => [file, read(file).version])
+    .filter(([, found]) => found !== pkg.version)
+  if (behind.length > 0) {
+    for (const [file, found] of behind)
+      console.error(`  ✖ ${file} is ${found}, root is ${pkg.version}`)
+    throw new Error(
+      `${behind.length} workspace manifest(s) out of step with the root version — ` +
+        'every package is private and released in lockstep; bump them together.',
+    )
   }
   return pkg.version
 }
 
-/** Every file under `dir`, relative to it, sorted — so an archive is byte-stable across machines. */
+/**
+ * Every file under `dir`, relative to it, sorted — the first half of a byte-stable archive.
+ *
+ * Sorted by CODE UNIT, not `localeCompare`. Collation depends on the machine's locale and on which
+ * ICU the Node build carries, so `localeCompare` would have put the entries in one order here and
+ * possibly another on a deployer's machine — which is the one thing this function exists to rule
+ * out. It is also not what a reader of `SHA256SUMS` would guess the order is.
+ */
 function filesUnder(dir, prefix = '') {
   const out = []
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
   )) {
     const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`
     if (entry.isDirectory()) out.push(...filesUnder(join(dir, entry.name), rel))
@@ -112,23 +159,91 @@ function sha256(path) {
  * Write `files` (paths relative to `DIST`) into `target`, in the given order.
  *
  * Entries are added one at a time rather than with `archive.directory()`: the caller's list is
- * sorted, and a deterministic order is what makes two builds of the same tree produce comparable
- * archives. `zlib.level: 9` because these ship once and are downloaded many times.
+ * sorted, and a deterministic ORDER is the first half of what makes two builds of the same content
+ * produce identical archives. `zlib.level: 9` because these ship once and are downloaded many times.
+ *
+ * `date: new Date(0)` is the second half, and it is not cosmetic. `archive.file()` otherwise copies
+ * each file's mtime into the entry header — in BOTH formats, not just zip — so two builds of the
+ * same bytes on the same machine differ, and a deployer who follows `deployment.md` ("build them
+ * yourself") can never match the published checksum. Measured with archiver 8.0.0: same mtime →
+ * identical; mtime + 120 s → zip AND tar differ; with this option → identical either way. A fixed
+ * epoch is the usual answer (SOURCE_DATE_EPOCH); what the archives lose is a timestamp that says
+ * when this particular build ran, which nothing here or in the deployment reads.
+ *
+ * `statConcurrency: 1` is the third half, and it is the one nobody would guess. `archive.file()`
+ * does not append in call order: archiver stats each path on a queue whose default concurrency is
+ * FOUR (`lib/core.js`), and appends whichever stat returns first. Two builds of the same 81 files
+ * therefore came out with the first few entries permuted — measured here, byte 27 of the zip, i.e.
+ * the first entry's name length. Sorting the input list is necessary and was never sufficient.
+ *
+ * `gzipOptions.mtime: 0` on the tar: a gzip member header carries a timestamp of its own, quite
+ * apart from the tar entries inside it.
+ *
+ * The claim is "identical for identical CONTENT", not "identical everywhere": a different Node or
+ * zlib build can still compress differently. That is why `SHA256SUMS` ships with the release rather
+ * than being something a deployer is expected to reproduce blind.
  */
 function pack(format, target, files) {
   return new Promise((resolvePromise, reject) => {
     const output = createWriteStream(target)
     const archive =
       format === 'tar'
-        ? new TarArchive({ gzip: true, gzipOptions: { level: 9 } })
-        : new ZipArchive({ zlib: { level: 9 } })
+        ? new TarArchive({
+            gzip: true,
+            gzipOptions: { level: 9, mtime: 0 },
+            statConcurrency: 1,
+          })
+        : new ZipArchive({ zlib: { level: 9 }, statConcurrency: 1 })
     output.on('close', resolvePromise)
     archive.on('warning', reject)
     archive.on('error', reject)
     archive.pipe(output)
-    for (const file of files) archive.file(join(DIST, file), { name: file })
+    for (const file of files) archive.file(join(DIST, file), { name: file, date: EPOCH })
     archive.finalize()
   })
+}
+
+/**
+ * The names in a ZIP's central directory, read back from the WRITTEN file with no system `unzip`.
+ *
+ * This used to be `execFileSync('unzip', ['-Z1', …])`, which contradicted the header of this file
+ * forty lines up: the whole reason for `archiver` is that a release script must not depend on which
+ * binaries a machine happens to carry. On Windows or a minimal CI image `pnpm release` died with
+ * `ENOENT` at the check step, after building everything.
+ *
+ * Reading it here rather than reusing the list that produced the archive is deliberate and is the
+ * original reason for the shell-out: the point of the check is what a deployer actually receives.
+ * The format is fixed (APPNOTE 6.3.x §4.3.12/16) and these archives are small and few, so no zip64
+ * end-of-central-directory locator can appear; if one ever does, the count reads 0xffff and this
+ * throws rather than reporting a short listing.
+ */
+function zipEntries(path) {
+  const buffer = readFileSync(path)
+  const EOCD_SIGNATURE = 0x06054b50
+  const ENTRY_SIGNATURE = 0x02014b50
+  let eocd = -1
+  for (let at = buffer.length - 22; at >= 0; at -= 1) {
+    if (buffer.readUInt32LE(at) === EOCD_SIGNATURE) {
+      eocd = at
+      break
+    }
+  }
+  if (eocd === -1) throw new Error(`${path}: no ZIP end-of-central-directory record`)
+  const count = buffer.readUInt16LE(eocd + 10)
+  if (count === 0xffff) throw new Error(`${path}: zip64 central directory, which this cannot read`)
+  let at = buffer.readUInt32LE(eocd + 16)
+  const names = []
+  for (let index = 0; index < count; index += 1) {
+    if (buffer.readUInt32LE(at) !== ENTRY_SIGNATURE) {
+      throw new Error(`${path}: central-directory entry ${index} has a bad signature`)
+    }
+    const nameLength = buffer.readUInt16LE(at + 28)
+    const extraLength = buffer.readUInt16LE(at + 30)
+    const commentLength = buffer.readUInt16LE(at + 32)
+    names.push(buffer.toString('utf8', at + 46, at + 46 + nameLength))
+    at += 46 + nameLength + extraLength + commentLength
+  }
+  return names
 }
 
 /**
@@ -146,9 +261,7 @@ function check(paths) {
   // 2. `index.html` must sit at the ZIP ROOT. Stalwart serves the archive as-is; one nested
   //    directory and every path is off by a segment. Read back from the WRITTEN file rather than
   //    from the list that produced it — the point is what a deployer will actually receive.
-  const listing = execFileSync('unzip', ['-Z1', paths.stalwart], { encoding: 'utf8' })
-    .split('\n')
-    .filter(Boolean)
+  const listing = zipEntries(paths.stalwart)
   if (!listing.includes('index.html')) {
     problems.push(`index.html is not at the zip root (found: ${listing.slice(0, 5).join(', ')}…)`)
   }
@@ -161,8 +274,9 @@ function check(paths) {
 
   // 4. The `<base href="/">` token Stalwart rewrites to `<base href="/{prefix}/">`. Without that
   //    EXACT token (double quotes, root path) a deep-link reload under /mail/… resolves its
-  //    relative `./assets/*` against the route path and the app fails to load. `check-dist-contract`
-  //    asserts this on `dist/`; it is re-asserted here because the archive is what ships.
+  //    relative `./assets/*` against the route path and the app fails to load. Read from `dist/`,
+  //    which is what the two archives were packed from moments ago — the entry NAMES above come
+  //    from the written zip, this one does not, and this comment used to imply otherwise.
   const html = readFileSync(join(DIST, 'index.html'), 'utf8')
   if (!html.includes('<base href="/"')) {
     problems.push('the built index.html has lost its <base href="/"> token (SP.5)')

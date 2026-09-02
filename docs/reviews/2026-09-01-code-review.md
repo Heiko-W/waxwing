@@ -3966,7 +3966,21 @@ Gegenprüfung: bestätigt.
 
 ### R-103 — [LOW] Versionsdrift ohne Wächter: `@waxwing/mail-html` steht seit sechs Releases auf 0.16.0, acht Doku-Strings nennen v0.15.0, und nichts prüft `apps/web/package.json` gegen den Tag
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Lockstep als Absicht bestätigt (alle sechs Manifeste `private: true`, keines veröffentlicht) und
+deshalb erzwungen statt umgangen: `@waxwing/mail-html` auf 0.22.0 gezogen, `version()` in
+`release.mjs` prüft jetzt alle Workspace-Manifeste gegen das Root und bricht mit Liste ab, bevor
+gebaut wird (nachgestellt: „✖ packages/mail-html/package.json is 0.16.0, root is 0.22.0", Exit 1
+nach einer Sekunde). Die acht Doku-Strings stehen auf v0.22.0, dazu zwei weitere, die der Befund
+nicht zählt: das Pinning-Beispiel in `deployment.md:121` (`v0.10.0`) und die Entpack-Zeile
+(`waxwing-web-v1.0.0.tar.gz`). CONTRIBUTING Schritt 2 nennt alle sechs Manifeste und die beiden
+Wächter.
+
+Abweichung beim Wächter-Entwurf: statt einer Allowlist für die zwei historischen
+v0.10.0-Erwähnungen prüft `scripts/release-artefacts.test.ts` nur die vier Schreibweisen, die die
+AKTUELLE Version benennen (`refs/tags/vX.Y.Z`, `waxwing-stalwart-vX.Y.Z.zip`,
+`waxwing-web-vX.Y.Z.tar.gz`, `Status: vX.Y.Z`). Changelog-Prosa und „It starts with v0.10.0"
+fallen damit durch die Form heraus statt durch eine Liste, die jemand pflegen müsste.
 
 **Kategorie / Bereich:** maintainability / Infra
 
@@ -4048,7 +4062,28 @@ only`; `git log -S` für die Einführung von `shareAddressBook`. Gegenprüfung: 
 
 ### R-105 — [LOW] `release.mjs`: `--check` braucht ein System-`unzip` (entgegen der eigenen Begründung), und beide Archive sind nicht byte-stabil
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle drei Punkte behoben — und ein vierter, den der Befund nicht hatte.
+
+(1) `unzip` ist weg: `zipEntries()` liest das Central Directory des GESCHRIEBENEN Zips in Node
+(APPNOTE §4.3.12/16, mit Abbruch bei zip64). Bewusst nicht die vorgeschlagene Variante über das
+`entry`-Event von `archiver` — die Absicht der Prüfung ist „was der Deployer wirklich bekommt",
+und die bleibt so erhalten. Nichts im Skript startet jetzt noch etwas anderes als `pnpm`.
+
+(2) `date: new Date(0)` je Eintrag — und das allein reichte NICHT. Zwei volle Läufe ergaben
+weiterhin verschiedene Archive: `archiver` statet die Pfade auf einer vier Einträge breiten Queue
+und hängt in Abschluss-Reihenfolge an, die sortierte Liste bestimmt die Reihenfolge im Archiv also
+gar nicht (gemessen an Byte 27 des Zips: der Namenslänge des ersten Eintrags). Zusätzlich trägt
+der gzip-Header des Tars einen eigenen Zeitstempel. Mit `statConcurrency: 1` und
+`gzipOptions.mtime: 0` sind beide Formate jetzt stabil: zwei komplette `pnpm release`-Läufe
+ergeben identische SHA256SUMS, und ein Pack-Probelauf mit um 120 s verschobenen mtimes ergibt in
+beiden Formaten identische Bytes.
+
+(3) Der Kommentar zur Base-href-Prüfung sagt jetzt, dass er `dist/` liest, und warum.
+
+(4) Zusätzlich: `filesUnder()` sortierte mit `localeCompare`, also nach Locale und ICU-Build der
+Maschine — für eine Zusage „dieselben Bytes kommen überall heraus" das falsche Werkzeug. Jetzt
+Code-Unit-Vergleich.
 
 **Kategorie / Bereich:** maintainability / Infra
 
