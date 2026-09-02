@@ -139,7 +139,11 @@ unverändert.
 
 ### R-02 — [HIGH] Im Plain-Text-Modus erreicht kein Tastendruck den Store: Senden, Autosave und Schließen verwenden den alten Rich-Text-Body
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Variante (b) umgesetzt: `plainText` liegt jetzt in `DraftWindow`/`SerializedDraft`, `RichTextEditor` ist
+darauf kontrolliert, und `toEmailCreate` sendet bei gesetztem Flag nur den `text/plain`-Teil. Zusätzlich
+ist `updateBody` bei identischem Body ein No-op — der Moduswechsel emittiert, und das hätte sonst jeden
+Wechsel als Tastendruck gezählt.
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -183,7 +187,12 @@ zweitem Pfad negativ.
 
 ### R-03 — [HIGH] Composer-Store, Upload-Registry und Inline-Bild-Registry überleben den Sign-out: Entwürfe des vorherigen Kontos erscheinen in der nächsten Sitzung und werden per Autosave in dessen Server-Drafts geschrieben
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt wie vorgeschlagen. Der Flush wird ABSICHTLICH vor `goToLogin` gestartet (danach ist der
+`ReplicaProvider` weg und `flushActiveDraft` ein No-op) und im Teardown mit 1-s-Deadline abgewartet,
+bevor `resetComposer()` den Store leert. Abdeckung ergänzt: Unit in `SessionProvider.test.tsx` für
+BEIDE Modi plus ein E2E in `public-computer.spec.ts` (Entwurf überlebt den Sign-out nicht in die
+nächste Sitzung).
 
 **Kategorie / Bereich:** security, correctness / Compose + App (Session)
 
@@ -583,7 +592,12 @@ enthält keinen Fehlerpfad. Gegenprüfung: bestätigt.
 
 ### R-12 — [MEDIUM] Die geseedete Signatur macht jeden geöffneten Entwurf „nicht leer“: Öffnen + Schließen (oder 3 s warten) legt einen Signatur-only-Entwurf im Server-Drafts-Ordner an; jede Fensteränderung ohne Inhaltsänderung löst zusätzlich einen `create+destroy`-Roundtrip aus
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle drei Teile umgesetzt (Signatur-Guard, Dispatch-Skip bei unverändertem Inhalt,
+Autosave armt nur auf Inhaltsfeldern). NICHT umgesetzt: die Discard-Rückfrage entfällt jetzt über
+`isEmptyDraft` (Body ohne Signaturcontainer), nicht über `dirty === false` — `dirty` ist auch bei einem
+aus dem Drafts-Ordner GEÖFFNETEN Entwurf `false`, und zusammen mit dem Löschpfad aus R-15 hätte
+„nicht dirty = leer" Öffnen+Schließen einen echten Entwurf vernichtet.
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -694,7 +708,10 @@ korrigiert.
 
 ### R-15 — [MEDIUM] `close()` eines zuvor gespeicherten, inzwischen geleerten Entwurfs behält den alten Inhalt; ein Entwurf nur mit Anhang wird beim Schließen nicht gespeichert und beim Verwerfen ohne Rückfrage gelöscht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide Fälle umgesetzt: `isEmptyDraft` zählt Anhänge, und `flushDraft` löscht bei
+leerem Entwurf die vorhandene Zeile und dispatcht `discardDraft` (bzw. verwirft einen noch wartenden
+Save, wenn es noch keine Server-Id gibt).
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -1016,7 +1033,11 @@ bestätigt.
 
 ### R-25 — [MEDIUM] W-13-Fix unvollständig: die Server-Id wird beim Einreihen eingefroren — ein Save, Discard oder Send, der während eines `inflight`-Autosaves eingereiht wird, hinterlässt einen verwaisten Server-Entwurf (vgl. W-13, W-32)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt bis auf die Ergänzung „`notDestroyed[priorServerId]` für `sendEmail` auswerten“: `submitEmail`
+liefert das `EmailSubmission/set`-Ergebnis zurück, dessen `notDestroyed` den Email-Id nie enthält — und eine
+Bewertung als Rejection würde einen **erfolgreich versendeten** Brief dead-lettern und den Entwurf wieder
+aufmachen. Bleibt als Nebenbefund offen (Port müsste `emailNotDestroyed` mitführen, wie schon `emailCreated`).
 
 **Kategorie / Bereich:** correctness / Sync + Compose
 
@@ -1222,7 +1243,7 @@ gleiches Ergebnis. Gegenprüfung: bestätigt, zweiter Pfad per Test belegt.
 
 ### R-29 — [MEDIUM] `discard()` lässt einen noch `pending` Autosave in der Outbox stehen, wenn der Draft noch keine Server-Id hat — der verworfene Entwurf wird später trotzdem auf dem Server angelegt (race-frei)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Sync + Compose
 
@@ -2088,7 +2109,12 @@ erneut ans Ende setzen → zweiter Aufruf erwartet.
 
 ### R-52 — [LOW] `useDraftOpener` läuft im `ActiveAccountScope`, der Composer außerhalb: ein Entwurf aus einem geteilten Drafts-Ordner wird beim Schließen als Kopie im eigenen Konto angelegt, beim Verwerfen nicht gelöscht
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Erste Variante des Lösungsansatzes umgesetzt (Entwürfe fremder Konten gar nicht als Entwurf öffnen).
+Die Prüfung sitzt in `useDraftOpener` selbst (`canEdit`, Vergleich mit `connected.accountId`) statt in
+`MessageList`, damit beide Aufrufer — Liste und Lesebereich — dieselbe Antwort bekommen; die zweite
+Variante (`getActiveReplica()` im Opener) wäre falsch gewesen: die Email-Id des geteilten Kontos steht
+nicht in der Replica des Primärkontos, das Öffnen wäre stillschweigend wirkungslos geworden.
 
 **Kategorie / Bereich:** correctness / Compose
 

@@ -1138,6 +1138,7 @@
     },
     "editDraft": "编辑草稿",
     "draftLead": "这是一封您尚未发送的草稿。",
+    "draftSharedAccount": "共享邮箱中的草稿只能在该邮箱中编辑。",
     "more": "更多操作",
     "authResults": {
       "label": "身份验证",

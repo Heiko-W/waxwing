@@ -1153,6 +1153,7 @@
     },
     "editDraft": "Concept bewerken",
     "draftLead": "Dit is een concept dat je nog niet hebt verzonden.",
+    "draftSharedAccount": "Concepten in een gedeelde mailbox kun je alleen in die mailbox bewerken.",
     "more": "Meer acties",
     "authResults": {
       "label": "Authenticatie",

@@ -12,6 +12,7 @@ import type { DraftWindow, OpenDraftInit } from './composer-store'
 import { htmlToPlainText } from './html-to-text'
 import { referencedCids, removeInlineImage } from './inline-images'
 import { DEFAULT_SEND_OPTIONS, priorityHeaders, type SendOptions } from './send-options'
+import { bodyWithoutSignature } from './signature'
 
 /** The persistable subset of a live draft (UI-only mode/dirty/focus excluded). */
 export function serializeDraft(draft: DraftWindow): SerializedDraft {
@@ -22,6 +23,7 @@ export function serializeDraft(draft: DraftWindow): SerializedDraft {
     replyTo: draft.replyTo,
     subject: draft.subject,
     body: draft.body,
+    plainText: draft.plainText,
     inReplyTo: draft.inReplyTo,
     references: draft.references,
     fromIdentityId: draft.fromIdentityId ?? null,
@@ -49,6 +51,7 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
     replyTo: content.replyTo ?? [],
     subject: content.subject,
     body: content.body,
+    plainText: content.plainText ?? false,
     inReplyTo: content.inReplyTo,
     references: content.references,
     fromIdentityId: content.fromIdentityId ?? undefined,
@@ -60,12 +63,61 @@ export function deserializeDraft(row: DraftRow): OpenDraftInit {
   }
 }
 
-/** A draft worth neither persisting nor syncing: no recipients, blank subject, empty body. */
+/**
+ * A draft worth neither persisting nor syncing: no recipients, blank subject, no attachment, and
+ * nothing in the body that the WRITER put there.
+ *
+ * Two things this deliberately does NOT count as content:
+ *  - the seeded SIGNATURE. It is inserted into every new draft as soon as the identities load, so
+ *    with one configured, "New message" + close (or just waiting out the 3 s autosave) filed a
+ *    signature-only draft in the Drafts folder, visible on every other client, and Discard asked
+ *    for a confirmation about a window nobody had typed in.
+ *  - nothing else. `dirty === false` was the other candidate for the same job and is WRONG here:
+ *    it is also false for a draft REOPENED from the Drafts folder, and this predicate now decides
+ *    whether a stored draft gets deleted (see `flushDraft`) — so open-and-close would have
+ *    destroyed a real message.
+ *
+ * An ATTACHMENT is content, and its absence from the list was its own defect: a draft whose only
+ * content was a finished 20 MB upload read as empty, so closing the window saved nothing and
+ * Discard threw it away without asking.
+ */
 export function isEmptyDraft(draft: DraftWindow | SerializedDraft): boolean {
   const noRecipients = draft.to.length === 0 && draft.cc.length === 0 && draft.bcc.length === 0
   const blankSubject = draft.subject.trim() === ''
-  const blankBody = htmlToPlainText(draft.body).trim() === ''
-  return noRecipients && blankSubject && blankBody
+  const noAttachments = draft.attachments.length === 0
+  const blankBody = htmlToPlainText(bodyWithoutSignature(draft.body)).trim() === ''
+  return noRecipients && blankSubject && noAttachments && blankBody
+}
+
+/** Deep-ish equality for the small structured fields; the big strings are compared directly. */
+const sameShape = (a: unknown, b: unknown): boolean =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
+/**
+ * Do two persisted drafts say the same thing? Used to skip a server save that would change nothing.
+ *
+ * A draft save is create-new + destroy-old, so an autosave with identical content is not a cheap
+ * no-op on the server: it mints a NEW Email id for the same text. Every store mutation used to arm
+ * the autosave — minimizing, restoring and going full-screen among them — and each one spent a
+ * round trip and a fresh server id on a message that had not changed.
+ */
+export function sameDraftContent(a: SerializedDraft, b: SerializedDraft): boolean {
+  return (
+    a.subject === b.subject &&
+    a.body === b.body &&
+    (a.plainText ?? false) === (b.plainText ?? false) &&
+    a.fromIdentityId === b.fromIdentityId &&
+    a.sourceEmailId === b.sourceEmailId &&
+    a.sourceFlag === b.sourceFlag &&
+    sameShape(a.to, b.to) &&
+    sameShape(a.cc, b.cc) &&
+    sameShape(a.bcc, b.bcc) &&
+    sameShape(a.replyTo, b.replyTo) &&
+    sameShape(a.inReplyTo, b.inReplyTo) &&
+    sameShape(a.references, b.references) &&
+    sameShape(a.attachments, b.attachments) &&
+    sameShape(draftSendOptions(a), draftSendOptions(b))
+  )
 }
 
 /**
@@ -75,6 +127,12 @@ export function isEmptyDraft(draft: DraftWindow | SerializedDraft): boolean {
  * `disposition:"attachment"` part; `cid !== null` → an `disposition:"inline"` part the html body
  * references via `cid:` — but ONLY if that cid is still referenced (an inline image whose `<img>`
  * was deleted is pruned).
+ *
+ * `draft.plainText` (FR-CMP-01) emits the `text/plain` part ALONE — that is what "plain-text-only"
+ * means, and shipping the html alongside it made the toggle a change of typing surface and nothing
+ * more. An inline image then travels as an ordinary attachment: without an html body there is
+ * nothing that could reference its `cid`, and an unreferenced `disposition:"inline"` part is a part
+ * most readers simply hide.
  */
 export function toEmailCreate(input: {
   draft: SerializedDraft
@@ -91,9 +149,10 @@ export function toEmailCreate(input: {
     if (!inlineCids.has(cid)) cleaned = removeInlineImage(cleaned, cid)
   }
   const referenced = referencedCids(cleaned)
+  const plainOnly = draft.plainText === true
   const parts: Partial<EmailBodyPart>[] = []
   for (const a of draft.attachments) {
-    if (a.cid === null) {
+    if (a.cid === null || plainOnly) {
       parts.push({
         blobId: a.blobId,
         type: a.type,
@@ -126,10 +185,12 @@ export function toEmailCreate(input: {
     // sent one. A draft saved as urgent still reads as urgent when it is reopened tomorrow.
     ...priorityHeaders(draftSendOptions(draft).priority),
     textBody: [{ partId: 'text', type: 'text/plain' }],
-    htmlBody: [{ partId: 'html', type: 'text/html' }],
+    ...(plainOnly ? {} : { htmlBody: [{ partId: 'html', type: 'text/html' }] }),
     bodyValues: {
       text: { value: htmlToPlainText(cleaned), isEncodingProblem: false, isTruncated: false },
-      html: { value: cleaned, isEncodingProblem: false, isTruncated: false },
+      ...(plainOnly
+        ? {}
+        : { html: { value: cleaned, isEncodingProblem: false, isTruncated: false } }),
     },
   }
   if (draft.replyTo !== undefined && draft.replyTo.length > 0) email.replyTo = draft.replyTo

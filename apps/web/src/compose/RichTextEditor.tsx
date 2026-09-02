@@ -4,6 +4,11 @@
  * `onChange(html)`, reflects the caret's active formats into the toolbar, and offers a per-message
  * plain-text-only mode (a `<textarea>` seeded from the generated plain-text alternative).
  *
+ * BOTH surfaces emit through the SAME `onChange(html)` on the same debounce, and the plain-text
+ * MODE is the owner's state (`plainText` + `onPlainTextToggle`), not this component's. The body is
+ * html either way — the textarea's content is `plainTextToHtml(text)` — so exactly one field
+ * carries the message and everything downstream (send, autosave, close, quoting) reads it.
+ *
  * Controlled-ish: Squire owns the DOM, so we `setHTML` only on mount and when `value` changes to
  * something this editor did NOT emit (tracked via `lastEmittedRef`) — never on our own echo, which
  * would fight the cursor. The engine is created asynchronously (the default factory lazy-loads
@@ -68,10 +73,15 @@ export interface RichTextEditorProps {
   readonly value: string
   /** Debounced on every rich-text edit. */
   readonly onChange: (html: string) => void
-  /** Start in plain-text-only mode. */
+  /**
+   * Plain-text-only mode (FR-CMP-01) — CONTROLLED: this prop is the mode, and the toolbar button
+   * only ASKS for a change via {@link onPlainTextToggle}. It used to be a mere starting value over
+   * editor-local state, which meant the mode did not survive a remount and nothing outside this
+   * component could know about it. Without an `onPlainTextToggle` the button is inert.
+   */
   readonly plainText?: boolean | undefined
-  /** Called on every plain-text edit while in plain-text mode. */
-  readonly onPlainTextChange?: ((text: string) => void) | undefined
+  /** The toolbar's plain-text button was pressed; the owner is expected to flip {@link plainText}. */
+  readonly onPlainTextToggle?: ((plainText: boolean) => void) | undefined
   /** Accessible name for the editing surface. */
   readonly ariaLabel: string
   /** Injectable engine factory (defaults to the real Squire adapter; tests pass a fake). */
@@ -88,14 +98,14 @@ export function RichTextEditor({
   value,
   onChange,
   plainText = false,
-  onPlainTextChange,
+  onPlainTextToggle,
   ariaLabel,
   factory = defaultEditorFactory,
   ref,
   onAddFiles,
   resolveInlineImage,
 }: RichTextEditorProps) {
-  const [mode, setMode] = useState<'rich' | 'plain'>(plainText ? 'plain' : 'rich')
+  const mode = plainText ? 'plain' : 'rich'
   const [active, setActive] = useState<ActiveFormats>(NO_ACTIVE_FORMATS)
   const [ready, setReady] = useState(false)
   const [plainValue, setPlainValue] = useState(() => (plainText ? htmlToPlainText(value) : ''))
@@ -108,6 +118,11 @@ export function RichTextEditor({
   const debounceRef = useRef<number | undefined>(undefined)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  // Read by the imperative `flush()`, which must stay identity-stable (it is a handle method).
+  const plainValueRef = useRef(plainValue)
+  plainValueRef.current = plainValue
+  const plainModeRef = useRef(plainText)
+  plainModeRef.current = plainText
   const resolveRef = useRef(resolveInlineImage)
   resolveRef.current = resolveInlineImage
 
@@ -159,6 +174,16 @@ export function RichTextEditor({
     }
   }, [mode, factory])
 
+  // Entering plain-text mode: seed the textarea from the body as it stands. Only on the TRANSITION —
+  // re-seeding on every `value` change would fight the caret exactly as `setHTML` would in rich mode.
+  // Declared BEFORE the sync below so it reads the html the toggle has just emitted, not the `value`
+  // prop, which is one render behind whenever the owner re-renders asynchronously.
+  const wasPlainRef = useRef(plainText)
+  useEffect(() => {
+    if (plainText && !wasPlainRef.current) setPlainValue(htmlToPlainText(htmlRef.current))
+    wasPlainRef.current = plainText
+  }, [plainText])
+
   // Push an EXTERNAL value change into the engine (never our own debounced echo → no cursor fight).
   useEffect(() => {
     htmlRef.current = value
@@ -168,17 +193,24 @@ export function RichTextEditor({
     }
   }, [value, mode])
 
-  const runCommand = useCallback((fn: (engine: EditorEngine) => void): void => {
-    const engine = engineRef.current
-    if (engine === null) return
-    fn(engine)
-    engine.focus()
-    setActive(readActiveFormats(engine))
-    const html = toCanonicalHtml(engine.getHTML())
+  /** Hand the body to the owner and remember it, so the value effect does not echo it back. */
+  const emit = useCallback((html: string): void => {
     htmlRef.current = html
     lastEmittedRef.current = html
     onChangeRef.current(html)
   }, [])
+
+  const runCommand = useCallback(
+    (fn: (engine: EditorEngine) => void): void => {
+      const engine = engineRef.current
+      if (engine === null) return
+      fn(engine)
+      engine.focus()
+      setActive(readActiveFormats(engine))
+      emit(toCanonicalHtml(engine.getHTML()))
+    },
+    [emit],
+  )
 
   const commands: ToolbarCommands = {
     toggleBold: () => runCommand((engine) => (active.bold ? engine.removeBold() : engine.bold())),
@@ -217,17 +249,21 @@ export function RichTextEditor({
   )
 
   const flush = useCallback((): void => {
-    const engine = engineRef.current
-    if (engine === null) return
     if (debounceRef.current !== undefined) {
       window.clearTimeout(debounceRef.current)
       debounceRef.current = undefined
     }
-    const html = toCanonicalHtml(engine.getHTML())
-    htmlRef.current = html
-    lastEmittedRef.current = html
-    onChangeRef.current(html)
-  }, [])
+    // The plain surface has no engine, and returning early on that was the whole defect: `send`
+    // calls this to collect the last keystrokes, so in plain-text mode it collected the body from
+    // BEFORE the switch — an empty signature, or a reply's bare quote, with the typed message gone.
+    if (plainModeRef.current) {
+      emit(plainTextToHtml(plainValueRef.current))
+      return
+    }
+    const engine = engineRef.current
+    if (engine === null) return
+    emit(toCanonicalHtml(engine.getHTML()))
+  }, [emit])
 
   useImperativeHandle(
     ref,
@@ -279,20 +315,15 @@ export function RichTextEditor({
     }
   }
 
+  /**
+   * Push whichever surface is live into the owner, then ASK it to switch (the mode is its state).
+   *
+   * The side effects used to sit inside a `setMode` updater — updaters run twice under StrictMode,
+   * and emitting from one is a pattern that breaks the next time this component is touched.
+   */
   const togglePlainText = (): void => {
-    setMode((current) => {
-      if (current === 'rich') {
-        const html = engineRef.current?.getHTML() ?? htmlRef.current
-        htmlRef.current = html
-        setPlainValue(htmlToPlainText(html))
-        return 'plain'
-      }
-      const html = plainTextToHtml(plainValue)
-      htmlRef.current = html
-      lastEmittedRef.current = html
-      onChangeRef.current(html)
-      return 'rich'
-    })
+    flush()
+    onPlainTextToggle?.(mode !== 'plain')
   }
 
   return (
@@ -311,8 +342,16 @@ export function RichTextEditor({
           aria-label={ariaLabel}
           value={plainValue}
           onChange={(event) => {
-            setPlainValue(event.target.value)
-            onPlainTextChange?.(event.target.value)
+            const text = event.target.value
+            setPlainValue(text)
+            // Into the SAME store field, on the SAME 200 ms debounce as a rich-text edit — the body
+            // is html in both modes. Without this no keystroke typed here ever left the component:
+            // send, autosave and close all read the body from before the switch (R-02).
+            if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current)
+            debounceRef.current = window.setTimeout(() => {
+              debounceRef.current = undefined
+              emit(plainTextToHtml(text))
+            }, DEBOUNCE_MS)
           }}
         />
       ) : (

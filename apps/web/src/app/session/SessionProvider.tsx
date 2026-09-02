@@ -19,6 +19,7 @@ import type { AuthController } from '../../auth'
 import { AuthConfigError, AuthExpiredError, wipeWebStorage } from '../../auth'
 import { deriveScope } from '../../auth/account-registry'
 import { registerAccount, reloadAccountRegistry } from '../../auth/use-account-registry'
+import { ACTIVE_DRAFT_SYNC, flushOpenDrafts, resetComposer } from '../../compose'
 import { resetMailScopedStores, useActiveAccountStore } from '../../mail/active-account'
 import { closeAllNotifications } from '../../notify'
 import { tearDownPushSubscription } from '../../notify/push-subscribe'
@@ -65,6 +66,16 @@ const STASH_PUBLIC_KEY = 'waxwing.onboard.publicComputer'
 
 /** How long a sign-out waits for the engines to stop before wiping anyway — see `endSession`. */
 const SIGN_OUT_STOP_BUDGET_MS = 5000
+
+/**
+ * How long a sign-out waits for the open drafts to be written before clearing the composer.
+ *
+ * Short on purpose: the alternative to waiting is losing the last ≤ 3 s of typing (autosave is an
+ * idle debounce), and the alternative to a DEADLINE is a shared machine whose sign-out hangs on a
+ * database blocked behind another tab. A local IndexedDB write is single-digit milliseconds; a
+ * second is two orders of magnitude of headroom, and it runs behind the login form either way.
+ */
+const SIGN_OUT_DRAFT_FLUSH_BUDGET_MS = 1000
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -656,8 +667,23 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
        * so `submitBasic`/`chooseOAuth` wait for it before opening a session that this teardown
        * would otherwise wipe out from under them.
        */
+      // STARTED BEFORE the screen clears, and that is not a style choice: `flushActiveDraft`
+      // resolves the replica through the mounted `ReplicaProvider`, and `goToLogin` unmounts the
+      // whole shell in this same tick. Awaited (with a deadline) inside the teardown below, ahead of
+      // `resetComposer()` — which clears the very store a flush reads. Without it the last ≤ 3 s of
+      // typing before a sign-out were dropped: autosave is an idle debounce, and nothing else on
+      // this path persists a draft.
+      const draftsFlushed = flushOpenDrafts(ACTIVE_DRAFT_SYNC, SIGN_OUT_DRAFT_FLUSH_BUDGET_MS)
       goToLogin(targetRef.current ?? fallbackTarget())
       teardownRef.current = (async () => {
+        await draftsFlushed
+        // The composer's three module singletons — the draft store, the upload hook's `File` map and
+        // the inline-image `blob:` registry — survive a sign-out untouched, because none of them is
+        // React state. On a shared machine that meant the next person saw Alice's draft windows
+        // re-mount (`AppShell` gates the host on "are there drafts?") and the first tab switch wrote
+        // them into THEIR Drafts folder on the server, under an identity that does not exist there.
+        // "Remove my data" did not help: that wipe is about IndexedDB, and none of this is stored.
+        resetComposer()
         // FR-AUTH-05 / FR-AUTH-06. Stop the sync engines and release their Web Locks BEFORE any wipe —
         // otherwise `deleteDatabase` blocks on an open Dexie/IndexedDB connection (M1.3). EVERY engine
         // (M4.4 Etappe 4): since the fleet, each shared account's engine holds a handle of its own, and

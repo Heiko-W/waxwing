@@ -95,6 +95,13 @@ export function resolveActiveAccount(
  * overlay. Run on sign-out AND on an account switch — the per-account short mailbox ids collide, so
  * leftover state from the previous account would dispatch against the wrong one (see this module's
  * header, and SessionProvider's `endSession`, which calls this for the identical reason).
+ *
+ * The COMPOSER is deliberately not in here, although it is module-scoped for the same reasons.
+ * Its state is not per-acting-account: the composer mounts ABOVE `ActiveAccountScope` and writes to
+ * the primary account, because there is no send-as from a delegated account yet (ADR-020). A switch
+ * changes which mailbox is being read, not who is at the keyboard, and closing half-written messages
+ * on it would be a data loss with no defect behind it. Sign-out is the other case — a different
+ * person may be next — and `endSession` clears it there, after flushing (`resetComposer`).
  */
 export function resetMailScopedStores(): void {
   useListStore.setState(EMPTY_LIST_STATE)

@@ -1183,6 +1183,7 @@
     },
     "editDraft": "Edytuj wersję roboczą",
     "draftLead": "To wersja robocza, której jeszcze nie wysłano.",
+    "draftSharedAccount": "Wersje robocze we współdzielonej skrzynce można edytować tylko w tej skrzynce.",
     "more": "Więcej działań",
     "authResults": {
       "label": "Uwierzytelnianie",

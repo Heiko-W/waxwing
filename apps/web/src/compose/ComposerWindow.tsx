@@ -93,6 +93,7 @@ export function ComposerWindow({
   const setMode = useComposerStore((state) => state.setMode)
   const updateBody = useComposerStore((state) => state.updateBody)
   const updateSubject = useComposerStore((state) => state.updateSubject)
+  const setPlainText = useComposerStore((state) => state.setPlainText)
   const focusDraft = useComposerStore((state) => state.focusDraft)
   const draftSync = useDraftSync()
   const undoSendSeconds = useUndoSendSeconds()
@@ -515,6 +516,10 @@ export function ComposerWindow({
             ref={editorRef}
             value={draft.body}
             onChange={(html) => updateBody(draft.id, html)}
+            // The mode belongs to the DRAFT, not to the editor instance (FR-CMP-01): it has to
+            // survive minimize/restore, and `toEmailCreate` has to see it to send text only.
+            plainText={draft.plainText}
+            onPlainTextToggle={(next) => setPlainText(draft.id, next)}
             ariaLabel={t('compose.editorLabel')}
             resolveInlineImage={getInlineObjectUrl}
             {...(attachments.canUpload ? { onAddFiles: attachments.addFiles } : {})}

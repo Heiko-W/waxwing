@@ -166,9 +166,16 @@ function DraftCallout({ id }: { readonly id: string }) {
   return (
     <div className={styles.draftCallout}>
       <p className={styles.draftCalloutLead}>{t('reading.draftLead')}</p>
-      <Button variant="primary" onClick={() => void draftOpener.open(id)}>
-        {t('reading.editDraft')}
-      </Button>
+      {draftOpener.canEdit ? (
+        <Button variant="primary" onClick={() => void draftOpener.open(id)}>
+          {t('reading.editDraft')}
+        </Button>
+      ) : (
+        // A draft in a DELEGATED account: the composer writes to the user's own account (ADR-020),
+        // so "Edit" would file a copy there and leave this one untouched. Say so instead of
+        // offering a button that does the wrong thing.
+        <p className={styles.draftCalloutLead}>{t('reading.draftSharedAccount')}</p>
+      )}
     </div>
   )
 }

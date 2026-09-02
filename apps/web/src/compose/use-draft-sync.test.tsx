@@ -6,6 +6,7 @@ import { putIdentities, putMailboxes, type ReplicaDb, ReplicaProvider } from '..
 import { setActiveEngine } from '../sync/engine'
 import { freshDb, mailbox } from '../sync/test-utils'
 import { useComposerStore } from './composer-store'
+import { applySignature } from './signature'
 import { useDraftSync } from './use-draft-sync'
 
 let db: ReplicaDb
@@ -399,5 +400,142 @@ describe('useDraftSync.send — send options (M-7, M-11)', () => {
     expect(sentIntent().email.replyTo).toEqual([{ name: null, email: 'this-once@x.test' }])
     // And it is NOT a recipient — nothing was added to the SMTP envelope.
     expect(sentIntent().envelope.rcptTo).toEqual([{ email: 'a@x.test' }])
+  })
+})
+
+/**
+ * What happens to the coalesced `draft:<id>` autosave row when the user acts on the draft while it
+ * is queued or on the wire (R-25, R-29).
+ *
+ * `pending` and `inflight` need OPPOSITE treatment, and conflating them is how a discarded draft
+ * ends up on the server: a pending save is still stoppable, an in-flight one is not, and deleting
+ * the latter only removes the record that the request it is executing ever existed.
+ */
+describe('useDraftSync — the queued autosave row (R-25, R-29)', () => {
+  function queuedSave(localId: string, status: 'pending' | 'inflight') {
+    return db.outbox.put({
+      accountId: 'a',
+      id: `draft:${localId}`,
+      type: 'saveDraft',
+      payload: { kind: 'saveDraft', localId, creationId: `draft-${localId}`, priorServerId: null },
+      ifInState: null,
+      status,
+      attempts: 0,
+      createdAt: 1,
+      lastError: null,
+      notBefore: null,
+    })
+  }
+
+  it('discard cancels a pending save of a draft that has no server copy yet', async () => {
+    const id = open({ subject: 'never mind' })
+    await queuedSave(id, 'pending')
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.discard(id)
+
+    // Offline / mid-backoff this row IS the draft: replaying it would create on the server exactly
+    // the message the user just threw away, with nothing queued to take it back.
+    expect(await db.outbox.get(['a', `draft:${id}`])).toBeUndefined()
+    expect(dispatch).not.toHaveBeenCalled()
+    expect(useComposerStore.getState().drafts.has(id)).toBe(false)
+  })
+
+  it('discard leaves an in-flight save alone (its reconcile queues the destroy)', async () => {
+    const id = open({ subject: 'never mind' })
+    await queuedSave(id, 'inflight')
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.discard(id)
+
+    expect((await db.outbox.get(['a', `draft:${id}`]))?.status).toBe('inflight')
+  })
+
+  it('send leaves an in-flight save alone rather than losing track of the draft it creates', async () => {
+    const id = open({
+      to: [{ name: null, email: 'a@x.test' }],
+      fromIdentityId: 'id1',
+      subject: 'Hi',
+    })
+    await queuedSave(id, 'inflight')
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.send(id, { undoMs: 0 })
+
+    expect((await db.outbox.get(['a', `draft:${id}`]))?.status).toBe('inflight')
+    expect((dispatch.mock.calls[0]?.[1] as { id: string }).id).toBe(`send:${id}`)
+  })
+})
+
+/**
+ * What `flush`/`close` do with a draft that has NOTHING in it — the three-way answer (R-12, R-15).
+ */
+describe('useDraftSync.flush — an empty or unchanged draft (R-12, R-15)', () => {
+  const signature = applySignature('', '<div>-- <br>Heiko</div>')
+
+  it('does not save a draft whose only body is the seeded signature', async () => {
+    const id = open({})
+    // Exactly what `FromField` does once the identities load: seed the signature, NOT an edit.
+    useComposerStore.getState().setFromIdentity(id, 'id1', signature, { markDirty: false })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.close(id)
+
+    expect(await db.drafts.get(['a', id])).toBeUndefined()
+    expect(dispatch).not.toHaveBeenCalled()
+  })
+
+  it('deletes the local row and destroys the server copy when a saved draft is emptied', async () => {
+    const id = open({ subject: 'Hallo' })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+    await result.current.flush(id)
+    // The server acknowledges the save, as the engine's reconcile would.
+    await db.drafts.update(['a', id], { serverEmailId: 'srv-1', status: 'synced' })
+    dispatch.mockClear()
+
+    useComposerStore.getState().updateSubject(id, '')
+    await result.current.close(id)
+
+    // Neither the local row nor the server copy may keep the text the writer took back.
+    expect(await db.drafts.get(['a', id])).toBeUndefined()
+    const intent = dispatch.mock.calls[0]?.[0] as { kind: string; serverEmailId: string }
+    expect(intent.kind).toBe('discardDraft')
+    expect(intent.serverEmailId).toBe('srv-1')
+  })
+
+  it('saves a draft whose only content is an attachment', async () => {
+    const id = open({ subject: '' })
+    useComposerStore
+      .getState()
+      .addAttachments(id, [
+        { blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 20, cid: null },
+      ])
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+
+    await result.current.close(id)
+
+    expect((await db.drafts.get(['a', id]))?.content.attachments).toHaveLength(1)
+    expect((dispatch.mock.calls[0]?.[0] as { kind: string }).kind).toBe('saveDraft')
+  })
+
+  it('skips the server save when nothing changed since the server acknowledged it', async () => {
+    const id = open({ subject: 'Hallo' })
+    const { result } = renderHook(() => useDraftSync(), { wrapper })
+    await result.current.flush(id)
+    await db.drafts.update(['a', id], { serverEmailId: 'srv-1', status: 'synced' })
+    dispatch.mockClear()
+
+    // Minimizing and restoring changes the store but not the message.
+    useComposerStore.getState().setMode(id, 'minimized')
+    useComposerStore.getState().setMode(id, 'docked')
+    await result.current.flush(id)
+
+    expect(dispatch).not.toHaveBeenCalled()
+    expect((await db.drafts.get(['a', id]))?.status).toBe('synced')
+
+    // …and a real edit still goes out.
+    useComposerStore.getState().updateSubject(id, 'Hallo!')
+    await result.current.flush(id)
+    expect((dispatch.mock.calls[0]?.[0] as { kind: string }).kind).toBe('saveDraft')
   })
 })

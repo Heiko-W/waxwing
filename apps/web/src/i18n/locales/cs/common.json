@@ -1183,6 +1183,7 @@
     },
     "editDraft": "Upravit koncept",
     "draftLead": "Toto je koncept, který jste ještě neodeslali.",
+    "draftSharedAccount": "Koncepty ve sdílené schránce lze upravovat jen v této schránce.",
     "more": "Další akce",
     "authResults": {
       "label": "Ověření",

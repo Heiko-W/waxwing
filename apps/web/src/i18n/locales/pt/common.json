@@ -1168,6 +1168,7 @@
     },
     "editDraft": "Editar o rascunho",
     "draftLead": "Este é um rascunho que ainda não enviou.",
+    "draftSharedAccount": "Os rascunhos numa caixa partilhada só podem ser editados nessa caixa.",
     "more": "Mais ações",
     "authResults": {
       "label": "Autenticação",

@@ -11,6 +11,7 @@ import {
 } from './draft-email'
 import { htmlToPlainText } from './html-to-text'
 import { DEFAULT_SEND_OPTIONS } from './send-options'
+import { applySignature, SIGNATURE_ATTR } from './signature'
 
 function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
   return {
@@ -22,6 +23,7 @@ function draftWindow(over: Partial<DraftWindow> = {}): DraftWindow {
     replyTo: [],
     subject: '',
     body: '',
+    plainText: false,
     inReplyTo: null,
     references: null,
     fromIdentityHint: undefined,
@@ -80,6 +82,13 @@ describe('serializeDraft / deserializeDraft', () => {
     expect(init.attachments).toEqual(draft.attachments)
   })
 
+  it('round-trips plain-text-only, and reads a row written before the flag existed as rich', () => {
+    const serialized = serializeDraft(draftWindow({ plainText: true }))
+    expect(deserializeDraft(draftRow(serialized)).plainText).toBe(true)
+    const { plainText: _dropped, ...legacy } = serialized
+    expect(deserializeDraft(draftRow(legacy)).plainText).toBe(false)
+  })
+
   it('maps an unset From identity to null on serialize and back to undefined on deserialize', () => {
     const serialized = serializeDraft(draftWindow())
     expect(serialized.fromIdentityId).toBeNull()
@@ -102,6 +111,28 @@ describe('isEmptyDraft', () => {
     expect(isEmptyDraft(draftWindow({ bcc: [{ name: null, email: 'b@x.test' }] }))).toBe(false)
     expect(isEmptyDraft(draftWindow({ subject: 'Hi' }))).toBe(false)
     expect(isEmptyDraft(draftWindow({ body: '<p>text</p>' }))).toBe(false)
+  })
+
+  /**
+   * R-12: with a signature configured, every new draft has body text the moment the identities
+   * load — so "New message" + close filed a signature-only draft in Drafts, and Discard asked for
+   * a confirmation about a window nobody had typed in.
+   */
+  it('does not count the seeded signature as content', () => {
+    const seeded = applySignature('', '<div>-- <br>Heiko</div>')
+    expect(seeded).toContain(SIGNATURE_ATTR)
+    expect(isEmptyDraft(draftWindow({ body: seeded }))).toBe(true)
+    // …but text BESIDE the signature is content, and so is an edited signature body.
+    expect(isEmptyDraft(draftWindow({ body: `<p>hello</p>${seeded}` }))).toBe(false)
+  })
+
+  /** R-15(b): a finished 20 MB upload was "empty" — close saved nothing, Discard did not ask. */
+  it('counts an attachment as content', () => {
+    const withFile = draftWindow({
+      attachments: [{ blobId: 'b1', name: 'a.pdf', type: 'application/pdf', size: 20, cid: null }],
+    })
+    expect(isEmptyDraft(withFile)).toBe(false)
+    expect(isEmptyDraft(serializeDraft(withFile))).toBe(false)
   })
 
   it('accepts a SerializedDraft too', () => {
@@ -151,6 +182,35 @@ describe('toEmailCreate', () => {
     const email = toEmailCreate({ draft, draftsMailboxId: 'mb-drafts', from: null })
     expect(email.textBody).toEqual([{ partId: 'text', type: 'text/plain' }])
     expect(email.bodyValues?.text?.value).toBe(htmlToPlainText(cleanOutgoingHtml(draft.body)))
+  })
+
+  /**
+   * FR-CMP-01 promises "plain-text-only", and the toggle used to deliver a plain-text SURFACE over a
+   * message that still went out as multipart/alternative with the html part attached (R-02).
+   */
+  it('sends the text part ALONE for a plain-text-only draft', () => {
+    const plain = serializeDraft(draftWindow({ body: '<div>hi there</div>', plainText: true }))
+    const email = toEmailCreate({ draft: plain, draftsMailboxId: 'mb-drafts', from: null })
+    expect(email.textBody).toEqual([{ partId: 'text', type: 'text/plain' }])
+    expect(email.htmlBody).toBeUndefined()
+    expect(email.bodyValues?.html).toBeUndefined()
+    expect(email.bodyValues?.text?.value).toBe('hi there')
+  })
+
+  it('demotes an inline image to an ordinary attachment when there is no html to reference it', () => {
+    const plain = serializeDraft(
+      draftWindow({
+        body: '<p><img src="cid:inline-1"></p>',
+        plainText: true,
+        attachments: [
+          { blobId: 'b2', name: 'img.png', type: 'image/png', size: 20, cid: 'inline-1' },
+        ],
+      }),
+    )
+    const email = toEmailCreate({ draft: plain, draftsMailboxId: 'mb', from: null })
+    expect(email.attachments).toEqual([
+      { blobId: 'b2', type: 'image/png', name: 'img.png', size: 20, disposition: 'attachment' },
+    ])
   })
 })
 

@@ -2,8 +2,13 @@
  * The draft persistence seam (M2.6, FR-CMP-03). `flush` writes the live draft durably to the local
  * `drafts` store (the crash-safety guarantee — no server round-trip on the critical path) and then
  * dispatches a coalesced `saveDraft` outbox intent (create-new + destroy-old `Email/set` into the
- * Drafts mailbox). `close` flushes (unless empty) then closes the window; `discard` deletes the
- * local row + destroys the server draft. Reads the running engine lazily (safe before it starts).
+ * Drafts mailbox). `close` flushes then closes the window; `discard` deletes the local row +
+ * destroys the server draft. Reads the running engine lazily (safe before it starts).
+ *
+ * "Empty" is a THREE-way answer, not a two-way one. An empty draft with nothing saved is dropped;
+ * an empty draft that HAS been saved is discarded, locally and on the server, because emptying a
+ * draft is how a writer takes it back; and an unchanged draft that the server already has is left
+ * alone, because a save is create-new + destroy-old and would only mint a new id for the same text.
  */
 
 import type { EmailAddress, EmailSubmissionAddress, Id } from '@waxwing/jmap'
@@ -26,6 +31,7 @@ import {
   deserializeDraft,
   draftSendOptions,
   isEmptyDraft,
+  sameDraftContent,
   serializeDraft,
   toEmailCreate,
 } from './draft-email'
@@ -85,9 +91,14 @@ function revokeDraftInlineImages(localId: string): void {
 }
 
 export interface DraftSync {
-  /** Persist the draft locally (durable) + queue the server save. No-op for an empty draft. */
+  /**
+   * Persist the draft locally (durable) + queue the server save.
+   *
+   * An EMPTIED draft that was already saved is deleted instead (local row + server copy); one that
+   * was never saved is a no-op; one the server already has unchanged is a no-op too.
+   */
   flush(localId: string): Promise<void>
-  /** Save (unless empty) then close the window — the content is safe in Drafts. */
+  /** Save (or, if it has been emptied, delete) then close the window — the content is safe in Drafts. */
   close(localId: string): Promise<void>
   /** Delete the local draft + destroy the server draft, then close the window. */
   discard(localId: string): Promise<void>
@@ -118,6 +129,27 @@ const outboxId = (localId: string): string => `draft:${localId}`
 /** Send uses a DISTINCT id so a concurrent autosave's reconcile can never delete the queued send. */
 const sendOutboxId = (localId: string): string => `send:${localId}`
 
+/**
+ * Drop this draft's queued autosave — but ONLY while it is still `pending`.
+ *
+ * Deleting it unconditionally deletes an `inflight` row too, and the request that row is executing
+ * comes back anyway: the server creates the draft, `reconcileDraftSave` records its id, and nothing
+ * is left in the queue that remembers to destroy it. Left in place, the same reconcile re-points it
+ * at the new server id (and, for a discard, queues its removal), which is why an `inflight` row is
+ * the one case where doing nothing is right.
+ *
+ * Re-read inside the transaction because the status can change between the read and the delete —
+ * the whole point is the moment when replay claims the row.
+ */
+async function dropPendingSave(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
+  const key: [Id, string] = [accountId, outboxId(localId)]
+  await db.transaction('rw', db.outbox, async () => {
+    const queued = await db.outbox.get(key)
+    if (queued?.status !== 'pending') return
+    await db.outbox.delete(key)
+  })
+}
+
 async function resolveFrom(
   db: ReplicaDb,
   accountId: Id,
@@ -140,9 +172,34 @@ async function resolveFrom(
  */
 async function flushDraft(db: ReplicaDb, accountId: Id, localId: string): Promise<void> {
   const draft = useComposerStore.getState().drafts.get(localId)
-  if (draft === undefined || isEmptyDraft(draft)) return
-  const content = serializeDraft(draft)
+  if (draft === undefined) return
   const existing = await getDraft(db, accountId, localId)
+  if (isEmptyDraft(draft)) {
+    // An empty draft used to mean "return, do nothing", which is right only while nothing has been
+    // saved yet. Once a row exists, doing nothing is the WRONG answer to "I typed something, thought
+    // better of it, deleted it and closed the window": the local row and the server copy both kept
+    // the old text, and the Drafts folder kept a message the writer had emptied on purpose. Emptying
+    // a saved draft IS a discard — just without the window closing (that is `close`'s job).
+    if (existing === undefined) return
+    await deleteDraft(db, accountId, localId)
+    if (existing.serverEmailId !== null) {
+      dispatchOrReport(
+        getEngineFor(accountId)?.dispatch(
+          { kind: 'discardDraft', localId, serverEmailId: existing.serverEmailId },
+          { id: outboxId(localId) },
+        ),
+      )
+    } else {
+      await dropPendingSave(db, accountId, localId)
+    }
+    return
+  }
+  const content = serializeDraft(draft)
+  // Nothing changed since the server acknowledged this draft ⇒ nothing to do. A save is create-new
+  // + destroy-old, so an autosave with identical content is not free: it mints a new server id for
+  // the same text. The autosave used to be armed by ANY store change — minimize, restore, full
+  // screen — and each of those spent a round trip on a message nobody had edited.
+  if (existing?.status === 'synced' && sameDraftContent(content, existing.content)) return
   const now = Date.now()
   const row: DraftRow = {
     accountId,
@@ -195,6 +252,40 @@ export async function flushActiveDraft(localId: string): Promise<void> {
   await flushDraft(replica.db, replica.accountId, localId)
 }
 
+/**
+ * Persist every open draft, best-effort and time-boxed. Used by anything that is about to take the
+ * composer away: the M3.5 reload prompt and the sign-out teardown.
+ *
+ * **It can never fail the thing it precedes, and can never delay it indefinitely.** `flush` writes
+ * to IndexedDB, which rejects on a full disk (the state M3.4's storage notifier exists for), on a
+ * closed database, and in Safari's private mode — and a rejection here used to swallow the
+ * `activate()` that followed it: the user clicked "Reload", the toast dismissed itself, and nothing
+ * happened, ever again. Saving the draft is best-effort; stranding the user on a dead build — or
+ * holding a sign-out open on a shared machine — is not an acceptable price for it. So:
+ * `allSettled`, so one bad draft cannot take the others' flushes down with it, and a DEADLINE,
+ * because a write can also do neither — a database blocked behind another tab's `versionchange`
+ * simply never settles, and `allSettled` would wait for it forever.
+ *
+ * The caller must START this while the replica is still mounted: {@link flushActiveDraft} resolves
+ * it per call, and a sign-out unmounts the provider in the same tick it clears the screen.
+ */
+export async function flushOpenDrafts(
+  draftSync: Pick<DraftSync, 'flush'>,
+  deadlineMs: number,
+): Promise<void> {
+  const openIds = [...useComposerStore.getState().drafts.keys()]
+  const flushed = Promise.allSettled(openIds.map((localId) => draftSync.flush(localId)))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, deadlineMs)
+  })
+  await Promise.race([flushed, deadline])
+  clearTimeout(timer)
+}
+
+/** {@link flushOpenDrafts} against the real seam — for callers outside the `ReplicaProvider` tree. */
+export const ACTIVE_DRAFT_SYNC: Pick<DraftSync, 'flush'> = { flush: flushActiveDraft }
+
 export function useDraftSync(): DraftSync {
   const replica = useReplicaOptional()
   const connected = useSessionOptional()
@@ -245,6 +336,13 @@ export function useDraftSync(): DraftSync {
               { id: outboxId(localId) },
             ),
           )
+        } else {
+          // No server copy YET is not the same as no server copy EVER: a draft without an id
+          // typically has an autosave still waiting in the queue (offline, a backoff window after a
+          // transient failure, a follower tab whose leader has not run a pass). Discarding deleted
+          // the local row and dispatched nothing, so the next replay created on the server exactly
+          // the draft the user threw away — no race required. Cancel that save instead.
+          await dropPendingSave(db, accountId, localId)
         }
         revokeDraftInlineImages(localId)
         closeWindow(localId)
@@ -314,7 +412,13 @@ export function useDraftSync(): DraftSync {
         // Cancel any queued autosave for this draft BEFORE dispatching the send. The send uses a
         // DISTINCT outbox id (`send:<id>`), so an autosave's reconcile can no longer delete it; the
         // send captures the latest content, making a pending save redundant.
-        await db.outbox.delete([accountId, outboxId(localId)])
+        //
+        // Only a PENDING one, though: deleting an `inflight` autosave does not stop the request it
+        // is executing, and the draft it creates would then be a copy of the message in the Drafts
+        // folder that nothing ever removes — the send's `destroyServerDraftId` still names the id
+        // from BEFORE that save. Leaving the row alone lets `reconcileDraftSave` re-point this very
+        // send at the id the save produced.
+        await dropPendingSave(db, accountId, localId)
         // AWAITED, and the catch is the point of the await.
         //
         // This was fire-and-forget under a comment explaining that a silent send loss is exactly

@@ -1138,6 +1138,7 @@
     },
     "editDraft": "下書きを編集",
     "draftLead": "これは、まだ送信していない下書きです。",
+    "draftSharedAccount": "共有メールボックスの下書きは、そのメールボックスでのみ編集できます。",
     "more": "その他の操作",
     "authResults": {
       "label": "認証",

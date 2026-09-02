@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createRef } from 'react'
+import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import type { EditorEngine, EditorFactory } from './editor-engine'
@@ -67,20 +67,36 @@ function createFakeEngine(): FakeEngine {
   return fake
 }
 
+/**
+ * The editor is CONTROLLED on `plainText` and on `value`: the toolbar button only asks for a mode
+ * change and the surfaces only emit. This harness plays the owner (`ComposerWindow` in production)
+ * so a test can watch what actually reaches the store, which is the thing that sends the mail.
+ */
 function renderEditor(value = '<p>hi</p>', plainText = false) {
   const fake = createFakeEngine()
   const factory: EditorFactory = () => Promise.resolve(fake)
   const onChange = vi.fn()
-  const view = render(
-    <RichTextEditor
-      value={value}
-      onChange={onChange}
-      plainText={plainText}
-      ariaLabel="Message body"
-      factory={factory}
-    />,
-  )
-  return { fake, onChange, ...view }
+  const ref: { current: RichTextEditorHandle | null } = { current: null }
+  function Owner() {
+    const [body, setBody] = useState(value)
+    const [plain, setPlain] = useState(plainText)
+    return (
+      <RichTextEditor
+        ref={ref}
+        value={body}
+        onChange={(html) => {
+          onChange(html)
+          setBody(html)
+        }}
+        plainText={plain}
+        onPlainTextToggle={setPlain}
+        ariaLabel="Message body"
+        factory={factory}
+      />
+    )
+  }
+  const view = render(<Owner />)
+  return { fake, onChange, ref, ...view }
 }
 
 /** Resolve once the async engine has mounted (its `setHTML(value)` ran). */
@@ -182,6 +198,66 @@ describe('RichTextEditor', () => {
     expect((textarea as HTMLTextAreaElement).value).toBe(
       htmlToPlainText('<p>Hello</p><p>World</p>'),
     )
+  })
+
+  /**
+   * R-02: the plain-text surface was a dead end. It had local state and no way out — no debounced
+   * emission, and `flush()` bailed on the missing engine — so "Plain text", type, Send sent the body
+   * from BEFORE the switch (an empty signature, or a reply's bare quote) and the message was gone.
+   */
+  describe('plain-text mode reaches the owner', () => {
+    async function typePlain(text: string): Promise<ReturnType<typeof renderEditor>> {
+      const user = userEvent.setup()
+      const view = renderEditor('<p>Hello</p>')
+      await whenReady(view.fake, '<p>Hello</p>')
+      await user.click(screen.getByRole('button', { name: 'Plain text' }))
+      view.onChange.mockClear()
+      await user.clear(screen.getByRole('textbox', { name: 'Message body' }))
+      await user.type(screen.getByRole('textbox', { name: 'Message body' }), text)
+      return view
+    }
+
+    it('emits every plain-text edit, debounced like a rich-text one', async () => {
+      const { onChange } = await typePlain('typed in plain')
+      await waitFor(() => expect(onChange).toHaveBeenCalledWith('<div>typed in plain</div>'), {
+        timeout: 2000,
+      })
+    })
+
+    it('flush() emits the typed text immediately — the send path', async () => {
+      const { onChange, ref } = await typePlain('typed in plain')
+      ref.current?.flush()
+      expect(onChange).toHaveBeenCalledWith('<div>typed in plain</div>')
+    })
+
+    it('carries the typed text back into rich mode', async () => {
+      const user = userEvent.setup()
+      const { onChange } = await typePlain('typed in plain')
+      onChange.mockClear()
+      await user.click(screen.getByRole('button', { name: 'Rich text' }))
+      expect(onChange).toHaveBeenCalledWith('<div>typed in plain</div>')
+      expect(screen.getByRole('textbox', { name: 'Message body' }).tagName).not.toBe('TEXTAREA')
+    })
+
+    it('stays plain when the owner says so, and asks the owner to switch', async () => {
+      const user = userEvent.setup()
+      const onPlainTextToggle = vi.fn()
+      const fake = createFakeEngine()
+      render(
+        <RichTextEditor
+          value="<p>Hello</p>"
+          onChange={vi.fn()}
+          plainText
+          onPlainTextToggle={onPlainTextToggle}
+          ariaLabel="Message body"
+          factory={() => Promise.resolve(fake)}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: 'Rich text' }))
+      expect(onPlainTextToggle).toHaveBeenCalledWith(false)
+      // The owner did not flip it, so the surface must not flip either (controlled).
+      expect(screen.getByRole('textbox', { name: 'Message body' }).tagName).toBe('TEXTAREA')
+    })
   })
 
   it('destroys the engine on unmount', async () => {

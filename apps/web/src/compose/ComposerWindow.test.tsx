@@ -437,3 +437,39 @@ describe('ComposerWindow — attach from Files (D-5)', () => {
     expect(screen.getByRole('button', { name: 'Attach file' })).not.toHaveAttribute('aria-haspopup')
   })
 })
+
+/**
+ * The whole point of the plain-text toggle is that the message the user typed is the message that
+ * gets sent (R-02, FR-CMP-01). It used to be editor-local state with no wire into the store: the
+ * mode was forgotten on every remount, and nothing typed on the plain surface ever reached the
+ * draft that `send`/`close`/autosave read.
+ */
+describe('ComposerWindow — plain-text mode (FR-CMP-01)', () => {
+  it('records the mode on the draft and keeps it across a remount', async () => {
+    const id = openWindow('docked')
+    const user = userEvent.setup()
+    await screen.findByRole('textbox', { name: 'Message body' })
+
+    await user.click(screen.getByRole('button', { name: 'Plain text' }))
+
+    expect(store().drafts.get(id)?.plainText).toBe(true)
+    // Choosing a typing surface is not writing a message — the close-guard must stay quiet.
+    expect(store().drafts.get(id)?.dirty).toBe(false)
+    render(<Harness id={id} />) // a second window for the same draft = what a minimize/restore does
+    const surfaces = await screen.findAllByRole('textbox', { name: 'Message body' })
+    for (const surface of surfaces) expect(surface.tagName).toBe('TEXTAREA')
+  })
+
+  it('writes what is typed on the plain surface into the draft body', async () => {
+    const id = openWindow('docked')
+    const user = userEvent.setup()
+    await screen.findByRole('textbox', { name: 'Message body' })
+    await user.click(screen.getByRole('button', { name: 'Plain text' }))
+
+    await user.type(screen.getByRole('textbox', { name: 'Message body' }), 'plain words')
+
+    await waitFor(() => expect(store().drafts.get(id)?.body).toBe('<div>plain words</div>'), {
+      timeout: 2000,
+    })
+  })
+})

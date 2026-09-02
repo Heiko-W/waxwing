@@ -1168,6 +1168,7 @@
     },
     "editDraft": "Editar el borrador",
     "draftLead": "Este es un borrador que todavía no ha enviado.",
+    "draftSharedAccount": "Los borradores de un buzón compartido solo se pueden editar en ese buzón.",
     "more": "Más acciones",
     "authResults": {
       "label": "Autenticación",

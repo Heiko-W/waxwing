@@ -3953,6 +3953,143 @@ describe('outbox — drafts (M2.6)', () => {
     expect(summary.replayed).toBe(1) // already gone ⇒ satisfied
     expect(await row('draft:d1')).toBeUndefined()
   })
+
+  /**
+   * The CONTENT half of W-13 (R-25). `deleteIfUnchanged` keeps the row that replaced an in-flight
+   * one; these pin that the replacement is also re-pointed at the server copy the finished save
+   * created — otherwise every overlapping autosave leaves one more draft in the Drafts folder.
+   */
+  describe('a save that finishes while another draft intent waits behind it', () => {
+    const save = (subject: string, priorServerId: string | null): OutboxIntent => ({
+      kind: 'saveDraft',
+      localId: 'd1',
+      creationId: 'draft-d1',
+      priorServerId,
+      email: { ...emailCreate, subject },
+    })
+
+    /** A port whose FIRST `setEmails` runs `during` (the overlapping user action) before answering. */
+    function overlappingPort(
+      during: () => Promise<void>,
+      ids: readonly string[],
+    ): { port: JmapPort; destroys: (string[] | undefined)[] } {
+      const destroys: (string[] | undefined)[] = []
+      let calls = 0
+      const port = fakePort({
+        setEmails: async (args) => {
+          destroys.push(args.destroy)
+          calls += 1
+          if (calls === 1) await during()
+          const id = ids[calls - 1]
+          return id === undefined
+            ? setResult()
+            : setResult({ created: { 'draft-d1': { id } }, destroyed: args.destroy ?? [] })
+        },
+      })
+      return { port, destroys }
+    }
+
+    it('re-points a queued autosave at the id the finished save created (no orphan)', async () => {
+      await db.drafts.put(draftRow({ serverEmailId: 'S0', status: 'synced' }))
+      await enqueueAction(db, ACC, save('A', 'S0'), { id: 'draft:d1', now: 1 })
+      // The second flush reads `drafts.serverEmailId`, which is still S0 while A is on the wire.
+      const { port, destroys } = overlappingPort(async () => {
+        const existing = await db.drafts.get([ACC, 'd1'])
+        await enqueueAction(db, ACC, save('B', existing?.serverEmailId ?? null), {
+          id: 'draft:d1',
+          now: 2,
+        })
+      }, ['SA', 'SB'])
+
+      await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+      expect((await row('draft:d1'))?.status).toBe('pending') // the W-13 survivor
+      await replayOutbox(port, db, ACC, { now: 20, random: NO_JITTER })
+
+      expect(destroys).toEqual([['S0'], ['SA']])
+      expect((await db.drafts.get([ACC, 'd1']))?.serverEmailId).toBe('SB')
+      expect(await row('draft:d1')).toBeUndefined()
+    })
+
+    it('re-points a queued discard, so the discard destroys the newest copy', async () => {
+      await db.drafts.put(draftRow({ serverEmailId: 'S1', status: 'synced' }))
+      await enqueueAction(db, ACC, save('A', 'S1'), { id: 'draft:d1', now: 1 })
+      const { port, destroys } = overlappingPort(async () => {
+        // discard(): read the row (S1), delete it, queue the destroy under the same outbox id.
+        const existing = await db.drafts.get([ACC, 'd1'])
+        await db.drafts.delete([ACC, 'd1'])
+        await enqueueAction(
+          db,
+          ACC,
+          { kind: 'discardDraft', localId: 'd1', serverEmailId: existing?.serverEmailId ?? 'none' },
+          { id: 'draft:d1', now: 2 },
+        )
+      }, ['S2'])
+
+      await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+      const queued = await row('draft:d1')
+      expect((queued?.payload as { serverEmailId: string }).serverEmailId).toBe('S2')
+      await replayOutbox(port, db, ACC, { now: 20, random: NO_JITTER })
+
+      expect(destroys).toEqual([['S1'], ['S2']])
+      expect(await row('draft:d1')).toBeUndefined()
+    })
+
+    it('queues a destroy for a draft discarded before its first save came back', async () => {
+      await db.drafts.put(draftRow())
+      await enqueueAction(db, ACC, save('A', null), { id: 'draft:d1', now: 1 })
+      const { port, destroys } = overlappingPort(async () => {
+        // discard() of a draft with no server id yet: nothing to queue, the local row just goes.
+        await db.drafts.delete([ACC, 'd1'])
+      }, ['SA'])
+
+      await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+      const queued = await row('draft:d1')
+      expect(queued?.type).toBe('discardDraft')
+      expect((queued?.payload as { serverEmailId: string }).serverEmailId).toBe('SA')
+      await replayOutbox(port, db, ACC, { now: 20, random: NO_JITTER })
+
+      expect(destroys).toEqual([undefined, ['SA']])
+      expect(await row('draft:d1')).toBeUndefined()
+    })
+
+    it('re-points a queued send and leaves its `sending` status alone', async () => {
+      await db.drafts.put(draftRow({ serverEmailId: 'S1', status: 'synced' }))
+      await enqueueAction(db, ACC, save('A', 'S1'), { id: 'draft:d1', now: 1 })
+      const { port } = overlappingPort(async () => {
+        // send(): the row goes `sending`, the in-flight autosave is LEFT alone, the send is queued
+        // under its own id with the server id known at that moment (S1).
+        const existing = await db.drafts.get([ACC, 'd1'])
+        await db.drafts.put(
+          draftRow({ serverEmailId: existing?.serverEmailId ?? null, status: 'sending' }),
+        )
+        await enqueueAction(
+          db,
+          ACC,
+          {
+            kind: 'sendEmail',
+            localId: 'd1',
+            emailCreationId: 'send-d1',
+            submissionCreationId: 'sub-d1',
+            priorServerId: existing?.serverEmailId ?? null,
+            email: emailCreate,
+            identityId: 'id1',
+            envelope: { mailFrom: { email: 'me@x.test' }, rcptTo: [{ email: 'you@x.test' }] },
+            onSuccessUpdateEmail: {},
+            source: null,
+          },
+          { id: 'send:d1', now: 2 },
+        )
+      }, ['S2'])
+
+      await replayOutbox(port, db, ACC, { now: 10, random: NO_JITTER })
+
+      const saved = await db.drafts.get([ACC, 'd1'])
+      expect(saved?.status).toBe('sending') // NOT overwritten with `synced`
+      expect(saved?.serverEmailId).toBe('S2')
+      const send = await row('send:d1')
+      expect((send?.payload as { priorServerId: string }).priorServerId).toBe('S2')
+    })
+  })
 })
 
 describe('outbox — sendEmail (M2.8)', () => {
