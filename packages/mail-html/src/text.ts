@@ -21,7 +21,24 @@ interface ParsedLine {
 
 /** Matches an `http(s)` URL; trailing sentence punctuation is trimmed off in {@link linkify}. */
 const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/g
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"]+$/
+
+/**
+ * Sentence punctuation that a URL at the end of a sentence picks up but does not own.
+ *
+ * A SET and a backwards loop, deliberately not the regex `/[.,;:!?)\]}'"]+$/` this replaced. That
+ * shape has no left anchor, so the engine retries the repetition at every start position of the
+ * token, and each retry that fails `$` rolls the whole run back: O(n^2) in the token length. A
+ * text/plain body may put a 100 KB run of dots into one URL token, and that cost lands on the main
+ * thread while the message renders — measured 8.2 s at 100 KB before, 0 ms after.
+ */
+const TRAILING_PUNCTUATION: ReadonlySet<string> = new Set([...`.,;:!?)]}'"`])
+
+/** Strip the trailing sentence punctuation off a matched URL token. Linear in `url.length`. */
+function trimTrailingPunctuation(url: string): string {
+  let end = url.length
+  while (end > 0 && TRAILING_PUNCTUATION.has(url[end - 1] as string)) end -= 1
+  return url.slice(0, end)
+}
 
 /** Render a plain-text body to safe HTML. */
 export function renderPlainText(text: string, options: PlainTextOptions = {}): string {
@@ -99,7 +116,7 @@ function linkify(content: string): string {
   for (const match of content.matchAll(URL_PATTERN)) {
     const rawUrl = match[0]
     const matchStart = match.index
-    const url = rawUrl.replace(TRAILING_PUNCTUATION, '')
+    const url = trimTrailingPunctuation(rawUrl)
     html += escapeHtml(content.slice(lastIndex, matchStart))
     const safeUrl = escapeHtml(url)
     html += `<a href="${safeUrl}" rel="noopener noreferrer nofollow">${safeUrl}</a>`

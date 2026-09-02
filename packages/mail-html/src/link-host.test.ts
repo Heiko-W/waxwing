@@ -490,6 +490,38 @@ describe('classifyLink — hostile input', () => {
     expect(performance.now() - started).toBeLessThan(1000)
   })
 
+  /**
+   * R-36. `TOKEN_TRIM` used to end in an unanchored `[^\p{L}\p{N}]+$`, which the engine retried at
+   * every offset of the word and rolled back on every failed `$` — quadratic. 100 KB measured 10.2 s
+   * on the main thread, and this runs per LINK at HTML-mail load time, not only on click. The bound
+   * is generous on purpose: it must fail loudly on a return to quadratic (seconds), not flake on a
+   * slow machine.
+   */
+  it('trims a 200 k-character punctuation run off a word in linear time', () => {
+    const word = `a${'!'.repeat(200_000)}b`
+    const started = performance.now()
+    expect(classifyLink('https://bank.test/', word).kind).toBe('ok')
+    expect(performance.now() - started).toBeLessThan(100)
+  })
+
+  it('trims the same classes the regex did, including astral punctuation and letters', () => {
+    // `\p{L}\p{N}` with code-point semantics, both ends — the property the old `u` flag gave us.
+    expect(kindOf('https://evil.tld/', '(bank.test)')).toBe('mismatch')
+    expect(kindOf('https://evil.tld/', '\u{1F600}bank.test\u{1F600}')).toBe('mismatch')
+    // An astral LETTER is not punctuation and must survive the trim UNSPLIT: Deseret 𐐀 is `\p{L}`,
+    // so it stays in the last label and lands in the punycode. A trim that walked UTF-16 units would
+    // eat the low surrogate and leave a lone high surrogate behind.
+    expect(classifyLink('https://evil.tld/', 'bank.test\u{10400}')).toEqual({
+      kind: 'mismatch',
+      claimedHost: 'bank.xn--test-el5y',
+      targetHost: 'evil.tld',
+    })
+    // A word that is punctuation only trims away to nothing and claims nothing.
+    expect(kindOf('https://evil.tld/', '!!!...!!!')).toBe('ok')
+    // The leading Cyrillic а stays: an ASCII-only trim would invent the host `pple.com`.
+    expect(kindOf('https://evil.tld/', '\u0430pple.com')).toBe('mismatch')
+  })
+
   it('does not hang on a 2 MB single word with no whitespace to split on', () => {
     // The worst case for the scan: one word, so per-word normalisation gets the whole string. Still
     // a single linear pass, and it happens once per CLICK — never per render.

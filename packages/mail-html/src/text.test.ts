@@ -60,6 +60,28 @@ describe('renderPlainText', () => {
     expect(renderPlainText('one\ntwo')).toContain('<p>one<br>two</p>')
   })
 
+  /**
+   * R-36. `TRAILING_PUNCTUATION` was `/[.,;:!?)\]}'"]+$/` — no left anchor, so the engine retried the
+   * repetition at every offset of the URL token and rolled the whole run back on every failed `$`.
+   * A text/plain body with a 100 KB dot run inside one URL token measured 8.2 s of blocked main
+   * thread while the message rendered. Bound generous on purpose: seconds vs. milliseconds.
+   */
+  it('trims a 200 k-character punctuation tail off a URL in linear time', () => {
+    const started = performance.now()
+    const html = renderPlainText(`https://x.test/${'.'.repeat(200_000)}a`)
+    expect(performance.now() - started).toBeLessThan(100)
+    // The `a` behind the dots is part of the URL, so nothing is trimmed at all here.
+    expect(html).toContain(`href="https://x.test/${'.'.repeat(200_000)}a"`)
+  })
+
+  it('trims every trailing punctuation character the regex did, and no others', () => {
+    // The full class, in one token, plus a character that is NOT in it (`-`) to pin the boundary.
+    const html = renderPlainText('https://x.test/a-.,;:!?)]}\'"')
+    expect(html).toContain('href="https://x.test/a-"')
+    // A URL that is punctuation all the way down trims back to the scheme and no further.
+    expect(renderPlainText('https://x.test/...')).toContain('href="https://x.test/"')
+  })
+
   it('caps quote nesting so thousands of > cannot overflow the recursion (security)', () => {
     // Would throw a RangeError (stack overflow) before the depth cap.
     const html = renderPlainText(`${'>'.repeat(5000)} deep`, { quotedLabel: 'Q' })

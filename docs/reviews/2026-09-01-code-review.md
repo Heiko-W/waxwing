@@ -1637,7 +1637,9 @@ mit `data:image/jpeg;base64,`.
 
 ### R-36 — [MEDIUM] Quadratisches Backtracking in `TRAILING_PUNCTUATION` (`text.ts`) und `TOKEN_TRIM` (`link-host.ts`): 100 KB feindlicher Text blockieren den Main-Thread 8–9 s
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Beide Trims sind linear (Set-Schleife bzw. verankerte Regex plus Rückwärtsschleife über Codepoints), gemessen 8151 ms → 0 ms (`renderPlainText`, 100 KB) und 10194 ms → 0 ms (`classifyLink`, 100 KB). Das optionale `useMemo` um `renderPlainText` in `MessageView` ist NICHT mitgegangen: es ist laut Abschnitt "Offene Beobachtungen" kein Befund, und mit dem linearen Trim liegt der Worst Case bei 10–14 ms für 1 MB.
 
 **Kategorie / Bereich:** performance / Lib (mail-html)
 
