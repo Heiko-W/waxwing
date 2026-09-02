@@ -50,6 +50,11 @@ function isLetterChord(key: string): boolean {
   return key.length === 1 && key.toLowerCase() !== key.toUpperCase()
 }
 
+/** An UPPERCASE letter chord — the grammar's only way of spelling Shift (`O` = Shift+o). */
+function isShiftedLetterChord(key: string): boolean {
+  return isLetterChord(key) && key !== key.toLowerCase()
+}
+
 export function matchesChord(event: ChordEvent, chord: string): boolean {
   // IME first: a composition keystroke belongs to the input method, never to us.
   if (event.isComposing === true || event.keyCode === 229) return false
@@ -99,16 +104,24 @@ export function isApplePlatform(): boolean {
 }
 
 /**
- * A chord as display tokens, one `<kbd>` chip each: `['⌘', 'K']` / `['Strg', 'K']` / `['#']`.
+ * A chord as display tokens, one `<kbd>` chip each: `['⌘', 'K']` / `['Strg', 'K']` / `['#']` /
+ * `['⇧', 'O']`.
  *
  * `ctrlLabel` is passed in because the non-Apple modifier is the one key cap on this keyboard whose
  * NAME is localised: a German keyboard is labelled **Strg**, and a cheat sheet that says "Ctrl" sends
  * the reader looking for a key that is not there. ⌘ is a glyph and needs no translation.
+ *
+ * **An uppercase LETTER chord gets a ⇧ chip of its own** (R-38). The grammar spells Shift by case,
+ * so `'O'` printed as a single "O" documents a key press — the unshifted one — that does nothing:
+ * `matchesChord` requires `shiftKey` for it. A SYMBOL is never given the chip, and that is the same
+ * decision the matcher makes for the same reason: which modifiers produce `#`, `?` or `/` is the
+ * LAYOUT's business, so naming one of them would be wrong on most keyboards.
  */
 export function formatChord(chord: string, apple: boolean, ctrlLabel = 'Ctrl'): string[] {
   const { mod, key } = parseChord(chord)
   const parts: string[] = []
   if (mod) parts.push(apple ? '⌘' : ctrlLabel)
+  if (isShiftedLetterChord(key)) parts.push('⇧')
   parts.push(key.length === 1 ? key.toUpperCase() : key)
   return parts
 }

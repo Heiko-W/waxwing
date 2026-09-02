@@ -1733,7 +1733,7 @@ auch `href="#"` wird freigegeben. Gegenprüfung: bestätigt.
 
 ### R-38 — [MEDIUM] Der Chord `Shift+o` (Vollbild öffnen) kann nie feuern, und der Registry-Test tarnt das
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness, tests / UI (Shortcuts)
 

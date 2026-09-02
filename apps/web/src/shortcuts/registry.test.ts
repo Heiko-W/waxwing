@@ -23,6 +23,33 @@ function resolve(bundle: unknown, key: string): unknown {
   return node
 }
 
+/**
+ * The named `KeyboardEvent.key` values a chord may use — every non-character key the app binds, plus
+ * the ones the grid owns, so a new named chord has to be added here deliberately.
+ *
+ * It exists because {@link eventFor} cannot tell a real key from an invented one: it feeds the chord's
+ * own key STRING back into `matchesChord`, so any string at all "matches" through the named-key
+ * branch. `Shift+o` did exactly that for a year — the registry's own test called the chord parseable
+ * while no keyboard could produce it (R-38). The grammar check below is the guard; this is its
+ * vocabulary.
+ */
+const NAMED_KEYS: ReadonlySet<string> = new Set([
+  ' ',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'Backspace',
+  'Delete',
+  'End',
+  'Enter',
+  'Escape',
+  'Home',
+  'PageDown',
+  'PageUp',
+  'Tab',
+])
+
 /** A synthetic event that a chord's own grammar says should match it. */
 function eventFor(chord: string): ChordEvent {
   const { mod, key } = parseChord(chord)
@@ -48,6 +75,28 @@ describe('SHORTCUTS registry', () => {
   it('has unique ids', () => {
     const ids = SHORTCUTS.map((action) => action.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  /**
+   * The grammar check the "every chord parses" test below cannot be (R-38).
+   *
+   * `keys.ts` knows exactly ONE prefix, `Mod+`; Shift is spelled by CASE (`O`, not `Shift+o`) and a
+   * key part is therefore either a single produced character or one of the named keys above. A chord
+   * that satisfies neither still "parses" — it falls into the named-key branch and is compared to
+   * `event.key` — but no keyboard produces that string, so the chord is dead on every layout while
+   * the cheat sheet keeps printing a chip for it.
+   */
+  it('spells every chord in the grammar `keys.ts` can actually match', () => {
+    for (const action of SHORTCUTS) {
+      for (const chord of action.keys) {
+        const { key } = parseChord(chord)
+        expect(key.includes('+'), `${action.id} / ${chord}: only Mod+ is a prefix`).toBe(false)
+        expect(
+          key.length === 1 || NAMED_KEYS.has(key),
+          `${action.id} / ${chord}: not a character and not a named key`,
+        ).toBe(true)
+      }
+    }
   })
 
   it('gives every action at least one chord, and every chord parses under matchesChord', () => {

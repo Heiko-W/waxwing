@@ -111,4 +111,19 @@ describe('parseChord / formatChord', () => {
     expect(formatChord('#', false)).toEqual(['#'])
     expect(formatChord('Enter', false)).toEqual(['Enter'])
   })
+
+  /**
+   * R-38: the grammar spells Shift by CASE, so a cheat sheet that prints `O` alone documents the
+   * UNSHIFTED key — which `matchesChord` refuses. The chip and the matcher have to agree.
+   */
+  it('gives an uppercase letter chord its own ⇧ chip — and a symbol none', () => {
+    expect(formatChord('O', false)).toEqual(['⇧', 'O'])
+    expect(formatChord('O', true)).toEqual(['⇧', 'O'])
+    // Which modifier produces a symbol is the layout's business; naming one would be a lie.
+    expect(formatChord('?', false)).toEqual(['?'])
+    expect(formatChord('!', false)).toEqual(['!'])
+    // And the chip only appears where the matcher demands Shift.
+    expect(matchesChord(key('O', { shiftKey: true }), 'O')).toBe(true)
+    expect(matchesChord(key('O'), 'O')).toBe(false)
+  })
 })
