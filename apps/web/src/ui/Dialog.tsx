@@ -22,7 +22,10 @@ export type DialogSize = 'sm' | 'md' | 'lg'
 
 export interface DialogProps {
   open: boolean
-  /** Called on Escape, the close button, or a backdrop press. Memoize it (useCallback). */
+  /**
+   * Called on Escape, the close button, or a backdrop press. Memoize it (useCallback).
+   * Never called when {@link dismissible} is false — the dialog then has no dismiss gesture.
+   */
   onClose: () => void
   title: ReactNode
   children: ReactNode
@@ -31,6 +34,20 @@ export interface DialogProps {
   initialFocusRef?: RefObject<HTMLElement | null>
   /** Close when the backdrop is pressed. Default true. */
   dismissOnBackdrop?: boolean
+  /**
+   * Whether the universal "get me out of here" gestures may close this dialog at all. Default true.
+   *
+   * `false` hides the ✕ and makes Escape and a backdrop press do nothing, for the one shape of
+   * dialog where every dismissal is destructive and there is nothing behind it to return to — the
+   * re-auth prompt, whose "close" used to be Sign out (and, in public-computer mode, a wipe of the
+   * local copy) while the text above it promised "your place is kept". The way out is then the
+   * dialog's own labelled buttons, which is the only honest option: a reader cannot be expected to
+   * know that this particular ✕ signs them out.
+   *
+   * The Escape listener stays REGISTERED (see `useDismiss`'s LIFO stack) so the press is swallowed
+   * here rather than falling through to whatever overlay sits behind the modal.
+   */
+  dismissible?: boolean
   /**
    * Guard user-entered content (HIG `modality`: "help people avoid data loss by getting
    * confirmation before closing a modal view … regardless of whether people use a dismiss gesture
@@ -62,6 +79,7 @@ export function Dialog({
   footer,
   initialFocusRef,
   dismissOnBackdrop = true,
+  dismissible = true,
   confirmDiscard = false,
   closeLabel,
   size = 'md',
@@ -79,12 +97,13 @@ export function Dialog({
 
   /** The single way out. Every dismissal path goes through it, which is the point of the guard. */
   const requestClose = useCallback((): void => {
+    if (!dismissible) return
     if (confirmDiscard && touched.current) {
       setConfirming(true)
       return
     }
     onClose()
-  }, [confirmDiscard, onClose])
+  }, [dismissible, confirmDiscard, onClose])
 
   useFocusTrap(open, panelRef, { initialFocusRef })
   useDismiss(open, panelRef, requestClose, { escape: true, outsidePointer: false })
@@ -136,9 +155,11 @@ export function Dialog({
             <h2 id={titleId} className={styles.title}>
               {title}
             </h2>
-            <IconButton label={closeLabel ?? t('ui.dialog.close')} onClick={requestClose}>
-              <X aria-hidden="true" />
-            </IconButton>
+            {dismissible ? (
+              <IconButton label={closeLabel ?? t('ui.dialog.close')} onClick={requestClose}>
+                <X aria-hidden="true" />
+              </IconButton>
+            ) : null}
           </div>
           <div className={styles.body}>{children}</div>
           {footer ? <div className={styles.footer}>{footer}</div> : null}

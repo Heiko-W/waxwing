@@ -1481,7 +1481,12 @@ gelöscht. Gegenprüfung: bestätigt und verschärft.
 
 ### R-33 — [MEDIUM] Escape und der „Close“-Button im Re-Auth-Dialog melden ab (und wischen im Public-Computer-Modus das Replica)
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Umgesetzt mit EINER neuen `Dialog`-Prop `dismissible` statt der vorgeschlagenen zwei
+(`closeOnEscape` und `hideClose`): beide Gesten sollen hier dasselbe tun, naemlich nichts, und
+eine Prop kann nicht halb gesetzt werden. Der Escape-Listener bleibt registriert, damit der
+Tastendruck hier verschluckt wird und nicht an ein Overlay dahinter durchfaellt. Zusaetzlich
+startet der Fokus auf „Sign in“ statt auf dem jetzt ersten fokussierbaren Element „Sign out“.
 
 **Kategorie / Bereich:** a11y / App (Session)
 
