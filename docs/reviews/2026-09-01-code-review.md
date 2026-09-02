@@ -696,7 +696,7 @@ mit identischem Inhalt dispatcht erneut. Gegenprüfung: bestätigt.
 
 ### R-13 — [MEDIUM] `mailto:` dekodiert `+` als Leerzeichen — Subadressen (`bill+ietf@example.org`) werden zu ungültigen Empfängern
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
 
 **Kategorie / Bereich:** correctness / Compose
 

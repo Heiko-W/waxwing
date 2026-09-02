@@ -44,6 +44,53 @@ describe('parseMailto', () => {
     expect(parseMailto('MAILTO:a@x.test').to).toHaveLength(1)
   })
 
+  /*
+   * RFC 6068 §5: a `mailto:` URI is not an HTML form payload. "'+' characters are frequently used
+   * as part of an email address to indicate a subaddress, as for example in
+   * <bill+ietf@example.org>" — decoding it as a space (which the path and `URLSearchParams` both
+   * did) turned every plus-addressed recipient into an unsendable pill (R-13).
+   */
+  describe('the plus sign (RFC 6068 §5)', () => {
+    it('keeps a subaddress in the path', () => {
+      expect(parseMailto('mailto:bill+ietf@example.org').to).toEqual([
+        { name: null, email: 'bill+ietf@example.org' },
+      ])
+    })
+
+    it('keeps a subaddress in to, cc and bcc from the query', () => {
+      const parsed = parseMailto(
+        'mailto:?to=bill+ietf@example.org&cc=c+list@x.test&bcc=d+list@x.test',
+      )
+      expect(parsed.to[0]?.email).toBe('bill+ietf@example.org')
+      expect(parsed.cc[0]?.email).toBe('c+list@x.test')
+      expect(parsed.bcc[0]?.email).toBe('d+list@x.test')
+    })
+
+    it('keeps a plus in the subject and the body', () => {
+      const parsed = parseMailto('mailto:a@x.test?subject=C++&body=1+1')
+      expect(parsed.subject).toBe('C++')
+      expect(parsed.body).toBe('1+1')
+    })
+
+    it('decodes %2B to exactly one plus, in the path and in the query', () => {
+      expect(parseMailto('mailto:bill%2Bietf@example.org').to[0]?.email).toBe(
+        'bill+ietf@example.org',
+      )
+      expect(parseMailto('mailto:a@x.test?subject=C%2B%2B').subject).toBe('C++')
+    })
+  })
+
+  it('leaves the other reserved characters decoding as before', () => {
+    // The plus fix must not turn into "stop decoding": %20 is still a space, and the escapes a
+    // link author needs for `&`, `%`, `?`, `#` and a CRLF body break still come through.
+    const parsed = parseMailto(
+      'mailto:a@x.test?subject=100%25%20%26%20more%3F%23&body=one%0D%0Atwo&cc=%22Ann%20B%22%20%3Cann@x.test%3E',
+    )
+    expect(parsed.subject).toBe('100% & more?#')
+    expect(parsed.body).toBe('one\r\ntwo')
+    expect(parsed.cc).toEqual([{ name: 'Ann B', email: 'ann@x.test' }])
+  })
+
   describe('refusals', () => {
     it('ignores every header other than to/cc/bcc/subject/body', () => {
       // RFC 6068 §5 warns about exactly this: a link that sets `from` chooses the sender, and one
