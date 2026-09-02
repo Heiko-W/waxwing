@@ -2899,7 +2899,11 @@ oder nach Reset einmal `syncFileNodes` anstoßen, wenn zuvor ein State existiert
 
 ### R-75 — [LOW] `SyncEngineHost`: ein Fehler in `startFleet()` bleibt eine unhandled rejection und vergiftet die `teardownRef`-Kette
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Abweichung: der Fehler geht auf die Konsole, NICHT an `reportDispatchFailure`. Dessen Toast sagt, eine
+AKTION habe nicht eingereiht werden koennen — ein falscher Satz fuer „die Sync-Engine ist nicht
+gestartet"; ein eigener sichtbarer Text waere ein neuer i18n-Key in 14 Bundles fuer einen Fall, den der
+Befund selbst als nicht beobachtet einstuft.
 
 **Kategorie / Bereich:** react / Sync
 
