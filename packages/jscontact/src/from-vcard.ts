@@ -666,6 +666,57 @@ function buildNotes(
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+/**
+ * vCard 3.0 `TYPE` values on `PHOTO`/`LOGO` — the image FORMAT, not a context (RFC 2426 §2.4.1).
+ *
+ * Only what an exporter actually writes there. An unrecognised value is not guessed at: the payload
+ * gets `application/octet-stream`, which renders as a broken image rather than as a picture of the
+ * wrong format, and keeps the bytes intact for anything that knows better.
+ */
+const BINARY_TYPES: Readonly<Record<string, string>> = {
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  tiff: 'image/tiff',
+  tif: 'image/tiff',
+  avif: 'image/avif',
+}
+
+/**
+ * The media type of an inline binary value, from `MEDIATYPE` (4.0) or `TYPE` (3.0).
+ *
+ * `application/octet-stream` for anything unrecognised, because the alternative — leaving the type
+ * off the `data:` URI — makes it `text/plain`, which is the one answer certain to be wrong.
+ */
+function binaryMediaType(line: ContentLine): string {
+  const declared = line.params.get('MEDIATYPE')?.[0]?.trim()
+  if (declared !== undefined && declared !== '') return declared
+  for (const type of typeValues(line)) {
+    const mapped = BINARY_TYPES[type]
+    if (mapped !== undefined) return mapped
+  }
+  return 'application/octet-stream'
+}
+
+/**
+ * Is this an INLINE binary value rather than a URI?
+ *
+ * vCard 3.0 and 2.1 carry image bytes in the property value with `ENCODING=b` (RFC 2426 §2.4.1) or
+ * `ENCODING=BASE64`; 4.0 replaced that with a `data:` URI (RFC 6350 §6.2.4's own example) and RFC
+ * 9555 §2.5.7 sets `media.uri` from the 4.0 value. Reading a 3.0 value as though it were 4.0 is what
+ * turned a Google export's photo into the "URI" `/9j/4AAQ…` — a relative path, so every render of
+ * that contact fired a 404 at the app's own origin, and the bare base64 went to the server as
+ * `media.m1.uri`.
+ */
+function isInlineBinary(line: ContentLine): boolean {
+  const encoding = line.params.get('ENCODING')?.[0]?.trim().toLowerCase()
+  if (encoding === 'b' || encoding === 'base64') return true
+  return line.params.get('VALUE')?.[0]?.trim().toLowerCase() === 'binary'
+}
+
 function buildMedia(
   lines: readonly ContentLine[],
   consumed: Consumed,
@@ -675,15 +726,19 @@ function buildMedia(
   const nextId = idAllocator(mediaLines, 'm')
   for (const line of mediaLines) {
     const kind = line.name === 'PHOTO' ? ('photo' as const) : ('logo' as const)
+    const inline = isInlineBinary(line)
     // The value is a URI (a `data:` URI for an embedded image). It is NOT text-escaped in vCard 4.0,
     // so unescaping it would corrupt any base64 payload containing a comma or a backslash.
-    const uri = line.value.trim()
-    if (uri === '') continue
+    const raw = line.value.trim()
+    if (raw === '') continue
+    const mediaType = inline ? binaryMediaType(line) : line.params.get('MEDIATYPE')?.[0]
+    // Whitespace inside the payload comes from folding the exporter did; base64 has none of its own.
+    const uri = inline ? `data:${mediaType};base64,${raw.replace(/\s+/g, '')}` : raw
     consumed.add(line)
     out[nextId(line)] = compact<Media>({
       kind,
       uri,
-      mediaType: line.params.get('MEDIATYPE')?.[0],
+      mediaType,
       pref: prefOf(line),
     })
   }

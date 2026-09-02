@@ -33,7 +33,7 @@ or stops being supported cannot leave this document behind.
 | `URL` | `links` | A URI value, never text-escaped. |
 | `IMPP` | `onlineServices` | Instant-messaging / online accounts. A URI value, never text-escaped; the `SERVICE-TYPE` parameter becomes `service`. |
 | `NOTE` | `notes` | |
-| `PHOTO` / `LOGO` | `media` | `kind: 'photo'` / `'logo'`. The value is a URI and is **never text-escaped** — a `data:` URI contains both `;` and `,`. |
+| `PHOTO` / `LOGO` | `media` | `kind: 'photo'` / `'logo'`. The value is a URI and is **never text-escaped** — a `data:` URI contains both `;` and `,`. A vCard 3.0 inline payload (`ENCODING=b`/`BASE64`, or `VALUE=binary`) becomes a `data:` URI, its media type taken from `MEDIATYPE` or from the 3.0 `TYPE` shorthand. |
 | `CATEGORIES` | `keywords` | Comma-separated values become set keys. |
 | `KIND` | `kind` | |
 | `MEMBER` | `members` | Group cards (`KIND:group`). |

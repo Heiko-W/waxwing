@@ -1605,7 +1605,9 @@ gleich `first`. Gegenprüfung: bestätigt.
 
 ### R-35 — [MEDIUM] `PHOTO;ENCODING=b` (vCard 3.0, Google-Export) wird als nackter Base64-String zur „URI“ — kaputtes Bild und relative Anfrage gegen den App-Origin
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** `buildMedia` erkennt `ENCODING=b`/`BASE64` und `VALUE=binary` und baut daraus eine `data:`-URI; der Medientyp kommt aus `MEDIATYPE`, sonst aus der 3.0-`TYPE`-Kurzform, unbekannt → `application/octet-stream`. NICHT mitgemacht: die im Loesungsansatz genannte Behandlung in `toJCardProp` fuer `SOUND`/`X-MS-CARDPICTURE`. Diese Properties sind nicht gemappt, sie fahren als `vCardProps` mit — dort ist die verbatim erhaltene Zeile genau richtig, weil sie so unveraendert wieder herausgeschrieben wird; eine Umschreibung waere Datenverlust im Roundtrip. `LOGO` ist ueber `buildMedia` mit abgedeckt.
 
 **Kategorie / Bereich:** correctness / Lib (jscontact)
 

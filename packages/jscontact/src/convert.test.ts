@@ -642,6 +642,57 @@ describe('nothing is dropped in silence', () => {
   })
 })
 
+/**
+ * R-35. vCard 3.0 (Google, older Apple exports) carries image bytes in the property value with
+ * `ENCODING=b` (RFC 2426 §2.4.1); 4.0 replaced that with a `data:` URI. Reading the 3.0 form as
+ * though it were 4.0 made `media.uri` the bare base64 string — a relative path, so every render of
+ * the contact fired a 404 at the app's own origin, and the same string went to the server.
+ */
+describe('inline binary photos (vCard 3.0)', () => {
+  it('turns a Google export\u2019s ENCODING=b photo into a data: URI', () => {
+    const media = Object.values(importOne(GOOGLE_EXPORT).media ?? {})[0]
+    expect(media?.kind).toBe('photo')
+    expect(media?.mediaType).toBe('image/jpeg')
+    expect(media?.uri.startsWith('data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD')).toBe(true)
+    // The fold the exporter applied is not part of the payload.
+    expect(media?.uri).not.toMatch(/\s/)
+  })
+
+  it('reads ENCODING=BASE64 and VALUE=binary as the same thing', () => {
+    const card = (params: string) =>
+      importOne(
+        ['BEGIN:VCARD', 'VERSION:3.0', 'UID:u', `PHOTO;${params}:QUJD`, 'END:VCARD'].join('\r\n'),
+      )
+    expect(Object.values(card('ENCODING=BASE64;TYPE=PNG').media ?? {})[0]?.uri).toBe(
+      'data:image/png;base64,QUJD',
+    )
+    expect(Object.values(card('VALUE=binary;TYPE=GIF').media ?? {})[0]?.uri).toBe(
+      'data:image/gif;base64,QUJD',
+    )
+    // MEDIATYPE wins over the 3.0 TYPE shorthand when both are present.
+    expect(
+      Object.values(card('ENCODING=b;TYPE=PNG;MEDIATYPE=image/heic').media ?? {})[0]?.uri,
+    ).toBe('data:image/heic;base64,QUJD')
+    // An unrecognised format is not guessed at — and leaving the type off would mean `text/plain`.
+    expect(Object.values(card('ENCODING=b;TYPE=WORK').media ?? {})[0]?.uri).toBe(
+      'data:application/octet-stream;base64,QUJD',
+    )
+  })
+
+  it('leaves a 4.0 URI value alone', () => {
+    // No ENCODING, no VALUE=binary: the value already IS the URI, and prefixing it would be the
+    // mirror of the bug.
+    const media = Object.values(importOne(DATA_URI_CARD).media ?? {})[0]
+    expect(media?.uri).toBe('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB')
+    const remote = importOne(
+      ['BEGIN:VCARD', 'VERSION:4.0', 'UID:u', 'LOGO:https://a.test/l.png', 'END:VCARD'].join(
+        '\r\n',
+      ),
+    )
+    expect(Object.values(remote.media ?? {})[0]?.uri).toBe('https://a.test/l.png')
+  })
+})
+
 describe('dates', () => {
   it('parses every reduced form the spec allows', () => {
     expect(parseVCardDate('19820415')).toEqual({ year: 1982, month: 4, day: 15 })
