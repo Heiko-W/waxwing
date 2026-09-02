@@ -3135,7 +3135,13 @@ landen im Posteingang; der `mailto:`-Composer öffnet nicht. Basic-Anmeldung nic
 
 ### R-82 — [LOW] Sieve-Round-Trip bricht bei Regelnamen mit U+2028/U+2029 oder mit Marker-Text
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Beide vorgeschlagenen Varianten fuer (a) umgesetzt, nicht eine: das Metadaten-JSON escapet
+U+2028/U+2029 (neue Skripte), und das Marker-Regex nutzt `([^\r\n]*)` (Skripte, die auf dem
+Server schon liegen — die Escaping-Haelfte erreicht die nicht mehr). Fuer (b) zusaetzlich zur
+`sanitizeComment`-Neutralisierung: die Suche nach dem End-Marker ist auf Zeilenanfang verankert.
+Sonst faellt der Parser auch auf Marker-Text in einem generierten Sieve-String-Literal herein
+(Bedingungswert statt Regelname), den `sanitizeComment` nie sieht.
 
 **Kategorie / Bereich:** correctness / App (Settings, Sieve)
 
