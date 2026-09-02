@@ -1,7 +1,21 @@
 /**
  * Action queue / outbox (M1.3 skeleton, M3.3 hardening — FR-OFF-03, FR-ORG-01, FR-LST-04). Every
- * write — even "mark read" — is an idempotent JMAP `set` intent with a client id: it is applied to
- * the replica optimistically (instant UI), enqueued durably, then replayed against the server.
+ * write — even "mark read" — is a JMAP `set` intent with a client id: it is applied to the replica
+ * optimistically (instant UI), enqueued durably, then replayed against the server.
+ *
+ * ## Idempotence is a property of the intent, not of this module (ADR-038)
+ * This header used to say "an idempotent JMAP `set` intent", full stop, and the retry paths below
+ * are written on that sentence. It is true of every UPDATE and every DESTROY — re-sending "set
+ * `$seen`", "move to Archive" or "destroy e1" costs nothing and converges — and it is FALSE of the
+ * CREATE family (`saveDraft`, `createMailbox`, `createContactCard`, `createAddressBook`, and
+ * `sendEmail`, which this module has always treated separately). RFC 8620 §5.3 scopes creation ids
+ * to a single request, so JMAP offers no key that would let the server recognise a re-sent create as
+ * the same one. If the response to a create is LOST — the connection drops after the server
+ * processed it, or the tab dies mid-request — the next pass sends it again and the outcome depends
+ * on the type: a second server draft, a second address book, or a rejection (`uid` / sibling-name
+ * uniqueness) that dead-letters an action which in fact SUCCEEDED. See
+ * `docs/adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md` for the options and why none
+ * of them is a comment-sized change.
  *
  * ## The M3.3 contract (never silent data loss)
  *  - **Durable undo.** {@link applyOptimistic} returns an {@link OutboxUndo} *value* (not a closure)
@@ -2782,9 +2796,20 @@ async function drainOwedUndos(
 
 /**
  * Recover intents stranded `inflight` by a leader killed mid-request. Re-sending an idempotent `set`
- * is safe → back to `pending`. But an `EmailSubmission` is NOT idempotent: a re-sent `sendEmail`
- * could deliver the message twice, so a stranded send is dead-lettered with the `sendInterrupted`
- * CODE ("was it sent?") instead of auto-resent (M2.8) — the user decides via the reopened draft.
+ * — every UPDATE and every DESTROY — is safe → back to `pending`. But an `EmailSubmission` is NOT
+ * idempotent: a re-sent `sendEmail` could deliver the message twice, so a stranded send is
+ * dead-lettered with the `sendInterrupted` CODE ("was it sent?") instead of auto-resent (M2.8) — the
+ * user decides via the reopened draft.
+ *
+ * A CREATE is not idempotent either, and this line does not yet act on that (ADR-038). A stranded
+ * `saveDraft`/`createMailbox`/`createContactCard`/`createAddressBook` goes back to `pending` and is
+ * re-sent, which duplicates the object (drafts, address books) or is rejected for a uniqueness the
+ * FIRST attempt established (`uid`, sibling names) and dead-lettered as if it had failed. Treating
+ * it like `sendEmail` is NOT the answer: a create is dispatched by autosave on every idle pause, so
+ * dead-lettering one per dropped connection would make offline-first drafting unusable. The fix
+ * needs a server-side existence probe before the RE-send, which is a design decision rather than a
+ * patch — see the ADR. Nothing here is a mitigation; this note exists so the next reader does not
+ * mistake the `sendEmail` special case for the whole of the problem.
  *
  * `attempts` IS INCREMENTED on the way back to `pending`. A stranded row was dispatched — the
  * request went out and we simply never learned its fate — so recording the attempt is true on its
@@ -3017,6 +3042,13 @@ export async function replayOutbox(
       const verdict = classifyThrown(thrown, attempts, random(), backoff)
       if (verdict.kind === 'retry') {
         // TRANSIENT — the ONE branch that must never roll back and never dead-letter (defect D3).
+        //
+        // It is also the second place a CREATE gets re-sent without knowing whether the first
+        // attempt reached the server (ADR-038, with `recoverStranded`). A thrown `TypeError` does
+        // not distinguish "never sent" from "sent, answer lost", so neither retrying nor
+        // dead-lettering is right without asking the server what it has. Left as a retry
+        // deliberately: it is the behaviour that keeps offline-first autosave working, and it is
+        // the failure mode the ADR weighs.
         await updateIfUnchanged(db, accountId, row, {
           status: 'pending',
           attempts,

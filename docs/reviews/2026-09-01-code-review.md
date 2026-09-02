@@ -1201,6 +1201,14 @@ the requested database object could not be found…`. Gegenprüfung: bestätigt.
 ### R-27 — [MEDIUM] Nicht-idempotente Creates werden nach verlorener Antwort oder Absturz erneut gesendet — Duplikate bei Drafts und Adressbüchern, falsche Fehlermeldungen bei Kontakten und Ordnern
 
 **Status:** [ ] offen
+NICHT behoben, bewusst. Umgesetzt ist nur die Sofortmaßnahme (S) aus dem Lösungsansatz: Modulkopf,
+`recoverStranded` und der transiente Retry-Zweig sagen jetzt, dass die Create-Familie NICHT idempotent
+ist, statt das Gegenteil zu behaupten. Das Laufzeitverhalten ist unverändert. Der eigentliche Fix — vor
+dem ERNEUTEN Versand serverseitig prüfen, ob das Objekt schon existiert — ist eine
+Architekturentscheidung (welche Sonden die Outbox stellen darf, `messageId` in `toEmailCreate`) und
+steht mit allen Optionen und Kosten in `docs/adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md`.
+Ein Teil-Fix, der Duplikate nur seltener macht (etwa Dead-Letter nach geworfenem Fehler), wäre ein
+Rückschritt: er bricht das Offline-Autosave, wie die Gegenprüfung festgestellt hat.
 
 **Kategorie / Bereich:** correctness / Sync
 

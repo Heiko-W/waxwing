@@ -64,6 +64,7 @@ Format: lightweight [MADR](https://adr.github.io/madr/), one page maximum.
 | [035](035-one-mailbox-subscription-for-the-whole-app.md) | One mailbox subscription for the whole app | accepted |
 | [036](036-machine-translation-with-a-mechanical-gate.md) | Twelve machine-translated languages, behind a gate that removes the failures a reviewer cannot see | accepted |
 | [037](037-the-account-switcher-ships-without-store-isolation.md) | The account switcher ships without the per-account store, and says so | accepted |
+| [038](038-creates-are-not-idempotent-and-jmap-offers-no-key.md) | Creates are not idempotent, JMAP offers no key, and the outbox re-sends them anyway | proposed |
 
 Regenerate this table after adding an ADR — it is written by hand, and a missing row is the
 kind of omission nobody notices.
