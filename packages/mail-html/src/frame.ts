@@ -46,6 +46,7 @@
  */
 
 import { joinLinkText, type LinkText, webUrl } from './link-host'
+import { NAMED_PROP_PREFIX } from './sanitize'
 
 export interface FrameOptions {
   /** Allow remote `https:` images in the inner CSP (paired with a remote-allowing sanitize pass). */
@@ -393,6 +394,56 @@ function attrTextOf(element: Node): string {
 }
 
 /**
+ * The document a mail frame always is. `mountMailFrame` assigns `iframe.srcdoc`, so the frame's
+ * document URL is exactly this string — which is what makes the rewrite in
+ * {@link sameDocumentHref} a SAME-document navigation rather than a new one.
+ */
+const SRCDOC_URL = 'about:srcdoc'
+
+/**
+ * The same-document form of a fragment-only href, or `null` when the href is not one.
+ *
+ * A fragment-only href is scrolling inside the message, not a link out of it — but inside a
+ * `srcdoc` frame the browser does not read it that way. The document's URL is `about:srcdoc` while
+ * its BASE URL is the embedder's, so `#top` resolves against the APP's URL and clicking it is a
+ * cross-document navigation of the frame to the app. Measured 2026-09-02 in Chromium 1234 and
+ * WebKit 2311: the message body is replaced by a sandboxed copy of Waxwing (which then cannot run,
+ * `allow-scripts` being absent) — and `prepareLinks` compounded it, because `webUrl` resolved the
+ * fragment the same way, `classifyLink` found no host claim to break, the app released it and the
+ * anchor got `target="_blank"`: "back to top" opened a SECOND app instance in a new tab, a second
+ * sync participant and a fresh leader election.
+ *
+ * Rewriting the href to `about:srcdoc#…` makes the target URL differ from the document's URL in the
+ * fragment only, which is the definition of a same-document navigation. Both engines then run
+ * "scroll to the fragment" — and that walks OUT through the frame boundary into the app's own
+ * scroll container, which it has to, because `onLoad` stretches the frame to its content height and
+ * leaves it nothing of its own to scroll. Measured in both engines: the reading pane scrolls to the
+ * anchor and the message survives. No script inside the frame, and none needed outside it: WebKit
+ * does not deliver the click to the outer page at all (file header), so anything done in `onClick`
+ * would work on Chromium only. The scroll is the browser's.
+ *
+ * The prefix is not cosmetic: `SANITIZE_NAMED_PROPS` renamed `<h2 id="top">` to
+ * `id="user-content-top"` and left `href="#top"` pointing at the old name, so even a working
+ * in-frame navigation had nothing to land on. The RAW fragment is prefixed, not a decoded one —
+ * DOMPurify prefixes the raw attribute value too, and `%`-escapes survive the concatenation
+ * unchanged because the prefix carries none.
+ *
+ * An empty (`href="#"`) or unmatched fragment stays a same-document navigation that scrolls nothing
+ * — the frame's own document is already at its start. That is a "back to top" link doing nothing,
+ * and it is the deliberate price of the frame having no scrollbar of its own; the alternative on
+ * that path is the destructive navigation above.
+ */
+function sameDocumentHref(href: string): string | null {
+  if (href === SRCDOC_URL || href.startsWith(`${SRCDOC_URL}#`)) return href
+  if (!href.startsWith('#')) return null
+  const name = href.slice(1)
+  if (name === '') return SRCDOC_URL
+  // An author who already wrote the prefix keeps it: DOMPurify leaves such an `id` alone too.
+  if (name.startsWith(NAMED_PROP_PREFIX)) return `${SRCDOC_URL}#${name}`
+  return `${SRCDOC_URL}#${NAMED_PROP_PREFIX}${name}`
+}
+
+/**
  * Mount `srcdoc` into `iframe` under the script-free sandbox and wire outer-page height tracking +
  * link interception. Safe to call in a non-DOM/limited environment: it degrades without throwing.
  */
@@ -432,6 +483,32 @@ export function mountMailFrame(
      * decision that was already made, not making a new one.
      */
     if (link.getAttribute('target') === '_blank') return
+    /*
+     * A SAME-DOCUMENT fragment is not a link out of the message, it is scrolling. The browser
+     * performs it natively inside the frame without `allow-top-navigation` (it is not a navigation
+     * of the top-level context), and "scroll to the fragment" walks out through the frame boundary
+     * into the app's own scroll container — which it has to, because `onLoad` stretches the frame
+     * to its content height, so the frame itself has nothing left to scroll. Stepping aside here is
+     * also what makes the two engines agree: WebKit never delivers this event at all, so the native
+     * path is the only path there.
+     */
+    /*
+     * A SAME-DOCUMENT fragment is the browser's to perform — see sameDocumentHref. `prepareLinks`
+     * has already rewritten it into the form that scrolls instead of navigating, so stepping aside
+     * here is stepping aside for a decision already taken, and it is the only way the two engines
+     * behave alike (WebKit never delivers this event).
+     */
+    if (href === SRCDOC_URL || href.startsWith(`${SRCDOC_URL}#`)) return
+    /*
+     * A RAW fragment means `prepareLinks` never ran — `contentDocument` was unreachable, so nothing
+     * rewrote it. Suppress it and stop: handing it to the app would open a second app instance, and
+     * letting the browser have it would navigate the frame onto the app. Unreachable in a browser,
+     * where a same-origin `srcdoc` document is always readable.
+     */
+    if (href.startsWith('#')) {
+      event.preventDefault()
+      return
+    }
     event.preventDefault()
     // Deliberately unclamped — see MailLinkInfo.text.
     const parts = linkTextOf(link)
@@ -467,7 +544,15 @@ export function mountMailFrame(
       // runtime whose sanitizer kept it — silently opts itself out of the warning dialog. Clearing
       // first makes the invariant structural instead of a promise about every upstream producer.
       link.removeAttribute('target')
-      const absolute = webUrl(link.getAttribute('href') ?? '', base)
+      const href = link.getAttribute('href') ?? ''
+      // Fragment-only first, and BEFORE `webUrl`: see sameDocumentHref. Rewritten to the form the
+      // browser scrolls on, never released, never gated — nothing here leaves the document.
+      const sameDocument = sameDocumentHref(href)
+      if (sameDocument !== null) {
+        link.setAttribute('href', sameDocument)
+        continue
+      }
+      const absolute = webUrl(href, base)
       if (absolute === null) continue
       const parts = linkTextOf(link)
       const gated = callbacks.gateLink?.(absolute, {

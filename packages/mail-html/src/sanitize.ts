@@ -809,6 +809,19 @@ function isInsideAnchor(node: Element): boolean {
   return parent !== null && typeof parent.closest === 'function' && parent.closest('a') !== null
 }
 
+/**
+ * The prefix `SANITIZE_NAMED_PROPS` puts in front of every `id`/`name` it keeps, so that a message
+ * cannot clobber a document property with `<img name="body">`. DOMPurify hardcodes the string
+ * (`purify.js`: `const SANITIZE_NAMED_PROPS_PREFIX = 'user-content-'`) rather than taking it from
+ * the config, so this is a mirror of THEIR constant, not a setting of ours.
+ *
+ * `frame.ts` needs it because the rename applies to the anchor TARGET (`<h2 id="top">`) and not to
+ * the fragment that points at it (`<a href="#top">`) — the two only meet again if the fragment is
+ * rewritten to match. `sanitize.test.ts` pins the prefix against a real DOMPurify pass, so a
+ * dependency bump that changed it fails here rather than silently breaking in-message anchors.
+ */
+export const NAMED_PROP_PREFIX = 'user-content-'
+
 export function sanitize(html: string, options: SanitizeOptions = {}): SanitizeResult {
   const collector: Collector = { blocked: [], hasRemote: false }
 

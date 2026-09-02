@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildFrameDocument, linkTextOf, type MailLinkInfo, mountMailFrame } from './frame'
+import { sanitize } from './sanitize'
 import { renderPlainText } from './text'
 
 /**
@@ -314,6 +315,75 @@ describe('mountMailFrame — link interception (FR-RD-08)', () => {
     expect(dispatch(released.doc)).toBe(false)
     expect(dispatch(kept.doc)).toBe(true)
     expect(dispatch(byDefault.doc)).toBe(true)
+  })
+
+  /**
+   * R-37. A fragment-only href is scrolling inside the message, not a link out of it — and the frame
+   * used to resolve it against the APP's `baseURI`, hand `https://app.example/#top` to the gate,
+   * and release it. "Back to top" in a newsletter opened a second copy of Waxwing in a new tab.
+   *
+   * `gateLink` here answers `false` for everything, which is the harshest setting available: if the
+   * fragment reached the gate at all, it would come back released with a `target`.
+   */
+  it('never gates or releases a same-document fragment, however permissive the gate', () => {
+    const gate = vi.fn((_href: string, _info: MailLinkInfo) => false)
+    const onLink = vi.fn()
+    const { doc } = mountWithBody(
+      '<h2 id="top">T</h2><a href="#top">up</a><a href="#">start</a><a href="https://a.test/">out</a>',
+      onLink,
+      gate,
+    )
+    const [fragment, bare, external] = [...doc.querySelectorAll('a')]
+    expect(fragment?.getAttribute('target')).toBeNull()
+    expect(bare?.getAttribute('target')).toBeNull()
+    expect(bare?.getAttribute('href')).toBe('about:srcdoc')
+    // The external link proves the gate really was permissive in this mount.
+    expect(external?.getAttribute('target')).toBe('_blank')
+    expect(gate).toHaveBeenCalledOnce()
+    expect(gate.mock.calls[0]?.[0]).toBe('https://a.test/')
+  })
+
+  /**
+   * R-37, the other half. Two renames have to meet: `SANITIZE_NAMED_PROPS` renamed the TARGET
+   * (`id="top"` → `id="user-content-top"`) and left the fragment pointing at the old name, and the
+   * frame's document URL is `about:srcdoc` while its BASE URL is the app's — so a bare `#top`
+   * resolves against the app and navigates the frame away instead of scrolling it.
+   */
+  it('rewrites a fragment to the same-document form and the sanitized target name', () => {
+    const { doc } = mountWithBody(
+      sanitize('<h2 id="top">T</h2><a href="#top">up</a>').html,
+      vi.fn(),
+    )
+    expect(doc.querySelector('h2')?.getAttribute('id')).toBe('user-content-top')
+    expect(doc.querySelector('a')?.getAttribute('href')).toBe('about:srcdoc#user-content-top')
+  })
+
+  it('leaves the rewritten fragment click to the browser instead of routing it back to the app', () => {
+    // Measured in Chromium 1234 and WebKit 2311 (see sameDocumentHref): with this href the click is
+    // a same-document navigation, the message survives, and "scroll to the fragment" walks out of
+    // the frame into the app's scroll container — which it must, the frame being stretched to its
+    // content height. With the raw `#top` BOTH engines replace the message with the app instead.
+    const onLink = vi.fn()
+    const { doc } = mountWithBody('<h2 id="user-content-top">T</h2><a href="#top">up</a>', onLink)
+    const link = doc.querySelector('a')
+    const view = doc.defaultView
+    if (link === null || view === null) throw new Error('no link')
+    const event = new view.MouseEvent('click', { bubbles: true, cancelable: true })
+    link.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(onLink).not.toHaveBeenCalled()
+  })
+
+  it('does not prefix a fragment that already carries the sanitizer prefix', () => {
+    const { doc } = mountWithBody('<a href="#user-content-x">up</a>', vi.fn())
+    expect(doc.querySelector('a')?.getAttribute('href')).toBe('about:srcdoc#user-content-x')
+  })
+
+  it('does not mistake an href that merely CONTAINS a fragment for a same-document one', () => {
+    const gate = vi.fn((_href: string, _info: MailLinkInfo) => false)
+    const { doc } = mountWithBody('<a href="https://a.test/p#top">out</a>', vi.fn(), gate)
+    expect(doc.querySelector('a')?.getAttribute('target')).toBe('_blank')
+    expect(gate.mock.calls[0]?.[0]).toBe('https://a.test/p#top')
   })
 
   /**

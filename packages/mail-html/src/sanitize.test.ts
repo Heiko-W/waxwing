@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { sanitize } from './sanitize'
+import { NAMED_PROP_PREFIX, sanitize } from './sanitize'
 
 /** No lowercase http/https URL survives anywhere in the output. */
 function hasNoRemoteUrl(html: string): boolean {
@@ -60,6 +60,17 @@ describe('sanitize — XSS corpus', () => {
     // SANITIZE_NAMED_PROPS prefixes clobbering names/ids so they cannot shadow document props.
     expect(html).not.toMatch(/\sname="body"/)
     expect(html).not.toMatch(/\sid="location"/)
+  })
+
+  /**
+   * R-37. `frame.ts` rewrites `href="#top"` to `#user-content-top` so an in-message anchor still
+   * lands on its renamed target. DOMPurify hardcodes that prefix instead of reading it from the
+   * config, so nothing but a real pass can tell us it is still the same string.
+   */
+  it('renames a named target with exactly the prefix frame.ts rewrites fragments to', () => {
+    const { html } = sanitize('<h2 id="top">T</h2><a name="mark">m</a>')
+    expect(html).toContain(`id="${NAMED_PROP_PREFIX}top"`)
+    expect(html).toContain(`name="${NAMED_PROP_PREFIX}mark"`)
   })
 
   it('forbids <base> injection', () => {

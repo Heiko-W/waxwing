@@ -1683,7 +1683,9 @@ mitgehen.
 
 ### R-37 — [MEDIUM] Sprungmarken innerhalb der Mail (`<a href="#top">`) werden gegen den App-Origin aufgelöst, freigegeben und öffnen die App in einem neuen Tab
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+
+**Abweichung:** Der Loesungsansatz (Fragment auf `#user-content-…` umschreiben, Klick nicht abfangen) haette den Befund verschlimmert. Im echten Browser gemessen (Chromium 1234, WebKit 2311): in einem `srcdoc`-Frame ist die Dokument-URL `about:srcdoc`, die BASIS-URL aber die des Einbetters — ein blankes `#top` ist deshalb keine Fragmentnavigation, sondern laedt in BEIDEN Engines die App in den Frame und ersetzt die Nachricht. Umgeschrieben wird jetzt auf `about:srcdoc#user-content-…`; damit unterscheidet sich die Ziel-URL nur im Fragment, beide Engines scrollen nativ, und "scroll to the fragment" wandert aus dem Frame in den Scrollcontainer der App (gemessen: Lesebereich 8681 → 236 px). Kein JS im `onClick` noetig — das haette auf WebKit ohnehin nicht funktioniert. Nicht behoben bleibt `href="#"` bzw. ein Fragment ohne Ziel: das scrollt nun nichts mehr, statt die App in einem zweiten Tab zu oeffnen.
 
 **Kategorie / Bereich:** correctness / Lib (mail-html)
 
