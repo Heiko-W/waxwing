@@ -29,7 +29,7 @@
     "reading": {
       "title": "Leesvenster",
       "empty": "Kies een bericht om het te lezen.",
-      "back": "Terug naar de berichten"
+      "back": "Terug naar de berichten: {{target}}"
     },
     "notFound": {
       "title": "Pagina niet gevonden",

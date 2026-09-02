@@ -29,7 +29,7 @@
     "reading": {
       "title": "Lesebereich",
       "empty": "Wählen Sie eine Nachricht zum Lesen aus.",
-      "back": "Zurück zu den Nachrichten"
+      "back": "Zurück zu den Nachrichten: {{target}}"
     },
     "notFound": {
       "title": "Seite nicht gefunden",

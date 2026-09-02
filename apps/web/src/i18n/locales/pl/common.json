@@ -29,7 +29,7 @@
     "reading": {
       "title": "Czytanie",
       "empty": "Wybierz wiadomość, aby ją przeczytać.",
-      "back": "Powrót do wiadomości"
+      "back": "Powrót do wiadomości: {{target}}"
     },
     "notFound": {
       "title": "Nie znaleziono strony",

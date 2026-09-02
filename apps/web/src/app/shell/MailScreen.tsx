@@ -345,12 +345,16 @@ export function MailScreen() {
    * The long sentence stays as the accessible name. A screen-reader user gets "Zurück zu den
    * Nachrichten: Posteingang" — the action and the target; a sighted reader gets "‹ Posteingang".
    * `listTitle` is the same string the list's own heading uses, so the two cannot disagree.
+   *
+   * The colon is INSIDE the translation (R-50's rule), because it is not layout: French sets a
+   * narrow no-break space before one and Japanese and Chinese use a full-width `：`, neither of
+   * which a template literal in the JSX can express.
    */
   const readingBar = (
     <Button
       variant="ghost"
       onClick={backToList}
-      aria-label={`${t('shell.reading.back')}: ${listTitle}`}
+      aria-label={t('shell.reading.back', { target: listTitle })}
     >
       <ChevronLeft aria-hidden="true" />
       <span className={styles.backTarget}>{listTitle}</span>

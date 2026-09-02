@@ -29,7 +29,7 @@
     "reading": {
       "title": "Čtení",
       "empty": "Vyberte zprávu, kterou si chcete přečíst.",
-      "back": "Zpět na zprávy"
+      "back": "Zpět na zprávy: {{target}}"
     },
     "notFound": {
       "title": "Stránka nenalezena",
