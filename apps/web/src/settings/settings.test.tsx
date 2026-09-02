@@ -85,11 +85,17 @@ async function openSection(user: ReturnType<typeof userEvent.setup>, name: strin
 
 const estimate: EstimateFn = async () => ({ usage: 40 * 1024 * 1024, quota: 200 * 1024 * 1024 })
 
-/** A completed forced pass that freed `bytes`, in the shape `StorageSection` consumes. */
-function freed(bytes: number): () => Promise<MaintenanceOutcome> {
+/**
+ * A completed forced pass that freed `bytes`, in the shape `StorageSection` consumes.
+ *
+ * `planned` is the eviction stage's own figure and is deliberately DIFFERENT: it counts rows the
+ * pass may never have deleted and no pruned envelopes at all, which is why `MaintenanceResult`
+ * carries a top-level `freedBytes` beside it and why that is the one a screen may report.
+ */
+function freed(bytes: number, planned = 0): () => Promise<MaintenanceOutcome> {
   return async () => ({
     status: 'ran',
-    result: { evicted: { freedBytes: bytes } } as unknown as MaintenanceResult,
+    result: { freedBytes: bytes, evicted: { freedBytes: planned } } as unknown as MaintenanceResult,
   })
 }
 
@@ -538,6 +544,23 @@ describe('Settings — Offline & storage (M3.4)', () => {
     await user.click(await screen.findByRole('button', { name: 'Free up space now' }))
 
     expect(await screen.findByText('Nothing to free up')).toBeInTheDocument()
+  })
+
+  /*
+   * The number is the one that was ACTUALLY reclaimed, not the eviction stage's plan. The plan
+   * counts rows a failing delete chunk may never have removed and no pruned envelopes at all — so
+   * a pass that dropped five thousand aged-out envelopes and evicted no bodies planned zero, and
+   * the screen answered "Nothing to free up" right after freeing 5 MB. Same wrong number as R-87,
+   * from its second source; `maintenance.ts` says exactly this at the line that computes it.
+   */
+  it('"Free up space" reports what was freed, not what the eviction stage planned', async () => {
+    const user = userEvent.setup()
+    renderStorage({ freeUpSpace: freed(5 * 1024 * 1024, 0) })
+
+    await user.click(await screen.findByRole('button', { name: 'Free up space now' }))
+
+    expect(await screen.findByText('Freed 5 MB')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing to free up')).not.toBeInTheDocument()
   })
 
   /**
