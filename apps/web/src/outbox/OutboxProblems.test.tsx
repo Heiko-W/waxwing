@@ -10,6 +10,7 @@ import {
   type ReplicaDb,
   ReplicaProvider,
 } from '../sync'
+import { getDispatchFailureAt, resetDispatchFailure } from '../sync/dispatch-failure'
 import { clearEngines, INITIAL_ENGINE_STATUS, setActiveEngine, setEngineFor } from '../sync/engine'
 import { setEngineStatus } from '../sync/engine/status'
 import { freshDb, mailbox } from '../sync/test-utils'
@@ -179,6 +180,34 @@ describe('OutboxProblemsDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Discard all' }))
     expect(discardAllFailed).toHaveBeenCalledTimes(1)
+  })
+
+  /*
+   * The three buttons are called fire-and-forget — `void retry(row.id)` — and each of them is an
+   * IndexedDB transaction (plus, for `discardFailed`'s owed-undo branch, a network round trip). A
+   * rejection went to the console and nowhere else, on the one surface whose whole purpose is that
+   * a failed action is never silent. Reported through R-10's channel, which is also the only way
+   * the conflict TOAST's copy of these calls can be covered: it has no `catch` either.
+   */
+  it.each([
+    ['Try again', () => retryFailed],
+    ['Discard', () => discardFailed],
+    ['Discard all', () => discardAllFailed],
+  ])('reports a %s that the engine refused', async (label, failing) => {
+    resetDispatchFailure()
+    failing().mockRejectedValueOnce(new Error('QuotaExceededError'))
+    await enqueue(
+      db,
+      deadLetter('i1', {
+        conflict: { code: 'forbidden', errorType: 'forbidden', detail: null, ids: ['e1'], at: 1 },
+      }),
+    )
+    const user = await openDialog()
+
+    await user.click(await screen.findByRole('button', { name: label }))
+
+    await waitFor(() => expect(getDispatchFailureAt()).toBeGreaterThan(0))
+    resetDispatchFailure()
   })
 })
 

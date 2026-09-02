@@ -87,8 +87,16 @@ export function useSnooze(): SnoozeActions {
     (ids: readonly string[], wakeAt: Date): void => {
       if (replica === null || ids.length === 0) return
       setKeyword(ids, true)
-      void updateSnoozeMap(replica.db, replica.accountId, (current) =>
-        withSnoozed(current, ids, wakeAt.getTime()),
+      // Reported, not `void`ed. This is the same IndexedDB write `setKeyword` above already routes
+      // through `dispatchOrReport` (W-10/R-10), one line down and with a sharper failure: the
+      // keyword half succeeded, so the message is HIDDEN, and a lost wake time means the waker —
+      // which only wakes ids it finds in the map — never brings it back. `backfill.ts` filters a
+      // `$snoozed` message out of every folder window, so it was reachable only through search,
+      // for good, with nothing on screen and only a console line to say so.
+      dispatchOrReport(
+        updateSnoozeMap(replica.db, replica.accountId, (current) =>
+          withSnoozed(current, ids, wakeAt.getTime()),
+        ),
       )
     },
     [replica, setKeyword],
@@ -98,7 +106,12 @@ export function useSnooze(): SnoozeActions {
     (ids: readonly string[]): void => {
       if (replica === null || ids.length === 0) return
       setKeyword(ids, false)
-      void updateSnoozeMap(replica.db, replica.accountId, (current) => withoutIds(current, ids))
+      // The mirror image, and the milder half: a lost removal leaves a stale map entry, which the
+      // waker retries harmlessly. Reported all the same — a write that failed is a write the user
+      // is entitled to hear about, and a silent one here is how the snooze half above went unseen.
+      dispatchOrReport(
+        updateSnoozeMap(replica.db, replica.accountId, (current) => withoutIds(current, ids)),
+      )
     },
     [replica, setKeyword],
   )

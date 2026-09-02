@@ -31,6 +31,7 @@ import {
   failedOutboxForAccounts,
   mailboxesForAccount,
   type OutboxRow,
+  reportDispatchFailure,
   useReplica,
   useReplicaQuery,
 } from '../sync'
@@ -110,26 +111,50 @@ export function useOutboxProblems(): OutboxProblems {
     [rows],
   )
 
+  /*
+   * Every one of the three is called fire-and-forget (`void retry(row.id)` in the dialog, `void (… ?
+   * retry : discard)(…)` in the toast), and none of them could reject without the rejection landing
+   * in the console and nowhere else. That is the exact silence W-10/R-10 closed for `dispatch`, on
+   * the surface whose entire reason for existing is "never silent data loss": these three are
+   * IndexedDB transactions plus, inside `discardFailed`'s owed-undo branch, a network round trip.
+   *
+   * Reported through the same channel rather than caught at each call site: the failure is "that
+   * action was not carried out", which is what the dispatch notifier already says and what is true
+   * here — a refused retry leaves the dead letter listed, a refused discard leaves it listed too.
+   * Catching here also covers the toast, which has no `catch` and cannot grow one usefully.
+   */
   const retry = useCallback(
     async (id: Id) => {
-      await engineForRow(id)?.retryFailed(id)
+      try {
+        await engineForRow(id)?.retryFailed(id)
+      } catch (error) {
+        reportDispatchFailure(error)
+      }
     },
     [engineForRow],
   )
   const discard = useCallback(
     async (id: Id) => {
-      await engineForRow(id)?.discardFailed(id)
+      try {
+        await engineForRow(id)?.discardFailed(id)
+      } catch (error) {
+        reportDispatchFailure(error)
+      }
     },
     [engineForRow],
   )
   const discardAll = useCallback(async () => {
     // Every contributing account's engine, not just the acting one: "discard all" over a list that
     // shows N accounts must clear the list the user is looking at.
-    await Promise.all(
-      [...new Set((rows ?? []).map((row) => row.accountId))].map(
-        async (id) => await getEngineFor(id)?.discardAllFailed(),
-      ),
-    )
+    try {
+      await Promise.all(
+        [...new Set((rows ?? []).map((row) => row.accountId))].map(
+          async (id) => await getEngineFor(id)?.discardAllFailed(),
+        ),
+      )
+    } catch (error) {
+      reportDispatchFailure(error)
+    }
   }, [rows])
 
   return {
