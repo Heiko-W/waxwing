@@ -48,8 +48,8 @@ die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Mu
 > **Stand 04.09.2026: 110 der 112 Befunde sind abgeschlossen** — 109 behoben, einer (R-27) als
 > Eigentümerentscheidung entschieden. Elf Themen-Branches mit je einem Pull Request (#56 bis #66),
 > ein Commit je Befundgruppe, jeder Fix mit Regressionstest und Mutationsprobe (Fix entfernt ⇒
-> Test rot). Die Testsuite ist dabei von 5304 auf 5832 Tests gewachsen, das Bundle von 288,4 auf
-> 292,33 KB gz (Grenze 300).
+> Test rot). Die Testsuite ist dabei von 5304 auf 5836 Tests gewachsen, das Bundle von 288,4 auf
+> 292,36 KB gz (Grenze 300).
 >
 > **R-27 ist entschieden, nicht behoben** (04.09.2026): *lieber ein seltenes Duplikat als ein
 > häufiger Falschfehler.* JMAP bietet keinen Idempotenzschlüssel für Creates, und jeder heute
@@ -77,10 +77,12 @@ die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Mu
 > Was bei der Abarbeitung neu aufgefallen war, steht unten als **N-01 bis N-10** — **inzwischen
 > alle zehn erledigt**, in zwei aufeinander gestapelten Branches (Compose: N-01 bis N-03, PR #69;
 > PIM/UI: N-04 bis N-08 und N-10). N-09 war schon nebenbei behoben, acht weitere Nebenbefunde
-> bereits im ersten Durchgang. Beim Abarbeiten der Nebenbefunde sind vier weitere aufgefallen und
+> bereits im ersten Durchgang. Beim Abarbeiten der Nebenbefunde sind sechs weitere aufgefallen und
 > mitbehoben worden (eine stehen gebliebene Outbox-Zeile nach bestätigtem Send, der
 > Klartext-Editor, der einer externen Body-Änderung nicht folgte, ein nicht erschöpfender
-> `DraftSyncStatus`-Guard und eine fünfte `__proto__`-Stelle im Kalender).
+> `DraftSyncStatus`-Guard, eine fünfte `__proto__`-Stelle im Kalender, ein Kontaktimport, der
+> mittendrin abbrach ohne es zu sagen, und die Liste geplanter Sendungen, die nach einer
+> Wiederverbindung auf ihrer Fehlermeldung sitzen blieb).
 
 ## Zusammenfassung
 
