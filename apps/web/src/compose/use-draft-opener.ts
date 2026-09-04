@@ -101,7 +101,13 @@ async function adoptServerDraft(
       accountId,
       localId,
       serverEmailId,
-      status: 'pending',
+      // `synced`, not `pending`: this row was written to CARRY the server id, and its content is a
+      // copy of what the server already has — nothing is owed (N-02). `pending` claimed an
+      // outstanding write that did not exist, and the unchanged-guard in `flushDraft` (R-12) tests
+      // for `synced`, so it did not fire on the FIRST close: opening a draft and closing it again
+      // without touching it spent a `create` + `destroy` round trip on the most ordinary thing a
+      // person does with the Drafts folder. See {@link DraftSyncStatus} for what each value means.
+      status: 'synced',
       content: serializeDraft(draft),
       createdAt: now,
       updatedAt: now,

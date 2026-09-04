@@ -2605,9 +2605,78 @@ async function reconcileSend(
   intent: OutboxIntent,
   result: PortSetResult,
 ): Promise<void> {
-  if (intent.kind !== 'sendEmail') return
-  if (!result.created[intent.submissionCreationId]) return
+  if (!isConfirmedSend(intent, result)) return
   await deleteDraft(db, accountId, intent.localId)
+}
+
+/**
+ * The message is GONE — the server created the `EmailSubmission` and owns it now.
+ *
+ * One predicate, three readers ({@link reconcileSend}, {@link reconcileSendRemainder} and the
+ * confirmed-send guard in {@link replayOutbox}), because they must not be able to disagree: two of
+ * them decide to drop local state, and the third decides that no failure may be reported afterwards.
+ */
+function isConfirmedSend(
+  intent: OutboxIntent,
+  result: PortSetResult,
+): intent is Extract<OutboxIntent, { kind: 'sendEmail' }> {
+  return intent.kind === 'sendEmail' && result.created[intent.submissionCreationId] !== undefined
+}
+
+/**
+ * The REST a SUCCESSFUL send leaves behind (N-01, ADR-039).
+ *
+ * `submitEmail` is ONE request with two calls, and only the submission half decides success. The
+ * sibling `Email/set` can still have refused part of its work: the prior autosaved draft it was told
+ * to destroy, and the reply/forward flag on the source message. Both used to be dropped before any
+ * caller could see them — the mail went out, the old draft stayed in the Drafts folder on every
+ * device (one more per send, on an account whose destroys are refused), and the replica showed a
+ * reply arrow the server had never been told about.
+ *
+ * Neither is a failed send, and neither may be turned into one: an `EmailSubmission` is not
+ * idempotent, so a dead letter here would invite a retry that delivers the message a second time.
+ * The send therefore completes, and its remainder is finished separately:
+ *
+ *  - a draft the server would not destroy is re-queued as an ordinary `discardDraft`, under the
+ *    FINISHED row's own id — the same trick {@link reconcileDraftSave} uses, so it coalesces with
+ *    whatever replaces that row and `deleteIfUnchanged` leaves the new row alone. If that destroy is
+ *    refused too, the draft is visible in Drafts and the discard dead-letters saying exactly that:
+ *    the honest end state, and one the user can act on. It is never an error about the sent mail.
+ *  - a refused source flag is rolled BACK from the row's persisted undo, exactly as a REJECTED send
+ *    rolls it back. Re-queuing the patch is the alternative and it is worse: it failed for a reason
+ *    that will not change (the source is gone, or the account may not write it), and a dead letter
+ *    about a reply arrow is noise about something the user never asked for. `$answered` is
+ *    decoration — but claiming it while the server disagrees is the one thing not allowed.
+ *
+ * `notFound` on the destroy is NOT a leftover: the prior draft is already gone, which is the goal
+ * (the same exclusion {@link rejections} makes for `saveDraft`).
+ */
+async function reconcileSendRemainder(
+  db: ReplicaDb,
+  port: JmapPort,
+  accountId: Id,
+  intent: OutboxIntent,
+  result: PortSetResult,
+  row: OutboxRow,
+  now: number,
+): Promise<void> {
+  if (!isConfirmedSend(intent, result)) return
+  const source = intent.source
+  const undo = row.undo ?? null
+  if (source !== null && undo !== null && result.emailNotUpdated?.[source.emailId] !== undefined) {
+    // The `keywords` undo is a local Dexie write — the arm of `applyUndo` that cannot throw.
+    await applyUndo(db, port, accountId, intent, undo, [source.emailId])
+  }
+  const prior = intent.priorServerId
+  if (prior === null) return
+  const refused = result.emailNotDestroyed?.[prior]
+  if (refused === undefined || refused.type === 'notFound') return
+  await enqueueAction(
+    db,
+    accountId,
+    { kind: 'discardDraft', localId: intent.localId, serverEmailId: prior },
+    { id: row.id, now },
+  )
 }
 
 /** Mark the local drafts row `error` when a send was rejected (M2.8) — the notifier reopens it. */
@@ -3090,13 +3159,46 @@ export async function replayOutbox(
     // ---- a response came back: classify it per REJECTED OBJECT ----
     const failures = rejections(intent, result)
     if (failures.size === 0) {
-      await reconcileCreate(db, accountId, intent, result)
-      await reconcileContactCardCreate(db, accountId, intent, result)
-      await reconcileAddressBookCreate(db, accountId, intent, result)
-      await reconcileDraftSave(db, accountId, intent, result, row.id, now)
-      await reconcileSend(db, accountId, intent, result)
+      /*
+       * Once a submission is CONFIRMED, removing the row outranks every piece of local bookkeeping
+       * that follows it.
+       *
+       * All of that bookkeeping is IndexedDB, and IndexedDB fails: a quota abort, a database
+       * closed by a "clear site data" in another tab, an upgrade blocked by an older tab. A throw
+       * anywhere in this group used to leave the row `inflight`, and the next pass's
+       * {@link recoverStranded} then dead-lettered it as `sendInterrupted` and stamped the drafts
+       * row `error`/`send`: "sending failed, check your Sent folder" and a reopened composer, for
+       * a message the server had already accepted. That is the worst statement this app can make
+       * about a send — it is false, the user cannot verify it cheaply, and the obvious response to
+       * it (send again) delivers the mail twice.
+       *
+       * So a confirmed send always reaches its `deleteIfUnchanged`, and what did not finish stays
+       * unfinished: the local drafts row survives as an invisible `sending` row (crash-restore
+       * skips it; the sent copy arrives by delta anyway), and the N-01 follow-up discard is simply
+       * not queued. Both are recoverable; a phantom failure is not. The error itself is NOT
+       * swallowed — it is re-thrown after the row is gone, into the same channel every other
+       * replay failure uses (`Engine.reportError` → error phase + a scheduled retry).
+       */
+      let unfinished: unknown
+      try {
+        await reconcileCreate(db, accountId, intent, result)
+        await reconcileContactCardCreate(db, accountId, intent, result)
+        await reconcileAddressBookCreate(db, accountId, intent, result)
+        await reconcileDraftSave(db, accountId, intent, result, row.id, now)
+        await reconcileSend(db, accountId, intent, result)
+        // BEFORE the delete: the follow-up discard is queued under this row's id, and the seq bump
+        // is what makes `deleteIfUnchanged` step over it.
+        await reconcileSendRemainder(db, port, accountId, intent, result, row, now)
+      } catch (error) {
+        // Only a confirmed send earns this. Every other intent is idempotent (or is the create
+        // family, whose re-send problem is ADR-038's, not this branch's), so leaving its row
+        // `inflight` for `recoverStranded` to return to `pending` remains the right answer.
+        if (!isConfirmedSend(intent, result)) throw error
+        unfinished = error
+      }
       await deleteIfUnchanged(db, accountId, row)
       replayed += 1
+      if (unfinished !== undefined) throw unfinished
       continue
     }
 

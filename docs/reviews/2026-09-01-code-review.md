@@ -4597,7 +4597,12 @@ Die Fundstellen sind gegen den Stand nach allen zehn Blöcken (`802e092`) geprü
 
 ### N-01 — [MEDIUM] Ein abgelehntes Löschen des Vorgänger-Entwurfs beim Senden ist unsichtbar
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`PortSetResult` trägt jetzt `emailNotDestroyed` UND `emailNotUpdated` aus dem Geschwister-`Email/set`;
+`reconcileSendRemainder` arbeitet sie auf dem ERFOLGS-Pfad ab: der stehen gebliebene Server-Entwurf
+wird als gewöhnlicher `discardDraft` unter der Id der fertigen Zeile nachgereiht (`notFound` ist kein
+Rest), das abgelehnte Quell-Flag wird aus dem persistierten Undo zurückgenommen. Kein Dead Letter —
+die Submission ist nicht idempotent. Begründung als [ADR-039](../adr/039-a-send-finishes-its-leftovers-it-never-fails-for-them.md).
 
 **Kategorie / Bereich:** correctness (stiller Datenverlust) / Compose
 
@@ -4632,7 +4637,14 @@ Fundstelle im aktuellen Stand nachgeprüft: `port.ts:388-389` gibt weiterhin nur
 
 ### N-02 — [LOW] Ein gerade geöffneter Server-Entwurf bekommt den Status `pending`, wodurch der R-12-Schutz beim ersten Schließen nicht greift
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+`adoptServerDraft` schreibt `status: 'synced'`. Die Semantik von `DraftSyncStatus` steht jetzt als
+Kommentar an der Typdefinition (`sync/db.ts`): der Wert ist eine Aussage über den INHALT dieser Zeile
+gegenüber der Server-Kopie, nie darüber, wie die Zeile entstanden ist — `synced` heißt „nichts
+offen“ und setzt eine `serverEmailId` voraus. Alle Leser geprüft: Crash-Restore überspringt die Zeile
+(der Text liegt im Entwürfe-Ordner), `flushDraft` spart den Roundtrip, `stampDraftError`/`retryFailed`
+setzen weiterhin `pending`/`error` und bleiben unberührt. Nebeneffekt: ein Server-Entwurf mit `bcc`
+verliert es beim reinen Öffnen und Schließen nicht mehr, weil gar nicht mehr geschrieben wird.
 
 **Kategorie / Bereich:** correctness / Compose
 
@@ -4662,7 +4674,19 @@ Stand nachgeprüft.
 
 ### N-03 — [LOW] Die Umwandlung nach Klartext normalisiert Leerraum und verliert im Klartextmodus Einrückungen
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Bewusst ANDERS gelöst als vorgeschlagen: ein globales `preserve: true` (also `preformatted` an der
+Wurzel) hätte auch den Leerraum FREMDER HTML-Mails erhalten — ein zitierter Reply im Klartextmodus
+hätte die Zeilenumbrüche und Einrückungen des Absender-Markups bekommen. Stattdessen markiert
+`plainTextToHtml` den Leerraum, den der Schreiber getippt hat (Einrückung und Läufe ab zwei Zeichen
+als `&nbsp;`, wie es jeder contenteditable-Editor tut), und `htmlToPlainText(html, {
+keepTypedWhitespace: true })` bringt genau den zurück; gewöhnlicher Leerraum wird weiterhin normalisiert.
+Zusätzlich war ein `<div><br></div>` — die Schreibweise für eine LEERZEILE — bisher komplett verschluckt:
+das ist jetzt in BEIDEN Modi eine Leerzeile. Aufrufer: Editor-Seed (2×) und, abweichend vom
+Lösungsansatz, der Sendepfad bei `plainText`-Entwürfen — dort ist der `text/plain`-Teil keine
+abgeleitete Alternative, sondern der Text selbst; alle übrigen Aufrufer (Mail-Alternative,
+Leer-Prüfung, Signatur, Abwesenheitsnotiz) normalisieren unverändert. Bekannte Grenze: ein TAB gilt
+weiter als Layout (dokumentiert an `ConvertOptions`).
 
 **Kategorie / Bereich:** correctness (Datenverlust beim Wechsel) / Compose
 

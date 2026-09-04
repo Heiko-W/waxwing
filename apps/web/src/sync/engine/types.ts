@@ -98,6 +98,19 @@ export interface PortSetResult {
    * already-destroyed prior — so a later save replaces it in place rather than duplicating.
    */
   readonly emailCreated?: ({ id: Id } & Record<string, unknown>) | null
+  /**
+   * Send only ({@link JmapPort.submitEmail}): the sibling `Email/set` REJECTIONS, which the
+   * submission result cannot carry (it is keyed by submission creation ids and knows nothing about
+   * the draft that was destroyed or the source message that was flagged).
+   *
+   * `emailNotDestroyed` names `destroyServerDraftId` when the server refused to remove the prior
+   * autosaved draft; `emailNotUpdated` names `sourceUpdate.id` when it refused the reply/forward
+   * flag. Both are dropped on the floor without this (N-01) — the mail goes out, the old draft stays
+   * in Drafts forever and the replica claims a `$answered` the server never set. Empty records when
+   * everything landed; absent from every other `/set` (there is no sibling call there).
+   */
+  readonly emailNotDestroyed?: Record<Id, PortSetError>
+  readonly emailNotUpdated?: Record<Id, PortSetError>
 }
 
 export interface EmailQuerySpec {

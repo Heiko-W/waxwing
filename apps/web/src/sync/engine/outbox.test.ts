@@ -1,5 +1,5 @@
 import { type EmailCreate, type EmailFilter, JmapHttpError, JmapMethodError } from '@waxwing/jmap'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DraftRow, EmailEnvelopeInput, OutboxRow, QueryCacheRow, ReplicaDb } from '../db'
 import {
   emailsInMailbox,
@@ -4387,6 +4387,158 @@ describe('outbox — sendEmail (M2.8)', () => {
     expect(errored?.serverEmailId).toBe('new-draft')
     expect(errored?.status).toBe('error')
     expect(errored?.errorKind).toBe('send')
+  })
+
+  // ── N-01: the remainder of a SUCCESSFUL send ────────────────────────────────────────────────
+  // The submission landed, so the row is a success and must never dead-letter (a re-sent
+  // EmailSubmission delivers twice). What the sibling Email/set refused is finished separately.
+
+  it('confirmed send: queues a discard for the prior draft the server refused to destroy (N-01)', async () => {
+    await db.drafts.put(draftRow({ serverEmailId: 'old-draft' }))
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({
+          created: { 'sub-d1': { id: 'srv-sub' } },
+          emailNotDestroyed: { 'old-draft': { type: 'forbidden' } },
+        }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null, priorServerId: 'old-draft' }), {
+      id: 'send:d1',
+      now: 1,
+    })
+
+    const summary = await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    // The send SUCCEEDED — no dead letter, no error on the (now deleted) drafts row …
+    expect(summary.replayed).toBe(1)
+    expect(summary.failed).toBe(0)
+    expect(await db.drafts.get([ACC, 'd1'])).toBeUndefined()
+    // … but the draft the send left behind is queued for removal instead of forgotten.
+    const followUp = await row('send:d1')
+    expect(followUp?.status).toBe('pending')
+    expect(followUp?.payload).toEqual({
+      kind: 'discardDraft',
+      localId: 'd1',
+      serverEmailId: 'old-draft',
+    })
+
+    // …and the next pass actually destroys it.
+    let destroyed: readonly string[] | undefined
+    const cleanup = fakePort({
+      setEmails: async (args) => {
+        destroyed = args.destroy
+        return setResult({ destroyed: ['old-draft'] })
+      },
+    })
+    await replayOutbox(cleanup, db, ACC, { now: 2, random: NO_JITTER })
+    expect(destroyed).toEqual(['old-draft'])
+    expect(await row('send:d1')).toBeUndefined()
+  })
+
+  it('confirmed send: a prior draft that was already gone (notFound) queues nothing (N-01)', async () => {
+    await db.drafts.put(draftRow({ serverEmailId: 'old-draft' }))
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({
+          created: { 'sub-d1': { id: 'srv-sub' } },
+          emailNotDestroyed: { 'old-draft': { type: 'notFound' } },
+        }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ source: null, priorServerId: 'old-draft' }), {
+      id: 'send:d1',
+      now: 1,
+    })
+
+    await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    // "Already gone" IS the goal of a destroy — queueing a second one would only fail again.
+    expect(await row('send:d1')).toBeUndefined()
+  })
+
+  it('confirmed send: rolls back a source flag the server refused (N-01)', async () => {
+    await putEmails(db, ACC, [email('src-9', { keywords: {} })])
+    await db.drafts.put(draftRow())
+    const port = fakePort({
+      submitEmail: async () =>
+        setResult({
+          created: { 'sub-d1': { id: 'srv-sub' } },
+          emailNotUpdated: { 'src-9': { type: 'notFound' } },
+        }),
+    })
+    await enqueueAction(db, ACC, sendIntent(), { id: 'send:d1', now: 1 })
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({ $answered: true })
+
+    const summary = await replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })
+
+    // The mail was sent (a success), but the reply arrow was never set server-side — so the replica
+    // must not keep claiming it. No dead letter: the flag is decoration, the send is not.
+    expect(summary.replayed).toBe(1)
+    expect(summary.failed).toBe(0)
+    expect((await db.emails.get([ACC, 'src-9']))?.keywords).toEqual({})
+    expect(await row('send:d1')).toBeUndefined()
+    expect(await db.drafts.get([ACC, 'd1'])).toBeUndefined()
+  })
+
+  /**
+   * A confirmed send must never come back as a failure. Every reconcile after the submission is an
+   * IndexedDB write, and IndexedDB fails (quota, a database closed by "clear site data" in another
+   * tab, a blocked upgrade). A throw there used to leave the row `inflight`, and the NEXT pass's
+   * `recoverStranded` dead-lettered it as `sendInterrupted` with the drafts row stamped `send` —
+   * "sending failed, check your Sent folder" for a message the server had accepted, whose obvious
+   * remedy (send again) delivers it twice.
+   */
+  it('confirmed send: removes the row even when the local bookkeeping throws', async () => {
+    await putEmails(db, ACC, [email('src-9', { keywords: {} })])
+    await db.drafts.put(draftRow({ serverEmailId: 'old-draft' }))
+    const port = fakePort({
+      submitEmail: async () => setResult({ created: { 'sub-d1': { id: 'srv-sub' } } }),
+    })
+    await enqueueAction(db, ACC, sendIntent({ priorServerId: 'old-draft' }), {
+      id: 'send:d1',
+      now: 1,
+    })
+    // The first local write after the submission: dropping the draft's edit-state row.
+    vi.spyOn(db.drafts, 'delete').mockRejectedValueOnce(new Error('DatabaseClosedError'))
+
+    // The failure is NOT swallowed — it reaches the engine's error channel like any other …
+    await expect(replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })).rejects.toThrow(
+      'DatabaseClosedError',
+    )
+    // … but the row is gone, so nothing can mistake this send for one that never happened.
+    expect(await row('send:d1')).toBeUndefined()
+
+    // The proof: a following pass (which opens with `recoverStranded`) has nothing to strand.
+    const summary = await replayOutbox(port, db, ACC, { now: 2, random: NO_JITTER })
+    expect(summary.failed).toBe(0)
+    expect(await failedOutbox(db, ACC)).toEqual([])
+    expect((await db.drafts.get([ACC, 'd1']))?.status).not.toBe('error')
+  })
+
+  it('a NON-send whose reconcile throws keeps its row for the recovery path', async () => {
+    // The counter-test: only a confirmed send earns the guarantee above. Everything else is
+    // idempotent, so leaving the row `inflight` for `recoverStranded` is still right.
+    await db.drafts.put(draftRow({ status: 'pending' }))
+    await enqueueAction(
+      db,
+      ACC,
+      {
+        kind: 'saveDraft',
+        localId: 'd1',
+        creationId: 'c1',
+        priorServerId: null,
+        email: emailCreate,
+      },
+      { id: 'draft:d1', now: 1 },
+    )
+    const port = fakePort({
+      setEmails: async () => setResult({ created: { c1: { id: 'srv-1' } } }),
+    })
+    vi.spyOn(db.drafts, 'get').mockRejectedValueOnce(new Error('DatabaseClosedError'))
+
+    await expect(replayOutbox(port, db, ACC, { now: 1, random: NO_JITTER })).rejects.toThrow(
+      'DatabaseClosedError',
+    )
+    expect((await row('draft:d1'))?.status).toBe('inflight')
   })
 
   it('does not replay before the undo-send grace (notBefore) elapses', async () => {

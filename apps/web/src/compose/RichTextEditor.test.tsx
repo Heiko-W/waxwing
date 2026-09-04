@@ -1,10 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef, useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { expectNoA11yViolations } from '../test/axe'
 import type { EditorEngine, EditorFactory } from './editor-engine'
-import { htmlToPlainText } from './html-to-text'
+import { htmlToPlainText, plainTextToHtml } from './html-to-text'
 import { RichTextEditor, type RichTextEditorHandle } from './RichTextEditor'
 
 /** A fake {@link EditorEngine} — jsdom has no real contenteditable/selection, so the wrapper is
@@ -196,8 +196,27 @@ describe('RichTextEditor', () => {
     const textarea = screen.getByRole('textbox', { name: 'Message body' })
     expect(textarea.tagName).toBe('TEXTAREA')
     expect((textarea as HTMLTextAreaElement).value).toBe(
-      htmlToPlainText('<p>Hello</p><p>World</p>'),
+      htmlToPlainText('<p>Hello</p><p>World</p>', { keepTypedWhitespace: true }),
     )
+  })
+
+  /**
+   * N-03. The seed used to run through the MAIL-alternative rules, which collapse whitespace the way
+   * HTML rendering does. Everything that put someone back on this surface — a mode switch, minimize
+   * and restore, a reload — therefore flattened their indentation, their aligned columns and their
+   * blank lines, silently and with no way back.
+   */
+  it('seeds the plain surface with the whitespace the writer typed', async () => {
+    const user = userEvent.setup()
+    const typed = 'def foo():\n    return 1\n\nGruß'
+    const body = plainTextToHtml(typed)
+    const { fake } = renderEditor(body)
+    await whenReady(fake, body)
+
+    await user.click(screen.getByRole('button', { name: 'Plain text' }))
+
+    const textarea = screen.getByRole('textbox', { name: 'Message body' }) as HTMLTextAreaElement
+    expect(textarea.value).toBe(typed)
   })
 
   /**
@@ -257,6 +276,79 @@ describe('RichTextEditor', () => {
       expect(onPlainTextToggle).toHaveBeenCalledWith(false)
       // The owner did not flip it, so the surface must not flip either (controlled).
       expect(screen.getByRole('textbox', { name: 'Message body' }).tagName).toBe('TEXTAREA')
+    })
+  })
+
+  /**
+   * Nebenbefund 2. The body is not written by the editor alone: picking another identity swaps the
+   * signature, the default identity seeds one when the identities finally load, and "Insert
+   * template" appends to it. The plain surface ignored every one of those — the textarea kept its
+   * old text, so the change was invisible, and the next keystroke (or `send`'s flush) wrote the
+   * stale text back over it.
+   */
+  describe('plain-text mode follows an external body change', () => {
+    function renderControlled(initial: string) {
+      const fake = createFakeEngine()
+      const onChange = vi.fn()
+      const ref: { current: RichTextEditorHandle | null } = { current: null }
+      let external: (html: string) => void = () => undefined
+      function Owner() {
+        const [body, setBody] = useState(initial)
+        external = setBody
+        return (
+          <RichTextEditor
+            ref={ref}
+            value={body}
+            onChange={(html) => {
+              onChange(html)
+              setBody(html)
+            }}
+            plainText
+            onPlainTextToggle={() => undefined}
+            ariaLabel="Message body"
+            factory={() => Promise.resolve(fake)}
+          />
+        )
+      }
+      render(<Owner />)
+      const textarea = (): HTMLTextAreaElement =>
+        screen.getByRole('textbox', { name: 'Message body' }) as HTMLTextAreaElement
+      return {
+        onChange,
+        ref,
+        textarea,
+        setBodyExternally: (html: string) => {
+          act(() => external(html))
+        },
+      }
+    }
+
+    it('shows the swapped signature, and flushes THAT rather than the stale text', () => {
+      const swapped = 'Hallo\n\nViele Grüße\nNeue Signatur'
+      const { setBodyExternally, textarea, ref, onChange } = renderControlled(
+        plainTextToHtml('Hallo'),
+      )
+      expect(textarea().value).toBe('Hallo')
+
+      setBodyExternally(plainTextToHtml(swapped))
+
+      expect(textarea().value).toBe(swapped)
+      ref.current?.flush()
+      expect(onChange).toHaveBeenLastCalledWith(plainTextToHtml(swapped))
+    })
+
+    it('never overwrites text that is still being typed', async () => {
+      const { setBodyExternally, textarea, onChange } = renderControlled(plainTextToHtml('Hallo'))
+
+      // A keystroke arms the 200 ms debounce, so the owner does not have this text yet …
+      fireEvent.change(textarea(), { target: { value: 'Hallo!' } })
+      // … and an external change computed WITHOUT it must not be allowed to delete it.
+      setBodyExternally(plainTextToHtml('Hallo\n\nSignatur'))
+
+      expect(textarea().value).toBe('Hallo!')
+      await waitFor(() => expect(onChange).toHaveBeenCalledWith(plainTextToHtml('Hallo!')), {
+        timeout: 2000,
+      })
     })
   })
 
