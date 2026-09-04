@@ -72,6 +72,20 @@ export interface ReconcileDeps {
   readonly permission: 'unsupported' | 'default' | 'granted' | 'denied'
   /** Does the SERVER advertise RFC 9749? Unknown (false) while the session is still loading. */
   readonly serverSupports: boolean
+  /**
+   * Does the device believe it has a connection? Defaults to `true` when omitted.
+   *
+   * Reconciling is a sequence of AUTHENTICATED JMAP writes, so with no network every one of them
+   * fails and the pass reports `failed` — correct, and pure waste. It used to be a rare accident
+   * (a session that lost its connection mid-life, between two dependency changes); since the
+   * FR-OFF-01 cold start it is the NORMAL state of an app opened on a train, where the host mounts
+   * with a full session and no server behind it.
+   *
+   * It is a "come back later", never a teardown, and it sits BELOW the explicit-no branch on
+   * purpose: switching notifications off must still take the browser subscription down, and
+   * `unsubscribe()` is local and works offline.
+   */
+  readonly online?: boolean
   /** Already translated — the worker cannot run i18next (ADR-017). */
   readonly title: string
   readonly body: string
@@ -220,8 +234,9 @@ export async function reconcilePushSubscription(deps: ReconcileDeps): Promise<Re
     return 'unsubscribed'
   }
 
-  // Everything below needs the pref loaded, a live client and a loaded session. Not having them is a
-  // "come back later", never a teardown.
+  // Everything below needs the pref loaded, a live client, a loaded session — and a network to
+  // reach it over. Not having them is a "come back later", never a teardown.
+  if (deps.online === false) return 'cannotAct'
   if (!deps.prefsLoaded) return 'cannotAct'
   if (deps.client === null || deps.session === null) return 'cannotAct'
   if (deps.permission !== 'granted') return 'cannotAct'
