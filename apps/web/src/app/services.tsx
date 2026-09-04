@@ -6,13 +6,29 @@
  * so the fakes are thin. Production wiring uses {@link defaultServices}.
  */
 
-import { connect } from '@waxwing/jmap'
+import type { AuthProvider, JmapClient, Session } from '@waxwing/jmap'
+import { connect, JmapClient as JmapClientImpl } from '@waxwing/jmap'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import { AuthController, DEFAULT_CLIENT_ID, DEFAULT_SCOPES, wipeLocalData } from '../auth'
 
 export interface ShellServices {
   /** `@waxwing/jmap` connect: `(input, AuthProvider, { fetch? }) => Promise<JmapClient>`. */
   readonly connect: typeof connect
+  /**
+   * The same client, from a Session document that was NOT just fetched (FR-OFF-01).
+   *
+   * `connect` is "fetch the session, then build a client"; this is the second half alone, for the
+   * offline cold start where the first half cannot happen. It is here beside `connect` rather than
+   * inlined because these two are one seam: a test that fakes one and not the other would have the
+   * offline path handing back a real client to code holding a fake one.
+   *
+   * `session` must already have been through `sessionFromStore` — this does no validation.
+   */
+  readonly clientFromSession: (
+    session: Session,
+    auth: AuthProvider,
+    sessionUrl: string,
+  ) => JmapClient
   /** Builds an OAuth-capable {@link AuthController} for a given issuer origin. */
   readonly makeAuthController: (issuer: string) => AuthController
   /** OAuth PKCE needs a secure context: `isSecureContext && crypto.subtle`. */
@@ -35,6 +51,8 @@ export interface ShellServices {
 
 export const defaultServices: ShellServices = {
   connect,
+  clientFromSession: (session, auth, sessionUrl) =>
+    new JmapClientImpl({ session, auth, sessionUrl }),
   makeAuthController: (issuer) =>
     new AuthController({ oauth: { issuer, clientId: DEFAULT_CLIENT_ID, scopes: DEFAULT_SCOPES } }),
   oauthIsAvailable: () =>

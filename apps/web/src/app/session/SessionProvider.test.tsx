@@ -35,6 +35,7 @@ function Consumer() {
       <span data-testid="reauth">{s.reauth?.method ?? 'none'}</span>
       <span data-testid="account">{s.connected?.username ?? ''}</span>
       <span data-testid="accounts">{s.connected?.accounts.map((a) => a.id).join(',') ?? ''}</span>
+      <span data-testid="offline">{String(s.connected?.offline ?? false)}</span>
       <span data-testid="error">{s.onboarding?.error?.key ?? ''}</span>
       <span data-testid="host">{s.onboarding?.target?.displayHost ?? ''}</span>
       <span data-testid="can-edit-server">{String(s.onboarding?.canEditServer ?? false)}</span>
@@ -71,14 +72,25 @@ function Consumer() {
 
 function renderSession(options: FakeServicesOptions = {}, config: WaxwingConfig = DEFAULT_CONFIG) {
   const fake = makeFakeServices(options)
-  render(
+  mountSession(fake, config)
+  return fake
+}
+
+/**
+ * Mount another cold start against services that already exist — a second launch of the same
+ * installed app, with whatever the first one left in the credential store (FR-OFF-01).
+ */
+function mountSession(
+  fake: ReturnType<typeof makeFakeServices>,
+  config: WaxwingConfig = DEFAULT_CONFIG,
+) {
+  return render(
     <ServicesProvider value={fake.services}>
       <SessionProvider config={config}>
         <Consumer />
       </SessionProvider>
     </ServicesProvider>,
   )
-  return fake
 }
 
 afterEach(() => {
@@ -978,5 +990,213 @@ describe('SessionProvider — a failed OAuth callback', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
     expect(currentReplicaName()).toBe(REPLICA_DB_NAME)
     expect(localStorage.getItem('waxwing.accounts')).toContain('alice')
+  })
+})
+
+/**
+ * THE OFFLINE COLD START (FR-OFF-01, R-78, ADR-041).
+ *
+ * The installed app is opened with no network. Everything is on the device — the credentials, the
+ * replica, the JMAP Session document — and until this shipped, the reader got the sign-in form
+ * with "Could not reach the server" on it, in front of a mailbox that was fully there.
+ *
+ * `origin` on the fake session is the app's own here, and that is not a harness detail: a stored
+ * document is re-validated against the URL the app connects to (`sessionFromStore`), because the
+ * four URLs in it are where the `Authorization` header goes.
+ */
+describe('SessionProvider — the offline cold start (FR-OFF-01)', () => {
+  const onLine = (value: boolean) =>
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value })
+
+  const sameOrigin = () =>
+    fakeJmapSession('acc-1', 'alice@waxwing.test', { origin: window.location.origin })
+
+  afterEach(() => onLine(true))
+
+  it('THE ONE: a second launch with no network opens the mailbox, not the sign-in form', async () => {
+    // The whole round trip, in the order it happens on a device: one connect that succeeds and
+    // stores its Session document, then a cold start with the plug pulled. Deliberately NOT a
+    // hand-written stored value — what the offline boot opens has to be what the connect actually
+    // wrote, or this test would pass against a provider that stores something else entirely.
+    const fake = makeFakeServices({ restore: fakeAuthSession('basic'), session: sameOrigin() })
+    const first = mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(screen.getByTestId('offline')).toHaveTextContent('false')
+    expect(fake.spies.rememberJmapSession).toHaveBeenCalledTimes(1)
+    first.unmount()
+
+    onLine(false)
+    fake.goOffline()
+    mountSession(fake)
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    expect(screen.getByTestId('account')).toHaveTextContent('alice@waxwing.test')
+    expect(screen.getByTestId('accounts')).toHaveTextContent('acc-1')
+    // Named honestly: the session came out of the store, and the reconnect reads exactly this.
+    expect(screen.getByTestId('offline')).toHaveTextContent('true')
+    // And the client was BUILT, not fetched — the connect was attempted and failed first.
+    expect(fake.spies.connect).toHaveBeenCalledTimes(2)
+    expect(fake.spies.clientFromSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the delegated accounts a share granted, because a dead probe is not a denial', async () => {
+    // `probeSharedAreas` cannot run offline, and `deriveDelegation` reads an absent verdict as
+    // "granted everywhere" — the rule `sharing/probe.ts` already states for a probe that did not
+    // answer. A rail that empties itself when the network drops is worse than one showing a
+    // section that turns out to be empty.
+    const fake = makeFakeServices({
+      restore: fakeAuthSession('basic'),
+      session: fakeJmapSession('acc-1', 'alice@waxwing.test', {
+        origin: window.location.origin,
+        shared: [{ id: 'shared-1', name: 'team@waxwing.test' }],
+      }),
+    })
+    const first = mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    first.unmount()
+
+    onLine(false)
+    fake.goOffline()
+    mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('offline')).toHaveTextContent('true'))
+    expect(screen.getByTestId('accounts').textContent).toBe('acc-1,shared-1')
+  })
+
+  it('reconnects on the `online` event and stops calling itself offline', async () => {
+    const fake = makeFakeServices({ restore: fakeAuthSession('basic'), session: sameOrigin() })
+    const first = mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    first.unmount()
+
+    onLine(false)
+    fake.goOffline()
+    mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('offline')).toHaveTextContent('true'))
+
+    onLine(true)
+    fake.goOnline()
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+
+    await waitFor(() => expect(screen.getByTestId('offline')).toHaveTextContent('false'))
+    // A whole connect, not a `refreshSession()`: `accounts` and `delegated` are re-derived, which
+    // is what the sidebar and the engine fleet read.
+    expect(fake.spies.connect).toHaveBeenCalledTimes(3)
+    expect(screen.getByTestId('status')).toHaveTextContent('ready')
+  })
+
+  it('stays offline, and stays quiet, when the reconnect fails too', async () => {
+    const fake = makeFakeServices({ restore: fakeAuthSession('basic'), session: sameOrigin() })
+    const first = mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('ready'))
+    first.unmount()
+
+    onLine(false)
+    fake.goOffline()
+    mountSession(fake)
+    await waitFor(() => expect(screen.getByTestId('offline')).toHaveTextContent('true'))
+
+    // The `online` event fires on a connection that is not actually usable — a captive portal, a
+    // train tunnel's edge. The reader must not be thrown back to a sign-in form for it.
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() => expect(fake.spies.connect).toHaveBeenCalledTimes(3))
+    expect(screen.getByTestId('status')).toHaveTextContent('ready')
+    expect(screen.getByTestId('offline')).toHaveTextContent('true')
+  })
+
+  it('shows the sign-in form when there is no stored document at all', async () => {
+    // The upgrade case, and the honest one: a device that signed in before this shipped has
+    // credentials and no document. Nothing to open, so nothing is claimed.
+    onLine(false)
+    renderSession({ restore: fakeAuthSession('basic'), connectError: new TypeError('fetch') })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.network')
+  })
+
+  it('refuses a document stored under a different connect URL, same origin or not', async () => {
+    // Same ORIGIN, different deployment: a pinned `sessionUrl` is an operator-editable path, and
+    // two JMAP servers behind one origin are two servers. The origin check in `sessionFromStore`
+    // cannot see this one, which is why the provenance is recorded and compared as well.
+    onLine(false)
+    const fake = renderSession({
+      restore: fakeAuthSession('basic'),
+      connectError: new TypeError('fetch'),
+      storedJmapSession: {
+        connectUrl: `${window.location.origin}/other/.well-known/jmap`,
+        document: sameOrigin(),
+      },
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(fake.spies.clientFromSession).not.toHaveBeenCalled()
+  })
+
+  it('refuses a stored document whose URLs have moved origin', async () => {
+    // Anything that can write to the store could otherwise nominate a host, and the first request
+    // after the network returned would carry the `Authorization` header to it.
+    onLine(false)
+    const fake = renderSession({
+      restore: fakeAuthSession('basic'),
+      connectError: new TypeError('fetch'),
+      storedJmapSession: { document: fakeJmapSession('acc-1', 'alice@waxwing.test') },
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(fake.spies.clientFromSession).not.toHaveBeenCalled()
+  })
+
+  it('refuses a stored document with no mail account left in it', async () => {
+    // Structurally a Session, on the right origin, and useless: the account this app reads mail
+    // from is gone. The message on the form stays the true one — the connect failed — rather than
+    // a verdict about a stored file the reader cannot see.
+    onLine(false)
+    renderSession({
+      restore: fakeAuthSession('basic'),
+      connectError: new TypeError('fetch'),
+      storedJmapSession: { document: { ...sameOrigin(), primaryAccounts: {} } },
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('status')).toHaveTextContent('onboarding')
+    expect(screen.getByTestId('error')).toHaveTextContent('onboarding.error.network')
+  })
+
+  it('does NOT open the replica when the browser says it is online (a captive portal)', async () => {
+    // The deliberate narrow reading. With the device claiming a connection, "could not reach
+    // {{host}}" is a fault the reader can act on — a portal to sign in to, a server that is down,
+    // a host that has moved. Opening a read-only replica would hide it behind a working-looking
+    // app, and no `online` event would ever come to end that state.
+    onLine(true)
+    const fake = renderSession({
+      restore: fakeAuthSession('basic'),
+      connectError: new TypeError('Failed to fetch'),
+      storedJmapSession: { document: sameOrigin() },
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(fake.spies.clientFromSession).not.toHaveBeenCalled()
+  })
+
+  it('does NOT open the replica for a server that answered — a 401 is not offline', async () => {
+    // The credentials have expired while the device was away. That is a sign-in, not an offline
+    // start, and showing the mailbox would promise a session that the first request will refuse.
+    onLine(false)
+    const fake = renderSession({
+      restore: fakeAuthSession('basic'),
+      connectError: new JmapProblemError({ type: 'about:blank', detail: 'Unauthorized' }, 401),
+      storedJmapSession: { document: sameOrigin() },
+    })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(fake.spies.clientFromSession).not.toHaveBeenCalled()
+  })
+
+  it('Basic without "stay signed in" gets the sign-in form, exactly as before (FR-AUTH-04)', async () => {
+    // There is no `restore()` on this path and there must not be one: no AuthRecord, therefore no
+    // stored document either (the controller's own guard). The sign-in form is the right answer,
+    // and it is the answer whether or not there is a network.
+    onLine(false)
+    const fake = renderSession({ restore: null })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(fake.spies.clientFromSession).not.toHaveBeenCalled()
+    expect(fake.spies.connect).not.toHaveBeenCalled()
   })
 })

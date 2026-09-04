@@ -87,6 +87,22 @@ export interface ConnectedSession {
   readonly delegated: readonly DelegatedAccount[]
   readonly username: string
   readonly method: AuthMethod
+  /**
+   * This session was rebuilt from the STORED Session document and the server has not been reached
+   * in this page load (FR-OFF-01, ADR-041) — the offline cold start.
+   *
+   * It says one thing only: everything derived from the Session document here is as old as that
+   * document. It is NOT the app's offline state and must not be used as one — that is
+   * `navigator.onLine`, via `useOnline()` / the engine's own copy, and it is already what the
+   * header, the outbox and every online-only control read. A session that goes offline an hour
+   * after signing in is `offline: false` and always will be; this flag is about where the
+   * document came from, not about the network right now.
+   *
+   * Exactly one thing reads it: the reconnect in {@link SessionProvider}, which re-runs the
+   * connect on the next `online` event and replaces this whole object with one built from a fresh
+   * document. `false` on every session that came off the network.
+   */
+  readonly offline: boolean
 }
 
 /** Overlay state while a hard re-auth is pending; the shell stays mounted underneath (FR-AUTH-06). */
