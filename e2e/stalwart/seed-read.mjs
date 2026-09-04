@@ -191,6 +191,56 @@ async function ensureArchiveMailbox(accountId) {
   ])
 }
 
+/**
+ * A folder with MORE MESSAGES THAN ONE WINDOW — the state "select all in folder" lives in.
+ *
+ * The list backfills 50 ids and pages the rest on scroll, so every folder in this corpus (ten
+ * messages in the Inbox) selects entirely with one tick and can never show the second step of
+ * select-all (FR-LST-04, R-08 stage 2). Sixty is the cheapest number that cannot: one `Email/set`,
+ * about a second, and a bar that reads "50 of 60 selected" with "Select all 60" beside it.
+ *
+ * `wread`-keyworded like everything else here, so `destroyExisting` reclaims it on the next reseed;
+ * the MAILBOX is kept and reused (`ensureMailbox`), which is what makes a reseed idempotent.
+ */
+export const READ_BULK = { folder: 'Bulk', count: 60, subject: (n) => `Bulk notice ${n}` }
+
+async function ensureMailbox(accountId, name) {
+  const list = await getMailboxes(accountId)
+  const existing = list.find((mailbox) => mailbox.name === name)
+  if (existing) return existing.id
+  const created = await jmap([
+    [
+      'Mailbox/set',
+      { accountId, create: { m: { name, parentId: null, isSubscribed: true } } },
+      '0',
+    ],
+  ])
+  const id = created.methodResponses[0][1].created?.m?.id
+  if (!id) throw new Error(`could not create the ${name} mailbox`)
+  return id
+}
+
+/** The 60 messages of {@link READ_BULK}, as one `Email/set` create map. */
+function bulkCreations(mailboxId, base) {
+  const create = {}
+  for (let index = 0; index < READ_BULK.count; index += 1) {
+    const number = String(index + 1).padStart(2, '0')
+    create[`b${number}`] = {
+      mailboxIds: { [mailboxId]: true },
+      // Read, so the folder does not add sixty to every unread badge the other suites read.
+      keywords: { [READ_KEYWORD]: true, $seen: true },
+      receivedAt: new Date(base - index * 60_000).toISOString(),
+      messageId: [`bulk-${number}@waxwing.test`],
+      from: [{ name: 'Bob Baker', email: bob() }],
+      to: [{ name: 'Alice Anderson', email: alice() }],
+      subject: READ_BULK.subject(number),
+      textBody: [{ partId: 't', type: 'text/plain' }],
+      bodyValues: { t: { value: `Routine notice number ${number}.` } },
+    }
+  }
+  return create
+}
+
 async function destroyExisting(accountId) {
   // Across ALL mailboxes: a prior run may have moved/trashed a `wread` mail, so an inbox-scoped
   // query would leave orphans behind and make reseeds non-deterministic.
@@ -480,7 +530,21 @@ export async function seedReadMail() {
     )
   }
 
-  return { accountId, inboxId, removed, created: created + 1 }
+  // The bulk folder, in one round trip. Its own `Email/set` rather than joining the map above: the
+  // corpus there is asserted message by message, and sixty routine notices in the same call would
+  // make a failure there report sixty-eight creations and one missing id.
+  const bulkId = await ensureMailbox(accountId, READ_BULK.folder)
+  const bulk = await jmap([['Email/set', { accountId, create: bulkCreations(bulkId, base) }, '0']])
+  const bulkCreated = Object.keys(bulk.methodResponses[0][1].created ?? {}).length
+  if (bulkCreated !== READ_BULK.count) {
+    throw new Error(
+      `expected ${READ_BULK.count} bulk messages, got ${bulkCreated}: ${JSON.stringify(
+        bulk.methodResponses[0][1].notCreated ?? {},
+      )}`,
+    )
+  }
+
+  return { accountId, inboxId, removed, created: created + 1 + bulkCreated }
 }
 
 /**

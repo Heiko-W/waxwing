@@ -1,5 +1,5 @@
-import { expect, type Page, test } from '@playwright/test'
-import { READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
+import { expect, type Locator, type Page, test } from '@playwright/test'
+import { READ_BULK, READ_SUBJECTS, seedReadMail } from '../stalwart/seed-read.mjs'
 import { revealPasswordForm, SYNC_BUDGET_MS } from './helpers'
 import { noOverflow } from './no-overflow'
 
@@ -47,6 +47,110 @@ async function openInbox(page: Page): Promise<void> {
   await expect(messageList(page).getByText(READ_SUBJECTS.plain)).toBeVisible({
     timeout: SYNC_BUDGET_MS,
   })
+}
+
+/** Open a folder the way a phone user does: through the drawer. */
+async function openFolder(page: Page, name: string, firstRow: string): Promise<void> {
+  await page.getByRole('button', { name: 'Show folders' }).click()
+  await page.getByRole('treeitem', { name: new RegExp(name) }).click()
+  await expect(messageList(page).getByText(firstRow, { exact: true })).toBeVisible({
+    timeout: SYNC_BUDGET_MS,
+  })
+}
+
+/**
+ * Select-all over a folder BIGGER than the loaded window, on a phone (FR-LST-04, R-08 stage 2).
+ *
+ * The bulk bar is where a second step is most likely to go wrong at this width: it does not wrap, it
+ * hands its tail to an overflow menu sized by measuring the room the actions have left, and the
+ * strings involved are the longest in it. So the step gets a ROW OF ITS OWN, and this measures the
+ * three things that can go wrong with that at 390px: nothing crosses the viewport edge in either
+ * state, the actions stay on one row, and the step really is BELOW the count rather than beside it.
+ *
+ * That last assertion is the one holding the design in place, and it is deliberately not the
+ * obvious one. "It does not overflow" cannot tell the two layouts apart: a step rendered INSIDE the
+ * bar does not overflow either, because `useActionOverflow` absorbs it — by taking an action off the
+ * bar and hiding it behind the ⋯. The bar copes and the reader pays, and no edge measurement sees
+ * it. (Measured while writing this: the actions have 242px beside a "1 selected" counter and 199px
+ * beside "50 of 60 selected", which is already one action behind the ⋯ — the counter's own cost,
+ * from stage 1, and the reason a text button in that line is not affordable.)
+ */
+test('the second step of select-all fits a phone, in both of its states', async ({ page }) => {
+  await openFolder(page, READ_BULK.folder, READ_BULK.subject('01'))
+
+  await messageList(page).getByRole('checkbox', { name: 'Select message' }).first().click()
+  await expect(page.getByText('1 selected')).toBeVisible()
+  expect(await actionRows(page), 'the actions start on one row').toBe(1)
+
+  await page.getByRole('checkbox', { name: 'Select all' }).click()
+
+  // The window is 50 of the folder's 60, and the bar says both numbers (stage 1)…
+  await expect(page.getByText(`50 of ${READ_BULK.count} selected`)).toBeVisible()
+  // …with the offer to close the gap beside it (stage 2), on its own row.
+  const step = page.getByRole('button', { name: `Select all ${READ_BULK.count}` })
+  await expect(step).toBeVisible()
+  await noOverflow(page, 'bulk bar offering the second step')
+  expect(await actionRows(page), 'the actions stay on one row').toBe(1)
+  await expectBelowTheCount(page, step)
+
+  await step.click()
+
+  await expect(page.getByText(`${READ_BULK.count} selected`, { exact: true })).toBeVisible()
+  // The way back is as visible as the way in — same place, same size, same row.
+  const back = page.getByRole('button', { name: 'Clear selection' })
+  await expect(back).toBeVisible()
+  await noOverflow(page, 'bulk bar over the whole folder')
+  expect(await actionRows(page), 'the actions stay on one row').toBe(1)
+  await expectBelowTheCount(page, back)
+
+  // And whatever the bar could not hold is still reachable, which is what makes "one row" honest.
+  await page.getByRole('button', { name: 'More actions for the selection' }).click()
+  const inMenu = await page
+    .getByRole('menuitem')
+    .evaluateAll((nodes) => nodes.map((node) => node.textContent ?? ''))
+  const inBar = await barActionNames(page)
+  for (const action of ['Archive', 'Move to Trash', 'Flag', 'Label', 'Mark as junk', 'Move to…']) {
+    const reachable = inBar.includes(action) || inMenu.some((item) => item.startsWith(action))
+    expect(reachable, `${action} is reachable somewhere`).toBe(true)
+  }
+})
+
+/** The step sits on its own row under the counter, not in the line the actions are measured from. */
+async function expectBelowTheCount(page: Page, step: Locator): Promise<void> {
+  const count = page.getByText(/(\d+ of )?\d+ selected/)
+  const [countBox, stepBox] = await Promise.all([count.boundingBox(), step.boundingBox()])
+  expect(stepBox?.y ?? 0, 'the step is beside the count, not under it').toBeGreaterThanOrEqual(
+    (countBox?.y ?? 0) + (countBox?.height ?? 0),
+  )
+}
+
+/** The bulk bar's action buttons — the ones drawn in the row, not the ones behind the ⋯. */
+function barActions(page: Page) {
+  return page.getByRole('button', {
+    name: /^(Archive|Move to Trash|Mark as read|Mark as unread|Flag|Unflag|Label|Mark as junk)$/,
+  })
+}
+
+/**
+ * How many rows those actions occupy (1 = they all sit beside each other).
+ *
+ * The names are matched WHOLE. Unanchored, `/Archive/` also matches the folder drawer's "Folder
+ * actions: Archive" and `/Label/` its "Label actions: wread" — off-canvas buttons at their own tops,
+ * which made this read three rows where the bar has one, except when the measurement happened to
+ * follow `noOverflow`'s 400 ms wait and the drawer had left the accessibility tree by then.
+ */
+async function actionRows(page: Page): Promise<number> {
+  const tops = await barActions(page).evaluateAll((nodes) =>
+    nodes.map((node) => Math.round(node.getBoundingClientRect().top)),
+  )
+  expect(tops.length, 'the bulk bar renders actions at all').toBeGreaterThan(0)
+  return new Set(tops).size
+}
+
+async function barActionNames(page: Page): Promise<string[]> {
+  return barActions(page).evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('aria-label') ?? ''),
+  )
 }
 
 test('the shell fits the viewport on every screen', async ({ page }) => {

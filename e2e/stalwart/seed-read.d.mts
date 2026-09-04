@@ -8,6 +8,12 @@ export const READ_SUBJECTS: {
   readonly rfc822: string
   readonly pdf: string
 }
+/** The over-one-window folder the select-all-in-folder tests need (FR-LST-04). */
+export const READ_BULK: {
+  readonly folder: string
+  readonly count: number
+  readonly subject: (n: string) => string
+}
 export const READ_PHISHING: {
   readonly forgedAuthserv: string
   readonly trustedAuthserv: string
