@@ -180,9 +180,9 @@ export function RichTextEditor({
   }, [mode, factory])
 
   // Entering plain-text mode: seed the textarea from the body as it stands. Only on the TRANSITION —
-  // re-seeding on every `value` change would fight the caret exactly as `setHTML` would in rich mode.
-  // Declared BEFORE the sync below so it reads the html the toggle has just emitted, not the `value`
-  // prop, which is one render behind whenever the owner re-renders asynchronously.
+  // the sync below owns every later change. Declared BEFORE it so it reads the html the toggle has
+  // just emitted, not the `value` prop, which is one render behind whenever the owner re-renders
+  // asynchronously.
   const wasPlainRef = useRef(plainText)
   useEffect(() => {
     if (plainText && !wasPlainRef.current)
@@ -190,13 +190,33 @@ export function RichTextEditor({
     wasPlainRef.current = plainText
   }, [plainText])
 
-  // Push an EXTERNAL value change into the engine (never our own debounced echo → no cursor fight).
+  /**
+   * Push an EXTERNAL value change into whichever surface is live — never our own debounced echo, so
+   * there is no cursor fight.
+   *
+   * The plain arm was missing, and the body is not only written by the editor: picking another
+   * identity swaps the signature (`FromField`), the default identity seeds one when the identities
+   * finally load, and "Insert template" appends to the body. In plain-text mode the textarea kept
+   * its old text, so the change was invisible — and worse, the next keystroke (or the flush that
+   * `send` performs) wrote that stale text back over it. The swap silently did not happen.
+   *
+   * NOT while our own debounce is armed: the typed text has not reached the owner yet, so `value`
+   * cannot contain it, and re-seeding from it would delete what someone is in the middle of typing.
+   * Text the user typed outranks a body change computed without it; the owner recomputes from the
+   * fresh body a moment later.
+   */
   useEffect(() => {
     htmlRef.current = value
-    if (mode === 'rich' && engineRef.current !== null && value !== lastEmittedRef.current) {
+    if (value === lastEmittedRef.current) return
+    if (mode === 'rich') {
+      if (engineRef.current === null) return
       engineRef.current.setHTML(forDisplayHtml(value, resolveRef.current))
       lastEmittedRef.current = value
+      return
     }
+    if (debounceRef.current !== undefined) return
+    setPlainValue(htmlToPlainText(value, { keepTypedWhitespace: true }))
+    lastEmittedRef.current = value
   }, [value, mode])
 
   /** Hand the body to the owner and remember it, so the value effect does not echo it back. */
