@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { basic, bearer } from './auth'
-import { JmapSessionOriginError } from './errors'
+import { JmapError, JmapSessionOriginError } from './errors'
 import {
   getContactsCapability,
   getCoreCapability,
@@ -10,6 +10,7 @@ import {
   hasCapability,
   normalizeSession,
   secondaryMailAccounts,
+  sessionFromStore,
   sessionStateChanged,
   toWellKnownUrl,
 } from './session'
@@ -100,6 +101,58 @@ describe('normalizeSession', () => {
     // to resolve it against. Off-origin URLs then pass through — a browser never takes this path.
     const raw = { ...makeSession(), apiUrl: 'https://cdn.evil.test/jmap' }
     expect(normalizeSession(raw, BASE, null).apiUrl).toBe('https://cdn.evil.test/jmap')
+  })
+})
+
+describe('sessionFromStore', () => {
+  // The app's own origin in these tests. A stored document is opened against the URL the app is
+  // configured to connect to, not against wherever the document happens to name.
+  const INPUT = 'https://mail.waxwing.test'
+
+  it('returns a usable Session, resolved and template-braces intact', () => {
+    const session = sessionFromStore(makeSession(), INPUT)
+    expect(session.apiUrl).toBe('https://mail.waxwing.test/jmap/api')
+    expect(session.uploadUrl).toBe('https://mail.waxwing.test/jmap/upload/{accountId}')
+    expect(session.state).toBe('s0')
+    expect(session.primaryAccounts['urn:ietf:params:jmap:mail']).toBe('a')
+  })
+
+  it('accepts the well-known URL as the input too', () => {
+    expect(sessionFromStore(makeSession(), `${INPUT}/.well-known/jmap`).apiUrl).toBe(
+      'https://mail.waxwing.test/jmap/api',
+    )
+  })
+
+  it.each([
+    ['null', null],
+    ['an array', []],
+    ['a string', 'not a session'],
+    ['an object without the four URL templates', { username: 'alice', state: 's0' }],
+    ['an object whose apiUrl is not a string', { ...makeSession(), apiUrl: 42 }],
+  ])('refuses %s', (_label, value) => {
+    expect(() => sessionFromStore(value, INPUT)).toThrow(JmapError)
+  })
+
+  it('THE ONE: refuses a stored document whose URLs have moved origin', () => {
+    // This is the whole reason the function exists rather than a cast. Anything that can write to
+    // the store — a compromised extension, a shared profile, a bug — could otherwise name a host
+    // in `apiUrl`, and the next request after the network returns would carry the Authorization
+    // header to it. A document out of a store is one step FURTHER from the server than a response,
+    // never one closer, so it earns the same check.
+    for (const field of ['apiUrl', 'downloadUrl', 'uploadUrl', 'eventSourceUrl'] as const) {
+      const raw = { ...makeSession(), [field]: 'https://cdn.evil.test/x/{accountId}' }
+      const error = catchError(() => sessionFromStore(raw, INPUT))
+      expect(error, field).toBeInstanceOf(JmapSessionOriginError)
+      expect((error as JmapSessionOriginError).field).toBe(field)
+    }
+  })
+
+  it('refuses a document for a different server, even a well-formed one', () => {
+    // The document is internally consistent — every URL sits on `mail.waxwing.test`. It is simply
+    // not this deployment's server, which is what the caller's connect URL says.
+    expect(() => sessionFromStore(makeSession(), 'https://other.example.org')).toThrow(
+      JmapSessionOriginError,
+    )
   })
 })
 

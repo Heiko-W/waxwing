@@ -81,6 +81,7 @@ export {
   normalizeSession,
   resolveUrl,
   secondaryMailAccounts,
+  sessionFromStore,
   sessionStateChanged,
   toWellKnownUrl,
   WELL_KNOWN_PATH,
