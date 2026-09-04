@@ -17,6 +17,16 @@
  * RIGHTS-AWARE: a book the user cannot write to (`myRights.mayWrite === false`) carries a discreet
  * read-only marker and offers no rename; one that cannot be deleted (`mayDelete === false`, or the
  * account's default book, which the server will not destroy) offers no delete.
+ *
+ * **The read-only half is a VORLEISTUNG — anticipatory, and today unreachable in the browser.** No
+ * book this rail can show can carry `mayWrite: false`: the reader's own books are all writable, and
+ * a book shared WITH them lives in the owner's account, which this screen never asks about. That is
+ * finding R-104 of the 2026-09-01 review (multi-account contacts), and it is open; until it lands,
+ * the marker, the suppressed rename and the locked forms cannot be produced by any sequence of
+ * clicks. This is written down rather than deleted because unreachable code is code nobody
+ * maintains: when R-104 arrives, the first shared book must find this working and not rotting.
+ * `AddressBookList.test.tsx` and `ContactForm.test.tsx` therefore drive it from a SYNTHETIC book
+ * with the right switched off — those tests are the only thing holding it up (N-06).
  */
 
 import type { Id } from '@waxwing/jmap'

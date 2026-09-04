@@ -4779,7 +4779,14 @@ Stand nachgeprüft.
 
 ### N-06 — [LOW] Die Kennzeichnung schreibgeschützter Adressbücher ist im Browser nicht auslösbar
 
-**Status:** [ ] offen
+**Status:** [x] erledigt (kleine Variante — R-104 bleibt offen)
+Die Anzeige ist als **Vorleistung** dokumentiert, an beiden Stellen mit Verweis auf R-104:
+Modulkopf von `AddressBookList.tsx` (warum heute kein Buch `mayWrite: false` tragen KANN und
+warum der Code trotzdem bleibt) und an `ContactFormProps.canWrite`. Festgenagelt ist sie mit
+Tests gegen ein synthetisch schreibgeschütztes Buch. Die Anzeige des Markers und die gesperrten
+Formulare waren schon getestet; nicht getestet war die unterdrückte Umbenennung — das ging
+bisher nur an einem Buch OHNE jedes Recht durch, an dem gar kein Menü erscheint. Dafür jetzt ein
+Buch `mayWrite: false` + `mayDelete: true`: „Löschen" ja, „Umbenennen" nein.
 
 **Kategorie / Bereich:** correctness (Feature ohne erreichbaren Zustand) / PIM (Kontakte)
 
