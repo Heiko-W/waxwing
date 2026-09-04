@@ -9,6 +9,7 @@ import {
   type StatusListener,
   type Unsubscribe,
 } from '@waxwing/jmap'
+import { liveQuery } from 'dexie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isLiveBannerReady, setLiveBannerReady } from '../../notify/live-banner'
 import type { DraftRow, ReplicaDb } from '../db'
@@ -725,6 +726,64 @@ describe('SyncEngine', () => {
     // Replay confirms and clears the outbox.
     await waitFor(async () => (await db.outbox.count()) === 0)
     expect(port.setEmailsCalls.length).toBeGreaterThan(0)
+
+    await engine.stop()
+  })
+
+  /**
+   * N-04 — `dispatchBatch` is ONE replica commit and still one outbox row per intent.
+   *
+   * The contact importer dispatched one create per card, so 500 cards were 500 Dexie transactions
+   * and 500 reruns of the shared whole-table contact-card subscription (R-21). Measured on
+   * fake-indexeddb: 500 cards into a book already holding 500 took 15.4 s one at a time and 450 ms
+   * in blocks of fifty. The rerun count below is the load-bearing assertion; the wall clock is a
+   * consequence of it and would only make this test flaky.
+   *
+   * The other half is what must NOT have changed: one row, one undo, one create per card, so the
+   * card the server refuses is refused alone.
+   */
+  it('dispatchBatch commits a block once and still writes one outbox row per intent', async () => {
+    const port = fakePort({ emails: [], setEmails: emptySet })
+    const engine = new SyncEngine({
+      ...makeDeps(db, port, new FakePush()),
+      // Offline: replay would clear the rows out from under the assertions below.
+      isOnline: () => false,
+    })
+    engine.start()
+    await waitFor(() => engine.getStatus().isLeader)
+
+    let emissions = 0
+    const sub = liveQuery(() => db.contactCards.where('accountId').equals(ACC).toArray()).subscribe(
+      {
+        next: () => {
+          emissions += 1
+        },
+        error: () => {},
+      },
+    )
+    await waitFor(() => emissions > 0)
+    emissions = 0
+
+    await engine.dispatchBatch(
+      Array.from({ length: 12 }, (_, i) => ({
+        intent: {
+          kind: 'createContactCard' as const,
+          creationId: `c${i}`,
+          card: contactCard(`c${i}`),
+        },
+        options: { id: `i${i}` },
+      })),
+    )
+    await waitFor(async () => (await db.contactCards.count()) === 12)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    sub.unsubscribe()
+
+    expect(emissions).toBe(1)
+    expect(await db.outbox.count()).toBe(12)
+    const rows = await db.outbox.toArray()
+    expect(rows.every((row) => row.type === 'createContactCard')).toBe(true)
+    // Each row carries its OWN undo, which is what keeps one rejection from taking the block.
+    expect(rows.every((row) => row.undo !== null)).toBe(true)
 
     await engine.stop()
   })

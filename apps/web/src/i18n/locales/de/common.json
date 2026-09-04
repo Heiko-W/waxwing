@@ -893,6 +893,7 @@
         "skipped_other": "{{count}} Zeilen konnten nicht gelesen werden",
         "imported_one": "{{count}} Kontakt importiert.",
         "imported_other": "{{count}} Kontakte importiert.",
+        "importFailed": "{{done}} von {{total}} Kontakten wurden importiert, dann wurde der Import abgebrochen. Wählen Sie die Datei erneut aus, um den Rest zu wiederholen — bereits vorhandene Kontakte werden als Duplikate übersprungen.",
         "empty": "In der Datei wurden keine Kontakte gefunden.",
         "capped": "Es werden nur die ersten {{max}} Kontakte importiert."
       },

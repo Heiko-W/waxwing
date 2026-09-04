@@ -893,6 +893,7 @@
         "skipped_other": "{{count}} lines could not be read",
         "imported_one": "{{count}} contact imported.",
         "imported_other": "{{count}} contacts imported.",
+        "importFailed": "{{done}} of {{total}} contacts were imported before the import stopped. Choose the file again to retry the rest — contacts that are already there are skipped as duplicates.",
         "empty": "No contacts found in the file.",
         "capped": "Only the first {{max}} contacts will be imported."
       },

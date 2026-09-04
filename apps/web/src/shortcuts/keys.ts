@@ -17,20 +17,27 @@
  *    it-IT, `#` IS AltGr (AltGr+3 / AltGr+à) — rejecting `ctrlKey && altKey` there makes `#`
  *    untypeable for those users. So a symbol chord accepts the AltGr combination and, exactly as with
  *    Shift, trusts the `event.key` the browser already resolved from the layout.
- *  - **IME.** A keystroke that is part of a composition (`isComposing`, or the legacy `keyCode 229`)
- *    matches nothing at all.
+ *  - **IME.** A keystroke that is part of a composition matches nothing at all. The rule itself is
+ *    NOT restated here — it is {@link isComposingKey}, one function in `ui/`, because a second copy
+ *    of a two-engine browser fact is a copy that goes stale (N-07). Why `ui/` and not a new
+ *    neutral directory: `docs/adr/040-the-ime-rule-lives-in-ui.md`.
  *  - **`Mod` = ⌘ OR Ctrl on every platform.** Only the DISPLAY differs (see {@link formatChord}).
  */
 
-/** The subset of a `KeyboardEvent` a chord match depends on — so tests can pass plain objects. */
-export interface ChordEvent {
+import { type CompositionKeyEvent, isComposingKey } from '../ui'
+
+/**
+ * The subset of a `KeyboardEvent` a chord match depends on — so tests can pass plain objects.
+ *
+ * It EXTENDS {@link CompositionKeyEvent} rather than repeating its two members, so the shape the
+ * IME check needs and the shape it is given cannot drift apart.
+ */
+export interface ChordEvent extends CompositionKeyEvent {
   readonly key: string
   readonly metaKey: boolean
   readonly ctrlKey: boolean
   readonly altKey: boolean
   readonly shiftKey: boolean
-  readonly isComposing?: boolean
-  readonly keyCode?: number
 }
 
 export interface ParsedChord {
@@ -57,7 +64,7 @@ function isShiftedLetterChord(key: string): boolean {
 
 export function matchesChord(event: ChordEvent, chord: string): boolean {
   // IME first: a composition keystroke belongs to the input method, never to us.
-  if (event.isComposing === true || event.keyCode === 229) return false
+  if (isComposingKey(event)) return false
 
   const { mod, key } = parseChord(chord)
 

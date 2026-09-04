@@ -529,7 +529,7 @@ export function ContactsScreen() {
             exportFilenameStem={exportStem}
             allowImport={ioMode === 'full'}
             defaultBookId={targetBook?.id}
-            createCard={actions.create}
+            createCards={actions.createMany}
           />
         </Suspense>
       )}

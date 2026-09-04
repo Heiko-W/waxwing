@@ -10,10 +10,12 @@
  * that persists that long belongs somewhere a user goes looking, not somewhere that hovers.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSessionOptional } from '../app/session/context'
+import { useOnline } from '../app/use-online'
 import { formatDate } from '../i18n/formatters'
+import { RECONNECT_DEBOUNCE_MS } from '../sync/engine'
 import { Button, useToast } from '../ui'
 import styles from './outbox.module.css'
 import { makeScheduledClient, type ScheduledClient, type ScheduledSend } from './scheduled-client'
@@ -27,6 +29,7 @@ export function ScheduledSends(props: ScheduledSendsProps) {
   const { t } = useTranslation()
   const { toast } = useToast()
   const connected = useSessionOptional()
+  const online = useOnline()
   const [items, setItems] = useState<ScheduledSend[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -56,6 +59,30 @@ export function ScheduledSends(props: ScheduledSendsProps) {
   useEffect(() => {
     void load()
   }, [load])
+
+  /*
+   * And again when the line comes back — the same shape `CalendarPage` uses (N-05).
+   *
+   * This list is fetched once and never refreshed, and its failure state is worse than the
+   * calendar's: there is no "Try again" here at all, so a reader who opened Settings offline sat
+   * on "The scheduled messages could not be loaded" for the rest of the session, over messages the
+   * server is holding and will send whether or not this app is open. That is the one sentence this
+   * section must never be wrong about.
+   *
+   * On the EDGE (`online` was false), so a normally connected visit adds no second request to the
+   * one above; and on the engine's own {@link RECONNECT_DEBOUNCE_MS}, imported rather than
+   * repeated, so a flapping line asks once.
+   */
+  const wasOnline = useRef(online)
+  useEffect(() => {
+    const reconnected = online && !wasOnline.current
+    wasOnline.current = online
+    if (!reconnected) return
+    const timer = window.setTimeout(() => void load(), RECONNECT_DEBOUNCE_MS)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [online, load])
 
   if (client === null) return null
 

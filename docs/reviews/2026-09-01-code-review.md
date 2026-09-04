@@ -45,15 +45,22 @@ Zwei Kandidaten wurden bereits in der Gegenprüfung verworfen (PIM-22 als Duplik
 unbegründet) und stehen nur im Anhang. Genau eine Regression aus den Fix-Commits ist belegt (R-05, W-18);
 die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Muster.
 
-> **Stand 02.09.2026: 109 der 112 Befunde sind abgearbeitet** — elf Themen-Branches mit je einem
-> Pull Request (#56 bis #66), ein Commit je Befundgruppe, jeder Fix mit Regressionstest und
-> Mutationsprobe (Fix entfernt ⇒ Test rot). Die Testsuite ist dabei von 5304 auf 5702 Tests
-> gewachsen, das Bundle von 288,4 auf 291,7 KB gz (Grenze 300).
+> **Stand 04.09.2026: 110 der 112 Befunde sind abgeschlossen** — 109 behoben, einer (R-27) als
+> Eigentümerentscheidung entschieden. Elf Themen-Branches mit je einem Pull Request (#56 bis #66),
+> ein Commit je Befundgruppe, jeder Fix mit Regressionstest und Mutationsprobe (Fix entfernt ⇒
+> Test rot). Die Testsuite ist dabei von 5304 auf 5836 Tests gewachsen, das Bundle von 288,4 auf
+> 292,36 KB gz (Grenze 300).
 >
-> **Drei Befunde bleiben bewusst offen**, jeder mit Begründung am Eintrag:
-> - **R-27** — JMAP bietet keinen Idempotenzschlüssel für Creates, und der im Bericht
->   vorgeschlagene Ausweg bricht das Offline-Autosave. Nur die falsche Zusage im Modulkopf ist
->   korrigiert; die Entscheidung liegt als [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) vor.
+> **R-27 ist entschieden, nicht behoben** (04.09.2026): *lieber ein seltenes Duplikat als ein
+> häufiger Falschfehler.* JMAP bietet keinen Idempotenzschlüssel für Creates, und jeder heute
+> verfügbare Ausweg erkauft weniger Duplikate mit mehr Falschfehlern über gelungene Aktionen —
+> der im Bericht vorgeschlagene bricht zusätzlich das Offline-Autosave. Korrigiert ist die falsche
+> Zusage im Modulkopf; das Laufzeitverhalten bleibt und ist ab jetzt das spezifizierte Verhalten
+> dieses Clients. Die Aufzeichnung ist
+> [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md) (`accepted`); die dort
+> ausformulierte Sonde vor dem Wiederholungsversuch ist ein späterer Ausbau, kein offener Punkt.
+>
+> **Zwei Befunde bleiben offen**, jeder mit Begründung am Eintrag:
 > - **R-78** — die Behebung ändert, was über eine Sitzung hinweg persistiert wird. Das ist eine
 >   Produktentscheidung; als Backlog-Eintrag im Implementierungsplan aufgenommen.
 > - **R-104** — der vorgeschlagene Fix macht den Test nicht grün. Gegen die laufende Fixture
@@ -64,10 +71,18 @@ die übrigen W-Bezüge sind unvollständige Fixes oder neue Stellen bekannter Mu
 > Begründung steht jeweils am Befund und im Commit. Am deutlichsten bei **R-37**, wo der
 > vorgeschlagene Weg den Defekt in beiden Browser-Engines verschlimmert hätte, und bei **R-61**,
 > wo die geforderte Messung die Virtualisierung überflüssig machte (920 ms → 0,9 ms allein durch
-> den Render-Fix).
+> den Render-Fix). Bei **N-04** hat dieselbe Regel umgekehrt entschieden: dort trug die Messung
+> den geforderten Fix (15,4 s → 450 ms für 500 Karten).
 >
-> Was bei der Abarbeitung neu aufgefallen ist, steht unten als **N-01 bis N-10**; acht weitere
-> Nebenbefunde sind im selben Durchgang behoben worden.
+> Was bei der Abarbeitung neu aufgefallen war, steht unten als **N-01 bis N-10** — **inzwischen
+> alle zehn erledigt**, in zwei aufeinander gestapelten Branches (Compose: N-01 bis N-03, PR #69;
+> PIM/UI: N-04 bis N-08 und N-10). N-09 war schon nebenbei behoben, acht weitere Nebenbefunde
+> bereits im ersten Durchgang. Beim Abarbeiten der Nebenbefunde sind sechs weitere aufgefallen und
+> mitbehoben worden (eine stehen gebliebene Outbox-Zeile nach bestätigtem Send, der
+> Klartext-Editor, der einer externen Body-Änderung nicht folgte, ein nicht erschöpfender
+> `DraftSyncStatus`-Guard, eine fünfte `__proto__`-Stelle im Kalender, ein Kontaktimport, der
+> mittendrin abbrach ohne es zu sagen, und die Liste geplanter Sendungen, die nach einer
+> Wiederverbindung auf ihrer Fehlermeldung sitzen blieb).
 
 ## Zusammenfassung
 
@@ -1267,15 +1282,23 @@ the requested database object could not be found…`. Gegenprüfung: bestätigt.
 
 ### R-27 — [MEDIUM] Nicht-idempotente Creates werden nach verlorener Antwort oder Absturz erneut gesendet — Duplikate bei Drafts und Adressbüchern, falsche Fehlermeldungen bei Kontakten und Ordnern
 
-**Status:** [ ] offen
-NICHT behoben, bewusst. Umgesetzt ist nur die Sofortmaßnahme (S) aus dem Lösungsansatz: Modulkopf,
+**Status:** [x] entschieden (04.09.2026) — das Verhalten bleibt, bewusst
+**Eigentümerentscheidung: lieber ein seltenes Duplikat als ein häufiger Falschfehler.** Damit ist
+Punkt 3 der Entscheidung in [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md)
+gewählt; das ADR steht auf `accepted`. Das ist keine Wahl zwischen einem Fehler und einer Behebung,
+sondern zwischen zwei Fehlern: jedes heute verfügbare Mittel erkauft weniger Duplikate mit mehr
+Falschfehlern, und ein Falschfehler trifft laut, oft und ausgerechnet jemanden, dessen Aktion
+GELUNGEN ist. Ein Duplikat ist dagegen sichtbar und löschbar.
+Umgesetzt (01.09.2026) ist die Sofortmaßnahme (S) aus dem Lösungsansatz: Modulkopf,
 `recoverStranded` und der transiente Retry-Zweig sagen jetzt, dass die Create-Familie NICHT idempotent
-ist, statt das Gegenteil zu behaupten. Das Laufzeitverhalten ist unverändert. Der eigentliche Fix — vor
-dem ERNEUTEN Versand serverseitig prüfen, ob das Objekt schon existiert — ist eine
-Architekturentscheidung (welche Sonden die Outbox stellen darf, `messageId` in `toEmailCreate`) und
-steht mit allen Optionen und Kosten in `docs/adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md`.
-Ein Teil-Fix, der Duplikate nur seltener macht (etwa Dead-Letter nach geworfenem Fehler), wäre ein
-Rückschritt: er bricht das Offline-Autosave, wie die Gegenprüfung festgestellt hat.
+ist, statt das Gegenteil zu behaupten. Das Laufzeitverhalten ist unverändert und ist ab jetzt das
+SPEZIFIZIERTE Verhalten dieses Clients, nicht eine Lücke.
+Die im ADR ausformulierte Sonde vor dem WIEDERHOLTEN Versand (`messageId` in `toEmailCreate`,
+`ContactCard/query {uid}`, `AddressBook/get`, `Mailbox/get`) wird vorerst NICHT gebaut. Sie steht
+dort als späterer Ausbau mit allen Kosten — Kandidat für ein künftiges Arbeitspaket, kein offener
+Punkt dieses Reviews. Ein Teil-Fix, der Duplikate nur seltener macht (etwa Dead-Letter nach
+geworfenem Fehler), bleibt ausgeschlossen: er bricht das Offline-Autosave, wie die Gegenprüfung
+festgestellt hat.
 
 **Kategorie / Bereich:** correctness / Sync
 
@@ -4595,6 +4618,13 @@ sind. Nummerierung `N-…`, damit sie mit den `R-…` aus diesem Review nicht ko
 
 Die Fundstellen sind gegen den Stand nach allen zehn Blöcken (`802e092`) geprüft.
 
+**Stand 04.09.2026: alle zehn sind erledigt**, in zwei aufeinander gestapelten Branches — N-01 bis
+N-03 im Compose-Block (PR #69), N-04 bis N-08 und N-10 im PIM/UI-Block; N-09 war schon nebenbei
+behoben. Jeder Eintrag sagt unter seinem Status, was tatsächlich gemacht wurde und wo davon
+abgewichen wurde: N-03, N-07 und N-10(a) sind bewusst anders gelöst als vorgeschlagen, N-06 in der
+kleinen Variante (R-104 bleibt offen), und bei N-04 und N-10(a) stand eine Messung vor der
+Entscheidung — bei N-04 trug sie den Fix, bei N-10(a) nicht.
+
 ### N-01 — [MEDIUM] Ein abgelehntes Löschen des Vorgänger-Entwurfs beim Senden ist unsichtbar
 
 **Status:** [x] erledigt
@@ -4620,8 +4650,9 @@ eine Methode weiter.
 **Auswirkung:** Der Brief geht raus, der alte Entwurf bleibt im Entwürfe-Ordner stehen, und niemand
 erfährt davon. Auf einem Server, der den `destroy` regelmäßig ablehnt (fehlende Rechte auf einem
 delegierten Konto, ein Entwurf, den ein anderer Client inzwischen verschoben hat), sammelt sich pro
-gesendeter Mail eine Leiche an. Zusammen mit R-27 (offen) ist das der zweite Weg, auf dem der
-Entwürfe-Ordner voll bleibt.
+gesendeter Mail eine Leiche an. Zusammen mit R-27 (entschieden: Duplikate durch
+Re-Send bleiben, [ADR-038](../adr/038-creates-are-not-idempotent-and-jmap-offers-no-key.md)) ist
+das der zweite Weg, auf dem der Entwürfe-Ordner voll bleibt.
 
 **Lösungsansatz:** `PortSetResult` um ein `emailNotDestroyed` neben `emailCreated` erweitern und im
 Outbox-Pfad eigens behandeln — und zwar NICHT als Rejection: der Brief ist raus, ein Dead Letter
@@ -4718,7 +4749,24 @@ Meldung (`normalize` kennt `<pre>` nicht, gemeldet aus „compose-restliche") is
 
 ### N-04 — [LOW] Der Kontaktimport reiht je Karte eine eigene Transaktion ein
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+**Zuerst gemessen** (fake-indexeddb, Node 24, 500 importierte Karten, ein Lauf je Zeile;
+Emissionen = Reruns der EINEN geteilten `contactCards`-Subscription aus R-21):
+
+| Ausgangsbestand | je Karte eine Transaktion | Blöcke à 50 | ein Block à 500 |
+| --- | --- | --- | --- |
+| leeres Buch | 4 645 ms / 500 | 283 ms / 10 | 181 ms / 1 |
+| 500 Karten | 15 394 ms / 500 | 450 ms / 10 | 180 ms / 1 |
+| 500 Karten, 50 mit Foto | 16 857 ms / 500 | 494 ms / 10 | 187 ms / 1 |
+
+Die Messung trägt den Fix deutlich: bei `MAX_IMPORT_CARDS = 1000` sind das gut 30 s blockierter
+Hauptthread. Umgesetzt ist die sichere Variante — `SyncEngine.dispatchBatch` legt einen Block in
+EINE `db.transaction`, jede Karte behält aber ihre eigene Outbox-Zeile, ihr eigenes Undo und
+ihren eigenen `ContactCard/set`-Create; eine abgelehnte Karte zieht die anderen 49 nicht mit ins
+Dead Letter. Kein Batch-Intent. Blockgröße 50 und nicht „alles auf einmal": ein Block ist der
+feinste Punkt, an dem die Abbruchprüfung noch VOR dem Schreiben sitzt, und 20 Blöcke sind 20
+Fortschrittsschritte statt eines Sprungs von 0 auf 1000. Zwischen den Blöcken gibt der Import den
+Event-Loop frei, sonst bewegt sich der Balken trotzdem nicht.
 
 **Kategorie / Bereich:** performance / PIM (Kontakte)
 
@@ -4746,7 +4794,14 @@ Stand nachgeprüft.
 
 ### N-05 — [LOW] Das Laden der Kalenderliste hängt nicht am Online-Zustand
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Ein zweiter Effekt lädt die Liste bei der WIEDERVERBINDUNG nach — auf die Flanke (`online` war
+`false`), nicht auf `online === true`, damit ein normal verbundener Start keine zweite Anfrage
+kostet. Die Entprellung ist nicht nachgebaut, sondern DIESELBE: `RECONNECT_DEBOUNCE_MS` (750 ms)
+ist jetzt aus `sync/engine` exportiert und wird hier importiert, denn die Leiste ist die Legende
+zu dem Monat, den die Engine mit genau dieser Verzögerung nachholt — zwei getrennte Zahlen wären
+zwei Zahlen, die auseinanderlaufen. Der „Erneut versuchen"-Balken bleibt für den Fehler, der keine
+Verbindungsfrage ist.
 
 **Kategorie / Bereich:** correctness (Offline-Verhalten) / PIM (Kalender)
 
@@ -4772,7 +4827,14 @@ Stand nachgeprüft.
 
 ### N-06 — [LOW] Die Kennzeichnung schreibgeschützter Adressbücher ist im Browser nicht auslösbar
 
-**Status:** [ ] offen
+**Status:** [x] erledigt (kleine Variante — R-104 bleibt offen)
+Die Anzeige ist als **Vorleistung** dokumentiert, an beiden Stellen mit Verweis auf R-104:
+Modulkopf von `AddressBookList.tsx` (warum heute kein Buch `mayWrite: false` tragen KANN und
+warum der Code trotzdem bleibt) und an `ContactFormProps.canWrite`. Festgenagelt ist sie mit
+Tests gegen ein synthetisch schreibgeschütztes Buch. Die Anzeige des Markers und die gesperrten
+Formulare waren schon getestet; nicht getestet war die unterdrückte Umbenennung — das ging
+bisher nur an einem Buch OHNE jedes Recht durch, an dem gar kein Menü erscheint. Dafür jetzt ein
+Buch `mayWrite: false` + `mayDelete: true`: „Löschen" ja, „Umbenennen" nein.
 
 **Kategorie / Bereich:** correctness (Feature ohne erreichbaren Zustand) / PIM (Kontakte)
 
@@ -4802,7 +4864,17 @@ nachgeprüft.
 
 ### N-07 — [LOW] Die IME-Regel steht an zwei Orten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt (es waren DREI)
+Beim Zusammenlegen kam eine dritte Fassung dazu: der globale Keydown-Listener
+(`ShortcutProvider.tsx:81`) buchstabierte die Regel ebenfalls aus. Die Prämisse des Befunds hält
+außerdem nicht — `shortcuts` importiert heute schon an sechs Stellen aus `../ui`, darunter
+`isComposingKey` selbst in `CommandPalette.tsx`, und `ui/` ist das EINZIGE Verzeichnis in
+`apps/web/src`, das aus keinem anderen Bereich importiert. Also keine dritte Datei und kein neues
+`lib/`: die Regel bleibt in `ui/`, steht seit R-40 ohnehin im Barrel, und die beiden Kopien rufen
+sie jetzt auf ([ADR-040](../adr/040-the-ime-rule-lives-in-ui.md)). Festgehalten mit einem
+QUELLTEXT-Test statt eines Verhaltenstests: drei Verhaltenstests waren gegen drei Kopien grün —
+genau das war der Zustand. `composition.source.test.ts` zählt `keyCode === 229` im ausgelieferten
+Quelltext und verlangt genau eine Datei.
 
 **Kategorie / Bereich:** maintainability / UI
 
@@ -4830,7 +4902,14 @@ vorhanden.
 
 ### N-08 — [LOW] Vier weitere Objektliterale mit fremdbestimmten Schlüsseln im Kalender
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle vier Stellen auf `Object.create(null)`, je eine mit eigenem Regressionstest (`__proto__` als
+Alarm-Schlüssel, als `.ics`-Member, als Override-Member, als Snapshot-Property beim Undo).
+Beim Durchgehen kam eine FÜNFTE, im Befund nicht genannte Stelle derselben Klasse dazu:
+`mergeOverride` (`event-recurrence.ts:235-243`) baut die Override-Map und den gemergten Eintrag
+ebenfalls als Literale — heute nur durch die Herkunft des Schlüssels gerettet, jetzt beide mit
+Nullprototyp. `excludeOverride` braucht nichts: ein BERECHNETER Schlüssel im Objektliteral legt
+immer eine eigene Property an; das steht als Kommentar daneben, damit es niemand „mitrepariert".
 
 **Kategorie / Bereich:** robustness (Security-Härtung) / PIM (Kalender)
 
@@ -4885,7 +4964,18 @@ nachgeprüft und behoben vorgefunden.
 
 ### N-10 — [INFO] Zwei Beobachtungen ohne Fehlverhalten
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+(a) **Gemessen**: 200 Re-Renders eines offenen Menüs ergeben mit dem Inline-Array 201
+`pointerdown`-Anmeldungen und 200 Abmeldungen, mit stabilem Array 1 und 0 — rund 34 µs je Render
+(die reine DOM-Operation kostet 1,4 µs). Das trägt keinen Performance-Fix, aber die Änderung ist
+eine Zeile und risikolos, deshalb mitgenommen: `extraRefs` wird jetzt über eine Ref gelesen, genau
+wie `onDismiss` seit R-39 — „memoisiere das Array, das du mir gibst" ist die Zusage, die diese
+Datei ihren Aufrufern zwei Absätze weiter oben schon ausdrücklich nicht abverlangt. Behoben in
+`useDismiss` und nicht an der Aufrufstelle, damit es für jede künftige gilt.
+(b) Drei Tests für den Ladepfad von `ScheduledSends`: „wird geladen" (und eben NICHT „nichts
+geplant", solange die Anfrage läuft), leere Liste, und der Fehlschlag als `role="alert"` statt als
+Leerzustand — die beiden sind im Bauteil ein Zeichen auseinander und auf dem Schirm der
+Unterschied zwischen „nichts geplant" und „geht raus, wir konnten nur nicht nachsehen".
 
 **Kategorie / Bereich:** maintainability / UI, Outbox
 

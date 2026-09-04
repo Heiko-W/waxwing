@@ -44,7 +44,7 @@ import {
   SlidersHorizontal,
   TriangleAlert,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { calendarPath, useNavigate, useRoute } from '../app/route'
 import { useSessionOptional } from '../app/session/context'
@@ -58,6 +58,7 @@ import { IncomingShares } from '../sharing/IncomingShares'
 import { currentUserPrincipalId, principalLabel } from '../sharing/principals'
 import { useIncomingShares } from '../sharing/use-incoming-shares'
 import { useCalendars } from '../sync'
+import { RECONNECT_DEBOUNCE_MS } from '../sync/engine'
 import { Button, Dialog, EmptyState, IconButton, Menu, Select, Spinner, useToast } from '../ui'
 import { type BusyPeriod, toBusyPeriods } from './availability'
 import styles from './calendar.module.css'
@@ -419,6 +420,35 @@ export default function CalendarPage(props: CalendarPageProps) {
   useEffect(() => {
     void loadCalendars()
   }, [loadCalendars])
+
+  /*
+   * And again when the line comes back (N-05).
+   *
+   * The list is the one thing on this screen that does NOT come from the replica: the month is
+   * watched by the engine, which re-syncs itself on `online`, but `listCalendars()` is a direct
+   * call that ran once. So a reader who opened the calendar offline and then reconnected sat in
+   * front of an empty rail — with a colour legend for nothing and every write greyed out — until
+   * they noticed the "Try again" bar. The bar stays for the failure that is not a connection; it
+   * should not be how a reconnection is handled.
+   *
+   * On the SAME {@link RECONNECT_DEBOUNCE_MS} the engine uses, and imported rather than repeated:
+   * a flapping line fires `online` in bursts, and the two paths have to settle together, or the
+   * rail refetches ahead of the month it is the legend for.
+   *
+   * It fires on the TRANSITION and not on `online === true`, which is why the previous value is
+   * kept: on a screen that opens connected — the ordinary case — this must add no second request
+   * to the one the effect above already sent.
+   */
+  const wasOnline = useRef(online)
+  useEffect(() => {
+    const reconnected = online && !wasOnline.current
+    wasOnline.current = online
+    if (!reconnected) return
+    const timer = window.setTimeout(() => void loadCalendars(), RECONNECT_DEBOUNCE_MS)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [online, loadCalendars])
 
   /** The share dialog's subject, read from the LIVE list — see {@link sharingId}. */
   const sharing = sharingId === null ? null : (calendars.find((c) => c.id === sharingId) ?? null)

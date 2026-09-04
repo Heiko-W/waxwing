@@ -55,8 +55,16 @@ export interface ContactImportExportDialogProps {
   readonly allowImport: boolean
   /** The selected/target import book id (used as the default when it is writable). */
   readonly defaultBookId?: Id | undefined
-  /** Create one card (Outbox intent). Injected so the dialog stays engine-decoupled. */
-  readonly createCard: (card: ContactCard) => Promise<Id> | Id
+  /**
+   * Create a BLOCK of cards (one Outbox intent each). Injected so the dialog stays engine-decoupled.
+   *
+   * A block and not a card, because it was a card: 500 separate creates meant 500 Dexie
+   * transactions, and every commit re-ran the shared whole-table contact-card subscription (R-21).
+   * Measured on fake-indexeddb, importing 500 cards into a book that already held 500 took 15.4 s;
+   * in blocks of {@link IMPORT_BLOCK} it takes 450 ms (N-04). The dispatcher still writes one
+   * outbox row per card, so a card the server refuses is refused alone.
+   */
+  readonly createCards: (cards: readonly ContactCard[]) => Promise<readonly Id[]> | readonly Id[]
 }
 
 type ParseState =
@@ -76,6 +84,18 @@ function downloadText(content: string, filename: string, mime: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+/**
+ * How many cards go into one replica commit.
+ *
+ * Fifty rather than "all of them", and the reason is the progress bar. One commit for the whole
+ * import is the fastest thing measured (180 ms for 500) but it moves the bar once, from nothing to
+ * done, and a Cancel during it can only be honoured after everything is already written. Fifty
+ * costs about 45 ms per block on the slowest fixture measured, so the bar advances twenty times
+ * over a full 1 000-card import and a Cancel lands within a frame or two — while still collapsing
+ * 500 live-query reruns into ten (N-04).
+ */
+const IMPORT_BLOCK = 50
+
 function detectFormat(filename: string, fallback: ContactFormat): ContactFormat {
   const lower = filename.toLowerCase()
   if (lower.endsWith('.json')) return 'jscontact'
@@ -92,7 +112,7 @@ export default function ContactImportExportDialog({
   exportFilenameStem,
   allowImport,
   defaultBookId,
-  createCard,
+  createCards,
 }: ContactImportExportDialogProps) {
   const { t } = useTranslation()
   const importFormatId = useId()
@@ -126,6 +146,23 @@ export default function ContactImportExportDialog({
    * stay created. Cancel means "stop", not "undo".
    */
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  /*
+   * An import that STOPPED, and how far it had got.
+   *
+   * `onConfirmImport` was a `try/finally` with no `catch` — the same shape `onExport` had before
+   * R-55 and for the same cost: a throw from the dispatch (the replica transaction failing, the
+   * engine gone) left an unhandled rejection in the console, `importedCount` unset, and NOTHING on
+   * screen. The reader watched a progress bar disappear and was told neither that it had stopped
+   * nor how many of their contacts had arrived.
+   *
+   * The cards already written STAY written — this is not rolled back. A block is one replica
+   * commit (N-04), so the count below is exact rather than approximate, and rolling back work the
+   * server may already have accepted would be a second, larger failure dressed as tidiness. The
+   * file is spent (`parseState` goes back to idle), and picking it again is a real way forward:
+   * every card written carries its source `uid` and emails, so `dedupeAgainst` classifies it as a
+   * duplicate and the second pass offers only the remainder.
+   */
+  const [importFailed, setImportFailed] = useState<{ done: number; total: number } | null>(null)
   const cancelledRef = useRef(false)
   const [exporting, setExporting] = useState(false)
   /*
@@ -154,6 +191,7 @@ export default function ContactImportExportDialog({
       const format = detectFormat(file.name, importFormat)
       setImportFormat(format)
       setImportedCount(null)
+      setImportFailed(null)
       setParseState({ status: 'parsing' })
       try {
         const text = await file.text()
@@ -187,24 +225,37 @@ export default function ContactImportExportDialog({
     const cards = chosen.slice(0, MAX_IMPORT_CARDS)
     setImporting(true)
     cancelledRef.current = false
+    setImportedCount(null)
+    setImportFailed(null)
     setProgress({ done: 0, total: cards.length })
     let done = 0
     try {
-      for (const card of cards) {
-        // Checked BEFORE the write, so Cancel never leaves a half-written card and the count the
-        // dialog reports is the count the address book actually holds.
+      for (let at = 0; at < cards.length; at += IMPORT_BLOCK) {
+        // Checked BEFORE the write, so Cancel never leaves a half-written BLOCK and the count the
+        // dialog reports is the count the address book actually holds. A block is one replica
+        // commit, so this is the finest grain at which that promise can still be kept.
         if (cancelledRef.current) break
-        await createCard(toContactCard(card, targetBook.id))
-        done += 1
+        const block = cards.slice(at, at + IMPORT_BLOCK).map((c) => toContactCard(c, targetBook.id))
+        await createCards(block)
+        done += block.length
         setProgress({ done, total: cards.length })
+        // Back to the event loop between blocks: the progress bar has to actually move, and a
+        // Cancel has to be able to arrive. Without it the whole import is one uninterrupted task.
+        await new Promise((resolve) => setTimeout(resolve, 0))
       }
       setImportedCount(done)
+      setParseState({ status: 'idle' })
+    } catch {
+      // Said, not swallowed, and said with the two numbers that matter. `done` counts COMMITTED
+      // blocks only — the block that threw rolled back whole — so "X of Y" is a fact about the
+      // address book and not an estimate.
+      setImportFailed({ done, total: cards.length })
       setParseState({ status: 'idle' })
     } finally {
       setImporting(false)
       setProgress(null)
     }
-  }, [ready, targetBook, keepDuplicates, createCard])
+  }, [ready, targetBook, keepDuplicates, createCards])
 
   const onExport = useCallback(async (): Promise<void> => {
     setExporting(true)
@@ -381,6 +432,17 @@ export default function ContactImportExportDialog({
             {importedCount !== null && (
               <p role="status" className={styles.formHint}>
                 {t('contacts.io.result.imported', { count: importedCount })}
+              </p>
+            )}
+
+            {/* `alert`, not `status`: this contradicts what the reader asked for, and the next step
+                (choose the file again) is theirs to take. */}
+            {importFailed !== null && (
+              <p role="alert" className={styles.formNotice}>
+                {t('contacts.io.result.importFailed', {
+                  done: importFailed.done,
+                  total: importFailed.total,
+                })}
               </p>
             )}
           </section>

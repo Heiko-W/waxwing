@@ -7,19 +7,21 @@
  */
 
 import { JmapMethodError } from '@waxwing/jmap'
+import { liveQuery } from 'dexie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { OutboxRow, ReplicaDb } from '../db'
-import { pendingOutbox, putAddressBooks, putContactCards } from '../repo'
+import { contactCardsForAccount, pendingOutbox, putAddressBooks, putContactCards } from '../repo'
 import { addressBook, contactCard, freshDb, withBatchedQuery } from '../test-utils'
 import {
   enqueueCreateAddressBook,
   enqueueCreateContactCard,
+  enqueueCreateContactCards,
   enqueueDeleteAddressBook,
   enqueueDeleteContactCard,
   enqueueUpdateAddressBook,
   enqueueUpdateContactCard,
 } from './contact-mutations'
-import { enqueueAction, type OutboxIntent, replayOutbox } from './outbox'
+import { enqueueAction, type OutboxIntent, optimisticTables, replayOutbox } from './outbox'
 import type { JmapPort, PortSetResult } from './types'
 
 let db: ReplicaDb
@@ -639,6 +641,12 @@ describe('outbox contacts — enqueue helpers', () => {
     n += 1
     return `id-${n}`
   }
+  /** A second, collision-free source for the batch tests, which mint many ids at once. */
+  let m = 0
+  const ids2 = () => {
+    m += 1
+    return `b-${m}`
+  }
 
   it('enqueueCreateContactCard forces the card id to the creation id and applies optimistically', async () => {
     const { id, creationId } = await enqueueCreateContactCard(
@@ -651,6 +659,63 @@ describe('outbox contacts — enqueue helpers', () => {
     // The optimistic row lives at the creation id, NOT the card's original id.
     expect(await card('id-1')).toBeDefined()
     expect(await card('ignored')).toBeUndefined()
+  })
+
+  /**
+   * N-04 — a block of creates is ONE commit and still N outbox rows.
+   *
+   * The importer dispatched one create per card, so 500 cards were 500 Dexie transactions and 500
+   * reruns of the shared whole-table contact-card subscription (R-21): measured, 15.4 s for 500
+   * cards into a book that already held 500, against 450 ms in blocks of fifty. The live-query
+   * count below is the assertion that matters — the wall-clock is a consequence of it, and would
+   * make a flaky test.
+   *
+   * What must NOT change with it: one outbox row, one undo and one `ContactCard/set` create per
+   * card, so a card the server refuses cannot drag the other forty-nine into the dead letter.
+   */
+  it('enqueueCreateContactCards commits the block ONCE and still writes a row per card', async () => {
+    let emissions = 0
+    const sub = liveQuery(() => contactCardsForAccount(db, ACC)).subscribe({
+      next: () => {
+        emissions += 1
+      },
+      error: () => {},
+    })
+    // Let the first (empty) answer land, then count only what the dispatch causes.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    emissions = 0
+
+    const batching = {
+      ...dispatcher,
+      dispatchBatch: async (
+        entries: readonly { intent: OutboxIntent; options: { id: string } }[],
+      ) =>
+        db.transaction('rw', optimisticTables(db), async () => {
+          for (const entry of entries) {
+            await enqueueAction(db, ACC, entry.intent, { ...entry.options, now: 1 })
+          }
+        }),
+    }
+    const cards = Array.from({ length: 10 }, (_, i) => contactCard(`src-${i}`))
+    const { ids, creationIds } = await enqueueCreateContactCards(batching, cards, ids2)
+
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    sub.unsubscribe()
+
+    expect(emissions).toBe(1)
+    expect(new Set(ids).size).toBe(10)
+    for (const id of ids) expect((await row(id))?.type).toBe('createContactCard')
+    // Each card lives under its OWN creation id — the block shares a commit, not an identity.
+    for (const creationId of creationIds) expect(await card(creationId)).toBeDefined()
+  })
+
+  it('falls back to one dispatch per card when the engine cannot batch', async () => {
+    // The optional method keeps every existing fake dispatcher working, and the fallback has to be
+    // the behaviour that was there before, not a silent no-op.
+    const cards = [contactCard('a'), contactCard('b')]
+    const { ids, creationIds } = await enqueueCreateContactCards(dispatcher, cards, ids2)
+    expect(ids).toHaveLength(2)
+    for (const creationId of creationIds) expect(await card(creationId)).toBeDefined()
   })
 
   it('enqueueCreateAddressBook / update / delete enqueue the right intents', async () => {

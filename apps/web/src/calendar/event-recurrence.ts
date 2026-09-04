@@ -232,10 +232,20 @@ export function mergeOverride(
   key: LocalDateTime,
   patch: Readonly<Record<string, unknown>>,
 ): Record<string, Record<string, unknown> | null> {
-  const overrides = { ...readOverrides(master) }
+  // Both maps carry NULL prototypes, for the reason spelt out at `overrideFromDraft`: `key` is a
+  // recurrence id off the server's own map and `member` comes from the patch, and an assignment
+  // under the key `__proto__` on an object literal moves the prototype instead of storing the
+  // entry. (`excludeOverride` below needs no such care — a COMPUTED key in an object literal always
+  // defines an own property; only the literal `__proto__:` spelling and an assignment do not.)
+  const overrides: Record<string, Record<string, unknown> | null> = Object.assign(
+    Object.create(null) as Record<string, Record<string, unknown> | null>,
+    readOverrides(master),
+  )
   const existing = overrides[key]
   const merged: Record<string, unknown> =
-    existing === null || existing === undefined ? {} : { ...existing }
+    existing === null || existing === undefined
+      ? (Object.create(null) as Record<string, unknown>)
+      : Object.assign(Object.create(null) as Record<string, unknown>, existing)
   for (const [member, value] of Object.entries(patch)) {
     if (value === undefined) delete merged[member]
     else merged[member] = value
@@ -275,7 +285,10 @@ export function overrideFromDraft(
   patch: Readonly<Record<string, unknown>>,
   occurrenceStart: LocalDateTime,
 ): Record<string, unknown> {
-  const entry: Record<string, unknown> = {}
+  // A NULL prototype: `member` comes from the patch, and `entry['__proto__'] = value` on an object
+  // literal replaces the prototype instead of adding a member — the override would go to the server
+  // without it, and the occurrence would silently keep the master's value (N-08).
+  const entry: Record<string, unknown> = Object.create(null) as Record<string, unknown>
   for (const [member, value] of Object.entries(patch)) {
     if (member === 'calendarIds' || FORBIDDEN_IN_OVERRIDE.has(member)) continue
     /*

@@ -117,6 +117,33 @@ describe('AddressBookList', () => {
     expect(screen.getByRole('link', { name: /Personal/ })).not.toHaveTextContent('Read only')
   })
 
+  /**
+   * N-06 — the read-only half of this rail is a VORLEISTUNG, and these two tests are all that hold
+   * it up.
+   *
+   * No sequence of clicks can produce a book with `mayWrite: false` today: the reader's own books
+   * are writable, and a book shared WITH them sits in the owner's account, which the contacts
+   * screen never asks about (R-104, open). So the right is switched off SYNTHETICALLY here. Without
+   * that, the marker, the suppressed rename and the locked forms are code nobody exercises — and
+   * unreachable code is code that quietly stops being true before the feature that needs it lands.
+   */
+  it('offers no rename on a read-only book, but still offers what the rights allow', async () => {
+    // Writable `false`, deletable `true`: a combination the fixture above cannot show, because a
+    // book with no rights at all renders no action menu to look into.
+    await putAddressBooks(db, 'a', [
+      addressBook('locked', {
+        name: 'Locked',
+        myRights: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: true },
+      }),
+    ])
+    const user = userEvent.setup()
+    renderList()
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Locked' }))
+    expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument()
+  })
+
   it('marks the selected book with aria-current', async () => {
     renderList('team')
     const team = await screen.findByRole('link', { name: /Team/ })

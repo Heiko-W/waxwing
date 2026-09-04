@@ -78,7 +78,14 @@ export interface ContactFormProps {
   readonly books?: readonly AddressBookRow[]
   readonly onSubmit: (submit: ContactFormSubmit) => void
   readonly onCancel: () => void
-  /** Defence in depth: `false` disables Save and shows a read-only notice. Default `true`. */
+  /**
+   * Defence in depth: `false` disables Save and shows a read-only notice. Default `true`.
+   *
+   * Not reachable from the browser today — nothing can hand this `false`, because no address book
+   * in a single-account contacts screen carries `mayWrite: false`. See the Vorleistung note in
+   * `AddressBookList.tsx` and finding R-104; `ContactForm.test.tsx` drives it synthetically so it
+   * cannot rot in the meantime (N-06).
+   */
   readonly canWrite?: boolean
   /** Injected in tests (jsdom has no canvas); defaults to the real downscaler. */
   readonly scalePhoto?: PhotoScaler

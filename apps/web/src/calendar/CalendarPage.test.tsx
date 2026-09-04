@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Calendar, CalendarEvent, CalendarEventFilter, Id } from '@waxwing/jmap'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,7 +13,7 @@ import {
   type ReplicaDb,
   ReplicaProvider,
 } from '../sync'
-import { clearEngines, type SyncEngine, setEngineFor } from '../sync/engine'
+import { clearEngines, RECONNECT_DEBOUNCE_MS, type SyncEngine, setEngineFor } from '../sync/engine'
 import { freshDb } from '../sync/test-utils'
 import { ToastProvider } from '../ui'
 import CalendarPage from './CalendarPage'
@@ -916,6 +916,70 @@ describe('offline (T3)', () => {
     expect(
       screen.getAllByText('You are offline. Events can only be created while connected.'),
     ).toHaveLength(1)
+  })
+
+  /**
+   * N-05 — a reconnection reloads the calendar list by itself.
+   *
+   * The list is the one thing on this screen that is NOT read from the replica by the engine:
+   * `listCalendars()` is a direct call that ran once at mount. A reader who opened the calendar on a
+   * train and came back into coverage therefore kept an empty rail — no colour legend, every write
+   * greyed out — until they spotted the "Try again" bar. The bar is for the failure that is not a
+   * connection.
+   */
+  it('reloads the calendar list by itself once the line comes back', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    let connected = false
+    const listCalendars = vi.fn(async () => {
+      if (!connected) throw new Error('offline')
+      return [CALENDAR]
+    })
+    renderPage(client({ listCalendars }))
+    await waitFor(() => expect(listCalendars).toHaveBeenCalledTimes(1))
+
+    connected = true
+    act(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      window.dispatchEvent(new Event('online'))
+    })
+
+    // Nothing yet: the burst has to settle first — see the debounce assertion below.
+    expect(listCalendars).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(listCalendars).toHaveBeenCalledTimes(2), { timeout: 3000 })
+  })
+
+  /**
+   * And a FLAPPING line asks once, not once per event.
+   *
+   * `online` arrives in bursts on a train; the engine collapses them with
+   * `RECONNECT_DEBOUNCE_MS` before it syncs, and this path shares that number so the rail cannot
+   * refetch ahead of the month it is the legend for.
+   */
+  it('collapses a burst of reconnections into one request', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    const listCalendars = vi.fn(async () => [CALENDAR])
+    renderPage(client({ listCalendars }))
+    await waitFor(() => expect(listCalendars).toHaveBeenCalledTimes(1))
+
+    for (let i = 0; i < 4; i += 1) {
+      act(() => {
+        Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+        window.dispatchEvent(new Event('online'))
+      })
+      act(() => {
+        Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+        window.dispatchEvent(new Event('offline'))
+      })
+    }
+    act(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      window.dispatchEvent(new Event('online'))
+    })
+
+    await waitFor(() => expect(listCalendars).toHaveBeenCalledTimes(2), { timeout: 3000 })
+    // Settled: the burst produced exactly ONE extra request, not five.
+    await new Promise((resolve) => setTimeout(resolve, RECONNECT_DEBOUNCE_MS))
+    expect(listCalendars).toHaveBeenCalledTimes(2)
   })
 
   it('says a month it has never synced is not synced, rather than reporting a failure', async () => {

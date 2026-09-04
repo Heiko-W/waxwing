@@ -424,3 +424,35 @@ describe('the override a title change produces (R-06)', () => {
     expect(named(entry)).toEqual(['alerts'])
   })
 })
+
+describe('override members under a hostile key (N-08)', () => {
+  /** OWN descriptor: the `__proto__` accessor answers about the prototype, not about the member. */
+  const own = (o: object) => Object.getOwnPropertyDescriptor(o, '__proto__')?.value as unknown
+
+  /*
+   * `entry[member] = value` on an object literal sets the PROTOTYPE when `member` is `__proto__`,
+   * so the member never reaches the server and the occurrence silently keeps the master's value —
+   * the same class as R-60 and the participant map (N-08).
+   */
+  it('keeps a draft member named __proto__ in the override entry', () => {
+    const patch = JSON.parse('{"title":"Sonderfall","__proto__":{"x":1}}') as Record<
+      string,
+      unknown
+    >
+    const entry = overrideFromDraft(master(), patch, '2026-09-21T09:00:00')
+    expect(own(entry)).toEqual({ x: 1 })
+  })
+
+  it('keeps such a member through the merge into the whole map', () => {
+    const stored = master({
+      recurrenceOverrides: JSON.parse(
+        '{"2026-09-21T09:00:00":{"start":"2026-09-21T16:00:00"}}',
+      ) as Record<string, Record<string, unknown>>,
+    })
+    const next = mergeOverride(stored, '2026-09-21T09:00:00', {
+      ...(JSON.parse('{"__proto__":{"x":1}}') as Record<string, unknown>),
+    })
+    expect(own(next['2026-09-21T09:00:00'] ?? {})).toEqual({ x: 1 })
+    expect(next['2026-09-21T09:00:00']?.start).toBe('2026-09-21T16:00:00')
+  })
+})

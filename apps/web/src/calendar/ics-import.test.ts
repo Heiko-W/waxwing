@@ -152,3 +152,21 @@ describe('outcomeFrom', () => {
     ).toEqual({ added: 0, duplicates: 0, failed: 1, reason: 'This property is immutable.' })
   })
 })
+
+describe('a member the parser does not model (N-08)', () => {
+  /*
+   * `strip` copies every key the server's `CalendarEvent/parse` answered with, and those keys come
+   * out of the `.ics` the reader picked. `payload['__proto__'] = value` on an object literal sets
+   * the prototype rather than adding a property, so that one member would be missing from the
+   * event that gets created — silently, on a file the reader watched themselves choose.
+   */
+  it('carries a member named __proto__ into the create', () => {
+    const parsed = JSON.parse(
+      '[{"@type":"Event","uid":"p@waxwing.test","title":"T","start":"2026-11-01T10:00:00","__proto__":{"x":1}}]',
+    ) as unknown[]
+    const creates = createsFor(candidatesFrom(parsed), 'cal-9')
+    const payload = Object.values(creates)[0] ?? {}
+    // An OWN descriptor: the `__proto__` accessor would report the prototype, not the member.
+    expect(Object.getOwnPropertyDescriptor(payload, '__proto__')?.value).toEqual({ x: 1 })
+  })
+})

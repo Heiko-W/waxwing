@@ -180,7 +180,7 @@ const LRU_TOUCH_INTERVAL_MS = 60_000
  * A flapping connection fires `online` in bursts; each one used to start a full sync pass. Collapse
  * a burst into ONE pass once the line has settled for this long (M3.3).
  */
-const RECONNECT_DEBOUNCE_MS = 750
+export const RECONNECT_DEBOUNCE_MS = 750
 
 /**
  * How often the periodic cache-maintenance pass may run (M3.4). Decoupled from the 60 s safety sweep:
@@ -554,6 +554,52 @@ export class SyncEngine {
       ...options,
       ifInState,
       now: this.clock.now(),
+    })
+    await this.refreshQueueCounts()
+    this.wakeQueue()
+  }
+
+  /**
+   * The same, for a block of actions that arrive together — one COMMIT, still one outbox row each.
+   *
+   * {@link dispatch} is one Dexie transaction per action, and every commit re-runs the live queries
+   * over the tables it touched. That is right for a click. It is wrong for the contact importer,
+   * which dispatches one create per card: measured on fake-indexeddb, 500 cards into a book that
+   * already held 500 took **15.4 s** and re-ran the shared whole-table contact-card subscription
+   * (R-21) 500 times; the same 500 in blocks of fifty took **450 ms** and ten reruns (N-04).
+   *
+   * What deliberately does NOT change: each intent keeps its own outbox row, its own `ifInState`
+   * and its own undo, so a card the server refuses dead-letters alone and never drags the other
+   * forty-nine into the dead letter with it. The batching is about the COMMIT, not about the unit
+   * of work.
+   *
+   * What does change: the block is atomic in the replica. A Dexie failure part-way rolls the whole
+   * block back rather than leaving some of it applied — which is the honest outcome for a caller
+   * that reports progress in blocks.
+   *
+   * The guards are read BEFORE the transaction opens, exactly as {@link dispatch} reads its one.
+   */
+  async dispatchBatch(
+    entries: readonly { intent: OutboxIntent; options: Omit<EnqueueOptions, 'now'> }[],
+  ): Promise<void> {
+    if (entries.length === 0) return
+    const guards = await Promise.all(
+      entries.map(async (entry) =>
+        entry.options.ifInState !== undefined
+          ? entry.options.ifInState
+          : await this.stateGuard(entry.intent),
+      ),
+    )
+    // A nested `db.transaction` of the same scope and mode JOINS this one in Dexie, so the
+    // `enqueueAction` calls below stay exactly as they are and the block commits once.
+    await this.db.transaction('rw', optimisticTables(this.db), async () => {
+      for (const [index, entry] of entries.entries()) {
+        await enqueueAction(this.db, this.accountId, entry.intent, {
+          ...entry.options,
+          ifInState: guards[index] ?? null,
+          now: this.clock.now(),
+        })
+      }
     })
     await this.refreshQueueCounts()
     this.wakeQueue()
