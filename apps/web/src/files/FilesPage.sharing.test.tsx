@@ -72,7 +72,7 @@ function carol(over: Partial<DelegatedAccount['areas']> = {}): DelegatedAccount 
     name: 'carol@waxwing.test',
     isPersonal: false,
     isReadOnly: false,
-    areas: { mail: 'denied', contacts: 'denied', files: 'granted', ...over },
+    areas: { mail: 'denied', contacts: 'denied', files: 'granted', calendar: 'granted', ...over },
   }
 }
 

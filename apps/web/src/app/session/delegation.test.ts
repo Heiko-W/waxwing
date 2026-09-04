@@ -39,6 +39,7 @@ const access = (over: Partial<AreaAccess>): AreaAccess => ({
   mail: 'granted',
   contacts: 'granted',
   files: 'granted',
+  calendar: 'granted',
   ...over,
 })
 

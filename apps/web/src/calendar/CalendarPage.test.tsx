@@ -1302,3 +1302,147 @@ describe('the share dialog reads the live calendar (B56)', () => {
     )
   })
 })
+
+describe('acting in a delegated calendar account (S-4b)', () => {
+  /* A group account whose `calendar` area the server serves (measured shape: a group membership or
+     a calendar share both arrive as a non-personal account in the session). */
+  const delegatedB = {
+    id: 'b',
+    name: 'group@waxwing.test',
+    isPersonal: false,
+    isReadOnly: false,
+    areas: { mail: 'granted', contacts: 'granted', files: 'granted', calendar: 'granted' },
+  } as const
+
+  function renderInAccount(path: string) {
+    db = freshDb()
+    const value = {
+      connected: {
+        client: { call: async () => ({}) },
+        accountId: ACC,
+        accounts: [],
+        delegated: [delegatedB],
+        jmapSession: { accounts: { [ACC]: {}, b: {} } },
+      },
+    } as unknown as SessionContextValue
+    window.history.pushState({}, '', path)
+    return render(
+      <RouterProvider>
+        <SessionContext.Provider value={value}>
+          <ToastProvider>
+            <ReplicaProvider accountId={ACC} db={db}>
+              <CalendarPage client={client()} today={TODAY} />
+            </ReplicaProvider>
+          </ToastProvider>
+        </SessionContext.Provider>
+      </RouterProvider>,
+    )
+  }
+
+  it('registers the events window on the ?account= engine, not the own (ADR-018)', async () => {
+    const watchOwn = vi.fn(() => 'ka')
+    const watchGroup = vi.fn(() => 'kb')
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: watchOwn,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    setEngineFor('b', {
+      accountId: 'b',
+      watchCalendarQuery: watchGroup,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    renderInAccount('/calendar?account=b')
+    // The window registers in an effect; under load a 1s waitFor is a flake.
+    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
+    // Without the ?account= scope the window would register on the OWN engine and draw nothing of
+    // the group's — the id-collision half of the story (ADR-018), asserted from the other side.
+    expect(watchOwn).not.toHaveBeenCalled()
+  })
+
+  it('offers the delegated account as a standing rail entry — no share card needed (S-4b)', async () => {
+    const user = userEvent.setup()
+    const watchOwn = vi.fn(() => 'ka')
+    const watchGroup = vi.fn(() => 'kb')
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: watchOwn,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    setEngineFor('b', {
+      accountId: 'b',
+      watchCalendarQuery: watchGroup,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    renderInAccount('/calendar')
+    // The rail names every calendar-served account; the group is one click away.
+    const groupLink = await screen.findByRole(
+      'link',
+      { name: 'group@waxwing.test' },
+      { timeout: 5_000 },
+    )
+    expect(groupLink.getAttribute('href')).toContain('?account=b')
+    // The own account is the acting one here: it carries `aria-current`, the group does not.
+    expect(screen.getByRole('link', { name: ACC })).toHaveAttribute('aria-current', 'page')
+    expect(groupLink).not.toHaveAttribute('aria-current')
+    // Clicking the group entry moves the whole screen into that account — its engine gets the window.
+    await user.click(groupLink)
+    expect(window.location.search).toContain('account=b')
+    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
+    expect(screen.getByRole('link', { name: 'group@waxwing.test' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+
+  it('offers the account nav in the phone sheet, and the switch closes it (S-4b)', async () => {
+    forcePhone()
+    const user = userEvent.setup()
+    const watchOwn = vi.fn(() => 'ka')
+    const watchGroup = vi.fn(() => 'kb')
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: watchOwn,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    setEngineFor('b', {
+      accountId: 'b',
+      watchCalendarQuery: watchGroup,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    renderInAccount('/calendar')
+    // Below 40em the calendar list lives in a sheet opened from the view menu.
+    await user.click(screen.getByRole('button', { name: 'Calendar view' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Calendars…' }))
+    const groupLink = await screen.findByRole(
+      'link',
+      { name: 'group@waxwing.test' },
+      { timeout: 5_000 },
+    )
+    await user.click(groupLink)
+    // The switch moved the screen into the group's account, and the sheet closed itself.
+    expect(window.location.search).toContain('account=b')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), {
+      timeout: 5_000,
+    })
+    await waitFor(() => expect(watchGroup).toHaveBeenCalled(), { timeout: 5_000 })
+  })
+
+  it('vets ?account= — an unknown account falls back to the own one (B37)', async () => {
+    const watchOwn = vi.fn(() => 'ka')
+    const watchGroup = vi.fn(() => 'kb')
+    setEngineFor(ACC, {
+      accountId: ACC,
+      watchCalendarQuery: watchOwn,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    setEngineFor('b', {
+      accountId: 'b',
+      watchCalendarQuery: watchGroup,
+      unwatchCalendarQuery: vi.fn(),
+    } as unknown as SyncEngine)
+    renderInAccount('/calendar?account=not-granted')
+    await waitFor(() => expect(watchOwn).toHaveBeenCalled(), { timeout: 5_000 })
+    expect(watchGroup).not.toHaveBeenCalled()
+  })
+})

@@ -103,6 +103,7 @@ export {
   ReplicaProvider,
   type ReplicaProviderProps,
   useAddressBooks,
+  useAddressBooksFor,
   useAllFileNodes,
   useCalendars,
   useCalendarWindow,

@@ -257,3 +257,92 @@ describe('sharing a book (S-2)', () => {
     expect(await screen.findByText('Share the list “Personal”')).toBeInTheDocument()
   })
 })
+
+describe('AddressBookList — grouped rail (S-4)', () => {
+  /*
+   * A second account `b` (a group, or an individual share) whose `contacts` area the server serves,
+   * holding a book whose id COLLIDES with the own account's `team` — the ADR-018 hazard this rail
+   * must keep apart: JMAP book ids are per-account and short.
+   */
+  const delegatedGroup = {
+    id: 'b',
+    name: 'group@waxwing.test',
+    isPersonal: false,
+    isReadOnly: false,
+    areas: { mail: 'granted', contacts: 'granted', files: 'granted', calendar: 'granted' },
+  } as const
+
+  beforeEach(async () => {
+    await putAddressBooks(db, 'b', [
+      addressBook('team', {
+        name: 'Group Team Book',
+        myRights: { mayRead: true, mayWrite: true, mayShare: true, mayDelete: false },
+      }),
+    ])
+  })
+
+  function renderGrouped(path: string, selectedBookId?: string) {
+    window.history.pushState(null, '', path)
+    const value = {
+      connected: {
+        client: { call: async () => ({ get: () => ({ list: [] }) }) },
+        accountId: 'a',
+        accounts: [delegatedGroup],
+        delegated: [delegatedGroup],
+        jmapSession: {
+          accounts: { a: { accountCapabilities: {} }, b: { accountCapabilities: {} } },
+        },
+      },
+    } as unknown as SessionContextValue
+    return render(
+      <SessionContext.Provider value={value}>
+        <RouterProvider>
+          <ReplicaProvider accountId="a" db={db}>
+            <AddressBookList selectedBookId={selectedBookId} />
+          </ReplicaProvider>
+        </RouterProvider>
+      </SessionContext.Provider>,
+    )
+  }
+
+  // Books resolve from the Dexie replica (async liveQuery): under a loaded machine the default
+  // 1s findByRole budget is a flake. The rail tests below all read replica rows, so they all ask
+  // for a generous budget up front.
+  const findBook = (name: RegExp | string) =>
+    screen.findByRole('link', { name }, { timeout: 5_000 })
+
+  it('lists a delegated account under a labelled section whose rows name that account', async () => {
+    renderGrouped('/contacts')
+    // Own books still there (the default fixture corpus), and the delegated section appears.
+    expect(await findBook(/Personal/)).toBeInTheDocument()
+    // The section is a landmark named after the account, Apple-Mail style.
+    expect(screen.getByRole('region', { name: 'group@waxwing.test' })).toBeInTheDocument()
+    const groupBook = await findBook(/Group Team Book/)
+    // The row's href must carry the account, or a reload would open the OWN account's same-id book.
+    expect(groupBook.getAttribute('href')).toContain('?account=b')
+  })
+
+  it('highlights the acting account row when book ids collide (ADR-018)', async () => {
+    // `/contacts/team?account=b` — a book id that exists in BOTH accounts.
+    renderGrouped('/contacts/team?account=b', 'team')
+    // The own row's accessible name carries its badges (Default/Shared), so match its leading name.
+    const ownTeam = await findBook(/^Team/)
+    const groupTeam = await findBook(/Group Team Book/)
+    expect(groupTeam).toHaveAttribute('aria-current', 'page')
+    // The own account's same-id book must NOT read as selected — the collision that motivated `?account=`.
+    expect(ownTeam).not.toHaveAttribute('aria-current')
+  })
+
+  it('withholds own management while visiting a delegated account', async () => {
+    renderGrouped('/contacts?account=b')
+    await findBook(/Group Team Book/)
+    // The create affordance dispatches through the ACTING account's engine — hidden while visiting.
+    expect(screen.queryByRole('button', { name: 'New address book' })).not.toBeInTheDocument()
+  })
+
+  it('offers own management again on the own account', async () => {
+    renderGrouped('/contacts')
+    await findBook(/Personal/)
+    expect(screen.getByRole('button', { name: 'New address book' })).toBeInTheDocument()
+  })
+})

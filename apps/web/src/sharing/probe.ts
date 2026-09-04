@@ -60,30 +60,37 @@ import { Methods } from '@waxwing/jmap'
 export type MailAccess = 'granted' | 'denied'
 
 /**
- * A kind of shared content this client can open. `calendar` is deliberately absent: the calendar
- * rail is a package of its own, and an area nothing renders would be a promise in a type.
+ * A kind of shared content this client can open. `calendar` joined in S-4b, when the calendar rail
+ * grew the account sections that make an area worth probing — until then an area nothing renders
+ * would have been a promise in a type (the same rule that kept it out for a milestone).
  */
-export type ShareArea = 'mail' | 'contacts' | 'files'
+export type ShareArea = 'mail' | 'contacts' | 'files' | 'calendar'
 
 /** Every area the probe asks about by default, in rail order. */
-export const SHARE_AREAS: readonly ShareArea[] = ['mail', 'contacts', 'files']
+export const SHARE_AREAS: readonly ShareArea[] = ['mail', 'contacts', 'files', 'calendar']
 
 /**
  * The method whose refusal is the answer, per area.
  *
- * All three are a `/get` with an empty id list, because all three were measured to refuse that
- * exactly as they refuse a real fetch — see the module header.
+ * All four are a `/get` with an empty id list, because all three (and `Calendar/get`, measured with
+ * S-4b) were observed to refuse that exactly as they refuse a real fetch — see the module header.
  */
 const AREA_METHOD: Readonly<Record<ShareArea, string>> = {
   mail: Methods.mailboxGet.name,
   contacts: Methods.addressBookGet.name,
   files: Methods.fileNodeGet.name,
+  calendar: Methods.calendarGet.name,
 }
 
 /** One account's verdict in every probed area. */
 export type AreaAccess = Readonly<Record<ShareArea, MailAccess>>
 
-const ALL_GRANTED: AreaAccess = { mail: 'granted', contacts: 'granted', files: 'granted' }
+const ALL_GRANTED: AreaAccess = {
+  mail: 'granted',
+  contacts: 'granted',
+  files: 'granted',
+  calendar: 'granted',
+}
 
 /** The optimistic default — see {@link probeSharedAreas} on why a failure grants rather than denies. */
 export function grantedEverywhere(): AreaAccess {

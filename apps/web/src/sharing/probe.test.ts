@@ -72,13 +72,15 @@ describe('probeSharedAreas', () => {
   })
 
   it('THE ONE: a fully-capable account that refuses AddressBook/get has no contacts', async () => {
-    // Carol advertises everything — she shared a calendar. She shared no address book and no files.
+    // Carol advertises everything — she shared one MAILBOX. She shared no calendar, no address
+    // book and no files, so all three other probes are refused with the same `forbidden`.
     const { client } = clientAllowing({ b: EVERYTHING, d: ['Mailbox/get'] })
     const verdicts = await probeSharedAreas(client, ['b', 'd'])
     expect(verdicts.get('d')).toEqual({
       mail: 'granted',
       contacts: 'denied',
       files: 'denied',
+      calendar: 'denied',
     } satisfies AreaAccess)
     expect(verdicts.get('b')?.contacts).toBe('granted')
   })
@@ -87,7 +89,9 @@ describe('probeSharedAreas', () => {
     // The measured alice→carol direction, exactly.
     const { client } = clientAllowing({ d: ['AddressBook/get'] })
     expect(await probeSharedAreas(client, ['d'])).toEqual(
-      new Map([['d', { mail: 'denied', contacts: 'granted', files: 'denied' }]]),
+      new Map([
+        ['d', { mail: 'denied', contacts: 'granted', files: 'denied', calendar: 'denied' }],
+      ]),
     )
   })
 
@@ -120,7 +124,12 @@ describe('probeSharedAreas', () => {
       }),
     } as unknown as JmapClient
     const verdicts = await probeSharedAreas(client, ['c', 'd'])
-    expect(verdicts.get('c')).toEqual({ mail: 'granted', contacts: 'granted', files: 'granted' })
+    expect(verdicts.get('c')).toEqual({
+      mail: 'granted',
+      contacts: 'granted',
+      files: 'granted',
+      calendar: 'granted',
+    })
     expect(verdicts.get('d')?.files).toBe('granted')
   })
 })
@@ -147,6 +156,7 @@ describe('accountsWithArea — what a rail renders', () => {
     mail: 'granted',
     contacts: 'granted',
     files: 'granted',
+    calendar: 'granted',
     ...over,
   })
 

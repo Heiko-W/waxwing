@@ -755,6 +755,45 @@
   font-size: var(--waxwing-text-sm);
 }
 
+/*
+ * The account whose calendars the rail is showing (S-4b) — one compact entry per calendar-served
+ * account (the own account first, then each delegated/group account), so a group's calendars are
+ * one click away without needing an incoming share card. `aria-current` marks the acting account.
+ */
+.calendarAccounts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--waxwing-space-hair);
+  margin: 0 0 var(--waxwing-space-1);
+  padding: 0;
+  list-style: none;
+}
+
+.calendarAccountLink {
+  display: flex;
+  align-items: center;
+  gap: var(--waxwing-space-2);
+  min-block-size: var(--waxwing-control-min);
+  padding: var(--waxwing-space-2);
+  border-radius: var(--waxwing-radius-sm);
+  color: var(--waxwing-text-muted);
+  font-size: var(--waxwing-text-xs);
+  text-decoration: none;
+}
+
+@media (hover: hover) {
+  .calendarAccountLink:hover {
+    background-color: var(--waxwing-surface-2);
+  }
+}
+
+.calendarAccountLink[aria-current="page"],
+.calendarAccountLink[aria-current="page"]:hover {
+  background-color: var(--waxwing-surface-selected);
+  color: var(--waxwing-accent);
+  font-weight: var(--waxwing-weight-medium);
+}
+
 .calendarList {
   display: flex;
   flex-direction: column;
