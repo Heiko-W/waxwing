@@ -230,3 +230,40 @@ describe('formatOffset', () => {
     expect(formatOffset('-P1M', false, t)).toContain('-P1M')
   })
 })
+
+describe('an alert under a hostile key (N-08)', () => {
+  /*
+   * The key is the SERVER's — a CalDAV client on the same account, or a `.ics` somebody prepared,
+   * chooses it. `opaque['__proto__'] = alert` on an object literal moves the prototype instead of
+   * storing an entry, so the one alarm this client cannot model would disappear on the read and
+   * then a second time from the write-back that promises to carry it byte for byte. Same class as
+   * R-60 and the participant map.
+   */
+  it('carries an opaque alert whose key is __proto__ through read and write-back', () => {
+    const alerts = JSON.parse(
+      '{"__proto__":{"@type":"Alert","action":"email","trigger":{"@type":"AbsoluteTrigger","when":"2026-11-01T09:00:00Z"}}}',
+    ) as Record<string, Alert>
+    const read = alertsFromEvent(event(alerts))
+
+    // OWN descriptors throughout: the `__proto__` accessor would answer about the prototype
+    // instead of about the entry this test is for.
+    const own = (o: object) =>
+      Object.getOwnPropertyDescriptor(o, '__proto__')?.value as Alert | undefined
+    expect(own(read.opaque)?.action).toBe('email')
+
+    const patch = alertsToPatch(read)
+    expect(patch).not.toBeNull()
+    expect(own(patch ?? {})?.action).toBe('email')
+  })
+
+  it('does not let such a key crowd out a reminder the reader set', () => {
+    const read = alertsFromEvent(
+      event(
+        JSON.parse('{"__proto__":{"@type":"Alert","action":"email"}}') as Record<string, Alert>,
+      ),
+    )
+    const patch = alertsToPatch({ ...read, offsets: ['-PT15M'] })
+    expect(Object.keys(patch ?? {})).toContain('w1')
+    expect(Object.keys(patch ?? {})).toHaveLength(2)
+  })
+})

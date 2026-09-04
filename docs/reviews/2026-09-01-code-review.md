@@ -4830,7 +4830,14 @@ vorhanden.
 
 ### N-08 — [LOW] Vier weitere Objektliterale mit fremdbestimmten Schlüsseln im Kalender
 
-**Status:** [ ] offen
+**Status:** [x] erledigt
+Alle vier Stellen auf `Object.create(null)`, je eine mit eigenem Regressionstest (`__proto__` als
+Alarm-Schlüssel, als `.ics`-Member, als Override-Member, als Snapshot-Property beim Undo).
+Beim Durchgehen kam eine FÜNFTE, im Befund nicht genannte Stelle derselben Klasse dazu:
+`mergeOverride` (`event-recurrence.ts:235-243`) baut die Override-Map und den gemergten Eintrag
+ebenfalls als Literale — heute nur durch die Herkunft des Schlüssels gerettet, jetzt beide mit
+Nullprototyp. `excludeOverride` braucht nichts: ein BERECHNETER Schlüssel im Objektliteral legt
+immer eine eigene Property an; das steht als Kommentar daneben, damit es niemand „mitrepariert".
 
 **Kategorie / Bereich:** robustness (Security-Härtung) / PIM (Kalender)
 

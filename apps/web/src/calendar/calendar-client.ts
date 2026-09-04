@@ -1023,7 +1023,11 @@ export function makeCalendarClient(client: JmapClient, accountId: Id): CalendarC
     },
 
     async restoreEvent(snapshot) {
-      const create: Record<string, unknown> = {}
+      // A NULL prototype: `key` comes out of the server snapshot taken before the destroy, and
+      // `create['__proto__'] = value` on an object literal sets the prototype instead of adding a
+      // property. An Undo that restores the event MINUS one property is the second data loss this
+      // whole path exists to prevent (N-08).
+      const create: Record<string, unknown> = Object.create(null) as Record<string, unknown>
       for (const [key, value] of Object.entries(snapshot)) {
         if (!SERVER_OWNED.includes(key)) create[key] = value
       }

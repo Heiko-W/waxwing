@@ -468,6 +468,27 @@ describe('restoreEvent', () => {
     expect(body.method).toBeUndefined()
     expect(body.title).toBe('Invitation')
   })
+
+  /*
+   * The snapshot's keys are the SERVER's, so one of them can be `__proto__` — a CalDAV client on
+   * the same account, or an imported `.ics`, decides that. `create[key] = value` on an object
+   * literal moves the prototype instead of adding a property, and the Undo would then restore the
+   * event MINUS that property: the second data loss this path exists to prevent (N-08).
+   */
+  it('restores a snapshot property named __proto__ instead of dropping it', async () => {
+    const { client, calls } = fakeClient()
+    // Spread, never `Object.assign`: assignment would run into the very setter under test.
+    const snapshot = {
+      ...event({ id: '0', title: 'Kept' }),
+      ...(JSON.parse('{"__proto__":{"x":1}}') as object),
+    } as CalendarEvent
+    await makeCalendarClient(client, ACC).restoreEvent(snapshot)
+
+    const body = (calls[0]?.[1] as { create: { e: Record<string, unknown> } }).create.e
+    // An OWN descriptor: `body.__proto__` would answer about the prototype, not about the property.
+    expect(Object.getOwnPropertyDescriptor(body, '__proto__')?.value).toEqual({ x: 1 })
+    expect(body.title).toBe('Kept')
+  })
 })
 
 describe('eventSignature', () => {

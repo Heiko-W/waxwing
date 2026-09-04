@@ -139,7 +139,12 @@ export function alertsFromEvent(event: CalendarEvent): EventAlerts {
   if (alerts === undefined || alerts === null) return NO_ALERTS
 
   const offsets: Duration[] = []
-  const opaque: Record<string, Alert> = {}
+  // A NULL prototype, because `key` is the SERVER's. `opaque['__proto__'] = alert` on an object
+  // literal replaces the prototype instead of storing an own property, so an alarm this client
+  // cannot model that arrived under the key `__proto__` was dropped here — and dropped again from
+  // the write-back that promises to carry it byte for byte. Same class as R-60 and the participant
+  // map next door (N-08).
+  const opaque: Record<string, Alert> = Object.create(null) as Record<string, Alert>
   for (const [key, alert] of Object.entries(alerts)) {
     if (alert === undefined || alert === null || typeof alert !== 'object') continue
     const offset = modelledOffset(alert)

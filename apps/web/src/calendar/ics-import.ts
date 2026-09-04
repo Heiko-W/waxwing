@@ -100,7 +100,10 @@ export function candidatesFrom(value: unknown): ImportCandidate[] {
 
 /** The parsed event with the properties a create may not carry removed. */
 function strip(event: Record<string, unknown>): Record<string, unknown> {
-  const payload: Record<string, unknown> = {}
+  // A NULL prototype: `key` comes out of the imported `.ics`, and `payload['__proto__'] = value` on
+  // an object literal sets the prototype instead of adding a property — the one member spelt
+  // `__proto__` would be silently missing from the event that gets created (N-08).
+  const payload: Record<string, unknown> = Object.create(null) as Record<string, unknown>
   for (const [key, value] of Object.entries(event)) {
     if (!(PARSED_ONLY as readonly string[]).includes(key)) payload[key] = value
   }
