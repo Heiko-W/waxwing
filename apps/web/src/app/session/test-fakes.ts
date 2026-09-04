@@ -9,7 +9,7 @@ import type { AuthProvider, JmapClient } from '@waxwing/jmap'
 import { vi } from 'vitest'
 import type { AuthController, AuthSession } from '../../auth'
 import { AuthExpiredError } from '../../auth'
-import type { ShellServices } from '../services'
+import type { ProbeResult, ShellServices } from '../services'
 
 const JMAP_MAIL = 'urn:ietf:params:jmap:mail'
 
@@ -103,6 +103,13 @@ export interface FakeServicesOptions {
   readonly restore?: AuthSession | null
   /** Same-origin probe result (FR-AUTH-01). Default: present. */
   readonly probePresent?: boolean
+  /**
+   * The probe's THIRD answer: nobody replied (FR-OFF-01). Overrides {@link probePresent}.
+   *
+   * Its own option rather than a third value on the boolean, because "no answer" is not a
+   * degree of "no server" — that conflation is the defect this exists to pin.
+   */
+  readonly probeResult?: ProbeResult
   /** Whether OAuth is offered (secure context). Default: true. */
   readonly oauthAvailable?: boolean
   /** When set, `connect()` rejects with it (login/connect error paths). */
@@ -254,7 +261,8 @@ export function makeFakeServices(options: FakeServicesOptions = {}): FakeService
     clientFromSession: clientFromSession as unknown as ShellServices['clientFromSession'],
     makeAuthController: () => controller,
     oauthIsAvailable: () => options.oauthAvailable ?? true,
-    probe: async () => options.probePresent ?? true,
+    probe: async () =>
+      options.probeResult ?? (options.probePresent === false ? 'absent' : 'present'),
   }
 
   return {

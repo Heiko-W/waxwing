@@ -1200,3 +1200,59 @@ describe('SessionProvider — the offline cold start (FR-OFF-01)', () => {
     expect(fake.spies.connect).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * A PROBE MAY ONLY STATE WHAT IT MEASURED (FR-OFF-01, follow-up to R-78).
+ *
+ * `services.probe` reported a request that got no answer as "no server here", and boot step C read
+ * that as the cue to open the MANUAL server-entry step. So the one reader who could do least about
+ * it — no stored session, no network — was handed the most technical screen this app has, asking
+ * for an address it had no way to check. The silence is not a measurement; the last server this
+ * browser actually used is.
+ */
+describe('SessionProvider — the probe got no answer (FR-OFF-01)', () => {
+  const durable = {
+    connectUrl: 'https://mail.example.org',
+    issuer: 'https://mail.example.org',
+    displayHost: 'mail.example.org',
+    fromProbe: false,
+  }
+
+  it('THE ONE: offers the last server used, not the server-entry dialog', async () => {
+    localStorage.setItem('waxwing.connect.target', JSON.stringify(durable))
+    renderSession({ probeResult: 'unknown' })
+
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('host')).toHaveTextContent('mail.example.org')
+  })
+
+  it('falls back to the server-entry step only when there is nothing to fall back to', async () => {
+    // A genuinely first launch with no connection. There is nothing true to say about which server
+    // this is, so the app does not invent one — the form itself carries the offline sentence.
+    renderSession({ probeResult: 'unknown' })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('connect'))
+  })
+
+  it('ignores a durable target that is not one', async () => {
+    // `localStorage` is user-writable and survives every version of this app. A value without a
+    // `connectUrl` would produce a sign-in form for `undefined`.
+    localStorage.setItem('waxwing.connect.target', JSON.stringify({ displayHost: 'x' }))
+    renderSession({ probeResult: 'unknown' })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('connect'))
+  })
+
+  it('a server that answered 404 still means "no server here"', async () => {
+    // The counter-test, and the reason the third answer had to be its own value: a measured
+    // absence must keep opening the server-entry step, durable target or not.
+    localStorage.setItem('waxwing.connect.target', JSON.stringify(durable))
+    renderSession({ probeResult: 'absent' })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('connect'))
+  })
+
+  it('a server that answered still wins over the durable target', async () => {
+    localStorage.setItem('waxwing.connect.target', JSON.stringify(durable))
+    renderSession({ probeResult: 'present' })
+    await waitFor(() => expect(screen.getByTestId('step')).toHaveTextContent('login'))
+    expect(screen.getByTestId('host')).toHaveTextContent('localhost')
+  })
+})

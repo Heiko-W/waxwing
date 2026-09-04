@@ -702,11 +702,33 @@ export function SessionProvider({ config, children }: SessionProviderProps) {
         return
       }
       const present = await services.probe(window.location.origin)
-      if (present) {
+      if (present === 'present') {
         goToLogin(sameOriginTarget(window.location.origin))
-      } else {
-        dispatch({ type: 'showConnect' })
+        return
       }
+      if (present === 'absent') {
+        dispatch({ type: 'showConnect' })
+        return
+      }
+      /*
+       * THE PROBE GOT NO ANSWER, WHICH IS NOT THE SAME AS "NO SERVER HERE".
+       *
+       * Offline — the case FR-OFF-01 is about — nothing can answer, and the old code read that
+       * silence as absence and opened the manual server-entry step. So the one reader who cannot
+       * possibly act on it (no session to restore, and no network to reach whatever they type) got
+       * the most technical screen this app has, asking for a value it could not have checked.
+       *
+       * The last server this browser actually used is a measurement; the silence is not. Prefer it,
+       * and fall back to the server-entry step only when there is nothing to prefer — a genuinely
+       * first launch with no connection, where the app has nothing true to say beyond what the
+       * form itself now says (its Continue button carries the offline reason, `ConnectForm`).
+       */
+      const durable = readStored<ConnectTarget>(local(), DURABLE_TARGET_KEY)
+      if (durable && typeof durable.connectUrl === 'string' && durable.connectUrl !== '') {
+        goToLogin(durable)
+        return
+      }
+      dispatch({ type: 'showConnect' })
     } catch (error) {
       /*
        * NAMED, even when the message on screen cannot name it (U2).

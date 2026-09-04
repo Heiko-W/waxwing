@@ -11,6 +11,13 @@ import { connect, JmapClient as JmapClientImpl } from '@waxwing/jmap'
 import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import { AuthController, DEFAULT_CLIENT_ID, DEFAULT_SCOPES, wipeLocalData } from '../auth'
 
+/**
+ * What the same-origin probe found: a JMAP server, no JMAP server, or no answer at all.
+ *
+ * See {@link ShellServices.probe} for why the third one exists.
+ */
+export type ProbeResult = 'present' | 'absent' | 'unknown'
+
 export interface ShellServices {
   /** `@waxwing/jmap` connect: `(input, AuthProvider, { fetch? }) => Promise<JmapClient>`. */
   readonly connect: typeof connect
@@ -36,9 +43,15 @@ export interface ShellServices {
   /**
    * FR-AUTH-01 same-origin probe: does a JMAP server answer at `origin`? An unauthenticated
    * GET to `/.well-known/jmap`; Stalwart replies 200 anonymous, 401/403 also mean "present".
-   * Only 404/410/network failure count as absent, so `connect()` stays the real arbiter.
+   * Only 404/410 count as absent, so `connect()` stays the real arbiter.
+   *
+   * **`'unknown'` is a third answer and not a synonym for `'absent'`.** It used to be one: a
+   * request that never got a reply was reported as "no server here", so opening the app with no
+   * network — where nothing can reply — put a technical server-entry dialog in front of a reader
+   * who could not have used it. A probe may only state what it measured; a question nobody
+   * answered was not measured.
    */
-  readonly probe: (origin: string) => Promise<boolean>
+  readonly probe: (origin: string) => Promise<ProbeResult>
   /**
    * Drops everything this origin has stored and reloads the page (U2).
    *
@@ -63,9 +76,12 @@ export const defaultServices: ShellServices = {
   probe: async (origin) => {
     try {
       const response = await fetch(new URL('/.well-known/jmap', origin).href, { cache: 'no-store' })
-      return response.status !== 404 && response.status !== 410
+      return response.status === 404 || response.status === 410 ? 'absent' : 'present'
     } catch {
-      return false
+      // A failed `fetch` — offline, DNS gone, a connection refused. The server did not say "no";
+      // nobody said anything, and reporting that as absence is how the boot came to offer a
+      // server-entry form to a device with no network.
+      return 'unknown'
     }
   },
   resetLocalData: async () => {
